@@ -840,6 +840,116 @@ internal sealed class NavigationAdapterTests
             ValueTask.FromResult(false);
     }
 
+    // #648: a NavigationSelection's observables and select command.
+    [Test, NotInParallel(Order = 12)]
+    public async Task SelectionSemanticsAsync()
+    {
+        await using var context = new RunicModelContext();
+        var scheduler = ContextScheduler.For(context);
+        await using var navigator = new RunicNavigator(new RunicNavigatorOptions { ModelContext = context });
+        var owner = new object();
+        var second = new NavigationPage("second");
+        var first = navigator.CreateRegion<NavigationPage>(owner, NavigationTarget.Borrow(new NavigationPage("first")));
+        var middle = navigator.CreateRegion<NavigationPage>(owner, NavigationTarget.Borrow(second));
+        var last = navigator.CreateRegion<NavigationPage>(owner, NavigationTarget.Borrow(new NavigationPage("third")));
+        var tabs = navigator.CreateSelection(owner, [first, middle, last]);
+
+        var selected = new Recorder<NavigationRegion?>();
+        var indexes = new Recorder<int>();
+        var transitioning = new Recorder<bool>();
+        var busy = new Recorder<bool>();
+        using var selectedSubscription = tabs.WhenSelectedChanged().Subscribe(selected);
+        using var indexSubscription = tabs.WhenSelectedIndexChanged().Subscribe(indexes);
+        using var transitioningSubscription = tabs.WhenIsTransitioningChanged().Subscribe(transitioning);
+        using var busySubscription = tabs.WhenIsBusyChanged().Subscribe(busy);
+        Require(selected.Values.SequenceEqual([first]) && indexes.Values.SequenceEqual([0])
+                && transitioning.Values.SequenceEqual([false]) && busy.Values.SequenceEqual([false]),
+            "A selection subscription did not receive its initial value synchronously.");
+
+        // A committed selection change emits each value once.
+        var thrown = new Recorder<Exception>();
+        using var select = tabs.CreateSelectCommand(outputScheduler: scheduler);
+        using var thrownSubscription = select.ThrownExceptions.Subscribe(thrown);
+        await WaitUntilAsync(() => ReactiveCommandExecution.CanExecute(select, 1), "The select command was disabled on an idle selection.");
+        var result = await ReactiveCommandExecution.Execute(select, 1, CancellationToken.None);
+        Require(result == new NavigationOutcome(NavigationOutcomeKind.Committed) && tabs.Selected == middle,
+            $"The select command gave {result}.");
+        await WaitUntilAsync(() => busy.Values.Length == 3, "WhenIsBusyChanged did not return to false.");
+        Require(selected.Values.SequenceEqual([first, middle]) && indexes.Values.SequenceEqual([0, 1])
+                && transitioning.Values.SequenceEqual([false, true, false]) && busy.Values.SequenceEqual([false, true, false]),
+            $"The selection emitted {string.Join(", ", indexes.Values)} / {string.Join(", ", transitioning.Values)} / {string.Join(", ", busy.Values)}.");
+
+        // A veto of the region left keeps the selection, and nothing is emitted for it.
+        second.Guard = () => Task.FromResult(false);
+        result = await ReactiveCommandExecution.Execute(select, 2, CancellationToken.None);
+        Require(result == new NavigationOutcome(NavigationOutcomeKind.Rejected, NavigationRejection.Guard)
+                && tabs.Selected == middle && tabs.SelectedIndex == 1
+                && selected.Values.SequenceEqual([first, middle]) && indexes.Values.SequenceEqual([0, 1]),
+            $"A vetoed select command gave {result} and moved the selection to {tabs.SelectedIndex}.");
+        second.Guard = null;
+
+        // An index outside Regions is a defect: the execution fails, reaches ThrownExceptions and selects nothing.
+        await RequireThrowsAsync<ArgumentOutOfRangeException>(
+            () => ReactiveCommandExecution.Execute(select, 3, CancellationToken.None), "Index 3 of three regions was accepted.");
+        await RequireThrowsAsync<ArgumentOutOfRangeException>(
+            () => ReactiveCommandExecution.Execute(select, -1, CancellationToken.None), "Index -1 was accepted.");
+        await WaitUntilAsync(() => thrown.Values.Length == 2, "An out-of-range index did not reach ThrownExceptions.");
+        Require(thrown.Values.All(error => error is ArgumentOutOfRangeException) && tabs.SelectedIndex == 1 && !tabs.IsBusy
+                && indexes.Values.SequenceEqual([0, 1]),
+            "An out-of-range index changed the selection.");
+
+        // Removing an earlier region moves the index of the same selected region.
+        Require(await tabs.RemoveAsync(first) is NavigationResult<object>.Committed, "The first region was not removed.");
+        Require(selected.Values.SequenceEqual([first, middle]) && indexes.Values.SequenceEqual([0, 1, 0]),
+            $"Removing an earlier region emitted {string.Join(", ", indexes.Values)}.");
+
+        // A Supersede selection's command stays enabled while busy; a RejectWhileBusy selection's doesn't.
+        var release = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        try
+        {
+            second.Guard = () => release.Task;
+            var pending = tabs.SelectAsync(last).AsTask();
+            await WaitUntilAsync(() => tabs.IsBusy, "The guarded selection change did not start.");
+            Require(ReactiveCommandExecution.CanExecute(select, 1), "The select command of a Supersede selection was disabled while busy.");
+            release.SetResult(true);
+            Require(await pending is NavigationResult<object>.Committed && tabs.Selected == last, "The guarded selection change did not commit.");
+            second.Guard = null;
+
+            var strictOwner = new object();
+            var strictHome = new NavigationPage("strict");
+            var strictFirst = navigator.CreateRegion<NavigationPage>(strictOwner, NavigationTarget.Borrow(strictHome));
+            var strictSecond = navigator.CreateRegion<NavigationPage>(strictOwner, NavigationTarget.Borrow(new NavigationPage("other")));
+            var strict = navigator.CreateSelection(strictOwner, [strictFirst, strictSecond],
+                new NavigationSelectionOptions { Admission = NavigationAdmission.RejectWhileBusy });
+            var notSaving = new Availability();
+            using var strictSelect = strict.CreateSelectCommand(notSaving, scheduler);
+            Require(!ReactiveCommandExecution.CanExecute(strictSelect, 1), "The select command could execute before its condition emitted.");
+            notSaving.Set(true);
+            await WaitUntilAsync(() => ReactiveCommandExecution.CanExecute(strictSelect, 1), "The select command stayed disabled when idle.");
+
+            var gate = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+            release = gate;
+            strictHome.Guard = () => gate.Task;
+            var strictPending = strict.SelectAsync(strictSecond).AsTask();
+            await WaitUntilAsync(() => !ReactiveCommandExecution.CanExecute(strictSelect, 1),
+                "The select command of a RejectWhileBusy selection was enabled while busy.");
+            Require(strict.IsBusy, "The RejectWhileBusy selection was not busy.");
+            gate.SetResult(true);
+            Require(await strictPending is NavigationResult<object>.Committed && strict.SelectedIndex == 1,
+                "The guarded strict selection change did not commit.");
+            await WaitUntilAsync(() => ReactiveCommandExecution.CanExecute(strictSelect, 0),
+                "The select command stayed disabled after the selection went idle.");
+            notSaving.Set(false);
+            await WaitUntilAsync(() => !ReactiveCommandExecution.CanExecute(strictSelect, 0), "The select command ignored its condition.");
+            strictSelect.Dispose();
+            Require(notSaving.Observers == 0, "The disposed select command still observes its condition.");
+        }
+        finally
+        {
+            release.TrySetResult(true);
+        }
+    }
+
     private static FlavorUnit UnitValue() => FlavorUnit.Default;
 
 

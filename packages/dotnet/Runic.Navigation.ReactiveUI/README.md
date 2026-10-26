@@ -7,7 +7,10 @@ host, so it works in a WPF or console app. It provides, in the
 `Runic.Navigation.ReactiveUI` namespace, `WhenCurrentChanged()`,
 `WhenCurrentEntryChanged()`, `WhenHistoryChanged()`, `WhenCanGoBackChanged()`,
 `WhenIsTransitioningChanged()`, `WhenIsBusyChanged()` and `CreateBackCommand()` for
-`NavigationRegion<TContent>` (in `ReactiveNavigationRegionExtensions`); `WhenNavigatedTo()`,
+`NavigationRegion<TContent>` (in `ReactiveNavigationRegionExtensions`);
+`WhenSelectedChanged()`, `WhenSelectedIndexChanged()`, `WhenIsTransitioningChanged()`,
+`WhenIsBusyChanged()` and `CreateSelectCommand()` for a `NavigationSelection` (in
+`ReactiveNavigationSelectionExtensions`); `WhenNavigatedTo()`,
 `WhenNavigatedFrom()`, `CreateCompleteCommand()`, `CreateDismissCommand()` and
 `CreateCloseCommand()` for an entry's `NavigationEntryContext` (in
 `ReactiveNavigationEntryExtensions`); and
@@ -254,6 +257,42 @@ Main.WhenCurrentChanged()          // TContent?, distinct by instance, on the mo
   navigator's hooks (`INavigationInitialize`, `INavigationAware`,
   `INavigationDepartureGuard`) and the entry's `Retirement` token for per-entry
   work, and `Dispose` for owned content.
+
+## Selecting tabs
+
+A [`NavigationSelection`](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Navigation/README.md#selecting-among-sibling-regions)
+chooses which of a page's regions is presented, such as tabs that each keep their
+own stack. `ReactiveNavigationSelectionExtensions` observes it and changes it with
+a command (since 0.12):
+
+```csharp
+SelectTab = Tabs.CreateSelectCommand(); // ReactiveCommand<int, NavigationOutcome>
+
+Tabs.WhenSelectedIndexChanged()    // int, -1 without regions, on the commit turn
+    .Subscribe(index => SelectedTab = index);
+```
+
+- `WhenSelectedChanged()` emits the selected `NavigationRegion` (`null` when the
+  selection has no regions) and `WhenSelectedIndexChanged()` its index in
+  `Regions` (-1 without regions): on subscription, then each different value in
+  the commit turn. Removing an earlier region changes the index alone.
+- `WhenIsTransitioningChanged()` and `WhenIsBusyChanged()` emit the selection's
+  `IsTransitioning` and `IsBusy`, as the region observables do. A selection
+  change doesn't make the region it leaves transition or busy, and the region's
+  own transitions are not included.
+- All four emit the initial value inside `Subscribe` and later values on the
+  model turn that raises the change, never complete, and stop when the
+  subscription is disposed.
+- `CreateSelectCommand()` takes the index in `Regions` as its parameter and
+  outputs the `NavigationOutcome` of `SelectAsync`. A veto of the region left
+  is the output `Rejected` (`Guard`), and the selection stays. In a selection
+  created with `Admission = NavigationAdmission.RejectWhileBusy` the command
+  can't execute while the selection is busy; otherwise a later execution
+  supersedes an earlier one that hasn't started committing, so the last tab
+  chosen wins. An index outside `Regions` is a defect: the execution fails with
+  `ArgumentOutOfRangeException` on `ThrownExceptions` and selects nothing. The
+  `canExecute` and `outputScheduler` parameters and the command's lifetime are
+  those of `CreateBackCommand()`.
 
 ## Entry lifecycle and result commands
 
