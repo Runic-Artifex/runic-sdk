@@ -173,7 +173,73 @@ public static class DesktopEventLoop
             MacOsApplication.Run(nativeApplication, work);
             work.GetAwaiter().GetResult();
         }
-        finally { Volatile.Write(ref _appKitPumping, 0); }
+        finally
+        {
+            Volatile.Write(ref _appKitPumping, 0);
+            MacOsMainThread.FailPending();
+        }
+    }
+
+    /// <summary>Runs <paramref name="action"/> on the macOS process main thread, where AppKit must be called.</summary>
+    /// <remarks>
+    /// <para>
+    /// For native interop without a window, such as AppKit calls of an application behind a status icon; window-bound work
+    /// uses <see cref="DesktopWindow.InvokeNativeAsync"/>. The action runs through the main dispatch queue, in order with
+    /// Runic's own main-thread work, also while a menu is open, a window is resized live or a modal panel runs. Called on
+    /// the main thread, it runs at once. From another thread it needs <see cref="Run(Func{Task})"/> or
+    /// <see cref="Run(DesktopHostOptions, Func{DesktopHost, Task{int}})"/> to run, with or without a window; work still
+    /// queued when the loop ends fails with <see cref="InvalidOperationException"/>. Keep the action short: the main thread
+    /// serves windows and menus.
+    /// </para>
+    /// <para>
+    /// Cancelling <paramref name="cancellationToken"/> before the action starts keeps it from running and cancels the
+    /// task; an action that started runs to completion.
+    /// </para>
+    /// <para>
+    /// As with <see cref="Task.Run(Action)"/>, a lambda whose body is an expression with a value, such as
+    /// <c>() =&gt; x = 1</c>, calls <see cref="InvokeOnMainThreadAsync{T}(Func{T}, CancellationToken)"/>; use a statement
+    /// body, <c>() =&gt; { x = 1; }</c>, for an action.
+    /// </para>
+    /// </remarks>
+    /// <param name="action">The work to run on the main thread. An exception it throws faults the returned task.</param>
+    /// <param name="cancellationToken">Cancels the work before it starts.</param>
+    /// <exception cref="ArgumentNullException"><paramref name="action"/> is <see langword="null"/>.</exception>
+    /// <exception cref="PlatformNotSupportedException">Not on macOS.</exception>
+    /// <exception cref="InvalidOperationException">Called from another thread while no Desktop event loop runs.</exception>
+    /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> was cancelled.</exception>
+    // Both overloads take an optional token, as approved (D046.2): a lambda that returns a value binds to the Func<T>
+    // overload, as with Task.Run, and later overloads are not planned.
+    [System.Diagnostics.CodeAnalysis.SuppressMessage("ApiDesign", "RS0026:Do not add multiple public overloads with optional parameters", Justification = "D046.2")]
+    [System.Runtime.Versioning.SupportedOSPlatform("macos")]
+    public static ValueTask InvokeOnMainThreadAsync(Action action, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(action);
+        if (!OperatingSystem.IsMacOS())
+            throw new PlatformNotSupportedException("DesktopEventLoop.InvokeOnMainThreadAsync is available on macOS only.");
+        return new ValueTask(MacOsMainThread.InvokeTrackedAsync(action, static () => IsRunning, cancellationToken));
+    }
+
+    /// <summary>Runs <paramref name="func"/> on the macOS process main thread and returns its result.</summary>
+    /// <remarks>As <see cref="InvokeOnMainThreadAsync(Action, CancellationToken)"/>.</remarks>
+    /// <typeparam name="T">The type of the result.</typeparam>
+    /// <param name="func">The work to run on the main thread. An exception it throws faults the returned task.</param>
+    /// <param name="cancellationToken">Cancels the work before it starts.</param>
+    /// <returns>The value <paramref name="func"/> returned.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="func"/> is <see langword="null"/>.</exception>
+    /// <exception cref="PlatformNotSupportedException">Not on macOS.</exception>
+    /// <exception cref="InvalidOperationException">Called from another thread while no Desktop event loop runs.</exception>
+    /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> was cancelled.</exception>
+    // Both overloads take an optional token, as approved (D046.2): a lambda that returns a value binds to the Func<T>
+    // overload, as with Task.Run, and later overloads are not planned.
+    [System.Diagnostics.CodeAnalysis.SuppressMessage("ApiDesign", "RS0026:Do not add multiple public overloads with optional parameters", Justification = "D046.2")]
+    [System.Runtime.Versioning.SupportedOSPlatform("macos")]
+    public static async ValueTask<T> InvokeOnMainThreadAsync<T>(Func<T> func, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(func);
+        T result = default!;
+        // A statement lambda: an expression lambda with a value, such as an assignment, binds to this overload again.
+        await InvokeOnMainThreadAsync(() => { result = func(); }, cancellationToken).ConfigureAwait(false);
+        return result;
     }
 
     private static void ReportFallback(

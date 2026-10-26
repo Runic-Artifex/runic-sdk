@@ -37,3 +37,5 @@ static Runic.Desktop.DesktopQuitRequest.operator !=(Runic.Desktop.DesktopQuitReq
 static Runic.Desktop.DesktopQuitRequest.operator ==(Runic.Desktop.DesktopQuitRequest? left, Runic.Desktop.DesktopQuitRequest? right) -> bool
 static Runic.Desktop.MacOSDesktopOptions.operator !=(Runic.Desktop.MacOSDesktopOptions? left, Runic.Desktop.MacOSDesktopOptions? right) -> bool
 static Runic.Desktop.MacOSDesktopOptions.operator ==(Runic.Desktop.MacOSDesktopOptions? left, Runic.Desktop.MacOSDesktopOptions? right) -> bool
+static Runic.Desktop.DesktopEventLoop.InvokeOnMainThreadAsync(System.Action! action, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask
+static Runic.Desktop.DesktopEventLoop.InvokeOnMainThreadAsync<T>(System.Func<T>! func, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<T>
