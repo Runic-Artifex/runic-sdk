@@ -631,7 +631,9 @@ var result = await page.Tabs.SelectAsync(page.Reports); // a guarded switch
   every tab in one transition.
 - `CreateSelection` throws `ArgumentException` for a region of another
   navigator or owner, a closed region, one already in a selection or one
-  passed twice, and `InvalidOperationException` for a shared owner.
+  passed twice, and `InvalidOperationException` for a shared owner. A
+  selection whose owner is already retiring starts closed, and takes the
+  owner's regions that the retirement closed.
 
 `NavigationSelector.Region` in Runic.Navigation.Wpf stays for selecting
 borrowed models that have no stacks of their own, such as settings pages.
