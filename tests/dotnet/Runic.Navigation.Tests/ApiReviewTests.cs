@@ -122,6 +122,39 @@ internal sealed partial class NavigationTests
         await Wait(fixture.Navigator.WhenIdleAsync());
     }
 
+    // #648: the selection is a sealed class that only the navigator creates, with the approved members; Select is a new
+    // value of the open NavigationOperation set, and the logs name it.
+    [Test]
+    public void SelectionSurfaceIsTheApprovedOne()
+    {
+        var type = typeof(NavigationSelection);
+        Require(type.IsSealed && typeof(INotifyPropertyChanged).IsAssignableFrom(type)
+                && type.GetConstructors(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance).All(constructor => constructor.IsAssembly),
+            "NavigationSelection can be created or derived from outside Runic.Navigation.");
+        var members = type.GetMembers(BindingFlags.Public | BindingFlags.Instance | BindingFlags.Static | BindingFlags.DeclaredOnly)
+            .Where(member => member is not MethodInfo { IsSpecialName: true }).Select(member => member.Name).Order(StringComparer.Ordinal);
+        Require(members.SequenceEqual(["Add", "Admission", "IsBusy", "IsTransitioning", "Navigator", "PropertyChanged", "Regions", "RemoveAsync",
+                "SelectAsync", "Selected", "SelectedIndex", "ToString", "WhenIdleAsync"]),
+            $"NavigationSelection has the members {string.Join(", ", members)}.");
+        Require(type.GetProperty(nameof(NavigationSelection.Regions))?.PropertyType == typeof(IReadOnlyList<NavigationRegion>)
+                && type.GetProperty(nameof(NavigationSelection.Selected))?.PropertyType == typeof(NavigationRegion)
+                && type.GetMethod(nameof(NavigationSelection.SelectAsync))?.ReturnType == typeof(ValueTask<NavigationResult<object>>)
+                && type.GetMethod(nameof(NavigationSelection.RemoveAsync))?.GetParameters().Select(parameter => parameter.ParameterType)
+                    .SequenceEqual([typeof(NavigationRegion), typeof(NavigationRequestOptions), typeof(CancellationToken)]) == true,
+            "NavigationSelection's members don't have the approved types.");
+        var create = typeof(RunicNavigator).GetMethod(nameof(RunicNavigator.CreateSelection));
+        Require(create?.ReturnType == type && create.GetParameters().Select(parameter => (parameter.ParameterType, parameter.Name))
+                .SequenceEqual([(typeof(object), "owner"), (typeof(IEnumerable<NavigationRegion>), "regions"), (typeof(NavigationSelectionOptions), "options")]),
+            "CreateSelection does not have the approved signature.");
+        var options = new NavigationSelectionOptions();
+        Require(typeof(NavigationSelectionOptions).IsSealed && options.SelectedIndex == 0 && options.Admission == NavigationAdmission.Supersede
+                && options == new NavigationSelectionOptions(),
+            "NavigationSelectionOptions is not a sealed record with the default index and admission.");
+        Require((int)NavigationOperation.Select == 7 && RunicNavigator.OperationName(NavigationOperation.Select) == "Select"
+                && RunicNavigator.OperationName(NavigationOperation.Clear) == "Clear",
+            "Select is not the next NavigationOperation, or the logs don't name it.");
+    }
+
     // D24: one vocabulary for the guard verb, the arrival record and the arrival hook.
     [Test]
     public void NavigationVocabularyIsArrivalAndDeparture()

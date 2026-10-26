@@ -24,7 +24,7 @@ public sealed record NavigationRegionGuardOptions
 {
     /// <summary>
     /// Gets whether the guard is asked when the transition only retains the region's entries, as a push over its current
-    /// entry or a tab switch does. The default is <see langword="false"/>, as for <see cref="LeaveConfirmation"/>.
+    /// entry, a tab switch or a selection change (<see cref="NavigationSelection.SelectAsync"/>) does. The default is <see langword="false"/>, as for <see cref="LeaveConfirmation"/>.
     /// </summary>
     public bool AskOnRetain { get; init; }
 
@@ -87,7 +87,7 @@ public sealed class NavigationRegionDeparture
 
     /// <summary>
     /// Gets the departing region. For a guard of <see cref="RunicNavigator.AddDepartureGuard"/>, it is the region the request
-    /// was made to.
+    /// was made to, or for a request of a <see cref="NavigationSelection"/>, the region it leaves or removes.
     /// </summary>
     public NavigationRegion Region { get; }
 

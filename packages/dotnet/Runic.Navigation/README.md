@@ -177,7 +177,10 @@ See [Container-resolved targets](#container-resolved-targets).
   in a parent or sibling region. The request is rejected as `NotCurrent`, with
   `Rejected.By` set to that entry, unless the entry, and every entry whose
   content owns its region up to a root region, is current at admission and at
-  commit. A retained, retired or unknown entry is not current.
+  commit. A retained, retired or unknown entry is not current, and neither is
+  an entry in a region of a `NavigationSelection` that isn't selected, at any
+  level (since 0.12): a late operation in a hidden tab doesn't navigate the
+  page the user is looking at. The page can still navigate its own region.
 - `NavigationRequestOptions.RetainView` (since 0.11) decides, for the entry a
   Push, Replace, Reset or `PushForResult` creates, whether a presentation that
   can keep views keeps that entry's view while it is retained: `true` keeps
@@ -359,7 +362,7 @@ A failed step is logged as event 1064.
 | Phase | Where | What happens |
 | --- | --- | --- |
 | Admission | Synchronously, in the call | The request is rejected at once for these reasons: `Closed`; `Reentrant`, when the caller is inside a hook of a transition in this region, an ancestor or a descendant, for example a `CurrentPane` guard that calls `Main.BackAsync()`; `NotCurrent`; `NoHistory`; `Cancelled`, for a token that is already cancelled; or `Busy`, in a region that rejects requests while busy. Otherwise the request supersedes every earlier request of the region that has not started committing, unless it is a Back that joins a pending Back (see below). It also supersedes those of the child regions its plan affects. |
-| Guarding | Outside model turns | The request first waits until earlier requests of the region, and those of the child regions in its plan, have ended. Then departure guards run one at a time, deepest first, also when a push only retains the current entry (`NavigationDepartureKind.Retain`), followed by the region and navigator guards; those registered with `Order = BeforeEntries` run before the departure guards instead (see [Guards for a whole region](#guards-for-a-whole-region)). `false` rejects the request as `Guard`. A guard that throws fails it (event 1060). |
+| Guarding | Outside model turns | The request first waits until earlier requests of the region, and those of the child regions in its plan, have ended. Then departure guards run one at a time, deepest first, also when a push only retains the current entry or a selection leaves its region (`NavigationDepartureKind.Retain`), followed by the region and navigator guards; those registered with `Order = BeforeEntries` run before the departure guards instead (see [Guards for a whole region](#guards-for-a-whole-region)). `false` rejects the request as `Guard`. A guard that throws fails it (event 1060). |
 | Preparing | Outside model turns | A new entry runs its factory, the ownership check, model-context binding and `InitializeAsync`, exactly once. A resumed entry runs `ResumeAsync`, which runs again on a retry. A step that throws fails the request (event 1061), and its pending entry retires. |
 | Committing | One model turn | The turn re-checks supersession, `ExpectedCurrent`, the target and the versions of the affected regions. Then it applies the new stacks and child policies, runs the departure's `OnCommitted` actions, raises the entries' `StateChanged` and `INavigationAware` notifications (event 1075 for a handler that throws), and raises `PropertyChanged`. A `PropertyChanged` handler that throws is logged (event 1063; its `Property` names the region property), and the commit stands. If the turn cannot run, for example because the model context throws, the request fails as `Failed(Committing)` (event 1062), nothing changes, and its pending entry retires. If the model context is already closed, the request is `Rejected(Closed)` instead, without event 1062, and the navigator starts closing. |
 | Committed | Outside model turns | Admission is released in the commit turn (`IsTransitioning` turns `false`), departing entries retire, and the arrival hooks of the entries the commit made current run. The returned `ValueTask` completes after them; the region stays `IsBusy` until then. |
@@ -537,7 +540,9 @@ theirs, deepest first and before the entry's own guard:
 | The entry | Its content | Its child regions | Guards asked in them |
 | --- | --- | --- | --- |
 | Retires (`Back`, `BackTo`, `Replace`, `Reset`, `Clear`, `ClearHistory`) | Owned | Close | Every entry, as `Retire` |
-| Retires, as the tab that a selector leaves (`ReplaceBorrowedAsync`) | Borrowed | Keep their entries | The current entry of each, as `Retain` |
+| Retires, as the tab that a selector leaves (`ReplaceBorrowedAsync`) | Borrowed | Keep their entries | The current entry of each, as `Retain`; of a selection's regions, only the selected one |
+| Is current in the region a selection leaves (`SelectAsync`) | Owned or borrowed | Keep their entries | The current entry of each, as `Retain`; of a selection's regions, only the selected one |
+| Is in the region a selection removes (`RemoveAsync`) | Owned | Close | Every entry, as `Retire` |
 | Is retained (`Push`) | Owned | Follow `WhileParentRetained` | The entries `ResetToRoot` or `Clear` removes, as `Retire`; none with `Keep` |
 | Is retained (`Push`) | Borrowed | Keep their entries | None |
 
@@ -547,7 +552,9 @@ theirs, deepest first and before the entry's own guard:
   supersedes the departure, as for owned children.
 - A tab that only refers to a region of the root asks nothing when it is
   left. Create a tab's page regions with the tab's model as their owner:
-  `navigator.CreateRegion<IPage>(this, ...)` in the tab's constructor.
+  `navigator.CreateRegion<IPage>(this, ...)` in the tab's constructor. For
+  tabs that each keep their own stack, use a selection instead (see
+  [Selecting among sibling regions](#selecting-among-sibling-regions)).
 - A window's guarded close (`GuardClose`, `GuardWindowClose`, see "Window
   close and disposal") clears the regions it guards, so every entry in them
   and in their owned child regions is asked as `Retire`, whichever tab is
@@ -555,6 +562,81 @@ theirs, deepest first and before the entry's own guard:
 - `LeaveConfirmation` allows a `Retain` departure without asking, because a
   page kept in its region keeps its draft. Pass `askOnRetain: true` to ask
   before the tab is left too; a confirmed switch then runs `discard`.
+
+### Selecting among sibling regions
+
+Tabs, a navigation rail or a bottom navigation often keep one stack per
+section: each section's pages stay while another section is shown. Make each
+section a region owned by the page, and let a `NavigationSelection` choose
+which one is presented (since 0.12):
+
+```csharp
+public sealed class CustomersPage
+{
+    public CustomersPage(RunicNavigator navigator)
+    {
+        List = navigator.CreateRegion<IPage>(this, NavigationTarget.Create<CustomerListViewModel>());
+        Reports = navigator.CreateRegion<IPage>(this, NavigationTarget.Create<ReportsViewModel>());
+        Tabs = navigator.CreateSelection(this, [List, Reports]);
+    }
+
+    public NavigationRegion<IPage> List { get; }
+    public NavigationRegion<IPage> Reports { get; }
+    public NavigationSelection Tabs { get; }
+}
+
+var result = await page.Tabs.SelectAsync(page.Reports); // a guarded switch
+```
+
+- Changing the selection is a transition with `NavigationOperation.Select`.
+  It asks the current entry of the region left, and of the regions its
+  content owns, deepest first, as `Retain`, then the region guards that ask
+  on retain and the navigator's guards, whose `Region` is the region left.
+  The entering region is not asked. A veto, failure, cancellation or
+  supersession keeps the selection.
+- The commit changes only `Selected` and `SelectedIndex`. No stack and no
+  entry state changes: the pages of the region left stay `Active` in it, and
+  no `OnNavigatedFrom`, `OnNavigatedTo`, resume or arrival hook runs. Coming
+  back presents the same entry. `LeaveConfirmation` with `askOnRetain: true`
+  asks before the region is left and discards only when the switch commits.
+- A switch is admitted like a region's request: a later `SelectAsync` or
+  `RemoveAsync` supersedes it until it starts committing, or is
+  `Rejected(Busy)` with `NavigationSelectionOptions.Admission =
+  RejectWhileBusy`. It neither supersedes nor delays the requests of the
+  region it leaves, and it doesn't make that region busy; a commit in that
+  region, or below it, while the switch asks supersedes the switch. The
+  selection has its own `IsTransitioning`, `IsBusy` and `WhenIdleAsync`, and
+  raises `PropertyChanged` for them and for `Regions`, `Selected` and
+  `SelectedIndex` in model turns.
+- Selecting the selected region while nothing is pending commits at once.
+  `ExpectedCurrent` names the current entry of the region left.
+- The regions stay the page's. Retiring the page asks every entry of every
+  region as `Retire`, deepest first, region by region, whichever is
+  selected, and closes the regions and the selection; pending switches end
+  `Rejected(Closed)`. A push over the page follows each region's
+  `WhileParentRetained`. A selection whose owner is no entry's content closes
+  with the navigator.
+- A selection in the content of a region that a switch leaves is followed
+  only into its selected region: the others were asked when they were left.
+- `Add(region)` appends a region synchronously and selects it when the
+  selection was empty. `RemoveAsync(region)` closes one region, as a document
+  tab closes: every entry of it is asked as `Retire` with
+  `NavigationOperation.Clear`, its pending requests are superseded, and when
+  it was selected the next region (or the previous, when it was the last) is
+  selected without being asked.
+- A request on behalf of a page in a region that isn't selected
+  (`NavigationRequestOptions.Requester`) is rejected as `NotCurrent`.
+- Own the regions and the selection by a page entry, not by the window's
+  ViewModel: then a window close, which clears the window's regions, asks
+  every tab in one transition.
+- `CreateSelection` throws `ArgumentException` for a region of another
+  navigator or owner, a closed region, one already in a selection or one
+  passed twice, and `InvalidOperationException` for a shared owner. A
+  selection whose owner is already retiring starts closed, and takes the
+  owner's regions that the retirement closed.
+
+`NavigationSelector.Region` in Runic.Navigation.Wpf stays for selecting
+borrowed models that have no stacks of their own, such as settings pages.
 
 ### Container-resolved targets
 
@@ -733,8 +815,8 @@ _registration = Main.AddDepartureGuard(new UnsavedWorkGuard(workspace));
 
 - A region guard is asked once per transition that departs from an entry of
   its region: a request to the region, a parent request that resets or closes
-  it, or the departure of borrowed content that leaves it, as a tab switch
-  does. A push into an empty region or a `BackTo` the current entry asks none.
+  it, the departure of borrowed content that leaves it, as a tab switch
+  does, or a selection that leaves or removes it. A push into an empty region or a `BackTo` the current entry asks none.
 - Region guards run after the entries' guards, region by region, deepest
   first, each region's guards in registration order, then the navigator's
   guards once. `NavigationRegionGuardOptions.Order` moves a guard before the
@@ -1050,7 +1132,7 @@ public async Task ConfirmCompletesTheRequest()
 | 1060 | `NavigationGuardFailed` | Error | A navigation departure guard throws; the transition fails. A close of the navigator or region is rejected as `Closed` and does not log it. | `Region`, `RegionId`, `Operation`, `EntryType`, `ErrorType` |
 | 1061 | `NavigationPreparationFailed` | Error | A navigation factory, the ownership check, binding, initialize or resume throws. A close of the navigator or region is rejected as `Closed` and does not log it. | `Region`, `RegionId`, `Operation`, `EntryType`, `ErrorType` |
 | 1062 | `NavigationCommitFailed` | Error | A navigation commit turn cannot run. | `Region`, `RegionId`, `Operation`, `ErrorType` |
-| 1063 | `NavigationNotificationFailed` | Error | A navigation region `PropertyChanged` handler throws; the commit stands. | `Region`, `RegionId`, `Property`, `ErrorType` |
+| 1063 | `NavigationNotificationFailed` | Error | A navigation region or selection `PropertyChanged` handler throws; the commit stands. | `Region`, `RegionId`, `Property`, `ErrorType` |
 | 1064 | `NavigationEntryCleanupFailed` | Error | A retirement step (`Retirement`, `Children`, `Forget`, `Dispose`, `DisposeScope`, `Lease`), the clearing of a closed region (`Close`) or the cancellation of transitions (`Cancel`, a throwing cancellation callback) fails; later steps still run. `EntryType` is `None` for `Close` and `Cancel`. | `Region`, `RegionId`, `EntryType`, `Step`, `ErrorType` |
 | 1065 | `NavigationTransitionRejected` | Debug | A navigation request is rejected. | `Region`, `RegionId`, `Operation`, `Reason` |
 | 1066 | `NavigationTransitionSuperseded` | Debug | A later request supersedes a navigation request. | `Region`, `RegionId`, `Operation` |
@@ -1068,8 +1150,9 @@ public async Task ConfirmCompletesTheRequest()
 
 Errors and warnings carry the exception. Rejections, supersessions, joined Backs and
 dismissed results log at Debug. The properties are `Region` (the `TContent`
-type name), `RegionId` (a per-navigator number that tells apart regions with
-the same `TContent`), `Operation`, `EntryType`, `Step`, `Reason`, `Property`
+type name, or `NavigationSelection` for a selection's request), `RegionId` (a
+per-navigator number that tells apart regions with the same `TContent`, and
+selections), `Operation` (`Select`, or `Clear` for `RemoveAsync`), `EntryType`, `Step`, `Reason`, `Property`
 (event 1063, the region property whose handler threw), `Notification` (event 1075)
 and `ErrorType`, never
 values.

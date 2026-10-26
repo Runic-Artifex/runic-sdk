@@ -40,8 +40,8 @@ public sealed class LeaveConfirmation
     /// </param>
     /// <param name="discard">Discards the changes. It runs in the commit turn of a confirmed departure, at most once per yes.</param>
     /// <param name="askOnRetain">
-    /// Whether to ask when the entry is only retained, for example when a push covers it or a tab switch leaves the page
-    /// region of borrowed tab content. By default only a departure that retires the entry asks, because a retained entry
+    /// Whether to ask when the entry is only retained, for example when a push covers it, a tab switch leaves the page
+    /// region of borrowed tab content, or a <see cref="NavigationSelection"/> leaves the entry's region. By default only a departure that retires the entry asks, because a retained entry
     /// keeps its state. With it, a confirmed push or tab switch runs <paramref name="discard"/> when it commits, although
     /// the entry stays in the history.
     /// </param>

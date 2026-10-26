@@ -139,6 +139,45 @@ internal sealed partial class NavigationTests
             $"A commit in the tab's region did not supersede the tab switch: {switched}.");
     }
 
+    // #648 rule 3: leaving borrowed content that owns a selection asks only the selected region of it: the others were
+    // asked when the selection left them. A selection change inside the content while the switch asks supersedes the switch.
+    [Test]
+    public async Task TabSwitchFollowsOnlyTheSelectedRegionAsync()
+    {
+        await using var fixture = new Fixture();
+        var asked = new Journal();
+        var customers = new TabsPage("customers", fixture.Navigator, options: new() { SelectedIndex = 1 });
+        var tabs = fixture.Navigator.CreateRegion<Page>(fixture.Root, NavigationTarget.Borrow<Page>(customers));
+        for (var index = 0; index < customers.Roots.Length; index++)
+        {
+            var name = $"root{index}";
+            customers.Roots[index].Guard = (departure, _) => Answer(asked, name, departure, true);
+        }
+        customers.Guard = (departure, _) => Answer(asked, "customers", departure, true);
+        var reports = new Page("reports");
+        var switched = await Wait(tabs.ReplaceAsync(NavigationTarget.Borrow(reports)));
+        Require(switched is NavigationResult<Page>.Committed && asked.Text == "root1 Retain Replace,customers Retire Replace",
+            $"Leaving content with a selection gave {switched}, asked {asked.Text}.");
+        Require(await Wait(tabs.ReplaceAsync(NavigationTarget.Borrow<Page>(customers))) is NavigationResult<Page>.Committed,
+            "The switch back did not commit.");
+
+        var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var gate = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        customers.Guard = async (departure, _) =>
+        {
+            await Answer(asked, "customers", departure, true);
+            started.TrySetResult();
+            return await gate.Task;
+        };
+        var leaving = tabs.ReplaceAsync(NavigationTarget.Borrow(reports)).AsTask();
+        await Wait(started.Task);
+        Require(await Wait(customers.Selection.SelectAsync(customers.Tabs[0])) is NavigationResult<object>.Committed,
+            "The selection change inside the content did not commit.");
+        gate.SetResult(true);
+        Require(await Wait(leaving) is NavigationResult<Page>.Superseded && tabs.Current == customers,
+            "A selection change inside the content did not supersede the switch.");
+    }
+
     private static ValueTask<bool> Answer(Journal asked, string name, NavigationDeparture departure, bool allow)
     {
         asked.Add($"{name} {departure.Kind} {departure.Operation}");

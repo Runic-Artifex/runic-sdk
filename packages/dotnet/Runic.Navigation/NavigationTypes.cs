@@ -61,7 +61,8 @@ public sealed record NavigationRequestOptions(NavigationEntryId? ExpectedCurrent
     /// Gets the entry on whose behalf the request is made, or <see langword="null"/>. When set, the request is rejected
     /// with <see cref="NavigationRejection.NotCurrent"/>, and <see cref="NavigationResult{TContent}.Rejected.By"/> set to
     /// this entry, unless the entry and every entry that owns its region, up to a region the navigator's content does not
-    /// own, are current when the request is admitted and when it commits.
+    /// own, are current when the request is admitted and when it commits, and each of those regions that is in a
+    /// <see cref="NavigationSelection"/> is its selected region.
     /// </summary>
     /// <remarks>
     /// Use it for navigation that work of an entry starts late, such as an operation that completes and then opens a page
@@ -69,7 +70,9 @@ public sealed record NavigationRequestOptions(NavigationEntryId? ExpectedCurrent
     /// <see cref="ExpectedCurrent"/> checks only the current entry of the region the request is made to; an entry that
     /// navigates its own region uses <see cref="NavigationEntryContext.BackAsync"/> or
     /// <see cref="NavigationEntryContext.CompleteAsync{TResult}"/>, which already expect it to be current. An unknown
-    /// entry, or one that finished retiring, is not current.
+    /// entry, or one that finished retiring, is not current. A page in a tab that is not selected can still navigate its
+    /// own region that way, but a request it makes as requester to the page that shows the tabs, or to a sibling region,
+    /// is rejected.
     /// </remarks>
     public NavigationEntryId? Requester { get; init; }
 
@@ -157,8 +160,17 @@ public enum NavigationOperation
     /// <summary>Every retained entry retired; the current entry stayed.</summary>
     ClearHistory,
 
-    /// <summary>Every entry retired; the region became empty.</summary>
+    /// <summary>
+    /// Every entry retired; the region became empty. A <see cref="NavigationSelection.RemoveAsync"/> that removes and
+    /// closes a region retires its entries with this operation too.
+    /// </summary>
     Clear,
+
+    /// <summary>
+    /// A selection presented another of its regions (<see cref="NavigationSelection.SelectAsync"/>); the entries of the
+    /// region left were retained.
+    /// </summary>
+    Select,
 }
 
 /// <summary>Whether a departing entry is retained or retired.</summary>
@@ -167,7 +179,7 @@ public enum NavigationDepartureKind
 {
     /// <summary>
     /// The entry stays in history: a push covers it, or the borrowed content that owns its region departs, as when a tab
-    /// switch leaves the tab's pages.
+    /// switch leaves the tab's pages, or a selection leaves its region (<see cref="NavigationSelection.SelectAsync"/>).
     /// </summary>
     Retain,
 

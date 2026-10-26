@@ -486,6 +486,45 @@ internal sealed partial class NavigationTests
             $"A push after the cancelled Back gave {push.Result}, {Names(region)}, {asked} asks.");
     }
 
+    // #648: a selection admits like a region. With RejectWhileBusy a change while an earlier one runs is Busy, after the
+    // other admission checks; a request can override the policy; the selection's busy state is its own.
+    [Test]
+    public async Task SelectionRejectWhileBusyAsync()
+    {
+        await using var fixture = new Fixture();
+        using var gates = new Gates();
+        var tabs = await TabsAsync(fixture, new NavigationSelectionOptions { Admission = NavigationAdmission.RejectWhileBusy });
+        var selection = tabs.Page.Selection;
+        Require(selection.Admission == NavigationAdmission.RejectWhileBusy, "The selection did not take its admission policy.");
+        var guarding = gates.Signal();
+        var allow = gates.Answer();
+        tabs.Editor.Guard = async (_, _) =>
+        {
+            guarding.TrySetResult();
+            return await allow.Task;
+        };
+        var first = selection.SelectAsync(tabs.Page.Tabs[1]).AsTask();
+        Require(selection.IsBusy && selection.IsTransitioning && !tabs.Page.Tabs[0].IsBusy, "The switch did not make only the selection busy.");
+        await Wait(guarding.Task);
+        Require(await Wait(selection.SelectAsync(tabs.Page.Tabs[2])) is NavigationResult<object>.Rejected { Reason: NavigationRejection.Busy, By: null }
+                && await Wait(selection.RemoveAsync(tabs.Page.Tabs[2])) is NavigationResult<object>.Rejected { Reason: NavigationRejection.Busy }
+                && await Wait(selection.SelectAsync(tabs.Page.Tabs[0])) is NavigationResult<object>.Rejected { Reason: NavigationRejection.Busy },
+            "A busy selection admitted a change.");
+        var stale = await Wait(selection.SelectAsync(tabs.Page.Tabs[2], new NavigationRequestOptions(new NavigationEntryId(99))));
+        Require(stale is NavigationResult<object>.Rejected { Reason: NavigationRejection.NotCurrent }, $"NotCurrent did not precede Busy: {stale}.");
+        var pushed = await Wait(tabs.Page.Tabs[2].PushAsync(NavigationTarget.Own(new Page("entering"))));
+        Require(pushed is NavigationResult<Page>.Committed, $"A region of the busy selection refused a request: {pushed}.");
+
+        var wins = selection.SelectAsync(tabs.Page.Tabs[2], new() { Admission = NavigationAdmission.Supersede }).AsTask();
+        allow.SetResult(true);
+        Require(await Wait(first) is NavigationResult<object>.Superseded && await Wait(wins) is NavigationResult<object>.Committed
+                && selection.SelectedIndex == 2,
+            "A request that overrides the policy did not supersede the running switch.");
+        await Wait(selection.WhenIdleAsync());
+        Require(!selection.IsBusy && await Wait(selection.SelectAsync(tabs.Page.Tabs[0])) is NavigationResult<object>.Committed,
+            "The idle selection refused a change.");
+    }
+
     private static async Task<bool> Throws<T>(Task task) where T : Exception
     {
         try
