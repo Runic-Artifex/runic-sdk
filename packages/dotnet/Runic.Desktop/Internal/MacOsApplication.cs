@@ -16,8 +16,7 @@ namespace Runic.Desktop.Internal;
 // userCanceledErr when the application refuses. AppKit's own handling is not used for either: NSTerminateLater would run
 // only the modal-panel run loop mode while the application decides, and terminate: would end the process with exit()
 // before DesktopEventLoop.Run returns the application's result. Reopen raises DesktopHost.ReopenRequested; the Dock menu
-// comes from MacOSDesktopOptions.DockMenu; a document chosen in Open Recent becomes an open-documents event; everything
-// else goes to MacOSDesktopOptions.ForwardingApplicationDelegate.
+// comes from MacOSDesktopOptions.DockMenu; everything else goes to MacOSDesktopOptions.ForwardingApplicationDelegate.
 internal static unsafe partial class MacOsApplication
 {
     internal const string DelegateClassName = "RunicDesktopApplicationDelegate";
@@ -85,29 +84,11 @@ internal static unsafe partial class MacOsApplication
             Volatile.Write(ref s_delegate, Send(Send(type, Sel("alloc")), Sel("init")));
         }
         AdoptForwardingDelegate(FirstForwardingDelegate());
-        IgnoreUnknownArguments();
         // AppKit installs its own Apple event handlers when NSApp is created; these replace them. AppKit asks the
         // delegate which methods it implements when it is set, after the forwarding delegate is known.
         Arg(application, Sel("setDelegate:"), s_delegate);
         InstallEventHandlers();
         return application;
-    }
-
-    // The delegate answers application:openURLs: for Open Recent, so finishLaunching would open the command line's
-    // arguments that are not options, such as the assembly of "dotnet app.dll", as documents (NSTreatUnknownArgumentsAsOpen).
-    // The open requests deliver the launch's arguments themselves (DesktopOpenRequests.FromLaunch). A registration
-    // default, which the application's own defaults and the command line's -NSTreatUnknownArgumentsAsOpen override.
-    private static void IgnoreUnknownArguments()
-    {
-        var pool = Send(Send(Class("NSAutoreleasePool"), Sel("alloc")), Sel("init"));
-        try
-        {
-            var text = Class("NSString");
-            var defaults = Args(Class("NSDictionary"), Sel("dictionaryWithObject:forKey:"),
-                StringWith(text, Sel("stringWithUTF8String:"), "NO"), StringWith(text, Sel("stringWithUTF8String:"), "NSTreatUnknownArgumentsAsOpen"));
-            Arg(Send(Class("NSUserDefaults"), Sel("standardUserDefaults")), Sel("registerDefaults:"), defaults);
-        }
-        finally { Send(pool, Sel("drain")); }
     }
 
     // Main thread. Runs [NSApp run] until the work completes; AppKit's run sends finishLaunching first.
@@ -346,9 +327,6 @@ internal static unsafe partial class MacOsApplication
         AddMethod(type, Sel("applicationShouldHandleReopen:hasVisibleWindows:"), (nint)(delegate* unmanaged[Cdecl]<nint, nint, nint, byte, byte>)&ShouldHandleReopen,
             boolean + "@:@" + boolean);
         AddMethod(type, Sel("applicationDockMenu:"), (nint)(delegate* unmanaged[Cdecl]<nint, nint, nint, nint>)&DockMenu, "@@:@");
-        // The documents chosen in Open Recent, which AppKit hands to the delegate rather than sending an Apple event.
-        AddMethod(type, Sel("application:openURLs:"), (nint)(delegate* unmanaged[Cdecl]<nint, nint, nint, nint, void>)&OpenUrls, "v@:@@");
-        AddMethod(type, Sel("application:openFile:"), (nint)(delegate* unmanaged[Cdecl]<nint, nint, nint, nint, byte>)&OpenFile, boolean + "@:@@");
         // Forwarding to the application's own delegate.
         AddMethod(type, Sel("respondsToSelector:"), (nint)(delegate* unmanaged[Cdecl]<nint, nint, nint, byte>)&RespondsToSelector, boolean + "@::");
         AddMethod(type, Sel("forwardingTargetForSelector:"), (nint)(delegate* unmanaged[Cdecl]<nint, nint, nint, nint>)&ForwardingTarget, "@@::");
@@ -473,33 +451,10 @@ internal static unsafe partial class MacOsApplication
         if (handler != 0) Args(handler, Sel("handleEvent:withReplyEvent:"), appleEvent, reply);
     }
 
-    // A document chosen in Open Recent (DesktopHost.NoteRecentDocumentAsync). AppKit hands it to the delegate; it reaches
-    // the open requests as the open-documents event that the Dock's recent documents and the Finder send, so the
-    // application receives it through the same IDesktopOpenRequests.Opened.
-    [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
-    private static void OpenUrls(nint self, nint selector, nint application, nint urls)
-    {
-        try
-        {
-            if (urls == 0) return;
-            var count = (int)Math.Min(Send(urls, Sel("count")), 1024);
-            OpenFileUrls([.. Enumerable.Range(0, count).Select(index => Arg(urls, Sel("objectAtIndex:"), index))]);
-        }
-        catch { /* A delegate method must not throw into AppKit. */ }
-    }
-
-    [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
-    private static byte OpenFile(nint self, nint selector, nint application, nint path)
-    {
-        try
-        {
-            if (path == 0) return 0;
-            return OpenFileUrls([Arg(Class("NSURL"), Sel("fileURLWithPath:"), path)]) ? (byte)1 : (byte)0;
-        }
-        catch { return 0; /* A delegate method must not throw into AppKit. */ }
-    }
-
-    // Main thread. Delivers the file URLs as one open-documents Apple event addressed to this process.
+    // A document chosen in Runic's Open Recent menu (MacOsWkWebViewHost.Documents) reaches the open requests as the
+    // open-documents event that the Dock's recent documents and the Finder send, so the application receives it through
+    // the same IDesktopOpenRequests.Opened. Main thread: the file URLs become one open-documents Apple event addressed to
+    // this process.
     internal static bool OpenFileUrls(nint[] urls)
     {
         var pool = Send(Send(Class("NSAutoreleasePool"), Sel("alloc")), Sel("init"));
@@ -647,7 +602,6 @@ internal static unsafe partial class MacOsApplication
     [LibraryImport(ObjC, EntryPoint = "objc_msgSend")] private static partial byte ReopenWith(nint target, nint selector, nint application, byte hasVisibleWindows);
     [LibraryImport(ObjC, EntryPoint = "objc_msgSend")] private static partial void SetParam(nint target, nint selector, nint descriptor, uint keyword);
     [LibraryImport(ObjC, EntryPoint = "objc_msgSend")] private static partial nint Int32Descriptor(nint target, nint selector, int value);
-    [LibraryImport(ObjC, EntryPoint = "objc_msgSend", StringMarshalling = StringMarshalling.Utf8)] private static partial nint StringWith(nint target, nint selector, string value);
     [LibraryImport(ObjC, EntryPoint = "objc_msgSend")] private static partial nint CreateEvent(nint target, nint selector, uint eventClass, uint eventId, nint targetDescriptor, short returnId, int transactionId);
     [LibraryImport(ObjC, EntryPoint = "class_respondsToSelector")] private static partial byte ClassResponds(nint type, nint selector);
     [LibraryImport(ObjC, EntryPoint = "objc_msgSend")] private static partial byte ContinueWith(nint target, nint selector, nint application, nint activity, nint restorationHandler);

@@ -136,7 +136,7 @@ var options = new DesktopHostOptions
 };
 return DesktopEventLoop.Run(options, async host =>
 {
-    // Open Recent, the Dock's recent documents and the Finder deliver the documents the same way.
+    // Open Recent, the Dock's recent documents and the Finder deliver the documents' paths the same way.
     await using var opens = MacOSPlatformProvider.CreateOpenRequests(new DesktopOpenOptions([]) { IncludeFiles = true });
     opens.Opened += (_, request) => editor.OpenAll(request.Items);
     // After the user opened a document, or saved it with Save As:
@@ -151,22 +151,44 @@ return DesktopEventLoop.Run(options, async host =>
 The window's title stays the page's `document.title`; set it to the document's
 name. `SetDocumentEditedAsync` only marks the window: the close guard
 (`ConfirmCloseAsync`) and `ConfirmQuitAsync` still decide about unsaved changes.
-Choosing a document in Open Recent reaches the application as an open request
-of Runic.Platform.MacOS, kept until the open requests are created, so the
-application handles it as a document opened in the Finder. Open Recent and its
-Clear Menu item take their titles from `DesktopStandardMenuTitles.OpenRecent`
-and `ClearMenu`, and Runic adds it to the main menu that it completes, not to a
-main menu of the application's own. The recent documents are the system's list,
-which the user's System Settings limit; keep the application's own list of
-recent files, if it shows one, as bookmarks.
+Runic builds Open Recent itself with public AppKit API: each time it opens, it
+lists the recent documents, most recent first, with their display names and
+file icons (and the folder's name when two have the same name), then Clear
+Menu, which is disabled while the list is empty. Choosing a document delivers
+its path as an open request of Runic.Platform.MacOS, kept until the open
+requests are created, so the application handles it as a document opened in
+the Finder or chosen in the Dock's recent documents. Open Recent and its Clear
+Menu item take their titles from `DesktopStandardMenuTitles.OpenRecent` and
+`ClearMenu`, and Runic adds it to the main menu that it completes, not to a main
+menu of the application's own. The recent documents are the system's list,
+which the user's System Settings limit.
 
-In the App Sandbox, AppKit keeps a security-scoped bookmark of each noted
-document, so note the `LocalPath` of an open document lease, whose access the
-bookmark needs, and set the represented file the same way; the system grants
-access to a document chosen in Open Recent or the Dock again, as for one opened
-in the Finder. The calls run on the main thread, which `DesktopEventLoop.Run`
-serves. A custom window host or an installed browser has no window of Runic's
-to mark, so the window calls do nothing there.
+In the App Sandbox the system does not grant access to a document chosen in
+Runic's Open Recent: a sandboxed application keeps its own recent documents as
+A1 bookmarks and reopens them itself. Store `CreateBookmarkAsync`'s bytes with
+the document's `LocalPath` after open and Save As, and note that path with
+`NoteRecentDocumentAsync` for the menu and the Dock, while the lease is open
+(AppKit's own bookmark of the noted file needs its access). When an open request
+arrives, look up the bookmark stored for its path and reopen the document with
+`IDesktopFileBookmarks.OpenDocumentAsync`:
+
+```csharp
+opens.Opened += async (_, request) =>
+{
+    foreach (var item in request.Items.Where(static item => item.IsFile))
+    {
+        // Open Recent and the Dock deliver the noted path; the bookmark holds the access.
+        if (recent.TryGetBookmark(item.LocalPath, out var bookmark)
+            && await bookmarks.OpenDocumentAsync(bookmark) is PlatformResult<IDocumentFileLease>.Success(var document))
+            editor.Open(document);
+    }
+};
+```
+
+Set the represented file from the open lease's `LocalPath` too. The calls run
+on the main thread, which `DesktopEventLoop.Run` serves. A custom window host or
+an installed browser has no window of Runic's to mark, so the window calls do
+nothing there.
 
 ### Native work without a window on macOS
 

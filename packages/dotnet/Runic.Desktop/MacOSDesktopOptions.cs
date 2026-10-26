@@ -27,11 +27,18 @@ public sealed record MacOSDesktopOptions
     /// </summary>
     /// <remarks>
     /// <para>
-    /// AppKit fills the submenu from the application's recent documents, the list the Dock menu also shows, above a
-    /// Clear Menu item that empties it. Choosing a document delivers it as an open request
-    /// (<c>IDesktopOpenRequests.Opened</c> of Runic.Platform.MacOS with <c>DesktopOpenOptions.IncludeFiles</c>), as
-    /// choosing it in the Dock or opening it in the Finder does; the open requests keep it until they are created.
-    /// Declared items of a <see cref="DesktopMenuRole.File"/> menu, such as Open…, come before it.
+    /// Each time the submenu opens, Runic lists the application's recent documents
+    /// (<c>NSDocumentController.recentDocumentURLs</c>, the list the Dock menu also shows), most recent first, with
+    /// their display names and file icons, above a Clear Menu item that empties the list and is disabled while it is
+    /// empty. Choosing a document delivers its path as an open request (<c>IDesktopOpenRequests.Opened</c> of
+    /// Runic.Platform.MacOS with <c>DesktopOpenOptions.IncludeFiles</c>), as choosing it in the Dock or opening it in the
+    /// Finder does; the open requests keep it until they are created. Declared items of a
+    /// <see cref="DesktopMenuRole.File"/> menu, such as Open…, come before it.
+    /// </para>
+    /// <para>
+    /// The menu uses public AppKit API only, so the App Sandbox grants no access to a document chosen in it: a
+    /// sandboxed application keeps a bookmark of each document (A1: <c>ISaveFileLease.CreateBookmarkAsync</c>), finds
+    /// the one for the delivered path and reopens the document with <c>IDesktopFileBookmarks.OpenDocumentAsync</c>.
     /// </para>
     /// <para>
     /// Runic adds Open Recent to the main menu that it completes, as the other standard menus, not to a main menu of
@@ -57,8 +64,8 @@ public sealed record MacOSDesktopOptions
     /// <see cref="DockMenu"/> is empty, a continued user activity that is not one of the application's universal links,
     /// and reopen, whose answer it uses after raising <see cref="DesktopHost.ReopenRequested"/>.
     /// <c>applicationShouldTerminate:</c> is Runic's: use <see cref="DesktopHostOptions.ConfirmQuitAsync"/>. The
-    /// open-documents and get-URL Apple events, and the documents chosen in Open Recent, go to the open requests of
-    /// Runic.Platform.MacOS, not to <c>application:openURLs:</c> or <c>application:openFile:</c>.
+    /// open-documents and get-URL Apple events go to the open requests of Runic.Platform.MacOS, not to
+    /// <c>application:openURLs:</c>.
     /// </para>
     /// <para>Runic retains the object for the process lifetime. The first host started with one supplies it.</para>
     /// </remarks>

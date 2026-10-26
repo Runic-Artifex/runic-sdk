@@ -83,6 +83,17 @@ public sealed class DocumentConventionsTests
             await DesktopHost.StartAsync(new DesktopHostOptions { StandardMenuTitles = invalid }));
     }
 
+    [Test]
+    public void RecentDocumentTitlesNameTheFolderOnlyForEqualNames()
+    {
+        (string Path, string Name)[] documents =
+            [("/Users/me/Work/plan.md", "plan.md"), ("/Users/me/Home/plan.md", "plan.md"), ("/Users/me/Work/notes.md", "notes.md")];
+        Assert.Equal("plan.md – Work", MacOsMainMenu.RecentDocumentTitle("plan.md", "/Users/me/Work/plan.md", documents));
+        Assert.Equal("plan.md – Home", MacOsMainMenu.RecentDocumentTitle("plan.md", "/Users/me/Home/plan.md", documents));
+        Assert.Equal("notes.md", MacOsMainMenu.RecentDocumentTitle("notes.md", "/Users/me/Work/notes.md", documents));
+        Assert.Equal("runicOpenRecentDocument:", MacOsMainMenu.OpenRecentAction);
+    }
+
     private static ValueTask<DesktopHost> StartAsync() => DesktopHost.StartAsync(new DesktopHostOptions
     {
         WindowHostFactory = new ClosableWindowHostFactory(),

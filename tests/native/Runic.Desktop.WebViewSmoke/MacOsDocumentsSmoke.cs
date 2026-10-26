@@ -7,8 +7,9 @@ using Runic.Platform.MacOS;
 // M5 (G-6) on the macOS runner: the document conventions of a Runic window and application. The represented file sets
 // NSWindow.representedURL (the title bar's proxy icon) and clears it; the edited state toggles NSWindow.documentEdited;
 // a noted document is in NSDocumentController.recentDocumentURLs and in the Open Recent submenu that
-// MacOSDesktopOptions.OpenRecentMenu adds to the standard File menu, and choosing it there reaches the application as
-// an open request of Runic.Platform.MacOS; ClearRecentDocumentsAsync empties the list. Run with --documents on macOS.
+// MacOSDesktopOptions.OpenRecentMenu adds to the standard File menu (built and filled by Runic with public API), and
+// choosing it there reaches the application as an open request of Runic.Platform.MacOS; Clear Menu and
+// ClearRecentDocumentsAsync empty the list, and an empty menu disables Clear Menu. Run with --documents on macOS.
 [System.Runtime.Versioning.SupportedOSPlatform("macos")]
 internal static partial class MacOsDocumentsSmoke
 {
@@ -64,34 +65,32 @@ internal static partial class MacOsDocumentsSmoke
             "the noted document in recentDocumentURLs");
         Pass("NoteRecentDocumentAsync adds the document to NSDocumentController.recentDocumentURLs.");
 
-        // AppKit fills the recent documents menu as it opens; the smoke asks it to, as menu tracking would.
-        string titles = "";
-        int index = -1;
-        await WaitAsync(async () =>
-        {
-            await MacOsMainThread.InvokeAsync(() =>
-            {
-                var menu = OpenRecentMenu();
-                Expect(menu != 0, "the standard File menu has Open Recent");
-                if (Send(menu, Sel("delegate")) is not 0 and var menuDelegate && Bool(menuDelegate, Sel("respondsToSelector:"), Sel("menuNeedsUpdate:")) != 0)
-                    Arg(menuDelegate, Sel("menuNeedsUpdate:"), menu);
-                Send(menu, Sel("update"));
-                var items = Enumerable.Range(0, (int)Send(menu, Sel("numberOfItems"))).Select(item => Arg(menu, Sel("itemAtIndex:"), item)).ToArray();
-                titles = string.Join("|", items.Select(item => Text(Send(item, Sel("title")))));
-                index = Array.FindIndex(items, item => Text(Send(item, Sel("title"))).Contains(name, StringComparison.Ordinal));
-            }, CancellationToken.None);
-            return index >= 0;
-        }, "the noted document in Open Recent", () => $"Open Recent lists: {titles}");
-        Expect(titles.EndsWith("Clear Menu", StringComparison.Ordinal), $"Open Recent ends with Clear Menu: {titles}");
-        Pass($"Open Recent lists the noted document above Clear Menu ({titles}).");
+        // Runic's menu delegate fills Open Recent as the menu opens; the smoke asks it to, as menu tracking would.
+        var menu = await ReadMenuAsync();
+        var index = Array.FindIndex(menu, entry => entry.Title.Contains(name, StringComparison.Ordinal));
+        Expect(index >= 0, $"Open Recent lists the noted document: {Describe(menu)}");
+        Expect(menu[index] is { Enabled: true, Image: true, Represented: true }, $"the document's item is enabled, with an icon and its URL: {Describe(menu)}");
+        Expect(menu[^1] is { Title: "Clear Menu", Enabled: true } && menu[^2].Title.Length == 0,
+            $"Open Recent ends with a separator and an enabled Clear Menu: {Describe(menu)}");
+        Pass($"Runic's Open Recent lists the noted document with its icon above Clear Menu ({Describe(menu)}).");
 
         await MacOsMainThread.InvokeAsync(() => Arg(OpenRecentMenu(), Sel("performActionForItemAtIndex:"), index), CancellationToken.None);
         var request = await opened.Task.WaitAsync(StepTimeout);
         Expect(request.Items.Length == 1, $"the open request has one item: {string.Join(",", request.Items)}");
         var item = request.Items[0];
         Expect(item.IsFile && item.LocalPath.EndsWith("/" + name + ".txt", StringComparison.Ordinal), $"the open request is the document: {item}");
-        Pass("choosing the document in Open Recent delivers it as an open request.");
+        Pass("choosing the document in Open Recent delivers its path as an open request.");
 
+        // Clear Menu, as the user chooses it.
+        await MacOsMainThread.InvokeAsync(() => Arg(OpenRecentMenu(), Sel("performActionForItemAtIndex:"), Send(OpenRecentMenu(), Sel("numberOfItems")) - 1),
+            CancellationToken.None);
+        await WaitAsync(async () => !(await RecentAsync()).Any(recent => recent.Contains(name, StringComparison.Ordinal)), "an empty recent documents list");
+        menu = await ReadMenuAsync();
+        Expect(menu is [{ Title: "Clear Menu", Enabled: false }], $"an empty Open Recent shows only a disabled Clear Menu: {Describe(menu)}");
+        Pass("Clear Menu empties the recent documents, and an empty Open Recent disables it.");
+
+        await host.NoteRecentDocumentAsync(path);
+        await WaitAsync(async () => (await RecentAsync()).Any(recent => recent.Contains(name, StringComparison.Ordinal)), "the document noted again");
         await host.ClearRecentDocumentsAsync();
         await WaitAsync(async () => !(await RecentAsync()).Any(recent => recent.Contains(name, StringComparison.Ordinal)), "an empty recent documents list");
         Pass("ClearRecentDocumentsAsync empties the recent documents.");
@@ -105,6 +104,27 @@ internal static partial class MacOsDocumentsSmoke
         T value = default!;
         await window.InvokeNativeAsync(handle => value = read(handle));
         return value;
+    }
+
+    private readonly record struct MenuEntry(string Title, bool Enabled, bool Image, bool Represented);
+
+    private static string Describe(MenuEntry[] menu) => string.Join("|", menu.Select(static entry => entry.Enabled ? entry.Title : $"({entry.Title})"));
+
+    // Fills Open Recent through its delegate, as AppKit does before the menu opens, and reads its items.
+    private static async Task<MenuEntry[]> ReadMenuAsync()
+    {
+        MenuEntry[] entries = [];
+        await MacOsMainThread.InvokeAsync(() =>
+        {
+            var menu = OpenRecentMenu();
+            Expect(menu != 0, "the standard File menu has Open Recent");
+            var menuDelegate = Send(menu, Sel("delegate"));
+            Expect(menuDelegate != 0 && Bool(menuDelegate, Sel("respondsToSelector:"), Sel("menuNeedsUpdate:")) != 0, "Open Recent has Runic's menu delegate");
+            Arg(menuDelegate, Sel("menuNeedsUpdate:"), menu);
+            entries = [.. Enumerable.Range(0, (int)Send(menu, Sel("numberOfItems"))).Select(index => Arg(menu, Sel("itemAtIndex:"), index)).Select(item =>
+                new MenuEntry(Text(Send(item, Sel("title"))), Bool(item, Sel("isEnabled")) != 0, Send(item, Sel("image")) != 0, Send(item, Sel("representedObject")) != 0))];
+        }, CancellationToken.None);
+        return entries;
     }
 
     private static async Task<string[]> RecentAsync()

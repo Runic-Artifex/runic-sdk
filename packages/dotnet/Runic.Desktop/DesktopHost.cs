@@ -93,10 +93,11 @@ public sealed class DesktopHost : IAsyncDisposable
     /// top, and the system keeps as many as the user chose in System Settings. Choosing one in Open Recent or the Dock
     /// delivers it as an open request (<c>IDesktopOpenRequests</c> of Runic.Platform.MacOS with
     /// <c>DesktopOpenOptions.IncludeFiles</c>), as opening it in the Finder does. Note a document after the user opened
-    /// it and after Save As. AppKit keeps its own bookmark of the file: in the App Sandbox, note the <c>LocalPath</c> of
-    /// an open document lease (<c>IDocumentFileLease</c>), whose access the bookmark needs, and the system grants access
-    /// to a document chosen from the list again. The application's own recent files list, if it shows one, keeps using
-    /// the lease's bookmark (<c>CreateBookmarkAsync</c>).
+    /// it and after Save As. AppKit keeps its own bookmark of the file, which needs access to it: in the App Sandbox,
+    /// note the <c>LocalPath</c> of an open document lease (<c>IDocumentFileLease</c>). The sandbox grants no access to
+    /// a document chosen in Runic's Open Recent: keep the lease's bookmark (<c>CreateBookmarkAsync</c>) with the path,
+    /// and when the path arrives as an open request, reopen the document with
+    /// <c>IDesktopFileBookmarks.OpenDocumentAsync</c>.
     /// </para>
     /// <para>Windows and Linux: the call checks its argument and does nothing.</para>
     /// </remarks>
