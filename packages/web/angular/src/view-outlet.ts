@@ -17,11 +17,6 @@ export interface ViewOutletMissingContext<R extends PageReference = PageReferenc
 
 // Projected content renders while there is no reference, like React's `fallback`, Vue's default slot
 // and Svelte's `fallback` snippet: `<runic-view-outlet [content]="…" [registry]="…">Loading…</runic-view-outlet>`.
-const outletTemplate = `
-    <ng-container #mount />
-    @if (!content()) { <ng-content /> }
-    @if (error(); as issue) { <p role="alert">{{ issue }}</p> }
-  `;
 
 /**
  * Headless host for a selected logical .NET View. A changed reference remounts its component, and
@@ -35,7 +30,11 @@ const outletTemplate = `
  *
  * The element keeps Angular's prefix convention: `<runic-view-outlet [content]="…" [registry]="…" />`.
  */
-@Component({ selector: "runic-view-outlet", standalone: true, template: outletTemplate })
+@Component({ selector: "runic-view-outlet", standalone: true, template: `
+    <ng-container #mount />
+    @if (!content()) { <ng-content /> }
+    @if (error(); as issue) { <p role="alert">{{ issue }}</p> }
+  ` })
 export class ViewOutlet<R extends PageReference = PageReference> {
   readonly content = input<R | null | undefined>();
   readonly registry = input.required<ViewRegistry<R>>();
@@ -79,8 +78,13 @@ export class ViewOutlet<R extends PageReference = PageReference> {
 
 /**
  * The name of {@link ViewOutlet} before 0.7.0-preview.7, where React, Vue and Svelte already used
- * `ViewOutlet`. It renders the same `<runic-view-outlet>` element.
+ * `ViewOutlet`. It is the same component class, so it renders the same `<runic-view-outlet>` element
+ * without a second component definition for that selector (NG0912).
  * @deprecated Import `ViewOutlet` instead; this alias is removed in the next major release.
  */
-@Component({ selector: "runic-view-outlet", standalone: true, template: outletTemplate })
-export class RunicViewOutlet<R extends PageReference = PageReference> extends ViewOutlet<R> {}
+export const RunicViewOutlet = ViewOutlet;
+/**
+ * The name of {@link ViewOutlet} before 0.7.0-preview.7.
+ * @deprecated Import `ViewOutlet` instead; this alias is removed in the next major release.
+ */
+export type RunicViewOutlet<R extends PageReference = PageReference> = ViewOutlet<R>;
