@@ -153,6 +153,76 @@ public sealed class ConfigurationValidationTests
     }
 
     [Test]
+    public async Task ABrowserIgnoresColorSchemeWithAColorSchemeWarning()
+    {
+        await using var host = await DesktopHost.StartAsync();
+
+        var validation = host.Validate(new DesktopWindowOptions { Browser = BrowserKind.Chrome, ColorScheme = Runic.Platform.DesktopColorScheme.Dark });
+
+        var warning = Assert.Single(validation.Warnings, static item => item.Option == "DesktopWindowOptions.ColorScheme");
+        Assert.Equal("color-scheme-unsupported", warning.Code);
+        Assert.False(string.IsNullOrWhiteSpace(warning.Remediation));
+        Assert.DoesNotContain(validation.Errors, static item => item.Option == "DesktopWindowOptions.ColorScheme");
+        Assert.DoesNotContain(host.Validate(new DesktopWindowOptions { Browser = BrowserKind.Chrome }).Warnings,
+            static item => item.Code == "color-scheme-unsupported");
+    }
+
+    [Test]
+    public void OnlyTheGtk3WindowIgnoresColorSchemeAmongTheBuiltInEmbeddedWindows()
+    {
+        foreach (var scheme in new[] { Runic.Platform.DesktopColorScheme.Light, Runic.Platform.DesktopColorScheme.Dark })
+        {
+            List<DesktopDiagnostic> diagnostics = [];
+            Internal.DesktopWindowOptionValidation.AddEmbeddedChecks(new DesktopWindowOptions { ColorScheme = scheme }, null,
+                LinuxEmbeddedBackend.Gtk3WebKit41, diagnostics);
+            // macOS and Windows set it; the GTK 3 window follows the GTK theme.
+            if (OperatingSystem.IsLinux())
+            {
+                var warning = Assert.Single(diagnostics);
+                Assert.Equal(("color-scheme-unsupported", DesktopDiagnosticSeverity.Warning, "DesktopWindowOptions.ColorScheme"),
+                    (warning.Code, warning.Severity, warning.Option));
+            }
+            else
+            {
+                Assert.Empty(diagnostics);
+            }
+        }
+        List<DesktopDiagnostic> none = [];
+        Internal.DesktopWindowOptionValidation.AddEmbeddedChecks(new DesktopWindowOptions(), null, LinuxEmbeddedBackend.Gtk3WebKit41, none);
+        Assert.Empty(none);
+    }
+
+    [Test]
+    public void ColorSchemeReachesACustomHostAndAnUndefinedValueIsRejected()
+    {
+        Assert.Equal(Runic.Platform.DesktopColorScheme.NoPreference, new DesktopWindowOptions().ColorScheme);
+        Assert.Equal(Runic.Platform.DesktopColorScheme.Dark, Internal.DesktopWindowOptionValidation.ToHostOptions(
+            new DesktopWindowOptions { ColorScheme = Runic.Platform.DesktopColorScheme.Dark }).ColorScheme);
+        var error = Assert.Throws<ArgumentOutOfRangeException>(() =>
+            DesktopSurface.ValidateWindowOptions(new DesktopWindowOptions { ColorScheme = (Runic.Platform.DesktopColorScheme)7 }));
+        Assert.Contains("ColorScheme", error.Message);
+    }
+
+    [Test]
+    [SupportedOSPlatform("linux")]
+    public async Task Gtk4IgnoresColorSchemeWithAWarning()
+    {
+        await using var host = await StartGtk4HostAsync();
+
+        var options = new DesktopWindowOptions { HighContrast = false, ColorScheme = Runic.Platform.DesktopColorScheme.Light };
+
+        // The option diagnostics, as the other GTK 4 preflight tests: without GTK 4 on the machine, Validate also reports
+        // the unavailable presentation, so it is not valid there whatever the options say.
+        var warning = Assert.Single(host.GetPresentationPreflight(options).OptionDiagnostics);
+        Assert.Equal(("color-scheme-unsupported", DesktopDiagnosticSeverity.Warning, "DesktopWindowOptions.ColorScheme"),
+            (warning.Code, warning.Severity, warning.Option));
+        var validation = host.Validate(options);
+        Assert.Equal("", string.Join("; ", validation.Errors.Where(static item => item.Option == "DesktopWindowOptions.ColorScheme")
+            .Select(static item => $"{item.Code}: {item.Message}")));
+        Assert.Contains(validation.Warnings, static item => item.Code == "color-scheme-unsupported");
+    }
+
+    [Test]
     public async Task BrowserPreflightReportsIgnoredWindowOptionsAsWarnings()
     {
         await using var host = await DesktopHost.StartAsync();

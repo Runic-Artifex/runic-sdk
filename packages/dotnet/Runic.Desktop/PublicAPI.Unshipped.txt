@@ -64,6 +64,10 @@ Runic.Desktop.DesktopWindow.SetDocumentEditedAsync(bool edited, System.Threading
 Runic.Desktop.DesktopWindow.SetRepresentedFileAsync(string? path, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask
 Runic.Desktop.MacOSDesktopOptions.OpenRecentMenu.get -> bool
 Runic.Desktop.MacOSDesktopOptions.OpenRecentMenu.init -> void
+Runic.Desktop.DesktopWindowHostOptions.ColorScheme.get -> Runic.Platform.DesktopColorScheme
+Runic.Desktop.DesktopWindowHostOptions.ColorScheme.init -> void
+Runic.Desktop.DesktopWindowOptions.ColorScheme.get -> Runic.Platform.DesktopColorScheme
+Runic.Desktop.DesktopWindowOptions.ColorScheme.init -> void
 static Runic.Desktop.MacOSWindowOptions.operator !=(Runic.Desktop.MacOSWindowOptions? left, Runic.Desktop.MacOSWindowOptions? right) -> bool
 static Runic.Desktop.MacOSWindowOptions.operator ==(Runic.Desktop.MacOSWindowOptions? left, Runic.Desktop.MacOSWindowOptions? right) -> bool
 Runic.Desktop.DesktopCoordinateOrigin

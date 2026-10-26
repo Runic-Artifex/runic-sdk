@@ -647,6 +647,25 @@ public sealed record DesktopWindowOptions
     /// </summary>
     public bool? HighContrast { get; init; }
 
+    /// <summary>
+    /// Gets the light or dark appearance of the embedded window, or <see cref="DesktopColorScheme.NoPreference"/>, the
+    /// default, to follow the system.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The page's <c>prefers-color-scheme</c> and the window's own title bar and controls follow it. The macOS window sets
+    /// <c>NSWindow.appearance</c> to Aqua or Dark Aqua. The Windows window sets the WebView2 profile's preferred color
+    /// scheme and the title bar's dark mode; WebView2 applies the scheme to the whole profile, so windows that share a
+    /// <see cref="ProfilePath"/> show the last one opened with a scheme. Without the option a Windows title bar stays light.
+    /// </para>
+    /// <para>
+    /// The GTK windows and installed browsers cannot set it per window: they ignore it, and
+    /// <see cref="DesktopHost.Validate"/> reports <c>color-scheme-unsupported</c>. A custom window host receives it in
+    /// <see cref="DesktopWindowHostOptions.ColorScheme"/>.
+    /// </para>
+    /// </remarks>
+    public DesktopColorScheme ColorScheme { get; init; }
+
     /// <summary>Gets the path of the embedded window's icon file, or <see langword="null"/> for the default icon.</summary>
     public string? IconFile { get; init; }
 
