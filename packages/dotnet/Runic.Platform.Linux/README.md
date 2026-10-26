@@ -60,5 +60,12 @@ selection timeout.
 
 Xvfb tests cover X11 mechanics only. Actual selected-file, Wayland/portal, keyboard,
 Orca, IME, scaling and installed-app evidence is required separately; this package
-does not claim those gates passed from a headless test. Directory selection and
-persisted portal grants are outside the preview contract.
+does not claim those gates passed from a headless test.
+
+Directory selection (`OpenDirectoryAsync`, `OpenDirectoriesAsync`) goes through the
+same portal provider for GTK 3 windows; see
+[directory selection](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Platform.Linux.Portal/README.md)
+in the portal README and the provider table in
+[Runic.Platform](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Platform/README.md).
+The portal's permission store owns persistent document grants: disposing a lease
+does not revoke them, and a document bookmark reopens a file across launches.

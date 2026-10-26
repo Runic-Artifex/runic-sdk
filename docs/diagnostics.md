@@ -30,7 +30,10 @@ assembly has a portable PDB (the default), and ends with the link to its entry.
 The `Runic.Application.Views` build targets report the codes that concern the
 frontend and the build itself. Warnings don't fail the build unless the project
 treats warnings as errors; the generator's warnings repeat on builds that reuse
-the cached generation. Every other code fails the build. The
+the cached generation. Every other code fails the build. `RUNICBRIDGE` errors
+come from this post-compile step, not from a Roslyn analyzer: they appear after a
+build, not while you type, link to the source line, and a warning is suppressed
+per project with `NoWarn`. The
 [generator section](../packages/dotnet/Runic.Application.Views/README.md#generator-diagnostics)
 of the Runic.Application.Views guide links here.
 

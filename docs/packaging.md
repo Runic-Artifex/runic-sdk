@@ -291,3 +291,49 @@ snap is installed; snapd rewrites its `Exec=` to start the snap. To publish, reg
 CI does not build this recipe; the maintainers check it by hand on Ubuntu. Treat
 it as a starting point for your own snap.
 
+
+## Updates
+
+Runic has no update API. How an installed application gets a new version
+depends on how it was installed:
+
+| Installed from | Updated by |
+| --- | --- |
+| MSIX | An `.appinstaller` file next to the package, the Microsoft Store, or your device management |
+| Flatpak, Flathub | `flatpak update` and the software center |
+| Snap | snapd, from the Snap Store |
+| deb, rpm | The distribution's package manager, from your apt or dnf repository |
+| Nix | The user's flake or channel update |
+| The macOS bundle or a direct download | The application itself, for example with Velopack |
+
+For a direct download, [Velopack](https://docs.velopack.io/) installs, updates
+and restarts a .NET application on Windows, macOS and Linux. It packs a
+`dotnet publish` output, which includes the frontend's `www/` web root, instead
+of `dotnet runic package`, so ship one or the other for a given platform. Run
+Velopack's hooks first in `Main`, before the Runic host starts:
+
+```csharp
+using Velopack;
+
+VelopackApp.Build().Run();
+return RunicDesktopHost.Run(provider, async host => { /* windows */ });
+```
+
+Check for an update from a ViewModel command or a background service, and let
+the page ask before restarting; `ApplyUpdatesAndRestart` ends the process, so
+close or save the windows' work first:
+
+```csharp
+var updates = new UpdateManager("https://example.com/releases");
+if (await updates.CheckForUpdatesAsync() is { } update)
+{
+    await updates.DownloadUpdatesAsync(update);
+    updates.ApplyUpdatesAndRestart(update);
+}
+```
+
+Publish with `dotnet publish -c Release -r <rid>`, then pack the directory with
+`vpk pack` (`--packId`, `--packVersion`, `--packDir`, `--mainExe`) and upload the
+release files to the address the `UpdateManager` reads. Velopack signs and
+notarizes on macOS and signs on Windows with your own credentials, as described
+above for Runic's packages.

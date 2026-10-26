@@ -113,7 +113,17 @@ shown, for example to open a frontend development server's URL. To choose one
 browser, set `CSWEBUI_BROWSER_PATH` to its executable (on macOS its `.app`
 bundle) or call `WebUiApplication.SetBrowserPath`; WebUI then uses only that
 browser, with no fallback. WebUI itself reads no browser variable such as
-`WEBUI_BROWSER_PATH`. For native
+`WEBUI_BROWSER_PATH`.
+
+On macOS this package has no native window mode, and none is planned: a window
+is a browser window, or with `UseWebView` the WKWebView window that WebUI creates
+and runs from its own main-thread loop. Runic does not run AppKit for it, so
+CS-WebUI windows on macOS get no Runic window features (native menu bar, close
+confirmation, file drops, window-owned platform services), as on the other
+platforms, and Runic's CI does not exercise `UseWebView` there. An application
+that needs a native macOS window uses Runic Desktop, whose `RunicDesktopHost.Run`
+runs the Desktop event loop on the macOS main thread; the same Windows and
+ViewModels run on both hosts. For native
 windows and platform services, use
 [Runic.Application.Views.Desktop](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Application.Views.Desktop/README.md)
 instead. `services.AddRunicPlatformServices()` registers `IWindowPlatformServices`,

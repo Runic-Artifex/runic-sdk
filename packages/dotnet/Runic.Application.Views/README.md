@@ -291,6 +291,11 @@ interfaces: it activates an `IActivatableViewModel` on web mount and deactivates
 it on web unmount and detach, and offers `protected virtual` hooks of the same
 names to override without calling `base`.
 
+Runic has no ViewModel lifetime interface. Use `IActivatableViewModel` with
+`ReactiveRunicView<T>`, `INavigationAware` for navigated content, or set
+CommunityToolkit's `ObservableRecipient.IsActive` from a View's
+`OnWebMounted` and `OnWebUnmounted`.
+
 ### Opening a Window from a ViewModel
 
 The host is passed only to the `Run` callback. To open Windows from a command
@@ -2565,6 +2570,10 @@ a `failed` callback it is event 1016 at `Debug` level instead of a warning:
 | `WatchLimit` | `fs.inotify.max_user_watches` or `max_user_instances` is exhausted. | Polls; retries the watch on each poll. |
 | `Failed` | A watch could not start or stopped. | Polls; retries the watch on each poll. |
 | `NotGitRepository` | A `GitHead` directory exists but holds no repository. | Watches it for `.git` or `HEAD` to appear and reports the change; reads it only at the 30-second backstop. |
+
+`RunicPathWatchErrorKind` is open: a minor release may add a kind, so give a
+`switch` over it a default arm and treat an unknown kind as `Failed`, after
+which the watcher polls.
 
 Dispose the watcher with its ViewModel. It also stops when the model context
 closes, and no callback starts after `Dispose` returns in a model turn. Set

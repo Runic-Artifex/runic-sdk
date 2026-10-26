@@ -41,9 +41,10 @@ type-check:
 | `strict` | both | `true` | Fails when a route is neither prerendered nor covered by a fallback. |
 
 `desktop: true` makes the page load `runic-desktop.js` and relocatable under a
-Runic Desktop surface. It is off by default: without it the adapter is
-`adapter-static` with Runic's entry-point checks, for a frontend that another
-host serves, such as CS-WebUI, or a plain browser build.
+Runic Desktop surface. It stays opt-in, because Views pages and CS-WebUI do not
+need it: without it the adapter is `adapter-static` with Runic's entry-point
+checks, for a frontend that another host serves, such as CS-WebUI, or a plain
+browser build.
 
 The `@runic-artifex/sveltekit/page-options` entry point, which runs in the
 browser, provides matching route options; the root entry is Node-only and does
