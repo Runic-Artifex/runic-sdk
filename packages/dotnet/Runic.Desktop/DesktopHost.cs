@@ -32,6 +32,7 @@ public sealed class DesktopHost : IAsyncDisposable
         if (options.StandardMenuTitles is { } titles) Internal.MacOsWkWebViewHost.SetStandardMenuTitles(titles);
         if (_logger is not null) Internal.MacOsWkWebViewHost.SetMenuLogger(_logger);
         if (_menuBar.Count > 0) Internal.MacOsWkWebViewHost.RequestMenuBar(_menuBar);
+        if (options.MacOS.OpenRecentMenu) Internal.MacOsWkWebViewHost.RequestOpenRecentMenu();
         lock (LiveGate) Live.Add(this);
         if (OperatingSystem.IsMacOS()) MacOsApplication.HostsChanged();
     }
@@ -76,6 +77,64 @@ public sealed class DesktopHost : IAsyncDisposable
                 }
             }
         });
+    }
+
+    /// <summary>
+    /// Adds a document that the application opened or saved to the system's recent documents: on macOS the Open Recent
+    /// menu (<see cref="MacOSDesktopOptions.OpenRecentMenu"/>) and the recent documents in the application's Dock menu.
+    /// </summary>
+    /// <param name="path">The document's fully qualified path.</param>
+    /// <param name="cancellationToken">Cancels the queued native operation.</param>
+    /// <returns>A task that completes when the document was noted.</returns>
+    /// <remarks>
+    /// <para>
+    /// On macOS this calls <c>NSDocumentController.noteNewRecentDocumentURL:</c> on the main thread, which
+    /// <see cref="DesktopEventLoop"/> serves: the most recent document comes first, a document noted again moves to the
+    /// top, and the system keeps as many as the user chose in System Settings. Choosing one in Open Recent or the Dock
+    /// delivers it as an open request (<c>IDesktopOpenRequests</c> of Runic.Platform.MacOS with
+    /// <c>DesktopOpenOptions.IncludeFiles</c>), as opening it in the Finder does. Note a document after the user opened
+    /// it and after Save As. AppKit keeps its own bookmark of the file: in the App Sandbox, note the <c>LocalPath</c> of
+    /// an open document lease (<c>IDocumentFileLease</c>), whose access the bookmark needs, and the system grants access
+    /// to a document chosen from the list again. The application's own recent files list, if it shows one, keeps using
+    /// the lease's bookmark (<c>CreateBookmarkAsync</c>).
+    /// </para>
+    /// <para>Windows and Linux: the call checks its argument and does nothing.</para>
+    /// </remarks>
+    /// <exception cref="ArgumentException"><paramref name="path"/> is empty, not fully qualified, or contains a NUL character.</exception>
+    /// <exception cref="ArgumentNullException"><paramref name="path"/> is <see langword="null"/>.</exception>
+    /// <exception cref="ObjectDisposedException">The host is disposed.</exception>
+    /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> was cancelled.</exception>
+    public ValueTask NoteRecentDocumentAsync(string path, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(path);
+        ValidateDocumentPath(path, nameof(path));
+        ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
+        cancellationToken.ThrowIfCancellationRequested();
+        return OperatingSystem.IsMacOS() ? MacOsWkWebViewHost.NoteRecentDocumentAsync(path, cancellationToken) : ValueTask.CompletedTask;
+    }
+
+    /// <summary>Empties the application's recent documents, as Clear Menu in Open Recent does.</summary>
+    /// <param name="cancellationToken">Cancels the queued native operation.</param>
+    /// <returns>A task that completes when the list is empty.</returns>
+    /// <remarks>
+    /// On macOS this calls <c>NSDocumentController.clearRecentDocuments:</c> on the main thread, which
+    /// <see cref="DesktopEventLoop"/> serves. Windows and Linux: does nothing.
+    /// </remarks>
+    /// <exception cref="ObjectDisposedException">The host is disposed.</exception>
+    /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> was cancelled.</exception>
+    public ValueTask ClearRecentDocumentsAsync(CancellationToken cancellationToken = default)
+    {
+        ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
+        cancellationToken.ThrowIfCancellationRequested();
+        return OperatingSystem.IsMacOS() ? MacOsWkWebViewHost.ClearRecentDocumentsAsync(cancellationToken) : ValueTask.CompletedTask;
+    }
+
+    // A document's path for the platform's document conventions: fully qualified, without NUL.
+    internal static void ValidateDocumentPath(string path, string parameterName)
+    {
+        if (path.Length == 0) throw new ArgumentException("The document path is empty.", parameterName);
+        if (path.Contains('\0')) throw new ArgumentException("The document path contains a NUL character.", parameterName);
+        if (!Path.IsPathFullyQualified(path)) throw new ArgumentException("The document path is not fully qualified.", parameterName);
     }
 
     private IReadOnlyList<DesktopMenu> _menuBar;

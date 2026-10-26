@@ -1265,6 +1265,12 @@ jobs:
         if: runner.os == 'macOS'
         timeout-minutes: 5
         run: dotnet tests/native/Runic.Desktop.WebViewSmoke/bin/Release/net10.0/Runic.Desktop.WebViewSmoke.dll --lifecycle
+      # M5: the represented file and edited state of the window, the recent documents, and Open Recent, whose chosen
+      # document arrives as an open request.
+      - name: Exercise macOS document conventions
+        if: runner.os == 'macOS'
+        timeout-minutes: 5
+        run: dotnet tests/native/Runic.Desktop.WebViewSmoke/bin/Release/net10.0/Runic.Desktop.WebViewSmoke.dll --documents
       # SEC-04: the WKWebView's navigation and UI delegate apply DesktopWebContentPolicy (external links, window.open,
       # downloads, isInspectable).
       - name: Apply the web content policy in the macOS window

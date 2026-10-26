@@ -1514,6 +1514,13 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
 
     private void RecordMenuBarPlacement(IWebUiEmbeddedHost host) => Volatile.Write(ref _loggedPlacement, (int)host.MenuBarPlacement);
 
+    // macOS document conventions on Runic's own window; nothing for another presentation.
+    internal ValueTask SetRepresentedFileAsync(string? path, CancellationToken cancellationToken) =>
+        Volatile.Read(ref _embeddedHost) is MacOsWkWebViewHost { IsOpen: true } host ? host.SetRepresentedFileAsync(path, cancellationToken) : ValueTask.CompletedTask;
+
+    internal ValueTask SetDocumentEditedAsync(bool edited, CancellationToken cancellationToken) =>
+        Volatile.Read(ref _embeddedHost) is MacOsWkWebViewHost { IsOpen: true } host ? host.SetDocumentEditedAsync(edited, cancellationToken) : ValueTask.CompletedTask;
+
     internal Task<Runic.Platform.DesktopDragEffects> StartDragAsync(Runic.Platform.DesktopDragData data, CancellationToken cancellationToken)
         => GetEmbeddedHost().StartDragAsync(data, cancellationToken).AsTask();
 

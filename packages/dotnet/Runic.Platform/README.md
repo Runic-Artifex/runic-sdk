@@ -213,6 +213,9 @@ save of Save As, and again each time the document is reopened. Reopen with
 keeps the bookmark's access until it is disposed, while a dialog's lease is
 released when its window closes. A path from a launch or a drop becomes a
 document through `CreateAsync(path)` and then `OpenDocumentAsync(bookmark)`.
+On macOS, Runic Desktop also lists the document in Open Recent and the Dock,
+and marks the window's represented file and unsaved changes
+([Document apps on macOS](../Runic.Desktop/README.md#document-apps-on-macos)).
 
 ```csharp
 if (await document.CreateBookmarkAsync() is PlatformResult<ImmutableArray<byte>>.Success(var bookmark)) recent.Add(bookmark);

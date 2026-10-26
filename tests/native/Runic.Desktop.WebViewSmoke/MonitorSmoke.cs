@@ -21,6 +21,7 @@ internal static partial class MonitorSmoke
         Redo = "Wiederholen", Cut = "Ausschneiden", Copy = "Kopieren", Paste = "Einsetzen", SelectAll = "Alles auswählen",
         View = "Darstellung", ActualSize = "Originalgröße", ZoomIn = "Vergrößern", ZoomOut = "Verkleinern", Window = "Fenster",
         Minimize = "Im Dock ablegen", Zoom = "Zoomen", BringAllToFront = "Alle nach vorne bringen",
+        OpenRecent = "Benutzte Dokumente", ClearMenu = "Einträge löschen",
     };
 
     private const string Page = """

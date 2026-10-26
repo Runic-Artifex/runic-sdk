@@ -21,6 +21,12 @@
           "Tmds.DBus.Protocol": "[0.95.1, )"
         }
       },
+      "runic.platform.macos": {
+        "type": "Project",
+        "dependencies": {
+          "Runic.Platform.Runtime": "[0.11.0, )"
+        }
+      },
       "runic.platform.runtime": {
         "type": "Project",
         "dependencies": {

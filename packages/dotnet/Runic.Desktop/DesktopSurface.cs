@@ -1329,6 +1329,60 @@ public sealed class DesktopWindow : IAsyncDisposable
     public ValueTask MoveAsync(int x, int y, CancellationToken cancellationToken = default) =>
         RequireAndMove(x, y, cancellationToken);
 
+    /// <summary>
+    /// Sets the file that the window shows a document of: on macOS the title bar's proxy icon and the path menu that
+    /// Command-clicking the title opens.
+    /// </summary>
+    /// <param name="path">The document's fully qualified path, or <see langword="null"/> to remove the icon.</param>
+    /// <param name="cancellationToken">Cancels waiting for the window and the queued native operation.</param>
+    /// <returns>A task that completes when the window represents the file.</returns>
+    /// <remarks>
+    /// <para>
+    /// On macOS this sets <c>NSWindow.representedURL</c> of the embedded window; the window's title stays the page's
+    /// title, so set the page's <c>document.title</c> to the document's name. The file need not exist. In the App
+    /// Sandbox, pass the <c>LocalPath</c> of an open document lease (<c>IDocumentFileLease</c>), whose access lets the
+    /// title bar show the file's icon.
+    /// </para>
+    /// <para>
+    /// Windows and Linux have no such convention: the call checks its arguments and the window, and does nothing. It
+    /// also does nothing for an installed browser or a custom window host; a custom host on macOS can set the property
+    /// itself through <see cref="InvokeNativeAsync"/>.
+    /// </para>
+    /// </remarks>
+    /// <exception cref="ArgumentException"><paramref name="path"/> is empty, not fully qualified, or contains a NUL character.</exception>
+    /// <exception cref="ObjectDisposedException">The surface is disposed, or this window is closed or was replaced.</exception>
+    /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> was cancelled.</exception>
+    public ValueTask SetRepresentedFileAsync(string? path, CancellationToken cancellationToken = default)
+    {
+        if (path is not null) DesktopHost.ValidateDocumentPath(path, nameof(path));
+        return _surface.RunWindowOperationAsync(this, DesktopWindowCapabilities.None,
+            () => OperatingSystem.IsMacOS() ? _engine.SetRepresentedFileAsync(path, cancellationToken) : ValueTask.CompletedTask,
+            cancellationToken);
+    }
+
+    /// <summary>Sets whether the window's document has unsaved changes: on macOS the dot in the close button.</summary>
+    /// <param name="edited"><see langword="true"/> while the document has unsaved changes; <see langword="false"/> after it was saved or reverted.</param>
+    /// <param name="cancellationToken">Cancels waiting for the window and the queued native operation.</param>
+    /// <returns>A task that completes when the window shows the state.</returns>
+    /// <remarks>
+    /// <para>
+    /// On macOS this sets <c>NSWindow.documentEdited</c> of the embedded window. It only marks the window: closing it
+    /// still asks <see cref="DesktopWindowOptions.ConfirmCloseAsync"/>, and quitting
+    /// <see cref="DesktopHostOptions.ConfirmQuitAsync"/>, which decide about the unsaved changes.
+    /// </para>
+    /// <para>
+    /// Windows and Linux have no such convention: the call checks the window and does nothing, as for an installed
+    /// browser or a custom window host. Show unsaved changes in the page or the title there, such as with a leading
+    /// <c>•</c> or a trailing <c>*</c>.
+    /// </para>
+    /// </remarks>
+    /// <exception cref="ObjectDisposedException">The surface is disposed, or this window is closed or was replaced.</exception>
+    /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> was cancelled.</exception>
+    public ValueTask SetDocumentEditedAsync(bool edited, CancellationToken cancellationToken = default) =>
+        _surface.RunWindowOperationAsync(this, DesktopWindowCapabilities.None,
+            () => OperatingSystem.IsMacOS() ? _engine.SetDocumentEditedAsync(edited, cancellationToken) : ValueTask.CompletedTask,
+            cancellationToken);
+
     private readonly object _closedGate = new();
     private EventHandler? _closedHandlers;
     private int _closedMonitor;
@@ -1508,7 +1562,8 @@ public sealed class DesktopWindow : IAsyncDisposable
 
     internal void RequireCapability(DesktopWindowCapabilities capability)
     {
-        if ((Capabilities & capability) == 0)
+        // None: an operation that any open window accepts, and that does nothing where it does not apply.
+        if (capability != DesktopWindowCapabilities.None && (Capabilities & capability) == 0)
         {
             throw new DesktopException(
                 DesktopErrorCategory.Unavailable,
