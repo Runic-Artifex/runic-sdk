@@ -61,6 +61,52 @@ those older versions:
 | Login startup (`SMAppService`) | macOS 13 |
 | Privileged actions (launch daemon), cooperative window activation | macOS 14 |
 
+## Development bundle
+
+Notifications, login startup, open registration and the URL schemes and file
+types of `Info.plist` need the application to run from a bundle. On macOS,
+`dotnet run`, and so `dotnet watch` and `dotnet runic dev`, therefore start
+the application from a development bundle that this package's build targets
+generate when `dotnet run` computes the command:
+
+```text
+obj/<configuration>/<framework>/runic-macos/<AssemblyName>.app
+  Contents/Info.plist        generated from the project
+  Contents/MacOS/<AssemblyName>   a copy of the application host
+  Contents/MacOS/*           links to the rest of the build output
+```
+
+`Info.plist` has the bundle identifier (`RunicMacBundleIdentifier`, by default
+`ApplicationId`), `ApplicationTitle`, the numeric `Version`, the
+`RunicApplicationUrlSchemes`, the `RunicApplicationFileTypes` by extension
+with the `Alternate` rank, and `RunicMacCameraUsageDescription` and
+`RunicMacMicrophoneUsageDescription`. The bundle is signed ad hoc, without the
+hardened runtime and entitlements, so the debugger, hot reload and the JIT work
+as before. The links keep the output in one place: `AppContext.BaseDirectory`
+is still the build output, and a rebuild or a frontend that `dotnet runic dev`
+writes to `www/` needs no copy. Each run refreshes the bundle and signs it
+again when the host, the output's entries or `Info.plist` changed, so
+`dotnet run --no-build` uses the latest build.
+
+The development bundle has the bundle identifier of the shipped application, as
+an Xcode debug build does: macOS keeps one set of notification, camera and
+login-item permissions for both, and Launch Services may open the development
+bundle for the application's URL schemes while it is registered. Universal
+links and the data-protection keychain also need entitlements that only a
+provisioning profile grants, which an ad-hoc signature cannot carry; test them
+in a bundle from `dotnet runic package macos --sign … --provisioning-profile …`.
+
+It is made only for an executable with an application host (`UseAppHost`) and
+a bundle identifier, not for a test project (`IsTestProject`) or the privileged
+daemon, and only on macOS. Applications get it with
+`Runic.Application.Views.Desktop` or this package. A launch profile whose
+`commandName` is `Executable`, and an IDE that starts the output itself, run
+without it.
+
+| Property | Default | Purpose |
+| --- | --- | --- |
+| `RunicMacDevelopmentBundle` | `true` | `false` runs the build output directly, without a bundle, as before 0.12. |
+
 ## Desktop services
 
 Application-scoped appearance and notification providers, and owned file opening,
@@ -138,8 +184,9 @@ that the user turned off there, stays off: `EnableAsync` reports
 `PermissionDenied` with a diagnostic that points to System Settings. macOS
 starts the bundle itself, so the request's arguments are not passed; an
 application that starts differently at login decides that from its own settings.
-A process outside an application bundle, such as `dotnet run`, and macOS 12
-report `BackendUnavailable`. Registration needs a signed bundle; an invalid
+A process outside an application bundle, such as `dotnet run` with
+`RunicMacDevelopmentBundle=false`, and macOS 12 report `BackendUnavailable`;
+`dotnet run` otherwise starts the [development bundle](#development-bundle). Registration needs a signed bundle; an invalid
 signature reports `InvalidData`, and other `SMAppService` errors keep their
 domain and code in the diagnostic. A call that succeeds without changing the
 login item's status reports that as `Other`.

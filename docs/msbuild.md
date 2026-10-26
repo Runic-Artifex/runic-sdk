@@ -130,6 +130,7 @@ See [Declare privileged actions](../packages/dotnet/Runic.Platform/README.md#dec
 | `RunicMacLaunchDaemonPlistCopyEnabled` | `true` | Copy the property list to the output and publish directories. |
 | `RunicMacPrivilegedDaemon` | `false` | `true` in the daemon's project. |
 | `RunicMacPrivilegedDevelopmentSigning` | `false` | Accept development-signed code; local development only. |
+| `RunicMacDevelopmentBundle` | `true` | On macOS, `dotnet run` starts the application from a development bundle ([details](../packages/dotnet/Runic.Platform.MacOS/README.md#development-bundle)). |
 
 [Runic.Platform.Windows.Elevation](../packages/dotnet/Runic.Platform.Windows.Elevation/README.md#write-the-helper):
 

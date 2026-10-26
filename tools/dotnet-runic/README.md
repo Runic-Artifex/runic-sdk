@@ -48,6 +48,11 @@ file does not exist stops `dev` with `RAPPDEV1009: Window entry not found:
 The Window runs with `DOTNET_ENVIRONMENT=Development` unless you set
 `DOTNET_ENVIRONMENT` or `ASPNETCORE_ENVIRONMENT` yourself, so failed Bridge
 calls carry the exception type, message and stack to the browser.
+On macOS the Window runs from its ad-hoc signed development bundle in `obj/`,
+which `dotnet run` starts, so notifications, login startup and open
+registration work in `dev` too
+([development bundle](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Platform.MacOS/README.md#development-bundle);
+`RunicMacDevelopmentBundle=false` turns it off).
 Ctrl+C or SIGTERM stops `dev` the way closing the last window stops the
 application: the Window gets SIGTERM on Linux and macOS, or Ctrl+C on Windows,
 and up to 5 seconds to close its windows and finish its work before `dev` kills

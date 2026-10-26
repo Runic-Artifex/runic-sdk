@@ -1,7 +1,8 @@
 // Checks the receipt that tests/native/Runic.Packaging.Probe writes when its installed package opens its URL scheme
 // (see the packaging job in .github/workflows/ci.yml). Usage: bun eng/ci/packaging-probe-check.mjs <receipt> <platform>
-// [unpackaged|files], where platform is windows, macos, flatpak, appimage, deb or rpm; "unpackaged" checks a copy run
-// outside its package, "files" the receipt of a package opened with two files at once (Windows).
+// [unpackaged|files|development], where platform is windows, macos, flatpak, appimage, deb or rpm; "unpackaged" checks a
+// copy run outside its package, "files" the receipt of a package opened with two files at once (Windows), "development"
+// the probe started by dotnet run from its development bundle (macOS).
 import { existsSync, readFileSync } from "node:fs";
 
 const [path, platform, mode] = process.argv.slice(2);
@@ -22,6 +23,11 @@ if (mode === "unpackaged") {
   expect(receipt.packageIdentity === null, `an unpackaged copy has the package identity ${receipt.packageIdentity}`);
   expect(receipt.loginStartup !== "Unavailable(BackendUnavailable)", `unpackaged login startup is ${receipt.loginStartup}`);
   if (platform === "windows") expect(receipt.openRegistration === "Success(False)", `unpackaged registration reports ${receipt.openRegistration}`);
+} else if (mode === "development") {
+  // The development bundle gives the process its bundle identifier; the frontend stays in the build output, which
+  // the bundle links.
+  expect(receipt.packageIdentity === id, `the development bundle's identifier is ${receipt.packageIdentity}`);
+  expect(/\/bin\/Release\/net10\.0\/www\/?$/.test(receipt.contentRoot ?? ""), `the development content root is ${receipt.contentRoot}`);
 } else if (mode === "files") {
   // Two files selected together reach one process, through the activation's files (MultiSelectModel="Player").
   const names = (receipt.files ?? []).map(file => file.split(/[\\/]/).pop()).sort();

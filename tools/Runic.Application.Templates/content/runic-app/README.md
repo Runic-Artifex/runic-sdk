@@ -26,6 +26,10 @@ installs the frontend packages with __PACKAGE_MANAGER_NAME__, and later builds
 install them again when `package.json` or the lock file changes; set
 `RunicApplicationFrontendInstallEnabled` to `false` to install them yourself.
 These commands build the production frontend instead of starting a development server.
+On macOS, `dotnet run` and `dotnet runic dev` start the application from a
+generated, ad-hoc signed development bundle in `obj/`, so notifications, login
+startup and the URL schemes work while you develop; `RunicMacDevelopmentBundle`
+set to `false` turns it off.
 
 The first restore writes `packages.lock.json`, which pins every NuGet package
 to its version and content hash (`RestorePackagesWithLockFile`). Commit it with
