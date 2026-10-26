@@ -23,7 +23,7 @@ try {
     url = output.match(/https?:\/\/[^\s]+/)?.[0];
     return url;
   });
-  browser = await launchChromium(url, { profilePrefix: "runic-notes-reactive-" });
+  browser = await launchChromium(url, { profilePrefix: "runic-notes-reactive-", webSocketEvents: verifyCallBurst });
   const { command, evaluate } = browser;
   const query = expression => evaluate(expression);
   const click = async selector => {
@@ -63,14 +63,22 @@ try {
     // one event slot, and one of them then never received a reply. The client
     // sends every call at once, so a burst this size would lose some there.
     const count = 2000;
-    const settled = await evaluate(`(async () => {
-      let settled = 0;
+    // I-205: a lost connection rejects the unsettled calls; the result says
+    // how many and when, and the failure carries the WebSocket's close.
+    const burst = await evaluate(`(async () => {
+      const started = performance.now();
+      let settled = 0, rejected = 0, firstRejection;
       const calls = Array.from({ length: ${count} }, (_, index) => window.__runicBridge.call(
-        index % 2 ? "shellSnapshot" : "__runicOperationStatus", "invalid-json").then(() => settled++));
+        index % 2 ? "shellSnapshot" : "__runicOperationStatus", "invalid-json").then(() => settled++, error => {
+          if (rejected++ === 0) firstRejection = { after: Math.round(performance.now() - started), settled, message: String(error?.message ?? error) };
+        }));
       await Promise.race([Promise.all(calls), new Promise(resolve => setTimeout(resolve, 150_000))]);
-      return settled;
+      return { settled, rejected, firstRejection, elapsed: Math.round(performance.now() - started) };
     })()`, { timeout: 160_000 });
-    if (settled !== count) throw new Error(`Concurrent Bridge calls lost replies: ${settled} of ${count} settled.`);
+    if (burst.settled !== count)
+      throw new Error(`Concurrent Bridge calls lost replies: ${burst.settled} of ${count} settled, ${burst.rejected} rejected ` +
+        `in ${burst.elapsed} ms; first rejection: ${JSON.stringify(burst.firstRejection ?? null)}\n${await detail()}`);
+    console.log(`REACTIVE_NOTES_CALL_BURST_OK|${count} calls in ${burst.elapsed} ms`);
   }
   if (verifyClientDisconnect) {
     await click("[data-go=document]");

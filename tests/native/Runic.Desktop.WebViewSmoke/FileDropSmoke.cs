@@ -151,9 +151,12 @@ internal static partial class FileDropSmoke
     }
 
     // A GTK 3 window that accepts text/uri-list with Copy or Move (GTK_DEST_DEFAULT_ALL answers, reads and finishes the
-    // drop) and records the dropped URIs.
+    // drop) and records the dropped URIs. It notes the drag's first motion, leave, drop and data as stages (I-214).
     private static unsafe partial class DropTarget
     {
+        // GTK thread only: motions since the last leave or drop.
+        private static int s_motions;
+
         internal static nint Create(int x, int y, int size)
         {
             var window = WindowNew(0);
@@ -165,15 +168,48 @@ internal static partial class FileDropSmoke
             Marshal.FreeCoTaskMem(target);
             SignalConnectData(window, "drag-data-received",
                 (nint)(delegate* unmanaged[Cdecl]<nint, nint, int, int, nint, uint, uint, nint, void>)&OnDragDataReceived, 0, 0, 0);
+            SignalConnectData(window, "drag-motion",
+                (nint)(delegate* unmanaged[Cdecl]<nint, nint, int, int, uint, nint, int>)&OnDragMotion, 0, 0, 0);
+            SignalConnectData(window, "drag-leave",
+                (nint)(delegate* unmanaged[Cdecl]<nint, nint, uint, nint, void>)&OnDragLeave, 0, 0, 0);
+            SignalConnectData(window, "drag-drop",
+                (nint)(delegate* unmanaged[Cdecl]<nint, nint, int, int, uint, nint, int>)&OnDragDrop, 0, 0, 0);
             WidgetShowAll(window);
             return window;
+        }
+
+        // GTK_DEST_DEFAULT_MOTION and _DROP answer the drag; these handlers only observe it.
+        [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
+        private static int OnDragMotion(nint widget, nint context, int x, int y, uint time, nint userData)
+        {
+            if (s_motions++ == 0) LinuxDragOutSmoke.Stage($"the drop target saw the drag at ({x}, {y}), action {SelectedAction(context)}");
+            return 0;
+        }
+
+        [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
+        private static void OnDragLeave(nint widget, nint context, uint time, nint userData)
+        {
+            LinuxDragOutSmoke.Stage($"the drag left the drop target after {s_motions} motions");
+            s_motions = 0;
+        }
+
+        [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
+        private static int OnDragDrop(nint widget, nint context, int x, int y, uint time, nint userData)
+        {
+            LinuxDragOutSmoke.Stage($"the drag dropped on the drop target after {s_motions} motions, action {SelectedAction(context)}");
+            s_motions = 0;
+            return 0;
         }
 
         [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
         private static void OnDragDataReceived(nint widget, nint context, int x, int y, nint data, uint info, uint time, nint userData)
         {
             var uris = SelectionDataGetUris(data);
-            if (uris == null) return;
+            if (uris == null)
+            {
+                LinuxDragOutSmoke.Stage($"the drop target received no URIs ({SelectionDataGetLength(data)} bytes)");
+                return;
+            }
             List<string> values = [];
             for (var entry = uris; *entry != 0; entry++) values.Add(Marshal.PtrToStringUTF8(*entry)!);
             StrFreev(uris);
@@ -194,6 +230,8 @@ internal static partial class FileDropSmoke
         [LibraryImport(Gtk, EntryPoint = "gtk_window_move")] private static partial void WindowMove(nint window, int x, int y);
         [LibraryImport(Gtk, EntryPoint = "gtk_drag_dest_set")] private static partial void DragDestSet(nint widget, int flags, TargetEntry* targets, int count, int actions);
         [LibraryImport(Gtk, EntryPoint = "gtk_selection_data_get_uris")] private static partial nint* SelectionDataGetUris(nint data);
+        [LibraryImport(Gtk, EntryPoint = "gtk_selection_data_get_length")] private static partial int SelectionDataGetLength(nint data);
+        [LibraryImport(Gtk, EntryPoint = "gdk_drag_context_get_selected_action")] private static partial int SelectedAction(nint context);
         [LibraryImport(Gtk, EntryPoint = "gtk_widget_show_all")] private static partial void WidgetShowAll(nint widget);
         [LibraryImport("libglib-2.0.so.0", EntryPoint = "g_strfreev")] private static partial void StrFreev(nint* values);
         [LibraryImport("libgobject-2.0.so.0", EntryPoint = "g_signal_connect_data", StringMarshalling = StringMarshalling.Utf8)]
