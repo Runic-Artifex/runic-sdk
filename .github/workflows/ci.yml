@@ -1259,6 +1259,13 @@ jobs:
         if: runner.os == 'macOS'
         timeout-minutes: 5
         run: dotnet tests/native/Runic.Desktop.WebViewSmoke/bin/Release/net10.0/Runic.Desktop.WebViewSmoke.dll --zoom
+      # M1: Runic's application delegate (launched once), the Dock menu, reopen, and the quit Apple event refused by
+      # ConfirmQuitAsync, refused by a close guard and accepted with no window open, after which Run returns.
+      - name: Exercise the macOS application lifecycle and quit path
+        if: runner.os == 'macOS'
+        timeout-minutes: 5
+        run: dotnet tests/native/Runic.Desktop.WebViewSmoke/bin/Release/net10.0/Runic.Desktop.WebViewSmoke.dll --lifecycle
+
       # D046.2: DesktopEventLoop.InvokeOnMainThreadAsync without a window: the main thread, a result, an exception,
       # cancellation, a call before the loop, and work while a context menu tracks.
       - name: Run windowless work on the macOS main thread

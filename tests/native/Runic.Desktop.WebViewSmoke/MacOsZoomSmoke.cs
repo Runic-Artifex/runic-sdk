@@ -12,7 +12,7 @@ internal static partial class MacOsZoomSmoke
     private const ulong Command = 0x100000, Shift = 0x20000, NumericPad = 0x200000;
     // Virtual key codes of the ANSI layout: =, -, 0 and the keypad's +.
     private const ushort KeyEqual = 0x18, KeyMinus = 0x1b, KeyZero = 0x1d, KeypadPlus = 0x45, KeyA = 0x00, KeyC = 0x08, KeyV = 0x09, KeyQ = 0x0c;
-    // Command+Q asks the window to close: the guard refuses the first time and allows the second.
+    // Command+Q asks the window's close guard: it refuses the first time and allows the second.
     private static int s_closeRequests;
 
     private static ValueTask<bool> ConfirmCloseAsync(CancellationToken cancellationToken) =>
@@ -32,7 +32,7 @@ internal static partial class MacOsZoomSmoke
         try
         {
             await ExerciseAsync(surface, window);
-            await ExerciseEditAndQuitAsync(surface, window);
+            await ExerciseEditAndQuitAsync(host, surface, window);
         }
         finally
         {
@@ -92,8 +92,9 @@ internal static partial class MacOsZoomSmoke
         Console.WriteLine("ZOOM DONE");
     }
 
-    // The Edit menu copies and pastes through the focused WKWebView, and Quit takes the window's close path.
-    private static async Task ExerciseEditAndQuitAsync(DesktopSurface surface, DesktopWindow window)
+    // The Edit menu copies and pastes through the focused WKWebView, and Quit (terminate:) takes the one quit path: the
+    // window's close guard, then ShutdownRequested.
+    private static async Task ExerciseEditAndQuitAsync(DesktopHost host, DesktopSurface surface, DesktopWindow window)
     {
         await surface.ExecuteJavaScriptAsync(
             "const s = document.getElementById('source'); s.value = 'Runic clipboard'; s.focus(); s.setSelectionRange(0, 0); return true;", StepTimeout);
@@ -112,10 +113,12 @@ internal static partial class MacOsZoomSmoke
         await WaitAsync(() => Volatile.Read(ref s_closeRequests) == 1, "the close guard asked by Command and Q");
         await Task.Delay(TimeSpan.FromSeconds(1));
         if (!window.IsOpen) throw new InvalidOperationException("Command and Q closed the window although its guard refused.");
+        if (host.ShutdownRequested.IsCancellationRequested) throw new InvalidOperationException("A refused Command and Q cancelled ShutdownRequested.");
         Pass("Command and Q asks the window's close guard, which can keep it open.");
         await SendAsync(window, KeyQ, Command);
         await window.WaitForCloseAsync().AsTask().WaitAsync(StepTimeout);
-        Pass("Command and Q closes the window once its guard allows it.");
+        await Task.Delay(Timeout.Infinite, host.ShutdownRequested).ContinueWith(static _ => { }, TaskScheduler.Default).WaitAsync(StepTimeout);
+        Pass("Command and Q closes the window once its guard allows it, and cancels ShutdownRequested.");
     }
 
     private static async Task WaitForPageAsync(DesktopSurface surface, string script, string expected, string description)

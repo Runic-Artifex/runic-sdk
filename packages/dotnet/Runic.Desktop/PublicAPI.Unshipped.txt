@@ -1,3 +1,41 @@
 #nullable enable
+override Runic.Desktop.DesktopQuitRequest.Equals(object? obj) -> bool
+override Runic.Desktop.DesktopQuitRequest.GetHashCode() -> int
+override Runic.Desktop.DesktopQuitRequest.ToString() -> string!
+override Runic.Desktop.MacOSDesktopOptions.Equals(object? obj) -> bool
+override Runic.Desktop.MacOSDesktopOptions.GetHashCode() -> int
+override Runic.Desktop.MacOSDesktopOptions.ToString() -> string!
+Runic.Desktop.DesktopHostOptions.ConfirmQuitAsync.get -> System.Func<Runic.Desktop.DesktopQuitRequest!, System.Threading.CancellationToken, System.Threading.Tasks.ValueTask<bool>>?
+Runic.Desktop.DesktopHostOptions.ConfirmQuitAsync.init -> void
+Runic.Desktop.DesktopHostOptions.MacOS.get -> Runic.Desktop.MacOSDesktopOptions!
+Runic.Desktop.DesktopHostOptions.MacOS.init -> void
+Runic.Desktop.DesktopHost.ReopenRequested -> System.EventHandler<Runic.Desktop.DesktopReopenEventArgs!>?
+Runic.Desktop.DesktopQuitRequest
+Runic.Desktop.DesktopQuitRequest.<Clone>$() -> Runic.Desktop.DesktopQuitRequest!
+Runic.Desktop.DesktopQuitRequest.Deconstruct(out Runic.Desktop.DesktopQuitSource Source) -> void
+Runic.Desktop.DesktopQuitRequest.DesktopQuitRequest(Runic.Desktop.DesktopQuitSource Source) -> void
+Runic.Desktop.DesktopQuitRequest.Equals(Runic.Desktop.DesktopQuitRequest? other) -> bool
+Runic.Desktop.DesktopQuitRequest.Source.get -> Runic.Desktop.DesktopQuitSource
+Runic.Desktop.DesktopQuitRequest.Source.init -> void
+Runic.Desktop.DesktopQuitSource
+Runic.Desktop.DesktopQuitSource.Dock = 1 -> Runic.Desktop.DesktopQuitSource
+Runic.Desktop.DesktopQuitSource.Menu = 0 -> Runic.Desktop.DesktopQuitSource
+Runic.Desktop.DesktopQuitSource.Signal = 3 -> Runic.Desktop.DesktopQuitSource
+Runic.Desktop.DesktopQuitSource.System = 2 -> Runic.Desktop.DesktopQuitSource
+Runic.Desktop.DesktopReopenEventArgs
+Runic.Desktop.DesktopReopenEventArgs.DesktopReopenEventArgs(bool hasVisibleWindows) -> void
+Runic.Desktop.DesktopReopenEventArgs.HasVisibleWindows.get -> bool
+Runic.Desktop.MacOSDesktopOptions
+Runic.Desktop.MacOSDesktopOptions.<Clone>$() -> Runic.Desktop.MacOSDesktopOptions!
+Runic.Desktop.MacOSDesktopOptions.DockMenu.get -> System.Collections.Generic.IReadOnlyList<Runic.Platform.DesktopMenuEntry!>!
+Runic.Desktop.MacOSDesktopOptions.DockMenu.init -> void
+Runic.Desktop.MacOSDesktopOptions.Equals(Runic.Desktop.MacOSDesktopOptions? other) -> bool
+Runic.Desktop.MacOSDesktopOptions.ForwardingApplicationDelegate.get -> nint
+Runic.Desktop.MacOSDesktopOptions.ForwardingApplicationDelegate.init -> void
+Runic.Desktop.MacOSDesktopOptions.MacOSDesktopOptions() -> void
+static Runic.Desktop.DesktopQuitRequest.operator !=(Runic.Desktop.DesktopQuitRequest? left, Runic.Desktop.DesktopQuitRequest? right) -> bool
+static Runic.Desktop.DesktopQuitRequest.operator ==(Runic.Desktop.DesktopQuitRequest? left, Runic.Desktop.DesktopQuitRequest? right) -> bool
+static Runic.Desktop.MacOSDesktopOptions.operator !=(Runic.Desktop.MacOSDesktopOptions? left, Runic.Desktop.MacOSDesktopOptions? right) -> bool
+static Runic.Desktop.MacOSDesktopOptions.operator ==(Runic.Desktop.MacOSDesktopOptions? left, Runic.Desktop.MacOSDesktopOptions? right) -> bool
 static Runic.Desktop.DesktopEventLoop.InvokeOnMainThreadAsync(System.Action! action, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask
 static Runic.Desktop.DesktopEventLoop.InvokeOnMainThreadAsync<T>(System.Func<T>! func, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<T>

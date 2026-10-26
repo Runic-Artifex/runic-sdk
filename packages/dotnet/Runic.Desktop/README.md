@@ -58,7 +58,58 @@ open-documents and get-URL Apple events and universal links from the start and
 keeps them until the application creates its open requests
 (`MacOSPlatformProvider.CreateOpenRequests`), which it may do at any time. Runic
 owns the application delegate: an application that sets `NSApp.delegate`
-itself replaces it and loses these events.
+itself replaces it and loses these events, quitting, reopening and the Dock
+menu. Pass an object of your own as `DesktopHostOptions.MacOS.ForwardingApplicationDelegate`
+instead: Runic's delegate forwards every message it does not handle to it.
+
+### Quitting, reopening and the Dock menu on macOS
+
+Every quit on macOS takes one path, also with no window open: Quit in the
+application menu (Command and Q) or another sender of `terminate:`
+(`DesktopQuitSource.Menu`), Quit in the Dock or a script's quit Apple event
+(`Dock`), and logging out, restarting or shutting down (`System`). Runic asks
+`DesktopHostOptions.ConfirmQuitAsync` first, then each window's close guard
+(`ConfirmCloseAsync`) in turn; a window whose guard agrees closes. When all
+agree, `host.ShutdownRequested` is cancelled and the remaining windows close
+without asking, as for Ctrl+C, and the application ends when its code returns:
+`DesktopEventLoop.Run` returns its result, and only then does the Dock, the
+script or the logout learn that it quit. A refusal keeps the application
+running and cancels a logout or restart.
+
+```csharp
+var options = new DesktopHostOptions
+{
+    // Ask about unsaved documents before any window closes.
+    ConfirmQuitAsync = async (request, cancellationToken) =>
+        !documents.HasUnsavedChanges || await documents.SaveAllOrAskAsync(request.Source, cancellationToken),
+    // An application that keeps running without a window ends on ShutdownRequested.
+    HandlesShutdownWithoutWindow = true,
+    MacOS = new MacOSDesktopOptions
+    {
+        DockMenu = [new DesktopMenuItem("New Window", "window.new")],
+    },
+};
+return DesktopEventLoop.Run(options, async host =>
+{
+    host.MenuCommands = commands;   // runs window.new from the Dock menu
+    host.ReopenRequested += (_, e) => { if (!e.HasVisibleWindows) commands.OpenMainWindow(); };
+    await commands.RunUntilAsync(host.ShutdownRequested);
+    return 0;
+});
+```
+
+As for signals, a quit while the host has no surface and
+`HandlesShutdownWithoutWindow` is `false` cannot end the application in order:
+after `ConfirmQuitAsync` agreed and `ShutdownRequested` was cancelled, AppKit
+terminates the process. With `HandleShutdownSignals`, Ctrl+C, SIGTERM and SIGHUP
+ask `ConfirmQuitAsync` too (`DesktopQuitSource.Signal`) on every platform, but
+not the close guards.
+
+`DesktopHost.ReopenRequested` occurs when the user clicks the Dock icon or opens
+the running application again; `HasVisibleWindows` tells whether a window is
+visible. `MacOSDesktopOptions.DockMenu` adds items, separators and submenus to
+the Dock menu; their commands run through `host.MenuCommands` and are enabled
+from its `CanExecute` each time the menu opens.
 
 ### Native work without a window on macOS
 
@@ -1213,10 +1264,10 @@ its own main menu (one with key equivalents) before the first window opens. It
 completes AppKit's empty default menu instead of adding a second one:
 
 - the application menu: About, Hide (Command and H), Hide Others (Option,
-  Command and H), Show All and Quit (Command and Q). Quit asks every window to
-  close, as its close button does, so a close guard (`ConfirmCloseAsync`) can keep
-  its window open; the application ends when its code returns, as after closing
-  the windows by hand;
+  Command and H), Show All and Quit (Command and Q). Quit takes the one quit path
+  of [Quitting, reopening and the Dock menu on macOS](#quitting-reopening-and-the-dock-menu-on-macos):
+  `ConfirmQuitAsync`, then each close guard, then `ShutdownRequested`; the
+  application ends when its code returns;
 - Edit: Undo, Redo, Cut, Copy, Paste and Select All with their usual Command keys.
   They send AppKit's standard actions to the focused web view, so text fields copy
   and paste as in Safari;

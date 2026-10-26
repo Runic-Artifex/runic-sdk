@@ -85,6 +85,18 @@ internal static partial class DesktopLog
         Message = "A DesktopWindow.MenuBarPlacementChanged handler failed with {ErrorType}.")]
     internal static partial void MenuBarPlacementHandlerFailed(ILogger logger, Exception exception, string errorType);
 
+    [LoggerMessage(EventId = 3018, EventName = "DesktopQuitRequested", Level = LogLevel.Information,
+        Message = "{Reason} quits the application; closing Desktop windows.")]
+    internal static partial void QuitRequested(ILogger logger, string reason);
+
+    [LoggerMessage(EventId = 3019, EventName = "DesktopQuitConfirmationFailed", Level = LogLevel.Error,
+        Message = "DesktopHostOptions.ConfirmQuitAsync failed with {ErrorType}; the application keeps running.")]
+    internal static partial void QuitConfirmationFailed(ILogger logger, Exception exception, string errorType);
+
+    [LoggerMessage(EventId = 3020, EventName = "DesktopReopenHandlerFailed", Level = LogLevel.Error,
+        Message = "A DesktopHost.ReopenRequested handler failed with {ErrorType}.")]
+    internal static partial void ReopenHandlerFailed(ILogger logger, Exception exception, string errorType);
+
     internal static void Diagnostic(ILogger logger, DesktopDiagnostic diagnostic)
     {
         var option = diagnostic.Option ?? "the presentation";

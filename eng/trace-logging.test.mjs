@@ -29,6 +29,10 @@ export const fallbackLoggers = [
 export const traceAllowList = [
   ...[
     'TraceInformation($"{reason} received; closing Desktop windows.',
+    // A quit (event 3018), a failed DesktopHostOptions.ConfirmQuitAsync (3019) and a throwing ReopenRequested handler (3020).
+    'TraceInformation($"{reason} quits the application; closing Desktop windows.")',
+    'TraceError($"DesktopHostOptions.ConfirmQuitAsync failed; the application keeps running: {error}")',
+    'TraceError($"A DesktopHost.ReopenRequested handler failed with {error.GetType().FullName}.")',
     'TraceError($"Closing Desktop windows for shutdown failed: {error}")',
     'TraceWarning($"{diagnostic.Code}: {diagnostic.Message}")',
   ].map(fragment => ({ file: 'packages/dotnet/Runic.Desktop/DesktopHost.cs', fragment })),

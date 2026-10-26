@@ -59,6 +59,11 @@ try
         // Must run before the first await, as --event-loop: the AppKit loop owns the main thread.
         MacOsZoomSmoke.Run(CreateHostOptions());
     }
+    else if (args.Contains("--lifecycle", StringComparer.Ordinal) && OperatingSystem.IsMacOS())
+    {
+        // Must run before the first await, as --zoom.
+        MacOsLifecycleSmoke.Run(CreateHostOptions());
+    }
     else if (args.Contains("--main-thread", StringComparer.Ordinal) && OperatingSystem.IsMacOS())
     {
         // Must run before the first await, as --zoom.
