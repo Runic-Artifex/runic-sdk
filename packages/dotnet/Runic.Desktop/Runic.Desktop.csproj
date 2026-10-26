@@ -31,6 +31,8 @@
     <InternalsVisibleTo Include="Runic.Application.Views.Desktop.Tests" />
     <!-- The native smokes drive pages through the transport. -->
     <InternalsVisibleTo Include="Runic.Desktop.WebViewSmoke" />
+    <!-- The macOS native tests report how the event loop served the main thread (MacOsApplication). -->
+    <InternalsVisibleTo Include="Runic.Platform.Runtime.Tests" />
     <InternalsVisibleTo Include="Runic.Desktop.Gtk4.Smoke" />
     <EmbeddedResource Include="Internal/WebKitGtkKeyboard.js" LogicalName="Runic.Desktop.WebKitGtkKeyboard.js" />
     <!-- The optional WPF presentation reuses our native WebView2 controller. -->

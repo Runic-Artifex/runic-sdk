@@ -188,11 +188,18 @@ internal sealed partial class MacAppKitNativeTests
             // Where the main thread is instead: sample(1) prints every thread's stack.
             Console.WriteLine($"main thread: no queued work ran within 20 s; sampling process {Environment.ProcessId}");
             Console.WriteLine(await SampleAsync());
+            Console.WriteLine("main thread: " + EventLoopState());
         }
         await ready.WaitAsync(TimeSpan.FromSeconds(70));
         Console.WriteLine($"main thread: first queued work ran after {waited.ElapsedMilliseconds} ms; isRunning={running}, " +
-            $"isFinishedLaunching={finished}, activationPolicy={policy}");
+            $"isFinishedLaunching={finished}, activationPolicy={policy}; {EventLoopState()}");
     }
+
+    // Runic.Desktop's record of how the event loop served the main thread.
+    private static string EventLoopState() =>
+        $"[NSApp run] returned early after {Runic.Desktop.Internal.MacOsApplication.RunReturnedEarlyAfterMilliseconds} ms (-1: not); " +
+        $"fallback run loop results (0 other, 1 finished, 2 stopped, 3 timed out, 4 handled) {string.Join("/", Runic.Desktop.Internal.MacOsApplication.FallbackRunLoopResults)}; " +
+        $"direct main queue drains {Runic.Desktop.Internal.MacOsApplication.FallbackDirectDrains}; launches {Runic.Desktop.Internal.MacOsApplication.WillFinishLaunchingCount}";
 
     private static async Task<string> SampleAsync()
     {

@@ -77,12 +77,11 @@ internal static unsafe partial class MacOsApplication
             TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
         try
         {
+            var started = Environment.TickCount64;
             var pool = Send(Send(Class("NSAutoreleasePool"), Sel("alloc")), Sel("init"));
             try { Send(application, Sel("run")); }
             finally { Send(pool, Sel("drain")); }
-            // Another stop: ends AppKit's loop early: serve the main thread until the work completes. Each stop request
-            // posts an event, which ends the wait.
-            while (!work.IsCompleted) ProcessNextEvent(application, wait: true);
+            if (!work.IsCompleted) ServeUntilCompleted(application, work, Environment.TickCount64 - started);
         }
         finally { Volatile.Write(ref s_loopEnded, 1); }
         // Work the application queued last, such as native release.
@@ -102,26 +101,66 @@ internal static unsafe partial class MacOsApplication
         MacOsMainThread.PostAfter(StopRetry, () => RequestStop(generation));
     });
 
-    private static void ProcessNextEvent(nint application, bool wait)
+    // [NSApp run] returned before the work completed: another stop: ended it, or AppKit's loop did not run at all, as on
+    // the macOS runner for unbundled processes that .NET starts (the sampled main thread never showed AppKit's loop, and
+    // its next events returned at once without serving the main queue). Serves the main thread as 0.11's loop did: the
+    // queued AppKit events, then the run loop for up to 50 ms, which runs the main dispatch queue; a run loop that has
+    // nothing to wait for does not spin. The figures are for the native tests' diagnostics.
+    internal static long RunReturnedEarlyAfterMilliseconds = -1;
+    internal static readonly int[] FallbackRunLoopResults = new int[5];
+    internal static int FallbackDirectDrains;
+
+    private static readonly Lazy<nint> DrainMainQueue = new(static () =>
+        NativeLibrary.TryLoad("/usr/lib/libSystem.B.dylib", out var library)
+        && NativeLibrary.TryGetExport(library, "_dispatch_main_queue_callback_4CF", out var export) ? export : 0);
+
+    private static void ServeUntilCompleted(nint application, Task work, long afterMilliseconds)
     {
-        var pool = Send(Send(Class("NSAutoreleasePool"), Sel("alloc")), Sel("init"));
-        try
+        Volatile.Write(ref RunReturnedEarlyAfterMilliseconds, afterMilliseconds);
+        var date = Send(Class("NSDate"), Sel("distantPast"));
+        var mode = DefaultMode.Value;
+        nint next = Sel("nextEventMatchingMask:untilDate:inMode:dequeue:"), send = Sel("sendEvent:");
+        nint poolClass = Class("NSAutoreleasePool"), alloc = Sel("alloc"), init = Sel("init"), drain = Sel("drain");
+        while (!work.IsCompleted)
         {
-            var date = Send(Class("NSDate"), Sel(wait ? "distantFuture" : "distantPast"));
-            var mode = Utf8(Class("NSString"), Sel("stringWithUTF8String:"), "kCFRunLoopDefaultMode");
-            var next = NextEvent(application, Sel("nextEventMatchingMask:untilDate:inMode:dequeue:"), ulong.MaxValue, date, mode, 1);
-            if (next != 0) Arg(application, Sel("sendEvent:"), next);
+            var pool = Send(Send(poolClass, alloc), init);
+            try
+            {
+                for (var events = 0; events < 64; events++)
+                {
+                    var queued = NextEvent(application, next, ulong.MaxValue, date, mode, 1);
+                    if (queued == 0) break;
+                    Arg(application, send, queued);
+                }
+                int result = RunInMode(mode, 0.05, 1);
+                Interlocked.Increment(ref FallbackRunLoopResults[Math.Clamp(result, 0, 4)]);
+                // kCFRunLoopRunFinished or kCFRunLoopRunStopped return at once, without the main queue: run it directly,
+                // as the run loop does (libdispatch's entry for CoreFoundation), and do not spin.
+                if (result is 1 or 2)
+                {
+                    if (DrainMainQueue.Value is not 0 and var drainQueue)
+                    {
+                        ((delegate* unmanaged[Cdecl]<nint, void>)drainQueue)(0);
+                        Interlocked.Increment(ref FallbackDirectDrains);
+                    }
+                    Thread.Sleep(5);
+                }
+            }
+            finally { Send(pool, drain); }
         }
-        finally { Send(pool, Sel("drain")); }
     }
+
+    // kCFRunLoopDefaultMode, the CFString constant.
+    private static readonly Lazy<nint> DefaultMode = new(static () =>
+        NativeLibrary.TryLoad("/System/Library/Frameworks/CoreFoundation.framework/CoreFoundation", out var library)
+        && NativeLibrary.TryGetExport(library, "kCFRunLoopDefaultMode", out var export) ? *(nint*)export : 0);
 
     private static void RunLoopOnce()
     {
         var pool = Send(Send(Class("NSAutoreleasePool"), Sel("alloc")), Sel("init"));
         try
         {
-            var mode = Utf8(Class("NSString"), Sel("stringWithUTF8String:"), "kCFRunLoopDefaultMode");
-            _ = RunInMode(mode, 0, 0);
+            _ = RunInMode(DefaultMode.Value, 0, 0);
         }
         finally { Send(pool, Sel("drain")); }
     }
@@ -315,7 +354,6 @@ internal static unsafe partial class MacOsApplication
     [LibraryImport(ObjC, EntryPoint = "objc_msgSend")] private static partial nint Arg(nint target, nint selector, nint value);
     [LibraryImport(ObjC, EntryPoint = "objc_msgSend")] private static partial nint Args(nint target, nint selector, nint first, nint second);
     [LibraryImport(ObjC, EntryPoint = "objc_msgSend")] private static partial byte Bool(nint target, nint selector);
-    [LibraryImport(ObjC, EntryPoint = "objc_msgSend", StringMarshalling = StringMarshalling.Utf8)] private static partial nint Utf8(nint target, nint selector, string value);
     [LibraryImport(ObjC, EntryPoint = "objc_msgSend")] private static partial byte ContinueWith(nint target, nint selector, nint application, nint activity, nint restorationHandler);
     [LibraryImport(ObjC, EntryPoint = "objc_msgSend")] private static partial void SetHandler(nint target, nint selector, nint handler, nint action, uint eventClass, uint eventId);
     [LibraryImport(ObjC, EntryPoint = "objc_msgSend")] private static partial nint NextEvent(nint target, nint selector, ulong mask, nint date, nint mode, byte dequeue);
