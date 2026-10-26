@@ -82,6 +82,11 @@ internal interface IAtomicFileReplacement
 {
     bool IsSupported { get; }
     NativeFileLocation Location => NativeFileLocation.Host;
+    // Where a write stages its bytes for ReplaceAsync: a new name beside the target unless the provider stages
+    // elsewhere, such as macOS's item replacement directory in the App Sandbox.
+    string CreateStagingPath(string targetPath) => Path.Combine(Path.GetDirectoryName(targetPath)!, $".runic-{Guid.NewGuid():N}.tmp");
+    // Removes what CreateStagingPath created besides the staging file, once that file is gone.
+    void ReleaseStaging(string stagingPath) { }
     // No cancellation here: once submitted, the actual outcome must be observed.
     ValueTask<FileCommitResult> ReplaceAsync(string stagingPath, string targetPath, bool existed);
 }
@@ -305,8 +310,10 @@ internal class SaveFileLease : ISaveFileLease, ILaunchableFileLease
                 // beside that target so the rename stays within one directory. A
                 // document view exposes only the granted name: stage beside exactly it.
                 string target = document ? _path : ResolveTarget(_path);
-                string staging = Path.Combine(Path.GetDirectoryName(target)!, $".runic-{Guid.NewGuid():N}.tmp");
-                var content = CreateStaging(staging, target);
+                string staging = _replacement.CreateStagingPath(target);
+                FileStream content;
+                try { content = CreateStaging(staging, target); }
+                catch { _replacement.ReleaseStaging(staging); throw; }
                 var transaction = new FileWriteTransaction(staging, target, content, _replacement, this);
                 _open = transaction;
                 _transactions.Add(transaction);
@@ -644,6 +651,7 @@ internal sealed class FileWriteTransaction(string staging, string target, FileSt
         if (commit is not null) { try { await commit.ConfigureAwait(false); } catch { } }
         try { await content.DisposeAsync().ConfigureAwait(false); } catch (Exception error) { failures.Add(error); }
         try { File.Delete(staging); } catch (Exception error) { failures.Add(error); }
+        try { replacement.ReleaseStaging(staging); } catch (Exception error) { failures.Add(error); }
         _abort.Dispose();
         // Only once the commit settled and staging is gone may the lease begin another write.
         lease.Closed(this);

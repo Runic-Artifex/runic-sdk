@@ -64,11 +64,10 @@ internal static class SandboxProbe
             Console.WriteLine($"CAPABILITY {id} {Describe(status)}");
         Check(snapshot.Statuses.GetValueOrDefault(PlatformCapabilityIds.FilesOpen) is CapabilityStatus.Available, "an owned open dialog is available");
         Check(snapshot.Statuses.GetValueOrDefault(PlatformCapabilityIds.DialogsOwned) is CapabilityStatus.Available, "owned dialogs are available");
-        // A user-selected grant covers the selected file only, never a staging file beside it, so the sandbox has no
-        // atomic save of a chosen file yet (G-1; M2 replaces the file with NSFileManager and turns this around).
-        Check(snapshot.Statuses.GetValueOrDefault(PlatformCapabilityIds.FilesSave)
-            is CapabilityStatus.Unavailable { Reason: PlatformUnavailableReason.AtomicReplaceUnavailable },
-            $"the save dialog reports AtomicReplaceUnavailable in the sandbox, not {Describe(snapshot.Statuses.GetValueOrDefault(PlatformCapabilityIds.FilesSave))}");
+        // A user-selected grant covers the selected file only, never a staging file beside it: a chosen file saves
+        // through the item replacement directory and NSFileManager instead (A1, --document-probe), so saving is available.
+        Check(snapshot.Statuses.GetValueOrDefault(PlatformCapabilityIds.FilesSave) is CapabilityStatus.Available,
+            $"the save dialog is available in the sandbox, not {Describe(snapshot.Statuses.GetValueOrDefault(PlatformCapabilityIds.FilesSave))}");
 
         await using (var volumes = MacOSPlatformProvider.CreateVolumes())
             Console.WriteLine($"SERVICE volumes.list {Describe(await volumes.ListAsync())}");

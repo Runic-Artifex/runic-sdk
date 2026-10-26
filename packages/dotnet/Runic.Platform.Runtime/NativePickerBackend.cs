@@ -13,6 +13,11 @@ public sealed record NativeFileSelection(string Path, IAsyncDisposable? Access, 
     /// <summary>The request's filter that was active when the user confirmed the dialog, or null when the dialog does
     /// not report it. The first selection of a dialog carries it; a filter that is not one of the request's is ignored.</summary>
     public FileDialogFilter? SelectedFilter { get; init; }
+    // How a lease of this selection stages and replaces the file, when the provider chooses it, such as macOS's item
+    // replacement in the App Sandbox; null derives it from AllowsSiblingReplacement and Location.
+    internal IAtomicFileReplacement? Replacement { get; init; }
+    // The bookmarks a lease of this selection creates, when the provider has its own; null uses the path's.
+    internal IDesktopFileBookmarks? Bookmarks { get; init; }
 }
 /// <summary>The filesystem view through which a native selection is reached.</summary>
 public enum NativeFileLocation
@@ -256,18 +261,20 @@ public sealed class NativePickerBackend(INativeWindowOwner owner, INativeFilePic
     /// <inheritdoc />
     public bool SupportsDocumentAccess => true;
 
-    // Windows and Linux keep access through the path. macOS has no lease bookmarks yet: they report unavailable.
-    private static readonly IDesktopFileBookmarks? Bookmarks = OperatingSystem.IsMacOS() ? null : new PathFileBookmarks();
+    // Windows and Linux keep access through the path. macOS selections bring NSURL bookmarks (NativeFileSelection.Bookmarks);
+    // a macOS picker without them reports bookmarks unavailable.
+    private static readonly IDesktopFileBookmarks? PathBookmarks = OperatingSystem.IsMacOS() ? null : new PathFileBookmarks();
+    private static IDesktopFileBookmarks? Bookmarks(NativeFileSelection selection) => selection.Bookmarks ?? PathBookmarks;
 
     /// <inheritdoc />
     public ValueTask<PickerResult<ISaveFileLease>> SaveFileAsync(SaveFileOptions options, CancellationToken cancellationToken = default) =>
         SaveAsync<ISaveFileLease>(options, async (selection, token) => await SaveFileLease.CreateAsync(selection.Path, Replacement(selection),
-            selection.Access, Bookmarks, token).ConfigureAwait(false), cancellationToken);
+            selection.Access, Bookmarks(selection), token).ConfigureAwait(false), cancellationToken);
 
     /// <inheritdoc />
     public ValueTask<PickerResult<IDocumentFileLease>> SaveDocumentAsync(SaveFileOptions options, CancellationToken cancellationToken = default) =>
         SaveAsync<IDocumentFileLease>(options, async (selection, token) => await DocumentFileLease.CreateAsync(selection.Path, Replacement(selection),
-            selection.Access, Bookmarks, existing: false, token).ConfigureAwait(false), cancellationToken);
+            selection.Access, Bookmarks(selection), existing: false, token).ConfigureAwait(false), cancellationToken);
 
     /// <inheritdoc />
     public async ValueTask<PickerResult<IDocumentFileLease>> OpenDocumentAsync(OpenFileOptions options, CancellationToken cancellationToken = default)
@@ -291,7 +298,7 @@ public sealed class NativePickerBackend(INativeWindowOwner owner, INativeFilePic
             var selection = selections[0];
             // CreateAsync takes ownership of acquired access, including failure paths.
             transferred = true;
-            var lease = await DocumentFileLease.CreateAsync(selection.Path, Replacement(selection), selection.Access, Bookmarks, existing: true,
+            var lease = await DocumentFileLease.CreateAsync(selection.Path, Replacement(selection), selection.Access, Bookmarks(selection), existing: true,
                 cancellationToken).ConfigureAwait(false);
             return new PickerResult<IDocumentFileLease>.Selected(lease) { SelectedFilter = ChosenFilter(options.Filters, selection.SelectedFilter) };
         }
@@ -309,8 +316,8 @@ public sealed class NativePickerBackend(INativeWindowOwner owner, INativeFilePic
         }
     }
 
-    private static IAtomicFileReplacement Replacement(NativeFileSelection selection) =>
-        selection.AllowsSiblingReplacement ? new LocalAtomicFileReplacement(selection.Location) : new NoAtomicReplacement();
+    private static IAtomicFileReplacement Replacement(NativeFileSelection selection) => selection.Replacement
+        ?? (selection.AllowsSiblingReplacement ? new LocalAtomicFileReplacement(selection.Location) : new NoAtomicReplacement());
 
     private async ValueTask<PickerResult<T>> SaveAsync<T>(SaveFileOptions options,
         Func<NativeFileSelection, CancellationToken, ValueTask<T>> create, CancellationToken cancellationToken) where T : ISaveFileLease

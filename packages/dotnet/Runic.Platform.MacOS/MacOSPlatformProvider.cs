@@ -103,8 +103,10 @@ public static class MacOSPlatformProvider
     /// A sandboxed application keeps access to a file the user opened or chose by storing its bookmark; resolving the
     /// bookmark starts security-scoped access (<c>startAccessingSecurityScopedResource</c>) until the access is disposed.
     /// The sandboxed bundle needs the <c>com.apple.security.files.bookmarks.app-scope</c> entitlement. A bookmark created
-    /// outside the sandbox resolves inside it only to files the sandbox already lets the application read. It needs no
-    /// window and no AppKit event loop.
+    /// outside the sandbox resolves inside it only to files the sandbox already lets the application read.
+    /// <see cref="IDesktopFileBookmarks.OpenDocumentAsync"/> opens a bookmark as a document whose lease keeps that access
+    /// until it is disposed; in the sandbox its writes stage in the item replacement directory. It needs no window and
+    /// no AppKit event loop.
     /// </remarks>
     public static IDesktopFileBookmarks CreateFileBookmarks()
     { if (!OperatingSystem.IsMacOS()) throw new PlatformNotSupportedException(); return new MacFileBookmarks(); }

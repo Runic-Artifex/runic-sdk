@@ -1583,7 +1583,9 @@ jobs:
       # Sandbox (RunicMacSandbox) with its installer package. Both stay ad-hoc signed and unsigned: the maintainers'
       # Apple certificates and provisioning profiles are not in CI (I-101). The bundle's executable runs in the sandbox,
       # opens a window whose page answers over the loopback bridge, saves and bookmarks a file in its container, prints
-      # the capability snapshot, and cannot write or bookmark a file outside the container.
+      # the capability snapshot, and cannot write or bookmark a file outside the container. Then a document of the
+      # container opens from its bookmark, saves three times through the item replacement directory and reopens from
+      # the lease's bookmark in a second launch (A1).
       - name: Package and run the sandboxed Runic Desktop fixture
         if: matrix.target == 'macos'
         timeout-minutes: 15
@@ -1624,6 +1626,10 @@ jobs:
           test "$status" = 0
           test "$content" = probe
           grep -qx SANDBOX_PROBE_OK "$RUNNER_TEMP/sandbox-probe.txt"
+          deadline 150 "$app/Contents/MacOS/Runic.Sandbox.Probe" --document-probe | tee "$RUNNER_TEMP/document-probe.txt"
+          grep -qx DOCUMENT_PROBE_OK "$RUNNER_TEMP/document-probe.txt"
+          deadline 150 "$app/Contents/MacOS/Runic.Sandbox.Probe" --document-reopen | tee "$RUNNER_TEMP/document-reopen.txt"
+          grep -qx DOCUMENT_REOPEN_OK "$RUNNER_TEMP/document-reopen.txt"
       # The GNOME runtime and SDK come from Flathub, cached by their branch.
       # flatpak-builder composes the AppStream data with appstream-compose, which reads the SVG icon through
       # librsvg's image loader.

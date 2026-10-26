@@ -51,6 +51,35 @@ internal sealed class DocumentLeaseTests
         }
     }
 
+    [Test, DisplayName("FILE: a provider's selection chooses where its lease stages and which bookmarks it creates")]
+    public async Task SelectionHooksAsync()
+    {
+        await using var directory = new TemporaryDirectory();
+        await using var elsewhere = new TemporaryDirectory();
+        string path = directory.File("document.txt", "original");
+        var replacement = new ElsewhereReplacement(elsewhere.Path);
+        var bookmarks = new FixedBookmarks();
+        var backend = new NativePickerBackend(new Owner(), new HookPicker(new(path, null, AllowsSiblingReplacement: false)
+        {
+            Replacement = replacement, Bookmarks = bookmarks,
+        }));
+        var opened = await backend.OpenDocumentAsync(new OpenFileOptions());
+        Check(opened.TryGetValue(out var document), $"a document: {opened}");
+        await using (document!)
+        {
+            for (int index = 1; index <= 3; index++)
+                Check(await WriteAsync(document!, $"save {index}") is FileCommitResult.Committed && await File.ReadAllTextAsync(path) == $"save {index}",
+                    $"save {index} stages through the selection's replacement although it allows no sibling");
+            var begun = await BeginAsync(document!);
+            Check(replacement.Staged.Count == 4 && replacement.Staged.All(staging => staging.StartsWith(elsewhere.Path, StringComparison.Ordinal))
+                && directory.Count == 1, "every write staged in the replacement's directory, never beside the file");
+            await begun.DisposeAsync();
+            Check(replacement.Released == 4 && elsewhere.Count == 0, "each finished write releases its staging directory");
+            Check(await document!.CreateBookmarkAsync() is PlatformResult<ImmutableArray<byte>>.Success(var bookmark) && bookmark.SequenceEqual(FixedBookmarks.Bytes)
+                && bookmarks.Created == path, "the lease creates its bookmark through the selection's bookmarks");
+        }
+    }
+
     [Test, DisplayName("FILE: after an uncertain commit both the previous and the staged content are the application's")]
     public async Task UncertainCommitAsync()
     {
@@ -330,6 +359,46 @@ internal sealed class DocumentLeaseTests
             }
             return new FileCommitResult.CommitUnknown(PlatformFailureCode.IOError);
         }
+    }
+
+    // Stages each write in its own folder under Root, as macOS's item replacement directory does.
+    private sealed class ElsewhereReplacement(string root) : IAtomicFileReplacement
+    {
+        internal List<string> Staged { get; } = [];
+        internal int Released;
+        public bool IsSupported => true;
+        public string CreateStagingPath(string targetPath)
+        {
+            string folder = Path.Combine(root, Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(folder);
+            string staging = Path.Combine(folder, Path.GetFileName(targetPath));
+            lock (Staged) Staged.Add(staging);
+            return staging;
+        }
+        public void ReleaseStaging(string stagingPath) { Interlocked.Increment(ref Released); Directory.Delete(Path.GetDirectoryName(stagingPath)!, recursive: true); }
+        public ValueTask<FileCommitResult> ReplaceAsync(string stagingPath, string targetPath, bool existed)
+        {
+            File.Move(stagingPath, targetPath, overwrite: existed);
+            return ValueTask.FromResult<FileCommitResult>(new FileCommitResult.Committed());
+        }
+    }
+
+    private sealed class FixedBookmarks : IDesktopFileBookmarks
+    {
+        internal static readonly ImmutableArray<byte> Bytes = [1, 2, 3];
+        internal string? Created;
+        public ValueTask<PlatformResult<ImmutableArray<byte>>> CreateAsync(string path, CancellationToken cancellationToken = default)
+        {
+            Created = path;
+            return ValueTask.FromResult<PlatformResult<ImmutableArray<byte>>>(new PlatformResult<ImmutableArray<byte>>.Success(Bytes));
+        }
+        public ValueTask<PlatformResult<IDesktopBookmarkAccess>> ResolveAsync(ImmutableArray<byte> bookmark, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+    }
+
+    private sealed class HookPicker(NativeFileSelection selection) : INativeFilePicker
+    {
+        public ValueTask<IReadOnlyList<NativeFileSelection>?> SelectAsync(NativeFileDialogRequest request, CancellationToken cancellationToken) =>
+            ValueTask.FromResult<IReadOnlyList<NativeFileSelection>?>([selection]);
     }
 
     private sealed class Access : IAsyncDisposable

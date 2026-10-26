@@ -5,9 +5,11 @@ using static Runic.Platform.MacOS.MacDesktopNative;
 
 namespace Runic.Platform.MacOS;
 
-// NSURL bookmarks: security-scoped inside the App Sandbox, whose access starts with startAccessingSecurityScopedResource
-// and ends when the access is disposed; ordinary bookmarks, which also follow a moved file, outside it. NSURL's
-// bookmark methods are thread-safe, so requests run on the caller's thread without the AppKit event loop.
+// NSURL bookmarks: security-scoped (read-write) inside the App Sandbox, whose access starts with
+// startAccessingSecurityScopedResource and ends when the access, or the document lease that owns it, is disposed;
+// ordinary bookmarks, which also follow a moved file, outside it. NSURL's bookmark methods are thread-safe, so requests
+// run on the caller's thread without the AppKit event loop. Leases of file dialogs create their bookmarks here too,
+// while the panel's security-scoped access is started.
 internal sealed partial class MacFileBookmarks : IDesktopFileBookmarks
 {
     private const nuint CreationWithSecurityScope = 1 << 11, ResolutionWithoutUi = 1 << 8, ResolutionWithSecurityScope = 1 << 10;
@@ -56,6 +58,40 @@ internal sealed partial class MacFileBookmarks : IDesktopFileBookmarks
         Send(url, Sel("retain"));
         return Result<IDesktopBookmarkAccess>(new PlatformResult<IDesktopBookmarkAccess>.Success(new Access(url, path, stale != 0, sandboxed)));
     }
+
+    // A document keeps the bookmark's access until the lease is disposed. In the sandbox the bookmark grants the file
+    // alone, so a save stages in the item replacement directory; outside it, beside the file as on the other platforms.
+    public async ValueTask<PlatformResult<IDocumentFileLease>> OpenDocumentAsync(ImmutableArray<byte> bookmark, CancellationToken cancellationToken = default)
+    {
+        PathFileBookmarks.ValidateBookmark(bookmark);
+        cancellationToken.ThrowIfCancellationRequested();
+        var resolved = await ResolveAsync(bookmark, cancellationToken).ConfigureAwait(false);
+        if (!resolved.TryGetValue(out var access)) return resolved switch
+        {
+            PlatformResult<IDesktopBookmarkAccess>.Unavailable(var reason) => new PlatformResult<IDocumentFileLease>.Unavailable(reason),
+            PlatformResult<IDesktopBookmarkAccess>.Failed(var code, var diagnostic) => new PlatformResult<IDocumentFileLease>.Failed(code, diagnostic),
+            _ => new PlatformResult<IDocumentFileLease>.Failed(PlatformFailureCode.Unknown),
+        };
+        if (Directory.Exists(access.LocalPath))
+        {
+            await access.DisposeAsync().ConfigureAwait(false);
+            return new PlatformResult<IDocumentFileLease>.Failed(PlatformFailureCode.InvalidData);
+        }
+        try
+        {
+            // The lease owns the access from here, also when it cannot be created.
+            return new PlatformResult<IDocumentFileLease>.Success(await DocumentFileLease.CreateAsync(access.LocalPath, Replacement(IsSandboxed),
+                access, this, existing: true, cancellationToken).ConfigureAwait(false));
+        }
+        catch (Exception error) when (error is FileNotFoundException or DirectoryNotFoundException)
+        { return new PlatformResult<IDocumentFileLease>.Failed(PlatformFailureCode.NotFound, FileErrors.Diagnose(error)); }
+        catch (UnauthorizedAccessException error) { return new PlatformResult<IDocumentFileLease>.Failed(PlatformFailureCode.PermissionDenied, FileErrors.Diagnose(error)); }
+        catch (IOException error) { return new PlatformResult<IDocumentFileLease>.Failed(PlatformFailureCode.IOError, FileErrors.Diagnose(error)); }
+    }
+
+    // How a document or a dialog's lease saves: without a grant of the file's folder, through the item replacement
+    // directory.
+    internal static IAtomicFileReplacement Replacement(bool fileOnly) => fileOnly ? new MacItemReplacement() : new LocalAtomicFileReplacement();
 
     private static PlatformResult<T> Failure<T>(nint error)
     {

@@ -11,8 +11,10 @@ internal sealed partial class MacOsFilePicker(INativeWindowOwner owner) : INativ
 {
     internal TaskCompletionSource Shown { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private static readonly Lazy<bool> Sandboxed = new(IsSandboxed);
-    // A sandbox grants the selected URL only, never sibling staging.
-    public bool SupportsAtomicReplace => !Sandboxed.Value;
+    private static readonly MacFileBookmarks Bookmarks = new();
+    // A sandbox grants the selected URL only, never sibling staging: such a selection saves through the item
+    // replacement directory instead (MacItemReplacement).
+    public bool SupportsAtomicReplace => true;
 
     public bool SupportsMultipleSelection => true;
 
@@ -133,7 +135,8 @@ internal sealed partial class MacOsFilePicker(INativeWindowOwner owner) : INativ
                         else urls = [Send(panel, Sel("URL"))];
                         if (urls.Length == 0 || urls.Contains(0)) throw new IOException("AppKit returned no selected URL.");
                         // A sandbox's user-selected grant authorizes the selected URL,
-                        // not arbitrary sibling staging files. Never invent that access.
+                        // not arbitrary sibling staging files. Never invent that access:
+                        // stage in the item replacement directory instead.
                         bool sandboxed = Sandboxed.Value;
                         var selections = new List<NativeFileSelection>(urls.Length);
                         foreach (nint url in urls)
@@ -141,7 +144,11 @@ internal sealed partial class MacOsFilePicker(INativeWindowOwner owner) : INativ
                             var access = MacOsSecurityAccess.Acquire(url);
                             acquired.Add(access);
                             string path = ReadExactPath(Send(url, Sel("fileSystemRepresentation")));
-                            selections.Add(new(path, access, !sandboxed && !access.Started));
+                            bool sibling = !sandboxed && !access.Started;
+                            selections.Add(new(path, access, sibling)
+                            {
+                                Replacement = sibling ? null : MacFileBookmarks.Replacement(fileOnly: true), Bookmarks = Bookmarks,
+                            });
                         }
                         if (choice?.Selected is { } chosen) selections[0] = selections[0] with { SelectedFilter = chosen };
                         if (result.TrySetResult(selections)) acquired.Clear();
