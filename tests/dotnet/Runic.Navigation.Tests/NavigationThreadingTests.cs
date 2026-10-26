@@ -804,6 +804,101 @@ internal sealed partial class NavigationTests
         }
     }
 
+    // #648: races of a selection change under RunicModelContext, ordered by the engine's seams and a gated commit turn
+    // rather than by timing.
+    [Test]
+    public async Task SelectionRacesUnderTheModelContextAsync()
+    {
+        // A push into the region left that commits after the switch's guards, before its commit, supersedes the switch.
+        await using (var fixture = new Fixture())
+        {
+            var tabs = await TabsAsync(fixture);
+            var selection = tabs.Page.Selection;
+            var unit = selection.Core.Unit;
+            Task<NavigationResult<Page>>? push = null;
+            fixture.Navigator.BeforeBasisCheck = async (region, phase) =>
+            {
+                if (!ReferenceEquals(region, unit) || phase != NavigationPhase.Preparing || push is not null) return;
+                push = tabs.Page.Tabs[0].PushAsync(NavigationTarget.Own(new Page("late"))).AsTask();
+                await push;
+            };
+            var switched = await Wait(selection.SelectAsync(tabs.Page.Tabs[1]));
+            Require(switched is NavigationResult<object>.Superseded && push is { IsCompletedSuccessfully: true, Result: NavigationResult<Page>.Committed }
+                    && selection.SelectedIndex == 0 && Names(tabs.Page.Tabs[0]) == "root0,editor,late",
+                $"A push into the region left before the switch's commit gave {switched}.");
+        }
+
+        // A push over the owner's entry while a switch asks changes none of the owner's regions, so both commit.
+        await using (var fixture = new Fixture())
+        {
+            var tabs = await TabsAsync(fixture);
+            var selection = tabs.Page.Selection;
+            var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            var gate = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+            tabs.Editor.Guard = async (_, _) =>
+            {
+                started.TrySetResult();
+                return await gate.Task;
+            };
+            var switching = selection.SelectAsync(tabs.Page.Tabs[1]).AsTask();
+            await Wait(started.Task);
+            var over = await Wait(tabs.Main.PushAsync(NavigationTarget.Own(new Page("over"))));
+            gate.SetResult(true);
+            Require(over is NavigationResult<Page>.Committed && await Wait(switching) is NavigationResult<object>.Committed
+                    && selection.SelectedIndex == 1 && tabs.Main.History[^1].Content == tabs.Page,
+                $"A push over the owner during a switch gave {over}.");
+        }
+
+        // A switch that started committing can't be superseded: a later switch, and a retirement of the owner, wait for it.
+        await using (var gated = new GatedContext())
+        await using (var fixture = new Fixture(gated))
+        {
+            var tabs = await TabsAsync(fixture);
+            var selection = tabs.Page.Selection;
+            var asked = new Journal();
+            tabs.Other.Guard = (departure, _) => Answer(asked, "other", departure, true);
+            await Wait(fixture.Navigator.WhenIdleAsync());
+            gated.Close();
+            var first = selection.SelectAsync(tabs.Page.Tabs[1]).AsTask();
+            await Wait(gated.Waiting.Task);
+            var second = selection.SelectAsync(tabs.Page.Tabs[2]).AsTask();
+            gated.Open();
+            Require(await Wait(first) is NavigationResult<object>.Committed && await Wait(second) is NavigationResult<object>.Committed
+                    && selection.SelectedIndex == 2 && asked.Text == "other Retain Select",
+                $"A switch admitted while another committed gave {second.Result}, asked {asked.Text}.");
+
+            await Wait(fixture.Navigator.WhenIdleAsync());
+            gated.Close();
+            var third = selection.SelectAsync(tabs.Page.Tabs[0]).AsTask();
+            await Wait(gated.Waiting.Task);
+            var back = tabs.Main.BackAsync().AsTask();
+            gated.Open();
+            Require(await Wait(third) is NavigationResult<object>.Committed && await Wait(back) is NavigationResult<Page>.Committed
+                    && selection.SelectedIndex == 0 && AtOnce(selection.SelectAsync(tabs.Page.Tabs[1])) is NavigationResult<object>.Rejected { Reason: NavigationRejection.Closed },
+                $"A retirement admitted while a switch committed gave {back.Result}.");
+        }
+
+        // Admission inside a model turn doesn't block, and no hook runs in that turn.
+        await using (var fixture = new Fixture())
+        {
+            var tabs = await TabsAsync(fixture);
+            var selection = tabs.Page.Selection;
+            var inTurn = new List<bool>();
+            tabs.Editor.Guard = (_, _) =>
+            {
+                lock (inTurn) inTurn.Add(fixture.Context.IsExecuting);
+                return ValueTask.FromResult(true);
+            };
+            var (pending, admitted) = await fixture.Context.InvokeAsync(() =>
+            {
+                var task = selection.SelectAsync(tabs.Page.Tabs[1]).AsTask();
+                return (task, selection.IsTransitioning && !task.IsCompleted);
+            });
+            Require(admitted && await Wait(pending) is NavigationResult<object>.Committed && inTurn is [false],
+                "A switch requested in a model turn blocked the turn or ran its guard in it.");
+        }
+    }
+
     private sealed class PumpingGuardPage(Probe probe, Func<ValueTask<bool>> guard) : ProbePage("home", probe), INavigationDepartureGuard
     {
         ValueTask<bool> INavigationDepartureGuard.CanDepartAsync(NavigationDeparture departure, CancellationToken cancellationToken) => guard();

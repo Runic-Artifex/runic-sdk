@@ -94,7 +94,8 @@ public abstract class NavigationRegion : INotifyPropertyChanged
 
     /// <summary>
     /// Registers a guard that is asked before a transition departs from this region: a request to the region, or to a
-    /// region whose plan resets or closes it or leaves it, as a tab switch leaves the tab's page regions. It is asked once
+    /// region whose plan resets or closes it or leaves it, as a tab switch leaves the tab's page regions, or a change of the
+    /// <see cref="NavigationSelection"/> the region is in that leaves or removes it. It is asked once
     /// per transition, after the departure guards of the entries (<see cref="INavigationDepartureGuard"/>), or before them
     /// with <see cref="NavigationRegionGuardOptions.Order"/>, and only when an entry of the region departs: a push into an
     /// empty region asks it not.
@@ -445,6 +446,10 @@ internal enum NavigationRegionChanges
     CanGoBack = 4,
     Transitioning = 8,
     Busy = 16,
+    // The changes of a selection (NavigationSelection), raised through its admission unit.
+    Selected = 32,
+    SelectedIndex = 64,
+    Regions = 128,
 }
 
 // Immutable history cache entry: the stack a view was built from, and that view.
@@ -487,6 +492,11 @@ internal sealed class NavigationRegionCore(RunicNavigator navigator, int id, str
     public List<NavigationRegionGuardRegistration> Guards { get; } = [];
     // The public region of this core, set once by its constructor.
     public NavigationRegion? Public { get; set; }
+    // The selection this region is one of (RunicNavigator.CreateSelection, NavigationSelection.Add), until a removal
+    // closes it.
+    public NavigationSelectionCore? Selection { get; set; }
+    // Set on the admission unit of a selection: a core without entries whose transitions are the selection's.
+    public NavigationSelectionCore? SelectionUnit { get; init; }
 
     public Action<NavigationRegionChanges>? Raise { get; set; }
 

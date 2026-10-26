@@ -364,6 +364,59 @@ internal sealed partial class NavigationTests
         Require(asked.Text == "" && fixture.Navigator.UnretiredEntryCount == 0, $"Disposal asked {asked.Text}.");
     }
 
+    // #648: a selection change asks the region guards of the region it leaves (and of the regions below) only with
+    // AskOnRetain, and the navigator's with that region; a removal asks them as a retirement, with the removed region. An
+    // empty region left asks none.
+    [Test]
+    public async Task RegionGuardsOnSelectAndRemoveAsync()
+    {
+        await using var fixture = new Fixture();
+        var asked = new Journal();
+        var tabs = await TabsAsync(fixture);
+        var selection = tabs.Page.Selection;
+        tabs.Detail.Guard = (departure, _) => Answer(asked, "detail", departure, true);
+        tabs.Editor.Guard = (departure, _) => Answer(asked, "editor", departure, true);
+        tabs.Other.Guard = (departure, _) => Answer(asked, "other", departure, true);
+        using var skipped = tabs.Page.Tabs[0].AddDepartureGuard(new RecordingRegionGuard("tab0", asked));
+        using var retained = tabs.Page.Tabs[0].AddDepartureGuard(new RecordingRegionGuard("tab0-retain", asked), AskAlways);
+        var child = new RecordingRegionGuard("editor-child", asked);
+        using var childRegistration = tabs.Editor.Child.AddDepartureGuard(child, new() { AskOnRetain = true });
+        using var tab1 = tabs.Page.Tabs[1].AddDepartureGuard(new RecordingRegionGuard("tab1", asked));
+        using var before = fixture.Navigator.AddDepartureGuard(new RecordingRegionGuard("before", asked), new() { AskOnRetain = true, Order = NavigationRegionGuardOrder.BeforeEntries });
+        var navigator = new RecordingRegionGuard("navigator", asked);
+        using var navigatorRegistration = fixture.Navigator.AddDepartureGuard(navigator, AskAlways);
+        using var retireOnly = fixture.Navigator.AddDepartureGuard(new RecordingRegionGuard("navigator-retire", asked));
+        var detailId = tabs.Editor.Child.CurrentEntry!.Id;
+        var editorId = tabs.Page.Tabs[0].CurrentEntry!.Id;
+        var otherId = tabs.Page.Tabs[1].CurrentEntry!.Id;
+
+        var selected = await Wait(selection.SelectAsync(tabs.Page.Tabs[1]));
+        var switchAsked = "before Retain Select,detail Retain Select,editor Retain Select,editor-child Retain Select,tab0-retain Retain Select,navigator Retain Select";
+        Require(selected is NavigationResult<object>.Committed && asked.Text == switchAsked, $"The switch gave {selected}, asked {asked.Text}.");
+        Require(navigator.Departures is [{ Kind: NavigationDepartureKind.Retain, Operation: NavigationOperation.Select, Entries: [var d, var e] } departure]
+                && d == detailId && e == editorId && ReferenceEquals(departure.Region, tabs.Page.Tabs[0])
+                && child.Departures is [{ Entries: [var c] } childDeparture] && c == detailId && ReferenceEquals(childDeparture.Region, tabs.Editor.Child),
+            "The navigator's guard did not get the region left and every departing entry, or the child region's guard its own.");
+
+        var removed = await Wait(selection.RemoveAsync(tabs.Page.Tabs[1]));
+        Require(removed is NavigationResult<object>.Committed && selection.Selected == tabs.Page.Tabs[2]
+                && asked.Text == switchAsked + ",before Retire Clear,other Retire Clear,tab1 Retire Clear,navigator Retire Clear,navigator-retire Retire Clear",
+            $"The removal gave {removed}, asked {asked.Text}.");
+        Require(navigator.Departures is [_, { Kind: NavigationDepartureKind.Retire, Operation: NavigationOperation.Clear, Entries: [var o, _] } removal]
+                && o == otherId && ReferenceEquals(removal.Region, tabs.Page.Tabs[1]),
+            "The navigator's guard did not get the removed region.");
+
+        // Leaving an empty region asks nothing.
+        var owner = new object();
+        var empty = fixture.Navigator.CreateRegion<Page>(owner);
+        using var emptyGuard = empty.AddDepartureGuard(new RecordingRegionGuard("empty", asked), AskAlways);
+        var full = fixture.Navigator.CreateRegion<Page>(owner, NavigationTarget.Borrow(new Page("full")));
+        var mark = asked.Text;
+        Require(await Wait(fixture.Navigator.CreateSelection(owner, [empty, full]).SelectAsync(full)) is NavigationResult<object>.Committed
+                && asked.Text == mark,
+            $"Leaving an empty region asked {asked.Text[mark.Length..]}.");
+    }
+
     private sealed class RecordingRegionGuard(string name, Journal asked) : INavigationRegionGuard
     {
         public bool Answer { get; set; } = true;

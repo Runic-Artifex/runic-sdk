@@ -259,6 +259,95 @@ public sealed class RunicNavigator : IAsyncDisposable, IDisposable
         return created;
     }
 
+    /// <summary>
+    /// Creates a selection among sibling regions that <paramref name="owner"/> owns, such as the tabs of a page that each
+    /// keep their own stack: which region is presented, changed with <see cref="NavigationSelection.SelectAsync"/> as a
+    /// guarded transition. The selection is one of the owner's regions: it closes with them when the owner's entry retires,
+    /// or when the navigator is disposed.
+    /// </summary>
+    /// <remarks>
+    /// No guard is asked and no transition runs. A selection whose owner already started retiring starts closed. Own the
+    /// regions and the selection by the page that shows them, so that retiring the page asks every region's entries as
+    /// <see cref="NavigationDepartureKind.Retire"/>.
+    /// </remarks>
+    /// <param name="owner">The object that owns the regions and the selection, such as the ViewModel exposing them.</param>
+    /// <param name="regions">
+    /// The regions, in presentation order: live regions of this navigator, owned by <paramref name="owner"/>, each once and in
+    /// no other selection. It may be empty; <see cref="NavigationSelection.Add"/> appends regions later.
+    /// </param>
+    /// <param name="options">The initially selected region and the admission policy.</param>
+    /// <exception cref="ArgumentException">
+    /// A region belongs to another navigator, is closed, has an owner other than <paramref name="owner"/>, is already in a
+    /// selection, or appears twice.
+    /// </exception>
+    /// <exception cref="ArgumentOutOfRangeException"><see cref="NavigationSelectionOptions.SelectedIndex"/> is not the index of a region.</exception>
+    /// <exception cref="InvalidOperationException"><paramref name="owner"/> is shared between entries (<see cref="NavigationTarget.Share{T}"/>).</exception>
+    /// <exception cref="ObjectDisposedException">The navigator is closed.</exception>
+    public NavigationSelection CreateSelection(object owner, IEnumerable<NavigationRegion> regions, NavigationSelectionOptions? options = null)
+    {
+        ArgumentNullException.ThrowIfNull(owner);
+        ArgumentNullException.ThrowIfNull(regions);
+        NavigationRegion[] members = [.. regions];
+        var selectedIndex = options?.SelectedIndex ?? 0;
+        if (members.Length > 0 && (selectedIndex < 0 || selectedIndex >= members.Length))
+            throw new ArgumentOutOfRangeException(nameof(options), selectedIndex,
+                $"SelectedIndex must be the index of one of the {members.Length} regions.");
+        NavigationSelectionCore selection;
+        lock (Gate)
+        {
+            ObjectDisposedException.ThrowIf(_closing, this);
+            if (_holders.TryGetValue(owner, out var holders) && holders.Shared)
+                throw new InvalidOperationException(
+                    $"This {owner.GetType().Name} is shared between navigation entries (NavigationTarget.Share), so it can't own a navigation selection. Own the selection from content that is not shared.");
+            for (var index = 0; index < members.Length; index++)
+            {
+                ThrowIfNotSelectableLocked(owner, members[index], nameof(regions));
+                if (Array.IndexOf(members, members[index], 0, index) >= 0)
+                    throw new ArgumentException($"{members[index]} appears more than once.", nameof(regions));
+            }
+            selection = new NavigationSelectionCore(this, ++_nextRegionId, owner, options?.Admission ?? NavigationAdmission.Supersede,
+                members, selectedIndex);
+            var unit = selection.Unit;
+            // As for a region: the retirement of an owner that already started retiring never reaches the selection.
+            unit.Closed = IsRetiringOwnerLocked(owner);
+            if (!unit.Closed) _regions.Add(unit);
+            if (!_regionsByOwner.TryGetValue(owner, out var ownerRegions)) _regionsByOwner.Add(owner, ownerRegions = []);
+            ownerRegions.Add(unit);
+            foreach (var member in members) member.Core.Selection = selection;
+        }
+        return new NavigationSelection(selection);
+    }
+
+    // NavigationSelection.Add: appends a region synchronously and raises the selection's changes on the caller's thread.
+    internal void AddToSelection(NavigationSelection selection, NavigationRegion region)
+    {
+        var core = selection.Core;
+        NavigationRegionChanges changes;
+        lock (Gate)
+        {
+            ObjectDisposedException.ThrowIf(_closing || core.Unit.Closed, selection);
+            ThrowIfNotSelectableLocked(core.Unit.Owner, region, nameof(region));
+            region.Core.Selection = core;
+            changes = core.AddLocked(region);
+        }
+        core.Unit.Raise?.Invoke(changes);
+    }
+
+    // A region a selection of owner can take: a live region of this navigator, owned by owner, in no selection. Call under
+    // the gate.
+    private void ThrowIfNotSelectableLocked(object owner, NavigationRegion? region, string parameter)
+    {
+        if (region is null) throw new ArgumentException("A selection's regions can't be null.", parameter);
+        var core = region.Core;
+        if (!ReferenceEquals(core.Navigator, this))
+            throw new ArgumentException($"{region} belongs to another navigator.", parameter);
+        if (core.Closed) throw new ArgumentException($"{region} is closed.", parameter);
+        if (!ReferenceEquals(core.Owner, owner))
+            throw new ArgumentException(
+                $"{region} is owned by a {core.Owner.GetType().Name}, not by the selection's owner ({owner.GetType().Name}). A selection chooses among regions of one owner.", parameter);
+        if (core.Selection is not null) throw new ArgumentException($"{region} is already in a selection.", parameter);
+    }
+
     // NavigationRegion<TContent>.Start: the initial target of a region created empty, committed on the same
     // path as CreateRegion's (W260-005). It is allowed once, before any request to the region.
     internal void StartRegion(NavigationRegionCore region, object initial, string parameter)
@@ -551,12 +640,12 @@ public sealed class RunicNavigator : IAsyncDisposable, IDisposable
     }
 
     /// <summary>
-    /// Gets whether a transition of any region of this navigator is in flight or a retirement is running: it is
+    /// Gets whether a transition of any region or selection of this navigator is in flight or a retirement is running: it is
     /// <see langword="false"/> exactly when <see cref="WhenIdleAsync"/> would complete at once.
     /// </summary>
     /// <remarks>
     /// <para>
-    /// It counts what <see cref="WhenIdleAsync"/> waits for: every region's transitions until their tasks complete,
+    /// It counts what <see cref="WhenIdleAsync"/> waits for: every region's and selection's transitions until their tasks complete,
     /// retirements that no request awaits, and the guard of a Back whose callers have all cancelled, until that guard
     /// returns. It can therefore stay <see langword="true"/> after every region's <see cref="NavigationRegion.IsBusy"/> is
     /// <see langword="false"/>.
@@ -573,7 +662,7 @@ public sealed class RunicNavigator : IAsyncDisposable, IDisposable
     }
 
     /// <summary>
-    /// Completes when no transition of any region of this navigator is in flight and no retirement is running. A
+    /// Completes when no transition of any region or selection of this navigator is in flight and no retirement is running. A
     /// transition counts until its task completes: its guards, preparation, commit, the retirement of the departed entries
     /// and the arrival hook of the arrived entry (<see cref="INavigationArrived"/>).
     /// </summary>
@@ -604,7 +693,8 @@ public sealed class RunicNavigator : IAsyncDisposable, IDisposable
     /// <summary>
     /// Registers a guard that is asked before a transition of any region of this navigator departs, after the guards of the
     /// entries and of the regions (<see cref="NavigationRegion.AddDepartureGuard"/>), once per transition. Its
-    /// <see cref="NavigationRegionDeparture.Region"/> is the region the request was made to, and its
+    /// <see cref="NavigationRegionDeparture.Region"/> is the region the request was made to (for a request of a
+    /// <see cref="NavigationSelection"/>, the region it leaves or removes), and its
     /// <see cref="NavigationRegionDeparture.Entries"/> and <see cref="NavigationRegionDeparture.Kind"/> cover every region of
     /// the transition.
     /// </summary>
@@ -827,9 +917,10 @@ public sealed class RunicNavigator : IAsyncDisposable, IDisposable
         NavigationTargetCore? target, NavigationEntryId? backTo, NavigationEntryId? expected,
         CancellationToken cancellationToken, NavigationReturn? @return = null, NavigationResultRequestCore? request = null,
         bool runDetached = false, NavigationAdmission? admission = null, NavigationEntryId? requester = null,
-        bool? retainView = null)
+        bool? retainView = null, NavigationRegionCore? member = null)
     {
-        TransitionOutcome? rejected = null;
+        // The outcome of a request that ends at admission: a rejection, or a Select that changes nothing.
+        TransitionOutcome? settled = null;
         NavigationTransition? transition = null;
         NavigationTransition? joined = null;
         NavigationBackCaller? backCaller = null;
@@ -839,21 +930,26 @@ public sealed class RunicNavigator : IAsyncDisposable, IDisposable
         {
             region.Requested = true;
             var related = RelatedRunningLocked(region);
-            if (_closing || region.Closed) rejected = TransitionOutcome.Reject(NavigationRejection.Closed);
+            // A selection's request also names its member region: the one to select or remove, which a removal closed.
+            if (_closing || region.Closed || member is { Closed: true }) settled = TransitionOutcome.Reject(NavigationRejection.Closed);
             else if (cancellationToken.IsCancellationRequested)
                 // Rejected before admission, so a dead request never supersedes its predecessors.
-                rejected = TransitionOutcome.Reject(NavigationRejection.Cancelled);
+                settled = TransitionOutcome.Reject(NavigationRejection.Cancelled);
             else if (NavigationHookMarker.Active is { } hook && !hook.Released
                 && (ReferenceEquals(hook.Region, region) || related.Contains(hook)))
                 // A hook never waits on a transition that waits on it. This also rejects requests to
                 // ancestor and descendant regions of the hook's region (deviation 15): conservative.
-                rejected = TransitionOutcome.Reject(NavigationRejection.Reentrant);
-            else if (expected is { } expectedId && region.CurrentEntry?.Id != expectedId)
-                rejected = TransitionOutcome.Reject(NavigationRejection.NotCurrent);
+                settled = TransitionOutcome.Reject(NavigationRejection.Reentrant);
+            else if (expected is { } expectedId && DepartingRegionLocked(region, operation, member)?.CurrentEntry?.Id != expectedId)
+                settled = TransitionOutcome.Reject(NavigationRejection.NotCurrent);
             else if (requester is { } requesterId && !IsRequesterCurrentLocked(requesterId))
-                rejected = TransitionOutcome.Reject(NavigationRejection.NotCurrent, requesterId);
+                settled = TransitionOutcome.Reject(NavigationRejection.NotCurrent, requesterId);
+            else if (operation == NavigationOperation.Select && region.InFlight.Count == 0
+                && ReferenceEquals(region.SelectionUnit?.Selected, member))
+                // Selecting the selected region with nothing pending changes nothing, so it commits at once.
+                settled = TransitionOutcome.Commit(member!.CurrentEntry, []);
             else if (operation == NavigationOperation.Back && region.Stack.Length < (@return is null ? 2 : 1))
-                rejected = TransitionOutcome.Reject(NavigationRejection.NoHistory);
+                settled = TransitionOutcome.Reject(NavigationRejection.NoHistory);
             else if (operation == NavigationOperation.Back && @return is null
                 && JoinableBackLocked(region) is { } pendingBack)
             {
@@ -865,7 +961,7 @@ public sealed class RunicNavigator : IAsyncDisposable, IDisposable
             else if ((admission ?? region.Admission) == NavigationAdmission.RejectWhileBusy && region.IsBusyLocked
                 && !IsActivationOfLocked(region))
                 // After the Back join: a double click joins the pending Back rather than being refused.
-                rejected = TransitionOutcome.Reject(NavigationRejection.Busy);
+                settled = TransitionOutcome.Reject(NavigationRejection.Busy);
             else
             {
                 NavigationEntryCore? pending = null;
@@ -899,7 +995,7 @@ public sealed class RunicNavigator : IAsyncDisposable, IDisposable
                 }
                 // The provisional plan: the child regions this request would
                 // reset or close. Their transitions are superseded the same way.
-                var plan = ComputePlanLocked(region, operation, pending: null, backTo, expected, @return is not null);
+                var plan = ComputePlanLocked(region, operation, pending: null, backTo, expected, @return is not null, member);
                 // Only a Back without a result return can be joined; no other transition keeps its plan.
                 var joinable = operation == NavigationOperation.Back && @return is null;
                 foreach (var child in plan.Regions)
@@ -920,6 +1016,7 @@ public sealed class RunicNavigator : IAsyncDisposable, IDisposable
                     Return = @return,
                     AdmittedPlan = joinable ? plan : null,
                     Requester = requester,
+                    Member = member,
                 };
                 if (joinable) backCaller = transition.AddBackCallerLocked(cancellationToken);
                 if (pending is not null) pending.Transition = transition;
@@ -931,11 +1028,11 @@ public sealed class RunicNavigator : IAsyncDisposable, IDisposable
             }
         }
 
-        if (rejected is not null)
+        if (settled is not null)
         {
-            LogOutcome(region, operation, rejected);
+            LogOutcome(region, operation, settled);
             if (request is not null) FinishResult(request, NavigationResultDismissal.NotCommitted);
-            return Task.FromResult(rejected);
+            return Task.FromResult(settled);
         }
         if (joined is not null)
         {
@@ -1288,11 +1385,11 @@ public sealed class RunicNavigator : IAsyncDisposable, IDisposable
                 || transition.CancellationRequested)
                 return (CancelledOutcome(transition), null);
             plan = ComputePlanLocked(region, transition.Operation, transition.Pending, transition.BackTo, transition.Expected,
-                transition.Return is not null);
+                transition.Return is not null, transition.Member);
             regionGuards = RegionGuardsLocked(transition, plan);
         }
         if (plan.Rejection is { } rejection) return (TransitionOutcome.Reject(rejection), null);
-        if (plan.Unchanged) return (TransitionOutcome.Commit(region.CurrentEntry, []), null);
+        if (plan.Unchanged) return (TransitionOutcome.Commit((region.SelectionUnit?.Selected ?? region).CurrentEntry, []), null);
 
         // The region and navigator guards asked before the entries' guards, in the same order as the others (#412).
         foreach (var ask in regionGuards)
@@ -1554,7 +1651,8 @@ public sealed class RunicNavigator : IAsyncDisposable, IDisposable
                 stopped = TransitionOutcome.Reject(NavigationRejection.Cancelled);
             else if (!plan.BasisMatches())
                 stopped = TransitionOutcome.Superseded;
-            else if (transition.Expected is { } expected && region.CurrentEntry?.Id != expected)
+            else if (transition.Expected is { } expected
+                && DepartingRegionLocked(region, transition.Operation, transition.Member)?.CurrentEntry?.Id != expected)
                 stopped = TransitionOutcome.Reject(NavigationRejection.NotCurrent);
             else if (transition.Requester is { } requester && !IsRequesterCurrentLocked(requester))
                 stopped = TransitionOutcome.Reject(NavigationRejection.NotCurrent, requester);
@@ -1585,6 +1683,9 @@ public sealed class RunicNavigator : IAsyncDisposable, IDisposable
                 foreach (var closing in plan.Closing)
                     MarkClosedLocked(closing, commit.Cancel);
                 foreach (var affected in plan.Regions) affected.Version++;
+                var selectionChanges = region.SelectionUnit is { } selection
+                    ? ApplySelectionLocked(selection, transition)
+                    : NavigationRegionChanges.None;
                 // A committed PushForResult can now complete; a committed return takes the
                 // value it carries, unless the request was already dismissed (the value is dropped).
                 if (transition.Pending?.ResultRequest is { State: NavigationResultState.Pending } pushed)
@@ -1592,8 +1693,9 @@ public sealed class RunicNavigator : IAsyncDisposable, IDisposable
                 if (transition.Return?.Result is { } staged
                     && !(staged.Request.Entry is { } returning && plan.Removed.Contains(returning) && staged.TryAccept()))
                     transition.ResultDropped = true;
-                commit.Current = region.CurrentEntry;
-                changed.Add((region, Changes(regionBefore, region)));
+                // A selection's commit reports the current entry of the region it presents now.
+                commit.Current = (region.SelectionUnit?.Selected ?? region).CurrentEntry;
+                changed.Add((region, Changes(regionBefore, region) | selectionChanges));
                 committed = [.. transition.CommitActions];
                 // The live entry must not keep its push transition: its commit actions hold the departed
                 // entries, and only a Pending entry needs the link (Dismiss).
@@ -1784,9 +1886,9 @@ public sealed class RunicNavigator : IAsyncDisposable, IDisposable
     // The region and navigator guards a plan asks, in order (W315-020 §3.2). For each region with a departing entry, in the
     // order the regions first appear in the plan's guards (deepest first), its guards in registration order, with the
     // region's departing entries (the plan lists a region's entries top-down, so current first); then the navigator's
-    // guards, with the requested region and every departing entry. A plan without departures asks none. Registrations are
-    // skipped by their options, against the request's operation, so a parent's ClearHistory skips the guards of the child
-    // regions it closes too. Call under the gate.
+    // guards, with the requested region (for a selection, the region it leaves or removes) and every departing entry. A
+    // plan without departures asks none. Registrations are skipped by their options, against the request's operation, so
+    // a parent's ClearHistory skips the guards of the child regions it closes too. Call under the gate.
     private List<RegionGuardAsk> RegionGuardsLocked(NavigationTransition transition, NavigationPlan plan)
     {
         List<RegionGuardAsk> asks = [];
@@ -1817,7 +1919,7 @@ public sealed class RunicNavigator : IAsyncDisposable, IDisposable
                 entries.Add(entry.Id);
                 retire |= kind == NavigationDepartureKind.Retire;
             }
-            Add(transition.Region, _guards, retire, entries);
+            Add(DepartingRegionLocked(transition.Region, transition.Operation, transition.Member)!, _guards, retire, entries);
         }
         return asks;
 
@@ -1846,7 +1948,8 @@ public sealed class RunicNavigator : IAsyncDisposable, IDisposable
     }
 
     // The regions that hold the owner of this region, transitively. A borrowed
-    // owner can sit in several regions, so every holder counts.
+    // owner can sit in several regions, so every holder counts. The admission unit
+    // of a region's selection sits between the region and its owner's regions.
     private HashSet<NavigationRegionCore> AncestorsLocked(NavigationRegionCore region)
     {
         HashSet<NavigationRegionCore> found = new(ReferenceEqualityComparer.Instance);
@@ -1855,6 +1958,7 @@ public sealed class RunicNavigator : IAsyncDisposable, IDisposable
         while (pending.Count > 0)
         {
             var current = pending.Pop();
+            if (current.Selection is { } selection && found.Add(selection.Unit)) pending.Push(selection.Unit);
             foreach (var entry in _tracked)
             {
                 if (ReferenceEquals(entry.Content, current.Owner) && found.Add(entry.Region)) pending.Push(entry.Region);
@@ -1864,8 +1968,9 @@ public sealed class RunicNavigator : IAsyncDisposable, IDisposable
     }
 
     // NavigationRequestOptions.Requester: whether the entry is its region's current entry, and so is an entry holding the
-    // content that owns that region, up to a region whose owner no entry of this navigator holds. An entry that finished
-    // retiring is no longer tracked, so it is not current. Call under the gate.
+    // content that owns that region, up to a region whose owner no entry of this navigator holds. A region of a selection
+    // must be the selected one at every level, so a page in a hidden tab can't navigate the page that shows the tabs. An
+    // entry that finished retiring is no longer tracked, so it is not current. Call under the gate.
     private bool IsRequesterCurrentLocked(NavigationEntryId requester)
     {
         NavigationEntryCore? entry = null;
@@ -1880,6 +1985,7 @@ public sealed class RunicNavigator : IAsyncDisposable, IDisposable
         {
             var region = entry.Region;
             if (region.Closed || !ReferenceEquals(region.CurrentEntry, entry) || entry.Retiring is not null) return false;
+            if (region.Selection is { } selection && !ReferenceEquals(selection.Selected, region)) return false;
             NavigationEntryCore? owner = null;
             var owned = false;
             foreach (var tracked in _tracked)
@@ -1897,8 +2003,10 @@ public sealed class RunicNavigator : IAsyncDisposable, IDisposable
     }
 
     private NavigationPlan ComputePlanLocked(NavigationRegionCore region, NavigationOperation operation,
-        NavigationEntryCore? pending, NavigationEntryId? backTo, NavigationEntryId? expected, bool popToEmpty = false)
+        NavigationEntryCore? pending, NavigationEntryId? backTo, NavigationEntryId? expected, bool popToEmpty = false,
+        NavigationRegionCore? member = null)
     {
+        if (region.SelectionUnit is { } selection) return ComputeSelectionPlanLocked(selection, operation, member!, expected);
         var plan = new NavigationPlan();
         plan.Regions.Add(region);
         var stack = region.Stack;
@@ -1977,6 +2085,56 @@ public sealed class RunicNavigator : IAsyncDisposable, IDisposable
         return plan;
     }
 
+    // The plan of a selection's request, made to its admission unit. A Select keeps the region it leaves: like the departure
+    // of borrowed content (AddKept), it asks the current entry of that region and of the regions below it as retained, and
+    // puts them in the basis without superseding or changing them; the commit changes only the selection. A removal (Clear)
+    // resets and closes its region like a parent's plan closes a child region: every entry of it, and of the regions its
+    // owned content owns, retires. The unit is in the basis either way, so a later selection change supersedes the plan.
+    // Call under the gate.
+    private NavigationPlan ComputeSelectionPlanLocked(NavigationSelectionCore selection, NavigationOperation operation,
+        NavigationRegionCore member, NavigationEntryId? expected)
+    {
+        var plan = new NavigationPlan();
+        plan.Regions.Add(selection.Unit);
+        var departing = operation == NavigationOperation.Select ? selection.Selected : member;
+        if (member.Closed || !ReferenceEquals(member.Selection, selection)) plan.Reject(NavigationRejection.Closed);
+        else if (expected is { } expectedId && departing?.CurrentEntry?.Id != expectedId) plan.Reject(NavigationRejection.NotCurrent);
+        else if (operation == NavigationOperation.Select)
+        {
+            if (ReferenceEquals(member, departing)) plan.Unchanged = true;
+            else if (departing is not null) AddKept(plan, [departing]);
+        }
+        else
+        {
+            var removed = TopDown(member.Stack, 0);
+            plan.Regions.Add(member);
+            plan.Closing.Add(member);
+            plan.ChildResets.Add((member, [], removed));
+            foreach (var entry in removed) AddRetiring(plan, entry);
+        }
+        plan.Basis = [.. plan.Regions.Select(affected => affected.Version), .. plan.Kept.Select(kept => kept.Version)];
+        return plan;
+    }
+
+    // The region a request departs from, whose current entry NavigationRequestOptions.ExpectedCurrent names and which a
+    // navigator guard gets: the requested region, or for a selection the region a Select leaves (null when the selection
+    // is empty) or a removal removes. Call under the gate.
+    private static NavigationRegionCore? DepartingRegionLocked(NavigationRegionCore region, NavigationOperation operation,
+        NavigationRegionCore? member) =>
+        region.SelectionUnit is { } selection ? operation == NavigationOperation.Select ? selection.Selected : member : region;
+
+    // Applies a selection's commit: a Select presents its region; a removal drops the region its plan closed from the
+    // selection and from the navigator's regions. Returns the selection's changes to raise. Call under the gate.
+    private NavigationRegionChanges ApplySelectionLocked(NavigationSelectionCore selection, NavigationTransition transition)
+    {
+        var member = transition.Member!;
+        if (transition.Operation == NavigationOperation.Select) return selection.SelectLocked(member);
+        _regions.Remove(member);
+        if (_regionsByOwner.TryGetValue(member.Owner, out var ownerRegions)) ownerRegions.Remove(member);
+        member.Selection = null;
+        return selection.RemoveLocked(member);
+    }
+
     // Entries from the top of the stack down to (and including) index `from`.
     private static List<NavigationEntryCore> TopDown(NavigationEntryCore[] stack, int from)
     {
@@ -2009,11 +2167,19 @@ public sealed class RunicNavigator : IAsyncDisposable, IDisposable
     // Adds the current entry of each region that keeps its entries while the content owning it departs, and of the
     // regions below it, deepest first, as retained departures. A kept region is in the plan's basis, so a commit in it
     // supersedes the plan, but the plan neither supersedes its transitions nor changes it. Each region is visited once,
-    // so a cycle of borrowed owners ends.
-    private void AddKept(NavigationPlan plan, List<NavigationRegionCore> regions)
+    // so a cycle of borrowed owners ends. Of the regions of a selection, only the selected one is presented, so only it is
+    // followed; the others were asked when they were left. The selection's unit joins the basis, so a selection change
+    // that commits meanwhile supersedes the plan, whose questions were for the region presented before.
+    private void AddKept(NavigationPlan plan, IEnumerable<NavigationRegionCore> regions)
     {
         foreach (var kept in regions)
         {
+            if (kept.SelectionUnit is not null)
+            {
+                if (!kept.Closed && !plan.Regions.Contains(kept) && !plan.Kept.Contains(kept)) plan.Kept.Add(kept);
+                continue;
+            }
+            if (kept.Selection is { } selection && !ReferenceEquals(selection.Selected, kept)) continue;
             if (kept.Closed || kept.Stack.Length == 0 || plan.Regions.Contains(kept) || plan.Kept.Contains(kept)) continue;
             plan.Kept.Add(kept);
             var current = kept.Stack[^1];
@@ -2976,6 +3142,7 @@ public sealed class RunicNavigator : IAsyncDisposable, IDisposable
         NavigationOperation.Replace => "Replace",
         NavigationOperation.Reset => "Reset",
         NavigationOperation.ClearHistory => "ClearHistory",
+        NavigationOperation.Select => "Select",
         _ => "Clear",
     };
 }
@@ -3026,6 +3193,8 @@ internal sealed class NavigationTransition : IDisposable
     public NavigationEntryId? BackTo { get; }
     public NavigationEntryId? Expected { get; }
     public NavigationEntryId? Requester { get; init; }
+    // The region a selection's request selects or removes; null for a region's request.
+    public NavigationRegionCore? Member { get; init; }
     // Read under the navigator's gate, including at commit: token callbacks can be delayed by that gate.
     public bool CancellationRequested => _backCallers is { } callers
         ? callers.All(static caller => caller.Token.IsCancellationRequested)

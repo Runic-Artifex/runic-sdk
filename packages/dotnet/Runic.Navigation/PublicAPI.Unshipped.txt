@@ -1,1 +1,30 @@
 #nullable enable
+override Runic.Navigation.NavigationSelection.ToString() -> string!
+override Runic.Navigation.NavigationSelectionOptions.Equals(object? obj) -> bool
+override Runic.Navigation.NavigationSelectionOptions.GetHashCode() -> int
+override Runic.Navigation.NavigationSelectionOptions.ToString() -> string!
+Runic.Navigation.NavigationOperation.Select = 7 -> Runic.Navigation.NavigationOperation
+Runic.Navigation.NavigationSelection
+Runic.Navigation.NavigationSelection.Add(Runic.Navigation.NavigationRegion! region) -> void
+Runic.Navigation.NavigationSelection.Admission.get -> Runic.Navigation.NavigationAdmission
+Runic.Navigation.NavigationSelection.IsBusy.get -> bool
+Runic.Navigation.NavigationSelection.IsTransitioning.get -> bool
+Runic.Navigation.NavigationSelection.Navigator.get -> Runic.Navigation.RunicNavigator!
+Runic.Navigation.NavigationSelection.PropertyChanged -> System.ComponentModel.PropertyChangedEventHandler?
+Runic.Navigation.NavigationSelection.Regions.get -> System.Collections.Generic.IReadOnlyList<Runic.Navigation.NavigationRegion!>!
+Runic.Navigation.NavigationSelection.RemoveAsync(Runic.Navigation.NavigationRegion! region, Runic.Navigation.NavigationRequestOptions? options = null, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Navigation.NavigationResult<object!>!>
+Runic.Navigation.NavigationSelection.Selected.get -> Runic.Navigation.NavigationRegion?
+Runic.Navigation.NavigationSelection.SelectAsync(Runic.Navigation.NavigationRegion! region, Runic.Navigation.NavigationRequestOptions? options = null, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Navigation.NavigationResult<object!>!>
+Runic.Navigation.NavigationSelection.SelectedIndex.get -> int
+Runic.Navigation.NavigationSelection.WhenIdleAsync(System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask
+Runic.Navigation.NavigationSelectionOptions
+Runic.Navigation.NavigationSelectionOptions.<Clone>$() -> Runic.Navigation.NavigationSelectionOptions!
+Runic.Navigation.NavigationSelectionOptions.Admission.get -> Runic.Navigation.NavigationAdmission
+Runic.Navigation.NavigationSelectionOptions.Admission.init -> void
+Runic.Navigation.NavigationSelectionOptions.Equals(Runic.Navigation.NavigationSelectionOptions? other) -> bool
+Runic.Navigation.NavigationSelectionOptions.NavigationSelectionOptions() -> void
+Runic.Navigation.NavigationSelectionOptions.SelectedIndex.get -> int
+Runic.Navigation.NavigationSelectionOptions.SelectedIndex.init -> void
+Runic.Navigation.RunicNavigator.CreateSelection(object! owner, System.Collections.Generic.IEnumerable<Runic.Navigation.NavigationRegion!>! regions, Runic.Navigation.NavigationSelectionOptions? options = null) -> Runic.Navigation.NavigationSelection!
+static Runic.Navigation.NavigationSelectionOptions.operator !=(Runic.Navigation.NavigationSelectionOptions? left, Runic.Navigation.NavigationSelectionOptions? right) -> bool
+static Runic.Navigation.NavigationSelectionOptions.operator ==(Runic.Navigation.NavigationSelectionOptions? left, Runic.Navigation.NavigationSelectionOptions? right) -> bool
