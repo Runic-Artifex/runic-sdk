@@ -173,17 +173,18 @@ command or interaction.
 ### RUNICBRIDGE008
 
 A state property or ViewModel content member has an unsupported shape. A state
-property has no public getter or an empty wire name, ViewModel content or a
-`NavigationRegion<TContent>` slot has a public setter, a ViewModel collection's
-item type has no registered View, or a region slot is a
-`NavigationRegion<object>` or has no ViewModel with a registered View that is a
-`TContent`, or a `[RunicAppendOnlyText]` member is not a read-only `string` or
-`string?` state property.
+property has no public getter or an empty wire name, ViewModel content, a
+`NavigationRegion<TContent>` slot or a `NavigationSelection` slot has a public
+setter, a ViewModel collection's item type has no registered View, or a region
+slot is a `NavigationRegion<object>` or has no ViewModel with a registered View
+that is a `TContent`, or a `[RunicAppendOnlyText]` member is not a read-only
+`string` or `string?` state property.
 
-**Fix:** add a getter, make content read-only to the web view, register a View
-for the item or content type, give the region a specific content interface
-or base class, or make an append-only text a read-only `string` or `string?`,
-or remove the attribute.
+**Fix:** add a getter, make content read-only to the web view (the web view
+selects a `NavigationSelection`'s region through a command that calls
+`SelectAsync`), register a View for the item or content type, give the region a
+specific content interface or base class, or make an append-only text a
+read-only `string` or `string?`, or remove the attribute.
 
 ### RUNICBRIDGE009
 

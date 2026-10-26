@@ -162,6 +162,30 @@ internal sealed class CodegenShapeTests
 
     // Generated TypeScript reads like hand-written code: named types after the
     // C# types, literal unions for enums, XML comments, and real parameter names.
+    // #648: a get-only NavigationSelection is a state slot whose wire value is SelectedIndex, or null for -1.
+    [Test]
+    public void NavigationSelectionSlotShape()
+    {
+        var parts = Runic.Application.Views.Generated.BridgeContractShape.Parts(typeof(NavTabsViewModel));
+        Require(parts.Contains("selection:Runic.Application.Testing.Tests.NavTabsViewModel:tabs")
+                && !parts.Any(part => part.Contains("NavTabsViewModel.tabs", StringComparison.Ordinal)),
+            $"The contract fingerprint describes the selection slot by more than its part:\n{string.Join('\n', parts)}");
+        var directory = GeneratedTypeScriptDirectory();
+        var tabs = File.ReadAllText(Path.Combine(directory, "navTabs.ts")).ReplaceLineEndings("\n");
+        foreach (var expected in new[]
+        {
+            "  /** The shown tab. */\n  readonly tabs: number | null;",
+            "  readonly tabs: unknown;",
+            "    tabs: (wire.tabs === null ? null : bridgeWire.integer(wire.tabs, -2147483648, 2147483647)),",
+            "  selectTab(index: number): Promise<NavTabsState>;",
+        })
+            Require(tabs.Contains(expected, StringComparison.Ordinal), $"navTabs.ts is missing:\n{expected}\n---\n{tabs}");
+        Require(!tabs.Contains("setTabs", StringComparison.Ordinal), "A get-only selection slot has a setter.");
+        var mock = File.ReadAllText(Path.Combine(directory, "navTabs.mock.ts")).ReplaceLineEndings("\n");
+        Require(mock.Contains("const typed = value as number | null;", StringComparison.Ordinal),
+            $"The selection slot's mock field is not a nullable number:\n{mock}");
+    }
+
     [Test]
     public void GeneratedTypeScriptSurface()
     {

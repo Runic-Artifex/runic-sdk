@@ -9,6 +9,7 @@ import type { KeyedReactiveMockDefinition } from "./obj/bridge-frontend/generate
 import type { KeyedToolkitClient } from "./obj/bridge-frontend/generated/keyedToolkit.js";
 import type { KeyedPlainClient } from "./obj/bridge-frontend/generated/keyedPlain.js";
 import type { NavDiscardPrompt, NavigationOutcome, ReactiveNavEditorClient } from "./obj/bridge-frontend/generated/reactiveNavEditor.js";
+import type { NavTabsClient, NavTabsState } from "./obj/bridge-frontend/generated/navTabs.js";
 
 export function describeLayout(state: DocumentedState): string {
   const layout: DocumentedLayout = state.layout;
@@ -97,3 +98,16 @@ export const keyedSignatures: [
   Same<Parameters<KeyedPlainClient["pick"]>, [slot: number]>,
   Same<Parameters<NonNullable<NonNullable<KeyedReactiveMockDefinition["resolveKey"]>["delete"]>>[1], bigint>,
 ] = [true, true, true, true, true, true, true];
+
+// #648: a NavigationSelection slot is the shown tab's index, or null; the frontend shows that tab's region slot.
+export function shownTab(state: NavTabsState): NavTabsState["inbox"] | NavTabsState["archive"] {
+  const index: number | null = state.tabs;
+  const slots = [state.inbox, state.archive] as const;
+  return index === null ? null : slots[index] ?? null;
+}
+
+export async function selectTab(view: NavTabsClient, index: number): Promise<boolean> {
+  const operation = await view.startSelectTab(index);
+  const settled = await operation.outcome();
+  return settled.ok && settled.value.kind === "Committed";
+}

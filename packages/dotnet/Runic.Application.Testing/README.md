@@ -217,7 +217,9 @@ already have. A `RunicViewDriver<T>` has:
 A `NavigationRegion<TContent>` slot is an ordinary content slot, so the same host
 and drivers apply. Create the navigator with the window's model context and pass
 that context as `RunicWindowTestHostOptions.ModelContext`; a generated Bridge
-rejects a session whose context is not the navigator's.
+rejects a session whose context is not the navigator's. A `NavigationSelection`
+slot is a nullable number: read the selected index with
+`Snapshot().Get(vm => vm.Tabs)`, which is JSON `null` for an empty selection.
 
 ```csharp
 using Runic.Navigation; // RunicNavigator and RunicModelContext

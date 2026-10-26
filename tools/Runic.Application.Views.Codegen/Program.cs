@@ -621,6 +621,8 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
     var contentCollections = new Dictionary<PropertyInfo, (Type Model, string Name)[]>();
     // NavigationRegion<TContent> slots: content presented from the region's Current.
     var regionSlots = new HashSet<PropertyInfo>();
+    // NavigationSelection slots: state whose wire value is the selection's SelectedIndex, or null for -1.
+    var selectionSlots = new HashSet<PropertyInfo>();
     var valueProperties = new Dictionary<PropertyInfo, BridgeTypeGraph>();
     foreach (var property in properties)
     {
@@ -644,6 +646,16 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
                     $"{model.Name}.{property.Name}: no ViewModel with a registered View is a {regionContent.Name}, so the NavigationRegion slot can present nothing.", property);
             contentProperties.Add(property, regionModels);
             regionSlots.Add(property);
+            continue;
+        }
+        if (BridgeContractShape.IsNavigationSelection(property.PropertyType))
+        {
+            if (property.SetMethod?.IsPublic == true)
+                throw new BridgeDiagnosticException(BridgeDiagnosticCodes.State,
+                    $"{model.Name}.{property.Name}: a NavigationSelection slot must be get-only; its SelectAsync, not the web view, changes the selection. Select through a command.", property);
+            valueProperties.Add(property, BridgeTypeGraph.Discover(typeof(int?), rootPath: $"{model.Name}.{property.Name}",
+                origin: property, honorJsonIgnore: honorJsonIgnore, direction: BridgeValueDirection.ToPage));
+            selectionSlots.Add(property);
             continue;
         }
         // A routed interface or base property may admit several registered
@@ -715,6 +727,9 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
     // is the slot's wire and TypeScript nullability.
     string ContentAccess(PropertyInfo property) =>
         regionSlots.Contains(property) ? $"vm.{property.Name}?.Current" : $"vm.{property.Name}";
+    // A selection slot's wire value: SelectedIndex, or null for -1 and for a null selection.
+    static string SelectionIndex(PropertyInfo property) =>
+        $"(vm.{property.Name} is {{ SelectedIndex: var index }} && index >= 0 ? index : (int?)null)";
     // DeclaredOnly: NavigationRegion<T>.Current hides the non-generic base's object-typed Current.
     bool IsNullableContent(PropertyInfo property) => (regionSlots.Contains(property)
         ? nullability.Create(property.PropertyType.GetProperty("Current", BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly)!)
@@ -872,6 +887,12 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
             cs.AppendLine($"            new global::Runic.Application.Views.Generated.PropertyDescriptor<{fullType}>(\"{property.Name}\", vm => vm.{property.Name}?.Current, null, static vm => vm.{property.Name}),");
             continue;
         }
+        if (selectionSlots.Contains(property))
+        {
+            // The runtime observes the selection's SelectedIndex.
+            cs.AppendLine($"            new global::Runic.Application.Views.Generated.PropertyDescriptor<{fullType}>(\"{property.Name}\", vm => {SelectionIndex(property)}, null, static vm => vm.{property.Name}),");
+            continue;
+        }
         // Validation stays atomic with full states, as for collections.
         var text = textFields.Contains(property) && !hasValidation ? $" {{ AppendOnlyTextField = \"{WireName(property)}\" }}" : "";
         cs.AppendLine($"            new global::Runic.Application.Views.Generated.PropertyDescriptor<{fullType}>(\"{property.Name}\", vm => vm.{property.Name}, {setter}){text},");
@@ -923,7 +944,8 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
     cs.AppendLine("    }");
     cs.AppendLine();
     cs.AppendLine("    private static readonly global::Runic.Application.Views.Generated.BridgeDataSubscriptionMember[] DataMetadata =");
-    BridgeDataSubscriptionEmitter.AppendMetadata(cs, fullType, valueProperties);
+    // A selection is observed through its descriptor; its members are not data.
+    BridgeDataSubscriptionEmitter.AppendMetadata(cs, fullType, valueProperties.Where(entry => !selectionSlots.Contains(entry.Key)));
     cs.AppendLine("    ;");
     if (validationContextFlavors.Length > 0)
     {
@@ -1061,7 +1083,7 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
         else if (valueProperties.ContainsKey(property))
         {
             cs.AppendLine($"        writer.WritePropertyName(\"{jsonName}\");");
-            cs.AppendLine($"        {property.Name}ValueCodec.Write(writer, vm.{property.Name});");
+            cs.AppendLine($"        {property.Name}ValueCodec.Write(writer, {(selectionSlots.Contains(property) ? SelectionIndex(property) : $"vm.{property.Name}")});");
         }
         else throw new InvalidOperationException($"{model.Name}.{property.Name}: no generated value codec.");
         if (hasErrors)

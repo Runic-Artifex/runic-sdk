@@ -689,7 +689,8 @@ A host presents a region's `Current`. In Runic.Application.Views, a get-only
 `NavigationRegion<TContent>` property of a ViewModel is a content slot that
 the generated Bridge presents in the window's web View; see
 [Content slots](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Application.Views/README.md#content-slots).
-Other hosts bind `NavigationRegion`, the non-generic base class of every
+A get-only `NavigationSelection` property is state there: the web view receives
+its `SelectedIndex` and selects through a command. Other hosts bind `NavigationRegion`, the non-generic base class of every
 `NavigationRegion<TContent>`, and `NavigationEntry`, the base class of every
 `NavigationEntry<TContent>`, like `Task` and `Task<T>`: its `CurrentEntry` and
 `History` return the region's typed entries, and its `BackAsync`,

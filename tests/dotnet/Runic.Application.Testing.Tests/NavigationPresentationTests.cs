@@ -396,6 +396,48 @@ internal sealed class NavigationPresentationTests
             "A disposed Bridge still observed the region.");
     }
 
+    // #648: a NavigationSelection slot publishes SelectedIndex when SelectAsync commits, and a veto publishes none.
+    [Test]
+    public async Task SelectionSlotPublishesTheSelectedIndexAsync()
+    {
+        await using var context = new RunicModelContext();
+        await using var navigator = new RunicNavigator(new RunicNavigatorOptions { ModelContext = context });
+        var inbox = new NavHomeViewModel();
+        var tabs = new NavTabsViewModel(navigator, inbox, new NavEditorViewModel("archive"));
+        using var host = new RunicWindowTestHost<NavTabsViewModel>(tabs,
+            (transport, content, vm) => new NavTabsBridge(transport, vm, content: content),
+            new RunicWindowTestHostOptions { ModelContext = context, ViewLocator = new NavViewLocator() });
+        int? Shown()
+        {
+            var value = host.Root.Snapshot().Get(vm => vm.Tabs);
+            return value.ValueKind == JsonValueKind.Null ? null : value.GetInt32();
+        }
+        bool Published(int index) => host.Transport.TakePublications()
+            .Any(publication => publication.Json.Contains($"\"tabs\":{index}", StringComparison.Ordinal));
+        Require(Shown() == 0 && host.Root.Snapshot().Reference(vm => vm.Inbox)?.Kind == "navHome"
+                && host.Root.Snapshot().Reference(vm => vm.Archive)?.Kind == "navEditor",
+            "The initial selection or the tab slots were not presented.");
+
+        inbox.Guard = _ => ValueTask.FromResult(false);
+        host.Transport.TakePublications();
+        var vetoed = await Wait(tabs.Tabs.SelectAsync(tabs.Archive));
+        Require(vetoed is NavigationResult<object>.Rejected, $"The vetoed switch gave {vetoed}.");
+        await Task.Delay(50);
+        Require(!Published(1) && Shown() == 0, "A vetoed switch changed the presented selection.");
+
+        inbox.Guard = null;
+        var committed = await Wait(tabs.Tabs.SelectAsync(tabs.Archive));
+        Require(committed is NavigationResult<object>.Committed, $"The switch gave {committed}.");
+        await Until(() => Published(1), "The Bridge did not publish the selection's new SelectedIndex.");
+        Require(Shown() == 1, $"The snapshot presents tab {Shown()}, not 1.");
+
+        // A frontend selects through a command that returns the request's outcome.
+        using (var reply = JsonDocument.Parse(await Wait(host.Transport.CallAsync("navTabsSelectTab", new(StringValue: "0")))))
+            Require(reply.RootElement.GetProperty("ok").GetBoolean() && reply.RootElement.GetProperty("state").GetProperty("tabs").GetInt32() == 0
+                    && tabs.Tabs.SelectedIndex == 0,
+                $"The select command did not select the first tab: {reply.RootElement}");
+    }
+
     [Test]
     public void GeneratedSlotContract()
     {
