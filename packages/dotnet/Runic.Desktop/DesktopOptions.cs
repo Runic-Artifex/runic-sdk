@@ -52,6 +52,9 @@ public sealed record DesktopHostOptions
     /// <summary>Gets explicit Linux embedded-backend selection.</summary>
     public LinuxDesktopOptions Linux { get; init; } = new();
 
+    /// <summary>Gets the macOS application options: the Dock menu and an application delegate of the application's own.</summary>
+    public MacOSDesktopOptions MacOS { get; init; } = new();
+
     /// <summary>Gets the listener exposure policy.</summary>
     public DesktopNetworkExposure NetworkExposure { get; init; } = DesktopNetworkExposure.Loopback;
 
@@ -135,6 +138,37 @@ public sealed record DesktopHostOptions
     /// process, because the host has nothing to close and nothing else would end the application. Has no effect when <see cref="HandleShutdownSignals"/> is <see langword="false"/>.
     /// </remarks>
     public bool HandlesShutdownWithoutWindow { get; init; }
+
+    /// <summary>
+    /// Gets the application's decision whether to quit, or <see langword="null"/>, the default, to quit without asking.
+    /// Returning <see langword="false"/> keeps the application running.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// On macOS every quit takes one path, also with no window open: Quit in the application menu (Command and Q) or
+    /// another sender of <c>terminate:</c> (<see cref="DesktopQuitSource.Menu"/>), Quit in the Dock or a script's quit
+    /// Apple event (<see cref="DesktopQuitSource.Dock"/>), and logging out, restarting or shutting down
+    /// (<see cref="DesktopQuitSource.System"/>). Runic first asks this callback, then each window's close guard
+    /// (<see cref="DesktopWindowOptions.ConfirmCloseAsync"/>) one at a time; a window whose guard agrees closes. When all
+    /// agree, <see cref="DesktopHost.ShutdownRequested"/> is cancelled and the remaining windows close without asking, as
+    /// for a signal, and AppKit's reply to the system waits until the application's work returns. A refusal at any step
+    /// keeps the application running and, for a logout or restart, cancels it. Save documents here, or ask the user
+    /// whether to; the callback runs on the thread pool.
+    /// </para>
+    /// <para>
+    /// With <see cref="HandleShutdownSignals"/>, Ctrl+C, SIGTERM and SIGHUP ask it too
+    /// (<see cref="DesktopQuitSource.Signal"/>), on every platform, before the shutdown that closes the windows without
+    /// close guards; a refusal keeps the application running and a later signal asks again. A second Ctrl+C at least a
+    /// second after the first still ends the process at once, also while the callback runs. On Windows a closed console,
+    /// a logoff or a shutdown ends the process when Windows' own timeout expires, whatever the callback answers.
+    /// </para>
+    /// <para>
+    /// The token is cancelled when the host shuts down for another reason while the callback runs, such as a signal;
+    /// the shutdown then goes ahead. A callback that throws counts as a refusal and is logged as event 3019,
+    /// <c>DesktopQuitConfirmationFailed</c>. Requests that arrive while the callback runs share its answer.
+    /// </para>
+    /// </remarks>
+    public Func<DesktopQuitRequest, CancellationToken, ValueTask<bool>>? ConfirmQuitAsync { get; init; }
 
     /// <summary>
     /// Gets the application's menus for the menu bar: on macOS beside the standard application, File, Edit, View and

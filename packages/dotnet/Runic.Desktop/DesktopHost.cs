@@ -15,7 +15,11 @@ public sealed class DesktopHost : IAsyncDisposable
     // Not disposed: a late termination signal may still cancel it after the host is disposed.
     private readonly CancellationTokenSource _shutdown = new();
     private int _shutdownRequested;
+    private int _signalQuitPending;
     private int _disposed;
+    // The hosts alive in this process, in start order, which a quit from the platform asks.
+    private static readonly Lock LiveGate = new();
+    private static readonly List<DesktopHost> Live = [];
 
     private DesktopHost(DesktopHostOptions options)
     {
@@ -28,6 +32,50 @@ public sealed class DesktopHost : IAsyncDisposable
         if (options.StandardMenuTitles is { } titles) Internal.MacOsWkWebViewHost.SetStandardMenuTitles(titles);
         if (_logger is not null) Internal.MacOsWkWebViewHost.SetMenuLogger(_logger);
         if (_menuBar.Count > 0) Internal.MacOsWkWebViewHost.RequestMenuBar(_menuBar);
+        lock (LiveGate) Live.Add(this);
+        if (OperatingSystem.IsMacOS()) MacOsApplication.HostsChanged();
+    }
+
+    internal static DesktopHost[] LiveHosts()
+    {
+        lock (LiveGate) return [.. Live];
+    }
+
+    internal DesktopHostOptions Options => _options;
+
+    /// <summary>
+    /// Occurs when the user asks to reopen the running application: on macOS by clicking its Dock icon or opening it
+    /// again from Finder (<c>applicationShouldHandleReopen:hasVisibleWindows:</c>).
+    /// </summary>
+    /// <remarks>
+    /// Raised on the thread pool while <see cref="DesktopEventLoop"/> runs. An application that keeps running without
+    /// a window, for example after its last window closed, opens or shows its main window here when
+    /// <see cref="DesktopReopenEventArgs.HasVisibleWindows"/> is <see langword="false"/>. AppKit then deminiaturizes a
+    /// minimized window itself. Other platforms do not raise it; a second launch reaches the running instance as an open
+    /// request instead. A handler that throws is logged as event 3020, <c>DesktopReopenHandlerFailed</c>; later handlers
+    /// still run.
+    /// </remarks>
+    public event EventHandler<DesktopReopenEventArgs>? ReopenRequested;
+
+    internal void RaiseReopenRequested(bool hasVisibleWindows)
+    {
+        if (Volatile.Read(ref _disposed) != 0 || ReopenRequested is not { } handlers) return;
+        var args = new DesktopReopenEventArgs(hasVisibleWindows);
+        ThreadPool.QueueUserWorkItem(_ =>
+        {
+            foreach (EventHandler<DesktopReopenEventArgs> handler in handlers.GetInvocationList())
+            {
+                try
+                {
+                    handler(this, args);
+                }
+                catch (Exception error) when (error is not OutOfMemoryException)
+                {
+                    if (_logger is { } logger) DesktopLog.ReopenHandlerFailed(logger, error, DesktopLog.ErrorType(error));
+                    else System.Diagnostics.Trace.TraceError($"A DesktopHost.ReopenRequested handler failed with {error.GetType().FullName}.");
+                }
+            }
+        });
     }
 
     private IReadOnlyList<DesktopMenu> _menuBar;
@@ -110,8 +158,10 @@ public sealed class DesktopHost : IAsyncDisposable
         return ValueTask.FromResult(new DesktopHost(options ?? new DesktopHostOptions()));
     }
 
-    /// <summary>Gets a token that is cancelled when a termination signal asks the application to stop.</summary>
+    /// <summary>Gets a token that is cancelled when the application is asked to quit or a termination signal asks it to stop.</summary>
     /// <remarks>
+    /// On macOS, Quit (Command and Q), Quit in the Dock and logging out cancel it once
+    /// <see cref="DesktopHostOptions.ConfirmQuitAsync"/> and the windows' close guards agreed, also with no window open.
     /// <see cref="DesktopEventLoop.Run(DesktopHostOptions, Func{DesktopHost, Task{int}})"/> cancels it on Ctrl+C,
     /// SIGTERM or a closed Windows console, then closes every open window without close confirmation, so
     /// <see cref="DesktopWindow.WaitForCloseAsync"/> returns and the application shuts down as if the user had closed its
@@ -356,6 +406,8 @@ public sealed class DesktopHost : IAsyncDisposable
         {
             return ValueTask.CompletedTask;
         }
+        lock (LiveGate) Live.Remove(this);
+        if (OperatingSystem.IsMacOS()) MacOsApplication.HostsChanged();
 
         var calledFromCallback = _surfaces.Values.Any(static surface => surface.IsExecutingCallback);
         var dispose = DisposeCoreAsync();
@@ -378,13 +430,81 @@ public sealed class DesktopHost : IAsyncDisposable
     // Starts the orderly shutdown a termination signal requests: cancels ShutdownRequested and force-closes every
     // open window. Each window host marshals its close to its own UI thread. The application then returns and its
     // owner disposes the host; this never disposes it. Returns false when shutdown was already requested.
-    internal bool RequestShutdown(string reason)
+    internal bool RequestShutdown(string reason, bool quit = false)
     {
         if (Interlocked.Exchange(ref _shutdownRequested, 1) != 0) return false;
-        if (_logger is { } logger) DesktopLog.ShutdownRequested(logger, reason);
+        if (quit)
+        {
+            if (_logger is { } quitLogger) DesktopLog.QuitRequested(quitLogger, reason);
+            else System.Diagnostics.Trace.TraceInformation($"{reason} quits the application; closing Desktop windows.");
+        }
+        else if (_logger is { } logger) DesktopLog.ShutdownRequested(logger, reason);
         else System.Diagnostics.Trace.TraceInformation($"{reason} received; closing Desktop windows. Send it again to terminate immediately.");
         // Signal handlers run on a runtime thread; keep it free.
         _ = Task.Run(ShutdownAsync);
+        return true;
+    }
+
+    // A termination signal: without DesktopHostOptions.ConfirmQuitAsync the shutdown starts now, as in 0.11. With it, the
+    // application decides first; a refusal calls refused so that a later signal asks again. Returns false when shutdown
+    // was already requested or a decision is pending, as RequestShutdown does for a repeat.
+    internal bool RequestShutdownForSignal(string reason, Action refused)
+    {
+        if (_options.ConfirmQuitAsync is null) return RequestShutdown(reason);
+        if (IsShutdownRequested || Interlocked.Exchange(ref _signalQuitPending, 1) != 0) return false;
+        _ = Task.Run(async () =>
+        {
+            bool confirmed = false;
+            try { confirmed = await ConfirmQuitAsync(DesktopQuitSource.Signal).ConfigureAwait(false); }
+            finally { Volatile.Write(ref _signalQuitPending, 0); }
+            if (confirmed) RequestShutdown(reason);
+            else refused();
+        });
+        return true;
+    }
+
+    // DesktopHostOptions.ConfirmQuitAsync. A failure is a refusal; a shutdown that started meanwhile goes ahead.
+    internal async Task<bool> ConfirmQuitAsync(DesktopQuitSource source)
+    {
+        if (IsShutdownRequested) return true;
+        if (_options.ConfirmQuitAsync is not { } confirm) return true;
+        try
+        {
+            return await confirm(new DesktopQuitRequest(source), _shutdown.Token).ConfigureAwait(false) || IsShutdownRequested;
+        }
+        catch (OperationCanceledException) when (IsShutdownRequested)
+        {
+            return true;
+        }
+        catch (Exception error)
+        {
+            if (IsShutdownRequested) return true;
+            // A failed prompt must never become implicit permission to discard application state.
+            if (_logger is { } logger) DesktopLog.QuitConfirmationFailed(logger, error, DesktopLog.ErrorType(error));
+            else System.Diagnostics.Trace.TraceError($"DesktopHostOptions.ConfirmQuitAsync failed; the application keeps running: {error}");
+            return false;
+        }
+    }
+
+    // Asks each window's close guard in turn; a window whose guard agrees closes. False when one keeps its window.
+    internal async Task<bool> RequestWindowsCloseAsync()
+    {
+        foreach (var surface in _surfaces.Values.ToArray())
+        {
+            if (IsShutdownRequested) return true;
+            try
+            {
+                if (!await surface.ConfirmCloseForQuitAsync(_shutdown.Token).ConfigureAwait(false)) return false;
+            }
+            catch (OperationCanceledException) when (IsShutdownRequested)
+            {
+                return true;
+            }
+            catch (ObjectDisposedException)
+            {
+                // A surface disposed meanwhile has no window to keep.
+            }
+        }
         return true;
     }
 
@@ -474,6 +594,9 @@ public sealed class DesktopHost : IAsyncDisposable
     private static void ValidateOptions(DesktopHostOptions options)
     {
         ArgumentNullException.ThrowIfNull(options.Linux);
+        ArgumentNullException.ThrowIfNull(options.MacOS);
+        ArgumentNullException.ThrowIfNull(options.MacOS.DockMenu, nameof(options));
+        if (options.MacOS.DockMenu.Count > 0) DesktopMenuRules.ContextMenu([.. options.MacOS.DockMenu]);
         if (options.Linux.EmbeddedBackend is { } backend && !Enum.IsDefined(backend))
             throw new ArgumentOutOfRangeException(nameof(options), "Linux.EmbeddedBackend contains an undefined value; select Gtk3WebKit41 or Gtk4WebKit6.");
         if (options.WindowHostFactory is ILinuxDesktopWindowHostFactory linux && options.Linux.EmbeddedBackend != linux.Backend)

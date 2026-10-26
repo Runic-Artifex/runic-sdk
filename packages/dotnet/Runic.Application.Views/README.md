@@ -2364,6 +2364,9 @@ NativeAOT symbols and what to attach to a bug report.
 | 3015 | `MenuBarPlacementChanged` | Information | On Linux, a window's menu bar moved into the desktop's global menu or back into the window, or a Flatpak cannot reach the global menu registrar (`global-menu-permission`, the placement unchanged). | `OldPlacement`, `NewPlacement`, `Reason` |
 | 3016 | `GlobalMenuFailed` | Warning | On Linux, the window's menu could not be exported or the global menu registrar refused the window (`global-menu-failed`); the bar stays in the window. Once per window. | `DiagnosticMessage` |
 | 3017 | `MenuBarPlacementHandlerFailed` | Error | A `DesktopWindow.MenuBarPlacementChanged` handler threw; later handlers and events still run. | `ErrorType` |
+| 3018 | `DesktopQuitRequested` | Information | On macOS, Quit, the Dock's Quit or logging out quits the application after `DesktopHostOptions.ConfirmQuitAsync` and the close guards agreed: `ShutdownRequested` is cancelled and the windows close. | `Reason` |
+| 3019 | `DesktopQuitConfirmationFailed` | Error | `DesktopHostOptions.ConfirmQuitAsync` threw; the application keeps running. | `ErrorType` |
+| 3020 | `DesktopReopenHandlerFailed` | Error | A `DesktopHost.ReopenRequested` handler threw; later handlers still run. | `ErrorType` |
 
 `Model` is the ViewModel type name, `Member` the command or property, and
 `Route` the Bridge route (a content presentation's route is per instance, such

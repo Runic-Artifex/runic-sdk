@@ -983,6 +983,79 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
         return new ValueTask<DesktopMenuItem?>(WaitForContextMenuAsync(session, shown));
     }
 
+    private const string DockMenuAction = "runicDockMenuItem:";
+    // The Dock menu's items by tag minus one, and the target of its items. Main thread only.
+    private static List<DesktopMenuItem> s_dockItems = [];
+    private static nint s_dockTarget;
+
+    // MacOSDesktopOptions.DockMenu as a new autoreleased NSMenu, which applicationDockMenu: returns each time the Dock
+    // menu opens: items are enabled from their command's availability now. Commands go to DesktopHost.MenuCommands.
+    // Main thread only; 0 without the menu target class.
+    internal static nint CreateDockMenu(IReadOnlyList<DesktopMenuEntry> entries)
+    {
+        if (MenuTargetClass == 0) return 0;
+        if (s_dockTarget == 0) s_dockTarget = Api.SendNint(Api.SendNint(MenuTargetClass, "alloc"), "init");
+        var items = new List<DesktopMenuItem>();
+        var menu = Api.NewMenu("");
+        AddDockEntries(menu, entries, enabled: true, items);
+        s_dockItems = items;
+        return Api.SendNint(menu, "autorelease");
+    }
+
+    private static void AddDockEntries(nint menu, IEnumerable<DesktopMenuEntry> entries, bool enabled, List<DesktopMenuItem> items)
+    {
+        Api.SendVoidBool(menu, "setAutoenablesItems:", false);
+        var application = Volatile.Read(ref s_applicationMenuCommands);
+        var logger = Volatile.Read(ref s_menuLogger);
+        foreach (var entry in entries)
+        {
+            switch (entry)
+            {
+                case DesktopMenuSeparator:
+                    Api.SendVoidNint(menu, "addItem:", Api.SendNint(Api.GetClass("NSMenuItem"), "separatorItem"));
+                    break;
+                case DesktopMenuItem item:
+                    var native = Api.NewMenuItem(item.Title, DockMenuAction, "", 0, s_dockTarget);
+                    items.Add(item);
+                    Api.SendVoidNint(native, "setTag:", items.Count);
+                    Api.SendVoidBool(native, "setEnabled:", enabled && item.IsEnabled && MenuCommandChain.CanExecute(item, null, application, logger));
+                    if (item.IsChecked is { } isChecked) Api.SendVoidNint(native, "setState:", isChecked ? 1 : 0);
+                    Api.SendVoidNint(menu, "addItem:", native);
+                    Api.SendVoid(native, "release");
+                    break;
+                case DesktopMenu submenu:
+                    var holder = Api.NewMenuItem(submenu.Title, null, "", 0, 0);
+                    var child = Api.NewMenu(submenu.Title);
+                    Api.SendVoidNint(holder, "setSubmenu:", child);
+                    Api.SendVoidBool(holder, "setEnabled:", enabled && submenu.IsEnabled);
+                    AddDockEntries(child, submenu.Items, enabled && submenu.IsEnabled, items);
+                    Api.SendVoidNint(menu, "addItem:", holder);
+                    Api.SendVoid(child, "release");
+                    Api.SendVoid(holder, "release");
+                    break;
+                default:
+                    // An entry kind of a later release.
+                    break;
+            }
+        }
+    }
+
+    [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
+    private static void DockMenuItem(nint self, nint selector, nint sender)
+    {
+        try
+        {
+            var tag = Api.SendNint(sender, "tag");
+            var items = s_dockItems;
+            if (tag >= 1 && tag <= items.Count)
+                MenuCommandChain.TryExecute(items[(int)tag - 1], null, Volatile.Read(ref s_applicationMenuCommands), Volatile.Read(ref s_menuLogger));
+        }
+        catch
+        {
+            // Never unwind through AppKit.
+        }
+    }
+
     private sealed record PendingContextMenu(MacOsWkWebViewHost Owner, ContextMenuSession Session, ImmutableArray<DesktopMenuEntry> Items,
         DesktopContextMenuOptions Options);
 
@@ -1170,7 +1243,8 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
         }
     }
 
-    // Quit asks every window to close, as its close button does: a close guard decides for its window.
+    // Without the Desktop event loop, Quit asks every window to close, as its close button does: a close guard decides
+    // for its window.
     private static void QuitApplication()
     {
         foreach (var host in Hosts.Values.ToArray())
@@ -1650,6 +1724,7 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
         Api.AddMethod(type, MenuCommandAction, (nint)(delegate* unmanaged[Cdecl]<nint, nint, nint, void>)&MenuCommand, "v@:@");
         Api.AddMethod(type, ContextMenuAction, (nint)(delegate* unmanaged[Cdecl]<nint, nint, nint, void>)&ContextMenuItem, "v@:@");
         Api.AddMethod(type, ContextMenuTickAction, (nint)(delegate* unmanaged[Cdecl]<nint, nint, nint, void>)&ContextMenuTick, "v@:@");
+        Api.AddMethod(type, DockMenuAction, (nint)(delegate* unmanaged[Cdecl]<nint, nint, nint, void>)&DockMenuItem, "v@:@");
         Api.AddMethod(type, TrackContextMenuAction, (nint)(delegate* unmanaged[Cdecl]<nint, nint, nint, void>)&TrackContextMenu, "v@:@");
         Api.AddMethod(type, "validateMenuItem:", (nint)(delegate* unmanaged[Cdecl]<nint, nint, nint, byte>)&ValidateMenuItem,
             RuntimeInformation.ProcessArchitecture == Architecture.Arm64 ? "B@:@" : "c@:@");
@@ -1671,7 +1746,10 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
     {
         try
         {
-            QuitApplication();
+            // Under the Desktop event loop Quit is AppKit's terminate:, which Runic's application delegate answers with
+            // the one quit path (DesktopHostOptions.ConfirmQuitAsync); without it, Quit closes the windows.
+            if (MacOsApplication.IsOwner) Api.SendVoidNint(Api.SendNint(Api.GetClass("NSApplication"), "sharedApplication"), "terminate:", sender);
+            else QuitApplication();
         }
         catch
         {

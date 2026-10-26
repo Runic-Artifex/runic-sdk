@@ -40,7 +40,8 @@ internal sealed class ShutdownSignals : IDisposable
         // Handlers for different signals run concurrently, so the first time is recorded before anything else.
         long now = Environment.TickCount64;
         long first = Interlocked.CompareExchange(ref _firstSignalAt, now, 0);
-        if (!_host.RequestShutdown(context.Signal.ToString()) &&
+        // With DesktopHostOptions.ConfirmQuitAsync the application decides first; a refusal lets a later signal ask again.
+        if (!_host.RequestShutdownForSignal(context.Signal.ToString(), () => Interlocked.Exchange(ref _firstSignalAt, 0)) &&
             context.Signal == PosixSignal.SIGINT &&
             first != 0 && now - first >= (long)RepeatWindow.TotalMilliseconds)
         {

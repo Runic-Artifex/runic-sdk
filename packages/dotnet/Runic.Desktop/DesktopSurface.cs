@@ -323,6 +323,12 @@ public sealed class DesktopSurface : IAsyncDisposable
         return await decision.ConfigureAwait(false);
     }
 
+    // A quit asks the open window's close guard; a window without one closes with the shutdown that follows.
+    internal ValueTask<bool> ConfirmCloseForQuitAsync(CancellationToken cancellationToken) =>
+        Volatile.Read(ref _window) is { IsOpen: true } window && _engine.HasCloseConfirmation
+            ? RequestCloseWindowAsync(window, cancellationToken)
+            : ValueTask.FromResult(true);
+
     // Force-closes the current window for a host shutdown. It does not wait for the gate: a window that is still
     // opening checks the shutdown itself once it is published.
     internal ValueTask CloseWindowForShutdownAsync() =>
