@@ -7,7 +7,8 @@ namespace Runic.Desktop;
 /// <see cref="DesktopWindow.MoveAsync"/> and <see cref="DesktopWindow.ResizeAsync"/> take on the platform that saved
 /// them (see <see cref="DesktopWindowState"/>), so a placement belongs to one machine and one operating system: restoring
 /// it elsewhere still opens a visible window, but not necessarily at the same place or size. It is a plain record that
-/// <c>System.Text.Json</c> serializes as is.
+/// <c>System.Text.Json</c> serializes as is. <see cref="Origin"/> tells a placement saved on macOS by Runic 0.11 or
+/// earlier, whose position was measured from the bottom of the screen, from a current one.
 /// </remarks>
 public sealed record DesktopWindowPlacement
 {
@@ -35,6 +36,37 @@ public sealed record DesktopWindowPlacement
     /// before. A window host without <see cref="DesktopWindowCapabilities.FullScreen"/> ignores it.
     /// </remarks>
     public bool FullScreen { get; init; }
+
+    /// <summary>
+    /// Gets where <see cref="X"/> and <see cref="Y"/> are measured from, or <see langword="null"/> for a placement saved
+    /// before Runic 0.12.
+    /// </summary>
+    /// <remarks>
+    /// The built-in window hosts report <see cref="DesktopCoordinateOrigin.TopLeft"/>. Only macOS reads it: there a
+    /// placement with <see langword="null"/> or <see cref="DesktopCoordinateOrigin.BottomLeft"/> is one that Runic 0.11
+    /// or earlier saved in AppKit's screen coordinates, the bottom-left corner of the frame measured up from the bottom
+    /// of the primary screen. The window opens at the same place on the screen, and the placement it then reports is
+    /// measured from the top-left, so the conversion happens once. Windows and Linux always measured from the top-left
+    /// and ignore it. A custom window host defines its own units and may ignore it.
+    /// </remarks>
+    public DesktopCoordinateOrigin? Origin { get; init; }
+}
+
+/// <summary>Where the position of a <see cref="DesktopWindowPlacement"/> is measured from.</summary>
+/// <remarks>This set is open: a minor release may add values, so handle unknown ones as <see cref="TopLeft"/>.</remarks>
+public enum DesktopCoordinateOrigin
+{
+    /// <summary>
+    /// The top-left corner of the window's frame, measured right and down from the top-left corner of the primary
+    /// monitor, as every platform reports positions since Runic 0.12.
+    /// </summary>
+    TopLeft,
+
+    /// <summary>
+    /// The bottom-left corner of the window's frame, measured right and up from the bottom-left corner of the primary
+    /// screen: AppKit's screen coordinates, which macOS placements used before Runic 0.12.
+    /// </summary>
+    BottomLeft,
 }
 
 /// <summary>The bounds and state of an embedded window, as <see cref="DesktopWindow.State"/> last reported them.</summary>
@@ -50,9 +82,10 @@ public sealed record DesktopWindowPlacement
 /// <see cref="Width"/> and <see cref="Height"/> are the outer frame in device-independent pixels (1/96 inch) at the
 /// window's monitor scale.</description></item>
 /// <item><term>macOS</term><description>
-/// Points in AppKit screen coordinates: <see cref="X"/> and <see cref="Y"/> are the bottom-left corner of the frame,
-/// measured up from the bottom of the main screen; <see cref="Width"/> and <see cref="Height"/> are the content size,
-/// without the title bar.</description></item>
+/// Points: <see cref="X"/> and <see cref="Y"/> are the top-left corner of the frame, title bar included, measured right
+/// and down from the top-left corner of the primary screen (the one with the menu bar), so a screen above or left of it
+/// has negative coordinates; <see cref="Width"/> and <see cref="Height"/> are the content size, without the title bar.
+/// Runic 0.11 and earlier used AppKit's bottom-left origin; see <see cref="DesktopWindowPlacement.Origin"/>.</description></item>
 /// <item><term>Linux, GTK 3</term><description>
 /// Logical pixels: <see cref="X"/> and <see cref="Y"/> are the top-left corner of the frame as the window manager
 /// reports it; <see cref="Width"/> and <see cref="Height"/> are the content size, without decorations. On Wayland the

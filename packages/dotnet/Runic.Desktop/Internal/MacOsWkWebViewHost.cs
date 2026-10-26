@@ -204,11 +204,30 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
     public ValueTask MaximizeAsync(CancellationToken cancellationToken = default)
         => InvokeAsync(() => Api.SendVoidNint(_window, "zoom:", 0), cancellationToken);
 
+    // setContentSize: keeps the frame's AppKit origin, its bottom-left corner; the top-left corner stays instead, as on
+    // Windows and GTK, so a resize leaves X and Y as they were.
     public ValueTask SetSizeAsync(uint width, uint height, CancellationToken cancellationToken = default)
-        => InvokeAsync(() => Api.SendVoidSize(_window, "setContentSize:", new CGSize(width, height)), cancellationToken);
+        => InvokeAsync(() =>
+        {
+            var before = Api.SendRect(_window, "frame");
+            Api.SendVoidSize(_window, "setContentSize:", new CGSize(width, height));
+            if (IsFullScreen) return;
+            var after = Api.SendRect(_window, "frame");
+            Api.SendVoidPoint(_window, "setFrameOrigin:", new CGPoint(after.X, before.Y + before.Height - after.Height));
+        }, cancellationToken);
 
+    // x and y are the frame's top-left corner, measured down from the primary screen's top (MacOsCoordinates).
     public ValueTask SetPositionAsync(int x, int y, CancellationToken cancellationToken = default)
-        => InvokeAsync(() => Api.SendVoidPoint(_window, "setFrameOrigin:", new CGPoint(x, y)), cancellationToken);
+        => InvokeAsync(() => SetFramePosition(x, y, bottomLeft: false), cancellationToken);
+
+    // Main thread only. Moves the frame's corner to x, y: its top-left corner in Runic's coordinates, or for a placement
+    // saved by Runic 0.11 or earlier its bottom-left corner in AppKit's, which setFrameOrigin: takes as it is.
+    private void SetFramePosition(int x, int y, bool bottomLeft)
+    {
+        var frame = Api.SendRect(_window, "frame");
+        Api.SendVoidPoint(_window, "setFrameOrigin:",
+            new CGPoint(x, MacOsCoordinates.FrameBottom(y, frame.Height, PrimaryScreenHeight(), bottomLeft)));
+    }
 
     public ValueTask SetVisibleAsync(bool visible, CancellationToken cancellationToken = default)
         => InvokeAsync(() =>
@@ -401,7 +420,9 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
         }
         else if (options.X is { } x && options.Y is { } y)
         {
-            Api.SendVoidPoint(_window, "setFrameOrigin:", new CGPoint(x, y));
+            // X and Y come from the placement when there is one; a placement from Runic 0.11 or earlier converts here,
+            // and the window then reports a top-left placement.
+            SetFramePosition(x, y, MacOsCoordinates.IsBottomLeft(options.Placement));
         }
         if (options.Placement is not null)
         {
@@ -484,17 +505,20 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
         _normal = ReadBounds();
     }
 
-    // Main thread only. The frame origin and the content size, the units of setFrameOrigin: and setContentSize:.
+    // Main thread only. The frame's top-left corner, the units of SetPositionAsync, and the content size, the units of
+    // setContentSize:.
     private DesktopWindowPlacement ReadBounds()
     {
         var frame = Api.SendRect(_window, "frame");
         var content = Api.SendRectRect(_window, "contentRectForFrameRect:", frame);
+        var (x, y) = MacOsCoordinates.FrameTopLeft(frame.X, frame.Y, frame.Height, PrimaryScreenHeight());
         return new DesktopWindowPlacement
         {
-            X = (int)Math.Round(frame.X),
-            Y = (int)Math.Round(frame.Y),
+            X = x,
+            Y = y,
             Width = (int)Math.Max(1, Math.Round(content.Width)),
             Height = (int)Math.Max(1, Math.Round(content.Height)),
+            Origin = DesktopCoordinateOrigin.TopLeft,
         };
     }
 

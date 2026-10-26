@@ -8,7 +8,9 @@ using Runic.Platform;
 // and moves to a monitor, enters and leaves full screen, and a placement saved full-screen opens full-screen. On
 // Windows a right-to-left window has a mirrored frame (WS_EX_LAYOUTRTL) while WebView2 still renders and hit-tests
 // the page where it is shown (#389), and the web view takes the window's Language. On macOS the standard menus take
-// DesktopHostOptions.StandardMenuTitles. The runners have one monitor; two monitors need a VM (I-099).
+// DesktopHostOptions.StandardMenuTitles and positions are top-left (B-3): a window moved to the work area's top touches
+// the menu bar, placements round-trip, and one saved by 0.11 opens at the same place. The runners have one monitor;
+// two monitors need a VM (I-099).
 internal static partial class MonitorSmoke
 {
     private static readonly TimeSpan Deadline = TimeSpan.FromSeconds(20);
@@ -49,7 +51,7 @@ internal static partial class MonitorSmoke
             RequireInside(opened, primary.WorkArea, "opened on the chosen monitor");
             Console.WriteLine($"Monitors: opened on {primary.DisplayName} at {opened.X},{opened.Y}.");
 
-            await window.MoveAsync(primary.WorkArea.X + 10, OperatingSystem.IsMacOS() ? primary.WorkArea.Y + 10 : primary.WorkArea.Y + 10);
+            await window.MoveAsync(primary.WorkArea.X + 10, primary.WorkArea.Y + 10);
             await window.MoveToMonitorAsync(primary.Id);
             var centered = await WaitForAsync(window, state => state.X != primary.WorkArea.X + 10, "the window centered on the monitor");
             RequireInside(centered, primary.WorkArea, "moved to the monitor");
@@ -108,6 +110,7 @@ internal static partial class MonitorSmoke
         }
         if (OperatingSystem.IsMacOS())
         {
+            await MacOS.CheckTopLeftAsync(host, primary);
             await MacOS.CheckTitlesAsync(host);
         }
         Console.WriteLine("PASS monitors: list, watch, open and move on a monitor, full screen and its restore.");
@@ -380,6 +383,122 @@ internal static partial class MonitorSmoke
 
     private static partial class MacOS
     {
+        // B-3 (D045.3): X and Y are the frame's top-left corner in points, measured down from the primary screen's top,
+        // and placements say so with Origin; AppKit's frames are read here to check the conversion.
+        internal static async Task CheckTopLeftAsync(DesktopHost host, DesktopMonitor primary)
+        {
+            var work = primary.WorkArea;
+            Require(primary.Bounds.X == 0 && primary.Bounds.Y == 0, $"the primary screen's bounds at 0,0: {primary.Bounds}");
+            Console.WriteLine($"Coordinates: primary bounds {primary.Bounds}, work area {work} (the menu bar is {work.Y} points high).");
+            var target = new DesktopWindowPlacement
+            {
+                X = work.X + 30, Y = work.Y + 40, Width = 480, Height = 300, Origin = DesktopCoordinateOrigin.TopLeft,
+            };
+            DesktopWindowPlacement saved;
+            NSRect savedFrame;
+            await using (var surface = await host.CreateSurfaceAsync(new DesktopSurfaceOptions { Content = new DesktopContent.Html(Page) }))
+            {
+                var window = await surface.OpenWindowAsync(new DesktopWindowOptions { Browser = BrowserKind.Embedded, Placement = target });
+                var opened = await WaitForAsync(window, state => state.X == target.X && state.Y == target.Y,
+                    $"the top-left placement's position {target.X},{target.Y}");
+                Require(opened.Placement.Origin == DesktopCoordinateOrigin.TopLeft, $"a top-left placement reported: {opened.Placement}");
+                await RequireReportedTopAsync(window, "opened from a top-left placement");
+                // A resize keeps the top-left corner, as on Windows and GTK; AppKit alone would keep the bottom-left one.
+                await window.ResizeAsync(520, 340);
+                var resized = await WaitForAsync(window, static state => Near(state.Width, 520) && Near(state.Height, 340), "the size 520x340");
+                Require(resized.X == target.X && resized.Y == target.Y, $"a resize kept the top-left corner {target.X},{target.Y}: {resized}");
+                await window.ResizeAsync(target.Width, target.Height);
+                await WaitForAsync(window, state => Near(state.Width, target.Width) && Near(state.Height, target.Height), "the size back");
+
+                // The work area's top is the menu bar's bottom edge: the frame's top touches the visible frame's top.
+                await window.MoveAsync(work.X + 20, work.Y);
+                await WaitForAsync(window, state => state.X == work.X + 20 && state.Y == work.Y, $"the position {work.X + 20},{work.Y}");
+                var atTop = await RequireReportedTopAsync(window, "moved to the work area's top");
+                Require(Math.Abs(atTop.Frame.MaxY - atTop.Visible.MaxY) < 1,
+                    $"the frame's top ({atTop.Frame}) at the top of the primary screen's visible frame, below the menu bar ({atTop.Visible})");
+                Console.WriteLine($"PASS top-left: MoveAsync({work.X + 20}, {work.Y}) put the frame's top below the menu bar ({atTop.Frame}).");
+
+                // y = 0 is the primary screen's top edge, behind the menu bar; AppKit may keep a title bar below it.
+                await window.MoveAsync(work.X + 20, 0);
+                var atZero = await TryWaitForAsync(window, static state => state.Y == 0, TimeSpan.FromSeconds(3));
+                var zero = await RequireReportedTopAsync(window, "moved to y 0");
+                Require(window.State!.Y == 0 || window.State.Y == work.Y, $"MoveAsync(x, 0) at the screen's top or below the menu bar: {window.State}");
+                Console.WriteLine(atZero is not null
+                    ? $"Coordinates: MoveAsync(x, 0) put the frame's top at the screen's top edge ({zero.Frame})."
+                    : $"Coordinates: AppKit kept the title bar below the menu bar for MoveAsync(x, 0): {window.State} ({zero.Frame}).");
+
+                await window.MoveAsync(target.X!.Value, target.Y!.Value);
+                await WaitForAsync(window, state => state.X == target.X && state.Y == target.Y, "the position back");
+                savedFrame = (await ReadFramesAsync(window)).Frame;
+                await window.CloseAsync();
+                saved = window.State!.Placement;
+            }
+            Require(saved.X == target.X && saved.Y == target.Y && saved.Origin == DesktopCoordinateOrigin.TopLeft,
+                $"the saved placement at {target.X},{target.Y}, top-left: {saved}");
+
+            // Saved and restored: the same position, top-left.
+            await RequireRestoresAsync(host, saved, saved, savedFrame, "a saved top-left placement");
+            // As Runic 0.11 saved it: the frame's AppKit bottom-left corner and no Origin. It opens at the same place and
+            // then reports the top-left placement.
+            var legacy = new DesktopWindowPlacement
+            {
+                X = (int)Math.Round(savedFrame.X), Y = (int)Math.Round(savedFrame.Y), Width = saved.Width, Height = saved.Height,
+            };
+            await RequireRestoresAsync(host, legacy, saved, savedFrame, "a bottom-left placement saved by 0.11");
+            Console.WriteLine($"PASS top-left: the placement {saved} round-tripped, and the 0.11 placement {legacy} opened at the same place.");
+        }
+
+        private static async Task RequireRestoresAsync(DesktopHost host, DesktopWindowPlacement placement, DesktopWindowPlacement expected,
+            NSRect frame, string what)
+        {
+            await using var surface = await host.CreateSurfaceAsync(new DesktopSurfaceOptions { Content = new DesktopContent.Html(Page) });
+            await using var window = await surface.OpenWindowAsync(new DesktopWindowOptions { Browser = BrowserKind.Embedded, Placement = placement });
+            var restored = await WaitForAsync(window, state => state.X == expected.X && state.Y == expected.Y,
+                $"{what} restored at {expected.X},{expected.Y}");
+            Require(restored.Placement.Origin == DesktopCoordinateOrigin.TopLeft && restored.Placement.X == expected.X
+                && restored.Placement.Y == expected.Y && Near(restored.Placement.Width, expected.Width)
+                && Near(restored.Placement.Height, expected.Height), $"{what} reported as {expected}, got {restored.Placement}");
+            var now = (await ReadFramesAsync(window)).Frame;
+            Require(Math.Abs(now.X - frame.X) < 1 && Math.Abs(now.Y - frame.Y) < 1, $"{what} at the AppKit frame {frame}, got {now}");
+        }
+
+        // The frame and the reported state agree: Y is the primary screen's height less the frame's top.
+        private static async Task<Frames> RequireReportedTopAsync(DesktopWindow window, string what)
+        {
+            var frames = await ReadFramesAsync(window);
+            var state = window.State!;
+            Require(state.X is { } x && state.Y is { } y && Math.Abs(frames.Frame.X - x) < 1
+                && Math.Abs(frames.Primary.MaxY - frames.Frame.MaxY - y) < 1,
+                $"{what}: the state {state} as the top-left corner of the AppKit frame {frames.Frame} on a primary screen {frames.Primary}");
+            return frames;
+        }
+
+        private readonly record struct Frames(NSRect Frame, NSRect Primary, NSRect Visible);
+
+        // The window's frame and the primary screen's frame and visible frame, in AppKit's bottom-left coordinates.
+        private static async Task<Frames> ReadFramesAsync(DesktopWindow window)
+        {
+            Frames frames = default;
+            await window.InvokeNativeAsync(handle =>
+            {
+                var screens = Send(Class("NSScreen"), Sel("screens"));
+                var primary = Arg(screens, Sel("objectAtIndex:"), 0);
+                frames = new Frames(RectOf(handle, "frame"), RectOf(primary, "frame"), RectOf(primary, "visibleFrame"));
+            });
+            return frames;
+        }
+
+        [StructLayout(LayoutKind.Sequential)]
+        internal readonly record struct NSRect(double X, double Y, double Width, double Height)
+        {
+            internal double MaxY => Y + Height;
+        }
+
+        // Apple silicon returns the rectangle in registers through objc_msgSend; x86-64 needs objc_msgSend_stret.
+        private static NSRect RectOf(nint target, string selector) => RuntimeInformation.ProcessArchitecture == Architecture.Arm64
+            ? SendRect(target, Sel(selector))
+            : SendRectStret(target, Sel(selector));
+
         // The standard menus Runic completed carry the application's titles.
         internal static async Task CheckTitlesAsync(DesktopHost host)
         {
@@ -428,5 +547,7 @@ internal static partial class MonitorSmoke
         [LibraryImport(ObjC, EntryPoint = "sel_registerName", StringMarshalling = StringMarshalling.Utf8)] private static partial nint Sel(string name);
         [LibraryImport(ObjC, EntryPoint = "objc_msgSend")] private static partial nint Send(nint target, nint selector);
         [LibraryImport(ObjC, EntryPoint = "objc_msgSend")] private static partial nint Arg(nint target, nint selector, nint value);
+        [LibraryImport(ObjC, EntryPoint = "objc_msgSend")] private static partial NSRect SendRect(nint target, nint selector);
+        [LibraryImport(ObjC, EntryPoint = "objc_msgSend_stret")] private static partial NSRect SendRectStret(nint target, nint selector);
     }
 }
