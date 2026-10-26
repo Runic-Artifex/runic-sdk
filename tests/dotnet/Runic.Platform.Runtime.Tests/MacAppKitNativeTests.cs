@@ -199,7 +199,8 @@ internal sealed partial class MacAppKitNativeTests
     private static string EventLoopState() =>
         $"[NSApp run] returned early after {Runic.Desktop.Internal.MacOsApplication.RunReturnedEarlyAfterMilliseconds} ms (-1: not); " +
         $"fallback run loop results (0 other, 1 finished, 2 stopped, 3 timed out, 4 handled) {string.Join("/", Runic.Desktop.Internal.MacOsApplication.FallbackRunLoopResults)}; " +
-        $"direct main queue drains {Runic.Desktop.Internal.MacOsApplication.FallbackDirectDrains}; launches {Runic.Desktop.Internal.MacOsApplication.WillFinishLaunchingCount}";
+        $"loops {Runic.Desktop.Internal.MacOsApplication.Generation}, stop: sent {Runic.Desktop.Internal.MacOsApplication.StopsSent} " +
+        $"({Runic.Desktop.Internal.MacOsApplication.StopsSentBeforeRun} before this loop); launches {Runic.Desktop.Internal.MacOsApplication.WillFinishLaunchingCount}";
 
     private static async Task<string> SampleAsync()
     {

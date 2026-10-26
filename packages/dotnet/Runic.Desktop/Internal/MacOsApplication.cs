@@ -23,7 +23,7 @@ internal static unsafe partial class MacOsApplication
     // Events kept while no open requests are attached; a later one is dropped.
     internal const int MaximumBuffered = 64;
     private const ulong EventTypeApplicationDefined = 15;
-    private const nint ActivationPolicyAccessory = 1, ActivationPolicyProhibited = 2;
+    private const string AppKitPath = "/System/Library/Frameworks/AppKit.framework/AppKit";
     private static readonly TimeSpan StopRetry = TimeSpan.FromMilliseconds(100);
 
     private static readonly Lock Gate = new();
@@ -48,7 +48,12 @@ internal static unsafe partial class MacOsApplication
     // Main thread. Creates NSApp and sets Runic's delegate, which installs the open event handlers.
     internal static nint Start()
     {
+        // objc_getClass finds NSApplication only once AppKit is loaded. Nothing else may have loaded it yet, as in a
+        // process that uses no Desktop window before the loop: [nil run] would return at once.
+        if (!NativeLibrary.TryLoad(AppKitPath, out _) || Class("NSApplication") == 0)
+            throw new PlatformNotSupportedException("AppKit is required for the Desktop event loop on macOS.");
         var application = Send(Class("NSApplication"), Sel("sharedApplication"));
+        if (application == 0) throw new InvalidOperationException("AppKit did not create the shared NSApplication.");
         if (Volatile.Read(ref s_delegate) == 0)
         {
             var type = DelegateClass.Value;
@@ -56,12 +61,6 @@ internal static unsafe partial class MacOsApplication
             // NSApplication does not retain its delegate; this one lives for the process.
             Volatile.Write(ref s_delegate, Send(Send(type, Sel("alloc")), Sel("init")));
         }
-        // An unbundled process starts with the prohibited activation policy. It launches as an accessory application,
-        // without a Dock icon, as Runic.Platform.MacOS's windowless services and 0.11's first window launched it, until a
-        // window makes it a regular one. Under the prohibited policy the main queue went unserved in processes that .NET
-        // starts, such as test hosts and their child processes (finishLaunching is the suspect; not confirmed on hardware).
-        if (Send(application, Sel("activationPolicy")) == ActivationPolicyProhibited)
-            _ = Arg(application, Sel("setActivationPolicy:"), ActivationPolicyAccessory);
         // AppKit installs its own Apple event handlers when NSApp is created; these replace them.
         Arg(application, Sel("setDelegate:"), s_delegate);
         InstallEventHandlers();
@@ -73,6 +72,7 @@ internal static unsafe partial class MacOsApplication
     {
         int generation = Interlocked.Increment(ref s_generation);
         Volatile.Write(ref s_loopEnded, 0);
+        StopsSentBeforeRun = Volatile.Read(ref s_stopsSent);
         _ = work.ContinueWith(_ => RequestStop(generation), CancellationToken.None,
             TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
         try
@@ -94,6 +94,7 @@ internal static unsafe partial class MacOsApplication
     {
         if (Volatile.Read(ref s_generation) != generation || Volatile.Read(ref s_loopEnded) != 0) return;
         var application = Send(Class("NSApplication"), Sel("sharedApplication"));
+        Interlocked.Increment(ref s_stopsSent);
         Arg(application, Sel("stop:"), 0);
         var wake = OtherEvent(Class("NSEvent"), Sel("otherEventWithType:location:modifierFlags:timestamp:windowNumber:context:subtype:data1:data2:"),
             EventTypeApplicationDefined, default, 0, 0, 0, 0, 0, 0, 0);
@@ -101,18 +102,17 @@ internal static unsafe partial class MacOsApplication
         MacOsMainThread.PostAfter(StopRetry, () => RequestStop(generation));
     });
 
-    // [NSApp run] returned before the work completed: another stop: ended it, or AppKit's loop did not run at all, as on
-    // the macOS runner for unbundled processes that .NET starts (the sampled main thread never showed AppKit's loop, and
-    // its next events returned at once without serving the main queue). Serves the main thread as 0.11's loop did: the
-    // queued AppKit events, then the run loop for up to 50 ms, which runs the main dispatch queue; a run loop that has
-    // nothing to wait for does not spin. The figures are for the native tests' diagnostics.
+    // [NSApp run] returned before the work completed, because something else sent stop:. Serves the main thread with
+    // public API until the work completes: the queued AppKit events, then the run loop in the default mode for up to
+    // 50 ms, which runs the main dispatch queue; a run loop that returns at once is not spun. The figures are for the
+    // native tests' diagnostics.
     internal static long RunReturnedEarlyAfterMilliseconds = -1;
     internal static readonly int[] FallbackRunLoopResults = new int[5];
-    internal static int FallbackDirectDrains;
-
-    private static readonly Lazy<nint> DrainMainQueue = new(static () =>
-        NativeLibrary.TryLoad("/usr/lib/libSystem.B.dylib", out var library)
-        && NativeLibrary.TryGetExport(library, "_dispatch_main_queue_callback_4CF", out var export) ? export : 0);
+    // Run's loops, and the stop: requests sent, in this process; the stops sent before the current loop started.
+    internal static int Generation => Volatile.Read(ref s_generation);
+    internal static int StopsSent => Volatile.Read(ref s_stopsSent);
+    internal static int StopsSentBeforeRun { get; private set; }
+    private static int s_stopsSent;
 
     private static void ServeUntilCompleted(nint application, Task work, long afterMilliseconds)
     {
@@ -134,17 +134,8 @@ internal static unsafe partial class MacOsApplication
                 }
                 int result = RunInMode(mode, 0.05, 1);
                 Interlocked.Increment(ref FallbackRunLoopResults[Math.Clamp(result, 0, 4)]);
-                // kCFRunLoopRunFinished or kCFRunLoopRunStopped return at once, without the main queue: run it directly,
-                // as the run loop does (libdispatch's entry for CoreFoundation), and do not spin.
-                if (result is 1 or 2)
-                {
-                    if (DrainMainQueue.Value is not 0 and var drainQueue)
-                    {
-                        ((delegate* unmanaged[Cdecl]<nint, void>)drainQueue)(0);
-                        Interlocked.Increment(ref FallbackDirectDrains);
-                    }
-                    Thread.Sleep(5);
-                }
+                // kCFRunLoopRunFinished or kCFRunLoopRunStopped return at once.
+                if (result is 1 or 2) Thread.Sleep(5);
             }
             finally { Send(pool, drain); }
         }
