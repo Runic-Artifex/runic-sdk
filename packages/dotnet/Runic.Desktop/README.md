@@ -168,6 +168,34 @@ in the Finder. The calls run on the main thread, which `DesktopEventLoop.Run`
 serves. A custom window host or an installed browser has no window of Runic's
 to mark, so the window calls do nothing there.
 
+### Native work without a window on macOS
+
+AppKit must be called on the process main thread, which `DesktopEventLoop.Run`
+owns on macOS. A window's own native work uses `DesktopWindow.InvokeNativeAsync`;
+other AppKit calls, as from an application that runs behind a status icon, use
+`DesktopEventLoop.InvokeOnMainThreadAsync`:
+
+```csharp
+DesktopEventLoop.Run(async () =>
+{
+    var name = await DesktopEventLoop.InvokeOnMainThreadAsync(() => ReadFrontmostApplicationName());
+    await DesktopEventLoop.InvokeOnMainThreadAsync(() => { SetDockBadge(name); }, cancellationToken);
+});
+```
+
+The work runs through the main dispatch queue, in order with Runic's own
+main-thread work, also while a menu is open, a window is resized live or a modal
+panel runs; on the main thread it runs at once. From another thread it needs a
+running `DesktopEventLoop.Run` (either overload, with or without a window):
+before that it throws `InvalidOperationException`, and work still queued when
+the loop ends fails with it. An exception the work throws faults the returned
+task. Cancelling the token before the work starts keeps it from running; work
+that started runs to completion. As with `Task.Run`, an expression lambda with a
+value calls the `Func<T>` overload; use a statement body for an action. Both
+overloads are marked `[SupportedOSPlatform("macos")]`, so CA1416 warns about
+calls that are not guarded for macOS; elsewhere they throw
+`PlatformNotSupportedException`.
+
 `DesktopSurfaceOptions.Content` takes one `DesktopContent` case:
 
 | Case | Serves |
