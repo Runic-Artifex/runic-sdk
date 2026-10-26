@@ -30,6 +30,9 @@ internal sealed record MacDisk(string BsdName)
     // DAMediaEncrypted), and whether it is locked now (the entry's Locked).
     internal bool Encrypted { get; init; }
     internal bool Locked { get; init; }
+    // Which appearance of a disk under this BSD name this is: Disk Arbitration hands a freed name to the next disk
+    // that appears, so a new identity under the same name is another disk, not a change of the old one.
+    internal string? Identity { get; init; }
 }
 
 // What MacVolumes needs from Disk Arbitration; MacVolumeSource is the native one, tests use a fake.
@@ -72,9 +75,15 @@ internal sealed class MacVolumes(IMacVolumeSource source, TimeSpan settle) : IDe
     private PlatformResult<ImmutableArray<DesktopVolume>> List() => source.Disks() switch
     {
         PlatformResult<ImmutableArray<MacDisk>>.Success(var disks) => new PlatformResult<ImmutableArray<DesktopVolume>>.Success(Volumes(disks)),
-        PlatformResult<ImmutableArray<MacDisk>>.Unavailable(var reason) => new PlatformResult<ImmutableArray<DesktopVolume>>.Unavailable(reason),
-        PlatformResult<ImmutableArray<MacDisk>>.Failed failed => new PlatformResult<ImmutableArray<DesktopVolume>>.Failed(failed.Code, failed.Diagnostic),
-        _ => throw new InvalidOperationException(),
+        var other => Forward<ImmutableArray<MacDisk>, ImmutableArray<DesktopVolume>>(other),
+    };
+
+    // The listing the watch compares: each volume with its disk's appearance, so a BSD name that passed to another
+    // disk between two listings is a removal and an addition.
+    private PlatformResult<ImmutableArray<TrackedVolume>> ListTracked() => source.Disks() switch
+    {
+        PlatformResult<ImmutableArray<MacDisk>>.Success(var disks) => new PlatformResult<ImmutableArray<TrackedVolume>>.Success(Tracked(disks)),
+        var other => Forward<ImmutableArray<MacDisk>, ImmutableArray<TrackedVolume>>(other),
     };
 
     public ValueTask<PlatformResult<DesktopVolume>> MountAsync(string volumeId, CancellationToken cancellationToken = default)
@@ -188,19 +197,21 @@ internal sealed class MacVolumes(IMacVolumeSource source, TimeSpan settle) : IDe
         await foreach (var change in VolumeTracking.WatchAsync(ListOnceAsync, signal, null, settle, linked.Token).ConfigureAwait(false))
             yield return change;
 
-        async ValueTask<PlatformResult<ImmutableArray<DesktopVolume>>> ListOnceAsync(CancellationToken token) =>
-            await Task.Run(List, token).ConfigureAwait(false);
+        async ValueTask<PlatformResult<ImmutableArray<TrackedVolume>>> ListOnceAsync(CancellationToken token) =>
+            await Task.Run(ListTracked, token).ConfigureAwait(false);
     }
 
     // The volumes among the disks: a disk with a filesystem Disk Arbitration can mount. A volume belongs to the drive
     // of its physical whole disk. Volumes mounted at /, under /System or hidden from Finder, the unmounted volumes of
     // their drives, such as Recovery, and EFI system partitions belong to the system; a drive with such a mounted
     // volume is never ejected.
-    internal static ImmutableArray<DesktopVolume> Volumes(ImmutableArray<MacDisk> disks)
+    internal static ImmutableArray<DesktopVolume> Volumes(ImmutableArray<MacDisk> disks) => [.. Tracked(disks).Select(static v => v.Volume)];
+
+    internal static ImmutableArray<TrackedVolume> Tracked(ImmutableArray<MacDisk> disks)
     {
         var byName = disks.ToDictionary(static d => d.BsdName, StringComparer.Ordinal);
         var systemDrives = disks.Where(Protected).Select(Drive).ToHashSet(StringComparer.Ordinal);
-        var volumes = new List<DesktopVolume>();
+        var volumes = new List<TrackedVolume>();
         foreach (var disk in disks)
         {
             if (disk.VolumeKind is null && !disk.Mountable) continue;
@@ -213,7 +224,7 @@ internal sealed class MacVolumes(IMacVolumeSource source, TimeSpan settle) : IDe
             string name = !string.IsNullOrWhiteSpace(disk.VolumeName) ? disk.VolumeName!
                 : driveName.Length > 0 ? disk.Size is { } size ? $"{driveName} ({VolumeTracking.Bytes(size)})" : driveName
                 : disk.BsdName;
-            volumes.Add(new DesktopVolume(disk.BsdName, name)
+            volumes.Add(new TrackedVolume(new DesktopVolume(disk.BsdName, name)
             {
                 MountPaths = mounted ? [disk.VolumePath!] : [],
                 FileSystem = disk.VolumeKind,
@@ -229,9 +240,9 @@ internal sealed class MacVolumes(IMacVolumeSource source, TimeSpan settle) : IDe
                 CanMount = !mounted && disk.Mountable && !system && !disk.Locked,
                 CanUnmount = mounted && !system,
                 CanEject = physical.Ejectable && !systemDrives.Contains(drive),
-            });
+            }, disk.Identity));
         }
-        return VolumeTracking.Sorted(volumes);
+        return [.. volumes.OrderBy(static v => v.Volume.Id, StringComparer.Ordinal)];
     }
 
     private const string EfiSystemPartition = "C12A7328-F81F-11D2-BA4B-00A0C93EC93B";

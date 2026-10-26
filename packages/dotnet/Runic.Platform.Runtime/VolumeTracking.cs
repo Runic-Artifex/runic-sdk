@@ -27,6 +27,11 @@ internal sealed class VolumeSignal
     internal void Clear() => _channel.Reader.TryRead(out _);
 }
 
+// A listed volume and the identity of what is behind its ID. On macOS the ID is a BSD name, which the system hands to
+// the next disk once a disk is gone, so the provider adds an identity of the disk's appearance; a volume with another
+// identity under the same ID is a different volume. Null where the ID alone identifies the volume.
+internal readonly record struct TrackedVolume(DesktopVolume Volume, string? Identity);
+
 // What the Windows and macOS volume providers share: the order of a listing, the watch over successive listings and
 // the size in a display name.
 internal static class VolumeTracking
@@ -34,18 +39,24 @@ internal static class VolumeTracking
     internal static ImmutableArray<DesktopVolume> Sorted(IEnumerable<DesktopVolume> volumes) =>
         [.. volumes.OrderBy(static v => v.Id, StringComparer.Ordinal)];
 
-    internal static IEnumerable<DesktopVolumeChange> Diff(ImmutableArray<DesktopVolume> previous, ImmutableArray<DesktopVolume> current)
+    // Removals first, then additions and changes in ID order. An ID that now belongs to a volume of another identity
+    // is the old volume's removal and the new one's addition, never a change; with no identity on either side the
+    // ID decides.
+    internal static IEnumerable<DesktopVolumeChange> Diff(ImmutableArray<TrackedVolume> previous, ImmutableArray<TrackedVolume> current)
     {
-        var before = previous.ToDictionary(static v => v.Id, StringComparer.Ordinal);
-        var after = current.ToDictionary(static v => v.Id, StringComparer.Ordinal);
-        foreach (var id in before.Keys.Where(id => !after.ContainsKey(id)).OrderBy(static id => id, StringComparer.Ordinal))
+        var before = previous.ToDictionary(static v => v.Volume.Id, StringComparer.Ordinal);
+        var after = current.ToDictionary(static v => v.Volume.Id, StringComparer.Ordinal);
+        foreach (var id in before.Keys.Where(id => !after.TryGetValue(id, out var now) || Replaced(before[id], now)).OrderBy(static id => id, StringComparer.Ordinal))
             yield return new DesktopVolumeChange.Removed(id);
-        foreach (var volume in Sorted(after.Values))
+        foreach (var tracked in after.Values.OrderBy(static v => v.Volume.Id, StringComparer.Ordinal))
         {
-            if (!before.TryGetValue(volume.Id, out var old)) yield return new DesktopVolumeChange.Added(volume);
-            else if (!Same(old, volume)) yield return new DesktopVolumeChange.Changed(volume);
+            if (!before.TryGetValue(tracked.Volume.Id, out var old) || Replaced(old, tracked)) yield return new DesktopVolumeChange.Added(tracked.Volume);
+            else if (!Same(old.Volume, tracked.Volume)) yield return new DesktopVolumeChange.Changed(tracked.Volume);
         }
     }
+
+    private static bool Replaced(TrackedVolume before, TrackedVolume after) =>
+        before.Identity is { } was && after.Identity is { } now && !string.Equals(was, now, StringComparison.Ordinal);
 
     internal static bool Same(DesktopVolume left, DesktopVolume right) =>
         left with { MountPaths = [] } == right with { MountPaths = [] } && left.MountPaths.SequenceEqual(right.MountPaths);
@@ -53,19 +64,32 @@ internal static class VolumeTracking
     // Lists the volumes, reports a Snapshot, then lists again after every signal (once settle has passed, so a burst
     // of native notifications is one listing) and every poll interval, and reports the differences. A listing that
     // is unavailable is reported once; the next successful one is a new Snapshot.
-    internal static async IAsyncEnumerable<PlatformResult<DesktopVolumeChange>> WatchAsync(
+    internal static IAsyncEnumerable<PlatformResult<DesktopVolumeChange>> WatchAsync(
         Func<CancellationToken, ValueTask<PlatformResult<ImmutableArray<DesktopVolume>>>> list, VolumeSignal signal, TimeSpan? poll,
+        TimeSpan settle, CancellationToken cancellationToken) =>
+        WatchAsync(async token => await list(token).ConfigureAwait(false) switch
+        {
+            PlatformResult<ImmutableArray<DesktopVolume>>.Success(var volumes) =>
+                new PlatformResult<ImmutableArray<TrackedVolume>>.Success([.. volumes.Select(static v => new TrackedVolume(v, null))]),
+            PlatformResult<ImmutableArray<DesktopVolume>>.Unavailable(var reason) => new PlatformResult<ImmutableArray<TrackedVolume>>.Unavailable(reason),
+            PlatformResult<ImmutableArray<DesktopVolume>>.Failed failed => new PlatformResult<ImmutableArray<TrackedVolume>>.Failed(failed.Code, failed.Diagnostic),
+            _ => new PlatformResult<ImmutableArray<TrackedVolume>>.Unavailable(PlatformUnavailableReason.BackendUnavailable),
+        }, signal, poll, settle, cancellationToken);
+
+    internal static async IAsyncEnumerable<PlatformResult<DesktopVolumeChange>> WatchAsync(
+        Func<CancellationToken, ValueTask<PlatformResult<ImmutableArray<TrackedVolume>>>> list, VolumeSignal signal, TimeSpan? poll,
         TimeSpan settle, [EnumeratorCancellation] CancellationToken cancellationToken)
     {
-        ImmutableArray<DesktopVolume>? previous = null;
+        ImmutableArray<TrackedVolume>? previous = null;
         bool announcedUnavailable = false;
         while (true)
         {
             cancellationToken.ThrowIfCancellationRequested();
             var listed = await list(cancellationToken).ConfigureAwait(false);
-            if (listed is PlatformResult<ImmutableArray<DesktopVolume>>.Success(var current))
+            if (listed is PlatformResult<ImmutableArray<TrackedVolume>>.Success(var current))
             {
-                if (previous is not { } before) yield return new PlatformResult<DesktopVolumeChange>.Success(new DesktopVolumeChange.Snapshot(current));
+                if (previous is not { } before)
+                    yield return new PlatformResult<DesktopVolumeChange>.Success(new DesktopVolumeChange.Snapshot([.. current.Select(static v => v.Volume)]));
                 else foreach (var change in Diff(before, current)) yield return new PlatformResult<DesktopVolumeChange>.Success(change);
                 previous = current;
                 announcedUnavailable = false;
@@ -76,8 +100,8 @@ internal static class VolumeTracking
                 announcedUnavailable = true;
                 yield return listed switch
                 {
-                    PlatformResult<ImmutableArray<DesktopVolume>>.Failed failed => new PlatformResult<DesktopVolumeChange>.Failed(failed.Code, failed.Diagnostic),
-                    PlatformResult<ImmutableArray<DesktopVolume>>.Unavailable(var reason) => new PlatformResult<DesktopVolumeChange>.Unavailable(reason),
+                    PlatformResult<ImmutableArray<TrackedVolume>>.Failed failed => new PlatformResult<DesktopVolumeChange>.Failed(failed.Code, failed.Diagnostic),
+                    PlatformResult<ImmutableArray<TrackedVolume>>.Unavailable(var reason) => new PlatformResult<DesktopVolumeChange>.Unavailable(reason),
                     _ => new PlatformResult<DesktopVolumeChange>.Unavailable(PlatformUnavailableReason.BackendUnavailable),
                 };
             }
