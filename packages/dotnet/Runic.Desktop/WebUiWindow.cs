@@ -109,6 +109,7 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
     private string? _monitor;
     private Runic.Platform.DesktopLayoutDirection _layoutDirection;
     private string? _language;
+    private MacOSWindowOptions _macOS = new();
     private bool _hidden;
     private bool _resizable = true;
     private bool _frameless;
@@ -1390,6 +1391,7 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
         _monitor = null;
         _layoutDirection = Runic.Platform.DesktopLayoutDirection.Default;
         _language = null;
+        _macOS = new();
     }
 
     // The monitor, native direction and web language of the next embedded window (DesktopWindowOptions).
@@ -1399,6 +1401,9 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
         _layoutDirection = layoutDirection;
         _language = language;
     }
+
+    // The macOS title bar of the next embedded window (DesktopWindowOptions.MacOS).
+    internal void SetMacOS(MacOSWindowOptions macOS) => _macOS = macOS;
 
     // Where the next embedded window shows the menu bar (DesktopWindowOptions.MenuBarPresentation).
     internal void SetMenuBarPresentation(DesktopMenuBarPresentation presentation) => _menuBarPresentation = presentation;
@@ -1909,6 +1914,7 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
             MonitorId = _monitor,
             LayoutDirection = _layoutDirection,
             Language = _language,
+            MacOS = _macOS,
         };
     }
 

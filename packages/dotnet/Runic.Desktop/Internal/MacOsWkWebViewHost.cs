@@ -8,11 +8,6 @@ namespace Runic.Desktop.Internal;
 
 internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMainThreadHost
 {
-    private const ulong StyleBorderless = 0;
-    private const ulong StyleTitled = 1;
-    private const ulong StyleClosable = 2;
-    private const ulong StyleMiniaturizable = 4;
-    private const ulong StyleResizable = 8;
     private const ulong BackingBuffered = 2;
     private const ulong ViewWidthSizable = 2;
     private const ulong ViewHeightSizable = 16;
@@ -341,11 +336,10 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
         InstallMainMenu(_application);
         ApplyMenuBar(_application);
 
-        var style = options.Frameless || options.Kiosk
-            ? StyleBorderless | (options.Resizable ? StyleResizable : 0)
-            : StyleTitled | StyleClosable | StyleMiniaturizable | (options.Resizable ? StyleResizable : 0);
+        var style = MacOsWindowChrome.StyleMask(options);
         var frame = new CGRect(0, 0, options.Width, options.Height);
-        _window = Api.AllocInitWindow(frame, style, BackingBuffered, false);
+        // Runic's NSWindow subclass, so a frameless or kiosk window can become key and take keys.
+        _window = Api.AllocInitWindow(WindowClass, frame, style, BackingBuffered, false);
         if (_window == 0)
         {
             throw new InvalidOperationException("AppKit could not create the embedded WebView window.");
@@ -354,12 +348,14 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
         Api.SendVoidNint(_window, "setDelegate:", _delegate);
         Api.SendVoidBool(_window, "setReleasedWhenClosed:", false);
         Api.SendVoidBool(_window, "setMovableByWindowBackground:", options.Frameless);
+        ApplyTitleBar(options);
         if (options.MinimumWidth is { } minimumWidth && options.MinimumHeight is { } minimumHeight)
         {
             Api.SendVoidSize(_window, "setContentMinSize:", new CGSize(minimumWidth, minimumHeight));
         }
 
-        _webView = Api.AllocInitWebView(frame, options.DocumentStartScript, WebViewClass, WebViewClass != 0 ? FileDropHandler.Value : 0);
+        _webView = Api.AllocInitWebView(frame, options.DocumentStartScript, WebViewClass, WebViewClass != 0 ? FileDropHandler.Value : 0,
+            WebViewClass != 0 && _usesDragRegions ? WindowChromeHandler.Value : 0);
         if (_webView == 0)
         {
             Api.SendVoid(_window, "close");
@@ -392,6 +388,8 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
         // A trackpad pinch magnifies the page, as in Safari; WebKit lets the page cancel the gesture first.
         Api.SendVoidBool(_webView, "setAllowsMagnification:", true);
         var contentView = Api.SendNint(_window, "contentView");
+        // Under a hidden or transparent title bar the content view fills the window, and the page with it.
+        Api.SendVoidRect(_webView, "setFrame:", Api.SendRect(contentView, "bounds"));
         Api.SendVoidNint(contentView, "addSubview:", _webView);
         // Keys reach the page without a click first, and the page sees Command keys before the View menu.
         Api.SendNintNint(_window, "makeFirstResponder:", _webView);
@@ -427,6 +425,7 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
 
         Hosts[_window] = this;
         Volatile.Write(ref _isOpen, 1);
+        ApplyTrafficLights();
         Navigate(url);
         if (!options.Hidden)
         {
@@ -587,6 +586,7 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
         {
             host._fullScreenTransition = false;
             host.UpdateState();
+            host.ApplyTrafficLights();
         }
     }
 
@@ -599,6 +599,8 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
             if (Hosts.TryGetValue(window, out var host) && host.IsOpen)
             {
                 host.UpdateState();
+                // AppKit lays the title bar out again after a resize.
+                host.ApplyTrafficLights();
             }
         }
         catch
@@ -1387,6 +1389,10 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
         {
             Api.AddMethod(type, selector, (nint)(delegate* unmanaged[Cdecl]<nint, nint, nint, ulong>)&DraggingUpdated, "Q@:@");
         }
+        // The page's drag regions move the window (MacOsWkWebViewHost.WindowChrome.cs).
+        Api.AddMethod(type, "mouseDown:", (nint)(delegate* unmanaged[Cdecl]<nint, nint, nint, void>)&WebViewMouseDown, "v@:@");
+        Api.AddMethod(type, "acceptsFirstMouse:", (nint)(delegate* unmanaged[Cdecl]<nint, nint, nint, byte>)&WebViewAcceptsFirstMouse,
+            RuntimeInformation.ProcessArchitecture == Architecture.Arm64 ? "B@:@" : "c@:@");
         Api.RegisterClassPair(type);
         return type;
     }
@@ -1623,6 +1629,8 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
             if (title != 0 && window != 0 && Api.SendUlong(title, "length") > 0)
             {
                 Api.SendVoidNint(window, "setTitle:", title);
+                // A new title lays the title bar out again.
+                if (Hosts.TryGetValue(window, out var host) && host.IsOpen) host.ApplyTrafficLights();
             }
         }
         catch
@@ -2290,7 +2298,7 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
         }
 
         // The script runs at document start in every frame (WKUserScriptInjectionTimeAtDocumentStart = 0).
-        internal nint AllocInitWebView(CGRect frame, string? documentStartScript, nint webViewClass, nint fileDropHandler)
+        internal nint AllocInitWebView(CGRect frame, string? documentStartScript, nint webViewClass, nint fileDropHandler, nint windowChromeHandler)
         {
             var configuration = SendNint(SendNint(GetClass("WKWebViewConfiguration"), "alloc"), "init");
             if (configuration == 0)
@@ -2326,7 +2334,13 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
 
                 if (fileDropHandler != 0)
                 {
-                    AddFileDropScript(SendNint(configuration, "userContentController"), fileDropHandler);
+                    AddIsolatedScript(SendNint(configuration, "userContentController"), fileDropHandler,
+                        FileDropSupport.WebKitMessageHandler, FileDropSupport.WebKitScript, "runic-desktop-file-drop", mainFrameOnly: false);
+                }
+                if (windowChromeHandler != 0)
+                {
+                    AddIsolatedScript(SendNint(configuration, "userContentController"), windowChromeHandler,
+                        MacOsWindowChrome.MessageHandler, MacOsWindowChrome.Script, MacOsWindowChrome.ContentWorld, mainFrameOnly: true);
                 }
 
                 // WebKit's pop-up blocker: window.open reaches the UI delegate only from a script that handles a user
@@ -2344,18 +2358,20 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
         }
 
         // In its own content world (macOS 11 and later), where the page cannot reach the handler; otherwise in the page's.
-        // In every frame, so drops into same-origin iframes carry their label; the handler checks the frame's origin.
-        private void AddFileDropScript(nint controller, nint handler)
+        // The file drop script runs in every frame, so drops into same-origin iframes carry their label; the handler
+        // checks the frame's origin. The window chrome script runs in the main frame only.
+        private void AddIsolatedScript(nint controller, nint handler, string handlerName, string scriptSource, string contentWorld, bool mainFrameOnly)
         {
-            var source = CreateString(FileDropSupport.WebKitScript);
-            var name = CreateString(FileDropSupport.WebKitMessageHandler);
+            var source = CreateString(scriptSource);
+            var name = CreateString(handlerName);
+            var mainFrame = mainFrameOnly ? (byte)1 : (byte)0;
             try
             {
                 var worldClass = GetClass("WKContentWorld");
                 nint script;
                 if (worldClass != 0 && RespondsToSelector(controller, "addScriptMessageHandler:contentWorld:name:"))
                 {
-                    var worldName = CreateString("runic-desktop-file-drop");
+                    var worldName = CreateString(contentWorld);
                     try
                     {
                         var world = SendNintNint(worldClass, "worldWithName:", worldName);
@@ -2363,7 +2379,7 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
                             controller, Selector("addScriptMessageHandler:contentWorld:name:"), handler, world, name);
                         script = ((delegate* unmanaged[Cdecl]<nint, nint, nint, long, byte, nint, nint>)_messageSend)(
                             SendNint(GetClass("WKUserScript"), "alloc"),
-                            Selector("initWithSource:injectionTime:forMainFrameOnly:inContentWorld:"), source, 0, 0, world);
+                            Selector("initWithSource:injectionTime:forMainFrameOnly:inContentWorld:"), source, 0, mainFrame, world);
                     }
                     finally
                     {
@@ -2376,7 +2392,7 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
                         controller, Selector("addScriptMessageHandler:name:"), handler, name);
                     script = ((delegate* unmanaged[Cdecl]<nint, nint, nint, long, byte, nint>)_messageSend)(
                         SendNint(GetClass("WKUserScript"), "alloc"),
-                        Selector("initWithSource:injectionTime:forMainFrameOnly:"), source, 0, 0);
+                        Selector("initWithSource:injectionTime:forMainFrameOnly:"), source, 0, mainFrame);
                 }
                 if (script != 0)
                 {
@@ -2447,9 +2463,9 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
             private readonly nint _superclass = superclass;
         }
 
-        internal nint AllocInitWindow(CGRect frame, ulong style, ulong backing, bool defer)
+        internal nint AllocInitWindow(nint windowClass, CGRect frame, ulong style, ulong backing, bool defer)
         {
-            var instance = SendNint(GetClass("NSWindow"), "alloc");
+            var instance = SendNint(windowClass != 0 ? windowClass : GetClass("NSWindow"), "alloc");
             return ((delegate* unmanaged[Cdecl]<nint, nint, CGRect, ulong, ulong, byte, nint>)_messageSend)(
                 instance, Selector("initWithContentRect:styleMask:backing:defer:"), frame, style, backing, defer ? (byte)1 : (byte)0);
         }

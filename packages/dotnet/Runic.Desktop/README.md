@@ -353,6 +353,55 @@ call on the handle to `InvokeNativeAsync`, which runs it there with the handle.
 which decides a window's initial theme when `DesktopWindowOptions.HighContrast`
 is not set. To follow changes, observe `IDesktopSettings` from Runic.Platform.
 
+## Title bar and drag regions on macOS
+
+`DesktopWindowOptions.MacOS.TitleBar` gives the macOS window the custom header
+most Mac apps have. `MacOSTitleBarStyle.Hidden` lays the title bar transparent
+over the page, which then fills the whole window, hides the title and keeps the
+close, minimize and zoom buttons (the traffic lights); `Transparent` does the
+same but keeps showing the title. `TrafficLightPosition` moves the buttons, in
+points from the window's top-left corner to the close button's, so they line up
+with the page's header, as Electron's `trafficLightPosition` does:
+
+```csharp
+var window = await surface.OpenWindowAsync(new DesktopWindowOptions
+{
+    MacOS = new() { TitleBar = MacOSTitleBarStyle.Hidden, TrafficLightPosition = new(16, 18) },
+});
+```
+
+The page draws its own header and leaves room for the buttons, about 80 points
+at the left with AppKit's position. The window still takes the page's `<title>`,
+which VoiceOver and the Window menu use. Windows, Linux, installed browsers and
+custom window hosts ignore these options; `Validate` reports the options a
+frameless or kiosk window ignores, since it has no title bar.
+
+A window with a `Hidden` or `Transparent` title bar, and a `Frameless` window,
+moves when the user drags a part of the page marked with the CSS that Electron
+uses:
+
+```css
+header { app-region: drag; }           /* or -webkit-app-region: drag */
+header button, header input { app-region: no-drag; }
+```
+
+The last region over a point in document order decides, so controls in a drag
+region need `no-drag` to keep their clicks. A double click in a drag region
+zooms or minimizes as System Settings › Desktop & Dock › "Double-click a
+window's title bar to" says, and the first click into an inactive window drags
+it, as a title bar does. The hit test runs in the application's process when the
+mouse button goes down: a script Runic adds to the page reports the regions
+whenever the layout changes, without a Bridge call. WebKit drops `app-region`
+declarations when it parses CSS, so the script reads them from the source of
+`<style>` elements, style attributes and `<link rel="stylesheet">` sheets of the
+page's own origin; a sheet of another origin, or a rule added through the CSSOM,
+needs the custom property `--app-region: drag` (or `no-drag`) instead, which
+WebKit keeps. Regions apply in the top-level page, not in frames, and not while
+the page is pinch-magnified.
+
+Every macOS window can become the key window, so a frameless or kiosk window,
+also one that cannot be resized, takes keyboard input once it is focused.
+
 ## Links, new windows, downloads and developer tools
 
 Since 0.10.0 an embedded window keeps its page on the application.

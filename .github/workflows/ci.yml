@@ -765,6 +765,11 @@ jobs:
         if: runner.os == 'Linux'
         timeout-minutes: 5
         run: bun test --timeout 60000 tests/native/Runic.Desktop.WebViewSmoke/keyboard-script.test.mjs
+      # The drag regions of the macOS window chrome script (MacOsWindowChrome.js); WKWebView runs it in --window-chrome.
+      - name: Check the macOS window chrome script in Chromium
+        if: runner.os == 'Linux'
+        timeout-minutes: 5
+        run: bun test --timeout 60000 tests/native/Runic.Desktop.WebViewSmoke/window-chrome-script.test.mjs
       - name: Exercise direct portal protocol
         if: runner.os == 'Linux'
         # The explicit DBus cases need a session bus; the managed job runs the portable cases.
@@ -1265,6 +1270,12 @@ jobs:
         if: runner.os == 'macOS'
         timeout-minutes: 5
         run: dotnet tests/native/Runic.Desktop.WebViewSmoke/bin/Release/net10.0/Runic.Desktop.WebViewSmoke.dll --lifecycle
+      # M4: a Hidden title bar keeps its traffic lights, a mouse-down in a drag region drags the window and elsewhere
+      # reaches the page, and a frameless window that cannot be resized becomes key and takes typed keys.
+      - name: Exercise the macOS window chrome and drag regions
+        if: runner.os == 'macOS'
+        timeout-minutes: 5
+        run: dotnet tests/native/Runic.Desktop.WebViewSmoke/bin/Release/net10.0/Runic.Desktop.WebViewSmoke.dll --window-chrome
       # SEC-04: the WKWebView's navigation and UI delegate apply DesktopWebContentPolicy (external links, window.open,
       # downloads, isInspectable).
       - name: Apply the web content policy in the macOS window
