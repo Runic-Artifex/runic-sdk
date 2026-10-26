@@ -748,6 +748,12 @@ public sealed record DesktopWindowOptions
     /// </remarks>
     public string? BrowserArguments { get; init; }
 
+    /// <summary>
+    /// Gets the macOS window's title bar options: a hidden or transparent title bar that keeps the traffic lights, and
+    /// where they sit. Other platforms and installed browsers ignore them.
+    /// </summary>
+    public MacOSWindowOptions MacOS { get; init; } = new();
+
     // The options a presentation opens with: a placement's values replace the size and position, sanitized so a
     // damaged settings file cannot fail the open. The placement stays set for the hosts that fit it to a monitor.
     internal DesktopWindowOptions WithPlacementApplied()

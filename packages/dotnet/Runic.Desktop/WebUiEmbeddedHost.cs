@@ -203,4 +203,7 @@ internal sealed record WebUiEmbeddedHostOptions
 
     /// <summary>The web view's language (DesktopWindowOptions.Language), or null for the platform's.</summary>
     public string? Language { get; init; }
+
+    /// <summary>The macOS title bar (DesktopWindowOptions.MacOS); other hosts ignore it.</summary>
+    public MacOSWindowOptions MacOS { get; init; } = new();
 }
