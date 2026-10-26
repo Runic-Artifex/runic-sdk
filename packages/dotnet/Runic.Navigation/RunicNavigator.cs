@@ -266,7 +266,8 @@ public sealed class RunicNavigator : IAsyncDisposable, IDisposable
     /// or when the navigator is disposed.
     /// </summary>
     /// <remarks>
-    /// No guard is asked and no transition runs. A selection whose owner already started retiring starts closed. Own the
+    /// No guard is asked and no transition runs. A selection whose owner already started retiring starts closed, and takes
+    /// the owner's regions, which that retirement closed or which <see cref="CreateRegion{TContent}"/> created closed. Own the
     /// regions and the selection by the page that shows them, so that retiring the page asks every region's entries as
     /// <see cref="NavigationDepartureKind.Retire"/>.
     /// </remarks>
@@ -277,8 +278,8 @@ public sealed class RunicNavigator : IAsyncDisposable, IDisposable
     /// </param>
     /// <param name="options">The initially selected region and the admission policy.</param>
     /// <exception cref="ArgumentException">
-    /// A region belongs to another navigator, is closed, has an owner other than <paramref name="owner"/>, is already in a
-    /// selection, or appears twice.
+    /// A region belongs to another navigator, has an owner other than <paramref name="owner"/>, is closed (other than by the
+    /// retirement of <paramref name="owner"/>), is already in a selection, or appears twice.
     /// </exception>
     /// <exception cref="ArgumentOutOfRangeException"><see cref="NavigationSelectionOptions.SelectedIndex"/> is not the index of a region.</exception>
     /// <exception cref="InvalidOperationException"><paramref name="owner"/> is shared between entries (<see cref="NavigationTarget.Share{T}"/>).</exception>
@@ -299,17 +300,19 @@ public sealed class RunicNavigator : IAsyncDisposable, IDisposable
             if (_holders.TryGetValue(owner, out var holders) && holders.Shared)
                 throw new InvalidOperationException(
                     $"This {owner.GetType().Name} is shared between navigation entries (NavigationTarget.Share), so it can't own a navigation selection. Own the selection from content that is not shared.");
+            // As for a region: the retirement of an owner that already started retiring never reaches the selection. Its
+            // regions are closed already, by that retirement or because CreateRegion created them closed, and are taken.
+            var retiring = IsRetiringOwnerLocked(owner);
             for (var index = 0; index < members.Length; index++)
             {
-                ThrowIfNotSelectableLocked(owner, members[index], nameof(regions));
+                ThrowIfNotSelectableLocked(owner, members[index], nameof(regions), retiring);
                 if (Array.IndexOf(members, members[index], 0, index) >= 0)
                     throw new ArgumentException($"{members[index]} appears more than once.", nameof(regions));
             }
             selection = new NavigationSelectionCore(this, ++_nextRegionId, owner, options?.Admission ?? NavigationAdmission.Supersede,
                 members, selectedIndex);
             var unit = selection.Unit;
-            // As for a region: the retirement of an owner that already started retiring never reaches the selection.
-            unit.Closed = IsRetiringOwnerLocked(owner);
+            unit.Closed = retiring;
             if (!unit.Closed) _regions.Add(unit);
             if (!_regionsByOwner.TryGetValue(owner, out var ownerRegions)) _regionsByOwner.Add(owner, ownerRegions = []);
             ownerRegions.Add(unit);
@@ -333,18 +336,19 @@ public sealed class RunicNavigator : IAsyncDisposable, IDisposable
         core.Unit.Raise?.Invoke(changes);
     }
 
-    // A region a selection of owner can take: a live region of this navigator, owned by owner, in no selection. Call under
-    // the gate.
-    private void ThrowIfNotSelectableLocked(object owner, NavigationRegion? region, string parameter)
+    // A region a selection of owner can take: a live region of this navigator, owned by owner, in no selection. While the
+    // owner retires (ownerRetiring), its regions are closed by that retirement and are taken too, but not one that a
+    // selection's removal closed. Call under the gate.
+    private void ThrowIfNotSelectableLocked(object owner, NavigationRegion? region, string parameter, bool ownerRetiring = false)
     {
         if (region is null) throw new ArgumentException("A selection's regions can't be null.", parameter);
         var core = region.Core;
         if (!ReferenceEquals(core.Navigator, this))
             throw new ArgumentException($"{region} belongs to another navigator.", parameter);
-        if (core.Closed) throw new ArgumentException($"{region} is closed.", parameter);
         if (!ReferenceEquals(core.Owner, owner))
             throw new ArgumentException(
                 $"{region} is owned by a {core.Owner.GetType().Name}, not by the selection's owner ({owner.GetType().Name}). A selection chooses among regions of one owner.", parameter);
+        if (core.Closed && (core.Removed || !ownerRetiring)) throw new ArgumentException($"{region} is closed.", parameter);
         if (core.Selection is not null) throw new ArgumentException($"{region} is already in a selection.", parameter);
     }
 
@@ -2102,7 +2106,7 @@ public sealed class RunicNavigator : IAsyncDisposable, IDisposable
         else if (operation == NavigationOperation.Select)
         {
             if (ReferenceEquals(member, departing)) plan.Unchanged = true;
-            else if (departing is not null) AddKept(plan, [departing]);
+            else if (departing is not null) AddKept(plan, [departing], keepEmpty: true);
         }
         else
         {
@@ -2132,6 +2136,7 @@ public sealed class RunicNavigator : IAsyncDisposable, IDisposable
         _regions.Remove(member);
         if (_regionsByOwner.TryGetValue(member.Owner, out var ownerRegions)) ownerRegions.Remove(member);
         member.Selection = null;
+        member.Removed = true;
         return selection.RemoveLocked(member);
     }
 
@@ -2169,8 +2174,10 @@ public sealed class RunicNavigator : IAsyncDisposable, IDisposable
     // supersedes the plan, but the plan neither supersedes its transitions nor changes it. Each region is visited once,
     // so a cycle of borrowed owners ends. Of the regions of a selection, only the selected one is presented, so only it is
     // followed; the others were asked when they were left. The selection's unit joins the basis, so a selection change
-    // that commits meanwhile supersedes the plan, whose questions were for the region presented before.
-    private void AddKept(NavigationPlan plan, IEnumerable<NavigationRegionCore> regions)
+    // that commits meanwhile supersedes the plan, whose questions were for the region presented before. With keepEmpty (a
+    // selection's switch), an empty region joins the basis too, so a page pushed into it before the commit supersedes the
+    // switch, which never asked that page.
+    private void AddKept(NavigationPlan plan, IEnumerable<NavigationRegionCore> regions, bool keepEmpty = false)
     {
         foreach (var kept in regions)
         {
@@ -2180,10 +2187,15 @@ public sealed class RunicNavigator : IAsyncDisposable, IDisposable
                 continue;
             }
             if (kept.Selection is { } selection && !ReferenceEquals(selection.Selected, kept)) continue;
-            if (kept.Closed || kept.Stack.Length == 0 || plan.Regions.Contains(kept) || plan.Kept.Contains(kept)) continue;
+            if (kept.Closed || plan.Regions.Contains(kept) || plan.Kept.Contains(kept)) continue;
+            if (kept.Stack.Length == 0)
+            {
+                if (keepEmpty) plan.Kept.Add(kept);
+                continue;
+            }
             plan.Kept.Add(kept);
             var current = kept.Stack[^1];
-            if (current.Content is { } content && _regionsByOwner.TryGetValue(content, out var children)) AddKept(plan, children);
+            if (current.Content is { } content && _regionsByOwner.TryGetValue(content, out var children)) AddKept(plan, children, keepEmpty);
             plan.Guards.Add((current, NavigationDepartureKind.Retain));
         }
     }

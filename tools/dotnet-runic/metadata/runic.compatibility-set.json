@@ -339,7 +339,7 @@
         ],
         "component": "macOS",
         "minimum": "15",
-        "note": "The oldest macOS in the .NET 10 supported-OS policy. WKWebView is part of macOS."
+        "note": "The documented minimum stays macOS 15, the oldest macOS in the .NET 10 supported-OS policy; CI tests only the latest macOS on Apple silicon. WKWebView is part of macOS."
       },
       {
         "id": "macos-cswebui",

@@ -61,6 +61,8 @@ sandbox changes:
 
 Runic supports macOS 15 and later on Apple silicon (`osx-arm64`); Intel Macs
 (`osx-x64`) are not supported ([release policy](../../../eng/release/README.md#supported-platforms)).
+macOS 15, the oldest macOS .NET 10 supports, stays the documented minimum, but
+CI tests only the latest macOS on Apple silicon.
 Every service of this package works on those versions. The sections below name
 the older macOS version some services need; Runic does not test or support
 those older versions:
