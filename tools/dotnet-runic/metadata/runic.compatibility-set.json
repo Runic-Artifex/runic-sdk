@@ -3,9 +3,9 @@
   "id": "runic-sdk-0.12.0",
   "releaseTrainVersion": "0.12.0",
   "toolchain": {
-    "dotnetSdk": "10.0.401",
-    "node": "24.21.0",
-    "bun": "1.4.2",
+    "dotnetSdk": "10.0.403",
+    "node": "24.22.1",
+    "bun": "1.4.4",
     "npm": "12.2.0",
     "pnpm": "12.9.1"
   },

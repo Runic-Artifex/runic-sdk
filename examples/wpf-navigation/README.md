@@ -73,7 +73,7 @@ packages; the example follows the current API.
 ```xml
 <PackageReference Include="Runic.Navigation.Wpf" Version="0.11.0" />
 <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.2" />
-<PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="10.0.12" />
+<PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="10.0.14" />
 ```
 
 `NotesNavigation/Domain/` is the notes store the comparison apps share; it
@@ -125,7 +125,7 @@ In your own project, reference the packages instead of the projects:
 <PackageReference Include="Runic.Navigation.Wpf" Version="0.11.0" />
 <PackageReference Include="Runic.Navigation.ReactiveUI" Version="0.11.0" />
 <PackageReference Include="ReactiveUI.WPF" Version="26.0.1" />
-<PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="10.0.12" />
+<PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="10.0.14" />
 ```
 
 ## Native Toolkit commands

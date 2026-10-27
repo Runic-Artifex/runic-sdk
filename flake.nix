@@ -158,14 +158,11 @@
         let
           pkgs = import nixpkgs { inherit system; };
           inherit (pkgs) lib;
-          # global.json disables SDK roll-forward and CI installs `.node-version`; fail at
-          # evaluation when a nixpkgs update moves either away from the repository pins.
-          pinned = pkg: expected: label:
-            assert lib.assertMsg (pkg.version == expected)
-              "nixpkgs provides ${label} ${pkg.version}, but the repository pins ${expected}";
-            pkg;
-          dotnet = pinned pkgs.dotnetCorePackages.sdk_10_0 (lib.importJSON ./global.json).sdk.version ".NET SDK";
-          nodejs = pinned pkgs.nodejs_24 (lib.fileContents ./.node-version) "Node";
+          # global.json disables SDK roll-forward and CI installs `.node-version`; nix/toolchain provides exactly
+          # those versions (from the official binaries while nixpkgs is older) and fails evaluation otherwise.
+          toolchain = import ./nix/toolchain { inherit pkgs; };
+          dotnet = toolchain.dotnet-sdk;
+          inherit (toolchain) nodejs;
           # act 0.2.89 needs the upstream artifact protocol fix for upload v7/download v8.
           # Remove this patch once the pinned nixpkgs act contains nektos/act#6115.
           actForCi = pkgs.act.overrideAttrs (old: {
@@ -181,20 +178,20 @@
             if system == "x86_64-linux" then
               {
                 platform = "linux-x64";
-                hash = "sha256-Nq85/hrOkT7M4VJ9Uc7Kr9e+uNx8unD4d30RzaQlYxc=";
+                hash = "sha256-SQxqWbkwuEx42tLBeD8BdpDH1bxUasS1yOkkDULCz3U=";
               }
             else
               {
                 platform = "linux-aarch64";
-                hash = "sha256-E9EOo0ihjqTrVS7RffpXUBeqdkvRoYnXAmscz1BmNwo=";
+                hash = "sha256-NhWc7T3/G+CA3TE/q/vQR5oOPfBLPgZ6Exdqa1CjD5w=";
               };
           bunSource = pkgs.fetchzip {
-            url = "https://github.com/oven-sh/bun/releases/download/bun-v1.4.2/bun-${bunArchive.platform}.zip";
+            url = "https://github.com/oven-sh/bun/releases/download/bun-v1.4.4/bun-${bunArchive.platform}.zip";
             inherit (bunArchive) hash;
           };
-          bun_1_4_2 = pkgs.stdenvNoCC.mkDerivation {
+          bun_1_4_4 = pkgs.stdenvNoCC.mkDerivation {
             pname = "bun";
-            version = "1.4.2";
+            version = "1.4.4";
             src = bunSource;
             nativeBuildInputs = [ pkgs.autoPatchelfHook ];
             buildInputs = [ pkgs.stdenv.cc.cc.lib ];
@@ -285,7 +282,7 @@
               git
               curl
               dotnet
-              bun_1_4_2
+              bun_1_4_4
               npmForCompatibility
               pnpmForCompatibility
               nodejs

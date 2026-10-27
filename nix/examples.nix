@@ -3,6 +3,8 @@
 { pkgs, runic }:
 let
   inherit (pkgs) lib;
+  # The SDK tree's global.json pins the .NET SDK without roll-forward, so build with the repository's toolchain.
+  inherit (import ./toolchain { inherit pkgs; }) dotnet-sdk;
   root = ../.;
   sdkSource =
     extra:
@@ -43,8 +45,8 @@ let
   windowsTargetingPack = [
     (pkgs.dotnetCorePackages.fetchNupkg {
       pname = "Microsoft.WindowsDesktop.App.Ref";
-      version = "10.0.12";
-      hash = "sha256-omruH9MPqONFT43CGi3/ZDuw8UkqIp0kZhTfq/CMr4k=";
+      version = "10.0.14";
+      hash = "sha256-Z8cQ60pe4Opa5jdSI7Vi2tcX0h/b2ythN0/5lG1c674=";
     })
   ];
 
@@ -85,6 +87,7 @@ let
         projectFile = "examples/status-icon/StatusIconSample.csproj";
         nugetLockFiles = sdkLockFiles ++ [ ../examples/status-icon/packages.lock.json ];
         nugetDeps = windowsTargetingPack;
+        inherit dotnet-sdk;
         # The SDK's lock files are restored without a runtime identifier; CI restores them in locked mode.
         nugetLockedMode = false;
         # Package validation would download each project's last published package.
@@ -118,6 +121,7 @@ let
     projectFile = "tests/native/Runic.Privileged.Smoke/Runic.Privileged.Smoke.csproj";
     nugetLockFiles = sdkLockFiles ++ [ ../tests/native/Runic.Privileged.Smoke/packages.lock.json ];
     nugetDeps = windowsTargetingPack;
+    inherit dotnet-sdk;
     nugetLockedMode = false;
     dotnetFlags = [ "-p:EnablePackageValidation=false" ];
     host = null;

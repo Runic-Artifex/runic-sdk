@@ -20,7 +20,7 @@
          (eng/release/README.md, "Package tiers"), so the cswebui host references its own version. -->
     <RunicCsWebUiNuGetTemplateVersion Condition="'$(RunicCsWebUiNuGetTemplateVersion)' == ''">$(RunicCsWebUiPackageVersion)</RunicCsWebUiNuGetTemplateVersion>
     <RunicNpmTemplateVersion Condition="'$(RunicNpmTemplateVersion)' == ''">$(RunicSdkVersion)</RunicNpmTemplateVersion>
-    <BunTemplateVersion Condition="'$(BunTemplateVersion)' == ''">1.4.2</BunTemplateVersion>
+    <BunTemplateVersion Condition="'$(BunTemplateVersion)' == ''">1.4.4</BunTemplateVersion>
     <NpmTemplateVersion Condition="'$(NpmTemplateVersion)' == ''">12.2.0</NpmTemplateVersion>
     <PnpmTemplateVersion Condition="'$(PnpmTemplateVersion)' == ''">12.9.1</PnpmTemplateVersion>
   </PropertyGroup>

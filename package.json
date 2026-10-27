@@ -2,9 +2,9 @@
   "name": "@runic-artifex/sdk-workspace",
   "private": true,
   "type": "module",
-  "packageManager": "bun@1.4.2",
+  "packageManager": "bun@1.4.4",
   "engines": {
-    "bun": "1.4.2",
+    "bun": "1.4.4",
     "node": ">=24.18.0 <25"
   },
   "workspaces": [
