@@ -282,7 +282,7 @@ test('template lanes cover every framework once and run the creator check in one
   assert.deepEqual(strategy.matrix.include, [
     { first: 'react', second: 'svelte', creator: '1' },
     { first: 'vue', second: 'angular', 'desktop-smoke': '1' },
-    { first: 'sveltekit', node: '26.12.0' },
+    { first: 'sveltekit', node: '26.12.1' },
   ]);
   assert.deepEqual(strategy.matrix.include.flatMap(lane => [lane.first, lane.second]).filter(Boolean).sort(),
     ['angular', 'react', 'svelte', 'sveltekit', 'vue']);

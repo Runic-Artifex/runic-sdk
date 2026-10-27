@@ -372,7 +372,7 @@ jobs:
           nuget: none
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: 26.12.0
+          node-version: 26.12.1
       - name: Install compatibility package managers
         run: npm install --global npm@12.2.0 pnpm@12.9.1 --allow-scripts=pnpm
       - uses: ./.github/actions/restore-build
@@ -657,7 +657,7 @@ jobs:
             desktop-smoke: "1"
           # The starters' engines.node admits Node 24 and 26 (D031.3); this lane builds them on Node 26.
           - first: sveltekit
-            node: "26.12.0"
+            node: "26.12.1"
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -1999,7 +1999,7 @@ jobs:
           sparse-checkout-cone-mode: false
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
-          bun-version: 1.4.2
+          bun-version: 1.4.4
       - name: Require every planned verification job to pass
         env:
           NEEDS: ${{ toJSON(needs) }}

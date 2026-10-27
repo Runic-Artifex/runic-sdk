@@ -10,9 +10,9 @@
       },
       "Microsoft.NET.ILLink.Tasks": {
         "type": "Direct",
-        "requested": "[10.0.12, )",
-        "resolved": "10.0.12",
-        "contentHash": "xi+BDjFpW+Sb+MHFHaH6Y/gV9I8BluFwRXc1QyCdoZbIK26eNiBeFuMTe/FMwc33G1wdHCyDg7CVTmb8OdQrMQ=="
+        "requested": "[10.0.14, )",
+        "resolved": "10.0.14",
+        "contentHash": "YlTamXppEQls6DYWt7RdUuwWDb0lyw/vXCaGeQpLCpsLmfwGuCkOz/vIGgMTV7ECsJcavkCOkxZXv9s8rdAHkQ=="
       },
       "runic.assets": {
         "type": "Project"
@@ -31,16 +31,16 @@
       "runic.platform.linux.dbus": {
         "type": "Project",
         "dependencies": {
-          "Microsoft.Extensions.DependencyInjection.Abstractions": "[10.0.12, )",
+          "Microsoft.Extensions.DependencyInjection.Abstractions": "[10.0.14, )",
           "Runic.Platform": "[0.12.0, )",
           "Tmds.DBus.Protocol": "[0.95.1, )"
         }
       },
       "Microsoft.Extensions.DependencyInjection.Abstractions": {
         "type": "CentralTransitive",
-        "requested": "[10.0.12, )",
-        "resolved": "10.0.12",
-        "contentHash": "9/qymSh7hVDMGTGwrLz8MRp5zRyXy9adGDOs4HwRdnLil3oZGYuWeZjbmHgCQ9BL1qBroVfgUK3U/nb61617Cw=="
+        "requested": "[10.0.14, )",
+        "resolved": "10.0.14",
+        "contentHash": "QtpQzuSZVyTPCuHW058yCs9Nj0394uUkNyFHS813nOmK9UgUdBdaprJ5PPsBgsQIpxADTsTkbaMMonykem6qdw=="
       },
       "Microsoft.Web.WebView2": {
         "type": "CentralTransitive",

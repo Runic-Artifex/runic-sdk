@@ -1,7 +1,7 @@
 {
   "private": true,
   "type": "module",
-  "packageManager": "bun@1.4.2",
+  "packageManager": "bun@1.4.4",
   "scripts": {
     "build": "bun build.mjs",
     "dev": "bun build.mjs --watch"

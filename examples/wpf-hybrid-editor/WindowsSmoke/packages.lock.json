@@ -6,7 +6,7 @@
         "type": "Project",
         "dependencies": {
           "CommunityToolkit.Mvvm": "[8.4.2, )",
-          "Microsoft.Extensions.DependencyInjection": "[10.0.12, )",
+          "Microsoft.Extensions.DependencyInjection": "[10.0.14, )",
           "Runic.Application.Views": "[0.12.0, )"
         }
       },
@@ -21,15 +21,15 @@
       "runic.application.views": {
         "type": "Project",
         "dependencies": {
-          "Microsoft.Extensions.DependencyInjection.Abstractions": "[10.0.12, )",
-          "Microsoft.Extensions.Logging.Abstractions": "[10.0.12, )",
+          "Microsoft.Extensions.DependencyInjection.Abstractions": "[10.0.14, )",
+          "Microsoft.Extensions.Logging.Abstractions": "[10.0.14, )",
           "Runic.Navigation": "[0.12.0, )"
         }
       },
       "runic.application.views.desktop": {
         "type": "Project",
         "dependencies": {
-          "Microsoft.Extensions.DependencyInjection.Abstractions": "[10.0.12, )",
+          "Microsoft.Extensions.DependencyInjection.Abstractions": "[10.0.14, )",
           "Runic.Application.Views": "[0.12.0, )",
           "Runic.Assets.Desktop": "[0.12.0, )",
           "Runic.Desktop": "[0.12.0, )",
@@ -65,15 +65,15 @@
       "runic.navigation": {
         "type": "Project",
         "dependencies": {
-          "Microsoft.Extensions.DependencyInjection.Abstractions": "[10.0.12, )",
-          "Microsoft.Extensions.Logging.Abstractions": "[10.0.12, )"
+          "Microsoft.Extensions.DependencyInjection.Abstractions": "[10.0.14, )",
+          "Microsoft.Extensions.Logging.Abstractions": "[10.0.14, )"
         }
       },
       "runic.navigation.wpf": {
         "type": "Project",
         "dependencies": {
-          "Microsoft.Extensions.DependencyInjection.Abstractions": "[10.0.12, )",
-          "Microsoft.Extensions.Logging.Abstractions": "[10.0.12, )",
+          "Microsoft.Extensions.DependencyInjection.Abstractions": "[10.0.14, )",
+          "Microsoft.Extensions.Logging.Abstractions": "[10.0.14, )",
           "Runic.Navigation": "[0.12.0, )"
         }
       },
@@ -83,7 +83,7 @@
       "runic.platform.linux.dbus": {
         "type": "Project",
         "dependencies": {
-          "Microsoft.Extensions.DependencyInjection.Abstractions": "[10.0.12, )",
+          "Microsoft.Extensions.DependencyInjection.Abstractions": "[10.0.14, )",
           "Runic.Platform": "[0.12.0, )",
           "Tmds.DBus.Protocol": "[0.95.1, )"
         }
@@ -108,26 +108,26 @@
       },
       "Microsoft.Extensions.DependencyInjection": {
         "type": "CentralTransitive",
-        "requested": "[10.0.12, )",
-        "resolved": "10.0.12",
-        "contentHash": "lXyK2O5GoYvfxW8eCFcD16JFbcoSTM1sJkAM0UHS1jZyl9NYMW64Tqm6OQFT0IDBjZi+xHt95/Zg+nxZhGFhZg==",
+        "requested": "[10.0.14, )",
+        "resolved": "10.0.14",
+        "contentHash": "2LzcuVjemeXR+WdY9wGIr8iGb7fYsDAit+IScxXX2XJnX0b++mWcE/WO6fEGIqhdMfSQM2ZS5JGMHYZix7YXZg==",
         "dependencies": {
-          "Microsoft.Extensions.DependencyInjection.Abstractions": "10.0.12"
+          "Microsoft.Extensions.DependencyInjection.Abstractions": "10.0.14"
         }
       },
       "Microsoft.Extensions.DependencyInjection.Abstractions": {
         "type": "CentralTransitive",
-        "requested": "[10.0.12, )",
-        "resolved": "10.0.12",
-        "contentHash": "9/qymSh7hVDMGTGwrLz8MRp5zRyXy9adGDOs4HwRdnLil3oZGYuWeZjbmHgCQ9BL1qBroVfgUK3U/nb61617Cw=="
+        "requested": "[10.0.14, )",
+        "resolved": "10.0.14",
+        "contentHash": "QtpQzuSZVyTPCuHW058yCs9Nj0394uUkNyFHS813nOmK9UgUdBdaprJ5PPsBgsQIpxADTsTkbaMMonykem6qdw=="
       },
       "Microsoft.Extensions.Logging.Abstractions": {
         "type": "CentralTransitive",
-        "requested": "[10.0.12, )",
-        "resolved": "10.0.12",
-        "contentHash": "+24lC4plfbEDNfLAdTV/SWKS7dW+16X4HdydO3R++134kSNTzcbYA4KpR1Hdh6uWisB8Za3AzwyOn+K+NxWIug==",
+        "requested": "[10.0.14, )",
+        "resolved": "10.0.14",
+        "contentHash": "SwcbEBtkECq3D2oywvHkm46fyrX9Dd2JPWphDnHUc2+cUWR1Mdo41atAjh/9iZjgQxuvbKfZKXqostT/LZfefA==",
         "dependencies": {
-          "Microsoft.Extensions.DependencyInjection.Abstractions": "10.0.12"
+          "Microsoft.Extensions.DependencyInjection.Abstractions": "10.0.14"
         }
       },
       "Microsoft.Web.WebView2": {

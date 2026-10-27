@@ -48,6 +48,10 @@ cleanup() {
   rm -rf "$work"
 }
 trap cleanup EXIT
+# The script runs in a consumer shell (nix develop .#packaging, the consumer nixpkgs' .NET SDK), while the
+# repository's global.json pins its own SDK without roll-forward. Run the .NET CLI from the work directory, outside
+# the checkout, so that pin does not apply; every path passed to it is absolute.
+dotnet() { (cd "$work" && command dotnet "$@"); }
 
 export NUGET_PACKAGES="$work/nuget"
 export DOTNET_CLI_TELEMETRY_OPTOUT=1 DOTNET_NOLOGO=1
