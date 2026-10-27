@@ -207,9 +207,6 @@ public static class DesktopEventLoop
     /// <exception cref="PlatformNotSupportedException">Not on macOS.</exception>
     /// <exception cref="InvalidOperationException">Called from another thread while no Desktop event loop runs.</exception>
     /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> was cancelled.</exception>
-    // Both overloads take an optional token, as approved (D046.2): a lambda that returns a value binds to the Func<T>
-    // overload, as with Task.Run, and later overloads are not planned.
-    [System.Diagnostics.CodeAnalysis.SuppressMessage("ApiDesign", "RS0026:Do not add multiple public overloads with optional parameters", Justification = "D046.2")]
     [System.Runtime.Versioning.SupportedOSPlatform("macos")]
     public static ValueTask InvokeOnMainThreadAsync(Action action, CancellationToken cancellationToken = default)
     {
@@ -229,9 +226,6 @@ public static class DesktopEventLoop
     /// <exception cref="PlatformNotSupportedException">Not on macOS.</exception>
     /// <exception cref="InvalidOperationException">Called from another thread while no Desktop event loop runs.</exception>
     /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> was cancelled.</exception>
-    // Both overloads take an optional token, as approved (D046.2): a lambda that returns a value binds to the Func<T>
-    // overload, as with Task.Run, and later overloads are not planned.
-    [System.Diagnostics.CodeAnalysis.SuppressMessage("ApiDesign", "RS0026:Do not add multiple public overloads with optional parameters", Justification = "D046.2")]
     [System.Runtime.Versioning.SupportedOSPlatform("macos")]
     public static async ValueTask<T> InvokeOnMainThreadAsync<T>(Func<T> func, CancellationToken cancellationToken = default)
     {

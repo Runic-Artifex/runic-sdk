@@ -23,7 +23,7 @@ without a .NET SDK can create a project. Its arguments follow `--`, as they
 do for `dnx Runic.Create`; add `--nix` for the project's `flake.nix`:
 
 ```sh
-nix run github:Runic-Artifex/runic-sdk/v0.11.0#create -- MyApp --frontend react --nix
+nix run github:Runic-Artifex/runic-sdk/v0.12.0#create -- MyApp --frontend react --nix
 cd MyApp
 git init && git add -A
 nix develop              # the .NET SDK, Node and the package manager, from the new flake
@@ -44,7 +44,7 @@ network, and installs the template into `~/.templateengine`, as
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
     runic-sdk = {
-      url = "github:Runic-Artifex/runic-sdk/v0.11.0";
+      url = "github:Runic-Artifex/runic-sdk/v0.12.0";
       inputs.nixpkgs.follows = "nixpkgs";
     };
   };
