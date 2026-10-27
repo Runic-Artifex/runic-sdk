@@ -28,8 +28,9 @@ jobs:
   # Pull requests and merge queue entries run the jobs whose inputs changed and the Windows and
   # macOS legs those changes need (eng/ci/plan.mjs, eng/ci/platforms.mjs). Pushes to main run every Linux job
   # and the legs their before..after diff needs; scheduled and manual runs, and pull requests
-  # labelled ci:all-platforms, run everything. Planned skips still report, and `verify`
-  # accepts a skipped job only when this plan skipped it.
+  # labelled ci:all-platforms, run everything. A merge queue entry that a passed pull request run
+  # already tested (same base, same tree) runs nothing, not even build and engineering. Planned
+  # skips still report, and `verify` accepts a skipped job only when this plan skipped it.
   plan:
     name: Plan affected jobs
     runs-on: ubuntu-24.04
@@ -38,6 +39,8 @@ jobs:
       contents: read
       # The labels are read when the plan runs, so rerunning all jobs sees a label added since.
       pull-requests: read
+      # A merge queue entry looks up the passed pull request run it can reuse.
+      actions: read
     outputs:
       managed: ${{ steps.plan.outputs.managed }}
       web: ${{ steps.plan.outputs.web }}
@@ -49,6 +52,10 @@ jobs:
       platforms: ${{ steps.plan.outputs.platforms }}
       why: ${{ steps.plan.outputs.why }}
       skip: ${{ steps.plan.outputs.skip }}
+      # A same-repository pull request run's merge commit: its base parent and tree, which name the
+      # marker `verify` uploads when it passes. Empty for other runs.
+      tested-base: ${{ steps.plan.outputs.tested-base }}
+      tested-tree: ${{ steps.plan.outputs.tested-tree }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -67,6 +74,12 @@ jobs:
       # rules decide what is affected, so a change cannot narrow its own plan; this
       # checkout then enumerates the suites and legs. Without a usable diff, or when the
       # labels cannot be read, everything runs.
+      # Reuse: a squash queue entry on base B has the same tree as the pull request's merge
+      # commit on B. When a pull request run passed `verify` for that base and tree (its marker
+      # artifact ci-passed-<base>-<tree>), the entry tests identical code and runs nothing. The
+      # artifact only names candidates: the run it belongs to must be a ci.yml pull_request run
+      # from this repository whose `verify` job succeeded. A failed lookup plans as usual, so it
+      # can only run more, never skip more. The push run on main after the merge is unchanged.
       - name: Plan jobs from the changed files
         id: plan
         # shell: bash adds pipefail, so a failed git diff cannot become an empty change list.
@@ -77,12 +90,21 @@ jobs:
           PULL_REQUEST: ${{ github.event.pull_request.number }}
           QUEUE_BASE: ${{ github.event.merge_group.base_sha }}
           QUEUE_HEAD: ${{ github.event.merge_group.head_sha }}
+          HEAD_REPOSITORY: ${{ github.event.pull_request.head.repo.full_name }}
           LABEL: ci:all-platforms
         run: |
           base=
           options=()
+          reused=
           if [[ "$GITHUB_EVENT_NAME" == pull_request ]]; then
-            if git rev-parse --verify --quiet HEAD^2 > /dev/null; then base=HEAD^1; fi
+            if git rev-parse --verify --quiet HEAD^2 > /dev/null; then
+              base=HEAD^1
+              # Fork pull requests leave no marker.
+              if [[ "$HEAD_REPOSITORY" == "$GITHUB_REPOSITORY" ]]; then
+                echo "tested-base=$(git rev-parse HEAD^1)" >> "$GITHUB_OUTPUT"
+                echo "tested-tree=$(git rev-parse 'HEAD^{tree}')" >> "$GITHUB_OUTPUT"
+              fi
+            fi
             if ! labels=$(gh api "repos/$GITHUB_REPOSITORY/issues/$PULL_REQUEST/labels" --jq '.[].name'); then
               options=(--all-platforms "the pull request's labels could not be read")
             elif grep -qxF "$LABEL" <<< "$labels"; then
@@ -98,9 +120,28 @@ jobs:
             if [[ "$QUEUE_BASE" =~ ^[0-9a-f]{40}$ && "$(git rev-parse HEAD)" == "$QUEUE_HEAD" ]] \
               && { [[ "$(git rev-parse HEAD^1 2> /dev/null)" == "$QUEUE_BASE" ]] || git fetch --quiet --no-tags --depth=1 origin "$QUEUE_BASE"; }; then
               base=$QUEUE_BASE
+              if tree=$(git rev-parse --verify 'HEAD^{tree}') \
+                && runs=$(gh api --paginate "repos/$GITHUB_REPOSITORY/actions/artifacts?name=ci-passed-$base-$tree&per_page=100" \
+                  --jq '.artifacts[] | select(.expired | not) | .workflow_run.id'); then
+                for run in $runs; do
+                  if [[ "$run" =~ ^[0-9]+$ ]] \
+                    && info=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$run" \
+                      --jq '.event, (.path | sub("@.*$"; "")), (.head_repository.full_name // ""), .html_url') \
+                    && { read -r event; read -r path; read -r repository; read -r url; } <<< "$info" \
+                    && [[ "$event" == pull_request && "$path" == .github/workflows/ci.yml && "$repository" == "$GITHUB_REPOSITORY" ]] \
+                    && verified=$(gh api --paginate "repos/$GITHUB_REPOSITORY/actions/runs/$run/jobs?per_page=100" \
+                      --jq '.jobs[] | select(.name == "verify") | .conclusion') \
+                    && [[ "$verified" == success ]]; then
+                    reused=$url
+                    break
+                  fi
+                done
+              fi
             fi
           fi
-          if [[ -n "$base" ]] && git worktree add --detach "$RUNNER_TEMP/base" "$base" \
+          if [[ -n "$reused" ]]; then
+            bun eng/ci/plan.mjs --reused "$reused" >> "$GITHUB_OUTPUT"
+          elif [[ -n "$base" ]] && git worktree add --detach "$RUNNER_TEMP/base" "$base" \
             && affected=$(git diff --name-only --no-renames -z "$base" HEAD | bun "$RUNNER_TEMP/base/eng/ci/plan.mjs" --affected); then
             bun eng/ci/plan.mjs --plan "$affected" "${options[@]}" >> "$GITHUB_OUTPUT"
           else
@@ -108,8 +149,12 @@ jobs:
             if [[ "$GITHUB_EVENT_NAME" =~ ^(push|pull_request|merge_group)$ ]]; then reason+=" without a usable diff"; fi
             bun eng/ci/plan.mjs --all "$reason" >> "$GITHUB_OUTPUT"
           fi
+  # build and engineering run in every plan except a merge queue entry's reuse of a passed pull
+  # request run (eng/ci/plan.mjs, reusedSkip).
   build:
     name: Build shared SDK inputs
+    needs: plan
+    if: ${{ !contains(fromJSON(needs.plan.outputs.skip), 'build') }}
     runs-on: ubuntu-24.04
     timeout-minutes: 35
     steps:
@@ -350,7 +395,8 @@ jobs:
           node --version | grep '^v26\.'
           bun run test
   engineering:
-    needs: build
+    needs: [plan, build]
+    if: ${{ !contains(fromJSON(needs.plan.outputs.skip), 'engineering') }}
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
@@ -1961,3 +2007,22 @@ jobs:
           PLATFORMS: ${{ needs.plan.outputs.platforms }}
           WHY: ${{ needs.plan.outputs.why }}
         run: bun eng/ci/gate.mjs
+      # Marks this base and tree as passed, so a merge queue entry testing the same code reuses this
+      # run (the plan job's Reuse note). Fork pull requests and other events leave no marker. A failed
+      # upload only means the queue entry runs its full plan, so it does not fail the check.
+      - name: Mark the tested base and tree as passed
+        if: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && needs.plan.outputs.tested-tree != '' }}
+        env:
+          RUN_ID: ${{ github.run_id }}
+        run: echo "$RUN_ID" > "$RUNNER_TEMP/ci-passed"
+      - name: Upload the passed marker
+        if: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && needs.plan.outputs.tested-tree != '' }}
+        continue-on-error: true
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ci-passed-${{ needs.plan.outputs.tested-base }}-${{ needs.plan.outputs.tested-tree }}
+          path: ${{ runner.temp }}/ci-passed
+          if-no-files-found: error
+          overwrite: true
+          retention-days: 7
+          compression-level: 0

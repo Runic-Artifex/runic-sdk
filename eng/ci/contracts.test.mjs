@@ -425,10 +425,15 @@ test('merge queue entries run CI in their own concurrency groups and report veri
   assert.equal(groups[0], 'sdk-ci-SDK CI-refs/heads/gh-readonly-queue/main/pr-7-aaaa');
   assert.deepEqual(runs.map(github => evaluate(workflow.concurrency['cancel-in-progress'], github)),
     ['false', 'false', 'true', 'false', 'false']);
-  // No job or step is limited to other events, so a queue entry runs the same jobs and verify reports.
+  // No job or step is limited to other events, so a queue entry runs the same jobs and verify reports. Only
+  // verify's marker of a passed pull request run, after its gate, is pull_request-only ("Merge queue", Reuse).
+  const gate = workflow.jobs.verify.steps.findIndex(step => step.run === 'bun eng/ci/gate.mjs');
+  const markers = workflow.jobs.verify.steps.slice(gate + 1);
+  assert.deepEqual(markers.map(step => step.name), ['Mark the tested base and tree as passed', 'Upload the passed marker']);
   for (const [name, job] of Object.entries(workflow.jobs)) {
     assert.doesNotMatch(String(job.if ?? ''), /event_name|github\.ref/, name);
-    for (const step of job.steps ?? []) assert.doesNotMatch(String(step.if ?? ''), /event_name|github\.ref/, `${name}: ${step.name}`);
+    for (const step of job.steps ?? []) if (!markers.includes(step))
+      assert.doesNotMatch(String(step.if ?? ''), /event_name|github\.ref/, `${name}: ${step.name}`);
   }
   assert.equal(workflow.jobs.verify.name, 'verify');
   assert.equal(workflow.jobs.verify.if, 'always()');

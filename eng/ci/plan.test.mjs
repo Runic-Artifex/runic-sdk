@@ -5,7 +5,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from 'node:os';
 import { dirname, relative, resolve } from 'node:path';
 import { root, workspace, engineeringOnly, engineeringTestDirectories } from '../run.mjs';
-import { plan, planFor, skippableJobs, managedGroups, managedTests, webTests, outputs, affected, parseAffected, testReportArguments,
+import { plan, planFor, skippableJobs, reusedSkip, managedGroups, managedTests, webTests, outputs, affected, parseAffected, testReportArguments,
   everyLinuxJob, allPlatforms, nodeEngines, nodePackages } from './plan.mjs';
 import { platforms, allPlatformsLabel, nativeLegs, wpfLegs, packagingLegs, screenReaderLegs, screenReaderPaths, platformRules, neutralPaths }
   from './platforms.mjs';
@@ -219,11 +219,19 @@ test('the workflow gates exactly the skippable jobs on the plan and verify aggre
     assert.equal(workflow.jobs[job].if, `\${{ !contains(fromJSON(needs.plan.outputs.skip), '${job}') }}`, job);
     assert.ok([workflow.jobs[job].needs].flat().includes('plan'), job);
   }
-  for (const job of ['plan', 'build', 'engineering']) assert.equal(workflow.jobs[job].if, undefined, job);
+  // build and engineering run in every plan but a merge queue entry's reuse of a passed pull request run.
+  assert.equal(workflow.jobs.plan.if, undefined);
+  for (const job of ['build', 'engineering']) {
+    assert.ok(!skippableJobs.includes(job), job);
+    assert.ok(reusedSkip.includes(job), job);
+    assert.equal(workflow.jobs[job].if, `\${{ !contains(fromJSON(needs.plan.outputs.skip), '${job}') }}`, job);
+    assert.ok([workflow.jobs[job].needs].flat().includes('plan'), job);
+  }
+  assert.deepEqual(workflow.jobs.engineering.needs, ['plan', 'build']);
   assert.deepEqual([...skippableJobs, 'plan', 'build', 'engineering', 'verify'].sort(), jobs.sort());
   assert.equal(workflow.jobs.verify.if, 'always()');
   assert.deepEqual([...workflow.jobs.verify.needs].sort(), jobs.filter(job => job !== 'verify').sort());
-  const gate = workflow.jobs.verify.steps.at(-1);
+  const gate = workflow.jobs.verify.steps.find(step => step.run === 'bun eng/ci/gate.mjs');
   assert.equal(gate.run, 'bun eng/ci/gate.mjs');
   assert.equal(gate.env.SKIP, '${{ needs.plan.outputs.skip }}');
   assert.equal(gate.env.NEEDS, '${{ toJSON(needs) }}');
@@ -237,6 +245,12 @@ test('verify accepts only planned skips and successes', () => {
   assert.deepEqual(incomplete({ ...needs, views: { result: 'failure' } }, ['native', 'views']), ['views=failure']);
   assert.deepEqual(incomplete({ ...needs, views: { result: 'cancelled' } }, ['native']), ['views=cancelled']);
   assert.deepEqual(incomplete({ plan: { result: 'failure' }, native: { result: 'skipped' } }), ['plan=failure', 'native=skipped']);
+  // A failed plan skips build and engineering too, and has no skip list to excuse them.
+  assert.deepEqual(incomplete({ plan: { result: 'failure' }, build: { result: 'skipped' }, engineering: { result: 'skipped' } }),
+    ['plan=failure', 'build=skipped', 'engineering=skipped']);
+  const reused = Object.fromEntries(['plan', ...reusedSkip].map(job => [job, { result: job === 'plan' ? 'success' : 'skipped' }]));
+  assert.deepEqual(incomplete(reused, reusedSkip), []);
+  assert.deepEqual(incomplete(reused, skippableJobs), ['build=skipped', 'engineering=skipped']);
 });
 
 const owners = file => Object.entries(workspace.components)
@@ -455,7 +469,6 @@ test('pushes keep their platforms, and the label, schedules and manual runs plan
   assert.deepEqual(labelled.native.include, nativeLegs);
   assert.equal(labelled.why, platforms.map(platform => `${platform}: label ci:all-platforms`).join('; '));
   assert.equal(labelled.full, false, 'the label adds legs, not Linux jobs');
-  const outputsOf = text => Object.fromEntries(text.trim().split('\n').map(line => [line.slice(0, line.indexOf('=')), JSON.parse(line.slice(line.indexOf('=') + 1))]));
   const cliPush = outputsOf(cli(['--plan', JSON.stringify(decided), '--all-linux']));
   assert.deepEqual([cliPush.full, cliPush.platforms, cliPush.skip], [true, ['osx-arm64'], ['wpf']]);
   const cliLabel = outputsOf(cli(['--plan', JSON.stringify(decided), '--all-platforms', 'label ci:all-platforms']));
@@ -466,8 +479,12 @@ test('pushes keep their platforms, and the label, schedules and manual runs plan
   assert.deepEqual(outputsOf(cli([])).native, { include: nativeLegs });
 });
 
-// Runs the plan step's script in a scratch repository whose `bun` stub records the planner calls.
-const planStep = (event, env, commits) => {
+const repository = 'Runic-Artifex/runic-sdk';
+// Runs the plan step's script in a scratch repository whose `bun` stub records the planner calls. The
+// `gh` stub answers `gh api <endpoint> --jq <filter>` with jq on responses({ shas, tree })[endpoint] and
+// fails for any other endpoint. `merge` checks out a merge commit of the first commit and the last one,
+// like a pull_request checkout.
+const planStep = (event, env, commits, responses = () => ({}), { merge = false } = {}) => {
   const directory = mkdtempSync(resolve(tmpdir(), 'runic-ci-plan-step-'));
   try {
     const git = (...args) => execFileSync('git', args, { cwd: directory, encoding: 'utf8',
@@ -479,15 +496,32 @@ const planStep = (event, env, commits) => {
       git('commit', '-q', '-m', file);
       return git('rev-parse', 'HEAD');
     });
+    if (merge) {
+      git('checkout', '-q', '--detach', shas[0]);
+      git('merge', '-q', '--no-ff', '-m', 'merge', shas.at(-1));
+    }
+    const tree = git('rev-parse', 'HEAD^{tree}');
     git('remote', 'add', 'origin', directory);
     mkdirSync(resolve(directory, 'stub'));
     writeFileSync(resolve(directory, 'stub/bun'), '#!/usr/bin/env bash\nif [[ "$2" == --affected ]]; then xargs -0 echo; else echo "bun $*"; fi\n', { mode: 0o755 });
+    mkdirSync(resolve(directory, 'responses'));
+    for (const [endpoint, body] of Object.entries(responses({ shas, tree })))
+      writeFileSync(resolve(directory, 'responses', endpoint.replace(/[^A-Za-z0-9]/g, '_')), JSON.stringify(body));
+    writeFileSync(resolve(directory, 'stub/gh'), `#!/usr/bin/env bash
+endpoint= filter=
+while (($#)); do
+  case "$1" in api|--paginate) ;; --jq) filter=$2; shift ;; *) endpoint=$1 ;; esac
+  shift
+done
+file="${resolve(directory, 'responses')}/\${endpoint//[^A-Za-z0-9]/_}"
+[[ -f "$file" ]] && jq -r "$filter" "$file"
+`, { mode: 0o755 });
     mkdirSync(resolve(directory, 'temp'));
     const output = resolve(directory, 'output');
     const script = workflow.jobs.plan.steps.find(item => item.id === 'plan').run;
     const result = spawnSync('bash', ['-eo', 'pipefail', '-c', script], { cwd: directory, encoding: 'utf8', env: { ...process.env,
       PATH: `${resolve(directory, 'stub')}:${process.env.PATH}`, GITHUB_EVENT_NAME: event, GITHUB_OUTPUT: output,
-      RUNNER_TEMP: resolve(directory, 'temp'), ...env(shas) } });
+      RUNNER_TEMP: resolve(directory, 'temp'), GITHUB_REPOSITORY: repository, ...env(shas) } });
     assert.equal(result.status, 0, result.stderr);
     return readFileSync(output, 'utf8').trim();
   } finally { rmSync(directory, { recursive: true, force: true }); }
@@ -505,6 +539,92 @@ test('a merge queue entry plans its merge group diff like an unlabelled pull req
     assert.equal(planStep('merge_group', env, ['a.txt', 'b.txt']), 'bun eng/ci/plan.mjs --all merge_group run without a usable diff');
   // Pushes keep planning every Linux job from before..after.
   assert.equal(planStep('push', shas => ({ BEFORE: shas[0] }), ['a.txt', 'b.txt']), 'bun eng/ci/plan.mjs --plan b.txt --all-linux');
+});
+
+const outputsOf = text => Object.fromEntries(text.trim().split('\n').map(line => [line.slice(0, line.indexOf('=')), JSON.parse(line.slice(line.indexOf('=') + 1))]));
+
+test('a reused plan runs nothing, build and engineering included', () => {
+  const url = 'https://github.com/Runic-Artifex/runic-sdk/actions/runs/11';
+  const reused = outputsOf(cli(['--reused', url]));
+  assert.deepEqual(reused.skip, reusedSkip);
+  assert.deepEqual(reusedSkip, [...skippableJobs, 'build', 'engineering']);
+  assert.deepEqual([reused.full, reused.components, reused.managed, reused.web, reused.frameworks, reused.platforms],
+    [false, [], [], [], false, []]);
+  for (const name of ['native', 'wpf', 'packaging', 'screen-readers']) assert.deepEqual(reused[name], { include: [] }, name);
+  assert.equal(reused.why, `reuses ${url}, which tested the same tree on the same base`);
+  assert.deepEqual(Object.keys(reused), Object.keys(outputsOf(cli([]))));
+  // Without a run to reuse, everything runs.
+  assert.deepEqual(outputsOf(cli(['--reused'])).skip, []);
+});
+
+test('a merge queue entry reuses only a passed same-repository ci.yml pull request run of its base and tree', () => {
+  const queued = shas => ({ QUEUE_BASE: shas[0], QUEUE_HEAD: shas.at(-1) });
+  const url = `https://github.com/${repository}/actions/runs/11`;
+  const responses = ({ run = {}, jobs = [{ name: 'build', conclusion: 'success' }, { name: 'verify', conclusion: 'success' }], expired = false,
+    marker = ({ shas, tree }) => `${shas[0]}-${tree}` } = {}) =>
+    ({ shas, tree }) => ({
+      [`repos/${repository}/actions/artifacts?name=ci-passed-${marker({ shas, tree })}&per_page=100`]:
+        { artifacts: [{ name: `ci-passed-${marker({ shas, tree })}`, expired, workflow_run: { id: 11 } }] },
+      [`repos/${repository}/actions/runs/11`]: { event: 'pull_request', path: '.github/workflows/ci.yml',
+        head_repository: { full_name: repository }, html_url: url, ...run },
+      [`repos/${repository}/actions/runs/11/jobs?per_page=100`]: { jobs },
+    });
+  const normal = 'bun eng/ci/plan.mjs --plan b.txt';
+  assert.equal(planStep('merge_group', queued, ['a.txt', 'b.txt'], responses()), `bun eng/ci/plan.mjs --reused ${url}`);
+  assert.equal(planStep('merge_group', queued, ['a.txt', 'b.txt'], responses({ run: { path: '.github/workflows/ci.yml@refs/pull/7/merge' } })),
+    `bun eng/ci/plan.mjs --reused ${url}`);
+  for (const [why, response] of [
+    ['verify failed', responses({ jobs: [{ name: 'verify', conclusion: 'failure' }] })],
+    ['verify skipped', responses({ jobs: [{ name: 'verify', conclusion: 'skipped' }] })],
+    ['no verify job', responses({ jobs: [{ name: 'build', conclusion: 'success' }] })],
+    ['a push run', responses({ run: { event: 'push' } })],
+    ['a merge queue run', responses({ run: { event: 'merge_group' } })],
+    ['a fork', responses({ run: { head_repository: { full_name: 'someone/runic-sdk' } } })],
+    ['a deleted fork', responses({ run: { head_repository: null } })],
+    ['another workflow', responses({ run: { path: '.github/workflows/publish-preview.yml' } })],
+    ['an expired marker', responses({ expired: true })],
+    // A marker for another tree (the pull request changed since) or another base (main moved) is not looked up.
+    ['another tree', responses({ marker: ({ shas }) => `${shas[0]}-${'e'.repeat(40)}` })],
+    ['another base', responses({ marker: ({ shas, tree }) => `${shas[1]}-${tree}` })],
+    ['gh fails', () => ({})],
+  ]) assert.equal(planStep('merge_group', queued, ['a.txt', 'b.txt'], response), normal, why);
+  // Only merge queue entries look for a run to reuse.
+  assert.equal(planStep('push', shas => ({ BEFORE: shas[0] }), ['a.txt', 'b.txt'], responses()), 'bun eng/ci/plan.mjs --plan b.txt --all-linux');
+});
+
+test('a passed same-repository pull request run marks its merge commit base and tree', () => {
+  const labels = () => ({ [`repos/${repository}/issues/7/labels`]: [] });
+  const pull = head => () => ({ PULL_REQUEST: '7', HEAD_REPOSITORY: head, LABEL: allPlatformsLabel });
+  const tree = (directory => {
+    try {
+      execFileSync('git', ['init', '-q'], { cwd: directory });
+      for (const file of ['a.txt', 'b.txt']) writeFileSync(resolve(directory, file), file);
+      execFileSync('git', ['add', '.'], { cwd: directory });
+      return execFileSync('git', ['write-tree'], { cwd: directory, encoding: 'utf8' }).trim();
+    } finally { rmSync(directory, { recursive: true, force: true }); }
+  })(mkdtempSync(resolve(tmpdir(), 'runic-ci-tree-')));
+  const marked = planStep('pull_request', pull(repository), ['a.txt', 'b.txt'], labels, { merge: true }).split('\n');
+  assert.match(marked[0], /^tested-base=[0-9a-f]{40}$/);
+  assert.deepEqual(marked.slice(1), [`tested-tree=${tree}`, 'bun eng/ci/plan.mjs --plan b.txt']);
+  // Fork pull requests leave no marker.
+  assert.equal(planStep('pull_request', pull('someone/runic-sdk'), ['a.txt', 'b.txt'], labels, { merge: true }), 'bun eng/ci/plan.mjs --plan b.txt');
+  const { plan: job, verify } = workflow.jobs;
+  for (const name of ['tested-base', 'tested-tree']) assert.equal(job.outputs[name], `\${{ steps.plan.outputs.${name} }}`, name);
+  assert.equal(job.steps.find(item => item.id === 'plan').env.HEAD_REPOSITORY, '${{ github.event.pull_request.head.repo.full_name }}');
+  // verify uploads the marker only after its gate passed, for same-repository pull requests.
+  const gate = verify.steps.findIndex(step => step.run === 'bun eng/ci/gate.mjs');
+  const [write, upload] = verify.steps.slice(gate + 1);
+  const condition = "${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && needs.plan.outputs.tested-tree != '' }}";
+  for (const step of [write, upload]) assert.equal(step.if, condition, step.name);
+  assert.equal(write.run, 'echo "$RUN_ID" > "$RUNNER_TEMP/ci-passed"');
+  const build = workflow.jobs.build.steps.find(step => step.uses?.startsWith('actions/upload-artifact@'));
+  assert.equal(upload.uses, build.uses);
+  // A missing marker only costs the queue entry a full run.
+  assert.equal(upload['continue-on-error'], true);
+  assert.deepEqual(upload.with, { name: 'ci-passed-${{ needs.plan.outputs.tested-base }}-${{ needs.plan.outputs.tested-tree }}',
+    path: '${{ runner.temp }}/ci-passed', 'if-no-files-found': 'error', overwrite: true, 'retention-days': 7, 'compression-level': 0 });
+  // The plan step looks the marker up by the same name.
+  assert.match(job.steps.find(item => item.id === 'plan').run, /actions\/artifacts\?name=ci-passed-\$base-\$tree&/);
 });
 
 test('a base planner without platforms plans every leg, and invalid platforms are ignored', () => {
@@ -529,7 +649,7 @@ test('the workflow plans platform legs, reads the label live and runs everything
     assert.equal(job.outputs[name], `\${{ steps.plan.outputs.${name} }}`, name);
   }
   for (const name of ['platforms', 'why']) assert.equal(job.outputs[name], `\${{ steps.plan.outputs.${name} }}`, name);
-  assert.deepEqual(job.permissions, { contents: 'read', 'pull-requests': 'read' });
+  assert.deepEqual(job.permissions, { contents: 'read', 'pull-requests': 'read', actions: 'read' });
   const step = job.steps.find(item => item.id === 'plan');
   assert.equal(step.env.LABEL, allPlatformsLabel);
   assert.equal(step.env.BEFORE, '${{ github.event.before }}');
@@ -547,7 +667,7 @@ test('the workflow plans platform legs, reads the label live and runs everything
   assert.ok(Object.hasOwn(workflow.on, 'workflow_dispatch'));
   assert.equal(workflow.concurrency['cancel-in-progress'], "${{ github.event_name == 'pull_request' }}");
   assert.match(workflow.concurrency.group, /github\.run_id/);
-  const gate = workflow.jobs.verify.steps.at(-1);
+  const gate = workflow.jobs.verify.steps.find(step => step.run === 'bun eng/ci/gate.mjs');
   assert.equal(gate.env.PLATFORMS, '${{ needs.plan.outputs.platforms }}');
   assert.equal(gate.env.WHY, '${{ needs.plan.outputs.why }}');
   assert.equal(platformSummary(['win-x64'], 'win-x64: a.cs'), 'Windows and macOS legs: win-x64 (win-x64: a.cs)');
