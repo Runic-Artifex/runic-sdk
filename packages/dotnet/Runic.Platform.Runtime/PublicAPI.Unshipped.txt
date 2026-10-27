@@ -1,5 +1,1 @@
 #nullable enable
-Runic.Platform.Runtime.IPickerBackend.SupportsDocumentAccess.get -> bool
-Runic.Platform.Runtime.NativePickerBackend.OpenDocumentAsync(Runic.Platform.OpenFileOptions! options, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Platform.PickerResult<Runic.Platform.IDocumentFileLease!>!>
-Runic.Platform.Runtime.NativePickerBackend.SaveDocumentAsync(Runic.Platform.SaveFileOptions! options, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Platform.PickerResult<Runic.Platform.IDocumentFileLease!>!>
-Runic.Platform.Runtime.NativePickerBackend.SupportsDocumentAccess.get -> bool

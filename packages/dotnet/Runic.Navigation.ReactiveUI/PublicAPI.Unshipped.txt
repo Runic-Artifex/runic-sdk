@@ -1,7 +1,1 @@
 #nullable enable
-Runic.Navigation.ReactiveUI.ReactiveNavigationSelectionExtensions
-static Runic.Navigation.ReactiveUI.ReactiveNavigationSelectionExtensions.CreateSelectCommand(this Runic.Navigation.NavigationSelection! selection, System.IObservable<bool>? canExecute = null, ReactiveUI.Primitives.Concurrency.ISequencer? outputScheduler = null) -> ReactiveUI.ReactiveCommand<int, Runic.Navigation.NavigationOutcome!>!
-static Runic.Navigation.ReactiveUI.ReactiveNavigationSelectionExtensions.WhenIsBusyChanged(this Runic.Navigation.NavigationSelection! selection) -> System.IObservable<bool>!
-static Runic.Navigation.ReactiveUI.ReactiveNavigationSelectionExtensions.WhenIsTransitioningChanged(this Runic.Navigation.NavigationSelection! selection) -> System.IObservable<bool>!
-static Runic.Navigation.ReactiveUI.ReactiveNavigationSelectionExtensions.WhenSelectedChanged(this Runic.Navigation.NavigationSelection! selection) -> System.IObservable<Runic.Navigation.NavigationRegion?>!
-static Runic.Navigation.ReactiveUI.ReactiveNavigationSelectionExtensions.WhenSelectedIndexChanged(this Runic.Navigation.NavigationSelection! selection) -> System.IObservable<int>!

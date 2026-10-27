@@ -18,3 +18,9 @@ static Runic.Navigation.ReactiveUI.ReactiveNavigationRegionExtensions.WhenIsTran
 Runic.Navigation.ReactiveUI.ReactiveNavigationRegionGuard
 static Runic.Navigation.ReactiveUI.ReactiveNavigationRegionExtensions.WhenHistoryChanged<TContent>(this Runic.Navigation.NavigationRegion<TContent!>! region) -> System.IObservable<System.Collections.Generic.IReadOnlyList<Runic.Navigation.NavigationEntry<TContent!>!>!>!
 static Runic.Navigation.ReactiveUI.ReactiveNavigationRegionGuard.WithInteraction<TPrompt>(ReactiveUI.Binding.IInteraction<TPrompt, bool>! interaction, System.Func<Runic.Navigation.NavigationRegionDeparture!, TPrompt>! prompt, System.Func<Runic.Navigation.NavigationRegionDeparture!, bool>! hasUnsavedChanges, System.Action? discard = null) -> Runic.Navigation.INavigationRegionGuard!
+Runic.Navigation.ReactiveUI.ReactiveNavigationSelectionExtensions
+static Runic.Navigation.ReactiveUI.ReactiveNavigationSelectionExtensions.CreateSelectCommand(this Runic.Navigation.NavigationSelection! selection, System.IObservable<bool>? canExecute = null, ReactiveUI.Primitives.Concurrency.ISequencer? outputScheduler = null) -> ReactiveUI.ReactiveCommand<int, Runic.Navigation.NavigationOutcome!>!
+static Runic.Navigation.ReactiveUI.ReactiveNavigationSelectionExtensions.WhenIsBusyChanged(this Runic.Navigation.NavigationSelection! selection) -> System.IObservable<bool>!
+static Runic.Navigation.ReactiveUI.ReactiveNavigationSelectionExtensions.WhenIsTransitioningChanged(this Runic.Navigation.NavigationSelection! selection) -> System.IObservable<bool>!
+static Runic.Navigation.ReactiveUI.ReactiveNavigationSelectionExtensions.WhenSelectedChanged(this Runic.Navigation.NavigationSelection! selection) -> System.IObservable<Runic.Navigation.NavigationRegion?>!
+static Runic.Navigation.ReactiveUI.ReactiveNavigationSelectionExtensions.WhenSelectedIndexChanged(this Runic.Navigation.NavigationSelection! selection) -> System.IObservable<int>!

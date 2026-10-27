@@ -1708,3 +1708,11 @@ static Runic.Platform.DesktopSecretStoreOptions.operator !=(Runic.Platform.Deskt
 static Runic.Platform.DesktopSecretStoreOptions.operator ==(Runic.Platform.DesktopSecretStoreOptions? left, Runic.Platform.DesktopSecretStoreOptions? right) -> bool
 Runic.Platform.PickerResult<T>.Match<TResult>(System.Func<Runic.Platform.PickerResult<T>.Selected!, TResult>! selected, System.Func<Runic.Platform.PickerResult<T>.Dismissed!, TResult>! dismissed, System.Func<Runic.Platform.PickerResult<T>.Unavailable!, TResult>! unavailable, System.Func<Runic.Platform.PickerResult<T>.Failed!, TResult>! failed) -> TResult
 Runic.Platform.PickerResult<T>.TryGetValue(out T value) -> bool
+const Runic.Platform.PlatformCapabilityIds.FilesOpenDocument = "platform.files.openDocument" -> string!
+Runic.Platform.IDesktopFileBookmarks.OpenDocumentAsync(System.Collections.Immutable.ImmutableArray<byte> bookmark, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Platform.PlatformResult<Runic.Platform.IDocumentFileLease!>!>
+Runic.Platform.IDocumentFileLease
+Runic.Platform.IDocumentFileLease.LocalPath.get -> string!
+Runic.Platform.IDocumentFileLease.OpenReadAsync(System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Platform.PlatformResult<System.IO.Stream!>!>
+Runic.Platform.IFileDialogs.OpenDocumentAsync(Runic.Platform.OpenFileOptions! options, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Platform.PickerResult<Runic.Platform.IDocumentFileLease!>!>
+Runic.Platform.IFileDialogs.SaveDocumentAsync(Runic.Platform.SaveFileOptions! options, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Platform.PickerResult<Runic.Platform.IDocumentFileLease!>!>
+Runic.Platform.ISaveFileLease.CreateBookmarkAsync(System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Platform.PlatformResult<System.Collections.Immutable.ImmutableArray<byte>>!>

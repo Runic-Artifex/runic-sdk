@@ -117,3 +117,7 @@ Runic.Platform.Runtime.NativeFileSelection.SelectedFilter.get -> Runic.Platform.
 Runic.Platform.Runtime.NativeFileSelection.SelectedFilter.init -> void
 Runic.Platform.Runtime.NativePickerBackend.OpenDirectoriesAsync(Runic.Platform.OpenDirectoryOptions! options, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Platform.PickerResult<Runic.Platform.IDirectoryLeaseList!>!>
 Runic.Platform.Runtime.NativePickerBackend.SupportsMultipleDirectorySelection.get -> bool
+Runic.Platform.Runtime.IPickerBackend.SupportsDocumentAccess.get -> bool
+Runic.Platform.Runtime.NativePickerBackend.OpenDocumentAsync(Runic.Platform.OpenFileOptions! options, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Platform.PickerResult<Runic.Platform.IDocumentFileLease!>!>
+Runic.Platform.Runtime.NativePickerBackend.SaveDocumentAsync(Runic.Platform.SaveFileOptions! options, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Platform.PickerResult<Runic.Platform.IDocumentFileLease!>!>
+Runic.Platform.Runtime.NativePickerBackend.SupportsDocumentAccess.get -> bool
