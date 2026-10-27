@@ -213,8 +213,10 @@ Other runs choose legs this way:
 - **Releases** need one successful run on `main` of the released commit that ran every
   Windows and macOS leg ([eng/release/README.md](../release/README.md)).
 
-- `plan`, `build` and `engineering` always run. `build` checks generated files;
-  `engineering` lints workflows and runs the contract and Markdown link tests.
+- `plan` always runs. `build` and `engineering` run in every plan except a merge queue
+  entry's reuse of a passed pull request run (see [Merge queue](#merge-queue)). `build`
+  checks generated files; `engineering` lints workflows and runs the contract and Markdown
+  link tests.
 - Markdown outside `packages/`, `tools/` and `tests/`, the `*.test.mjs` files the
   engineering job runs, and workflows other than `ci.yml` are read only by those jobs
   (`engineeringOnly` in `eng/run.mjs`; `bun run affected` uses the same rule).
@@ -268,6 +270,15 @@ it) plus the pull request, and runs `ci.yml` on it as a `merge_group` event. The
   macOS legs its diff needs, even when the pull request has `ci:all-platforms`; that
   label's run already happened on the pull request. Without a usable diff the entry
   runs everything.
+- **Reuse.** When `verify` passes on a pull request from this repository, it uploads a
+  marker artifact `ci-passed-<base>-<tree>` (kept 7 days) naming its merge commit's base
+  parent and tree. A squash entry on the same base has the same tree, so it tests identical
+  code: its plan finds the marker, checks that the run it belongs to is a `ci.yml`
+  `pull_request` run from this repository whose `verify` job succeeded, and then skips every
+  job, `build` and `engineering` included, so `verify` passes within about a minute. When
+  `main` moved, another entry is ahead, the pull request changed since, or any lookup fails,
+  the entry plans as above. The push run on `main` after the merge and the release rules
+  are unchanged.
 - **Concurrency.** Each entry has its own ref and so its own concurrency group: queue
   runs do not cancel each other, pull request runs or pushes. When GitHub removes an
   entry, for example because one ahead of it failed, it rebuilds the later entries

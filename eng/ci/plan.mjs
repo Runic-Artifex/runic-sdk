@@ -82,11 +82,13 @@ export function nodePackages() {
     .filter(name => JSON.parse(readFileSync(resolve(root, "packages/web", name, "package.json"), "utf8")).engines?.node !== undefined);
 }
 
-// Jobs that always run: `plan`, `build` (which also checks generated files and packs the
-// package candidates) and `engineering` (workflow lint, contracts, Markdown links). `verify`
-// accepts a skipped job only when it is listed here and the plan skipped it.
+// Jobs a plan can skip. `build` (which also checks generated files and packs the package candidates)
+// and `engineering` (workflow lint, contracts, Markdown links) run in every other plan; only a merge
+// queue entry that reuses a passed pull request run skips them too (reusedSkip). `plan` always runs.
+// `verify` accepts a skipped job only when the plan skipped it.
 export const skippableJobs = ["managed", "web", "node-26", "views", "package-consumers", "wpf", "templates", "native", "native-musl", "packaging",
   "screen-readers"];
+export const reusedSkip = [...skippableJobs, "build", "engineering"];
 
 const owner = file => Object.entries(workspace.components)
   .find(([, component]) => component.paths.some(path => file === path || file.startsWith(`${path}/`)))?.[0];
@@ -177,6 +179,23 @@ export function planFor({ full, components, screenReaders: readers = true, platf
 
 export const plan = files => planFor(affected(files));
 
+// A merge queue entry whose base and tree a passed pull request run already tested runs nothing:
+// the code under test is identical (the plan step in ci.yml checks the run).
+export const reusedPlan = url => ({
+  full: false,
+  components: [],
+  managed: [],
+  web: [],
+  frameworks: false,
+  native: { include: [] },
+  wpf: { include: [] },
+  packaging: { include: [] },
+  "screen-readers": { include: [] },
+  platforms: [],
+  why: `reuses ${url}, which tested the same tree on the same base`,
+  skip: reusedSkip,
+});
+
 // Accept another checkout's affected() result. Anything else (such as an older base
 // planner that does not support --affected) plans every job. A result without
 // platforms, from a base planner older than platform planning, plans every platform.
@@ -223,11 +242,16 @@ export function outputs(result) {
 // NUL-separated changed files (stdin), then `--plan <result>` with this checkout to
 // enumerate suites and legs; `--all-linux` (pushes) plans every Linux job and
 // `--all-platforms <reason>` every leg. `--all <reason>` plans everything, as do no
-// arguments. `--files <paths>` previews a plan locally with this checkout alone.
+// arguments. `--files <paths>` previews a plan locally with this checkout alone. `--reused <url>`
+// runs nothing, for a merge queue entry that reuses the passed pull request run at <url>.
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   const [mode, ...rest] = process.argv.slice(2);
   if (mode === "--affected") {
     console.log(JSON.stringify(affected(readFileSync(0, "utf8").split("\0").filter(Boolean))));
+  } else if (mode === "--reused" && rest[0]) {
+    const result = reusedPlan(rest[0]);
+    console.error(`Running nothing: ${result.why}.`);
+    console.log(outputs(result));
   } else {
     const option = name => rest.includes(name) ? rest[rest.indexOf(name) + 1] ?? "" : undefined;
     let input = mode === "--plan" ? parseAffected(rest[0] ?? "") : mode === "--files" ? affected(rest) : null;
