@@ -143,7 +143,7 @@
         "type": "Project",
         "dependencies": {
           "Microsoft.Extensions.TimeProvider.Testing": "[10.10.0, 11.0.0)",
-          "Runic.Application.Views": "[0.12.0, )"
+          "Runic.Application.Views": "[0.12.1, )"
         }
       },
       "runic.application.views": {
@@ -151,7 +151,7 @@
         "dependencies": {
           "Microsoft.Extensions.DependencyInjection.Abstractions": "[10.0.14, )",
           "Microsoft.Extensions.Logging.Abstractions": "[10.0.14, )",
-          "Runic.Navigation": "[0.12.0, )"
+          "Runic.Navigation": "[0.12.1, )"
         }
       },
       "runic.navigation": {
