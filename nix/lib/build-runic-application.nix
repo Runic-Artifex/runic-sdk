@@ -13,6 +13,7 @@
   writableTmpDirAsHomeHook,
   clang,
   zlib,
+  openssl,
   libxml2,
   buildPackages,
   installShellFiles,
@@ -399,7 +400,12 @@ buildDotnetModule (
       ++ hostRuntime.buildInputs
       ++ lib.optionals withMedia hostRuntime.gstreamer
       ++ lib.optional nativeAot zlib;
-    runtimeDeps = runtimeDeps ++ hostRuntime.libraries;
+    # A self-contained or NativeAOT application carries the runtime packs, whose crypto shim dlopen()s libssl.
+    # nixpkgs' source-built packs name it by store path; the official binary packs (e.g. with
+    # dotnetCorePackages.sdk_10_0-bin) name only libssl.so.3. Their SDK links an rpath for it, but the fixup's
+    # patchelf --shrink-rpath drops it as the library is not DT_NEEDED, so provide it on LD_LIBRARY_PATH as
+    # buildDotnetModule does for ICU. A framework-dependent application uses dotnet-runtime, which finds libssl.
+    runtimeDeps = runtimeDeps ++ hostRuntime.libraries ++ lib.optional selfContainedBuild openssl;
 
     # NU1004 names the changed references; the lock is updated with dotnet restore outside the sandbox.
     dotnetRestoreFlags = dotnetRestoreFlags ++ lib.optional nugetLockedMode "-p:RestoreLockedMode=true";
