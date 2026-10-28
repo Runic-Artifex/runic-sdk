@@ -75,7 +75,9 @@ public sealed class ConfigurationValidationTests
         await using (var host = await StartGtk4HostAsync())
         {
             Assert.Empty(host.GetPresentationPreflight(placement).OptionDiagnostics);
-            Assert.True(host.Validate(placement).IsValid);
+            // Validate also reports whether the GTK 4 runtime and a display are available, which depends on the machine.
+            Assert.DoesNotContain(host.Validate(placement).Errors, static item =>
+                item.Option is "DesktopWindowOptions.X" or "DesktopWindowOptions.Y" or "DesktopWindowOptions.Placement");
         }
     }
 
