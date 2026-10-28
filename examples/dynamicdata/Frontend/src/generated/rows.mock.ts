@@ -36,7 +36,7 @@ export interface RowsMock extends MockTypedView<RowsMockState, RowsClient, "rows
 const spec: MockTypedViewSpec = {
   kind: "rows",
   route: "rows",
-  contract: "DynamicDataExample.RowsViewModel:1821580DEBA0B343E1A60300A5111E650743295B2FE30578BAE27940F9CDE7F5",
+  contract: "DynamicDataExample.RowsViewModel:C7FD4ECAA613772482C257FF1BCC336B6314B38CB596C153DDA1C619FA674DE3",
   fields: {
     rows: { encode: (value: unknown) => { const typed = value as readonly Row[]; return typed.map(item => ({ ["id"]: item["id"], ["value"]: item["value"], ["label"]: item["label"] })); }, decode: (wire: unknown) => bridgeWire.array(wire, item => bridgeWire.object<Row>(item, value => ({ id: bridgeWire.integer(value["id"], -2147483648, 2147483647), value: bridgeWire.integer(value["value"], -2147483648, 2147483647), label: bridgeWire.string(value["label"])}))) },
     totalCount: { encode: (value: unknown) => { const typed = value as number; return typed; }, decode: (wire: unknown) => bridgeWire.integer(wire, -2147483648, 2147483647) },
@@ -47,12 +47,12 @@ const spec: MockTypedViewSpec = {
     rows: { encode: (value: unknown) => { const typed = value as Row; return { ["id"]: typed["id"], ["value"]: typed["value"], ["label"]: typed["label"] }; }, decode: (wire: unknown) => bridgeWire.object<Row>(wire, value => ({ id: bridgeWire.integer(value["id"], -2147483648, 2147483647), value: bridgeWire.integer(value["value"], -2147483648, 2147483647), label: bridgeWire.string(value["label"])})), key: (item: Row) => String(item.id) },
   },
   commands: {
-    setViewport: { route: "SetViewport", read: (raw: unknown) => { const wire: unknown = JSON.parse(raw as string); return bridgeWire.object<ViewportRequest>(wire, value => ({ start: bridgeWire.integer(value["start"], -2147483648, 2147483647), size: bridgeWire.integer(value["size"], -2147483648, 2147483647)})); } },
-    update: { route: "Update", available: "canUpdate" },
+    setViewport: { member: "setViewport", decodeInput: (wire: unknown) => bridgeWire.object<ViewportRequest>(wire, value => ({ start: bridgeWire.integer(value["start"], -2147483648, 2147483647), size: bridgeWire.integer(value["size"], -2147483648, 2147483647)})) },
+    update: { member: "update", available: "canUpdate" },
   },
   operations: {
-    setViewport: { member: "SetViewport", decodeInput: (wire: unknown) => bridgeWire.object<ViewportRequest>(wire, value => ({ start: bridgeWire.integer(value["start"], -2147483648, 2147483647), size: bridgeWire.integer(value["size"], -2147483648, 2147483647)})) },
-    update: { member: "Update" },
+    setViewport: { member: "setViewport", decodeInput: (wire: unknown) => bridgeWire.object<ViewportRequest>(wire, value => ({ start: bridgeWire.integer(value["start"], -2147483648, 2147483647), size: bridgeWire.integer(value["size"], -2147483648, 2147483647)})) },
+    update: { member: "update" },
   },
 };
 

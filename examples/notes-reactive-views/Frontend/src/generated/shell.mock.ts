@@ -39,22 +39,22 @@ export interface ShellMock extends MockTypedView<ShellMockState, ShellClient, "s
 const spec: MockTypedViewSpec = {
   kind: "shell",
   route: "shell",
-  contract: "NotesReactiveViews.ShellViewModel:52DE8C6E8174A48E2168364330131A22475E3CB80C5EAADEDE330EACD9F97837",
+  contract: "NotesReactiveViews.ShellViewModel:39D98DB6603CC7808AF0204C418CC72AFA0BFDDAEECCC27B8324172982D22B56",
   fields: {},
   defaults: { canOpenHome: true, isOpenHomeExecuting: false, canOpenDocument: true, isOpenDocumentExecuting: false, canSwapPinned: true, isSwapPinnedExecuting: false, canRemovePinned: true, isRemovePinnedExecuting: false, canRestorePinned: true, isRestorePinnedExecuting: false },
   commands: {
-    openHome: { route: "OpenHome", available: "canOpenHome" },
-    openDocument: { route: "OpenDocument", available: "canOpenDocument" },
-    swapPinned: { route: "SwapPinned", available: "canSwapPinned" },
-    removePinned: { route: "RemovePinned", available: "canRemovePinned" },
-    restorePinned: { route: "RestorePinned", available: "canRestorePinned" },
+    openHome: { member: "openHome", available: "canOpenHome" },
+    openDocument: { member: "openDocument", available: "canOpenDocument" },
+    swapPinned: { member: "swapPinned", available: "canSwapPinned" },
+    removePinned: { member: "removePinned", available: "canRemovePinned" },
+    restorePinned: { member: "restorePinned", available: "canRestorePinned" },
   },
   operations: {
-    openHome: { member: "OpenHome", encodeResult: (value: unknown) => { const typed = value as NavigationOutcome; return { ["kind"]: typed["kind"], ["rejection"]: (() => { const bridgeNullable2 = typed["rejection"]; return bridgeNullable2 === null ? null : bridgeNullable2; })(), ["arrival"]: typed["arrival"] }; } },
-    openDocument: { member: "OpenDocument" },
-    swapPinned: { member: "SwapPinned" },
-    removePinned: { member: "RemovePinned" },
-    restorePinned: { member: "RestorePinned" },
+    openHome: { member: "openHome", encodeResult: (value: unknown) => { const typed = value as NavigationOutcome; return { ["kind"]: typed["kind"], ["rejection"]: (() => { const bridgeNullable2 = typed["rejection"]; return bridgeNullable2 === null ? null : bridgeNullable2; })(), ["arrival"]: typed["arrival"] }; } },
+    openDocument: { member: "openDocument" },
+    swapPinned: { member: "swapPinned" },
+    removePinned: { member: "removePinned" },
+    restorePinned: { member: "restorePinned" },
   },
 };
 
