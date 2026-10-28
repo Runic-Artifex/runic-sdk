@@ -1,12 +1,17 @@
+// Interaction handlers of a presentation (specs/application, "Interactions"): registered with `open` and
+// `interactions`, asked through `interaction` pushes and answered with `interaction-reply`. A generated client
+// passes `defineInteractions(…)` to `connectView` only when its View has interactions.
+import { clock } from "./clock.js";
 import { BridgeError } from "./errors.js";
-import { notConnectedError, reportBridgeError, type RunicBridgeClient } from "./transport.js";
+import type { Message, Push, Reply } from "./protocol.js";
+import { reportBridgeError } from "./transport.js";
 
 export interface BridgeInteractionContext {
-  /** Aborts when .NET cancels the request, the handler is replaced, or the View is disposed. */
+  /** Aborts when the producer cancels the request, the handler is replaced, or the View is disposed. */
   readonly signal: AbortSignal;
 }
 
-/** Generated codec and contract of one ReactiveUI interaction. */
+/** Generated codec and contract of one interaction. */
 export interface InteractionDefinition {
   readonly contract: string;
   readonly decodeInput: (value: unknown) => unknown;
@@ -17,23 +22,30 @@ export interface InteractionSurface {
   handle(handler: (input: never, context: BridgeInteractionContext) => unknown): () => void;
 }
 
-/** The connection one presentation's interaction handlers run in. */
+/** The presentation one set of interaction handlers belongs to. Created by `connectView`. */
 export interface InteractionScope {
-  readonly bridge: RunicBridgeClient;
   readonly route: string;
-  /** The presentation the handlers start in; `resume` can move them to another. */
-  readonly presentationId: string | undefined;
-  /** The lease is not disposed and its route belongs to the current Bridge session. */
+  /** The presentation id, which stays the same across reconnects. */
+  readonly presentation: string;
+  /** The presentation is not disposed and its route is open. */
   readonly live: () => boolean;
+  /** Sends a request of the route. */
+  request(message: Message): Promise<Reply>;
+  /** Registers a handler for interaction pushes of the route. */
+  onPush(kind: "interaction" | "interaction-cancelled", handler: (push: Push) => void): () => void;
 }
 
-/** The interaction handlers of one connected presentation. */
+/** The interaction handlers of one open presentation. */
 export interface InteractionSession {
   readonly surface: Readonly<Record<string, InteractionSurface>>;
-  /** Resolves when .NET acknowledged the registered handlers. */
+  /** The handlers to register with `open` (generation 0). */
+  handlers(): readonly { readonly name: string; readonly contract: string }[];
+  /** The presentation was opened on a connection; `registration` answers the handlers sent with `open`. */
+  opened(registration: string | undefined): void;
+  /** The connection closed: the producer ended the presentation's requests. */
+  paused(): void;
+  /** Resolves when the producer acknowledged the registered handlers. */
   ready(): Promise<void>;
-  /** Registers the handlers again after a reconnect remounted the presentation, under `presentationId` when given. */
-  resume?(presentationId?: string): void;
   dispose(): void;
 }
 
@@ -51,302 +63,188 @@ export function defineInteractions(definitions: Readonly<Record<string, Interact
 type InteractionHandler = {
   readonly name: string;
   readonly contract: string;
-  readonly generation: number;
   readonly controller: AbortController;
   readonly handle: (input: unknown, context: BridgeInteractionContext) => unknown;
 };
-type InteractionRequest = {
-  readonly requestId: string; readonly route: string; readonly presentationId: string;
-  readonly ownerEpoch: number; readonly name: string; readonly contract: string;
-};
+type InteractionRequest = Extract<Push, { kind: "interaction" }>;
+
+// An interaction expires after at most ten minutes (README, "Interactions").
+const maximumExpiry = 600_000;
 
 /**
- * Browser half of the interaction protocol for one mounted presentation. It
- * advertises only active handlers, so an unrendered control preserves the
- * normal .NET interaction fallback.
+ * The browser half of the interaction protocol for one presentation. It registers only active handlers, so an
+ * unrendered control keeps the producer's fallback.
  */
 class InteractionRuntime implements InteractionSession {
   readonly surface: Readonly<Record<string, InteractionSurface>>;
-  private readonly handlers = new Map<string, InteractionHandler>();
-  private presentationId: string | undefined;
+  private readonly registered = new Map<string, InteractionHandler>();
   private generation = 0;
-  private capabilityGeneration = 0;
+  private open = false;
   private disposed = false;
-  private unavailable = false;
-  private loop: Promise<void> | undefined;
-  private controlLoop: Promise<void> | undefined;
-  private capabilitySync: Promise<void> = Promise.resolve();
-  private retry: Promise<void> | undefined;
-  private retryTimer: ReturnType<typeof setTimeout> | undefined;
-  private retryResolve: (() => void) | undefined;
-  private retryDelay = 25;
-  private readonly activeRequests = new Map<string, AbortController>();
-  private readonly cancelledRequests = new Map<string, ReturnType<typeof setTimeout>>();
+  /** The latest registration; `ready()` waits for it. */
+  private registration: Promise<void> = Promise.resolve();
+  private readonly active = new Map<string, AbortController>();
+  private readonly cancelled = new Map<string, unknown>();
+  private readonly stops: (() => void)[];
 
   constructor(private readonly scope: InteractionScope, private readonly definitions: Readonly<Record<string, InteractionDefinition>>) {
-    this.presentationId = scope.presentationId;
     const surface: Record<string, InteractionSurface> = {};
     for (const name of Object.keys(definitions)) surface[name] = { handle: handler => this.register(name, handler as InteractionHandler["handle"]) };
     this.surface = surface;
+    this.stops = [
+      scope.onPush("interaction", push => { if (push["presentation"] === scope.presentation) void this.handleRequest(push as InteractionRequest); }),
+      scope.onPush("interaction-cancelled", push => { if (push["presentation"] === scope.presentation) this.cancel(push["requestId"] as string); }),
+    ];
   }
 
-  /** Resolves when .NET acknowledged the registered handlers. */
+  handlers(): readonly { readonly name: string; readonly contract: string }[] {
+    return [...this.registered.values()].map(handler => ({ name: handler.name, contract: handler.contract }));
+  }
+
+  opened(registration: string | undefined): void {
+    this.open = true;
+    const sent = this.handlers();
+    if (sent.length !== 0 && registration !== undefined && registration !== "ok" && registration !== "stale")
+      this.registration = Promise.reject(this.failure(registration));
+    else this.registration = Promise.resolve();
+    void this.registration.catch(() => undefined);
+  }
+
+  paused(): void {
+    this.open = false;
+    this.abortActive();
+  }
+
   async ready(): Promise<void> {
-    if (this.handlers.size === 0) return;
-    try { await this.capabilitySync; }
-    catch (cause) {
-      throw new BridgeError(this.scope.bridge.isConnected() ? "failed" : "disconnected", "The interaction handler could not be registered.",
-        { cause, route: "__runicInteractionControl" });
-    }
-    if (this.unavailable) throw notConnectedError(this.scope.bridge, "The interaction presentation is no longer available.");
-  }
-
-  resume(presentationId?: string): void {
-    if (this.disposed || !this.scope.live()) return;
-    // .NET acknowledged the remounted presentation, which has a new id after the
-    // page started a new browser session. A reply about the released presentation
-    // may have stopped the handlers in the meantime.
-    if (presentationId !== undefined) this.presentationId = presentationId;
-    this.unavailable = false;
-    this.retryDelay = 25;
-    this.syncCapabilities();
-    this.ensureLoops();
+    if (this.registered.size === 0) return;
+    await this.registration;
   }
 
   dispose(): void {
+    if (this.disposed) return;
     this.disposed = true;
-    this.stopLoops();
-    for (const handler of this.handlers.values()) handler.controller.abort();
-    this.handlers.clear();
-    this.syncCapabilities();
+    for (const stop of this.stops) stop();
+    for (const handler of this.registered.values()) handler.controller.abort();
+    this.registered.clear();
+    this.abortActive();
   }
 
-  private running(): boolean {
-    return !this.disposed && !this.unavailable && this.scope.live() && this.scope.bridge.isConnected() && this.handlers.size !== 0;
-  }
-
-  private contract(name: string): string {
-    const definition = Object.hasOwn(this.definitions, name) ? this.definitions[name] : undefined;
-    if (!definition) throw new BridgeError("failed", "Unknown interaction surface.");
-    return definition.contract;
+  private failure(registration: string): BridgeError {
+    return registration === "ignored"
+      ? new BridgeError("released", "The interaction presentation is no longer open.", { route: this.scope.route })
+      : new BridgeError("failed", `The interaction handlers were not registered: ${registration}.`, { route: this.scope.route });
   }
 
   private register(name: string, handle: InteractionHandler["handle"]): () => void {
-    if (this.disposed || this.unavailable || !this.scope.live() || !this.scope.bridge.isConnected())
-      throw notConnectedError(this.scope.bridge, "The interaction View was released.");
-    const key = identity(name, this.contract(name));
-    this.handlers.get(key)?.controller.abort();
-    const registered: InteractionHandler = { name, contract: this.contract(name), generation: ++this.generation, controller: new AbortController(), handle };
-    this.handlers.set(key, registered);
-    this.syncCapabilities();
-    this.ensureLoops();
+    if (this.disposed || !this.scope.live()) throw new BridgeError("released", "The interaction View was released.", { route: this.scope.route });
+    const definition = this.definitions[name]!;
+    const key = identity(name, definition.contract);
+    this.registered.get(key)?.controller.abort();
+    const handler: InteractionHandler = { name, contract: definition.contract, controller: new AbortController(), handle };
+    this.registered.set(key, handler);
+    this.sync();
     return () => {
-      if (this.handlers.get(key) !== registered) return;
-      this.handlers.delete(key);
-      registered.controller.abort();
-      this.syncCapabilities();
+      if (this.registered.get(key) !== handler) return;
+      this.registered.delete(key);
+      handler.controller.abort();
+      this.sync();
     };
   }
 
-  private async reply(request: InteractionRequest, kind: "answered" | "cancelled" | "failed", output?: unknown): Promise<void> {
-    const payload: Record<string, unknown> = { kind, requestId: request.requestId, route: request.route, presentationId: request.presentationId,
-      ownerEpoch: request.ownerEpoch, name: request.name, contract: request.contract };
-    if (kind === "answered") payload["output"] = output;
-    try { await (this.scope.bridge as any).call("__runicInteractionReply", jsonForInteraction(payload)); }
-    catch (cause) {
-      // The presentation lifecycle cancels the request on .NET; a closed transport is expected here.
-      if (this.scope.bridge.isConnected())
-        reportBridgeError(new BridgeError("failed", `The ${request.name} interaction reply could not be delivered.`,
-          { cause, route: "__runicInteractionReply" }));
-    }
+  /** Sends the current handlers with the next generation, after the registration before it. */
+  private sync(): void {
+    if (this.disposed || !this.open) return;
+    const generation = ++this.generation;
+    const handlers = this.handlers();
+    const previous = this.registration.catch(() => undefined);
+    this.registration = previous.then(async () => {
+      if (this.disposed || !this.open || generation !== this.generation) return;
+      let reply: Reply;
+      try {
+        reply = await this.scope.request({ kind: "interactions", route: this.scope.route, presentation: this.scope.presentation, generation, handlers });
+      } catch (cause) {
+        throw cause instanceof BridgeError ? cause
+          : new BridgeError("failed", "The interaction handlers could not be registered.", { cause, route: this.scope.route });
+      }
+      if (!reply.ok) throw new BridgeError(reply.error?.kind === "released" ? "released" : "failed",
+        reply.error?.message ?? "The interaction handlers could not be registered.", { route: this.scope.route });
+      // `stale`: a newer registration is on its way.
+      const registration = reply["registration"] as string;
+      if (registration !== "ok" && registration !== "stale") throw this.failure(registration);
+    });
+    void this.registration.catch(() => undefined);
   }
 
   private abortActive(): void {
-    for (const controller of this.activeRequests.values()) controller.abort();
-    this.activeRequests.clear();
-    for (const timer of this.cancelledRequests.values()) clearTimeout(timer);
-    this.cancelledRequests.clear();
+    for (const controller of this.active.values()) controller.abort();
+    this.active.clear();
   }
 
-  private cancelRequest(requestId: string): void {
-    const active = this.activeRequests.get(requestId);
+  private cancel(requestId: string): void {
+    const active = this.active.get(requestId);
     if (active) { active.abort(); return; }
-    if (this.cancelledRequests.has(requestId)) return;
-    if (this.cancelledRequests.size >= 32) {
-      const oldest = this.cancelledRequests.keys().next().value;
-      if (oldest !== undefined) {
-        const timer = this.cancelledRequests.get(oldest);
-        if (timer) clearTimeout(timer);
-        this.cancelledRequests.delete(oldest);
-      }
+    // A cancellation that arrives before its request; a window holds at most 32 pending requests.
+    if (this.cancelled.has(requestId)) return;
+    if (this.cancelled.size >= 32) {
+      const [oldest, timer] = this.cancelled.entries().next().value as [string, unknown];
+      clock.clear(timer);
+      this.cancelled.delete(oldest);
     }
-    this.cancelledRequests.set(requestId, setTimeout(() => this.cancelledRequests.delete(requestId), 120_000));
+    this.cancelled.set(requestId, clock.set(() => this.cancelled.delete(requestId), 120_000));
   }
 
-  // .NET reported the presentation gone: the handlers never run again.
-  private stopLoops(): void { this.unavailable = true; this.pauseLoops(); }
-
-  // The transport closed: the loops end, and resume() restarts them once a
-  // reconnect remounts the presentation.
-  private pauseLoops(): void { this.abortActive(); this.retryResolve?.(); }
-
-  private waitForRetry(): Promise<void> {
-    if (this.retry) return this.retry;
-    const delay = this.retryDelay;
-    this.retryDelay = Math.min(this.retryDelay * 2, 500);
-    this.retry = new Promise<void>(resolve => {
-      const finish = () => {
-        if (this.retryTimer) clearTimeout(this.retryTimer);
-        this.retryTimer = undefined; this.retryResolve = undefined; this.retry = undefined;
-        resolve();
-      };
-      this.retryResolve = finish;
-      this.retryTimer = setTimeout(finish, delay);
-    });
-    return this.retry;
-  }
-
-  private syncCapabilities(): void {
-    const presentationId = this.presentationId;
-    if (!presentationId) return;
-    const generation = ++this.capabilityGeneration;
-    const handlers = [...this.handlers.values()].map(handler => ({ name: handler.name, contract: handler.contract }));
-    this.capabilitySync = this.capabilitySync.catch(() => undefined).then(async () => {
-      if (this.disposed || this.unavailable || !this.scope.live() || !this.scope.bridge.isConnected()) return;
-      const reply = JSON.parse(await (this.scope.bridge as any).call("__runicInteractionControl",
-        jsonForInteraction({ route: this.scope.route, presentationId, generation, handlers }))) as { kind?: unknown };
-      // A reply about a presentation that a reconnect replaced does not stop its successor.
-      if (reply?.kind !== "ok" && this.presentationId === presentationId) {
-        this.unavailable = true;
-        this.abortActive();
-        throw notConnectedError(this.scope.bridge, "The interaction presentation is no longer available.");
-      }
-    });
-    void this.capabilitySync.catch(() => undefined);
-  }
-
-  private async handleRequest(request: Record<string, unknown>): Promise<void> {
-    if (typeof request["requestId"] !== "string" || typeof request["route"] !== "string" || typeof request["presentationId"] !== "string"
-      || typeof request["ownerEpoch"] !== "number" || !Number.isSafeInteger(request["ownerEpoch"]) || typeof request["name"] !== "string"
-      || typeof request["contract"] !== "string") return;
-    const requestIdentity: InteractionRequest = { requestId: request["requestId"], route: request["route"], presentationId: request["presentationId"],
-      ownerEpoch: request["ownerEpoch"], name: request["name"], contract: request["contract"] };
-    const key = identity(request["name"], request["contract"]);
-    const handler = this.handlers.get(key);
-    if (!handler || request["route"] !== this.scope.route || request["presentationId"] !== this.presentationId) {
-      await this.reply(requestIdentity, "cancelled");
-      return;
+  private async reply(request: InteractionRequest, outcome: "answered" | "cancelled" | "failed", output?: unknown): Promise<void> {
+    try {
+      const reply = await this.scope.request({
+        kind: "interaction-reply", route: request.route, presentation: request.presentation, requestId: request.requestId,
+        ownerEpoch: request.ownerEpoch, name: request.name, contract: request.contract, outcome,
+        ...(outcome === "answered" ? { output } : {}),
+      });
+      if (reply.ok && reply["result"] === "invalid-output")
+        reportBridgeError(new BridgeError("failed", `The ${request.name} interaction answered with an output the producer could not read.`,
+          { route: this.scope.route }), this.scope.route);
+    } catch (cause) {
+      // The presentation's connection closing cancels the request on the producer; a closed transport is expected.
+      if (!(cause instanceof BridgeError && (cause.kind === "disconnected" || cause.kind === "released")))
+        reportBridgeError(new BridgeError("failed", `The ${request.name} interaction reply could not be delivered.`,
+          { cause, route: this.scope.route }), this.scope.route);
     }
+  }
+
+  private async handleRequest(request: InteractionRequest): Promise<void> {
+    const handler = this.registered.get(identity(request.name, request.contract));
+    if (this.disposed || !handler || !this.scope.live()) { await this.reply(request, "cancelled"); return; }
     const controller = new AbortController();
-    const expiresAt = typeof request["expiresAt"] === "string" ? Date.parse(request["expiresAt"]) : Number.NaN;
-    const deadline = Number.isFinite(expiresAt) && expiresAt > Date.now()
-      ? setTimeout(() => controller.abort(), Math.min(expiresAt - Date.now(), 600_000)) : undefined;
+    const expiresAt = Date.parse(request.expiresAt);
+    const remaining = Number.isFinite(expiresAt) ? expiresAt - clock.now() : maximumExpiry;
+    const deadline = remaining > 0 ? clock.set(() => controller.abort(), Math.min(remaining, maximumExpiry)) : undefined;
+    if (remaining <= 0) controller.abort();
     const abortFromHandler = () => controller.abort();
     handler.controller.signal.addEventListener("abort", abortFromHandler, { once: true });
-    this.activeRequests.set(requestIdentity.requestId, controller);
-    if (Number.isFinite(expiresAt) && expiresAt <= Date.now()) controller.abort();
-    const cancelledBeforeDelivery = this.cancelledRequests.get(requestIdentity.requestId);
-    if (cancelledBeforeDelivery) {
-      clearTimeout(cancelledBeforeDelivery);
-      this.cancelledRequests.delete(requestIdentity.requestId);
+    this.active.set(request.requestId, controller);
+    const early = this.cancelled.get(request.requestId);
+    if (early !== undefined) {
+      clock.clear(early);
+      this.cancelled.delete(request.requestId);
       controller.abort();
     }
     try {
-      const definition = this.definitions[request["name"]];
-      if (!definition || !Object.hasOwn(this.definitions, request["name"])) throw new BridgeError("failed", "Unknown interaction input.");
-      const input = definition.decodeInput(request["input"]);
+      const definition = this.definitions[request.name]!;
+      const input = definition.decodeInput(request.input);
       const output = await handler.handle(input, { signal: controller.signal });
-      if (this.disposed || !this.scope.live() || controller.signal.aborted || this.handlers.get(key) !== handler)
-        await this.reply(requestIdentity, "cancelled");
-      else await this.reply(requestIdentity, "answered", definition.encodeOutput(output));
+      if (this.disposed || !this.scope.live() || controller.signal.aborted || this.registered.get(identity(request.name, request.contract)) !== handler)
+        await this.reply(request, "cancelled");
+      else await this.reply(request, "answered", definition.encodeOutput(output));
     } catch (error) {
-      // .NET receives only "failed"; the handler's error stays local.
-      if (!controller.signal.aborted) reportBridgeError(error, `${this.scope.route}:${request["name"]}`);
-      await this.reply(requestIdentity, controller.signal.aborted ? "cancelled" : "failed");
+      // The producer receives only "failed"; the handler's error stays local.
+      if (!controller.signal.aborted) reportBridgeError(error, this.scope.route);
+      await this.reply(request, controller.signal.aborted ? "cancelled" : "failed");
     } finally {
       handler.controller.signal.removeEventListener("abort", abortFromHandler);
-      if (deadline) clearTimeout(deadline);
-      if (this.activeRequests.get(requestIdentity.requestId) === controller) this.activeRequests.delete(requestIdentity.requestId);
+      if (deadline !== undefined) clock.clear(deadline);
+      if (this.active.get(request.requestId) === controller) this.active.delete(request.requestId);
     }
-  }
-
-  // A loop serves one presentation id. After resume() replaced it, the loop ends
-  // and ensureLoops() starts one for the new id.
-  private current(presentationId: string): boolean { return this.running() && this.presentationId === presentationId; }
-
-  private async runLoop(): Promise<void> {
-    const presentationId = this.presentationId;
-    if (!presentationId) return;
-    while (this.current(presentationId)) {
-      try { await this.capabilitySync; }
-      catch {
-        // ready() passes this failure to the command that awaits it; the loop retries.
-        if (this.presentationId !== presentationId) return;
-        if (this.unavailable) { this.stopLoops(); return; }
-        if (!this.scope.bridge.isConnected()) { this.pauseLoops(); return; }
-        await this.waitForRetry();
-        this.syncCapabilities();
-        continue;
-      }
-      if (!this.current(presentationId)) return;
-      const handlers = [...this.handlers.values()].map(handler => ({ name: handler.name, contract: handler.contract }));
-      let envelope: unknown;
-      try {
-        envelope = JSON.parse(await (this.scope.bridge as any).call("__runicInteractionWait",
-          jsonForInteraction({ route: this.scope.route, presentationId, generation: this.capabilityGeneration, handlers })));
-      } catch {
-        // A dropped long poll is retried with backoff; a closed transport pauses the loop.
-        if (this.presentationId !== presentationId) return;
-        if (!this.scope.bridge.isConnected()) { this.pauseLoops(); return; }
-        await this.waitForRetry();
-        continue;
-      }
-      if (!this.current(presentationId)) return;
-      this.retryDelay = 25;
-      if (envelope === null || typeof envelope !== "object") continue;
-      const request = envelope as Record<string, unknown>;
-      if (request["kind"] === "released" || request["kind"] === "ignored" || request["kind"] === "unsupported"
-        || request["kind"] === "invalid-request" || request["kind"] === "cancelled") { this.stopLoops(); return; }
-      if (request["kind"] === "request") void this.handleRequest(request);
-    }
-  }
-
-  private async runControlLoop(): Promise<void> {
-    const presentationId = this.presentationId;
-    if (!presentationId) return;
-    while (this.current(presentationId)) {
-      let envelope: unknown;
-      try {
-        envelope = JSON.parse(await (this.scope.bridge as any).call("__runicInteractionControlWait",
-          jsonForInteraction({ route: this.scope.route, presentationId })));
-      } catch {
-        // A dropped long poll is retried with backoff; a closed transport pauses the loop.
-        if (this.presentationId !== presentationId) return;
-        if (!this.scope.bridge.isConnected()) { this.pauseLoops(); return; }
-        await this.waitForRetry();
-        continue;
-      }
-      if (!this.current(presentationId)) return;
-      this.retryDelay = 25;
-      if (envelope === null || typeof envelope !== "object") continue;
-      const control = envelope as Record<string, unknown>;
-      if (control["kind"] === "released" || control["kind"] === "ignored" || control["kind"] === "invalid-request"
-        || (control["kind"] === "cancelled" && typeof control["requestId"] !== "string")) { this.stopLoops(); return; }
-      if (control["kind"] === "cancelled" && typeof control["requestId"] === "string") this.cancelRequest(control["requestId"]);
-    }
-  }
-
-  private ensureLoops(): void {
-    if (this.disposed || this.unavailable || !this.scope.live() || this.handlers.size === 0) return;
-    this.loop ??= this.runLoop().finally(() => { this.loop = undefined; if (this.running()) this.ensureLoops(); });
-    this.controlLoop ??= this.runControlLoop().finally(() => { this.controlLoop = undefined; if (this.running()) this.ensureLoops(); });
   }
 }
 
 function identity(name: string, contract: string): string { return `${name.length}:${name}${contract.length}:${contract}`; }
-
-function jsonForInteraction(value: unknown): string {
-  const json = JSON.stringify(value, (_key, item) => typeof item === "bigint" ? item.toString() : item);
-  if (json === undefined) throw new BridgeError("failed", "The interaction payload is not JSON serializable.");
-  return json;
-}

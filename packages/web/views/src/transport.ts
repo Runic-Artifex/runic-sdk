@@ -87,16 +87,16 @@ export async function waitForBridge(options: WaitForBridgeOptions = {}): Promise
   return bridge;
 }
 
-const protocolReported = Symbol.for("runic.views.protocolReported");
+// Bridges whose protocol mismatch was reported: once per page and Bridge.
+const protocolReported = new WeakSet<object>();
 
 /**
- * Reports a host of another protocol: one `protocol` diagnostic per page, and every error that reports it
+ * Reports a host of another protocol: one `protocol` diagnostic per Bridge, and every error that reports it
  * is marked as reported, so it is the only report.
  */
-export function reportProtocolMismatch(error: BridgeError): void {
-  const page = globalThis as unknown as Record<symbol, unknown>;
-  if (page[protocolReported] === true) { suppressErrorDiagnostic(error); return; }
-  page[protocolReported] = true;
+export function reportProtocolMismatch(error: BridgeError, bridge: object): void {
+  if (protocolReported.has(bridge)) { suppressErrorDiagnostic(error); return; }
+  protocolReported.add(bridge);
   emitBridgeDiagnostic({ kind: "error", code: "protocol", message: error.message, error, ...(error.route === undefined ? {} : { route: error.route }) });
 }
 
@@ -111,7 +111,7 @@ export function protocolMismatchError(host: string): BridgeError {
 function assertMessageBridge(bridge: RunicBridgeClient): void {
   if (typeof (bridge as Partial<RunicBridgeClient>).request === "function") return;
   const error = protocolMismatchError("implements Views protocol 3 or earlier (its host bridge has no `request`)");
-  reportProtocolMismatch(error);
+  reportProtocolMismatch(error, bridge);
   throw error;
 }
 

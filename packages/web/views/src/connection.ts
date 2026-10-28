@@ -1,10 +1,17 @@
-import type { BridgeOutcome } from "./outcome.js";
+import { clock, delay } from "./clock.js";
+import { emitBridgeDiagnostic, emitErrorDiagnostic } from "./diagnostics.js";
 import { BridgeError } from "./errors.js";
+import { bridgeFailure, bridgeSuccess, type BridgeOutcome } from "./outcome.js";
+import { isObject, replyError, type Change, type Message, type Push, type Reply } from "./protocol.js";
+import { errorMessage, sharedRuntimeFor, type SharedRuntime } from "./runtime.js";
+import { reportBridgeError, waitForBridge } from "./transport.js";
+import { publishConnectionState } from "./connection-state.js";
+import { abortable, abortReason, isAbort, throwIfAborted } from "./lifetime.js";
 // Interactions, operations and keyed collections are injected by the generated
 // clients that use them, so this module imports only their types.
 import type { BridgeCollections } from "./collections.js";
-import type { BridgeInteractions, InteractionSurface } from "./interactions.js";
-import type { BridgeOperationCodec, BridgeOperationRuntimeHandle, BridgeOperations } from "./operations.js";
+import type { BridgeInteractionContext, BridgeInteractions, InteractionSession, InteractionSurface } from "./interactions.js";
+import type { BridgeOperationCodec, BridgeOperationRuntimeHandle, BridgeOperations, OperationScope } from "./operations.js";
 
 /** The framework-neutral surface every generated client shares. */
 export interface ViewClient<TState = unknown> {
@@ -67,6 +74,11 @@ export interface ViewConnectOptions<TState> extends BridgeConnectOptions {
   readonly checkedFields?: readonly string[];
   /** The client's interactions, from `defineInteractions`. */
   readonly interactions?: BridgeInteractions;
+  /**
+   * Interaction handlers by interaction name, registered before `open` and sent with it, so the producer can ask
+   * them from the first request on. Handlers registered later through `interactions` are sent with `interactions`.
+   */
+  readonly handlers?: Readonly<Record<string, (input: never, context: BridgeInteractionContext) => unknown>>;
   /** The keyed collections and append-only text fields, from `defineCollections`. */
   readonly collections?: BridgeCollections;
   /** `bridgeOperations`, for a client with operations. */
@@ -118,13 +130,600 @@ export interface ViewConnection<TState> extends ViewClient<TState> {
     codec: BridgeOperationCodec<TResult, TFailure>): Promise<BridgeOperationRuntimeHandle<TResult, TFailure>>;
 }
 
+/** The scope of an operation: its route's request channel and revision waits. Internal to the runtime. */
+export interface RouteOperationScope extends OperationScope {
+  readonly runtime: SharedRuntime;
+  /** Throws a `disconnected` BridgeError when the Bridge is disconnected, or `released` when the View was released. */
+  assertConnected(): void;
+  /** Resolves when the producer acknowledged the presentation's interaction handlers. */
+  ready(): Promise<void>;
+  /** Resolves once the route reached `revision`, at once when the route is not open. */
+  waitForRevision(revision: number): Promise<void>;
+}
+
+type State = Record<string, unknown>;
+
+interface Lease {
+  readonly id: string;
+  disposed: boolean;
+  /** The producer registered this presentation on the current connection. */
+  registered: boolean;
+  current: unknown;
+  readonly listeners: Set<(state: unknown) => void>;
+  interactions: InteractionSession | undefined;
+}
+
+interface Overlay {
+  readonly edit: number;
+  /** The decoded value, or absent when it did not decode (the producer rejects it). */
+  readonly value?: unknown;
+  /** The reply revision of the edit, once it arrived. */
+  revision?: number;
+}
+
+interface Waiter { readonly revision: number; readonly resolve: () => void; timer: unknown }
+
+// Recovery reads a snapshot up to four times, waiting 250, 500 and 1,000 ms between failed reads. Frames that
+// arrive meanwhile are kept, up to 64, and applied after the read (state-changes.md, "Recovery").
+const recoveryAttempts = 4;
+const recoveryDelay = 250;
+const maximumBufferedFrames = 64;
+// A reply's revision that the route has not reached after this long is a producer bug (README, "Client resolution").
+const revisionTimeout = 5_000;
+// A reopened presentation that a closed connection still owns answers `ignored` for a while.
+const reopenAttempts = 20;
+const reopenDelay = 250;
+
+/** The shared state of one open route: its producer state, revision, overlay and presentations. */
+class RouteEntry {
+  readonly presentations = new Set<Lease>();
+  active = true;
+  /** The producer's state, decoded. */
+  state: State | undefined;
+  revision: number | undefined;
+  /** The connection the state was read on; the first state of a new connection is its baseline. */
+  stateConnection = -1;
+  readonly fields = new Map<string, number>();
+  /** What subscribers see: the state with the overlay. */
+  exposed: State | undefined;
+  readonly overlays = new Map<string, Overlay>();
+  private readonly waiters = new Set<Waiter>();
+  private reading = 0;
+  private buffered: Push[] = [];
+  private missed: number | undefined;
+  private recovery: Promise<boolean> | undefined;
+  private backoff: { cancel(): void } | undefined;
+  private readonly stops: (() => void)[];
+
+  constructor(readonly runtime: SharedRuntime, readonly route: string, readonly contract: string,
+    readonly members: Readonly<Record<string, (wire: unknown) => unknown>>, readonly checkedFields: readonly string[],
+    readonly collections: BridgeCollections | undefined) {
+    this.stops = [
+      runtime.onPush("state", route, push => this.statePush(push as Extract<Push, { kind: "state" }>)),
+      runtime.onPush("frame", route, push => this.frame(push)),
+      runtime.onPush("failure", route, push => {
+        const failure = push as Extract<Push, { kind: "failure" }>;
+        // The producer withholds the route until its keys are valid; the client keeps its last state.
+        reportBridgeError(replyError(failure.error, route, `The Bridge cannot publish the state of ${route}.`), route);
+      }),
+      runtime.onInvalidPush(route, reading => {
+        if (reading.kind !== "state" && reading.kind !== "frame") return;
+        reportBridgeError(new BridgeError("failed", `The Bridge pushed an invalid ${reading.kind} for ${route}: ${reading.reason}`, { route }), route);
+        this.recover();
+      }),
+      runtime.onConnection(connected => { if (connected) this.reopen(); else this.connectionLost(); }),
+    ];
+  }
+
+  live(): boolean { return this.active && this.runtime.routes.get(this.route) === this; }
+
+  close(): void {
+    if (!this.active) return;
+    this.active = false;
+    if (this.runtime.routes.get(this.route) === this) this.runtime.routes.delete(this.route);
+    for (const stop of this.stops) stop();
+    this.backoff?.cancel();
+    // A call whose route closed resolves at once.
+    for (const waiter of this.waiters) { clock.clear(waiter.timer); waiter.resolve(); }
+    this.waiters.clear();
+    this.buffered = [];
+  }
+
+  /* ------------------------------------------------------------ states */
+
+  /** Decodes a full state; throws for an invalid one. */
+  private decode(wire: Message, fields: unknown): { state: State; versions: Map<string, number> } {
+    const state: State = {};
+    for (const [member, decode] of Object.entries(this.members)) {
+      try { state[member] = decode(wire[member]); }
+      catch (cause) { throw new Error(`The member ${member} is invalid: ${errorMessage(cause)}`); }
+      this.collections?.validate(member, state[member]);
+    }
+    const versions = new Map<string, number>();
+    for (const field of this.checkedFields) {
+      const version = isObject(fields) && isObject(fields[field]) ? fields[field]["version"] : undefined;
+      if (typeof version === "number") versions.set(field, version);
+    }
+    return { state, versions };
+  }
+
+  /**
+   * Accepts a full state when its revision is greater than the current one, or when it is the first state of a new
+   * connection. Throws for an invalid state, which leaves the current one.
+   */
+  accept(revision: number, wire: Message, fields: unknown): boolean {
+    const baseline = this.stateConnection !== this.runtime.connection;
+    if (!baseline && this.revision !== undefined && revision <= this.revision) return false;
+    const { state, versions } = this.decode(wire, fields);
+    const reconnected = baseline && this.state !== undefined;
+    this.state = state;
+    this.revision = revision;
+    this.stateConnection = this.runtime.connection;
+    this.fields.clear();
+    for (const [field, version] of versions) this.fields.set(field, version);
+    if (reconnected) {
+      // The first state of a new connection includes every edit and call the producer answered before.
+      for (const [member, overlay] of this.overlays) if (overlay.revision !== undefined) this.overlays.delete(member);
+      this.settle(true);
+    } else this.settle();
+    return true;
+  }
+
+  private statePush(push: Extract<Push, { kind: "state" }>): void {
+    if (!this.live()) return;
+    try { this.accept(push.revision, push.state, push.fields); }
+    catch (cause) {
+      reportBridgeError(new BridgeError("failed", `The Bridge pushed an invalid state for ${this.route}: ${errorMessage(cause)}`,
+        { cause, route: this.route }), this.route);
+    }
+  }
+
+  /** Applies a frame (state-changes.md, "Applying frames"). */
+  frame(push: Push): void {
+    if (!this.live() || push.kind !== "frame") return;
+    if (this.reading > 0) {
+      // Frames that arrive during a read are applied after it; a repeated frame is kept once.
+      if (this.buffered.some(frame => frame["revision"] === push.revision)) return;
+      if (this.buffered.length < maximumBufferedFrames) this.buffered.push(push);
+      else this.missed = Math.max(this.missed ?? push.revision, push.revision);
+      return;
+    }
+    if (this.revision !== undefined && push.revision <= this.revision) return;
+    if (this.state === undefined || push.baseRevision !== this.revision || push.revision <= push.baseRevision) { this.recover(); return; }
+    let next: { state: State; versions: Map<string, number> };
+    try { next = this.applyChanges(this.state, push.changes); }
+    catch (cause) {
+      reportBridgeError(new BridgeError("failed", `A frame for ${this.route} could not be applied: ${errorMessage(cause)}`,
+        { cause, route: this.route }), this.route);
+      this.recover();
+      return;
+    }
+    this.state = next.state;
+    this.revision = push.revision;
+    for (const [field, version] of next.versions) this.fields.set(field, version);
+    this.settle();
+  }
+
+  private applyChanges(state: State, changes: readonly Change[]): { state: State; versions: Map<string, number> } {
+    const next: State = { ...state };
+    const versions = new Map<string, number>();
+    const owned = new Set<string>();
+    const edited = new Set<string>();
+    for (const change of changes) {
+      const field = change.field;
+      if (!Object.hasOwn(this.members, field)) throw new Error(`${field} is not a member of ${this.route}.`);
+      if (change.kind === "set") {
+        next[field] = this.members[field]!(change["value"]);
+        const checked = this.checkedFields.includes(field);
+        if (checked !== (change["version"] !== undefined)) throw new Error(`The set of ${field} has ${checked ? "no" : "a"} version.`);
+        if (checked) versions.set(field, change["version"] as number);
+        edited.add(field);
+        continue;
+      }
+      if (!this.collections?.kind(field)) throw new Error(`${field} is not a keyed collection or text field.`);
+      next[field] = this.collections.apply(field, next[field], change, owned.has(field));
+      owned.add(field);
+      edited.add(field);
+    }
+    for (const field of edited) this.collections?.validate(field, next[field]);
+    return { state: next, versions };
+  }
+
+  /* ------------------------------------------------------------ reads */
+
+  /** Runs a read of the full state; frames that arrive meanwhile are applied after it. */
+  private async read(run: () => Promise<boolean>): Promise<boolean> {
+    this.reading++;
+    let accepted = false;
+    try { accepted = await run(); return accepted; }
+    finally {
+      this.reading--;
+      if (this.reading === 0) this.drain(accepted);
+    }
+  }
+
+  private drain(accepted: boolean): void {
+    const frames = this.buffered;
+    const missed = this.missed;
+    this.buffered = [];
+    this.missed = undefined;
+    // After a read that failed, the client keeps its last state and discards the frames it kept.
+    if (accepted && this.live()) {
+      for (const frame of frames) this.frame(frame);
+      if (missed !== undefined && (this.revision === undefined || missed > this.revision)) this.recover();
+    }
+    this.settle();
+  }
+
+  /** Reads the state with `snapshot`, retrying a failed read with backoff. Resolves with whether a state was accepted. */
+  recover(): Promise<boolean> {
+    if (!this.live()) return Promise.resolve(false);
+    return this.recovery ??= this.read(() => this.readSnapshot()).finally(() => { this.recovery = undefined; });
+  }
+
+  private async readSnapshot(): Promise<boolean> {
+    for (let attempt = 1; ; attempt++) {
+      try {
+        const reply = await this.runtime.request({ kind: "snapshot", route: this.route }, this.route);
+        if (!this.live()) return false;
+        if (!reply.ok) throw replyError(reply.error, this.route, "The state could not be read.");
+        try { this.accept(reply["revision"] as number, reply["state"] as Message, reply["fields"]); }
+        catch (cause) { throw new BridgeError("failed", `The Bridge returned an invalid state: ${errorMessage(cause)}`, { cause, route: this.route }); }
+        return true;
+      } catch (error) {
+        // A closed route and a released View stop silently; a disconnect stops and is reported, because the new
+        // connection opens every route again.
+        if (!this.live() || error instanceof BridgeError && error.kind === "released") return false;
+        if (!this.runtime.connected || error instanceof BridgeError && error.kind === "disconnected" || attempt === recoveryAttempts) {
+          reportBridgeError(error, this.route);
+          return false;
+        }
+        emitErrorDiagnostic(error, this.route);
+        const wait = delay(recoveryDelay * 2 ** (attempt - 1));
+        this.backoff = wait;
+        await wait.promise;
+        this.backoff = undefined;
+        if (!this.live()) return false;
+      }
+    }
+  }
+
+  /**
+   * Sends `open` for a presentation and accepts the state of its reply. Retries while the producer answers
+   * `ignored`, as after a reconnect while the closed connection still owns the id. Throws for a failed open.
+   */
+  async open(lease: Lease, signal?: AbortSignal): Promise<void> {
+    for (let attempt = 1; ; attempt++) {
+      let reply: Reply | undefined;
+      const handlers = lease.interactions?.handlers() ?? [];
+      await abortable(this.read(async () => {
+        reply = await this.runtime.request({
+          kind: "open", route: this.route, presentation: lease.id, ...(handlers.length === 0 ? {} : { handlers }),
+        }, this.route);
+        if (!reply.ok || !this.live()) return false;
+        try { this.accept(reply["revision"] as number, reply["state"] as Message, reply["fields"]); }
+        catch (cause) { throw new BridgeError("failed", `The Bridge returned an invalid state: ${errorMessage(cause)}`, { cause, route: this.route }); }
+        return true;
+      }), signal);
+      if (!reply!.ok) throw replyError(reply!.error, this.route, "The View could not be opened.");
+      if (reply!["presentation"] !== "ignored") {
+        lease.registered = true;
+        lease.interactions?.opened(typeof reply!["registration"] === "string" ? reply!["registration"] : undefined);
+        return;
+      }
+      if (attempt === reopenAttempts || lease.disposed || !this.live()) return;
+      const wait = delay(reopenDelay);
+      await abortable(wait.promise, signal);
+    }
+  }
+
+  /** A new connection: open every presentation again with its id, and resume its interaction handlers. */
+  private reopen(): void {
+    if (!this.live()) return;
+    for (const lease of this.presentations) {
+      if (lease.disposed) continue;
+      void this.open(lease).catch(error => {
+        if (!lease.disposed && this.live()) reportBridgeError(error instanceof BridgeError ? error
+          : new BridgeError("failed", "The View could not be opened again after a reconnect.", { cause: error, route: this.route }), this.route);
+      });
+    }
+  }
+
+  private connectionLost(): void {
+    for (const lease of this.presentations) {
+      lease.registered = false;
+      lease.interactions?.paused();
+    }
+    // A recovery stops at once; the new connection opens the route again.
+    this.backoff?.cancel();
+  }
+
+  /* ------------------------------------------------------------ revisions and the overlay */
+
+  /** Resolves once the route reached `revision` and no read is in flight; at once when the route is not open. */
+  waitForRevision(revision: number): Promise<void> {
+    if (!this.live() || this.reading === 0 && this.revision !== undefined && this.revision >= revision) return Promise.resolve();
+    return new Promise<void>(resolve => {
+      const waiter: Waiter = { revision, resolve, timer: undefined };
+      waiter.timer = clock.set(() => {
+        if (!this.waiters.has(waiter)) return;
+        emitBridgeDiagnostic({
+          kind: "error", code: "revision-timeout", route: this.route,
+          message: `The route ${this.route} did not reach revision ${revision} within ${revisionTimeout} ms of the reply that named it; ` +
+            "the client reads its state again. A producer that publishes every revision it replies with never causes this.",
+        });
+        void this.recover().finally(() => {
+          if (!this.waiters.delete(waiter)) return;
+          resolve();
+        });
+      }, revisionTimeout);
+      this.waiters.add(waiter);
+    });
+  }
+
+  /** Ends overlays and resolves waiters whose revision the route reached, then publishes the exposed state. */
+  settle(all = false): void {
+    if (this.reading === 0 && this.revision !== undefined) {
+      for (const [member, overlay] of this.overlays)
+        if (overlay.revision !== undefined && this.revision >= overlay.revision) this.overlays.delete(member);
+      for (const waiter of this.waiters)
+        if (all || waiter.revision <= this.revision) {
+          this.waiters.delete(waiter);
+          clock.clear(waiter.timer);
+          waiter.resolve();
+        }
+    }
+    this.publish();
+  }
+
+  /** Recomputes the exposed state and notifies the presentations when a member changed. */
+  publish(): void {
+    if (this.state === undefined) return;
+    let next: State = this.state;
+    if (this.overlays.size !== 0) {
+      next = { ...this.state };
+      for (const [member, overlay] of this.overlays) if (Object.hasOwn(overlay, "value")) next[member] = overlay.value;
+    }
+    const previous = this.exposed;
+    if (previous !== undefined && Object.keys(this.members).every(member => Object.is(previous[member], next[member]))) return;
+    this.exposed = next;
+    for (const lease of this.presentations) {
+      if (lease.disposed) continue;
+      lease.current = next;
+      for (const listener of [...lease.listeners]) {
+        try { listener(next); } catch (error) { reportBridgeError(error, this.route); }
+      }
+    }
+  }
+
+  /** Starts an edit of `member`: its number, and the overlay of its value. */
+  beginEdit(member: string, value: unknown): number {
+    const key = `${this.route}\u0000${member}`;
+    const edit = (this.runtime.edits.get(key) ?? 0) + 1;
+    this.runtime.edits.set(key, edit);
+    let overlay: Overlay = { edit };
+    try { overlay = { edit, value: this.members[member]!(value) }; } catch { /* the producer rejects it */ }
+    this.overlays.set(member, overlay);
+    this.publish();
+    return edit;
+  }
+
+  /** The edit's reply arrived: a latest edit that failed ends the overlay, and an applied one ends at its revision. */
+  endEdit(member: string, edit: number, revision: number | undefined): void {
+    const overlay = this.overlays.get(member);
+    if (overlay?.edit !== edit) return;
+    if (revision === undefined) this.overlays.delete(member);
+    else overlay.revision = revision;
+    this.settle();
+  }
+}
+
 /**
  * Connects one generated client presentation to its route: sends `open` with a new presentation id and returns the
  * connection once the state arrived. Presentations of one route share its state, revision and recovery; each has
  * its own subscribers and interaction handlers.
  */
 export async function connectView<TState>(options: ViewConnectOptions<TState>): Promise<ViewConnection<TState>> {
-  throw new BridgeError("failed", `Not implemented yet: ${options.route}.`);
+  try { return await connectRoute(options); }
+  catch (error) {
+    // The caller aborted the connection; that is not a Bridge failure.
+    if (!isAbort(error, options.signal)) emitErrorDiagnostic(error, options.route);
+    throw error;
+  }
+}
+
+// Reports a failure that leaves a client method once, with its route, then rethrows it.
+async function observed<T>(route: string, run: () => Promise<T>): Promise<T> {
+  try { return await run(); }
+  catch (error) { emitErrorDiagnostic(error, route); throw error; }
+}
+
+const receiptKinds = new Set(["applied", "committed-with-error", "conflict", "rejected"]);
+
+async function connectRoute<TState>(options: ViewConnectOptions<TState>): Promise<ViewConnection<TState>> {
+  const { route, signal } = options;
+  throwIfAborted(signal);
+  publishConnectionState();
+  const bridge = await waitForBridge({ ...(options.timeout === undefined ? {} : { timeout: options.timeout }), signal });
+  const runtime = sharedRuntimeFor(bridge);
+  const existing = runtime.routes.get(route) as RouteEntry | undefined;
+  if (existing && existing.contract !== options.contract)
+    throw new BridgeError("failed", "This route already has an incompatible Bridge contract.", { route });
+  const entry = existing ?? new RouteEntry(runtime, route, options.contract,
+    options.members as Readonly<Record<string, (wire: unknown) => unknown>>, options.checkedFields ?? [], options.collections);
+  if (!existing) runtime.routes.set(route, entry);
+  const lease: Lease = {
+    id: globalThis.crypto.randomUUID(), disposed: false, registered: false, current: undefined, listeners: new Set(), interactions: undefined,
+  };
+  entry.presentations.add(lease);
+
+  const live = () => !lease.disposed && entry.live() && sharedRuntimeFor(bridge) === runtime;
+  function assertConnected(): void {
+    if (!runtime.connected) throw new BridgeError("disconnected", "The Bridge is disconnected.", { route });
+    if (!live()) throw new BridgeError("released", "This View was released. Connect its current reference for the current state.", { route });
+  }
+  const request = async (message: Message): Promise<Reply> => {
+    assertConnected();
+    return runtime.request(message, route);
+  };
+  // The interaction handlers are created before `open`, so a reconnect can send them with it.
+  if (options.interactions) lease.interactions = options.interactions({
+    route, presentation: lease.id, live, request, onPush: (kind, handler) => runtime.onPush(kind, route, handler),
+  });
+  for (const [name, handler] of Object.entries(options.handlers ?? {})) {
+    const surface = lease.interactions?.surface[name];
+    if (!surface) { dispose(); throw new BridgeError("failed", `The View has no interaction ${name}.`, { route }); }
+    surface.handle(handler);
+  }
+  function dispose(): void {
+    if (lease.disposed) return;
+    lease.disposed = true;
+    lease.interactions?.dispose();
+    lease.listeners.clear();
+    entry.presentations.delete(lease);
+    if (lease.registered && runtime.connected) {
+      // The producer also closes the presentation with the connection, so a closed transport is expected here.
+      void runtime.request({ kind: "close", route, presentation: lease.id }, route).catch(cause => {
+        if (runtime.connected) reportBridgeError(new BridgeError("failed", "The View could not be closed.", { cause, route }), route);
+      });
+    }
+    lease.registered = false;
+    if (entry.presentations.size === 0) entry.close();
+  }
+
+  try {
+    assertConnected();
+    await entry.open(lease, signal);
+  } catch (error) {
+    dispose();
+    throw error;
+  }
+  if (!live()) { dispose(); throw new BridgeError(runtime.connected ? "released" : "disconnected", "The View was released during connection.", { route }); }
+  if (signal?.aborted) { dispose(); throw abortReason(signal); }
+  lease.current = entry.exposed;
+
+  const ready = async () => { await lease.interactions?.ready(); };
+  const current = () => lease.current as TState;
+  // A call that ran resolves once the route reached its revision; a failed one rejects after that.
+  const settled = async (reply: Reply): Promise<void> => {
+    if (reply.revision !== undefined) await entry.waitForRevision(reply.revision);
+  };
+  const failure = async (reply: Reply, fallback: string): Promise<never> => {
+    await settled(reply);
+    throw replyError(reply.error, route, fallback);
+  };
+  const operationScope: RouteOperationScope = {
+    route, contract: options.contract, runtime, assertConnected, ready, waitForRevision: revision => entry.waitForRevision(revision),
+  };
+  const operations = () => {
+    if (!options.operations) throw new BridgeError("failed", "This View was connected without operation support.", { route });
+    return options.operations;
+  };
+  async function command(member: string, input: unknown): Promise<Reply> {
+    assertConnected();
+    await ready();
+    return request({ kind: "command", route, member, ...(input === undefined ? {} : { input }) });
+  }
+
+  return {
+    route,
+    get snapshot() { return current(); },
+    subscribe(listener) {
+      const typed = listener as (state: unknown) => void;
+      if (!live()) { typed(lease.current); return () => {}; }
+      lease.listeners.add(typed);
+      // The caller sees a failing initial delivery and gets no unsubscribe, so do not retain it.
+      try { typed(lease.current); }
+      catch (error) { lease.listeners.delete(typed); throw error; }
+      return () => { lease.listeners.delete(typed); };
+    },
+    dispose,
+    interactions: lease.interactions?.surface ?? {},
+    set: (member, value) => observed(route, async () => {
+      assertConnected();
+      const edit = entry.beginEdit(member, value);
+      let reply: Reply;
+      try { reply = await request({ kind: "set", route, member, value, edit }); }
+      catch (error) { entry.endEdit(member, edit, undefined); throw error; }
+      if (!reply.ok) {
+        entry.endEdit(member, edit, undefined);
+        return failure(reply, "The value could not be set.");
+      }
+      if (reply.released === true) { entry.endEdit(member, edit, undefined); return current(); }
+      // A superseded edit leaves the overlay to the newer edit, which is still on its way.
+      if (reply["superseded"] !== true) entry.endEdit(member, edit, reply.revision);
+      await settled(reply);
+      return current();
+    }),
+    command: (member, input) => observed(route, async () => {
+      const reply = await command(member, input);
+      if (!reply.ok) return failure(reply, "The command failed.");
+      await settled(reply);
+      return current();
+    }),
+    commandOutcome<TFailure>(member: string, decodeFailure: (value: unknown) => TFailure, input?: unknown) {
+      return observed(route, async (): Promise<BridgeOutcome<TState, TFailure>> => {
+        const reply = await command(member, input);
+        if (!reply.ok && reply.error?.kind === "domain-failed") {
+          await settled(reply);
+          let declared: TFailure;
+          try { declared = decodeFailure(reply.error.failure); }
+          catch (cause) { throw new BridgeError("failed", `The Bridge returned an invalid failure: ${errorMessage(cause)}`, { cause, route }); }
+          // The command failed as declared, but its effects could not be published: report it, so the key
+          // problem is not lost behind a resolved outcome.
+          if (reply.error.reason === "state-withheld") reportBridgeError(replyError(reply.error, route), route);
+          return bridgeFailure(declared);
+        }
+        if (!reply.ok) return failure(reply, "The command failed.");
+        await settled(reply);
+        return bridgeSuccess(current());
+      });
+    },
+    can: (member, input) => observed(route, async () => {
+      const reply = await request({ kind: "can", route, member, ...(input === undefined ? {} : { input }) });
+      if (!reply.ok) throw replyError(reply.error, route, "The command availability could not be read.");
+      return reply["value"] as boolean;
+    }),
+    write: <T>(member: string, write: BridgeFieldWriteRequest, decode: (value: unknown) => T) => observed(route, async (): Promise<FieldWriteReceipt<T>> => {
+      const reply = await request({
+        kind: "write", route, member, requestId: write.requestId, expectedVersion: write.expectedVersion,
+        expectedValue: write.expectedValue, value: write.value,
+      });
+      if (!reply.ok) return failure(reply, "The checked write failed.");
+      await settled(reply);
+      try {
+        const receipt = reply["receipt"] as Message;
+        const kind = receipt["kind"];
+        if (typeof kind !== "string" || !receiptKinds.has(kind)) throw new TypeError("Unknown checked write receipt kind.");
+        const text = (value: unknown) => { if (typeof value !== "string") throw new TypeError("Expected a message."); return value; };
+        const baseline = (value: unknown): FieldBaseline<T> => {
+          if (!isObject(value) || typeof value["version"] !== "number" || !Number.isSafeInteger(value["version"]) || value["version"] < 0)
+            throw new TypeError("Expected a field value and version.");
+          return { value: decode(value["value"]), version: value["version"] };
+        };
+        switch (kind) {
+          case "applied": return { kind, snapshot: baseline(receipt["snapshot"]),
+            ...(receipt["validation"] === undefined ? {} : { validation: text(receipt["validation"]) }) };
+          case "committed-with-error": return { kind, snapshot: baseline(receipt["snapshot"]), message: text(receipt["message"]) };
+          case "conflict": return { kind, incoming: baseline(receipt["incoming"]), message: text(receipt["message"]) };
+          default: return { kind: "rejected", message: text(receipt["message"]) };
+        }
+      } catch (cause) { throw new BridgeError("failed", `The Bridge returned an invalid checked write receipt: ${errorMessage(cause)}`, { cause, route }); }
+    }),
+    fieldBaseline(field) {
+      if (!live() || entry.state === undefined)
+        throw runtime.connected ? new BridgeError("released", "This View was released.", { route }) : new BridgeError("disconnected", "The Bridge is disconnected.", { route });
+      const version = entry.fields.get(field);
+      if (!entry.checkedFields.includes(field)) throw new BridgeError("failed", "The requested checked field is unavailable.", { route });
+      if (version === undefined) throw new BridgeError("failed", "The checked field baseline is unavailable for this connection.", { route });
+      return { value: entry.state[field], version };
+    },
+    start: (member, operation, input, codec) => observed(route, () => {
+      if (operation.length === 0) throw new RangeError("An operation id is required.");
+      return operations().start(operationScope, member, operation, input, codec);
+    }),
+    recover: (member, operation, codec) => observed(route, () => operations().recover(operationScope, member, operation, codec)),
+  };
 }
 
 /**

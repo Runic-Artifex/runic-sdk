@@ -1,5 +1,6 @@
 import type { BridgeErrorKind, BridgeErrorReason, BridgeFailureDetail } from "./errors.js";
 import type { RunicBridgeClient } from "./transport.js";
+import { viewsVersion } from "./version.js";
 
 /** A View's wire state: one member per state member, by wire name, encoded as on the wire. */
 export type MockState = Record<string, unknown>;
@@ -18,7 +19,11 @@ export type MockSetter = (state: MockState, value: unknown) => MockState | void 
  */
 export type MockCommand = (state: MockState, input: unknown) => MockState | void | Promise<MockState | void>;
 
-/** Whether a command is available for a wire input (`can`, and the check before the command runs). */
+/**
+ * Whether a command is available for a wire input (`can`, and the check before the command runs). A thrown error
+ * with a `kind` and `reason`, such as `{ kind: "rejected", reason: "unresolved-key" }`, rejects the command and
+ * its start with them, and `can` answers `false`.
+ */
 export type MockAvailability = (state: MockState, input: unknown) => boolean;
 
 /**
@@ -323,9 +328,844 @@ export interface MockBridge extends RunicBridgeClient {
 }
 
 /** Creates a mock producer. Install it with {@link installMockBridge}. */
+/* ------------------------------------------------------------------ internals */
+
+// Captured before a test can install fake timers, so flush() still yields.
+const realSetTimeout = globalThis.setTimeout.bind(globalThis);
+const yieldToEventLoop = () => new Promise<void>(resolve => { realSetTimeout(resolve, 0); });
+const maximumRounds = 10_000;
+const mockImplementation = { name: "@runic-artifex/views/mock", version: viewsVersion };
+
+const upperFirst = (value: string) => value.charAt(0).toUpperCase() + value.slice(1);
+const isRecord = (value: unknown): value is Record<string, unknown> => value !== null && typeof value === "object" && !Array.isArray(value);
+const isSafe = (value: unknown): value is number => typeof value === "number" && Number.isSafeInteger(value) && value >= 0;
+
+/**
+ * The canonical form of a JSON value (RFC 8785) in JavaScript: scalars and member names as `JSON.stringify` writes
+ * them, members sorted by UTF-16 code units. Sorting a plain object's keys and stringifying it is not enough,
+ * because JavaScript enumerates integer-like keys first.
+ */
+export function canonicalJson(value: unknown): string {
+  if (value === null || typeof value !== "object") return JSON.stringify(value) ?? "null";
+  if (Array.isArray(value)) return `[${value.map(item => item === undefined ? "null" : canonicalJson(item)).join(",")}]`;
+  const record = value as Record<string, unknown>;
+  const keys = Object.keys(record).filter(key => record[key] !== undefined).sort();
+  return `{${keys.map(key => `${JSON.stringify(key)}:${canonicalJson(record[key])}`).join(",")}}`;
+}
+const sameJson = (left: unknown, right: unknown) => canonicalJson(left) === canonicalJson(right);
+
+function failureFromError(error: unknown): { kind: string; message: string; detail?: BridgeFailureDetail; reason?: string } {
+  const kind = typeof (error as { kind?: unknown })?.kind === "string" ? (error as { kind: string }).kind : "failed";
+  const reason = (error as { reason?: unknown } | null | undefined)?.reason;
+  // Like a producer in development, the reply carries the thrown error's detail.
+  const detail = error instanceof Error
+    ? { type: error.name, message: error.message, ...(typeof error.stack === "string" ? { stack: error.stack } : {}) }
+    : undefined;
+  return { kind, message: error instanceof Error ? error.message : String(error), ...(detail ? { detail } : {}),
+    ...(typeof reason === "string" ? { reason } : {}) };
+}
+
+interface Deferred<T> { readonly promise: Promise<T>; resolve(value: T): void }
+function deferred<T>(): Deferred<T> {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>(done => { resolve = done; });
+  return { promise, resolve };
+}
+
+type Reply = Readonly<Record<string, unknown>>;
+const ok = (members: Record<string, unknown> = {}): Reply => ({ ok: true, ...members });
+const failed = (kind: string, message: string, members: Record<string, unknown> = {}): Reply => ({ ok: false, error: { kind, message, ...members } });
+const invalidRequest = (message: string) => failed("rejected", message, { reason: "invalid-request" });
+const released = () => failed("released", "This View was released.");
+
+interface OperationRecord {
+  readonly member: string;
+  readonly operation: string;
+  readonly key: string;
+  readonly input: unknown;
+  readonly inputJson: string;
+  readonly view: MockRegisteredView;
+  readonly stream: boolean;
+  readonly controller: AbortController;
+  readonly items: unknown[];
+  /** Connections that watch it. */
+  readonly watchers: Set<number>;
+  kind: MockOperationKind;
+  progress?: number;
+  revision?: number;
+  result?: unknown;
+  failure?: unknown;
+  error?: { readonly message: string; readonly detail?: BridgeFailureDetail };
+  handle: MockOperation;
+}
+
+interface InteractionRequestRecord {
+  readonly requestId: string;
+  readonly name: string;
+  readonly contract: string;
+  readonly presentation: Presentation;
+  readonly reply: Deferred<MockInteractionReply>;
+}
+
+interface Presentation {
+  readonly id: string;
+  readonly connection: number;
+  handlers: { readonly name: string; readonly contract: string }[];
+  generation: number;
+}
+
+/** The mock's state of one View route. */
+interface MockRegisteredView {
+  readonly route: string;
+  readonly definition: MockViewDefinition;
+  readonly contract: string;
+  readonly fieldVersions: Map<string, number>;
+  readonly presentations: Map<string, Presentation>;
+  readonly requests: Map<string, InteractionRequestRecord>;
+  /** Checked-write receipts by request id, for idempotent retries. */
+  readonly writes: Map<string, { readonly request: string; readonly receipt: Record<string, unknown> }>;
+  /** Indexed changes of the publication unit in progress. */
+  readonly pending: MockCollectionChange[];
+  /** Inside `batch`: publication waits until it ends. */
+  batching: boolean;
+  state: MockState;
+  /** The state as last published, which the next publication compares members with. */
+  published: MockState;
+  revision: number;
+  handle: MockView;
+}
+
+interface Connection {
+  readonly id: number;
+  session: string | undefined;
+  /** The highest admitted edit per route and member. */
+  readonly edits: Map<string, number>;
+  readonly pending: Set<(error: Error) => void>;
+}
+
+interface Task { readonly due: number; readonly sequence: number; readonly run: () => void }
+
 export function createMockBridge(options: MockBridgeOptions = {}): MockBridge {
-  void options;
-  throw new Error("Not implemented yet.");
+  const manual = options.scheduling === "manual";
+  const reorder = options.reorderRequests === true;
+  const latency = options.latency;
+  if (typeof latency === "number" && (!Number.isFinite(latency) || latency < 0) || typeof latency === "object"
+    && (!Number.isFinite(latency.min) || !Number.isFinite(latency.max) || latency.min < 0 || latency.max < latency.min))
+    throw new RangeError("The mock latency must be non-negative milliseconds, a { min, max } range or \"slow\".");
+  const sample = (): number => {
+    if (latency === undefined) return 0;
+    if (typeof latency === "number") return latency;
+    const { min, max } = latency === "slow" ? { min: 30, max: 120 } : latency;
+    return min + Math.random() * (max - min);
+  };
+  const views = new Map<string, MockRegisteredView>();
+  const operations = new Map<string, OperationRecord>();
+  const interceptors = new Set<MockInterceptor>();
+  const failures: { readonly match: MockRequestMatch; readonly failure: MockFailure }[] = [];
+  const connectionListeners = new Set<(connected: boolean) => void>();
+  const messageListeners = new Set<(message: string) => void>();
+  const closedSessions = new Set<string>();
+  const calls: MockCall[] = [];
+  const tasks: Task[] = [];
+  let connected = true;
+  let connectionCount = 1;
+  let connection: Connection = { id: 1, session: undefined, edits: new Map(), pending: new Set() };
+  let revision = 0;
+  let now = 0;
+  let sequence = 0;
+  let interactionSequence = 0;
+  // The page channel is FIFO: a reply or push is never delivered before one sent earlier.
+  let outboundDue = 0;
+  let inboundDue = 0;
+  let outboundChain: Promise<void> = Promise.resolve();
+  let inboundChain: Promise<void> = Promise.resolve();
+  let reorderQueue: (() => void)[] | undefined;
+
+  const schedule = (due: number, run: () => void, order = sequence++) => {
+    const task = { due, sequence: order, run };
+    tasks.push(task);
+    return task;
+  };
+  function takeDue(): Task | undefined {
+    let best = -1;
+    for (let index = 0; index < tasks.length; index++) {
+      const task = tasks[index]!;
+      if (task.due > now) continue;
+      const current = best < 0 ? undefined : tasks[best]!;
+      if (!current || task.due < current.due || task.due === current.due && task.sequence < current.sequence) best = index;
+    }
+    return best < 0 ? undefined : tasks.splice(best, 1)[0];
+  }
+  const realDelay = (milliseconds: number) => new Promise<void>(resolve => { realSetTimeout(resolve, Math.max(0, milliseconds)); });
+
+  /** Sends a reply or push to the page over the FIFO channel; dropped when its connection closed meanwhile. */
+  function toPage(run: () => void): void {
+    const owner = connection.id;
+    const send = () => { if (connected && connection.id === owner) run(); };
+    if (manual) {
+      outboundDue = Math.max(now + sample(), outboundDue);
+      schedule(outboundDue, send);
+    } else if (latency === undefined) send();
+    else {
+      const wait = sample();
+      outboundChain = outboundChain.then(() => realDelay(wait)).then(send);
+    }
+  }
+
+  /** Admits a request at the producer: in order, or out of order with `reorderRequests`. */
+  function toProducer(run: () => void): void {
+    if (manual) {
+      const due = reorder ? now + sample() : (inboundDue = Math.max(now + sample(), inboundDue));
+      // Requests due together are admitted newest first.
+      schedule(due, run, reorder ? -sequence++ : sequence++);
+    } else if (reorder) {
+      if (latency !== undefined) { void realDelay(sample()).then(run); return; }
+      if (reorderQueue) { reorderQueue.push(run); return; }
+      reorderQueue = [run];
+      realSetTimeout(() => {
+        const queued = reorderQueue!;
+        reorderQueue = undefined;
+        for (const next of queued.reverse()) next();
+      }, 0);
+    } else if (latency === undefined) run();
+    else {
+      const wait = sample();
+      inboundChain = inboundChain.then(() => realDelay(wait)).then(run);
+    }
+  }
+
+  function pushMessage(message: Readonly<Record<string, unknown>>, requiresHello = true): void {
+    if (requiresHello && connection.session === undefined) return;
+    const text = JSON.stringify(message);
+    toPage(() => { for (const listener of [...messageListeners]) listener(text); });
+  }
+
+  /* --------------------------------------------------------------- publication */
+
+  const fieldsOf = (view: MockRegisteredView) => view.definition.checkedFields?.length
+    ? { fields: Object.fromEntries(view.definition.checkedFields.map(field => [field, { version: view.fieldVersions.get(field) ?? 0 }])) }
+    : {};
+
+  /** Publishes what changed since the last publication as one frame at the window's next revision. */
+  function publish(view: MockRegisteredView): void {
+    if (view.batching) return;
+    const indexed = view.pending.splice(0);
+    const indexedFields = new Set(indexed.map(change => change.field));
+    const changes: Record<string, unknown>[] = [];
+    for (const field of new Set([...Object.keys(view.published), ...Object.keys(view.state)])) {
+      if (indexedFields.has(field) || sameJson(view.published[field], view.state[field])) continue;
+      const checked = view.definition.checkedFields?.includes(field) === true;
+      if (checked) view.fieldVersions.set(field, (view.fieldVersions.get(field) ?? 0) + 1);
+      changes.push({ field, kind: "set", value: view.state[field] ?? null, ...(checked ? { version: view.fieldVersions.get(field) } : {}) });
+    }
+    // A unit of more than 4,096 changes publishes the collections as sets of their fields.
+    if (changes.length + indexed.length > 4096) {
+      for (const field of indexedFields) changes.push({ field, kind: "set", value: view.state[field] as unknown });
+      indexed.length = 0;
+    }
+    view.published = view.state;
+    if (changes.length + indexed.length === 0) return;
+    const base = view.revision;
+    view.revision = ++revision;
+    pushMessage({ kind: "frame", route: view.route, baseRevision: base, revision: view.revision, changes: [...indexed, ...changes] });
+  }
+
+  function commit(view: MockRegisteredView, next: MockState): void {
+    view.state = next;
+    publish(view);
+  }
+
+  function collectionOf(view: MockRegisteredView, field: string): MockCollection {
+    const key = view.definition.collections?.[field];
+    if (!key) throw new RangeError(`The mock View ${view.route} declares no collection ${field}.`);
+    const rows = () => {
+      const value = view.state[field];
+      if (!Array.isArray(value)) throw new TypeError(`The mock View ${view.route} field ${field} is not an array.`);
+      return value as unknown[];
+    };
+    const indexOf = (target: string) => {
+      const at = rows().findIndex(item => key(item) === target);
+      if (at < 0) throw new RangeError(`The mock collection ${field} has no row with key ${target}.`);
+      return at;
+    };
+    // An edit changes the state and publishes the indexed change instead of a set of the field.
+    const edit = (next: unknown[], change: MockCollectionChange) => {
+      view.state = { ...view.state, [field]: next };
+      view.pending.push(change);
+      publish(view);
+    };
+    return {
+      get items() { return rows(); },
+      get keys() { return rows().map(key); },
+      add(items, index) {
+        const added = (Array.isArray(items) ? [...items] : [items]) as unknown[];
+        if (added.length === 0) return;
+        const next = [...rows()];
+        const at = index ?? next.length;
+        if (!Number.isSafeInteger(at) || at < 0 || at > next.length) throw new RangeError("The insert index is outside the collection.");
+        next.splice(at, 0, ...added);
+        const keys = next.map(key);
+        if (new Set(keys).size !== keys.length) throw new RangeError(`The mock collection ${field} would contain a duplicate key.`);
+        edit(next, { field, kind: "add", index: at, oldIndex: -1, keys: added.map(key), items: added });
+      },
+      remove(target) {
+        const at = indexOf(target);
+        const next = [...rows()];
+        next.splice(at, 1);
+        edit(next, { field, kind: "remove", index: at, oldIndex: at, keys: [target], items: [] });
+      },
+      replace(target, item) {
+        const at = indexOf(target);
+        if (key(item) !== target && rows().some(row => key(row) === key(item)))
+          throw new RangeError(`The mock collection ${field} would contain a duplicate key.`);
+        const next = [...rows()];
+        next[at] = item;
+        edit(next, { field, kind: "replace", index: at, oldIndex: at, keys: [target], items: [item] });
+      },
+      move(target, index) {
+        const from = indexOf(target);
+        const next = [...rows()];
+        if (!Number.isSafeInteger(index) || index < 0 || index >= next.length) throw new RangeError("The move index is outside the collection.");
+        const [moved] = next.splice(from, 1);
+        next.splice(index, 0, moved);
+        edit(next, { field, kind: "move", index, oldIndex: from, keys: [target], items: [] });
+      },
+    };
+  }
+
+  /* --------------------------------------------------------------- operations */
+
+  function statusOf(record: OperationRecord | undefined): Record<string, unknown> {
+    if (!record) return { kind: "unknown" };
+    if (record.kind === "running") return { kind: "running", ...(record.progress === undefined ? {} : { progress: record.progress }) };
+    if (record.kind === "expired" || record.kind === "unknown") return { kind: record.kind };
+    return {
+      kind: record.kind, revision: record.revision ?? record.view.revision,
+      ...(record.kind === "failed" ? { error: { kind: "failed", message: record.error?.message ?? "The operation failed.",
+        ...(record.error?.detail ? { detail: record.error.detail } : {}) } } : {}),
+      ...(record.kind === "succeeded" && record.result !== undefined ? { result: record.result } : {}),
+      ...(record.kind === "domain-failed" ? { failure: record.failure } : {}),
+      ...(record.stream && record.kind !== "cancelled" ? { stream: true } : {}),
+    };
+  }
+
+  function notifyWatchers(record: OperationRecord): void {
+    if (!record.watchers.has(connection.id)) return;
+    pushMessage({ kind: "operation", route: record.view.route, member: record.member, operation: record.operation,
+      contract: record.view.contract, status: statusOf(record) });
+  }
+
+  const executing = (member: string) => `is${upperFirst(member)}Executing`;
+
+  function settle(record: OperationRecord, kind: Exclude<MockOperationKind, "running">, result?: unknown, error?: OperationRecord["error"]): void {
+    if (record.kind !== "running") return;
+    const view = record.view;
+    record.kind = kind;
+    if (kind === "domain-failed") record.failure = result;
+    else if (result !== undefined) record.result = result;
+    if (error) record.error = error;
+    if (kind === "cancelled") record.controller.abort();
+    const flag = executing(record.member);
+    if (Object.hasOwn(view.state, flag) && view.state[flag] === true &&
+      ![...operations.values()].some(other => other !== record && other.view === view && other.member === record.member && other.kind === "running"))
+      commit(view, { ...view.state, [flag]: false });
+    record.revision = view.revision;
+    notifyWatchers(record);
+    record.watchers.clear();
+  }
+
+  function admit(view: MockRegisteredView, member: string, operation: string, input: unknown, declared?: { readonly failure: unknown }): Reply {
+    const key = `${view.contract}\u0000${view.route}\u0000${operation}`;
+    const inputJson = canonicalJson(input ?? null);
+    const existing = operations.get(key);
+    if (existing) {
+      // An operation id names one operation: repeating it observes that operation, reusing it for other work conflicts.
+      if (existing.member !== member || existing.inputJson !== inputJson)
+        return ok({ revision: view.revision, admission: "rejected", reason: "identity-conflict" });
+      if (existing.kind === "expired") return ok({ revision: view.revision, admission: "expired" });
+      return ok({ revision: view.revision, admission: "duplicate", status: statusOf(existing) });
+    }
+    const refusal = unavailable(view, member, input);
+    if (refusal) return ok({ revision: view.revision, admission: "rejected", reason: refusal.reason });
+    const handler = view.definition.operations?.[member];
+    const record: OperationRecord = {
+      member, operation, key, input, inputJson, view, stream: view.definition.streams?.includes(member) ?? false,
+      controller: new AbortController(), items: [], watchers: new Set(), kind: "running", handle: undefined as unknown as MockOperation,
+    };
+    record.handle = {
+      get member() { return record.member; },
+      get requestId() { return record.operation; },
+      get input() { return record.input; },
+      get kind() { return record.kind; },
+      get signal() { return record.controller.signal; },
+      get items() { return record.items; },
+      get progress() { return record.progress; },
+      reportProgress(value) {
+        if (record.kind !== "running" || typeof value !== "number" || Number.isNaN(value)) return;
+        record.progress = Math.min(1, Math.max(0, value));
+        notifyWatchers(record);
+      },
+      succeed: result => settle(record, "succeeded", result),
+      fail: (message, detail) => settle(record, "failed", undefined, { message: message ?? "The operation failed.", ...(detail ? { detail } : {}) }),
+      failWith: failure => settle(record, "domain-failed", failure),
+      cancel: () => settle(record, "cancelled"),
+      expire: () => {
+        if (record.kind === "running") throw new TypeError(`The operation ${member} is running; only a finished operation expires.`);
+        if (record.kind === "expired" || record.kind === "unknown") return;
+        record.kind = "expired";
+        delete record.result;
+        delete record.failure;
+        delete record.error;
+        record.items.length = 0;
+      },
+      forget: () => {
+        if (record.kind === "unknown") return;
+        if (record.kind === "running") settle(record, "unknown");
+        else record.kind = "unknown";
+        record.controller.abort();
+        if (operations.get(key) === record) operations.delete(key);
+      },
+      emit: (...items) => {
+        if (!record.stream) throw new TypeError(`The operation ${member} is not a stream.`);
+        if (record.kind !== "running") throw new TypeError(`The operation ${member} has finished.`);
+        record.items.push(...items);
+      },
+    };
+    operations.set(key, record);
+    const flag = executing(member);
+    // The admission reply follows the publication of the command's execution state.
+    if (Object.hasOwn(view.state, flag) && view.state[flag] !== true) commit(view, { ...view.state, [flag]: true });
+    if (declared) settle(record, "domain-failed", declared.failure);
+    else if (handler !== "manual") {
+      const command = view.definition.commands?.[member];
+      void (async () => {
+        try {
+          let outcome: MockOperationOutcome | void = undefined;
+          if (handler) outcome = await handler(view.state, record.input, record.handle);
+          else if (command) {
+            const patch = await command(view.state, record.input);
+            outcome = isRecord(patch) ? { state: patch } : undefined;
+          }
+          if (record.kind !== "running") return;
+          if (outcome?.state) commit(view, { ...view.state, ...outcome.state });
+          settle(record, "succeeded", outcome?.result);
+        } catch (error) {
+          // A declared failure is classified by its type, also after a cancel request.
+          const declaredFailure = mockFailureOf(error);
+          if (declaredFailure) { settle(record, "domain-failed", declaredFailure.failure); return; }
+          const failure = failureFromError(error);
+          // Cancellation is cooperative: a handler that stops by throwing after the request ends cancelled.
+          const cancelled = failure.kind === "cancelled" || record.controller.signal.aborted;
+          settle(record, cancelled ? "cancelled" : "failed", undefined,
+            { message: failure.message, ...(failure.detail ? { detail: failure.detail } : {}) });
+        }
+      })();
+    }
+    return ok({ revision: view.revision, admission: "accepted", status: statusOf(record) });
+  }
+
+  function operationRequest(view: MockRegisteredView, kind: string, message: Record<string, unknown>): Reply {
+    const operation = message["operation"];
+    const member = message["member"];
+    if (typeof operation !== "string" || typeof member !== "string") return invalidRequest("The operation request has no operation or member.");
+    const found = operations.get(`${view.contract}\u0000${view.route}\u0000${operation}`);
+    // An operation started for another member is unknown to this one.
+    const record = found?.member === member && found.kind !== "unknown" ? found : undefined;
+    switch (kind) {
+      case "status": return ok({ status: statusOf(record) });
+      case "watch":
+        if (record?.kind === "running") record.watchers.add(connection.id);
+        return ok({ status: statusOf(record) });
+      case "unwatch":
+        record?.watchers.delete(connection.id);
+        return ok({ status: statusOf(record) });
+      case "cancel": {
+        if (!record) return ok({ cancellation: "unknown" });
+        if (record.kind === "expired") return ok({ cancellation: "expired" });
+        if (record.kind !== "running") return ok({ cancellation: "not-running" });
+        // The operation sees the request through its signal and decides how it ends.
+        record.controller.abort();
+        return ok({ cancellation: "cancellation-requested" });
+      }
+      default: {
+        const cursor = isSafe(message["cursor"]) ? message["cursor"] : 0;
+        if (!record || record.kind === "expired") return ok({ page: { kind: record ? "expired" : "unknown", cursor, completed: true, items: [] } });
+        return ok({ page: {
+          kind: record.kind, cursor: record.items.length, completed: record.kind !== "running",
+          items: record.items.map((value, index) => ({ sequence: index + 1, value })).filter(item => item.sequence > cursor),
+        } });
+      }
+    }
+  }
+
+  /* ------------------------------------------------------------- interactions */
+
+  function endPresentation(view: MockRegisteredView, presentation: Presentation): void {
+    if (view.presentations.get(presentation.id) === presentation) view.presentations.delete(presentation.id);
+    for (const request of [...view.requests.values()]) {
+      if (request.presentation !== presentation) continue;
+      view.requests.delete(request.requestId);
+      request.reply.resolve({ kind: "cancelled" });
+    }
+  }
+
+  function interact(view: MockRegisteredView, name: string, input: unknown, options: MockInteractionOptions = {}): Promise<MockInteractionReply> {
+    const presentation = [...view.presentations.values()].find(item => item.connection === connection.id && connected
+      && item.handlers.some(handler => handler.name === name));
+    if (!presentation || options.signal?.aborted) return Promise.resolve({ kind: presentation ? "cancelled" : "unhandled" });
+    const handler = presentation.handlers.find(item => item.name === name)!;
+    const request: InteractionRequestRecord = {
+      requestId: `interaction-${++interactionSequence}`, name, contract: handler.contract, presentation, reply: deferred<MockInteractionReply>(),
+    };
+    view.requests.set(request.requestId, request);
+    options.signal?.addEventListener("abort", () => {
+      if (!view.requests.delete(request.requestId)) return;
+      pushMessage({ kind: "interaction-cancelled", route: view.route, presentation: presentation.id, requestId: request.requestId, ownerEpoch: 1,
+        message: "The interaction was cancelled." });
+      request.reply.resolve({ kind: "cancelled" });
+    }, { once: true });
+    pushMessage({
+      kind: "interaction", route: view.route, presentation: presentation.id, requestId: request.requestId, ownerEpoch: 1, name,
+      contract: handler.contract, expiresAt: new Date(Date.now() + 120_000).toISOString().replace(/\.\d{3}Z$/, "Z"), input,
+    });
+    return request.reply.promise;
+  }
+
+  /* ------------------------------------------------------------ requests */
+
+  function available(view: MockRegisteredView, member: string, input: unknown): boolean {
+    const check = view.definition.can?.[member];
+    if (check) return check(view.state, input);
+    return view.state[`can${upperFirst(member)}`] !== false;
+  }
+
+  /** Why a command cannot run now, as the reason of a rejection, or undefined when it can. */
+  function unavailable(view: MockRegisteredView, member: string, input: unknown): { readonly message: string; readonly reason: string } | undefined {
+    try { return available(view, member, input) ? undefined : { message: `${member} is unavailable.`, reason: "unavailable" }; }
+    catch (error) {
+      const failure = failureFromError(error);
+      return { message: failure.message, reason: failure.reason ?? "unavailable" };
+    }
+  }
+
+  function errorReply(view: MockRegisteredView, error: unknown, ran: boolean): Reply {
+    const declared = mockFailureOf(error);
+    if (declared) return { ok: false, revision: view.revision, error: { kind: "domain-failed", message: (error as Error).message, failure: declared.failure } };
+    const failure = failureFromError(error);
+    // A request that ran names its revision; a rejected one ran nothing.
+    return { ok: false, ...(ran && failure.kind !== "rejected" ? { revision: view.revision } : {}), error: failure };
+  }
+
+  async function writeChecked(view: MockRegisteredView, message: Record<string, unknown>): Promise<Reply> {
+    const field = message["member"] as string;
+    if (!view.definition.checkedFields?.includes(field)) return invalidRequest(`${field} is not a checked field.`);
+    if (typeof message["requestId"] !== "string" || !isSafe(message["expectedVersion"]) || !Object.hasOwn(message, "value"))
+      return invalidRequest(`${field} has an invalid checked write.`);
+    const reply = (receipt: Record<string, unknown>) => ok({ revision: view.revision, receipt });
+    // A retried request id returns its first receipt, and reusing it for another write is a conflict.
+    const key = `${field}\u0000${message["requestId"]}`;
+    const request = canonicalJson([message["expectedVersion"], message["expectedValue"], message["value"]]);
+    const previous = view.writes.get(key);
+    const version = () => view.fieldVersions.get(field) ?? 0;
+    if (previous) return reply(previous.request === request ? previous.receipt
+      : { kind: "conflict", incoming: { value: view.state[field], version: version() },
+        message: "The request identity was already used with a different checked write." });
+    const retain = (receipt: Record<string, unknown>) => { view.writes.set(key, { request, receipt }); return reply(receipt); };
+    if (message["expectedVersion"] !== version() || !sameJson(message["expectedValue"], view.state[field]))
+      return retain({ kind: "conflict", incoming: { value: view.state[field], version: version() }, message: "The field baseline no longer matches." });
+    try {
+      const patch = await view.definition.set?.[field]?.(view.state, message["value"]);
+      commit(view, { ...view.state, [field]: message["value"], ...(patch ?? {}) });
+    } catch (error) {
+      const failure = failureFromError(error);
+      // A handler error with kind "committed-with-error" keeps the value, as a setter that ran before its validation failed does.
+      if (failure.kind !== "committed-with-error") return retain({ kind: "rejected", message: failure.message });
+      commit(view, { ...view.state, [field]: message["value"] });
+      return retain({ kind: "committed-with-error", snapshot: { value: view.state[field], version: version() }, message: failure.message });
+    }
+    return retain({ kind: "applied", snapshot: { value: view.state[field], version: version() } });
+  }
+
+  function injected(view: MockRegisteredView, kind: string, message: Record<string, unknown>, failure: MockFailure): Reply {
+    if (failure.kind === "domain-failed") {
+      if (kind === "start")
+        return admit(view, message["member"] as string, message["operation"] as string, message["input"], { failure: failure.failure });
+      return { ok: false, revision: view.revision, error: { kind: "domain-failed", message: failure.message ?? `${String(message["member"])} failed.`, failure: failure.failure } };
+    }
+    const text = failure.message ?? `The mock failed ${kind} ${String(message["member"] ?? "")} of ${view.route}.`;
+    if (failure.kind === "transport") throw new Error(text);
+    if (kind === "start" && failure.kind === "rejected")
+      return ok({ revision: view.revision, admission: "rejected", reason: failure.reason ?? "unavailable" });
+    return failed(failure.kind, text, { ...(failure.detail ? { detail: failure.detail } : {}), ...(failure.reason === undefined ? {} : { reason: failure.reason }) });
+  }
+
+  async function answer(message: Record<string, unknown>, call: MockCall): Promise<Reply> {
+    for (const interceptor of [...interceptors]) {
+      const reply = await interceptor(call);
+      if (reply !== undefined) return reply;
+    }
+    const kind = call.kind;
+    if (kind === "hello") {
+      const identity = { protocol: 4, implementation: mockImplementation };
+      if (message["protocol"] !== 4) return { ok: false, ...identity, error: { kind: "failed", reason: "protocol-mismatch",
+        message: `The mock implements Views protocol 4, but the client sent protocol ${String(message["protocol"])}.` } };
+      if (connection.session !== undefined || typeof message["session"] !== "string") return { ...invalidRequest("A second or invalid hello."), ...identity };
+      if (closedSessions.has(message["session"])) return { ...released(), ...identity };
+      connection.session = message["session"];
+      return ok(identity);
+    }
+    if (connection.session === undefined) return failed("rejected", "The connection has not completed hello.", { reason: "no-hello" });
+    if (kind === "receive") return ok({ messages: [] });
+    const route = message["route"];
+    if (typeof route !== "string") return invalidRequest("The request has no route.");
+    const view = views.get(route);
+    if (!view) return released();
+    const member = typeof message["member"] === "string" ? message["member"] : undefined;
+    const failureIndex = failures.findIndex(item => item.match.route === route && item.match.kind === kind
+      && (item.match.member === undefined || item.match.member === member));
+    if (failureIndex >= 0) return injected(view, kind, message, failures.splice(failureIndex, 1)[0]!.failure);
+    const state = () => ({ revision: view.revision, state: view.state, ...fieldsOf(view) });
+    switch (kind) {
+      case "open": case "close": {
+        const id = message["presentation"];
+        if (typeof id !== "string") return invalidRequest("The request has no presentation.");
+        const existing = view.presentations.get(id);
+        if (kind === "close") {
+          if (existing && existing.connection !== connection.id) return ok({ presentation: "ignored" });
+          if (existing) endPresentation(view, existing);
+          return ok({ presentation: "ok" });
+        }
+        if (existing && existing.connection !== connection.id) return ok({ ...state(), presentation: "ignored" });
+        const handlers = Array.isArray(message["handlers"]) ? message["handlers"] as Presentation["handlers"] : undefined;
+        view.presentations.set(id, existing ?? { id, connection: connection.id, handlers: handlers ?? [], generation: 0 });
+        return ok({ ...state(), presentation: "ok", ...(handlers === undefined ? {} : { registration: "ok" }) });
+      }
+      case "snapshot": return ok(state());
+      case "set": {
+        if (member === undefined || !Object.hasOwn(message, "value") || !isSafe(message["edit"]) || message["edit"] === 0)
+          return invalidRequest("The set request is invalid.");
+        const handler = view.definition.set?.[member];
+        if (!handler && !Object.hasOwn(view.state, member)) return invalidRequest(`${route} has no member ${member}.`);
+        const key = `${route}\u0000${member}`;
+        if (message["edit"] <= (connection.edits.get(key) ?? 0)) return ok({ revision: view.revision, superseded: true });
+        connection.edits.set(key, message["edit"]);
+        try {
+          const patch = await handler?.(view.state, message["value"]);
+          commit(view, { ...view.state, [member]: message["value"], ...(patch ?? {}) });
+        } catch (error) { return errorReply(view, error, true); }
+        return ok({ revision: view.revision });
+      }
+      case "write": return writeChecked(view, message);
+      case "command": case "can": {
+        if (member === undefined) return invalidRequest("The request has no member.");
+        const handler = view.definition.commands?.[member];
+        if (!handler && !view.definition.can?.[member]) return invalidRequest(`${route} has no command ${member}.`);
+        const input = message["input"];
+        const refusal = unavailable(view, member, input);
+        if (kind === "can") return ok({ value: refusal === undefined });
+        if (refusal) return failed("rejected", refusal.message, { reason: refusal.reason });
+        try {
+          const patch = await handler?.(view.state, input);
+          if (isRecord(patch)) commit(view, { ...view.state, ...patch });
+        } catch (error) { return errorReply(view, error, true); }
+        return ok({ revision: view.revision });
+      }
+      case "start":
+        if (member === undefined || typeof message["operation"] !== "string") return invalidRequest("The start request is invalid.");
+        return admit(view, member, message["operation"], message["input"]);
+      case "status": case "watch": case "unwatch": case "cancel": case "stream":
+        return operationRequest(view, kind, message);
+      case "interactions": {
+        const presentation = typeof message["presentation"] === "string" ? view.presentations.get(message["presentation"]) : undefined;
+        if (!presentation || presentation.connection !== connection.id) return ok({ registration: "ignored" });
+        const generation = isSafe(message["generation"]) ? message["generation"] : -1;
+        if (generation < presentation.generation) return ok({ registration: "stale" });
+        presentation.generation = generation;
+        presentation.handlers = Array.isArray(message["handlers"]) ? message["handlers"] as Presentation["handlers"] : [];
+        // Requests of handlers that are gone end.
+        for (const request of [...view.requests.values()])
+          if (request.presentation === presentation && !presentation.handlers.some(handler => handler.name === request.name)) {
+            view.requests.delete(request.requestId);
+            request.reply.resolve({ kind: "cancelled" });
+          }
+        return ok({ registration: "ok" });
+      }
+      case "interaction-reply": {
+        const request = typeof message["requestId"] === "string" ? view.requests.get(message["requestId"]) : undefined;
+        if (!request || request.presentation.id !== message["presentation"]) return ok({ result: "stale" });
+        view.requests.delete(request.requestId);
+        const outcome = message["outcome"];
+        request.reply.resolve(outcome === "answered" ? { kind: "answered", output: message["output"] }
+          : outcome === "failed" ? { kind: "failed" } : { kind: "cancelled" });
+        return ok({ result: "ok" });
+      }
+      default: return invalidRequest(`The request kind ${kind} is unknown.`);
+    }
+  }
+
+  async function flush(): Promise<void> {
+    for (let round = 0; round < maximumRounds; round++) {
+      for (let task = takeDue(); task; task = takeDue()) task.run();
+      await yieldToEventLoop();
+      if (!tasks.some(task => task.due <= now)) return;
+    }
+    throw new Error("The mock Bridge did not become idle: the client keeps requesting or the mock keeps pushing.");
+  }
+
+  function notifyConnection(value: boolean): void {
+    for (const listener of [...connectionListeners]) listener(value);
+  }
+
+  const bridge: MockBridge = {
+    calls,
+    get now() { return now; },
+    get pending() { return tasks.length; },
+    isConnected: () => connected,
+    request(text) {
+      let message: Record<string, unknown>;
+      try {
+        const parsed = JSON.parse(text) as unknown;
+        if (!isRecord(parsed)) throw new TypeError("A request is a JSON object.");
+        message = parsed;
+      } catch (error) { return Promise.reject(error); }
+      const call: MockCall = {
+        kind: typeof message["kind"] === "string" ? message["kind"] : "",
+        ...(typeof message["route"] === "string" ? { route: message["route"] } : {}),
+        ...(typeof message["member"] === "string" ? { member: message["member"] } : {}),
+        message,
+      };
+      calls.push(call);
+      if (!connected) return Promise.reject(new Error("The mock Bridge is disconnected."));
+      const owner = connection;
+      return new Promise<string>((resolve, reject) => {
+        const drop = (error: Error) => reject(error);
+        owner.pending.add(drop);
+        const settle = (run: () => void) => toPage(() => { owner.pending.delete(drop); run(); });
+        toProducer(() => {
+          if (connection !== owner) return;
+          answer(message, call).then(
+            reply => settle(() => resolve(JSON.stringify(reply))),
+            error => settle(() => reject(error)));
+        });
+      });
+    },
+    onMessage(listener) {
+      messageListeners.add(listener);
+      return () => { messageListeners.delete(listener); };
+    },
+    onConnectionChange(listener) {
+      connectionListeners.add(listener);
+      listener(connected);
+      return () => { connectionListeners.delete(listener); };
+    },
+    view(route, definition) {
+      if (!/^[A-Za-z0-9_-]{1,128}$/.test(route)) throw new RangeError("A mock route has 1 to 128 letters, digits, '_' or '-'.");
+      const state = { ...definition.state };
+      const view: MockRegisteredView = {
+        route, definition, contract: definition.contract ?? `mock.${route}:mock`, fieldVersions: new Map(), presentations: new Map(),
+        requests: new Map(), writes: new Map(), batching: false, pending: [], state, published: state, revision,
+        handle: undefined as unknown as MockView,
+      };
+      view.handle = {
+        route,
+        get state() { return view.state; },
+        get revision() { return view.revision; },
+        update(patch) { commit(view, typeof patch === "function" ? patch(view.state) : { ...view.state, ...patch }); },
+        push(message) { pushMessage({ route, ...message }); },
+        pushFailure(failure) {
+          pushMessage({ kind: "failure", route, revision,
+            error: { kind: failure.kind ?? "failed", message: failure.message, ...(failure.detail ? { detail: failure.detail } : {}) } });
+        },
+        collection: field => collectionOf(view, field),
+        batch(edit) {
+          if (view.batching) { edit(); return; }
+          view.batching = true;
+          try { edit(); }
+          finally {
+            view.batching = false;
+            publish(view);
+          }
+        },
+        failNext(match, failure, times = 1) { bridge.failNext({ route, ...match }, failure, times); },
+        operations: member => [...operations.values()].filter(item => item.view === view && (member === undefined || item.member === member))
+          .map(item => item.handle),
+        get interactionHandlers() {
+          return [...new Set([...view.presentations.values()].filter(item => item.connection === connection.id)
+            .flatMap(item => item.handlers.map(handler => handler.name)))];
+        },
+        interact: (name, input, options) => interact(view, name, input, options),
+      };
+      views.set(route, view);
+      return view.handle;
+    },
+    intercept(handler) {
+      interceptors.add(handler);
+      return () => { interceptors.delete(handler); };
+    },
+    push(message) { pushMessage(message); },
+    failNext(match, failure, times = 1) {
+      if (!Number.isSafeInteger(times) || times < 1) throw new RangeError("times must be a positive integer.");
+      for (let index = 0; index < times; index++) failures.push({ match, failure });
+    },
+    disconnect() {
+      if (!connected) return;
+      connected = false;
+      const closed = connection;
+      if (closed.session !== undefined) closedSessions.add(closed.session);
+      for (const view of views.values())
+        for (const presentation of [...view.presentations.values()]) if (presentation.connection === closed.id) endPresentation(view, presentation);
+      for (const record of operations.values()) record.watchers.delete(closed.id);
+      for (const drop of [...closed.pending]) drop(new Error("The mock Bridge is disconnected."));
+      connection = { id: ++connectionCount, session: undefined, edits: new Map(), pending: new Set() };
+      notifyConnection(false);
+    },
+    reconnect() {
+      if (connected) return;
+      connected = true;
+      notifyConnection(true);
+    },
+    sleep(milliseconds) {
+      if (!Number.isFinite(milliseconds) || milliseconds < 0) throw new RangeError("The delay must be a non-negative number of milliseconds.");
+      return new Promise<void>(resolve => { schedule(now + milliseconds, resolve); });
+    },
+    flush,
+    async flushUntil<T>(promise: Promise<T>): Promise<T> {
+      let settled = false;
+      const observed = promise.then(value => { settled = true; return value; }, error => { settled = true; throw error; });
+      void observed.catch(() => undefined);
+      await flush();
+      if (!settled) throw new Error("The promise did not settle after the mock Bridge became idle. Advance the virtual clock or settle the pending work.");
+      return observed;
+    },
+    async advance(milliseconds) {
+      if (!Number.isFinite(milliseconds) || milliseconds < 0) throw new RangeError("The delay must be a non-negative number of milliseconds.");
+      const target = now + milliseconds;
+      for (;;) {
+        await flush();
+        const next = tasks.reduce((earliest, task) => Math.min(earliest, task.due), Number.POSITIVE_INFINITY);
+        if (next > target) break;
+        now = Math.max(now, next);
+      }
+      now = target;
+      await flush();
+    },
+  };
+  internals.set(bridge, { registered: route => views.get(route)?.handle, contract: route => views.get(route)?.contract });
+  return bridge;
+}
+
+/** @internal What the typed mocks (mock-typed.ts) read of a mock Bridge. Not part of the public API. */
+export interface MockBridgeInternals {
+  readonly registered: (route: string) => MockView | undefined;
+  readonly contract: (route: string) => string | undefined;
+}
+
+const internals = new WeakMap<MockBridge, MockBridgeInternals>();
+/** @internal Used by the typed mocks (mock-typed.ts). */
+export function mockBridgeInternals(bridge: MockBridge): MockBridgeInternals {
+  const value = internals.get(bridge);
+  if (!value) throw new TypeError("The value is not a mock Bridge from createMockBridge().");
+  return value;
 }
 
 /**

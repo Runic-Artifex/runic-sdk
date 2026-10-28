@@ -17,8 +17,11 @@ test("json rejects values that JSON would change or lose", () => {
     [undefined], [1, Number.NaN], { nested: { value: 1n } }]) {
     assert.throws(() => bridgeWire.json(value), `${String(typeof value)} was accepted`);
   }
+  // A value is at most 64 containers deep, so 64 nested arrays around a scalar are valid and 65 are not.
   let deep: unknown = 0;
   for (let depth = 0; depth < 64; depth++) deep = [deep];
+  assert.equal(bridgeWire.json(deep), deep);
+  deep = [deep];
   assert.throws(() => bridgeWire.json(deep), RangeError);
   const cyclic: Record<string, unknown> = {};
   cyclic["self"] = cyclic;

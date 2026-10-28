@@ -1,5 +1,6 @@
 /// <reference lib="esnext.disposable" preserve="true" />
 import { disposable } from "./lifetime.js";
+import { reportBridgeError } from "./transport.js";
 
 /** What a text field shows. */
 export interface TextFieldState {
@@ -69,10 +70,124 @@ export interface TextFieldController<TState, TClient> {
   dispose(): void;
 }
 
+// A generated client exposes its latest state as `snapshot`, which is current as soon as a write settled.
+function latestState<TState>(client: unknown): { readonly state: TState } | undefined {
+  if (client === null || typeof client !== "object" || typeof (client as { subscribe?: unknown }).subscribe !== "function"
+    || !("snapshot" in client)) return undefined;
+  return { state: (client as { readonly snapshot: TState }).snapshot };
+}
+
 /** Creates a {@link TextFieldController}. A `using` declaration disposes it where the engine has `Symbol.dispose`. */
 export function createTextFieldController<TState, TClient>(
   options: TextFieldControllerOptions<TState, TClient>): TextFieldController<TState, TClient> & Disposable {
-  void options;
-  throw new Error("Not implemented yet.");
-  return disposable({} as TextFieldController<TState, TClient>);
+  const coalesce = options.coalesce !== false;
+  const keepDraftOnError = options.keepDraftOnError !== false;
+  const listeners = new Set<() => void>();
+  let source: TextFieldSource<TState, TClient> | undefined;
+  let draft: string | undefined;
+  let error: unknown;
+  let composing = false;
+  let inFlight = 0;
+  // The latest value typed while a write was in flight (coalescing) or while no client was connected.
+  let queued: string | undefined;
+  let disposed = false;
+  let current: TextFieldState = Object.freeze({ value: "", editing: false, error: undefined });
+
+  const viewValue = () => source === undefined ? "" : options.read(source.state);
+  function update(notify = true): void {
+    const next = { value: draft ?? viewValue(), editing: draft !== undefined, error };
+    if (next.value === current.value && next.editing === current.editing && Object.is(next.error, current.error)) return;
+    current = Object.freeze(next);
+    if (!notify || disposed) return;
+    for (const listener of [...listeners]) {
+      try { listener(); } catch (failure) { reportBridgeError(failure); }
+    }
+  }
+
+  function write(value: string): void {
+    const client = source!.client;
+    inFlight++;
+    let pending: Promise<unknown>;
+    try { pending = Promise.resolve(options.write(client, value)); }
+    catch (failure) { pending = Promise.reject(failure); }
+    pending.then(() => settled(undefined, false), failure => settled(failure, true));
+  }
+
+  function send(value: string): void {
+    if (source === undefined || coalesce && inFlight !== 0) { queued = value; return; }
+    queued = undefined;
+    write(value);
+  }
+
+  function settled(failure: unknown, failed: boolean): void {
+    inFlight--;
+    if (disposed) return;
+    if (failed) error = failure;
+    else error = undefined;
+    // Values typed meanwhile are written next, also after a failure: they are newer than the failed one.
+    if (queued !== undefined && source !== undefined && !composing) {
+      if (!coalesce || inFlight === 0) send(queued);
+      update();
+      return;
+    }
+    if (inFlight === 0 && !composing && queued === undefined && draft !== undefined && (!failed || !keepDraftOnError)) {
+      // The last write settled: the View's state now includes it, with any normalization the producer applied.
+      draft = undefined;
+      const latest = source === undefined ? undefined : latestState<TState>(source.client);
+      if (latest !== undefined && source !== undefined) source = { state: latest.state, client: source.client };
+    }
+    update();
+  }
+
+  function input(value: string): void {
+    if (disposed) return;
+    error = undefined;
+    draft = value;
+    if (!composing) send(value);
+    update();
+  }
+
+  return disposable({
+    get current() { return current; },
+    subscribe(listener: () => void) {
+      if (disposed) return () => {};
+      listeners.add(listener);
+      return () => { listeners.delete(listener); };
+    },
+    setSource(next: TextFieldSource<TState, TClient> | undefined) {
+      source = next;
+      if (disposed) return;
+      // A value typed before a client was connected is written once one is.
+      if (source !== undefined && queued !== undefined && inFlight === 0 && !composing) send(queued);
+      update(false);
+    },
+    input,
+    compositionStart() { composing = true; },
+    compositionEnd(value: string) {
+      composing = false;
+      input(value);
+    },
+    reset() {
+      if (disposed) return;
+      draft = undefined;
+      error = undefined;
+      queued = undefined;
+      update();
+    },
+    dispose() {
+      if (disposed) return;
+      disposed = true;
+      listeners.clear();
+      // The last value the user typed is not lost with the field.
+      if (queued !== undefined && source !== undefined) {
+        const value = queued;
+        queued = undefined;
+        inFlight++;
+        let pending: Promise<unknown>;
+        try { pending = Promise.resolve(options.write(source.client, value)); }
+        catch (failure) { pending = Promise.reject(failure); }
+        pending.catch(failure => reportBridgeError(failure));
+      }
+    },
+  });
 }

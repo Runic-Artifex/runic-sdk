@@ -1,14 +1,22 @@
 import type { BridgeErrorKind, BridgeFailureDetail } from "./errors.js";
 import type { BridgeOutcomeFailure } from "./controller.js";
-import type {
-  MockBridge,
-  MockCall,
-  MockDomainFailure,
-  MockErrorFailure,
-  MockInteractionOptions,
-  MockOperationKind,
-  MockState,
-  MockView,
+import {
+  mockBridgeInternals,
+  mockFailure,
+  mockFailureOf,
+  type MockBridge,
+  type MockCall,
+  type MockCommand,
+  type MockDomainFailure,
+  type MockErrorFailure,
+  type MockFailure,
+  type MockInteractionOptions,
+  type MockOperation,
+  type MockOperationHandler,
+  type MockOperationKind,
+  type MockSetter,
+  type MockState,
+  type MockView,
 } from "./mock-bridge.js";
 
 /** The wire form of a content reference in a mock state, such as `{ kind: "editor", id: "1" }`. */
@@ -185,11 +193,193 @@ export interface MockTypedViewDefinition {
   readonly operations?: object;
 }
 
+const upperFirst = (value: string) => value.charAt(0).toUpperCase() + value.slice(1);
+
+function rejected(message: string, reason: "unavailable" | "unresolved-key"): Error {
+  return Object.assign(new Error(message), { kind: "rejected", reason });
+}
+
+// A typed handler throws mockFailure(typed); the untyped mock sends the wire value.
+function encodedFailure(error: unknown, encode: ((value: unknown) => unknown) | undefined): unknown {
+  const declared = mockFailureOf(error);
+  return declared && encode ? mockFailure(encode(declared.failure), (error as Error).message) : error;
+}
+
 /**
  * Registers a typed mock View. Generated `mock{Name}()` helpers call this with
  * their client's codecs; applications call the generated helper.
  */
 export function mockTypedView(bridge: MockBridge, spec: MockTypedViewSpec, definition: MockTypedViewDefinition): unknown {
-  void bridge; void spec; void definition;
-  throw new Error("Not implemented yet.");
+  const route = definition.id === undefined ? spec.route : `content${definition.id}`;
+  if (definition.id !== undefined && !/^[A-Za-z0-9_-]+$/.test(definition.id))
+    throw new RangeError("A mock content id must contain only letters, digits, '_' and '-'.");
+  const fields = spec.fields;
+  const encode = (state: object): MockState => {
+    const wire: MockState = {};
+    for (const [field, value] of Object.entries(state))
+      wire[field] = value !== undefined && Object.hasOwn(fields, field) ? fields[field]!.encode(value) : value;
+    return wire;
+  };
+  const decode = (wire: MockState): never => {
+    const state: MockState = {};
+    for (const [field, value] of Object.entries(wire))
+      state[field] = Object.hasOwn(fields, field) ? fields[field]!.decode(value) : value;
+    return state as never;
+  };
+  const patchOf = (patch: unknown) => patch !== null && typeof patch === "object" ? encode(patch) : undefined;
+  const handlersOf = (group: object | undefined, method: string) => (group as Record<string, unknown> | undefined)?.[method];
+
+  const set: Record<string, MockSetter> = {};
+  for (const [method, setter] of Object.entries(spec.setters ?? {})) {
+    const handler = handlersOf(definition.setters, method) as MockSetterHandler<unknown, unknown> | undefined;
+    set[setter.member] = async (state, wire) => {
+      const value = fields[setter.member]?.decode(wire) ?? wire;
+      return patchOf(handler ? await handler(decode(state), value) : undefined);
+    };
+  }
+  const commands: Record<string, MockCommand> = {};
+  const can: Record<string, (state: MockState, input: unknown) => boolean> = {};
+  for (const [method, command] of Object.entries(spec.commands ?? {})) {
+    const handler = handlersOf(definition.commands, method) as MockCommandHandler<unknown, unknown[]> | undefined;
+    const available = handlersOf(definition.canExecute, method) as ((state: unknown, ...args: unknown[]) => boolean) | undefined;
+    const resolves = handlersOf(definition.resolveKey, method) as ((state: unknown, ...args: unknown[]) => boolean) | undefined;
+    const name = upperFirst(method);
+    const inputOf = (wire: unknown) => command.decodeInput && wire !== undefined ? [command.decodeInput(wire)] : [];
+    // As a producer does, the key is resolved before availability is evaluated.
+    const check = (state: MockState, wire: unknown): "unresolved-key" | "unavailable" | undefined => {
+      const input = inputOf(wire);
+      if (resolves && !resolves(decode(state), ...input)) return "unresolved-key";
+      if (command.available && state[command.available] === false) return "unavailable";
+      if (available && !available(decode(state), ...input)) return "unavailable";
+      return undefined;
+    };
+    can[command.member] = (state, wire) => {
+      const problem = check(state, wire);
+      if (problem === "unresolved-key") throw rejected(`${name} has no object for this key.`, "unresolved-key");
+      return problem === undefined;
+    };
+    commands[command.member] = async (state, wire) => {
+      try { return patchOf(handler ? await handler(decode(state), ...inputOf(wire)) : undefined); }
+      catch (error) { throw encodedFailure(error, command.encodeFailure); }
+    };
+  }
+  const operations: Record<string, MockOperationHandler | "manual"> = {};
+  const wrapOperation = (method: string) => (raw: MockOperation): MockTypedOperation<unknown, unknown, unknown> => {
+    const plan = spec.operations![method]!;
+    return {
+      get requestId() { return raw.requestId; },
+      get input() { return plan.decodeInput && raw.input !== undefined ? plan.decodeInput(raw.input) : raw.input; },
+      get kind() { return raw.kind; },
+      get signal() { return raw.signal; },
+      get items() { return raw.items; },
+      get progress() { return raw.progress; },
+      reportProgress: value => raw.reportProgress(value),
+      succeed: (...result: unknown[]) => raw.succeed(result.length === 0 || !plan.encodeResult ? result[0] : plan.encodeResult(result[0])),
+      fail: (message, detail) => raw.fail(message, detail),
+      failWith: failure => raw.failWith(plan.encodeFailure ? plan.encodeFailure(failure) : failure),
+      cancel: () => raw.cancel(),
+      expire: () => raw.expire(),
+      forget: () => raw.forget(),
+      emit: (...items) => raw.emit(...items.map(item => plan.encodeResult ? plan.encodeResult(item) : item)),
+    };
+  };
+  for (const [method, plan] of Object.entries(spec.operations ?? {})) {
+    const handler = handlersOf(definition.operations, method) as MockTypedOperationHandler<unknown, unknown, unknown, unknown> | "manual" | undefined;
+    if (handler === "manual") operations[plan.member] = "manual";
+    else if (handler) {
+      operations[plan.member] = async (state, _input, operation) => {
+        const typed = wrapOperation(method)(operation);
+        let outcome: MockTypedOperationOutcome<unknown, unknown> | void;
+        try { outcome = await handler(decode(state), typed.input, typed); }
+        catch (error) { throw encodedFailure(error, plan.encodeFailure); }
+        if (!outcome) return undefined;
+        return {
+          ...(outcome.state ? { state: encode(outcome.state) } : {}),
+          ...(outcome.result !== undefined ? { result: plan.encodeResult ? plan.encodeResult(outcome.result) : outcome.result } : {}),
+        };
+      };
+    }
+  }
+
+  const raw = bridge.view(route, {
+    state: { ...spec.defaults, ...encode(definition.state) },
+    set,
+    commands,
+    can,
+    ...(spec.checkedFields ? { checkedFields: spec.checkedFields } : {}),
+    ...(spec.collections ? { collections: Object.fromEntries(Object.entries(spec.collections)
+      .map(([field, codec]) => [field, (item: unknown) => codec.key(codec.decode(item) as never)])) } : {}),
+    operations,
+    ...(spec.contract ? { contract: spec.contract } : {}),
+    streams: Object.values(spec.operations ?? {}).filter(plan => plan.stream).map(plan => plan.member),
+  });
+
+  // Client methods by name: which request kind and member each one sends.
+  const requests = new Map<string, { readonly kind: string; readonly member: string }>();
+  for (const [method, setter] of Object.entries(spec.setters ?? {})) {
+    requests.set(method, { kind: "set", member: setter.member });
+    if (setter.checked) requests.set(setter.checked, { kind: "write", member: setter.member });
+  }
+  for (const [method, command] of Object.entries(spec.commands ?? {})) {
+    requests.set(method, { kind: "command", member: command.member });
+    requests.set(`can${upperFirst(method)}`, { kind: "can", member: command.member });
+  }
+  for (const [method, plan] of Object.entries(spec.operations ?? {})) requests.set(`start${upperFirst(method)}`, { kind: "start", member: plan.member });
+
+  const collections: Record<string, MockTypedCollection<unknown>> = {};
+  for (const [field, codec] of Object.entries(spec.collections ?? {})) {
+    collections[field] = {
+      get items() { return raw.collection(field).items.map(item => codec.decode(item)); },
+      get keys() { return raw.collection(field).keys; },
+      add: (items, index) => raw.collection(field).add((Array.isArray(items) ? items : [items]).map(item => codec.encode(item)), index),
+      remove: key => raw.collection(field).remove(key),
+      replace: (key, item) => raw.collection(field).replace(key, codec.encode(item)),
+      move: (key, index) => raw.collection(field).move(key, index),
+    };
+  }
+  const operationLog: Record<string, readonly MockTypedOperation<unknown, unknown, unknown>[]> = {};
+  for (const [method, plan] of Object.entries(spec.operations ?? {}))
+    Object.defineProperty(operationLog, method, { enumerable: true, get: () => raw.operations(plan.member).map(wrapOperation(method)) });
+  const interactions: Record<string, MockTypedInteraction<unknown, unknown>> = {};
+  for (const [name, codec] of Object.entries(spec.interactions ?? {})) {
+    interactions[name] = {
+      get handled() { return raw.interactionHandlers.includes(name); },
+      async request(input, options) {
+        const reply = await raw.interact(name, codec.encodeInput(input), options);
+        return reply.kind === "answered" ? { kind: "answered", output: codec.decodeOutput(reply.output) } : reply;
+      },
+    };
+  }
+  mockBridgeInternals(bridge);
+
+  const view: MockTypedView<unknown, unknown> & Record<string, unknown> = {
+    route,
+    reference: { kind: definition.kind ?? spec.kind, id: definition.id ?? route },
+    get state() { return decode(raw.state); },
+    get revision() { return raw.revision; },
+    raw,
+    get calls() { return bridge.calls.filter(call => call.route === route); },
+    update(patch) {
+      raw.update(state => ({ ...state, ...encode(typeof patch === "function" ? (patch as (state: never) => object)(decode(state)) : patch as object) }));
+    },
+    failNext(method, typed, times) {
+      const target = requests.get(method as string);
+      if (!target) throw new RangeError(`The mock ${spec.kind} has no client method ${String(method)}.`);
+      let failure: MockFailure = typed as MockFailure;
+      if (failure.kind === "domain-failed") {
+        // A start{Command} failure is encoded by the operation's codec, a command's by its own.
+        const encodeFailure = target.kind === "start"
+          ? Object.values(spec.operations ?? {}).find(plan => plan.member === target.member)?.encodeFailure
+          : Object.values(spec.commands ?? {}).find(command => command.member === target.member)?.encodeFailure;
+        failure = { ...failure, failure: encodeFailure ? encodeFailure(failure.failure) : failure.failure };
+      }
+      raw.failNext(target, failure, times);
+    },
+    pushFailure: failure => raw.pushFailure(failure),
+    batch: edit => raw.batch(edit),
+    collections,
+    operations: operationLog,
+    interactions,
+  };
+  return view;
 }
