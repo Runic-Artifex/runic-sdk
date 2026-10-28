@@ -22,16 +22,37 @@ internal static class BridgeModelGates
 
 // Generated descriptors and snapshot writers avoid runtime reflection.
 /// <summary>Describes one bridged ViewModel property. Created by generated bridges.</summary>
-/// <param name="name">The .NET property name.</param>
-/// <param name="getter">Reads the property value.</param>
-/// <param name="setter">Writes the property from browser arguments, or <see langword="null"/> for a read-only property.</param>
 [EditorBrowsable(EditorBrowsableState.Never)]
-public sealed class PropertyDescriptor<T>(string name, Func<T, object?> getter, Action<T, IBridgeArguments>? setter)
+public sealed class PropertyDescriptor<T>
 {
+    private readonly Func<T, object?> _getter;
+    private readonly Action<T, JsonElement>? _setter;
+    private readonly Action<T, IBridgeArguments>? _legacySetter;
+
+    /// <summary>Describes a property whose setter reads the <c>value</c> of a <c>set</c> request.</summary>
+    /// <param name="name">The .NET property name.</param>
+    /// <param name="wireName">The member's wire name in state.</param>
+    /// <param name="getter">Reads the property value.</param>
+    /// <param name="setter">
+    /// Writes the property from the request's <c>value</c>, or <see langword="null"/> for a read-only property. It throws
+    /// <see cref="FormatException"/>, <see cref="JsonException"/>, <see cref="ArgumentException"/> or
+    /// <see cref="OverflowException"/> for a value that is not valid input.
+    /// </param>
+    public PropertyDescriptor(string name, string wireName, Func<T, object?> getter, Action<T, JsonElement>? setter)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(name);
+        ArgumentException.ThrowIfNullOrEmpty(wireName);
+        Name = name;
+        WireName = wireName;
+        _getter = getter ?? throw new ArgumentNullException(nameof(getter));
+        _setter = setter;
+    }
+
     /// <summary>Describes a property whose value comes from an observed sub-object, such as a navigation region slot.</summary>
     /// <param name="name">The .NET property name.</param>
+    /// <param name="wireName">The member's wire name in state.</param>
     /// <param name="getter">Reads the property's wire value.</param>
-    /// <param name="setter">Writes the property from browser arguments, or <see langword="null"/> for a read-only property.</param>
+    /// <param name="setter">Writes the property from the request's <c>value</c>, or <see langword="null"/> for a read-only property.</param>
     /// <param name="observe">
     /// Returns the sub-object the Bridge observes for this property. The Bridge subscribes when it is created and
     /// again when the ViewModel reports a change, and publishes when the sub-object changes. A
@@ -39,6 +60,27 @@ public sealed class PropertyDescriptor<T>(string name, Func<T, object?> getter, 
     /// its navigator's presentation; a <see cref="NavigationSelection"/> publishes when its <c>SelectedIndex</c> changes;
     /// another <see cref="INotifyPropertyChanged"/> publishes on every change.
     /// </param>
+    public PropertyDescriptor(string name, string wireName, Func<T, object?> getter, Action<T, JsonElement>? setter, Func<T, object?> observe)
+        : this(name, wireName, getter, setter) => Observe = observe ?? throw new ArgumentNullException(nameof(observe));
+
+    /// <summary>Describes a property with a Views protocol 3 setter.</summary>
+    /// <remarks>Kept until the generator emits <see cref="JsonElement"/> setters; the wire name is read from the Bridge's data metadata.</remarks>
+    /// <param name="name">The .NET property name.</param>
+    /// <param name="getter">Reads the property value.</param>
+    /// <param name="setter">Writes the property from browser arguments, or <see langword="null"/> for a read-only property.</param>
+    public PropertyDescriptor(string name, Func<T, object?> getter, Action<T, IBridgeArguments>? setter)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(name);
+        Name = name;
+        _getter = getter ?? throw new ArgumentNullException(nameof(getter));
+        _legacySetter = setter;
+    }
+
+    /// <summary>Describes a property whose value comes from an observed sub-object, with a Views protocol 3 setter.</summary>
+    /// <param name="name">The .NET property name.</param>
+    /// <param name="getter">Reads the property's wire value.</param>
+    /// <param name="setter">Writes the property from browser arguments, or <see langword="null"/> for a read-only property.</param>
+    /// <param name="observe">Returns the sub-object the Bridge observes for this property.</param>
     public PropertyDescriptor(string name, Func<T, object?> getter, Action<T, IBridgeArguments>? setter, Func<T, object?> observe)
         : this(name, getter, setter) => Observe = observe ?? throw new ArgumentNullException(nameof(observe));
 
@@ -46,22 +88,94 @@ public sealed class PropertyDescriptor<T>(string name, Func<T, object?> getter, 
     internal Func<T, object?>? Observe { get; }
 
     /// <summary>The .NET property name.</summary>
-    public string Name { get; } = name;
+    public string Name { get; }
+    /// <summary>The member's wire name in state, or <see langword="null"/> for a descriptor of the Views protocol 3 shape.</summary>
+    public string? WireName { get; }
     /// <summary>
     /// The wire name of a <see cref="RunicAppendOnlyTextAttribute"/> property whose appended text the Bridge publishes
     /// as a frame, or <see langword="null"/>. <see cref="Get"/> returns its <see cref="string"/> value.
     /// </summary>
     public string? AppendOnlyTextField { get; init; }
     /// <summary>Whether the browser may write the property.</summary>
-    public bool CanWrite => setter is not null;
+    public bool CanWrite => _setter is not null || _legacySetter is not null;
     /// <summary>Reads the property value from <paramref name="vm"/>.</summary>
-    public object? Get(T vm) => getter(vm);
+    public object? Get(T vm) => _getter(vm);
 
-    internal void Set(T vm, IBridgeArguments e)
+    // Writes the property from a set request's value.
+    internal void Set(T vm, JsonElement value)
     {
-        if (setter is null) throw new InvalidOperationException($"{Name} is read-only.");
-        setter(vm, e);
+        if (_setter is not null) _setter(vm, value);
+        else if (_legacySetter is not null) BridgeLegacyArguments.Set(_legacySetter, vm, value);
+        else throw new InvalidOperationException($"{Name} is read-only.");
     }
+
+    // Views protocol 3 routes; removed with the protocol-3 routes.
+    internal void Set(T vm, IBridgeArguments arguments)
+    {
+        if (_legacySetter is null) throw new InvalidOperationException($"{Name} has no protocol 3 setter.");
+        _legacySetter(vm, arguments);
+    }
+}
+
+// Runs a setter of the Views protocol 3 shape (IBridgeArguments) with a set request's value, until the generator emits
+// JsonElement setters. Such a setter reads an int with GetInt64, a bool with GetBoolean, a non-nullable string with
+// GetString (the value) and every other type with GetString (its JSON text). GetString therefore first returns a string
+// value as itself; when the setter then fails to read it as JSON text, it runs again with the JSON text. Reading fails
+// before the property is assigned, so the first attempt has no effect.
+internal sealed class BridgeLegacyArguments : IBridgeArguments
+{
+    private readonly JsonElement _value;
+    private readonly bool _raw;
+
+    private BridgeLegacyArguments(JsonElement value, bool raw)
+    {
+        _value = value;
+        _raw = raw;
+    }
+
+    internal static void Set<T>(Action<T, IBridgeArguments> setter, T vm, JsonElement value)
+    {
+        if (value.ValueKind != JsonValueKind.String)
+        {
+            setter(vm, new BridgeLegacyArguments(value, raw: true));
+            return;
+        }
+        try { setter(vm, new BridgeLegacyArguments(value, raw: false)); }
+        catch (Exception error) when (error is JsonException or FormatException)
+        {
+            setter(vm, new BridgeLegacyArguments(value, raw: true));
+        }
+    }
+
+    // A command input: GetString is always the JSON text.
+    internal static IBridgeArguments Input(JsonElement value) => new BridgeLegacyArguments(value, raw: true);
+
+    public long GetInt64() => _value.ValueKind == JsonValueKind.Number && _value.TryGetInt64(out var value)
+        ? value : throw new FormatException("Expected an integer.");
+
+    public bool GetBoolean() => _value.ValueKind switch
+    {
+        JsonValueKind.True => true,
+        JsonValueKind.False => false,
+        _ => throw new FormatException("Expected a Boolean."),
+    };
+
+    public string GetString() => _raw ? _value.GetRawText() : _value.GetString()!;
+}
+
+/// <summary>
+/// One member of a View's state: its wire name and a writer of its value. Created by generated bridges, in state order.
+/// </summary>
+/// <param name="name">The member's wire name.</param>
+/// <param name="write">Writes the member's value, without its name. A content slot's writer may present content.</param>
+[EditorBrowsable(EditorBrowsableState.Never)]
+public sealed class BridgeStateMember<T>(string name, Action<Utf8JsonWriter, T> write)
+{
+    /// <summary>The member's wire name.</summary>
+    public string Name { get; } = string.IsNullOrEmpty(name) ? throw new ArgumentException("A state member needs a wire name.", nameof(name)) : name;
+
+    /// <summary>Writes the member's value, without its name.</summary>
+    public Action<Utf8JsonWriter, T> Write { get; } = write ?? throw new ArgumentNullException(nameof(write));
 }
 
 // Acknowledged field writes are deliberately separate from the ordinary raw
@@ -165,8 +279,24 @@ public sealed class CommandDescriptor<T>(string name, Func<T, object> get)
     /// <summary>Executes a command without a result.</summary>
     public Func<T, CancellationToken, object?, Task>? ExecuteAsync { get; init; }
 
-    /// <summary>Decodes the browser argument.</summary>
+    /// <summary>The command's wire name, such as <c>save</c>; <see langword="null"/> uses <see cref="Name"/> with a lowercase first character.</summary>
+    public string? WireName { get; init; }
+
+    /// <summary>
+    /// Decodes the request's <c>input</c>, or <see langword="null"/> for a command without an input. It throws
+    /// <see cref="FormatException"/>, <see cref="JsonException"/>, <see cref="ArgumentException"/> or
+    /// <see cref="OverflowException"/> for an input that is not valid.
+    /// </summary>
+    public Func<JsonElement, object?>? ReadInput { get; init; }
+
+    /// <summary>Decodes the browser argument of the Views protocol 3 shape; kept until the generator emits <see cref="ReadInput"/>.</summary>
     public Func<IBridgeArguments, object?>? ReadArgument { get; init; }
+
+    // Whether the command takes an input.
+    internal bool HasInput => ReadInput is not null || ReadArgument is not null;
+
+    // The member name of command, can and start requests.
+    internal string Member => WireName ?? char.ToLowerInvariant(Name[0]) + Name[1..];
 
     /// <summary>Executes a command that produces a result.</summary>
     public Func<T, CancellationToken, object?, Task<BridgeOperationResult>>? ExecuteResultAsync { get; init; }
@@ -330,7 +460,7 @@ internal interface IBridgeRegionSlots
 
 /// <summary>Base class of generated bridges that expose one ViewModel over an <see cref="IBridgeTransport"/>.</summary>
 [EditorBrowsable(EditorBrowsableState.Never)]
-public class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBridgeDetachmentSignal,
+public partial class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBridgeDetachmentSignal,
     IBridgeSnapshotBatchParticipant, IBridgeRegionSlots where T : INotifyPropertyChanged
 {
     private const int MaximumFieldWriteRequestIdLength = 256;
@@ -399,6 +529,94 @@ public class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBridgeDeta
         : this(transport, vm, name, writeSnapshot, properties, checkedProperties,
             commands, contractFingerprint, content, interactions, dataSubscriptions, collections, privateOverload: true)
     {
+    }
+
+    /// <summary>Creates the Bridge of a ViewModel whose state is written member by member.</summary>
+    /// <param name="transport">The window's transport.</param>
+    /// <param name="vm">The ViewModel.</param>
+    /// <param name="name">The route name.</param>
+    /// <param name="state">Every state member, in state order.</param>
+    /// <param name="properties">The bridged properties.</param>
+    /// <param name="checkedProperties">The properties with acknowledged field writes, if any.</param>
+    /// <param name="commands">The bridged commands.</param>
+    /// <param name="contractFingerprint">The generated contract fingerprint.</param>
+    /// <param name="content">The window's content session.</param>
+    /// <param name="interactions">The View's interactions.</param>
+    /// <param name="dataSubscriptions">The data graph the Bridge observes.</param>
+    /// <param name="collections">The keyed collections.</param>
+#pragma warning disable RS0026 // Generated code passes every argument; the overloads differ in the state writer.
+    protected ViewModelBridge(
+        IBridgeTransport transport,
+        T vm,
+        string name,
+        BridgeStateMember<T>[] state,
+        PropertyDescriptor<T>[] properties,
+        CheckedPropertyDescriptor<T>[] checkedProperties,
+        CommandDescriptor<T>[] commands,
+        string? contractFingerprint = null,
+        WindowContentSession? content = null,
+        BridgeInteractionDescriptor<T>[]? interactions = null,
+        BridgeDataSubscriptionMember[]? dataSubscriptions = null,
+        BridgeCollectionDescriptor<T>[]? collections = null)
+        : this(transport, vm, name, WriterOf(state), properties, checkedProperties,
+            commands, contractFingerprint, content, interactions, dataSubscriptions, collections, privateOverload: true)
+    {
+        _stateMembers = state;
+    }
+#pragma warning restore RS0026
+
+    // Until the runtime writes states member by member, the members are written as one protocol-3 snapshot.
+    private static BridgeSnapshotWriter<T> WriterOf(BridgeStateMember<T>[] state)
+    {
+        ArgumentNullException.ThrowIfNull(state);
+        return (writer, vm, revision, writeFieldMetadata) =>
+        {
+            writer.WriteStartObject();
+            writer.WriteNumber("revision", revision);
+            foreach (var member in state)
+            {
+                writer.WritePropertyName(member.Name);
+                member.Write(writer, vm);
+            }
+            writeFieldMetadata(writer);
+            writer.WriteEndObject();
+        };
+    }
+
+    // The state members of a Bridge generated for Views protocol 4, or null for the protocol-3 snapshot writer.
+    private readonly BridgeStateMember<T>[]? _stateMembers;
+
+    // Seam (P4 -> P5), implemented in BridgeRuntime.Operations.cs: the operation and interaction requests of the route.
+    private partial ValueTask<ReadOnlyMemory<byte>> HandleOperationAsync(BridgeRouteRequest request, CancellationToken cancellationToken);
+
+    // Seam (P4 -> P5), implemented in BridgeRuntime.Operations.cs: registers the handlers of an open as generation 0,
+    // after the presentation was opened; returns the open reply's registration, or null for none.
+    private partial string? RegisterOpenHandlers(string presentation, BridgeConnection connection, JsonElement handlers);
+
+    /// <summary>Seam (P4 -> P5): publishes everything pending on the route for a reply and returns its revision.</summary>
+    /// <remarks>
+    /// Call it inside the model turn of the request's effects. It compares every member with the state last published
+    /// on the route and publishes the differences, so every state or frame at the returned revision or later includes
+    /// the effects. Returns <see langword="null"/> when the route was released or its state is withheld (invalid keys).
+    /// </remarks>
+    internal long? PublishForReply()
+    {
+        lock (_modelGate) return IsInactive ? null : _revision;
+    }
+
+    // Seam (P4 -> P5): PublishForReply in a model turn, then waits until the window's pushes requested so far were
+    // handed to the transport (bounded by BridgeReplyOrder.ReplyWaitLimit).
+    internal async ValueTask<long?> ReplyRevisionAsync(CancellationToken cancellationToken)
+    {
+        long? revision;
+        try { revision = _modelTurn.Run(PublishForReply); }
+        catch (ObjectDisposedException) { return null; }
+        if (_replyOrder.WhenPublished() is { } published)
+        {
+            try { await published.WaitAsync(BridgeReplyOrder.ReplyWaitLimit, cancellationToken).ConfigureAwait(false); }
+            catch (TimeoutException) { }
+        }
+        return revision;
     }
 
     private ViewModelBridge(
@@ -582,7 +800,7 @@ public class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBridgeDeta
             var call = BridgeCall.Start(BridgeCallKind.Set, ModelName, _name, property.Name);
             try
             {
-                property.Set(_vm, new BoundedBridgeArguments(e, MaximumInputBytes));
+                property.Set(_vm, (IBridgeArguments)new BoundedBridgeArguments(e, MaximumInputBytes));
                 var reply = EncodeTerminal();
                 call.Complete(BridgeCallOutcome.Ok);
                 return reply;
@@ -937,195 +1155,6 @@ public class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBridgeDeta
         return BridgeOperationResult.None;
     }
 
-    private string StartOperation(WindowContentSession content, CommandDescriptor<T> descriptor, IBridgeArguments arguments)
-    {
-        lock (_modelGate)
-        {
-            if (IsInactive) return EncodeOperationStartFailure(BridgeFailure.Released, "The Bridge is closed.");
-            var call = BridgeCall.Start(BridgeCallKind.OperationStart, ModelName, _name, descriptor.Name);
-            try
-            {
-                var request = ReadOperationStart(descriptor, arguments, out var key);
-                // The registry asks only for a new request id, so a repeated start observes its operation
-                // before the key is resolved again.
-                var admission = AcceptOperation(content, descriptor, arguments, request, () =>
-                    !TryResolve(descriptor, key, out var argument) ? (BridgeFailure.UnresolvedKey, null)
-                    : IsAvailable(descriptor, argument) ? (null, argument) : (BridgeFailure.Unavailable, argument));
-                var reply = BridgeOperationRouter.EncodeAdmission(admission);
-                call.Complete(BridgeCallOutcome.Of(admission.Kind, admission.Reason));
-                return reply;
-            }
-            catch (Exception error)
-            {
-                return OperationStartFailure(ref call, descriptor, error);
-            }
-        }
-    }
-
-    // start<Command>(key) of a command with an asynchronous key resolver. The resolution starts in a model turn and
-    // is awaited window work; the operation is admitted in a new turn, which still lets a repeated request id observe
-    // its operation, whatever the key resolves to now.
-    private async ValueTask<string> StartOperationAsync(WindowContentSession content, CommandDescriptor<T> descriptor,
-        IBridgeArguments arguments, CancellationToken token)
-    {
-        using var awaited = content.Operations.TryBeginAwaited(token, out var atCapacity);
-        if (awaited is null)
-            return atCapacity
-                ? EncodeOperationStartFailure("rejected", $"{descriptor.Name} was not started: the window is already running {BridgeOperationRegistry.MaximumAwaitedExecutions} awaited commands.")
-                : EncodeOperationStartFailure(BridgeFailure.Released, "The window is closing.");
-        var call = BridgeCall.Start(BridgeCallKind.OperationStart, ModelName, _name, descriptor.Name);
-        try
-        {
-            BridgeOperationRequest? request = null;
-            Task<object?>? resolution = null;
-            var released = _modelTurn.Run(() =>
-            {
-                if (IsInactive) return true;
-                request = ReadOperationStart(descriptor, arguments, out var key);
-                resolution = descriptor.ResolveArgumentAsync!(_vm, key, awaited.Token).AsTask();
-                return false;
-            });
-            object? resolved = null;
-            if (!released) resolved = await resolution!.ConfigureAwait(false);
-            var admission = released ? null : _modelTurn.Run(() => IsInactive ? null
-                : AcceptOperation(content, descriptor, arguments, request!.Value, () =>
-                    resolved is null ? (BridgeFailure.UnresolvedKey, null)
-                    : IsAvailable(descriptor, resolved) ? (null, resolved) : (BridgeFailure.Unavailable, resolved)));
-            if (admission is null)
-            {
-                call.Complete(BridgeCallOutcome.Released);
-                return EncodeOperationStartFailure(BridgeFailure.Released, "The Bridge is closed.");
-            }
-            call.Complete(BridgeCallOutcome.Of(admission.Kind, admission.Reason));
-            return BridgeOperationRouter.EncodeAdmission(admission);
-        }
-        catch (Exception error)
-        {
-            return OperationStartFailure(ref call, descriptor, error);
-        }
-    }
-
-    // The request of an operation start and its decoded argument, the key of a key-resolved command. The digest
-    // that identifies the request is the argument's canonical JSON.
-    private BridgeOperationRequest ReadOperationStart(CommandDescriptor<T> descriptor, IBridgeArguments arguments, out object? argument)
-    {
-        string requestId;
-        argument = null;
-        if (descriptor.ReadArgument is null) requestId = arguments.GetString();
-        else
-        {
-            var payload = arguments.GetString();
-            if (!BridgeInputLimit.Fits(payload, MaximumInputBytes)) throw new FormatException("The command input is too large.");
-            using var document = JsonDocument.Parse(payload);
-            requestId = document.RootElement.GetProperty("requestId").GetString() ?? "";
-            argument = ReadArgument(descriptor, new JsonBridgeArguments(document.RootElement.GetProperty("input").GetRawText(), arguments));
-        }
-        _ = BridgeOperationIdentity.Create(OperationContract(), requestId);
-        var decoded = argument;
-        var canonicalInput = descriptor.EncodeArgument?.Invoke(decoded) ?? WriteJson(writer =>
-        {
-            switch (decoded)
-            {
-                case null: writer.WriteNullValue(); break;
-                case string value: writer.WriteStringValue(value); break;
-                case int value: writer.WriteNumberValue(value); break;
-                case bool value: writer.WriteBooleanValue(value); break;
-                default: throw new FormatException("The command needs a generated input codec.");
-            }
-        });
-        return new BridgeOperationRequest(OperationContract(), descriptor.Name, requestId, BridgeOperationRequest.CanonicalDigest(canonicalInput));
-    }
-
-    // Admits an operation. admit runs only for a new request id and returns why it cannot start (null when it can)
-    // and the command's parameter.
-    private BridgeOperationAdmissionReply AcceptOperation(WindowContentSession content, CommandDescriptor<T> descriptor,
-        IBridgeArguments arguments, BridgeOperationRequest request, Func<(string? Refusal, object? Argument)> admit)
-    {
-        object? argument = null;
-        Func<string?> refusal = () =>
-        {
-            var (reason, value) = admit();
-            argument = value;
-            return reason;
-        };
-        // RunicOperationRetirement: the operation's owner is this Bridge's model, and the models that present it,
-        // read when it starts; retiring one of them cancels or waits for it.
-        var retirement = descriptor.Retirement is RunicOperationRetirement.Keep ? null
-            : new BridgeOperationRetirement(descriptor.Retirement, _vm, content.PresentingOwners(_vm), _name);
-        return descriptor.ExecuteStreamAsync is { } executeStream
-            ? content.Operations.AcceptUnlessRefused(request, refusal, descriptor.CreateStream!(),
-                (execution, cancellation) => ObserveOperationAsync(_logger, descriptor.Name, _name, descriptor.EncodeFailure, () =>
-                {
-                    using var invocation = EnterInvocation(descriptor, arguments, cancellation);
-                    return executeStream(_vm, execution, cancellation, argument);
-                }), retirement)
-            : content.Operations.AcceptUnlessRefused(request, refusal,
-                cancellation => ObserveOperationAsync(_logger, descriptor.Name, _name, descriptor.EncodeFailure, () =>
-                {
-                    using var invocation = EnterInvocation(descriptor, arguments, cancellation);
-                    return InvokeCommandAsync(descriptor, argument, cancellation);
-                }), retirement);
-    }
-
-    private string OperationStartFailure(ref BridgeCall call, CommandDescriptor<T> descriptor, Exception error)
-    {
-        switch (error)
-        {
-            case OperationCanceledException:
-                call.Complete(BridgeCallOutcome.Cancelled);
-                return EncodeOperationStartFailure("cancelled", $"{descriptor.Name} was cancelled.");
-            case ArgumentException or FormatException or JsonException or InvalidOperationException:
-                call.Complete(BridgeCallOutcome.Rejected);
-                return EncodeOperationStartFailure("rejected", $"{descriptor.Name} has an invalid argument.", BridgeFailureDetails.Capture(error, IncludesFailureDetail));
-            default:
-                call.Complete(BridgeCallOutcome.Failed, error);
-                ViewsLog.OperationAdmissionFailed(_logger, error, ModelName, descriptor.Name, _name, BridgeTelemetry.ErrorType(error));
-                return EncodeOperationStartFailure("failed", $"{descriptor.Name} could not start.", BridgeFailureDetails.Capture(error, IncludesFailureDetail));
-        }
-    }
-
-    // Runs the admitted work of an operation inside its span. The registry
-    // owns the terminal state and logs a failure. A declared failure reaches
-    // the registry already encoded, so the registry stays type-agnostic; one
-    // that cannot be sent is logged here (1008), where the model is known.
-    private static async Task<BridgeOperationResult> ObserveOperationAsync(Microsoft.Extensions.Logging.ILogger logger,
-        string member, string route,
-        Func<object, string?>? encodeFailure, Func<Task<BridgeOperationResult>> run)
-    {
-        var call = BridgeCall.Start(BridgeCallKind.Operation, ModelName, route, member);
-        try
-        {
-            var result = await run().ConfigureAwait(false);
-            call.Complete(result.DeliveryFailure is null ? BridgeCallOutcome.Ok : BridgeCallOutcome.DeliveryFailed);
-            return result;
-        }
-        catch (Exception error) when (BridgeDomainFailures.Find(error) is { } domain)
-        {
-            // Classified by exception type, like success: a declared failure
-            // thrown while cancellation is requested is still domain-failed.
-            var failureType = BridgeDomainFailures.TypeName(domain);
-            var encoded = BridgeDomainFailures.TryEncode(encodeFailure, domain, out var reason, out var logged);
-            if (encoded is null)
-            {
-                call.Complete(BridgeCallOutcome.Failed, domain);
-                ViewsLog.DomainFailureNotEncoded(logger, logged, ModelName, member, route, failureType, reason);
-                throw new BridgeDomainFailureNotEncodedException(domain);
-            }
-            call.Complete(BridgeCallOutcome.DomainFailed);
-            throw new BridgeDomainFailedException(encoded, failureType, domain);
-        }
-        catch (OperationCanceledException)
-        {
-            call.Complete(BridgeCallOutcome.Cancelled);
-            throw;
-        }
-        catch (Exception error)
-        {
-            call.Complete(BridgeCallOutcome.Failed, error);
-            throw;
-        }
-    }
-
     // A generated reader decodes at most the window's input limit, as a checked write or an
     // operation start does. An out-of-range number is an invalid argument; an
     // OverflowException from the command itself stays a failure.
@@ -1151,29 +1180,6 @@ public class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBridgeDeta
         public string? ClientKey => source.ClientKey;
         public string? ConnectionKey => source.ConnectionKey;
     }
-
-    private sealed class JsonBridgeArguments(string json, IBridgeArguments source) : IBridgeArguments
-    {
-        public string GetString() => json;
-        public long GetInt64() { using var document = JsonDocument.Parse(json); return document.RootElement.GetInt64(); }
-        public bool GetBoolean() { using var document = JsonDocument.Parse(json); return document.RootElement.GetBoolean(); }
-        public string? ClientKey => source.ClientKey;
-        public string? ConnectionKey => source.ConnectionKey;
-    }
-
-    // A ViewModel type and generated fingerprint describe its wire shape, but
-    // a window can host several instances of that shape. The route/reference
-    // separates their advanced request-id namespaces.
-    private string OperationContract() => $"{typeof(T).FullName}:{_contractFingerprint}:{_name}";
-
-    private static string EncodeOperationStartFailure(string kind, string reason, BridgeFailureDetail? detail = null) => WriteJson(writer =>
-    {
-        writer.WriteStartObject();
-        writer.WriteString("kind", kind);
-        writer.WriteString("reason", reason);
-        BridgeFailureDetails.Write(writer, detail);
-        writer.WriteEndObject();
-    });
 
     // The reply of a setter or command after it ran.
     private string EncodeTerminal(BridgeFailure? error = null) =>

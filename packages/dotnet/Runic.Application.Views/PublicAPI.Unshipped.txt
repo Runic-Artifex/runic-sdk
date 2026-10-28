@@ -18,3 +18,15 @@ Runic.Application.Views.IBridgeRequestHandler.ConnectionClosed(string! connectio
 Runic.Application.Views.IBridgeRequestHandler.HandleAsync(Runic.Application.Views.BridgeRequest! request, System.Threading.CancellationToken cancellationToken) -> System.Threading.Tasks.ValueTask<System.ReadOnlyMemory<byte>>
 Runic.Application.Views.IBridgeTransport.BroadcastAsync(System.ReadOnlyMemory<byte> message, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask
 Runic.Application.Views.IBridgeTransport.Serve(Runic.Application.Views.IBridgeRequestHandler! handler) -> System.IDisposable!
+Runic.Application.Views.Generated.BridgeStateMember<T>
+Runic.Application.Views.Generated.BridgeStateMember<T>.BridgeStateMember(string! name, System.Action<System.Text.Json.Utf8JsonWriter!, T>! write) -> void
+Runic.Application.Views.Generated.BridgeStateMember<T>.Name.get -> string!
+Runic.Application.Views.Generated.BridgeStateMember<T>.Write.get -> System.Action<System.Text.Json.Utf8JsonWriter!, T>!
+Runic.Application.Views.Generated.CommandDescriptor<T>.ReadInput.get -> System.Func<System.Text.Json.JsonElement, object?>?
+Runic.Application.Views.Generated.CommandDescriptor<T>.ReadInput.init -> void
+Runic.Application.Views.Generated.CommandDescriptor<T>.WireName.get -> string?
+Runic.Application.Views.Generated.CommandDescriptor<T>.WireName.init -> void
+Runic.Application.Views.Generated.PropertyDescriptor<T>.PropertyDescriptor(string! name, string! wireName, System.Func<T, object?>! getter, System.Action<T, System.Text.Json.JsonElement>? setter, System.Func<T, object?>! observe) -> void
+Runic.Application.Views.Generated.PropertyDescriptor<T>.PropertyDescriptor(string! name, string! wireName, System.Func<T, object?>! getter, System.Action<T, System.Text.Json.JsonElement>? setter) -> void
+Runic.Application.Views.Generated.PropertyDescriptor<T>.WireName.get -> string?
+Runic.Application.Views.Generated.ViewModelBridge<T>.ViewModelBridge(Runic.Application.Views.IBridgeTransport! transport, T vm, string! name, Runic.Application.Views.Generated.BridgeStateMember<T>![]! state, Runic.Application.Views.Generated.PropertyDescriptor<T>![]! properties, Runic.Application.Views.Generated.CheckedPropertyDescriptor<T>![]! checkedProperties, Runic.Application.Views.Generated.CommandDescriptor<T>![]! commands, string? contractFingerprint = null, Runic.Application.Views.WindowContentSession? content = null, Runic.Application.Views.Generated.BridgeInteractionDescriptor<T>![]? interactions = null, Runic.Application.Views.Generated.BridgeDataSubscriptionMember![]? dataSubscriptions = null, Runic.Application.Views.Generated.BridgeCollectionDescriptor<T>![]? collections = null) -> void
