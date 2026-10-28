@@ -389,16 +389,13 @@ frames go to its tracker or to `TakePublications`, not both.
 `host.Transport` is the `InMemoryBridgeTransport`, the window's `IBridgeTransport`.
 `Request(json)` and `RequestAsync(json)` send a Views protocol 4 request on a connection
 (`hello` first), `CloseConnection` closes it, and `Messages`/`TakeMessages()` list the
-pushes the window sent. Until the generated Bridges speak protocol 4,
-`Call(...)` and `CallAsync(...)` invoke their protocol 3 routes with
-`BridgeTestArguments` and return its raw reply, such as
-`host.Transport.Call($"{host.RootRoute}Snapshot")` for the snapshot envelope that
-`host.Root.Snapshot()` parses. `TakePublications()` returns the frames of every route
-as `RunicViewPublication`s, the type the drivers return; drivers and trackers then
-miss them. The verb is Take, as on the drivers, because the frames are removed;
-Drain names `DrainAsync`, which waits for accepted work. A driver's `Mount` and
-`Unmount` with client and connection keys and `Content.ReleaseConnection` test View
-lifetimes and client disconnects. Await `host.DrainAsync(timeout)` before disposing
+pushes the window sent, such as
+`host.Transport.Request($$"""{"kind":"snapshot","route":"{{host.RootRoute}}"}""")` for
+the raw reply that `host.Root.Snapshot()` parses. The verb is Take, as on the drivers,
+because the pushes are removed; Drain names `DrainAsync`, which waits for accepted
+work. A driver's `Mount` and `Unmount` (`open` and `close`) with client and
+connection keys and `Transport.CloseConnection` test View lifetimes and client
+disconnects. Await `host.DrainAsync(timeout)` before disposing
 a host that has accepted background operations. It stops admission, as a closing
 window does. With a fake clock its timeout passes only when the clock advances, and
 its token stops only the wait.

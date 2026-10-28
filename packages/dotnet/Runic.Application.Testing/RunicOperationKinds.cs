@@ -106,6 +106,8 @@ internal static class RunicOperationWire
         "rejected" => RunicOperationAdmissionKind.Rejected,
         "failed" => RunicOperationAdmissionKind.Failed,
         "cancelled" => RunicOperationAdmissionKind.Cancelled,
+        // The route or window was released before the start was admitted.
+        "released" => RunicOperationAdmissionKind.Rejected,
         _ => throw Unrecognized("operation admission", token),
     };
 
