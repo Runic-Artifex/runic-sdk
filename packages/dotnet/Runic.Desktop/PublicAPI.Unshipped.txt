@@ -1,1 +1,13 @@
 #nullable enable
+Runic.Desktop.DesktopHost.SetSpellCheckingLanguagesAsync(System.Collections.Generic.IReadOnlyList<string!>! languages, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask
+Runic.Desktop.DesktopHost.SpellCheckingLanguages.get -> System.Collections.Generic.IReadOnlyList<string!>!
+Runic.Desktop.DesktopHostOptions.SpellCheckingLanguages.get -> System.Collections.Generic.IReadOnlyList<string!>!
+Runic.Desktop.DesktopHostOptions.SpellCheckingLanguages.init -> void
+Runic.Desktop.DesktopWindowHostOptions.SpellChecking.get -> bool
+Runic.Desktop.DesktopWindowHostOptions.SpellChecking.init -> void
+Runic.Desktop.DesktopWindowHostOptions.SpellCheckingLanguages.get -> System.Collections.Generic.IReadOnlyList<string!>!
+Runic.Desktop.DesktopWindowHostOptions.SpellCheckingLanguages.init -> void
+Runic.Desktop.DesktopWindowOptions.SpellChecking.get -> bool
+Runic.Desktop.DesktopWindowOptions.SpellChecking.init -> void
+Runic.Desktop.IDesktopSpellCheckingWindowHost
+Runic.Desktop.IDesktopSpellCheckingWindowHost.SetSpellCheckingLanguagesAsync(System.Collections.Generic.IReadOnlyList<string!>! languages, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask

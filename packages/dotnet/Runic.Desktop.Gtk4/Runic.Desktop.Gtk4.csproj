@@ -23,6 +23,7 @@
     <Compile Include="../Runic.Desktop/Internal/WebKitGtkMediaFrames.cs" Link="Shared/WebKitGtkMediaFrames.cs" />
     <Compile Include="../Runic.Desktop/Internal/WebContentRules.cs" Link="Shared/WebContentRules.cs" />
     <Compile Include="../Runic.Desktop/Internal/WebKitGtkWebContent.cs" Link="Shared/WebKitGtkWebContent.cs" />
+    <Compile Include="../Runic.Desktop/Internal/SpellingLanguages.cs" Link="Shared/SpellingLanguages.cs" />
     <Compile Include="../Runic.Desktop/Internal/WindowPlacementClamp.cs" Link="Shared/WindowPlacementClamp.cs" />
     <Compile Include="../Runic.Desktop/Internal/DesktopMonitorSource.cs" Link="Shared/DesktopMonitorSource.cs" />
     <Compile Include="../Runic.Desktop/Internal/DesktopMenuPlanner.cs" Link="Shared/DesktopMenuPlanner.cs" />

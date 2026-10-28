@@ -653,6 +653,7 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
                     await host.ShowAsync(GetBrowserUrl(url), CreateEmbeddedHostOptions(), cancellationToken).ConfigureAwait(false);
                     RecordMenuBarPlacement(host);
                     PushMenuBar(host);
+                    PushSpellCheckingLanguages(host);
                 }
                 catch
                 {
@@ -730,6 +731,7 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
                         .AsTask().GetAwaiter().GetResult();
                     RecordMenuBarPlacement(host);
                     PushMenuBar(host);
+                    PushSpellCheckingLanguages(host);
                 }
                 catch
                 {
@@ -1402,6 +1404,60 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
         _language = language;
     }
 
+    // Whether the next embedded window's documents start with spellcheck="false" (DesktopWindowOptions.SpellChecking).
+    internal void SetSpellChecking(bool spellChecking) => _spellChecking = spellChecking;
+
+    private bool _spellChecking = true;
+
+    // The spell-checking languages the current embedded window opened with, from DesktopHost.SpellCheckingLanguages.
+    private IReadOnlyList<string> _openedSpellCheckingLanguages = [];
+
+    // DesktopHost.SetSpellCheckingLanguagesAsync for the open embedded window.
+    internal ValueTask SetEmbeddedSpellCheckingLanguagesAsync(IReadOnlyList<string> languages, CancellationToken cancellationToken) =>
+        Volatile.Read(ref _embeddedHost) is { IsOpen: true } host ? host.SetSpellCheckingLanguagesAsync(languages, cancellationToken) : ValueTask.CompletedTask;
+
+    // Languages that DesktopHost.SetSpellCheckingLanguagesAsync changed while the window was opening, which the host
+    // then did not have open yet.
+    private void PushSpellCheckingLanguages(IWebUiEmbeddedHost host)
+    {
+        if (MenuHost is not { } desktopHost || ReferenceEquals(desktopHost.SpellCheckingLanguages, _openedSpellCheckingLanguages)) return;
+        _ = PushSpellCheckingLanguagesAsync(host, desktopHost.SpellCheckingLanguages);
+    }
+
+    private async Task PushSpellCheckingLanguagesAsync(IWebUiEmbeddedHost host, IReadOnlyList<string> languages)
+    {
+        try
+        {
+            await host.SetSpellCheckingLanguagesAsync(languages).ConfigureAwait(false);
+        }
+        catch (Exception error) when (error is not OutOfMemoryException)
+        {
+            if (!host.IsOpen || !ReferenceEquals(Volatile.Read(ref _embeddedHost), host)) return;
+            ReportEmbeddedDiagnostic(new DesktopDiagnostic(DesktopErrorCategory.OperationFailed, "spell-checking-languages-failed",
+                $"The window could not change its spell-checking languages: {DesktopLog.ErrorType(error)}.", Retryable: true)
+            {
+                Severity = DesktopDiagnosticSeverity.Warning,
+                Option = "DesktopHostOptions.SpellCheckingLanguages",
+            });
+        }
+    }
+
+    // DesktopWindowOptions.SpellChecking = false: every document of the window, in every frame, starts with
+    // spellcheck="false" on its root element, which its fields inherit unless they set spellcheck="true" themselves. It
+    // replaces a spellcheck attribute of the page's own <html>, as soon as the parser has created the element.
+    internal const string SpellCheckingOffScript = """
+        (() => {
+          const off = () => document.documentElement.setAttribute("spellcheck", "false");
+          if (document.documentElement) { off(); return; }
+          const observer = new MutationObserver(() => {
+            if (!document.documentElement) return;
+            observer.disconnect();
+            off();
+          });
+          observer.observe(document, { childList: true });
+        })();
+        """;
+
     // The macOS title bar of the next embedded window (DesktopWindowOptions.MacOS).
     internal void SetMacOS(MacOSWindowOptions macOS) => _macOS = macOS;
 
@@ -1916,7 +1972,9 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
                 .Select(static origin => new Uri(origin, UriKind.Absolute))
                 .Prepend(Url!)
                 .ToArray(),
-            DocumentStartScript = _embeddedHost?.SupportsDocumentStartScript == true ? CreateDocumentStartScript() : null,
+            DocumentStartScript = _embeddedHost?.SupportsDocumentStartScript == true
+                ? _spellChecking ? CreateDocumentStartScript() : SpellCheckingOffScript + "\n" + CreateDocumentStartScript()
+                : null,
             ReportDiagnostic = ReportEmbeddedDiagnostic,
             // The log of the open in progress: BeginConnection replaced it before the window is shown.
             StartupProgress = description => HandshakeLog.Record(description),
@@ -1927,6 +1985,8 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
             LayoutDirection = _layoutDirection,
             Language = _language,
             MacOS = _macOS,
+            SpellChecking = _spellChecking,
+            SpellCheckingLanguages = _openedSpellCheckingLanguages = MenuHost?.SpellCheckingLanguages ?? [],
         };
     }
 

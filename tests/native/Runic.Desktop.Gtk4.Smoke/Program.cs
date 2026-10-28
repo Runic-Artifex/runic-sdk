@@ -68,6 +68,10 @@ if (args.Contains("--rtl", StringComparer.Ordinal)) return RightToLeftSmoke.Run(
 if (Array.IndexOf(args, "--monitors") is var monitors and >= 0)
     return MonitorSmoke.Run(monitors + 1 < args.Length ? args[monitors + 1] : "gtk4");
 
+// --spelling gtk3|gtk4 (#662): WebKitGTK's spell checker with the application's languages, and off in a window.
+if (Array.IndexOf(args, "--spelling") is var spelling and >= 0)
+    return SpellCheckingSmoke.Run(spelling + 1 < args.Length ? args[spelling + 1] : "gtk4");
+
 if (args.Contains("--message-boxes", StringComparer.Ordinal)) return MessageBoxSmoke.Run();
 
 if (args.Any(arg => arg.StartsWith("--notification-", StringComparison.Ordinal)))
