@@ -36,7 +36,7 @@ export interface ProjectMock extends MockTypedView<ProjectMockState, ProjectClie
 const spec: MockTypedViewSpec = {
   kind: "project",
   route: "project",
-  contract: "MultiWindow.ProjectViewModel:C51AB9A453B6106CD3AA1D180EC24A0C70FEB79129E3E2806D669473B13AE4A8",
+  contract: "MultiWindow.ProjectViewModel:3B227EB0A7C945F65D6A215FB60437497BC5605E898CA5EECB52555B17E3508C",
   fields: {
     title: { encode: (value: unknown) => { const typed = value as string; return typed; }, decode: (wire: unknown) => bridgeWire.string(wire) },
     theme: { encode: (value: unknown) => { const typed = value as string; return typed; }, decode: (wire: unknown) => bridgeWire.string(wire) },
@@ -44,14 +44,14 @@ const spec: MockTypedViewSpec = {
   },
   defaults: { isRenameExecuting: false, canNewWindow: true, isNewWindowExecuting: false, isChooseThemeExecuting: false },
   commands: {
-    rename: { route: "Rename", read: (raw: unknown) => { const wire: unknown = JSON.parse(raw as string); return bridgeWire.string(wire); } },
-    newWindow: { route: "NewWindow", available: "canNewWindow" },
-    chooseTheme: { route: "ChooseTheme", read: (raw: unknown) => { const wire: unknown = JSON.parse(raw as string); return bridgeWire.string(wire); } },
+    rename: { member: "rename", decodeInput: (wire: unknown) => bridgeWire.string(wire) },
+    newWindow: { member: "newWindow", available: "canNewWindow" },
+    chooseTheme: { member: "chooseTheme", decodeInput: (wire: unknown) => bridgeWire.string(wire) },
   },
   operations: {
-    rename: { member: "Rename", decodeInput: (wire: unknown) => bridgeWire.string(wire) },
-    newWindow: { member: "NewWindow" },
-    chooseTheme: { member: "ChooseTheme", decodeInput: (wire: unknown) => bridgeWire.string(wire) },
+    rename: { member: "rename", decodeInput: (wire: unknown) => bridgeWire.string(wire) },
+    newWindow: { member: "newWindow" },
+    chooseTheme: { member: "chooseTheme", decodeInput: (wire: unknown) => bridgeWire.string(wire) },
   },
 };
 

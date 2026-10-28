@@ -363,32 +363,11 @@ public partial class ViewModelBridge<T>
         using (BridgeSnapshotPublication.Enter(() => IsInactive))
         {
             if (checkKeys) CheckCollectionKeys();
-            if (_stateMembers is not null)
+            foreach (var member in _stateMembers)
             {
-                foreach (var member in _stateMembers)
-                {
-                    if (!includeIncremental && _incrementalMembers.Contains(member.Name)) continue;
-                    members[member.Name] = WriteValue(writer => member.Write(writer, _vm));
-                    ordered.Add(member.Name);
-                }
-            }
-            else
-            {
-                // The generated snapshot writer writes the keyed collections too, which fails on a null row: their keys
-                // are checked first, so invalid keys withhold the publication instead.
-                if (!checkKeys)
-                    foreach (var descriptor in _keyedCollections)
-                        if (descriptor.Get(_vm) is System.Collections.IEnumerable rows)
-                            BridgeCollectionKeyBaseline.Scan(ModelName, descriptor.Name, rows, descriptor.Key);
-                var snapshot = WriteValue(writer => _writeSnapshot!(writer, _vm, _revision, static _ => { }));
-                using var document = JsonDocument.Parse(snapshot);
-                foreach (var property in document.RootElement.EnumerateObject())
-                {
-                    if (property.NameEquals("revision") || property.NameEquals("__runicFields")) continue;
-                    if (!includeIncremental && _incrementalMembers.Contains(property.Name)) continue;
-                    members[property.Name] = JsonMarshal.GetRawUtf8Value(property.Value).ToArray();
-                    ordered.Add(property.Name);
-                }
+                if (!includeIncremental && _incrementalMembers.Contains(member.Name)) continue;
+                members[member.Name] = WriteValue(writer => member.Write(writer, _vm));
+                ordered.Add(member.Name);
             }
         }
         BridgeSnapshotPublication.ThrowIfInactive();
@@ -399,12 +378,10 @@ public partial class ViewModelBridge<T>
     // The encoding of one member.
     private byte[] WriteMember(string name)
     {
-        if (_stateMembers is not null)
-            using (BridgeSnapshotPublication.Enter(() => IsInactive))
-                foreach (var member in _stateMembers)
-                    if (member.Name == name) return WriteValue(writer => member.Write(writer, _vm));
-        return WriteMembers(includeIncremental: true).TryGetValue(name, out var value)
-            ? value : throw new InvalidOperationException($"{ModelName} has no state member '{name}'.");
+        using (BridgeSnapshotPublication.Enter(() => IsInactive))
+            foreach (var member in _stateMembers)
+                if (member.Name == name) return WriteValue(writer => member.Write(writer, _vm));
+        throw new InvalidOperationException($"{ModelName} has no state member '{name}'.");
     }
 
     private byte[] WriteFrame(List<Change> changes, long revision) => WriteMessage(writer =>

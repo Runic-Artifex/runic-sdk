@@ -456,8 +456,7 @@ internal sealed class NavigationPresentationTests
         foreach (var expected in new[]
         {
             "  /** The main content; the navigator changes it. */\n  readonly main: ReactiveNavEditorPageReference | NavEditorPageReference | NavHomePageReference | NavLogPagePageReference | null;",
-            "  readonly main: { readonly kind: \"reactiveNavEditor\"; readonly id: string } | { readonly kind: \"navEditor\"; readonly id: string } | { readonly kind: \"navHome\"; readonly id: string } | { readonly kind: \"navLogPage\"; readonly id: string } | null;",
-            "    main: wire.main === null ? null : wire.main.kind === \"reactiveNavEditor\" ? pageReactiveNavEditor(wire.main.id) : wire.main.kind === \"navEditor\" ? pageNavEditor(wire.main.id)",
+            "  main: (wire: unknown) => { if (wire === null) return null; const reference = contentReference(wire); return reference.kind === \"reactiveNavEditor\" ? pageReactiveNavEditor(reference.id) : reference.kind === \"navEditor\" ? pageNavEditor(reference.id)",
         })
             Require(generated.Contains(expected, StringComparison.Ordinal), $"navShell.ts is missing:\n{expected}\n---\n{generated}");
         var mock = File.ReadAllText(Path.Combine(GeneratedTypeScriptDirectory(), "navShell.mock.ts"));
@@ -567,20 +566,14 @@ internal sealed class NavigationPresentationTests
             .GetValue(region) as Delegate)?.GetInvocationList().Length ?? 0;
 
     private sealed class RuntimeShellBridge(IBridgeTransport transport, NavShellViewModel vm, WindowContentSession content)
-        : ViewModelBridge<NavShellViewModel>(transport, vm, "runtimeShell", Write,
-            [new PropertyDescriptor<NavShellViewModel>("Main", static vm => vm.Main.Current, null, static vm => vm.Main)],
+        : ViewModelBridge<NavShellViewModel>(transport, vm, "runtimeShell",
+            [new BridgeStateMember<NavShellViewModel>("title", static (writer, vm) =>
+            {
+                if (vm.Main?.Current is { } page) writer.WriteStringValue(page.Title);
+                else writer.WriteNullValue();
+            })],
+            [new PropertyDescriptor<NavShellViewModel>("Main", "main", static vm => vm.Main.Current, null, static vm => vm.Main)],
             [], [], content: content)
     {
-        private static void Write(Utf8JsonWriter writer, NavShellViewModel vm, long revision, Action<Utf8JsonWriter> writeFieldMetadata)
-        {
-            writer.WriteStartObject();
-            writer.WriteNumber("revision", revision);
-            switch (vm.Main?.Current)
-            {
-                case null: writer.WriteNull("title"); break;
-                case var page: writer.WriteString("title", page.Title); break;
-            }
-            writer.WriteEndObject();
-        }
     }
 }

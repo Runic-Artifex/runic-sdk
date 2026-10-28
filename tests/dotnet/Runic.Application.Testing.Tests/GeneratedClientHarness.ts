@@ -1,97 +1,24 @@
+// Runs generated clients against the real generated bridges of GeneratedClientHarness.cs over Views protocol 4: the
+// generated decoders must read what .NET writes, and the generated encoders must write what .NET accepts.
 import { BridgeError } from "@runic-artifex/views";
-import { runToolkitGeneratedClient, type ToolkitGeneratedClientTranscript } from "./ToolkitGeneratedClientHarness.ts";
-import { runFailureGeneratedClient, type FailureGeneratedClientTranscript } from "./FailureGeneratedClientHarness.ts";
+import { runToolkitGeneratedClient } from "./ToolkitGeneratedClientHarness.ts";
+import { runFailureGeneratedClient } from "./FailureGeneratedClientHarness.ts";
+import { installLiveBridge } from "./GeneratedLiveBridge.ts";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 
-type Transcript = {
-  readonly dtoInteraction: { readonly snapshot: string; readonly request: string; readonly output: string };
-  readonly dtoList: {
-    readonly snapshot: string;
-    readonly setRequest: string; readonly setReply: string;
-    readonly writeRequest: string; readonly writeReply: string;
-    readonly replaceRequest: string; readonly replaceReply: string;
-  };
-  readonly toolkitTyped: ToolkitGeneratedClientTranscript;
-  readonly domainFailures: FailureGeneratedClientTranscript;
-  readonly validationSnapshot: string;
-  readonly dataShape: {
-    readonly snapshot: string;
-    readonly duration: string;
-    readonly durationRequest: string;
-    readonly durationReply: string;
-    readonly amount: string;
-    readonly amountRequest: string;
-    readonly amountReply: string;
-    readonly wholeRequest: string;
-    readonly wholeReply: string;
-    readonly exactIdWriteRequest: string;
-    readonly exactIdWriteReply: string;
-    readonly conflictRequest: string; readonly conflictReply: string;
-    readonly failedRequest: string; readonly failedReply: string;
-    readonly unionRequest: string; readonly unionReply: string;
-  };
-  readonly typedReactive: {
-    readonly snapshot: string;
-    readonly requestId: string;
-    readonly startRequest: string;
-    readonly admission: string;
-    readonly waitRequest: string;
-    readonly completion: string;
-    readonly wrongMemberStatusRequest: string;
-    readonly wrongMemberStatus: string;
-  };
-};
+const [generatedDirectory] = Bun.argv.slice(2);
+if (!generatedDirectory) throw new Error("Usage: GeneratedClientHarness.ts <generated-dir>");
+const live = installLiveBridge();
+const load = (name: string) => import(pathToFileURL(resolve(generatedDirectory, `${name}.ts`)).href);
+const sent = (kind: string, member: string) => live.requests.some(request => request["kind"] === kind && request["member"] === member);
 
-type Call = { readonly route: string; readonly args: readonly unknown[] };
-type Bridge = { isConnected(): boolean; call(route: string, ...args: unknown[]): Promise<string> };
-
-const [fixturePath, generatedDirectory] = Bun.argv.slice(2);
-if (!fixturePath || !generatedDirectory) throw new Error("Usage: GeneratedClientHarness.ts <fixture.json> <generated-dir>");
-const fixture = await Bun.file(fixturePath).json() as Transcript;
-const calls: Call[] = [];
-let failNextWait = false;
-
-const host = globalThis as typeof globalThis & { window?: Record<string, unknown> };
-host.window = host as unknown as Record<string, unknown>;
-const bridge: Bridge = {
-  isConnected: () => true,
-  async call(route, ...args) {
-    calls.push({ route, args });
-    switch (route) {
-      case "dataShapeSnapshot": return fixture.dataShape.snapshot;
-      case "dataShapeSetDuration": expectArgs(route, args, fixture.dataShape.durationRequest); return fixture.dataShape.durationReply;
-      case "dataShapeSetAmount": expectArgs(route, args, fixture.dataShape.amountRequest); return fixture.dataShape.amountReply;
-      case "dataShapeSetWhole": expectArgs(route, args, fixture.dataShape.wholeRequest); return fixture.dataShape.wholeReply;
-      case "dataShapeWritePayload": expectArgs(route, args, fixture.dataShape.unionRequest); return fixture.dataShape.unionReply;
-      case "dataShapeWriteExactId": {
-        const request = JSON.parse(String(args[0]));
-        const pair = request.requestId === "generated-client-conflict" ? [fixture.dataShape.conflictRequest, fixture.dataShape.conflictReply]
-          : request.requestId === "generated-client-post-apply" ? [fixture.dataShape.failedRequest, fixture.dataShape.failedReply]
-          : [fixture.dataShape.exactIdWriteRequest, fixture.dataShape.exactIdWriteReply];
-        expectArgs(route, args, pair[0]!); return pair[1]!;
-      }
-      case "typedReactiveSnapshot": return fixture.typedReactive.snapshot;
-      case "typedReactiveStartSave": expectArgs(route, args, fixture.typedReactive.startRequest); return fixture.typedReactive.admission;
-      case "__runicOperationWait":
-        if (failNextWait) { failNextWait = false; throw new Error("The transport dropped the wait."); }
-        expectArgs(route, args, fixture.typedReactive.waitRequest); return fixture.typedReactive.completion;
-      case "__runicOperationStatus": expectArgs(route, args, fixture.typedReactive.wrongMemberStatusRequest); return fixture.typedReactive.wrongMemberStatus;
-      default: throw new Error(`Unexpected generated-client route ${route}.`);
-    }
-  },
-};
-(host.window as Record<string, unknown>).__runicBridge = bridge;
-
-const dataShape = await import(pathToFileURL(resolve(generatedDirectory, "dataShape.ts")).href);
-const typedReactive = await import(pathToFileURL(resolve(generatedDirectory, "typedReactive.ts")).href);
+const dataShape = await load("dataShape");
 const data = await dataShape.connectDataShape();
-
 expect(data.snapshot["exact-id"] === 9007199254740993n, "Int64 state did not decode to bigint exactly.");
 expect(data.snapshot.amount === "1234567890.123456789", "Decimal state changed representation.");
-expect(data.snapshot.day === "2026-09-28" && data.snapshot.when.startsWith("2026-09-28T10:11:12"),
-  "Date state changed representation.");
-expect(data.snapshot.duration === "00:00:12.3456789", "TimeSpan state did not decode in c format.");
+expect(data.snapshot.day === "2026-09-28" && data.snapshot.when === "2026-09-28T10:11:12", "Date state changed representation.");
+expect(data.snapshot.duration === "PT12.3456789S", "TimeSpan state did not decode as an ISO 8601 duration.");
 expect(data.snapshot.optionalItem === null && data.snapshot.items[0]?.["retry-after"] === 3
   && data.snapshot.items[0]?.["__proto__"] === "first"
   && data.snapshot.optionalItems[0] === null && data.snapshot.optionalItems[1]?.["__proto__"] === "optional-item",
@@ -103,173 +30,81 @@ expect(Object.getPrototypeOf(data.snapshot.lookup) === null
   && Object.hasOwn(data.snapshot.lookup["__proto__"]!, "__proto__")
   && data.snapshot.lookup["__proto__"]?.["__proto__"] === "prototype-safe",
   "A __proto__ dictionary entry changed the generated record prototype.");
+expect(!("revision" in data.snapshot), "The public state exposed the revision.");
 
+// Encoders validate before anything is sent.
 await expectThrows(() => data.setWhen("yesterday"), "Generated DateTime encode accepted a non-ISO value.");
-expect(!calls.some(call => call.route === "dataShapeSetWhen"), "Generated DateTime encode sent a non-ISO value to .NET.");
-await expectThrows(() => data.setDuration("24:00:00"), "Generated TimeSpan encode accepted an invalid hour.");
-await expectThrows(() => data.setDuration("10675199.02:48:05.4775808"), "Generated TimeSpan encode accepted overflow.");
-await data.setDuration(fixture.dataShape.duration);
-await data.setAmount(fixture.dataShape.amount);
-await data.setWhole({ source: "base", ["__proto__"]: "whole-from-client", "retry-after": 11 });
-const appliedReceipt = await data.writeExactId(9007199254740992n, {
-  requestId: "generated-client-exact-id",
-  baseline: data.fieldBaseline("exact-id"),
-});
-expect(data.snapshot["exact-id"] === 9007199254740992n, "Checked bigint write did not accept the C# receipt state.");
+expect(!sent("set", "when"), "Generated DateTime encode sent a non-ISO value to .NET.");
+await expectThrows(() => data.setDuration("1.02:03:04"), "Generated TimeSpan encode accepted the .NET format.");
+await expectThrows(() => data.setDuration("P10675199DT2H48M5.4775808S"), "Generated TimeSpan encode accepted overflow.");
+expect(!sent("set", "duration"), "Generated TimeSpan encode sent an invalid value to .NET.");
 
-expect(appliedReceipt.kind === "applied" && appliedReceipt.snapshot.value === 9007199254740992n,
-  "Applied checked-write receipt did not decode its Int64 value.");
-const conflictReceipt = await data.writeExactId(2n, { requestId: "generated-client-conflict",
-  baseline: { version: JSON.parse(fixture.dataShape.conflictRequest).expectedVersion, value: 9007199254740993n } });
-expect(conflictReceipt.kind === "conflict" && conflictReceipt.incoming.value === 9007199254740992n,
-  "Conflict checked-write receipt did not decode its incoming Int64 value.");
-const failedReceipt = await data.writeExactId(-1n, { requestId: "generated-client-post-apply", baseline: data.fieldBaseline("exact-id") });
-expect(failedReceipt.kind === "committed-with-error" && failedReceipt.snapshot.value === -1n,
-  "Committed-with-error receipt did not decode its post-setter Int64 value.");
-const unionReceipt = await data.writePayload({ $case: "count", count: 42 }, {
+// Setters send edits that .NET decodes; the state at the reply's revision shows what .NET applied.
+await data.setDuration("-P1DT2H3M4.5000007S");
+expect(data.snapshot.duration === "-P1DT2H3M4.5000007S", "A duration setter did not reach .NET as sent.");
+await data.setAmount("99.2500");
+expect(data.snapshot.amount === "99.2500", "A decimal setter lost its scale.");
+await data.setWhole({ source: "base", ["__proto__"]: "whole-from-client", "retry-after": 11 });
+expect(data.snapshot.whole["__proto__"] === "whole-from-client" && data.snapshot.whole["retry-after"] === 11,
+  "A DTO setter with special member names did not reach .NET.");
+await live.step("dataShape.expectSet");
+
+// Checked writes: applied, conflict, committed-with-error and a union value.
+const before = data.fieldBaseline("exact-id");
+const applied = await data.writeExactId(9007199254740992n, { requestId: "generated-client-exact-id", baseline: before });
+expect(applied.kind === "applied" && applied.snapshot.value === 9007199254740992n && data.snapshot["exact-id"] === 9007199254740992n,
+  "An applied checked write did not decode its Int64 receipt.");
+const conflict = await data.writeExactId(2n, { requestId: "generated-client-conflict", baseline: before });
+expect(conflict.kind === "conflict" && conflict.incoming.value === 9007199254740992n,
+  "A conflict receipt did not decode its incoming Int64 value.");
+const failed = await data.writeExactId(-1n, { requestId: "generated-client-post-apply", baseline: data.fieldBaseline("exact-id") });
+expect(failed.kind === "committed-with-error" && failed.snapshot.value === -1n,
+  "A committed-with-error receipt did not decode its post-setter Int64 value.");
+const union = await data.writePayload({ $case: "count", count: 42 }, {
   requestId: "generated-client-union", baseline: data.fieldBaseline("payload"),
 });
-expect(unionReceipt.kind === "applied" && unionReceipt.snapshot.value.$case === "count"
-  && unionReceipt.snapshot.value.count === 42, "Checked-write union receipt did not decode.");
+expect(union.kind === "applied" && union.snapshot.value.$case === "count" && union.snapshot.value.count === 42,
+  "A checked union write did not decode.");
 
-const typed = await typedReactive.connectTypedReactive();
-const operation = await typed.startSave({ documentId: "document-1", content: "from-client", expectedVersion: 7 }, { requestId: fixture.typedReactive.requestId });
-expect(!calls.some(call => call.route === "__runicOperationWait"),
-  "Operation admission eagerly started a terminal wait.");
-failNextWait = true;
-await expectThrows(() => operation.wait(), "A dropped operation wait did not reject.");
-const completion = await operation.completion;
-expect(calls.filter(call => call.route === "__runicOperationWait").length === 2,
-  "A failed operation wait was cached instead of retried.");
-expect(completion.kind === "succeeded" && completion.result?.documentId === "document-1"
-  && completion.result.savedVersion === 8 && completion.result.contentLength === "from-client".length,
-  "Typed operation result did not decode from the C# terminal payload.");
-expect(calls.some(call => call.route === "typedReactiveStartSave")
-  && calls.some(call => call.route === "__runicOperationWait"),
-  "Generated typed operation client did not issue start and terminal-result calls.");
-await expectThrows(() => typed.recoverLastResult(fixture.typedReactive.requestId),
-  "A recovery request for a different operation member was accepted.");
-
-// A throwing subscriber must not stop delivery to other subscribers, and an
-// undecodable pushed state must neither escape into the .NET callback nor
-// advance the accepted revision.
-const reported: unknown[] = [];
-const hostWithReporter = globalThis as { reportError?: (error: unknown) => void };
-const previousReporter = hostWithReporter.reportError;
-hostWithReporter.reportError = error => { reported.push(error); };
-const pushState = (host.window as Record<string, unknown>)["__dataShapeChanged"] as (state: unknown) => unknown;
-const wireState = JSON.parse(fixture.dataShape.snapshot).state as Record<string, unknown>;
-// The revision is internal to the client: start above every reply it accepted.
-expect(!("revision" in data.snapshot), "The public state exposed the internal revision.");
-const baseRevision = Math.max(...[fixture.dataShape.snapshot, fixture.dataShape.durationReply, fixture.dataShape.amountReply,
-  fixture.dataShape.wholeReply, fixture.dataShape.exactIdWriteReply, fixture.dataShape.conflictReply,
-  fixture.dataShape.failedReply, fixture.dataShape.unionReply].map(json => Number(JSON.parse(json).state?.revision ?? 0)));
-let initialDelivered = false;
-const stopThrowing = data.subscribe(() => { if (initialDelivered) throw new Error("listener failure"); initialDelivered = true; });
-const delivered: bigint[] = [];
-const stopRecording = data.subscribe((state: { readonly "exact-id": bigint }) => { delivered.push(state["exact-id"]); });
-pushState({ ...wireState, revision: baseRevision + 1, "exact-id": "11" });
-expect(delivered.at(-1) === 11n && reported.length === 1,
-  "A throwing subscriber stopped delivery to later subscribers or was not reported.");
-pushState({ ...wireState, revision: baseRevision + 2, "exact-id": 12 });
-expect(reported.length === 2 && data.snapshot["exact-id"] === 11n && delivered.at(-1) === 11n,
-  "An undecodable pushed state replaced the current state or escaped the push callback.");
-pushState({ ...wireState, revision: baseRevision + 1, "exact-id": "13" });
-expect(data.snapshot["exact-id"] === 13n && delivered.at(-1) === 13n,
-  "An undecodable pushed state advanced the accepted revision.");
-stopThrowing();
-stopRecording();
-hostWithReporter.reportError = previousReporter;
-
+// A disposed client keeps its last state and accepts late subscribers, as framework stores expect.
 data.dispose();
-// A disposed client keeps its last state and accepts late subscribers, as
-// framework stores (for example React's useSyncExternalStore) expect.
 const lastState = data.snapshot;
-expect(lastState["exact-id"] === 13n, "A disposed client lost its last snapshot.");
 let lateDelivery: unknown;
-const stopLate = data.subscribe((state: unknown) => { lateDelivery = state; });
-stopLate();
+data.subscribe((state: unknown) => { lateDelivery = state; })();
 expect(lateDelivery === lastState, "A subscriber after dispose did not receive the last snapshot.");
 try {
   await data.setAmount("1");
   throw new Error("A disposed client accepted a call.");
 } catch (error) {
   // The Bridge is still connected: only this View was released.
-  expect(error instanceof BridgeError && error.kind === "released",
-    "A disposed client did not reject with the shared BridgeError.");
+  expect(error instanceof BridgeError && error.kind === "released", "A disposed client did not reject with released.");
 }
-typed.dispose();
-await runToolkitGeneratedClient(fixture.toolkitTyped, generatedDirectory);
-await runFailureGeneratedClient(fixture.domainFailures, generatedDirectory);
-host.window!.__runicBridge = { isConnected: () => true, async call(route: string) {
-  if (route !== "validationSnapshot") throw new Error(`Unexpected validation route ${route}`);
-  return fixture.validationSnapshot;
-} };
-const validationModule = await import(pathToFileURL(resolve(generatedDirectory, "validation.ts")).href);
-const validationView = await validationModule.connectValidation();
+
+await runToolkitGeneratedClient(generatedDirectory);
+await runFailureGeneratedClient(generatedDirectory);
+
+const validationView = await (await load("validation")).connectValidation();
 const validation = validationView.snapshot.validation;
-expect(validation.hasErrors && validation.errors.some((error: {path: unknown[]; code?: string}) => error.path.length === 0 && error.code === "entity"),
+expect(validation.hasErrors && validation.errors.some((error: { path: unknown[]; code?: string }) => error.path.length === 0 && error.code === "entity"),
   "Structured entity validation was not decoded.");
-expect(validation.errors.some((error: {path: unknown[]}) => JSON.stringify(error.path) === '["model-profile","postal-code"]')
-  && validation.errors.some((error: {path: unknown[]}) => JSON.stringify(error.path) === '["items",0,"label"]'),
+expect(validation.errors.some((error: { path: unknown[] }) => JSON.stringify(error.path) === '["model-profile","postal-code"]')
+  && validation.errors.some((error: { path: unknown[] }) => JSON.stringify(error.path) === '["items",0,"label"]'),
   "Nested validation paths did not retain aliases and list indexes.");
 validationView.dispose();
 
-// Lists of DTOs as a setter, a checked write and a command argument encode as
-// arrays of objects, exactly as the C# routes accepted them.
-host.window!.__runicBridge = { isConnected: () => true, async call(route: string, ...args: unknown[]) {
-  switch (route) {
-    case "dtoListSnapshot": return fixture.dtoList.snapshot;
-    case "dtoListSetEntries": expectArgs(route, args, fixture.dtoList.setRequest); return fixture.dtoList.setReply;
-    case "dtoListWriteEntries": expectArgs(route, args, fixture.dtoList.writeRequest); return fixture.dtoList.writeReply;
-    case "dtoListReplace": expectArgs(route, args, fixture.dtoList.replaceRequest); return fixture.dtoList.replaceReply;
-    default: throw new Error(`Unexpected DTO list route ${route}`);
-  }
-} };
-const dtoListModule = await import(pathToFileURL(resolve(generatedDirectory, "dtoList.ts")).href);
-const dtoList = await dtoListModule.connectDtoList();
+// Lists of DTOs as a setter value, a checked write and a command input encode as arrays of objects.
+const dtoList = await (await load("dtoList")).connectDtoList();
 await dtoList.setEntries([{ name: "set", count: 2 }]);
-const entriesReceipt = await dtoList.writeEntries([{ name: "written", count: 3 }, { name: "second", count: 4 }],
+const entries = await dtoList.writeEntries([{ name: "written", count: 3 }, { name: "second", count: 4 }],
   { requestId: "generated-client-entries", baseline: dtoList.fieldBaseline("entries") });
-expect(entriesReceipt.kind === "applied" && entriesReceipt.snapshot.value.length === 2, "A checked DTO list write was not applied.");
+expect(entries.kind === "applied" && entries.snapshot.value.length === 2, "A checked DTO list write was not applied.");
 await dtoList.replace([{ name: "replaced", count: 5 }]);
-expect(JSON.stringify(dtoList.snapshot.entries) === '[{"name":"replaced","count":5}]', "A DTO list command reply did not decode.");
+expect(JSON.stringify(dtoList.snapshot.entries) === '[{"name":"replaced","count":5}]', "A DTO list command did not reach .NET.");
 dtoList.dispose();
+await live.step("dtoList.expectReplaced");
 
-// An interaction with a DTO output answers the .NET request with the object
-// .NET accepted for it.
-let interactionReply: { readonly kind: string; readonly output?: unknown } | undefined;
-let releaseControlWait: ((reply: string) => void) | undefined;
-let interactionDelivered = false;
-let interactionMount = "";
-host.window!.__runicBridge = { isConnected: () => true, async call(route: string, ...args: unknown[]) {
-  switch (route) {
-    case "dtoInteractionSnapshot": return fixture.dtoInteraction.snapshot;
-    case "dtoInteractionMount": interactionMount = String(args[0]); return "ok";
-    case "dtoInteractionUnmount": return "ok";
-    case "__runicInteractionControl": return JSON.stringify({ kind: "ok" });
-    case "__runicInteractionControlWait": return await new Promise<string>(resolve => { releaseControlWait = resolve; });
-    case "__runicInteractionWait":
-      if (interactionDelivered) return await new Promise<string>(() => {});
-      interactionDelivered = true;
-      return JSON.stringify({ ...JSON.parse(fixture.dtoInteraction.request), presentationId: interactionMount });
-    case "__runicInteractionReply": interactionReply = JSON.parse(String(args[0])); return JSON.stringify({ kind: "ok" });
-    default: throw new Error(`Unexpected DTO interaction route ${route}`);
-  }
-} };
-const dtoInteractionModule = await import(pathToFileURL(resolve(generatedDirectory, "dtoInteraction.ts")).href);
-const dtoInteraction = await dtoInteractionModule.connectDtoInteraction();
-dtoInteraction.interactions.chooseEntry.handle((input: string) => ({ name: input === "Pick an entry" ? "picked" : input, count: 6 }));
-for (let attempt = 0; interactionReply === undefined && attempt < 500; attempt++) await Bun.sleep(2);
-expect(interactionReply?.kind === "answered" && JSON.stringify(interactionReply.output) === fixture.dtoInteraction.output,
-  `A DTO interaction output was not encoded as .NET accepts it: ${JSON.stringify(interactionReply)}`);
-dtoInteraction.dispose();
-releaseControlWait?.(JSON.stringify({ kind: "released" }));
-
-function expectArgs(route: string, actual: readonly unknown[], expected: string): void {
-  expect(actual.length === 1 && actual[0] === expected,
-    `${route} did not preserve the generated C# request payload.`);
-}
+await live.close();
+console.log("GENERATED_CLIENT_OK");
 
 async function expectThrows(action: () => Promise<unknown>, message: string): Promise<void> {
   try { await action(); }

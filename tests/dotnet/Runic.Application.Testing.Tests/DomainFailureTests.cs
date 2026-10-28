@@ -584,17 +584,16 @@ internal sealed partial class DomainFailureTests
     }
 
     private sealed class EditorBridge(IBridgeTransport transport, EditorModel model, WindowContentSession? content, bool keyed = false)
-        : ViewModelBridge<EditorModel>(transport, model, "editor", (writer, vm, revision, _) =>
-        {
-            writer.WriteStartObject();
-            writer.WriteNumber("revision", revision);
-            writer.WriteString("title", vm.Title);
+        : ViewModelBridge<EditorModel>(transport, model, "editor", [
+            new BridgeStateMember<EditorModel>("title", static (writer, vm) => writer.WriteStringValue(vm.Title)),
             // The keyed collection is a member, so a frame that changes it checks its keys.
-            writer.WriteStartArray("rows");
-            foreach (var row in vm.Rows) writer.WriteStringValue(row);
-            writer.WriteEndArray();
-            writer.WriteEndObject();
-        },
+            new BridgeStateMember<EditorModel>("rows", static (writer, vm) =>
+            {
+                writer.WriteStartArray();
+                foreach (var row in vm.Rows) writer.WriteStringValue(row);
+                writer.WriteEndArray();
+            }),
+        ],
         [], [],
         [
             new("Save", vm => vm.SaveCommand) { EncodeFailure = Encode },

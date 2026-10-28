@@ -6,18 +6,18 @@ internal sealed class FailureToolkitBridge : global::Runic.Application.Views.Gen
 {
     internal FailureToolkitBridge(global::Runic.Application.Views.IBridgeTransport transport, global::Runic.Application.Testing.Tests.FailureToolkitViewModel vm, string? routePrefix = null, global::Runic.Application.Views.WindowContentSession? content = null) : base(
         transport, vm, routePrefix ?? "failureToolkit",
-        CreateWriter(content),
+        State,
         [
-            new global::Runic.Application.Views.Generated.PropertyDescriptor<global::Runic.Application.Testing.Tests.FailureToolkitViewModel>("Title", vm => vm.Title, (vm, e) => vm.Title = e.GetString()),
+            new global::Runic.Application.Views.Generated.PropertyDescriptor<global::Runic.Application.Testing.Tests.FailureToolkitViewModel>("Title", "title", vm => vm.Title, (vm, value) => vm.Title = TitleValueCodec.Read(value)),
         ],
         [
             new global::Runic.Application.Views.Generated.CheckedPropertyDescriptor<global::Runic.Application.Testing.Tests.FailureToolkitViewModel>("Title", "title", global::Runic.Application.Views.Generated.CheckedFieldValueKind.Json, vm => vm.Title, (vm, value) => vm.Title = (global::System.String)value!, readValue: element => TitleValueCodec.Read(element), writeValue: (writer, value) => TitleValueCodec.Write(writer, (global::System.String)value!)),
         ],
         [
-            new global::Runic.Application.Views.Generated.CommandDescriptor<global::Runic.Application.Testing.Tests.FailureToolkitViewModel>("Reserve", vm => (object)vm.ReserveCommand) { ReadArgument = e => { using var document = global::System.Text.Json.JsonDocument.Parse(e.GetString()); return ReserveCommandInputCodec.Read(document.RootElement); }, EncodeArgument = argument => global::Runic.Application.Views.Generated.BridgeWire.EncodeCanonical(writer => ReserveCommandInputCodec.Write(writer, (global::System.Int32)argument!)), EncodeFailure = failure => failure is global::Runic.Application.Testing.Tests.NoteQuotaExceeded declared ? global::Runic.Application.Views.Generated.BridgeWire.EncodeCanonical(writer => ReserveCommandFailureCodec.Write(writer, declared)) : null },
-            new global::Runic.Application.Views.Generated.CommandDescriptor<global::Runic.Application.Testing.Tests.FailureToolkitViewModel>("Save", vm => (object)vm.SaveCommand) { EncodeFailure = failure => failure is global::Runic.Application.Testing.Tests.NoteSaveFailure declared ? global::Runic.Application.Views.Generated.BridgeWire.EncodeCanonical(writer => SaveCommandFailureCodec.Write(writer, declared)) : null },
-            new global::Runic.Application.Views.Generated.CommandDescriptor<global::Runic.Application.Testing.Tests.FailureToolkitViewModel>("Publish", vm => (object)vm.PublishCommand) { ExecuteAsync = async (vm, token, argument) => { token.ThrowIfCancellationRequested(); var command = (global::CommunityToolkit.Mvvm.Input.IAsyncRelayCommand)vm.PublishCommand; using var registration = token.Register(command.Cancel); await command.ExecuteAsync(null).ConfigureAwait(false); }, Subscribe = (vm, changed) => new ToolkitRunningSubscription(vm.PublishCommand, changed), EncodeFailure = failure => failure is global::Runic.Application.Testing.Tests.NotePublishBlock declared ? global::Runic.Application.Views.Generated.BridgeWire.EncodeCanonical(writer => PublishCommandFailureCodec.Write(writer, declared)) : null },
-            new global::Runic.Application.Views.Generated.CommandDescriptor<global::Runic.Application.Testing.Tests.FailureToolkitViewModel>("Discard", vm => (object)vm.DiscardCommand) { ExecuteAsync = async (vm, token, argument) => { token.ThrowIfCancellationRequested(); var command = (global::CommunityToolkit.Mvvm.Input.IAsyncRelayCommand)vm.DiscardCommand; using var registration = token.Register(command.Cancel); await command.ExecuteAsync(null).ConfigureAwait(false); }, Subscribe = (vm, changed) => new ToolkitRunningSubscription(vm.DiscardCommand, changed) },
+            new global::Runic.Application.Views.Generated.CommandDescriptor<global::Runic.Application.Testing.Tests.FailureToolkitViewModel>("Reserve", vm => (object)vm.ReserveCommand) { ReadInput = input => ReserveCommandInputCodec.Read(input), EncodeArgument = argument => global::Runic.Application.Views.Generated.BridgeWire.EncodeCanonical(writer => ReserveCommandInputCodec.Write(writer, (global::System.Int32)argument!)), EncodeFailure = failure => failure is global::Runic.Application.Testing.Tests.NoteQuotaExceeded declared ? global::Runic.Application.Views.Generated.BridgeWire.EncodeCanonical(writer => ReserveCommandFailureCodec.Write(writer, declared)) : null, WireName = "reserve" },
+            new global::Runic.Application.Views.Generated.CommandDescriptor<global::Runic.Application.Testing.Tests.FailureToolkitViewModel>("Save", vm => (object)vm.SaveCommand) { EncodeFailure = failure => failure is global::Runic.Application.Testing.Tests.NoteSaveFailure declared ? global::Runic.Application.Views.Generated.BridgeWire.EncodeCanonical(writer => SaveCommandFailureCodec.Write(writer, declared)) : null, WireName = "save" },
+            new global::Runic.Application.Views.Generated.CommandDescriptor<global::Runic.Application.Testing.Tests.FailureToolkitViewModel>("Publish", vm => (object)vm.PublishCommand) { ExecuteAsync = async (vm, token, argument) => { token.ThrowIfCancellationRequested(); var command = (global::CommunityToolkit.Mvvm.Input.IAsyncRelayCommand)vm.PublishCommand; using var registration = token.Register(command.Cancel); await command.ExecuteAsync(null).ConfigureAwait(false); }, Subscribe = (vm, changed) => new ToolkitRunningSubscription(vm.PublishCommand, changed), EncodeFailure = failure => failure is global::Runic.Application.Testing.Tests.NotePublishBlock declared ? global::Runic.Application.Views.Generated.BridgeWire.EncodeCanonical(writer => PublishCommandFailureCodec.Write(writer, declared)) : null, WireName = "publish" },
+            new global::Runic.Application.Views.Generated.CommandDescriptor<global::Runic.Application.Testing.Tests.FailureToolkitViewModel>("Discard", vm => (object)vm.DiscardCommand) { ExecuteAsync = async (vm, token, argument) => { token.ThrowIfCancellationRequested(); var command = (global::CommunityToolkit.Mvvm.Input.IAsyncRelayCommand)vm.DiscardCommand; using var registration = token.Register(command.Cancel); await command.ExecuteAsync(null).ConfigureAwait(false); }, Subscribe = (vm, changed) => new ToolkitRunningSubscription(vm.DiscardCommand, changed), WireName = "discard" },
         ], "<fingerprint>", content,
         null,
         dataSubscriptions: DataMetadata,
@@ -214,23 +214,14 @@ private static class PublishCommandFailureCodec
         public void Dispose() => _command.PropertyChanged -= _handler;
     }
 
-    private static global::Runic.Application.Views.Generated.BridgeSnapshotWriter<global::Runic.Application.Testing.Tests.FailureToolkitViewModel> CreateWriter(global::Runic.Application.Views.WindowContentSession? content)
-    {
-        return (writer, current, revision, writeFieldMetadata) => WriteSnapshot(writer, current, revision, writeFieldMetadata);
-    }
-
-    private static void WriteSnapshot(global::System.Text.Json.Utf8JsonWriter writer, global::Runic.Application.Testing.Tests.FailureToolkitViewModel vm, long revision, global::System.Action<global::System.Text.Json.Utf8JsonWriter> writeFieldMetadata)
-    {
-        writer.WriteStartObject();
-        writer.WriteNumber("revision", revision);
-        writer.WritePropertyName("title");
-        TitleValueCodec.Write(writer, vm.Title);
-        writer.WriteBoolean("canSave", ((global::System.Windows.Input.ICommand)vm.SaveCommand).CanExecute(null));
-        writer.WriteBoolean("canPublish", ((global::System.Windows.Input.ICommand)vm.PublishCommand).CanExecute(null));
-        writer.WriteBoolean("isPublishExecuting", ((global::CommunityToolkit.Mvvm.Input.IAsyncRelayCommand)vm.PublishCommand).IsRunning);
-        writer.WriteBoolean("canDiscard", ((global::System.Windows.Input.ICommand)vm.DiscardCommand).CanExecute(null));
-        writer.WriteBoolean("isDiscardExecuting", ((global::CommunityToolkit.Mvvm.Input.IAsyncRelayCommand)vm.DiscardCommand).IsRunning);
-        writeFieldMetadata(writer);
-        writer.WriteEndObject();
-    }
+    private static readonly global::Runic.Application.Views.Generated.BridgeStateMember<global::Runic.Application.Testing.Tests.FailureToolkitViewModel>[] State =
+    [
+        new global::Runic.Application.Views.Generated.BridgeStateMember<global::Runic.Application.Testing.Tests.FailureToolkitViewModel>("title", static (writer, vm) => TitleValueCodec.Write(writer, vm.Title)),
+        new global::Runic.Application.Views.Generated.BridgeStateMember<global::Runic.Application.Testing.Tests.FailureToolkitViewModel>("canSave", static (writer, vm) => writer.WriteBooleanValue(((global::System.Windows.Input.ICommand)vm.SaveCommand).CanExecute(null))),
+        new global::Runic.Application.Views.Generated.BridgeStateMember<global::Runic.Application.Testing.Tests.FailureToolkitViewModel>("canPublish", static (writer, vm) => writer.WriteBooleanValue(((global::System.Windows.Input.ICommand)vm.PublishCommand).CanExecute(null))),
+        new global::Runic.Application.Views.Generated.BridgeStateMember<global::Runic.Application.Testing.Tests.FailureToolkitViewModel>("isPublishExecuting", static (writer, vm) => writer.WriteBooleanValue(((global::CommunityToolkit.Mvvm.Input.IAsyncRelayCommand)vm.PublishCommand).IsRunning)),
+        new global::Runic.Application.Views.Generated.BridgeStateMember<global::Runic.Application.Testing.Tests.FailureToolkitViewModel>("canDiscard", static (writer, vm) => writer.WriteBooleanValue(((global::System.Windows.Input.ICommand)vm.DiscardCommand).CanExecute(null))),
+        new global::Runic.Application.Views.Generated.BridgeStateMember<global::Runic.Application.Testing.Tests.FailureToolkitViewModel>("isDiscardExecuting", static (writer, vm) => writer.WriteBooleanValue(((global::CommunityToolkit.Mvvm.Input.IAsyncRelayCommand)vm.DiscardCommand).IsRunning)),
+    ]
+    ;
 }

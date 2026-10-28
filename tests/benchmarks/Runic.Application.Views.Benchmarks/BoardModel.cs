@@ -85,23 +85,22 @@ public static class Wire
         [.. element.GetProperty("pinned").EnumerateArray().Select(item => item.GetString()!)],
         element.GetProperty("shortcuts").EnumerateObject().ToDictionary(item => item.Name, item => item.Value.GetString()!));
 
-    public static void WriteSnapshot(Utf8JsonWriter writer, BoardModel model, long revision, Action<Utf8JsonWriter> writeFields)
-    {
-        writer.WriteStartObject();
-        writer.WriteNumber("revision", revision);
-        writer.WriteNumber("counter", model.Counter);
-        writer.WritePropertyName("preferences");
-        WritePreferences(writer, model.Preferences);
-        writer.WriteStartArray("rows");
-        foreach (var row in model.Rows) WriteRow(writer, row);
-        writer.WriteEndArray();
-        writeFields(writer);
-        writer.WriteEndObject();
-    }
+    // The board's state members, written member by member.
+    public static readonly BridgeStateMember<BoardModel>[] State =
+    [
+        new("counter", static (writer, model) => writer.WriteNumberValue(model.Counter)),
+        new("preferences", static (writer, model) => WritePreferences(writer, model.Preferences)),
+        new("rows", static (writer, model) =>
+        {
+            writer.WriteStartArray();
+            foreach (var row in model.Rows) WriteRow(writer, row);
+            writer.WriteEndArray();
+        }),
+    ];
 }
 
 public sealed class BoardBridge(IBridgeTransport transport, BoardModel model, WindowContentSession? content)
-    : ViewModelBridge<BoardModel>(transport, model, "board", Wire.WriteSnapshot, [],
+    : ViewModelBridge<BoardModel>(transport, model, "board", Wire.State, [],
         content is null ? [] :
         [
             new("Preferences", "preferences", CheckedFieldValueKind.Json, vm => vm.Preferences,

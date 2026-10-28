@@ -47,12 +47,12 @@ const spec: MockTypedViewSpec = {
   },
   defaults: { isOpenExecuting: false },
   commands: {
-    lock: { route: "Lock", read: (raw: unknown) => { const wire: unknown = JSON.parse(raw as string); return bridgeWire.bigint(wire, "0", "18446744073709551615"); } },
-    open: { route: "Open", read: (raw: unknown) => { const wire: unknown = JSON.parse(raw as string); return bridgeWire.bigint(wire, "0", "18446744073709551615"); } },
-    select: { route: "Select", read: (raw: unknown) => { const wire: unknown = JSON.parse(raw as string); return bridgeWire.string(wire); } },
+    lock: { member: "lock", decodeInput: (wire: unknown) => bridgeWire.bigint(wire, "0", "18446744073709551615") },
+    open: { member: "open", decodeInput: (wire: unknown) => bridgeWire.bigint(wire, "0", "18446744073709551615") },
+    select: { member: "select", decodeInput: (wire: unknown) => bridgeWire.string(wire) },
   },
   operations: {
-    open: { member: "Open", decodeInput: (wire: unknown) => bridgeWire.bigint(wire, "0", "18446744073709551615") },
+    open: { member: "open", decodeInput: (wire: unknown) => bridgeWire.bigint(wire, "0", "18446744073709551615") },
   },
 };
 

@@ -360,14 +360,7 @@ public sealed class ContentLifecycleTests
     }
 
     private sealed class CheckedBridge(IBridgeTransport transport, Item model, string route, WindowContentSession content)
-        : ViewModelBridge<Item>(transport, model, route, static (writer, vm, revision, writeFields) =>
-        {
-            writer.WriteStartObject();
-            writer.WriteNumber("revision", revision);
-            writer.WriteNumber("value", vm.Value);
-            writeFields(writer);
-            writer.WriteEndObject();
-        }, [],
+        : ViewModelBridge<Item>(transport, model, route, [new BridgeStateMember<Item>("value", static (writer, vm) => writer.WriteNumberValue(vm.Value))], [],
         [new("Value", "value", CheckedFieldValueKind.Int32, vm => vm.Value, (vm, value) => vm.Value = (int)value!)],
         [], contractFingerprint: "content-lifecycle", content: content);
 
@@ -377,14 +370,7 @@ public sealed class ContentLifecycleTests
         private readonly WindowContentSession _content;
 
         public SlotOwnerBridge(IBridgeTransport transport, Item model, string route, WindowContentSession content)
-            : base(transport, model, route, static (writer, vm, revision, writeFields) =>
-            {
-                writer.WriteStartObject();
-                writer.WriteNumber("revision", revision);
-                writer.WriteNumber("value", vm.Value);
-                writeFields(writer);
-                writer.WriteEndObject();
-            }, [], [], [], contractFingerprint: "content-lifecycle-slots", content: content)
+            : base(transport, model, route, [new BridgeStateMember<Item>("value", static (writer, vm) => writer.WriteNumberValue(vm.Value))], [], [], [], contractFingerprint: "content-lifecycle-slots", content: content)
         {
             _owner = model;
             _content = content;

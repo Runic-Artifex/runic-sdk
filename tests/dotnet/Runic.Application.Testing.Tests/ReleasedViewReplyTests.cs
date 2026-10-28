@@ -216,16 +216,11 @@ public sealed class ReleasedViewReplyTests
     }
 
     private sealed class PageBridge(IBridgeTransport transport, Page model, string route, WindowContentSession content)
-        : ViewModelBridge<Page>(transport, model, route, static (writer, vm, revision, writeFields) =>
-        {
-            writer.WriteStartObject();
-            writer.WriteNumber("revision", revision);
-            writer.WriteNumber("value", vm.Snapshot);
-            writer.WriteNumber("count", vm.Count);
-            writeFields(writer);
-            writer.WriteEndObject();
-        },
-        [new("Value", vm => vm.Value, (vm, arguments) => vm.Value = (int)arguments.GetInt64())],
+        : ViewModelBridge<Page>(transport, model, route, [
+            new BridgeStateMember<Page>("value", static (writer, vm) => writer.WriteNumberValue(vm.Snapshot)),
+            new BridgeStateMember<Page>("count", static (writer, vm) => writer.WriteNumberValue(vm.Count)),
+        ],
+        [new("Value", "value", vm => vm.Value, (vm, value) => vm.Value = BridgeWire.ReadInt32(value))],
         [new("Count", "count", CheckedFieldValueKind.Int32, vm => vm.Count, (vm, value) => vm.Count = (int)value!)],
         [
             new("Leave", vm => vm.LeaveCommand),

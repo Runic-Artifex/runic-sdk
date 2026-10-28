@@ -29,18 +29,18 @@ export interface SidebarMock extends MockTypedView<SidebarMockState, SidebarClie
 const spec: MockTypedViewSpec = {
   kind: "sidebar",
   route: "sidebar",
-  contract: "NotesWindowViews.SidebarViewModel:7E66E532FEB7FFF8F3E463213E7A1FACC34E333EBB3B5C9C71E6B8307E1E37C3",
+  contract: "NotesWindowViews.SidebarViewModel:1160496013C85294527537E950775D8901F2B81EC31DE93996835B51444AF521",
   fields: {
     selected: { encode: (value: unknown) => { const typed = value as string; return typed; }, decode: (wire: unknown) => bridgeWire.string(wire) },
   },
   defaults: { canOpenHome: true, isOpenHomeExecuting: false, canOpenNotes: true, isOpenNotesExecuting: false },
   commands: {
-    openHome: { route: "OpenHome", available: "canOpenHome" },
-    openNotes: { route: "OpenNotes", available: "canOpenNotes" },
+    openHome: { member: "openHome", available: "canOpenHome" },
+    openNotes: { member: "openNotes", available: "canOpenNotes" },
   },
   operations: {
-    openHome: { member: "OpenHome" },
-    openNotes: { member: "OpenNotes" },
+    openHome: { member: "openHome" },
+    openNotes: { member: "openNotes" },
   },
 };
 

@@ -59,19 +59,19 @@ const spec: MockTypedViewSpec = {
   defaults: { isDeleteExecuting: false, isArchiveExecuting: false, isRenameExecuting: false, isExportExecuting: false },
   checkedFields: ["enabled"],
   setters: {
-    setEnabled: { route: "SetEnabled", field: "enabled", read: (raw: unknown) => raw, checked: "WriteEnabled" },
+    setEnabled: { member: "enabled", checked: "writeEnabled" },
   },
   commands: {
-    delete: { route: "Delete", read: (raw: unknown) => { const wire: unknown = JSON.parse(raw as string); return bridgeWire.bigint(wire, "0", "18446744073709551615"); } },
-    archive: { route: "Archive", read: (raw: unknown) => { const wire: unknown = JSON.parse(raw as string); return bridgeWire.bigint(wire, "0", "18446744073709551615"); } },
-    rename: { route: "Rename", read: (raw: unknown) => { const wire: unknown = JSON.parse(raw as string); return bridgeWire.bigint(wire, "0", "18446744073709551615"); } },
-    export: { route: "Export", read: (raw: unknown) => { const wire: unknown = JSON.parse(raw as string); return bridgeWire.bigint(wire, "0", "18446744073709551615"); } },
+    delete: { member: "delete", decodeInput: (wire: unknown) => bridgeWire.bigint(wire, "0", "18446744073709551615") },
+    archive: { member: "archive", decodeInput: (wire: unknown) => bridgeWire.bigint(wire, "0", "18446744073709551615") },
+    rename: { member: "rename", decodeInput: (wire: unknown) => bridgeWire.bigint(wire, "0", "18446744073709551615") },
+    export: { member: "export", decodeInput: (wire: unknown) => bridgeWire.bigint(wire, "0", "18446744073709551615") },
   },
   operations: {
-    delete: { member: "Delete", decodeInput: (wire: unknown) => bridgeWire.bigint(wire, "0", "18446744073709551615") },
-    archive: { member: "Archive", decodeInput: (wire: unknown) => bridgeWire.bigint(wire, "0", "18446744073709551615") },
-    rename: { member: "Rename", decodeInput: (wire: unknown) => bridgeWire.bigint(wire, "0", "18446744073709551615"), encodeResult: (value: unknown) => { const typed = value as string; return typed; } },
-    export: { member: "Export", decodeInput: (wire: unknown) => bridgeWire.bigint(wire, "0", "18446744073709551615"), encodeResult: (value: unknown) => { const typed = value as string; return typed; }, stream: true },
+    delete: { member: "delete", decodeInput: (wire: unknown) => bridgeWire.bigint(wire, "0", "18446744073709551615") },
+    archive: { member: "archive", decodeInput: (wire: unknown) => bridgeWire.bigint(wire, "0", "18446744073709551615") },
+    rename: { member: "rename", decodeInput: (wire: unknown) => bridgeWire.bigint(wire, "0", "18446744073709551615"), encodeResult: (value: unknown) => { const typed = value as string; return typed; } },
+    export: { member: "export", decodeInput: (wire: unknown) => bridgeWire.bigint(wire, "0", "18446744073709551615"), encodeResult: (value: unknown) => { const typed = value as string; return typed; }, stream: true },
   },
 };
 

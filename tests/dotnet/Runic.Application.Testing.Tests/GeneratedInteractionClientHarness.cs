@@ -6,7 +6,6 @@ namespace Runic.Application.Testing.Tests;
 internal sealed class GeneratedInteractionClientHarness
 {
     [Test]
-    [Skip("P6: the generated-client harness speaks protocol 4 with P6's regenerated clients")]
     public async Task GeneratedInteractionClientPassesItsLifecycleHarnessAsync()
     {
         var root = FindWorkspaceRoot();

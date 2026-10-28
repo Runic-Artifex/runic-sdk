@@ -108,7 +108,7 @@ internal sealed class ReactiveUICodegenConvention : MvvmCodegenConvention
             var helper = Helper(contract.Flavor);
             var input = contract.HasInput ? $"({inputType})argument!" : Void(contract.Input);
             var read = contract.HasInput
-                ? $", ReadArgument: e => {{ using var document = global::System.Text.Json.JsonDocument.Parse(e.GetString()); return {property.Name}InputCodec.Read(document.RootElement); }}"
+                ? $", ReadInput: input => {property.Name}InputCodec.Read(input)"
                 : "";
             var canonical = contract.HasInput
                 ? $", EncodeArgument: argument => global::Runic.Application.Views.Generated.BridgeWire.EncodeCanonical(writer => {property.Name}InputCodec.Write(writer, ({keyType})argument!))"
@@ -133,13 +133,13 @@ internal sealed class ReactiveUICodegenConvention : MvvmCodegenConvention
             $"ObserveFailures = (vm, logger) => {Helper(contract.Flavor)}.ObserveFailures(({CommandType(plan)})vm.{property.Name}, logger, \"{property.ReflectedType?.Name}.{property.Name}\")";
 
         // Availability and execution state come from the command's observables.
-        internal override void AppendSnapshotState(StringBuilder cs, PropertyInfo command, string name, GeneratedCommandPlan plan)
+        internal override IEnumerable<(string Member, string Value)> StateMembers(PropertyInfo command, string name, GeneratedCommandPlan plan)
         {
             var commandType = CommandType(plan);
             var helper = Helper(contract.Flavor);
             if (!plan.HasArgument)
-                cs.AppendLine($"        writer.WriteBoolean(\"can{name}\", {helper}.CanExecute(({commandType})vm.{command.Name}, {Void(contract.Input)}));");
-            cs.AppendLine($"        writer.WriteBoolean(\"is{name}Executing\", {helper}.IsExecuting(({commandType})vm.{command.Name}));");
+                yield return ($"can{name}", $"{helper}.CanExecute(({commandType})vm.{command.Name}, {Void(contract.Input)})");
+            yield return ($"is{name}Executing", $"{helper}.IsExecuting(({commandType})vm.{command.Name})");
         }
     }
 

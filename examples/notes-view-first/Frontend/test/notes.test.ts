@@ -4,7 +4,7 @@
 import assert from "node:assert/strict";
 import { beforeEach, test } from "node:test";
 import { BridgeError } from "@runic-artifex/views";
-import { createMockBridge, installMockBridge, mockFailure, type MockBridge } from "@runic-artifex/views/mock";
+import { createMockBridge, installMockBridge, mockFailure, type MockBridge, type MockCall } from "@runic-artifex/views/mock";
 import type { SaveFailure } from "../src/generated/editor.js";
 import { describeSaveFailure } from "../src/save-failure.js";
 import { mountContent } from "../src/content.js";
@@ -19,6 +19,8 @@ import { pageDocument } from "../src/generated/document.js";
 import { mockDocument } from "../src/generated/document.mock.js";
 import { mockSidebar } from "../src/generated/sidebar.mock.js";
 
+// A request as "{kind} {member}", or its kind alone.
+const request = (call: MockCall) => call.member === undefined ? call.kind : `${call.kind} ${call.member}`;
 const draft: EditorMockState = { title: "Untitled", body: "", isDirty: false, savedMessage: "" };
 let bridge: MockBridge;
 
@@ -38,13 +40,13 @@ test("a rejected field write stops the save that follows it", async () => {
   writes.enqueue(() => client.setTitle("Groceries"));
   await writes.run(() => client.save());
   assert.equal(client.snapshot.savedMessage, "Saved Groceries");
-  assert.deepEqual(editor.calls.map(call => call.name), ["editorSnapshot", "editorSetTitle", "editorSave"]);
+  assert.deepEqual(editor.calls.map(request), ["open", "set title", "command save"]);
 
   editor.failNext("setTitle", { kind: "rejected", message: "Titles are limited to 80 characters." });
   writes.enqueue(() => client.setTitle("x".repeat(81)));
   await assert.rejects(writes.run(() => client.save()), (error: unknown) => error instanceof BridgeError && error.kind === "rejected");
   assert.equal(reported.at(-1) instanceof BridgeError, true);
-  assert.equal(editor.calls.filter(call => call.name === "editorSave").length, 1);
+  assert.equal(editor.calls.filter(call => request(call) === "command save").length, 1);
   client.dispose();
 });
 
@@ -108,7 +110,7 @@ test("the main outlet follows the shell's content and disposes the previous View
   await bridge.flush();
   assert.deepEqual(mounted, ["home", "-home", "document"]);
   // The outlet acknowledged each presentation and released the one it replaced.
-  assert.deepEqual(home.calls.map(call => call.name), ["content2Snapshot", "content2Mount", "content2Unmount"]);
+  assert.deepEqual(home.calls.map(request), ["open", "close"]);
   unmount();
   client.dispose();
 });

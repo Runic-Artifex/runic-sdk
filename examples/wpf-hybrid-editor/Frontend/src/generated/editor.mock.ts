@@ -33,7 +33,7 @@ export interface EditorMock extends MockTypedView<EditorMockState, EditorClient,
 const spec: MockTypedViewSpec = {
   kind: "editor",
   route: "editor",
-  contract: "HybridNotes.EditorViewModel:5A24EEEFF51F34515B46D2EDE06D0D1B307444860D4394FA8B82FE53D47D3745",
+  contract: "HybridNotes.EditorViewModel:E9D57D74D85688A1B8FDBC4AC5A15F22AD53351D9B411759026957B8D3836953",
   fields: {
     isDirty: { encode: (value: unknown) => { const typed = value as boolean; return typed; }, decode: (wire: unknown) => bridgeWire.boolean(wire) },
     validationMessage: { encode: (value: unknown) => { const typed = value as string; return typed; }, decode: (wire: unknown) => bridgeWire.string(wire) },
@@ -45,15 +45,15 @@ const spec: MockTypedViewSpec = {
   defaults: { canSave: true, isSaveExecuting: false, canSaveCancel: true },
   checkedFields: ["title", "body"],
   setters: {
-    setTitle: { route: "SetTitle", field: "title", read: (raw: unknown) => raw, checked: "WriteTitle" },
-    setBody: { route: "SetBody", field: "body", read: (raw: unknown) => raw, checked: "WriteBody" },
+    setTitle: { member: "title", checked: "writeTitle" },
+    setBody: { member: "body", checked: "writeBody" },
   },
   commands: {
-    save: { route: "Save", available: "canSave" },
-    saveCancel: { route: "SaveCancel", available: "canSaveCancel" },
+    save: { member: "save", available: "canSave" },
+    saveCancel: { member: "saveCancel", available: "canSaveCancel" },
   },
   operations: {
-    save: { member: "Save" },
+    save: { member: "save" },
   },
 };
 

@@ -386,33 +386,26 @@ internal sealed class SnapshotBatchTests
     }
 
     private sealed class ProbeBridge(IBridgeTransport transport, Model model, string route, CaptureCounter counter)
-        : ViewModelBridge<Model>(transport, model, route, (writer, vm, _, _) =>
+        : ViewModelBridge<Model>(transport, model, route, [new BridgeStateMember<Model>("value", (writer, vm) =>
         {
             counter.Capture();
-            writer.WriteStartObject();
-            writer.WriteNumber("value", vm.Value);
-            writer.WriteEndObject();
-        }, [], [], []);
+            writer.WriteNumberValue(vm.Value);
+        })], [], [], []);
 
     private sealed class ThrowingProbeBridge(IBridgeTransport transport, Model model)
-        : ViewModelBridge<Model>(transport, model, "throwing", (writer, vm, _, _) =>
+        : ViewModelBridge<Model>(transport, model, "throwing", [new BridgeStateMember<Model>("value", static (writer, vm) =>
         {
             ObjectDisposedException.ThrowIf(vm.Value == 13, vm);
-            writer.WriteStartObject();
-            writer.WriteNumber("value", vm.Value);
-            writer.WriteEndObject();
-        }, [], [], []);
+            writer.WriteNumberValue(vm.Value);
+        })], [], [], []);
 
     private sealed class CheckedProbeBridge(IBridgeTransport transport, Model model,
         WindowContentSession content, CaptureCounter counter)
-        : ViewModelBridge<Model>(transport, model, "checked", (writer, vm, _, writeFields) =>
+        : ViewModelBridge<Model>(transport, model, "checked", [new BridgeStateMember<Model>("value", (writer, vm) =>
         {
             counter.Capture();
-            writer.WriteStartObject();
-            writer.WriteNumber("value", vm.Value);
-            writeFields(writer);
-            writer.WriteEndObject();
-        }, [],
+            writer.WriteNumberValue(vm.Value);
+        })], [],
         [new("Value", "value", CheckedFieldValueKind.Int32, vm => vm.Value,
             (vm, value) => vm.Value = (int)value!)],
         [new("Increment", vm => vm.Increment)], contractFingerprint: "snapshot-batch", content: content);

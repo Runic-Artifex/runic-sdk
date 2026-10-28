@@ -228,20 +228,13 @@ internal sealed class ReplyOrderTests
     }
 
     private sealed class ShellBridge(IBridgeTransport transport, ShellModel model) : ViewModelBridge<ShellModel>(
-        transport, model, "shell", static (writer, vm, _, _) =>
-        {
-            writer.WriteStartObject();
-            writer.WriteNumber("value", vm.Value);
-            writer.WriteEndObject();
-        }, [], [], []);
+        transport, model, "shell",
+        [new BridgeStateMember<ShellModel>("value", static (writer, vm) => writer.WriteNumberValue(vm.Value))], [], [], []);
 
     private sealed class PageBridge(IBridgeTransport transport, PageModel model) : ViewModelBridge<PageModel>(
-        transport, model, "page", static (writer, _, _, _) =>
-        {
-            writer.WriteStartObject();
-            writer.WriteNumber("value", 0);
-            writer.WriteEndObject();
-        }, [new("Value", vm => vm.Value, (vm, args) => vm.Value = checked((int)args.GetInt64()))], [],
+        transport, model, "page",
+        [new BridgeStateMember<PageModel>("value", static (writer, _) => writer.WriteNumberValue(0))],
+        [new("Value", "value", vm => vm.Value, (vm, value) => vm.Value = BridgeWire.ReadInt32(value))], [],
         [
             new("Bump", vm => vm.Bump),
             new("Load", vm => vm.Bump)

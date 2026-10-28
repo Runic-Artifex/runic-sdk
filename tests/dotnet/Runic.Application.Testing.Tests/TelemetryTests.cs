@@ -188,13 +188,8 @@ internal sealed class TelemetryTests
     }
 
     private sealed class FailingBridge(IBridgeTransport transport, Model model, WindowContentSession content)
-        : ViewModelBridge<Model>(transport, model, "failing", (writer, vm, _, _) =>
-        {
-            writer.WriteStartObject();
-            writer.WriteNumber("count", vm.Count);
-            writer.WriteEndObject();
-        },
-        [new("Count", vm => vm.Count, (vm, e) => vm.Count = checked((int)e.GetInt64()))], [],
+        : ViewModelBridge<Model>(transport, model, "failing", [new BridgeStateMember<Model>("count", static (writer, vm) => writer.WriteNumberValue(vm.Count))],
+        [new("Count", "count", vm => vm.Count, (vm, value) => vm.Count = BridgeWire.ReadInt32(value))], [],
         [
             new("Throw", vm => vm.Throw),
             new("FailAsync", vm => vm.Throw) { ExecuteAsync = (_, _, _) => Task.FromException(new InvalidOperationException("Operation failed for customer-secret.")) },

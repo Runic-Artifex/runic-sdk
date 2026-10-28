@@ -21,7 +21,7 @@ export interface ShellMock extends MockTypedView<ShellMockState, ShellClient, "s
 const spec: MockTypedViewSpec = {
   kind: "shell",
   route: "shell",
-  contract: "NotesWindowViews.ShellViewModel:7E66E532FEB7FFF8F3E463213E7A1FACC34E333EBB3B5C9C71E6B8307E1E37C3",
+  contract: "NotesWindowViews.ShellViewModel:1160496013C85294527537E950775D8901F2B81EC31DE93996835B51444AF521",
   fields: {},
   defaults: {},
 };

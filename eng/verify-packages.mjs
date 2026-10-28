@@ -458,13 +458,12 @@ import { Effect } from 'effect';
 assert.equal(runicSpaPageOptions.ssr, false);
 assert.ok(Object.keys(vite).length);
 const bridge = installMockBridge();
-const consumerView = bridge.view('consumer', { state: { value: 1, rows: [{ id: 1 }] } });
-bridge.route('consumerStartSave', payload => JSON.stringify({ kind: 'accepted',
-  terminal: { contract: 'Consumer:fingerprint:consumer', requestId: payload, kind: 'succeeded', result: 3 } }));
-const client = await connectView({ contract: 'Consumer:fingerprint', route: 'consumer', mount: false,
-  hydrate: wire => ({ value: bridgeWire.integer(wire.value, 0, 9),
-    rows: bridgeWire.array(wire.rows, row => bridgeWire.object(row, item => ({ id: bridgeWire.integer(item.id, 0, 9) }))) }),
-  collections: defineCollections({ rows: defineCollection(row => bridgeWire.object(row, item => ({ id: bridgeWire.integer(item.id, 0, 9) })), row => String(row.id)) }),
+const consumerView = bridge.view('consumer', { state: { value: 1, rows: [{ id: 1 }] }, contract: 'Consumer:fingerprint',
+  collections: { rows: row => String(row.id) }, operations: { save: () => ({ result: 3 }) } });
+const row = value => bridgeWire.object(value, item => ({ id: bridgeWire.integer(item.id, 0, 9) }));
+const client = await connectView({ contract: 'Consumer:fingerprint', route: 'consumer',
+  members: { value: wire => bridgeWire.integer(wire, 0, 9), rows: wire => bridgeWire.array(wire, row) },
+  collections: defineCollections({ rows: defineCollection(row, item => String(item.id)) }),
   interactions: defineInteractions({ confirm: { contract: 'Consumer:interaction:Confirm', decodeInput: bridgeWire.string, encodeOutput: value => value } }),
   operations: bridgeOperations });
 assert.equal(client.snapshot.value, 1);
@@ -474,16 +473,23 @@ const diagnostics = [];
 const stopDiagnostics = onBridgeDiagnostic(diagnostic => diagnostics.push(diagnostic));
 const consoleError = console.error;
 console.error = () => {};
-try { consumerView.update({ rows: [{ id: 2 }, { id: 2 }] }); } finally { console.error = consoleError; stopDiagnostics(); }
-assert.equal(diagnostics.length, 1);
-assert.deepEqual(client.snapshot.rows, [{ id: 1 }]);
+try {
+  consumerView.update({ rows: [{ id: 2 }, { id: 2 }] });
+  await bridge.flush();
+  assert.ok(diagnostics.length >= 1);
+  assert.deepEqual(client.snapshot.rows, [{ id: 1 }]);
+  // The client recovers with a snapshot once the rows are valid again.
+  consumerView.update({ rows: [{ id: 3 }] });
+  for (let attempt = 0; attempt < 40 && client.snapshot.rows[0]?.id !== 3; attempt++) await new Promise(resolve => setTimeout(resolve, 50));
+  assert.deepEqual(client.snapshot.rows, [{ id: 3 }]);
+} finally { console.error = consoleError; stopDiagnostics(); }
 const stopConfirm = client.interactions.confirm.handle(() => true);
 stopConfirm();
-const operation = await client.startOperation('Save', 'save-1', () => 'save-1', value => bridgeWire.integer(value, 0, 9));
+const operation = await client.start('save', 'save-1', undefined, { decode: value => bridgeWire.integer(value, 0, 9) });
 assert.equal((await operation.completion).result, 3);
 client.dispose();
-await assert.rejects(client.invoke('consumerSetValue', 2), error => error instanceof BridgeError && error.kind === 'released');
-assert.equal((await Effect.runPromise(Effect.flip(command(() => client.invoke('consumerSetValue', 2)))))._tag, 'ViewReleased');
+await assert.rejects(client.set('value', 2), error => error instanceof BridgeError && error.kind === 'released');
+assert.equal((await Effect.runPromise(Effect.flip(command(() => client.set('value', 2)))))._tag, 'ViewReleased');
 for (const hook of [useReactView, useVueView]) assert.equal(typeof hook, 'function');
 console.log('Packed npm consumers passed.');
 `,

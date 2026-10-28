@@ -34,7 +34,7 @@ export interface EditorMock extends MockTypedView<EditorMockState, EditorClient,
 const spec: MockTypedViewSpec = {
   kind: "editor",
   route: "editor",
-  contract: "NotesWindowViews.EditorViewModel:7E66E532FEB7FFF8F3E463213E7A1FACC34E333EBB3B5C9C71E6B8307E1E37C3",
+  contract: "NotesWindowViews.EditorViewModel:1160496013C85294527537E950775D8901F2B81EC31DE93996835B51444AF521",
   fields: {
     isDirty: { encode: (value: unknown) => { const typed = value as boolean; return typed; }, decode: (wire: unknown) => bridgeWire.boolean(wire) },
     savedMessage: { encode: (value: unknown) => { const typed = value as string; return typed; }, decode: (wire: unknown) => bridgeWire.string(wire) },
@@ -44,14 +44,14 @@ const spec: MockTypedViewSpec = {
   defaults: { canSave: true, isSaveExecuting: false },
   checkedFields: ["title", "body"],
   setters: {
-    setTitle: { route: "SetTitle", field: "title", read: (raw: unknown) => raw, checked: "WriteTitle" },
-    setBody: { route: "SetBody", field: "body", read: (raw: unknown) => raw, checked: "WriteBody" },
+    setTitle: { member: "title", checked: "writeTitle" },
+    setBody: { member: "body", checked: "writeBody" },
   },
   commands: {
-    save: { route: "Save", available: "canSave", encodeFailure: (value: unknown) => { const typed = value as SaveFailure; return (() => { const bridgeUnion0: any = bridgeWire.encodeUnion(typed); switch (bridgeUnion0.$case) { case "titleRequired": return { "$case": "titleRequired" }; case "titleTaken": return { "$case": "titleTaken", ["existingTitle"]: bridgeUnion0["existingTitle"] }; default: throw new RangeError("Unknown union case."); } })(); } },
+    save: { member: "save", available: "canSave", encodeFailure: (value: unknown) => { const typed = value as SaveFailure; return (() => { const bridgeUnion0: any = bridgeWire.encodeUnion(typed); switch (bridgeUnion0.$case) { case "titleRequired": return { "$case": "titleRequired" }; case "titleTaken": return { "$case": "titleTaken", ["existingTitle"]: bridgeUnion0["existingTitle"] }; default: throw new RangeError("Unknown union case."); } })(); } },
   },
   operations: {
-    save: { member: "Save", encodeFailure: (value: unknown) => { const typed = value as SaveFailure; return (() => { const bridgeUnion0: any = bridgeWire.encodeUnion(typed); switch (bridgeUnion0.$case) { case "titleRequired": return { "$case": "titleRequired" }; case "titleTaken": return { "$case": "titleTaken", ["existingTitle"]: bridgeUnion0["existingTitle"] }; default: throw new RangeError("Unknown union case."); } })(); } },
+    save: { member: "save", encodeFailure: (value: unknown) => { const typed = value as SaveFailure; return (() => { const bridgeUnion0: any = bridgeWire.encodeUnion(typed); switch (bridgeUnion0.$case) { case "titleRequired": return { "$case": "titleRequired" }; case "titleTaken": return { "$case": "titleTaken", ["existingTitle"]: bridgeUnion0["existingTitle"] }; default: throw new RangeError("Unknown union case."); } })(); } },
   },
 };
 

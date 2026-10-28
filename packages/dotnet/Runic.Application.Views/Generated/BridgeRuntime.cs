@@ -27,7 +27,6 @@ public sealed class PropertyDescriptor<T>
 {
     private readonly Func<T, object?> _getter;
     private readonly Action<T, JsonElement>? _setter;
-    private readonly Action<T, IBridgeArguments>? _legacySetter;
 
     /// <summary>Describes a property whose setter reads the <c>value</c> of a <c>set</c> request.</summary>
     /// <param name="name">The .NET property name.</param>
@@ -63,97 +62,29 @@ public sealed class PropertyDescriptor<T>
     public PropertyDescriptor(string name, string wireName, Func<T, object?> getter, Action<T, JsonElement>? setter, Func<T, object?> observe)
         : this(name, wireName, getter, setter) => Observe = observe ?? throw new ArgumentNullException(nameof(observe));
 
-    /// <summary>Describes a property with a Views protocol 3 setter.</summary>
-    /// <remarks>Kept until the generator emits <see cref="JsonElement"/> setters; the wire name is read from the Bridge's data metadata.</remarks>
-    /// <param name="name">The .NET property name.</param>
-    /// <param name="getter">Reads the property value.</param>
-    /// <param name="setter">Writes the property from browser arguments, or <see langword="null"/> for a read-only property.</param>
-    public PropertyDescriptor(string name, Func<T, object?> getter, Action<T, IBridgeArguments>? setter)
-    {
-        ArgumentException.ThrowIfNullOrEmpty(name);
-        Name = name;
-        _getter = getter ?? throw new ArgumentNullException(nameof(getter));
-        _legacySetter = setter;
-    }
-
-    /// <summary>Describes a property whose value comes from an observed sub-object, with a Views protocol 3 setter.</summary>
-    /// <param name="name">The .NET property name.</param>
-    /// <param name="getter">Reads the property's wire value.</param>
-    /// <param name="setter">Writes the property from browser arguments, or <see langword="null"/> for a read-only property.</param>
-    /// <param name="observe">Returns the sub-object the Bridge observes for this property.</param>
-    public PropertyDescriptor(string name, Func<T, object?> getter, Action<T, IBridgeArguments>? setter, Func<T, object?> observe)
-        : this(name, getter, setter) => Observe = observe ?? throw new ArgumentNullException(nameof(observe));
-
     // The sub-object whose changes the Bridge observes, if any.
     internal Func<T, object?>? Observe { get; }
 
     /// <summary>The .NET property name.</summary>
     public string Name { get; }
-    /// <summary>The member's wire name in state, or <see langword="null"/> for a descriptor of the Views protocol 3 shape.</summary>
-    public string? WireName { get; }
+    /// <summary>The member's wire name in state.</summary>
+    public string WireName { get; }
     /// <summary>
     /// The wire name of a <see cref="RunicAppendOnlyTextAttribute"/> property whose appended text the Bridge publishes
     /// as a frame, or <see langword="null"/>. <see cref="Get"/> returns its <see cref="string"/> value.
     /// </summary>
     public string? AppendOnlyTextField { get; init; }
     /// <summary>Whether the browser may write the property.</summary>
-    public bool CanWrite => _setter is not null || _legacySetter is not null;
+    public bool CanWrite => _setter is not null;
     /// <summary>Reads the property value from <paramref name="vm"/>.</summary>
     public object? Get(T vm) => _getter(vm);
 
     // Writes the property from a set request's value.
     internal void Set(T vm, JsonElement value)
     {
-        if (_setter is not null) _setter(vm, value);
-        else if (_legacySetter is not null) BridgeLegacyArguments.Set(_legacySetter, vm, value);
-        else throw new InvalidOperationException($"{Name} is read-only.");
+        if (_setter is null) throw new InvalidOperationException($"{Name} is read-only.");
+        _setter(vm, value);
     }
-}
-
-// Runs a setter of the Views protocol 3 shape (IBridgeArguments) with a set request's value, until the generator emits
-// JsonElement setters. Such a setter reads an int with GetInt64, a bool with GetBoolean, a non-nullable string with
-// GetString (the value) and every other type with GetString (its JSON text). GetString therefore first returns a string
-// value as itself; when the setter then fails to read it as JSON text, it runs again with the JSON text. Reading fails
-// before the property is assigned, so the first attempt has no effect.
-internal sealed class BridgeLegacyArguments : IBridgeArguments
-{
-    private readonly JsonElement _value;
-    private readonly bool _raw;
-
-    private BridgeLegacyArguments(JsonElement value, bool raw)
-    {
-        _value = value;
-        _raw = raw;
-    }
-
-    internal static void Set<T>(Action<T, IBridgeArguments> setter, T vm, JsonElement value)
-    {
-        if (value.ValueKind != JsonValueKind.String)
-        {
-            setter(vm, new BridgeLegacyArguments(value, raw: true));
-            return;
-        }
-        try { setter(vm, new BridgeLegacyArguments(value, raw: false)); }
-        catch (Exception error) when (error is JsonException or FormatException)
-        {
-            setter(vm, new BridgeLegacyArguments(value, raw: true));
-        }
-    }
-
-    // A command input: GetString is always the JSON text.
-    internal static IBridgeArguments Input(JsonElement value) => new BridgeLegacyArguments(value, raw: true);
-
-    public long GetInt64() => _value.ValueKind == JsonValueKind.Number && _value.TryGetInt64(out var value)
-        ? value : throw new FormatException("Expected an integer.");
-
-    public bool GetBoolean() => _value.ValueKind switch
-    {
-        JsonValueKind.True => true,
-        JsonValueKind.False => false,
-        _ => throw new FormatException("Expected a Boolean."),
-    };
-
-    public string GetString() => _raw ? _value.GetRawText() : _value.GetString()!;
 }
 
 /// <summary>
@@ -241,18 +172,6 @@ public sealed class CheckedPropertyDescriptor<T>(
     }
 }
 
-// Generated snapshot writers call the supplied callback while their JSON
-// object is still open. The base Bridge uses it for hidden per-field versions;
-// generated public State interfaces never expose those versions.
-/// <summary>Writes a ViewModel snapshot. Implemented by generated bridges.</summary>
-/// <param name="writer">The JSON writer.</param>
-/// <param name="viewModel">The ViewModel to write.</param>
-/// <param name="revision">The snapshot revision.</param>
-/// <param name="writeFieldMetadata">Writes field-write metadata while the snapshot object is open.</param>
-[EditorBrowsable(EditorBrowsableState.Never)]
-public delegate void BridgeSnapshotWriter<T>(Utf8JsonWriter writer, T viewModel,
-    long revision, Action<Utf8JsonWriter> writeFieldMetadata);
-
 /// <summary>Describes one bridged command. Created by generated bridges.</summary>
 /// <remarks>
 /// Generated code sets the members a command needs with an object initializer, so a later release
@@ -282,11 +201,16 @@ public sealed class CommandDescriptor<T>(string name, Func<T, object> get)
     /// </summary>
     public Func<JsonElement, object?>? ReadInput { get; init; }
 
-    /// <summary>Decodes the browser argument of the Views protocol 3 shape; kept until the generator emits <see cref="ReadInput"/>.</summary>
-    public Func<IBridgeArguments, object?>? ReadArgument { get; init; }
+    // The protocol-3 argument reader of the operation start code in BridgeRuntime.Operations.cs, which the protocol-4
+    // operations replace: the arguments' string is the input's JSON text.
+    internal Func<IBridgeArguments, object?>? ReadArgument => ReadInput is not { } read ? null : arguments =>
+    {
+        using var document = JsonDocument.Parse(arguments.GetString());
+        return read(document.RootElement);
+    };
 
     // Whether the command takes an input.
-    internal bool HasInput => ReadInput is not null || ReadArgument is not null;
+    internal bool HasInput => ReadInput is not null;
 
     // The member name of command, can and start requests.
     internal string Member => WireName ?? char.ToLowerInvariant(Name[0]) + Name[1..];
@@ -480,9 +404,8 @@ public partial class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBr
     private readonly string _name;
     private static readonly string ModelName = typeof(T).Name;
     private readonly Microsoft.Extensions.Logging.ILogger _logger;
-    // The state writer: the members of a Bridge generated for Views protocol 4, or the protocol-3 snapshot writer.
-    private readonly BridgeStateMember<T>[]? _stateMembers;
-    private readonly BridgeSnapshotWriter<T>? _writeSnapshot;
+    // The state members, in state order.
+    private readonly BridgeStateMember<T>[] _stateMembers;
     private readonly PropertyDescriptor<T>[] _properties;
     private readonly CheckedPropertyBinding[] _checkedProperties;
     // Checked fields of a Bridge without a window, whose writes fail.
@@ -512,26 +435,6 @@ public partial class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBr
     private bool _disposed;
     private int _detaching;
 
-    /// <summary>Creates the Bridge of a ViewModel. <paramref name="checkedProperties"/> are the properties with acknowledged field writes, if any.</summary>
-    protected ViewModelBridge(
-        IBridgeTransport transport,
-        T vm,
-        string name,
-        BridgeSnapshotWriter<T> writeSnapshot,
-        PropertyDescriptor<T>[] properties,
-        CheckedPropertyDescriptor<T>[] checkedProperties,
-        CommandDescriptor<T>[] commands,
-        string? contractFingerprint = null,
-        WindowContentSession? content = null,
-        BridgeInteractionDescriptor<T>[]? interactions = null,
-        BridgeDataSubscriptionMember[]? dataSubscriptions = null,
-        BridgeCollectionDescriptor<T>[]? collections = null)
-        : this(transport, vm, name, writeSnapshot ?? throw new ArgumentNullException(nameof(writeSnapshot)), null,
-            properties, checkedProperties, commands, contractFingerprint, content, interactions, dataSubscriptions, collections)
-    {
-    }
-
-#pragma warning disable RS0026 // Generated code passes every argument; the overloads differ in the state writer.
     /// <summary>Creates the Bridge of a ViewModel whose state is written member by member.</summary>
     /// <param name="transport">The window's transport.</param>
     /// <param name="vm">The ViewModel.</param>
@@ -558,28 +461,9 @@ public partial class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBr
         BridgeInteractionDescriptor<T>[]? interactions = null,
         BridgeDataSubscriptionMember[]? dataSubscriptions = null,
         BridgeCollectionDescriptor<T>[]? collections = null)
-        : this(transport, vm, name, null, state ?? throw new ArgumentNullException(nameof(state)),
-            properties, checkedProperties, commands, contractFingerprint, content, interactions, dataSubscriptions, collections)
-    {
-    }
-#pragma warning restore RS0026
-
-    private ViewModelBridge(
-        IBridgeTransport transport,
-        T vm,
-        string name,
-        BridgeSnapshotWriter<T>? writeSnapshot,
-        BridgeStateMember<T>[]? state,
-        PropertyDescriptor<T>[] properties,
-        CheckedPropertyDescriptor<T>[] checkedProperties,
-        CommandDescriptor<T>[] commands,
-        string? contractFingerprint,
-        WindowContentSession? content,
-        BridgeInteractionDescriptor<T>[]? interactions,
-        BridgeDataSubscriptionMember[]? dataSubscriptions,
-        BridgeCollectionDescriptor<T>[]? collections)
     {
         ArgumentNullException.ThrowIfNull(transport);
+        ArgumentNullException.ThrowIfNull(state);
         ArgumentNullException.ThrowIfNull(properties);
         ArgumentNullException.ThrowIfNull(checkedProperties);
         ArgumentNullException.ThrowIfNull(commands);
@@ -604,7 +488,6 @@ public partial class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBr
         _delivery = new(transport, name, _modelTurn, CaptureRequestedState, RunRequestedUnit, ModelName, _logger);
         _replyOrder = BridgeReplyOrder.For(transport);
         _name = name;
-        _writeSnapshot = writeSnapshot;
         _stateMembers = state;
         _properties = properties;
         _textFields = [.. properties.Where(property => property.AppendOnlyTextField is not null)];
@@ -615,12 +498,8 @@ public partial class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBr
         foreach (var descriptor in _incrementalCollections) _incrementalMembers.Add(descriptor.Name);
         foreach (var field in _textFields) _incrementalMembers.Add(field.AppendOnlyTextField!);
 
-        // The wire names of descriptors of the protocol-3 shape come from the data metadata.
-        var wireNames = new Dictionary<string, string>(StringComparer.Ordinal);
-        if (dataSubscriptions is not null)
-            foreach (var member in dataSubscriptions) wireNames.TryAdd(member.PropertyName, member.Name);
         foreach (var property in properties.Where(property => property.CanWrite))
-            _settable[property.WireName ?? wireNames.GetValueOrDefault(property.Name) ?? LowerFirst(property.Name)] = property;
+            _settable[property.WireName] = property;
         foreach (var command in commands) _commandsByMember[command.Member] = command;
 
         var bindings = new List<IDisposable>();
@@ -704,7 +583,6 @@ public partial class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBr
         }
     }
 
-    private static string LowerFirst(string name) => name.Length == 0 ? name : char.ToLowerInvariant(name[0]) + name[1..];
 
     // Seam (P4 -> P5), implemented in BridgeRuntime.Operations.cs: the operation and interaction requests of the route.
     private partial ValueTask<ReadOnlyMemory<byte>> HandleOperationAsync(BridgeRouteRequest request, CancellationToken cancellationToken);

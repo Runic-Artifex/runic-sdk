@@ -6,20 +6,20 @@ internal sealed class ToolkitCancelBridge : global::Runic.Application.Views.Gene
 {
     internal ToolkitCancelBridge(global::Runic.Application.Views.IBridgeTransport transport, global::Runic.Application.Testing.Tests.ToolkitCancelViewModel vm, string? routePrefix = null, global::Runic.Application.Views.WindowContentSession? content = null) : base(
         transport, vm, routePrefix ?? "toolkitCancel",
-        WriteSnapshot,
+        State,
         [
-            new global::Runic.Application.Views.Generated.PropertyDescriptor<global::Runic.Application.Testing.Tests.ToolkitCancelViewModel>("CancelledCount", vm => vm.CancelledCount, null),
-            new global::Runic.Application.Views.Generated.PropertyDescriptor<global::Runic.Application.Testing.Tests.ToolkitCancelViewModel>("ExportInput", vm => vm.ExportInput, null),
+            new global::Runic.Application.Views.Generated.PropertyDescriptor<global::Runic.Application.Testing.Tests.ToolkitCancelViewModel>("CancelledCount", "cancelledCount", vm => vm.CancelledCount, null),
+            new global::Runic.Application.Views.Generated.PropertyDescriptor<global::Runic.Application.Testing.Tests.ToolkitCancelViewModel>("ExportInput", "exportInput", vm => vm.ExportInput, null),
         ],
         [
         ],
         [
-            new global::Runic.Application.Views.Generated.CommandDescriptor<global::Runic.Application.Testing.Tests.ToolkitCancelViewModel>("Save", vm => (object)vm.SaveCommand) { ExecuteAsync = async (vm, token, argument) => { token.ThrowIfCancellationRequested(); var command = (global::CommunityToolkit.Mvvm.Input.IAsyncRelayCommand)vm.SaveCommand; using var registration = token.Register(command.Cancel); await command.ExecuteAsync(null).ConfigureAwait(false); }, Subscribe = (vm, changed) => new ToolkitRunningSubscription(vm.SaveCommand, changed) },
-            new global::Runic.Application.Views.Generated.CommandDescriptor<global::Runic.Application.Testing.Tests.ToolkitCancelViewModel>("SaveCancel", vm => (object)vm.SaveCancelCommand),
-            new global::Runic.Application.Views.Generated.CommandDescriptor<global::Runic.Application.Testing.Tests.ToolkitCancelViewModel>("Export", vm => (object)vm.ExportCommand) { ExecuteAsync = async (vm, token, argument) => { token.ThrowIfCancellationRequested(); var command = (global::CommunityToolkit.Mvvm.Input.IAsyncRelayCommand<global::System.String>)vm.ExportCommand; using var registration = token.Register(command.Cancel); await command.ExecuteAsync((global::System.String)argument!).ConfigureAwait(false); }, ReadArgument = e => { using var document = global::System.Text.Json.JsonDocument.Parse(e.GetString()); return ExportCommandInputCodec.Read(document.RootElement); }, EncodeArgument = argument => global::Runic.Application.Views.Generated.BridgeWire.EncodeCanonical(writer => ExportCommandInputCodec.Write(writer, (global::System.String)argument!)), Subscribe = (vm, changed) => new ToolkitRunningSubscription(vm.ExportCommand, changed) },
-            new global::Runic.Application.Views.Generated.CommandDescriptor<global::Runic.Application.Testing.Tests.ToolkitCancelViewModel>("ExportCancel", vm => (object)vm.ExportCancelCommand),
-            new global::Runic.Application.Views.Generated.CommandDescriptor<global::Runic.Application.Testing.Tests.ToolkitCancelViewModel>("Background", vm => (object)vm.BackgroundCommand) { ExecuteAsync = async (vm, token, argument) => { token.ThrowIfCancellationRequested(); var command = (global::CommunityToolkit.Mvvm.Input.IAsyncRelayCommand)vm.BackgroundCommand; using var registration = token.Register(command.Cancel); await command.ExecuteAsync(null).ConfigureAwait(false); }, Subscribe = (vm, changed) => new ToolkitRunningSubscription(vm.BackgroundCommand, changed) },
-            new global::Runic.Application.Views.Generated.CommandDescriptor<global::Runic.Application.Testing.Tests.ToolkitCancelViewModel>("BackgroundCancel", vm => (object)vm.BackgroundCancelCommand),
+            new global::Runic.Application.Views.Generated.CommandDescriptor<global::Runic.Application.Testing.Tests.ToolkitCancelViewModel>("Save", vm => (object)vm.SaveCommand) { ExecuteAsync = async (vm, token, argument) => { token.ThrowIfCancellationRequested(); var command = (global::CommunityToolkit.Mvvm.Input.IAsyncRelayCommand)vm.SaveCommand; using var registration = token.Register(command.Cancel); await command.ExecuteAsync(null).ConfigureAwait(false); }, Subscribe = (vm, changed) => new ToolkitRunningSubscription(vm.SaveCommand, changed), WireName = "save" },
+            new global::Runic.Application.Views.Generated.CommandDescriptor<global::Runic.Application.Testing.Tests.ToolkitCancelViewModel>("SaveCancel", vm => (object)vm.SaveCancelCommand) { WireName = "saveCancel" },
+            new global::Runic.Application.Views.Generated.CommandDescriptor<global::Runic.Application.Testing.Tests.ToolkitCancelViewModel>("Export", vm => (object)vm.ExportCommand) { ExecuteAsync = async (vm, token, argument) => { token.ThrowIfCancellationRequested(); var command = (global::CommunityToolkit.Mvvm.Input.IAsyncRelayCommand<global::System.String>)vm.ExportCommand; using var registration = token.Register(command.Cancel); await command.ExecuteAsync((global::System.String)argument!).ConfigureAwait(false); }, ReadInput = input => ExportCommandInputCodec.Read(input), EncodeArgument = argument => global::Runic.Application.Views.Generated.BridgeWire.EncodeCanonical(writer => ExportCommandInputCodec.Write(writer, (global::System.String)argument!)), Subscribe = (vm, changed) => new ToolkitRunningSubscription(vm.ExportCommand, changed), WireName = "export" },
+            new global::Runic.Application.Views.Generated.CommandDescriptor<global::Runic.Application.Testing.Tests.ToolkitCancelViewModel>("ExportCancel", vm => (object)vm.ExportCancelCommand) { WireName = "exportCancel" },
+            new global::Runic.Application.Views.Generated.CommandDescriptor<global::Runic.Application.Testing.Tests.ToolkitCancelViewModel>("Background", vm => (object)vm.BackgroundCommand) { ExecuteAsync = async (vm, token, argument) => { token.ThrowIfCancellationRequested(); var command = (global::CommunityToolkit.Mvvm.Input.IAsyncRelayCommand)vm.BackgroundCommand; using var registration = token.Register(command.Cancel); await command.ExecuteAsync(null).ConfigureAwait(false); }, Subscribe = (vm, changed) => new ToolkitRunningSubscription(vm.BackgroundCommand, changed), WireName = "background" },
+            new global::Runic.Application.Views.Generated.CommandDescriptor<global::Runic.Application.Testing.Tests.ToolkitCancelViewModel>("BackgroundCancel", vm => (object)vm.BackgroundCancelCommand) { WireName = "backgroundCancel" },
         ], "<fingerprint>", content,
         null,
         dataSubscriptions: DataMetadata,
@@ -101,22 +101,18 @@ private static class ExportCommandInputCodec
         public void Dispose() => _command.PropertyChanged -= _handler;
     }
 
-    private static void WriteSnapshot(global::System.Text.Json.Utf8JsonWriter writer, global::Runic.Application.Testing.Tests.ToolkitCancelViewModel vm, long revision, global::System.Action<global::System.Text.Json.Utf8JsonWriter> writeFieldMetadata)
-    {
-        writer.WriteStartObject();
-        writer.WriteNumber("revision", revision);
-        writer.WritePropertyName("cancelledCount");
-        CancelledCountValueCodec.Write(writer, vm.CancelledCount);
-        writer.WritePropertyName("exportInput");
-        ExportInputValueCodec.Write(writer, vm.ExportInput);
-        writer.WriteBoolean("canSave", ((global::System.Windows.Input.ICommand)vm.SaveCommand).CanExecute(null));
-        writer.WriteBoolean("isSaveExecuting", ((global::CommunityToolkit.Mvvm.Input.IAsyncRelayCommand)vm.SaveCommand).IsRunning);
-        writer.WriteBoolean("canSaveCancel", ((global::System.Windows.Input.ICommand)vm.SaveCancelCommand).CanExecute(null));
-        writer.WriteBoolean("isExportExecuting", ((global::CommunityToolkit.Mvvm.Input.IAsyncRelayCommand)vm.ExportCommand).IsRunning);
-        writer.WriteBoolean("canExportCancel", ((global::System.Windows.Input.ICommand)vm.ExportCancelCommand).CanExecute(null));
-        writer.WriteBoolean("canBackground", ((global::System.Windows.Input.ICommand)vm.BackgroundCommand).CanExecute(null));
-        writer.WriteBoolean("isBackgroundExecuting", ((global::CommunityToolkit.Mvvm.Input.IAsyncRelayCommand)vm.BackgroundCommand).IsRunning);
-        writer.WriteBoolean("canBackgroundCancel", ((global::System.Windows.Input.ICommand)vm.BackgroundCancelCommand).CanExecute(null));
-        writer.WriteEndObject();
-    }
+    private static readonly global::Runic.Application.Views.Generated.BridgeStateMember<global::Runic.Application.Testing.Tests.ToolkitCancelViewModel>[] State =
+    [
+        new global::Runic.Application.Views.Generated.BridgeStateMember<global::Runic.Application.Testing.Tests.ToolkitCancelViewModel>("cancelledCount", static (writer, vm) => CancelledCountValueCodec.Write(writer, vm.CancelledCount)),
+        new global::Runic.Application.Views.Generated.BridgeStateMember<global::Runic.Application.Testing.Tests.ToolkitCancelViewModel>("exportInput", static (writer, vm) => ExportInputValueCodec.Write(writer, vm.ExportInput)),
+        new global::Runic.Application.Views.Generated.BridgeStateMember<global::Runic.Application.Testing.Tests.ToolkitCancelViewModel>("canSave", static (writer, vm) => writer.WriteBooleanValue(((global::System.Windows.Input.ICommand)vm.SaveCommand).CanExecute(null))),
+        new global::Runic.Application.Views.Generated.BridgeStateMember<global::Runic.Application.Testing.Tests.ToolkitCancelViewModel>("isSaveExecuting", static (writer, vm) => writer.WriteBooleanValue(((global::CommunityToolkit.Mvvm.Input.IAsyncRelayCommand)vm.SaveCommand).IsRunning)),
+        new global::Runic.Application.Views.Generated.BridgeStateMember<global::Runic.Application.Testing.Tests.ToolkitCancelViewModel>("canSaveCancel", static (writer, vm) => writer.WriteBooleanValue(((global::System.Windows.Input.ICommand)vm.SaveCancelCommand).CanExecute(null))),
+        new global::Runic.Application.Views.Generated.BridgeStateMember<global::Runic.Application.Testing.Tests.ToolkitCancelViewModel>("isExportExecuting", static (writer, vm) => writer.WriteBooleanValue(((global::CommunityToolkit.Mvvm.Input.IAsyncRelayCommand)vm.ExportCommand).IsRunning)),
+        new global::Runic.Application.Views.Generated.BridgeStateMember<global::Runic.Application.Testing.Tests.ToolkitCancelViewModel>("canExportCancel", static (writer, vm) => writer.WriteBooleanValue(((global::System.Windows.Input.ICommand)vm.ExportCancelCommand).CanExecute(null))),
+        new global::Runic.Application.Views.Generated.BridgeStateMember<global::Runic.Application.Testing.Tests.ToolkitCancelViewModel>("canBackground", static (writer, vm) => writer.WriteBooleanValue(((global::System.Windows.Input.ICommand)vm.BackgroundCommand).CanExecute(null))),
+        new global::Runic.Application.Views.Generated.BridgeStateMember<global::Runic.Application.Testing.Tests.ToolkitCancelViewModel>("isBackgroundExecuting", static (writer, vm) => writer.WriteBooleanValue(((global::CommunityToolkit.Mvvm.Input.IAsyncRelayCommand)vm.BackgroundCommand).IsRunning)),
+        new global::Runic.Application.Views.Generated.BridgeStateMember<global::Runic.Application.Testing.Tests.ToolkitCancelViewModel>("canBackgroundCancel", static (writer, vm) => writer.WriteBooleanValue(((global::System.Windows.Input.ICommand)vm.BackgroundCancelCommand).CanExecute(null))),
+    ]
+    ;
 }

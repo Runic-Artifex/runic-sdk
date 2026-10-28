@@ -1,42 +1,104 @@
+using Runic.Application.Views;
+using Runic.Navigation;
 using TUnit.Core;
 
 namespace Runic.Application.Testing.Tests;
 
-/// <summary>Runs the Bun harness against a transcript emitted by this built test application.</summary>
+/// <summary>Runs the generated-client Bun harnesses: type checks, the live clients against their generated bridges, and the mock harnesses.</summary>
 internal sealed class GeneratedClientHarness
 {
     [Test]
-    [Skip("P6: the generated-client harness speaks protocol 4 with P6's regenerated clients")]
     public async Task GeneratedClientTypeChecksAndPassesTheBunHarnessesAsync()
     {
         var root = FindWorkspaceRoot();
         var generated = Path.Combine(root, "tests", "dotnet", "Runic.Application.Testing.Tests",
             "obj", "bridge-frontend", "generated");
-        var fixture = Path.Combine(Path.GetTempPath(), $"runic-generated-client-{Guid.NewGuid():N}.json");
-        try
-        {
-            // Match Angular's strict consumer flags across every fixture,
-            // including receipts and validation that the template may not use.
-            await GeneratedHarnessProcess.RunAsync("bun", [Path.Combine(root, "node_modules", "typescript", "bin", "tsc"),
-                "--noEmit", "--strict", "--noPropertyAccessFromIndexSignature", "--noImplicitReturns",
-                "--noFallthroughCasesInSwitch", "--target", "ES2022", "--module", "ESNext",
-                "--moduleResolution", "bundler", "--skipLibCheck", .. Directory.GetFiles(generated, "*.ts"),
-                Path.Combine(root, "tests", "dotnet", "Runic.Application.Testing.Tests", "GeneratedTypesCheck.ts")], root)
-                .ConfigureAwait(false);
-            await GeneratedHarnessProcess.RunAsync("dotnet", [typeof(GeneratedClientHarness).Assembly.Location,
-                "--export-generated-client-fixture", fixture], root).ConfigureAwait(false);
-            await GeneratedHarnessProcess.RunAsync("bun", [Path.Combine(root, "tests", "dotnet", "Runic.Application.Testing.Tests",
-                "GeneratedClientHarness.ts"), fixture, generated], root).ConfigureAwait(false);
-            await GeneratedHarnessProcess.RunAsync("bun", [Path.Combine(root, "tests", "dotnet", "Runic.Application.Testing.Tests",
-                "GeneratedReconnectClientHarness.ts"), generated], root).ConfigureAwait(false);
-            await GeneratedHarnessProcess.RunAsync("bun", [Path.Combine(root, "tests", "dotnet", "Runic.Application.Testing.Tests",
-                "GeneratedMockHarness.ts"), generated], root).ConfigureAwait(false);
-        }
-        finally
-        {
-            try { File.Delete(fixture); }
-            catch (IOException) { }
-        }
+        // Match Angular's strict consumer flags across every fixture,
+        // including receipts and validation that the template may not use.
+        await GeneratedHarnessProcess.RunAsync("bun", [Path.Combine(root, "node_modules", "typescript", "bin", "tsc"),
+            "--noEmit", "--strict", "--noPropertyAccessFromIndexSignature", "--noImplicitReturns",
+            "--noFallthroughCasesInSwitch", "--target", "ES2022", "--module", "ESNext",
+            "--moduleResolution", "bundler", "--skipLibCheck", .. Directory.GetFiles(generated, "*.ts"),
+            Path.Combine(root, "tests", "dotnet", "Runic.Application.Testing.Tests", "GeneratedTypesCheck.ts")], root)
+            .ConfigureAwait(false);
+        await GeneratedHarnessProcess.RunAsync("bun", [Path.Combine(root, "tests", "dotnet", "Runic.Application.Testing.Tests",
+            "GeneratedReconnectClientHarness.ts"), generated], root).ConfigureAwait(false);
+        await GeneratedHarnessProcess.RunAsync("bun", [Path.Combine(root, "tests", "dotnet", "Runic.Application.Testing.Tests",
+            "GeneratedMockHarness.ts"), generated], root).ConfigureAwait(false);
+    }
+
+    // GeneratedClientHarness.ts: state, setters, checked writes, commands and validation of generated clients against
+    // their generated bridges.
+    [Test]
+    public Task GeneratedClientsTalkToTheirGeneratedBridgesAsync() => RunLiveAsync("GeneratedClientHarness.ts");
+
+    // GeneratedOperationClientHarness.ts: operations and interactions.
+    [Test]
+    [Skip("P5: needs the operation requests (start, status, watch) and interactions served")]
+    public Task GeneratedOperationClientsTalkToTheirGeneratedBridgesAsync() => RunLiveAsync("GeneratedOperationClientHarness.ts");
+
+    // Runs a live harness script against these windows.
+    private static async Task RunLiveAsync(string script)
+    {
+        var root = FindWorkspaceRoot();
+        var generated = Path.Combine(root, "tests", "dotnet", "Runic.Application.Testing.Tests",
+            "obj", "bridge-frontend", "generated");
+        var options = (string route) => new RunicWindowTestHostOptions { RootRoute = route, ViewLocator = new TestViewLocator() };
+        var dataShape = new DataShapeViewModel();
+        using var dataShapeHost = new RunicWindowTestHost<DataShapeViewModel>(dataShape,
+            (transport, content, vm) => new DataShapeBridge(transport, vm, content: content), options("dataShape"));
+        await using var context = new RunicModelContext();
+        var typed = new TypedReactiveViewModel(context);
+        using var contextLease = RunicModelContextRegistry.Shared.Bind(context, typed);
+        using var typedHost = new RunicWindowTestHost<TypedReactiveViewModel>(typed,
+            (transport, content, vm) => new TypedReactiveBridge(transport, vm, content: content), options("typedReactive"));
+        using var toolkitHost = new RunicWindowTestHost<ToolkitTypedViewModel>(new ToolkitTypedViewModel(),
+            (transport, content, vm) => new ToolkitTypedBridge(transport, vm, content: content), options("toolkitTyped"));
+        var failure = new FailureToolkitViewModel();
+        using var failureHost = new RunicWindowTestHost<FailureToolkitViewModel>(failure,
+            (transport, content, vm) => new FailureToolkitBridge(transport, vm, content: content), options("failureToolkit"));
+        var validation = new ValidationViewModel();
+        validation.SetErrors(null, new RunicValidationMessage("Entity failure", "entity", "error"));
+        validation.Profile.SetErrors(nameof(ValidationProfile.PostalCode), new RunicValidationMessage("Invalid postal code", "postal"));
+        validation.Items[0].SetErrors(nameof(ValidationItem.Name), "Missing label");
+        using var validationHost = new RunicWindowTestHost<ValidationViewModel>(validation,
+            (transport, content, vm) => new ValidationBridge(transport, vm, content: content), options("validation"));
+        var dtoList = new DtoListViewModel();
+        using var dtoListHost = new RunicWindowTestHost<DtoListViewModel>(dtoList,
+            (transport, content, vm) => new DtoListBridge(transport, vm, content: content), options("dtoList"));
+        // An interaction request carries its deadline as wall-clock time, which the client compares with its own clock.
+        using var dtoInteraction = new DtoInteractionViewModel();
+        using var dtoInteractionHost = new RunicWindowTestHost<DtoInteractionViewModel>(dtoInteraction,
+            (transport, content, vm) => new DtoInteractionBridge(transport, vm, content: content), new RunicWindowTestHostOptions
+            {
+                RootRoute = "dtoInteraction", ViewLocator = new TestViewLocator(), TimeProvider = TimeProvider.System,
+            });
+
+        using var live = new GeneratedClientLiveHost()
+            .Serve("dataShape", dataShapeHost.Transport)
+            .Serve("typedReactive", typedHost.Transport)
+            .Serve("toolkitTyped", toolkitHost.Transport)
+            .Serve("failureToolkit", failureHost.Transport)
+            .Serve("validation", validationHost.Transport)
+            .Serve("dtoList", dtoListHost.Transport)
+            .Serve("dtoInteraction", dtoInteractionHost.Transport)
+            .Step("dataShape.expectSet", () => Require(dataShape.Duration == -new TimeSpan(1, 2, 3, 4).Add(TimeSpan.FromTicks(5_000_007))
+                    && dataShape.Amount == 99.2500m && dataShape.Amount.Scale == 4
+                    && dataShape.Whole is { Name: "whole-from-client", RetryAfter: 11 },
+                "The generated setters' values did not reach the ViewModel as sent."))
+            .Step("typedReactive.releaseSave", typed.ReleaseSave)
+            .Step("failureToolkit.archive", () => failure.Title = "archived")
+            .Step("dtoList.expectReplaced", () => Require(dtoList.Entries is [{ Name: "replaced", Count: 5 }],
+                "The DTO list command did not reach the ViewModel."))
+            .Step("dtoInteraction.expectPicked", () => Require(dtoInteraction.Picked is { Name: "picked", Count: 6 },
+                "The DTO interaction output did not reach the ViewModel."));
+        await GeneratedHarnessProcess.RunAsync("bun", [Path.Combine(root, "tests", "dotnet", "Runic.Application.Testing.Tests",
+            script), generated], root, live).ConfigureAwait(false);
+    }
+
+    private static void Require(bool condition, string message)
+    {
+        if (!condition) throw new InvalidOperationException(message);
     }
 
     [Test]

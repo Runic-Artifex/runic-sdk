@@ -282,7 +282,9 @@
     },
     // Reads WebUI's state directly: the Bridge's isConnected() also allows navigation.
     onConnectionChange: listener => {
+      // A later listener gets the current state, not the one the last poll saw: WebUI can have connected since.
       if (connectionListeners.size === 0) reported = connected();
+      else watchConnection();
       connectionListeners.add(listener);
       startWatching();
       try { listener(reported); } catch (error) { console.error("Runic connection listener failed", error); }
