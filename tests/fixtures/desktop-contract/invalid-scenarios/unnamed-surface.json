@@ -1,0 +1,19 @@
+{
+  "format": "runic.desktop.conformance-scenario/1",
+  "id": "security.unnamed-surface.v1",
+  "contract": { "id": "runic.desktop.presentation", "version": 1 },
+  "area": "security",
+  "ids": { "host": "host-1", "surface": "surface-1", "session": "session-1" },
+  "arrange": [
+    { "op": "host.createStarted", "target": "host-1" },
+    { "op": "surface.createStarted", "target": "surface-1", "arguments": { "host": "host-1" } }
+  ],
+  "steps": [
+    { "op": "session.connect", "target": "session-1", "arguments": { "credential": "valid", "origin": "same-origin" } }
+  ],
+  "expect": {
+    "events": [{ "type": "session.authenticated", "subject": "session-1" }],
+    "states": [{ "subject": "session-1", "state": "authenticated" }],
+    "outcomes": []
+  }
+}

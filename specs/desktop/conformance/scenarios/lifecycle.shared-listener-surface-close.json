@@ -11,7 +11,7 @@
     "surfaceB": "surface-b"
   },
   "arrange": [
-    { "op": "host.create", "target": "host-1" },
+    { "op": "host.create", "target": "host-1", "arguments": { "listener": "listener-1" } },
     { "op": "surface.create", "target": "surface-a", "arguments": { "host": "host-1" } },
     { "op": "surface.create", "target": "surface-b", "arguments": { "host": "host-1" } }
   ],

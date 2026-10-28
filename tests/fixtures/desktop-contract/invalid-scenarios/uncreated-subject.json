@@ -1,0 +1,18 @@
+{
+  "format": "runic.desktop.conformance-scenario/1",
+  "id": "lifecycle.uncreated-subject.v1",
+  "contract": { "id": "runic.desktop.presentation", "version": 1 },
+  "area": "lifecycle",
+  "ids": { "host": "host-1" },
+  "arrange": [
+    { "op": "host.create", "target": "host-1" }
+  ],
+  "steps": [
+    { "op": "host.start", "target": "host-1" }
+  ],
+  "expect": {
+    "events": [{ "type": "host.started", "subject": "host-1" }],
+    "states": [{ "subject": "listener-1", "state": "listening" }],
+    "outcomes": []
+  }
+}
