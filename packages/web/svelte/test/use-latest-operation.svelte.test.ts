@@ -21,6 +21,7 @@ function work(requestId: string, result: number) {
     status: () => terminal.promise,
     get completion() { return terminal.promise; },
     wait: () => terminal.promise,
+    subscribe: () => () => {},
     async cancel() { cancellations++; return { contract: "test", requestId, kind: "cancellation-requested" }; },
     async outcome() {
       const status = await terminal.promise;

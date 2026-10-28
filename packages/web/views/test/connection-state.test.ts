@@ -18,7 +18,8 @@ function hostBridge(initial: boolean) {
   let isConnectedCalls = 0;
   const bridge: RunicBridgeClient = {
     isConnected: () => { isConnectedCalls++; return connected; },
-    call: () => Promise.reject(new Error("not used")),
+    request: () => Promise.reject(new Error("not used")),
+    onMessage: () => () => {},
     onConnectionChange(listener) {
       listeners.add(listener);
       listener(connected);
@@ -111,24 +112,24 @@ test("without an installed Bridge the page is connecting, lost after lostAfter, 
   stop();
 });
 
-// A host script that predates onConnectionChange: the first connection and each reconnect are seen, a loss is not.
-test("an older host reports its first connection and reconnects", async () => {
+// A host script of protocol 3 or earlier may lack onConnectionChange: its first connection is seen by polling, and
+// isConnected() is never called after that, because a host's can have side effects.
+test("a host without onConnectionChange reports its first connection", async () => {
   let connected = false;
-  const reconnects = new Set<() => void>();
+  let isConnectedCalls = 0;
   host.__runicBridge = {
-    isConnected: () => connected,
+    isConnected: () => { isConnectedCalls++; return connected; },
     call: () => Promise.reject(new Error("not used")),
-    onReconnect(listener) { reconnects.add(listener); return () => { reconnects.delete(listener); }; },
-  };
+  } as unknown as RunicBridgeClient;
   const { states, stop } = observe({ lostAfter: 1_000 });
   assert.deepEqual(states, ["connecting"]);
   connected = true;
   await delay(120);
   assert.deepEqual(states, ["connecting", "connected"]);
-  for (const listener of reconnects) listener();
-  assert.deepEqual(states, ["connecting", "connected"]);
+  const calls = isConnectedCalls;
+  await delay(120);
+  assert.equal(isConnectedCalls, calls, "the poll stops after the first connection");
   stop();
-  assert.equal(reconnects.size, 0);
 });
 
 test("an unloading page does not report the socket closing", () => {
@@ -178,8 +179,13 @@ test("connecting a View publishes the connection on the shared channel", async (
   const seen: string[] = [];
   page[key] = { listeners: new Set([state => seen.push(state)]) };
   const fake = hostBridge(true);
-  host.__runicBridge = { ...fake.bridge, call: async () => JSON.stringify({ ok: true, state: { revision: 1 }, error: null, protocol: 3 }) };
-  const client = await connectView({ contract: "Tests.Shared:1", route: "shared", mount: false, hydrate: (wire: unknown) => wire });
+  const replies: Record<string, object> = {
+    hello: { ok: true, protocol: 4, implementation: { name: "Tests.Host", version: "1.0.0" } },
+    open: { ok: true, revision: 1, state: {}, presentation: "ok" },
+    close: { ok: true, presentation: "ok" },
+  };
+  host.__runicBridge = { ...fake.bridge, request: async text => JSON.stringify(replies[(JSON.parse(text) as { kind: string }).kind]) };
+  const client = await connectView({ contract: "Tests.Shared:1", route: "shared", members: {} });
   assert.equal(page[key]!.state, "connected");
   fake.set(false);
   assert.equal(page[key]!.state, "reconnecting");

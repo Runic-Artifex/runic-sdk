@@ -4,7 +4,7 @@ import {
 } from "@runic-artifex/views";
 import { bridgeOperations, connectView } from "@runic-artifex/views/generated";
 import * as bridgeWire from "@runic-artifex/views/generated/wire";
-import { installMockBridge, mockFailure, type MockBridge } from "@runic-artifex/views/mock";
+import { installMockBridge, mockFailure, type MockBridge, type MockCall, type MockView } from "@runic-artifex/views/mock";
 import { Cause, Context, Effect, Exit, Fiber, Layer, ManagedRuntime, Schedule, Scope, Stream } from "effect";
 import { TestClock } from "effect/testing";
 import { afterEach, beforeEach, describe, expect, expectTypeOf, test } from "vitest";
@@ -14,7 +14,6 @@ import {
 } from "../dist/index.js";
 
 const contract = "Tests.CounterViewModel:fingerprint";
-const contractId = `${contract}:counter`;
 
 interface CounterState { readonly count: number; readonly title: string }
 interface CounterClient extends ViewClient<CounterState> {
@@ -23,31 +22,40 @@ interface CounterClient extends ViewClient<CounterState> {
   startRun(options?: { readonly requestId?: string }): Promise<BridgeOperation<number>>;
 }
 
+const members = { count: (value: unknown) => bridgeWire.integer(value, 0, 1000), title: bridgeWire.string };
+
 // Shaped like a generated module, so the adapter is tested against the same surface.
-async function connectCounter(mount = false): Promise<CounterClient> {
-  const view = await connectView<CounterState>({
-    contract, route: "counter", mount, operations: bridgeOperations,
-    hydrate: (wire: { count: unknown; title: unknown }) => ({ count: bridgeWire.integer(wire.count, 0, 1000), title: bridgeWire.string(wire.title) }),
-  });
-  const start = (requestId: string) => view.startOperation<number>("Run", requestId, () => requestId, value => bridgeWire.integer(value, 0, 1000));
+async function connectCounter(): Promise<CounterClient> {
+  const view = await connectView<CounterState>({ contract, route: "counter", members, operations: bridgeOperations });
+  const start = (requestId: string) => view.start<number>("run", requestId, undefined, { decode: value => bridgeWire.integer(value, 0, 1000) });
   return {
     get snapshot() { return view.snapshot; },
     subscribe: view.subscribe,
     dispose: view.dispose,
-    increment: () => view.command("counterIncrement"),
+    increment: () => view.command("increment"),
     setTitle: value => {
       if (typeof value !== "string") throw new RangeError("A title is required.");
-      return view.invoke("counterSetTitle", value);
+      return view.set("title", value);
     },
     startRun: (options?: { readonly requestId?: string }) => start(options?.requestId ?? globalThis.crypto.randomUUID()),
   };
 }
 
+type Reply = Readonly<Record<string, unknown>>;
 let bridge: MockBridge;
-let waits: { requestId: string; resolve: (json: string) => void; reject: (cause: unknown) => void }[];
-const status = (requestId: string, kind: string, extra: object = {}) => JSON.stringify({ contract: contractId, requestId, kind, ...extra });
-const names = () => bridge.calls.map(call => call.name);
-const cancels = () => bridge.calls.filter(call => call.name === "__runicOperationCancel").map(call => JSON.parse(call.args[0] as string).requestId as string);
+let counter: MockView;
+// Each `watch` of an operation, which the test answers with a status: the producer's first status of the watch.
+let waits: { requestId: string; resolve: (status: object) => void; reject: (cause: unknown) => void }[];
+// Answers `watch`, `status` and `cancel` requests; returning undefined lets the mock answer.
+let answers: { watch?: (call: MockCall) => Reply | Promise<Reply>; status?: (call: MockCall) => Reply; cancel?: (call: MockCall) => Reply };
+// A terminal status carries the revision of the first state that includes the operation's effects.
+const status = (kind: string, extra: object = {}) =>
+  ({ kind, ...(["succeeded", "failed", "domain-failed", "cancelled"].includes(kind) ? { revision: counter.revision } : {}), ...extra });
+const operationOf = (call: MockCall) => call.message["operation"] as string;
+const kinds = () => bridge.calls.map(call => call.kind);
+const ofKind = (kind: string, route = "counter") => bridge.calls.filter(call => call.kind === kind && call.route === route);
+const cancels = () => ofKind("cancel").map(operationOf);
+const starts = () => ofKind("start");
 const until = async (condition: () => boolean) => {
   for (let attempt = 0; attempt < 200 && !condition(); attempt++) await new Promise(resolve => setTimeout(resolve, 1));
   expect(condition()).toBe(true);
@@ -56,20 +64,25 @@ const until = async (condition: () => boolean) => {
 beforeEach(() => {
   bridge = installMockBridge();
   waits = [];
-  bridge.view("counter", {
+  answers = {};
+  counter = bridge.view("counter", {
+    contract,
     state: { count: 1, title: "One" },
-    routes: {
-      Increment: state => ({ count: (state.count as number) + 1 }),
-      Fail: () => { throw new Error("Boom"); },
-      StartRun: () => JSON.stringify({ kind: "accepted" }),
+    commands: {
+      increment: state => ({ count: (state.count as number) + 1 }),
+      fail: () => { throw new Error("Boom"); },
     },
+    // Operations stay running: the test decides each outcome through the `watch` it answers.
+    operations: { run: "manual" },
   });
-  bridge.route("__runicOperationWait", identity => new Promise<string>((resolve, reject) => {
-    waits.push({ requestId: JSON.parse(identity as string).requestId, resolve, reject });
-  }));
-  bridge.route("__runicOperationCancel", identity => {
-    const { requestId } = JSON.parse(identity as string);
-    return JSON.stringify({ contract: contractId, requestId, kind: "cancellation-requested" });
+  bridge.intercept(call => {
+    if (call.route !== "counter") return undefined;
+    if (call.kind === "watch") return answers.watch ? answers.watch(call) : new Promise<Reply>((resolve, reject) => {
+      waits.push({ requestId: operationOf(call), resolve: status => resolve({ ok: true, status }), reject });
+    });
+    if (call.kind === "status") return answers.status?.(call);
+    if (call.kind === "cancel") return answers.cancel?.(call);
+    return undefined;
   });
 });
 afterEach(() => { delete (globalThis as { __runicBridge?: unknown }).__runicBridge; });
@@ -77,12 +90,12 @@ afterEach(() => { delete (globalThis as { __runicBridge?: unknown }).__runicBrid
 describe("connect", () => {
   test("closing the scope disposes the client", async () => {
     const client = await Effect.runPromise(Effect.scoped(Effect.gen(function* () {
-      const client = yield* connect(() => connectCounter(true));
+      const client = yield* connect(() => connectCounter());
       expect(yield* command(() => client.increment())).toEqual({ count: 2, title: "One" });
-      expect(names()).not.toContain("counterUnmount");
+      expect(ofKind("close")).toHaveLength(0);
       return client;
     })));
-    expect(names()).toContain("counterUnmount");
+    expect(ofKind("close")).toHaveLength(1);
     // The Bridge is still connected: only this View was released.
     const exit = await Effect.runPromiseExit(command(() => client.increment()));
     expect(exit).toStrictEqual(Exit.fail(expect.any(ViewReleased)));
@@ -94,10 +107,11 @@ describe("connect", () => {
     const client = await Effect.runPromise(connect(reference).pipe(Scope.provide(scope)));
     expect(client.snapshot.count).toBe(1);
     await Effect.runPromise(Scope.close(scope, Exit.void));
-    bridge.view("broken", { state: {}, routes: { Snapshot: () => { throw Object.assign(new Error("Not now"), { kind: "rejected" }); } } });
+    bridge.view("broken", { state: {} });
+    bridge.failNext({ route: "broken", kind: "open" }, { kind: "rejected", message: "Not now" });
     const rejected = await Effect.runPromise(Effect.flip(Effect.scoped(connect(() =>
-      connectView({ contract, route: "broken", mount: false, hydrate: (wire: object) => wire })))));
-    expect(rejected).toMatchObject({ _tag: "ViewRejected", message: "Not now", route: "brokenSnapshot" });
+      connectView<object>({ contract, route: "broken", members: {} })))));
+    expect(rejected).toMatchObject({ _tag: "ViewRejected", message: "Not now", route: "broken" });
     delete (globalThis as { __runicBridge?: unknown }).__runicBridge;
     const unavailable = await Effect.runPromise(Effect.flip(command(() => waitForBridge({ timeout: 0 }))));
     expect(unavailable._tag).toBe("ViewUnavailable");
@@ -108,19 +122,19 @@ describe("clientLayer", () => {
   class Counter extends Context.Service<Counter, CounterClient>()("test/Counter") {}
 
   test("provides the connected client and disposes it when the runtime is disposed", async () => {
-    const runtime = ManagedRuntime.make(clientLayer(Counter, () => connectCounter(true)));
+    const runtime = ManagedRuntime.make(clientLayer(Counter, () => connectCounter()));
     const count = await runtime.runPromise(Effect.gen(function* () {
       const counter = yield* Counter;
       return (yield* command(() => counter.increment())).count;
     }));
     expect(count).toBe(2);
-    expect(names().filter(name => name === "counterSnapshot")).toHaveLength(1);
+    expect(ofKind("open")).toHaveLength(1);
     // The layer is built once per runtime.
     await runtime.runPromise(Counter.use(counter => command(() => counter.increment())));
-    expect(names().filter(name => name === "counterSnapshot")).toHaveLength(1);
-    expect(names()).not.toContain("counterUnmount");
+    expect(ofKind("open")).toHaveLength(1);
+    expect(ofKind("close")).toHaveLength(0);
     await runtime.dispose();
-    expect(names()).toContain("counterUnmount");
+    expect(ofKind("close")).toHaveLength(1);
   });
 
   test("accepts a page reference or a function-style service, and fails with a ViewError", async () => {
@@ -152,10 +166,10 @@ describe("command", () => {
 
   test(".NET failures keep their detail and other errors are defects", async () => {
     const client = await connectCounter();
-    const view = await connectView<CounterState>({ contract, route: "counter", mount: false, hydrate: (wire: CounterState) => wire });
-    const failed = await Effect.runPromise(Effect.flip(command(() => view.command("counterFail"))));
+    const view = await connectView<CounterState>({ contract, route: "counter", members });
+    const failed = await Effect.runPromise(Effect.flip(command(() => view.command("fail"))));
     expect(failed).toBeInstanceOf(ViewFailed);
-    expect(failed).toMatchObject({ _tag: "ViewFailed", message: "Boom", route: "counterFail", detail: { message: "Boom" } });
+    expect(failed).toMatchObject({ _tag: "ViewFailed", message: "Boom", route: "counter", detail: { message: "Boom" } });
     const defect = await Effect.runPromiseExit(command(() => client.setTitle(undefined as unknown as string)));
     expect(Exit.isFailure(defect) && Cause.squash(defect.cause)).toBeInstanceOf(RangeError);
   });
@@ -163,21 +177,29 @@ describe("command", () => {
 
 describe("states", () => {
   test("streams the current and pushed states and survives a silent resync", async () => {
+    // Drops pushes while `dropping`, as if the page missed the producer's frames.
+    let dropping = false;
+    const onMessage = bridge.onMessage.bind(bridge);
+    Object.assign(bridge, { onMessage: (listener: (message: string) => void) => onMessage(message => { if (!dropping) listener(message); }) });
     const client = await connectCounter();
     const seen: CounterState[] = [];
     const fiber = Effect.runFork(Stream.runForEach(states(client), state => Effect.sync(() => { seen.push(state); })));
     await until(() => seen.length === 1);
-    await bridge.call("counterSetTitle", "Pushed"); // changes .NET state without a push
-    const callback = (globalThis as unknown as Record<string, (state: unknown) => void>)["__counterChanged"]!;
-    // A collection frame whose base revision does not match makes the runtime re-read the snapshot.
-    callback({ __runicDelta: 1, revision: 999, baseRevision: 998, changes: [] });
+    dropping = true;
+    counter.update({ title: "Pushed" }); // changes the producer's state; the page misses its frame
+    dropping = false;
+    // A frame whose base revision does not match makes the runtime re-read the snapshot.
+    counter.push({ kind: "frame", baseRevision: counter.revision + 10, revision: counter.revision + 11,
+      changes: [{ field: "title", kind: "set", value: "Lost" }] });
     await until(() => seen.at(-1)?.title === "Pushed");
+    expect(ofKind("snapshot")).toHaveLength(1);
     await Effect.runPromise(command(() => client.increment()));
     await until(() => seen.at(-1)?.count === 2);
     expect(fiber.pollUnsafe()).toBeUndefined();
     await Effect.runPromise(Fiber.interrupt(fiber));
     client.dispose();
     expect(seen[0]).toEqual({ count: 1, title: "One" });
+    expect(seen.map(state => state.title)).not.toContain("Lost");
   });
 });
 
@@ -186,20 +208,20 @@ describe("operation", () => {
     const client = await connectCounter();
     const running = Effect.runPromise(operation(() => client.startRun()));
     await until(() => waits.length === 1);
-    waits[0]!.resolve(status(waits[0]!.requestId, "succeeded", { result: 7 }));
+    waits[0]!.resolve(status("succeeded", { result: 7 }));
     expect(await running).toBe(7);
-    expect(names()).not.toContain("__runicOperationCancel");
+    expect(kinds()).not.toContain("cancel");
   });
 
   test("maps failed and cancelled statuses", async () => {
     const client = await connectCounter();
     const failed = Effect.runPromise(Effect.flip(operation(() => client.startRun())));
     await until(() => waits.length === 1);
-    waits[0]!.resolve(status(waits[0]!.requestId, "failed", { error: { kind: "failed", message: "Disk full" } }));
+    waits[0]!.resolve(status("failed", { error: { kind: "failed", message: "Disk full" } }));
     expect(await failed).toMatchObject({ _tag: "ViewOperationFailed", message: "Disk full" });
     const cancelled = Effect.runPromise(Effect.flip(operation(() => client.startRun())));
     await until(() => waits.length === 2);
-    waits[1]!.resolve(status(waits[1]!.requestId, "cancelled"));
+    waits[1]!.resolve(status("cancelled"));
     expect((await cancelled)._tag).toBe("ViewOperationCancelled");
   });
 
@@ -208,8 +230,10 @@ describe("operation", () => {
     const fiber = Effect.runFork(operation(() => client.startRun()));
     await until(() => waits.length === 1);
     await Effect.runPromise(Fiber.interrupt(fiber));
-    const cancel = bridge.calls.find(call => call.name === "__runicOperationCancel");
-    expect(JSON.parse(cancel!.args[0] as string)).toMatchObject({ member: "Run", requestId: waits[0]!.requestId });
+    const cancel = bridge.calls.find(call => call.kind === "cancel");
+    expect(cancel?.message).toMatchObject({ member: "run", operation: waits[0]!.requestId });
+    // The mock's operation saw the request through its signal.
+    expect(counter.operations("run")[0]!.signal.aborted).toBe(true);
   });
 
   test("Effect.timeout driven by TestClock interrupts and cancels", async () => {
@@ -218,7 +242,7 @@ describe("operation", () => {
       const fiber = yield* Effect.forkChild(operation(() => client.startRun()).pipe(Effect.timeout("5 seconds")));
       yield* Effect.promise(() => until(() => waits.length === 1));
       yield* TestClock.adjust("4 seconds");
-      expect(names()).not.toContain("__runicOperationCancel");
+      expect(kinds()).not.toContain("cancel");
       yield* TestClock.adjust("1 second");
       return yield* Fiber.await(fiber);
     }).pipe(Effect.provide(TestClock.layer())));
@@ -241,9 +265,9 @@ describe("operation", () => {
   test("an outer timeout waits for the start reply, then cancels the admitted operation", async () => {
     const client = await connectCounter();
     let admit!: () => void;
-    bridge.view("counter", { state: { count: 1, title: "One" }, routes: {
-      StartRun: () => new Promise<string>(resolve => { admit = () => resolve(JSON.stringify({ kind: "accepted" })); }),
-    } });
+    // Holds the start, then lets the mock admit it.
+    bridge.intercept(call => call.kind === "start"
+      ? new Promise<undefined>(resolve => { admit = () => resolve(undefined); }) : undefined);
     const exit = await Effect.runPromise(Effect.gen(function* () {
       const fiber = yield* Effect.forkChild(operation(() => client.startRun()).pipe(Effect.timeout("1 second")));
       yield* Effect.promise(() => until(() => admit !== undefined));
@@ -258,13 +282,13 @@ describe("operation", () => {
 
   test("interrupting between retries cancels the started operation once", async () => {
     const client = await connectCounter();
-    bridge.route("__runicOperationWait", () => Promise.reject(new Error("Socket closed")));
+    answers.watch = () => Promise.reject(new Error("Socket closed"));
     await Effect.runPromise(Effect.gen(function* () {
       const fiber = yield* Effect.forkChild(operation(id => client.startRun({ requestId: id }),
         { requestId: "request-3", retry: Schedule.spaced("1 second") }));
-      yield* Effect.promise(() => until(() => names().filter(name => name === "__runicOperationWait").length === 1));
+      yield* Effect.promise(() => until(() => ofKind("watch").length === 1));
       yield* TestClock.adjust("1 second");
-      yield* Effect.promise(() => until(() => names().filter(name => name === "__runicOperationWait").length === 2));
+      yield* Effect.promise(() => until(() => ofKind("watch").length === 2));
       // Now waiting for the next attempt.
       expect(cancels()).toEqual([]);
       yield* Fiber.interrupt(fiber);
@@ -274,27 +298,26 @@ describe("operation", () => {
 
   test("exhausted retries cancel the last unobserved operation once", async () => {
     const client = await connectCounter();
-    bridge.route("__runicOperationWait", () => Promise.reject(new Error("Socket closed")));
+    answers.watch = () => Promise.reject(new Error("Socket closed"));
     const error = await Effect.runPromise(Effect.flip(operation(id => client.startRun({ requestId: id }),
       { requestId: "request-4", retry: Schedule.recurs(2) })));
     expect(error._tag).toBe("ViewOperationUncertain");
-    expect(bridge.calls.filter(call => call.name === "counterStartRun")).toHaveLength(3);
+    expect(starts()).toHaveLength(3);
     expect(cancels()).toEqual(["request-4"]);
   });
 
   test("`while` stops retrying", async () => {
     const client = await connectCounter();
-    bridge.route("__runicOperationWait", () => Promise.reject(new Error("Socket closed")));
+    answers.watch = () => Promise.reject(new Error("Socket closed"));
     await Effect.runPromise(Effect.flip(operation(id => client.startRun({ requestId: id }),
       { requestId: "request-5", retry: Schedule.recurs(5), while: () => false })));
-    expect(bridge.calls.filter(call => call.name === "counterStartRun")).toHaveLength(1);
+    expect(starts()).toHaveLength(1);
   });
 
   test("a timeout that races completion reports the real outcome", async () => {
     const client = await connectCounter();
-    bridge.route("__runicOperationCancel", identity =>
-      JSON.stringify({ contract: contractId, requestId: JSON.parse(identity as string).requestId, kind: "not-running" }));
-    bridge.route("__runicOperationStatus", identity => status(JSON.parse(identity as string).requestId, "succeeded", { result: 9 }));
+    answers.cancel = () => ({ ok: true, cancellation: "not-running" });
+    answers.status = () => ({ ok: true, status: status("succeeded", { result: 9 }) });
     const result = await Effect.runPromise(Effect.gen(function* () {
       const fiber = yield* Effect.forkChild(operation(() => client.startRun(), { timeout: "1 second" }));
       yield* Effect.promise(() => until(() => waits.length === 1));
@@ -307,37 +330,32 @@ describe("operation", () => {
   test("retries a transient failure with the same explicit request ID", async () => {
     const client = await connectCounter();
     let observations = 0;
-    // The first wait fails as if the transport dropped; the second observes the result.
-    bridge.route("__runicOperationWait", identity => {
-      const { requestId } = JSON.parse(identity as string);
-      return ++observations === 1 ? Promise.reject(new Error("Socket closed")) : Promise.resolve(status(requestId, "succeeded", { result: 3 }));
-    });
+    // The first watch fails as if the transport dropped; the second observes the result.
+    answers.watch = () => ++observations === 1 ? Promise.reject(new Error("Socket closed")) : { ok: true, status: status("succeeded", { result: 3 }) };
     const result = await Effect.runPromise(operation(id => client.startRun({ requestId: id }),
       { requestId: "request-1", retry: Schedule.recurs(2) }));
     expect(result).toBe(3);
-    const starts = bridge.calls.filter(call => call.name === "counterStartRun").map(call => call.args[0]);
-    expect(starts).toEqual(["request-1", "request-1"]);
-    expect(names()).not.toContain("__runicOperationCancel");
+    expect(starts().map(operationOf)).toEqual(["request-1", "request-1"]);
+    expect(kinds()).not.toContain("cancel");
   });
 
   test("does not retry without a schedule or after a terminal failure", async () => {
     const client = await connectCounter();
-    bridge.route("__runicOperationWait", identity =>
-      Promise.resolve(status(JSON.parse(identity as string).requestId, "failed", { error: { kind: "failed", message: "No" } })));
+    answers.watch = () => ({ ok: true, status: status("failed", { error: { kind: "failed", message: "No" } }) });
     const failed = await Effect.runPromise(Effect.flip(operation(id => client.startRun({ requestId: id }),
       { requestId: "request-2", retry: Schedule.recurs(3) })));
     expect(failed._tag).toBe("ViewOperationFailed");
-    bridge.route("__runicOperationWait", () => Promise.reject(new Error("Socket closed")));
+    answers.watch = () => Promise.reject(new Error("Socket closed"));
     const uncertain = await Effect.runPromise(Effect.flip(operation(() => client.startRun())));
     expect(uncertain._tag).toBe("ViewOperationUncertain");
     expect(uncertain).toMatchObject({ status: undefined });
-    expect(bridge.calls.filter(call => call.name === "counterStartRun")).toHaveLength(2);
+    expect(starts()).toHaveLength(2);
   });
 
   // VFX-03: an uncertain outcome from a terminal status carries that status, like the other operation errors.
   test("an expired operation is uncertain with its status", async () => {
     const client = await connectCounter();
-    bridge.route("__runicOperationWait", identity => Promise.resolve(status(JSON.parse(identity as string).requestId, "expired")));
+    answers.watch = () => ({ ok: true, status: status("expired") });
     const uncertain = await Effect.runPromise(Effect.flip(operation(id => client.startRun({ requestId: id }), { requestId: "request-6" })));
     expect(uncertain).toMatchObject({ _tag: "ViewOperationUncertain", requestId: "request-6", status: { kind: "expired", requestId: "request-6" } });
   });
@@ -395,8 +413,7 @@ describe("followViewport", () => {
     await until(() => waits.length === 1);
     viewport.move({ start: 20 });
     await until(() => waits.length === 2);
-    const cancel = bridge.calls.find(call => call.name === "__runicOperationCancel");
-    expect(JSON.parse(cancel!.args[0] as string).requestId).toBe(waits[0]!.requestId);
+    expect(cancels()[0]).toBe(waits[0]!.requestId);
     await Effect.runPromise(Fiber.interrupt(fiber));
   });
 });
@@ -423,53 +440,52 @@ describe("declared failures", () => {
 
   test("command fails with ViewDomainFailure and succeeds with the outcome's value", async () => {
     bridge.view("note", {
+      contract,
       state: { count: 0, title: "" },
-      routes: {
-        Save: state => {
+      commands: {
+        save: state => {
           if ((state.title as string).length === 0) throw mockFailure({ $case: "titleRequired" });
           return { count: 1 };
         },
       },
     });
-    const view = await connectView<CounterState>({ contract, route: "note", mount: false, hydrate: (wire: CounterState) => wire });
-    const save = () => view.commandOutcome("noteSave", decodeFailure);
+    const view = await connectView<CounterState>({ contract, route: "note", members });
+    const save = () => view.commandOutcome("save", decodeFailure);
     const failing = command(save);
     expectTypeOf(failing).toEqualTypeOf<Effect.Effect<CounterState, ViewError | ViewDomainFailure<SaveFailure>>>();
-    expectTypeOf(command(() => view.command("noteSave"))).toEqualTypeOf<Effect.Effect<CounterState, ViewError>>();
+    expectTypeOf(command(() => view.command("save"))).toEqualTypeOf<Effect.Effect<CounterState, ViewError>>();
     const failure = await Effect.runPromise(Effect.flip(failing));
     expect(failure).toBeInstanceOf(ViewDomainFailure);
     expect(failure).toMatchObject({ _tag: "ViewDomainFailure", failure: { $case: "titleRequired" }, requestId: undefined });
-    await Effect.runPromise(command(() => view.invoke("noteSetTitle", "Groceries")));
+    await Effect.runPromise(command(() => view.set("title", "Groceries")));
     expect(await Effect.runPromise(command(save))).toMatchObject({ count: 1, title: "Groceries" });
     view.dispose();
   });
 
   test("operation fails with ViewDomainFailure; a failure that was not delivered is ViewOperationFailed", async () => {
     const client = await connectCounter();
-    const view = await connectView<CounterState>({ contract, route: "counter", mount: false, hydrate: (wire: CounterState) => wire,
-      operations: bridgeOperations });
-    const start = (requestId: string) => view.startOperation<void, SaveFailure>("Run", requestId, () => requestId, () => undefined, false, decodeFailure);
+    const view = await connectView<CounterState>({ contract, route: "counter", members, operations: bridgeOperations });
+    const start = (requestId: string) => view.start<void, SaveFailure>("run", requestId, undefined, { decode: () => undefined, decodeFailure });
     const declared = operation(start, { requestId: "declared" });
     expectTypeOf(declared).toEqualTypeOf<Effect.Effect<void, ViewOperationError | ViewDomainFailure<SaveFailure>>>();
     expectTypeOf(operation(() => client.startRun())).toEqualTypeOf<Effect.Effect<number, ViewOperationError>>();
     const failing = Effect.runPromise(Effect.flip(declared));
     await until(() => waits.length === 1);
-    waits[0]!.resolve(status("declared", "domain-failed", { failure: { $case: "titleTaken", existingTitle: "Todo" } }));
+    waits[0]!.resolve(status("domain-failed", { failure: { $case: "titleTaken", existingTitle: "Todo" } }));
     expect(await failing).toMatchObject({ _tag: "ViewDomainFailure", requestId: "declared", failure: { $case: "titleTaken", existingTitle: "Todo" } });
 
     const dropped = Effect.runPromise(Effect.flip(operation(start, { requestId: "dropped" })));
     await until(() => waits.length === 2);
-    waits[1]!.resolve(status("dropped", "domain-failed", { delivery: { kind: "result-too-large", message: "Too large." } }));
+    waits[1]!.resolve(status("domain-failed", { delivery: { kind: "result-too-large", message: "Too large." } }));
     expect(await dropped).toMatchObject({ _tag: "ViewOperationFailed", message: "Too large." });
 
     // A declared failure is a terminal outcome: retry never starts the operation again.
-    const starts = () => bridge.calls.filter(call => call.name === "counterStartRun").length;
-    const before = starts();
+    const before = starts().length;
     const retried = Effect.runPromise(Effect.flip(operation(start, { requestId: "retried", retry: Schedule.recurs(3) })));
     await until(() => waits.length === 3);
-    waits[2]!.resolve(status("retried", "domain-failed", { failure: { $case: "titleRequired" } }));
+    waits[2]!.resolve(status("domain-failed", { failure: { $case: "titleRequired" } }));
     expect(await retried).toMatchObject({ _tag: "ViewDomainFailure", requestId: "retried" });
-    expect(starts() - before).toBe(1);
+    expect(starts().length - before).toBe(1);
     expect(waits.length).toBe(3);
     expect(cancels()).toEqual([]);
     view.dispose();

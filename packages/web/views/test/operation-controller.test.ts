@@ -22,6 +22,7 @@ function held<TResult = void, TFailure = never>(requestId: string, outcome: Brid
   const operation: BridgeOperation<TResult, TFailure> = {
     requestId,
     status: () => { throw new Error("Use the public terminal wait, not polling."); },
+    subscribe: () => () => {},
     get completion() { return terminal.promise; },
     wait: () => { waits++; return terminal.promise; },
     cancel: async () => { cancellations++; return { contract: "test", requestId, kind: "cancellation-requested" }; },

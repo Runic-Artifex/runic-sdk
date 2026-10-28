@@ -4,13 +4,18 @@ import { BridgeError, BridgeOperationUncertainError, type BridgeErrorKind, type 
  * What a {@link BridgeDiagnostic} reports: a `BridgeErrorKind` other than `released`
  * (a call of a released View is expected after navigation and is not reported),
  * `uncertain` for a `BridgeOperationUncertainError`, `timed-out` for an operation
- * wait that passed its timeout, `protocol` for a .NET host that speaks another Views
+ * wait that passed its timeout, `protocol` for a host that speaks another Views
  * protocol version, `version` for a .NET `Runic.Application.Views` of another release
- * than this `@runic-artifex/views`, or `reported` for an application error the runtime
- * caught. Open: a minor release may add a code, so handle unknown codes.
+ * than this `@runic-artifex/views` (no other producer is compared), `revision-timeout` for a reply
+ * whose revision the route did not reach within 5 seconds (a producer bug: the client then
+ * reads a snapshot), `stale-input` for script that wrote an older value into a focused input
+ * while a request was in flight (`@runic-artifex/vite-plugin-runic` in development), or `reported`
+ * for an application error the runtime caught. Open: a minor release may add a code, so handle
+ * unknown codes.
  */
 export type BridgeDiagnosticCode =
-  | Exclude<BridgeErrorKind, "released"> | "uncertain" | "timed-out" | "protocol" | "version" | "reported";
+  | Exclude<BridgeErrorKind, "released"> | "uncertain" | "timed-out" | "protocol" | "version" | "revision-timeout"
+  | "stale-input" | "reported";
 
 /** A failure or terminal event the Views runtime observed. */
 export interface BridgeDiagnostic {
@@ -18,9 +23,9 @@ export interface BridgeDiagnostic {
   /** What happened; see {@link BridgeDiagnosticCode}. */
   readonly code: BridgeDiagnosticCode;
   readonly message: string;
-  /** The Bridge route, such as `counterIncrement`, when known. */
+  /** The View route, such as `counter`, when known. */
   readonly route?: string;
-  /** Development-only .NET failure detail, or the type and stack of a caught browser error. */
+  /** Development-only producer failure detail, or the type and stack of a caught browser error. */
   readonly detail?: BridgeFailureDetail;
   /** For an operation diagnostic: the command member and request id. */
   readonly member?: string;

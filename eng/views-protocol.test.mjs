@@ -37,7 +37,7 @@ test("no .NET Views, Desktop or CS-WebUI code sends the wire token disconnected"
 });
 
 // While the protocol-4 integration branch is open, the specification is ahead of the
-// implementations: they still speak protocol 3, which specs/application/protocol-3.md keeps.
+// implementations: one may still speak protocol 3, which specs/application/protocol-3.md keeps.
 // Once both implementations name the specification's version, protocol-3.md can go.
 test("the .NET runtime, the npm runtime and the specification name one protocol version", () => {
   const dotnet = readFileSync(resolve(root, "packages/dotnet/Runic.Application.Views/Generated/BridgeRuntime.cs"), "utf8")
@@ -45,11 +45,13 @@ test("the .NET runtime, the npm runtime and the specification name one protocol 
   const npm = readFileSync(resolve(root, "packages/web/views/src/version.ts"), "utf8").match(/export const bridgeProtocol = (\d+);/)?.[1];
   const spec = readFileSync(resolve(root, "specs/application/README.md"), "utf8").match(/This is the Runic Application Views protocol, version (\d+),/)?.[1];
   assert.ok(dotnet, "BridgeProtocol.Version not found");
+  assert.ok(npm, "bridgeProtocol not found");
   assert.ok(spec, "the specification's version not found");
-  assert.equal(npm, dotnet);
-  if (dotnet === spec) return;
+  if (dotnet === spec && npm === spec) return;
+  // On the integration branch each implementation moves to the specification's version in its own pull request.
   const retained = existsSync(resolve(root, "specs/application/protocol-3.md"))
     ? readFileSync(resolve(root, "specs/application/protocol-3.md"), "utf8").match(/This is the protocol, version (\d+),/)?.[1] : undefined;
-  assert.equal(retained, dotnet, `the implementations speak protocol ${dotnet}, which no specification describes`);
-  assert.ok(Number(spec) > Number(dotnet));
+  for (const [name, version] of [[".NET", dotnet], ["npm", npm]])
+    assert.ok(version === spec || version === retained, `the ${name} runtime speaks protocol ${version}, which no specification describes`);
+  assert.ok(Number(spec) > Number(retained));
 });

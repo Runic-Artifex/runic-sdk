@@ -23,6 +23,7 @@ function work<T, F = never>(outcome: BridgeOutcome<T, F>) {
     status: () => { throw new Error("No polling needed"); },
     get completion() { return terminal.promise; },
     wait: () => terminal.promise,
+    subscribe: () => () => {},
     async cancel() { cancellations++; return { contract: "test", requestId: "svelte-test", kind: "cancellation-requested" }; },
     async outcome() {
       outcomes++;

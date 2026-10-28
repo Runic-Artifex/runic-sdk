@@ -313,7 +313,7 @@ export function createLatestOperationController<TResult = void, TFailure = never
       const status = await operation.wait();
       if (!observed(intent)) return;
       if (status.kind === "running" || status.kind === "unknown" || status.kind === "expired" || status.kind === "timed-out")
-        throw uncertainOperation(status.contract, operation.requestId,
+        throw uncertainOperation(status.contract, undefined, operation.requestId,
           "The previous operation's completion could not establish admission for the next selection.", status);
       await intent.value.waitForCompletion?.(operation, status);
       boundaryObserved = true;

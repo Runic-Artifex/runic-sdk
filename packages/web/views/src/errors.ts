@@ -8,40 +8,44 @@
 export type BridgeErrorKind = "rejected" | "cancelled" | "failed" | "disconnected" | "released" | "timeout" | "unavailable";
 
 /**
- * Refines a {@link BridgeError} kind. .NET sends `unavailable` (a command whose
- * `CanExecute` is false), `invalid-input` (a setter value or command argument that
- * does not decode or is rejected) and, since 0.11, `unresolved-key` (the key of a
- * `[RunicCommandKey]` command names no object) with `rejected`; an operation start
- * rejected for one of these reasons carries it too. Open: a minor release may add a
- * reason, so handle unknown reasons.
+ * Refines a {@link BridgeError} kind (specs/application, "Errors"). With `rejected`: `unavailable` (a command that
+ * is not available), `invalid-input` (a value or input that does not decode or that the setter or command rejects,
+ * or a request over the input limit), `unresolved-key` (the key of a key command names no object), `capacity` (a
+ * limit of the window or connection), `invalid-request` and `no-hello`. With `failed`: `protocol-mismatch` (the host
+ * speaks another Views protocol). With any kind: `state-withheld` (the call ran, but no state that includes its
+ * effects can be published; do not retry it as if it had not run). An operation start rejected for a reason
+ * carries it too, such as `identity-conflict`. Open: a minor release may add a reason, and the client keeps a reason
+ * it does not know, so handle unknown reasons.
  */
-export type BridgeErrorReason = "unavailable" | "invalid-input" | "unresolved-key";
+export type BridgeErrorReason =
+  | "unavailable" | "invalid-input" | "unresolved-key" | "capacity" | "invalid-request" | "no-hello" | "protocol-mismatch"
+  | "state-withheld" | (string & {});
 
 /**
- * Local failure detail that .NET adds to an error reply only in development
- * (host environment `Development`, or the window option `IncludeFailureDetail`).
+ * Failure detail that a producer adds to an error reply only in development (.NET: host environment
+ * `Development`, or the window option `IncludeFailureDetail`).
  */
 export interface BridgeFailureDetail {
-  /** The exception type, such as `System.InvalidOperationException`. */
-  readonly type: string;
+  /** The producer's name for the error's type, if it has one, such as `System.InvalidOperationException`. */
+  readonly type?: string;
   readonly message: string;
-  /** The exception text with its stack trace and inner exceptions. */
+  /** Text that describes where the error came from, such as a stack trace and its causes. */
   readonly stack?: string;
 }
 
-// .NET adds `detail` to an error reply only in development. A malformed
+// A producer adds `detail` to an error reply only in development. A malformed
 // detail is dropped rather than failing the call. Not exported from the package.
 export function decodeFailureDetail(value: unknown): BridgeFailureDetail | undefined {
-  if (value === null || typeof value !== "object") return undefined;
+  if (value === null || typeof value !== "object" || Array.isArray(value)) return undefined;
   const { type, message, stack } = value as Record<string, unknown>;
-  if (typeof type !== "string" || typeof message !== "string") return undefined;
-  return typeof stack === "string" ? { type, message, stack } : { type, message };
+  if (typeof message !== "string") return undefined;
+  return { ...(typeof type === "string" ? { type } : {}), message, ...(typeof stack === "string" ? { stack } : {}) };
 }
 
 export interface BridgeErrorOptions {
   /** The underlying error, kept as `error.cause`. */
   readonly cause?: unknown;
-  /** The Bridge route that failed, such as `counterIncrement`. */
+  /** The View route of the request that failed, such as `counter`, or `runic.menu-bar`. */
   readonly route?: string;
   readonly detail?: BridgeFailureDetail;
   /** What refines `kind`, such as `unavailable` for a `rejected` command. */
@@ -59,11 +63,11 @@ function branded(value: unknown, brand: symbol): boolean {
 
 /** A Bridge call that .NET or the transport did not complete. */
 export class BridgeError extends Error {
-  /** The Bridge route that failed, when known. */
+  /** The View route of the request that failed, when known. */
   readonly route?: string;
-  /** Development-only .NET failure detail, when the host sent it. */
+  /** Development-only failure detail, when the producer sent it. */
   readonly detail?: BridgeFailureDetail;
-  /** What refines `kind`, when .NET sent it, such as `unavailable` or `invalid-input` for `rejected`. */
+  /** What refines `kind`, such as `unavailable` or `invalid-input` for `rejected`. */
   readonly reason?: BridgeErrorReason;
 
   constructor(readonly kind: BridgeErrorKind, message: string, options: BridgeErrorOptions = {}) {
@@ -82,7 +86,7 @@ export class BridgeError extends Error {
 
 /** The identity of an operation whose outcome the client could not observe. */
 export interface BridgeOperationUncertainErrorOptions {
-  /** The generated Bridge contract of the View, such as `Notes.EditorViewModel:7E66…`. */
+  /** The operation contract of the View, `{view}:{fingerprint}`, such as `Notes.EditorViewModel:7E66…`. */
   readonly contract: string;
   /** The operation's request id. */
   readonly requestId: string;
@@ -98,7 +102,7 @@ export interface BridgeOperationUncertainErrorOptions {
  * a caller may retry.
  */
 export class BridgeOperationUncertainError extends Error {
-  /** The generated Bridge contract of the View. */
+  /** The operation contract of the View, `{view}:{fingerprint}`. */
   readonly contract: string;
   /** The operation's request id. */
   readonly requestId: string;
@@ -121,11 +125,8 @@ export class BridgeOperationUncertainError extends Error {
   }
 }
 
-// Operations name their View as `{contract}:{route}` on the wire; the error keeps the two apart.
-export function uncertainOperation(operationContract: string, requestId: string, message: string, cause?: unknown): BridgeOperationUncertainError {
-  const separator = operationContract.lastIndexOf(":");
-  const contract = separator < 0 ? operationContract : operationContract.slice(0, separator);
-  const route = separator < 0 ? undefined : operationContract.slice(separator + 1);
+export function uncertainOperation(contract: string, route: string | undefined, requestId: string, message: string,
+  cause?: unknown): BridgeOperationUncertainError {
   return new BridgeOperationUncertainError(message, {
     contract, requestId, ...(route === undefined ? {} : { route }), ...(cause === undefined ? {} : { cause }),
   });

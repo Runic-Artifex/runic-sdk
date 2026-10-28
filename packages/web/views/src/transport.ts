@@ -1,20 +1,31 @@
-import { emitErrorDiagnostic } from "./diagnostics.js";
+import { emitBridgeDiagnostic, emitErrorDiagnostic, suppressErrorDiagnostic } from "./diagnostics.js";
 import { BridgeError } from "./errors.js";
 import { abortable, throwIfAborted } from "./lifetime.js";
+import { bridgeProtocol } from "./version.js";
 
-/** The host-neutral Bridge a host script installs as `window.__runicBridge`. */
+/**
+ * The host bridge a host script installs as `globalThis.__runicBridge` (Views protocol 4, specs/application,
+ * "Host bridge"). Messages cross it as JSON text; the Views runtime parses each one once.
+ */
 export interface RunicBridgeClient {
-  /** The host connection is authenticated. */
+  /** Whether the host connection is open and authenticated. */
   isConnected(): boolean;
-  /** Invokes a .NET route. Rejects when the transport fails. */
-  call(name: string, ...args: unknown[]): Promise<string>;
-  /** Calls `listener` after the connection is re-established without a page reload. */
-  onReconnect?(listener: () => void): () => void;
   /**
-   * Calls `listener` with whether the host connection is authenticated, at once and then after
-   * each change, including a dropped transport, until the returned function is called.
+   * Sends one request as JSON text and resolves with the reply as JSON text. Rejects when the transport fails
+   * before a reply arrives.
    */
-  onConnectionChange?(listener: (connected: boolean) => void): () => void;
+  request(message: string): Promise<string>;
+  /**
+   * Calls `listener` with the JSON text of each push, in order, until the returned function is called. Pushes
+   * received while no listener exists are dropped. The page's Views runtime is the only listener.
+   */
+  onMessage(listener: (message: string) => void): () => void;
+  /**
+   * Calls `listener(connected)` at once and after each change, until the returned function is called. A host reports
+   * `false` before the `true` of a new connection, so each `true` after `false` is a new connection, which needs its
+   * own `hello`. It has none of the side effects that `isConnected()` may have.
+   */
+  onConnectionChange(listener: (connected: boolean) => void): () => void;
 }
 
 export interface WaitForBridgeOptions {
@@ -44,7 +55,8 @@ const missingBridgeMessage =
  * Waits for the installed host Bridge to report a connection to .NET.
  * Rejects with an `unavailable` BridgeError when no host installed
  * `window.__runicBridge`, with a `timeout` BridgeError when it did not connect in time,
- * and with the abort reason when `options.signal` aborts first.
+ * with a `failed` BridgeError (and a `protocol` diagnostic) when the host implements Views protocol 3 or
+ * earlier, and with the abort reason when `options.signal` aborts first.
  */
 export async function waitForBridge(options: WaitForBridgeOptions = {}): Promise<RunicBridgeClient> {
   const timeout = options.timeout ?? defaultTimeout;
@@ -70,21 +82,42 @@ export async function waitForBridge(options: WaitForBridgeOptions = {}): Promise
     try { await abortable(new Promise<void>(resolve => { timer = setTimeout(resolve, 50); }), signal); }
     finally { clearTimeout(timer); }
   }
-  return host.__runicBridge;
+  const bridge = host.__runicBridge;
+  assertMessageBridge(bridge);
+  return bridge;
 }
 
-/** Window members .NET calls (`__{route}Changed`) and the shared runtime slot. */
+// Bridges whose protocol mismatch was reported: once per page and Bridge.
+const protocolReported = new WeakSet<object>();
+
+/**
+ * Reports a host of another protocol: one `protocol` diagnostic per Bridge, and every error that reports it
+ * is marked as reported, so it is the only report.
+ */
+export function reportProtocolMismatch(error: BridgeError, bridge: object): void {
+  if (protocolReported.has(bridge)) { suppressErrorDiagnostic(error); return; }
+  protocolReported.add(bridge);
+  emitBridgeDiagnostic({ kind: "error", code: "protocol", message: error.message, error, ...(error.route === undefined ? {} : { route: error.route }) });
+}
+
+/** The error of a host that speaks another protocol. `host` describes it, such as "uses Views protocol 5". */
+export function protocolMismatchError(host: string): BridgeError {
+  return new BridgeError("failed", `The .NET host ${host}, but this client implements protocol ${bridgeProtocol}, so the View ` +
+    "cannot connect. Use Runic.Application.Views and @runic-artifex/views of one release, rebuild so the generated clients " +
+    "are regenerated, and reload the page.", { reason: "protocol-mismatch" });
+}
+
+// A host script of protocol 3 or earlier installs `call(name, …args)` instead of `request(message)`.
+function assertMessageBridge(bridge: RunicBridgeClient): void {
+  if (typeof (bridge as Partial<RunicBridgeClient>).request === "function") return;
+  const error = protocolMismatchError("implements Views protocol 3 or earlier (its host bridge has no `request`)");
+  reportProtocolMismatch(error, bridge);
+  throw error;
+}
+
+/** Window members and the shared runtime slot. */
 export function hostCallbacks(): Record<string | symbol, unknown> {
   return globalThis as unknown as Record<string | symbol, unknown>;
-}
-
-// A host answers a late call of a route it released, such as a route of a View
-// that .NET released during the call, with a `released` envelope. Runic
-// Desktop and CS-WebUI send the same one. The host answered, so the Bridge is
-// connected and only the View was released. An empty reply (a Runic Desktop
-// handler that threw, or a capability that was never admitted) stays an invalid response.
-export function releasedRouteError(route: string): BridgeError {
-  return new BridgeError("released", "This View was released: its route is no longer bound.", { route });
 }
 
 // A View the page or .NET released, as `released` while the Bridge is connected
@@ -96,7 +129,7 @@ export function notConnectedError(bridge: RunicBridgeClient, message: string, ro
 }
 
 // A throwing subscriber or an undecodable push must not stop delivery to
-// other subscribers or unwind into the .NET callback that pushed state.
+// other subscribers or unwind into the host script that pushed it.
 // A released View is expected after navigation and is not reported.
 export function reportBridgeError(error: unknown, route?: string): void {
   if (error instanceof BridgeError && error.kind === "released") return;

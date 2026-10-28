@@ -1,12 +1,15 @@
 /// <reference lib="esnext.disposable" preserve="true" />
 // The in-page menu bar (Runic Desktop's DesktopMenuBarPresentation.Page): the declared menu bar as headless state for
-// the application's own menubar component, and `invoke` through the native bar's command path. The wire is the
-// reserved `__runicMenuBar*` route family of specs/desktop/menu-bar-page.md; it is not part of Views protocol 3, and a
-// host without it leaves the controller `unavailable`.
+// the application's own menubar component, and `invoke` through the native bar's command path. The wire is menu bar
+// page protocol 2 (specs/desktop/menu-bar-page.md): requests to the reserved route `runic.menu-bar` on the Views
+// channel and targeted `menu-bar` pushes. A host without it leaves the controller `unavailable`.
+import { delay } from "./clock.js";
 import { BridgeError } from "./errors.js";
-import { abortable, disposable } from "./lifetime.js";
+import { disposable } from "./lifetime.js";
+import { isObject, type Message } from "./protocol.js";
+import { sharedRuntimeFor, type SharedRuntime } from "./runtime.js";
 import { isApplePlatform, matchesShortcut, type ShortcutEvent } from "./shortcuts.js";
-import { reportBridgeError, waitForBridge, type RunicBridgeClient } from "./transport.js";
+import { reportBridgeError, waitForBridge } from "./transport.js";
 
 /** Options of {@link createMenuBarController}. */
 export interface MenuBarControllerOptions {
@@ -154,15 +157,11 @@ export function splitAccessKey(entry: MenuBarMenu | MenuBarItem): readonly [befo
   return [label.slice(0, index), label.slice(index, end), label.slice(end)];
 }
 
-const stateRoute = "__runicMenuBarState";
-const waitRoute = "__runicMenuBarWait";
-const invokeRoute = "__runicMenuBarInvoke";
-const controlRoute = "__runicMenuBarControl";
+const menuBarRoute = "runic.menu-bar";
 const placements: readonly string[] = ["page", "window", "global", "none"];
 const owners: readonly string[] = ["host", "page", "app"];
 const roles: readonly string[] = ["none", "application", "file", "help"];
 
-type Envelope = Record<string, unknown> & { readonly kind?: unknown };
 type KeyboardTarget = {
   addEventListener(type: string, listener: (event: never) => void, options?: boolean): void;
   removeEventListener(type: string, listener: (event: never) => void, options?: boolean): void;
@@ -173,13 +172,6 @@ const freeze = <T extends object>(value: T): T => Object.freeze(value);
 
 function unavailable(message: string): BridgeError {
   return new BridgeError("unavailable", message);
-}
-
-function parse(reply: string): Envelope | undefined {
-  try {
-    const value = JSON.parse(reply) as unknown;
-    return value !== null && typeof value === "object" && !Array.isArray(value) ? value as Envelope : undefined;
-  } catch { return undefined; }
 }
 
 const text = (value: unknown): value is string => typeof value === "string";
@@ -245,12 +237,12 @@ export function createMenuBarController(options: MenuBarControllerOptions = {}):
   const revisions = new WeakMap<object, number>();
   let state: MenuBarState = freeze({ status: "connecting", placement: "none", shortcuts: app ? "app" : "host", accessKeyHints: false,
     revision: 0, menus: freeze([]) });
-  let bridge: RunicBridgeClient | undefined;
+  let runtime: SharedRuntime | undefined;
   let platform: string | undefined;
   let leased = false;
   let disposed = false;
-  let restart = new AbortController();
-  let stopReconnect: (() => void) | undefined;
+  let watching = false;
+  const stops: (() => void)[] = [];
   let altDown = false;
   let altAlone = false;
   let stickyHints = false;
@@ -267,37 +259,69 @@ export function createMenuBarController(options: MenuBarControllerOptions = {}):
   const stop = (status: "unavailable" | "failed", error: BridgeError) => {
     set({ status, error });
     lifetime.abort();
+    for (const end of stops.splice(0)) end();
   };
   // The host names its platform; before it answered, the page's own.
   const apple = () => platform === undefined ? isApplePlatform() : platform === "macos";
-  const call = (name: string, request?: unknown) => {
-    if (!bridge) return Promise.reject(new BridgeError("disconnected", "The Bridge is not connected.", { route: name }));
-    return request === undefined ? bridge.call(name) : bridge.call(name, JSON.stringify(request));
-  };
 
-  const apply = (envelope: Envelope): boolean => {
-    if (envelope.kind !== "state" || typeof envelope["revision"] !== "number") return false;
-    if (typeof envelope["platform"] === "string") platform = envelope["platform"];
-    const revision = envelope["revision"];
-    const placement = text(envelope["placement"]) && placements.includes(envelope["placement"])
-      ? envelope["placement"] as MenuBarState["placement"] : "none";
-    const shortcuts = text(envelope["shortcuts"]) && owners.includes(envelope["shortcuts"])
-      ? envelope["shortcuts"] as MenuBarState["shortcuts"] : "host";
-    const menus = decodeEntries(envelope["menus"], revision, revisions).filter((entry): entry is MenuBarMenu => entry.kind === "menu");
+  const apply = (value: unknown): boolean => {
+    if (!isObject(value) || typeof value["revision"] !== "number") return false;
+    if (typeof value["platform"] === "string") platform = value["platform"];
+    const revision = value["revision"];
+    // A state the controller already has, from a reply or a push, changes nothing.
+    if (state.status === "ready" && revision <= state.revision) return true;
+    const placement = text(value["placement"]) && placements.includes(value["placement"])
+      ? value["placement"] as MenuBarState["placement"] : "none";
+    const shortcuts = text(value["shortcuts"]) && owners.includes(value["shortcuts"])
+      ? value["shortcuts"] as MenuBarState["shortcuts"] : "host";
+    const menus = decodeEntries(value["menus"], revision, revisions).filter((entry): entry is MenuBarMenu => entry.kind === "menu");
     set({ status: "ready", placement, shortcuts, revision, menus: freeze(menus) }, true);
     return true;
   };
 
-  const sleep = (milliseconds: number) => abortable(new Promise<void>(resolve => {
-    const timer = setTimeout(resolve, milliseconds);
-    lifetime.signal.addEventListener("abort", () => clearTimeout(timer), { once: true });
-  }), lifetime.signal);
+  const request = (message: Message) => {
+    if (!runtime) return Promise.reject(new BridgeError("disconnected", "The Bridge is not connected.", { route: menuBarRoute }));
+    return runtime.request({ ...message, route: menuBarRoute }, menuBarRoute);
+  };
 
-  const connected = async (client: RunicBridgeClient) => {
-    while (!client.isConnected()) await sleep(250);
+  // Watches the bar on the current connection; the "app" lease belongs to a connection, so it is taken on each.
+  const watch = async () => {
+    if (disposed || watching || !runtime?.connected) return;
+    for (let wait = 25; !disposed; wait = Math.min(wait * 2, 2000)) {
+      watching = true;
+      try {
+        // The "app" lease is taken first, so the state never shows the host matching the shortcuts.
+        if (app && !leased) {
+          const lease = await request({ kind: "menu-bar-shortcuts", shortcuts: "app" });
+          if (disposed) return;
+          if (lease.ok) { leased = true; apply(lease["state"]); }
+        }
+        const watched = await request({ kind: "menu-bar-watch" });
+        if (disposed) return;
+        if (!watched.ok) {
+          if (watched.error?.reason === "invalid-request")
+            stop("failed", new BridgeError("failed", "The host rejected the menu bar request.", { route: menuBarRoute }));
+          else stop("unavailable", unavailable(watched.error?.kind === "released" && runtime.connected
+            ? "This host serves no in-page menu bar, or the window of this menu bar was released: it needs Runic Desktop with Runic.Application.Views.Desktop 0.13 or later."
+            : "The menu bar is not available."));
+          return;
+        }
+        if (!apply(watched["state"])) { stop("unavailable", unavailable("The host answered the menu bar with an invalid state.")); return; }
+        return;
+      } catch {
+        // A lost connection watches again on the next one; another failure retries with backoff.
+        if (disposed || !runtime.connected) return;
+        const pause = delay(wait);
+        lifetime.signal.addEventListener("abort", () => pause.cancel(), { once: true });
+        await pause.promise;
+      } finally {
+        watching = false;
+      }
+    }
   };
 
   const run = async () => {
+    let bridge;
     try { bridge = await waitForBridge({ signal: lifetime.signal }); }
     catch (error) {
       if (disposed) return;
@@ -305,59 +329,30 @@ export function createMenuBarController(options: MenuBarControllerOptions = {}):
       stop(failure.kind === "unavailable" ? "unavailable" : "failed", failure);
       return;
     }
-    const client = bridge;
-    stopReconnect = client.onReconnect?.(() => restart.abort());
-    let first = true;
-    // The "app" lease belongs to a connection: it is taken once on each, and not again after a failed long poll.
-    let lease = app;
-    let delay = 25;
-    while (!disposed) {
-      try {
-        if (!client.isConnected()) { await connected(client); first = true; lease = app; }
-        if (restart.signal.aborted) { restart = new AbortController(); first = true; lease = app; }
-        const leasing = first && lease;
-        const reply = await abortable(abortable(leasing ? call(controlRoute, { shortcuts: "app" })
-          : first ? call(stateRoute)
-          : call(waitRoute, { after: state.revision }), restart.signal), lifetime.signal);
-        const envelope = parse(reply);
-        if (envelope?.kind === "busy") { await sleep(1000); continue; }
-        if (!envelope || !apply(envelope)) {
-          if (envelope?.kind === "invalid-request")
-            stop("failed", new BridgeError("failed", "The host rejected the menu bar request.", { route: waitRoute }));
-          else stop("unavailable", unavailable(envelope?.kind === "released"
-            ? "The window of this menu bar was released."
-            : "This host serves no in-page menu bar: it needs Runic Desktop with Runic.Application.Views.Desktop 0.11 or later."));
-          return;
-        }
-        if (leasing) { lease = false; leased = true; }
-        first = false;
-        delay = 25;
-      } catch {
-        if (disposed) return;
-        if (restart.signal.aborted) continue;
-        if (client.isConnected()) {
-          await sleep(delay).catch(() => undefined);
-          delay = Math.min(delay * 2, 2000);
-        } else lease = app;
-        first = true;
-      }
-    }
+    if (disposed) return;
+    runtime = sharedRuntimeFor(bridge);
+    stops.push(runtime.onPush("menu-bar", menuBarRoute, push => { apply(push["state"]); }));
+    stops.push(runtime.onConnection(connected => {
+      if (!connected) { leased = false; set({ status: "connecting" }); return; }
+      void watch();
+    }));
+    await watch();
   };
 
   const invoke = async (item: MenuBarItem): Promise<MenuBarInvokeResult> => {
-    if (disposed) throw new BridgeError("released", "The menu bar controller was disposed.", { route: invokeRoute });
-    if (state.status !== "ready" || !bridge) throw new BridgeError(state.status === "connecting" ? "disconnected" : "unavailable",
-      "The menu bar is not connected.", { route: invokeRoute });
+    if (disposed) throw new BridgeError("released", "The menu bar controller was disposed.", { route: menuBarRoute });
+    if (state.status !== "ready" || !runtime) throw new BridgeError(state.status === "connecting" ? "disconnected" : "unavailable",
+      "The menu bar is not connected.", { route: menuBarRoute });
     if (stickyHints) { stickyHints = false; set({ accessKeyHints: false }); }
-    let reply: string;
-    try { reply = await call(invokeRoute, { revision: revisions.get(item) ?? state.revision, key: item.key }); }
+    let reply;
+    try { reply = await request({ kind: "menu-bar-invoke", revision: revisions.get(item) ?? state.revision, key: item.key }); }
     catch (cause) {
-      throw new BridgeError(bridge.isConnected() ? "failed" : "disconnected", "The menu item could not be invoked.", { cause, route: invokeRoute });
+      if (cause instanceof BridgeError && cause.kind === "disconnected") throw cause;
+      throw new BridgeError(runtime.connected ? "failed" : "disconnected", "The menu item could not be invoked.", { cause, route: menuBarRoute });
     }
-    const envelope = parse(reply);
-    if (envelope?.kind === "executed" || envelope?.kind === "disabled" || envelope?.kind === "stale") return envelope.kind;
-    if (envelope?.kind === "released") throw new BridgeError("released", "The window of this menu bar was released.", { route: invokeRoute });
-    return "disabled";
+    if (!reply.ok && reply.error?.kind === "released") throw new BridgeError("released", "The window of this menu bar was released.", { route: menuBarRoute });
+    const result = reply["result"];
+    return result === "executed" || result === "disabled" || result === "stale" ? result : "disabled";
   };
 
   const match = (event: KeyEvent): MenuBarItem | undefined => {
@@ -447,11 +442,15 @@ export function createMenuBarController(options: MenuBarControllerOptions = {}):
     if (disposed) return;
     disposed = true;
     lifetime.abort();
-    stopReconnect?.();
+    for (const end of stops.splice(0)) end();
     for (const [type, listener] of target ? bindings : []) target!.removeEventListener(type, listener, false);
     listeners.clear();
     requestListeners.clear();
-    if (leased && bridge?.isConnected()) call(controlRoute, { shortcuts: "runic" }).catch(() => undefined);
+    if (runtime?.connected) {
+      const owner = runtime;
+      if (leased) void owner.request({ kind: "menu-bar-shortcuts", route: menuBarRoute, shortcuts: "runic" }, menuBarRoute).catch(() => undefined);
+      void owner.request({ kind: "menu-bar-unwatch", route: menuBarRoute }, menuBarRoute).catch(() => undefined);
+    }
   };
 
   if (options.signal?.aborted) dispose();

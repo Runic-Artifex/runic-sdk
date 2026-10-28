@@ -1,10 +1,9 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { collectionViewport, onBridgeDiagnostic, type BridgeDiagnostic } from "../dist/index.js";
-import { connectView, defineCollection, defineCollections } from "../dist/generated.js";
+import { connectView, defineCollection, defineCollections, defineText } from "../dist/generated.js";
 import * as bridgeWire from "../dist/wire.js";
-import { applyCollectionDelta } from "../dist/collections.js";
-import { createMockBridge, installMockBridge } from "../dist/mock.js";
+import { createMockBridge, installMockBridge, type MockBridge, type MockView } from "../dist/mock.js";
 
 type Row = { readonly id: number; readonly label: string };
 const decode = (wire: unknown): Row => {
@@ -12,8 +11,20 @@ const decode = (wire: unknown): Row => {
   return { id: bridgeWire.integer(row["id"], 0, 10000), label: bridgeWire.string(row["label"]) };
 };
 const definitions = { rows: defineCollection(decode, row => String(row.id)) };
-const change = (kind: string, index: number, keys: string[], items: Row[] = [], oldIndex = index) =>
+const collections = defineCollections(definitions);
+const change = (kind: string, index: number, keys: string[], items: Row[] = [], oldIndex = kind === "add" ? -1 : index) =>
   ({ field: "rows", kind, index, oldIndex, keys, items });
+
+/** Applies a frame's changes of one field as the client does: the first change copies, later ones edit the copy. */
+function applyAll(current: unknown, changes: readonly Readonly<Record<string, unknown>>[]): unknown {
+  let owned = false;
+  for (const next of changes) {
+    current = collections.apply(next["field"] as string, current, next, owned);
+    owned = true;
+  }
+  collections.validate("rows", current);
+  return current;
+}
 
 test("viewports bound rows and clamp the start and end of large sources", () => {
   assert.deepEqual(collectionViewport({ totalCount: 100000, scrollTop: 32000, height: 640, rowHeight: 32 }),
@@ -24,73 +35,58 @@ test("viewports bound rows and clamp the start and end of large sources", () => 
   assert.throws(() => collectionViewport({ totalCount: 2, scrollTop: 0, height: 100, rowHeight: 0 }), RangeError);
 });
 
-test("collection frames preserve identity and apply indexed operations in order", () => {
-  const original = { title: "rows", rows: [decode({ id: 1, label: "one" }), decode({ id: 2, label: "two" })] };
-  const next = applyCollectionDelta(original, [
+test("defineCollections names keyed collections and text fields, and validates their values", () => {
+  const both = defineCollections({ ...definitions, log: defineText(true) });
+  assert.deepEqual(["rows", "log", "title", "__proto__"].map(field => both.kind(field)), ["collection", "text", undefined, undefined]);
+  both.validate("log", null);
+  both.validate("title", 7);
+  assert.throws(() => both.validate("rows", [{ id: 1, label: "one" }, { id: 1, label: "again" }]), /unique/);
+  assert.throws(() => both.validate("rows", {}), /not an array/);
+  assert.throws(() => defineCollections({ log: defineText() }).validate("log", null), /not a string/);
+  assert.throws(() => both.apply("rows", [], { field: "rows", kind: "text", length: 0, trim: 0, text: "x" }, false), /text change/);
+  assert.equal(both.apply("log", "abc", { field: "log", kind: "text", length: 3, trim: 1, text: "d" }, false), "bcd");
+});
+
+test("collection changes preserve identity and apply indexed operations in order", () => {
+  const original = [decode({ id: 1, label: "one" }), decode({ id: 2, label: "two" })];
+  const next = applyAll(original, [
     change("replace", 1, ["2"], [{ id: 2, label: "new two" }]),
     change("add", 2, ["3"], [{ id: 3, label: "three" }]),
     change("move", 0, ["3"], [], 2),
     change("remove", 2, ["2"]),
-  ], definitions) as typeof original;
-  assert.deepEqual(next.rows.map(row => row.id), [3, 1]);
-  assert.equal(next.rows[1], original.rows[0]);
-  assert.equal(next.title, original.title);
-  assert.deepEqual(original.rows.map(row => row.id), [1, 2]);
+  ]) as Row[];
+  assert.deepEqual(next.map(row => row.id), [3, 1]);
+  assert.equal(next[1], original[0]);
+  assert.deepEqual(original.map(row => row.id), [1, 2]);
 });
 
-test("invalid frames leave the previous collection untouched", () => {
-  const original = { rows: [{ id: 1, label: "one" }] };
+test("invalid changes leave the previous collection untouched", () => {
+  const original = [{ id: 1, label: "one" }];
   for (const invalid of [
     change("remove", 0, ["wrong"]), change("add", 1, ["1"], [{ id: 1, label: "duplicate" }]),
     change("replace", 0, ["1"], [{ id: 2, label: 7 as unknown as string }]),
-    change("move", 2, ["1"], [], 0), { ...change("remove", 0, ["1"]), field: "__proto__" },
+    change("move", 2, ["1"], [], 0), change("add", 1, ["9"], [{ id: 3, label: "three" }]), change("add", 5, ["4"], [{ id: 4, label: "four" }]),
+    { ...change("remove", 0, ["1"]), field: "__proto__" }, { ...change("remove", 0, ["1"]), kind: "splice" },
   ]) {
-    assert.throws(() => applyCollectionDelta(original, [change("add", 1, ["2"], [{ id: 2, label: "two" }]), invalid], definitions));
-    assert.deepEqual(original, { rows: [{ id: 1, label: "one" }] });
+    assert.throws(() => applyAll(original, [change("add", 1, ["2"], [{ id: 2, label: "two" }]), invalid]), JSON.stringify(invalid));
+    assert.deepEqual(original, [{ id: 1, label: "one" }]);
   }
 });
 
-test("clients ignore duplicate deltas and recover a revision gap with one snapshot", async () => {
-  const host = globalThis as unknown as Record<string | symbol, unknown>;
-  delete host[Symbol.for("runic.views.generated-client-runtime")];
-  const bridge = installMockBridge(createMockBridge());
-  bridge.view("rows", { state: { rows: [{ id: 1, label: "one" }], title: "rows" } });
-  const client = await connectView({ contract: "rows:collections", route: "rows", mount: false, collections: defineCollections(definitions),
-    hydrate: (wire: { rows: unknown[]; title: string }) => ({ rows: wire.rows.map(decode), title: wire.title }) });
-  const original = client.snapshot.rows[0];
-  const push = host["__rowsChanged"] as (wire: unknown) => void;
-  const delta = { __runicDelta: 1, baseRevision: 1, revision: 2, changes: [change("add", 1, ["2"], [{ id: 2, label: "two" }])] };
-  push(delta); push(delta);
-  assert.equal(client.snapshot.rows.length, 2);
-  assert.equal(client.snapshot.rows[0], original);
-  let recoveries = 0;
-  bridge.route("rowsSnapshot", () => { recoveries++; return JSON.stringify({ ok: true, state: { revision: 5, rows: [{ id: 4, label: "recovered" }], title: "rows" }, error: null, protocol: 3 }); });
-  push({ ...delta, baseRevision: 3, revision: 4 });
-  // Held during the read and then judged against the recovered revision.
-  push({ ...delta, baseRevision: 3, revision: 5 });
-  await new Promise(resolve => setTimeout(resolve, 0));
-  assert.equal(recoveries, 1);
-  assert.deepEqual(client.snapshot.rows, [{ id: 4, label: "recovered" }]);
-  client.dispose();
-});
-
-type Wire = { rows: unknown[]; title: string };
-const host = globalThis as unknown as Record<string | symbol, unknown>;
+type Wire = { readonly rows: readonly Row[]; readonly title: string };
+const members = { rows: (wire: unknown) => bridgeWire.array(wire, decode), title: bridgeWire.string };
 const tick = (ms = 0) => new Promise(resolve => setTimeout(resolve, ms));
+const initial = { rows: [{ id: 1, label: "one" }], title: "rows" };
 
-/** Connects rows at revision 1 with one row; later snapshot reads use `read`. */
-async function connectRows(read: (attempt: number) => unknown) {
-  delete host[Symbol.for("runic.views.generated-client-runtime")];
+/** Connects `rows` at revision 0 with one row; recovery reads are answered by `read` (a throw drops the transport). */
+async function connectRows(read: (attempt: number) => { readonly revision: number; readonly state: Wire } | Promise<{ readonly revision: number; readonly state: Wire }>) {
   const bridge = installMockBridge(createMockBridge());
+  const view = bridge.view("rows", { state: initial, collections: { rows: item => String((item as Row).id) } });
   let reads = 0;
-  bridge.route("rowsSnapshot", () => {
-    const state = reads++ === 0 ? { revision: 1, rows: [{ id: 1, label: "one" }], title: "rows" } : read(reads - 1);
-    return JSON.stringify({ ok: true, state, error: null, protocol: 3 });
-  });
-  const client = await connectView({ contract: "rows:recovery", route: "rows", mount: false, collections: defineCollections(definitions),
-    hydrate: (wire: Wire) => ({ rows: wire.rows.map(decode), title: wire.title }) });
-  const push = host["__rowsChanged"] as (wire: unknown) => void;
-  return { bridge, client, push, reads: () => reads - 1 };
+  bridge.intercept(async ({ kind, route }) => kind === "snapshot" && route === "rows" ? { ok: true, ...await read(++reads) } : undefined);
+  const client = await connectView<Wire>({ contract: "rows:recovery", route: "rows", members, collections });
+  const push = (frame: Record<string, unknown>) => view.push({ kind: "frame", ...frame });
+  return { bridge, view, client, push, reads: () => reads };
 }
 
 /** Captures diagnostics and page error reports during `run`. */
@@ -105,8 +101,26 @@ async function observe(run: () => Promise<void>) {
   return { diagnostics, reported };
 }
 
-const gap = { __runicDelta: 1, baseRevision: 2, revision: 3, changes: [change("add", 1, ["3"], [{ id: 3, label: "three" }])] };
-const recovered = { revision: 3, rows: [{ id: 1, label: "one" }, { id: 3, label: "three" }], title: "rows" };
+const gap = { baseRevision: 2, revision: 3, changes: [change("add", 1, ["3"], [{ id: 3, label: "three" }])] };
+const recovered = { revision: 3, state: { rows: [{ id: 1, label: "one" }, { id: 3, label: "three" }], title: "rows" } };
+
+test("clients ignore a repeated frame and recover a revision gap with one snapshot", async () => {
+  const snapshot = { revision: 5, state: { rows: [{ id: 4, label: "recovered" }], title: "rows" } };
+  const { client, push, reads } = await connectRows(() => snapshot);
+  const original = client.snapshot.rows[0];
+  const frame = { baseRevision: 0, revision: 2, changes: [change("add", 1, ["2"], [{ id: 2, label: "two" }])] };
+  push(frame); push(frame);
+  assert.equal(client.snapshot.rows.length, 2);
+  assert.equal(client.snapshot.rows[0], original);
+  assert.equal(reads(), 0);
+  push({ ...frame, baseRevision: 3, revision: 4 });
+  // Held during the read and then judged against the recovered revision.
+  push({ ...frame, baseRevision: 3, revision: 5 });
+  await tick();
+  assert.equal(reads(), 1);
+  assert.deepEqual(client.snapshot.rows, [{ id: 4, label: "recovered" }]);
+  client.dispose();
+});
 
 test("recovery retries a failed snapshot read and reports the failure as a diagnostic", async () => {
   let rows: Awaited<ReturnType<typeof connectRows>> | undefined;
@@ -118,7 +132,7 @@ test("recovery retries a failed snapshot read and reports the failure as a diagn
   });
   assert.equal(rows!.reads(), 2);
   assert.deepEqual(rows!.client.snapshot.rows.map(row => row.id), [1, 3]);
-  assert.deepEqual(diagnostics.map(diagnostic => [diagnostic.code, diagnostic.route]), [["failed", "rowsSnapshot"]]);
+  assert.deepEqual(diagnostics.map(diagnostic => [diagnostic.code, diagnostic.route]), [["failed", "rows"]]);
   assert.equal(reported.length, 0);
   rows!.client.dispose();
 });
@@ -135,74 +149,109 @@ test("recovery gives up after four failed reads and reports the last failure", a
   assert.equal(reported.length, 1);
   assert.equal(rows!.client.snapshot.rows.length, 1);
   // The next frame that needs a snapshot recovers again.
-  rows!.push(gap);
-  await tick();
+  await observe(async () => {
+    rows!.push(gap);
+    await tick();
+  });
   assert.equal(rows!.reads(), 5);
   rows!.client.dispose();
 });
 
-test("recovery stops retrying after dispose or disconnect", async () => {
+test("recovery stops after dispose silently, and after a disconnect with a report", async () => {
   const disposed = await connectRows(() => { throw new Error("busy"); });
-  const disconnected = await connectRows(() => { throw new Error("busy"); });
-  await observe(async () => {
+  const disposedRun = await observe(async () => {
     disposed.push(gap);
     await tick();
     disposed.client.dispose();
-    disconnected.bridge.disconnect();
-    disconnected.push(gap);
     await tick(400);
   });
   assert.equal(disposed.reads(), 1);
-  assert.equal(disconnected.reads(), 0);
+  assert.equal(disposedRun.reported.length, 0);
+
+  const disconnected = await connectRows(() => { throw new Error("busy"); });
+  const disconnectedRun = await observe(async () => {
+    disconnected.push(gap);
+    await tick();
+    disconnected.bridge.disconnect();
+    await tick(400);
+  });
+  assert.equal(disconnected.reads(), 1);
+  assert.deepEqual(disconnectedRun.reported.map(error => (error as { kind?: string }).kind), ["disconnected"]);
   disconnected.client.dispose();
 });
 
-test("frames that arrive during recovery are applied after it, or recover again", async () => {
-  let release: (() => void) | undefined;
-  const { bridge, client, push, reads } = await connectRows(() => recovered);
-  bridge.route("rowsSnapshot", async () => {
-    await new Promise<void>(resolve => { release = resolve; });
-    return JSON.stringify({ ok: true, state: recovered, error: null, protocol: 3 });
+test("frames that arrive during recovery are applied after it", async () => {
+  const gates: (() => void)[] = [];
+  const { client, push, reads } = await connectRows(async () => {
+    await new Promise<void>(resolve => { gates.push(resolve); });
+    return recovered;
   });
   push(gap);
-  push({ __runicDelta: 1, baseRevision: 3, revision: 4, changes: [change("add", 2, ["4"], [{ id: 4, label: "four" }])] });
+  push({ baseRevision: 3, revision: 4, changes: [change("add", 2, ["4"], [{ id: 4, label: "four" }])] });
+  // A frame at or below the recovered revision is ignored.
+  push({ ...gap, baseRevision: 2, revision: 3 });
   await tick();
-  release!();
+  gates.shift()!();
   await tick();
+  assert.equal(reads(), 1);
   assert.deepEqual(client.snapshot.rows.map(row => row.id), [1, 3, 4]);
-  // A held frame that does not continue the recovered state needs another read.
-  let second = 0;
-  bridge.route("rowsSnapshot", async () => {
-    second++;
-    if (second === 1) await new Promise<void>(resolve => { release = resolve; });
-    return JSON.stringify({ ok: true, state: { ...recovered, revision: second === 1 ? 6 : 9 }, error: null, protocol: 3 });
+  client.dispose();
+});
+
+test("a frame held during recovery that does not continue the recovered state starts another recovery", async () => {
+  const gates: (() => void)[] = [];
+  const answers = [{ ...recovered, revision: 6 }, { ...recovered, revision: 9 }];
+  const { client, push, reads } = await connectRows(async attempt => {
+    if (attempt === 1) await new Promise<void>(resolve => { gates.push(resolve); });
+    return answers[attempt - 1]!;
   });
   push({ ...gap, baseRevision: 5, revision: 6 });
   push({ ...gap, baseRevision: 7, revision: 8 });
   await tick();
-  release!();
-  await tick();
-  await tick();
-  assert.equal(second, 2);
-  assert.equal(reads(), 0);
+  assert.equal(reads(), 1);
+  gates.shift()!();
+  await tick(50);
+  assert.equal(reads(), 2);
+  assert.deepEqual(client.snapshot.rows.map(row => row.id), [1, 3]);
   client.dispose();
 });
 
-test("a repeated full state notifies only when its content changed", async () => {
-  const { client, push } = await connectRows(() => recovered);
+test("a state or frame at a revision the client already has is ignored and does not notify", async () => {
+  const { client, view, push } = await connectRows(() => recovered);
   let notifications = 0;
   client.subscribe(() => { notifications++; });
   notifications = 0;
-  const state = { revision: 2, rows: [{ id: 1, label: "one" }], title: "rows" };
-  push(state); push(JSON.parse(JSON.stringify(state)));
+  const state = { kind: "state", revision: 2, state: initial };
+  view.push(state); view.push(JSON.parse(JSON.stringify(state)) as typeof state);
   assert.equal(notifications, 1);
-  // The same revision with other content, as after a change without a notification.
-  push({ ...state, title: "renamed" });
+  // Two states of a route at one revision are equal, so another content at the same revision is not applied.
+  view.push({ ...state, state: { ...initial, title: "renamed" } });
+  assert.equal(notifications, 1);
+  assert.equal(client.snapshot.title, "rows");
+  push({ baseRevision: 1, revision: 2, changes: [{ field: "title", kind: "set", value: "renamed" }] });
+  assert.equal(client.snapshot.title, "rows");
+  push({ baseRevision: 2, revision: 3, changes: [{ field: "title", kind: "set", value: "renamed" }] });
   assert.equal(notifications, 2);
   assert.equal(client.snapshot.title, "renamed");
-  // A full state that matches the state after a frame, such as a command reply.
-  push({ __runicDelta: 1, baseRevision: 2, revision: 3, changes: [change("add", 1, ["3"], [{ id: 3, label: "three" }])] });
-  push({ ...recovered, title: "renamed" });
-  assert.equal(notifications, 3);
+  client.dispose();
+});
+
+test("the mock's collection edits reach the client as indexed changes", async () => {
+  const bridge: MockBridge = installMockBridge(createMockBridge());
+  const view: MockView = bridge.view("rows", { state: initial, collections: { rows: item => String((item as Row).id) } });
+  const client = await connectView<Wire>({ contract: "rows:mock", route: "rows", members, collections });
+  const first = client.snapshot.rows[0];
+  view.batch(() => {
+    view.collection("rows").add([{ id: 2, label: "two" }, { id: 3, label: "three" }], 0);
+    view.collection("rows").move("1", 0);
+    view.collection("rows").replace("3", { id: 3, label: "THREE" });
+    view.update({ title: "edited" });
+  });
+  view.collection("rows").remove("2");
+  assert.deepEqual(client.snapshot, { rows: [{ id: 1, label: "one" }, { id: 3, label: "THREE" }], title: "edited" });
+  assert.equal(client.snapshot.rows[0], first);
+  assert.throws(() => view.collection("rows").add({ id: 1, label: "again" }), RangeError);
+  assert.throws(() => view.collection("title"), RangeError);
+  assert.equal(bridge.calls.filter(call => call.kind === "snapshot").length, 0);
   client.dispose();
 });

@@ -676,6 +676,7 @@ const views = "../views/dist/";
 const errors = await load(views + "errors.js", "views/errors");
 const diagnosticsModule = await load(views + "diagnostics.js", "views/diagnostics");
 const lifetime = await load(views + "lifetime.js", "views/lifetime");
+const version = await load(views + "version.js", "views/version");
 const transport = await load(views + "transport.js", "views/transport");
 const connectionState = await load(views + "connection-state.js", "views/connection-state");
 const pluginDiagnostics = await load("dist/diagnostics.js", "plugin/diagnostics");
@@ -688,6 +689,7 @@ const link = (from) => (specifier) => {
 await errors.link(link("views"));
 await diagnosticsModule.link(link("views"));
 await lifetime.link(link("views"));
+await version.link(link("views"));
 await transport.link(link("views"));
 await connectionState.link(link("views"));
 await pluginDiagnostics.link(link("plugin"));
@@ -748,6 +750,7 @@ const loaded = [
   await load(views + "errors.js", "views/errors"),
   await load(views + "diagnostics.js", "views/diagnostics"),
   await load(views + "lifetime.js", "views/lifetime"),
+  await load(views + "version.js", "views/version"),
   await load(views + "transport.js", "views/transport"),
 ];
 const connectionState = await load(views + "connection-state.js", "views/connection-state");

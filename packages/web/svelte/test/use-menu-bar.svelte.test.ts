@@ -72,7 +72,11 @@ describe("useMenuBar", () => {
     await expect(bar.invoke(save)).rejects.toMatchObject({ name: "BridgeError", kind: "disconnected" });
     flushSync();
     await until(() => bar.state.status === "ready" && mock.leased);
-    expect(seen).toEqual(["connecting", "ready"]);
+    // Protocol 2 watches the bar, then takes the lease: the state can be ready with `shortcuts: "page"` before the
+    // lease's revision makes it "app", but the status never goes back.
+    expect(seen[0]).toBe("connecting");
+    expect(new Set(seen.slice(1))).toEqual(new Set(["ready"]));
+    expect(bar.state.shortcuts).toBe("app");
     expect(await bar.invoke(save)).toBe("executed");
     const event = new KeyboardEvent("keydown", { key: "n", code: "KeyN", ctrlKey: true, cancelable: true });
     expect(bar.handleKeyDown(event)).toBe(true);
@@ -80,6 +84,25 @@ describe("useMenuBar", () => {
     destroy();
     await until(() => !mock.leased);
     expect(bar.handleKeyDown(new KeyboardEvent("keydown", { key: "n", code: "KeyN", ctrlKey: true }))).toBe(false);
+  });
+
+  test("createMenuBarController notifies subscribers again when a reply repeats the revision a push already applied", async () => {
+    // MenuBarController.subscribe: "Calls `listener` after each change of `current`". The "app" lease's reply and its
+    // push carry the same revision (the same state, specs/desktop/menu-bar-page.md "State"), and `apply` sets both.
+    const mock = installMockMenuBar(menus, { platform: "linux" });
+    let bar!: MenuBarHandle;
+    const seen: MenuBarState[] = [];
+    const destroy = $effect.root(() => {
+      bar = useMenuBar({ shortcuts: "app" });
+      $effect(() => { seen.push(bar.state); });
+    });
+    flushSync();
+    await until(() => bar.state.status === "ready" && mock.leased);
+    await new Promise(resolve => setTimeout(resolve, 10));
+    flushSync();
+    const summary = seen.map(state => `${state.status}/${state.revision}/${state.shortcuts}`);
+    expect(summary).toEqual([...new Set(summary)]);
+    destroy();
   });
 
   test("an owner destroyed before its first flush, like server rendering, creates no controller", async () => {
