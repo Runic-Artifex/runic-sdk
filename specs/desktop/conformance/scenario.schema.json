@@ -69,10 +69,42 @@
       "additionalProperties": false,
       "required": ["op", "target"],
       "properties": {
-        "op": { "$ref": "#/$defs/name" },
+        "op": { "$ref": "#/$defs/operationName" },
         "target": { "$ref": "#/$defs/name" },
         "arguments": { "type": "object" }
-      }
+      },
+      "allOf": [
+        { "if": { "properties": { "op": { "enum": ["surface.create", "surface.createStarted"] } } }, "then": { "required": ["arguments"], "properties": { "arguments": { "required": ["host"] } } } },
+        { "if": { "properties": { "op": { "enum": ["request.start", "request.head", "session.createAuthenticated", "session.connect"] } } }, "then": { "required": ["arguments"], "properties": { "arguments": { "required": ["surface"] } } } },
+        { "if": { "properties": { "op": { "enum": ["invocation.start", "invocation.startPending", "invocation.deliverLateSuccess"] } } }, "then": { "required": ["arguments"], "properties": { "arguments": { "required": ["session"] } } } },
+        { "if": { "properties": { "op": { "const": "invocation.start" } } }, "then": { "properties": { "arguments": { "required": ["capability"] } } } },
+        { "if": { "properties": { "op": { "const": "capability.registerFailing" } } }, "then": { "required": ["arguments"], "properties": { "arguments": { "required": ["name"] } } } }
+      ]
+    },
+    "operationName": {
+      "description": "Closed operation vocabulary; operations.json defines each operation's target and arguments.",
+      "enum": [
+        "host.create",
+        "host.createStarted",
+        "host.start",
+        "surface.create",
+        "surface.createStarted",
+        "surface.close",
+        "capability.registerFailing",
+        "response.stream",
+        "stream.acceptNext",
+        "request.start",
+        "request.head",
+        "request.probe",
+        "request.disconnect",
+        "session.createAuthenticated",
+        "session.connect",
+        "session.authenticate",
+        "session.disconnect",
+        "invocation.start",
+        "invocation.startPending",
+        "invocation.deliverLateSuccess"
+      ]
     },
     "event": {
       "type": "object",
