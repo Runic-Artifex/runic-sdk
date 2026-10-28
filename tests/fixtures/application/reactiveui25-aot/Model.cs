@@ -44,24 +44,27 @@ public sealed class AotProofViewModel : ReactiveObject
 
 public sealed partial class AotProofWindow : RunicWindow<AotProofViewModel>;
 
-internal sealed class AotArguments(string json) : IBridgeArguments
-{
-    public long GetInt64() => throw new InvalidOperationException();
-    public bool GetBoolean() => throw new InvalidOperationException();
-    public string GetString() => json;
-}
-
-// The window's transport without a page. Until the producer speaks protocol 4 (P4), the proof calls the generated
-// bridge's protocol-3 routes through the window dispatcher's legacy routes.
+// The window's transport without a page: the proof sends Views protocol 4 requests to the window's request handler
+// on one connection, as a page does.
 internal sealed class AotTransport : IBridgeTransport
 {
-    private BridgeDispatcher? _dispatcher;
-    public IDisposable Serve(IBridgeRequestHandler handler) { _dispatcher = (BridgeDispatcher)handler; return new Lease(() => { }); }
+    private IBridgeRequestHandler? _handler;
+
+    public IDisposable Serve(IBridgeRequestHandler handler)
+    {
+        _handler = handler;
+        return new Lease(() => _handler = null);
+    }
+
     public ValueTask BroadcastAsync(ReadOnlyMemory<byte> message, CancellationToken cancellationToken = default) => ValueTask.CompletedTask;
-    public string Call(string name, string json = "null") =>
-        _dispatcher!.Legacy.TryFind(name, out var sync, out _) && sync is not null ? sync(new AotArguments(json)) : throw new KeyNotFoundException(name);
-    public ValueTask<string> CallAsync(string name, string json) =>
-        _dispatcher!.Legacy.TryFind(name, out _, out var asynchronous) && asynchronous is not null
-            ? asynchronous(new AotArguments(json), CancellationToken.None) : throw new KeyNotFoundException(name);
+
+    public async ValueTask<string> RequestAsync(string json)
+    {
+        var handler = _handler ?? throw new InvalidOperationException("No window serves the transport.");
+        var reply = await handler.HandleAsync(new BridgeRequest(System.Text.Encoding.UTF8.GetBytes(json), "client", "connection"),
+            CancellationToken.None).ConfigureAwait(false);
+        return System.Text.Encoding.UTF8.GetString(reply.Span);
+    }
+
     private sealed class Lease(Action dispose) : IDisposable { public void Dispose() => dispose(); }
 }

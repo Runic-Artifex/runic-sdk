@@ -27,44 +27,74 @@ internal sealed class DesktopBridgeTransportTests
     [After(HookType.Test)]
     public async Task StopHostAsync() => await host.DisposeAsync();
 
-    // The producer's protocol-4 frames reach the page through BroadcastAsync, in order and without coalescing. The
-    // generated bridges still publish protocol 3 states internally until P4, so nothing reaches the transport yet.
+    // The producer's frames reach the page through BroadcastAsync, in order and one at a time: changes made while a
+    // frame is being sent wait for it, and no change is lost or reordered (the frames' revisions chain).
     [Test, NotInParallel(Order = 3)]
-    [Skip("P4: the producer publishes protocol-4 frames through IBridgeTransport.BroadcastAsync.")]
     public async Task GeneratedCollectionDeliveryPreservesPendingFrames()
     {
         await using var surface = await host.CreateSurfaceAsync();
-        var scripts = new List<string>();
+        var messages = new List<string>();
         var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         using var transport = new DesktopBridgeTransport(surface, (message, _) =>
         {
-            lock (scripts)
+            lock (messages)
             {
-                scripts.Add(System.Text.Encoding.UTF8.GetString(message.Span));
-                if (scripts.Count == 1) { started.TrySetResult(); return release.Task; }
+                messages.Add(System.Text.Encoding.UTF8.GetString(message.Span));
+                if (messages.Count == 1) { started.TrySetResult(); return release.Task; }
             }
             return Task.CompletedTask;
         }, static (_, _, _) => Task.FromResult(true));
         var model = new OrderedCollectionModel();
         using var bridge = new OrderedCollectionBridge(transport, model);
+        // A connection completed its hello and read the route's state, as a page does before it receives frames.
+        await RequestAsync(transport, "{\"kind\":\"hello\",\"protocol\":4,\"session\":\"s-1\",\"client\":{\"name\":\"tests\",\"version\":\"0\"}}");
+        await RequestAsync(transport, "{\"kind\":\"snapshot\",\"route\":\"ordered\"}");
         try
         {
             model.Rows.Add(1);
             await started.Task.WaitAsync(TimeSpan.FromSeconds(5));
             model.Rows.Add(2);
             model.Rows.Add(3);
-            lock (scripts) Require(scripts.Count == 1, "Dependent frames bypassed the in-flight delivery.");
+            lock (messages) Require(messages.Count == 1, "Dependent frames bypassed the in-flight delivery.");
             release.TrySetResult();
             var deadline = DateTime.UtcNow.AddSeconds(5);
-            while (DateTime.UtcNow < deadline)
-            {
-                lock (scripts) if (scripts.Count == 3) break;
-                await Task.Delay(5);
-            }
-            lock (scripts) Require(scripts.Count == 3, "Desktop coalesced or reordered dependent collection frames.");
+            while (DateTime.UtcNow < deadline && Added(messages).Count < 3) await Task.Delay(5);
+            Require(Added(messages).SequenceEqual([1, 2, 3]), $"Desktop lost or reordered collection changes: {string.Join(", ", messages)}");
+            long? revision = null;
+            lock (messages)
+                foreach (var message in messages)
+                {
+                    using var frame = JsonDocument.Parse(message);
+                    var root = frame.RootElement;
+                    Require(revision is null || root.GetProperty("baseRevision").GetInt64() == revision,
+                        $"A frame does not follow the frame before it: {string.Join(", ", messages)}");
+                    revision = root.GetProperty("revision").GetInt64();
+                }
         }
         finally { release.TrySetResult(); }
+
+        static List<int> Added(List<string> messages)
+        {
+            lock (messages)
+                return [.. messages.SelectMany(message =>
+                {
+                    using var frame = JsonDocument.Parse(message);
+                    return frame.RootElement.GetProperty("changes").EnumerateArray()
+                        .Where(change => change.GetProperty("kind").GetString() == "add")
+                        .SelectMany(change => change.GetProperty("items").EnumerateArray().Select(item => item.GetInt32())).ToArray();
+                })];
+        }
+    }
+
+    // Sends a request on Desktop connection 1 through the window's dispatcher, as the page's request capability does.
+    private static async Task<string> RequestAsync(IBridgeTransport transport, string json)
+    {
+        var reply = await BridgeDispatcher.For(transport).HandleAsync(
+            new BridgeRequest(System.Text.Encoding.UTF8.GetBytes(json), "client-1", "1"), CancellationToken.None);
+        var text = System.Text.Encoding.UTF8.GetString(reply.Span);
+        Require(text.StartsWith("{\"ok\":true", StringComparison.Ordinal), $"{json} was answered {text}.");
+        return text;
     }
 
     // Views protocol 4: a broadcast is sent as it is, in call order, without coalescing; the transport awaits each send.
@@ -166,7 +196,8 @@ internal sealed class DesktopBridgeTransportTests
         window.Attach(new SlowBridge(calls, model, content));
         Require(transport.IsServing, "The window session serves no Desktop requests.");
 
-        var call = calls.CallAsync("slowSave").AsTask();
+        _ = await calls.RequestAsync("{\"kind\":\"hello\",\"protocol\":4,\"session\":\"s-1\",\"client\":{\"name\":\"tests\",\"version\":\"0\"}}");
+        var call = calls.RequestAsync("{\"kind\":\"command\",\"route\":\"slow\",\"member\":\"save\"}").AsTask();
         Require(await model.Started.Task.WaitAsync(TimeSpan.FromSeconds(5)), "The awaited command did not start.");
         var result = await window.CloseAsync(TimeSpan.Zero);
         Require(!result.Drained && result.RemainingOperations == 1, "Close did not report the running command.");

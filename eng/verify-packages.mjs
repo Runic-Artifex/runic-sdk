@@ -343,15 +343,13 @@ using var host = new RunicWindowTestHost<ConsumerViewModel>(model,
     new RunicWindowTestHostOptions { RootRoute = "consumer" });
 if (host.Root.Snapshot().Json.GetProperty("value").GetInt32() != 7)
     throw new Exception("The packaged headless Window snapshot failed.");
-_ = host.Transport.Call("consumerSetValue", new(Int64Value: 8));
+host.Root.Set(vm => vm.Value, 8).ThrowIfFailed();
 if (model.Value != 8) throw new Exception("The packaged generated setter failed.");
-var published = false;
-for (var attempt = 0; attempt < 100 && !published; attempt++)
-{
-    published = host.Transport.TakePublications().Count > 0;
-    if (!published) await Task.Delay(10);
-}
-if (!published) throw new Exception("The packaged generated publication failed.");
+_ = host.Root.TakePublications();
+model.Value = 9;
+var frame = await host.Root.NextPublicationAsync();
+if (frame.Kind != RunicPublicationKind.Frame || frame.Sets.Single().Value.GetInt32() != 9)
+    throw new Exception("The packaged generated publication failed.");
 Console.WriteLine("Packaged Window/View test host passed.");`
       : strategy.canaryType
         // Without a suppression: the canary types are stable, so using one compiles as is.

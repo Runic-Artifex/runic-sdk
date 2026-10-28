@@ -27,8 +27,8 @@ internal static class Benchmarks
             for (var warmup = 0; warmup < 50; warmup++) store.Update(edits);
             if (bridge is not null)
             {
-                using var warm = JsonDocument.Parse(transport.Call("rowsSnapshot"));
-                await transport.WaitForRevisionAsync(warm.RootElement.GetProperty("state").GetProperty("revision").GetInt64());
+                using var warm = JsonDocument.Parse(await transport.RequestAsync("{\"kind\":\"snapshot\",\"route\":\"rows\"}"));
+                await transport.WaitForRevisionAsync(warm.RootElement.GetProperty("revision").GetInt64());
             }
             transport.Frames.Clear();
             Row.MeasureSerialization = true;
@@ -47,17 +47,23 @@ internal static class Benchmarks
             Row.MeasureSerialization = false;
             if (bridge is not null)
             {
-                using var snapshot = JsonDocument.Parse(transport.Call("rowsSnapshot"));
-                var revision = snapshot.RootElement.GetProperty("state").GetProperty("revision").GetInt64();
-                await transport.WaitForRevisionAsync(revision);
+                using var snapshot = JsonDocument.Parse(await transport.RequestAsync("{\"kind\":\"snapshot\",\"route\":\"rows\"}"));
+                await transport.WaitForRevisionAsync(snapshot.RootElement.GetProperty("revision").GetInt64());
             }
             var frames = transport.Frames.ToArray();
             var rowsSerialized = frames.Sum(frame =>
             {
                 using var document = JsonDocument.Parse(frame);
                 var root = document.RootElement;
-                return root.TryGetProperty("rows", out var rows) ? rows.GetArrayLength()
-                    : root.GetProperty("changes").EnumerateArray().Sum(change => change.GetProperty("items").GetArrayLength());
+                // A state carries every row; a frame the rows of its changes, or all of them in a set of the field.
+                return root.GetProperty("kind").GetString() switch
+                {
+                    "state" => root.GetProperty("state").GetProperty("rows").GetArrayLength(),
+                    "failure" => 0,
+                    _ => root.GetProperty("changes").EnumerateArray().Sum(change => change.GetProperty("kind").GetString() == "set"
+                        ? change.GetProperty("value") is { ValueKind: JsonValueKind.Array } value ? value.GetArrayLength() : 0
+                        : change.GetProperty("items").GetArrayLength()),
+                };
             });
             times.Sort();
             results.Add(new(mode, 10000, model.Rows.Count, edits,
@@ -88,46 +94,53 @@ internal static class Benchmarks
         }
     }
 
-    // Until the producer speaks protocol 4 (P4), the benchmark reads the bridge's protocol-3 states and calls its
-    // routes through the window dispatcher's legacy routes.
+    // The window's transport without a page: it records the state, frame and failure pushes and sends requests to the
+    // window's request handler on one connection, after its hello.
     internal sealed class MeteredTransport : IBridgeTransport, IDisposable
     {
-        private BridgeDispatcher? _dispatcher;
+        private IBridgeRequestHandler? _handler;
+        private bool _greeted;
         internal ConcurrentQueue<string> Frames { get; } = new();
         private long _latestRevision;
         internal long LatestRevision => Interlocked.Read(ref _latestRevision);
         public IDisposable Serve(IBridgeRequestHandler handler)
         {
-            _dispatcher = (BridgeDispatcher)handler;
-            _dispatcher.Legacy.SetPublisher((name, state, _) =>
-            {
-                Publish(Encoding.UTF8.GetString(state.Span));
-                return ValueTask.CompletedTask;
-            });
+            _handler = handler;
             return this;
         }
-        public ValueTask BroadcastAsync(ReadOnlyMemory<byte> message, CancellationToken cancellationToken = default) =>
-            ValueTask.CompletedTask;
-        private void Publish(string stateJson)
+        public ValueTask BroadcastAsync(ReadOnlyMemory<byte> message, CancellationToken cancellationToken = default)
         {
-            Frames.Enqueue(stateJson);
-            using var document = JsonDocument.Parse(stateJson);
-            Interlocked.Exchange(ref _latestRevision, document.RootElement.GetProperty("revision").GetInt64());
+            var json = Encoding.UTF8.GetString(message.Span);
+            using var document = JsonDocument.Parse(json);
+            var root = document.RootElement;
+            if (root.GetProperty("kind").GetString() is "state" or "frame" or "failure")
+            {
+                Frames.Enqueue(json);
+                Interlocked.Exchange(ref _latestRevision, root.GetProperty("revision").GetInt64());
+            }
+            return ValueTask.CompletedTask;
         }
-        internal string Call(string name) =>
-            _dispatcher!.Legacy.TryFind(name, out var sync, out _) && sync is not null ? sync(new Arguments()) : throw new KeyNotFoundException(name);
+        internal async Task<string> RequestAsync(string json)
+        {
+            if (!_greeted)
+            {
+                _greeted = true;
+                await SendAsync("{\"kind\":\"hello\",\"protocol\":4,\"session\":\"benchmarks\",\"client\":{\"name\":\"benchmarks\",\"version\":\"1.0.0\"}}");
+            }
+            return await SendAsync(json);
+        }
+        private async Task<string> SendAsync(string json)
+        {
+            var reply = await _handler!.HandleAsync(new BridgeRequest(Encoding.UTF8.GetBytes(json), "benchmarks", "benchmarks"), CancellationToken.None);
+            var text = Encoding.UTF8.GetString(reply.Span);
+            return text.StartsWith("{\"ok\":true", StringComparison.Ordinal) ? text : throw new InvalidOperationException($"{json} failed: {text}");
+        }
         internal async Task WaitForRevisionAsync(long revision)
         {
             using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(15));
             while (LatestRevision < revision) await Task.Delay(1, timeout.Token);
         }
-        public void Dispose() => _dispatcher?.Legacy.SetPublisher(null);
-        private sealed class Arguments : IBridgeArguments
-        {
-            public long GetInt64() => throw new InvalidOperationException();
-            public bool GetBoolean() => throw new InvalidOperationException();
-            public string GetString() => throw new InvalidOperationException();
-        }
+        public void Dispose() => _handler = null;
     }
 }
 
