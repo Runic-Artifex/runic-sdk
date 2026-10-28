@@ -23,9 +23,9 @@
     { "op": "surface.createStarted", "target": "surface-1", "arguments": { "host": "host-1" } }
   ],
   "steps": [
-    { "op": "session.connect", "target": "session-missing", "arguments": { "credential": "missing", "origin": "same-origin" } },
-    { "op": "session.connect", "target": "session-foreign", "arguments": { "credential": "valid", "origin": "https://foreign.invalid" } },
-    { "op": "session.connect", "target": "session-accepted", "arguments": { "credential": "valid", "origin": "same-origin" } },
+    { "op": "session.connect", "target": "session-missing", "arguments": { "surface": "surface-1", "credential": "missing", "origin": "same-origin" } },
+    { "op": "session.connect", "target": "session-foreign", "arguments": { "surface": "surface-1", "credential": "valid", "origin": "https://foreign.invalid" } },
+    { "op": "session.connect", "target": "session-accepted", "arguments": { "surface": "surface-1", "credential": "valid", "origin": "same-origin" } },
     { "op": "invocation.start", "target": "invocation-denied", "arguments": { "session": "session-accepted", "capability": "undeclared.capability" } }
   ],
   "expect": {
