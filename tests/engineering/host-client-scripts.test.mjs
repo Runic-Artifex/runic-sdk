@@ -361,6 +361,22 @@ test("runic-cswebui.js reports connection changes as they happen", async () => {
   expect(states).toEqual([true, false, true]);
 });
 
+// A page's connection indicator subscribes before WebUI connects; the Views runtime subscribes once it has seen
+// isConnected() true, before the next poll. It must get the current state, and the first listener the change.
+test("runic-cswebui.js gives a later listener the current state, not the last poll's", () => {
+  let online = false;
+  const context = loadCsWebUi({ isConnected: () => online, allowNavigation: () => {}, call: () => new Promise(() => {}) },
+    { setInterval: () => 1, clearInterval: () => {} });
+  const bridge = context.__runicBridge;
+  const first = [];
+  const later = [];
+  bridge.onConnectionChange(connected => first.push(connected));
+  online = true;
+  bridge.onConnectionChange(connected => later.push(connected));
+  expect(first).toEqual([false, true]);
+  expect(later).toEqual([true]);
+});
+
 // D040: .NET broadcasts Views pushes as WebUI raw data (the UTF-8 JSON), which
 // the script decodes instead of evaluating, so a policy without 'unsafe-eval' works.
 test("runic-cswebui.js delivers raw pushes to every message listener", () => {

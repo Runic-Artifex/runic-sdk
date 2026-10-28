@@ -31,14 +31,17 @@ try {
   const evaluation = (await browser.command("Runtime.evaluate", { returnByValue: true, allowUnsafeEvalBlockedByCSP: false,
     expression: `(() => { try { new Function("return 1")(); return "allowed"; } catch (error) { return error.name; } })()` })).result.value;
   if (evaluation !== "EvalError") throw new Error(`The page's Content-Security-Policy allowed string evaluation: ${evaluation}`);
-  // A command's reply also carries state, so count the pushes and the policy's refusals separately.
+  // Count the pushes and the policy's refusals: a push is decoded as data, without string evaluation.
   await evaluate(`(() => {
     globalThis.policyViolations = [];
     document.addEventListener("securitypolicyviolation", event =>
       globalThis.policyViolations.push(\`\${event.effectiveDirective} \${event.blockedURI}\`));
-    const callback = globalThis.__counterChanged;
+    // Views protocol 4: the counter's states and frames reach every message listener of the host bridge.
     globalThis.statePushes = 0;
-    globalThis.__counterChanged = state => { globalThis.statePushes++; return callback?.(state); };
+    window.__runicBridge.onMessage(message => {
+      const push = JSON.parse(message);
+      if (push.route === "counter" && (push.kind === "frame" || push.kind === "state")) globalThis.statePushes++;
+    });
   })()`);
   await evaluate('document.querySelector("#increment").click()');
   await retry(async () => {
