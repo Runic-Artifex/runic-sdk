@@ -62,3 +62,41 @@ test("mock failures carry a reason and typed mocks a key resolver", async () => 
   const definition: Definition = { state: {}, resolveKey: { remove: () => true } };
   void [failure, wrong, definition];
 });
+
+// Views protocol 4 (P6): the shapes generated clients and mocks are written against.
+test("generated clients connect with member decoders and structured calls", async () => {
+  type Generated = typeof import("../dist/generated.js");
+  type State = { readonly title: string; readonly canSave: boolean };
+  type Options = import("../dist/generated.js").ViewConnectOptions<State>;
+  type Decoders = import("../dist/generated.js").BridgeMemberDecoders<State>;
+  const members: Decoders = { title: wire => String(wire), canSave: wire => wire === true };
+  // @ts-expect-error Every state member has a decoder.
+  const partial: Decoders = { title: wire => String(wire) };
+  const options: Options = {
+    contract: "Tests.Editor:fp", route: "editor", members,
+    // A typed connect{Name}(options) passes its optional handlers through.
+    handlers: { confirm: undefined },
+  };
+  // @ts-expect-error hydrate and mount are gone: every client sends open.
+  const legacy: Options = { contract: "Tests.Editor:fp", route: "editor", members, hydrate: (wire: unknown) => wire };
+  type Connection = Awaited<ReturnType<Generated["connectView"]>>;
+  const calls = (view: Connection) => [
+    view.set("title", "Draft"),
+    view.command("save"),
+    view.command("rename", { title: "Draft" }),
+    view.can("rename", { title: "Draft" }),
+    view.write("title", { requestId: "w-1", expectedVersion: 1, expectedValue: "Draft", value: "Final" }, String),
+    view.start("save", "operation-1", undefined, { decode: () => undefined }),
+    view.recover("save", "operation-1", { decode: () => undefined, stream: true }),
+  ];
+  type Spec = import("../dist/generated-mock.js").MockTypedViewSpec;
+  const spec: Spec = {
+    kind: "editor", route: "editor", fields: {}, defaults: {},
+    setters: { setTitle: { member: "title", checked: "writeTitle" } },
+    commands: { save: { member: "save", available: "canSave" }, rename: { member: "rename", decodeInput: wire => wire } },
+    operations: { save: { member: "save" } },
+  };
+  // @ts-expect-error A mock command names its member, not a route suffix.
+  const routed: Spec = { kind: "editor", route: "editor", fields: {}, defaults: {}, commands: { save: { route: "Save" } } };
+  void [partial, options, legacy, calls, spec, routed];
+});
