@@ -1,0 +1,72 @@
+{
+  "format": "runic.views.vector/1",
+  "id": "canonical.members",
+  "contract": {"id":"runic.views","version":4},
+  "area": "canonical",
+  "description": "Member order and duplicate member names.",
+  "cases": [
+    {
+      "id": "canonical.members.ascii-order",
+      "description": "Members sort by UTF-16 code units: uppercase before lowercase, a prefix before longer names.",
+      "operation": "canonicalize",
+      "input": {"encoding":"utf8","value":"{\"b\":1,\"aa\":3,\"a\":2,\"A\":4}"},
+      "expect": {"output":{"encoding":"utf8","value":"{\"A\":4,\"a\":2,\"aa\":3,\"b\":1}"}}
+    },
+    {
+      "id": "canonical.members.utf16-order",
+      "description": "U+1F600 (surrogates D83D DE00) sorts before U+FFFF, unlike code point order.",
+      "operation": "canonicalize",
+      "input": {"encoding":"utf8","value":"{\"\\uffff\":1,\"\\ud83d\\ude00\":2}"},
+      "expect": {"output":{"encoding":"utf8","value":"{\"😀\":2,\"￿\":1}"}}
+    },
+    {
+      "id": "canonical.members.escape-equivalence",
+      "description": "A name is sorted by its value, not by its escaped form.",
+      "operation": "canonicalize",
+      "input": {"encoding":"utf8","value":"{\"\\u0062\":1,\"a\":2}"},
+      "expect": {"output":{"encoding":"utf8","value":"{\"a\":2,\"b\":1}"}}
+    },
+    {
+      "id": "canonical.members.empty-name",
+      "description": "The empty name sorts first.",
+      "operation": "canonicalize",
+      "input": {"encoding":"utf8","value":"{\"a\":1,\"\":0}"},
+      "expect": {"output":{"encoding":"utf8","value":"{\"\":0,\"a\":1}"}}
+    },
+    {
+      "id": "canonical.members.nested",
+      "description": "Objects in arrays and objects are sorted too; arrays keep their order.",
+      "operation": "canonicalize",
+      "input": {"encoding":"utf8","value":"[{\"z\":{\"y\":1,\"x\":2}},[3,1,2]]"},
+      "expect": {"output":{"encoding":"utf8","value":"[{\"z\":{\"x\":2,\"y\":1}},[3,1,2]]"}}
+    },
+    {
+      "id": "canonical.members.proto-name",
+      "description": "__proto__ is an ordinary member name.",
+      "operation": "canonicalize",
+      "input": {"encoding":"utf8","value":"{\"__proto__\":1,\"a\":2}"},
+      "expect": {"output":{"encoding":"utf8","value":"{\"__proto__\":1,\"a\":2}"}}
+    },
+    {
+      "id": "canonical.members.duplicate",
+      "description": "A duplicate member name is rejected, even with an equal value.",
+      "operation": "canonicalize",
+      "input": {"encoding":"utf8","value":"{\"a\":1,\"a\":1}"},
+      "expect": {"error":{"code":"duplicate-member"}}
+    },
+    {
+      "id": "canonical.members.duplicate-escaped",
+      "description": "Names are compared after unescaping: \"\\u0061\" is \"a\".",
+      "operation": "canonicalize",
+      "input": {"encoding":"utf8","value":"{\"a\":1,\"\\u0061\":2}"},
+      "expect": {"error":{"code":"duplicate-member"}}
+    },
+    {
+      "id": "canonical.members.duplicate-nested",
+      "description": "A duplicate inside a nested value rejects the whole value.",
+      "operation": "canonicalize",
+      "input": {"encoding":"utf8","value":"[{\"x\":1,\"x\":2}]"},
+      "expect": {"error":{"code":"duplicate-member"}}
+    }
+  ]
+}

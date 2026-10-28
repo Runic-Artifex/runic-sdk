@@ -1,0 +1,256 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://runic-artifex.org/schemas/runic-views/conformance-vector-1.schema.json",
+  "title": "Runic Application Views conformance vector set",
+  "description": "A file of pure-function vectors: canonical form, wire values or message well-formedness. See README.md in this directory.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["format", "id", "contract", "area", "description", "cases"],
+  "properties": {
+    "format": { "const": "runic.views.vector/1" },
+    "id": { "$ref": "#/$defs/dottedId" },
+    "contract": { "$ref": "#/$defs/contract" },
+    "area": { "enum": ["canonical", "values", "messages"] },
+    "description": { "type": "string", "minLength": 1 },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "url", "license"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "url": { "type": "string", "pattern": "^https://" },
+        "license": { "type": "string", "minLength": 1 }
+      }
+    },
+    "cases": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "oneOf": [
+          { "$ref": "#/$defs/canonicalCase" },
+          { "$ref": "#/$defs/valueCase" },
+          { "$ref": "#/$defs/messageCase" }
+        ]
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "area": { "const": "canonical" } } },
+      "then": { "properties": { "cases": { "items": { "$ref": "#/$defs/canonicalCase" } } } }
+    },
+    {
+      "if": { "properties": { "area": { "const": "values" } } },
+      "then": { "properties": { "cases": { "items": { "$ref": "#/$defs/valueCase" } } } }
+    },
+    {
+      "if": { "properties": { "area": { "const": "messages" } } },
+      "then": { "properties": { "cases": { "items": { "$ref": "#/$defs/messageCase" } } } }
+    }
+  ],
+  "$defs": {
+    "dottedId": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9-]*(?:\\.[a-z0-9][a-z0-9-]*)+$"
+    },
+    "contract": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "version"],
+      "properties": {
+        "id": { "const": "runic.views" },
+        "version": { "const": 4 }
+      }
+    },
+    "token": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$"
+    },
+    "bytes": {
+      "description": "utf8: the bytes are the UTF-8 encoding of value. base64: value is the bytes in base64 (RFC 4648 section 4), used for input that is not UTF-8.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["encoding", "value"],
+      "properties": {
+        "encoding": { "enum": ["utf8", "base64"] },
+        "value": { "type": "string" }
+      }
+    },
+    "jsonInput": {
+      "description": "json: value is the JSON value itself. utf8 or base64: value holds the message text or bytes.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["encoding", "value"],
+      "properties": {
+        "encoding": { "enum": ["json", "utf8", "base64"] },
+        "value": true
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "encoding": { "enum": ["utf8", "base64"] } } },
+          "then": { "properties": { "value": { "type": "string" } } }
+        }
+      ]
+    },
+    "canonicalError": {
+      "enum": ["invalid-utf8", "invalid-json", "lone-surrogate", "duplicate-member", "depth-exceeded", "number-out-of-range"]
+    },
+    "canonicalCase": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "operation", "input", "expect"],
+      "properties": {
+        "id": { "$ref": "#/$defs/dottedId" },
+        "description": { "type": "string" },
+        "operation": { "const": "canonicalize" },
+        "input": { "$ref": "#/$defs/bytes" },
+        "expect": {
+          "oneOf": [
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["output"],
+              "properties": { "output": { "$ref": "#/$defs/bytes" } }
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["error"],
+              "properties": {
+                "error": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": ["code"],
+                  "properties": { "code": { "$ref": "#/$defs/canonicalError" } }
+                }
+              }
+            }
+          ]
+        }
+      }
+    },
+    "wireType": {
+      "enum": [
+        "boolean", "int8", "uint8", "int16", "uint16", "int32", "uint32", "float32", "float64",
+        "int64", "uint64", "big-integer", "decimal", "string", "uuid", "local-date", "local-time",
+        "date-time", "offset-date-time", "duration", "enum", "json"
+      ]
+    },
+    "valueCase": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "operation", "type", "input", "expect"],
+      "properties": {
+        "id": { "$ref": "#/$defs/dottedId" },
+        "description": { "type": "string" },
+        "operation": { "const": "decode" },
+        "type": { "$ref": "#/$defs/wireType" },
+        "parameters": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "names": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "type": "string", "minLength": 1 } },
+            "nullable": { "type": "boolean" }
+          }
+        },
+        "input": { "$ref": "#/$defs/jsonInput" },
+        "expect": {
+          "oneOf": [
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["value"],
+              "properties": { "value": true }
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["error"],
+              "properties": {
+                "error": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": ["code"],
+                  "properties": { "code": { "const": "invalid-value" } }
+                }
+              }
+            }
+          ]
+        }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "type": { "const": "enum" } } },
+          "then": { "required": ["parameters"], "properties": { "parameters": { "required": ["names"] } } }
+        }
+      ]
+    },
+    "messageCase": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "operation", "input", "expect"],
+      "properties": {
+        "id": { "$ref": "#/$defs/dottedId" },
+        "description": { "type": "string" },
+        "operation": { "enum": ["read-request", "read-reply", "read-push"] },
+        "request": {
+          "description": "read-reply only: the kind of the request the reply answers.",
+          "$ref": "#/$defs/token"
+        },
+        "limits": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": { "inputBytes": { "type": "integer", "minimum": 1024 } }
+        },
+        "input": { "$ref": "#/$defs/jsonInput" },
+        "expect": {
+          "oneOf": [
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["result"],
+              "properties": { "result": { "enum": ["valid", "ignored"] } }
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["result"],
+              "properties": {
+                "result": { "const": "invalid" },
+                "error": {
+                  "description": "read-request only: the kind and reason of the producer's failure reply.",
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": ["kind", "reason"],
+                  "properties": {
+                    "kind": { "const": "rejected" },
+                    "reason": { "$ref": "#/$defs/token" }
+                  }
+                }
+              }
+            }
+          ]
+        }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "operation": { "const": "read-reply" } } },
+          "then": { "required": ["request"] },
+          "else": { "not": { "required": ["request"] } }
+        },
+        {
+          "if": { "properties": { "operation": { "const": "read-request" } }, "required": ["expect"] },
+          "then": {
+            "properties": {
+              "expect": {
+                "if": { "properties": { "result": { "const": "invalid" } } },
+                "then": { "required": ["error"] }
+              }
+            }
+          },
+          "else": { "properties": { "expect": { "not": { "required": ["error"] } } } }
+        }
+      ]
+    }
+  }
+}
