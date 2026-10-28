@@ -68,6 +68,9 @@ if (args.Contains("--rtl", StringComparer.Ordinal)) return RightToLeftSmoke.Run(
 if (Array.IndexOf(args, "--monitors") is var monitors and >= 0)
     return MonitorSmoke.Run(monitors + 1 < args.Length ? args[monitors + 1] : "gtk4");
 
+// --placement [--window-manager] (#663): a restored placement's position on X11, also under a window manager.
+if (args.Contains("--placement", StringComparer.Ordinal)) return PlacementSmoke.Run(args.Contains("--window-manager", StringComparer.Ordinal));
+
 if (args.Contains("--message-boxes", StringComparer.Ordinal)) return MessageBoxSmoke.Run();
 
 if (args.Any(arg => arg.StartsWith("--notification-", StringComparison.Ordinal)))

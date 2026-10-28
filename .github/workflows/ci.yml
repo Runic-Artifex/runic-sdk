@@ -784,6 +784,13 @@ jobs:
         uses: ./.github/actions/apt-install
         with:
           packages: libwebkit2gtk-4.1-0 libwebkitgtk-6.0-4 xvfb dbus-x11 at-spi2-core xdotool
+      # A window manager for the GTK 4 placement check (#663), without Openbox's recommended configuration tools.
+      - name: Install Openbox for the X11 placement check
+        if: runner.os == 'Linux'
+        uses: ./.github/actions/apt-install
+        with:
+          packages: openbox
+          install-recommends: "false"
       - name: Permit the WebKit sandbox on Ubuntu
         if: runner.os == 'Linux'
         run: eng/ci/permit-webkit-sandbox.sh
@@ -868,6 +875,10 @@ jobs:
               'if command -v xrandr >/dev/null; then xrandr --setmonitor RunicA 800/211x600/158+0+0 screen && xrandr --setmonitor RunicB 800/211x600/158+800+0 none; xrandr --listmonitors; fi;
                exec dotnet run --project tests/native/Runic.Desktop.Gtk4.Smoke -c Release --no-build -- --monitors "$0"' "$toolkit"
           done
+          # #663: a restored placement's position under a window manager that places new windows itself (Openbox): the
+          # GTK 4 window keeps it, also as the bounds a maximized window restores to, and reports it back unchanged.
+          GDK_BACKEND=x11 GSETTINGS_BACKEND=memory xvfb-run -a -s '-screen 0 1600x900x24' dbus-run-session -- bash -c \
+            'openbox & exec dotnet run --project tests/native/Runic.Desktop.Gtk4.Smoke -c Release --no-build -- --placement --window-manager'
           # Controlled-portal journey: directory and SaveFile requests through the production provider.
           # A private runtime directory lets the isolated bus activate its own document portal, when
           # installed, for the document-view save; otherwise that variant reports a skip with its reason.

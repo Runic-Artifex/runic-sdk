@@ -613,11 +613,12 @@ public sealed record DesktopWindowOptions
     /// </para>
     /// <para>
     /// A saved placement never fails the open: a zero width or height keeps <see cref="Width"/> or <see cref="Height"/>,
-    /// a position with only one coordinate is ignored, and a size above 65535 is reduced to it. The GTK 4 window
-    /// restores the size and maximized state and ignores the position, which GTK 4 cannot set. An installed browser
-    /// opens with the saved size and position as it would with <see cref="Width"/>, <see cref="Height"/>,
-    /// <see cref="X"/> and <see cref="Y"/>, without fitting them to a monitor or maximizing; <see cref="DesktopHost.Validate"/>
-    /// reports the ignored maximized state.
+    /// a position with only one coordinate is ignored, and a size above 65535 is reduced to it. On Linux the position
+    /// is restored on X11 only: on Wayland the compositor places every window, so the GTK 3 and GTK 4 windows restore
+    /// the size, maximized and full-screen state there and ignore the position, which Wayland cannot set; a placement
+    /// saved on Wayland has none. An installed browser opens with the saved size and position as it would with
+    /// <see cref="Width"/>, <see cref="Height"/>, <see cref="X"/> and <see cref="Y"/>, without fitting them to a monitor
+    /// or maximizing; <see cref="DesktopHost.Validate"/> reports the ignored maximized state.
     /// </para>
     /// </remarks>
     public DesktopWindowPlacement? Placement { get; init; }
