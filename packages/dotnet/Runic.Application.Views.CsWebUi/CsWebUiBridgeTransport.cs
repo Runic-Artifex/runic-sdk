@@ -49,8 +49,8 @@ internal sealed class CsWebUiBridgeTransport : IBridgeTransport, IDisposable
 
     private readonly object _gate = new();
     private readonly WebUiWindow _window;
-    private readonly IDisposable _requests;
-    private readonly IDisposable _events;
+    private readonly WebUiBinding _requests;
+    private readonly WebUiBinding _events;
     private IBridgeRequestHandler? _handler;
     private bool _disposed;
 

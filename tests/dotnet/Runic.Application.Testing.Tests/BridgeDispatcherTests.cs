@@ -295,7 +295,7 @@ public sealed class BridgeDispatcherTests
             throw new InvalidOperationException("The route failed.");
     }
 
-    private sealed class LogCapture
+    private sealed class LogCapture : IDisposable
     {
         private readonly OperationRetirementTests.LogCapture _capture = new();
         public Microsoft.Extensions.Logging.ILoggerFactory Factory => _capture;
@@ -306,6 +306,8 @@ public sealed class BridgeDispatcherTests
             "BridgeMailboxOverflowed" => 1023,
             _ => throw new ArgumentOutOfRangeException(nameof(eventName)),
         }).Count();
+
+        public void Dispose() => _capture.Dispose();
     }
 
     // A transport without targeted pushes, as CS-WebUI's.

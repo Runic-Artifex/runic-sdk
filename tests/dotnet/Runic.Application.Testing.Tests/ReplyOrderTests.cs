@@ -170,6 +170,9 @@ internal sealed class ReplyOrderTests
             Attempted.TrySetResult();
             ObjectDisposedException.ThrowIf(_disposed, this);
         }
+        // The window disposes its transport while a publication is on its way: it keeps receiving publications, which
+        // then fail as a disposed transport's did.
+        [System.Diagnostics.CodeAnalysis.SuppressMessage("Usage", "CA2215", Justification = "The publisher must stay attached.")]
         public override void Dispose() => _disposed = true;
     }
 
