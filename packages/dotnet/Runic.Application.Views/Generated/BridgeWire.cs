@@ -351,11 +351,13 @@ public static class BridgeWire
 
     /// <summary>Writes a complete canonical JSON value.</summary>
     /// <remarks>
-    /// Object members are sorted by ordinal name, duplicate names are rejected,
-    /// and numbers are written by exact value (<c>1.0</c> and <c>1e0</c> are both <c>1</c>).
-    /// A number whose decimal exponent exceeds ±100,000 is rejected.
+    /// The canonical form is RFC 8785 (JCS): object members are sorted by the UTF-16 code units of their names,
+    /// duplicate names are rejected, numbers are read as IEEE 754 doubles and written as ECMAScript writes them
+    /// (<c>1.0</c> and <c>1e0</c> are both <c>1</c>, and <c>-0</c> is <c>0</c>), and strings escape only
+    /// <c>"</c>, <c>\</c> and control characters. A number beyond the range of a double and a string that is not
+    /// valid Unicode are rejected.
     /// </remarks>
-    /// <exception cref="FormatException">The value has a duplicate member name or an out-of-range number.</exception>
+    /// <exception cref="FormatException">The value has a duplicate member name, a number beyond the range of a double or a string that is not valid Unicode.</exception>
     public static string EncodeCanonical(Action<Utf8JsonWriter> write)
     {
         ArgumentNullException.ThrowIfNull(write);

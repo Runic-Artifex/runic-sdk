@@ -1,29 +1,37 @@
 using System.Buffers;
+using System.Globalization;
 using System.Text;
 using System.Text.Json;
+using System.Text.Unicode;
 
 namespace Runic.Application.Views;
 
-// The one canonical JSON form of a Bridge value. Checked-field equality,
-// receipt digests, operation input digests, interaction reply signatures and
+// The one canonical JSON form of a Bridge value: RFC 8785, the JSON
+// Canonicalization Scheme (JCS). Checked-field equality, receipt digests,
+// operation input digests, interaction reply signatures and
 // BridgeWire.EncodeCanonical all use it:
 //
-// - No whitespace. Object members are sorted by ordinal (UTF-16) name, and an
-//   object with a duplicate member name is rejected: JavaScript and
-//   System.Text.Json both read the last duplicate, so it is ambiguous input.
-// - A number is written by its exact decimal value, laid out like ECMAScript
-//   Number::toString does for the same digits: 1.0, 1e0 and 10e-1 are all 1,
-//   and -0 is 0. Nothing is rounded, so distinct values remain distinct. A
-//   number whose decimal exponent exceeds ±100,000 is rejected (FormatException);
-//   JSON numbers a browser can produce are within ±400.
-// - Strings are re-escaped by Utf8JsonWriter's default encoder.
+// - No whitespace. Object members are sorted by the UTF-16 code units of
+//   their names, and an object with a duplicate member name is rejected:
+//   JavaScript and System.Text.Json both read the last duplicate, so it is
+//   ambiguous input.
+// - A number is read as an IEEE 754 double, as a page reads it, and written
+//   as ECMAScript Number::toString writes that double (the shortest digits
+//   that read back as it): 1.0, 1e0 and 10e-1 are all 1, -0 is 0, 1e-400 is 0,
+//   and 0.1 and 0.10000000000000000001 are one value. A number beyond the
+//   double range (1e400) is rejected with a FormatException. 64-bit integers
+//   and decimals travel as strings, so only JSON-valued members
+//   (JsonElement, JsonNode) can hold numbers that lose precision this way;
+//   they compare as the page compares them.
+// - Strings are written with BridgeJsonEncoder's minimal escaping. A string
+//   or name that is not valid Unicode (a lone surrogate escape, invalid UTF-8)
+//   is rejected with a FormatException (I-JSON, RFC 7493).
+// - Depth is bounded by Utf8JsonReader's default of 64.
 //
 // It reads with Utf8JsonReader instead of building a JsonDocument. Objects
 // whose members are already sorted are copied in one pass.
 internal static class BridgeCanonicalJson
 {
-    private const int MaximumExponent = 100_000;
-
     public static void Write(Utf8JsonWriter writer, ReadOnlySpan<byte> json)
     {
         var reader = new Utf8JsonReader(json);
@@ -44,7 +52,7 @@ internal static class BridgeCanonicalJson
     // Values written by the same writer are usually byte-identical when equal,
     // so equal raw output skips canonicalization. Byte-identical values are
     // therefore equal even when they are not valid canonical input (a
-    // duplicate member name, an exponent beyond ±100,000), for which Hash and
+    // duplicate member name, a number beyond the double range), for which Hash and
     // the digests throw. Generated writers cannot produce such values.
     public static bool Equal<T>(Action<Utf8JsonWriter, T> write, T left, T right)
     {
@@ -124,8 +132,9 @@ internal static class BridgeCanonicalJson
                 writer.WriteEndArray();
                 break;
             case JsonTokenType.String:
-                if (reader.ValueIsEscaped) writer.WriteStringValue(reader.GetString());
-                else writer.WriteStringValue(reader.ValueSpan);
+                if (reader.ValueIsEscaped) writer.WriteStringValue(Decode(ref reader));
+                else if (Utf8.IsValid(reader.ValueSpan)) writer.WriteStringValue(reader.ValueSpan);
+                else throw InvalidText();
                 break;
             case JsonTokenType.Number:
                 WriteNumber(writer, reader.ValueSpan);
@@ -240,6 +249,17 @@ internal static class BridgeCanonicalJson
 
     private static FormatException Duplicate() => new("A bridge JSON object cannot contain duplicate property names.");
 
+    // Utf8JsonReader rejects an escaped lone surrogate and invalid UTF-8 when
+    // it decodes, with an InvalidOperationException.
+    private static string Decode(ref Utf8JsonReader reader)
+    {
+        try { return reader.GetString()!; }
+        catch (InvalidOperationException error) { throw InvalidText(error); }
+    }
+
+    private static FormatException InvalidText(Exception? inner = null) =>
+        new("A bridge JSON string must be valid Unicode.", inner);
+
     // An unescaped ASCII name is compared and written from the input bytes;
     // any other name is decoded once.
     private struct Member
@@ -252,7 +272,7 @@ internal static class BridgeCanonicalJson
 
         public Member(ReadOnlySpan<byte> json, ref Utf8JsonReader reader)
         {
-            if (reader.ValueIsEscaped || !Ascii.IsValid(reader.ValueSpan)) Name = reader.GetString();
+            if (reader.ValueIsEscaped || !Ascii.IsValid(reader.ValueSpan)) Name = Decode(ref reader);
             else
             {
                 // TokenStartIndex is the opening quote of the property name.
@@ -284,66 +304,115 @@ internal static class BridgeCanonicalJson
     // raw is a valid JSON number: -?(0|[1-9][0-9]*)(.[0-9]+)?([eE][+-]?[0-9]+)?
     internal static void WriteNumber(Utf8JsonWriter writer, ReadOnlySpan<byte> raw)
     {
-        byte[]? rented = null;
-        Span<byte> digits = raw.Length <= 128 ? stackalloc byte[128] : (rented = ArrayPool<byte>.Shared.Rent(raw.Length));
-        Span<byte> output = raw.Length <= 96 ? stackalloc byte[128] : new byte[raw.Length + 32];
-        try
-        {
-            var length = Format(raw, digits, output);
-            writer.WriteRawValue(output[..length], skipInputValidation: true);
-        }
-        finally
-        {
-            if (rented is not null) ArrayPool<byte>.Shared.Return(rented);
-        }
+        Span<byte> output = stackalloc byte[MaximumNumberLength];
+        writer.WriteRawValue(output[..FormatNumber(raw, output)], skipInputValidation: true);
     }
 
-    private static int Format(ReadOnlySpan<byte> raw, Span<byte> digits, Span<byte> output)
+    // The ECMAScript form of a double has at most 25 bytes: -0.00000 and 17 digits.
+    internal const int MaximumNumberLength = 32;
+
+    // At most 15 significant digits (DBL_DIG) survive a trip through a
+    // normal double unchanged, so for such a number the shortest digits of
+    // the nearest double are its own digits. Within this decimal exponent
+    // every such number is a normal double.
+    private const int ExactDigits = 15;
+    private const int NormalPoint = 300;
+
+    internal static int FormatNumber(ReadOnlySpan<byte> raw, Span<byte> output)
+    {
+        Span<byte> digits = stackalloc byte[ExactDigits];
+        if (TryReadDigits(raw, digits, NormalPoint, out var negative, out var count, out var point))
+            return count == 0 ? Zero(output) : Layout(negative, digits[..count], point, output);
+        // Parsing rounds to the nearest double, overflows to infinity and
+        // underflows to zero.
+        if (!double.TryParse(raw, NumberStyles.Float, CultureInfo.InvariantCulture, out var value)) throw OutOfRange();
+        return FormatNumber(value, output);
+    }
+
+    // ECMAScript Number::toString of a finite double, as RFC 8785 specifies.
+    internal static int FormatNumber(double value, Span<byte> output)
+    {
+        if (!double.IsFinite(value)) throw OutOfRange();
+        if (value == 0) return Zero(output);
+        // "R" is the shortest round-trip form, the digits ECMAScript chooses,
+        // in .NET's layout: -1.2345E-07, 1E+21, 123.45.
+        Span<byte> shortest = stackalloc byte[MaximumNumberLength];
+        Span<byte> digits = stackalloc byte[MaximumNumberLength];
+        if (!value.TryFormat(shortest, out var length, "R", CultureInfo.InvariantCulture)
+            || !TryReadDigits(shortest[..length], digits, 1000, out var negative, out var count, out var point))
+            throw OutOfRange();
+        return Layout(negative, digits[..count], point, output);
+    }
+
+    private static int Zero(Span<byte> output)
+    {
+        output[0] = (byte)'0';
+        return 1;
+    }
+
+    // Reads the significant digits d1..dk of a number in JSON's or .NET's
+    // layout, without leading or trailing zeros, and `point` such that the
+    // value is 0.d1..dk * 10^point. Fails when there are more digits than
+    // fit or |point| is not below maximumPoint; zero has no digits.
+    private static bool TryReadDigits(ReadOnlySpan<byte> number, Span<byte> digits, int maximumPoint,
+        out bool negative, out int count, out int point)
     {
         var index = 0;
-        var negative = raw[0] == (byte)'-';
+        negative = number[0] == (byte)'-';
         if (negative) index++;
-        var count = 0;
-        long exponent = 0;
-        for (; index < raw.Length && char.IsAsciiDigit((char)raw[index]); index++)
-            if (count > 0 || raw[index] != (byte)'0') digits[count++] = raw[index];
-        if (index < raw.Length && raw[index] == (byte)'.')
-            for (index++; index < raw.Length && char.IsAsciiDigit((char)raw[index]); index++)
+        count = 0;
+        point = 0;
+        var exponent = 0;
+        var zeros = 0;
+        for (; index < number.Length && char.IsAsciiDigit((char)number[index]); index++)
+            if (!Digit(number[index], digits, ref count, ref zeros)) return false;
+        if (index < number.Length && number[index] == (byte)'.')
+            for (index++; index < number.Length && char.IsAsciiDigit((char)number[index]); index++)
             {
                 exponent--;
-                if (count > 0 || raw[index] != (byte)'0') digits[count++] = raw[index];
+                if (!Digit(number[index], digits, ref count, ref zeros)) return false;
             }
-        if (index < raw.Length && (raw[index] | 0x20) == (byte)'e')
+        // Zeros still held back are trailing: powers of ten, not digits.
+        exponent += zeros;
+        if (index < number.Length && (number[index] | 0x20) == (byte)'e')
         {
             index++;
-            var exponentNegative = raw[index] == (byte)'-';
-            if (raw[index] is (byte)'-' or (byte)'+') index++;
-            long written = 0;
-            for (; index < raw.Length; index++)
+            var exponentNegative = number[index] == (byte)'-';
+            if (number[index] is (byte)'-' or (byte)'+') index++;
+            var written = 0;
+            for (; index < number.Length; index++)
             {
-                written = written * 10 + (raw[index] - (byte)'0');
-                if (written > MaximumExponent * 10L) throw OutOfRange();
+                written = written * 10 + (number[index] - (byte)'0');
+                if (written > 10 * maximumPoint) return count == 0;
             }
             exponent += exponentNegative ? -written : written;
         }
-        while (count > 0 && digits[count - 1] == (byte)'0')
-        {
-            count--;
-            exponent++;
-        }
-        if (count == 0)
-        {
-            output[0] = (byte)'0';
-            return 1;
-        }
+        if (count == 0) return true;
+        point = count + exponent;
+        return point > -maximumPoint && point < maximumPoint;
+    }
 
-        // The ECMAScript layout of digits d1..dk with the decimal point after
-        // position `point`: value = 0.d1..dk * 10^point.
-        var point = count + exponent;
-        if (point is > MaximumExponent or < -MaximumExponent) throw OutOfRange();
+    // Appends a digit, holding back zeros until a nonzero digit follows.
+    private static bool Digit(byte digit, Span<byte> digits, ref int count, ref int zeros)
+    {
+        if (digit == (byte)'0')
+        {
+            if (count > 0) zeros++;
+            return true;
+        }
+        if (count + zeros + 1 > digits.Length) return false;
+        for (; zeros > 0; zeros--) digits[count++] = (byte)'0';
+        digits[count++] = digit;
+        return true;
+    }
+
+    // ECMAScript Number::toString's layout of digits d1..dk (k >= 1) with
+    // value 0.d1..dk * 10^point.
+    private static int Layout(bool negative, ReadOnlySpan<byte> significant, int point, Span<byte> output)
+    {
+        var count = significant.Length;
         var at = 0;
         if (negative) output[at++] = (byte)'-';
-        var significant = digits[..count];
         if (count <= point && point <= 21)
         {
             significant.CopyTo(output[at..]);
@@ -352,11 +421,11 @@ internal static class BridgeCanonicalJson
         }
         else if (0 < point && point <= 21)
         {
-            significant[..(int)point].CopyTo(output[at..]);
-            at += (int)point;
+            significant[..point].CopyTo(output[at..]);
+            at += point;
             output[at++] = (byte)'.';
-            significant[(int)point..].CopyTo(output[at..]);
-            at += count - (int)point;
+            significant[point..].CopyTo(output[at..]);
+            at += count - point;
         }
         else if (-6 < point && point <= 0)
         {
@@ -385,7 +454,7 @@ internal static class BridgeCanonicalJson
         return at;
     }
 
-    private static FormatException OutOfRange() => new("A bridge JSON number is out of range.");
+    private static FormatException OutOfRange() => new("A bridge JSON number must be within the range of a double.");
 }
 
 // A per-thread, reusable UTF-8 buffer and writer. Nested use (a codec that
@@ -396,7 +465,7 @@ internal sealed class BridgeJsonScratch : IDisposable
     [ThreadStatic] private static BridgeJsonScratch? s_cached;
     private readonly ArrayBufferWriter<byte> _buffer = new(1024);
 
-    private BridgeJsonScratch() => Writer = new Utf8JsonWriter(_buffer);
+    private BridgeJsonScratch() => Writer = new Utf8JsonWriter(_buffer, BridgeJsonEncoder.WriterOptions);
 
     public Utf8JsonWriter Writer { get; }
 

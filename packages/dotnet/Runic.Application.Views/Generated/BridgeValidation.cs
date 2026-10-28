@@ -62,7 +62,7 @@ public static class BridgeValidation
         var bytes = new ArrayBufferWriter<byte>();
         bool hasErrors;
         Collector collector;
-        using (var errors = new Utf8JsonWriter(bytes))
+        using (var errors = new Utf8JsonWriter(bytes, BridgeJsonEncoder.WriterOptions))
         {
             errors.WriteStartArray();
             collector = new Collector(errors, readObjectErrors);
