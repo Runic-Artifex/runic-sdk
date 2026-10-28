@@ -15,8 +15,6 @@ namespace Runic.Application.Views.Generated;
 // - status, watch, unwatch, cancel and stream go to the window's BridgeOperationRouter; a terminal status carries the
 //   revision of the route's first state that includes the operation's effects, read in a turn once the work ended.
 // - interactions and interaction-reply go to the window's BridgeInteractionRouter.
-//
-// The protocol-3 start routes ({route}Start{Command}) below stay until the dispatcher's Legacy table is removed.
 public partial class ViewModelBridge<T>
 {
     // The digest of a start without an input; a canonical JSON text never equals it.
@@ -193,178 +191,19 @@ public partial class ViewModelBridge<T>
     }
 
     // Decodes a start's input; returns invalid-input when it does not decode, or null with the decoded value.
-    private string? TryDecodeInput(CommandDescriptor<T> descriptor, JsonElement? input, out object? value)
+    private static string? TryDecodeInput(CommandDescriptor<T> descriptor, JsonElement? input, out object? value)
     {
         value = null;
         if (input is not { } element) return null;
         try
         {
-            value = descriptor.ReadInput is { } read
-                ? read(element)
-                : ReadArgument(descriptor, new InputArguments(element.GetRawText()));
+            value = descriptor.ReadInput?.Invoke(element);
             return null;
         }
         catch (Exception error) when (error is ArgumentException or FormatException or JsonException or OverflowException
             or InvalidOperationException)
         {
             return BridgeFailure.InvalidInput;
-        }
-    }
-
-    // The input of a start for a generated reader of the protocol-3 shape, which reads the input's JSON text.
-    private sealed class InputArguments(string json) : IBridgeArguments
-    {
-        public string GetString() => json;
-        public long GetInt64() { using var document = JsonDocument.Parse(json); return document.RootElement.GetInt64(); }
-        public bool GetBoolean() { using var document = JsonDocument.Parse(json); return document.RootElement.GetBoolean(); }
-        public string? ClientKey => null;
-        public string? ConnectionKey => null;
-    }
-
-    private string StartOperation(WindowContentSession content, CommandDescriptor<T> descriptor, IBridgeArguments arguments)
-    {
-        lock (_modelGate)
-        {
-            if (IsInactive) return EncodeOperationStartFailure(BridgeFailure.Released, "The Bridge is closed.");
-            var call = BridgeCall.Start(BridgeCallKind.OperationStart, ModelName, _name, descriptor.Name);
-            try
-            {
-                var request = ReadOperationStart(descriptor, arguments, out var key);
-                // The registry asks only for a new request id, so a repeated start observes its operation
-                // before the key is resolved again.
-                var admission = AcceptOperation(content, descriptor, arguments, request, () =>
-                    !TryResolve(descriptor, key, out var argument) ? (BridgeFailure.UnresolvedKey, null)
-                    : IsAvailable(descriptor, argument) ? (null, argument) : (BridgeFailure.Unavailable, argument));
-                var reply = BridgeOperationRouter.EncodeAdmission(admission);
-                call.Complete(BridgeCallOutcome.Of(admission.Kind, admission.Reason));
-                return reply;
-            }
-            catch (Exception error)
-            {
-                return OperationStartFailure(ref call, descriptor, error);
-            }
-        }
-    }
-
-    // start<Command>(key) of a command with an asynchronous key resolver. The resolution starts in a model turn and
-    // is awaited window work; the operation is admitted in a new turn, which still lets a repeated request id observe
-    // its operation, whatever the key resolves to now.
-    private async ValueTask<string> StartOperationAsync(WindowContentSession content, CommandDescriptor<T> descriptor,
-        IBridgeArguments arguments, CancellationToken token)
-    {
-        using var awaited = content.Operations.TryBeginAwaited(token, out var atCapacity);
-        if (awaited is null)
-            return atCapacity
-                ? EncodeOperationStartFailure("rejected", $"{descriptor.Name} was not started: the window is already running {BridgeOperationRegistry.MaximumAwaitedExecutions} awaited commands.")
-                : EncodeOperationStartFailure(BridgeFailure.Released, "The window is closing.");
-        var call = BridgeCall.Start(BridgeCallKind.OperationStart, ModelName, _name, descriptor.Name);
-        try
-        {
-            BridgeOperationRequest? request = null;
-            Task<object?>? resolution = null;
-            var released = _modelTurn.Run(() =>
-            {
-                if (IsInactive) return true;
-                request = ReadOperationStart(descriptor, arguments, out var key);
-                resolution = descriptor.ResolveArgumentAsync!(_vm, key, awaited.Token).AsTask();
-                return false;
-            });
-            object? resolved = null;
-            if (!released) resolved = await resolution!.ConfigureAwait(false);
-            var admission = released ? null : _modelTurn.Run(() => IsInactive ? null
-                : AcceptOperation(content, descriptor, arguments, request!.Value, () =>
-                    resolved is null ? (BridgeFailure.UnresolvedKey, null)
-                    : IsAvailable(descriptor, resolved) ? (null, resolved) : (BridgeFailure.Unavailable, resolved)));
-            if (admission is null)
-            {
-                call.Complete(BridgeCallOutcome.Released);
-                return EncodeOperationStartFailure(BridgeFailure.Released, "The Bridge is closed.");
-            }
-            call.Complete(BridgeCallOutcome.Of(admission.Kind, admission.Reason));
-            return BridgeOperationRouter.EncodeAdmission(admission);
-        }
-        catch (Exception error)
-        {
-            return OperationStartFailure(ref call, descriptor, error);
-        }
-    }
-
-    // The request of an operation start and its decoded argument, the key of a key-resolved command. The digest
-    // that identifies the request is the argument's canonical JSON.
-    private BridgeOperationRequest ReadOperationStart(CommandDescriptor<T> descriptor, IBridgeArguments arguments, out object? argument)
-    {
-        string requestId;
-        argument = null;
-        if (descriptor.ReadArgument is null) requestId = arguments.GetString();
-        else
-        {
-            var payload = arguments.GetString();
-            if (!BridgeInputLimit.Fits(payload, MaximumInputBytes)) throw new FormatException("The command input is too large.");
-            using var document = JsonDocument.Parse(payload);
-            requestId = document.RootElement.GetProperty("requestId").GetString() ?? "";
-            argument = ReadArgument(descriptor, new JsonBridgeArguments(document.RootElement.GetProperty("input").GetRawText(), arguments));
-        }
-        _ = BridgeOperationIdentity.Create(OperationContract(), requestId);
-        var decoded = argument;
-        var canonicalInput = descriptor.EncodeArgument?.Invoke(decoded) ?? WriteJson(writer =>
-        {
-            switch (decoded)
-            {
-                case null: writer.WriteNullValue(); break;
-                case string value: writer.WriteStringValue(value); break;
-                case int value: writer.WriteNumberValue(value); break;
-                case bool value: writer.WriteBooleanValue(value); break;
-                default: throw new FormatException("The command needs a generated input codec.");
-            }
-        });
-        return new BridgeOperationRequest(OperationContract(), descriptor.Name, requestId, BridgeOperationRequest.CanonicalDigest(canonicalInput));
-    }
-
-    // Admits an operation. admit runs only for a new request id and returns why it cannot start (null when it can)
-    // and the command's parameter.
-    private BridgeOperationAdmissionReply AcceptOperation(WindowContentSession content, CommandDescriptor<T> descriptor,
-        IBridgeArguments arguments, BridgeOperationRequest request, Func<(string? Refusal, object? Argument)> admit)
-    {
-        object? argument = null;
-        Func<string?> refusal = () =>
-        {
-            var (reason, value) = admit();
-            argument = value;
-            return reason;
-        };
-        // RunicOperationRetirement: the operation's owner is this Bridge's model, and the models that present it,
-        // read when it starts; retiring one of them cancels or waits for it.
-        var retirement = descriptor.Retirement is RunicOperationRetirement.Keep ? null
-            : new BridgeOperationRetirement(descriptor.Retirement, _vm, content.PresentingOwners(_vm), _name);
-        return descriptor.ExecuteStreamAsync is { } executeStream
-            ? content.Operations.AcceptUnlessRefused(request, refusal, descriptor.CreateStream!(),
-                (execution, cancellation) => ObserveOperationAsync(_logger, descriptor.Name, _name, descriptor.EncodeFailure, () =>
-                {
-                    using var invocation = EnterInvocation(descriptor, arguments, cancellation);
-                    return executeStream(_vm, execution, cancellation, argument);
-                }), retirement)
-            : content.Operations.AcceptUnlessRefused(request, refusal,
-                cancellation => ObserveOperationAsync(_logger, descriptor.Name, _name, descriptor.EncodeFailure, () =>
-                {
-                    using var invocation = EnterInvocation(descriptor, arguments, cancellation);
-                    return InvokeCommandAsync(descriptor, argument, cancellation);
-                }), retirement);
-    }
-
-    private string OperationStartFailure(ref BridgeCall call, CommandDescriptor<T> descriptor, Exception error)
-    {
-        switch (error)
-        {
-            case OperationCanceledException:
-                call.Complete(BridgeCallOutcome.Cancelled);
-                return EncodeOperationStartFailure("cancelled", $"{descriptor.Name} was cancelled.");
-            case ArgumentException or FormatException or JsonException or InvalidOperationException:
-                call.Complete(BridgeCallOutcome.Rejected);
-                return EncodeOperationStartFailure("rejected", $"{descriptor.Name} has an invalid argument.", BridgeFailureDetails.Capture(error, IncludesFailureDetail));
-            default:
-                call.Complete(BridgeCallOutcome.Failed, error);
-                ViewsLog.OperationAdmissionFailed(_logger, error, ModelName, descriptor.Name, _name, BridgeTelemetry.ErrorType(error));
-                return EncodeOperationStartFailure("failed", $"{descriptor.Name} could not start.", BridgeFailureDetails.Capture(error, IncludesFailureDetail));
         }
     }
 
@@ -409,27 +248,4 @@ public partial class ViewModelBridge<T>
             throw;
         }
     }
-
-    private sealed class JsonBridgeArguments(string json, IBridgeArguments source) : IBridgeArguments
-    {
-        public string GetString() => json;
-        public long GetInt64() { using var document = JsonDocument.Parse(json); return document.RootElement.GetInt64(); }
-        public bool GetBoolean() { using var document = JsonDocument.Parse(json); return document.RootElement.GetBoolean(); }
-        public string? ClientKey => source.ClientKey;
-        public string? ConnectionKey => source.ConnectionKey;
-    }
-
-    // A ViewModel type and generated fingerprint describe its wire shape, but
-    // a window can host several instances of that shape. The route/reference
-    // separates their advanced request-id namespaces.
-    private string OperationContract() => $"{typeof(T).FullName}:{_contractFingerprint}:{_name}";
-
-    private static string EncodeOperationStartFailure(string kind, string reason, BridgeFailureDetail? detail = null) => WriteJson(writer =>
-    {
-        writer.WriteStartObject();
-        writer.WriteString("kind", kind);
-        writer.WriteString("reason", reason);
-        BridgeFailureDetails.Write(writer, detail);
-        writer.WriteEndObject();
-    });
 }

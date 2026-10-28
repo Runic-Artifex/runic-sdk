@@ -67,9 +67,6 @@ internal sealed class BridgeDispatcher : IBridgeRequestHandler
         }
     }
 
-    // The protocol-3 routes the operation and interaction routers still bind (P5 removes them).
-    internal BridgeLegacyRoutes Legacy { get; } = new();
-
     internal IBridgeTransport Transport => _transport;
 
     internal TimeProvider TimeProvider => _timeProvider;
@@ -449,22 +446,4 @@ internal sealed class BridgeRouteRequest(BridgeRequestEnvelope envelope, BridgeC
 internal interface IBridgeRouteHandler
 {
     ValueTask<ReadOnlyMemory<byte>> HandleAsync(BridgeRouteRequest request, CancellationToken cancellationToken);
-}
-
-// What is left of the protocol-3 named routes: the operation and interaction routers of P5 still bind theirs, which
-// nothing calls any more. P5 removes those callers; then this class goes.
-internal sealed class BridgeLegacyRoutes
-{
-#pragma warning disable CA1822 // Instance members keep the callers of P5 compiling until they are removed.
-    internal IDisposable Bind(string name, Func<IBridgeArguments, string> handler) => Nothing.Instance;
-
-    internal IDisposable BindAsync(string name, Func<IBridgeArguments, CancellationToken, ValueTask<string>> handler) =>
-        Nothing.Instance;
-#pragma warning restore CA1822
-
-    private sealed class Nothing : IDisposable
-    {
-        internal static readonly Nothing Instance = new();
-        public void Dispose() { }
-    }
 }

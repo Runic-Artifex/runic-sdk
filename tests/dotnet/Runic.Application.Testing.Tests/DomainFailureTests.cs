@@ -490,14 +490,9 @@ internal sealed partial class DomainFailureTests
     private static BridgeOperationRequest Request(string requestId) =>
         BridgeOperationRequest.Create("Tests.Editor:fixture:editor", "Save", requestId, "digest");
 
-    private static JsonNode TerminalJson(BridgeOperationStatus status)
-    {
-        // The registry key ends with the request id, which has no colon.
-        var identity = BridgeOperationIdentity.Create("Tests.Editor:fixture:editor", status.RequestId.Split(':').Last());
-        var admission = JsonNode.Parse(BridgeOperationRouter.EncodeAdmission(new BridgeOperationAdmissionReply(identity,
-            BridgeOperationAdmissionKind.Duplicate, status.Kind, null, status)))!;
-        return admission["terminal"]!.DeepClone();
-    }
+    // The status object of protocol 4, as a status reply or operation push writes it.
+    private static JsonNode TerminalJson(BridgeOperationStatus status) =>
+        JsonNode.Parse(BridgeMessages.Write(writer => BridgeOperationRouter.WriteStatus(writer, status)))!;
 
     private static void RequireDomainReply(string json, string member, string failure)
     {

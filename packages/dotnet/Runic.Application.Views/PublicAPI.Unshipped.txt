@@ -1,4 +1,10 @@
 #nullable enable
+*REMOVED*Runic.Application.Views.IBridgeArguments
+*REMOVED*Runic.Application.Views.IBridgeArguments.ClientKey.get -> string?
+*REMOVED*Runic.Application.Views.IBridgeArguments.ConnectionKey.get -> string?
+*REMOVED*Runic.Application.Views.IBridgeArguments.GetBoolean() -> bool
+*REMOVED*Runic.Application.Views.IBridgeArguments.GetInt64() -> long
+*REMOVED*Runic.Application.Views.IBridgeArguments.GetString() -> string!
 *REMOVED*const Runic.Application.Views.Generated.BridgeProtocol.Version = 3 -> int
 *REMOVED*Runic.Application.Views.IAsyncBridgeTransport
 *REMOVED*Runic.Application.Views.IAsyncBridgeTransport.PublishAsync(string! name, string! stateJson) -> System.Threading.Tasks.ValueTask

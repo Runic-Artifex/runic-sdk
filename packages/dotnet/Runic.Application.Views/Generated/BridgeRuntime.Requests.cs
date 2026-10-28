@@ -630,10 +630,6 @@ public partial class ViewModelBridge<T>
     private IDisposable? EnterInvocation(CommandDescriptor<T> descriptor, BridgeConnection connection, CancellationToken token) =>
         _content is null ? null : RunicInteractionInvocation.Enter(_content, _name, connection.ClientKey, connection.Key, descriptor.Name, token);
 
-    // The protocol-3 form of EnterInvocation, which the start code in BridgeRuntime.Operations.cs still calls.
-    private IDisposable? EnterInvocation(CommandDescriptor<T> descriptor, IBridgeArguments arguments, CancellationToken token) =>
-        _content is null ? null : RunicInteractionInvocation.Enter(_content, _name, arguments, descriptor.Name, token);
-
     private bool IsAvailable(CommandDescriptor<T> descriptor, object? argument) =>
         descriptor.CanExecute?.Invoke(_vm, argument)
         ?? (descriptor.Get(_vm) is ICommand command && command.CanExecute(argument));
@@ -665,14 +661,6 @@ public partial class ViewModelBridge<T>
         }
         await descriptor.ExecuteAsync(_vm, token, argument).ConfigureAwait(false);
         return BridgeOperationResult.None;
-    }
-
-    // The protocol-3 argument reader, which the start code in BridgeRuntime.Operations.cs still calls.
-    private static object? ReadArgument(CommandDescriptor<T> descriptor, IBridgeArguments arguments)
-    {
-        if (descriptor.ReadArgument is not { } read) return null;
-        try { return read(arguments); }
-        catch (OverflowException error) { throw new FormatException("The command argument is out of range.", error); }
     }
 
     private static object? ReadCheckedValue(JsonElement value, CheckedPropertyDescriptor<T> descriptor) => descriptor.ValueKind switch
@@ -717,7 +705,4 @@ public partial class ViewModelBridge<T>
                 throw new InvalidOperationException("The checked field type is unsupported.");
         }
     }
-
-    // A message as a string, for the protocol-3 start code in BridgeRuntime.Operations.cs.
-    private static string WriteJson(Action<Utf8JsonWriter> write) => WriteText(write);
 }

@@ -1,5 +1,4 @@
 using System.ComponentModel;
-using System.Reflection;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Threading.Channels;
@@ -251,7 +250,6 @@ public sealed class OperationProtocolTests
                 IncludeFailureDetail = false,
             });
             Bridge = new ImportBridge(Transport, Model, Session);
-            Lease = OperationRoutes.Serve(Transport, Route, Bridge);
             Hello();
         }
 
@@ -260,7 +258,6 @@ public sealed class OperationProtocolTests
         public ImportModel Model { get; } = new();
         public WindowContentSession Session { get; }
         private ImportBridge Bridge { get; }
-        private IDisposable? Lease { get; }
         public static string Contract => $"{typeof(ImportModel).FullName}:{ImportBridge.Fingerprint}";
 
         public void Hello(string connection = InMemoryBridgeTransport.DefaultConnectionKey, string? client = null) =>
@@ -326,7 +323,6 @@ public sealed class OperationProtocolTests
 
         public void Dispose()
         {
-            Lease?.Dispose();
             Bridge.Dispose();
             Session.Dispose();
             Transport.Dispose();
@@ -380,12 +376,7 @@ public sealed class OperationProtocolTests
     }
 
     private sealed class ImportBridge(IBridgeTransport transport, ImportModel model, WindowContentSession content)
-        : ViewModelBridge<ImportModel>(transport, model, Route, static (writer, _, revision, _) =>
-        {
-            writer.WriteStartObject();
-            writer.WriteNumber("revision", revision);
-            writer.WriteEndObject();
-        }, [], [],
+        : ViewModelBridge<ImportModel>(transport, model, Route, [], [], [],
         [
             new("Import", vm => vm.Import)
             {
@@ -417,25 +408,5 @@ public sealed class OperationProtocolTests
         public event EventHandler? CanExecuteChanged { add { } remove { } }
         public bool CanExecute(object? parameter) => true;
         public void Execute(object? parameter) { }
-    }
-}
-
-// Serves a Bridge's operation and interaction requests on its route, as the Bridge's route handler does. Until the
-// route handler of the producer (P4) serves View routes, the tests register this one; once it does, the route is
-// already served and Serve returns null.
-internal static class OperationRoutes
-{
-    internal static IDisposable? Serve<TModel>(IBridgeTransport transport, string route, ViewModelBridge<TModel> bridge)
-        where TModel : INotifyPropertyChanged
-    {
-        var handle = typeof(ViewModelBridge<TModel>).GetMethod("HandleOperationAsync", BindingFlags.Instance | BindingFlags.NonPublic)
-            ?? throw new MissingMethodException("ViewModelBridge.HandleOperationAsync");
-        try { return BridgeDispatcher.For(transport).RegisterRoute(route, new Handler(request => (ValueTask<ReadOnlyMemory<byte>>)handle.Invoke(bridge, [request, CancellationToken.None])!)); }
-        catch (InvalidOperationException) { return null; }
-    }
-
-    private sealed class Handler(Func<BridgeRouteRequest, ValueTask<ReadOnlyMemory<byte>>> handle) : IBridgeRouteHandler
-    {
-        public ValueTask<ReadOnlyMemory<byte>> HandleAsync(BridgeRouteRequest request, CancellationToken cancellationToken) => handle(request);
     }
 }
