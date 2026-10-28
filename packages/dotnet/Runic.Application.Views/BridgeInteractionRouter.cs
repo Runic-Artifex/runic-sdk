@@ -163,10 +163,13 @@ public sealed class RunicInteractionOutputException : InvalidOperationException
 }
 
 /// <summary>
-/// Window-owned request/reply broker for typed interaction adapters. Browser
-/// delivery is pull-based: a mounted endpoint receives input only as the reply
-/// to its own authenticated wait route.
+/// Window-owned request/reply broker for typed interaction adapters. A presentation that a page opened over Views
+/// protocol 4 registers its handlers with <c>open</c> or <c>interactions</c>, receives <c>interaction</c> and
+/// <c>interaction-cancelled</c> pushes on its connection, and answers with <c>interaction-reply</c>.
 /// </summary>
+// A presentation is identified by its route and presentation id. Presentations mounted through the protocol-3 routes
+// (an in-memory caller without a hello) still pull their requests with the wait and control-wait routes, until the
+// dispatcher's Legacy table is removed.
 public sealed class BridgeInteractionRouter : IDisposable
 {
     // The wire routes of the interaction protocol, which the generated TypeScript client calls by name.
@@ -189,6 +192,8 @@ public sealed class BridgeInteractionRouter : IDisposable
 
     private readonly object _gate = new();
     private readonly WindowContentSession _session;
+    private readonly IBridgeTransport _transport;
+    private BridgeTargetedPushes? _pushes;
     private readonly Dictionary<string, Presentation> _presentations = new(StringComparer.Ordinal);
     private readonly Dictionary<DefinitionKey, int> _definitions = [];
     private readonly Dictionary<string, Waiter> _waiters = new(StringComparer.Ordinal);
@@ -201,6 +206,7 @@ public sealed class BridgeInteractionRouter : IDisposable
     internal BridgeInteractionRouter(WindowContentSession session, IBridgeTransport transport)
     {
         _session = session;
+        _transport = transport;
         var bindings = new List<IDisposable>();
         try
         {
@@ -286,7 +292,7 @@ public sealed class BridgeInteractionRouter : IDisposable
                 || presentation.Pending.Count >= MaximumPendingPerPresentation) return null;
 
             var requestId = _session.CreateId();
-            var request = new PendingRequest(requestId, key, presentation.Id,
+            var request = new PendingRequest(requestId, key, presentation.Id, presentation.Key,
                 presentation.ConnectionKey, presentation.ClientKey, 0, inputJson,
                 value => decodeOutput(value), lifetime, _session.TimeProvider.GetUtcNow().Add(lifetime));
             _pending.Add(requestId, request);
@@ -305,28 +311,122 @@ public sealed class BridgeInteractionRouter : IDisposable
         }
     }
 
+    // A presentation of the route opened (protocol 4) or mounted (protocol 3) by the connection. A connection that
+    // completed a hello receives its interactions as pushes.
     internal void OnPresentationMounted(string route, string presentationId, string? clientKey, string? connectionKey)
     {
         if (presentationId.Length > MaximumPresentationLength) return;
+        var pushes = connectionKey is not null && BridgeDispatcher.For(_transport).FindConnection(connectionKey) is not null;
         lock (_gate)
         {
             if (_disposed) return;
-            _presentations[presentationId] = new Presentation(route, presentationId, clientKey, connectionKey);
+            var key = PresentationKey(route, presentationId);
+            if (_presentations.TryGetValue(key, out var existing))
+            {
+                // A repeated open of the same presentation keeps its registration and pending requests.
+                if (existing.Matches(route, connectionKey, clientKey)) return;
+                ReleasePresentation(key, "The browser presentation was replaced.");
+            }
+            _presentations[key] = new Presentation(route, presentationId, clientKey, connectionKey) { Pushes = pushes };
         }
     }
 
+    // Releases the presentation id on every route of the window.
     internal void OnPresentationUnmounted(string presentationId, string reason = "The browser presentation was unmounted.")
     {
-        lock (_gate) ReleasePresentation(presentationId, reason);
+        lock (_gate)
+            foreach (var key in _presentations.Values.Where(value => value.Id == presentationId).Select(value => value.Key).ToArray())
+                ReleasePresentation(key, reason);
+    }
+
+    internal void OnPresentationUnmounted(string route, string presentationId, string reason)
+    {
+        lock (_gate) ReleasePresentation(PresentationKey(route, presentationId), reason);
     }
 
     internal void ReleaseConnection(string connectionKey)
     {
         lock (_gate)
-            foreach (var presentationId in _presentations.Values
+            foreach (var key in _presentations.Values
                 .Where(value => string.Equals(value.ConnectionKey, connectionKey, StringComparison.Ordinal))
-                .Select(value => value.Id).ToArray())
-                ReleasePresentation(presentationId, "The browser connection was disconnected.");
+                .Select(value => value.Key).ToArray())
+                ReleasePresentation(key, "The browser connection was disconnected.");
+    }
+
+    // Registers the handlers of an open presentation as generation 0 (open's handlers), and returns the registration
+    // outcome for the open reply.
+    internal string RegisterOpenHandlers(string route, string presentationId, BridgeConnection connection, JsonElement handlers) =>
+        Register(route, presentationId, connection, generation: 0, handlers);
+
+    // interactions and interaction-reply (protocol 4) of a route of this window. Returns the reply.
+    internal ReadOnlyMemory<byte> Handle(BridgeRouteRequest request)
+    {
+        var root = request.Root;
+        var presentationId = root.GetProperty("presentation").GetString()!;
+        if (request.Kind == "interactions")
+        {
+            BridgeRequestEnvelope.TryReadInteger(root.GetProperty("generation"), out var generation);
+            var registration = Register(request.Route, presentationId, request.Connection, generation, root.GetProperty("handlers"));
+            return BridgeMessages.Write(writer =>
+            {
+                writer.WriteStartObject();
+                writer.WriteBoolean("ok", true);
+                writer.WriteString("registration", registration);
+                writer.WriteEndObject();
+            });
+        }
+        if (request.Kind != "interaction-reply")
+            throw new ArgumentException($"'{request.Kind}' is not an interaction request.", nameof(request));
+        BridgeRequestEnvelope.TryReadInteger(root.GetProperty("ownerEpoch"), out var ownerEpoch);
+        var outcome = root.GetProperty("outcome").GetString()!;
+        var reply = new InteractionReply(outcome, root.GetProperty("requestId").GetString()!, request.Route, presentationId,
+            ownerEpoch, root.GetProperty("name").GetString()!, root.GetProperty("contract").GetString()!,
+            outcome == "answered" ? root.GetProperty("output").Clone() : null);
+        string result;
+        try
+        {
+            // The canonical form makes a repeat with the same output in another layout already-completed.
+            if (reply.Output is { } output)
+                reply = reply with { OutputSignature = BridgeCanonicalJson.ToString(JsonMarshal.GetRawUtf8Value(output)) };
+            result = Settle(reply, request.Connection.Key, request.Connection.ClientKey);
+        }
+        catch (Exception error) when (error is JsonException or FormatException)
+        {
+            result = "invalid-output";
+        }
+        return BridgeMessages.Write(writer =>
+        {
+            writer.WriteStartObject();
+            writer.WriteBoolean("ok", true);
+            writer.WriteString("result", result);
+            writer.WriteEndObject();
+        });
+    }
+
+    // A protocol-4 registration (specs/application/README.md, "Interactions"): ignored when the presentation is not
+    // open on this connection; unsupported when a handler names an interaction or contract the route does not have;
+    // stale for a lower generation, or the same generation with other handlers; otherwise the handlers replace the
+    // registration.
+    private string Register(string route, string presentationId, BridgeConnection connection, long generation, JsonElement handlers)
+    {
+        var identities = handlers.EnumerateArray()
+            .Select(handler => new HandlerIdentity(handler.GetProperty("name").GetString()!, handler.GetProperty("contract").GetString()!))
+            .ToArray();
+        lock (_gate)
+        {
+            if (_disposed || !_presentations.TryGetValue(PresentationKey(route, presentationId), out var presentation)
+                || !presentation.Matches(route, connection.Key, connection.ClientKey)) return "ignored";
+            var supported = identities.Select(handler => new DefinitionKey(route, handler.Name, handler.Contract)).ToHashSet();
+            if (supported.Any(key => !_definitions.ContainsKey(key))) return "unsupported";
+            if (presentation.RegisteredGeneration is { } registered
+                && (generation < registered || (generation == registered && !presentation.Capabilities.SetEquals(supported))))
+                return "stale";
+            presentation.RegisteredGeneration = generation;
+            presentation.Capabilities.Clear();
+            presentation.Capabilities.UnionWith(supported);
+            TryDeliverNext(presentation);
+            return "ok";
+        }
     }
 
     private async ValueTask<string> WaitAsync(IBridgeArguments arguments, CancellationToken observerCancellation)
@@ -337,26 +437,27 @@ public sealed class BridgeInteractionRouter : IDisposable
         { return EncodeKind("invalid-request"); }
 
         Waiter? waiter;
+        var key = PresentationKey(request.Route, request.PresentationId);
         lock (_gate)
         {
             if (_disposed) return EncodeKind(Generated.BridgeFailure.Released);
-            if (!_presentations.TryGetValue(request.PresentationId, out var presentation)
+            if (!_presentations.TryGetValue(key, out var presentation)
                 || !presentation.Matches(request.Route, arguments)
-                || _waiters.ContainsKey(request.PresentationId)) return EncodeKind("ignored");
+                || _waiters.ContainsKey(key)) return EncodeKind("ignored");
 
             var capability = UpdateCapabilities(presentation, request.Route, request.Handlers, request.Generation);
             if (capability != "ok") return EncodeKind(capability);
             if (presentation.Capabilities.Count == 0) return EncodeKind("unsupported");
             waiter = new Waiter(request.PresentationId, presentation, presentation.ClientKey, presentation.ConnectionKey);
-            _waiters.Add(request.PresentationId, waiter);
-            var cancellation = observerCancellation.Register(() => CancelWaiter(request.PresentationId, waiter));
+            _waiters.Add(key, waiter);
+            var cancellation = observerCancellation.Register(() => CancelWaiter(key, waiter));
             waiter.Cancellation = cancellation;
-            if (!_waiters.ContainsKey(request.PresentationId)) cancellation.Unregister();
+            if (!_waiters.ContainsKey(key)) cancellation.Unregister();
             TryDeliverNext(presentation);
         }
 
         try { return await waiter.Completion.Task.ConfigureAwait(false); }
-        finally { CancelWaiter(request.PresentationId, waiter); }
+        finally { CancelWaiter(key, waiter); }
     }
 
     private string Control(IBridgeArguments arguments)
@@ -369,7 +470,7 @@ public sealed class BridgeInteractionRouter : IDisposable
         lock (_gate)
         {
             if (_disposed) return EncodeKind(Generated.BridgeFailure.Released);
-            if (!_presentations.TryGetValue(request.PresentationId, out var presentation)
+            if (!_presentations.TryGetValue(PresentationKey(request.Route, request.PresentationId), out var presentation)
                 || !presentation.Matches(request.Route, arguments)) return EncodeKind("ignored");
             var result = UpdateCapabilities(presentation, request.Route, request.Handlers, request.Generation);
             if (result == "ok") TryDeliverNext(presentation);
@@ -385,20 +486,21 @@ public sealed class BridgeInteractionRouter : IDisposable
         { return EncodeKind("invalid-request"); }
 
         ControlWaiter? waiter;
+        var key = PresentationKey(request.Route, request.PresentationId);
         lock (_gate)
         {
             if (_disposed) return EncodeKind(Generated.BridgeFailure.Released);
-            if (!_presentations.TryGetValue(request.PresentationId, out var presentation)
+            if (!_presentations.TryGetValue(key, out var presentation)
                 || !presentation.Matches(request.Route, arguments)
-                || _controlWaiters.ContainsKey(request.PresentationId)) return EncodeKind("ignored");
+                || _controlWaiters.ContainsKey(key)) return EncodeKind("ignored");
             waiter = new ControlWaiter(request.PresentationId);
-            _controlWaiters.Add(request.PresentationId, waiter);
-            waiter.Cancellation = observerCancellation.Register(() => CancelControlWaiter(request.PresentationId, waiter));
-            if (!_controlWaiters.ContainsKey(request.PresentationId)) waiter.Cancellation.Unregister();
+            _controlWaiters.Add(key, waiter);
+            waiter.Cancellation = observerCancellation.Register(() => CancelControlWaiter(key, waiter));
+            if (!_controlWaiters.ContainsKey(key)) waiter.Cancellation.Unregister();
             TryDeliverControl(presentation);
         }
         try { return await waiter.Completion.Task.ConfigureAwait(false); }
-        finally { CancelControlWaiter(request.PresentationId, waiter); }
+        finally { CancelControlWaiter(key, waiter); }
     }
 
     private string Reply(IBridgeArguments arguments)
@@ -407,17 +509,24 @@ public sealed class BridgeInteractionRouter : IDisposable
         try { reply = ParseReply(arguments.GetString()); }
         catch (Exception error) when (error is JsonException or ArgumentException or FormatException or InvalidOperationException or KeyNotFoundException)
         { return EncodeKind("invalid-request"); }
+        return EncodeKind(Settle(reply, arguments.ConnectionKey, arguments.ClientKey));
+    }
 
+    // Settles a pending request with a page's reply: ok, already-completed for a repeat of the reply received,
+    // stale for a request that is not pending or an identity that does not match, invalid-output when the output does
+    // not decode (the waiting interaction then fails with RunicInteractionOutputException), or released.
+    private string Settle(InteractionReply reply, string? connectionKey, string? clientKey)
+    {
         PendingRequest request;
         lock (_gate)
         {
-            if (_disposed) return EncodeKind(Generated.BridgeFailure.Released);
+            if (_disposed) return Generated.BridgeFailure.Released;
             if (!_pending.TryGetValue(reply.RequestId, out var pending))
             {
-                return _receipts.TryGetValue(reply.RequestId, out var receipt) && receipt.Matches(reply, arguments)
-                    ? EncodeKind("already-completed") : EncodeKind("stale");
+                return _receipts.TryGetValue(reply.RequestId, out var receipt) && receipt.Matches(reply, connectionKey, clientKey)
+                    ? "already-completed" : "stale";
             }
-            if (!pending.Matches(reply, arguments)) return EncodeKind("stale");
+            if (!pending.Matches(reply, connectionKey, clientKey)) return "stale";
             request = pending;
             // The reply settles this request whatever its output decodes to.
             CompleteRequest(request, reply);
@@ -437,10 +546,10 @@ public sealed class BridgeInteractionRouter : IDisposable
             {
                 request.CompleteException(new RunicInteractionOutputException(
                     "The browser interaction output did not match its contract.", error));
-                return EncodeKind("invalid-output");
+                return "invalid-output";
             }
         }
-        return EncodeKind("ok");
+        return "ok";
     }
 
     private Presentation? SelectPresentation(DefinitionKey key, RunicInteractionInvocation invocation)
@@ -481,7 +590,12 @@ public sealed class BridgeInteractionRouter : IDisposable
 
     private void TryDeliverNext(Presentation presentation)
     {
-        if (!_waiters.TryGetValue(presentation.Id, out var waiter)) return;
+        if (presentation.Pushes)
+        {
+            PushPending(presentation);
+            return;
+        }
+        if (!_waiters.TryGetValue(presentation.Key, out var waiter)) return;
         while (presentation.Pending.TryDequeue(out var requestId))
         {
             if (!_pending.TryGetValue(requestId, out var request)) continue;
@@ -492,32 +606,55 @@ public sealed class BridgeInteractionRouter : IDisposable
             }
             request.OwnerEpoch = ++presentation.Generation;
             waiter.DisposeRegistration();
-            _waiters.Remove(presentation.Id);
+            _waiters.Remove(presentation.Key);
             waiter.Completion.TrySetResult(EncodeRequest(request));
             return;
         }
     }
 
-    private void CancelWaiter(string presentationId, Waiter expected)
+    // Pushes the presentation's requests to its connection (protocol 4), each with its owner epoch. The gate is held.
+    private void PushPending(Presentation presentation)
+    {
+        while (presentation.Pending.TryDequeue(out var requestId))
+        {
+            if (!_pending.TryGetValue(requestId, out var request)) continue;
+            if (!presentation.Capabilities.Contains(request.Key))
+            {
+                CancelRequest(requestId, new RunicInteractionCancelledException("The browser handler was removed."));
+                continue;
+            }
+            request.OwnerEpoch = ++presentation.Generation;
+            Push(presentation, EncodeInteractionPush(request));
+        }
+    }
+
+    // The gate is held.
+    private void Push(Presentation presentation, byte[] message)
+    {
+        if (presentation.ConnectionKey is not { } connectionKey) return;
+        (_pushes ??= BridgeTargetedPushes.For(_transport)).Send(connectionKey, message);
+    }
+
+    private void CancelWaiter(string presentationKey, Waiter expected)
     {
         lock (_gate)
         {
-            if (_waiters.TryGetValue(presentationId, out var current) && ReferenceEquals(current, expected))
+            if (_waiters.TryGetValue(presentationKey, out var current) && ReferenceEquals(current, expected))
             {
-                _waiters.Remove(presentationId);
+                _waiters.Remove(presentationKey);
                 current.DisposeRegistration();
                 current.Completion.TrySetResult(EncodeKind("cancelled"));
             }
         }
     }
 
-    private void CancelControlWaiter(string presentationId, ControlWaiter expected)
+    private void CancelControlWaiter(string presentationKey, ControlWaiter expected)
     {
         lock (_gate)
         {
-            if (_controlWaiters.TryGetValue(presentationId, out var current) && ReferenceEquals(current, expected))
+            if (_controlWaiters.TryGetValue(presentationKey, out var current) && ReferenceEquals(current, expected))
             {
-                _controlWaiters.Remove(presentationId);
+                _controlWaiters.Remove(presentationKey);
                 current.DisposeRegistration();
                 current.Completion.TrySetResult(EncodeKind("cancelled"));
             }
@@ -526,36 +663,42 @@ public sealed class BridgeInteractionRouter : IDisposable
 
     private void TryDeliverControl(Presentation presentation)
     {
-        if (!_controlWaiters.TryGetValue(presentation.Id, out var waiter)
+        if (!_controlWaiters.TryGetValue(presentation.Key, out var waiter)
             || !presentation.ControlEvents.TryDequeue(out var control)) return;
         waiter.DisposeRegistration();
-        _controlWaiters.Remove(presentation.Id);
+        _controlWaiters.Remove(presentation.Key);
         waiter.Completion.TrySetResult(EncodeControl(control));
     }
 
     private void NotifyCancelled(PendingRequest request, string reason)
     {
-        if (!_presentations.TryGetValue(request.PresentationId, out var presentation)) return;
+        if (!_presentations.TryGetValue(request.PresentationKey, out var presentation)) return;
+        if (presentation.Pushes)
+        {
+            // Only a request the page received needs its cancellation.
+            if (request.OwnerEpoch > 0) Push(presentation, EncodeCancelledPush(request, reason));
+            return;
+        }
         while (presentation.ControlEvents.Count >= MaximumControlEvents) presentation.ControlEvents.Dequeue();
         presentation.ControlEvents.Enqueue(new ControlEvent("cancelled", request.RequestId, request.Key.Route,
             request.PresentationId, request.OwnerEpoch, reason));
         TryDeliverControl(presentation);
     }
 
-    private void ReleasePresentation(string presentationId, string reason)
+    private void ReleasePresentation(string presentationKey, string reason)
     {
-        _presentations.Remove(presentationId);
-        if (_waiters.Remove(presentationId, out var waiter))
+        _presentations.Remove(presentationKey);
+        if (_waiters.Remove(presentationKey, out var waiter))
         {
             waiter.DisposeRegistration();
             waiter.Completion.TrySetResult(EncodeKind(Generated.BridgeFailure.Released));
         }
-        if (_controlWaiters.Remove(presentationId, out var controlWaiter))
+        if (_controlWaiters.Remove(presentationKey, out var controlWaiter))
         {
             controlWaiter.DisposeRegistration();
             controlWaiter.Completion.TrySetResult(EncodeKind(Generated.BridgeFailure.Released));
         }
-        foreach (var request in _pending.Values.Where(value => value.PresentationId == presentationId).ToArray())
+        foreach (var request in _pending.Values.Where(value => value.PresentationKey == presentationKey).ToArray())
         {
             request.CompleteException(new RunicInteractionCancelledException(reason));
             CompleteRequest(request, CancelledReply(request));
@@ -735,6 +878,43 @@ public sealed class BridgeInteractionRouter : IDisposable
         writer.WriteEndObject();
     });
 
+    // {"kind":"interaction", route, presentation, requestId, ownerEpoch, name, contract, expiresAt, input}
+    private static byte[] EncodeInteractionPush(PendingRequest request) => BridgeMessages.Write(writer =>
+    {
+        writer.WriteStartObject();
+        writer.WriteString("kind", "interaction");
+        writer.WriteString("route", request.Key.Route);
+        writer.WriteString("presentation", request.PresentationId);
+        writer.WriteString("requestId", request.RequestId);
+        writer.WriteNumber("ownerEpoch", request.OwnerEpoch);
+        writer.WriteString("name", request.Key.Name);
+        writer.WriteString("contract", request.Key.Contract);
+        writer.WriteString("expiresAt", OffsetDateTime(request.ExpiresAt));
+        writer.WritePropertyName("input");
+        writer.WriteRawValue(request.InputJson);
+        writer.WriteEndObject();
+    });
+
+    // {"kind":"interaction-cancelled", route, presentation, requestId, ownerEpoch, message}
+    private static byte[] EncodeCancelledPush(PendingRequest request, string message) => BridgeMessages.Write(writer =>
+    {
+        writer.WriteStartObject();
+        writer.WriteString("kind", "interaction-cancelled");
+        writer.WriteString("route", request.Key.Route);
+        writer.WriteString("presentation", request.PresentationId);
+        writer.WriteString("requestId", request.RequestId);
+        writer.WriteNumber("ownerEpoch", request.OwnerEpoch);
+        writer.WriteString("message", message);
+        writer.WriteEndObject();
+    });
+
+    // The normal form of an offset-date-time (specs/application/values.md): UTC with Z, and the fraction of a second
+    // without trailing zeros.
+    internal static string OffsetDateTime(DateTimeOffset value) =>
+        value.UtcDateTime.ToString("yyyy'-'MM'-'dd'T'HH':'mm':'ss.FFFFFFF'Z'", System.Globalization.CultureInfo.InvariantCulture);
+
+    private static string PresentationKey(string route, string presentationId) => $"{route}\u0000{presentationId}";
+
     private static string EncodeKind(string kind) => WriteJson(writer => { writer.WriteStartObject(); writer.WriteString("kind", kind); writer.WriteEndObject(); });
     private static string WriteJson(Action<Utf8JsonWriter> write)
     {
@@ -779,6 +959,11 @@ public sealed class BridgeInteractionRouter : IDisposable
     {
         public string Route { get; } = route;
         public string Id { get; } = id;
+        public string Key { get; } = PresentationKey(route, id);
+        // Opened by a protocol-4 connection: its requests are pushed rather than pulled.
+        public bool Pushes { get; init; }
+        // The generation of the protocol-4 registration; null until open or interactions registered handlers.
+        public long? RegisteredGeneration { get; set; }
         public string? ClientKey { get; } = clientKey;
         public string? ConnectionKey { get; } = connectionKey;
         public long Generation { get; set; }
@@ -786,10 +971,11 @@ public sealed class BridgeInteractionRouter : IDisposable
         public HashSet<DefinitionKey> Capabilities { get; } = [];
         public Queue<string> Pending { get; } = [];
         public Queue<ControlEvent> ControlEvents { get; } = [];
-        public bool Matches(string route, IBridgeArguments arguments) =>
+        public bool Matches(string route, IBridgeArguments arguments) => Matches(route, arguments.ConnectionKey, arguments.ClientKey);
+        public bool Matches(string route, string? connectionKey, string? clientKey) =>
             string.Equals(Route, route, StringComparison.Ordinal)
-            && string.Equals(ClientKey, arguments.ClientKey, StringComparison.Ordinal)
-            && string.Equals(ConnectionKey, arguments.ConnectionKey, StringComparison.Ordinal);
+            && string.Equals(ClientKey, clientKey, StringComparison.Ordinal)
+            && string.Equals(ConnectionKey, connectionKey, StringComparison.Ordinal);
     }
     private sealed class Waiter(string presentationId, Presentation presentation, string? clientKey, string? connectionKey)
     { public string PresentationId { get; } = presentationId; public Presentation Presentation { get; } = presentation; public string? ClientKey { get; } = clientKey; public string? ConnectionKey { get; } = connectionKey; public TaskCompletionSource<string> Completion { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously); public CancellationTokenRegistration Cancellation { get; set; } public void DisposeRegistration() => Cancellation.Unregister(); }
@@ -799,12 +985,13 @@ public sealed class BridgeInteractionRouter : IDisposable
     {
         private readonly TaskCompletionSource<object?> _completion = new(TaskCreationOptions.RunContinuationsAsynchronously);
         private readonly Func<JsonElement, object?> _decodeOutput;
-        public PendingRequest(string requestId, DefinitionKey key, string presentationId, string? connectionKey, string? clientKey, long ownerEpoch, string inputJson, Func<JsonElement, object?> decodeOutput, TimeSpan timeout, DateTimeOffset expiresAt)
-        { RequestId = requestId; Key = key; PresentationId = presentationId; ConnectionKey = connectionKey; ClientKey = clientKey; OwnerEpoch = ownerEpoch; InputJson = inputJson; Timeout = timeout; ExpiresAt = expiresAt; _decodeOutput = decodeOutput; }
+        public PendingRequest(string requestId, DefinitionKey key, string presentationId, string presentationKey, string? connectionKey, string? clientKey, long ownerEpoch, string inputJson, Func<JsonElement, object?> decodeOutput, TimeSpan timeout, DateTimeOffset expiresAt)
+        { RequestId = requestId; Key = key; PresentationId = presentationId; PresentationKey = presentationKey; ConnectionKey = connectionKey; ClientKey = clientKey; OwnerEpoch = ownerEpoch; InputJson = inputJson; Timeout = timeout; ExpiresAt = expiresAt; _decodeOutput = decodeOutput; }
+        public string PresentationKey { get; }
         public object? Decode(JsonElement value) => _decodeOutput(value);
         public string RequestId { get; } public DefinitionKey Key { get; } public string PresentationId { get; } public string? ConnectionKey { get; } public string? ClientKey { get; } public long OwnerEpoch { get; set; } public string InputJson { get; } public TimeSpan Timeout { get; } public DateTimeOffset ExpiresAt { get; } public CancellationLease? Cancellation { get; set; }
         public Task<T> AsTask<T>() => _completion.Task.ContinueWith(task => (T)task.GetAwaiter().GetResult()!, CancellationToken.None, TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
-        public void CompleteOutput(object? value) => _completion.TrySetResult(value); public void CompleteException(Exception error) => _completion.TrySetException(error); public bool Matches(InteractionReply reply, IBridgeArguments args) => reply.RequestId == RequestId && reply.Route == Key.Route && reply.PresentationId == PresentationId && reply.OwnerEpoch == OwnerEpoch && reply.Name == Key.Name && reply.Contract == Key.Contract && string.Equals(ConnectionKey,args.ConnectionKey,StringComparison.Ordinal) && string.Equals(ClientKey,args.ClientKey,StringComparison.Ordinal); public void Dispose() => Cancellation?.Dispose();
+        public void CompleteOutput(object? value) => _completion.TrySetResult(value); public void CompleteException(Exception error) => _completion.TrySetException(error); public bool Matches(InteractionReply reply, string? connectionKey, string? clientKey) => reply.RequestId == RequestId && reply.Route == Key.Route && reply.PresentationId == PresentationId && reply.OwnerEpoch == OwnerEpoch && reply.Name == Key.Name && reply.Contract == Key.Contract && string.Equals(ConnectionKey,connectionKey,StringComparison.Ordinal) && string.Equals(ClientKey,clientKey,StringComparison.Ordinal); public void Dispose() => Cancellation?.Dispose();
     }
     private sealed class CancellationLease(CancellationTokenRegistration registration, CancellationTokenSource linked,
         CancellationTokenSource timeout) : IDisposable
@@ -825,12 +1012,12 @@ public sealed class BridgeInteractionRouter : IDisposable
             request.PresentationId, request.OwnerEpoch, request.Key.Name, request.Key.Contract,
             request.ConnectionKey, request.ClientKey, Signature(reply)) { }
 
-        public bool Matches(InteractionReply reply, IBridgeArguments args) =>
+        public bool Matches(InteractionReply reply, string? connectionKey, string? clientKey) =>
             reply.RequestId == RequestId && reply.Route == Route && reply.PresentationId == PresentationId
             && reply.OwnerEpoch == OwnerEpoch && reply.Name == Name && reply.Contract == Contract
             && ReplySignature == Signature(reply)
-            && string.Equals(ConnectionKey, args.ConnectionKey, StringComparison.Ordinal)
-            && string.Equals(ClientKey, args.ClientKey, StringComparison.Ordinal);
+            && string.Equals(ConnectionKey, connectionKey, StringComparison.Ordinal)
+            && string.Equals(ClientKey, clientKey, StringComparison.Ordinal);
 
         private static string Signature(InteractionReply reply) => reply.Kind + ":" + reply.OutputSignature;
     }

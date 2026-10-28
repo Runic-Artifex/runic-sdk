@@ -74,6 +74,8 @@ internal sealed class BridgeDispatcher : IBridgeRequestHandler
 
     internal TimeProvider TimeProvider => _timeProvider;
 
+    internal ILogger Logger => _logger;
+
     // Whether pushes to one connection travel through the mailbox.
     internal bool UsesMailbox => _targeted is null;
 

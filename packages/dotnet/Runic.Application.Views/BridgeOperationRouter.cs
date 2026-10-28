@@ -9,6 +9,11 @@ namespace Runic.Application.Views;
 // Internal window/session plumbing for generated operation handles. Generated
 // command routes call Accept; status, wait, and cancel are window routes so
 // they remain available after a content presentation detaches.
+//
+// Protocol 4 (specs/application/README.md, "Operations"): a route's handler checks the member of status, watch,
+// unwatch, cancel and stream and passes the request to Handle; start replies are written by EncodeStart. Watches push
+// {"kind":"operation",…} through BridgeOperationWatches. The protocol-3 window routes (__runicOperation*) stay until
+// the dispatcher's Legacy table is removed.
 internal sealed class BridgeOperationRouter : IDisposable
 {
     internal const string StatusRoute = "__runicOperationStatus";
@@ -17,6 +22,8 @@ internal sealed class BridgeOperationRouter : IDisposable
     internal const string StreamRoute = "__runicOperationStream";
 
     private readonly BridgeOperationRegistry _operations;
+    private readonly BridgeOperationWatches _watches;
+    private readonly IDisposable _connectionObserver;
     private readonly IDisposable[] _bindings;
     private bool _disposed;
 
@@ -35,6 +42,10 @@ internal sealed class BridgeOperationRouter : IDisposable
         _operations = new BridgeOperationRegistry(
             ownerId, maximumOperations, maximumRetainedTerminals, maximumRetainedExpiredIds, ownerShutdown: ownerShutdown, logger: logger,
             timeProvider: timeProvider, includeFailureDetail: includeFailureDetail);
+        _watches = new BridgeOperationWatches(transport, timeProvider ?? TimeProvider.System);
+        _operations.StatusChanged = _watches.OnStatusChanged;
+        // A connection's watches end when it closes; its operations do not, they belong to the window.
+        _connectionObserver = BridgeDispatcher.For(transport).OnConnectionClosed(_watches.ReleaseConnection);
         var bindings = new List<IDisposable>();
         try
         {
@@ -47,10 +58,70 @@ internal sealed class BridgeOperationRouter : IDisposable
         catch
         {
             foreach (var binding in bindings) binding.Dispose();
+            _connectionObserver.Dispose();
+            _watches.Dispose();
             _operations.Dispose();
             throw;
         }
     }
+
+    // The registry's status of a protocol-4 operation for a member.
+    internal BridgeOperationStatus Lookup(BridgeOperationIdentity identity, string member) =>
+        _operations.Lookup(identity.RegistryKey, member);
+
+    // The revision an accepted start replied with: a terminal status keeps it when the route cannot report a later one.
+    internal void SetAdmissionRevision(BridgeOperationIdentity identity, long revision) =>
+        _operations.SetAdmissionRevision(identity.RegistryKey, revision);
+
+    // status, watch, unwatch, cancel and stream (protocol 4) of an operation member the route has; the route checked
+    // the member. Returns the reply.
+    internal ReadOnlyMemory<byte> Handle(BridgeRouteRequest request)
+    {
+        var root = request.Root;
+        var member = request.Member!;
+        var contract = root.GetProperty("contract").GetString()!;
+        var operation = root.GetProperty("operation").GetString()!;
+        BridgeOperationIdentity identity;
+        try { identity = BridgeOperationIdentity.Create(contract, request.Route, operation); }
+        catch (ArgumentException)
+        {
+            // An identity no operation can have, such as a contract longer than any route's: the window does not know it.
+            return request.Kind switch
+            {
+                "cancel" => EncodeCancellation(BridgeOperationStatusKind.Unknown, requested: false),
+                "stream" => EncodePage(BridgeOperationStatus.Unknown(operation), null, ReadCursor(root)),
+                _ => EncodeStatusReply(BridgeOperationStatus.Unknown(operation)),
+            };
+        }
+        var key = identity.RegistryKey;
+        switch (request.Kind)
+        {
+            case "status":
+                return EncodeStatusReply(_operations.Lookup(key, member));
+            case "watch":
+                var watched = _watches.Add(identity, member, request.Connection.Key, () => _operations.Lookup(key, member));
+                return watched is null
+                    ? BridgeMessages.Rejected("capacity",
+                        $"The connection already watches {BridgeOperationWatches.MaximumWatchesPerConnection} operations.")
+                    : EncodeStatusReply(watched);
+            case "unwatch":
+                _watches.Remove(identity, member, request.Connection.Key);
+                return EncodeStatusReply(_operations.Lookup(key, member));
+            case "cancel":
+                var status = _operations.Lookup(key, member);
+                return EncodeCancellation(status.Kind,
+                    status.Kind is BridgeOperationStatusKind.Running && _operations.RequestCancellation(key, member));
+            case "stream":
+                var cursor = ReadCursor(root);
+                var lookup = _operations.ReadStream(key, cursor, member);
+                return EncodePage(lookup.Status, lookup.Stream, cursor);
+            default:
+                throw new ArgumentException($"'{request.Kind}' is not an operation request.", nameof(request));
+        }
+    }
+
+    private static long ReadCursor(JsonElement root) =>
+        BridgeRequestEnvelope.TryReadInteger(root.GetProperty("cursor"), out var cursor) ? cursor : 0;
 
     internal BridgeOperationAdmissionReply Accept(
         string contract,
@@ -78,9 +149,10 @@ internal sealed class BridgeOperationRouter : IDisposable
         BridgeOperationRequest request,
         Func<string?> refusal,
         Func<CancellationToken, Task<BridgeOperationResult>> work,
-        BridgeOperationRetirement? retirement = null)
+        BridgeOperationRetirement? retirement = null,
+        Func<long?>? terminalRevision = null)
     {
-        var admission = _operations.AcceptUnlessRefused(request, refusal, work, retirement);
+        var admission = _operations.AcceptUnlessRefused(request, refusal, work, retirement, terminalRevision);
         return new(request.Identity, admission.Kind, admission.Status, admission.Reason, admission.Terminal);
     }
 
@@ -89,9 +161,10 @@ internal sealed class BridgeOperationRouter : IDisposable
         Func<string?> refusal,
         BridgeOperationStream stream,
         Func<BridgeOperationExecution, CancellationToken, Task<BridgeOperationResult>> work,
-        BridgeOperationRetirement? retirement = null)
+        BridgeOperationRetirement? retirement = null,
+        Func<long?>? terminalRevision = null)
     {
-        var admission = _operations.AcceptUnlessRefused(request, refusal, stream, work, retirement);
+        var admission = _operations.AcceptUnlessRefused(request, refusal, stream, work, retirement, terminalRevision);
         return new(request.Identity, admission.Kind, admission.Status, admission.Reason, admission.Terminal);
     }
 
@@ -378,11 +451,164 @@ internal sealed class BridgeOperationRouter : IDisposable
         _ => throw new ArgumentOutOfRangeException(nameof(kind)),
     };
 
+    // {"ok":true, revision, admission, reason?, status?}: the reply of a protocol-4 start that the window answered.
+    // status is the operation's current status for accepted and duplicate; reason names a rejection.
+    // Without a revision, the start released its own route (released: true).
+    internal static byte[] EncodeStart(BridgeOperationAdmissionReply admission, BridgeOperationStatus? status, long? revision) =>
+        BridgeMessages.Write(writer =>
+        {
+            writer.WriteStartObject();
+            writer.WriteBoolean("ok", true);
+            if (revision is { } published) writer.WriteNumber("revision", published);
+            else writer.WriteBoolean("released", true);
+            writer.WriteString("admission", Wire(admission.Kind));
+            if (admission.Kind is BridgeOperationAdmissionKind.Rejected && admission.Reason is { } reason)
+                writer.WriteString("reason", reason);
+            if (admission.Kind is BridgeOperationAdmissionKind.Accepted or BridgeOperationAdmissionKind.Duplicate
+                && (admission.Terminal ?? status) is { } current)
+            {
+                writer.WritePropertyName("status");
+                WriteStatus(writer, current);
+            }
+            writer.WriteEndObject();
+        });
+
+    // A rejected start that the window answered before admission, such as an input that does not decode.
+    internal static BridgeOperationAdmissionReply Rejection(BridgeOperationIdentity identity, string reason) =>
+        new(identity, BridgeOperationAdmissionKind.Rejected, BridgeOperationStatusKind.Unknown, reason, null);
+
+    // {"kind":"operation", route, member, operation, contract, status}: a watched operation's changed status.
+    internal static byte[] EncodeOperationPush(BridgeOperationIdentity identity, string member, BridgeOperationStatus status) =>
+        BridgeMessages.Write(writer =>
+        {
+            writer.WriteStartObject();
+            writer.WriteString("kind", "operation");
+            writer.WriteString("route", identity.Route);
+            writer.WriteString("member", member);
+            writer.WriteString("operation", identity.RequestId);
+            writer.WriteString("contract", identity.Contract);
+            writer.WritePropertyName("status");
+            WriteStatus(writer, status);
+            writer.WriteEndObject();
+        });
+
+    private static byte[] EncodeStatusReply(BridgeOperationStatus status) => BridgeMessages.Write(writer =>
+    {
+        writer.WriteStartObject();
+        writer.WriteBoolean("ok", true);
+        writer.WritePropertyName("status");
+        WriteStatus(writer, status);
+        writer.WriteEndObject();
+    });
+
+    private static byte[] EncodeCancellation(BridgeOperationStatusKind status, bool requested) => BridgeMessages.Write(writer =>
+    {
+        writer.WriteStartObject();
+        writer.WriteBoolean("ok", true);
+        writer.WriteString("cancellation", requested ? "cancellation-requested" : status switch
+        {
+            BridgeOperationStatusKind.Unknown => "unknown",
+            BridgeOperationStatusKind.Expired => "expired",
+            _ => "not-running",
+        });
+        writer.WriteEndObject();
+    });
+
+    // {"ok":true, page:{kind, cursor, completed, items:[{sequence, value}], delivery?}}. An operation without a stream
+    // has an empty, completed page at the requested cursor, unless it still runs.
+    private static byte[] EncodePage(BridgeOperationStatus status, BridgeOperationStreamRead? stream, long cursor) =>
+        BridgeMessages.Write(writer =>
+        {
+            writer.WriteStartObject();
+            writer.WriteBoolean("ok", true);
+            writer.WriteStartObject("page");
+            writer.WriteString("kind", Wire(status.Kind));
+            writer.WriteNumber("cursor", stream?.NextCursor ?? cursor);
+            writer.WriteBoolean("completed", stream?.Completed ?? status.Kind is not BridgeOperationStatusKind.Running);
+            writer.WriteStartArray("items");
+            if (stream is not null)
+                foreach (var item in stream.Items)
+                {
+                    writer.WriteStartObject();
+                    writer.WriteNumber("sequence", item.Sequence);
+                    writer.WritePropertyName("value");
+                    writer.WriteRawValue(item.EncodedJson, skipInputValidation: true);
+                    writer.WriteEndObject();
+                }
+            writer.WriteEndArray();
+            if (stream?.Failure is { } failure) WriteDelivery(writer, failure);
+            writer.WriteEndObject();
+            writer.WriteEndObject();
+        });
+
+    // A protocol-4 status object (specs/application/README.md, "Status").
+    internal static void WriteStatus(Utf8JsonWriter writer, BridgeOperationStatus status)
+    {
+        writer.WriteStartObject();
+        writer.WriteString("kind", Wire(status.Kind));
+        switch (status.Kind)
+        {
+            case BridgeOperationStatusKind.Running:
+                if (status.Progress is { } progress) writer.WriteNumber("progress", progress);
+                break;
+            case BridgeOperationStatusKind.Succeeded:
+                WriteRevision(writer, status);
+                if (status.Result is { Kind: BridgeOperationResultKind.Value, EncodedJson: { } result })
+                {
+                    writer.WritePropertyName("result");
+                    writer.WriteRawValue(result, skipInputValidation: true);
+                }
+                if (status.Result?.DeliveryFailure is { } delivery) WriteDelivery(writer, delivery);
+                WriteStream(writer, status);
+                break;
+            case BridgeOperationStatusKind.Failed:
+                WriteRevision(writer, status);
+                writer.WriteStartObject("error");
+                writer.WriteString("kind", "failed");
+                writer.WriteString("message", status.Failure ?? "The operation failed.");
+                BridgeFailureDetails.Write(writer, status.FailureDetail);
+                writer.WriteEndObject();
+                if (status.Result?.DeliveryFailure is { } failedDelivery) WriteDelivery(writer, failedDelivery);
+                WriteStream(writer, status);
+                break;
+            case BridgeOperationStatusKind.DomainFailed:
+                // No detail (D-1): the declared failure is the contract. A failure the retention budget dropped is
+                // reported as its delivery.
+                WriteRevision(writer, status);
+                if (status.DomainFailure is { } failure)
+                {
+                    writer.WritePropertyName("failure");
+                    writer.WriteRawValue(failure, skipInputValidation: true);
+                }
+                if ((status.FailureDelivery ?? status.Result?.DeliveryFailure) is { } failureDelivery)
+                    WriteDelivery(writer, failureDelivery);
+                WriteStream(writer, status);
+                break;
+            case BridgeOperationStatusKind.Cancelled:
+                WriteRevision(writer, status);
+                WriteStream(writer, status);
+                break;
+        }
+        writer.WriteEndObject();
+    }
+
+    private static void WriteRevision(Utf8JsonWriter writer, BridgeOperationStatus status)
+    {
+        if (status.Revision is { } revision) writer.WriteNumber("revision", revision);
+    }
+
+    private static void WriteStream(Utf8JsonWriter writer, BridgeOperationStatus status)
+    {
+        if (status.Result?.Kind is BridgeOperationResultKind.Stream) writer.WriteBoolean("stream", true);
+    }
+
     public void Dispose()
     {
         if (_disposed) return;
         _disposed = true;
         foreach (var binding in _bindings) binding.Dispose();
+        _connectionObserver.Dispose();
+        _watches.Dispose();
         _operations.Dispose();
     }
 }
@@ -391,12 +617,22 @@ internal readonly record struct BridgeOperationRouteIdentity(BridgeOperationIden
 
 // The registry accepts a string internally. Length prefixes make the composed
 // key unambiguous without exposing an operation registry key to generated TS.
-internal readonly record struct BridgeOperationIdentity(string Contract, string RequestId)
+//
+// Protocol 4 keys an operation by (contract, route, operation) (specs/application/README.md, "Identity"): Route is the
+// route the request named, and RequestId the operation id. A protocol-3 identity has no route; its contract ends with
+// the route instead, so the two never share a key.
+internal readonly record struct BridgeOperationIdentity(string Contract, string RequestId, string? Route = null)
 {
     internal const int MaximumContractLength = 256;
     internal const int MaximumRequestIdLength = 128;
 
-    internal string RegistryKey => $"{Contract.Length}:{Contract}{RequestId.Length}:{RequestId}";
+    internal string RegistryKey => Route is null
+        ? $"{Contract.Length}:{Contract}{RequestId.Length}:{RequestId}"
+        : $"{Contract.Length}:{Contract}{RequestId.Length}:{RequestId}{Route.Length}:{Route}";
+
+    // A protocol-4 identity, from a request whose envelope was checked.
+    internal static BridgeOperationIdentity Create(string contract, string route, string operation) =>
+        Create(contract, operation) with { Route = route };
 
     internal static BridgeOperationIdentity Create(string contract, string requestId)
     {
@@ -470,7 +706,11 @@ internal sealed record BridgeOperationAdmissionReply(
     BridgeOperationAdmissionKind Kind,
     BridgeOperationStatusKind Status,
     string? Reason,
-    BridgeOperationStatus? Terminal);
+    BridgeOperationStatus? Terminal)
+{
+    // The command member of a protocol-4 start.
+    public string? Member { get; init; }
+}
 
 internal sealed record BridgeOperationStatusReply(BridgeOperationIdentity Identity, BridgeOperationStatus Status);
 internal sealed record BridgeOperationCancelReply(BridgeOperationIdentity Identity, BridgeOperationStatusKind Status, bool Requested);
