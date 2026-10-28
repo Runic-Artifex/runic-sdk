@@ -51,14 +51,17 @@ internal sealed class AotArguments(string json) : IBridgeArguments
     public string GetString() => json;
 }
 
+// The window's transport without a page. Until the producer speaks protocol 4 (P4), the proof calls the generated
+// bridge's protocol-3 routes through the window dispatcher's legacy routes.
 internal sealed class AotTransport : IBridgeTransport
 {
-    private readonly Dictionary<string, Func<IBridgeArguments, string>> _sync = new(StringComparer.Ordinal);
-    private readonly Dictionary<string, Func<IBridgeArguments, CancellationToken, ValueTask<string>>> _async = new(StringComparer.Ordinal);
-    public IDisposable Bind(string name, Func<IBridgeArguments, string> handler) { _sync.Add(name, handler); return new Lease(() => _sync.Remove(name)); }
-    public IDisposable BindAsync(string name, Func<IBridgeArguments, CancellationToken, ValueTask<string>> handler) { _async.Add(name, handler); return new Lease(() => _async.Remove(name)); }
-    public void Publish(string name, string stateJson) { }
-    public string Call(string name, string json = "null") => _sync[name](new AotArguments(json));
-    public ValueTask<string> CallAsync(string name, string json) => _async[name](new AotArguments(json), CancellationToken.None);
+    private BridgeDispatcher? _dispatcher;
+    public IDisposable Serve(IBridgeRequestHandler handler) { _dispatcher = (BridgeDispatcher)handler; return new Lease(() => { }); }
+    public ValueTask BroadcastAsync(ReadOnlyMemory<byte> message, CancellationToken cancellationToken = default) => ValueTask.CompletedTask;
+    public string Call(string name, string json = "null") =>
+        _dispatcher!.Legacy.TryFind(name, out var sync, out _) && sync is not null ? sync(new AotArguments(json)) : throw new KeyNotFoundException(name);
+    public ValueTask<string> CallAsync(string name, string json) =>
+        _dispatcher!.Legacy.TryFind(name, out _, out var asynchronous) && asynchronous is not null
+            ? asynchronous(new AotArguments(json), CancellationToken.None) : throw new KeyNotFoundException(name);
     private sealed class Lease(Action dispose) : IDisposable { public void Dispose() => dispose(); }
 }
