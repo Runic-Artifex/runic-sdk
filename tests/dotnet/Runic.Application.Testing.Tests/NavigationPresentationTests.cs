@@ -566,20 +566,14 @@ internal sealed class NavigationPresentationTests
             .GetValue(region) as Delegate)?.GetInvocationList().Length ?? 0;
 
     private sealed class RuntimeShellBridge(IBridgeTransport transport, NavShellViewModel vm, WindowContentSession content)
-        : ViewModelBridge<NavShellViewModel>(transport, vm, "runtimeShell", Write,
-            [new PropertyDescriptor<NavShellViewModel>("Main", static vm => vm.Main.Current, null, static vm => vm.Main)],
+        : ViewModelBridge<NavShellViewModel>(transport, vm, "runtimeShell",
+            [new BridgeStateMember<NavShellViewModel>("title", static (writer, vm) =>
+            {
+                if (vm.Main?.Current is { } page) writer.WriteStringValue(page.Title);
+                else writer.WriteNullValue();
+            })],
+            [new PropertyDescriptor<NavShellViewModel>("Main", "main", static vm => vm.Main.Current, null, static vm => vm.Main)],
             [], [], content: content)
     {
-        private static void Write(Utf8JsonWriter writer, NavShellViewModel vm, long revision, Action<Utf8JsonWriter> writeFieldMetadata)
-        {
-            writer.WriteStartObject();
-            writer.WriteNumber("revision", revision);
-            switch (vm.Main?.Current)
-            {
-                case null: writer.WriteNull("title"); break;
-                case var page: writer.WriteString("title", page.Title); break;
-            }
-            writer.WriteEndObject();
-        }
     }
 }

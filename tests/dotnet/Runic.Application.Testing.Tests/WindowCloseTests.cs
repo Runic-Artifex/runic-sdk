@@ -131,12 +131,7 @@ public sealed class WindowCloseTests
     }
 
     private sealed class SlowBridge(IBridgeTransport transport, SlowModel model, WindowContentSession content)
-        : ViewModelBridge<SlowModel>(transport, model, "slow", static (writer, _, revision, _) =>
-        {
-            writer.WriteStartObject();
-            writer.WriteNumber("revision", revision);
-            writer.WriteEndObject();
-        }, [], [],
+        : ViewModelBridge<SlowModel>(transport, model, "slow", [], [], [],
         [new("Save", vm => vm.Save) { ExecuteAsync = (vm, cancellation, _) => vm.SaveAsync(cancellation), CanExecute = (_, _) => true }],
         content: content);
 

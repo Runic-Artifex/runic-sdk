@@ -340,7 +340,6 @@ internal sealed class CodegenShapeTests
 
     // The generated client reads a real NamingViewModel state over Views protocol 4.
     [Test]
-    [Skip("P4 (#684): the producer serves View routes over Views protocol 4.")]
     public async Task GeneratedClientReadsSpecialWireNamesAsync()
     {
         var directory = GeneratedTypeScriptDirectory();
@@ -356,7 +355,6 @@ internal sealed class CodegenShapeTests
     // reference caches) must not collide with names derived from user types
     // (#258). ReservedNamesFixture declares a ViewModel or type for each.
     [Test]
-    [Skip("P6: the generated-client harness speaks protocol 4 with P6's regenerated clients")]
     public async Task GeneratedModulesKeepTheirOwnBindingsApartFromUserNamesAsync()
     {
         var directory = GeneratedTypeScriptDirectory();

@@ -17,7 +17,6 @@ internal sealed class EditorBrowsableTests
         typeof(PropertyDescriptor<>),
         typeof(CheckedPropertyDescriptor<>),
         typeof(CheckedFieldValueKind),
-        typeof(BridgeSnapshotWriter<>),
         typeof(CommandDescriptor<>),
         typeof(BridgeProtocol),
         typeof(ViewModelBridge<>),
@@ -78,12 +77,8 @@ internal sealed class EditorBrowsableTests
                 $"CommandDescriptor<T>.{property.Name} must be an init property.");
         Require(typeof(CheckedPropertyDescriptor<object>).GetConstructors().Single().GetParameters()
                 .All(parameter => char.IsLower(parameter.Name![0])), "CheckedPropertyDescriptor<T> parameters must be camelCase.");
-        // Until the protocol-3 snapshot writer is removed, a second constructor takes the state members instead.
-        var stateWriters = typeof(ViewModelBridge<>).GetConstructors(BindingFlags.Instance | BindingFlags.NonPublic)
-            .Where(constructor => constructor.IsFamily)
-            .Select(constructor => constructor.GetParameters()[3].ParameterType.Name).Order(StringComparer.Ordinal);
-        Require(stateWriters.SequenceEqual(["BridgeSnapshotWriter`1", "BridgeStateMember`1[]"]),
-            $"ViewModelBridge<T> must have one protected constructor per state writer: {string.Join(", ", stateWriters)}.");
+        Require(typeof(ViewModelBridge<>).GetConstructors(BindingFlags.Instance | BindingFlags.NonPublic)
+                .Count(constructor => constructor.IsFamily) == 1, "ViewModelBridge<T> must have one protected constructor.");
         Require(typeof(BridgeOperationResult).GetProperty("Empty") is null, "BridgeOperationResult.Empty must be gone.");
     }
 

@@ -124,12 +124,8 @@ internal sealed class SnapshotDeliveryTests
     }
 
     private sealed class ProbeBridge(IBridgeTransport transport, Model model) : ViewModelBridge<Model>(
-        transport, model, "probe", static (writer, vm, _, _) =>
-        {
-            writer.WriteStartObject();
-            writer.WriteNumber("value", vm.Value);
-            writer.WriteEndObject();
-        }, [new("Value", vm => vm.Value, (vm, args) => vm.Value = checked((int)args.GetInt64()))], [], []);
+        transport, model, "probe", [new BridgeStateMember<Model>("value", static (writer, vm) => writer.WriteNumberValue(vm.Value))],
+        [new("Value", "value", vm => vm.Value, (vm, value) => vm.Value = BridgeWire.ReadInt32(value))], [], []);
 
     private sealed class ReentrantTransport : PushTestTransport
     {

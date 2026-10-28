@@ -3,11 +3,8 @@ import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import type { LiveHost } from "./GeneratedLiveBridge.ts";
 
-/**
- * Runs declared failures (W130-029) of the live FailureToolkitViewModel bridge of GeneratedClientHarness.cs through
- * the generated client: commands resolve a BridgeOutcome, and operations resolve outcome() with the decoded failure.
- */
-export async function runFailureGeneratedClient(live: LiveHost, generatedDirectory: string): Promise<void> {
+/** Runs the declared failures (W130-029) of the live FailureToolkitViewModel bridge's commands: each resolves a BridgeOutcome. */
+export async function runFailureGeneratedClient(generatedDirectory: string): Promise<void> {
   const generated = await import(pathToFileURL(resolve(generatedDirectory, "failureToolkit.ts")).href);
   const view = await generated.connectFailureToolkit();
   try {
@@ -17,6 +14,16 @@ export async function runFailureGeneratedClient(live: LiveHost, generatedDirecto
     const reserved = await view.reserve(5);
     expect(!reserved.ok && reserved.failure.limit === 3 && reserved.failure.requested === 5,
       "reserve() did not decode its DTO failure.");
+  } finally {
+    view.dispose();
+  }
+}
+
+/** Runs a declared operation failure of the live bridge: outcome() resolves the decoded failure. */
+export async function runFailureGeneratedOperations(live: LiveHost, generatedDirectory: string): Promise<void> {
+  const generated = await import(pathToFileURL(resolve(generatedDirectory, "failureToolkit.ts")).href);
+  const view = await generated.connectFailureToolkit();
+  try {
     await live.step("failureToolkit.archive");
     const operation = await view.startPublish({ requestId: "failure-client-publish" });
     const outcome = await operation.outcome();

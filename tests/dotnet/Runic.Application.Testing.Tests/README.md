@@ -34,7 +34,8 @@ an event, reported the change; `BackstopReadReportsChangesWithoutEvents` and
 
 `GeneratedClientHarness` and `GeneratedInteractionClientHarness` are cases of
 this suite. `GeneratedClientHarness` type-checks the generated clients, then runs
-`GeneratedClientHarness.ts` live: `GeneratedClientLiveHost` serves the requests
+`GeneratedClientHarness.ts` (state, setters, checked writes, commands) and
+`GeneratedOperationClientHarness.ts` (operations, interactions) live: `GeneratedClientLiveHost` serves the requests
 of its generated clients from real windows of this process over Views protocol 4
 (the script's standard input and output, `GeneratedLiveBridge.ts`), so the
 generated decoders read what .NET writes and the encoders write what .NET

@@ -417,12 +417,7 @@ public sealed class ModelContextTests
 
     private sealed class ProbeBridge(IBridgeTransport transport, NotifyingModel model, string route,
         WindowContentSession content)
-        : ViewModelBridge<NotifyingModel>(transport, model, route, static (writer, _, revision, _) =>
-        {
-            writer.WriteStartObject();
-            writer.WriteNumber("revision", revision);
-            writer.WriteEndObject();
-        }, [], [], [], content: content);
+        : ViewModelBridge<NotifyingModel>(transport, model, route, [], [], [], [], content: content);
 
     // Implements IRunicView directly so the bridge generator does not treat
     // this private probe as an application View.

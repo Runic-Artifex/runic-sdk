@@ -51,7 +51,6 @@ internal sealed class HostDriverTests
 
     // A nullable string whose text is JSON, set as the client encodes it.
     [Test]
-    [Skip("P6: the protocol-3-shaped generated setter of a nullable string reads a string value that is JSON text as JSON (BridgeLegacyArguments); generated JsonElement setters fix it")]
     public void NullableStringSetterKeepsTextThatIsJson()
     {
         var model = new ScalarSetterViewModel();

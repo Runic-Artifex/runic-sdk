@@ -66,20 +66,6 @@ const union = await data.writePayload({ $case: "count", count: 42 }, {
 expect(union.kind === "applied" && union.snapshot.value.$case === "count" && union.snapshot.value.count === 42,
   "A checked union write did not decode.");
 
-// Operations: the typed result decodes from .NET's terminal status, and another member's id is unknown.
-const typedReactive = await load("typedReactive");
-const typed = await typedReactive.connectTypedReactive();
-const operation = await typed.startSave({ documentId: "document-1", content: "from-client", expectedVersion: 7 },
-  { requestId: "generated-client-save" });
-await live.step("typedReactive.releaseSave");
-const completion = await operation.completion;
-expect(completion.kind === "succeeded" && completion.result?.documentId === "document-1"
-  && completion.result.savedVersion === 8 && completion.result.contentLength === "from-client".length,
-  "A typed operation result did not decode from the C# terminal status.");
-await expectThrows(() => typed.recoverLastResult("generated-client-save"),
-  "A recovery of an operation id started for another member was accepted.");
-typed.dispose();
-
 // A disposed client keeps its last state and accepts late subscribers, as framework stores expect.
 data.dispose();
 const lastState = data.snapshot;
@@ -95,7 +81,7 @@ try {
 }
 
 await runToolkitGeneratedClient(generatedDirectory);
-await runFailureGeneratedClient(live, generatedDirectory);
+await runFailureGeneratedClient(generatedDirectory);
 
 const validationView = await (await load("validation")).connectValidation();
 const validation = validationView.snapshot.validation;
@@ -116,15 +102,6 @@ await dtoList.replace([{ name: "replaced", count: 5 }]);
 expect(JSON.stringify(dtoList.snapshot.entries) === '[{"name":"replaced","count":5}]', "A DTO list command did not reach .NET.");
 dtoList.dispose();
 await live.step("dtoList.expectReplaced");
-
-// An interaction handler passed to connect answers .NET with the DTO it accepts.
-const dtoInteraction = await (await load("dtoInteraction")).connectDtoInteraction({
-  handlers: { chooseEntry: (input: string) => ({ name: input === "Pick an entry" ? "picked" : input, count: 6 }) },
-});
-await dtoInteraction.pick();
-expect(dtoInteraction.snapshot.picked?.name === "picked", "The interaction's DTO output did not reach the ViewModel.");
-dtoInteraction.dispose();
-await live.step("dtoInteraction.expectPicked");
 
 await live.close();
 console.log("GENERATED_CLIENT_OK");

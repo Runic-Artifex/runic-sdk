@@ -144,6 +144,12 @@ export interface RouteOperationScope extends OperationScope {
 
 type State = Record<string, unknown>;
 
+// Sets a member as an own property: a member named "__proto__" must not replace the state's prototype.
+function setMember(state: State, member: string, value: unknown): void {
+  if (member === "__proto__") Object.defineProperty(state, member, { value, enumerable: true, writable: true, configurable: true });
+  else state[member] = value;
+}
+
 interface Lease {
   readonly id: string;
   disposed: boolean;
@@ -238,7 +244,7 @@ class RouteEntry {
   private decode(wire: Message, fields: unknown): { state: State; versions: Map<string, number> } {
     const state: State = {};
     for (const [member, decode] of Object.entries(this.members)) {
-      try { state[member] = decode(wire[member]); }
+      try { setMember(state, member, decode(Object.getOwnPropertyDescriptor(wire, member)?.value)); }
       catch (cause) { throw new Error(`The member ${member} is invalid: ${errorMessage(cause)}`); }
       this.collections?.validate(member, state[member]);
     }
@@ -316,7 +322,7 @@ class RouteEntry {
       const field = change.field;
       if (!Object.hasOwn(this.members, field)) throw new Error(`${field} is not a member of ${this.route}.`);
       if (change.kind === "set") {
-        next[field] = this.members[field]!(change["value"]);
+        setMember(next, field, this.members[field]!(change["value"]));
         const checked = this.checkedFields.includes(field);
         if (checked !== (change["version"] !== undefined)) throw new Error(`The set of ${field} has ${checked ? "no" : "a"} version.`);
         if (checked) versions.set(field, change["version"] as number);
@@ -324,7 +330,7 @@ class RouteEntry {
         continue;
       }
       if (!this.collections?.kind(field)) throw new Error(`${field} is not a keyed collection or text field.`);
-      next[field] = this.collections.apply(field, next[field], change, owned.has(field));
+      setMember(next, field, this.collections.apply(field, next[field], change, owned.has(field)));
       owned.add(field);
       edited.add(field);
     }
@@ -503,7 +509,7 @@ class RouteEntry {
     let next: State = this.state;
     if (this.overlays.size !== 0) {
       next = { ...this.state };
-      for (const [member, overlay] of this.overlays) if (Object.hasOwn(overlay, "value")) next[member] = overlay.value;
+      for (const [member, overlay] of this.overlays) if (Object.hasOwn(overlay, "value")) setMember(next, member, overlay.value);
     }
     const previous = this.exposed;
     if (previous !== undefined && Object.keys(this.members).every(member => Object.is(previous[member], next[member]))) return;

@@ -4,11 +4,10 @@ using TUnit.Core;
 
 namespace Runic.Application.Testing.Tests;
 
-/// <summary>Runs the Bun harness against a transcript emitted by this built test application.</summary>
+/// <summary>Runs the generated-client Bun harnesses: type checks, the live clients against their generated bridges, and the mock harnesses.</summary>
 internal sealed class GeneratedClientHarness
 {
     [Test]
-    [Skip("P6: the generated-client harness speaks protocol 4 with P6's regenerated clients")]
     public async Task GeneratedClientTypeChecksAndPassesTheBunHarnessesAsync()
     {
         var root = FindWorkspaceRoot();
@@ -28,10 +27,18 @@ internal sealed class GeneratedClientHarness
             "GeneratedMockHarness.ts"), generated], root).ConfigureAwait(false);
     }
 
-    // GeneratedClientHarness.ts runs the generated clients of these windows against their generated bridges.
+    // GeneratedClientHarness.ts: state, setters, checked writes, commands and validation of generated clients against
+    // their generated bridges.
     [Test]
-    [Skip("P4 (#684): the producer serves View routes over Views protocol 4.")]
-    public async Task GeneratedClientsTalkToTheirGeneratedBridgesAsync()
+    public Task GeneratedClientsTalkToTheirGeneratedBridgesAsync() => RunLiveAsync("GeneratedClientHarness.ts");
+
+    // GeneratedOperationClientHarness.ts: operations and interactions.
+    [Test]
+    [Skip("P5: needs the operation requests (start, status, watch) and interactions served")]
+    public Task GeneratedOperationClientsTalkToTheirGeneratedBridgesAsync() => RunLiveAsync("GeneratedOperationClientHarness.ts");
+
+    // Runs a live harness script against these windows.
+    private static async Task RunLiveAsync(string script)
     {
         var root = FindWorkspaceRoot();
         var generated = Path.Combine(root, "tests", "dotnet", "Runic.Application.Testing.Tests",
@@ -86,7 +93,7 @@ internal sealed class GeneratedClientHarness
             .Step("dtoInteraction.expectPicked", () => Require(dtoInteraction.Picked is { Name: "picked", Count: 6 },
                 "The DTO interaction output did not reach the ViewModel."));
         await GeneratedHarnessProcess.RunAsync("bun", [Path.Combine(root, "tests", "dotnet", "Runic.Application.Testing.Tests",
-            "GeneratedClientHarness.ts"), generated], root, live).ConfigureAwait(false);
+            script), generated], root, live).ConfigureAwait(false);
     }
 
     private static void Require(bool condition, string message)

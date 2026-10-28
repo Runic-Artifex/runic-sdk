@@ -295,8 +295,7 @@ public partial class ViewModelBridge<T>
     {
         try
         {
-            if (descriptor.ReadInput is { } read) return read(input);
-            return descriptor.ReadArgument!(BridgeLegacyArguments.Input(input));
+            return descriptor.ReadInput!(input);
         }
         catch (OverflowException error) { throw new FormatException("The command input is out of range.", error); }
     }
