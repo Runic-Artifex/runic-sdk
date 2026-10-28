@@ -1,48 +1,57 @@
-using System.Buffers;
-using System.Text;
 using Microsoft.Extensions.Logging;
 
 namespace Runic.Application.Views;
 
-// Full states supersede everything queued before them. Delivery is
-// deliberately outside the model turn: a host may synchronously wait for its
-// native/UI dispatcher. Operations and interaction messages never use this
-// coalescing queue.
+// The delivery queue of one route (specs/application/state-changes.md, "Delivery and recovery"). It hands the route's
+// state, frame and failure pushes to the window's dispatcher, which broadcasts them, in order and one at a time.
+// Delivery is deliberately outside the model turn: a host may synchronously wait for its native/UI dispatcher.
 //
-// A full state is normally requested, not captured: the drain captures it in
-// the model turn when the host can take it, so a burst of changes behind a
-// busy host costs one serialization per delivered state. While a requested
-// state waits, the producer folds frames into it instead of queuing them.
-// A recovery state is captured at once (Enqueue) so frames can queue behind it;
-// if one cannot, the queued state reverts to a request.
+// - Frames do not coalesce; full states supersede everything queued before them.
+// - A route retains at most 64 undelivered entries or 1 MiB of them; the entry being delivered does not count. A frame
+//   that does not fit is refused (EnqueueFrame returns false) and the producer captures a recovery state (EnqueueState),
+//   or requests one when a captured state is already queued.
+// - A requested state is captured when the transport takes it, in a model turn, with the revision current then.
+// - A publication unit can be requested too (RequestUnit): the drain runs it in a model turn before it takes the next
+//   entry, so a burst of notifications publishes one frame.
 //
-// Every request and frame takes a sequence number. A reply that must follow
-// the frames its call produced (BridgeReplyOrder) waits until the drain has
-// settled the latest sequence: delivered it, or found nothing to deliver.
-internal sealed class BridgeSnapshotDelivery(IBridgeTransport transport, string route, IBridgeModelTurn modelTurn,
-    Func<string?> captureState, string model, ILogger? logger = null) : IDisposable
+// Every request and push takes a sequence number. A reply that must follow the pushes its request produced
+// (BridgeReplyOrder) waits until the drain has settled the latest sequence: delivered it, or found nothing to deliver.
+internal sealed class BridgeSnapshotDelivery : IDisposable
 {
-    private const int MaximumPendingFrames = 64;
-    private const int MaximumPendingLength = 1024 * 1024;
+    internal const int MaximumPendingEntries = 64;
+    internal const int MaximumPendingBytes = 1024 * 1024;
     private readonly object _gate = new();
-    private readonly Queue<(string Frame, string Kind, long Sequence)> _pending = new();
-    private readonly ILogger _logger = logger ?? TraceFallbackLogger.Instance;
-    private readonly BridgeReplyOrder _replyOrder = BridgeReplyOrder.For(transport);
-    // Protocol-3 states travel through the dispatcher's legacy routes until the producer speaks protocol 4.
-    private readonly BridgeLegacyRoutes _routes = BridgeDispatcher.For(transport).Legacy;
+    private readonly Queue<Entry> _pending = new();
+    private readonly BridgeDispatcher _dispatcher;
+    private readonly string _route;
+    private readonly IBridgeModelTurn _modelTurn;
+    private readonly Func<byte[]?> _captureState;
+    private readonly Action _runUnit;
+    private readonly string _model;
+    private readonly ILogger _logger;
+    private readonly BridgeReplyOrder _replyOrder;
     private List<(long Sequence, TaskCompletionSource Settled)>? _waiters;
-    // The last request or frame handed to the delivery, and the last one it settled.
+    // The last request or push handed to the delivery, and the last one it settled.
     private long _produced;
     private long _settled;
-    private int _pendingLength;
+    private int _pendingBytes;
     private bool _stateRequested;
     private bool _stateQueued;
+    private bool _unitRequested;
     private bool _running;
     private bool _disposed;
 
-    public BridgeSnapshotDelivery(IBridgeTransport transport, string route, IBridgeModelTurn modelTurn, string model)
-        : this(transport, route, modelTurn, static () => null, model)
+    public BridgeSnapshotDelivery(IBridgeTransport transport, string route, IBridgeModelTurn modelTurn,
+        Func<byte[]?> captureState, Action runUnit, string model, ILogger? logger = null)
     {
+        _dispatcher = BridgeDispatcher.For(transport);
+        _replyOrder = BridgeReplyOrder.For(transport);
+        _route = route;
+        _modelTurn = modelTurn;
+        _captureState = captureState;
+        _runUnit = runUnit;
+        _model = model;
+        _logger = logger ?? TraceFallbackLogger.Instance;
     }
 
     // Whether the queue holds a captured full state.
@@ -51,6 +60,13 @@ internal sealed class BridgeSnapshotDelivery(IBridgeTransport transport, string 
         get { lock (_gate) return _stateQueued; }
     }
 
+    // Whether a full state waits to be captured.
+    public bool StateRequested
+    {
+        get { lock (_gate) return _stateRequested; }
+    }
+
+    // Asks for a full state, captured when the transport takes it. It supersedes everything queued.
     public void RequestState()
     {
         lock (_gate)
@@ -63,75 +79,75 @@ internal sealed class BridgeSnapshotDelivery(IBridgeTransport transport, string 
         }
     }
 
-    public void Enqueue(string snapshot)
+    // Asks the drain to run a publication unit in a model turn before it takes the next entry.
+    public void RequestUnit()
+    {
+        lock (_gate)
+        {
+            if (_disposed || _unitRequested) return;
+            _unitRequested = true;
+            _produced++;
+            Start();
+        }
+    }
+
+    // Queues a captured full state, which supersedes everything queued before it.
+    public void EnqueueState(byte[] state)
     {
         lock (_gate)
         {
             if (_disposed) return;
             ClearPending();
-            _pending.Enqueue((snapshot, "state", ++_produced));
+            _pending.Enqueue(new(state, "state", ++_produced));
             BridgeTelemetry.AddQueuedFrames(1);
-            _pendingLength = snapshot.Length;
+            _pendingBytes = state.Length;
             _stateQueued = true;
             Start();
         }
     }
 
-    // Deltas depend on every preceding frame. Bound retention and ask the
-    // caller for a full recovery snapshot when a slow host falls behind.
-    public bool EnqueueDelta(string delta)
+    // Queues a frame; false when it does not fit, so the producer recovers with a full state.
+    public bool EnqueueFrame(byte[] frame)
     {
         lock (_gate)
         {
             if (_disposed) return true;
-            if (_stateRequested || _pending.Count >= MaximumPendingFrames
-                || _pendingLength + delta.Length > MaximumPendingLength) return false;
-            _pending.Enqueue((delta, "delta", ++_produced));
+            if (_stateRequested || _pending.Count >= MaximumPendingEntries
+                || _pendingBytes + frame.Length > MaximumPendingBytes) return false;
+            _pending.Enqueue(new(frame, "frame", ++_produced));
             BridgeTelemetry.AddQueuedFrames(1);
-            _pendingLength += delta.Length;
+            _pendingBytes += frame.Length;
             Start();
             return true;
         }
     }
 
-    // Tells the client why the route publishes nothing for now (see
-    // ViewModelBridge.ReportRejectedKeys). It supersedes queued frames, which
-    // the client cannot use without the full state that follows.
-    public void EnqueueFailure(string failure)
+    // Tells the client why the route publishes nothing for now. It supersedes queued frames, which the client cannot
+    // use without the frame that follows once the keys are valid again.
+    public void EnqueueFailure(byte[] failure)
     {
         lock (_gate)
         {
             if (_disposed) return;
+            var requested = _stateRequested;
             ClearPending();
-            _pending.Enqueue((failure, "failure", ++_produced));
+            _stateRequested = requested;
+            _pending.Enqueue(new(failure, "failure", ++_produced));
             BridgeTelemetry.AddQueuedFrames(1);
-            _pendingLength = failure.Length;
+            _pendingBytes = failure.Length;
             Start();
         }
     }
 
-    // Runs in the model turn, so no producer can request or fold in between
-    // taking the request and capturing the state. Returns the sequence the
-    // captured state settles (every change so far), or 0 without a request.
-    private long TakeStateRequest()
-    {
-        lock (_gate)
-        {
-            if (_disposed || !_stateRequested) return 0;
-            _stateRequested = false;
-            return _produced;
-        }
-    }
-
-    // Completes when every request and frame handed to the delivery so far
-    // was delivered, failed, found nothing to deliver, or the delivery was
-    // disposed. Null when nothing is outstanding.
+    // Completes when every request and push handed to the delivery so far was delivered, failed, found nothing to
+    // deliver, or the delivery was disposed. Null when nothing is outstanding. The task completes synchronously on the
+    // drain, so a reply waiting for it is handed to its transport before the drain delivers the next push.
     internal Task? WhenSettled()
     {
         lock (_gate)
         {
             if (_disposed || _settled >= _produced) return null;
-            var settled = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            var settled = new TaskCompletionSource();
             (_waiters ??= []).Add((_produced, settled));
             return settled.Task;
         }
@@ -152,8 +168,8 @@ internal sealed class BridgeSnapshotDelivery(IBridgeTransport transport, string 
                 _waiters.RemoveAt(index);
             }
         }
-        if (released is not null)
-            foreach (var waiter in released) waiter.TrySetResult();
+        if (released is null) return;
+        for (var index = released.Count - 1; index >= 0; index--) released[index].TrySetResult();
     }
 
     private bool IsDisposed
@@ -165,116 +181,137 @@ internal sealed class BridgeSnapshotDelivery(IBridgeTransport transport, string 
     {
         if (_pending.Count != 0) BridgeTelemetry.AddQueuedFrames(-_pending.Count);
         _pending.Clear();
-        _pendingLength = 0;
+        _pendingBytes = 0;
         _stateRequested = false;
         _stateQueued = false;
     }
 
+    // Starts the drain. The gate is held. A queued entry is taken at once, so the entry being delivered is known as
+    // soon as it is queued and does not count toward the bounds.
     private void Start()
     {
         if (_running) return;
         _running = true;
         _replyOrder.Add(this);
-        _ = Task.Run(DrainAsync);
+        Entry? first = null;
+        if (!_unitRequested && !_stateRequested && _pending.Count > 0) first = Take();
+        _ = Task.Run(() => DrainAsync(first));
     }
 
-    private async Task DrainAsync()
+    private Entry Take()
     {
+        var entry = _pending.Dequeue();
+        BridgeTelemetry.AddQueuedFrames(-1);
+        _pendingBytes -= entry.Message.Length;
+        if (entry.Kind == "state") _stateQueued = false;
+        return entry;
+    }
+
+    private async Task DrainAsync(Entry? first)
+    {
+        var next = first;
         while (true)
         {
-            bool capture;
-            long idle;
-            lock (_gate)
+            if (next is null)
             {
-                if (_disposed || _pending.Count == 0 && !_stateRequested)
-                {
-                    _running = false;
-                    _replyOrder.Remove(this);
-                    // Nothing is outstanding: everything produced so far settled.
-                    idle = _produced;
-                }
-                else idle = -1;
-                capture = _pending.Count == 0;
-            }
-            if (idle >= 0)
-            {
-                Settle(idle);
-                return;
-            }
-
-            string? snapshot = null;
-            long sequence = 0;
-            var started = false;
-            try
-            {
-                // Cross the originating turn before entering native delivery.
-                // A requested state is captured in that same turn.
-                snapshot = modelTurn.Run(() =>
-                {
-                    started = true;
-                    if (!capture || (sequence = TakeStateRequest()) == 0) return null;
-                    return captureState();
-                });
-            }
-            // Only a turn that could not start means the model context is
-            // gone. An ObjectDisposedException from a getter or snapshot
-            // writer is an ordinary capture failure.
-            catch (ObjectDisposedException) when (!started) { Dispose(); }
-            catch (Exception error) when (capture)
-            {
-                // There is no PropertyChanged raiser to report to here. The
-                // producer still requires a full state, so its next change
-                // requests another capture.
-                BridgeTelemetry.RecordFailure("snapshot.capture", model, null, error);
-                ViewsLog.SnapshotCaptureFailed(_logger, error, model, route, BridgeTelemetry.ErrorType(error));
-            }
-            var kind = "state";
-            if (!capture)
+                bool unit, capture;
+                long idle = -1;
                 lock (_gate)
                 {
-                    if (_disposed || _pending.Count == 0) continue;
-                    (snapshot, kind, sequence) = _pending.Dequeue();
-                    BridgeTelemetry.AddQueuedFrames(-1);
-                    _pendingLength -= snapshot.Length;
-                    _stateQueued = false;
+                    unit = !_disposed && _unitRequested;
+                    capture = !_disposed && !unit && _pending.Count == 0 && _stateRequested;
+                    if (!unit && !capture)
+                    {
+                        if (_disposed || _pending.Count == 0)
+                        {
+                            _running = false;
+                            _replyOrder.Remove(this);
+                            // Nothing is outstanding: everything produced so far settled.
+                            idle = _produced;
+                        }
+                        else next = Take();
+                    }
                 }
-            // A bridge released meanwhile publishes nothing more.
-            if (snapshot is null || IsDisposed)
+                if (idle >= 0)
+                {
+                    Settle(idle);
+                    return;
+                }
+                if (unit)
+                {
+                    lock (_gate) _unitRequested = false;
+                    // What the unit queues takes later sequences; the unit's own sequence settles with them, or when
+                    // the drain finds nothing more to deliver.
+                    RunInTurn(_runUnit, "publication");
+                    continue;
+                }
+                if (capture)
+                {
+                    long sequence = 0;
+                    byte[]? state = null;
+                    RunInTurn(() =>
+                    {
+                        lock (_gate)
+                        {
+                            if (_disposed || !_stateRequested) return;
+                            _stateRequested = false;
+                            sequence = _produced;
+                        }
+                        state = _captureState();
+                    }, "snapshot.capture");
+                    if (state is null)
+                    {
+                        if (sequence != 0) Settle(sequence);
+                        continue;
+                    }
+                    next = new(state, "state", sequence);
+                }
+                if (next is null) continue;
+            }
+
+            var entry = next.Value;
+            next = null;
+            if (IsDisposed)
             {
-                Settle(sequence);
+                Settle(entry.Sequence);
                 continue;
             }
             var timestamp = BridgeTelemetry.Timestamp();
             try
             {
-                await PublishUtf8Async(_routes, route, snapshot).ConfigureAwait(false);
-                BridgeTelemetry.RecordFrame(model, kind, snapshot, timestamp);
+                await _dispatcher.BroadcastAsync(entry.Message).ConfigureAwait(false);
+                BridgeTelemetry.RecordFrame(_model, entry.Kind, entry.Message.Length, timestamp);
             }
-            // The bridge was released while this frame was on its way, and its
-            // host disposed the transport, as a closing window does (I-174).
-            // There is no page left to deliver to.
+            // The bridge was released while this push was on its way, and its host disposed the transport, as a
+            // closing window does (I-174). There is no page left to deliver to.
             catch (ObjectDisposedException) when (IsDisposed) { }
             catch (Exception error)
             {
-                BridgeTelemetry.RecordFailure("snapshot.delivery", model, null, error);
-                ViewsLog.SnapshotDeliveryFailed(_logger, error, model, route, BridgeTelemetry.ErrorType(error));
+                BridgeTelemetry.RecordFailure("snapshot.delivery", _model, null, error);
+                ViewsLog.SnapshotDeliveryFailed(_logger, error, _model, _route, BridgeTelemetry.ErrorType(error));
             }
-            Settle(sequence);
+            Settle(entry.Sequence);
         }
     }
 
-    // The bytes are Encoding.UTF8.GetBytes(snapshot). The pooled buffer is returned once the publication completes.
-    private static async ValueTask PublishUtf8Async(BridgeLegacyRoutes routes, string route, string snapshot)
+    // Runs work of the producer in a model turn. A turn that cannot start means the model context is gone; any other
+    // failure is logged, because there is no notification raiser to report it to.
+    private void RunInTurn(Action work, string kind)
     {
-        var buffer = ArrayPool<byte>.Shared.Rent(Encoding.UTF8.GetByteCount(snapshot));
+        var started = false;
         try
         {
-            var length = Encoding.UTF8.GetBytes(snapshot, buffer);
-            await routes.PublishAsync(route, buffer.AsMemory(0, length)).ConfigureAwait(false);
+            _modelTurn.Run(() =>
+            {
+                started = true;
+                work();
+            });
         }
-        finally
+        catch (ObjectDisposedException) when (!started) { Dispose(); }
+        catch (Exception error)
         {
-            ArrayPool<byte>.Shared.Return(buffer);
+            BridgeTelemetry.RecordFailure(kind, _model, null, error);
+            ViewsLog.SnapshotCaptureFailed(_logger, error, _model, _route, BridgeTelemetry.ErrorType(error));
         }
     }
 
@@ -285,6 +322,7 @@ internal sealed class BridgeSnapshotDelivery(IBridgeTransport transport, string 
         {
             _disposed = true;
             ClearPending();
+            _unitRequested = false;
             waiters = _waiters;
             _waiters = null;
             _replyOrder.Remove(this);
@@ -292,4 +330,6 @@ internal sealed class BridgeSnapshotDelivery(IBridgeTransport transport, string 
         if (waiters is not null)
             foreach (var waiter in waiters) waiter.Settled.TrySetResult();
     }
+
+    private readonly record struct Entry(byte[] Message, string Kind, long Sequence);
 }

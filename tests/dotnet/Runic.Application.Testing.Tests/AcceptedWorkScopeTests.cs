@@ -200,7 +200,7 @@ internal sealed class AcceptedWorkScopeTests
         using var transport = new InMemoryBridgeTransport();
         using var session = new WindowContentSession(transport, new WindowContentSessionOptions { RootModel = model });
         using var bridge = new RecoveryBridge(transport, model, session);
-        var invocation = transport.CallAsync("recoverySave").AsTask();
+        var invocation = transport.CommandAsync("recovery", "save").AsTask();
         try
         {
             await started.Task.WaitAsync(Deadline);

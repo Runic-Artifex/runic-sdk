@@ -14,8 +14,9 @@ internal static class Program
     {
         if (args is ["--export-generated-client-fixture", var fixturePath])
         {
-            await GeneratedClientFixtureExporter.WriteAsync(fixturePath).ConfigureAwait(false);
-            return 0;
+            // P6 ports GeneratedClientFixtureExporter to protocol 4.
+            await Console.Error.WriteLineAsync($"The generated-client fixture exporter is not ported to Views protocol 4 yet ({fixturePath}).").ConfigureAwait(false);
+            return 1;
         }
         ITestApplicationBuilder builder = await TestApplication.CreateBuilderAsync(args).ConfigureAwait(false);
         builder.AddSelfRegisteredExtensions(args);

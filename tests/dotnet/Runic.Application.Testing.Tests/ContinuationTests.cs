@@ -14,21 +14,27 @@ internal sealed class ContinuationTests
     private static readonly string[] Body = ["start", "yield", "delay", "inner", "nested"];
 
     [Test]
-    public async Task ToolkitCommandResumesOnTheModelContext()
+    [Arguments(false)]
+    [Arguments(true)]
+    public async Task ToolkitCommandResumesOnTheModelContext(bool operation)
     {
+        if (operation) SkipUntilOperationsAreServed();
         var probe = new ContinuationProbe();
         var model = new ToolkitContinuationViewModel(probe);
         using var host = new RunicWindowTestHost<ToolkitContinuationViewModel>(model,
             (transport, content, vm) => new ToolkitContinuationBridge(transport, vm, content: content),
             new RunicWindowTestHostOptions { RootRoute = "toolkitContinuation", ViewLocator = new TestViewLocator() });
         probe.Context = host.Content.ModelContext;
-        await RunProbeAsync(host.Transport, "toolkitContinuation", probe, "Toolkit");
+        await RunProbeAsync(host.Transport, "toolkitContinuation", typeof(ToolkitContinuationViewModel), probe, "Toolkit", operation);
         Require(model.Status == "b:released", $"The Toolkit command's last write was lost: {model.Status}");
     }
 
     [Test]
-    public async Task ReactiveCommandResumesOnTheModelContext()
+    [Arguments(false)]
+    [Arguments(true)]
+    public async Task ReactiveCommandResumesOnTheModelContext(bool operation)
     {
+        if (operation) SkipUntilOperationsAreServed();
         await using var context = new RunicModelContext();
         var probe = new ContinuationProbe { Context = context };
         var model = new ReactiveContinuationViewModel(context, probe);
@@ -36,7 +42,7 @@ internal sealed class ContinuationTests
         using var host = new RunicWindowTestHost<ReactiveContinuationViewModel>(model,
             (transport, content, vm) => new ReactiveContinuationBridge(transport, vm, content: content),
             new RunicWindowTestHostOptions { RootRoute = "reactiveContinuation", ViewLocator = new TestViewLocator() });
-        await RunProbeAsync(host.Transport, "reactiveContinuation", probe, "ReactiveUI");
+        await RunProbeAsync(host.Transport, "reactiveContinuation", typeof(ReactiveContinuationViewModel), probe, "ReactiveUI", operation);
         Require(model.Status == "b:released", $"The ReactiveUI command's last write was lost: {model.Status}");
     }
 
@@ -64,27 +70,40 @@ internal sealed class ContinuationTests
         }
     }
 
-    // Runs "a" through the awaited command route and "b" through an admitted
-    // operation of a second command. Both wait at the same gate; releasing it must apply a's write and
-    // then b's, each in its own model turn.
-    private static async Task RunProbeAsync(InMemoryBridgeTransport transport, string route, ContinuationProbe probe, string flavour)
+    // Runs "a" through an awaited command request and "b" through a second command, as an awaited command request
+    // or an admitted operation. Both wait at the same gate; releasing it must apply a's write and then b's, each in
+    // its own model turn.
+    private static async Task RunProbeAsync(InMemoryBridgeTransport transport, string route, Type model, ContinuationProbe probe,
+        string flavour, bool operation)
     {
-        var first = transport.CallAsync($"{route}Run", new(StringValue: JsonSerializer.Serialize("a"))).AsTask();
+        var first = transport.CommandAsync(route, "run", JsonSerializer.Serialize("a")).AsTask();
         await probe.WaitingFor("a").WaitAsync(TimeSpan.FromSeconds(5));
-        using var admission = JsonDocument.Parse(transport.Call($"{route}StartRunNext", new(StringValue:
-            JsonSerializer.Serialize(new { requestId = "continuation-b", input = "b" }))));
-        Require(admission.RootElement.GetProperty("kind").GetString() == "accepted",
-            $"The {flavour} operation was not admitted: {admission.RootElement}");
+        var contract = $"{model.FullName}:{BridgeContractShape.Compute(model)}";
+        Task<string>? second = null;
+        if (operation)
+        {
+            using var admission = JsonDocument.Parse(transport.Send(OperationRequest("start", route, contract, JsonSerializer.Serialize("b"))));
+            Require(admission.RootElement.GetProperty("ok").GetBoolean()
+                && admission.RootElement.GetProperty("admission").GetString() == "accepted",
+                $"The {flavour} operation was not admitted: {admission.RootElement}");
+        }
+        else second = transport.CommandAsync(route, "runNext", JsonSerializer.Serialize("b")).AsTask();
         await probe.WaitingFor("b").WaitAsync(TimeSpan.FromSeconds(5));
         probe.ReleaseAll();
 
         using (var reply = JsonDocument.Parse(await first.WaitAsync(TimeSpan.FromSeconds(5))))
             Require(reply.RootElement.GetProperty("ok").GetBoolean(), $"The {flavour} command failed: {reply.RootElement}");
-        var contract = admission.RootElement.GetProperty("contract").GetString()!;
-        using (var terminal = JsonDocument.Parse(await transport.CallAsync("__runicOperationWait", new(StringValue:
-            JsonSerializer.Serialize(new { contract, member = "RunNext", requestId = "continuation-b" })))))
+        if (second is not null)
+        {
+            using var reply = JsonDocument.Parse(await second.WaitAsync(TimeSpan.FromSeconds(5)));
+            Require(reply.RootElement.GetProperty("ok").GetBoolean(), $"The second {flavour} command failed: {reply.RootElement}");
+        }
+        else
+        {
+            using var terminal = await TerminalAsync(transport, route, contract);
             Require(terminal.RootElement.GetProperty("kind").GetString() == "succeeded",
                 $"The {flavour} operation did not succeed: {terminal.RootElement}");
+        }
 
         var steps = probe.Steps;
         string[] expected = [.. Body.Select(step => $"a:{step}"), .. Body.Select(step => $"b:{step}"), "a:released", "b:released"];
@@ -94,6 +113,35 @@ internal sealed class ContinuationTests
         Require(outside.Length == 0,
             $"{flavour} writes after await ran outside the model context: {string.Join(", ", outside)}");
     }
+
+    private static void SkipUntilOperationsAreServed() =>
+        Skip.Test("P5: needs start and status served");
+
+    // The operation's terminal status, read with status requests.
+    private static async Task<JsonDocument> TerminalAsync(InMemoryBridgeTransport transport, string route, string contract)
+    {
+        var deadline = DateTime.UtcNow.AddSeconds(5);
+        while (true)
+        {
+            using var reply = JsonDocument.Parse(transport.Send(OperationRequest("status", route, contract, null)));
+            var status = reply.RootElement.GetProperty("status");
+            if (status.GetProperty("kind").GetString() != "running") return JsonDocument.Parse(status.GetRawText());
+            if (DateTime.UtcNow > deadline) throw new TimeoutException("The operation did not end.");
+            await Task.Delay(10);
+        }
+    }
+
+    private static string OperationRequest(string kind, string route, string contract, string? inputJson) => BridgeRequests.Json(writer =>
+    {
+        writer.WriteString("kind", kind);
+        writer.WriteString("route", route);
+        writer.WriteString("member", "runNext");
+        writer.WriteString("operation", "continuation-b");
+        writer.WriteString("contract", contract);
+        if (inputJson is null) return;
+        writer.WritePropertyName("input");
+        writer.WriteRawValue(inputJson);
+    });
 
     private static void Require(bool condition, string message)
     {

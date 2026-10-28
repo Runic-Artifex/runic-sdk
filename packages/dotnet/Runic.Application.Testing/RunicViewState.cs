@@ -9,17 +9,22 @@ namespace Runic.Application.Testing;
 /// <summary>A generated wire state of a <typeparamref name="TModel"/> route, read by ViewModel member.</summary>
 public sealed class RunicViewState<TModel> where TModel : class
 {
-    internal RunicViewState(JsonElement state)
+    internal RunicViewState(JsonElement state, long revision, JsonElement? fields)
     {
         if (state.ValueKind != JsonValueKind.Object) throw new InvalidOperationException($"The Bridge state is not an object: {state.GetRawText()}");
         Json = state.Clone();
+        Revision = revision;
+        Fields = fields?.Clone();
     }
 
     /// <summary>The wire state, including <c>revision</c>.</summary>
     public JsonElement Json { get; }
 
     /// <summary>The revision of the state.</summary>
-    public long Revision => Json.TryGetProperty("revision", out var revision) && revision.ValueKind == JsonValueKind.Number ? revision.GetInt64() : 0;
+    public long Revision { get; }
+
+    /// <summary>The versions of the checked fields, <c>{member: {version}}</c>, or <see langword="null"/> when the View has none.</summary>
+    public JsonElement? Fields { get; }
 
     /// <summary>A wire field by name.</summary>
     public JsonElement this[string field] => Json.TryGetProperty(field, out var value)
@@ -76,7 +81,7 @@ public sealed class RunicViewState<TModel> where TModel : class
     public long FieldVersion<TValue>(Expression<Func<TModel, TValue>> property)
     {
         var field = RunicMembers.WireName(RunicMembers.Property(property));
-        return Json.TryGetProperty("__runicFields", out var fields) && fields.TryGetProperty(field, out var metadata)
+        return Fields is { } fields && fields.TryGetProperty(field, out var metadata)
             ? metadata.GetProperty("version").GetInt64()
             : throw new InvalidOperationException($"{typeof(TModel).Name}.{field} is not a checked field.");
     }

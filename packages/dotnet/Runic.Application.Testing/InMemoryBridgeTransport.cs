@@ -3,27 +3,6 @@ using Runic.Application.Views;
 
 namespace Runic.Application.Testing;
 
-/// <summary>Arguments delivered to a generated Bridge route by a headless test.</summary>
-/// <remarks>
-/// They address the Views protocol 3 routes that <see cref="InMemoryBridgeTransport.Call"/> reaches while the generated
-/// Bridges still speak protocol 3 internally. Protocol 4 tests send requests with
-/// <see cref="InMemoryBridgeTransport.Request"/>.
-/// </remarks>
-public sealed record BridgeTestArguments(
-    long? Int64Value = null,
-    bool? BooleanValue = null,
-    string? StringValue = null,
-    string? ClientKey = null,
-    string? ConnectionKey = null) : IBridgeArguments
-{
-    /// <inheritdoc />
-    public long GetInt64() => Int64Value ?? throw new InvalidOperationException("No integer argument was supplied.");
-    /// <inheritdoc />
-    public bool GetBoolean() => BooleanValue ?? throw new InvalidOperationException("No Boolean argument was supplied.");
-    /// <inheritdoc />
-    public string GetString() => StringValue ?? throw new InvalidOperationException("No string argument was supplied.");
-}
-
 /// <summary>A push that <see cref="InMemoryBridgeTransport"/> received from its window.</summary>
 /// <param name="Json">The push, one JSON object.</param>
 /// <param name="ConnectionKey">The connection a targeted push was sent to, or <see langword="null"/> for a broadcast to every connection.</param>
@@ -41,8 +20,8 @@ public sealed record RunicBridgeMessage(string Json, string? ConnectionKey);
 /// pushes to one connection alike, in order.
 /// </para>
 /// <para>
-/// Until the generated Bridges speak protocol 4, <see cref="Call"/>, <see cref="CallAsync"/>, <see cref="Routes"/> and
-/// <see cref="TakePublications"/> reach their protocol 3 routes and state frames, as <see cref="RunicViewDriver{TModel}"/> does.
+/// <see cref="RunicViewDriver{TModel}"/> and <see cref="RunicWindowTestHost{TViewModel}"/> drive Views through this
+/// transport by member, as the generated TypeScript clients do.
 /// </para>
 /// </remarks>
 public sealed class InMemoryBridgeTransport : IBridgeConnectionTransport, IDisposable
@@ -57,6 +36,8 @@ public sealed class InMemoryBridgeTransport : IBridgeConnectionTransport, IDispo
     private readonly HashSet<string> _connections = new(StringComparer.Ordinal);
     private readonly List<RunicBridgeMessage> _messages = [];
     private readonly List<(string Route, string Json)> _publications = [];
+    // Connections whose hello the drivers sent.
+    private readonly HashSet<string> _greeted = new(StringComparer.Ordinal);
     private TaskCompletionSource _published = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private TaskCompletionSource _messaged = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private IBridgeRequestHandler? _handler;
@@ -74,8 +55,6 @@ public sealed class InMemoryBridgeTransport : IBridgeConnectionTransport, IDispo
             if (_handler is not null) throw new InvalidOperationException("The transport already serves a request handler.");
             _handler = handler;
         }
-        // Protocol 3 state frames of the generated Bridges reach TakePublications.
-        if (handler is BridgeDispatcher dispatcher) dispatcher.Legacy.SetPublisher(PublishLegacyAsync);
         return new ServeLease(this, handler);
     }
 
@@ -141,6 +120,7 @@ public sealed class InMemoryBridgeTransport : IBridgeConnectionTransport, IDispo
         lock (_gate)
         {
             if (!_connections.Remove(connectionKey)) return;
+            _greeted.Remove(connectionKey);
             handler = _handler;
         }
         handler?.ConnectionClosed(connectionKey);
@@ -163,30 +143,6 @@ public sealed class InMemoryBridgeTransport : IBridgeConnectionTransport, IDispo
         }
     }
 
-    /// <summary>Names of the currently bound Views protocol 3 routes of the generated Bridges.</summary>
-    public IReadOnlyList<string> Routes => Dispatcher?.Legacy.Names ?? [];
-
-    /// <summary>Calls a synchronous Views protocol 3 route of a generated Bridge.</summary>
-    /// <exception cref="KeyNotFoundException">The route is not bound.</exception>
-    /// <exception cref="InvalidOperationException">The route is asynchronous.</exception>
-    public string Call(string name, BridgeTestArguments? arguments = null)
-    {
-        var (sync, _) = Find(name);
-        if (sync is null) throw new InvalidOperationException($"Route '{name}' is asynchronous.");
-        return sync(arguments ?? new());
-    }
-
-    /// <summary>Calls an asynchronous Views protocol 3 route of a generated Bridge and observes its result.</summary>
-    /// <exception cref="KeyNotFoundException">The route is not bound.</exception>
-    /// <exception cref="InvalidOperationException">The route is synchronous.</exception>
-    public ValueTask<string> CallAsync(string name, BridgeTestArguments? arguments = null,
-        CancellationToken cancellationToken = default)
-    {
-        var (_, asynchronous) = Find(name);
-        if (asynchronous is null) throw new InvalidOperationException($"Route '{name}' is synchronous.");
-        return asynchronous(arguments ?? new(), cancellationToken);
-    }
-
     // Completes at the next publication. Drivers wait on it instead of polling.
     internal Task NextPublication
     {
@@ -199,16 +155,57 @@ public sealed class InMemoryBridgeTransport : IBridgeConnectionTransport, IDispo
         get { lock (_gate) return _messaged.Task; }
     }
 
-    // Whether a bound route is asynchronous, such as an awaited command.
-    internal bool IsAsync(string name) => Find(name).Async is not null;
+    private readonly Dictionary<(string Connection, string Route, string Member), int> _edits = [];
 
-    /// <summary>
-    /// Returns and removes the Views protocol 3 state frames published since the previous call, in order, across all
-    /// routes. Drivers and trackers then do not see them.
-    /// </summary>
-    /// <exception cref="InvalidOperationException">A delta frame names a collection change kind the client does not know.</exception>
-    public IReadOnlyList<RunicViewPublication> TakePublications() =>
-        TakeFrames().Select(frame => new RunicViewPublication(frame.Route, frame.Json)).ToArray();
+    // The next edit number of a member on a connection, as a generated setter numbers its edits.
+    internal int NextEdit(string connectionKey, string route, string member)
+    {
+        lock (_gate)
+        {
+            var next = _edits.GetValueOrDefault((connectionKey, route, member)) + 1;
+            _edits[(connectionKey, route, member)] = next;
+            return next;
+        }
+    }
+
+    // Whether the window serves the route.
+    internal bool Serves(string route)
+    {
+        lock (_gate) return _handler is BridgeDispatcher dispatcher && dispatcher.Serves(route);
+    }
+
+    private int _sessions;
+
+    // Sends the hello of a connection the drivers use, once. Each hello names a new session "{key}-session{n}": a
+    // reconnected connection cannot reuse the session of the one that closed.
+    internal void EnsureHello(string connectionKey, string? clientKey = null)
+    {
+        int session;
+        lock (_gate)
+        {
+            if (!_greeted.Add(connectionKey)) return;
+            session = ++_sessions;
+        }
+        var reply = Request(RunicJson.Write(writer =>
+        {
+            writer.WriteStartObject();
+            writer.WriteString("kind", "hello");
+            writer.WriteNumber("protocol", 4);
+            writer.WriteString("session", $"{connectionKey}-session{session}");
+            writer.WriteStartObject("client");
+            writer.WriteString("name", "Runic.Application.Testing");
+            writer.WriteString("version", "1.0.0");
+            writer.WriteEndObject();
+            writer.WriteEndObject();
+        }), connectionKey, clientKey);
+        // A test may have sent the connection's hello itself.
+        if (!reply.StartsWith("{\"ok\":true", StringComparison.Ordinal)
+            && !reply.Contains("already completed a hello", StringComparison.Ordinal))
+        {
+            lock (_gate) _greeted.Remove(connectionKey);
+            throw new InvalidOperationException($"The window refused the test connection's hello: {reply}");
+        }
+    }
 
     // Unparsed frames, so the drivers' log parses each route's frames only when that route takes them.
     internal (string Route, string Json)[] TakeFrames()
@@ -229,45 +226,11 @@ public sealed class InMemoryBridgeTransport : IBridgeConnectionTransport, IDispo
         {
             if (_disposed) return;
             _disposed = true;
-            if (_handler is BridgeDispatcher dispatcher) dispatcher.Legacy.SetPublisher(null);
             _handler = null;
             _connections.Clear();
             _messages.Clear();
             _publications.Clear();
         }
-    }
-
-    private BridgeDispatcher? Dispatcher
-    {
-        get { lock (_gate) return _handler as BridgeDispatcher; }
-    }
-
-    private (Func<IBridgeArguments, string>? Sync, Func<IBridgeArguments, CancellationToken, ValueTask<string>>? Async) Find(string name)
-    {
-        ArgumentException.ThrowIfNullOrWhiteSpace(name);
-        BridgeDispatcher? dispatcher;
-        lock (_gate)
-        {
-            ThrowIfDisposed();
-            dispatcher = _handler as BridgeDispatcher;
-        }
-        if (dispatcher is null || !dispatcher.Legacy.TryFind(name, out var sync, out var asynchronous))
-            throw new KeyNotFoundException($"Route '{name}' is not bound.");
-        return (sync, asynchronous);
-    }
-
-    private ValueTask PublishLegacyAsync(string route, ReadOnlyMemory<byte> stateUtf8, CancellationToken cancellationToken)
-    {
-        cancellationToken.ThrowIfCancellationRequested();
-        var json = Encoding.UTF8.GetString(stateUtf8.Span);
-        lock (_gate)
-        {
-            ThrowIfDisposed();
-            _publications.Add((route, json));
-            _published.TrySetResult();
-            _published = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        }
-        return ValueTask.CompletedTask;
     }
 
     private void Record(RunicBridgeMessage message)
@@ -276,6 +239,13 @@ public sealed class InMemoryBridgeTransport : IBridgeConnectionTransport, IDispo
         {
             if (_disposed) return;
             _messages.Add(message);
+            // Broadcast states, frames and failures also reach the drivers' publication log.
+            if (message.ConnectionKey is null && RunicViewPublication.RouteOf(message.Json) is { } route)
+            {
+                _publications.Add((route, message.Json));
+                _published.TrySetResult();
+                _published = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            }
             _messaged.TrySetResult();
             _messaged = new(TaskCreationOptions.RunContinuationsAsynchronously);
         }
@@ -295,7 +265,6 @@ public sealed class InMemoryBridgeTransport : IBridgeConnectionTransport, IDispo
             if (Interlocked.Exchange(ref _owner, null) is not { } transport) return;
             lock (transport._gate)
                 if (ReferenceEquals(transport._handler, handler)) transport._handler = null;
-            if (handler is BridgeDispatcher dispatcher) dispatcher.Legacy.SetPublisher(null);
         }
     }
 }

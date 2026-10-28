@@ -21,6 +21,8 @@ public sealed class RunicStateTracker<TModel> where TModel : class
     private readonly List<RunicViewPublication> _failures = [];
     private readonly List<RunicCollectionChange> _changes = [];
     private JsonObject _state;
+    private JsonObject? _fields;
+    private long _revision;
 
     internal RunicStateTracker(RunicViewDriver<TModel> driver, RunicPublicationLog publications)
     {
@@ -28,20 +30,23 @@ public sealed class RunicStateTracker<TModel> where TModel : class
         _publications = publications;
         // Frames queued before the snapshot are older than it.
         _ = publications.Take(driver.Route);
-        _state = JsonNode.Parse(driver.Snapshot().Json.GetRawText())!.AsObject();
-        State = new(Element(_state));
+        var snapshot = driver.Snapshot();
+        _state = JsonNode.Parse(snapshot.Json.GetRawText())!.AsObject();
+        _fields = snapshot.Fields is { } fields ? JsonNode.Parse(fields.GetRawText())!.AsObject() : null;
+        _revision = snapshot.Revision;
+        State = new(Element(_state), snapshot.Revision, snapshot.Fields);
     }
 
     /// <summary>The tracked state.</summary>
     public RunicViewState<TModel> State { get; private set; }
 
     /// <summary>The revision of the tracked state.</summary>
-    public long Revision => State.Revision;
+    public long Revision => _revision;
 
     /// <summary>How many full states replaced the tracked state.</summary>
     public int FullStates { get; private set; }
 
-    /// <summary>How many delta frames were applied.</summary>
+    /// <summary>How many frames were applied.</summary>
     public int Deltas { get; private set; }
 
     /// <summary>The collection changes applied so far, in order.</summary>
@@ -91,8 +96,8 @@ public sealed class RunicStateTracker<TModel> where TModel : class
     public void Verify()
     {
         Apply();
-        var expected = Comparable(JsonNode.Parse(_driver.Snapshot().Json.GetRawText())!.AsObject());
-        var actual = Comparable(_state.DeepClone().AsObject());
+        var expected = JsonNode.Parse(_driver.Snapshot().Json.GetRawText())!.AsObject();
+        var actual = _state.DeepClone().AsObject();
         if (!JsonNode.DeepEquals(expected, actual))
             throw new InvalidOperationException(
                 $"The frames of '{_driver.Route}' did not converge on its snapshot.{Environment.NewLine}" +
@@ -105,13 +110,6 @@ public sealed class RunicStateTracker<TModel> where TModel : class
         return document.RootElement.Clone();
     }
 
-    private static JsonObject Comparable(JsonObject state)
-    {
-        state.Remove("revision");
-        state.Remove("__runicFields");
-        return state;
-    }
-
     private void Apply(RunicViewPublication frame)
     {
         switch (frame.Kind)
@@ -121,33 +119,61 @@ public sealed class RunicStateTracker<TModel> where TModel : class
                 return;
             case RunicPublicationKind.State:
             {
-                // Like the client: older states are stale, and a repeated state is ignored.
-                if (frame.Revision < Revision) return;
-                var state = JsonNode.Parse(frame.Json)!.AsObject();
-                if (frame.Revision == Revision && JsonNode.DeepEquals(state, _state)) return;
+                // Like the client: a state at or below the current revision is stale or the same content.
+                if (frame.Revision <= Revision) return;
+                var state = JsonNode.Parse(frame.State!.Value.GetRawText())!.AsObject();
                 foreach (var field in _keys.Keys) RequireUniqueKeys(state, field, frame);
                 _state = state;
+                _fields = frame.Fields is { } fields ? JsonNode.Parse(fields.GetRawText())!.AsObject() : null;
+                _revision = frame.Revision;
                 FullStates++;
                 break;
             }
-            case RunicPublicationKind.Delta:
+            case RunicPublicationKind.Frame:
             {
                 if (frame.Revision <= Revision) return;
                 if (frame.BaseRevision != Revision)
                     throw Invalid(frame, $"it applies to revision {frame.BaseRevision}, but the tracked state is at {Revision}; a frame was lost or reordered");
-                if (frame.Changes.Count is 0 or > 4096)
-                    throw Invalid(frame, $"it has {frame.Changes.Count} changes; a frame has 1 to 4096");
+                var count = frame.Changes.Count + frame.Sets.Count + frame.Texts.Count;
+                if (count is 0 or > 4096)
+                    throw Invalid(frame, $"it has {count} changes; a frame has 1 to 4096");
+                var fields = frame.Sets.Select(set => set.Field).Concat(frame.Changes.Select(change => change.Field))
+                    .Concat(frame.Texts.Select(text => text.Field)).ToArray();
+                foreach (var set in frame.Sets)
+                    if (fields.Count(field => field == set.Field) != 1)
+                        throw Invalid(frame, $"it has another change of '{set.Field}' beside its set");
                 var next = _state.DeepClone().AsObject();
+                var nextFields = _fields?.DeepClone().AsObject();
+                foreach (var set in frame.Sets)
+                {
+                    if (!next.ContainsKey(set.Field)) throw Invalid(frame, $"it sets '{set.Field}', which is not a member of {typeof(TModel).Name}");
+                    next[set.Field] = JsonNode.Parse(set.Value.GetRawText());
+                    var isChecked = nextFields?.ContainsKey(set.Field) == true;
+                    if (isChecked != set.Version.HasValue)
+                        throw Invalid(frame, $"its set of '{set.Field}' {(isChecked ? "has no" : "has a")} version");
+                    if (set.Version is { } version) nextFields![set.Field] = new JsonObject { ["version"] = version };
+                    if (_keys.ContainsKey(set.Field)) RequireUniqueKeys(next, set.Field, frame);
+                }
                 foreach (var change in frame.Changes) ApplyChange(next, change, frame);
                 foreach (var field in frame.Changes.Select(change => change.Field).Distinct()) RequireUniqueKeys(next, field, frame);
-                next["revision"] = frame.Revision;
+                foreach (var text in frame.Texts)
+                {
+                    if (next[text.Field] is not JsonValue value || value.GetValueKind() != JsonValueKind.String)
+                        throw Invalid(frame, $"its text change of '{text.Field}' applies to a value that is not a string");
+                    var current = value.GetValue<string>();
+                    if (current.Length != text.Length || text.Trim < 0 || text.Trim > text.Length)
+                        throw Invalid(frame, $"its text change of '{text.Field}' applies to {text.Length} code units, but the tracked value has {current.Length}");
+                    next[text.Field] = current[text.Trim..] + text.Text;
+                }
                 _state = next;
+                _fields = nextFields;
+                _revision = frame.Revision;
                 _changes.AddRange(frame.Changes);
                 Deltas++;
                 break;
             }
         }
-        State = new(Element(_state));
+        State = new(Element(_state), _revision, _fields is null ? null : Element(_fields));
     }
 
     // The checks of the generated client's applyCollectionDelta, with messages that name the problem.

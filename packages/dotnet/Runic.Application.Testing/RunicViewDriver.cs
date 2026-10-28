@@ -9,8 +9,8 @@ using Runic.Application.Views;
 namespace Runic.Application.Testing;
 
 /// <summary>
-/// Calls the generated routes of one <typeparamref name="TModel"/> presentation by ViewModel
-/// member, as the generated TypeScript client does, instead of by raw route name.
+/// Sends the Views protocol 4 requests of one <typeparamref name="TModel"/> route by ViewModel member, as the generated
+/// TypeScript client does, on the transport's test connection.
 /// </summary>
 /// <example>
 /// <code>
@@ -35,45 +35,101 @@ public sealed class RunicViewDriver<TModel> where TModel : class
         Reference = reference;
     }
 
-    /// <summary>The route prefix: the root name, or <c>content{id}</c> for presented content.</summary>
+    /// <summary>The route: the root name, or <c>content{id}</c> for presented content.</summary>
     public string Route { get; }
 
     /// <summary>The content reference this driver presents, or null for the root route.</summary>
     public PageReference? Reference { get; }
 
-    /// <summary>Reads the current generated state.</summary>
-    public RunicViewState<TModel> Snapshot()
+    // Sends one request of this route on the test connection, after its hello.
+    internal string Send(Action<Utf8JsonWriter> writeMembers, string? connectionKey = null, string? clientKey = null) =>
+        SendAsync(writeMembers, connectionKey, clientKey).AsTask().GetAwaiter().GetResult();
+
+    internal async ValueTask<string> SendAsync(Action<Utf8JsonWriter> writeMembers, string? connectionKey = null,
+        string? clientKey = null, CancellationToken cancellationToken = default)
     {
-        var route = $"{Route}Snapshot";
-        var reply = new RunicCallReply<TModel>(route, _transport.Call(route));
-        return reply.ThrowIfFailed().State ?? throw new InvalidOperationException($"{route} returned no state.");
+        var connection = connectionKey ?? InMemoryBridgeTransport.DefaultConnectionKey;
+        _transport.EnsureHello(connection, clientKey);
+        var json = RunicJson.Write(writer =>
+        {
+            writer.WriteStartObject();
+            writeMembers(writer);
+            writer.WriteString("route", Route);
+            writer.WriteEndObject();
+        });
+        return await _transport.RequestAsync(json, connection, clientKey, cancellationToken).ConfigureAwait(false);
     }
 
+    /// <summary>Reads the current state with a <c>snapshot</c> request.</summary>
+    /// <exception cref="InvalidOperationException">The route answered with a failure, such as <c>released</c>.</exception>
+    public RunicViewState<TModel> Snapshot() => ReadState(Send(writer => writer.WriteString("kind", "snapshot")), "snapshot");
+
+    // The state of an open or snapshot reply.
+    private RunicViewState<TModel> ReadState(string reply, string kind)
+    {
+        using var document = JsonDocument.Parse(reply);
+        var root = document.RootElement;
+        if (!root.GetProperty("ok").GetBoolean() || !root.TryGetProperty("state", out var state))
+            throw new InvalidOperationException($"{Route}: {kind} failed: {reply}");
+        return new(state, root.GetProperty("revision").GetInt64(), root.TryGetProperty("fields", out var fields) ? fields : null);
+    }
+
+    // The reply of a request that changes state, with the state the route has after it.
+    private RunicCallReply<TModel> Reply(string kind, string member, string json)
+    {
+        RunicViewState<TModel>? state = null;
+        using (var document = JsonDocument.Parse(json))
+        {
+            var root = document.RootElement;
+            var released = root.TryGetProperty("released", out var flag) && flag.ValueKind == JsonValueKind.True;
+            if (root.TryGetProperty("revision", out _) && !released)
+            {
+                var snapshot = Send(writer => writer.WriteString("kind", "snapshot"));
+                if (snapshot.StartsWith("{\"ok\":true", StringComparison.Ordinal)) state = ReadState(snapshot, "snapshot");
+            }
+        }
+        return new($"{Route} {kind} {member}", json, state);
+    }
+
+    private int NextEdit(string member) => _transport.NextEdit(InMemoryBridgeTransport.DefaultConnectionKey, Route, member);
+
     /// <summary>
-    /// Calls the generated setter as the client's <c>set{Property}(value)</c> does: an <c>int</c>,
-    /// <c>bool</c> or non-nullable <c>string</c> property passes its value, and any other scalar
-    /// property passes wire JSON (an <c>Int64</c> or <c>decimal</c> as a string, an enum by name,
-    /// <c>null</c> for a nullable value). Use <see cref="SetJson{TValue}"/> for DTOs, lists and unions.
+    /// Sends the generated setter's <c>set</c> request with the next edit number of the member. The value is encoded as
+    /// its wire type: an <c>Int64</c> or <c>decimal</c> as a string, an enum by name, <c>null</c> for a nullable value.
+    /// Use <see cref="SetJson{TValue}"/> for DTOs, lists and unions.
     /// </summary>
     public RunicCallReply<TModel> Set<TValue>(Expression<Func<TModel, TValue>> property, TValue value)
     {
         var member = RunicMembers.Property(property);
-        var type = member.PropertyType;
-        BridgeTestArguments arguments =
-            type == typeof(int) ? new(Int64Value: (int)(object)value!)
-            : type == typeof(bool) ? new(BooleanValue: (bool)(object)value!)
-            : type == typeof(string) && !IsNullable(member) ? new(StringValue: (string)(object)value!)
-            : new(StringValue: RunicWireValue.Encode(value, type));
-        var route = $"{Route}Set{member.Name}";
-        return new(route, _transport.Call(route, arguments));
+        return SetJson(property, RunicWireValue.Encode(value, member.PropertyType));
     }
 
-    /// <summary>Calls the generated setter of a property with a value already encoded as wire JSON.</summary>
+    /// <summary>Sends a <c>set</c> request with a value already encoded as wire JSON.</summary>
     public RunicCallReply<TModel> SetJson<TValue>(Expression<Func<TModel, TValue>> property, string wireJson)
     {
         ArgumentNullException.ThrowIfNull(wireJson);
-        var route = $"{Route}Set{RunicMembers.Property(property).Name}";
-        return new(route, _transport.Call(route, new(StringValue: wireJson)));
+        var member = RunicMembers.WireName(RunicMembers.Property(property));
+        var edit = NextEdit(member);
+        return Reply("set", member, Send(writer =>
+        {
+            writer.WriteString("kind", "set");
+            writer.WriteString("member", member);
+            writer.WritePropertyName("value");
+            writer.WriteRawValue(wireJson);
+            writer.WriteNumber("edit", edit);
+        }));
+    }
+
+    private static string CommandMember(Expression<Func<TModel, object?>> command) =>
+        RunicMembers.LowerFirst(RunicMembers.CommandName(RunicMembers.Property(command)));
+
+    private static void WriteCommand(Utf8JsonWriter writer, string kind, string member, string? inputJson)
+    {
+        writer.WriteString("kind", kind);
+        writer.WriteString("member", member);
+        if (inputJson is null) return;
+        writer.WritePropertyName("input");
+        writer.WriteRawValue(inputJson);
     }
 
     /// <summary>
@@ -86,64 +142,42 @@ public sealed class RunicViewDriver<TModel> where TModel : class
     /// await the call.
     /// </remarks>
     /// <param name="command">The command property, such as <c>vm => vm.SaveCommand</c>.</param>
-    /// <param name="argumentJson">The command input as wire JSON, for a command with an argument.</param>
+    /// <param name="argumentJson">The command input as wire JSON, for a command with an input.</param>
     /// <param name="cancellationToken">Cancels an awaited command, as a closed client connection does.</param>
     public async Task<RunicCallReply<TModel>> ExecuteAsync(Expression<Func<TModel, object?>> command, string? argumentJson = null,
         CancellationToken cancellationToken = default)
     {
-        var route = $"{Route}{RunicMembers.CommandName(RunicMembers.Property(command))}";
-        var arguments = argumentJson is null ? new BridgeTestArguments() : new BridgeTestArguments(StringValue: argumentJson);
-        var json = _transport.IsAsync(route)
-            ? await _transport.CallAsync(route, arguments, cancellationToken).ConfigureAwait(false)
-            : _transport.Call(route, arguments);
-        return new(route, json);
+        var member = CommandMember(command);
+        var json = await SendAsync(writer => WriteCommand(writer, "command", member, argumentJson),
+            cancellationToken: cancellationToken).ConfigureAwait(false);
+        return Reply("command", member, json);
     }
 
-    // The can and start routes of a command with an asynchronous key resolver are asynchronous. A synchronous call
-    // would block the test thread on the resolver, which may wait for the fake clock or the model turn that thread owns.
-    private string CallSynchronous(string route, BridgeTestArguments arguments, string asyncMethod) => _transport.IsAsync(route)
-        ? throw new InvalidOperationException(
-            $"{route} waits for the command's asynchronous key resolver; call {asyncMethod} and await it instead.")
-        : _transport.Call(route, arguments);
-
-    private async Task<string> CallEitherAsync(string route, BridgeTestArguments arguments, CancellationToken cancellationToken) =>
-        _transport.IsAsync(route)
-            ? await _transport.CallAsync(route, arguments, cancellationToken).ConfigureAwait(false)
-            : _transport.Call(route, arguments);
-
-    private string CanRoute(Expression<Func<TModel, object?>> command) =>
-        $"{Route}Can{RunicMembers.CommandName(RunicMembers.Property(command))}";
-
-    private static bool CanReply(string route, string reply) => reply switch
+    private static bool CanReply(string route, string reply)
     {
-        "true" => true,
-        "false" => false,
-        _ => throw new InvalidOperationException($"{route} returned '{reply}'."),
-    };
+        using var document = JsonDocument.Parse(reply);
+        var root = document.RootElement;
+        return root.GetProperty("ok").GetBoolean() && root.TryGetProperty("value", out var value) && value.ValueKind is JsonValueKind.True or JsonValueKind.False
+            ? value.GetBoolean()
+            : throw new InvalidOperationException($"{route} can returned '{reply}'.");
+    }
 
-    /// <summary>Asks whether a command with an argument can execute (<c>can{Command}(input)</c>).</summary>
+    /// <summary>Asks whether a command with an input can execute (<c>can{Command}(input)</c>).</summary>
     /// <remarks>
-    /// A command with an asynchronous key resolver (a <c>[RunicCommandKey]</c> method that returns a task) answers
-    /// only after the resolver finishes, so this method refuses it instead of blocking the test thread; use
-    /// <see cref="CanExecuteAsync"/>.
+    /// A command with an asynchronous key resolver answers only after the resolver finishes. A resolver that waits on
+    /// the host's fake clock blocks this call; use <see cref="CanExecuteAsync"/>.
     /// </remarks>
-    /// <exception cref="InvalidOperationException">The command has an asynchronous key resolver.</exception>
     public bool CanExecute(Expression<Func<TModel, object?>> command, string argumentJson)
     {
         ArgumentNullException.ThrowIfNull(argumentJson);
-        var route = CanRoute(command);
-        return CanReply(route, CallSynchronous(route, new(StringValue: argumentJson), nameof(CanExecuteAsync)));
+        var member = CommandMember(command);
+        return CanReply(Route, Send(writer => WriteCommand(writer, "can", member, argumentJson)));
     }
 
     /// <summary>
-    /// Asks whether a command with an argument can execute (<c>can{Command}(input)</c>), waiting for an asynchronous key
+    /// Asks whether a command with an input can execute (<c>can{Command}(input)</c>), waiting for an asynchronous key
     /// resolver.
     /// </summary>
-    /// <remarks>
-    /// A resolver that waits on the host's fake clock finishes only after the test advances it: start the call, advance
-    /// <see cref="RunicWindowTestHost{TViewModel}.Time"/>, then await the call. A command whose key resolver is
-    /// synchronous, or that takes no key, answers at once.
-    /// </remarks>
     /// <param name="command">The command property, such as <c>vm => vm.DeleteCommand</c>.</param>
     /// <param name="argumentJson">The command input or key as wire JSON.</param>
     /// <param name="cancellationToken">Cancels the resolution, as a closed client connection does.</param>
@@ -152,74 +186,50 @@ public sealed class RunicViewDriver<TModel> where TModel : class
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(argumentJson);
-        var route = CanRoute(command);
-        var reply = await CallEitherAsync(route, new(StringValue: argumentJson), cancellationToken).ConfigureAwait(false);
+        var member = CommandMember(command);
+        var reply = await SendAsync(writer => WriteCommand(writer, "can", member, argumentJson),
+            cancellationToken: cancellationToken).ConfigureAwait(false);
         // A cancelled resolution answers false, as for a closed connection; the caller asked to stop instead.
         cancellationToken.ThrowIfCancellationRequested();
-        return CanReply(route, reply);
+        return CanReply(Route, reply);
     }
 
-    private (string Member, string RequestId, string Payload) StartPayload(Expression<Func<TModel, object?>> command,
-        string? argumentJson, string? requestId)
-    {
-        var member = RunicMembers.CommandName(RunicMembers.Property(command));
-        requestId ??= $"request{_nextId()}";
-        var payload = argumentJson is null ? requestId : RunicJson.Write(writer =>
-        {
-            writer.WriteStartObject();
-            writer.WriteString("requestId", requestId);
-            writer.WritePropertyName("input");
-            writer.WriteRawValue(argumentJson);
-            writer.WriteEndObject();
-        });
-        return (member, requestId, payload);
-    }
+    // The operation contract: {view}:{fingerprint}.
+    private static string Contract => $"{typeof(TModel).FullName}:{Fingerprint.Value}";
 
-    private RunicTestOperation Operation(string member, string requestId, string admission) =>
-        new(_transport, $"{typeof(TModel).FullName}:{Fingerprint.Value}:{Route}", member, requestId, admission);
+    /// <summary>Starts an asynchronous command as a recoverable operation with a <c>start</c> request.</summary>
+    /// <param name="command">The command property.</param>
+    /// <param name="argumentJson">The command input as wire JSON, for a command with an input.</param>
+    /// <param name="requestId">The operation id; the host issues <c>request{n}</c> when omitted.</param>
+    public RunicTestOperation Start(Expression<Func<TModel, object?>> command, string? argumentJson = null, string? requestId = null) =>
+        StartAsync(command, argumentJson, requestId).GetAwaiter().GetResult();
 
     /// <summary>
-    /// Starts an asynchronous command as a recoverable operation (<c>start{Command}()</c>).
+    /// Starts an asynchronous command as a recoverable operation with a <c>start</c> request, and completes with the
+    /// admission. Await <see cref="RunicTestOperation.WaitAsync"/> for the outcome.
     /// </summary>
-    /// <remarks>
-    /// A command with an asynchronous key resolver is admitted only after the resolver finishes, so this method refuses
-    /// it instead of blocking the test thread; use <see cref="StartAsync"/>.
-    /// </remarks>
     /// <param name="command">The command property.</param>
-    /// <param name="argumentJson">The command input as wire JSON, for a command with an argument.</param>
-    /// <param name="requestId">The idempotency key; the host issues <c>request{n}</c> when omitted.</param>
-    /// <exception cref="InvalidOperationException">The command has an asynchronous key resolver.</exception>
-    public RunicTestOperation Start(Expression<Func<TModel, object?>> command, string? argumentJson = null, string? requestId = null)
-    {
-        var (member, id, payload) = StartPayload(command, argumentJson, requestId);
-        return Operation(member, id, CallSynchronous($"{Route}Start{member}", new(StringValue: payload), nameof(StartAsync)));
-    }
-
-    /// <summary>
-    /// Starts an asynchronous command as a recoverable operation (<c>start{Command}()</c>), waiting for an asynchronous
-    /// key resolver before the admission.
-    /// </summary>
-    /// <remarks>
-    /// The task completes with the admission; await <see cref="RunicTestOperation.WaitAsync"/> for the outcome. A
-    /// resolver that waits on the host's fake clock finishes only after the test advances
-    /// <see cref="RunicWindowTestHost{TViewModel}.Time"/>.
-    /// </remarks>
-    /// <param name="command">The command property.</param>
-    /// <param name="argumentJson">The command input or key as wire JSON, for a command with an argument.</param>
-    /// <param name="requestId">The idempotency key; the host issues <c>request{n}</c> when omitted.</param>
+    /// <param name="argumentJson">The command input or key as wire JSON, for a command with an input.</param>
+    /// <param name="requestId">The operation id; the host issues <c>request{n}</c> when omitted.</param>
     /// <param name="cancellationToken">Cancels the resolution, as a closed client connection does.</param>
     public async Task<RunicTestOperation> StartAsync(Expression<Func<TModel, object?>> command, string? argumentJson = null,
         string? requestId = null, CancellationToken cancellationToken = default)
     {
-        var (member, id, payload) = StartPayload(command, argumentJson, requestId);
-        var admission = await CallEitherAsync($"{Route}Start{member}", new(StringValue: payload), cancellationToken).ConfigureAwait(false);
-        return Operation(member, id, admission);
+        var member = CommandMember(command);
+        requestId ??= $"request{_nextId()}";
+        var reply = await SendAsync(writer =>
+        {
+            WriteCommand(writer, "start", member, argumentJson);
+            writer.WriteString("operation", requestId);
+            writer.WriteString("contract", Contract);
+        }, cancellationToken: cancellationToken).ConfigureAwait(false);
+        return new(_transport, Route, Contract, member, requestId, reply);
     }
 
     /// <summary>
-    /// Writes a scalar checked field, encoded as <see cref="Set{TValue}"/> encodes JSON values, as the client's
-    /// <c>write{Property}(value, { requestId, baseline })</c> does. The baseline is the
-    /// current value and, unless given, its current version.
+    /// Writes a scalar checked field, encoded as <see cref="Set{TValue}"/> encodes values, as the client's
+    /// <c>write{Property}(value, { requestId, baseline })</c> does. The baseline is the current value and, unless given,
+    /// its current version.
     /// </summary>
     public RunicFieldWriteReceipt<TModel> Write<TValue>(Expression<Func<TModel, TValue>> property, TValue value, long? expectedVersion = null)
     {
@@ -227,19 +237,24 @@ public sealed class RunicViewDriver<TModel> where TModel : class
         var snapshot = Snapshot();
         var field = RunicMembers.WireName(member);
         var version = expectedVersion ?? snapshot.FieldVersion(property);
-        var payload = RunicJson.Write(writer =>
+        var reply = Send(writer =>
         {
-            writer.WriteStartObject();
+            writer.WriteString("kind", "write");
+            writer.WriteString("member", field);
             writer.WriteString("requestId", $"write{_nextId()}");
             writer.WriteNumber("expectedVersion", version);
             writer.WritePropertyName("expectedValue");
             snapshot[field].WriteTo(writer);
             writer.WritePropertyName("value");
             RunicWireValue.Write(writer, value, member.PropertyType);
-            writer.WriteEndObject();
         });
-        var route = $"{Route}Write{member.Name}";
-        return new(route, _transport.Call(route, new(StringValue: payload)));
+        RunicViewState<TModel>? state = null;
+        if (reply.Contains("\"revision\"", StringComparison.Ordinal))
+        {
+            var after = Send(writer => writer.WriteString("kind", "snapshot"));
+            if (after.StartsWith("{\"ok\":true", StringComparison.Ordinal)) state = ReadState(after, "snapshot");
+        }
+        return new($"{Route} write {field}", reply, state);
     }
 
     /// <summary>Drives the content that a ViewModel content property presents now.</summary>
@@ -259,37 +274,48 @@ public sealed class RunicViewDriver<TModel> where TModel : class
         return Snapshot().References(property).Select(reference => Content<TContent>(reference, member)).ToArray();
     }
 
-    /// <summary>Acknowledges a browser presentation, as a frontend outlet does when it mounts this View.</summary>
-    /// <param name="token">The mount token, `{session}:{presentation}`; the host issues `test:mount{n}` when omitted.</param>
+    /// <summary>Opens a presentation of this route, as a page that shows the View sends <c>open</c>.</summary>
+    /// <param name="presentation">The presentation id; the host issues <c>test-presentation{n}</c> when omitted.</param>
     /// <param name="clientKey">The client identity, for tests of several browser clients.</param>
     /// <param name="connectionKey">The connection identity, for tests of a client disconnect.</param>
-    /// <returns>The mount token; pass it to <see cref="Unmount"/>.</returns>
-    public string Mount(string? token = null, string? clientKey = null, string? connectionKey = null)
+    /// <returns>The presentation id; pass it to <see cref="Unmount"/>.</returns>
+    /// <exception cref="InvalidOperationException">The open was not answered <c>ok</c>; the message names the reply.</exception>
+    public string Mount(string? presentation = null, string? clientKey = null, string? connectionKey = null)
     {
-        token ??= $"test:mount{_nextId()}";
-        var reply = _transport.Call($"{Route}Mount", new(StringValue: token, ClientKey: clientKey, ConnectionKey: connectionKey));
-        return reply == "ok" ? token : throw new InvalidOperationException($"{Route}Mount returned '{reply}'.");
+        presentation ??= $"test-presentation{_nextId()}";
+        var id = presentation;
+        var reply = Send(writer =>
+        {
+            writer.WriteString("kind", "open");
+            writer.WriteString("presentation", id);
+        }, connectionKey, clientKey);
+        return reply.StartsWith("{\"ok\":true", StringComparison.Ordinal) && reply.Contains("\"presentation\":\"ok\"", StringComparison.Ordinal)
+            ? presentation : throw new InvalidOperationException($"{Route} open returned '{reply}'.");
     }
 
-    /// <summary>Releases a browser presentation, as a frontend outlet does when it unmounts this View.</summary>
-    /// <param name="token">The token <see cref="Mount"/> returned.</param>
-    /// <param name="clientKey">The client identity the View was mounted with.</param>
-    /// <param name="connectionKey">The connection identity the View was mounted with.</param>
+    /// <summary>Closes a presentation, as a page that stops showing the View sends <c>close</c>.</summary>
+    /// <param name="presentation">The id <see cref="Mount"/> returned.</param>
+    /// <param name="clientKey">The client identity the presentation was opened with.</param>
+    /// <param name="connectionKey">The connection identity the presentation was opened with.</param>
     /// <exception cref="InvalidOperationException">
-    /// The route did not release it, for example because another client mounted it (<c>ignored</c>) or the window
-    /// closed (<c>released</c>). The message names the reply.
+    /// The route did not close it, for example because another client opened it (<c>ignored</c>) or the route was released
+    /// (<c>released</c>). The message names the reply.
     /// </exception>
-    public void Unmount(string token, string? clientKey = null, string? connectionKey = null)
+    public void Unmount(string presentation, string? clientKey = null, string? connectionKey = null)
     {
-        ArgumentNullException.ThrowIfNull(token);
-        var reply = _transport.Call($"{Route}Unmount", new(StringValue: token, ClientKey: clientKey, ConnectionKey: connectionKey));
-        if (reply != "ok") throw new InvalidOperationException($"{Route}Unmount returned '{reply}'.");
+        ArgumentNullException.ThrowIfNull(presentation);
+        var reply = Send(writer =>
+        {
+            writer.WriteString("kind", "close");
+            writer.WriteString("presentation", presentation);
+        }, connectionKey, clientKey);
+        if (reply != "{\"ok\":true,\"presentation\":\"ok\"}") throw new InvalidOperationException($"{Route} close returned '{reply}'.");
     }
 
-    /// <summary>Returns and removes the frames pushed to this route so far.</summary>
+    /// <summary>Returns and removes the states and frames pushed to this route so far.</summary>
     public IReadOnlyList<RunicViewPublication> TakePublications() => _publications.Take(Route);
 
-    /// <summary>Waits for the next frame pushed to this route.</summary>
+    /// <summary>Waits for the next state or frame pushed to this route.</summary>
     /// <param name="timeout">Real time to wait; defaults to the host's publication timeout.</param>
     /// <param name="cancellationToken">Stops waiting.</param>
     /// <exception cref="TimeoutException">Nothing was pushed in time.</exception>
@@ -297,8 +323,8 @@ public sealed class RunicViewDriver<TModel> where TModel : class
         _publications.NextAsync(Route, timeout, cancellationToken);
 
     /// <summary>
-    /// Follows this route's state from a snapshot through its pushed frames, applying collection
-    /// deltas as the client does and failing on a frame the client could not apply.
+    /// Follows this route's state from a snapshot through its pushed states and frames, applying their changes as the
+    /// client does and failing on a frame the client could not apply.
     /// </summary>
     public RunicStateTracker<TModel> Track() => new(this, _publications);
 
@@ -311,9 +337,6 @@ public sealed class RunicViewDriver<TModel> where TModel : class
                 $"{typeof(TModel).Name}.{member.Name} presents '{reference.Kind}', not {typeof(TContent).Name}.");
         return new(_publications, _transport, $"content{reference.Id}", reference, _nextId);
     }
-
-    private static bool IsNullable(PropertyInfo property) =>
-        new NullabilityInfoContext().Create(property).WriteState == NullabilityState.Nullable;
 
     private static class Fingerprint
     {

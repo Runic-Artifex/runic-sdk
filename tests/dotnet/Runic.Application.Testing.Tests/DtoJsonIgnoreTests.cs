@@ -253,10 +253,10 @@ internal sealed partial class CodegenDiagnosticsTests
                 using var host = new Runic.Application.Testing.RunicWindowTestHost<JsonIgnoreViewModel>(model.Value,
                     (transport, content, vm) => new JsonIgnoreBridge(transport, vm, content: content),
                     new Runic.Application.Testing.RunicWindowTestHostOptions { RootRoute = "jsonIgnore" });
-                using var initial = System.Text.Json.JsonDocument.Parse(host.Transport.Call($"{host.RootRoute}Snapshot"));
-                _ = host.Transport.Call("jsonIgnoreApply", new(StringValue: """{"plain":"updated","implicit":"hidden","explicit":"hidden","never":"included","whenNull":null,"whenDefault":0}"""));
-                using var updated = System.Text.Json.JsonDocument.Parse(host.Transport.Call($"{host.RootRoute}Snapshot"));
-                return System.Text.Json.JsonSerializer.Serialize(new { initial = initial.RootElement, updated = updated.RootElement });
+                var initial = host.Root.Snapshot().Json;
+                _ = host.Root.ExecuteAsync(vm => vm.ApplyCommand, """{"plain":"updated","implicit":"hidden","explicit":"hidden","never":"included","whenNull":null,"whenDefault":0}""").GetAwaiter().GetResult();
+                var updated = host.Root.Snapshot().Json;
+                return System.Text.Json.JsonSerializer.Serialize(new { initial = new { state = initial }, updated = new { state = updated } });
             }
             private sealed class DisposableModel : System.IDisposable
             {
@@ -311,8 +311,7 @@ internal sealed partial class CodegenDiagnosticsTests
                 using var host = new Runic.Application.Testing.RunicWindowTestHost<IndependentViewModel>(model,
                     (transport, content, vm) => new IndependentBridge(transport, vm, content: content),
                     new Runic.Application.Testing.RunicWindowTestHostOptions { RootRoute = "independent" });
-                using var snapshot = System.Text.Json.JsonDocument.Parse(host.Transport.Call($"{host.RootRoute}Snapshot"));
-                return snapshot.RootElement.GetRawText();
+                return System.Text.Json.JsonSerializer.Serialize(new { state = host.Root.Snapshot().Json });
             }
         }
         """;
@@ -329,9 +328,11 @@ internal sealed partial class CodegenDiagnosticsTests
                 using var optedInHost = new Runic.Application.Testing.RunicWindowTestHost<MixedJsonIgnoreViewModel>(new(),
                     (transport, content, vm) => new MixedJsonIgnoreBridge(transport, vm, content: content),
                     new Runic.Application.Testing.RunicWindowTestHostOptions { RootRoute = "mixedJsonIgnore" });
-                using var defaultState = System.Text.Json.JsonDocument.Parse(defaultHost.Transport.Call($"{defaultHost.RootRoute}Snapshot"));
-                using var optedInState = System.Text.Json.JsonDocument.Parse(optedInHost.Transport.Call($"{optedInHost.RootRoute}Snapshot"));
-                return System.Text.Json.JsonSerializer.Serialize(new { defaultState = defaultState.RootElement, optedInState = optedInState.RootElement });
+                return System.Text.Json.JsonSerializer.Serialize(new
+                {
+                    defaultState = new { state = defaultHost.Root.Snapshot().Json },
+                    optedInState = new { state = optedInHost.Root.Snapshot().Json },
+                });
             }
         }
         """;

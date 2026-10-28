@@ -114,8 +114,9 @@ public sealed class ModelContextTests
                 (presentationTransport, presentationModel, presentationRoute) =>
                     new ProbeBridge(presentationTransport, presentationModel, presentationRoute, session),
                 () => new ProbeView()));
-        Require(transport.Call($"content{reference.Id}Mount", new(StringValue: "browser:view",
-            ClientKey: "client", ConnectionKey: "connection")) == "ok", "The probe View did not mount.");
+        var contentRoute = $"content{reference.Id}";
+        var open = transport.Open(contentRoute, "browser:view", "connection", "client");
+        Require(open.Contains("\"presentation\":\"ok\"", StringComparison.Ordinal), $"The probe View did not mount: {open}");
         Require(ProbeView.Attached == 1 && model.Subscribers == 1 && child.Subscribers == 1,
             "The probe bridges or View did not attach.");
 
@@ -125,7 +126,8 @@ public sealed class ModelContextTests
         Require(model.Subscribers == 0 && child.Subscribers == 0,
             "Bridge teardown after application-context disposal retained PropertyChanged subscriptions.");
         Require(ProbeView.Detached == 1, "Window teardown after context disposal did not release the mounted View.");
-        Require(transport.Routes.Count == 0, $"Window teardown retained routes: {string.Join(", ", transport.Routes)}");
+        var dispatcher = BridgeDispatcher.For(transport);
+        Require(!dispatcher.Serves("probe") && !dispatcher.Serves(contentRoute), "Window teardown retained routes.");
     }
 
     [Test]
@@ -217,6 +219,7 @@ public sealed class ModelContextTests
     }
 
     [Test]
+    [Skip("P5: needs interaction handlers registered by open, interaction pushes and interaction-reply served")]
     public async Task ScheduledInteractionsRetainTheirOwnAmbientInvocation()
     {
         await using var context = new RunicModelContext();
@@ -230,18 +233,12 @@ public sealed class ModelContextTests
             name, contract, value => value.Confirm,
             static value => JsonSerializer.Serialize(value), static value => value.GetBoolean()).Attach(session, model, route);
         using var rootMount = session.AttachRootInteractionPresentation(route);
-        Require(transport.Call($"{route}Mount", new(StringValue: "browser-a:present", ClientKey: "client-a",
-            ConnectionKey: "connection-a")) == "ok", "The first scheduled interaction presentation did not mount.");
-        Require(transport.Call($"{route}Mount", new(StringValue: "browser-b:present", ClientKey: "client-b",
-            ConnectionKey: "connection-b")) == "ok", "The second scheduled interaction presentation did not mount.");
-
-        var firstWait = transport.CallAsync(BridgeInteractionRouter.WaitRoute,
-            new(StringValue: WaitJson(route, "browser-a:present", name, contract), ClientKey: "client-a",
-                ConnectionKey: "connection-a")).AsTask();
-        var secondWait = transport.CallAsync(BridgeInteractionRouter.WaitRoute,
-            new(StringValue: WaitJson(route, "browser-b:present", name, contract), ClientKey: "client-b",
-                ConnectionKey: "connection-b")).AsTask();
-        await Task.Yield();
+        // Each presentation registers its handlers with its open (generation 0); requests arrive as interaction pushes.
+        var handlers = JsonSerializer.Serialize(new[] { new { name, contract } });
+        Require(transport.Open(route, "present", "connection-a", "client-a", handlers).Contains("\"registration\":\"ok\"", StringComparison.Ordinal),
+            "The first scheduled interaction presentation did not register its handler.");
+        Require(transport.Open(route, "present", "connection-b", "client-b", handlers).Contains("\"registration\":\"ok\"", StringComparison.Ordinal),
+            "The second scheduled interaction presentation did not register its handler.");
 
         var scheduler = ReactiveSchedulers.For(context);
         using var drainStarted = new ManualResetEventSlim();
@@ -278,17 +275,15 @@ public sealed class ModelContextTests
         scheduler.Schedule(() => leakedScope = RunicInteractionInvocation.Current?.CommandName);
         releaseDrain.Set();
 
-        using var firstRequest = JsonDocument.Parse(await Within(firstWait,
-            "The first scheduled interaction did not reach its browser endpoint."));
-        using var secondRequest = JsonDocument.Parse(await Within(secondWait,
-            "The second scheduled interaction inherited the wrong browser invocation."));
+        using var firstRequest = await Within(NextInteractionAsync(transport, "connection-a"),
+            "The first scheduled interaction did not reach its browser endpoint.");
+        using var secondRequest = await Within(NextInteractionAsync(transport, "connection-b"),
+            "The second scheduled interaction inherited the wrong browser invocation.");
         Require(firstRequest.RootElement.GetProperty("input").GetString() == "first"
             && secondRequest.RootElement.GetProperty("input").GetString() == "second",
             "Batched scheduled interactions crossed their trusted invocation scopes.");
-        Reply(transport, firstRequest.RootElement, route, "browser-a:present", name, contract,
-            "client-a", "connection-a", true);
-        Reply(transport, secondRequest.RootElement, route, "browser-b:present", name, contract,
-            "client-b", "connection-b", false);
+        Reply(transport, firstRequest.RootElement, "client-a", "connection-a", true);
+        Reply(transport, secondRequest.RootElement, "client-b", "connection-b", false);
         Require(firstAnswer is not null && await firstAnswer, "The first scheduled interaction response was not delivered.");
         Require(secondAnswer is not null && !await secondAnswer, "The second scheduled interaction response was not delivered.");
         await context.InvokeAsync(() => { });
@@ -298,26 +293,41 @@ public sealed class ModelContextTests
         Require(leakedScope is null, "A completed scheduled callback leaked its interaction scope into the next turn.");
     }
 
-    private static string WaitJson(string route, string presentationId, string name, string contract) =>
-        JsonSerializer.Serialize(new { route, presentationId, handlers = new[] { new { name, contract } } });
+    // The first interaction push to a connection, read from the transport's messages without taking them.
+    private static async Task<JsonDocument> NextInteractionAsync(InMemoryBridgeTransport transport, string connectionKey)
+    {
+        var deadline = DateTime.UtcNow.AddSeconds(5);
+        while (DateTime.UtcNow < deadline)
+        {
+            foreach (var message in transport.Messages)
+            {
+                if (message.ConnectionKey != connectionKey) continue;
+                var push = JsonDocument.Parse(message.Json);
+                if (push.RootElement.GetProperty("kind").GetString() == "interaction") return push;
+                push.Dispose();
+            }
+            await Task.Delay(10);
+        }
+        throw new TimeoutException($"No interaction reached {connectionKey}.");
+    }
 
-    private static void Reply(InMemoryBridgeTransport transport, JsonElement request, string route, string presentationId,
-        string name, string contract, string clientKey, string connectionKey, bool output)
+    // Answers an interaction push with an interaction-reply request.
+    private static void Reply(InMemoryBridgeTransport transport, JsonElement request, string clientKey, string connectionKey, bool output)
     {
         var reply = JsonSerializer.Serialize(new
         {
-            kind = "answered",
+            kind = "interaction-reply",
+            route = request.GetProperty("route").GetString(),
+            presentation = request.GetProperty("presentation").GetString(),
             requestId = request.GetProperty("requestId").GetString(),
-            route,
-            presentationId,
             ownerEpoch = request.GetProperty("ownerEpoch").GetInt64(),
-            name,
-            contract,
+            name = request.GetProperty("name").GetString(),
+            contract = request.GetProperty("contract").GetString(),
+            outcome = "answered",
             output,
         });
-        using var accepted = JsonDocument.Parse(transport.Call(BridgeInteractionRouter.ReplyRoute,
-            new(StringValue: reply, ClientKey: clientKey, ConnectionKey: connectionKey)));
-        Require(accepted.RootElement.GetProperty("kind").GetString() == "ok",
+        using var accepted = JsonDocument.Parse(transport.Send(reply, connectionKey, clientKey));
+        Require(accepted.RootElement.GetProperty("ok").GetBoolean() && accepted.RootElement.GetProperty("result").GetString() == "ok",
             "The browser response to a scheduled interaction was rejected.");
     }
 

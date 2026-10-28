@@ -8,16 +8,17 @@ using TUnit.Core;
 namespace Runic.Application.Testing.Tests;
 
 // A page's own command can replace the page in its region (issue #246). The command runs, and
-// .NET releases the page's bridge before the reply captures a state. The reply says so: it is
-// `ok` with `released: true` and no state, so a client resolves the call instead of reporting
-// a reply without state as failed. A call that failed keeps its error and is also `released`.
+// .NET releases the page's bridge before the reply could name a revision of the page's route. The reply says so: it is
+// `ok` with `released: true` and no revision, so a client resolves the call instead of waiting for a revision the
+// route never reaches. A call that failed keeps its error and is also `released` (specs/application/README.md,
+// "Released by the call").
 public sealed class ReleasedViewReplyTests
 {
     [Test]
     public void ACommandThatReplacesItsPageRepliesReleased()
     {
         using var fixture = new Fixture();
-        var reply = Read(fixture.Transport.Call($"{fixture.Route}Leave"));
+        var reply = Read(fixture.Transport.Command(fixture.Route, "leave", connectionKey: Fixture.Connection, clientKey: Fixture.Client));
         RequireReleased(reply, fixture);
     }
 
@@ -25,7 +26,8 @@ public sealed class ReleasedViewReplyTests
     public async Task AnAwaitedCommandThatReplacesItsPageRepliesReleased()
     {
         using var fixture = new Fixture();
-        var reply = Read(await fixture.Transport.CallAsync($"{fixture.Route}LeaveAsync"));
+        var reply = Read(await fixture.Transport.CommandAsync(fixture.Route, "leaveAsync", connectionKey: Fixture.Connection,
+            clientKey: Fixture.Client));
         RequireReleased(reply, fixture);
     }
 
@@ -33,7 +35,7 @@ public sealed class ReleasedViewReplyTests
     public void ASetterThatReplacesItsPageRepliesReleased()
     {
         using var fixture = new Fixture();
-        var reply = Read(fixture.Transport.Call($"{fixture.Route}SetValue", new(Int64Value: 7)));
+        var reply = Read(fixture.Transport.Set(fixture.Route, "value", "7", connectionKey: Fixture.Connection, clientKey: Fixture.Client));
         RequireReleased(reply, fixture);
         Require(fixture.Page.Value == 7, "The setter did not run.");
     }
@@ -41,21 +43,34 @@ public sealed class ReleasedViewReplyTests
     [Test]
     public void ARejectedCallOnAReleasedPageKeepsItsKind()
     {
-        using var fixture = new Fixture();
-        var reply = Read(fixture.Transport.Call($"{fixture.Route}SetValue", new(Int64Value: -1)));
-        Require(!reply.Ok && reply.ErrorKind == "rejected" && reply.Reason == "invalid-input" && !reply.HasState && reply.Released,
-            $"A rejected call on a released page replied {reply.Json}.");
+        using (var fixture = new Fixture())
+        {
+            var reply = Read(fixture.Transport.Set(fixture.Route, "value", "-1", connectionKey: Fixture.Connection, clientKey: Fixture.Client));
+            // Protocol 4: a rejected reply carries no revision, so it has no released flag in its place either.
+            Require(!reply.Ok && reply.ErrorKind == "rejected" && reply.Reason == "invalid-input" && !reply.HasRevision,
+                $"A rejected call on a released page replied {reply.Json}.");
+        }
+
+        // A call that ran and failed keeps its error and replies released instead of its revision.
+        using (var fixture = new Fixture())
+        {
+            var reply = Read(fixture.Transport.Set(fixture.Route, "value", "-2", connectionKey: Fixture.Connection, clientKey: Fixture.Client));
+            Require(fixture.Page.Ran, "The setter did not run.");
+            Require(!reply.Ok && reply.ErrorKind == "failed" && !reply.HasRevision && reply.Released,
+                $"A failed call on a released page replied {reply.Json}.");
+        }
     }
 
-    // A checked write that released its page was processed, but has neither state nor receipt.
+    // A checked write that released its page was processed, but has neither revision nor receipt.
     [Test]
     public void ACheckedWriteThatReplacesItsPageRepliesReleased()
     {
         using var fixture = new Fixture();
-        const string write = """{"requestId":"leave","expectedVersion":0,"expectedValue":0,"value":3}""";
-        var reply = Read(fixture.Transport.Call($"{fixture.Route}WriteCount", new(StringValue: write)));
+        var reply = Read(fixture.Transport.Write(fixture.Route, "count", "leave", expectedVersion: 0, expectedValueJson: "0", valueJson: "3",
+            connectionKey: Fixture.Connection));
         Require(fixture.Page.Ran && fixture.Page.Count == 3, "The checked write did not run.");
-        Require(!reply.Ok && reply.ErrorKind == "released" && !reply.HasState && reply.Released
+        // Protocol 4: a write that ran and succeeded stays ok, as every call released by itself does.
+        Require(reply.Ok && reply.ErrorKind is null && !reply.HasRevision && reply.Released
             && !reply.Json.Contains("\"receipt\"", StringComparison.Ordinal),
             $"A checked write that released its own page replied {reply.Json}.");
     }
@@ -66,17 +81,19 @@ public sealed class ReleasedViewReplyTests
     {
         using var fixture = new Fixture();
         fixture.Page.LeaveOnSnapshot = true;
-        var reply = Read(fixture.Transport.Call($"{fixture.Route}Snapshot"));
+        var reply = Read(fixture.Transport.Snapshot(fixture.Route, Fixture.Connection));
         Require(fixture.Page.Ran, "The snapshot writer did not release the page.");
-        Require(!reply.Ok && reply.ErrorKind == "released" && !reply.HasState && !reply.Released && reply.Protocol == BridgeProtocol.Version,
+        // Protocol 4: replies name no protocol; the hello does.
+        Require(!reply.Ok && reply.ErrorKind == "released" && !reply.HasState && !reply.HasRevision && !reply.Released,
             $"A snapshot read of a released page replied {reply.Json}.");
     }
 
     private static void RequireReleased(Reply reply, Fixture fixture)
     {
         Require(fixture.Page.Ran, "The command did not run.");
-        Require(!fixture.Transport.Routes.Contains($"{fixture.Route}Snapshot"), "The page's bridge was not released.");
-        Require(reply.Ok && reply.ErrorKind is null && !reply.HasState && reply.Released,
+        var snapshot = Read(fixture.Transport.Snapshot(fixture.Route, Fixture.Connection));
+        Require(!snapshot.Ok && snapshot.ErrorKind == "released", $"The page's bridge was not released: {snapshot.Json}");
+        Require(reply.Ok && reply.ErrorKind is null && !reply.HasRevision && !reply.HasState && reply.Released,
             $"A call that released its own page replied {reply.Json}.");
     }
 
@@ -84,18 +101,19 @@ public sealed class ReleasedViewReplyTests
     {
         using var document = JsonDocument.Parse(json);
         var root = document.RootElement;
-        var error = root.GetProperty("error");
+        var hasError = root.TryGetProperty("error", out var error);
         return new(json,
             root.GetProperty("ok").GetBoolean(),
-            root.GetProperty("state").ValueKind == JsonValueKind.Object,
+            root.TryGetProperty("state", out _),
+            root.TryGetProperty("revision", out _),
             root.TryGetProperty("released", out var released) && released.ValueKind == JsonValueKind.True,
-            error.ValueKind == JsonValueKind.Object ? error.GetProperty("kind").GetString() : null,
-            error.ValueKind == JsonValueKind.Object ? error.GetProperty("message").GetString() : null,
-            error.ValueKind == JsonValueKind.Object && error.TryGetProperty("reason", out var reason) ? reason.GetString() : null,
-            root.TryGetProperty("protocol", out var protocol) ? protocol.GetInt32() : null);
+            hasError ? error.GetProperty("kind").GetString() : null,
+            hasError ? error.GetProperty("message").GetString() : null,
+            hasError && error.TryGetProperty("reason", out var reason) ? reason.GetString() : null);
     }
 
-    private sealed record Reply(string Json, bool Ok, bool HasState, bool Released, string? ErrorKind, string? Message, string? Reason, int? Protocol);
+    private sealed record Reply(string Json, bool Ok, bool HasState, bool HasRevision, bool Released, string? ErrorKind, string? Message,
+        string? Reason);
 
     private static void Require(bool condition, string message)
     {
@@ -110,9 +128,12 @@ public sealed class ReleasedViewReplyTests
             Session = new WindowContentSession(Transport, new WindowContentSessionOptions { RootModel = Root });
             Page = new Page(() => Present(new Page(() => { })));
             Route = $"content{Present(Page).Id}";
-            Require(Transport.Call($"{Route}Mount", new(StringValue: "browser:page", ClientKey: "client", ConnectionKey: "connection")) == "ok",
-                "The page did not mount.");
+            var open = Transport.Open(Route, "browser:page", Connection, Client);
+            Require(open.Contains("\"presentation\":\"ok\"", StringComparison.Ordinal), $"The page did not mount: {open}");
         }
+
+        internal const string Connection = "connection";
+        internal const string Client = "client";
 
         public InMemoryBridgeTransport Transport { get; }
         public WindowContentSession Session { get; }
@@ -150,6 +171,8 @@ public sealed class ReleasedViewReplyTests
             set
             {
                 Leave();
+                // -2 fails the setter after it ran; another negative value is invalid input.
+                if (value == -2) throw new InvalidOperationException("The setter failed.");
                 ArgumentOutOfRangeException.ThrowIfNegative(value);
                 _value = value;
             }

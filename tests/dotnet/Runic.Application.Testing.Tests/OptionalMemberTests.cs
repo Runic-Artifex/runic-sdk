@@ -58,15 +58,18 @@ internal sealed class OptionalMemberTests
 
     private static void Call(RunicWindowTestHost<OptionalMemberViewModel> host, string command, string input)
     {
-        using var reply = JsonDocument.Parse(host.Transport.Call($"optionalMember{command}", new(StringValue: input)));
+        using var reply = JsonDocument.Parse(host.Transport.Command("optionalMember", Member(command), input));
         Require(reply.RootElement.GetProperty("ok").GetBoolean(), $"{command}({input}) failed: {reply.RootElement}");
     }
 
     private static void Rejected(RunicWindowTestHost<OptionalMemberViewModel> host, string command, string input)
     {
-        using var reply = JsonDocument.Parse(host.Transport.Call($"optionalMember{command}", new(StringValue: input)));
+        using var reply = JsonDocument.Parse(host.Transport.Command("optionalMember", Member(command), input));
         Require(!reply.RootElement.GetProperty("ok").GetBoolean(), $"{command}({input}) was accepted: {reply.RootElement}");
     }
+
+    // The command's wire name: Submit -> submit.
+    private static string Member(string command) => char.ToLowerInvariant(command[0]) + command[1..];
 
     private static string GeneratedTypeScriptDirectory()
     {

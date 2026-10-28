@@ -35,32 +35,33 @@ if (commandResult != 42) throw new InvalidOperationException("The Reactive flavo
 using (var transport = new InMemoryBridgeTransport())
 using (new FlavorModelBridge(transport, model))
 {
+    _ = await transport.RequestAsync("""{"kind":"hello","protocol":4,"session":"flavor","client":{"name":"flavor-proof","version":"1.0.0"}}""");
     for (var execution = 0; execution < 100; execution++)
     {
-        var replyJson = await transport.CallAsync("flavorModelCount");
+        var replyJson = await transport.RequestAsync(Command("count"));
         using var reply = JsonDocument.Parse(replyJson);
         if (!reply.RootElement.GetProperty("ok").GetBoolean())
             throw new InvalidOperationException($"Generated Reactive bridge rejected sequential command {execution}: {replyJson}");
     }
 
-    using (var disablingReply = JsonDocument.Parse(await transport.CallAsync("flavorModelDisable")))
+    using (var disablingReply = JsonDocument.Parse(await transport.RequestAsync(Command("disable"))))
     {
         if (!disablingReply.RootElement.GetProperty("ok").GetBoolean())
             throw new InvalidOperationException("The command that disables itself did not run.");
     }
 
-    using var unavailableReply = JsonDocument.Parse(await transport.CallAsync("flavorModelDisable"));
+    using var unavailableReply = JsonDocument.Parse(await transport.RequestAsync(Command("disable")));
     if (unavailableReply.RootElement.GetProperty("ok").GetBoolean())
         throw new InvalidOperationException("A genuinely disabled command was admitted after its first execution.");
 
     // #472: a RunicCommandKey command of the System.Reactive flavor.
-    using (var unresolved = JsonDocument.Parse(await transport.CallAsync("flavorModelRemove", new BridgeTestArguments(StringValue: "8"))))
+    using (var unresolved = JsonDocument.Parse(await transport.RequestAsync(Command("remove", "8"))))
     {
         var error = unresolved.RootElement.GetProperty("error");
         if (error.GetProperty("kind").GetString() != "rejected" || error.GetProperty("reason").GetString() != "unresolved-key" || model.Item.Removed)
             throw new InvalidOperationException($"An unresolved key was not rejected with unresolved-key: {unresolved.RootElement}");
     }
-    using (var removed = JsonDocument.Parse(await transport.CallAsync("flavorModelRemove", new BridgeTestArguments(StringValue: "7"))))
+    using (var removed = JsonDocument.Parse(await transport.RequestAsync(Command("remove", "7"))))
         if (!removed.RootElement.GetProperty("ok").GetBoolean() || !model.Item.Removed)
             throw new InvalidOperationException($"The keyed command did not run with its resolved item: {removed.RootElement}");
 }
@@ -74,15 +75,13 @@ using (var host = new RunicWindowTestHost<FlavorShellModel>(shell,
     new RunicWindowTestHostOptions { ModelContext = context, ViewLocator = viewLocator }))
 {
     if (!BoundTo(shell)) throw new InvalidOperationException("The window did not bind its root ViewModel.");
-    using (var opened = JsonDocument.Parse(await host.Transport.CallAsync($"{host.RootRoute}Open")))
-        if (!opened.RootElement.GetProperty("ok").GetBoolean())
-            throw new InvalidOperationException($"The shell command failed: {opened.RootElement}");
+    var opened = await host.Root.ExecuteAsync(vm => vm.OpenCommand);
+    if (!opened.Succeeded) throw new InvalidOperationException($"The shell command failed: {opened.Json}");
     var page = host.Root.Snapshot().Reference(vm => vm.Main)
         ?? throw new InvalidOperationException("The shell did not present its created child.");
     if (!BoundTo(shell.Main!)) throw new InvalidOperationException("The window did not bind a child created by its ViewModel.");
-    using (var counted = JsonDocument.Parse(await host.Transport.CallAsync($"content{page.Id}Count")))
-        if (!counted.RootElement.GetProperty("ok").GetBoolean())
-            throw new InvalidOperationException($"The created child's command failed: {counted.RootElement}");
+    var counted = await host.View<FlavorModel>(page).ExecuteAsync(vm => vm.CountCommand);
+    if (!counted.Succeeded) throw new InvalidOperationException($"The created child's command failed: {counted.Json}");
 
     await using var other = new RunicModelContext();
     var foreign = new FlavorModel(commandScheduler) { Name = "foreign" };
@@ -130,8 +129,7 @@ using (var validationHost = new RunicWindowTestHost<FlavorValidationModel>(valid
     (transport, content, vm) => new FlavorValidationModelBridge(transport, vm, content: content),
     new RunicWindowTestHostOptions { ModelContext = context, ViewLocator = viewLocator }))
 {
-    using var validationSnapshot = JsonDocument.Parse(validationHost.Transport.Call($"{validationHost.RootRoute}Snapshot"));
-    var errors = validationSnapshot.RootElement.GetProperty("state").GetProperty("validation").GetProperty("errors");
+    var errors = validationHost.Root.Snapshot()["validation"].GetProperty("errors");
     var actual = errors.EnumerateArray()
         .Select(error => $"[{string.Join(",", error.GetProperty("path").EnumerateArray().Select(segment => segment.GetString()))}] {error.GetProperty("message").GetString()}")
         .Order(StringComparer.Ordinal).ToArray();
@@ -197,6 +195,11 @@ await using (var navigator = new RunicNavigator(new RunicNavigatorOptions { Mode
 }
 
 Console.WriteLine("REACTIVEUI_REACTIVE_FLAVOR_OK");
+
+// A command request of the flavor model's route, with its input as wire JSON.
+static string Command(string member, string? input = null) => input is null
+    ? $$"""{"kind":"command","route":"flavorModel","member":"{{member}}"}"""
+    : $$"""{"kind":"command","route":"flavorModel","member":"{{member}}","input":{{input}}}""";
 
 file static class Scheduled
 {

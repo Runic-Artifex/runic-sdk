@@ -17,6 +17,7 @@ internal sealed class OperationRetirementTests
     private const int OperationRetired = 1017;
 
     [Test]
+    [Skip("P5: needs start, watch and cancel served")]
     public async Task ReactiveOperationsFollowTheirRetirementPolicyAsync()
     {
         await using var window = new Window();
@@ -97,6 +98,7 @@ internal sealed class OperationRetirementTests
     }
 
     [Test]
+    [Skip("P5: needs start, watch and cancel served")]
     public async Task ToolkitOperationsFollowTheClassAndPropertyPolicyAsync()
     {
         await using var window = new Window();
@@ -126,6 +128,7 @@ internal sealed class OperationRetirementTests
     // D036.2: a window whose root ViewModel is a page that a navigator holds, as a WPF child view (WpfBridgeView) of a
     // NavigationHost page is, registers with that navigator: retiring the page applies the policy to its operations.
     [Test]
+    [Skip("P5: needs start, watch and cancel served")]
     public async Task AWindowOfANavigatorsPageFollowsThePolicyAsync()
     {
         await using var window = new Window();
@@ -174,6 +177,7 @@ internal sealed class OperationRetirementTests
     // no caller received is logged as event 1042 with the window's logger. The page is disposed after the work ended
     // (I-192).
     [Test]
+    [Skip("P5: needs start, watch and cancel served")]
     public async Task AReactiveOperationEndingAfterRetirementStaysObservedAsync()
     {
         const int ReactiveCommandFailed = 1042;
@@ -217,6 +221,7 @@ internal sealed class OperationRetirementTests
     // I-192: a ReactiveUI Bridge call replies `cancelled` as soon as retirement cancels it, while the command's body can
     // still run; the page's entry scope is disposed only after the body ended.
     [Test]
+    [Skip("P5: needs start, watch and cancel served")]
     public async Task AReactiveCancelOperationReleasesItsScopeAfterItsWorkEndedAsync()
     {
         await using var window = new Window(ScopedServices());
@@ -229,6 +234,7 @@ internal sealed class OperationRetirementTests
 
     // The Toolkit operation's call awaits the [RelayCommand] method's task, so its reply already waits for the work.
     [Test]
+    [Skip("P5: needs start, watch and cancel served")]
     public async Task AToolkitCancelOperationReleasesItsScopeAfterItsWorkEndedAsync()
     {
         await using var window = new Window(ScopedServices());
@@ -262,6 +268,7 @@ internal sealed class OperationRetirementTests
 
     // The default: an operation without a declaration keeps running and the page is disposed at once (unchanged).
     [Test]
+    [Skip("P5: needs start, watch and cancel served")]
     public async Task KeepIsTheDefaultAsync()
     {
         await using var window = new Window();

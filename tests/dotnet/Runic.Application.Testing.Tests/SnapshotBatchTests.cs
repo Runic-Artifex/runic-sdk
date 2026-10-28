@@ -7,9 +7,10 @@ using TUnit.Core;
 
 namespace Runic.Application.Testing.Tests;
 
-// Count writer invocations rather than delivery timing. BridgeSnapshotDelivery
-// captures a requested state when it delivers it; this suite proves that
-// batching avoids discarded captures and never shows a half-applied batch.
+// Count writer invocations rather than delivery timing. A batch is one publication unit (specs/application/
+// state-changes.md, "Publication units"), and the delivery runs a requested unit when the host can take its frame;
+// this suite proves that batching avoids discarded captures and never shows a half-applied batch. A route publishes
+// once a client read its state, so each test reads it first and counts the captures after that read.
 internal sealed class SnapshotBatchTests
 {
     [Test]
@@ -19,6 +20,7 @@ internal sealed class SnapshotBatchTests
         using var transport = new InMemoryBridgeTransport();
         var counter = new CaptureCounter();
         using var bridge = new ProbeBridge(transport, model, "bulk", counter);
+        var revision = Read(transport, "bulk", counter);
 
         using (BridgeSnapshotBatch.Begin(model))
         {
@@ -28,8 +30,10 @@ internal sealed class SnapshotBatchTests
 
         await counter.SettleAsync(1);
         Require(counter.Count == 1, "One hundred changes should capture exactly one snapshot.");
-        Require(counter.Revisions.Single() == 100,
-            "The coalesced snapshot did not preserve every deferred notification revision.");
+        // Protocol 4 counts revisions per publication unit, not per notification: the batch is one frame.
+        var frames = Frames(transport, "bulk");
+        Require(frames.Count == 1 && frames[0].BaseRevision == revision && frames[0].Revision > revision && frames[0].Value == 100,
+            $"The batch was not one frame with its final value: {string.Join(", ", frames)}.");
         Require(model.Value == 100, "The batch did not preserve the final model state.");
     }
 
@@ -41,6 +45,7 @@ internal sealed class SnapshotBatchTests
         using var transport = new InMemoryBridgeTransport();
         var counter = new CaptureCounter();
         using var bridge = new ProbeBridge(transport, model, "observable", counter);
+        Read(transport, "observable", counter);
         var source = new Subject<int[]>();
         var completed = false;
         using var subscription = source.BatchBridgeSnapshots(model).Subscribe(new Observer<int[]>(changes =>
@@ -52,6 +57,7 @@ internal sealed class SnapshotBatchTests
         source.OnNext([1, 2, 3]);
         await counter.SettleAsync(1);
         Require(counter.Count == 1 && model.Value == 3, "One changeset should capture exactly one snapshot.");
+        Require(Frames(transport, "observable").Select(frame => frame.Value).SequenceEqual([3]), "One changeset should publish one frame.");
         source.OnCompleted();
         Require(completed, "Completion was not forwarded.");
     }
@@ -83,6 +89,7 @@ internal sealed class SnapshotBatchTests
         using var transport = new InMemoryBridgeTransport();
         var counter = new CaptureCounter();
         using var bridge = new ProbeBridge(transport, model, "nested", counter);
+        Read(transport, "nested", counter);
 
         using (BridgeSnapshotBatch.Begin(model))
         {
@@ -94,7 +101,7 @@ internal sealed class SnapshotBatchTests
 
         await counter.SettleAsync(1);
         Require(counter.Count == 1, "Nested scopes should have one outer-scope capture.");
-        Require(counter.Revisions.Single() == 3, "Nested notifications did not advance their revisions.");
+        Require(Frames(transport, "nested").Select(frame => frame.Value).SequenceEqual([3]), "Nested scopes did not publish one frame.");
     }
 
     [Test]
@@ -104,6 +111,7 @@ internal sealed class SnapshotBatchTests
         using var transport = new InMemoryBridgeTransport();
         var counter = new CaptureCounter();
         using var bridge = new ProbeBridge(transport, model, "exception", counter);
+        Read(transport, "exception", counter);
 
         try
         {
@@ -116,7 +124,7 @@ internal sealed class SnapshotBatchTests
         await counter.SettleAsync(1);
         Require(counter.Count == 1 && model.Value == 42,
             "Disposing a batch during exception unwinding did not publish its final state.");
-        Require(counter.Revisions.Single() == 1, "Exception unwinding lost the pending notification revision.");
+        Require(Frames(transport, "exception").Select(frame => frame.Value).SequenceEqual([42]), "Exception unwinding lost the pending notification.");
     }
 
     [Test]
@@ -133,6 +141,9 @@ internal sealed class SnapshotBatchTests
         using var firstBridge = new ProbeBridge(firstTransport, first, "first", firstCounter);
         using var secondBridge = new ProbeBridge(secondTransport, first, "second", secondCounter);
         using var otherBridge = new ProbeBridge(otherTransport, second, "other", otherCounter);
+        Read(firstTransport, "first", firstCounter);
+        Read(secondTransport, "second", secondCounter);
+        Read(otherTransport, "other", otherCounter);
 
         using (BridgeSnapshotBatch.Begin(first))
         {
@@ -153,6 +164,8 @@ internal sealed class SnapshotBatchTests
             "Flushing one model changed another model's capture count.");
     }
 
+    // A request inside an open batch publishes its own unit and replies at once with its revision (the inclusion rule:
+    // the state at that revision includes the request's effects); the batch's end publishes only what is left.
     [Test]
     public async Task RouteRepliesRemainImmediate()
     {
@@ -163,38 +176,33 @@ internal sealed class SnapshotBatchTests
         using var bridge = new CheckedProbeBridge(transport, model, content, counter);
         // Content-session revisions are window-monotonic rather than starting
         // at zero for each bridge.
-        using var initial = JsonDocument.Parse(transport.Call("checkedSnapshot"));
-        var baseline = initial.RootElement.GetProperty("state").GetProperty("revision").GetInt64();
-        counter.Revisions.Clear();
-        counter.Count = 0;
+        var baseline = Read(transport, "checked", counter);
 
         using (BridgeSnapshotBatch.Begin(model))
         {
-            const string write = """
-                {"requestId":"batched-write","expectedVersion":0,"expectedValue":0,"value":9}
-                """;
-            using var writeReply = JsonDocument.Parse(transport.Call("checkedWriteValue", new(StringValue: write)));
-            Require(writeReply.RootElement.GetProperty("receipt").GetProperty("kind").GetString() == "applied"
-                && writeReply.RootElement.GetProperty("state").GetProperty("value").GetInt32() == 9,
-                "A checked write did not return its state and receipt while the batch was open.");
-            Require(writeReply.RootElement.GetProperty("state").GetProperty("revision").GetInt64() == baseline + 1,
-                "The checked-write reply did not expose its notification revision during the batch.");
+            using var writeReply = JsonDocument.Parse(transport.Write("checked", "value", "batched-write", 0, "0", "9"));
+            Require(writeReply.RootElement.GetProperty("ok").GetBoolean()
+                && writeReply.RootElement.GetProperty("receipt").GetProperty("kind").GetString() == "applied",
+                $"A checked write did not reply with its receipt while the batch was open: {writeReply.RootElement}");
+            var written = writeReply.RootElement.GetProperty("revision").GetInt64();
+            Require(written > baseline, "The checked-write reply did not expose its revision during the batch.");
             Require(counter.Count == 1, "A checked-write reply did not capture immediately.");
 
-            using var commandReply = JsonDocument.Parse(transport.Call("checkedIncrement"));
-            Require(commandReply.RootElement.GetProperty("ok").GetBoolean()
-                && commandReply.RootElement.GetProperty("state").GetProperty("value").GetInt32() == 10,
-                "A command reply did not return its state while the batch was open.");
-            Require(commandReply.RootElement.GetProperty("state").GetProperty("revision").GetInt64() == baseline + 2,
-                "The command reply did not advance beyond the checked-write revision during the batch.");
+            using var commandReply = JsonDocument.Parse(transport.Command("checked", "increment"));
+            Require(commandReply.RootElement.GetProperty("ok").GetBoolean(), $"The command failed: {commandReply.RootElement}");
+            var commanded = commandReply.RootElement.GetProperty("revision").GetInt64();
+            Require(commanded > written, "The command reply did not advance beyond the checked-write revision during the batch.");
             Require(counter.Count == 2, "A command reply did not capture immediately.");
+            var frames = Frames(transport, "checked");
+            Require(frames.Select(frame => (frame.Revision, frame.Value)).SequenceEqual([(written, (int?)9), (commanded, 10)]),
+                $"The replies' revisions were not the frames with their effects: {string.Join(", ", frames)}.");
         }
 
         await counter.SettleAsync(3);
         Require(counter.Count == 3,
             "Deferred notifications did not publish once after immediate route replies completed.");
-        Require(counter.Revisions.SequenceEqual([baseline + 1, baseline + 2, baseline + 2]),
-            "The final deferred capture did not retain the latest immediate-reply revision.");
+        Require(Frames(transport, "checked").Count == 0,
+            "The batch's end published again what the replies' units had published.");
     }
 
     // A writer failure, including ObjectDisposedException from a getter, fails
@@ -205,18 +213,19 @@ internal sealed class SnapshotBatchTests
         var model = new Model();
         using var transport = new InMemoryBridgeTransport();
         using var bridge = new ThrowingProbeBridge(transport, model);
+        Read(transport, "throwing", new CaptureCounter());
         model.Value = 13;
         await Task.Delay(100);
-        Require(transport.TakePublications().Count == 0, "A failed capture published a state.");
+        Require(transport.TakePushes("throwing").Count == 0, "A failed capture published a state.");
         model.Value = 14;
         var deadline = DateTime.UtcNow.AddSeconds(5);
-        IReadOnlyList<RunicViewPublication> published = [];
+        List<Push> published = [];
         while (published.Count == 0 && DateTime.UtcNow < deadline)
         {
             await Task.Delay(5);
-            published = transport.TakePublications();
+            published.AddRange(Frames(transport, "throwing"));
         }
-        Require(published.Count == 1 && published[0].Json.Contains("\"value\":14", StringComparison.Ordinal),
+        Require(published.Count == 1 && published[0].Value == 14,
             "Delivery stopped after a snapshot writer threw ObjectDisposedException.");
     }
 
@@ -228,6 +237,7 @@ internal sealed class SnapshotBatchTests
         using var transport = new HeldTransport();
         var counter = new CaptureCounter();
         using var bridge = new ProbeBridge(transport, model, "burst", counter);
+        Read(transport, "burst", counter);
 
         model.Value = 1;
         await transport.Entered.Task.WaitAsync(TimeSpan.FromSeconds(5));
@@ -235,8 +245,8 @@ internal sealed class SnapshotBatchTests
         Require(counter.Count == 1, "Changes behind a busy host captured states the host could not take.");
         transport.Release.Set();
         await counter.SettleAsync(2);
-        Require(counter.Revisions.SequenceEqual([1, 100]),
-            $"The host did not receive the latest state once: {string.Join(", ", counter.Revisions)}.");
+        Require(counter.Count == 2 && transport.Values.SequenceEqual([1, 100]),
+            $"The host did not receive the latest state once: {string.Join(", ", transport.Values)}.");
     }
 
     // A state requested before a batch began is captured when the host can
@@ -248,6 +258,7 @@ internal sealed class SnapshotBatchTests
         using var transport = new HeldTransport();
         var counter = new CaptureCounter();
         using var bridge = new ProbeBridge(transport, model, "held", counter);
+        Read(transport, "held", counter);
 
         model.Value = 1;
         await transport.Entered.Task.WaitAsync(TimeSpan.FromSeconds(5));
@@ -257,13 +268,13 @@ internal sealed class SnapshotBatchTests
             model.Value = 3;
             transport.Release.Set();
             await Task.Delay(100);
-            Require(counter.Revisions.SequenceEqual([1]), "The delivery captured a half-applied batch.");
+            Require(counter.Count == 1 && transport.Values.SequenceEqual([1]), "The delivery captured a half-applied batch.");
             model.Value = 4;
         }
 
         await counter.SettleAsync(2);
-        Require(counter.Revisions.SequenceEqual([1, 4]),
-            $"The batch did not publish its final state once: {string.Join(", ", counter.Revisions)}.");
+        Require(counter.Count == 2 && transport.Values.SequenceEqual([1, 4]),
+            $"The batch did not publish its final state once: {string.Join(", ", transport.Values)}.");
     }
 
     private sealed class Model : INotifyPropertyChanged
@@ -284,6 +295,48 @@ internal sealed class SnapshotBatchTests
         public event PropertyChangedEventHandler? PropertyChanged;
     }
 
+    // Reads a route's state, as a client does before it applies frames, and returns its revision. The counter
+    // starts after the read.
+    private static long Read(IBridgeTransport transport, string route, CaptureCounter counter)
+    {
+        var snapshot = BridgeRequests.Json(writer =>
+        {
+            writer.WriteString("kind", "snapshot");
+            writer.WriteString("route", route);
+        });
+        var reply = transport switch
+        {
+            InMemoryBridgeTransport memory => memory.Send(snapshot),
+            PushTestTransport push => push.Request(snapshot),
+            _ => throw new ArgumentException("An unknown transport.", nameof(transport)),
+        };
+        counter.Count = 0;
+        using var document = JsonDocument.Parse(reply);
+        return document.RootElement.GetProperty("revision").GetInt64();
+    }
+
+    // The frames pushed on a route since the last call, with the value each sets.
+    private static List<Push> Frames(InMemoryBridgeTransport transport, string route) =>
+        [.. transport.TakePushes(route).Select(push =>
+        {
+            using (push) return Push.Parse(push.RootElement);
+        })];
+
+    private sealed record Push(long? BaseRevision, long Revision, int? Value)
+    {
+        internal static Push Parse(JsonElement root) => new(
+            root.TryGetProperty("baseRevision", out var baseRevision) ? baseRevision.GetInt64() : null,
+            root.GetProperty("revision").GetInt64(),
+            root.GetProperty("kind").GetString() switch
+            {
+                "state" => root.GetProperty("state").GetProperty("value").GetInt32(),
+                "frame" => root.GetProperty("changes").EnumerateArray()
+                    .Where(change => change.GetProperty("field").GetString() == "value")
+                    .Select(change => (int?)change.GetProperty("value").GetInt32()).FirstOrDefault(),
+                _ => null,
+            });
+    }
+
     // Delivery captures on its own thread.
     private sealed class CaptureCounter
     {
@@ -296,15 +349,9 @@ internal sealed class SnapshotBatchTests
             set { lock (_gate) _count = value; }
         }
 
-        public List<long> Revisions { get; } = [];
-
-        public void Capture(long revision)
+        public void Capture()
         {
-            lock (_gate)
-            {
-                _count++;
-                Revisions.Add(revision);
-            }
+            lock (_gate) _count++;
         }
 
         // Waits for the expected captures, then a little longer for any extra.
@@ -316,12 +363,17 @@ internal sealed class SnapshotBatchTests
         }
     }
 
-    private sealed class HeldTransport : LegacyTestTransport
+    // Holds the first push until released, as a busy host does, and records the value of each push.
+    private sealed class HeldTransport : PushTestTransport
     {
+        private readonly List<int> _values = [];
         public ManualResetEventSlim Release { get; } = new();
         public TaskCompletionSource Entered { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        protected override void Publish(string name, string stateJson)
+        public int[] Values { get { lock (_values) return [.. _values]; } }
+        protected override void OnBroadcast(string json)
         {
+            using (var push = JsonDocument.Parse(json))
+                if (Push.Parse(push.RootElement).Value is { } value) lock (_values) _values.Add(value);
             Entered.TrySetResult();
             Release.Wait(TimeSpan.FromSeconds(10));
         }
@@ -334,17 +386,16 @@ internal sealed class SnapshotBatchTests
     }
 
     private sealed class ProbeBridge(IBridgeTransport transport, Model model, string route, CaptureCounter counter)
-        : ViewModelBridge<Model>(transport, model, route, (writer, vm, revision, _) =>
+        : ViewModelBridge<Model>(transport, model, route, (writer, vm, _, _) =>
         {
-            counter.Capture(revision);
+            counter.Capture();
             writer.WriteStartObject();
-            writer.WriteNumber("revision", revision);
             writer.WriteNumber("value", vm.Value);
             writer.WriteEndObject();
         }, [], [], []);
 
     private sealed class ThrowingProbeBridge(IBridgeTransport transport, Model model)
-        : ViewModelBridge<Model>(transport, model, "throwing", (writer, vm, revision, _) =>
+        : ViewModelBridge<Model>(transport, model, "throwing", (writer, vm, _, _) =>
         {
             ObjectDisposedException.ThrowIf(vm.Value == 13, vm);
             writer.WriteStartObject();
@@ -354,11 +405,10 @@ internal sealed class SnapshotBatchTests
 
     private sealed class CheckedProbeBridge(IBridgeTransport transport, Model model,
         WindowContentSession content, CaptureCounter counter)
-        : ViewModelBridge<Model>(transport, model, "checked", (writer, vm, revision, writeFields) =>
+        : ViewModelBridge<Model>(transport, model, "checked", (writer, vm, _, writeFields) =>
         {
-            counter.Capture(revision);
+            counter.Capture();
             writer.WriteStartObject();
-            writer.WriteNumber("revision", revision);
             writer.WriteNumber("value", vm.Value);
             writeFields(writer);
             writer.WriteEndObject();

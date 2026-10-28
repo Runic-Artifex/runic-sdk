@@ -1,10 +1,10 @@
 import assert from "node:assert/strict";
-import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { join, relative, resolve } from "node:path";
 import test from "node:test";
 import { root } from "./run.mjs";
 
-// Views protocol 3 (specs/application/protocol-3.md): .NET answers a released View `released`.
+// Since Views protocol 3, .NET answers a released View `released`.
 // `disconnected` is client-only (the Bridge is not connected), so no .NET wire code sends it.
 const wirePackages = [
   "Runic.Application.Views",
@@ -36,9 +36,8 @@ test("no .NET Views, Desktop or CS-WebUI code sends the wire token disconnected"
   assert.deepEqual(offenders, []);
 });
 
-// While the protocol-4 integration branch is open, the specification is ahead of the
-// implementations: one may still speak protocol 3, which specs/application/protocol-3.md keeps.
-// Once both implementations name the specification's version, protocol-3.md can go.
+// The .NET producer and the npm client speak the specification's version; the engineering job fails when one of
+// them moves without the other.
 test("the .NET runtime, the npm runtime and the specification name one protocol version", () => {
   const dotnet = readFileSync(resolve(root, "packages/dotnet/Runic.Application.Views/Generated/BridgeRuntime.cs"), "utf8")
     .match(/public const int Version = (\d+);/)?.[1];
@@ -47,11 +46,6 @@ test("the .NET runtime, the npm runtime and the specification name one protocol 
   assert.ok(dotnet, "BridgeProtocol.Version not found");
   assert.ok(npm, "bridgeProtocol not found");
   assert.ok(spec, "the specification's version not found");
-  if (dotnet === spec && npm === spec) return;
-  // On the integration branch each implementation moves to the specification's version in its own pull request.
-  const retained = existsSync(resolve(root, "specs/application/protocol-3.md"))
-    ? readFileSync(resolve(root, "specs/application/protocol-3.md"), "utf8").match(/This is the protocol, version (\d+),/)?.[1] : undefined;
-  for (const [name, version] of [[".NET", dotnet], ["npm", npm]])
-    assert.ok(version === spec || version === retained, `the ${name} runtime speaks protocol ${version}, which no specification describes`);
-  assert.ok(Number(spec) > Number(retained));
+  assert.equal(dotnet, spec, "BridgeProtocol.Version differs from the specification's version");
+  assert.equal(npm, spec, "bridgeProtocol differs from the specification's version");
 });
