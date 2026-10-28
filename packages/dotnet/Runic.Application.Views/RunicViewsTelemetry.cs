@@ -85,12 +85,15 @@ internal static class BridgeTelemetry
         Failures.Add(1, new(KindTag, kind), new(ModelTag, model), new(MemberTag, member), new(ErrorTypeTag, ErrorType(error)));
     }
 
-    internal static void RecordFrame(string model, string frame, string payload, long startedTimestamp)
+    internal static void RecordFrame(string model, string frame, string payload, long startedTimestamp) =>
+        RecordFrame(model, frame, Encoding.UTF8.GetByteCount(payload), startedTimestamp);
+
+    internal static void RecordFrame(string model, string frame, int byteCount, long startedTimestamp)
     {
         var frameTag = new KeyValuePair<string, object?>(FrameTag, frame);
         var modelTag = new KeyValuePair<string, object?>(ModelTag, model);
         if (SnapshotFrames.Enabled) SnapshotFrames.Add(1, modelTag, frameTag);
-        if (SnapshotSize.Enabled) SnapshotSize.Record(Encoding.UTF8.GetByteCount(payload), modelTag, frameTag);
+        if (SnapshotSize.Enabled) SnapshotSize.Record(byteCount, modelTag, frameTag);
         if (DeliveryDuration.Enabled && startedTimestamp != 0)
             DeliveryDuration.Record(Stopwatch.GetElapsedTime(startedTimestamp).TotalSeconds, modelTag, frameTag);
     }

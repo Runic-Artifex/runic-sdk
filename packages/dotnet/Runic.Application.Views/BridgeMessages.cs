@@ -17,6 +17,19 @@ internal static class BridgeMessages
 
     internal static readonly ReadOnlyMemory<byte> Ok = """{"ok":true}"""u8.ToArray();
 
+    // The reply of a close request, or the failure of an open that registered nothing.
+    internal static ReadOnlyMemory<byte> Presentation(BridgePresentationOutcome outcome) => outcome switch
+    {
+        BridgePresentationOutcome.Ok => PresentationOk,
+        BridgePresentationOutcome.Ignored => PresentationIgnored,
+        BridgePresentationOutcome.Capacity => Rejected("capacity",
+            $"The connection already holds {BridgePresentationOwners.MaximumPerConnection} presentations of this route."),
+        _ => Released,
+    };
+
+    private static readonly ReadOnlyMemory<byte> PresentationOk = """{"ok":true,"presentation":"ok"}"""u8.ToArray();
+    private static readonly ReadOnlyMemory<byte> PresentationIgnored = """{"ok":true,"presentation":"ignored"}"""u8.ToArray();
+
     // {"ok":false,"error":{"kind","reason"?,"message"}}, with the hello members when the request was a hello.
     internal static byte[] Failure(string kind, string? reason, string message, bool hello = false) =>
         Write(writer =>

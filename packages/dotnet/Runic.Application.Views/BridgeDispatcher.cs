@@ -16,9 +16,7 @@ namespace Runic.Application.Views;
 // - the connection lifecycle: the transport reports closed connections, and the dispatcher releases their sessions and
 //   tells the window's observers (OnConnectionClosed).
 //
-// Every bridge of a window shares the dispatcher of the window's transport (For). Until the producer speaks protocol 4
-// itself, the protocol-3 named routes of the generated bridges live in Legacy, which only the in-memory test
-// transport of Runic.Application.Testing calls.
+// Every bridge of a window shares the dispatcher of the window's transport (For).
 internal sealed class BridgeDispatcher : IBridgeRequestHandler
 {
     internal const int ProtocolVersion = 4;
@@ -69,7 +67,7 @@ internal sealed class BridgeDispatcher : IBridgeRequestHandler
         }
     }
 
-    // The protocol-3 routes of the generated bridges, until they speak protocol 4.
+    // The protocol-3 routes the operation and interaction routers still bind (P5 removes them).
     internal BridgeLegacyRoutes Legacy { get; } = new();
 
     internal IBridgeTransport Transport => _transport;
@@ -101,6 +99,12 @@ internal sealed class BridgeDispatcher : IBridgeRequestHandler
                 throw new InvalidOperationException($"Route '{route}' is already served.");
         }
         return new RouteLease(this, route, handler);
+    }
+
+    // Whether a handler serves the route.
+    internal bool Serves(string route)
+    {
+        lock (_gate) return _routes.ContainsKey(route);
     }
 
     // Calls observer with the key of each connection that closes, until the lease is disposed.
@@ -409,6 +413,21 @@ internal sealed class BridgeConnection(string key, string clientKey)
     internal Queue<byte[]> Mailbox { get; } = new();
     internal long MailboxBytes { get; set; }
     internal TaskCompletionSource<byte[]?>? PendingReceive { get; set; }
+
+    // The highest edit number admitted per route and member (specs/application/README.md, "Edits").
+    private readonly Dictionary<(string Route, string Member), long> _edits = [];
+
+    // Admits a set request's edit number: true, and recorded, when it is higher than every edit admitted before for
+    // the route and member on this connection.
+    internal bool AdmitEdit(string route, string member, long edit)
+    {
+        lock (_edits)
+        {
+            if (_edits.TryGetValue((route, member), out var highest) && edit <= highest) return false;
+            _edits[(route, member)] = edit;
+            return true;
+        }
+    }
 }
 
 // A request routed to the handler of its route. The envelope is valid until the handler's task completes.
@@ -430,81 +449,20 @@ internal interface IBridgeRouteHandler
     ValueTask<ReadOnlyMemory<byte>> HandleAsync(BridgeRouteRequest request, CancellationToken cancellationToken);
 }
 
-// The protocol-3 named routes of the generated bridges and their state publications, kept inside the dispatcher until
-// the producer speaks protocol 4. Pages never reach them: only Runic.Application.Testing's in-memory transport calls
-// them and receives their publications.
+// What is left of the protocol-3 named routes: the operation and interaction routers of P5 still bind theirs, which
+// nothing calls any more. P5 removes those callers; then this class goes.
 internal sealed class BridgeLegacyRoutes
 {
-    private readonly object _gate = new();
-    private readonly Dictionary<string, Route> _routes = new(StringComparer.Ordinal);
-    private Func<string, ReadOnlyMemory<byte>, CancellationToken, ValueTask>? _publisher;
+#pragma warning disable CA1822 // Instance members keep the callers of P5 compiling until they are removed.
+    internal IDisposable Bind(string name, Func<IBridgeArguments, string> handler) => Nothing.Instance;
 
-    internal IDisposable Bind(string name, Func<IBridgeArguments, string> handler)
+    internal IDisposable BindAsync(string name, Func<IBridgeArguments, CancellationToken, ValueTask<string>> handler) =>
+        Nothing.Instance;
+#pragma warning restore CA1822
+
+    private sealed class Nothing : IDisposable
     {
-        ArgumentNullException.ThrowIfNull(handler);
-        return Add(name, new Route(this, name, handler, null));
-    }
-
-    internal IDisposable BindAsync(string name, Func<IBridgeArguments, CancellationToken, ValueTask<string>> handler)
-    {
-        ArgumentNullException.ThrowIfNull(handler);
-        return Add(name, new Route(this, name, null, handler));
-    }
-
-    internal IReadOnlyList<string> Names
-    {
-        get { lock (_gate) return [.. _routes.Keys.Order(StringComparer.Ordinal)]; }
-    }
-
-    internal bool TryFind(string name, out Func<IBridgeArguments, string>? sync,
-        out Func<IBridgeArguments, CancellationToken, ValueTask<string>>? asynchronous)
-    {
-        lock (_gate)
-        {
-            if (_routes.TryGetValue(name, out var route))
-            {
-                sync = route.Sync;
-                asynchronous = route.Async;
-                return true;
-            }
-        }
-        sync = null;
-        asynchronous = null;
-        return false;
-    }
-
-    // Receives the publications; without one they are dropped.
-    internal void SetPublisher(Func<string, ReadOnlyMemory<byte>, CancellationToken, ValueTask>? publisher)
-    {
-        lock (_gate) _publisher = publisher;
-    }
-
-    internal ValueTask PublishAsync(string route, ReadOnlyMemory<byte> stateUtf8, CancellationToken cancellationToken = default)
-    {
-        Func<string, ReadOnlyMemory<byte>, CancellationToken, ValueTask>? publisher;
-        lock (_gate) publisher = _publisher;
-        return publisher?.Invoke(route, stateUtf8, cancellationToken) ?? ValueTask.CompletedTask;
-    }
-
-    private Route Add(string name, Route route)
-    {
-        ArgumentException.ThrowIfNullOrWhiteSpace(name);
-        lock (_gate)
-            if (!_routes.TryAdd(name, route)) throw new InvalidOperationException($"Route '{name}' is already bound.");
-        return route;
-    }
-
-    private sealed class Route(BridgeLegacyRoutes owner, string name, Func<IBridgeArguments, string>? sync,
-        Func<IBridgeArguments, CancellationToken, ValueTask<string>>? asynchronous) : IDisposable
-    {
-        public Func<IBridgeArguments, string>? Sync { get; } = sync;
-        public Func<IBridgeArguments, CancellationToken, ValueTask<string>>? Async { get; } = asynchronous;
-
-        public void Dispose()
-        {
-            lock (owner._gate)
-                if (owner._routes.TryGetValue(name, out var current) && ReferenceEquals(current, this))
-                    owner._routes.Remove(name);
-        }
+        internal static readonly Nothing Instance = new();
+        public void Dispose() { }
     }
 }

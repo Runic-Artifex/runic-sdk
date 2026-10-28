@@ -108,13 +108,6 @@ public sealed class PropertyDescriptor<T>
         else if (_legacySetter is not null) BridgeLegacyArguments.Set(_legacySetter, vm, value);
         else throw new InvalidOperationException($"{Name} is read-only.");
     }
-
-    // Views protocol 3 routes; removed with the protocol-3 routes.
-    internal void Set(T vm, IBridgeArguments arguments)
-    {
-        if (_legacySetter is null) throw new InvalidOperationException($"{Name} has no protocol 3 setter.");
-        _legacySetter(vm, arguments);
-    }
 }
 
 // Runs a setter of the Views protocol 3 shape (IBridgeArguments) with a set request's value, until the generator emits
@@ -367,6 +360,8 @@ internal sealed record BridgeFailure(string Kind, string Message, BridgeFailureD
     internal const string Unavailable = "unavailable";
     internal const string InvalidInput = "invalid-input";
     internal const string UnresolvedKey = "unresolved-key";
+    // The request ran, but no state including its effects can be published (invalid keys).
+    internal const string StateWithheld = "state-withheld";
 
     internal static BridgeFailure KeyNotResolved(string command) =>
         new("rejected", $"{command} has no object for this key.", Reason: UnresolvedKey);
@@ -377,16 +372,16 @@ internal sealed record BridgeFailure(string Kind, string Message, BridgeFailureD
 public static class BridgeProtocol
 {
     /// <summary>
-    /// The protocol version reported as <c>protocol</c> in every snapshot-route reply.
-    /// A generated client accepts only a host of its own protocol version and fails to
-    /// connect to any other. Additive changes never change it.
+    /// The Views protocol version this producer implements, reported as <c>protocol</c> in every <c>hello</c> reply. A
+    /// page and a producer of different protocol versions do not connect. Additive changes never change it.
     /// </summary>
     /// <remarks>
-    /// Version 2 added the <c>domain-failed</c> reply error and operation status. Version 3
-    /// answers a released View <c>released</c> instead of <c>disconnected</c> and adds the
-    /// reply error <c>reason</c>.
+    /// Version 2 added the <c>domain-failed</c> reply error and operation status. Version 3 answers a released View
+    /// <c>released</c> instead of <c>disconnected</c> and adds the reply error <c>reason</c>. Version 4 is one message
+    /// channel with <c>hello</c>, frames with member <c>set</c> changes, replies by revision and edit numbers
+    /// (<c>specs/application/README.md</c>).
     /// </remarks>
-    public const int Version = 3;
+    public const int Version = 4;
 
     // The Runic.Application.Views package version, reported as "version" beside "protocol" so the browser runtime can
     // report an @runic-artifex/views package of another release (D02). Build metadata (+commit) is dropped.
@@ -459,6 +454,11 @@ internal interface IBridgeRegionSlots
 }
 
 /// <summary>Base class of generated bridges that expose one ViewModel over an <see cref="IBridgeTransport"/>.</summary>
+/// <remarks>
+/// A Bridge serves its route of the Views protocol 4 (specs/application/README.md): the requests in
+/// BridgeRuntime.Requests.cs, the publication of its state in BridgeRuntime.Publication.cs, and the operation and
+/// interaction requests in BridgeRuntime.Operations.cs.
+/// </remarks>
 [EditorBrowsable(EditorBrowsableState.Never)]
 public partial class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBridgeDetachmentSignal,
     IBridgeSnapshotBatchParticipant, IBridgeRegionSlots where T : INotifyPropertyChanged
@@ -467,7 +467,7 @@ public partial class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBr
     private readonly object _modelGate;
     private readonly BridgeSnapshotDelivery _delivery;
     private readonly BridgeModelTurn _modelTurn;
-    // The replies of commands, setters and checked writes follow the state frames they produced (I-183).
+    // The replies of commands, setters and checked writes follow the pushes their requests produced (I-183).
     private readonly BridgeReplyOrder _replyOrder;
     private IRunicModelContextLease? _modelContextLease;
     private readonly WindowContentSession? _content;
@@ -480,10 +480,18 @@ public partial class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBr
     private readonly string _name;
     private static readonly string ModelName = typeof(T).Name;
     private readonly Microsoft.Extensions.Logging.ILogger _logger;
-    private readonly BridgeSnapshotWriter<T> _writeSnapshot;
+    // The state writer: the members of a Bridge generated for Views protocol 4, or the protocol-3 snapshot writer.
+    private readonly BridgeStateMember<T>[]? _stateMembers;
+    private readonly BridgeSnapshotWriter<T>? _writeSnapshot;
     private readonly PropertyDescriptor<T>[] _properties;
     private readonly CheckedPropertyBinding[] _checkedProperties;
+    // Checked fields of a Bridge without a window, whose writes fail.
+    private readonly HashSet<string> _unownedCheckedFields = new(StringComparer.Ordinal);
     private readonly CommandDescriptor<T>[] _commands;
+    // Settable properties, checked fields and commands by wire name.
+    private readonly Dictionary<string, PropertyDescriptor<T>> _settable = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, CheckedPropertyBinding> _checkedByMember = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, CommandDescriptor<T>> _commandsByMember = new(StringComparer.Ordinal);
     private readonly ICommand[] _subscribedCommands;
     private readonly string? _contractFingerprint;
     private readonly IDisposable[] _bindings;
@@ -493,22 +501,14 @@ public partial class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBr
     private readonly Dictionary<string, (object Source, IDisposable Subscription)> _observed = new(StringComparer.Ordinal);
     private readonly BridgeCollectionDescriptor<T>[] _keyedCollections;
     private readonly BridgeCollectionDescriptor<T>[] _incrementalCollections;
-    // The keys of each frame-publishing collection as of the last full state and
-    // the frames since, so a change that adds a duplicate key fails at once.
-    private readonly Dictionary<BridgeCollectionDescriptor<T>, BridgeCollectionKeyBaseline> _collectionKeys = [];
-    // The keys a full state was last refused for, reported once until a state is captured.
-    private string? _rejectedKeys;
     private readonly HashSet<string> _generatedCollectionNames;
-    private readonly List<BridgeCollectionChange<T>> _pendingCollectionChanges = [];
-    private readonly Dictionary<BridgeCollectionDescriptor<T>, Dictionary<object, int>> _collectionIndexes = [];
-    // Append-only text: the value of each field as of the last state or frame
-    // the producer published, and the fields that changed since.
+    // Append-only text fields, which publish their appended text.
     private readonly PropertyDescriptor<T>[] _textFields;
-    private readonly Dictionary<PropertyDescriptor<T>, string?> _textBaselines = [];
-    private readonly List<PropertyDescriptor<T>> _pendingTexts = [];
-    private long _publishedRevision;
-    private bool _requiresSnapshot;
-    private long _revision;
+    // The wire names of the members whose changes are published as collection or text changes, not by comparison.
+    private readonly HashSet<string> _incrementalMembers = new(StringComparer.Ordinal);
+    // The presentations of a Bridge without a window.
+    private BridgePresentationOwners? _presentations;
+    private IDisposable? _routeLease;
     private bool _disposed;
     private int _detaching;
 
@@ -526,11 +526,12 @@ public partial class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBr
         BridgeInteractionDescriptor<T>[]? interactions = null,
         BridgeDataSubscriptionMember[]? dataSubscriptions = null,
         BridgeCollectionDescriptor<T>[]? collections = null)
-        : this(transport, vm, name, writeSnapshot, properties, checkedProperties,
-            commands, contractFingerprint, content, interactions, dataSubscriptions, collections, privateOverload: true)
+        : this(transport, vm, name, writeSnapshot ?? throw new ArgumentNullException(nameof(writeSnapshot)), null,
+            properties, checkedProperties, commands, contractFingerprint, content, interactions, dataSubscriptions, collections)
     {
     }
 
+#pragma warning disable RS0026 // Generated code passes every argument; the overloads differ in the state writer.
     /// <summary>Creates the Bridge of a ViewModel whose state is written member by member.</summary>
     /// <param name="transport">The window's transport.</param>
     /// <param name="vm">The ViewModel.</param>
@@ -544,7 +545,6 @@ public partial class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBr
     /// <param name="interactions">The View's interactions.</param>
     /// <param name="dataSubscriptions">The data graph the Bridge observes.</param>
     /// <param name="collections">The keyed collections.</param>
-#pragma warning disable RS0026 // Generated code passes every argument; the overloads differ in the state writer.
     protected ViewModelBridge(
         IBridgeTransport transport,
         T vm,
@@ -558,72 +558,18 @@ public partial class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBr
         BridgeInteractionDescriptor<T>[]? interactions = null,
         BridgeDataSubscriptionMember[]? dataSubscriptions = null,
         BridgeCollectionDescriptor<T>[]? collections = null)
-        : this(transport, vm, name, WriterOf(state), properties, checkedProperties,
-            commands, contractFingerprint, content, interactions, dataSubscriptions, collections, privateOverload: true)
+        : this(transport, vm, name, null, state ?? throw new ArgumentNullException(nameof(state)),
+            properties, checkedProperties, commands, contractFingerprint, content, interactions, dataSubscriptions, collections)
     {
-        _stateMembers = state;
     }
 #pragma warning restore RS0026
-
-    // Until the runtime writes states member by member, the members are written as one protocol-3 snapshot.
-    private static BridgeSnapshotWriter<T> WriterOf(BridgeStateMember<T>[] state)
-    {
-        ArgumentNullException.ThrowIfNull(state);
-        return (writer, vm, revision, writeFieldMetadata) =>
-        {
-            writer.WriteStartObject();
-            writer.WriteNumber("revision", revision);
-            foreach (var member in state)
-            {
-                writer.WritePropertyName(member.Name);
-                member.Write(writer, vm);
-            }
-            writeFieldMetadata(writer);
-            writer.WriteEndObject();
-        };
-    }
-
-    // The state members of a Bridge generated for Views protocol 4, or null for the protocol-3 snapshot writer.
-    private readonly BridgeStateMember<T>[]? _stateMembers;
-
-    // Seam (P4 -> P5), implemented in BridgeRuntime.Operations.cs: the operation and interaction requests of the route.
-    private partial ValueTask<ReadOnlyMemory<byte>> HandleOperationAsync(BridgeRouteRequest request, CancellationToken cancellationToken);
-
-    // Seam (P4 -> P5), implemented in BridgeRuntime.Operations.cs: registers the handlers of an open as generation 0,
-    // after the presentation was opened; returns the open reply's registration, or null for none.
-    private partial string? RegisterOpenHandlers(string presentation, BridgeConnection connection, JsonElement handlers);
-
-    /// <summary>Seam (P4 -> P5): publishes everything pending on the route for a reply and returns its revision.</summary>
-    /// <remarks>
-    /// Call it inside the model turn of the request's effects. It compares every member with the state last published
-    /// on the route and publishes the differences, so every state or frame at the returned revision or later includes
-    /// the effects. Returns <see langword="null"/> when the route was released or its state is withheld (invalid keys).
-    /// </remarks>
-    internal long? PublishForReply()
-    {
-        lock (_modelGate) return IsInactive ? null : _revision;
-    }
-
-    // Seam (P4 -> P5): PublishForReply in a model turn, then waits until the window's pushes requested so far were
-    // handed to the transport (bounded by BridgeReplyOrder.ReplyWaitLimit).
-    internal async ValueTask<long?> ReplyRevisionAsync(CancellationToken cancellationToken)
-    {
-        long? revision;
-        try { revision = _modelTurn.Run(PublishForReply); }
-        catch (ObjectDisposedException) { return null; }
-        if (_replyOrder.WhenPublished() is { } published)
-        {
-            try { await published.WaitAsync(BridgeReplyOrder.ReplyWaitLimit, cancellationToken).ConfigureAwait(false); }
-            catch (TimeoutException) { }
-        }
-        return revision;
-    }
 
     private ViewModelBridge(
         IBridgeTransport transport,
         T vm,
         string name,
-        BridgeSnapshotWriter<T> writeSnapshot,
+        BridgeSnapshotWriter<T>? writeSnapshot,
+        BridgeStateMember<T>[]? state,
         PropertyDescriptor<T>[] properties,
         CheckedPropertyDescriptor<T>[] checkedProperties,
         CommandDescriptor<T>[] commands,
@@ -631,10 +577,12 @@ public partial class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBr
         WindowContentSession? content,
         BridgeInteractionDescriptor<T>[]? interactions,
         BridgeDataSubscriptionMember[]? dataSubscriptions,
-        BridgeCollectionDescriptor<T>[]? collections,
-        bool privateOverload)
+        BridgeCollectionDescriptor<T>[]? collections)
     {
-        _ = privateOverload;
+        ArgumentNullException.ThrowIfNull(transport);
+        ArgumentNullException.ThrowIfNull(properties);
+        ArgumentNullException.ThrowIfNull(checkedProperties);
+        ArgumentNullException.ThrowIfNull(commands);
         _transport = transport;
         _vm = vm;
         _modelGate = BridgeModelGates.For(vm);
@@ -643,54 +591,57 @@ public partial class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBr
         _modelContextLease = content?.BindBridgeModel(vm);
         _modelTurn = BridgeModelTurn.For(vm);
         _content = content;
-        // A window can detach a content route and attach a new bridge to the
-        // same route while a browser still holds the former state. Drawing
-        // revisions from the window keeps that route's order monotonic.
-        _revision = content?.NextRevision() ?? 0;
+        // The route's first state takes the window's current revision; it is not a published change. A released
+        // bridge advances the window's counter (Dispose), so a new bridge of the same route starts above every
+        // revision its predecessor published.
+        _revision = content?.CurrentRevision ?? 0;
         _publishedRevision = _revision;
         _keyedCollections = collections ?? [];
         _incrementalCollections = [.. _keyedCollections.Where(descriptor => descriptor.PublishesChanges)];
         _generatedCollectionNames = dataSubscriptions?.Where(member => member.EnumerateChildren is not null)
             .Select(member => member.PropertyName).ToHashSet(StringComparer.Ordinal) ?? [];
         _logger = content?.Logger ?? TraceFallbackLogger.Instance;
-        _delivery = new(transport, name, _modelTurn, CaptureRequestedState, ModelName, _logger);
+        _delivery = new(transport, name, _modelTurn, CaptureRequestedState, RunRequestedUnit, ModelName, _logger);
         _replyOrder = BridgeReplyOrder.For(transport);
         _name = name;
-        _writeSnapshot = writeSnapshot ?? throw new ArgumentNullException(nameof(writeSnapshot));
+        _writeSnapshot = writeSnapshot;
+        _stateMembers = state;
         _properties = properties;
         _textFields = [.. properties.Where(property => property.AppendOnlyTextField is not null)];
         _checkedProperties = [];
         _commands = commands;
         _contractFingerprint = contractFingerprint;
         _errors = vm as INotifyDataErrorInfo;
+        foreach (var descriptor in _incrementalCollections) _incrementalMembers.Add(descriptor.Name);
+        foreach (var field in _textFields) _incrementalMembers.Add(field.AppendOnlyTextField!);
+
+        // The wire names of descriptors of the protocol-3 shape come from the data metadata.
+        var wireNames = new Dictionary<string, string>(StringComparer.Ordinal);
+        if (dataSubscriptions is not null)
+            foreach (var member in dataSubscriptions) wireNames.TryAdd(member.PropertyName, member.Name);
+        foreach (var property in properties.Where(property => property.CanWrite))
+            _settable[property.WireName ?? wireNames.GetValueOrDefault(property.Name) ?? LowerFirst(property.Name)] = property;
+        foreach (var command in commands) _commandsByMember[command.Member] = command;
 
         var bindings = new List<IDisposable>();
         var subscribedCommands = new List<ICommand>();
-        // The protocol-3 named routes, kept by the window's dispatcher until the producer speaks protocol 4.
-        var routes = BridgeDispatcher.For(transport).Legacy;
         try
         {
             if (content is not null && interactions is not null)
                 foreach (var interaction in interactions) bindings.Add(interaction.Attach(content, vm, name));
             if (dataSubscriptions is { Length: > 0 })
-                bindings.Add(new BridgeDataSubscriptions(vm, dataSubscriptions, Publish, TryPublishCollection, TryPublishItem,
+                bindings.Add(new BridgeDataSubscriptions(vm, dataSubscriptions, OnNestedChanged, TryPublishCollection, TryPublishItem,
                     rootObservedExternally: true, incrementalCollectionNames: _incrementalCollections.Select(descriptor => descriptor.Name).ToHashSet(StringComparer.Ordinal)));
             // Register the per-window observer before this Bridge subscribes
-            // its snapshot publisher. A synchronous setter then advances the
-            // field version before any emitted state can describe the value.
+            // its publisher. A synchronous setter then advances the
+            // field version before any published state can describe the value.
             if (checkedProperties.Length > 0)
             {
                 if (content is null)
                 {
-                    // Preserve the long-standing direct Bridge path. It has
-                    // no window owner, so it may use Set<Property> but cannot
-                    // promise checked-write baselines or receipt retention.
-                    foreach (var descriptor in checkedProperties)
-                    {
-                        var captured = descriptor;
-                        bindings.Add(routes.Bind($"{name}Write{captured.Name}", _ =>
-                            EncodeTerminal(new("failed", "Acknowledged field writes require a WindowContentSession."))));
-                    }
+                    // A Bridge without a window may set the property but cannot promise checked-write baselines or
+                    // receipt retention: its writes fail.
+                    foreach (var descriptor in checkedProperties) _unownedCheckedFields.Add(descriptor.WireName);
                 }
                 else
                 {
@@ -708,13 +659,14 @@ public partial class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBr
                             canonicalize: value => EncodeCheckedValue(value, descriptor),
                             retainedValueByteCount: value => BridgeCanonicalJson.Length(WriteCheckedValue, (value, descriptor)));
                         bindings.Add(field.Lease);
-                        checkedBindings.Add(new CheckedPropertyBinding(descriptor, field.Registry));
+                        var binding = new CheckedPropertyBinding(descriptor, field.Registry);
+                        checkedBindings.Add(binding);
+                        _checkedByMember[descriptor.WireName] = binding;
                     }
                     _checkedProperties = [.. checkedBindings];
                 }
             }
-            // A client's first state, a snapshot reply, has these values at the initial revision.
-            foreach (var field in _textFields) _textBaselines[field] = field.Get(_vm) as string;
+            foreach (var descriptor in _incrementalCollections) _collectionInstances[descriptor] = descriptor.Get(_vm);
             _vm.PropertyChanged += OnChanged;
             RefreshCollectionSubscriptions();
             RefreshObservedSubObjects();
@@ -727,48 +679,18 @@ public partial class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBr
                     nativeCommand.CanExecuteChanged += OnCanExecuteChanged;
                     subscribedCommands.Add(nativeCommand);
                 }
-                if (command.Subscribe is { } subscribe) bindings.Add(subscribe(_vm, Publish));
+                if (command.Subscribe is { } subscribe) bindings.Add(subscribe(_vm, ScheduleUnit));
                 if (command.ObserveFailures is { } observeFailures) bindings.Add(observeFailures(_vm, _logger));
-            }
-
-            bindings.Add(routes.Bind($"{name}Snapshot", _ => _modelTurn.Run(Reply)));
-            foreach (var property in properties.Where(property => property.CanWrite))
-            {
-                var captured = property;
-                bindings.Add(routes.Bind($"{name}Set{property.Name}", e => AfterPublished(_modelTurn.Run(() => Set(captured, e)))));
-            }
-            foreach (var property in _checkedProperties)
-            {
-                var captured = property;
-                bindings.Add(routes.Bind($"{name}Write{captured.Descriptor.Name}", e => AfterPublished(_modelTurn.Run(() => Write(captured, e)))));
-            }
-            foreach (var command in commands)
-            {
-                var captured = command;
-                // An asynchronous key resolver makes every route of the command asynchronous; the wire is the same.
-                var resolvesAsync = command.ResolveArgumentAsync is not null;
-                bindings.Add(command.ExecuteAsync is null && command.ExecuteResultAsync is null && command.ExecuteStreamAsync is null && !resolvesAsync
-                    ? routes.Bind($"{name}{command.Name}", e => AfterPublished(_modelTurn.Run(() => Execute(captured, e))))
-                    : routes.BindAsync($"{name}{command.Name}", (e, token) => ExecuteAsync(captured, e, token)));
-                // The familiar awaited command route stays the default. A
-                // asynchronous descriptor gains an internal
-                // admission route only when it is attached to a window-owned
-                // content session with a generated contract fingerprint.
-                if (content is not null && contractFingerprint is not null
-                    && (captured.ExecuteAsync is not null || captured.ExecuteResultAsync is not null || captured.ExecuteStreamAsync is not null))
-                    bindings.Add(resolvesAsync
-                        ? routes.BindAsync($"{name}Start{captured.Name}", (e, token) => StartOperationAsync(content, captured, e, token))
-                        : routes.Bind($"{name}Start{captured.Name}", e => _modelTurn.Run(() => StartOperation(content, captured, e))));
-                bindings.Add(resolvesAsync
-                    ? routes.BindAsync($"{name}Can{command.Name}", (e, token) => QueryAvailabilityAsync(captured, e, token))
-                    : routes.Bind($"{name}Can{command.Name}", e => _modelTurn.Run(() => QueryAvailability(captured, e))));
             }
             _bindings = [.. bindings];
             _subscribedCommands = [.. subscribedCommands];
+            // Last: requests can arrive as soon as the route is served.
+            _routeLease = BridgeDispatcher.For(transport).RegisterRoute(name, new RouteHandler(this));
             RunicViewsHotReload.Track(this);
         }
         catch
         {
+            _routeLease?.Dispose();
             foreach (var binding in bindings) binding.Dispose();
             ReleaseObservedSubObjects();
             _vm.PropertyChanged -= OnChanged;
@@ -776,988 +698,59 @@ public partial class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBr
             _collections.Clear();
             if (_errors is not null) _errors.ErrorsChanged -= OnErrorsChanged;
             foreach (var command in subscribedCommands) command.CanExecuteChanged -= OnCanExecuteChanged;
+            _delivery.Dispose();
             _modelContextLease?.Dispose();
             throw;
         }
     }
 
-    // A synchronous route's reply, once the frames its call produced were published.
-    private string AfterPublished(string reply) => _replyOrder.AfterPublished(reply, _modelTurn.IsCurrent);
+    private static string LowerFirst(string name) => name.Length == 0 ? name : char.ToLowerInvariant(name[0]) + name[1..];
 
-    private string Reply()
-    {
-        // Every snapshot reply states the protocol, including the one of a released bridge.
-        lock (_modelGate) return IsInactive
-            ? EncodeReleased(error: null, protocol: true)
-            : Encode(protocol: true);
-    }
+    // Seam (P4 -> P5), implemented in BridgeRuntime.Operations.cs: the operation and interaction requests of the route.
+    private partial ValueTask<ReadOnlyMemory<byte>> HandleOperationAsync(BridgeRouteRequest request, CancellationToken cancellationToken);
 
-    private string Set(PropertyDescriptor<T> property, IBridgeArguments e)
-    {
-        lock (_modelGate)
-        {
-            if (IsInactive) return EncodeWithoutSnapshot(new(BridgeFailure.Released, "The Bridge is closed."));
-            var call = BridgeCall.Start(BridgeCallKind.Set, ModelName, _name, property.Name);
-            try
-            {
-                property.Set(_vm, (IBridgeArguments)new BoundedBridgeArguments(e, MaximumInputBytes));
-                var reply = EncodeTerminal();
-                call.Complete(BridgeCallOutcome.Ok);
-                return reply;
-            }
-            catch (Exception error) when (error is ArgumentException or FormatException or JsonException or OverflowException)
-            {
-                call.Complete(BridgeCallOutcome.Rejected);
-                return EncodeTerminal(new("rejected", $"{property.Name} has an invalid value.", BridgeFailureDetails.Capture(error, IncludesFailureDetail), Reason: BridgeFailure.InvalidInput));
-            }
-            catch (Exception error)
-            {
-                call.Complete(BridgeCallOutcome.Failed, error);
-                ViewsLog.SetterFailed(_logger, error, ModelName, property.Name, _name, BridgeTelemetry.ErrorType(error));
-                return EncodeTerminal(new("failed", $"Could not update {property.Name}.", BridgeFailureDetails.Capture(error, IncludesFailureDetail)));
-            }
-        }
-    }
+    // Seam (P4 -> P5), implemented in BridgeRuntime.Operations.cs: registers the handlers of an open as generation 0,
+    // after the presentation was opened; returns the open reply's registration, or null for none.
+    private partial string? RegisterOpenHandlers(string presentation, BridgeConnection connection, JsonElement handlers);
 
-    private string Write(CheckedPropertyBinding property, IBridgeArguments arguments)
-    {
-        lock (_modelGate)
-        {
-            if (IsInactive) return EncodeWithoutSnapshot(new(BridgeFailure.Released, "The Bridge is closed."));
-            var call = BridgeCall.Start(BridgeCallKind.Write, ModelName, _name, property.Descriptor.Name);
-            BridgeFieldWriteRequest<object?> request;
-            try
-            {
-                var payload = arguments.GetString();
-                if (!BridgeInputLimit.Fits(payload, MaximumInputBytes))
-                    throw new FormatException("The checked write payload is too large.");
-                using var document = JsonDocument.Parse(payload);
-                var root = document.RootElement;
-                if (root.ValueKind != JsonValueKind.Object)
-                    throw new FormatException("Expected a field write object.");
-                var requestId = root.GetProperty("requestId").GetString();
-                if (string.IsNullOrWhiteSpace(requestId) || requestId.Length > MaximumFieldWriteRequestIdLength)
-                    throw new FormatException("A field write requestId is required.");
-                if (!root.GetProperty("expectedVersion").TryGetInt64(out var expectedVersion)
-                    || expectedVersion < 0)
-                    throw new FormatException("A non-negative field version is required.");
-                var expectedValue = ReadCheckedValue(root.GetProperty("expectedValue"), property.Descriptor);
-                var value = ReadCheckedValue(root.GetProperty("value"), property.Descriptor);
-                request = new BridgeFieldWriteRequest<object?>(requestId, expectedVersion, expectedValue, value);
-            }
-            catch (Exception error) when (error is ArgumentException or FormatException or JsonException or InvalidOperationException or KeyNotFoundException or OverflowException)
-            {
-                call.Complete(BridgeCallOutcome.Rejected);
-                return EncodeTerminal(new("rejected", $"{property.Descriptor.Name} has an invalid checked write.", BridgeFailureDetails.Capture(error, IncludesFailureDetail), Reason: BridgeFailure.InvalidInput));
-            }
-
-            try
-            {
-                var receipt = property.Registry.Apply(request);
-                var reply = EncodeFieldWrite(receipt, property);
-                call.Complete(BridgeCallOutcome.Ok);
-                return reply;
-            }
-            catch (Exception error)
-            {
-                call.Complete(BridgeCallOutcome.Failed, error);
-                ViewsLog.FieldWriteFailed(_logger, error, ModelName, property.Descriptor.Name, _name, BridgeTelemetry.ErrorType(error));
-                return EncodeTerminal(new("failed", $"Could not update {property.Descriptor.Name}.", BridgeFailureDetails.Capture(error, IncludesFailureDetail)));
-            }
-        }
-    }
-
-    private static object? ReadCheckedValue(JsonElement value, CheckedPropertyDescriptor<T> descriptor) => descriptor.ValueKind switch
-    {
-        CheckedFieldValueKind.String when value.ValueKind is JsonValueKind.String => value.GetString(),
-        CheckedFieldValueKind.NullableString when value.ValueKind is JsonValueKind.String => value.GetString(),
-        CheckedFieldValueKind.NullableString when value.ValueKind is JsonValueKind.Null => null,
-        CheckedFieldValueKind.Int32 when value.ValueKind is JsonValueKind.Number && value.TryGetInt32(out var integer) => integer,
-        CheckedFieldValueKind.Boolean when value.ValueKind is JsonValueKind.True => true,
-        CheckedFieldValueKind.Boolean when value.ValueKind is JsonValueKind.False => false,
-        CheckedFieldValueKind.Json => descriptor.Read!(value),
-        _ => throw new FormatException("The checked field value does not match its generated type."),
-    };
-
-    private static string EncodeCheckedValue(object? value, CheckedPropertyDescriptor<T> descriptor) =>
-        BridgeCanonicalJson.Encode(WriteCheckedValue, (value, descriptor));
-
-    private static void WriteCheckedValue(Utf8JsonWriter writer, (object? Value, CheckedPropertyDescriptor<T> Descriptor) checkedValue) =>
-        WriteCheckedValue(writer, checkedValue.Value, checkedValue.Descriptor);
-
-    private static void WriteCheckedValue(Utf8JsonWriter writer, object? value, CheckedPropertyDescriptor<T> descriptor)
-    {
-        switch (descriptor.ValueKind)
-        {
-            case CheckedFieldValueKind.String:
-                writer.WriteStringValue((string)value!);
-                return;
-            case CheckedFieldValueKind.NullableString:
-                if (value is null) writer.WriteNullValue();
-                else writer.WriteStringValue((string)value);
-                return;
-            case CheckedFieldValueKind.Int32:
-                writer.WriteNumberValue((int)value!);
-                return;
-            case CheckedFieldValueKind.Boolean:
-                writer.WriteBooleanValue((bool)value!);
-                return;
-            case CheckedFieldValueKind.Json:
-                descriptor.Write!(writer, value);
-                return;
-            default:
-                throw new InvalidOperationException("The checked field type is unsupported.");
-        }
-    }
-
-    private string Execute(CommandDescriptor<T> descriptor, IBridgeArguments arguments)
-    {
-        lock (_modelGate)
-        {
-            if (IsInactive) return EncodeWithoutSnapshot(new(BridgeFailure.Released, "The Bridge is closed."));
-            var call = BridgeCall.Start(BridgeCallKind.Command, ModelName, _name, descriptor.Name);
-            try
-            {
-                if (!TryResolve(descriptor, ReadArgument(descriptor, arguments), out var argument))
-                {
-                    call.Complete(BridgeCallOutcome.Rejected);
-                    return EncodeTerminal(BridgeFailure.KeyNotResolved(descriptor.Name));
-                }
-                var command = descriptor.Get(_vm);
-                if (!IsAvailable(descriptor, argument))
-                {
-                    call.Complete(BridgeCallOutcome.Rejected);
-                    return EncodeTerminal(new("rejected", $"{descriptor.Name} is unavailable.", Reason: BridgeFailure.Unavailable));
-                }
-                using var invocation = EnterInvocation(descriptor, arguments, CancellationToken.None);
-                ((ICommand)command).Execute(argument);
-                var reply = EncodeTerminal();
-                call.Complete(BridgeCallOutcome.Ok);
-                return reply;
-            }
-            catch (Exception error) when (BridgeDomainFailures.Find(error) is { } domain)
-            {
-                return EncodeTerminal(CommandDomainFailure(ref call, descriptor, domain));
-            }
-            catch (OperationCanceledException)
-            {
-                call.Complete(BridgeCallOutcome.Cancelled);
-                return EncodeTerminal(new("cancelled", $"{descriptor.Name} was cancelled."));
-            }
-            catch (Exception error) when (error is ArgumentException or FormatException or JsonException)
-            {
-                call.Complete(BridgeCallOutcome.Rejected);
-                return EncodeTerminal(new("rejected", $"{descriptor.Name} has an invalid argument.", BridgeFailureDetails.Capture(error, IncludesFailureDetail), Reason: BridgeFailure.InvalidInput));
-            }
-            catch (Exception error)
-            {
-                call.Complete(BridgeCallOutcome.Failed, error);
-                ViewsLog.CommandFailed(_logger, error, ModelName, descriptor.Name, _name, BridgeTelemetry.ErrorType(error));
-                return EncodeTerminal(new("failed", $"{descriptor.Name} failed.", BridgeFailureDetails.Capture(error, IncludesFailureDetail)));
-            }
-        }
-    }
-
-    // The awaited route's reply, once the frames the command produced were published.
-    private async ValueTask<string> ExecuteAsync(CommandDescriptor<T> descriptor, IBridgeArguments arguments, CancellationToken token) =>
-        await _replyOrder.AfterPublishedAsync(await ExecuteCoreAsync(descriptor, arguments, token).ConfigureAwait(false), token)
-            .ConfigureAwait(false);
-
-    private async ValueTask<string> ExecuteCoreAsync(CommandDescriptor<T> descriptor, IBridgeArguments arguments, CancellationToken token)
-    {
-        // The awaited route is window work like an admitted operation: closing
-        // the window waits for it before the host disposes its scope, and
-        // cancels it after the close timeout.
-        var atCapacity = false;
-        using var admission = _content is null ? null : _content.Operations.TryBeginAwaited(token, out atCapacity);
-        if (atCapacity)
-        {
-            var refused = BridgeCall.Start(BridgeCallKind.Command, ModelName, _name, descriptor.Name);
-            refused.Complete(BridgeCallOutcome.Rejected);
-            return ReplyAfterCommand(() => IsInactive
-                ? EncodeWithoutSnapshot(new(BridgeFailure.Released, "The Bridge is closed."))
-                : EncodeTerminal(new("rejected",
-                    $"{descriptor.Name} was not run: the window is already running {BridgeOperationRegistry.MaximumAwaitedExecutions} awaited commands.")));
-        }
-        if (_content is not null && admission is null)
-            return EncodeWithoutSnapshot(new(BridgeFailure.Released, "The window is closing."));
-        var cancellation = admission?.Token ?? token;
-        Task<BridgeOperationResult>? execution = null;
-        Task<object?>? resolution = null;
-        var call = BridgeCall.Start(BridgeCallKind.Command, ModelName, _name, descriptor.Name);
-        try
-        {
-            var rejected = BridgeCallOutcome.Released;
-            var rejection = _modelTurn.Run(() =>
-            {
-                if (IsInactive) return EncodeWithoutSnapshot(new(BridgeFailure.Released, "The Bridge is closed."));
-                var key = ReadArgument(descriptor, arguments);
-                rejected = BridgeCallOutcome.Rejected;
-                // An asynchronous resolver starts in this turn; the command is admitted in the next.
-                if (descriptor.ResolveArgumentAsync is { } resolveAsync)
-                {
-                    resolution = resolveAsync(_vm, key, cancellation).AsTask();
-                    return null;
-                }
-                return TryResolve(descriptor, key, out var argument) ? Begin(argument)
-                    : EncodeTerminal(BridgeFailure.KeyNotResolved(descriptor.Name));
-            });
-            if (rejection is null && resolution is not null)
-            {
-                var resolved = await resolution.ConfigureAwait(false);
-                rejected = BridgeCallOutcome.Released;
-                rejection = _modelTurn.Run(() =>
-                {
-                    if (IsInactive) return EncodeWithoutSnapshot(new(BridgeFailure.Released, "The Bridge is closed."));
-                    rejected = BridgeCallOutcome.Rejected;
-                    return resolved is null ? EncodeTerminal(BridgeFailure.KeyNotResolved(descriptor.Name)) : Begin(resolved);
-                });
-            }
-            if (rejection is not null)
-            {
-                call.Complete(rejected);
-                return rejection;
-            }
-            await execution!.ConfigureAwait(false);
-            call.Complete(BridgeCallOutcome.Ok);
-            return ReplyAfterCommand(() => EncodeTerminal());
-        }
-        catch (Exception error) when (BridgeDomainFailures.Find(error) is { } domain)
-        {
-            var failure = CommandDomainFailure(ref call, descriptor, domain);
-            return ReplyAfterCommand(() => EncodeTerminal(failure));
-        }
-        catch (OperationCanceledException)
-        {
-            call.Complete(BridgeCallOutcome.Cancelled);
-            return ReplyAfterCommand(() => EncodeTerminal(new("cancelled", $"{descriptor.Name} was cancelled.")));
-        }
-        catch (Exception error) when (error is ArgumentException or FormatException or JsonException)
-        {
-            call.Complete(BridgeCallOutcome.Rejected);
-            var detail = BridgeFailureDetails.Capture(error, IncludesFailureDetail);
-            return ReplyAfterCommand(() => EncodeTerminal(new("rejected", $"{descriptor.Name} has an invalid argument.", detail, Reason: BridgeFailure.InvalidInput)));
-        }
-        catch (Exception error)
-        {
-            call.Complete(BridgeCallOutcome.Failed, error);
-            ViewsLog.CommandFailed(_logger, error, ModelName, descriptor.Name, _name, BridgeTelemetry.ErrorType(error));
-            var detail = BridgeFailureDetails.Capture(error, IncludesFailureDetail);
-            return ReplyAfterCommand(() => EncodeTerminal(new("failed", $"{descriptor.Name} failed.", detail)));
-        }
-
-        // In a model turn: checks availability with the command's parameter and starts the command.
-        string? Begin(object? argument)
-        {
-            if (!IsAvailable(descriptor, argument))
-                return EncodeTerminal(new("rejected", $"{descriptor.Name} is unavailable.", Reason: BridgeFailure.Unavailable));
-            using var invocation = EnterInvocation(descriptor, arguments, cancellation);
-            execution = InvokeCommandAsync(descriptor, argument, cancellation);
-            return null;
-        }
-    }
-
-    // A declared failure is an expected outcome: a Debug log with the exception
-    // (D-12) and no failure metric. One that cannot be sent as declared falls
-    // back to the failed reply and is logged as an error.
-    private BridgeFailure CommandDomainFailure(ref BridgeCall call, CommandDescriptor<T> descriptor, RunicFailureException domain)
-    {
-        var failureType = BridgeDomainFailures.TypeName(domain);
-        var encoded = BridgeDomainFailures.TryEncode(descriptor.EncodeFailure, domain, out var reason, out var logged);
-        if (encoded is not null)
-        {
-            call.Complete(BridgeCallOutcome.DomainFailed);
-            ViewsLog.CommandDomainFailed(_logger, domain, ModelName, descriptor.Name, _name, failureType);
-            return new(BridgeFailure.DomainFailed, $"{descriptor.Name} failed.", Failure: encoded);
-        }
-        call.Complete(BridgeCallOutcome.Failed, domain);
-        ViewsLog.DomainFailureNotEncoded(_logger, logged, ModelName, descriptor.Name, _name, failureType, reason);
-        return new("failed", $"{descriptor.Name} failed.", BridgeFailureDetails.Capture(domain, IncludesFailureDetail));
-    }
-
-    // The model context can be gone when an awaited command completes after
-    // its window was finalized. There is no state left to capture.
-    private string ReplyAfterCommand(Func<string> encode)
-    {
-        try { return _modelTurn.Run(encode); }
-        catch (ObjectDisposedException)
-        { return EncodeWithoutSnapshot(new(BridgeFailure.Released, "The window closed before the command replied.")); }
-    }
-
-    private IDisposable? EnterInvocation(CommandDescriptor<T> descriptor, IBridgeArguments arguments, CancellationToken token) =>
-        _content is null ? null : RunicInteractionInvocation.Enter(_content, _name, arguments, descriptor.Name, token);
-
-    private bool IsAvailable(CommandDescriptor<T> descriptor, object? argument) =>
-        descriptor.CanExecute?.Invoke(_vm, argument)
-        ?? (descriptor.Get(_vm) is ICommand command && command.CanExecute(argument));
-
-    // The command's parameter for a decoded argument: the argument itself, or the object a synchronous key
-    // resolver returns for it. False when the key names no object.
-    private bool TryResolve(CommandDescriptor<T> descriptor, object? key, out object? argument)
-    {
-        if (descriptor.ResolveArgument is not { } resolve)
-        {
-            argument = key;
-            return true;
-        }
-        argument = resolve(_vm, key);
-        return argument is not null;
-    }
-
-    private string QueryAvailability(CommandDescriptor<T> descriptor, IBridgeArguments arguments)
-    {
-        lock (_modelGate)
-        {
-            if (IsInactive) return "false";
-            try { return TryResolve(descriptor, ReadArgument(descriptor, arguments), out var argument) && IsAvailable(descriptor, argument) ? "true" : "false"; }
-            catch (Exception error) when (error is ArgumentException or FormatException or JsonException or InvalidOperationException)
-            { return "false"; }
-        }
-    }
-
-    // can<Command>(key) of a command with an asynchronous key resolver: an unresolved key, a closing window and a
-    // cancelled resolution answer false. The resolution is awaited window work, as an awaited command is.
-    private async ValueTask<string> QueryAvailabilityAsync(CommandDescriptor<T> descriptor, IBridgeArguments arguments, CancellationToken token)
-    {
-        using var admission = _content?.Operations.TryBeginAwaited(token, out _);
-        if (_content is not null && admission is null) return "false";
-        try
-        {
-            Task<object?>? resolution = null;
-            var inactive = _modelTurn.Run(() =>
-            {
-                if (IsInactive) return true;
-                resolution = descriptor.ResolveArgumentAsync!(_vm, ReadArgument(descriptor, arguments), admission?.Token ?? token).AsTask();
-                return false;
-            });
-            if (inactive) return "false";
-            var resolved = await resolution!.ConfigureAwait(false);
-            return _modelTurn.Run(() => !IsInactive && resolved is not null && IsAvailable(descriptor, resolved)) ? "true" : "false";
-        }
-        catch (Exception error) when (error is ArgumentException or FormatException or JsonException or InvalidOperationException
-            or OperationCanceledException or ObjectDisposedException)
-        { return "false"; }
-    }
-
-    private async Task<BridgeOperationResult> InvokeCommandAsync(CommandDescriptor<T> descriptor, object? argument, CancellationToken token)
-    {
-        if (descriptor.ExecuteStreamAsync is { } executeStream)
-            return await executeStream(_vm, new BridgeOperationExecution(descriptor.CreateStream!()), token, argument).ConfigureAwait(false);
-        if (descriptor.ExecuteResultAsync is { } executeResult)
-            return await executeResult(_vm, token, argument).ConfigureAwait(false);
-        // A synchronous command reaches the awaited route only through an asynchronous key resolver.
-        if (descriptor.ExecuteAsync is null)
-        {
-            ((ICommand)descriptor.Get(_vm)).Execute(argument);
-            return BridgeOperationResult.None;
-        }
-        await descriptor.ExecuteAsync(_vm, token, argument).ConfigureAwait(false);
-        return BridgeOperationResult.None;
-    }
-
-    // A generated reader decodes at most the window's input limit, as a checked write or an
-    // operation start does. An out-of-range number is an invalid argument; an
-    // OverflowException from the command itself stays a failure.
-    private object? ReadArgument(CommandDescriptor<T> descriptor, IBridgeArguments arguments)
-    {
-        if (descriptor.ReadArgument is not { } read) return null;
-        try { return read(new BoundedBridgeArguments(arguments, MaximumInputBytes)); }
-        catch (OverflowException error) { throw new FormatException("The command argument is out of range.", error); }
-    }
-
-    private sealed class BoundedBridgeArguments(IBridgeArguments source, int maximumBytes) : IBridgeArguments
-    {
-        public string GetString()
-        {
-            var value = source.GetString();
-            return value is null || BridgeInputLimit.Fits(value, maximumBytes)
-                ? value!
-                : throw new FormatException("The value is too large.");
-        }
-
-        public long GetInt64() => source.GetInt64();
-        public bool GetBoolean() => source.GetBoolean();
-        public string? ClientKey => source.ClientKey;
-        public string? ConnectionKey => source.ConnectionKey;
-    }
-
-    // The reply of a setter or command after it ran.
-    private string EncodeTerminal(BridgeFailure? error = null) =>
-        IsInactive ? EncodeReleased(error) : Encode(error);
-
-    private string EncodeWithoutSnapshot(BridgeFailure? error = null) =>
-        Encode(error, includeSnapshot: false);
-
-    // A call can release its own bridge: a page command that replaces or leaves
-    // the page in its region detaches the page before the reply captures a
-    // state. The reply says so with `released: true` and no state; a call that
-    // succeeded stays `ok`, a failed call keeps its error. A snapshot read on a
-    // released bridge is `released` without that flag instead, because it has nothing to report.
-    private static string EncodeReleased(BridgeFailure? error, bool protocol = false) => protocol
-        ? EncodeReply(error ?? new(BridgeFailure.Released, "The Bridge is closed."), writeState: null, protocol)
-        : EncodeReply(error, writeState: null, released: true);
-
-    private string Encode(BridgeFailure? error = null, bool includeSnapshot = true, bool protocol = false)
-    {
-        if (!includeSnapshot) return EncodeReply(error, writeState: null);
-        try
-        {
-            var reply = EncodeReply(error, WriteSnapshot, protocol);
-            return IsInactive ? EncodeReleased(error, protocol) : reply;
-        }
-        // A release during the capture can also surface from a part of the
-        // bridge it disposed, such as a checked field's write registry.
-        catch (Exception released) when (released is BridgeSnapshotDetachedException || IsInactive)
-        {
-            return EncodeReleased(error, protocol);
-        }
-        catch (BridgeCollectionKeyException keys)
-        {
-            LogRejectedKeys(keys);
-            return EncodeStateNotSent(error, RejectedKeysReply(keys), protocol);
-        }
-    }
-
-    // An explicit read fails with the reason instead of a state. A reply after
-    // a setter or command says that the call itself ran, so a client does not
-    // blindly retry it.
-    private string EncodeStateNotSent(BridgeFailure? error, BridgeFailure failure, bool protocol)
-    {
-        if (protocol) return EncodeWithoutSnapshot(failure);
-        return EncodeWithoutSnapshot(error is null
-            ? failure with { Message = $"The call ran, but the updated state could not be sent: {failure.Message}" }
-            : error with
-            {
-                Message = $"{error.Message} The updated state could not be sent: {failure.Message}",
-                // D-1: a domain failure never carries detail; its failure is the contract.
-                Detail = error.Kind == BridgeFailure.DomainFailed ? null : error.Detail ?? failure.Detail,
-            });
-    }
-
-    // Writes the state straight into the reply or delivery writer: a reply
-    // that is discarded (detached, inactive) is simply not returned.
-    private void WriteSnapshot(Utf8JsonWriter writer)
-    {
-        using (BridgeSnapshotPublication.Enter(() => IsInactive))
-        {
-            CheckCollectionKeys();
-            _writeSnapshot(writer, _vm, _revision, WriteFieldMetadata);
-        }
-    }
-
-    // Generated clients reject a state whose keyed collection has a null row or
-    // a null, empty or duplicate key, so such a state is never written: this
-    // throws BridgeCollectionKeyException. Each full state checks every key and
-    // becomes the baseline for frames.
-    private void CheckCollectionKeys()
-    {
-        foreach (var descriptor in _keyedCollections)
-        {
-            _collectionKeys.Remove(descriptor);
-            if (descriptor.Get(_vm) is not System.Collections.IEnumerable rows) continue;
-            var baseline = BridgeCollectionKeyBaseline.Scan(ModelName, descriptor.Name, rows, descriptor.Key);
-            if (descriptor.PublishesChanges) _collectionKeys[descriptor] = baseline;
-        }
-    }
-
-    // Updates the key baseline for one indexed collection notification and
-    // returns whether a frame may describe it. Without a baseline for this
-    // collection instance, it checks the whole collection when a frame would
-    // follow (scan), and otherwise leaves the check to the pending full state.
-    // An invalid key drops the baseline; the caller then requires a full
-    // state, whose capture reports the keys. It never throws into the code
-    // that changed the collection.
-    private bool TrackCollectionKeys(BridgeCollectionDescriptor<T> descriptor, object rows, NotifyCollectionChangedEventArgs args, bool scan)
-    {
-        var enumerable = (System.Collections.IEnumerable)rows;
-        try
-        {
-            if (!_collectionKeys.TryGetValue(descriptor, out var tracked) || !ReferenceEquals(tracked.Rows, rows))
-            {
-                _collectionKeys.Remove(descriptor);
-                if (scan) _collectionKeys[descriptor] = BridgeCollectionKeyBaseline.Scan(ModelName, descriptor.Name, enumerable, descriptor.Key);
-                return true;
-            }
-            if (args.Action is NotifyCollectionChangedAction.Remove or NotifyCollectionChangedAction.Replace && args.OldItems is { } removed)
-                foreach (var row in removed) tracked.Remove(row, descriptor.Key);
-            if (args.Action is NotifyCollectionChangedAction.Add or NotifyCollectionChangedAction.Replace && args.NewItems is { } added)
-            {
-                var index = args.NewStartingIndex;
-                foreach (var row in added) tracked.Add(ModelName, descriptor.Name, enumerable, descriptor.Key, row, index++);
-            }
-            return true;
-        }
-        catch (BridgeCollectionKeyException)
-        {
-            _collectionKeys.Remove(descriptor);
-            return false;
-        }
-    }
-
-    // Whether a frame may replace a row after its own property change: its key
-    // must be valid and still the key it was tracked with. A key changed in
-    // place drops the baseline, so a full state checks the collection again.
-    private bool TrackItemKey(BridgeCollectionDescriptor<T> descriptor, object rows, object item, int index, out string key)
-    {
-        key = "";
-        try { key = BridgeCollectionKeyBaseline.KeyOf(ModelName, descriptor.Name, descriptor.Key, item, index); }
-        catch (BridgeCollectionKeyException)
-        {
-            _collectionKeys.Remove(descriptor);
-            return false;
-        }
-        if (!_collectionKeys.TryGetValue(descriptor, out var tracked) || !ReferenceEquals(tracked.Rows, rows)) return true;
-        if (tracked.TrackedKey(item) == key) return true;
-        _collectionKeys.Remove(descriptor);
-        return false;
-    }
-
-    // Logs keys a full state could not be captured with and tells the client,
-    // once per field, problem and key (not row positions, which unrelated
-    // edits shift) until a state is captured again. The route
-    // keeps requiring a full state, so the next change captures again.
-    private void ReportRejectedKeys(BridgeCollectionKeyException keys)
-    {
-        if (string.Equals(_rejectedKeys, keys.Identity, StringComparison.Ordinal)) return;
-        _rejectedKeys = keys.Identity;
-        LogRejectedKeys(keys);
-        var failure = RejectedKeysReply(keys);
-        _delivery.EnqueueFailure(WriteJson(writer =>
-        {
-            writer.WriteStartObject();
-            writer.WriteNumber("__runicFailure", 1);
-            writer.WriteNumber("revision", _revision);
-            writer.WritePropertyName("error");
-            writer.WriteStartObject();
-            writer.WriteString("kind", failure.Kind);
-            writer.WriteString("message", failure.Message);
-            BridgeFailureDetails.Write(writer, failure.Detail);
-            writer.WriteEndObject();
-            writer.WriteEndObject();
-        }));
-    }
-
-    private BridgeFailure RejectedKeysReply(BridgeCollectionKeyException keys) =>
-        new("failed", keys.ReplyMessage, BridgeFailureDetails.Capture(keys, IncludesFailureDetail));
-
-    private void LogRejectedKeys(BridgeCollectionKeyException keys)
-    {
-        BridgeTelemetry.RecordFailure("collection.keys", ModelName, keys.Field, keys);
-        ViewsLog.CollectionKeysRejected(_logger, keys, ModelName, keys.Field, keys.Key ?? "", _name);
-    }
-
-    private string WriteSnapshot() => WriteJson(WriteSnapshot);
-
-    private void WriteFieldMetadata(Utf8JsonWriter writer)
-    {
-        if (_checkedProperties.Length == 0) return;
-        writer.WritePropertyName("__runicFields");
-        writer.WriteStartObject();
-        foreach (var property in _checkedProperties)
-        {
-            writer.WritePropertyName(property.Descriptor.WireName);
-            writer.WriteStartObject();
-            writer.WriteNumber("version", property.Registry.Current.Version);
-            writer.WriteEndObject();
-        }
-        writer.WriteEndObject();
-    }
-
-    private string EncodeFieldWrite(BridgeFieldWriteReceipt<object?> receipt, CheckedPropertyBinding property)
-    {
-        try
-        {
-            var reply = WriteJson(writer =>
-            {
-                writer.WriteStartObject();
-                writer.WriteBoolean("ok", true);
-                writer.WritePropertyName("state");
-                WriteSnapshot(writer);
-                writer.WriteNull("error");
-                writer.WritePropertyName("receipt");
-                writer.WriteStartObject();
-                switch (receipt.Kind)
-                {
-                    case BridgeFieldWriteReceiptKind.Applied:
-                        writer.WriteString("kind", "applied");
-                        WriteFieldSnapshot(writer, "snapshot", receipt.Current, property.Descriptor);
-                        if (receipt.Validation is not null) writer.WriteString("validation", receipt.Validation);
-                        break;
-                    case BridgeFieldWriteReceiptKind.PostApplyValidationFailed:
-                        writer.WriteString("kind", "committed-with-error");
-                        WriteFieldSnapshot(writer, "snapshot", receipt.Current, property.Descriptor);
-                        writer.WriteString("message", receipt.Message ?? "The field changed but its validation did not complete.");
-                        break;
-                    case BridgeFieldWriteReceiptKind.Conflict:
-                        writer.WriteString("kind", "conflict");
-                        WriteFieldSnapshot(writer, "incoming", receipt.Current, property.Descriptor);
-                        writer.WriteString("message", receipt.Message ?? "The field baseline no longer matches.");
-                        break;
-                    default:
-                        writer.WriteString("kind", "rejected");
-                        writer.WriteString("message", receipt.Message ?? "The field write was rejected.");
-                        break;
-                }
-                writer.WriteEndObject();
-                writer.WriteEndObject();
-            });
-            return IsInactive ? EncodeReleased(new(BridgeFailure.Released, "The Bridge is closed.")) : reply;
-        }
-        catch (Exception released) when (released is BridgeSnapshotDetachedException || IsInactive)
-        {
-            return EncodeReleased(new(BridgeFailure.Released, "The Bridge is closed."));
-        }
-        catch (BridgeCollectionKeyException keys)
-        {
-            LogRejectedKeys(keys);
-            return EncodeFieldWriteNotSent(RejectedKeysReply(keys));
-        }
-    }
-
-    private string EncodeFieldWriteNotSent(BridgeFailure failure) => EncodeWithoutSnapshot(failure with
-    {
-        Message = $"The field write was processed, but the updated state and receipt could not be sent: {failure.Message}",
-    });
-
-    private static void WriteFieldSnapshot(Utf8JsonWriter writer, string name, BridgeFieldSnapshot<object?> snapshot,
-        CheckedPropertyDescriptor<T> descriptor)
-    {
-        writer.WritePropertyName(name);
-        writer.WriteStartObject();
-        writer.WritePropertyName("value");
-        WriteCheckedValue(writer, snapshot.Value, descriptor);
-        writer.WriteNumber("version", snapshot.Version);
-        writer.WriteEndObject();
-    }
-
-    // The snapshot route, which a client reads first, states the wire protocol
-    // version. Clients ignore envelope members they do not know.
-    private static string EncodeReply(BridgeFailure? error, Action<Utf8JsonWriter>? writeState, bool protocol = false,
-        bool released = false) => WriteJson(writer =>
-    {
-        writer.WriteStartObject();
-        writer.WriteBoolean("ok", error is null);
-        writer.WritePropertyName("state");
-        if (writeState is null) writer.WriteNullValue();
-        else writeState(writer);
-        if (error is null) writer.WriteNull("error");
-        else
-        {
-            writer.WritePropertyName("error");
-            writer.WriteStartObject();
-            writer.WriteString("kind", error.Kind);
-            writer.WriteString("message", error.Message);
-            if (error.Reason is { } reason) writer.WriteString("reason", reason);
-            if (error.Failure is { } failure)
-            {
-                writer.WritePropertyName("failure");
-                writer.WriteRawValue(failure, skipInputValidation: true);
-            }
-            else BridgeFailureDetails.Write(writer, error.Detail);
-            writer.WriteEndObject();
-        }
-        if (released) writer.WriteBoolean("released", true);
-        if (protocol)
-        {
-            writer.WriteNumber("protocol", BridgeProtocol.Version);
-            writer.WriteString("version", BridgeProtocol.PackageVersion);
-        }
-        writer.WriteEndObject();
-    });
-
-    private static string WriteJson(Action<Utf8JsonWriter> write)
-    {
-        using var scratch = BridgeJsonScratch.Rent();
-        write(scratch.Writer);
-        scratch.Writer.Flush();
-        return Encoding.UTF8.GetString(scratch.Written);
-    }
-
-    private void OnChanged(object? sender, PropertyChangedEventArgs e) => _modelTurn.Run(() => OnChangedCore(sender, e));
-
-    private void OnChangedCore(object? sender, PropertyChangedEventArgs e)
+    private void OnChanged(object? sender, PropertyChangedEventArgs e) => _modelTurn.Run(() =>
     {
         lock (_modelGate)
         {
             if (IsInactive) return;
-            if (_textFields.Length > 0 && Array.Find(_textFields, field => field.Name == e.PropertyName) is { } text)
-            {
-                PublishTextCore(text);
-                return;
-            }
             RefreshCollectionSubscriptions();
             RefreshObservedSubObjects();
-            Publish();
+            // A keyed collection replaced by another instance cannot be described by changes of the old one.
+            foreach (var descriptor in _incrementalCollections)
+            {
+                var rows = descriptor.Get(_vm);
+                if (_collectionInstances.TryGetValue(descriptor, out var previous) && ReferenceEquals(previous, rows)) continue;
+                _collectionInstances[descriptor] = rows;
+                MarkCollectionSet(descriptor);
+            }
+            ScheduleUnit();
         }
-    }
+    });
+
     private void OnCollectionChanged(object? sender, NotifyCollectionChangedEventArgs e)
     {
-        if (sender is not INotifyCollectionChanged collection || !TryPublishCollection(collection, e)) Publish();
-    }
-    private void OnErrorsChanged(object? sender, DataErrorsChangedEventArgs e) => Publish();
-    private void OnCanExecuteChanged(object? sender, EventArgs e) => Publish();
-
-    private void Publish()
-    {
-        _modelTurn.Run(PublishCore);
+        if (sender is not INotifyCollectionChanged collection || !TryPublishCollection(collection, e)) ScheduleUnit();
     }
 
-    void IBridgeSnapshotBatchParticipant.FlushSnapshotBatch() => _modelTurn.Run(PublishBatchedSnapshotCore);
+    private void OnErrorsChanged(object? sender, DataErrorsChangedEventArgs e) => ScheduleUnit();
+    private void OnCanExecuteChanged(object? sender, EventArgs e) => ScheduleUnit();
 
-    private void PublishCore()
+    // An object nested in the data graph changed. A nested change inside a row cannot be located, so each keyed
+    // collection becomes a set of the field.
+    private void OnNestedChanged() => _modelTurn.Run(() =>
     {
         lock (_modelGate)
         {
             if (IsInactive) return;
-            _revision = NextRevision();
-            _requiresSnapshot = true;
-            // A collection reached through another path changed without a frame.
-            _collectionKeys.Clear();
-            // Capture is more expensive than queue delivery. A batch defers
-            // only capture, never the revision: route replies that serialize
-            // state during the batch must remain newer than their predecessor.
-            if (BridgeSnapshotBatch.TryDefer(_vm, this)) return;
-            PublishSnapshotCore();
+            foreach (var descriptor in _incrementalCollections) MarkCollectionSet(descriptor);
+            ScheduleUnit();
         }
-    }
-
-    private long NextRevision() => _content?.NextRevision() ?? _revision + 1;
-
-    private void PublishBatchedSnapshotCore()
-    {
-        lock (_modelGate)
-        {
-            if (IsInactive) return;
-            // Each notification already advanced the revision in PublishCore.
-            // The outer batch only serializes the final revision once.
-            PublishCollectionOrSnapshotCore();
-        }
-    }
-
-    // Requests a full state; the delivery captures it when the host can take
-    // it (CaptureRequestedState). Until then every change, including a
-    // collection change, is folded into that state: _requiresSnapshot stays set.
-    private void PublishSnapshotCore()
-    {
-        _requiresSnapshot = true;
-        _pendingCollectionChanges.Clear();
-        _pendingTexts.Clear();
-        _delivery.RequestState();
-    }
-
-    // A change of an append-only text field takes the next revision. Without a
-    // pending full state it becomes a frame, compared with the value the page
-    // has when it is published, so a batch of appends is one change.
-    private void PublishTextCore(PropertyDescriptor<T> field)
-    {
-        _revision = NextRevision();
-        if (!_requiresSnapshot && !_pendingTexts.Contains(field)) _pendingTexts.Add(field);
-        if (!BridgeSnapshotBatch.TryDefer(_vm, this)) PublishCollectionOrSnapshotCore();
-    }
-
-    // Called by the delivery in the model turn after it took the request.
-    private string? CaptureRequestedState()
-    {
-        lock (_modelGate)
-        {
-            if (IsInactive) return null;
-            // Do not show the host a half-applied batch. The batch flush
-            // requests the state again.
-            if (BridgeSnapshotBatch.TryDefer(_vm, this)) return null;
-            string? state;
-            try { state = CaptureState(); }
-            catch (BridgeCollectionKeyException keys)
-            {
-                // The route still requires a full state, so the next change
-                // captures again; until then it publishes nothing.
-                if (!IsInactive) ReportRejectedKeys(keys);
-                return null;
-            }
-            return IsInactive ? null : state;
-        }
-    }
-
-    // A recovery state follows frames the host has not taken. It is captured
-    // at once so later frames can queue behind it, unless a captured state is
-    // already queued: a frame that does not fit behind that one turns it back
-    // into a request instead of serializing another full state per change.
-    private void PublishRecoverySnapshotCore()
-    {
-        if (BridgeTelemetry.RecoverySnapshots.Enabled)
-            BridgeTelemetry.RecoverySnapshots.Add(1, new KeyValuePair<string, object?>(BridgeTelemetry.ModelTag, ModelName));
-        if (_delivery.StateQueued) { PublishSnapshotCore(); return; }
-        string? state;
-        // This runs in the change handler of whatever collection overflowed.
-        // A state that cannot be captured now (for example because of another
-        // collection's keys) becomes a request, which the delivery captures
-        // and reports, so the failure never reaches that caller.
-        try { state = CaptureState(); }
-        catch (Exception) when (!IsInactive) { PublishSnapshotCore(); return; }
-        if (state is not null && !IsInactive) _delivery.Enqueue(state);
-    }
-
-    private string? CaptureState()
-    {
-        try
-        {
-            var state = WriteSnapshot();
-            _publishedRevision = _revision;
-            _requiresSnapshot = false;
-            _rejectedKeys = null;
-            _pendingCollectionChanges.Clear();
-            _pendingTexts.Clear();
-            // The state wrote these values in this model turn.
-            foreach (var field in _textFields) _textBaselines[field] = field.Get(_vm) as string;
-            return state;
-        }
-        catch (BridgeSnapshotDetachedException)
-        {
-            // The session detached this route after this callback started.
-            // There is no current endpoint to publish to.
-            return null;
-        }
-    }
-
-    private bool TryPublishCollection(INotifyCollectionChanged collection, NotifyCollectionChangedEventArgs args)
-    {
-        return _modelTurn.Run(() =>
-        {
-            lock (_modelGate)
-            {
-                if (IsInactive) return true;
-                var descriptors = _incrementalCollections.Where(descriptor => ReferenceEquals(descriptor.Get(_vm), collection)).ToArray();
-                if (descriptors.Length == 0) return false;
-                foreach (var descriptor in descriptors) _collectionIndexes.Remove(descriptor);
-                _revision = NextRevision();
-                var kind = args.Action switch
-                {
-                    NotifyCollectionChangedAction.Add => "add",
-                    NotifyCollectionChangedAction.Remove => "remove",
-                    NotifyCollectionChangedAction.Replace => "replace",
-                    NotifyCollectionChangedAction.Move => "move",
-                    _ => "reset"
-                };
-                var indexed = !(kind == "reset" || args.NewStartingIndex < 0 && kind is "add" or "replace" or "move" ||
-                    args.OldStartingIndex < 0 && kind is "remove" or "replace" or "move");
-                if (!indexed) _requiresSnapshot = true;
-                // Check keys before anything is published. While a full state is
-                // pending, only a tracked baseline is kept; its capture checks every key.
-                foreach (var descriptor in descriptors)
-                {
-                    if (!indexed) { _collectionKeys.Remove(descriptor); continue; }
-                    // An invalid key is never thrown into the code that changed
-                    // the collection: the route requires a full state instead,
-                    // and its capture reports the keys until they are fixed.
-                    if (!TrackCollectionKeys(descriptor, collection, args, scan: !_requiresSnapshot)) _requiresSnapshot = true;
-                }
-                if (!_requiresSnapshot)
-                    foreach (var descriptor in descriptors)
-                    {
-                        var keys = (kind == "add" ? args.NewItems : args.OldItems)?.Cast<object?>().Select(descriptor.Key).ToArray() ?? [];
-                        var items = kind is "add" or "replace"
-                            ? args.NewItems?.Cast<object?>().Select(item => WriteJson(writer => descriptor.WriteItem(writer, item))).ToArray() ?? []
-                            : [];
-                        _pendingCollectionChanges.Add(new(descriptor, kind,
-                            kind == "remove" ? args.OldStartingIndex : args.NewStartingIndex,
-                            args.OldStartingIndex, keys, items));
-                        if (_pendingCollectionChanges.Count > 4096) { _requiresSnapshot = true; break; }
-                    }
-                if (!BridgeSnapshotBatch.TryDefer(_vm, this)) PublishCollectionOrSnapshotCore();
-                return true;
-            }
-        });
-    }
-
-    private void PublishCollectionOrSnapshotCore()
-    {
-        if (_requiresSnapshot || _pendingCollectionChanges.Count == 0 && _pendingTexts.Count == 0) { PublishSnapshotCore(); return; }
-        var texts = new List<(PropertyDescriptor<T> Field, string Value, BridgeTextDelta Delta)>(_pendingTexts.Count);
-        foreach (var field in _pendingTexts)
-        {
-            var value = field.Get(_vm) as string;
-            if (!_textBaselines.TryGetValue(field, out var baseline) || value is null || baseline is null) { PublishSnapshotCore(); return; }
-            if (string.Equals(value, baseline, StringComparison.Ordinal)) continue;
-            if (BridgeTextDelta.Between(baseline, value) is not { } textDelta) { PublishSnapshotCore(); return; }
-            texts.Add((field, value, textDelta));
-        }
-        // A notification that changed nothing still advanced the revision.
-        if (_pendingCollectionChanges.Count == 0 && texts.Count == 0) { PublishSnapshotCore(); return; }
-        var delta = WriteJson(writer =>
-        {
-            writer.WriteStartObject();
-            writer.WriteNumber("__runicDelta", 1);
-            writer.WriteNumber("baseRevision", _publishedRevision);
-            writer.WriteNumber("revision", _revision);
-            writer.WriteStartArray("changes");
-            foreach (var change in _pendingCollectionChanges)
-            {
-                writer.WriteStartObject();
-                writer.WriteString("field", change.Descriptor.Name);
-                writer.WriteString("kind", change.Kind);
-                writer.WriteNumber("index", change.Index);
-                writer.WriteNumber("oldIndex", change.OldIndex);
-                writer.WriteStartArray("keys");
-                foreach (var key in change.Keys) writer.WriteStringValue(key);
-                writer.WriteEndArray();
-                writer.WriteStartArray("items");
-                foreach (var item in change.Items) writer.WriteRawValue(item, skipInputValidation: true);
-                writer.WriteEndArray();
-                writer.WriteEndObject();
-            }
-            foreach (var (field, _, text) in texts)
-            {
-                writer.WriteStartObject();
-                writer.WriteString("field", field.AppendOnlyTextField);
-                writer.WriteString("kind", "text");
-                writer.WriteNumber("length", text.Length);
-                writer.WriteNumber("trim", text.Trim);
-                writer.WriteString("text", text.Text);
-                writer.WriteEndObject();
-            }
-            writer.WriteEndArray();
-            writer.WriteEndObject();
-        });
-        if (!_delivery.EnqueueDelta(delta)) { PublishRecoverySnapshotCore(); return; }
-        _publishedRevision = _revision;
-        _pendingCollectionChanges.Clear();
-        _pendingTexts.Clear();
-        foreach (var (field, value, _) in texts) _textBaselines[field] = value;
-    }
-
-    private bool TryPublishItem(object item)
-    {
-        return _modelTurn.Run(() =>
-        {
-            lock (_modelGate)
-            {
-                if (IsInactive) return true;
-                var handled = false;
-                foreach (var descriptor in _incrementalCollections)
-                {
-                    if (descriptor.Get(_vm) is not System.Collections.IList rows) continue;
-                    if (!_collectionIndexes.TryGetValue(descriptor, out var indexes))
-                    {
-                        indexes = new(ReferenceEqualityComparer.Instance);
-                        for (var index = 0; index < rows.Count; index++)
-                            if (rows[index] is { } row) indexes[row] = index;
-                        _collectionIndexes[descriptor] = indexes;
-                    }
-                    if (!indexes.TryGetValue(item, out var at) || at >= rows.Count || !ReferenceEquals(rows[at], item)) continue;
-                    if (!handled) _revision = NextRevision();
-                    handled = true;
-                    // A key changed in place or made invalid requires a full state;
-                    // its capture checks and, if needed, reports the keys.
-                    if (!TrackItemKey(descriptor, rows, item, at, out var key)) _requiresSnapshot = true;
-                    else if (!_requiresSnapshot)
-                        _pendingCollectionChanges.Add(new(descriptor, "replace", at, at,
-                            [key], [WriteJson(writer => descriptor.WriteItem(writer, item))]));
-                    if (_pendingCollectionChanges.Count > 4096) _requiresSnapshot = true;
-                }
-                if (handled && !BridgeSnapshotBatch.TryDefer(_vm, this)) PublishCollectionOrSnapshotCore();
-                return handled;
-            }
-        });
-    }
+    });
 
     Type IHotReloadableBridge.ContractModelType => typeof(T);
 
@@ -1778,7 +771,8 @@ public partial class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBr
         return null;
     }
 
-    void IHotReloadableBridge.RefreshAfterHotReload() => Publish();
+    // A hot reload can change any member: the next publication sets every keyed collection as well.
+    void IHotReloadableBridge.RefreshAfterHotReload() => OnNestedChanged();
 
     private void RefreshCollectionSubscriptions()
     {
@@ -1811,9 +805,9 @@ public partial class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBr
             _observed.Remove(property.Name);
             var subscription = next switch
             {
-                NavigationRegion region => NavigationPresentationBinding.Observe(region, _content, Publish),
-                NavigationSelection selection => NavigationPresentationBinding.Observe(selection, Publish),
-                INotifyPropertyChanged notifying => new SubObjectSubscription(notifying, Publish),
+                NavigationRegion region => NavigationPresentationBinding.Observe(region, _content, ScheduleUnit),
+                NavigationSelection selection => NavigationPresentationBinding.Observe(selection, ScheduleUnit),
+                INotifyPropertyChanged notifying => new SubObjectSubscription(notifying, ScheduleUnit),
                 _ => null,
             };
             if (next is not null && subscription is not null) _observed[property.Name] = (next, subscription);
@@ -1849,9 +843,14 @@ public partial class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBr
         public void Dispose() => _source.PropertyChanged -= _handler;
     }
 
-    /// <summary>Unbinds the bridge's routes and stops observing the ViewModel.</summary>
+    /// <summary>Stops serving the Bridge's route and observing the ViewModel.</summary>
     public virtual void Dispose()
     {
+        if (Interlocked.Exchange(ref _routeLease, null) is { } lease)
+        {
+            lease.Dispose();
+            _content?.NextRevision();
+        }
         _modelTurn.RunForTeardown(DisposeCore);
         Interlocked.Exchange(ref _modelContextLease, null)?.Dispose();
         GC.SuppressFinalize(this);

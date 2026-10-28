@@ -1,4 +1,5 @@
 #nullable enable
+*REMOVED*const Runic.Application.Views.Generated.BridgeProtocol.Version = 3 -> int
 *REMOVED*Runic.Application.Views.IAsyncBridgeTransport
 *REMOVED*Runic.Application.Views.IAsyncBridgeTransport.PublishAsync(string! name, string! stateJson) -> System.Threading.Tasks.ValueTask
 *REMOVED*Runic.Application.Views.IBridgeTransport.Bind(string! name, System.Func<Runic.Application.Views.IBridgeArguments!, string!>! handler) -> System.IDisposable!
@@ -30,3 +31,4 @@ Runic.Application.Views.Generated.PropertyDescriptor<T>.PropertyDescriptor(strin
 Runic.Application.Views.Generated.PropertyDescriptor<T>.PropertyDescriptor(string! name, string! wireName, System.Func<T, object?>! getter, System.Action<T, System.Text.Json.JsonElement>? setter) -> void
 Runic.Application.Views.Generated.PropertyDescriptor<T>.WireName.get -> string?
 Runic.Application.Views.Generated.ViewModelBridge<T>.ViewModelBridge(Runic.Application.Views.IBridgeTransport! transport, T vm, string! name, Runic.Application.Views.Generated.BridgeStateMember<T>![]! state, Runic.Application.Views.Generated.PropertyDescriptor<T>![]! properties, Runic.Application.Views.Generated.CheckedPropertyDescriptor<T>![]! checkedProperties, Runic.Application.Views.Generated.CommandDescriptor<T>![]! commands, string? contractFingerprint = null, Runic.Application.Views.WindowContentSession? content = null, Runic.Application.Views.Generated.BridgeInteractionDescriptor<T>![]? interactions = null, Runic.Application.Views.Generated.BridgeDataSubscriptionMember![]? dataSubscriptions = null, Runic.Application.Views.Generated.BridgeCollectionDescriptor<T>![]? collections = null) -> void
+const Runic.Application.Views.Generated.BridgeProtocol.Version = 4 -> int
