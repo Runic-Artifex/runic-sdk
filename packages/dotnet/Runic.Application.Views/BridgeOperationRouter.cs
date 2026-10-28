@@ -356,7 +356,7 @@ internal sealed class BridgeOperationRouter : IDisposable
     private static string WriteJson(Action<Utf8JsonWriter> write)
     {
         using var buffer = new MemoryStream();
-        using (var writer = new Utf8JsonWriter(buffer)) write(writer);
+        using (var writer = new Utf8JsonWriter(buffer, BridgeJsonEncoder.WriterOptions)) write(writer);
         return Encoding.UTF8.GetString(buffer.GetBuffer().AsSpan(0, (int)buffer.Length));
     }
     private static string Wire(BridgeOperationAdmissionKind kind) => kind switch

@@ -426,13 +426,22 @@ must therefore not assume the thread that raised `PropertyChanged`.
 ## Canonical values
 
 Checked-field equality and receipts, operation input digests, interaction
-reply signatures and `BridgeWire.EncodeCanonical` share one canonical JSON form:
-no whitespace; object members sorted by ordinal (UTF-16) name; numbers written
-by exact decimal value in the ECMAScript `Number::toString` layout (`1.0`,
-`1e0` and `10e-1` are `1`, `-0` is `0`, nothing is rounded); strings re-escaped
-by the default `Utf8JsonWriter` encoder. An object with a duplicate member name
-is rejected, as is a number whose decimal exponent exceeds ±100,000. Checked-field
-equality treats byte-identical writer output as equal without validating it.
+reply signatures and `BridgeWire.EncodeCanonical` share one canonical JSON form,
+RFC 8785 (JCS): no whitespace; object members sorted by the UTF-16 code units
+of their names; numbers read as IEEE 754 doubles and written as ECMAScript
+`Number::toString` writes them (`1.0`, `1e0` and `10e-1` are `1`, `-0` and
+`1e-400` are `0`, `0.1` and `0.10000000000000000001` are one value); strings
+escape only `"`, `\` and U+0000 to U+001F (`\b \t \n \f \r` in the short
+form, the others as lowercase `\u00xx`) and are otherwise literal UTF-8. An
+object with a duplicate member name is rejected, as are a number beyond the
+range of a double (`1e400`), a string or name that is not valid Unicode (a lone
+surrogate) and nesting deeper than 64. 64-bit integers and decimals travel as
+strings; a JSON-valued member holding a larger integer compares as the page
+compares it. Checked-field equality treats byte-identical writer output as
+equal without validating it. Every digest stays in the producer's memory.
+
+Messages do not have to be canonical, but the .NET producer writes every
+message string with the same minimal escaping.
 
 ## Compatibility
 
