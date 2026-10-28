@@ -270,11 +270,11 @@ internal sealed class CodegenShapeTests
         var reactive = File.ReadAllText(Path.Combine(directory, "nullableReactive.ts")).ReplaceLineEndings("\n");
         foreach (var (file, text, expected) in new[]
         {
-            ("documented.ts", documented, "import { connectView, disposable, viewReferences } from \"@runic-artifex/views/generated\";\nimport * as bridgeWire from \"@runic-artifex/views/generated/wire\";\n"),
-            ("nullableReactive.ts", reactive, "import { connectView, disposable, viewReferences, defineInteractions, bridgeOperations } from \"@runic-artifex/views/generated\";\n"),
+            ("documented.ts", documented, "import { connectView, disposable, viewReferences, type BridgeMemberDecoders } from \"@runic-artifex/views/generated\";\nimport * as bridgeWire from \"@runic-artifex/views/generated/wire\";\n"),
+            ("nullableReactive.ts", reactive, "import { connectView, disposable, viewReferences, type BridgeMemberDecoders, type BridgeOperationCodec, defineInteractions, bridgeOperations } from \"@runic-artifex/views/generated\";\n"),
             ("nullableReactive.ts", reactive, "const interactionDefinitions = defineInteractions({"),
-            ("nullableReactive.ts", reactive, "interactions: interactionDefinitions, operations: bridgeOperations, timeout: options?.timeout, signal: options?.signal });"),
-            ("collectionDelta.ts", collection, "import { connectView, disposable, viewReferences, defineCollection, defineCollections } from \"@runic-artifex/views/generated\";\n"),
+            ("nullableReactive.ts", reactive, "interactions: interactionDefinitions, handlers: options?.handlers, operations: bridgeOperations, timeout: options?.timeout, signal: options?.signal });"),
+            ("collectionDelta.ts", collection, "import { connectView, disposable, viewReferences, type BridgeMemberDecoders, defineCollection, defineCollections } from \"@runic-artifex/views/generated\";\n"),
             ("collectionDelta.ts", collection, "const collectionDefinitions = defineCollections({"),
         })
             Require(text.Contains(expected, StringComparison.Ordinal),
@@ -306,8 +306,7 @@ internal sealed class CodegenShapeTests
     // names that are special on JavaScript objects, reserved parameter names
     // and a comment terminator inside documentation.
     [Test]
-    [Skip("P6: the generated-client harness speaks protocol 4 with P6's regenerated clients")]
-    public async Task GeneratedNamesAvoidCollisionsAndReservedWordsAsync()
+    public void GeneratedNamesAvoidCollisionsAndReservedWords()
     {
         var directory = GeneratedTypeScriptDirectory();
         var types = File.ReadAllText(Path.Combine(directory, "types.ts")).ReplaceLineEndings("\n");
@@ -337,30 +336,20 @@ internal sealed class CodegenShapeTests
             "Same-named C# types were not qualified with their namespaces.");
         Require(!types.Contains("export interface delete ", StringComparison.Ordinal),
             "A C# type named like a TypeScript reserved word was not renamed.");
+    }
 
+    // The generated client reads a real NamingViewModel state over Views protocol 4.
+    [Test]
+    [Skip("P4 (#684): the producer serves View routes over Views protocol 4.")]
+    public async Task GeneratedClientReadsSpecialWireNamesAsync()
+    {
+        var directory = GeneratedTypeScriptDirectory();
         using var host = new RunicWindowTestHost<NamingViewModel>(new NamingViewModel(),
             (transport, content, vm) => new NamingBridge(transport, vm, content: content), new RunicWindowTestHostOptions { RootRoute = "naming", ViewLocator = new TestViewLocator() });
-        var reply = host.Transport.Snapshot("naming");
-        using var snapshot = JsonDocument.Parse(reply);
-        var state = snapshot.RootElement.GetProperty("state");
-        Require(state.GetProperty("__proto__").GetString() == "proto"
-            && state.GetProperty("constructor").GetString() == "constructor"
-            && state.GetProperty("prototype").GetString() == "prototype"
-            && state.GetProperty("nothing").ValueKind == JsonValueKind.Null,
-            $"Special wire names were not written as state fields: {state}");
-
-        var replyPath = Path.Combine(Path.GetTempPath(), $"runic-naming-snapshot-{Guid.NewGuid():N}.json");
-        try
-        {
-            File.WriteAllText(replyPath, reply);
-            var root = Path.GetFullPath(Path.Combine(directory, "..", "..", "..", "..", "..", ".."));
-            await GeneratedHarnessProcess.RunAsync("bun", [Path.Combine(root, "tests", "dotnet", "Runic.Application.Testing.Tests",
-                "GeneratedSpecialNamesHarness.ts"), replyPath, directory], root).ConfigureAwait(false);
-        }
-        finally
-        {
-            File.Delete(replyPath);
-        }
+        var root = Path.GetFullPath(Path.Combine(directory, "..", "..", "..", "..", "..", ".."));
+        using var live = new GeneratedClientLiveHost().Serve("naming", host.Transport);
+        await GeneratedHarnessProcess.RunAsync("bun", [Path.Combine(root, "tests", "dotnet", "Runic.Application.Testing.Tests",
+            "GeneratedSpecialNamesHarness.ts"), directory], root, live).ConfigureAwait(false);
     }
 
     // A generated module's own bindings (runtime imports, the wire type, page
@@ -384,13 +373,12 @@ internal sealed class CodegenShapeTests
         foreach (var (file, expected) in new[]
         {
             ("wire.ts", "export interface WireState {"),
-            ("wire.ts", "type _WireState = Omit<WireState, "),
-            ("wire.ts", "function hydrate(wire: _WireState): WireState {"),
+            ("wire.ts", "const members: BridgeMemberDecoders<WireState> = {"),
             ("view.ts", "import type { BridgeConnectOptions, ViewClient as _ViewClient } from \"@runic-artifex/views\";"),
-            ("view.ts", "import { connectView as _connectView, disposable, viewReferences } from \"@runic-artifex/views/generated\";"),
+            ("view.ts", "import { connectView as _connectView, disposable, viewReferences, type BridgeMemberDecoders } from \"@runic-artifex/views/generated\";"),
             ("view.ts", "export interface ViewClient extends _ViewClient<ViewState> {"),
             ("view.ts", "export function connectView(options?: BridgeConnectOptions): Promise<ViewClient & globalThis.Disposable> {"),
-            ("view.ts", "  const view = await _connectView({ contract: bridgeContract, "),
+            ("view.ts", "  const view = await _connectView<ViewState>({ contract: bridgeContract, "),
             ("bridge.ts", "export type BridgeInteractionContext = _BridgeInteractionContext;"),
             ("bridge.ts", "export interface BridgeStreamOperation extends _BridgeStreamOperation<number> {}"),
             ("bridge.ts", "export interface BridgeSaveOperation extends BridgeOperation<number> {}"),
@@ -402,8 +390,8 @@ internal sealed class CodegenShapeTests
             ("shelf.ts", "import { pageShelfReferences, type ShelfReferencesPageReference } from \"./shelfReferences.js\";"),
             ("shelf.ts", "const _pageShelfReferences = viewReferences<ShelfPageReference>("),
             // A module without a colliding user name keeps the plain bindings.
-            ("naming.ts", "type WireState = "),
-            ("naming.ts", "  const view = await connectView({ contract: bridgeContract, "),
+            ("naming.ts", "const members: BridgeMemberDecoders<NamingState> = {"),
+            ("naming.ts", "  const view = await connectView<NamingState>({ contract: bridgeContract, "),
         })
             Require(Read(file).Contains(expected, StringComparison.Ordinal),
                 $"Generated {file} is missing:\n{expected}\n--- {file} ---\n{Read(file)}");

@@ -62,7 +62,7 @@ internal sealed class DataCodecTests
         var offset = new DateTimeOffset(2026, 10, 3, 14, 34, 56, TimeSpan.FromHours(2));
         var offsetCodec = new BridgeValueCodec<DateTimeOffset>(BridgeWire.ReadDateTimeOffset, BridgeWire.WriteDateTimeOffset);
         var encodedOffset = offsetCodec.Encode(offset);
-        Require(Json(encodedOffset).GetString() == "2026-10-03T14:34:56.0000000+02:00" && offsetCodec.Decode(encodedOffset) is var decodedOffset
+        Require(Json(encodedOffset).GetString() == "2026-10-03T14:34:56+02:00" && offsetCodec.Decode(encodedOffset) is var decodedOffset
             && decodedOffset == offset && decodedOffset.Offset == offset.Offset,
             $"A DateTimeOffset did not keep its offset on the wire: {encodedOffset}.");
     }

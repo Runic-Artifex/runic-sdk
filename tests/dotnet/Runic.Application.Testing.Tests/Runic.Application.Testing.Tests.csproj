@@ -9,9 +9,6 @@
     <IsPackable>false</IsPackable>
     <GenerateDocumentationFile>false</GenerateDocumentationFile>
     <TUnitImplicitUsings>false</TUnitImplicitUsings>
-    <!-- Program.cs is hand-written: GeneratedClientHarness also starts this executable as a helper
-         with the export-generated-client-fixture argument, which writes wire payloads instead of running tests. -->
-    <GenerateTestingPlatformEntryPoint>false</GenerateTestingPlatformEntryPoint>
     <!-- NavOrphanViewModel deliberately has no View. -->
     <NoWarn>$(NoWarn);RUNICBRIDGE013</NoWarn>
     <RunicApplicationFrontendGenerationEnabled>true</RunicApplicationFrontendGenerationEnabled>
@@ -54,13 +51,10 @@
     <None Include="../../../specs/application/fixtures/error-reasons/*.json" Link="fixtures/error-reasons/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
   <ItemGroup Condition="'$(RunicApplicationFrontendBootstrap)' == 'true'">
-    <Compile Remove="Program.cs" />
     <Compile Remove="*Tests.cs" />
-    <!-- The exporter intentionally instantiates generated bridge types, which
+    <!-- The live generated-client harness instantiates generated bridge types, which
          do not exist during the source-only bootstrap compilation. -->
-    <Compile Remove="GeneratedClientFixtureExporter.cs" />
-    <Compile Remove="ToolkitGeneratedClientFixture.cs" />
-    <Compile Remove="FailureGeneratedClientFixture.cs" />
+    <Compile Remove="GeneratedClientHarness.cs" />
   </ItemGroup>
   <Import Project="../../../packages/dotnet/Runic.Application.Views/build/Runic.Application.Views.targets" />
   <Import Project="../../../eng/build/application.targets" />

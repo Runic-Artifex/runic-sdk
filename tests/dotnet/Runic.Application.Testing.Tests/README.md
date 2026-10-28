@@ -33,22 +33,19 @@ an event, reported the change; `BackstopReadReportsChangesWithoutEvents` and
 ## Generated client checks
 
 `GeneratedClientHarness` and `GeneratedInteractionClientHarness` are cases of
-this suite. The first starts this executable as a helper with
-`--export-generated-client-fixture <path>` (handled by the hand-written
-`Program.cs` before the test platform starts) to export actual C# wire payloads,
-then runs the generated data/command client harnesses; the second runs the
-interaction lifecycle harness. `GeneratedHarnessProcess`
+this suite. `GeneratedClientHarness` type-checks the generated clients, then runs
+`GeneratedClientHarness.ts` live: `GeneratedClientLiveHost` serves the requests
+of its generated clients from real windows of this process over Views protocol 4
+(the script's standard input and output, `GeneratedLiveBridge.ts`), so the
+generated decoders read what .NET writes and the encoders write what .NET
+accepts. The reconnect and mock harnesses, and the interaction harness of
+`GeneratedInteractionClientHarness`, run against the views mock bridge. `GeneratedHarnessProcess`
 holds an exclusive checkout lock, bounds each child to 30 seconds and 512 MiB
 observed resident memory, retains bounded output, and kills and reaps a failed
 child before releasing the lock. Its supervisor runs outside Bun's event loop.
 On Unix each child starts through `/bin/sh` with `ulimit -c 0` and then `exec`, so
 an aborting child dies at once instead of staying alive while the kernel writes
 its core dump, which can outlast the 30 seconds on a loaded runner.
-
-The interaction mock uses finite queues: each scenario explicitly supplies its
-prompts, then holds the next poll. Each scenario drains its polls and handlers
-before the next starts. Diagnostics retain 16 route names, with a 64-call failure
-limit. Do not replace an empty queue with an immediately resolved prompt.
 
 For a direct Linux diagnostic run, use an external cgroup limit as well as a
 wall-clock deadline (requires the systemd user manager):

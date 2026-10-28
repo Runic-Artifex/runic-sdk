@@ -7,14 +7,20 @@ namespace Runic.Application.Testing.Tests;
 // before releasing the lock, including on timeout or memory-limit failure.
 internal static class GeneratedHarnessProcess
 {
-    internal static async Task RunAsync(string executable, IReadOnlyList<string> arguments, string root)
+    /// <summary>
+    /// Runs <paramref name="executable"/>. With <paramref name="live"/>, the child is a generated-client harness whose
+    /// page bridge <paramref name="live"/> serves over its standard input and output.
+    /// </summary>
+    internal static async Task RunAsync(string executable, IReadOnlyList<string> arguments, string root,
+        GeneratedClientLiveHost? live = null)
     {
         var lockPath = Path.Combine(root, "tests", "dotnet", "Runic.Application.Testing.Tests", "obj",
             "generated-client-process.lock");
         Directory.CreateDirectory(Path.GetDirectoryName(lockPath)!);
         using var lease = new FileStream(lockPath, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None);
         using var process = new Process { StartInfo = new ProcessStartInfo { WorkingDirectory = root,
-            RedirectStandardOutput = true, RedirectStandardError = true, UseShellExecute = false } };
+            RedirectStandardOutput = true, RedirectStandardError = true, RedirectStandardInput = live is not null,
+            UseShellExecute = false } };
         // An aborting child stays alive while the kernel hands its core dump to the
         // system handler. That takes seconds for Bun or .NET, and far longer on a
         // loaded runner, so the 30 s limit would hide the cause the abort printed.
@@ -40,7 +46,11 @@ internal static class GeneratedHarnessProcess
             process.StartInfo.Environment.Remove(name);
         if (!process.Start()) throw new InvalidOperationException($"Could not start {executable}.");
         Console.WriteLine($"Generated client child started: PID {process.Id} ({executable}), limit 512 MiB / 30 s.");
-        var output = DrainBoundedAsync(process.StandardOutput);
+        live?.Attach(process.StandardInput);
+        var requests = new List<Task>();
+        using var pump = new CancellationTokenSource();
+        var pumping = live?.PumpAsync(pump.Token) ?? Task.CompletedTask;
+        var output = DrainBoundedAsync(process.StandardOutput, live, requests);
         var error = DrainBoundedAsync(process.StandardError);
         var clock = Stopwatch.StartNew();
         var exit = process.WaitForExitAsync();
@@ -67,9 +77,14 @@ internal static class GeneratedHarnessProcess
         {
             if (!process.HasExited) process.Kill(entireProcessTree: true);
             await exit.ConfigureAwait(false);
+            await pump.CancelAsync().ConfigureAwait(false);
+            await pumping.ConfigureAwait(false);
             Console.WriteLine($"Generated client child exited: PID {process.Id}, code {process.ExitCode}, observed peak {peakBytes / 1024} KiB.");
         }
         var (stdout, stderr) = (await output.ConfigureAwait(false), await error.ConfigureAwait(false));
+        Task[] handled;
+        lock (requests) handled = [.. requests];
+        await Task.WhenAll(handled).ConfigureAwait(false);
         if (failure is not null || process.ExitCode != 0)
             throw new InvalidOperationException($"{executable} generated-client harness {failure ?? DescribeExit(process.ExitCode)}.\n" +
                 $"stderr:\n{(stderr.Length == 0 ? "(empty)" : stderr)}\nstdout:\n{(stdout.Length == 0 ? "(empty)" : stdout)}");
@@ -98,7 +113,30 @@ internal static class GeneratedHarnessProcess
         catch (Exception error) when (error is IOException or UnauthorizedAccessException) { return false; }
     }
 
-    // Keeps the last 16 KiB: an abort or a failed assertion reports its cause at the end.
+    // Keeps the last 16 KiB: an abort or a failed assertion reports its cause at the end. The protocol lines of a live
+    // harness go to its host instead.
+    private static async Task<string> DrainBoundedAsync(StreamReader reader, GeneratedClientLiveHost? live, List<Task> requests)
+    {
+        if (live is null) return await DrainBoundedAsync(reader).ConfigureAwait(false);
+        const int Limit = 16_384;
+        var retained = new System.Text.StringBuilder();
+        long dropped = 0;
+        while (await reader.ReadLineAsync().ConfigureAwait(false) is { } line)
+        {
+            if (line.StartsWith(GeneratedClientLiveHost.Marker, StringComparison.Ordinal))
+            {
+                var request = live.HandleAsync(line[GeneratedClientLiveHost.Marker.Length..]);
+                lock (requests) requests.Add(request);
+                continue;
+            }
+            retained.AppendLine(line);
+            if (retained.Length <= Limit) continue;
+            dropped += retained.Length - Limit;
+            retained.Remove(0, retained.Length - Limit);
+        }
+        return dropped == 0 ? retained.ToString() : $"[{dropped} earlier characters omitted]\n{retained}";
+    }
+
     private static async Task<string> DrainBoundedAsync(StreamReader reader)
     {
         const int Limit = 16_384;
