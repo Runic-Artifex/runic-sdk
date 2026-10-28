@@ -264,6 +264,8 @@
             gst_all_1.gst-plugins-bad
             gst_all_1.gst-libav
             xvfb-run
+            # A window manager for Xvfb: the GTK 4 placement smoke (--placement --window-manager) runs under Openbox.
+            openbox
           ];
         in
         {

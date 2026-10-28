@@ -217,3 +217,6 @@ Window closed. See
 [`RunicDesktopHost.Placement`](../packages/dotnet/Runic.Application.Views.Desktop/README.md#entry-points)
 and [Window state and restore](../packages/dotnet/Runic.Desktop/README.md#window-state-and-restore).
 `DesktopWindowPlacement` is a record that `System.Text.Json` serializes as is.
+On Linux the position is restored on X11, with GTK 3 and GTK 4; on Wayland the
+compositor places every window, so a Window restores its size, maximized and
+full-screen state but not its position, and the saved placement has none.

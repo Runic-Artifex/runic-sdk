@@ -57,6 +57,9 @@ internal static unsafe class Gtk4X11Placement
 
     // GTK thread. The top-left corner of the window's visible frame in logical pixels, as GTK 3 reports it: the frame
     // the window manager put around the window or, for GTK's client-side decorations, the window without its shadow.
+    // An EWMH window manager publishes the width of its frame as _NET_FRAME_EXTENTS, also when it does not reparent the
+    // window into a frame window, as KWin does for X11 windows on Wayland, and without the invisible resize borders a
+    // frame window of Mutter has. Without it, the frame is the ancestor window that is a child of the root window.
     internal static (int X, int Y)? GetPosition(nint surface)
     {
         if (!IsActive || surface == 0 || Functions.Value is not { } api || !api.IsX11Surface(surface)) return null;
@@ -64,26 +67,72 @@ internal static unsafe class Gtk4X11Placement
         var window = api.Xid(surface);
         if (display == 0 || window == 0) return null;
         var frame = api.TopLevelAncestor(display, window, out var root);
-        if (frame == 0 || !api.TranslateToRoot(display, frame, root, out var x, out var y)) return null;
-        var (left, top) = api.FrameExtents(display, window);
+        if (frame == 0) return null;
+        int x, y;
+        if (api.Extents(display, window, "_NET_FRAME_EXTENTS\0"u8) is { } decorations)
+        {
+            if (!api.TranslateToRoot(display, window, root, out x, out y)) return null;
+            (x, y) = (x - decorations.Left, y - decorations.Top);
+        }
+        else if (!api.TranslateToRoot(display, frame, root, out x, out y))
+        {
+            return null;
+        }
+        var (left, top) = api.Extents(display, window, "_GTK_FRAME_EXTENTS\0"u8) ?? default;
         var scale = Math.Max(1, api.GdkSurfaceGetScaleFactor(surface));
         return ((int)Math.Floor((x + left) / (double)scale), (int)Math.Floor((y + top) / (double)scale));
     }
 
     // GTK thread. Moves the window so that GetPosition reports (x, y). A window manager receives it as a configure
-    // request with the window's gravity, as it receives gtk_window_move of GTK 3.
+    // request with the window's gravity, as it receives gtk_window_move of GTK 3: with GDK's north-west gravity it puts
+    // the top-left corner of its frame at the requested position (ICCCM 4.1.5).
     internal static bool Move(nint surface, int x, int y)
     {
         if (!IsActive || surface == 0 || Functions.Value is not { } api || !api.IsX11Surface(surface)) return false;
         var display = api.XDisplay(surface);
         var window = api.Xid(surface);
         if (display == 0 || window == 0) return false;
-        var (left, top) = api.FrameExtents(display, window);
+        var (left, top) = api.Extents(display, window, "_GTK_FRAME_EXTENTS\0"u8) ?? default;
         var scale = Math.Max(1, api.GdkSurfaceGetScaleFactor(surface));
         api.XMoveWindow(display, window, checked(x * scale - left), checked(y * scale - top));
         api.XFlush(display);
         return true;
     }
+
+    // GTK thread, before GTK maps the window (gtk_window_present). Opens the window at (x, y) instead of where the window
+    // manager would place a new window. GTK 4 sets no position hint, so a window manager applies its own placement
+    // policy to a new window unless WM_NORMAL_HINTS has USPosition or PPosition, as GTK 3's gtk_window_move set them; the
+    // geometry the window has when it is mapped is then its position, and the restored bounds of a window mapped
+    // maximized. GDK writes WM_NORMAL_HINTS again after the window is mapped and drops the flags, which the window
+    // manager read when it took the window.
+    // A window manager receives the move of a window it does not manage yet as a configure request too, and GDK reads
+    // the window's geometry back when it maps it and requests that geometry again, so this waits a moment for the
+    // window manager to apply the move first.
+    internal static bool PlaceBeforeMap(nint surface, int x, int y)
+    {
+        if (!IsActive || surface == 0 || Functions.Value is not { } api || !api.IsX11Surface(surface)) return false;
+        var display = api.XDisplay(surface);
+        var window = api.Xid(surface);
+        if (display == 0 || window == 0) return false;
+        var (left, top) = api.Extents(display, window, "_GTK_FRAME_EXTENTS\0"u8) ?? default;
+        var scale = Math.Max(1, api.GdkSurfaceGetScaleFactor(surface));
+        var (targetX, targetY) = (checked(x * scale - left), checked(y * scale - top));
+        api.SetUserPosition(display, window, targetX, targetY);
+        api.XMoveWindow(display, window, targetX, targetY);
+        api.XSync(display);
+        var waited = System.Diagnostics.Stopwatch.StartNew();
+        while (api.TopLevelAncestor(display, window, out var root) != 0
+            && api.TranslateToRoot(display, window, root, out var currentX, out var currentY)
+            && (currentX, currentY) != (targetX, targetY)
+            && waited.ElapsedMilliseconds < PlacementWaitMilliseconds)
+        {
+            Thread.Sleep(1);
+        }
+        return true;
+    }
+
+    // How long PlaceBeforeMap waits for a window manager; one that is busy for longer places the window when GTK maps it.
+    private const int PlacementWaitMilliseconds = 100;
 
     // GTK thread. The X display and window of a realized surface on X11, for the global menu's properties; zeros on
     // Wayland.
@@ -184,6 +233,9 @@ internal static unsafe class Gtk4X11Placement
         private readonly delegate* unmanaged[Cdecl]<nint, nuint, nuint, nint, nint, int, nuint, nuint*, int*, nuint*, nuint*, byte**, int> _xGetWindowProperty;
         private readonly delegate* unmanaged[Cdecl]<nint, int> _xFree;
         private readonly delegate* unmanaged[Cdecl]<nint, int> _xFlush;
+        private readonly delegate* unmanaged[Cdecl]<nint, int, int> _xSync;
+        private readonly delegate* unmanaged[Cdecl]<nint, nuint, XSizeHints*, nint*, int> _xGetWMNormalHints;
+        private readonly delegate* unmanaged[Cdecl]<nint, nuint, XSizeHints*, void> _xSetWMNormalHints;
 
         private Api(nint gtk, nint gobject, nint x11)
         {
@@ -207,6 +259,9 @@ internal static unsafe class Gtk4X11Placement
             _xGetWindowProperty = (delegate* unmanaged[Cdecl]<nint, nuint, nuint, nint, nint, int, nuint, nuint*, int*, nuint*, nuint*, byte**, int>)NativeLibrary.GetExport(x11, "XGetWindowProperty");
             _xFree = (delegate* unmanaged[Cdecl]<nint, int>)NativeLibrary.GetExport(x11, "XFree");
             _xFlush = (delegate* unmanaged[Cdecl]<nint, int>)NativeLibrary.GetExport(x11, "XFlush");
+            _xSync = (delegate* unmanaged[Cdecl]<nint, int, int>)NativeLibrary.GetExport(x11, "XSync");
+            _xGetWMNormalHints = (delegate* unmanaged[Cdecl]<nint, nuint, XSizeHints*, nint*, int>)NativeLibrary.GetExport(x11, "XGetWMNormalHints");
+            _xSetWMNormalHints = (delegate* unmanaged[Cdecl]<nint, nuint, XSizeHints*, void>)NativeLibrary.GetExport(x11, "XSetWMNormalHints");
         }
 
         // Null without GTK's X11 backend or without Xlib, which that backend links.
@@ -255,6 +310,20 @@ internal static unsafe class Gtk4X11Placement
 
         internal void XFlush(nint display) => _xFlush(display);
 
+        internal void XSync(nint display) => _xSync(display, 0);
+
+        // Adds USPosition and PPosition at (x, y) to the window's WM_NORMAL_HINTS and keeps GDK's size hints. The x and
+        // y fields are obsolete (ICCCM 4.1.2.3), but window managers from before it may still read them.
+        internal void SetUserPosition(nint display, nuint window, int x, int y)
+        {
+            XSizeHints hints = default;
+            nint supplied;
+            if (_xGetWMNormalHints(display, window, &hints, &supplied) == 0) hints = default;
+            hints.Flags |= USPosition | PPosition;
+            (hints.X, hints.Y) = (x, y);
+            _xSetWMNormalHints(display, window, &hints);
+        }
+
         // The ancestor of the window that is a child of the root window: the window manager's frame, or the window itself.
         internal nuint TopLevelAncestor(nint display, nuint window, out nuint root)
         {
@@ -282,24 +351,25 @@ internal static unsafe class Gtk4X11Placement
             return translated;
         }
 
-        // GTK's client-side decorations draw a shadow inside the X window and publish its width as _GTK_FRAME_EXTENTS
-        // (left, right, top, bottom); the visible frame starts inside it.
-        internal (int Left, int Top) FrameExtents(nint display, nuint window)
+        // The left and top widths of a CARDINAL[4] property (left, right, top, bottom), named by a NUL-terminated string,
+        // or null when the window has none: _GTK_FRAME_EXTENTS, the shadow GTK's client-side decorations draw inside the
+        // X window around the visible frame, or _NET_FRAME_EXTENTS, the frame a window manager draws around it (EWMH).
+        internal (int Left, int Top)? Extents(nint display, nuint window, ReadOnlySpan<byte> name)
         {
             nuint atom;
-            fixed (byte* name = "_GTK_FRAME_EXTENTS\0"u8) atom = _xInternAtom(display, name, 1);
-            if (atom == 0) return (0, 0);
+            fixed (byte* terminated = name) atom = _xInternAtom(display, terminated, 1);
+            if (atom == 0) return null;
             nuint actualType, count, remaining;
             int format;
             byte* data = null;
             if (_xGetWindowProperty(display, window, atom, 0, 4, 0, XaCardinal, &actualType, &format, &count, &remaining, &data) != 0)
-                return (0, 0);
+                return null;
             try
             {
                 // Format-32 properties come back as an array of C longs.
                 return data is not null && format == 32 && count == 4
                     ? ((int)((nint*)data)[0], (int)((nint*)data)[2])
-                    : (0, 0);
+                    : null;
             }
             finally
             {
@@ -321,6 +391,22 @@ internal static unsafe class Gtk4X11Placement
         }
 
         internal void SignalHandlerDisconnect(nint instance, nuint handler) => _gSignalHandlerDisconnect(instance, handler);
+    }
+
+    private const nint USPosition = 1 << 0;
+    private const nint PPosition = 1 << 2;
+
+    // Xutil.h's XSizeHints: a C long of flags, then ints.
+    [StructLayout(LayoutKind.Sequential)]
+    private struct XSizeHints
+    {
+        public nint Flags;
+        public int X, Y, Width, Height;
+        public int MinWidth, MinHeight, MaxWidth, MaxHeight;
+        public int WidthIncrement, HeightIncrement;
+        public int MinAspectX, MinAspectY, MaxAspectX, MaxAspectY;
+        public int BaseWidth, BaseHeight;
+        public int WinGravity;
     }
 
     [StructLayout(LayoutKind.Sequential)]
