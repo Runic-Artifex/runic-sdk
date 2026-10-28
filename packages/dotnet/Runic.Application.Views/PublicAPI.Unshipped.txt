@@ -1,1 +1,20 @@
 #nullable enable
+*REMOVED*Runic.Application.Views.IAsyncBridgeTransport
+*REMOVED*Runic.Application.Views.IAsyncBridgeTransport.PublishAsync(string! name, string! stateJson) -> System.Threading.Tasks.ValueTask
+*REMOVED*Runic.Application.Views.IBridgeTransport.Bind(string! name, System.Func<Runic.Application.Views.IBridgeArguments!, string!>! handler) -> System.IDisposable!
+*REMOVED*Runic.Application.Views.IBridgeTransport.BindAsync(string! name, System.Func<Runic.Application.Views.IBridgeArguments!, System.Threading.CancellationToken, System.Threading.Tasks.ValueTask<string!>>! handler) -> System.IDisposable!
+*REMOVED*Runic.Application.Views.IBridgeTransport.Publish(string! name, string! stateJson) -> void
+*REMOVED*Runic.Application.Views.IBridgeUtf8Transport
+*REMOVED*Runic.Application.Views.IBridgeUtf8Transport.PublishUtf8Async(string! name, System.ReadOnlyMemory<byte> stateUtf8, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask
+Runic.Application.Views.BridgeRequest
+Runic.Application.Views.BridgeRequest.BridgeRequest(System.ReadOnlyMemory<byte> message, string! clientKey, string! connectionKey) -> void
+Runic.Application.Views.BridgeRequest.ClientKey.get -> string!
+Runic.Application.Views.BridgeRequest.ConnectionKey.get -> string!
+Runic.Application.Views.BridgeRequest.Message.get -> System.ReadOnlyMemory<byte>
+Runic.Application.Views.IBridgeConnectionTransport
+Runic.Application.Views.IBridgeConnectionTransport.SendAsync(string! connectionKey, System.ReadOnlyMemory<byte> message, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<bool>
+Runic.Application.Views.IBridgeRequestHandler
+Runic.Application.Views.IBridgeRequestHandler.ConnectionClosed(string! connectionKey) -> void
+Runic.Application.Views.IBridgeRequestHandler.HandleAsync(Runic.Application.Views.BridgeRequest! request, System.Threading.CancellationToken cancellationToken) -> System.Threading.Tasks.ValueTask<System.ReadOnlyMemory<byte>>
+Runic.Application.Views.IBridgeTransport.BroadcastAsync(System.ReadOnlyMemory<byte> message, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask
+Runic.Application.Views.IBridgeTransport.Serve(Runic.Application.Views.IBridgeRequestHandler! handler) -> System.IDisposable!

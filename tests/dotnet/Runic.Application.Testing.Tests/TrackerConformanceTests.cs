@@ -42,7 +42,7 @@ internal sealed class TrackerConformanceTests
             var frame = frames[index]!.AsObject();
             foreach (var key in new[] { "revision", "baseRevision" })
                 if (frame[key] is { } value) frame[key] = value.GetValue<long>() + offset;
-            host.Transport.Publish(Route, frame.ToJsonString());
+            Runic.Application.Views.BridgeDispatcher.For(host.Transport).Legacy.PublishAsync(Route, System.Text.Encoding.UTF8.GetBytes(frame.ToJsonString())).AsTask().GetAwaiter().GetResult();
             if (dropped.Count > 0 && index > dropped.Min() && frame["__runicDelta"] is not null)
             {
                 Require(Throws(() => tracker.Apply(), "lost or reordered"), $"{name}: a delta after a lost frame was applied.");
@@ -86,7 +86,7 @@ internal sealed class TrackerConformanceTests
                 ["__runicDelta"] = 1, ["baseRevision"] = tracker.Revision, ["revision"] = tracker.Revision + 1,
                 ["changes"] = new JsonArray(change),
             };
-            host.Transport.Publish(Route, frame.ToJsonString());
+            Runic.Application.Views.BridgeDispatcher.For(host.Transport).Legacy.PublishAsync(Route, System.Text.Encoding.UTF8.GetBytes(frame.ToJsonString())).AsTask().GetAwaiter().GetResult();
             Require(Throws(() => tracker.Apply(), problem), $"The tracker accepted a frame with {problem}.");
         }
     }

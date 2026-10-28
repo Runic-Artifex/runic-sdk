@@ -830,18 +830,10 @@ internal sealed class NativeChecks
         const string Policy = "default-src 'self'; script-src 'self'; object-src 'none'; base-uri 'self'";
         var received = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
         var collection = new ServiceCollection();
+        // The page reaches the window over the Views channel: it completes its hello, asks the probe's reserved route to
+        // broadcast a push, and reports what it received.
         collection.AddSingleton<Func<IBridgeTransport, HostedModel, IDisposable>>((transport, _) =>
-            new Bindings(
-                transport.Bind("cspReady", _ =>
-                {
-                    transport.Publish("cspProbe", "{\"value\":42,\"text\":\"Grüße\"}");
-                    return "ok";
-                }),
-                transport.Bind("cspReceived", arguments =>
-                {
-                    received.TrySetResult(arguments.GetString());
-                    return "ok";
-                })));
+            BridgeDispatcher.For(transport).RegisterRoute("runic.csp-probe", new CspProbeRoute(received)));
         await using var services = collection.BuildServiceProvider();
         var host = new RunicViewHost
         {
@@ -854,15 +846,18 @@ internal sealed class NativeChecks
                         <script>document.title = 'inline script ran';</script>
                         """), "text/html; charset=utf-8"),
                     "/csp.js" => new ContentResponse(System.Text.Encoding.UTF8.GetBytes("""
-                        globalThis.__cspProbeChanged = state => {
+                        const request = message => webui.call('__runicViews', JSON.stringify(message));
+                        globalThis.__runicDesktopViews.onMessage(text => {
+                          const state = JSON.parse(text);
                           let evaluation = 'allowed';
                           try { new Function('return 1')(); } catch (error) { evaluation = error.name; }
-                          cspReceived(`${state.value}:${state.text}:${evaluation}:${document.title}`).catch(() => {});
-                        };
-                        (function ready() {
-                          if (typeof globalThis.cspReady === 'function') cspReady().catch(() => setTimeout(ready, 50));
-                          else setTimeout(ready, 50);
-                        })();
+                          request({ kind: 'csp-received', route: 'runic.csp-probe',
+                            text: `${state.value}:${state.text}:${evaluation}:${document.title}` }).catch(() => {});
+                        });
+                        webui.connected
+                          .then(() => request({ kind: 'hello', protocol: 4, session: 'csp', client: { name: 'csp', version: '0' } }))
+                          .then(() => request({ kind: 'csp-ready', route: 'runic.csp-probe' }))
+                          .catch(() => {});
                         """), "text/javascript; charset=utf-8"),
                     _ => null,
                 })),
@@ -1012,5 +1007,18 @@ internal sealed class NativeChecks
         internal bool Disposed { get; private set; }
         internal TaskCompletionSource Released { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
         public void Dispose() { Disposed = true; Released.TrySetResult(); }
+    }
+}
+
+// The reserved route of HostSendsItsContentSecurityPolicy's page: csp-ready broadcasts a push, csp-received reports it.
+file sealed class CspProbeRoute(TaskCompletionSource<string> received) : IBridgeRouteHandler
+{
+    public async ValueTask<ReadOnlyMemory<byte>> HandleAsync(BridgeRouteRequest request, CancellationToken cancellationToken)
+    {
+        if (request.Kind == "csp-ready")
+            await request.Dispatcher.BroadcastAsync("{\"value\":42,\"text\":\"Grüße\"}"u8.ToArray(), cancellationToken);
+        else if (request.Kind == "csp-received")
+            received.TrySetResult(request.Root.GetProperty("text").GetString()!);
+        return BridgeMessages.Ok;
     }
 }

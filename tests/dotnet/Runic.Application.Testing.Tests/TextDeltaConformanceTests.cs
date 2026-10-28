@@ -152,7 +152,7 @@ internal sealed class TextDeltaConformanceTests
 
     private static string State(FrameTransport transport)
     {
-        using var reply = JsonDocument.Parse(transport.Inner.Call($"{Route}Snapshot"));
+        using var reply = JsonDocument.Parse(transport.Call($"{Route}Snapshot"));
         return reply.RootElement.GetProperty("state").GetRawText();
     }
 
@@ -168,15 +168,11 @@ internal sealed class TextDeltaConformanceTests
         if (!condition) throw new InvalidOperationException(message);
     }
 
-    private sealed class FrameTransport : IBridgeTransport, IDisposable
+    private sealed class FrameTransport : LegacyTestTransport
     {
         private readonly object _gate = new();
         private readonly List<string> _frames = [];
-        public InMemoryBridgeTransport Inner { get; } = new();
-        public IDisposable Bind(string name, Func<IBridgeArguments, string> handler) => Inner.Bind(name, handler);
-        public IDisposable BindAsync(string name, Func<IBridgeArguments, CancellationToken, ValueTask<string>> handler) =>
-            Inner.BindAsync(name, handler);
-        public void Publish(string name, string stateJson)
+        protected override void Publish(string name, string stateJson)
         {
             lock (_gate) _frames.Add(stateJson);
         }
@@ -194,6 +190,5 @@ internal sealed class TextDeltaConformanceTests
             lock (_gate) return _frames.ToArray();
         }
 
-        public void Dispose() => Inner.Dispose();
     }
 }

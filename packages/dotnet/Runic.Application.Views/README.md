@@ -986,8 +986,8 @@ const document = shell.snapshot.documents.at(-1); // includes what load added
 - A synchronous route that a test calls inside the model turn, for example
   through `IRunicModelContext.InvokeAsync`, replies at once: the states
   cannot be captured until that turn ends.
-- A custom `IBridgeTransport` keeps the guarantee when `Publish` (or
-  `PublishAsync`/`PublishUtf8Async`) returns once the frame is on the
+- A custom `IBridgeTransport` keeps the guarantee when `BroadcastAsync` (and
+  `IBridgeConnectionTransport.SendAsync`) returns once the push is on the
   connection ahead of later sends, as Runic's hosts do.
 
 The wire is unchanged (Views protocol 3); clients of earlier releases see the

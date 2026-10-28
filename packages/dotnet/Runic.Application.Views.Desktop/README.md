@@ -79,8 +79,8 @@ The same Window and `async host => ...` body run on CS-WebUI with
   their own (`DesktopSurfaceOptions.ContentSecurityPolicy`). It is a header of
   its own next to the surface's `frame-ancestors` policy, and the WebView
   enforces both. The Bridge needs `'self'` scripts and connections and no
-  `'unsafe-eval'`: `DesktopBridgeTransport` sends state as data, which the
-  served bridge script parses with `JSON.parse` before it calls the View, so
+  `'unsafe-eval'`: `DesktopBridgeTransport` sends Views messages as data, which the
+  served bridge script hands to `runic-desktop-views.js` without evaluating them, so
   `default-src 'self'; script-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'`
   works and blocks inline, foreign and evaluated scripts. Only
   `DesktopSurface.ExecuteJavaScriptAsync`, which evaluates a string in the

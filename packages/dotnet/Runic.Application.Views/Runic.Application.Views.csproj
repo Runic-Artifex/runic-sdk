@@ -15,6 +15,21 @@
     <RunicPackDiagnosticsHelpLinks>true</RunicPackDiagnosticsHelpLinks>
   </PropertyGroup>
   <ItemGroup>
+    <!-- The host adapters serve their reserved menu bar route on the window's Views dispatcher (BridgeDispatcher) and
+         share its reply envelopes; packing pins the exact version (eng/build/README.md). -->
+    <InternalsVisibleTo Include="Runic.Application.Views.Desktop" />
+    <InternalsVisibleTo Include="Runic.Application.Views.CsWebUi" />
+    <InternalsVisibleTo Include="Runic.Application.Views.Desktop.Tests" />
+    <!-- Until the producer speaks protocol 4 (P4), these tests and benchmarks reach the protocol-3 routes and states
+         through the dispatcher's legacy routes. -->
+    <InternalsVisibleTo Include="Runic.Application.Views.Wpf.Windows.Tests" />
+    <InternalsVisibleTo Include="Runic.Application.Views.Benchmarks" />
+    <InternalsVisibleTo Include="NotesViewFirst" />
+    <InternalsVisibleTo Include="DynamicDataExample" />
+    <InternalsVisibleTo Include="DynamicDataProof" />
+    <InternalsVisibleTo Include="ReactiveUi25AotProof" />
+  </ItemGroup>
+  <ItemGroup>
     <!-- The generated-code support API (Generated/) is used throughout the runtime. -->
     <Using Include="Runic.Application.Views.Generated" />
   </ItemGroup>

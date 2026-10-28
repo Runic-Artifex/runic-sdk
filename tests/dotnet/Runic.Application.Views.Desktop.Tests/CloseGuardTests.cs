@@ -586,7 +586,7 @@ sealed class GuardedShellBridge(IBridgeTransport transport, GuardedShellModel vm
         {
             _content = content;
             _page = page;
-            _snapshot = transport.Bind($"{route}Snapshot", _ => JsonSerializer.Serialize(page.Rows.Select(row =>
+            _snapshot = BridgeDispatcher.For(transport).Legacy.Bind($"{route}Snapshot", _ => JsonSerializer.Serialize(page.Rows.Select(row =>
                 content.PresentItem(page, "Rows", "row", row, static (rows, _, rowRoute) => new RowBridge(rows, rowRoute)).Id)));
         }
 
@@ -601,7 +601,7 @@ sealed class GuardedShellBridge(IBridgeTransport transport, GuardedShellModel vm
     private sealed class RowBridge(IBridgeTransport transport, string route) : IDisposable
     {
         private readonly IDisposable[] _routes =
-            [.. new[] { "Snapshot", "SetName", "SetCount", "SetDone", "SetNote" }.Select(name => transport.Bind(route + name, static _ => "ok"))];
+            [.. new[] { "Snapshot", "SetName", "SetCount", "SetDone", "SetNote" }.Select(name => BridgeDispatcher.For(transport).Legacy.Bind(route + name, static _ => "ok"))];
 
         public void Dispose()
         {

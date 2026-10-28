@@ -38,10 +38,10 @@ internal sealed class BridgeOperationRouter : IDisposable
         var bindings = new List<IDisposable>();
         try
         {
-            bindings.Add(transport.Bind(StatusRoute, Status));
-            bindings.Add(transport.BindAsync(WaitRoute, WaitAsync));
-            bindings.Add(transport.Bind(CancelRoute, Cancel));
-            bindings.Add(transport.Bind(StreamRoute, Stream));
+            bindings.Add(BridgeDispatcher.For(transport).Legacy.Bind(StatusRoute, Status));
+            bindings.Add(BridgeDispatcher.For(transport).Legacy.BindAsync(WaitRoute, WaitAsync));
+            bindings.Add(BridgeDispatcher.For(transport).Legacy.Bind(CancelRoute, Cancel));
+            bindings.Add(BridgeDispatcher.For(transport).Legacy.Bind(StreamRoute, Stream));
             _bindings = [.. bindings];
         }
         catch

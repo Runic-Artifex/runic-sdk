@@ -18,7 +18,7 @@ internal sealed class ReplyOrderTests
     public async Task AnAwaitedCommandRepliesAfterTheShellStateItChangedAsync()
     {
         await using var window = await Window.OpenAsync();
-        using var reply = JsonDocument.Parse(await window.Transport.Inner.CallAsync("pageLoad"));
+        using var reply = JsonDocument.Parse(await window.Transport.CallAsync("pageLoad"));
         Require(reply, "pageLoad");
         window.RequireShellValue(1, "the awaited command pageLoad");
     }
@@ -27,7 +27,7 @@ internal sealed class ReplyOrderTests
     public async Task ASynchronousCommandRepliesAfterTheShellStateItChangedAsync()
     {
         await using var window = await Window.OpenAsync();
-        using var reply = JsonDocument.Parse(await Task.Run(() => window.Transport.Inner.Call("pageBump")));
+        using var reply = JsonDocument.Parse(await Task.Run(() => window.Transport.Call("pageBump")));
         Require(reply, "pageBump");
         window.RequireShellValue(1, "the synchronous command pageBump");
     }
@@ -36,7 +36,7 @@ internal sealed class ReplyOrderTests
     public async Task ASetterRepliesAfterTheShellStateItChangedAsync()
     {
         await using var window = await Window.OpenAsync();
-        using var reply = JsonDocument.Parse(await Task.Run(() => window.Transport.Inner.Call("pageSetValue", new(Int64Value: 7))));
+        using var reply = JsonDocument.Parse(await Task.Run(() => window.Transport.Call("pageSetValue", new(Int64Value: 7))));
         Require(reply, "pageSetValue");
         window.RequireShellValue(7, "the setter pageSetValue");
     }
@@ -48,7 +48,7 @@ internal sealed class ReplyOrderTests
     {
         await using var window = await Window.OpenAsync();
         var started = TimeProvider.System.GetTimestamp();
-        var reply = await window.Context.InvokeAsync(() => window.Transport.Inner.Call("pageBump"));
+        var reply = await window.Context.InvokeAsync(() => window.Transport.Call("pageBump"));
         using (var document = JsonDocument.Parse(reply)) Require(document, "pageBump");
         if (TimeProvider.System.GetElapsedTime(started) >= BridgeReplyOrder.ReplyWaitLimit)
             throw new InvalidOperationException("A call inside the model turn waited for a capture that needs that turn.");
@@ -112,8 +112,8 @@ internal sealed class ReplyOrderTests
         {
             var window = new Window(new RunicModelContext());
             // The initial state of each route was read by a snapshot call; no frame is outstanding.
-            _ = window.Transport.Inner.Call("shellSnapshot");
-            _ = window.Transport.Inner.Call("pageSnapshot");
+            _ = window.Transport.Call("shellSnapshot");
+            _ = window.Transport.Call("pageSnapshot");
             await Task.CompletedTask;
             return window;
         }
@@ -147,39 +147,33 @@ internal sealed class ReplyOrderTests
     }
 
     // The page takes each frame slowly, as a busy WebView does. Frames are recorded once they were taken.
-    private sealed class SlowPageTransport : IBridgeUtf8Transport, IDisposable
+    private sealed class SlowPageTransport : LegacyTestTransport
     {
         private readonly List<int> _shellValues = [];
-        public InMemoryBridgeTransport Inner { get; } = new();
         public int[] ShellValues { get { lock (_shellValues) return [.. _shellValues]; } }
-        public IDisposable Bind(string name, Func<IBridgeArguments, string> handler) => Inner.Bind(name, handler);
-        public IDisposable BindAsync(string name, Func<IBridgeArguments, CancellationToken, ValueTask<string>> handler) =>
-            Inner.BindAsync(name, handler);
-        public void Publish(string name, string stateJson) => throw new NotSupportedException();
-        public async ValueTask PublishUtf8Async(string name, ReadOnlyMemory<byte> stateUtf8, CancellationToken cancellationToken = default)
+        protected override async ValueTask PublishUtf8Async(string name, ReadOnlyMemory<byte> stateUtf8, CancellationToken cancellationToken)
         {
             using var state = JsonDocument.Parse(stateUtf8);
             var value = state.RootElement.GetProperty("value").GetInt32();
             await Task.Delay(200, cancellationToken);
             if (name == "shell") lock (_shellValues) _shellValues.Add(value);
         }
-        public void Dispose() => Inner.Dispose();
     }
 
-    // Throws ObjectDisposedException once disposed, as CS-WebUI's RebindableBridgeTransport did.
-    private sealed class ClosingTransport : IBridgeTransport, IDisposable
+    // Throws ObjectDisposedException once disposed, as CS-WebUI's transport did while it published states.
+    private sealed class ClosingTransport : LegacyTestTransport
     {
         private volatile bool _disposed;
         public TaskCompletionSource Attempted { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        public IDisposable Bind(string name, Func<IBridgeArguments, string> handler) => throw new NotSupportedException();
-        public IDisposable BindAsync(string name, Func<IBridgeArguments, CancellationToken, ValueTask<string>> handler) =>
-            throw new NotSupportedException();
-        public void Publish(string name, string stateJson)
+        protected override void Publish(string name, string stateJson)
         {
             Attempted.TrySetResult();
             ObjectDisposedException.ThrowIf(_disposed, this);
         }
-        public void Dispose() => _disposed = true;
+        // The window disposes its transport while a publication is on its way: it keeps receiving publications, which
+        // then fail as a disposed transport's did.
+        [System.Diagnostics.CodeAnalysis.SuppressMessage("Usage", "CA2215", Justification = "The publisher must stay attached.")]
+        public override void Dispose() => _disposed = true;
     }
 
     private sealed class ShellModel : INotifyPropertyChanged

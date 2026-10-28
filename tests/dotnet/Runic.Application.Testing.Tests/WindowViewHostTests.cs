@@ -76,14 +76,16 @@ internal sealed class WindowViewHostTests
     {
         using (var transport = new InMemoryBridgeTransport())
         {
-            using var binding = transport.BindAsync("await", async (_, cancellationToken) =>
+            // The protocol-3 routes of the generated bridges live in the window's dispatcher until P4.
+            var routes = BridgeDispatcher.For(transport).Legacy;
+            using var binding = routes.BindAsync("await", async (_, cancellationToken) =>
             {
                 await Task.Yield();
                 cancellationToken.ThrowIfCancellationRequested();
                 return "done";
             });
             Require(await transport.CallAsync("await") == "done", "Asynchronous routes did not complete.");
-            Require(Throws<InvalidOperationException>(() => transport.Bind("await", _ => "duplicate")),
+            Require(Throws<InvalidOperationException>(() => routes.Bind("await", _ => "duplicate")),
                 "A duplicate route was accepted.");
             binding.Dispose();
             Require(Throws<KeyNotFoundException>(() => transport.Call("await")),

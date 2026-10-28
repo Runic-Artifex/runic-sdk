@@ -81,7 +81,7 @@ internal sealed class CollectionDeltaConformanceTests
     // A snapshot read of invalid keys fails with the bounded reason instead of a state.
     private static void RequireFailure(string name, string what, string error, FixtureTransport transport)
     {
-        using var reply = JsonDocument.Parse(transport.Inner.Call($"{Route}Snapshot"));
+        using var reply = JsonDocument.Parse(transport.Call($"{Route}Snapshot"));
         var root = reply.RootElement;
         Require(!root.GetProperty("ok").GetBoolean() && root.GetProperty("state").ValueKind == JsonValueKind.Null &&
             root.GetProperty("error").GetProperty("message").GetString() == error,
@@ -90,7 +90,7 @@ internal sealed class CollectionDeltaConformanceTests
 
     private static string State(FixtureTransport transport)
     {
-        using var reply = JsonDocument.Parse(transport.Inner.Call($"{Route}Snapshot"));
+        using var reply = JsonDocument.Parse(transport.Call($"{Route}Snapshot"));
         return reply.RootElement.GetProperty("state").GetRawText();
     }
 
@@ -189,17 +189,13 @@ internal sealed class CollectionDeltaConformanceTests
         if (!condition) throw new InvalidOperationException(message);
     }
 
-    private sealed class FixtureTransport(bool held) : IBridgeTransport, IDisposable
+    private sealed class FixtureTransport(bool held) : LegacyTestTransport
     {
         private readonly object _gate = new();
         private readonly List<string> _frames = [];
-        public InMemoryBridgeTransport Inner { get; } = new();
         public TaskCompletionSource Entered { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
         public ManualResetEventSlim Release { get; } = new(!held);
-        public IDisposable Bind(string name, Func<IBridgeArguments, string> handler) => Inner.Bind(name, handler);
-        public IDisposable BindAsync(string name, Func<IBridgeArguments, CancellationToken, ValueTask<string>> handler) =>
-            Inner.BindAsync(name, handler);
-        public void Publish(string name, string stateJson)
+        protected override void Publish(string name, string stateJson)
         {
             Entered.TrySetResult();
             Release.Wait(TimeSpan.FromSeconds(10));
@@ -219,10 +215,10 @@ internal sealed class CollectionDeltaConformanceTests
             lock (_gate) return _frames.ToArray();
         }
 
-        public void Dispose()
+        public override void Dispose()
         {
             Release.Set();
-            Inner.Dispose();
+            base.Dispose();
         }
     }
 }

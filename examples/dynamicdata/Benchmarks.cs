@@ -1,3 +1,4 @@
+using System.Text;
 using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Text.Json;
@@ -87,33 +88,46 @@ internal static class Benchmarks
         }
     }
 
-    internal sealed class MeteredTransport : IBridgeTransport
+    // Until the producer speaks protocol 4 (P4), the benchmark reads the bridge's protocol-3 states and calls its
+    // routes through the window dispatcher's legacy routes.
+    internal sealed class MeteredTransport : IBridgeTransport, IDisposable
     {
-        private readonly Dictionary<string, Func<IBridgeArguments, string>> _routes = new(StringComparer.Ordinal);
+        private BridgeDispatcher? _dispatcher;
         internal ConcurrentQueue<string> Frames { get; } = new();
         private long _latestRevision;
         internal long LatestRevision => Interlocked.Read(ref _latestRevision);
-        public IDisposable Bind(string name, Func<IBridgeArguments, string> handler) { _routes.Add(name, handler); return new Lease(() => _routes.Remove(name)); }
-        public IDisposable BindAsync(string name, Func<IBridgeArguments, CancellationToken, ValueTask<string>> handler) => new Lease(() => { });
-        public void Publish(string name, string stateJson)
+        public IDisposable Serve(IBridgeRequestHandler handler)
+        {
+            _dispatcher = (BridgeDispatcher)handler;
+            _dispatcher.Legacy.SetPublisher((name, state, _) =>
+            {
+                Publish(Encoding.UTF8.GetString(state.Span));
+                return ValueTask.CompletedTask;
+            });
+            return this;
+        }
+        public ValueTask BroadcastAsync(ReadOnlyMemory<byte> message, CancellationToken cancellationToken = default) =>
+            ValueTask.CompletedTask;
+        private void Publish(string stateJson)
         {
             Frames.Enqueue(stateJson);
             using var document = JsonDocument.Parse(stateJson);
             Interlocked.Exchange(ref _latestRevision, document.RootElement.GetProperty("revision").GetInt64());
         }
-        internal string Call(string name) => _routes[name](new Arguments());
+        internal string Call(string name) =>
+            _dispatcher!.Legacy.TryFind(name, out var sync, out _) && sync is not null ? sync(new Arguments()) : throw new KeyNotFoundException(name);
         internal async Task WaitForRevisionAsync(long revision)
         {
             using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(15));
             while (LatestRevision < revision) await Task.Delay(1, timeout.Token);
         }
+        public void Dispose() => _dispatcher?.Legacy.SetPublisher(null);
         private sealed class Arguments : IBridgeArguments
         {
             public long GetInt64() => throw new InvalidOperationException();
             public bool GetBoolean() => throw new InvalidOperationException();
             public string GetString() => throw new InvalidOperationException();
         }
-        private sealed class Lease(Action release) : IDisposable { public void Dispose() => release(); }
     }
 }
 

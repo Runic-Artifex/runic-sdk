@@ -409,29 +409,13 @@ public sealed class RunicDesktopHost : IRunicWindowHost
                 IncludeFailureDetail = IncludeFailureDetailFor(opening.Options),
                 MaximumInputBytes = opening.Options.MaximumInputBytes ?? _maximumInputBytes,
             });
-            var session = content;
-            // The reserved routes of an in-page menu bar, bound before the page loads.
+            // The reserved route of an in-page menu bar, served before the page loads. The transport reports closed
+            // connections to the window's dispatcher, which releases their mounts and menu bar watches.
             var menuSource = new DesktopMenuBarSource(Desktop);
             var menuRoutes = new MenuBarPageRoutes(menuSource, transport,
                 (loggerFactory?.CreateLogger("Runic.Application.Views.Desktop"))
                 ?? Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance);
-            IDisposable connections;
-            try
-            {
-                connections = surface.SubscribeConnectionEvents(connection =>
-                {
-                    if (connection.Kind != DesktopConnectionEventKind.Disconnected) return;
-                    var key = connection.SessionId.ToString(CultureInfo.InvariantCulture);
-                    session.ReleaseConnection(key);
-                    menuRoutes.ReleaseConnection(key);
-                });
-            }
-            catch
-            {
-                menuRoutes.Dispose();
-                throw;
-            }
-            connections = new Bindings(connections, menuRoutes);
+            IDisposable connections = menuRoutes;
             // The window releases its live development content when it closes, with its connection events.
             connectionBinding = development is null ? connections : new Bindings(connections, development);
             development = null;

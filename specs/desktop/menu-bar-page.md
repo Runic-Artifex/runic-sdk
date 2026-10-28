@@ -35,6 +35,10 @@ instead of answering waits.
 - The state is the object of [State](#state) without `kind`, and its `protocol` is `2`.
 - The push is targeted, because `shortcuts` differs per connection. A host whose transport
   cannot push to one connection delivers it through the Views mailbox (`receive`).
+- Each push carries the whole state, so a host may skip states a connection has not been sent
+  yet and send only the latest. A reply and a push can arrive in either order; the page keeps
+  the state with the highest `revision`. The `menu-bar-shortcuts` reply carries the state its
+  lease change produced, and the host does not push that state to the same connection again.
 - Failures use the Views reply envelope: a malformed request is `rejected` with the reason
   `invalid-request`; a window that closed answers `released`. A host that does not serve the
   route answers `released` as for any route it does not serve, and the page reports the

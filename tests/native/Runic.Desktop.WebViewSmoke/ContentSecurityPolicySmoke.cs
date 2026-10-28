@@ -4,13 +4,11 @@ using Runic.Desktop;
 
 // SEC-06 and D040: DesktopSurfaceOptions.ContentSecurityPolicy reaches the embedded WebView (WebView2, WKWebView,
 // WebKitGTK), and the Bridge works under a strict policy without 'unsafe-eval'. The page's inline script and its own
-// string evaluation are blocked, while a same-origin script calls the host and receives a state push, which the
-// served bridge script parses as data. DesktopSurface.ExecuteJavaScriptAsync is an eval API: it fails under the policy.
+// string evaluation are blocked, while a same-origin script calls the host and receives a Views message push, which the
+// served bridge script hands over as data. DesktopSurface.ExecuteJavaScriptAsync is an eval API: it fails under the policy.
 internal static class ContentSecurityPolicySmoke
 {
     internal const string Policy = "default-src 'self'; script-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'";
-
-    private const string Route = "cspProbe";
 
     internal static DesktopContent Content() => new DesktopContent.Handler((request, _) => ValueTask.FromResult<ContentResponse?>(request.Path switch
     {
@@ -19,11 +17,12 @@ internal static class ContentSecurityPolicySmoke
             <script>document.title = "inline script ran";</script></head><body></body></html>
             """),
         "/csp.js" => Response("text/javascript; charset=utf-8", $$"""
-            globalThis.__{{Route}}Changed = state => {
+            globalThis.__runicDesktopViews.onMessage(message => {
+              const state = JSON.parse(message);
               let evaluation = "allowed";
               try { new Function("return 1")(); } catch (error) { evaluation = error?.name ?? String(error); }
               webui.call("cspReceived", JSON.stringify({ state, title: document.title, evaluation })).catch(() => {});
-            };
+            });
             webui.connected.then(() => webui.call("cspReady")).catch(() => {});
             """),
         _ => null,
@@ -61,8 +60,8 @@ internal static class ContentSecurityPolicySmoke
         {
             using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(30));
             await _ready.Task.WaitAsync(deadline.Token);
-            // The route the Views transport (DesktopBridgeTransport) publishes through.
-            await _surface.PushStateAsync(Route, "{\"value\":42,\"text\":\"Grüße \\u2028\"}", deadline.Token);
+            // The push the Views transport (DesktopBridgeTransport) broadcasts through.
+            await _surface.PushViewsMessageAsync("{\"value\":42,\"text\":\"Grüße \\u2028\"}"u8.ToArray(), deadline.Token);
             using var report = JsonDocument.Parse(await _received.Task.WaitAsync(deadline.Token));
             var root = report.RootElement;
             var title = root.GetProperty("title").GetString();

@@ -69,7 +69,9 @@ internal sealed class TestingSurfaceTests
             var valueTask = method.ReturnType == typeof(ValueTask) || method.ReturnType.IsGenericType
                 && method.ReturnType.GetGenericTypeDefinition() == typeof(ValueTask<>);
             // ValueTask where a Bridge interface or IAsyncDisposable sets the shape.
-            Require(valueTask == name is "InMemoryBridgeTransport.CallAsync" or "InMemoryBridgeTransport.PublishUtf8Async"
+            // InMemoryBridgeTransport.RequestAsync returns what the window's IBridgeRequestHandler.HandleAsync does.
+            Require(valueTask == name is "InMemoryBridgeTransport.CallAsync" or "InMemoryBridgeTransport.BroadcastAsync"
+                    or "InMemoryBridgeTransport.SendAsync" or "InMemoryBridgeTransport.RequestAsync"
                     or "RunicServeOnlyApplication.DisposeAsync" or "RunicTestNavigationEntry`1.DisposeAsync",
                 $"{name} returns {method.ReturnType.Name}.");
             var parameters = method.GetParameters();
@@ -137,8 +139,8 @@ internal sealed class TestingSurfaceTests
         var admission = """{"kind":"accepted","status":"running","reason":null,"terminal":null}""";
         using var host = new RunicWindowTestHost<ScriptedViewModel>(new ScriptedViewModel(), (transport, _, _) =>
         {
-            var snapshot = transport.Bind("scriptedSnapshot", _ => """{"ok":true,"state":{"revision":0},"error":null}""");
-            var start = transport.Bind("scriptedStartRun", _ => admission);
+            var snapshot = BridgeDispatcher.For(transport).Legacy.Bind("scriptedSnapshot", _ => """{"ok":true,"state":{"revision":0},"error":null}""");
+            var start = BridgeDispatcher.For(transport).Legacy.Bind("scriptedStartRun", _ => admission);
             return new Bindings(snapshot, start);
         }, new RunicWindowTestHostOptions { RootRoute = "scripted" });
         var operation = host.Root.Start(vm => vm.RunCommand);

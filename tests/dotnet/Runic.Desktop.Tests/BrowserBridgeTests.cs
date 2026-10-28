@@ -135,12 +135,13 @@ public sealed class BrowserBridgeTests
                 <script>document.title = 'inline script ran';</script></head><body data-result="waiting"></body></html>
                 """u8.ToArray(), "text/html; charset=utf-8", headers: new Dictionary<string, string> { ["Content-Security-Policy"] = Policy }),
             "/strict.js" => WebUiContent.FromText("""
-                globalThis.__strictChanged = state => {
+                globalThis.__runicDesktopViews.onMessage(message => {
+                  const state = JSON.parse(message);
                   let evaluation = 'allowed';
                   try { new Function('return 1')(); } catch (error) { evaluation = error.name; }
                   document.body.dataset.result = `${state.value}:${state.text}:${evaluation}:${document.title}`;
                   document.title = 'PASS';
-                };
+                });
                 webui.connected.then(() => webui.call('ready')).catch(error => {
                   globalThis.testError = String(error?.stack ?? error);
                   document.title = 'FAIL';
@@ -148,7 +149,7 @@ public sealed class BrowserBridgeTests
                 """, "text/javascript; charset=utf-8"),
             _ => null,
         }));
-        window.Bind("ready", e => { _ = window.PushStateAsync("strict", "{\"value\":42,\"text\":\"Grüße\"}"u8.ToArray()); });
+        window.Bind("ready", e => { _ = window.PushViewsMessageAsync("{\"value\":42,\"text\":\"Grüße\"}"u8.ToArray()); });
 
         var url = new Uri(await window.StartServerAsync("unused", timeout.Token), "strict.html");
         var profile = Directory.CreateTempSubdirectory("runic-desktop-chrome-");

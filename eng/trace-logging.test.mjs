@@ -76,7 +76,7 @@ export const traceAllowList = [
     fragment: 'TraceWarning($"CS-WebUI loads the WebUI library {path}, whose version Runic cannot check' },
   // The public DesktopBridgeTransport(surface) constructor takes no logger; Runic's hosts pass one.
   { file: 'packages/dotnet/Runic.Application.Views.Desktop/DesktopBridgeTransport.cs',
-    fragment: 'TraceError($"Bridge snapshot delivery for {name} failed: {error}")' },
+    fragment: 'TraceError($"Views push delivery failed: {error}")' },
 ];
 
 function* sources(directory) {
