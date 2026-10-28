@@ -2,9 +2,9 @@ namespace Runic.Desktop.Internal;
 
 internal static class WebUiBridge
 {
-    // The reserved raw-data function of Runic's state pushes (WebUiSession.PushStateAsync). The script handles it
-    // itself; a page cannot replace it. Keep it in sync with STATE_PUSH below.
-    internal const string StatePushFunction = "__runicViewsPush";
+    // The reserved raw-data function of Views messages (WebUiSession.PushViewsMessageAsync). The script handles it
+    // itself; a page cannot replace it. Keep it in sync with VIEWS_PUSH below.
+    internal const string ViewsPushFunction = "__runicViewsPush";
 
     // The reserved raw-data function of DesktopWindow.AnnounceAsync while the page has the keyboard focus
     // (WebUiSession.AnnounceAsync): the politeness, NUL and the message; an empty message adds the page's live regions.
@@ -39,7 +39,7 @@ internal static class WebUiBridge
           const BASE_PATH = "__BASE_PATH__";
           const SESSION_CREDENTIAL = __SESSION_CREDENTIAL__;
           const CUSTOM_WINDOW_DRAG = __CUSTOM_WINDOW_DRAG__;
-          const STATE_PUSH = "__runicViewsPush";
+          const VIEWS_PUSH = "__runicViewsPush";
           const ANNOUNCE = "__runicAnnounce";
           const encoder = new TextEncoder();
           const decoder = new TextDecoder();
@@ -49,6 +49,9 @@ internal static class WebUiBridge
           const pendingCalls = new Map();
           const connectionWaiters = new Set();
           const liveRegions = new Map();
+          const viewsMessageListeners = new Set();
+          const viewsConnectionListeners = new Set();
+          let viewsConnected = false;
           let nextCallId = 0;
           let socket;
           let tokenAccepted = false;
@@ -227,13 +230,25 @@ internal static class WebUiBridge
             }
           }
 
-          // A state push is the route, NUL and UTF-8 JSON, which has no raw NUL. Parsing data instead of evaluating
-          // script lets a Content-Security-Policy without 'unsafe-eval' receive Views state.
-          function dispatchStatePush(data) {
-            const separator = data.lastIndexOf(0);
-            if (separator < 0) return;
-            const callback = globalThis[`__${decoder.decode(data.subarray(0, separator))}Changed`];
-            if (typeof callback === "function") callback(JSON.parse(decoder.decode(data.subarray(separator + 1))));
+          // A Views message (Views protocol 4) is one UTF-8 JSON object, which has no raw NUL. Its text goes to the
+          // listeners that runic-desktop-views.js registers on __runicDesktopViews, in the order the messages arrived.
+          // Parsing nothing and evaluating no script lets a Content-Security-Policy without 'unsafe-eval' receive it.
+          function dispatchViewsMessage(data) {
+            if (viewsMessageListeners.size === 0) return;
+            const message = decoder.decode(data);
+            for (const listener of [...viewsMessageListeners]) {
+              try { listener(message); } catch (error) { console.error("Runic Views message listener failed", error); }
+            }
+          }
+
+          // Reports whether the Bridge connection is open and its token accepted. Each true after false is a new
+          // connection: a new WebSocket, which .NET knows by a new connection id.
+          function reportViewsConnection(connected) {
+            if (connected === viewsConnected) return;
+            viewsConnected = connected;
+            for (const listener of [...viewsConnectionListeners]) {
+              try { listener(connected); } catch (error) { console.error("Runic connection listener failed", error); }
+            }
           }
 
           // An announcement is the politeness ("polite" or "assertive"), NUL and the UTF-8 message. The host sends it
@@ -308,6 +323,7 @@ internal static class WebUiBridge
                 resolveInitialConnection(webui);
                 resolveConnectionWaiters();
                 notifyConnectionEvent(webui.event.CONNECTED);
+                reportViewsConnection(true);
                 return;
               }
               case CMD_JS:
@@ -329,8 +345,8 @@ internal static class WebUiBridge
                 const start = HEADER_SIZE + functionBytes.length + 1;
                 const end = Math.max(start, packet.length - 1);
                 const data = packet.slice(start, end);
-                if (functionName === STATE_PUSH) {
-                  dispatchStatePush(data);
+                if (functionName === VIEWS_PUSH) {
+                  dispatchViewsMessage(data);
                   return;
                 }
                 if (functionName === ANNOUNCE) {
@@ -383,6 +399,7 @@ internal static class WebUiBridge
               for (const operation of pendingCalls.values()) operation.reject(error);
               pendingCalls.clear();
               notifyConnectionEvent(webui.event.DISCONNECTED);
+              reportViewsConnection(false);
               if (reconnect) reconnectTimer = setTimeout(connect, 500);
             });
           }
@@ -450,6 +467,24 @@ internal static class WebUiBridge
             configurable: false,
             enumerable: true,
             value: webui
+          });
+          // The Views host script (runic-desktop-views.js) builds __runicBridge on these: the Views messages of the
+          // reserved raw-data function and the connection's transitions, reported directly from the WebSocket instead
+          // of polled, and without taking the application's webui.setEventCallback.
+          Object.defineProperty(globalThis, "__runicDesktopViews", {
+            configurable: false,
+            enumerable: false,
+            value: Object.freeze({
+              onMessage(listener) {
+                viewsMessageListeners.add(listener);
+                return () => { viewsMessageListeners.delete(listener); };
+              },
+              onConnectionChange(listener) {
+                viewsConnectionListeners.add(listener);
+                return () => { viewsConnectionListeners.delete(listener); };
+              },
+              isConnected: () => viewsConnected
+            })
           });
           document.addEventListener("click", handleDocumentClick);
           installCustomWindowDrag();

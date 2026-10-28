@@ -272,22 +272,26 @@ internal sealed class WebUiSession : IAsyncDisposable
     public Task RunJavaScriptAsync(string script, CancellationToken cancellationToken)
         => SendTextCommandAsync(0, WebUiProtocol.JavaScriptQuick, script, cancellationToken);
 
-    // A state push to WebUiBridge's reserved raw-data function: the route, NUL and the state's UTF-8 JSON. The page's
-    // bridge parses it and calls __{route}Changed, without evaluating script. The packet is built before this returns.
-    public Task PushStateAsync(string route, ReadOnlySpan<byte> stateUtf8, CancellationToken cancellationToken)
+    // A Views message (Views protocol 4) to WebUiBridge's reserved raw-data function: the message's UTF-8 JSON, which
+    // has no raw NUL. The page's bridge hands its text to the Views listeners (runic-desktop-views.js), without
+    // evaluating script. The packet is built before this returns. False when the session is not authenticated.
+    public Task<bool> PushViewsMessageAsync(ReadOnlySpan<byte> message, CancellationToken cancellationToken)
     {
-        if (!IsAuthenticated) return Task.CompletedTask;
-        const string function = WebUiBridge.StatePushFunction;
-        var routeOffset = WebUiProtocol.DataOffset + function.Length + 1;
-        var stateOffset = routeOffset + Encoding.UTF8.GetByteCount(route) + 1;
-        // The header, the function name, the route and the state, each but the state followed by NUL, and the
-        // terminating NUL of every WebUI packet.
-        var packet = new byte[stateOffset + stateUtf8.Length + 1];
+        if (!IsAuthenticated) return Task.FromResult(false);
+        const string function = WebUiBridge.ViewsPushFunction;
+        var messageOffset = WebUiProtocol.DataOffset + function.Length + 1;
+        // The header, the function name and NUL, the message, and the terminating NUL of every WebUI packet.
+        var packet = new byte[messageOffset + message.Length + 1];
         WebUiProtocol.WriteHeader(packet, 0, WebUiProtocol.SendRaw);
         Encoding.ASCII.GetBytes(function, packet.AsSpan(WebUiProtocol.DataOffset));
-        Encoding.UTF8.GetBytes(route, packet.AsSpan(routeOffset));
-        stateUtf8.CopyTo(packet.AsSpan(stateOffset));
-        return SendPacketAsync(packet, cancellationToken);
+        message.CopyTo(packet.AsSpan(messageOffset));
+        return SendViewsPacketAsync(packet, cancellationToken);
+    }
+
+    private async Task<bool> SendViewsPacketAsync(byte[] packet, CancellationToken cancellationToken)
+    {
+        await SendPacketAsync(packet, cancellationToken).ConfigureAwait(false);
+        return true;
     }
 
     // An announcement to WebUiBridge's reserved raw-data function: "polite" or "assertive", NUL and the message as
@@ -536,7 +540,14 @@ internal sealed class WebUiSession : IAsyncDisposable
                     completion = new(TaskCreationOptions.RunContinuationsAsynchronously);
                     _pendingCalls.Add(completion);
                 }
-                _ = DispatchCallIgnoringFailureAsync(id, payload, completion, cancellationToken);
+                // Calls are admitted in the order they arrived: the gate's waiters are queued here, on the receive
+                // path, and SemaphoreSlim releases asynchronous waiters first in, first out. Waiting on a thread-pool
+                // thread instead let two calls sent back to back race for the gate, so a second keystroke could
+                // reach .NET before the first.
+                Task admission;
+                try { admission = _eventGate.WaitAsync(cancellationToken); }
+                catch (Exception error) { admission = Task.FromException(error); }
+                _ = DispatchCallIgnoringFailureAsync(id, payload, completion, admission, cancellationToken);
                 break;
             case WebUiProtocol.WindowDrag:
                 _ = _window.BeginEmbeddedWindowMoveAsync(cancellationToken);
@@ -548,12 +559,14 @@ internal sealed class WebUiSession : IAsyncDisposable
         ushort id,
         ReadOnlyMemory<byte> payload,
         TaskCompletionSource completion,
+        Task admission,
         CancellationToken cancellationToken)
     {
+        // The handler's synchronous prefix runs on a thread-pool thread, never on the receive path.
         await Task.Yield();
         try
         {
-            await _eventGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+            await admission.ConfigureAwait(false);
             ValueTask<WebUiResult> invocation;
             try
             {

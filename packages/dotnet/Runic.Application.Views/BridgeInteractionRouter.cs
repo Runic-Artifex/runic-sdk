@@ -204,10 +204,10 @@ public sealed class BridgeInteractionRouter : IDisposable
         var bindings = new List<IDisposable>();
         try
         {
-            bindings.Add(transport.BindAsync(WaitRoute, WaitAsync));
-            bindings.Add(transport.Bind(ReplyRoute, Reply));
-            bindings.Add(transport.Bind(ControlRoute, Control));
-            bindings.Add(transport.BindAsync(ControlWaitRoute, ControlWaitAsync));
+            bindings.Add(BridgeDispatcher.For(transport).Legacy.BindAsync(WaitRoute, WaitAsync));
+            bindings.Add(BridgeDispatcher.For(transport).Legacy.Bind(ReplyRoute, Reply));
+            bindings.Add(BridgeDispatcher.For(transport).Legacy.Bind(ControlRoute, Control));
+            bindings.Add(BridgeDispatcher.For(transport).Legacy.BindAsync(ControlWaitRoute, ControlWaitAsync));
             _bindings = [.. bindings];
         }
         catch

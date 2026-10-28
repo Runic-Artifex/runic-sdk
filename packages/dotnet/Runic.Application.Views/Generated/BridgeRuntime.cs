@@ -448,6 +448,8 @@ public class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBridgeDeta
 
         var bindings = new List<IDisposable>();
         var subscribedCommands = new List<ICommand>();
+        // The protocol-3 named routes, kept by the window's dispatcher until the producer speaks protocol 4.
+        var routes = BridgeDispatcher.For(transport).Legacy;
         try
         {
             if (content is not null && interactions is not null)
@@ -468,7 +470,7 @@ public class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBridgeDeta
                     foreach (var descriptor in checkedProperties)
                     {
                         var captured = descriptor;
-                        bindings.Add(transport.Bind($"{name}Write{captured.Name}", _ =>
+                        bindings.Add(routes.Bind($"{name}Write{captured.Name}", _ =>
                             EncodeTerminal(new("failed", "Acknowledged field writes require a WindowContentSession."))));
                     }
                 }
@@ -511,16 +513,16 @@ public class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBridgeDeta
                 if (command.ObserveFailures is { } observeFailures) bindings.Add(observeFailures(_vm, _logger));
             }
 
-            bindings.Add(transport.Bind($"{name}Snapshot", _ => _modelTurn.Run(Reply)));
+            bindings.Add(routes.Bind($"{name}Snapshot", _ => _modelTurn.Run(Reply)));
             foreach (var property in properties.Where(property => property.CanWrite))
             {
                 var captured = property;
-                bindings.Add(transport.Bind($"{name}Set{property.Name}", e => AfterPublished(_modelTurn.Run(() => Set(captured, e)))));
+                bindings.Add(routes.Bind($"{name}Set{property.Name}", e => AfterPublished(_modelTurn.Run(() => Set(captured, e)))));
             }
             foreach (var property in _checkedProperties)
             {
                 var captured = property;
-                bindings.Add(transport.Bind($"{name}Write{captured.Descriptor.Name}", e => AfterPublished(_modelTurn.Run(() => Write(captured, e)))));
+                bindings.Add(routes.Bind($"{name}Write{captured.Descriptor.Name}", e => AfterPublished(_modelTurn.Run(() => Write(captured, e)))));
             }
             foreach (var command in commands)
             {
@@ -528,8 +530,8 @@ public class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBridgeDeta
                 // An asynchronous key resolver makes every route of the command asynchronous; the wire is the same.
                 var resolvesAsync = command.ResolveArgumentAsync is not null;
                 bindings.Add(command.ExecuteAsync is null && command.ExecuteResultAsync is null && command.ExecuteStreamAsync is null && !resolvesAsync
-                    ? transport.Bind($"{name}{command.Name}", e => AfterPublished(_modelTurn.Run(() => Execute(captured, e))))
-                    : transport.BindAsync($"{name}{command.Name}", (e, token) => ExecuteAsync(captured, e, token)));
+                    ? routes.Bind($"{name}{command.Name}", e => AfterPublished(_modelTurn.Run(() => Execute(captured, e))))
+                    : routes.BindAsync($"{name}{command.Name}", (e, token) => ExecuteAsync(captured, e, token)));
                 // The familiar awaited command route stays the default. A
                 // asynchronous descriptor gains an internal
                 // admission route only when it is attached to a window-owned
@@ -537,11 +539,11 @@ public class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBridgeDeta
                 if (content is not null && contractFingerprint is not null
                     && (captured.ExecuteAsync is not null || captured.ExecuteResultAsync is not null || captured.ExecuteStreamAsync is not null))
                     bindings.Add(resolvesAsync
-                        ? transport.BindAsync($"{name}Start{captured.Name}", (e, token) => StartOperationAsync(content, captured, e, token))
-                        : transport.Bind($"{name}Start{captured.Name}", e => _modelTurn.Run(() => StartOperation(content, captured, e))));
+                        ? routes.BindAsync($"{name}Start{captured.Name}", (e, token) => StartOperationAsync(content, captured, e, token))
+                        : routes.Bind($"{name}Start{captured.Name}", e => _modelTurn.Run(() => StartOperation(content, captured, e))));
                 bindings.Add(resolvesAsync
-                    ? transport.BindAsync($"{name}Can{command.Name}", (e, token) => QueryAvailabilityAsync(captured, e, token))
-                    : transport.Bind($"{name}Can{command.Name}", e => _modelTurn.Run(() => QueryAvailability(captured, e))));
+                    ? routes.BindAsync($"{name}Can{command.Name}", (e, token) => QueryAvailabilityAsync(captured, e, token))
+                    : routes.Bind($"{name}Can{command.Name}", e => _modelTurn.Run(() => QueryAvailability(captured, e))));
             }
             _bindings = [.. bindings];
             _subscribedCommands = [.. subscribedCommands];

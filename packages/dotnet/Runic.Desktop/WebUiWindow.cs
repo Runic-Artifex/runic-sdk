@@ -1123,15 +1123,27 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
             .Select(session => session.RunJavaScriptAsync(script, cancellationToken)));
     }
 
-    // Pushes a View's state, as UTF-8 JSON, to every authenticated browser (WebUiSession.PushStateAsync).
-    internal Task PushStateAsync(string route, ReadOnlyMemory<byte> stateUtf8, CancellationToken cancellationToken = default)
+    // Pushes a Views message, as UTF-8 JSON, to every authenticated browser (WebUiSession.PushViewsMessageAsync).
+    internal Task PushViewsMessageAsync(ReadOnlyMemory<byte> message, CancellationToken cancellationToken = default)
     {
         ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
-        ArgumentException.ThrowIfNullOrEmpty(route);
-        if (stateUtf8.IsEmpty) throw new ArgumentException("The state is empty.", nameof(stateUtf8));
+        if (message.IsEmpty) throw new ArgumentException("The message is empty.", nameof(message));
         return Task.WhenAll(_sessions.Values
             .Where(static session => session.IsAuthenticated)
-            .Select(session => session.PushStateAsync(route, stateUtf8.Span, cancellationToken)));
+            .Select(session => session.PushViewsMessageAsync(message.Span, cancellationToken)));
+    }
+
+    // Pushes a Views message to the authenticated browser of one connection (WebUiEvent.ConnectionId). False when that
+    // connection is not open.
+    internal Task<bool> PushViewsMessageAsync(nuint connectionId, ReadOnlyMemory<byte> message,
+        CancellationToken cancellationToken = default)
+    {
+        ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
+        if (message.IsEmpty) throw new ArgumentException("The message is empty.", nameof(message));
+        foreach (var session in _sessions.Values)
+            if (session.ConnectionId == connectionId)
+                return session.PushViewsMessageAsync(message.Span, cancellationToken);
+        return Task.FromResult(false);
     }
 
     /// <summary>Runs JavaScript in the connected browser and returns its UTF-8 result.</summary>

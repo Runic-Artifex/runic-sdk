@@ -287,6 +287,23 @@ internal static partial class ViewsLog
         Message = "The navigation entry that started Bridge operation {Member} on route {Route} retired; its retirement policy is {Policy}.")]
     internal static partial void OperationRetired(ILogger logger, string member, RunicOperationRetirement policy, string route);
 
+    // Views protocol 4 dispatcher (BridgeDispatcher): logged once per connection.
+    [LoggerMessage(EventId = 1018, EventName = "BridgeProtocolMismatch", Level = LogLevel.Warning,
+        Message = "A page on connection {Connection} implements Views protocol {ClientProtocol}, and this host implements protocol {HostProtocol}; the page was refused. Use the Runic packages of one release and rebuild the frontend.")]
+    internal static partial void ProtocolMismatch(ILogger logger, long clientProtocol, int hostProtocol, string connection);
+
+    [LoggerMessage(EventId = 1019, EventName = "BridgeRequestBeforeHello", Level = LogLevel.Debug,
+        Message = "A {Kind} request on connection {Connection} arrived before the connection's hello and was rejected.")]
+    internal static partial void RequestBeforeHello(ILogger logger, string kind, string connection);
+
+    [LoggerMessage(EventId = 1022, EventName = "BridgeRequestFailed", Level = LogLevel.Error,
+        Message = "A Bridge request failed with {ErrorType}.")]
+    internal static partial void RequestFailed(ILogger logger, Exception? exception, string errorType);
+
+    [LoggerMessage(EventId = 1023, EventName = "BridgeMailboxOverflowed", Level = LogLevel.Warning,
+        Message = "The mailbox of connection {Connection} overflowed: {Dropped} older pushes were dropped. The page does not receive its targeted pushes.")]
+    internal static partial void MailboxOverflowed(ILogger logger, string connection, int dropped);
+
     [LoggerMessage(EventId = 1020, EventName = "ViewMountFailed", Level = LogLevel.Error,
         Message = "Runic View mount on route {Route} failed with {ErrorType}.")]
     internal static partial void MountFailed(ILogger logger, Exception? exception, string route, string errorType);

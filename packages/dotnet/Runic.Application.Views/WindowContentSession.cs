@@ -67,6 +67,8 @@ public sealed class WindowContentSession : IDisposable
     private readonly List<WeakReference<IDisposable>> _disposalLinks = [];
     // The navigator presentation of a root ViewModel that a navigator holds, such as a WPF child view's page.
     private IDisposable? _rootNavigation;
+    // Releases a connection's mounts when the transport reports it closed (BridgeDispatcher).
+    private IDisposable? _connectionObserver;
 
     /// <summary>Creates the content session for one window with the default options.</summary>
     /// <param name="transport">The window's host transport.</param>
@@ -120,10 +122,16 @@ public sealed class WindowContentSession : IDisposable
             _operations = operations;
             _interactions = interactions;
             _fieldWrites = fieldWrites;
+            // The window's dispatcher takes the window's input limit, logger and clock, and reports the connections
+            // its transport closes.
+            var dispatcher = BridgeDispatcher.For(_transport);
+            dispatcher.Configure(MaximumInputBytes, Logger, TimeProvider);
+            _connectionObserver = dispatcher.OnConnectionClosed(ReleaseConnection);
             _rootNavigation = AttachRootToNavigator(rootModel);
         }
         catch
         {
+            _connectionObserver?.Dispose();
             try { fieldWrites?.Dispose(); }
             finally
             {
@@ -785,6 +793,7 @@ public sealed class WindowContentSession : IDisposable
         // Attachments release Views on the graph's context, so the context
         // leases are released only after every attachment has been disposed.
         var errors = new List<Exception>();
+        if (Interlocked.Exchange(ref _connectionObserver, null) is { } connectionObserver) Capture(connectionObserver.Dispose, errors);
         foreach (var link in links) Capture(link.Dispose, errors);
         foreach (var attachment in attachments) Capture(attachment.Dispose, errors);
         foreach (var attachment in rootMounts) Capture(attachment.Dispose, errors);
@@ -1078,8 +1087,8 @@ public sealed class WindowContentSession : IDisposable
         {
             _owner = owner;
             _route = route;
-            _mount = transport.Bind($"{route}Mount", Mount);
-            try { _unmount = transport.Bind($"{route}Unmount", Unmount); }
+            _mount = BridgeDispatcher.For(transport).Legacy.Bind($"{route}Mount", Mount);
+            try { _unmount = BridgeDispatcher.For(transport).Legacy.Bind($"{route}Unmount", Unmount); }
             catch { _mount.Dispose(); throw; }
         }
 
@@ -1203,8 +1212,8 @@ public sealed class WindowContentSession : IDisposable
             _entry = entry;
             _route = route;
             _inner = inner;
-            _mountBinding = transport.Bind($"{route}Mount", Mount);
-            try { _unmountBinding = transport.Bind($"{route}Unmount", Unmount); }
+            _mountBinding = BridgeDispatcher.For(transport).Legacy.Bind($"{route}Mount", Mount);
+            try { _unmountBinding = BridgeDispatcher.For(transport).Legacy.Bind($"{route}Unmount", Unmount); }
             catch { _mountBinding.Dispose(); throw; }
         }
 

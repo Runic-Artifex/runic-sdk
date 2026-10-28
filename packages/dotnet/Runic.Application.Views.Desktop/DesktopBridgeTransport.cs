@@ -1,221 +1,196 @@
 using System.Diagnostics;
-using Microsoft.Extensions.Logging;
 using System.Globalization;
 using System.Text;
+using Microsoft.Extensions.Logging;
 using Runic.Application.Views;
 using Runic.Desktop;
 
 namespace Runic.Application.Views.Desktop;
 
-/// <summary>Adapts a Desktop surface's removable capabilities to the Views transport.</summary>
+/// <summary>Carries the Views protocol of one window over a Desktop surface.</summary>
 /// <remarks>
-/// Disposing the transport removes every capability it registered and stops state
-/// delivery, while the surface itself stays open. A window uses this to close its
-/// browser routes before accepted operations have drained.
 /// <para>
-/// Published state reaches the page as data that the served bridge script parses with <c>JSON.parse</c> before it
-/// calls <c>__{name}Changed</c>, so a Content-Security-Policy without <c>'unsafe-eval'</c> receives it.
+/// Requests arrive on one capability, <c>__runicViews</c>, which <c>runic-desktop-views.js</c> calls with each
+/// request's JSON. Pushes travel as raw data to the page's bridge, to every page of the surface or to one connection,
+/// and reach the listeners of <c>__runicBridge.onMessage</c> without evaluating script, so a Content-Security-Policy
+/// without <c>'unsafe-eval'</c> receives them. A connection is one authenticated WebSocket: its key is the Desktop
+/// connection id, which is also its client key, and a reconnect is a new connection.
+/// </para>
+/// <para>
+/// The requests of one connection are admitted in the order the page sent them. Disposing the transport removes the
+/// capability and stops pushes, while the surface itself stays open. A window uses this to close its Views before
+/// accepted operations have drained.
 /// </para>
 /// </remarks>
-public sealed class DesktopBridgeTransport : IAsyncBridgeTransport, IBridgeUtf8Transport, IDisposable
+public sealed class DesktopBridgeTransport : IBridgeConnectionTransport, IDisposable
 {
-    private readonly object _gate = new();
-    private readonly DesktopSurface _surface;
-    private readonly Func<string, string, Task> _push;
-    private readonly Func<string, ReadOnlyMemory<byte>, Task> _pushUtf8;
-    private readonly ILogger? _logger;
-    private readonly HashSet<Registration> _registrations = [];
-    private readonly Dictionary<string, Delivery> _deliveries = new(StringComparer.Ordinal);
-    private bool _disposed;
-
-    /// <summary>Creates a transport for <paramref name="surface"/>.</summary>
-    public DesktopBridgeTransport(DesktopSurface surface)
-        : this(surface ?? throw new ArgumentNullException(nameof(surface)), (route, state) => surface.PushStateAsync(route, state),
-            (route, state) => surface.PushStateUtf8Async(route, state))
-    {
-    }
+    // The capability that runic-desktop-views.js calls with one request.
+    internal const string RequestCapability = "__runicViews";
 
     // The log category of Desktop Bridge delivery failures.
     internal const string LogCategory = "Runic.Application.Views.Desktop";
 
+    private readonly object _gate = new();
+    private readonly DesktopSurface _surface;
+    private readonly Func<ReadOnlyMemory<byte>, CancellationToken, Task> _broadcast;
+    private readonly Func<ulong, ReadOnlyMemory<byte>, CancellationToken, Task<bool>> _send;
+    private readonly ILogger? _logger;
+    private Serving? _serving;
+    private bool _disposed;
+
+    /// <summary>Creates a transport for <paramref name="surface"/>.</summary>
+    public DesktopBridgeTransport(DesktopSurface surface)
+        : this(surface ?? throw new ArgumentNullException(nameof(surface)), logger: null)
+    {
+    }
+
     // Without a logger, delivery failures are written to System.Diagnostics.Trace.
     internal DesktopBridgeTransport(DesktopSurface surface, ILogger? logger)
-        : this(surface ?? throw new ArgumentNullException(nameof(surface)), (route, state) => surface.PushStateAsync(route, state),
-            (route, state) => surface.PushStateUtf8Async(route, state), logger)
+        : this(surface ?? throw new ArgumentNullException(nameof(surface)),
+            (message, token) => surface.PushViewsMessageAsync(message, token),
+            (connection, message, token) => surface.PushViewsMessageAsync(connection, message, token), logger)
     {
     }
 
-    // The state senders, which take the route and the state's JSON, are replaceable for headless tests of delivery
-    // order. Without a UTF-8 sender, UTF-8 states are decoded for the string sender.
-    internal DesktopBridgeTransport(DesktopSurface surface, Func<string, string, Task> push, ILogger? logger = null)
-        : this(surface, push, (route, state) => push(route, Encoding.UTF8.GetString(state.Span)), logger)
-    {
-    }
-
-    internal DesktopBridgeTransport(DesktopSurface surface, Func<string, string, Task> push,
-        Func<string, ReadOnlyMemory<byte>, Task> pushUtf8, ILogger? logger = null)
+    // The push senders are replaceable for headless tests of delivery order.
+    internal DesktopBridgeTransport(DesktopSurface surface, Func<ReadOnlyMemory<byte>, CancellationToken, Task> broadcast,
+        Func<ulong, ReadOnlyMemory<byte>, CancellationToken, Task<bool>> send, ILogger? logger = null)
     {
         _surface = surface;
-        _push = push;
-        _pushUtf8 = pushUtf8;
+        _broadcast = broadcast;
+        _send = send;
         _logger = logger;
     }
 
-    internal int RegisteredRouteCount
+    internal bool IsServing
     {
-        get { lock (_gate) return _registrations.Count; }
+        get { lock (_gate) return _serving is not null; }
     }
 
     /// <inheritdoc />
-    public IDisposable Bind(string name, Func<IBridgeArguments, string> handler)
+    public IDisposable Serve(IBridgeRequestHandler handler)
     {
         ArgumentNullException.ThrowIfNull(handler);
-        return Register(name, (invocation, _) =>
-            ValueTask.FromResult(PresentationResult.FromString(handler(new DesktopBridgeArguments(invocation)))));
-    }
-
-    /// <inheritdoc />
-    public IDisposable BindAsync(string name, Func<IBridgeArguments, CancellationToken, ValueTask<string>> handler)
-    {
-        ArgumentNullException.ThrowIfNull(handler);
-        return Register(name, async (invocation, token) =>
-            PresentationResult.FromString(await handler(new DesktopBridgeArguments(invocation), token)
-                .ConfigureAwait(false)));
-    }
-
-    /// <summary>
-    /// Queues a state publication without blocking the caller. A route has at most one
-    /// state in flight; a newer state replaces one that has not been sent yet.
-    /// </summary>
-    public void Publish(string name, string stateJson)
-    {
-        ArgumentException.ThrowIfNullOrWhiteSpace(name);
-        ArgumentNullException.ThrowIfNull(stateJson);
         lock (_gate)
         {
-            if (_disposed) return;
-            if (_deliveries.TryGetValue(name, out var running))
+            ObjectDisposedException.ThrowIf(_disposed, this);
+            if (_serving is not null) throw new InvalidOperationException("The transport already serves a request handler.");
+            var serving = new Serving(this, handler);
+            try
             {
-                running.Pending = stateJson;
-                return;
+                // Connection events first: a page that connects meanwhile is reported when it disconnects.
+                serving.Connections = _surface.SubscribeConnectionEvents(connection =>
+                {
+                    if (connection.Kind == DesktopConnectionEventKind.Disconnected)
+                        handler.ConnectionClosed(connection.SessionId.ToString(CultureInfo.InvariantCulture));
+                });
+                serving.Capability = _surface.RegisterCapability(RequestCapability,
+                    (invocation, token) => HandleAsync(handler, invocation, token));
             }
-            _deliveries.Add(name, new Delivery());
+            catch
+            {
+                serving.Release();
+                throw;
+            }
+            _serving = serving;
+            return serving;
         }
-        _ = DeliverAsync(name, stateJson);
     }
 
     /// <inheritdoc />
-    public async ValueTask PublishAsync(string name, string stateJson)
+    public async ValueTask BroadcastAsync(ReadOnlyMemory<byte> message, CancellationToken cancellationToken = default)
     {
-        ArgumentException.ThrowIfNullOrWhiteSpace(name);
-        ArgumentNullException.ThrowIfNull(stateJson);
-        lock (_gate) if (_disposed) return;
-        await _push(name, stateJson).ConfigureAwait(false);
-    }
-
-    /// <summary>
-    /// Delivers one frame without coalescing it with other frames, as <see cref="PublishAsync"/> does, from its UTF-8
-    /// encoding. The browser receives the same bytes as from <see cref="PublishAsync"/>.
-    /// </summary>
-    public async ValueTask PublishUtf8Async(string name, ReadOnlyMemory<byte> stateUtf8, CancellationToken cancellationToken = default)
-    {
-        ArgumentException.ThrowIfNullOrWhiteSpace(name);
         lock (_gate) if (_disposed) return;
         cancellationToken.ThrowIfCancellationRequested();
-        await _pushUtf8(name, stateUtf8).WaitAsync(cancellationToken).ConfigureAwait(false);
+        try { await _broadcast(message, cancellationToken).ConfigureAwait(false); }
+        catch (ObjectDisposedException) when (Volatile.Read(ref _disposed)) { }
+        catch (Exception error) when (error is not OperationCanceledException)
+        {
+            ReportDeliveryFailure(error);
+        }
     }
 
-    /// <summary>Removes every registered capability and stops state delivery; the surface stays open.</summary>
+    /// <inheritdoc />
+    public async ValueTask<bool> SendAsync(string connectionKey, ReadOnlyMemory<byte> message,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(connectionKey);
+        lock (_gate) if (_disposed) return false;
+        cancellationToken.ThrowIfCancellationRequested();
+        if (!ulong.TryParse(connectionKey, NumberStyles.None, CultureInfo.InvariantCulture, out var connection)) return false;
+        try { return await _send(connection, message, cancellationToken).ConfigureAwait(false); }
+        catch (ObjectDisposedException) when (Volatile.Read(ref _disposed)) { return false; }
+        catch (Exception error) when (error is not OperationCanceledException)
+        {
+            ReportDeliveryFailure(error);
+            return false;
+        }
+    }
+
+    /// <summary>Removes the capability and stops pushes; the surface stays open.</summary>
     public void Dispose()
     {
-        Registration[] registrations;
+        Serving? serving;
         lock (_gate)
         {
             if (_disposed) return;
             _disposed = true;
-            registrations = [.. _registrations];
-            _registrations.Clear();
-            _deliveries.Clear();
+            serving = _serving;
+            _serving = null;
         }
-        foreach (var registration in registrations) registration.Release();
+        serving?.Release();
     }
 
-    private Registration Register(string name, PresentationCapabilityHandler handler)
+    // PresentationSession.Id is WebUiEvent.ConnectionId, allocated for an authenticated WebSocket connection. It is
+    // deliberately not the engine's private session GUID. Desktop has one browser client for a connection, so the
+    // trusted client and connection identities are the same value; reconnecting receives a different key.
+    private static async ValueTask<PresentationResult> HandleAsync(IBridgeRequestHandler handler,
+        PresentationInvocation invocation, CancellationToken cancellationToken)
+    {
+        if (invocation.ArgumentCount < 1) return PresentationResult.None;
+        var key = invocation.Session.Id.ToString(CultureInfo.InvariantCulture);
+        // The argument is valid only while the invocation is active; the handler reads it before it first yields, and
+        // the copy keeps it for an awaited request.
+        var request = new BridgeRequest(invocation.GetBytes(0).ToArray(), key, key);
+        var reply = await handler.HandleAsync(request, cancellationToken).ConfigureAwait(false);
+        return PresentationResult.FromString(Encoding.UTF8.GetString(reply.Span));
+    }
+
+    private void ReportDeliveryFailure(Exception error)
+    {
+        if (_logger is null) Trace.TraceError($"Views push delivery failed: {error}");
+        else DesktopLog.PushDeliveryFailed(_logger, error, error.GetType().FullName ?? error.GetType().Name);
+    }
+
+    private void Remove(Serving serving)
     {
         lock (_gate)
-        {
-            // A closing window can still attach content while accepted work
-            // drains. Its routes are inert once the transport was disposed.
-            if (_disposed) return Registration.Inert;
-            var registration = new Registration(this, _surface.RegisterCapability(name, handler));
-            _registrations.Add(registration);
-            return registration;
-        }
+            if (ReferenceEquals(_serving, serving)) _serving = null;
     }
 
-    private async Task DeliverAsync(string name, string stateJson)
+    private sealed class Serving(DesktopBridgeTransport owner, IBridgeRequestHandler handler) : IDisposable
     {
-        while (true)
-        {
-            try { await _push(name, stateJson).ConfigureAwait(false); }
-            catch (Exception error)
-            {
-                if (_logger is null) Trace.TraceError($"Bridge snapshot delivery for {name} failed: {error}");
-                else DesktopLog.SnapshotDeliveryFailed(_logger, error, name,
-                    error.GetType().FullName ?? error.GetType().Name);
-            }
+        private DesktopBridgeTransport? _owner = owner;
+        private IDisposable? _connections;
+        private IDisposable? _capability;
 
-            lock (_gate)
-            {
-                if (_disposed || !_deliveries.TryGetValue(name, out var delivery) || delivery.Pending is null)
-                {
-                    _deliveries.Remove(name);
-                    return;
-                }
-                stateJson = delivery.Pending;
-                delivery.Pending = null;
-            }
-        }
-    }
+        public IBridgeRequestHandler Handler { get; } = handler;
 
-    private void Remove(Registration registration)
-    {
-        lock (_gate) _registrations.Remove(registration);
-    }
+        public IDisposable Connections { set => _connections = value; }
 
-    private sealed class Delivery
-    {
-        public string? Pending { get; set; }
-    }
+        public IDisposable Capability { set => _capability = value; }
 
-    private sealed class Registration(DesktopBridgeTransport? owner, IDisposable? capability) : IDisposable
-    {
-        public static Registration Inert { get; } = new(null, null);
-        private IDisposable? _capability = capability;
-
+        // The lease: stops serving and removes the capability.
         public void Dispose()
         {
-            owner?.Remove(this);
+            Interlocked.Exchange(ref _owner, null)?.Remove(this);
             Release();
         }
 
-        public void Release() => Interlocked.Exchange(ref _capability, null)?.Dispose();
-    }
-
-    private sealed class DesktopBridgeArguments(PresentationInvocation invocation) : IBridgeArguments
-    {
-        // PresentationSession.Id is WebUiEvent.ConnectionId, allocated for an
-        // authenticated WebSocket connection. It is deliberately not the
-        // engine's private session GUID. Desktop has one browser client for a
-        // connection, so the trusted client and connection identities are the
-        // same value; reconnecting receives a different key.
-        private readonly string _connectionKey = invocation.Session.Id.ToString(CultureInfo.InvariantCulture);
-        private int _nextArgument;
-
-        public string ClientKey => _connectionKey;
-        public string ConnectionKey => _connectionKey;
-        public long GetInt64() => invocation.GetInt64(_nextArgument++);
-        public bool GetBoolean() => invocation.GetBoolean(_nextArgument++);
-        public string GetString() => invocation.GetString(_nextArgument++);
+        public void Release()
+        {
+            Interlocked.Exchange(ref _capability, null)?.Dispose();
+            Interlocked.Exchange(ref _connections, null)?.Dispose();
+        }
     }
 }

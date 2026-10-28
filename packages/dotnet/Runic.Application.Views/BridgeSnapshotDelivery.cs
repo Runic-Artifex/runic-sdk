@@ -28,6 +28,8 @@ internal sealed class BridgeSnapshotDelivery(IBridgeTransport transport, string 
     private readonly Queue<(string Frame, string Kind, long Sequence)> _pending = new();
     private readonly ILogger _logger = logger ?? TraceFallbackLogger.Instance;
     private readonly BridgeReplyOrder _replyOrder = BridgeReplyOrder.For(transport);
+    // Protocol-3 states travel through the dispatcher's legacy routes until the producer speaks protocol 4.
+    private readonly BridgeLegacyRoutes _routes = BridgeDispatcher.For(transport).Legacy;
     private List<(long Sequence, TaskCompletionSource Settled)>? _waiters;
     // The last request or frame handed to the delivery, and the last one it settled.
     private long _produced;
@@ -245,11 +247,7 @@ internal sealed class BridgeSnapshotDelivery(IBridgeTransport transport, string 
             var timestamp = BridgeTelemetry.Timestamp();
             try
             {
-                if (transport is IBridgeUtf8Transport utf8)
-                    await PublishUtf8Async(utf8, route, snapshot).ConfigureAwait(false);
-                else if (transport is IAsyncBridgeTransport asynchronous)
-                    await asynchronous.PublishAsync(route, snapshot).ConfigureAwait(false);
-                else transport.Publish(route, snapshot);
+                await PublishUtf8Async(_routes, route, snapshot).ConfigureAwait(false);
                 BridgeTelemetry.RecordFrame(model, kind, snapshot, timestamp);
             }
             // The bridge was released while this frame was on its way, and its
@@ -265,15 +263,14 @@ internal sealed class BridgeSnapshotDelivery(IBridgeTransport transport, string 
         }
     }
 
-    // The bytes are Encoding.UTF8.GetBytes(snapshot), the encoding a string transport applies. The pooled buffer is
-    // returned once the transport completes, as IBridgeUtf8Transport documents.
-    private static async ValueTask PublishUtf8Async(IBridgeUtf8Transport transport, string route, string snapshot)
+    // The bytes are Encoding.UTF8.GetBytes(snapshot). The pooled buffer is returned once the publication completes.
+    private static async ValueTask PublishUtf8Async(BridgeLegacyRoutes routes, string route, string snapshot)
     {
         var buffer = ArrayPool<byte>.Shared.Rent(Encoding.UTF8.GetByteCount(snapshot));
         try
         {
             var length = Encoding.UTF8.GetBytes(snapshot, buffer);
-            await transport.PublishUtf8Async(route, buffer.AsMemory(0, length)).ConfigureAwait(false);
+            await routes.PublishAsync(route, buffer.AsMemory(0, length)).ConfigureAwait(false);
         }
         finally
         {
