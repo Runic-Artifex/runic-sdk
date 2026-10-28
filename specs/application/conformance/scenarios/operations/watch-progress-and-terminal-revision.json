@@ -1,0 +1,200 @@
+{
+  "format": "runic.views.scenario/1",
+  "id": "operations.watch-progress-and-terminal-revision.v1",
+  "contract": {"id":"runic.views","version":4},
+  "set": "operations",
+  "roles": ["producer","client"],
+  "description": "A started operation is watched: progress is pushed at most every 100 ms, and the terminal status carries the revision of the frame with the operation's effects, which comes first.",
+  "view": "notes",
+  "requires": ["virtual-clock"],
+  "ids": {
+    "c1": {"kind":"connection"},
+    "hello-c1": {"kind":"request"},
+    "session": {"kind":"wire","value":"s-1"},
+    "open-notes": {"kind":"call"},
+    "open-notes-request": {"kind":"request"},
+    "presentation": {"kind":"wire","value":"p-1"},
+    "start": {"kind":"call"},
+    "operation": {"kind":"wire","value":"op-1"},
+    "start-request": {"kind":"request"},
+    "contract": {"kind":"provided"},
+    "wait": {"kind":"call"},
+    "watch-request": {"kind":"request"}
+  },
+  "arrange": {"model":{}},
+  "steps": [
+    {"connect":"c1"},
+    {
+      "send": {
+        "kind": "hello",
+        "protocol": 4,
+        "session": {"$id":"session"},
+        "client": {"name":{"$any":"string","default":"conformance-client"},"version":{"$any":"string","default":"1.0.0"}}
+      },
+      "id": "hello-c1"
+    },
+    {
+      "receive": {
+        "ok": true,
+        "protocol": 4,
+        "implementation": {"name":{"$any":"string","default":"conformance-producer"},"version":{"$any":"string","default":"1.0.0"}}
+      },
+      "replyTo": "hello-c1"
+    },
+    {"call":{"id":"open-notes","op":"open","route":"notes"}},
+    {"send":{"kind":"open","route":"notes","presentation":{"$id":"presentation"}},"id":"open-notes-request"},
+    {
+      "receive": {
+        "ok": true,
+        "revision": 0,
+        "state": {
+          "title": "",
+          "note": "",
+          "priority": "Normal",
+          "due": null,
+          "elapsed": "PT0S",
+          "rows": [],
+          "count": 0,
+          "summary": "rows: 0",
+          "detail": {"kind":"detail","id":"0123456789abcdef0123456789abcdef"},
+          "canClear": false,
+          "canTouch": true,
+          "canSave": true,
+          "canConfirmClear": false,
+          "isSlowImportExecuting": false,
+          "isConfirmClearExecuting": false
+        },
+        "fields": {"note":{"version":0}},
+        "presentation": "ok"
+      },
+      "replyTo": "open-notes-request"
+    },
+    {
+      "call": {
+        "id": "start",
+        "op": "start",
+        "route": "notes",
+        "member": "slowImport",
+        "operation": "operation",
+        "input": {"source":"a","limit":2}
+      }
+    },
+    {
+      "send": {
+        "kind": "start",
+        "route": "notes",
+        "member": "slowImport",
+        "operation": {"$id":"operation"},
+        "contract": {"$id":"contract"},
+        "input": {"source":"a","limit":2}
+      },
+      "id": "start-request"
+    },
+    {
+      "receive": {
+        "kind": "frame",
+        "route": "notes",
+        "baseRevision": 0,
+        "revision": 1,
+        "changes": [{"field":"isSlowImportExecuting","kind":"set","value":true}]
+      }
+    },
+    {"receive":{"ok":true,"revision":1,"admission":"accepted","status":{"kind":"running"}},"replyTo":"start-request"},
+    {"call":{"id":"wait","op":"wait","operation":"operation"}},
+    {
+      "send": {
+        "kind": "watch",
+        "route": "notes",
+        "member": "slowImport",
+        "operation": {"$id":"operation"},
+        "contract": {"$id":"contract"}
+      },
+      "id": "watch-request"
+    },
+    {"receive":{"ok":true,"status":{"kind":"running"}},"replyTo":"watch-request"},
+    {"mutate":[{"op":"progress","member":"slowImport","value":0.25}]},
+    {
+      "receive": {
+        "kind": "operation",
+        "route": "notes",
+        "member": "slowImport",
+        "operation": {"$id":"operation"},
+        "contract": {"$id":"contract"},
+        "status": {"kind":"running","progress":0.25}
+      }
+    },
+    {"expect":{"operation":{"id":"operation","status":{"kind":"running","progress":0.25}}}},
+    {"mutate":[{"op":"progress","member":"slowImport","value":0.5}]},
+    {"advance":99,"role":"producer"},
+    {"advance":1,"role":"producer","note":"100 ms after the previous push, the latest progress is pushed."},
+    {
+      "receive": {
+        "kind": "operation",
+        "route": "notes",
+        "member": "slowImport",
+        "operation": {"$id":"operation"},
+        "contract": {"$id":"contract"},
+        "status": {"kind":"running","progress":0.5}
+      }
+    },
+    {"mutate":[{"op":"finish","member":"slowImport","rows":["x","y"]}]},
+    {
+      "receive": {
+        "kind": "frame",
+        "route": "notes",
+        "baseRevision": 1,
+        "revision": 2,
+        "changes": [
+          {
+            "field": "rows",
+            "kind": "add",
+            "index": 0,
+            "oldIndex": -1,
+            "keys": ["1","2"],
+            "items": [{"id":1,"label":"x"},{"id":2,"label":"y"}]
+          },
+          {"field":"count","kind":"set","value":2},
+          {"field":"summary","kind":"set","value":"rows: 2"},
+          {"field":"canClear","kind":"set","value":true},
+          {"field":"canConfirmClear","kind":"set","value":true},
+          {"field":"isSlowImportExecuting","kind":"set","value":false}
+        ]
+      }
+    },
+    {
+      "receive": {
+        "kind": "operation",
+        "route": "notes",
+        "member": "slowImport",
+        "operation": {"$id":"operation"},
+        "contract": {"$id":"contract"},
+        "status": {"kind":"succeeded","revision":2,"result":2}
+      }
+    },
+    {"expect":{"call":{"id":"wait","resolved":{"kind":"succeeded","result":2}}}},
+    {
+      "expect": {
+        "state": {
+          "route": "notes",
+          "value": {
+            "title": "",
+            "note": "",
+            "priority": "Normal",
+            "due": null,
+            "elapsed": "PT0S",
+            "rows": [{"id":1,"label":"x"},{"id":2,"label":"y"}],
+            "count": 2,
+            "summary": "rows: 2",
+            "detail": {"kind":"detail","id":"0123456789abcdef0123456789abcdef"},
+            "canClear": true,
+            "canTouch": true,
+            "canSave": true,
+            "canConfirmClear": true,
+            "isSlowImportExecuting": false,
+            "isConfirmClearExecuting": false
+          }
+        }
+      }
+    }
+  ]
+}

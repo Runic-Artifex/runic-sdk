@@ -1,0 +1,46 @@
+{
+  "format": "runic.views.vector/1",
+  "id": "values.integer-texts",
+  "contract": {"id":"runic.views","version":4},
+  "area": "values",
+  "description": "Integer types read the value of the number, not its text.",
+  "cases": [
+    {
+      "id": "values.integer-texts.int32-exponent",
+      "description": "1e2 is the integer 100.",
+      "operation": "decode",
+      "type": "int32",
+      "input": {"encoding":"utf8","value":"1e2"},
+      "expect": {"value":100}
+    },
+    {
+      "id": "values.integer-texts.int32-decimal-zero",
+      "operation": "decode",
+      "type": "int32",
+      "input": {"encoding":"utf8","value":"1.0"},
+      "expect": {"value":1}
+    },
+    {
+      "id": "values.integer-texts.int32-negative-zero",
+      "description": "-0 is the integer 0.",
+      "operation": "decode",
+      "type": "int32",
+      "input": {"encoding":"utf8","value":"-0"},
+      "expect": {"value":0}
+    },
+    {
+      "id": "values.integer-texts.uint8-negative-zero",
+      "operation": "decode",
+      "type": "uint8",
+      "input": {"encoding":"utf8","value":"-0"},
+      "expect": {"value":0}
+    },
+    {
+      "id": "values.integer-texts.int32-small-fraction",
+      "operation": "decode",
+      "type": "int32",
+      "input": {"encoding":"utf8","value":"1.0000001"},
+      "expect": {"error":{"code":"invalid-value"}}
+    }
+  ]
+}

@@ -1,0 +1,302 @@
+{
+  "format": "runic.views.vector/1",
+  "id": "messages.pushes",
+  "contract": {"id":"runic.views","version":4},
+  "area": "messages",
+  "description": "Pushes as a client reads them. invalid means the client discards the push (and recovers, for a frame of an open route); ignored means it is not for this client.",
+  "cases": [
+    {
+      "id": "messages.pushes.state",
+      "operation": "read-push",
+      "input": {
+        "encoding": "json",
+        "value": {"kind":"state","route":"notes","revision":3,"state":{"title":"a"},"fields":{"note":{"version":2}}}
+      },
+      "expect": {"result":"valid"}
+    },
+    {
+      "id": "messages.pushes.state-field-version-fraction",
+      "operation": "read-push",
+      "input": {
+        "encoding": "json",
+        "value": {"kind":"state","route":"notes","revision":3,"state":{},"fields":{"note":{"version":1.5}}}
+      },
+      "expect": {"result":"invalid"}
+    },
+    {
+      "id": "messages.pushes.frame",
+      "operation": "read-push",
+      "input": {
+        "encoding": "json",
+        "value": {
+          "kind": "frame",
+          "route": "notes",
+          "baseRevision": 4,
+          "revision": 5,
+          "changes": [
+            {"field":"rows","kind":"add","index":0,"oldIndex":-1,"keys":["1"],"items":[{"id":1,"label":"one"}]},
+            {"field":"count","kind":"set","value":1}
+          ]
+        }
+      },
+      "expect": {"result":"valid"}
+    },
+    {
+      "id": "messages.pushes.frame-two-sets-of-one-field",
+      "operation": "read-push",
+      "input": {
+        "encoding": "json",
+        "value": {
+          "kind": "frame",
+          "route": "notes",
+          "baseRevision": 4,
+          "revision": 5,
+          "changes": [{"field":"count","kind":"set","value":1},{"field":"count","kind":"set","value":2}]
+        }
+      },
+      "expect": {"result":"invalid"}
+    },
+    {
+      "id": "messages.pushes.frame-set-and-add-of-one-field",
+      "operation": "read-push",
+      "input": {
+        "encoding": "json",
+        "value": {
+          "kind": "frame",
+          "route": "notes",
+          "baseRevision": 4,
+          "revision": 5,
+          "changes": [
+            {"field":"rows","kind":"add","index":0,"oldIndex":-1,"keys":["1"],"items":[{"id":1,"label":"one"}]},
+            {"field":"rows","kind":"set","value":[]}
+          ]
+        }
+      },
+      "expect": {"result":"invalid"}
+    },
+    {
+      "id": "messages.pushes.frame-revision-beyond-safe-integer",
+      "operation": "read-push",
+      "input": {
+        "encoding": "utf8",
+        "value": "{\"kind\":\"frame\",\"route\":\"notes\",\"baseRevision\":4,\"revision\":9007199254740993,\"changes\":[{\"field\":\"count\",\"kind\":\"set\",\"value\":1}]}"
+      },
+      "expect": {"result":"invalid"}
+    },
+    {
+      "id": "messages.pushes.frame-without-changes",
+      "operation": "read-push",
+      "input": {"encoding":"json","value":{"kind":"frame","route":"notes","baseRevision":4,"revision":5,"changes":[]}},
+      "expect": {"result":"invalid"}
+    },
+    {
+      "id": "messages.pushes.frame-unknown-change-kind",
+      "description": "An unknown change kind makes the client recover.",
+      "operation": "read-push",
+      "input": {
+        "encoding": "json",
+        "value": {
+          "kind": "frame",
+          "route": "notes",
+          "baseRevision": 4,
+          "revision": 5,
+          "changes": [{"field":"rows","kind":"sort","order":"label"}]
+        }
+      },
+      "expect": {"result":"invalid"}
+    },
+    {
+      "id": "messages.pushes.frame-set-without-value",
+      "operation": "read-push",
+      "input": {
+        "encoding": "json",
+        "value": {"kind":"frame","route":"notes","baseRevision":4,"revision":5,"changes":[{"field":"count","kind":"set"}]}
+      },
+      "expect": {"result":"invalid"}
+    },
+    {
+      "id": "messages.pushes.frame-add-with-old-index",
+      "operation": "read-push",
+      "input": {
+        "encoding": "json",
+        "value": {
+          "kind": "frame",
+          "route": "notes",
+          "baseRevision": 4,
+          "revision": 5,
+          "changes": [{"field":"rows","kind":"add","index":0,"oldIndex":0,"keys":["1"],"items":[{"id":1,"label":"one"}]}]
+        }
+      },
+      "expect": {"result":"invalid"}
+    },
+    {
+      "id": "messages.pushes.frame-add-items-differ-from-keys",
+      "operation": "read-push",
+      "input": {
+        "encoding": "json",
+        "value": {
+          "kind": "frame",
+          "route": "notes",
+          "baseRevision": 4,
+          "revision": 5,
+          "changes": [{"field":"rows","kind":"add","index":0,"oldIndex":-1,"keys":["1","2"],"items":[{"id":1,"label":"one"}]}]
+        }
+      },
+      "expect": {"result":"invalid"}
+    },
+    {
+      "id": "messages.pushes.frame-text-trim-beyond-length",
+      "operation": "read-push",
+      "input": {
+        "encoding": "json",
+        "value": {
+          "kind": "frame",
+          "route": "notes",
+          "baseRevision": 4,
+          "revision": 5,
+          "changes": [{"field":"log","kind":"text","length":2,"trim":3,"text":""}]
+        }
+      },
+      "expect": {"result":"invalid"}
+    },
+    {
+      "id": "messages.pushes.unknown-kind",
+      "description": "A client ignores push kinds it does not know.",
+      "operation": "read-push",
+      "input": {"encoding":"json","value":{"kind":"presence","route":"notes","users":2}},
+      "expect": {"result":"ignored"}
+    },
+    {
+      "id": "messages.pushes.failure",
+      "operation": "read-push",
+      "input": {
+        "encoding": "json",
+        "value": {
+          "kind": "failure",
+          "route": "notes",
+          "revision": 6,
+          "error": {"kind":"failed","message":"rows 0 and 1 have the same key."}
+        }
+      },
+      "expect": {"result":"valid"}
+    },
+    {
+      "id": "messages.pushes.operation-progress",
+      "operation": "read-push",
+      "input": {
+        "encoding": "json",
+        "value": {
+          "kind": "operation",
+          "route": "notes",
+          "member": "slowImport",
+          "operation": "op-1",
+          "contract": "Tests.Notes:fp-1",
+          "status": {"kind":"running","progress":0.5}
+        }
+      },
+      "expect": {"result":"valid"}
+    },
+    {
+      "id": "messages.pushes.operation-progress-above-one",
+      "operation": "read-push",
+      "input": {
+        "encoding": "json",
+        "value": {
+          "kind": "operation",
+          "route": "notes",
+          "member": "slowImport",
+          "operation": "op-1",
+          "contract": "Tests.Notes:fp-1",
+          "status": {"kind":"running","progress":1.5}
+        }
+      },
+      "expect": {"result":"invalid"}
+    },
+    {
+      "id": "messages.pushes.operation-terminal",
+      "operation": "read-push",
+      "input": {
+        "encoding": "json",
+        "value": {
+          "kind": "operation",
+          "route": "notes",
+          "member": "slowImport",
+          "operation": "op-1",
+          "contract": "Tests.Notes:fp-1",
+          "status": {"kind":"succeeded","revision":9,"result":3}
+        }
+      },
+      "expect": {"result":"valid"}
+    },
+    {
+      "id": "messages.pushes.operation-terminal-without-revision",
+      "operation": "read-push",
+      "input": {
+        "encoding": "json",
+        "value": {
+          "kind": "operation",
+          "route": "notes",
+          "member": "slowImport",
+          "operation": "op-1",
+          "contract": "Tests.Notes:fp-1",
+          "status": {"kind":"succeeded","result":3}
+        }
+      },
+      "expect": {"result":"invalid"}
+    },
+    {
+      "id": "messages.pushes.interaction",
+      "operation": "read-push",
+      "input": {
+        "encoding": "json",
+        "value": {
+          "kind": "interaction",
+          "route": "notes",
+          "presentation": "p-1",
+          "requestId": "r-1",
+          "ownerEpoch": 1,
+          "name": "confirm",
+          "contract": "c-1",
+          "expiresAt": "2026-10-28T12:02:00Z",
+          "input": {"question":"Clear?"}
+        }
+      },
+      "expect": {"result":"valid"}
+    },
+    {
+      "id": "messages.pushes.interaction-expiry-without-offset",
+      "operation": "read-push",
+      "input": {
+        "encoding": "json",
+        "value": {
+          "kind": "interaction",
+          "route": "notes",
+          "presentation": "p-1",
+          "requestId": "r-1",
+          "ownerEpoch": 1,
+          "name": "confirm",
+          "contract": "c-1",
+          "expiresAt": "2026-10-28T12:02:00",
+          "input": {"question":"Clear?"}
+        }
+      },
+      "expect": {"result":"invalid"}
+    },
+    {
+      "id": "messages.pushes.interaction-cancelled",
+      "operation": "read-push",
+      "input": {
+        "encoding": "json",
+        "value": {
+          "kind": "interaction-cancelled",
+          "route": "notes",
+          "presentation": "p-1",
+          "requestId": "r-1",
+          "ownerEpoch": 1,
+          "message": "The command ended."
+        }
+      },
+      "expect": {"result":"valid"}
+    }
+  ]
+}

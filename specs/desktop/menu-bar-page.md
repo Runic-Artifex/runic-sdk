@@ -14,7 +14,35 @@ the page's controller `unavailable`.
 The shared cases are in [fixtures/menu-bar-page.json](fixtures/menu-bar-page.json):
 a declared bar, the commands that cannot run, and the state's `menus` on Linux.
 
-## Routes
+The routes below are menu bar page protocol 1, which hosts of Views protocol 3 serve.
+With [Views protocol 4](../application/README.md) the menu bar moves onto the Views
+message channel as [protocol 2](#protocol-2-views-protocol-4). The state, its entries,
+invoking and the shortcut lease keep their meaning.
+
+## Protocol 2 (Views protocol 4)
+
+The page sends requests to the reserved route `runic.menu-bar` on the Views channel
+(`__runicBridge.request`), after the connection's `hello`. The host pushes state changes
+instead of answering waits.
+
+| Request | Members | Reply |
+| --- | --- | --- |
+| `menu-bar-watch` | `route` | `{ "ok": true, "state": … }`, the state for this connection. Until `menu-bar-unwatch` or the end of the connection, the host then pushes `{ "kind": "menu-bar", "route": "runic.menu-bar", "state": … }` to this connection each time the state's `revision` changes. |
+| `menu-bar-unwatch` | `route` | `{ "ok": true }` |
+| `menu-bar-invoke` | `route`, `revision`, `key` | `{ "ok": true, "result": "executed" }`, `"disabled"` or `"stale"` (see [Invoke](#invoke)) |
+| `menu-bar-shortcuts` | `route`, `shortcuts` (`"app"` or `"runic"`) | `{ "ok": true, "state": … }`, the state for this connection (see [Shortcut lease](#shortcut-lease)) |
+
+- The state is the object of [State](#state) without `kind`, and its `protocol` is `2`.
+- The push is targeted, because `shortcuts` differs per connection. A host whose transport
+  cannot push to one connection delivers it through the Views mailbox (`receive`).
+- Failures use the Views reply envelope: a malformed request is `rejected` with the reason
+  `invalid-request`; a window that closed answers `released`. A host that does not serve the
+  route answers `released` as for any route it does not serve, and the page reports the
+  controller `unavailable`. `busy` no longer exists, because nothing waits.
+- The request kinds above belong to the `runic.menu-bar` route. Sent to another route they
+  are `invalid-request`, and other request kinds sent to `runic.menu-bar` are too.
+
+## Routes (protocol 1)
 
 Each route takes at most one argument, a JSON object as a string, and answers a JSON
 object as a string. Every answer has a `kind`.

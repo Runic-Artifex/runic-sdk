@@ -1,0 +1,188 @@
+{
+  "format": "runic.views.vector/1",
+  "id": "messages.replies",
+  "contract": {"id":"runic.views","version":4},
+  "area": "messages",
+  "description": "Replies as a client reads them, given the kind of the request they answer. invalid means the call rejects with failed (an invalid response).",
+  "cases": [
+    {
+      "id": "messages.replies.hello",
+      "operation": "read-reply",
+      "request": "hello",
+      "input": {
+        "encoding": "json",
+        "value": {"ok":true,"protocol":4,"implementation":{"name":"Runic.Application.Views","version":"0.13.0"}}
+      },
+      "expect": {"result":"valid"}
+    },
+    {
+      "id": "messages.replies.hello-without-implementation",
+      "operation": "read-reply",
+      "request": "hello",
+      "input": {"encoding":"json","value":{"ok":true,"protocol":4}},
+      "expect": {"result":"invalid"}
+    },
+    {
+      "id": "messages.replies.hello-mismatch",
+      "description": "Well-formed; the client then refuses the protocol.",
+      "operation": "read-reply",
+      "request": "hello",
+      "input": {
+        "encoding": "json",
+        "value": {
+          "ok": false,
+          "protocol": 5,
+          "implementation": {"name":"x","version":"1"},
+          "error": {"kind":"failed","reason":"protocol-mismatch","message":"…"}
+        }
+      },
+      "expect": {"result":"valid"}
+    },
+    {
+      "id": "messages.replies.set",
+      "operation": "read-reply",
+      "request": "set",
+      "input": {"encoding":"json","value":{"ok":true,"revision":12}},
+      "expect": {"result":"valid"}
+    },
+    {
+      "id": "messages.replies.set-superseded",
+      "operation": "read-reply",
+      "request": "set",
+      "input": {"encoding":"json","value":{"ok":true,"revision":12,"superseded":true}},
+      "expect": {"result":"valid"}
+    },
+    {
+      "id": "messages.replies.set-without-revision",
+      "operation": "read-reply",
+      "request": "set",
+      "input": {"encoding":"json","value":{"ok":true}},
+      "expect": {"result":"invalid"}
+    },
+    {
+      "id": "messages.replies.set-released",
+      "operation": "read-reply",
+      "request": "set",
+      "input": {"encoding":"json","value":{"ok":true,"released":true}},
+      "expect": {"result":"valid"}
+    },
+    {
+      "id": "messages.replies.command-domain-failed",
+      "operation": "read-reply",
+      "request": "command",
+      "input": {
+        "encoding": "json",
+        "value": {
+          "ok": false,
+          "revision": 13,
+          "error": {"kind":"domain-failed","message":"Save failed.","failure":{"$case":"titleRequired"}}
+        }
+      },
+      "expect": {"result":"valid"}
+    },
+    {
+      "id": "messages.replies.failure-without-error",
+      "operation": "read-reply",
+      "request": "command",
+      "input": {"encoding":"json","value":{"ok":false}},
+      "expect": {"result":"invalid"}
+    },
+    {
+      "id": "messages.replies.unknown-error-kind",
+      "description": "Well-formed; the client reports the unknown kind as failed.",
+      "operation": "read-reply",
+      "request": "command",
+      "input": {"encoding":"json","value":{"ok":false,"error":{"kind":"disconnected","message":"Closed."}}},
+      "expect": {"result":"valid"}
+    },
+    {
+      "id": "messages.replies.released-envelope",
+      "operation": "read-reply",
+      "request": "can",
+      "input": {"encoding":"json","value":{"ok":false,"error":{"kind":"released","message":"This View was released."}}},
+      "expect": {"result":"valid"}
+    },
+    {
+      "id": "messages.replies.can",
+      "operation": "read-reply",
+      "request": "can",
+      "input": {"encoding":"json","value":{"ok":true,"value":true}},
+      "expect": {"result":"valid"}
+    },
+    {
+      "id": "messages.replies.can-string",
+      "operation": "read-reply",
+      "request": "can",
+      "input": {"encoding":"json","value":{"ok":true,"value":"true"}},
+      "expect": {"result":"invalid"}
+    },
+    {
+      "id": "messages.replies.open",
+      "operation": "read-reply",
+      "request": "open",
+      "input": {"encoding":"json","value":{"ok":true,"revision":3,"state":{"title":"a"},"presentation":"ok"}},
+      "expect": {"result":"valid"}
+    },
+    {
+      "id": "messages.replies.open-without-state",
+      "operation": "read-reply",
+      "request": "open",
+      "input": {"encoding":"json","value":{"ok":true,"revision":3,"presentation":"ok"}},
+      "expect": {"result":"invalid"}
+    },
+    {
+      "id": "messages.replies.start-accepted",
+      "operation": "read-reply",
+      "request": "start",
+      "input": {"encoding":"json","value":{"ok":true,"revision":8,"admission":"accepted","status":{"kind":"running"}}},
+      "expect": {"result":"valid"}
+    },
+    {
+      "id": "messages.replies.start-accepted-without-status",
+      "operation": "read-reply",
+      "request": "start",
+      "input": {"encoding":"json","value":{"ok":true,"revision":8,"admission":"accepted"}},
+      "expect": {"result":"invalid"}
+    },
+    {
+      "id": "messages.replies.start-rejected",
+      "operation": "read-reply",
+      "request": "start",
+      "input": {"encoding":"json","value":{"ok":true,"revision":8,"admission":"rejected","reason":"unavailable"}},
+      "expect": {"result":"valid"}
+    },
+    {
+      "id": "messages.replies.empty",
+      "description": "An empty reply is an invalid response.",
+      "operation": "read-reply",
+      "request": "command",
+      "input": {"encoding":"utf8","value":""},
+      "expect": {"result":"invalid"}
+    },
+    {
+      "id": "messages.replies.receive",
+      "operation": "read-reply",
+      "request": "receive",
+      "input": {
+        "encoding": "json",
+        "value": {
+          "ok": true,
+          "messages": [
+            {
+              "kind": "interaction",
+              "route": "notes",
+              "presentation": "p-1",
+              "requestId": "r-1",
+              "ownerEpoch": 1,
+              "name": "confirm",
+              "contract": "c-1",
+              "expiresAt": "2026-10-28T12:02:00Z",
+              "input": {"question":"Clear?"}
+            }
+          ]
+        }
+      },
+      "expect": {"result":"valid"}
+    }
+  ]
+}

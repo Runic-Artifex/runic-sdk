@@ -163,6 +163,13 @@
               "properties": { "value": true }
             },
             {
+              "description": "The normal form as JSON text, for values nested too deep to embed in this file.",
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["text"],
+              "properties": { "text": { "type": "string" } }
+            },
+            {
               "type": "object",
               "additionalProperties": false,
               "required": ["error"],

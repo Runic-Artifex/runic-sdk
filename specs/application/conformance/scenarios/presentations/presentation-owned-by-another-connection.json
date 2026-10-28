@@ -1,0 +1,116 @@
+{
+  "format": "runic.views.scenario/1",
+  "id": "presentations.presentation-owned-by-another-connection.v1",
+  "contract": {"id":"runic.views","version":4},
+  "set": "presentations",
+  "roles": ["producer"],
+  "description": "Opening a presentation id that another connection owns answers ignored, with the state.",
+  "view": "notes",
+  "ids": {
+    "c1": {"kind":"connection"},
+    "hello-c1": {"kind":"request"},
+    "session": {"kind":"wire","value":"s-1"},
+    "open-notes-request": {"kind":"request"},
+    "presentation": {"kind":"wire","value":"p-1"},
+    "c2": {"kind":"connection"},
+    "hello-c2": {"kind":"request"},
+    "session2": {"kind":"wire","value":"s-2"},
+    "open-c2": {"kind":"request"}
+  },
+  "arrange": {"model":{}},
+  "steps": [
+    {"connect":"c1"},
+    {
+      "send": {
+        "kind": "hello",
+        "protocol": 4,
+        "session": {"$id":"session"},
+        "client": {"name":{"$any":"string","default":"conformance-client"},"version":{"$any":"string","default":"1.0.0"}}
+      },
+      "id": "hello-c1"
+    },
+    {
+      "receive": {
+        "ok": true,
+        "protocol": 4,
+        "implementation": {"name":{"$any":"string","default":"conformance-producer"},"version":{"$any":"string","default":"1.0.0"}}
+      },
+      "replyTo": "hello-c1"
+    },
+    {"send":{"kind":"open","route":"notes","presentation":{"$id":"presentation"}},"id":"open-notes-request"},
+    {
+      "receive": {
+        "ok": true,
+        "revision": 0,
+        "state": {
+          "title": "",
+          "note": "",
+          "priority": "Normal",
+          "due": null,
+          "elapsed": "PT0S",
+          "rows": [],
+          "count": 0,
+          "summary": "rows: 0",
+          "detail": {"kind":"detail","id":"0123456789abcdef0123456789abcdef"},
+          "canClear": false,
+          "canTouch": true,
+          "canSave": true,
+          "canConfirmClear": false,
+          "isSlowImportExecuting": false,
+          "isConfirmClearExecuting": false
+        },
+        "fields": {"note":{"version":0}},
+        "presentation": "ok"
+      },
+      "replyTo": "open-notes-request"
+    },
+    {"connect":"c2"},
+    {
+      "send": {
+        "kind": "hello",
+        "protocol": 4,
+        "session": {"$id":"session2"},
+        "client": {"name":{"$any":"string","default":"conformance-client"},"version":{"$any":"string","default":"1.0.0"}}
+      },
+      "id": "hello-c2",
+      "connection": "c2"
+    },
+    {
+      "receive": {
+        "ok": true,
+        "protocol": 4,
+        "implementation": {"name":{"$any":"string","default":"conformance-producer"},"version":{"$any":"string","default":"1.0.0"}}
+      },
+      "replyTo": "hello-c2",
+      "connection": "c2"
+    },
+    {"send":{"kind":"open","route":"notes","presentation":{"$id":"presentation"}},"id":"open-c2","connection":"c2"},
+    {
+      "receive": {
+        "ok": true,
+        "revision": 0,
+        "state": {
+          "title": "",
+          "note": "",
+          "priority": "Normal",
+          "due": null,
+          "elapsed": "PT0S",
+          "rows": [],
+          "count": 0,
+          "summary": "rows: 0",
+          "detail": {"kind":"detail","id":"0123456789abcdef0123456789abcdef"},
+          "canClear": false,
+          "canTouch": true,
+          "canSave": true,
+          "canConfirmClear": false,
+          "isSlowImportExecuting": false,
+          "isConfirmClearExecuting": false
+        },
+        "fields": {"note":{"version":0}},
+        "presentation": "ignored"
+      },
+      "replyTo": "open-c2",
+      "connection": "c2"
+    }
+  ]
+}

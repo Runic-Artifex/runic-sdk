@@ -1,0 +1,168 @@
+{
+  "format": "runic.views.scenario/1",
+  "id": "edits.checked-write.v1",
+  "contract": {"id":"runic.views","version":4},
+  "set": "edits",
+  "roles": ["producer","client"],
+  "description": "A checked write applies when version and value match, conflicts when they do not, and a retry with the same request id gets the original receipt without applying it again.",
+  "view": "notes",
+  "ids": {
+    "c1": {"kind":"connection"},
+    "hello-c1": {"kind":"request"},
+    "session": {"kind":"wire","value":"s-1"},
+    "open-notes": {"kind":"call"},
+    "open-notes-request": {"kind":"request"},
+    "presentation": {"kind":"wire","value":"p-1"},
+    "write-1": {"kind":"call"},
+    "write-1-request": {"kind":"request"},
+    "writeRequest": {"kind":"wire","value":"w-1"},
+    "write-2": {"kind":"call"},
+    "write-2-request": {"kind":"request"},
+    "writeRequest2": {"kind":"wire","value":"w-2"},
+    "write-1-retry": {"kind":"request"}
+  },
+  "arrange": {"model":{}},
+  "steps": [
+    {"connect":"c1"},
+    {
+      "send": {
+        "kind": "hello",
+        "protocol": 4,
+        "session": {"$id":"session"},
+        "client": {"name":{"$any":"string","default":"conformance-client"},"version":{"$any":"string","default":"1.0.0"}}
+      },
+      "id": "hello-c1"
+    },
+    {
+      "receive": {
+        "ok": true,
+        "protocol": 4,
+        "implementation": {"name":{"$any":"string","default":"conformance-producer"},"version":{"$any":"string","default":"1.0.0"}}
+      },
+      "replyTo": "hello-c1"
+    },
+    {"call":{"id":"open-notes","op":"open","route":"notes"}},
+    {"send":{"kind":"open","route":"notes","presentation":{"$id":"presentation"}},"id":"open-notes-request"},
+    {
+      "receive": {
+        "ok": true,
+        "revision": 0,
+        "state": {
+          "title": "",
+          "note": "",
+          "priority": "Normal",
+          "due": null,
+          "elapsed": "PT0S",
+          "rows": [],
+          "count": 0,
+          "summary": "rows: 0",
+          "detail": {"kind":"detail","id":"0123456789abcdef0123456789abcdef"},
+          "canClear": false,
+          "canTouch": true,
+          "canSave": true,
+          "canConfirmClear": false,
+          "isSlowImportExecuting": false,
+          "isConfirmClearExecuting": false
+        },
+        "fields": {"note":{"version":0}},
+        "presentation": "ok"
+      },
+      "replyTo": "open-notes-request"
+    },
+    {
+      "call": {
+        "id": "write-1",
+        "op": "write",
+        "route": "notes",
+        "member": "note",
+        "requestId": "w-1",
+        "baseline": {"value":"","version":0},
+        "value": "x"
+      }
+    },
+    {
+      "send": {
+        "kind": "write",
+        "route": "notes",
+        "member": "note",
+        "requestId": {"$id":"writeRequest"},
+        "expectedVersion": 0,
+        "expectedValue": "",
+        "value": "x"
+      },
+      "id": "write-1-request"
+    },
+    {
+      "receive": {
+        "kind": "frame",
+        "route": "notes",
+        "baseRevision": 0,
+        "revision": 1,
+        "changes": [{"field":"note","kind":"set","value":"x","version":1}]
+      }
+    },
+    {
+      "receive": {"ok":true,"revision":1,"receipt":{"kind":"applied","snapshot":{"value":"x","version":1}}},
+      "replyTo": "write-1-request"
+    },
+    {"expect":{"call":{"id":"write-1","resolved":{"kind":"applied","snapshot":{"value":"x","version":1}}}}},
+    {
+      "call": {
+        "id": "write-2",
+        "op": "write",
+        "route": "notes",
+        "member": "note",
+        "requestId": "w-2",
+        "baseline": {"value":"","version":0},
+        "value": "y"
+      }
+    },
+    {
+      "send": {
+        "kind": "write",
+        "route": "notes",
+        "member": "note",
+        "requestId": {"$id":"writeRequest2"},
+        "expectedVersion": 0,
+        "expectedValue": "",
+        "value": "y"
+      },
+      "id": "write-2-request"
+    },
+    {
+      "receive": {
+        "ok": true,
+        "revision": 1,
+        "receipt": {
+          "kind": "conflict",
+          "incoming": {"value":"x","version":1},
+          "message": {"$any":"string","default":"The field changed."}
+        }
+      },
+      "replyTo": "write-2-request"
+    },
+    {
+      "expect": {
+        "call": {"id":"write-2","resolved":{"kind":"conflict","incoming":{"value":"x","version":1},"message":{"$any":"string"}}}
+      }
+    },
+    {
+      "send": {
+        "kind": "write",
+        "route": "notes",
+        "member": "note",
+        "requestId": {"$id":"writeRequest"},
+        "expectedVersion": 0,
+        "expectedValue": "",
+        "value": "x"
+      },
+      "id": "write-1-retry",
+      "role": "producer"
+    },
+    {
+      "receive": {"ok":true,"revision":1,"receipt":{"kind":"applied","snapshot":{"value":"x","version":1}}},
+      "replyTo": "write-1-retry",
+      "role": "producer"
+    }
+  ]
+}

@@ -1,0 +1,59 @@
+{
+  "format": "runic.views.scenario/1",
+  "id": "state-changes.text-a-change-with-another-member-shares-the-frame.v1",
+  "contract": {"id":"runic.views","version":4},
+  "set": "state-changes",
+  "roles": ["producer","client"],
+  "description": "A text change and a set of another member are published in one frame.",
+  "source": "specs/application/fixtures/text-deltas/text.json#a change with another member is a full state",
+  "view": "log",
+  "ids": {
+    "c1": {"kind":"connection"},
+    "hello-c1": {"kind":"request"},
+    "session": {"kind":"wire","value":"s-1"},
+    "open-log": {"kind":"call"},
+    "open-log-request": {"kind":"request"},
+    "presentation": {"kind":"wire","value":"p-1"},
+    "final-read": {"kind":"request"}
+  },
+  "arrange": {"model":{"log":"a","title":"log"}},
+  "steps": [
+    {"connect":"c1"},
+    {
+      "send": {
+        "kind": "hello",
+        "protocol": 4,
+        "session": {"$id":"session"},
+        "client": {"name":{"$any":"string","default":"conformance-client"},"version":{"$any":"string","default":"1.0.0"}}
+      },
+      "id": "hello-c1"
+    },
+    {
+      "receive": {
+        "ok": true,
+        "protocol": 4,
+        "implementation": {"name":{"$any":"string","default":"conformance-producer"},"version":{"$any":"string","default":"1.0.0"}}
+      },
+      "replyTo": "hello-c1"
+    },
+    {"call":{"id":"open-log","op":"open","route":"log"}},
+    {"send":{"kind":"open","route":"log","presentation":{"$id":"presentation"}},"id":"open-log-request"},
+    {
+      "receive": {"ok":true,"revision":0,"state":{"log":"a","title":"log"},"presentation":"ok"},
+      "replyTo": "open-log-request"
+    },
+    {"mutate":[{"op":"append","member":"log","text":"b"},{"op":"assign","member":"title","value":"build"}]},
+    {
+      "receive": {
+        "kind": "frame",
+        "route": "log",
+        "baseRevision": 0,
+        "revision": 2,
+        "changes": [{"field":"log","kind":"text","length":1,"trim":0,"text":"b"},{"field":"title","kind":"set","value":"build"}]
+      }
+    },
+    {"send":{"kind":"snapshot","route":"log"},"id":"final-read","role":"producer"},
+    {"receive":{"ok":true,"revision":2,"state":{"log":"ab","title":"build"}},"replyTo":"final-read","role":"producer"},
+    {"expect":{"state":{"route":"log","value":{"log":"ab","title":"build"}}}}
+  ]
+}

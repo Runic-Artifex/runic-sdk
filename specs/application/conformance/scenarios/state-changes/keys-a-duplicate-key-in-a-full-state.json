@@ -1,0 +1,56 @@
+{
+  "format": "runic.views.scenario/1",
+  "id": "state-changes.keys-a-duplicate-key-in-a-full-state.v1",
+  "contract": {"id":"runic.views","version":4},
+  "set": "state-changes",
+  "roles": ["producer","client"],
+  "description": "Invalid keys. The producer never publishes a state or frame whose collection has a null row or a missing, empty or duplicate key. A change publishes a failure notice instead, and nothing else until the keys are valid again; a snapshot read fails with state-withheld. Case: a duplicate key in a full state.",
+  "source": "specs/application/fixtures/collection-deltas/keys.json#a duplicate key in a full state",
+  "view": "list",
+  "ids": {
+    "c1": {"kind":"connection"},
+    "hello-c1": {"kind":"request"},
+    "session": {"kind":"wire","value":"s-1"},
+    "open-list": {"kind":"call"},
+    "open-list-request": {"kind":"request"},
+    "presentation": {"kind":"wire","value":"p-1"}
+  },
+  "arrange": {"model":{"rows":[{"id":1,"label":"one"},{"id":1,"label":"again"}],"title":"rows"}},
+  "steps": [
+    {"connect":"c1"},
+    {
+      "send": {
+        "kind": "hello",
+        "protocol": 4,
+        "session": {"$id":"session"},
+        "client": {"name":{"$any":"string","default":"conformance-client"},"version":{"$any":"string","default":"1.0.0"}}
+      },
+      "id": "hello-c1"
+    },
+    {
+      "receive": {
+        "ok": true,
+        "protocol": 4,
+        "implementation": {"name":{"$any":"string","default":"conformance-producer"},"version":{"$any":"string","default":"1.0.0"}}
+      },
+      "replyTo": "hello-c1"
+    },
+    {"call":{"id":"open-list","op":"open","route":"list"}},
+    {"send":{"kind":"open","route":"list","presentation":{"$id":"presentation"}},"id":"open-list-request"},
+    {
+      "receive": {
+        "ok": false,
+        "error": {
+          "kind": "failed",
+          "reason": "state-withheld",
+          "message": {
+            "$any": "string",
+            "default": "CollectionDeltaViewModel.rows: rows 0 and 1 have the same key. [RunicCollection] keys must be nonempty and unique within the collection."
+          }
+        }
+      },
+      "replyTo": "open-list-request"
+    },
+    {"expect":{"call":{"id":"open-list","rejected":{"kind":"failed","reason":"state-withheld"}}}}
+  ]
+}

@@ -1,0 +1,92 @@
+{
+  "format": "runic.views.scenario/1",
+  "id": "state-changes.batch-ordered-changes-and-baseline-continuation.v1",
+  "contract": {"id":"runic.views","version":4},
+  "set": "state-changes",
+  "roles": ["producer","client"],
+  "description": "One publication unit publishes one frame whose changes of a field apply in order. The next frame's baseRevision is the previous frame's revision. Case: ordered changes and baseline continuation.",
+  "source": "specs/application/fixtures/collection-deltas/batch.json#ordered changes and baseline continuation",
+  "view": "list",
+  "ids": {
+    "c1": {"kind":"connection"},
+    "hello-c1": {"kind":"request"},
+    "session": {"kind":"wire","value":"s-1"},
+    "open-list": {"kind":"call"},
+    "open-list-request": {"kind":"request"},
+    "presentation": {"kind":"wire","value":"p-1"},
+    "final-read": {"kind":"request"}
+  },
+  "arrange": {"model":{"rows":[{"id":1,"label":"one"},{"id":2,"label":"two"},{"id":3,"label":"three"}],"title":"rows"}},
+  "steps": [
+    {"connect":"c1"},
+    {
+      "send": {
+        "kind": "hello",
+        "protocol": 4,
+        "session": {"$id":"session"},
+        "client": {"name":{"$any":"string","default":"conformance-client"},"version":{"$any":"string","default":"1.0.0"}}
+      },
+      "id": "hello-c1"
+    },
+    {
+      "receive": {
+        "ok": true,
+        "protocol": 4,
+        "implementation": {"name":{"$any":"string","default":"conformance-producer"},"version":{"$any":"string","default":"1.0.0"}}
+      },
+      "replyTo": "hello-c1"
+    },
+    {"call":{"id":"open-list","op":"open","route":"list"}},
+    {"send":{"kind":"open","route":"list","presentation":{"$id":"presentation"}},"id":"open-list-request"},
+    {
+      "receive": {
+        "ok": true,
+        "revision": 0,
+        "state": {"rows":[{"id":1,"label":"one"},{"id":2,"label":"two"},{"id":3,"label":"three"}],"title":"rows"},
+        "presentation": "ok"
+      },
+      "replyTo": "open-list-request"
+    },
+    {
+      "mutate": [
+        {"op":"replaceAt","index":2,"item":{"id":3,"label":"three b"}},
+        {"op":"move","oldIndex":2,"newIndex":1},
+        {"op":"removeAt","index":0},
+        {"op":"insert","index":2,"item":{"id":4,"label":"four"}}
+      ]
+    },
+    {"mutate":[{"op":"removeAt","index":1}]},
+    {
+      "receive": {
+        "kind": "frame",
+        "route": "list",
+        "baseRevision": 0,
+        "revision": 4,
+        "changes": [
+          {"field":"rows","kind":"replace","index":2,"oldIndex":2,"keys":["3"],"items":[{"id":3,"label":"three b"}]},
+          {"field":"rows","kind":"move","index":1,"oldIndex":2,"keys":["3"],"items":[]},
+          {"field":"rows","kind":"remove","index":0,"oldIndex":0,"keys":["1"],"items":[]},
+          {"field":"rows","kind":"add","index":2,"oldIndex":-1,"keys":["4"],"items":[{"id":4,"label":"four"}]}
+        ]
+      }
+    },
+    {
+      "receive": {
+        "kind": "frame",
+        "route": "list",
+        "baseRevision": 4,
+        "revision": 5,
+        "changes": [{"field":"rows","kind":"remove","index":1,"oldIndex":1,"keys":["2"],"items":[]}]
+      }
+    },
+    {"send":{"kind":"snapshot","route":"list"},"id":"final-read","role":"producer"},
+    {
+      "receive": {"ok":true,"revision":5,"state":{"rows":[{"id":3,"label":"three b"},{"id":4,"label":"four"}],"title":"rows"}},
+      "replyTo": "final-read",
+      "role": "producer"
+    },
+    {
+      "expect": {"state":{"route":"list","value":{"rows":[{"id":3,"label":"three b"},{"id":4,"label":"four"}],"title":"rows"}}}
+    }
+  ]
+}

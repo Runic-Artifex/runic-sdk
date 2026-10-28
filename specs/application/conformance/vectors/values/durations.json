@@ -1,0 +1,200 @@
+{
+  "format": "runic.views.vector/1",
+  "id": "values.durations",
+  "contract": {"id":"runic.views","version":4},
+  "area": "values",
+  "description": "duration: ISO 8601 days, hours, minutes and seconds; 100-ns resolution within the signed 64-bit range.",
+  "cases": [
+    {
+      "id": "values.durations.duration-full",
+      "operation": "decode",
+      "type": "duration",
+      "input": {"encoding":"json","value":"P1DT2H3M4.5S"},
+      "expect": {"value":"P1DT2H3M4.5S"}
+    },
+    {
+      "id": "values.durations.duration-zero",
+      "operation": "decode",
+      "type": "duration",
+      "input": {"encoding":"json","value":"PT0S"},
+      "expect": {"value":"PT0S"}
+    },
+    {
+      "id": "values.durations.duration-zero-days",
+      "operation": "decode",
+      "type": "duration",
+      "input": {"encoding":"json","value":"P0D"},
+      "expect": {"value":"PT0S"}
+    },
+    {
+      "id": "values.durations.duration-negative-zero",
+      "operation": "decode",
+      "type": "duration",
+      "input": {"encoding":"json","value":"-PT0S"},
+      "expect": {"value":"PT0S"}
+    },
+    {
+      "id": "values.durations.duration-day",
+      "operation": "decode",
+      "type": "duration",
+      "input": {"encoding":"json","value":"P1D"},
+      "expect": {"value":"P1D"}
+    },
+    {
+      "id": "values.durations.duration-hours-overflow",
+      "description": "Components may exceed their range when read.",
+      "operation": "decode",
+      "type": "duration",
+      "input": {"encoding":"json","value":"PT36H"},
+      "expect": {"value":"P1DT12H"}
+    },
+    {
+      "id": "values.durations.duration-minutes-overflow",
+      "operation": "decode",
+      "type": "duration",
+      "input": {"encoding":"json","value":"PT90M"},
+      "expect": {"value":"PT1H30M"}
+    },
+    {
+      "id": "values.durations.duration-tick",
+      "operation": "decode",
+      "type": "duration",
+      "input": {"encoding":"json","value":"PT0.0000001S"},
+      "expect": {"value":"PT0.0000001S"}
+    },
+    {
+      "id": "values.durations.duration-trailing-zero",
+      "operation": "decode",
+      "type": "duration",
+      "input": {"encoding":"json","value":"PT1.50S"},
+      "expect": {"value":"PT1.5S"}
+    },
+    {
+      "id": "values.durations.duration-negative",
+      "operation": "decode",
+      "type": "duration",
+      "input": {"encoding":"json","value":"-PT1H"},
+      "expect": {"value":"-PT1H"}
+    },
+    {
+      "id": "values.durations.duration-hours-and-seconds",
+      "operation": "decode",
+      "type": "duration",
+      "input": {"encoding":"json","value":"PT1H2S"},
+      "expect": {"value":"PT1H2S"}
+    },
+    {
+      "id": "values.durations.duration-maximum",
+      "operation": "decode",
+      "type": "duration",
+      "input": {"encoding":"json","value":"P10675199DT2H48M5.4775807S"},
+      "expect": {"value":"P10675199DT2H48M5.4775807S"}
+    },
+    {
+      "id": "values.durations.duration-minimum",
+      "operation": "decode",
+      "type": "duration",
+      "input": {"encoding":"json","value":"-P10675199DT2H48M5.4775808S"},
+      "expect": {"value":"-P10675199DT2H48M5.4775808S"}
+    },
+    {
+      "id": "values.durations.duration-above-maximum",
+      "operation": "decode",
+      "type": "duration",
+      "input": {"encoding":"json","value":"P10675199DT2H48M5.4775808S"},
+      "expect": {"error":{"code":"invalid-value"}}
+    },
+    {
+      "id": "values.durations.duration-years",
+      "operation": "decode",
+      "type": "duration",
+      "input": {"encoding":"json","value":"P1Y"},
+      "expect": {"error":{"code":"invalid-value"}}
+    },
+    {
+      "id": "values.durations.duration-months",
+      "operation": "decode",
+      "type": "duration",
+      "input": {"encoding":"json","value":"P1M"},
+      "expect": {"error":{"code":"invalid-value"}}
+    },
+    {
+      "id": "values.durations.duration-weeks",
+      "operation": "decode",
+      "type": "duration",
+      "input": {"encoding":"json","value":"P1W"},
+      "expect": {"error":{"code":"invalid-value"}}
+    },
+    {
+      "id": "values.durations.duration-empty-time",
+      "operation": "decode",
+      "type": "duration",
+      "input": {"encoding":"json","value":"PT"},
+      "expect": {"error":{"code":"invalid-value"}}
+    },
+    {
+      "id": "values.durations.duration-empty",
+      "operation": "decode",
+      "type": "duration",
+      "input": {"encoding":"json","value":"P"},
+      "expect": {"error":{"code":"invalid-value"}}
+    },
+    {
+      "id": "values.durations.duration-trailing-t",
+      "operation": "decode",
+      "type": "duration",
+      "input": {"encoding":"json","value":"P1DT"},
+      "expect": {"error":{"code":"invalid-value"}}
+    },
+    {
+      "id": "values.durations.duration-fractional-hours",
+      "operation": "decode",
+      "type": "duration",
+      "input": {"encoding":"json","value":"PT1.5H"},
+      "expect": {"error":{"code":"invalid-value"}}
+    },
+    {
+      "id": "values.durations.duration-eight-digits",
+      "operation": "decode",
+      "type": "duration",
+      "input": {"encoding":"json","value":"PT0.00000001S"},
+      "expect": {"error":{"code":"invalid-value"}}
+    },
+    {
+      "id": "values.durations.duration-lowercase",
+      "operation": "decode",
+      "type": "duration",
+      "input": {"encoding":"json","value":"pt1s"},
+      "expect": {"error":{"code":"invalid-value"}}
+    },
+    {
+      "id": "values.durations.duration-comma",
+      "operation": "decode",
+      "type": "duration",
+      "input": {"encoding":"json","value":"PT1,5S"},
+      "expect": {"error":{"code":"invalid-value"}}
+    },
+    {
+      "id": "values.durations.duration-component-sign",
+      "operation": "decode",
+      "type": "duration",
+      "input": {"encoding":"json","value":"P-1D"},
+      "expect": {"error":{"code":"invalid-value"}}
+    },
+    {
+      "id": "values.durations.duration-protocol-3-format",
+      "description": "Protocol 3's .NET c format is not a duration.",
+      "operation": "decode",
+      "type": "duration",
+      "input": {"encoding":"json","value":"1.02:03:04.5000000"},
+      "expect": {"error":{"code":"invalid-value"}}
+    },
+    {
+      "id": "values.durations.duration-number",
+      "operation": "decode",
+      "type": "duration",
+      "input": {"encoding":"json","value":1},
+      "expect": {"error":{"code":"invalid-value"}}
+    }
+  ]
+}

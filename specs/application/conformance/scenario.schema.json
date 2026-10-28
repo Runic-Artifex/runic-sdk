@@ -1,0 +1,352 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://runic-artifex.org/schemas/runic-views/conformance-scenario-1.schema.json",
+  "title": "Runic Application Views conformance scenario",
+  "description": "A transcript of one window: model mutations, client calls, the requests on the wire and the replies and pushes that answer them. See README.md in this directory.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["format", "id", "contract", "set", "roles", "description", "view", "ids", "arrange", "steps"],
+  "properties": {
+    "format": { "const": "runic.views.scenario/1" },
+    "id": { "type": "string", "pattern": "^[a-z][a-z0-9-]*\\.[a-z0-9][a-z0-9-]*\\.v[1-9][0-9]*$" },
+    "contract": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "version"],
+      "properties": { "id": { "const": "runic.views" }, "version": { "const": 4 } }
+    },
+    "set": { "enum": ["handshake", "state-changes", "replies", "edits", "operations", "presentations", "interactions", "errors"] },
+    "roles": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": { "enum": ["producer", "client"] }
+    },
+    "description": { "type": "string", "minLength": 1 },
+    "source": {
+      "description": "The protocol-3 fixture case this scenario was converted from.",
+      "type": "string",
+      "pattern": "^specs/application/fixtures/[a-z-]+/[a-z0-9-]+\\.json#.+$"
+    },
+    "view": { "enum": ["list", "log", "notes"] },
+    "requires": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": { "enum": ["held-delivery", "virtual-clock"] }
+    },
+    "options": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "inputBytes": { "type": "integer", "minimum": 1024, "maximum": 67108864 }
+      }
+    },
+    "ids": {
+      "description": "Every identifier the scenario uses: connections, ids sent on the wire, call ids and request step ids.",
+      "type": "object",
+      "minProperties": 1,
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["kind"],
+        "properties": {
+          "kind": { "enum": ["connection", "wire", "provided", "call", "request"] },
+          "value": { "type": "string", "minLength": 1, "maxLength": 128 }
+        },
+        "if": { "properties": { "kind": { "const": "wire" } } },
+        "then": { "required": ["value"] },
+        "else": { "not": { "required": ["value"] } }
+      },
+      "propertyNames": { "$ref": "#/$defs/name" }
+    },
+    "arrange": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["model"],
+      "properties": {
+        "model": {
+          "description": "Initial values of the root View's model. Members not listed have their default values.",
+          "type": "object"
+        }
+      }
+    },
+    "steps": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/step" }
+    }
+  },
+  "$defs": {
+    "name": { "type": "string", "pattern": "^[A-Za-z][A-Za-z0-9-]*$" },
+    "role": { "enum": ["producer", "client"] },
+    "message": { "type": ["object", "string"] },
+    "step": {
+      "type": "object",
+      "properties": {
+        "role": { "$ref": "#/$defs/role" },
+        "connection": { "$ref": "#/$defs/name" },
+        "note": { "type": "string" }
+      },
+      "oneOf": [
+        {
+          "required": ["connect"],
+          "properties": { "connect": { "$ref": "#/$defs/name" } },
+          "additionalProperties": false,
+          "patternProperties": { "^(role|note)$": true }
+        },
+        {
+          "required": ["disconnect"],
+          "properties": { "disconnect": { "$ref": "#/$defs/name" } },
+          "additionalProperties": false,
+          "patternProperties": { "^(role|note)$": true }
+        },
+        {
+          "required": ["mutate"],
+          "properties": {
+            "mutate": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/mutation" } },
+            "units": { "enum": ["one", "each"] }
+          },
+          "additionalProperties": false,
+          "patternProperties": { "^(note)$": true }
+        },
+        {
+          "required": ["call"],
+          "properties": { "call": { "$ref": "#/$defs/call" } },
+          "additionalProperties": false,
+          "patternProperties": { "^(note)$": true }
+        },
+        {
+          "required": ["send", "id"],
+          "properties": {
+            "send": { "$ref": "#/$defs/message" },
+            "id": { "$ref": "#/$defs/name" },
+            "connection": { "$ref": "#/$defs/name" }
+          },
+          "additionalProperties": false,
+          "patternProperties": { "^(role|note)$": true }
+        },
+        {
+          "required": ["receive"],
+          "properties": {
+            "receive": { "$ref": "#/$defs/message" },
+            "replyTo": { "$ref": "#/$defs/name" },
+            "drop": { "const": true },
+            "connection": { "$ref": "#/$defs/name" }
+          },
+          "additionalProperties": false,
+          "patternProperties": { "^(role|note)$": true }
+        },
+        {
+          "required": ["advance"],
+          "properties": { "advance": { "type": "integer", "minimum": 1 } },
+          "additionalProperties": false,
+          "patternProperties": { "^(role|note)$": true }
+        },
+        {
+          "required": ["delivery"],
+          "properties": { "delivery": { "enum": ["hold", "release"] } },
+          "additionalProperties": false,
+          "patternProperties": { "^(note)$": true }
+        },
+        {
+          "required": ["expect"],
+          "properties": { "expect": { "$ref": "#/$defs/expectation" } },
+          "additionalProperties": false,
+          "patternProperties": { "^(role|note)$": true }
+        }
+      ]
+    },
+    "mutation": {
+      "type": "object",
+      "required": ["op"],
+      "oneOf": [
+        {
+          "properties": { "op": { "const": "assign" }, "member": { "type": "string" }, "value": true },
+          "required": ["op", "member", "value"],
+          "additionalProperties": false
+        },
+        {
+          "properties": { "op": { "const": "insert" }, "index": { "$ref": "#/$defs/index" }, "item": { "type": "object" } },
+          "required": ["op", "index", "item"],
+          "additionalProperties": false
+        },
+        {
+          "properties": { "op": { "const": "removeAt" }, "index": { "$ref": "#/$defs/index" } },
+          "required": ["op", "index"],
+          "additionalProperties": false
+        },
+        {
+          "properties": { "op": { "const": "replaceAt" }, "index": { "$ref": "#/$defs/index" }, "item": { "type": "object" } },
+          "required": ["op", "index", "item"],
+          "additionalProperties": false
+        },
+        {
+          "properties": { "op": { "const": "move" }, "oldIndex": { "$ref": "#/$defs/index" }, "newIndex": { "$ref": "#/$defs/index" } },
+          "required": ["op", "oldIndex", "newIndex"],
+          "additionalProperties": false
+        },
+        {
+          "properties": { "op": { "const": "reset" }, "items": { "type": "array", "items": { "type": "object" } } },
+          "required": ["op", "items"],
+          "additionalProperties": false
+        },
+        {
+          "properties": {
+            "op": { "const": "appendRows" },
+            "start": { "$ref": "#/$defs/index" },
+            "count": { "type": "integer", "minimum": 1 },
+            "width": { "type": "integer", "minimum": 1 }
+          },
+          "required": ["op", "start", "count"],
+          "additionalProperties": false
+        },
+        {
+          "properties": { "op": { "const": "append" }, "member": { "type": "string" }, "text": { "type": "string" } },
+          "required": ["op", "member", "text"],
+          "additionalProperties": false
+        },
+        {
+          "properties": { "op": { "const": "progress" }, "member": { "type": "string" }, "value": { "type": "number" } },
+          "required": ["op", "member", "value"],
+          "additionalProperties": false
+        },
+        {
+          "properties": {
+            "op": { "const": "finish" },
+            "member": { "type": "string" },
+            "rows": { "type": "array", "items": { "type": "string" } },
+            "outcome": { "const": "cancelled" },
+            "failure": { "type": "object" }
+          },
+          "required": ["op", "member"],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "index": { "type": "integer", "minimum": 0 },
+    "call": {
+      "type": "object",
+      "required": ["id", "op"],
+      "properties": {
+        "id": { "$ref": "#/$defs/name" },
+        "op": { "enum": ["open", "close", "set", "write", "command", "can", "start", "wait", "status", "cancel", "register"] },
+        "route": { "type": "string" },
+        "member": { "type": "string" },
+        "value": true,
+        "input": true,
+        "requestId": { "type": "string" },
+        "baseline": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["value", "version"],
+          "properties": { "value": true, "version": { "type": "integer", "minimum": 0 } }
+        },
+        "operation": { "$ref": "#/$defs/name" },
+        "interaction": { "type": "string" },
+        "answer": {
+          "oneOf": [
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["output"],
+              "properties": { "output": true }
+            },
+            { "enum": ["cancel", "fail", "never"] }
+          ]
+        }
+      },
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": { "properties": { "op": { "enum": ["open", "close", "set", "write", "command", "can", "start", "register"] } } },
+          "then": { "required": ["route"] }
+        },
+        {
+          "if": { "properties": { "op": { "enum": ["set", "write", "command", "can", "start"] } } },
+          "then": { "required": ["member"] }
+        },
+        {
+          "if": { "properties": { "op": { "enum": ["set", "write"] } } },
+          "then": { "required": ["value"] }
+        },
+        {
+          "if": { "properties": { "op": { "enum": ["start", "wait", "status", "cancel"] } } },
+          "then": { "required": ["operation"] }
+        },
+        {
+          "if": { "properties": { "op": { "const": "write" } } },
+          "then": { "required": ["requestId", "baseline"] }
+        },
+        {
+          "if": { "properties": { "op": { "const": "register" } } },
+          "then": { "required": ["interaction", "answer"] }
+        }
+      ]
+    },
+    "error": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind"],
+      "properties": {
+        "kind": { "enum": ["rejected", "cancelled", "failed", "domain-failed", "released", "disconnected", "timeout"] },
+        "reason": { "type": "string" },
+        "failure": true,
+        "message": { "type": "string" }
+      }
+    },
+    "expectation": {
+      "type": "object",
+      "minProperties": 1,
+      "maxProperties": 1,
+      "properties": {
+        "model": {
+          "description": "Producer: values of the root View's model.",
+          "type": "object"
+        },
+        "state": {
+          "description": "Client: the state the client exposes for a route, after the setter overlay.",
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["route", "value"],
+          "properties": { "route": { "type": "string" }, "value": { "type": "object" } }
+        },
+        "call": {
+          "description": "Client: how a call has settled so far.",
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["id"],
+          "properties": {
+            "id": { "$ref": "#/$defs/name" },
+            "pending": { "const": true },
+            "resolved": true,
+            "rejected": { "$ref": "#/$defs/error" }
+          },
+          "oneOf": [
+            { "required": ["pending"] },
+            { "required": ["resolved"] },
+            { "required": ["rejected"] }
+          ]
+        },
+        "operation": {
+          "description": "Client: the last status the client observed for an operation.",
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["id", "status"],
+          "properties": { "id": { "$ref": "#/$defs/name" }, "status": { "type": "object" } }
+        },
+        "diagnostics": {
+          "description": "Client: the codes of every diagnostic reported since the scenario started, in order.",
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "notifications": {
+          "description": "Client: the number of times subscribers of a route were notified since it opened.",
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["route", "count"],
+          "properties": { "route": { "type": "string" }, "count": { "type": "integer", "minimum": 0 } }
+        }
+      }
+    }
+  }
+}

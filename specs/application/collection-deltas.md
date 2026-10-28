@@ -1,7 +1,10 @@
 # Collection delta frames
 
+> Protocol 3. [State changes](state-changes.md) replaces this document for protocol 4; it is kept until the
+> protocol-3 implementations and their fixture tests are gone.
+
 This is the contract for incremental collection updates in the
-[Runic Application Views wire protocol](README.md), version 1. The producer is
+[Runic Application Views wire protocol](protocol-3.md), version 1. The producer is
 the generated `ViewModelBridge` in `Runic.Application.Views`. The consumer is the
 shared browser runtime in `@runic-artifex/views`, used by generated clients.
 Both are tested against the [conformance fixtures](fixtures/collection-deltas).

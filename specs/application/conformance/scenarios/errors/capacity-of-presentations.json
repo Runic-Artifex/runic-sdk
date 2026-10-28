@@ -1,0 +1,1833 @@
+{
+  "format": "runic.views.scenario/1",
+  "id": "errors.capacity-of-presentations.v1",
+  "contract": {"id":"runic.views","version":4},
+  "set": "errors",
+  "roles": ["producer"],
+  "description": "A connection holds at most 64 presentations per route; the 65th open is rejected with capacity.",
+  "view": "notes",
+  "ids": {
+    "c1": {"kind":"connection"},
+    "hello-c1": {"kind":"request"},
+    "session": {"kind":"wire","value":"s-1"},
+    "open-1": {"kind":"request"},
+    "open-2": {"kind":"request"},
+    "open-3": {"kind":"request"},
+    "open-4": {"kind":"request"},
+    "open-5": {"kind":"request"},
+    "open-6": {"kind":"request"},
+    "open-7": {"kind":"request"},
+    "open-8": {"kind":"request"},
+    "open-9": {"kind":"request"},
+    "open-10": {"kind":"request"},
+    "open-11": {"kind":"request"},
+    "open-12": {"kind":"request"},
+    "open-13": {"kind":"request"},
+    "open-14": {"kind":"request"},
+    "open-15": {"kind":"request"},
+    "open-16": {"kind":"request"},
+    "open-17": {"kind":"request"},
+    "open-18": {"kind":"request"},
+    "open-19": {"kind":"request"},
+    "open-20": {"kind":"request"},
+    "open-21": {"kind":"request"},
+    "open-22": {"kind":"request"},
+    "open-23": {"kind":"request"},
+    "open-24": {"kind":"request"},
+    "open-25": {"kind":"request"},
+    "open-26": {"kind":"request"},
+    "open-27": {"kind":"request"},
+    "open-28": {"kind":"request"},
+    "open-29": {"kind":"request"},
+    "open-30": {"kind":"request"},
+    "open-31": {"kind":"request"},
+    "open-32": {"kind":"request"},
+    "open-33": {"kind":"request"},
+    "open-34": {"kind":"request"},
+    "open-35": {"kind":"request"},
+    "open-36": {"kind":"request"},
+    "open-37": {"kind":"request"},
+    "open-38": {"kind":"request"},
+    "open-39": {"kind":"request"},
+    "open-40": {"kind":"request"},
+    "open-41": {"kind":"request"},
+    "open-42": {"kind":"request"},
+    "open-43": {"kind":"request"},
+    "open-44": {"kind":"request"},
+    "open-45": {"kind":"request"},
+    "open-46": {"kind":"request"},
+    "open-47": {"kind":"request"},
+    "open-48": {"kind":"request"},
+    "open-49": {"kind":"request"},
+    "open-50": {"kind":"request"},
+    "open-51": {"kind":"request"},
+    "open-52": {"kind":"request"},
+    "open-53": {"kind":"request"},
+    "open-54": {"kind":"request"},
+    "open-55": {"kind":"request"},
+    "open-56": {"kind":"request"},
+    "open-57": {"kind":"request"},
+    "open-58": {"kind":"request"},
+    "open-59": {"kind":"request"},
+    "open-60": {"kind":"request"},
+    "open-61": {"kind":"request"},
+    "open-62": {"kind":"request"},
+    "open-63": {"kind":"request"},
+    "open-64": {"kind":"request"},
+    "open-65": {"kind":"request"}
+  },
+  "arrange": {"model":{}},
+  "steps": [
+    {"connect":"c1"},
+    {
+      "send": {
+        "kind": "hello",
+        "protocol": 4,
+        "session": {"$id":"session"},
+        "client": {"name":{"$any":"string","default":"conformance-client"},"version":{"$any":"string","default":"1.0.0"}}
+      },
+      "id": "hello-c1"
+    },
+    {
+      "receive": {
+        "ok": true,
+        "protocol": 4,
+        "implementation": {"name":{"$any":"string","default":"conformance-producer"},"version":{"$any":"string","default":"1.0.0"}}
+      },
+      "replyTo": "hello-c1"
+    },
+    {"send":{"kind":"open","route":"notes","presentation":"p-1"},"id":"open-1"},
+    {
+      "receive": {
+        "ok": true,
+        "revision": 0,
+        "state": {
+          "title": "",
+          "note": "",
+          "priority": "Normal",
+          "due": null,
+          "elapsed": "PT0S",
+          "rows": [],
+          "count": 0,
+          "summary": "rows: 0",
+          "detail": {"kind":"detail","id":"0123456789abcdef0123456789abcdef"},
+          "canClear": false,
+          "canTouch": true,
+          "canSave": true,
+          "canConfirmClear": false,
+          "isSlowImportExecuting": false,
+          "isConfirmClearExecuting": false
+        },
+        "fields": {"note":{"version":0}},
+        "presentation": "ok"
+      },
+      "replyTo": "open-1"
+    },
+    {"send":{"kind":"open","route":"notes","presentation":"p-2"},"id":"open-2"},
+    {
+      "receive": {
+        "ok": true,
+        "revision": 0,
+        "state": {
+          "title": "",
+          "note": "",
+          "priority": "Normal",
+          "due": null,
+          "elapsed": "PT0S",
+          "rows": [],
+          "count": 0,
+          "summary": "rows: 0",
+          "detail": {"kind":"detail","id":"0123456789abcdef0123456789abcdef"},
+          "canClear": false,
+          "canTouch": true,
+          "canSave": true,
+          "canConfirmClear": false,
+          "isSlowImportExecuting": false,
+          "isConfirmClearExecuting": false
+        },
+        "fields": {"note":{"version":0}},
+        "presentation": "ok"
+      },
+      "replyTo": "open-2"
+    },
+    {"send":{"kind":"open","route":"notes","presentation":"p-3"},"id":"open-3"},
+    {
+      "receive": {
+        "ok": true,
+        "revision": 0,
+        "state": {
+          "title": "",
+          "note": "",
+          "priority": "Normal",
+          "due": null,
+          "elapsed": "PT0S",
+          "rows": [],
+          "count": 0,
+          "summary": "rows: 0",
+          "detail": {"kind":"detail","id":"0123456789abcdef0123456789abcdef"},
+          "canClear": false,
+          "canTouch": true,
+          "canSave": true,
+          "canConfirmClear": false,
+          "isSlowImportExecuting": false,
+          "isConfirmClearExecuting": false
+        },
+        "fields": {"note":{"version":0}},
+        "presentation": "ok"
+      },
+      "replyTo": "open-3"
+    },
+    {"send":{"kind":"open","route":"notes","presentation":"p-4"},"id":"open-4"},
+    {
+      "receive": {
+        "ok": true,
+        "revision": 0,
+        "state": {
+          "title": "",
+          "note": "",
+          "priority": "Normal",
+          "due": null,
+          "elapsed": "PT0S",
+          "rows": [],
+          "count": 0,
+          "summary": "rows: 0",
+          "detail": {"kind":"detail","id":"0123456789abcdef0123456789abcdef"},
+          "canClear": false,
+          "canTouch": true,
+          "canSave": true,
+          "canConfirmClear": false,
+          "isSlowImportExecuting": false,
+          "isConfirmClearExecuting": false
+        },
+        "fields": {"note":{"version":0}},
+        "presentation": "ok"
+      },
+      "replyTo": "open-4"
+    },
+    {"send":{"kind":"open","route":"notes","presentation":"p-5"},"id":"open-5"},
+    {
+      "receive": {
+        "ok": true,
+        "revision": 0,
+        "state": {
+          "title": "",
+          "note": "",
+          "priority": "Normal",
+          "due": null,
+          "elapsed": "PT0S",
+          "rows": [],
+          "count": 0,
+          "summary": "rows: 0",
+          "detail": {"kind":"detail","id":"0123456789abcdef0123456789abcdef"},
+          "canClear": false,
+          "canTouch": true,
+          "canSave": true,
+          "canConfirmClear": false,
+          "isSlowImportExecuting": false,
+          "isConfirmClearExecuting": false
+        },
+        "fields": {"note":{"version":0}},
+        "presentation": "ok"
+      },
+      "replyTo": "open-5"
+    },
+    {"send":{"kind":"open","route":"notes","presentation":"p-6"},"id":"open-6"},
+    {
+      "receive": {
+        "ok": true,
+        "revision": 0,
+        "state": {
+          "title": "",
+          "note": "",
+          "priority": "Normal",
+          "due": null,
+          "elapsed": "PT0S",
+          "rows": [],
+          "count": 0,
+          "summary": "rows: 0",
+          "detail": {"kind":"detail","id":"0123456789abcdef0123456789abcdef"},
+          "canClear": false,
+          "canTouch": true,
+          "canSave": true,
+          "canConfirmClear": false,
+          "isSlowImportExecuting": false,
+          "isConfirmClearExecuting": false
+        },
+        "fields": {"note":{"version":0}},
+        "presentation": "ok"
+      },
+      "replyTo": "open-6"
+    },
+    {"send":{"kind":"open","route":"notes","presentation":"p-7"},"id":"open-7"},
+    {
+      "receive": {
+        "ok": true,
+        "revision": 0,
+        "state": {
+          "title": "",
+          "note": "",
+          "priority": "Normal",
+          "due": null,
+          "elapsed": "PT0S",
+          "rows": [],
+          "count": 0,
+          "summary": "rows: 0",
+          "detail": {"kind":"detail","id":"0123456789abcdef0123456789abcdef"},
+          "canClear": false,
+          "canTouch": true,
+          "canSave": true,
+          "canConfirmClear": false,
+          "isSlowImportExecuting": false,
+          "isConfirmClearExecuting": false
+        },
+        "fields": {"note":{"version":0}},
+        "presentation": "ok"
+      },
+      "replyTo": "open-7"
+    },
+    {"send":{"kind":"open","route":"notes","presentation":"p-8"},"id":"open-8"},
+    {
+      "receive": {
+        "ok": true,
+        "revision": 0,
+        "state": {
+          "title": "",
+          "note": "",
+          "priority": "Normal",
+          "due": null,
+          "elapsed": "PT0S",
+          "rows": [],
+          "count": 0,
+          "summary": "rows: 0",
+          "detail": {"kind":"detail","id":"0123456789abcdef0123456789abcdef"},
+          "canClear": false,
+          "canTouch": true,
+          "canSave": true,
+          "canConfirmClear": false,
+          "isSlowImportExecuting": false,
+          "isConfirmClearExecuting": false
+        },
+        "fields": {"note":{"version":0}},
+        "presentation": "ok"
+      },
+      "replyTo": "open-8"
+    },
+    {"send":{"kind":"open","route":"notes","presentation":"p-9"},"id":"open-9"},
+    {
+      "receive": {
+        "ok": true,
+        "revision": 0,
+        "state": {
+          "title": "",
+          "note": "",
+          "priority": "Normal",
+          "due": null,
+          "elapsed": "PT0S",
+          "rows": [],
+          "count": 0,
+          "summary": "rows: 0",
+          "detail": {"kind":"detail","id":"0123456789abcdef0123456789abcdef"},
+          "canClear": false,
+          "canTouch": true,
+          "canSave": true,
+          "canConfirmClear": false,
+          "isSlowImportExecuting": false,
+          "isConfirmClearExecuting": false
+        },
+        "fields": {"note":{"version":0}},
+        "presentation": "ok"
+      },
+      "replyTo": "open-9"
+    },
+    {"send":{"kind":"open","route":"notes","presentation":"p-10"},"id":"open-10"},
+    {
+      "receive": {
+        "ok": true,
+        "revision": 0,
+        "state": {
+          "title": "",
+          "note": "",
+          "priority": "Normal",
+          "due": null,
+          "elapsed": "PT0S",
+          "rows": [],
+          "count": 0,
+          "summary": "rows: 0",
+          "detail": {"kind":"detail","id":"0123456789abcdef0123456789abcdef"},
+          "canClear": false,
+          "canTouch": true,
+          "canSave": true,
+          "canConfirmClear": false,
+          "isSlowImportExecuting": false,
+          "isConfirmClearExecuting": false
+        },
+        "fields": {"note":{"version":0}},
+        "presentation": "ok"
+      },
+      "replyTo": "open-10"
+    },
+    {"send":{"kind":"open","route":"notes","presentation":"p-11"},"id":"open-11"},
+    {
+      "receive": {
+        "ok": true,
+        "revision": 0,
+        "state": {
+          "title": "",
+          "note": "",
+          "priority": "Normal",
+          "due": null,
+          "elapsed": "PT0S",
+          "rows": [],
+          "count": 0,
+          "summary": "rows: 0",
+          "detail": {"kind":"detail","id":"0123456789abcdef0123456789abcdef"},
+          "canClear": false,
+          "canTouch": true,
+          "canSave": true,
+          "canConfirmClear": false,
+          "isSlowImportExecuting": false,
+          "isConfirmClearExecuting": false
+        },
+        "fields": {"note":{"version":0}},
+        "presentation": "ok"
+      },
+      "replyTo": "open-11"
+    },
+    {"send":{"kind":"open","route":"notes","presentation":"p-12"},"id":"open-12"},
+    {
+      "receive": {
+        "ok": true,
+        "revision": 0,
+        "state": {
+          "title": "",
+          "note": "",
+          "priority": "Normal",
+          "due": null,
+          "elapsed": "PT0S",
+          "rows": [],
+          "count": 0,
+          "summary": "rows: 0",
+          "detail": {"kind":"detail","id":"0123456789abcdef0123456789abcdef"},
+          "canClear": false,
+          "canTouch": true,
+          "canSave": true,
+          "canConfirmClear": false,
+          "isSlowImportExecuting": false,
+          "isConfirmClearExecuting": false
+        },
+        "fields": {"note":{"version":0}},
+        "presentation": "ok"
+      },
+      "replyTo": "open-12"
+    },
+    {"send":{"kind":"open","route":"notes","presentation":"p-13"},"id":"open-13"},
+    {
+      "receive": {
+        "ok": true,
+        "revision": 0,
+        "state": {
+          "title": "",
+          "note": "",
+          "priority": "Normal",
+          "due": null,
+          "elapsed": "PT0S",
+          "rows": [],
+          "count": 0,
+          "summary": "rows: 0",
+          "detail": {"kind":"detail","id":"0123456789abcdef0123456789abcdef"},
+          "canClear": false,
+          "canTouch": true,
+          "canSave": true,
+          "canConfirmClear": false,
+          "isSlowImportExecuting": false,
+          "isConfirmClearExecuting": false
+        },
+        "fields": {"note":{"version":0}},
+        "presentation": "ok"
+      },
+      "replyTo": "open-13"
+    },
+    {"send":{"kind":"open","route":"notes","presentation":"p-14"},"id":"open-14"},
+    {
+      "receive": {
+        "ok": true,
+        "revision": 0,
+        "state": {
+          "title": "",
+          "note": "",
+          "priority": "Normal",
+          "due": null,
+          "elapsed": "PT0S",
+          "rows": [],
+          "count": 0,
+          "summary": "rows: 0",
+          "detail": {"kind":"detail","id":"0123456789abcdef0123456789abcdef"},
+          "canClear": false,
+          "canTouch": true,
+          "canSave": true,
+          "canConfirmClear": false,
+          "isSlowImportExecuting": false,
+          "isConfirmClearExecuting": false
+        },
+        "fields": {"note":{"version":0}},
+        "presentation": "ok"
+      },
+      "replyTo": "open-14"
+    },
+    {"send":{"kind":"open","route":"notes","presentation":"p-15"},"id":"open-15"},
+    {
+      "receive": {
+        "ok": true,
+        "revision": 0,
+        "state": {
+          "title": "",
+          "note": "",
+          "priority": "Normal",
+          "due": null,
+          "elapsed": "PT0S",
+          "rows": [],
+          "count": 0,
+          "summary": "rows: 0",
+          "detail": {"kind":"detail","id":"0123456789abcdef0123456789abcdef"},
+          "canClear": false,
+          "canTouch": true,
+          "canSave": true,
+          "canConfirmClear": false,
+          "isSlowImportExecuting": false,
+          "isConfirmClearExecuting": false
+        },
+        "fields": {"note":{"version":0}},
+        "presentation": "ok"
+      },
+      "replyTo": "open-15"
+    },
+    {"send":{"kind":"open","route":"notes","presentation":"p-16"},"id":"open-16"},
+    {
+      "receive": {
+        "ok": true,
+        "revision": 0,
+        "state": {
+          "title": "",
+          "note": "",
+          "priority": "Normal",
+          "due": null,
+          "elapsed": "PT0S",
+          "rows": [],
+          "count": 0,
+          "summary": "rows: 0",
+          "detail": {"kind":"detail","id":"0123456789abcdef0123456789abcdef"},
+          "canClear": false,
+          "canTouch": true,
+          "canSave": true,
+          "canConfirmClear": false,
+          "isSlowImportExecuting": false,
+          "isConfirmClearExecuting": false
+        },
+        "fields": {"note":{"version":0}},
+        "presentation": "ok"
+      },
+      "replyTo": "open-16"
+    },
+    {"send":{"kind":"open","route":"notes","presentation":"p-17"},"id":"open-17"},
+    {
+      "receive": {
+        "ok": true,
+        "revision": 0,
+        "state": {
+          "title": "",
+          "note": "",
+          "priority": "Normal",
+          "due": null,
+          "elapsed": "PT0S",
+          "rows": [],
+          "count": 0,
+          "summary": "rows: 0",
+          "detail": {"kind":"detail","id":"0123456789abcdef0123456789abcdef"},
+          "canClear": false,
+          "canTouch": true,
+          "canSave": true,
+          "canConfirmClear": false,
+          "isSlowImportExecuting": false,
+          "isConfirmClearExecuting": false
+        },
+        "fields": {"note":{"version":0}},
+        "presentation": "ok"
+      },
+      "replyTo": "open-17"
+    },
+    {"send":{"kind":"open","route":"notes","presentation":"p-18"},"id":"open-18"},
+    {
+      "receive": {
+        "ok": true,
+        "revision": 0,
+        "state": {
+          "title": "",
+          "note": "",
+          "priority": "Normal",
+          "due": null,
+          "elapsed": "PT0S",
+          "rows": [],
+          "count": 0,
+          "summary": "rows: 0",
+          "detail": {"kind":"detail","id":"0123456789abcdef0123456789abcdef"},
+          "canClear": false,
+          "canTouch": true,
+          "canSave": true,
+          "canConfirmClear": false,
+          "isSlowImportExecuting": false,
+          "isConfirmClearExecuting": false
+        },
+        "fields": {"note":{"version":0}},
+        "presentation": "ok"
+      },
+      "replyTo": "open-18"
+    },
+    {"send":{"kind":"open","route":"notes","presentation":"p-19"},"id":"open-19"},
+    {
+      "receive": {
+        "ok": true,
+        "revision": 0,
+        "state": {
+          "title": "",
+          "note": "",
+          "priority": "Normal",
+          "due": null,
+          "elapsed": "PT0S",
+          "rows": [],
+          "count": 0,
+          "summary": "rows: 0",
+          "detail": {"kind":"detail","id":"0123456789abcdef0123456789abcdef"},
+          "canClear": false,
+          "canTouch": true,
+          "canSave": true,
+          "canConfirmClear": false,
+          "isSlowImportExecuting": false,
+          "isConfirmClearExecuting": false
+        },
+        "fields": {"note":{"version":0}},
+        "presentation": "ok"
+      },
+      "replyTo": "open-19"
+    },
+    {"send":{"kind":"open","route":"notes","presentation":"p-20"},"id":"open-20"},
+    {
+      "receive": {
+        "ok": true,
+        "revision": 0,
+        "state": {
+          "title": "",
+          "note": "",
+          "priority": "Normal",
+          "due": null,
+          "elapsed": "PT0S",
+          "rows": [],
+          "count": 0,
+          "summary": "rows: 0",
+          "detail": {"kind":"detail","id":"0123456789abcdef0123456789abcdef"},
+          "canClear": false,
+          "canTouch": true,
+          "canSave": true,
+          "canConfirmClear": false,
+          "isSlowImportExecuting": false,
+          "isConfirmClearExecuting": false
+        },
+        "fields": {"note":{"version":0}},
+        "presentation": "ok"
+      },
+      "replyTo": "open-20"
+    },
+    {"send":{"kind":"open","route":"notes","presentation":"p-21"},"id":"open-21"},
+    {
+      "receive": {
+        "ok": true,
+        "revision": 0,
+        "state": {
+          "title": "",
+          "note": "",
+          "priority": "Normal",
+          "due": null,
+          "elapsed": "PT0S",
+          "rows": [],
+          "count": 0,
+          "summary": "rows: 0",
+          "detail": {"kind":"detail","id":"0123456789abcdef0123456789abcdef"},
+          "canClear": false,
+          "canTouch": true,
+          "canSave": true,
+          "canConfirmClear": false,
+          "isSlowImportExecuting": false,
+          "isConfirmClearExecuting": false
+        },
+        "fields": {"note":{"version":0}},
+        "presentation": "ok"
+      },
+      "replyTo": "open-21"
+    },
+    {"send":{"kind":"open","route":"notes","presentation":"p-22"},"id":"open-22"},
+    {
+      "receive": {
+        "ok": true,
+        "revision": 0,
+        "state": {
+          "title": "",
+          "note": "",
+          "priority": "Normal",
+          "due": null,
+          "elapsed": "PT0S",
+          "rows": [],
+          "count": 0,
+          "summary": "rows: 0",
+          "detail": {"kind":"detail","id":"0123456789abcdef0123456789abcdef"},
+          "canClear": false,
+          "canTouch": true,
+          "canSave": true,
+          "canConfirmClear": false,
+          "isSlowImportExecuting": false,
+          "isConfirmClearExecuting": false
+        },
+        "fields": {"note":{"version":0}},
+        "presentation": "ok"
+      },
+      "replyTo": "open-22"
+    },
+    {"send":{"kind":"open","route":"notes","presentation":"p-23"},"id":"open-23"},
+    {
+      "receive": {
+        "ok": true,
+        "revision": 0,
+        "state": {
+          "title": "",
+          "note": "",
+          "priority": "Normal",
+          "due": null,
+          "elapsed": "PT0S",
+          "rows": [],
+          "count": 0,
+          "summary": "rows: 0",
+          "detail": {"kind":"detail","id":"0123456789abcdef0123456789abcdef"},
+          "canClear": false,
+          "canTouch": true,
+          "canSave": true,
+          "canConfirmClear": false,
+          "isSlowImportExecuting": false,
+          "isConfirmClearExecuting": false
+        },
+        "fields": {"note":{"version":0}},
+        "presentation": "ok"
+      },
+      "replyTo": "open-23"
+    },
+    {"send":{"kind":"open","route":"notes","presentation":"p-24"},"id":"open-24"},
+    {
+      "receive": {
+        "ok": true,
+        "revision": 0,
+        "state": {
+          "title": "",
+          "note": "",
+          "priority": "Normal",
+          "due": null,
+          "elapsed": "PT0S",
+          "rows": [],
+          "count": 0,
+          "summary": "rows: 0",
+          "detail": {"kind":"detail","id":"0123456789abcdef0123456789abcdef"},
+          "canClear": false,
+          "canTouch": true,
+          "canSave": true,
+          "canConfirmClear": false,
+          "isSlowImportExecuting": false,
+          "isConfirmClearExecuting": false
+        },
+        "fields": {"note":{"version":0}},
+        "presentation": "ok"
+      },
+      "replyTo": "open-24"
+    },
+    {"send":{"kind":"open","route":"notes","presentation":"p-25"},"id":"open-25"},
+    {
+      "receive": {
+        "ok": true,
+        "revision": 0,
+        "state": {
+          "title": "",
+          "note": "",
+          "priority": "Normal",
+          "due": null,
+          "elapsed": "PT0S",
+          "rows": [],
+          "count": 0,
+          "summary": "rows: 0",
+          "detail": {"kind":"detail","id":"0123456789abcdef0123456789abcdef"},
+          "canClear": false,
+          "canTouch": true,
+          "canSave": true,
+          "canConfirmClear": false,
+          "isSlowImportExecuting": false,
+          "isConfirmClearExecuting": false
+        },
+        "fields": {"note":{"version":0}},
+        "presentation": "ok"
+      },
+      "replyTo": "open-25"
+    },
+    {"send":{"kind":"open","route":"notes","presentation":"p-26"},"id":"open-26"},
+    {
+      "receive": {
+        "ok": true,
+        "revision": 0,
+        "state": {
+          "title": "",
+          "note": "",
+          "priority": "Normal",
+          "due": null,
+          "elapsed": "PT0S",
+          "rows": [],
+          "count": 0,
+          "summary": "rows: 0",
+          "detail": {"kind":"detail","id":"0123456789abcdef0123456789abcdef"},
+          "canClear": false,
+          "canTouch": true,
+          "canSave": true,
+          "canConfirmClear": false,
+          "isSlowImportExecuting": false,
+          "isConfirmClearExecuting": false
+        },
+        "fields": {"note":{"version":0}},
+        "presentation": "ok"
+      },
+      "replyTo": "open-26"
+    },
+    {"send":{"kind":"open","route":"notes","presentation":"p-27"},"id":"open-27"},
+    {
+      "receive": {
+        "ok": true,
+        "revision": 0,
+        "state": {
+          "title": "",
+          "note": "",
+          "priority": "Normal",
+          "due": null,
+          "elapsed": "PT0S",
+          "rows": [],
+          "count": 0,
+          "summary": "rows: 0",
+          "detail": {"kind":"detail","id":"0123456789abcdef0123456789abcdef"},
+          "canClear": false,
+          "canTouch": true,
+          "canSave": true,
+          "canConfirmClear": false,
+          "isSlowImportExecuting": false,
+          "isConfirmClearExecuting": false
+        },
+        "fields": {"note":{"version":0}},
+        "presentation": "ok"
+      },
+      "replyTo": "open-27"
+    },
+    {"send":{"kind":"open","route":"notes","presentation":"p-28"},"id":"open-28"},
+    {
+      "receive": {
+        "ok": true,
+        "revision": 0,
+        "state": {
+          "title": "",
+          "note": "",
+          "priority": "Normal",
+          "due": null,
+          "elapsed": "PT0S",
+          "rows": [],
+          "count": 0,
+          "summary": "rows: 0",
+          "detail": {"kind":"detail","id":"0123456789abcdef0123456789abcdef"},
+          "canClear": false,
+          "canTouch": true,
+          "canSave": true,
+          "canConfirmClear": false,
+          "isSlowImportExecuting": false,
+          "isConfirmClearExecuting": false
+        },
+        "fields": {"note":{"version":0}},
+        "presentation": "ok"
+      },
+      "replyTo": "open-28"
+    },
+    {"send":{"kind":"open","route":"notes","presentation":"p-29"},"id":"open-29"},
+    {
+      "receive": {
+        "ok": true,
+        "revision": 0,
+        "state": {
+          "title": "",
+          "note": "",
+          "priority": "Normal",
+          "due": null,
+          "elapsed": "PT0S",
+          "rows": [],
+          "count": 0,
+          "summary": "rows: 0",
+          "detail": {"kind":"detail","id":"0123456789abcdef0123456789abcdef"},
+          "canClear": false,
+          "canTouch": true,
+          "canSave": true,
+          "canConfirmClear": false,
+          "isSlowImportExecuting": false,
+          "isConfirmClearExecuting": false
+        },
+        "fields": {"note":{"version":0}},
+        "presentation": "ok"
+      },
+      "replyTo": "open-29"
+    },
+    {"send":{"kind":"open","route":"notes","presentation":"p-30"},"id":"open-30"},
+    {
+      "receive": {
+        "ok": true,
+        "revision": 0,
+        "state": {
+          "title": "",
+          "note": "",
+          "priority": "Normal",
+          "due": null,
+          "elapsed": "PT0S",
+          "rows": [],
+          "count": 0,
+          "summary": "rows: 0",
+          "detail": {"kind":"detail","id":"0123456789abcdef0123456789abcdef"},
+          "canClear": false,
+          "canTouch": true,
+          "canSave": true,
+          "canConfirmClear": false,
+          "isSlowImportExecuting": false,
+          "isConfirmClearExecuting": false
+        },
+        "fields": {"note":{"version":0}},
+        "presentation": "ok"
+      },
+      "replyTo": "open-30"
+    },
+    {"send":{"kind":"open","route":"notes","presentation":"p-31"},"id":"open-31"},
+    {
+      "receive": {
+        "ok": true,
+        "revision": 0,
+        "state": {
+          "title": "",
+          "note": "",
+          "priority": "Normal",
+          "due": null,
+          "elapsed": "PT0S",
+          "rows": [],
+          "count": 0,
+          "summary": "rows: 0",
+          "detail": {"kind":"detail","id":"0123456789abcdef0123456789abcdef"},
+          "canClear": false,
+          "canTouch": true,
+          "canSave": true,
+          "canConfirmClear": false,
+          "isSlowImportExecuting": false,
+          "isConfirmClearExecuting": false
+        },
+        "fields": {"note":{"version":0}},
+        "presentation": "ok"
+      },
+      "replyTo": "open-31"
+    },
+    {"send":{"kind":"open","route":"notes","presentation":"p-32"},"id":"open-32"},
+    {
+      "receive": {
+        "ok": true,
+        "revision": 0,
+        "state": {
+          "title": "",
+          "note": "",
+          "priority": "Normal",
+          "due": null,
+          "elapsed": "PT0S",
+          "rows": [],
+          "count": 0,
+          "summary": "rows: 0",
+          "detail": {"kind":"detail","id":"0123456789abcdef0123456789abcdef"},
+          "canClear": false,
+          "canTouch": true,
+          "canSave": true,
+          "canConfirmClear": false,
+          "isSlowImportExecuting": false,
+          "isConfirmClearExecuting": false
+        },
+        "fields": {"note":{"version":0}},
+        "presentation": "ok"
+      },
+      "replyTo": "open-32"
+    },
+    {"send":{"kind":"open","route":"notes","presentation":"p-33"},"id":"open-33"},
+    {
+      "receive": {
+        "ok": true,
+        "revision": 0,
+        "state": {
+          "title": "",
+          "note": "",
+          "priority": "Normal",
+          "due": null,
+          "elapsed": "PT0S",
+          "rows": [],
+          "count": 0,
+          "summary": "rows: 0",
+          "detail": {"kind":"detail","id":"0123456789abcdef0123456789abcdef"},
+          "canClear": false,
+          "canTouch": true,
+          "canSave": true,
+          "canConfirmClear": false,
+          "isSlowImportExecuting": false,
+          "isConfirmClearExecuting": false
+        },
+        "fields": {"note":{"version":0}},
+        "presentation": "ok"
+      },
+      "replyTo": "open-33"
+    },
+    {"send":{"kind":"open","route":"notes","presentation":"p-34"},"id":"open-34"},
+    {
+      "receive": {
+        "ok": true,
+        "revision": 0,
+        "state": {
+          "title": "",
+          "note": "",
+          "priority": "Normal",
+          "due": null,
+          "elapsed": "PT0S",
+          "rows": [],
+          "count": 0,
+          "summary": "rows: 0",
+          "detail": {"kind":"detail","id":"0123456789abcdef0123456789abcdef"},
+          "canClear": false,
+          "canTouch": true,
+          "canSave": true,
+          "canConfirmClear": false,
+          "isSlowImportExecuting": false,
+          "isConfirmClearExecuting": false
+        },
+        "fields": {"note":{"version":0}},
+        "presentation": "ok"
+      },
+      "replyTo": "open-34"
+    },
+    {"send":{"kind":"open","route":"notes","presentation":"p-35"},"id":"open-35"},
+    {
+      "receive": {
+        "ok": true,
+        "revision": 0,
+        "state": {
+          "title": "",
+          "note": "",
+          "priority": "Normal",
+          "due": null,
+          "elapsed": "PT0S",
+          "rows": [],
+          "count": 0,
+          "summary": "rows: 0",
+          "detail": {"kind":"detail","id":"0123456789abcdef0123456789abcdef"},
+          "canClear": false,
+          "canTouch": true,
+          "canSave": true,
+          "canConfirmClear": false,
+          "isSlowImportExecuting": false,
+          "isConfirmClearExecuting": false
+        },
+        "fields": {"note":{"version":0}},
+        "presentation": "ok"
+      },
+      "replyTo": "open-35"
+    },
+    {"send":{"kind":"open","route":"notes","presentation":"p-36"},"id":"open-36"},
+    {
+      "receive": {
+        "ok": true,
+        "revision": 0,
+        "state": {
+          "title": "",
+          "note": "",
+          "priority": "Normal",
+          "due": null,
+          "elapsed": "PT0S",
+          "rows": [],
+          "count": 0,
+          "summary": "rows: 0",
+          "detail": {"kind":"detail","id":"0123456789abcdef0123456789abcdef"},
+          "canClear": false,
+          "canTouch": true,
+          "canSave": true,
+          "canConfirmClear": false,
+          "isSlowImportExecuting": false,
+          "isConfirmClearExecuting": false
+        },
+        "fields": {"note":{"version":0}},
+        "presentation": "ok"
+      },
+      "replyTo": "open-36"
+    },
+    {"send":{"kind":"open","route":"notes","presentation":"p-37"},"id":"open-37"},
+    {
+      "receive": {
+        "ok": true,
+        "revision": 0,
+        "state": {
+          "title": "",
+          "note": "",
+          "priority": "Normal",
+          "due": null,
+          "elapsed": "PT0S",
+          "rows": [],
+          "count": 0,
+          "summary": "rows: 0",
+          "detail": {"kind":"detail","id":"0123456789abcdef0123456789abcdef"},
+          "canClear": false,
+          "canTouch": true,
+          "canSave": true,
+          "canConfirmClear": false,
+          "isSlowImportExecuting": false,
+          "isConfirmClearExecuting": false
+        },
+        "fields": {"note":{"version":0}},
+        "presentation": "ok"
+      },
+      "replyTo": "open-37"
+    },
+    {"send":{"kind":"open","route":"notes","presentation":"p-38"},"id":"open-38"},
+    {
+      "receive": {
+        "ok": true,
+        "revision": 0,
+        "state": {
+          "title": "",
+          "note": "",
+          "priority": "Normal",
+          "due": null,
+          "elapsed": "PT0S",
+          "rows": [],
+          "count": 0,
+          "summary": "rows: 0",
+          "detail": {"kind":"detail","id":"0123456789abcdef0123456789abcdef"},
+          "canClear": false,
+          "canTouch": true,
+          "canSave": true,
+          "canConfirmClear": false,
+          "isSlowImportExecuting": false,
+          "isConfirmClearExecuting": false
+        },
+        "fields": {"note":{"version":0}},
+        "presentation": "ok"
+      },
+      "replyTo": "open-38"
+    },
+    {"send":{"kind":"open","route":"notes","presentation":"p-39"},"id":"open-39"},
+    {
+      "receive": {
+        "ok": true,
+        "revision": 0,
+        "state": {
+          "title": "",
+          "note": "",
+          "priority": "Normal",
+          "due": null,
+          "elapsed": "PT0S",
+          "rows": [],
+          "count": 0,
+          "summary": "rows: 0",
+          "detail": {"kind":"detail","id":"0123456789abcdef0123456789abcdef"},
+          "canClear": false,
+          "canTouch": true,
+          "canSave": true,
+          "canConfirmClear": false,
+          "isSlowImportExecuting": false,
+          "isConfirmClearExecuting": false
+        },
+        "fields": {"note":{"version":0}},
+        "presentation": "ok"
+      },
+      "replyTo": "open-39"
+    },
+    {"send":{"kind":"open","route":"notes","presentation":"p-40"},"id":"open-40"},
+    {
+      "receive": {
+        "ok": true,
+        "revision": 0,
+        "state": {
+          "title": "",
+          "note": "",
+          "priority": "Normal",
+          "due": null,
+          "elapsed": "PT0S",
+          "rows": [],
+          "count": 0,
+          "summary": "rows: 0",
+          "detail": {"kind":"detail","id":"0123456789abcdef0123456789abcdef"},
+          "canClear": false,
+          "canTouch": true,
+          "canSave": true,
+          "canConfirmClear": false,
+          "isSlowImportExecuting": false,
+          "isConfirmClearExecuting": false
+        },
+        "fields": {"note":{"version":0}},
+        "presentation": "ok"
+      },
+      "replyTo": "open-40"
+    },
+    {"send":{"kind":"open","route":"notes","presentation":"p-41"},"id":"open-41"},
+    {
+      "receive": {
+        "ok": true,
+        "revision": 0,
+        "state": {
+          "title": "",
+          "note": "",
+          "priority": "Normal",
+          "due": null,
+          "elapsed": "PT0S",
+          "rows": [],
+          "count": 0,
+          "summary": "rows: 0",
+          "detail": {"kind":"detail","id":"0123456789abcdef0123456789abcdef"},
+          "canClear": false,
+          "canTouch": true,
+          "canSave": true,
+          "canConfirmClear": false,
+          "isSlowImportExecuting": false,
+          "isConfirmClearExecuting": false
+        },
+        "fields": {"note":{"version":0}},
+        "presentation": "ok"
+      },
+      "replyTo": "open-41"
+    },
+    {"send":{"kind":"open","route":"notes","presentation":"p-42"},"id":"open-42"},
+    {
+      "receive": {
+        "ok": true,
+        "revision": 0,
+        "state": {
+          "title": "",
+          "note": "",
+          "priority": "Normal",
+          "due": null,
+          "elapsed": "PT0S",
+          "rows": [],
+          "count": 0,
+          "summary": "rows: 0",
+          "detail": {"kind":"detail","id":"0123456789abcdef0123456789abcdef"},
+          "canClear": false,
+          "canTouch": true,
+          "canSave": true,
+          "canConfirmClear": false,
+          "isSlowImportExecuting": false,
+          "isConfirmClearExecuting": false
+        },
+        "fields": {"note":{"version":0}},
+        "presentation": "ok"
+      },
+      "replyTo": "open-42"
+    },
+    {"send":{"kind":"open","route":"notes","presentation":"p-43"},"id":"open-43"},
+    {
+      "receive": {
+        "ok": true,
+        "revision": 0,
+        "state": {
+          "title": "",
+          "note": "",
+          "priority": "Normal",
+          "due": null,
+          "elapsed": "PT0S",
+          "rows": [],
+          "count": 0,
+          "summary": "rows: 0",
+          "detail": {"kind":"detail","id":"0123456789abcdef0123456789abcdef"},
+          "canClear": false,
+          "canTouch": true,
+          "canSave": true,
+          "canConfirmClear": false,
+          "isSlowImportExecuting": false,
+          "isConfirmClearExecuting": false
+        },
+        "fields": {"note":{"version":0}},
+        "presentation": "ok"
+      },
+      "replyTo": "open-43"
+    },
+    {"send":{"kind":"open","route":"notes","presentation":"p-44"},"id":"open-44"},
+    {
+      "receive": {
+        "ok": true,
+        "revision": 0,
+        "state": {
+          "title": "",
+          "note": "",
+          "priority": "Normal",
+          "due": null,
+          "elapsed": "PT0S",
+          "rows": [],
+          "count": 0,
+          "summary": "rows: 0",
+          "detail": {"kind":"detail","id":"0123456789abcdef0123456789abcdef"},
+          "canClear": false,
+          "canTouch": true,
+          "canSave": true,
+          "canConfirmClear": false,
+          "isSlowImportExecuting": false,
+          "isConfirmClearExecuting": false
+        },
+        "fields": {"note":{"version":0}},
+        "presentation": "ok"
+      },
+      "replyTo": "open-44"
+    },
+    {"send":{"kind":"open","route":"notes","presentation":"p-45"},"id":"open-45"},
+    {
+      "receive": {
+        "ok": true,
+        "revision": 0,
+        "state": {
+          "title": "",
+          "note": "",
+          "priority": "Normal",
+          "due": null,
+          "elapsed": "PT0S",
+          "rows": [],
+          "count": 0,
+          "summary": "rows: 0",
+          "detail": {"kind":"detail","id":"0123456789abcdef0123456789abcdef"},
+          "canClear": false,
+          "canTouch": true,
+          "canSave": true,
+          "canConfirmClear": false,
+          "isSlowImportExecuting": false,
+          "isConfirmClearExecuting": false
+        },
+        "fields": {"note":{"version":0}},
+        "presentation": "ok"
+      },
+      "replyTo": "open-45"
+    },
+    {"send":{"kind":"open","route":"notes","presentation":"p-46"},"id":"open-46"},
+    {
+      "receive": {
+        "ok": true,
+        "revision": 0,
+        "state": {
+          "title": "",
+          "note": "",
+          "priority": "Normal",
+          "due": null,
+          "elapsed": "PT0S",
+          "rows": [],
+          "count": 0,
+          "summary": "rows: 0",
+          "detail": {"kind":"detail","id":"0123456789abcdef0123456789abcdef"},
+          "canClear": false,
+          "canTouch": true,
+          "canSave": true,
+          "canConfirmClear": false,
+          "isSlowImportExecuting": false,
+          "isConfirmClearExecuting": false
+        },
+        "fields": {"note":{"version":0}},
+        "presentation": "ok"
+      },
+      "replyTo": "open-46"
+    },
+    {"send":{"kind":"open","route":"notes","presentation":"p-47"},"id":"open-47"},
+    {
+      "receive": {
+        "ok": true,
+        "revision": 0,
+        "state": {
+          "title": "",
+          "note": "",
+          "priority": "Normal",
+          "due": null,
+          "elapsed": "PT0S",
+          "rows": [],
+          "count": 0,
+          "summary": "rows: 0",
+          "detail": {"kind":"detail","id":"0123456789abcdef0123456789abcdef"},
+          "canClear": false,
+          "canTouch": true,
+          "canSave": true,
+          "canConfirmClear": false,
+          "isSlowImportExecuting": false,
+          "isConfirmClearExecuting": false
+        },
+        "fields": {"note":{"version":0}},
+        "presentation": "ok"
+      },
+      "replyTo": "open-47"
+    },
+    {"send":{"kind":"open","route":"notes","presentation":"p-48"},"id":"open-48"},
+    {
+      "receive": {
+        "ok": true,
+        "revision": 0,
+        "state": {
+          "title": "",
+          "note": "",
+          "priority": "Normal",
+          "due": null,
+          "elapsed": "PT0S",
+          "rows": [],
+          "count": 0,
+          "summary": "rows: 0",
+          "detail": {"kind":"detail","id":"0123456789abcdef0123456789abcdef"},
+          "canClear": false,
+          "canTouch": true,
+          "canSave": true,
+          "canConfirmClear": false,
+          "isSlowImportExecuting": false,
+          "isConfirmClearExecuting": false
+        },
+        "fields": {"note":{"version":0}},
+        "presentation": "ok"
+      },
+      "replyTo": "open-48"
+    },
+    {"send":{"kind":"open","route":"notes","presentation":"p-49"},"id":"open-49"},
+    {
+      "receive": {
+        "ok": true,
+        "revision": 0,
+        "state": {
+          "title": "",
+          "note": "",
+          "priority": "Normal",
+          "due": null,
+          "elapsed": "PT0S",
+          "rows": [],
+          "count": 0,
+          "summary": "rows: 0",
+          "detail": {"kind":"detail","id":"0123456789abcdef0123456789abcdef"},
+          "canClear": false,
+          "canTouch": true,
+          "canSave": true,
+          "canConfirmClear": false,
+          "isSlowImportExecuting": false,
+          "isConfirmClearExecuting": false
+        },
+        "fields": {"note":{"version":0}},
+        "presentation": "ok"
+      },
+      "replyTo": "open-49"
+    },
+    {"send":{"kind":"open","route":"notes","presentation":"p-50"},"id":"open-50"},
+    {
+      "receive": {
+        "ok": true,
+        "revision": 0,
+        "state": {
+          "title": "",
+          "note": "",
+          "priority": "Normal",
+          "due": null,
+          "elapsed": "PT0S",
+          "rows": [],
+          "count": 0,
+          "summary": "rows: 0",
+          "detail": {"kind":"detail","id":"0123456789abcdef0123456789abcdef"},
+          "canClear": false,
+          "canTouch": true,
+          "canSave": true,
+          "canConfirmClear": false,
+          "isSlowImportExecuting": false,
+          "isConfirmClearExecuting": false
+        },
+        "fields": {"note":{"version":0}},
+        "presentation": "ok"
+      },
+      "replyTo": "open-50"
+    },
+    {"send":{"kind":"open","route":"notes","presentation":"p-51"},"id":"open-51"},
+    {
+      "receive": {
+        "ok": true,
+        "revision": 0,
+        "state": {
+          "title": "",
+          "note": "",
+          "priority": "Normal",
+          "due": null,
+          "elapsed": "PT0S",
+          "rows": [],
+          "count": 0,
+          "summary": "rows: 0",
+          "detail": {"kind":"detail","id":"0123456789abcdef0123456789abcdef"},
+          "canClear": false,
+          "canTouch": true,
+          "canSave": true,
+          "canConfirmClear": false,
+          "isSlowImportExecuting": false,
+          "isConfirmClearExecuting": false
+        },
+        "fields": {"note":{"version":0}},
+        "presentation": "ok"
+      },
+      "replyTo": "open-51"
+    },
+    {"send":{"kind":"open","route":"notes","presentation":"p-52"},"id":"open-52"},
+    {
+      "receive": {
+        "ok": true,
+        "revision": 0,
+        "state": {
+          "title": "",
+          "note": "",
+          "priority": "Normal",
+          "due": null,
+          "elapsed": "PT0S",
+          "rows": [],
+          "count": 0,
+          "summary": "rows: 0",
+          "detail": {"kind":"detail","id":"0123456789abcdef0123456789abcdef"},
+          "canClear": false,
+          "canTouch": true,
+          "canSave": true,
+          "canConfirmClear": false,
+          "isSlowImportExecuting": false,
+          "isConfirmClearExecuting": false
+        },
+        "fields": {"note":{"version":0}},
+        "presentation": "ok"
+      },
+      "replyTo": "open-52"
+    },
+    {"send":{"kind":"open","route":"notes","presentation":"p-53"},"id":"open-53"},
+    {
+      "receive": {
+        "ok": true,
+        "revision": 0,
+        "state": {
+          "title": "",
+          "note": "",
+          "priority": "Normal",
+          "due": null,
+          "elapsed": "PT0S",
+          "rows": [],
+          "count": 0,
+          "summary": "rows: 0",
+          "detail": {"kind":"detail","id":"0123456789abcdef0123456789abcdef"},
+          "canClear": false,
+          "canTouch": true,
+          "canSave": true,
+          "canConfirmClear": false,
+          "isSlowImportExecuting": false,
+          "isConfirmClearExecuting": false
+        },
+        "fields": {"note":{"version":0}},
+        "presentation": "ok"
+      },
+      "replyTo": "open-53"
+    },
+    {"send":{"kind":"open","route":"notes","presentation":"p-54"},"id":"open-54"},
+    {
+      "receive": {
+        "ok": true,
+        "revision": 0,
+        "state": {
+          "title": "",
+          "note": "",
+          "priority": "Normal",
+          "due": null,
+          "elapsed": "PT0S",
+          "rows": [],
+          "count": 0,
+          "summary": "rows: 0",
+          "detail": {"kind":"detail","id":"0123456789abcdef0123456789abcdef"},
+          "canClear": false,
+          "canTouch": true,
+          "canSave": true,
+          "canConfirmClear": false,
+          "isSlowImportExecuting": false,
+          "isConfirmClearExecuting": false
+        },
+        "fields": {"note":{"version":0}},
+        "presentation": "ok"
+      },
+      "replyTo": "open-54"
+    },
+    {"send":{"kind":"open","route":"notes","presentation":"p-55"},"id":"open-55"},
+    {
+      "receive": {
+        "ok": true,
+        "revision": 0,
+        "state": {
+          "title": "",
+          "note": "",
+          "priority": "Normal",
+          "due": null,
+          "elapsed": "PT0S",
+          "rows": [],
+          "count": 0,
+          "summary": "rows: 0",
+          "detail": {"kind":"detail","id":"0123456789abcdef0123456789abcdef"},
+          "canClear": false,
+          "canTouch": true,
+          "canSave": true,
+          "canConfirmClear": false,
+          "isSlowImportExecuting": false,
+          "isConfirmClearExecuting": false
+        },
+        "fields": {"note":{"version":0}},
+        "presentation": "ok"
+      },
+      "replyTo": "open-55"
+    },
+    {"send":{"kind":"open","route":"notes","presentation":"p-56"},"id":"open-56"},
+    {
+      "receive": {
+        "ok": true,
+        "revision": 0,
+        "state": {
+          "title": "",
+          "note": "",
+          "priority": "Normal",
+          "due": null,
+          "elapsed": "PT0S",
+          "rows": [],
+          "count": 0,
+          "summary": "rows: 0",
+          "detail": {"kind":"detail","id":"0123456789abcdef0123456789abcdef"},
+          "canClear": false,
+          "canTouch": true,
+          "canSave": true,
+          "canConfirmClear": false,
+          "isSlowImportExecuting": false,
+          "isConfirmClearExecuting": false
+        },
+        "fields": {"note":{"version":0}},
+        "presentation": "ok"
+      },
+      "replyTo": "open-56"
+    },
+    {"send":{"kind":"open","route":"notes","presentation":"p-57"},"id":"open-57"},
+    {
+      "receive": {
+        "ok": true,
+        "revision": 0,
+        "state": {
+          "title": "",
+          "note": "",
+          "priority": "Normal",
+          "due": null,
+          "elapsed": "PT0S",
+          "rows": [],
+          "count": 0,
+          "summary": "rows: 0",
+          "detail": {"kind":"detail","id":"0123456789abcdef0123456789abcdef"},
+          "canClear": false,
+          "canTouch": true,
+          "canSave": true,
+          "canConfirmClear": false,
+          "isSlowImportExecuting": false,
+          "isConfirmClearExecuting": false
+        },
+        "fields": {"note":{"version":0}},
+        "presentation": "ok"
+      },
+      "replyTo": "open-57"
+    },
+    {"send":{"kind":"open","route":"notes","presentation":"p-58"},"id":"open-58"},
+    {
+      "receive": {
+        "ok": true,
+        "revision": 0,
+        "state": {
+          "title": "",
+          "note": "",
+          "priority": "Normal",
+          "due": null,
+          "elapsed": "PT0S",
+          "rows": [],
+          "count": 0,
+          "summary": "rows: 0",
+          "detail": {"kind":"detail","id":"0123456789abcdef0123456789abcdef"},
+          "canClear": false,
+          "canTouch": true,
+          "canSave": true,
+          "canConfirmClear": false,
+          "isSlowImportExecuting": false,
+          "isConfirmClearExecuting": false
+        },
+        "fields": {"note":{"version":0}},
+        "presentation": "ok"
+      },
+      "replyTo": "open-58"
+    },
+    {"send":{"kind":"open","route":"notes","presentation":"p-59"},"id":"open-59"},
+    {
+      "receive": {
+        "ok": true,
+        "revision": 0,
+        "state": {
+          "title": "",
+          "note": "",
+          "priority": "Normal",
+          "due": null,
+          "elapsed": "PT0S",
+          "rows": [],
+          "count": 0,
+          "summary": "rows: 0",
+          "detail": {"kind":"detail","id":"0123456789abcdef0123456789abcdef"},
+          "canClear": false,
+          "canTouch": true,
+          "canSave": true,
+          "canConfirmClear": false,
+          "isSlowImportExecuting": false,
+          "isConfirmClearExecuting": false
+        },
+        "fields": {"note":{"version":0}},
+        "presentation": "ok"
+      },
+      "replyTo": "open-59"
+    },
+    {"send":{"kind":"open","route":"notes","presentation":"p-60"},"id":"open-60"},
+    {
+      "receive": {
+        "ok": true,
+        "revision": 0,
+        "state": {
+          "title": "",
+          "note": "",
+          "priority": "Normal",
+          "due": null,
+          "elapsed": "PT0S",
+          "rows": [],
+          "count": 0,
+          "summary": "rows: 0",
+          "detail": {"kind":"detail","id":"0123456789abcdef0123456789abcdef"},
+          "canClear": false,
+          "canTouch": true,
+          "canSave": true,
+          "canConfirmClear": false,
+          "isSlowImportExecuting": false,
+          "isConfirmClearExecuting": false
+        },
+        "fields": {"note":{"version":0}},
+        "presentation": "ok"
+      },
+      "replyTo": "open-60"
+    },
+    {"send":{"kind":"open","route":"notes","presentation":"p-61"},"id":"open-61"},
+    {
+      "receive": {
+        "ok": true,
+        "revision": 0,
+        "state": {
+          "title": "",
+          "note": "",
+          "priority": "Normal",
+          "due": null,
+          "elapsed": "PT0S",
+          "rows": [],
+          "count": 0,
+          "summary": "rows: 0",
+          "detail": {"kind":"detail","id":"0123456789abcdef0123456789abcdef"},
+          "canClear": false,
+          "canTouch": true,
+          "canSave": true,
+          "canConfirmClear": false,
+          "isSlowImportExecuting": false,
+          "isConfirmClearExecuting": false
+        },
+        "fields": {"note":{"version":0}},
+        "presentation": "ok"
+      },
+      "replyTo": "open-61"
+    },
+    {"send":{"kind":"open","route":"notes","presentation":"p-62"},"id":"open-62"},
+    {
+      "receive": {
+        "ok": true,
+        "revision": 0,
+        "state": {
+          "title": "",
+          "note": "",
+          "priority": "Normal",
+          "due": null,
+          "elapsed": "PT0S",
+          "rows": [],
+          "count": 0,
+          "summary": "rows: 0",
+          "detail": {"kind":"detail","id":"0123456789abcdef0123456789abcdef"},
+          "canClear": false,
+          "canTouch": true,
+          "canSave": true,
+          "canConfirmClear": false,
+          "isSlowImportExecuting": false,
+          "isConfirmClearExecuting": false
+        },
+        "fields": {"note":{"version":0}},
+        "presentation": "ok"
+      },
+      "replyTo": "open-62"
+    },
+    {"send":{"kind":"open","route":"notes","presentation":"p-63"},"id":"open-63"},
+    {
+      "receive": {
+        "ok": true,
+        "revision": 0,
+        "state": {
+          "title": "",
+          "note": "",
+          "priority": "Normal",
+          "due": null,
+          "elapsed": "PT0S",
+          "rows": [],
+          "count": 0,
+          "summary": "rows: 0",
+          "detail": {"kind":"detail","id":"0123456789abcdef0123456789abcdef"},
+          "canClear": false,
+          "canTouch": true,
+          "canSave": true,
+          "canConfirmClear": false,
+          "isSlowImportExecuting": false,
+          "isConfirmClearExecuting": false
+        },
+        "fields": {"note":{"version":0}},
+        "presentation": "ok"
+      },
+      "replyTo": "open-63"
+    },
+    {"send":{"kind":"open","route":"notes","presentation":"p-64"},"id":"open-64"},
+    {
+      "receive": {
+        "ok": true,
+        "revision": 0,
+        "state": {
+          "title": "",
+          "note": "",
+          "priority": "Normal",
+          "due": null,
+          "elapsed": "PT0S",
+          "rows": [],
+          "count": 0,
+          "summary": "rows: 0",
+          "detail": {"kind":"detail","id":"0123456789abcdef0123456789abcdef"},
+          "canClear": false,
+          "canTouch": true,
+          "canSave": true,
+          "canConfirmClear": false,
+          "isSlowImportExecuting": false,
+          "isConfirmClearExecuting": false
+        },
+        "fields": {"note":{"version":0}},
+        "presentation": "ok"
+      },
+      "replyTo": "open-64"
+    },
+    {"send":{"kind":"open","route":"notes","presentation":"p-65"},"id":"open-65"},
+    {
+      "receive": {"ok":false,"error":{"kind":"rejected","reason":"capacity","message":{"$any":"string","default":"…"}}},
+      "replyTo": "open-65"
+    }
+  ]
+}

@@ -1,0 +1,70 @@
+{
+  "format": "runic.views.scenario/1",
+  "id": "state-changes.replace-replace-with-the-same-key.v1",
+  "contract": {"id":"runic.views","version":4},
+  "set": "state-changes",
+  "roles": ["producer","client"],
+  "description": "A replace swaps rows at index (equal to oldIndex). keys are the keys of the old rows; items are the new rows, which may have other keys. Case: replace with the same key.",
+  "source": "specs/application/fixtures/collection-deltas/replace.json#replace with the same key",
+  "view": "list",
+  "ids": {
+    "c1": {"kind":"connection"},
+    "hello-c1": {"kind":"request"},
+    "session": {"kind":"wire","value":"s-1"},
+    "open-list": {"kind":"call"},
+    "open-list-request": {"kind":"request"},
+    "presentation": {"kind":"wire","value":"p-1"},
+    "final-read": {"kind":"request"}
+  },
+  "arrange": {"model":{"rows":[{"id":1,"label":"one"},{"id":2,"label":"two"}],"title":"rows"}},
+  "steps": [
+    {"connect":"c1"},
+    {
+      "send": {
+        "kind": "hello",
+        "protocol": 4,
+        "session": {"$id":"session"},
+        "client": {"name":{"$any":"string","default":"conformance-client"},"version":{"$any":"string","default":"1.0.0"}}
+      },
+      "id": "hello-c1"
+    },
+    {
+      "receive": {
+        "ok": true,
+        "protocol": 4,
+        "implementation": {"name":{"$any":"string","default":"conformance-producer"},"version":{"$any":"string","default":"1.0.0"}}
+      },
+      "replyTo": "hello-c1"
+    },
+    {"call":{"id":"open-list","op":"open","route":"list"}},
+    {"send":{"kind":"open","route":"list","presentation":{"$id":"presentation"}},"id":"open-list-request"},
+    {
+      "receive": {
+        "ok": true,
+        "revision": 0,
+        "state": {"rows":[{"id":1,"label":"one"},{"id":2,"label":"two"}],"title":"rows"},
+        "presentation": "ok"
+      },
+      "replyTo": "open-list-request"
+    },
+    {"mutate":[{"op":"replaceAt","index":1,"item":{"id":2,"label":"updated"}}]},
+    {
+      "receive": {
+        "kind": "frame",
+        "route": "list",
+        "baseRevision": 0,
+        "revision": 1,
+        "changes": [{"field":"rows","kind":"replace","index":1,"oldIndex":1,"keys":["2"],"items":[{"id":2,"label":"updated"}]}]
+      }
+    },
+    {"send":{"kind":"snapshot","route":"list"},"id":"final-read","role":"producer"},
+    {
+      "receive": {"ok":true,"revision":1,"state":{"rows":[{"id":1,"label":"one"},{"id":2,"label":"updated"}],"title":"rows"}},
+      "replyTo": "final-read",
+      "role": "producer"
+    },
+    {
+      "expect": {"state":{"route":"list","value":{"rows":[{"id":1,"label":"one"},{"id":2,"label":"updated"}],"title":"rows"}}}
+    }
+  ]
+}

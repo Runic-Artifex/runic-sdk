@@ -1,0 +1,94 @@
+{
+  "format": "runic.views.vector/1",
+  "id": "values.enums-and-json",
+  "contract": {"id":"runic.views","version":4},
+  "area": "values",
+  "description": "enum names are compared exactly; json is any value of the JSON profile.",
+  "cases": [
+    {
+      "id": "values.enums-and-json.enum-declared",
+      "operation": "decode",
+      "type": "enum",
+      "parameters": {"names":["Low","Normal","High"]},
+      "input": {"encoding":"json","value":"Low"},
+      "expect": {"value":"Low"}
+    },
+    {
+      "id": "values.enums-and-json.enum-case-differs",
+      "operation": "decode",
+      "type": "enum",
+      "parameters": {"names":["Low","Normal","High"]},
+      "input": {"encoding":"json","value":"low"},
+      "expect": {"error":{"code":"invalid-value"}}
+    },
+    {
+      "id": "values.enums-and-json.enum-undeclared",
+      "operation": "decode",
+      "type": "enum",
+      "parameters": {"names":["Low","Normal","High"]},
+      "input": {"encoding":"json","value":"Other"},
+      "expect": {"error":{"code":"invalid-value"}}
+    },
+    {
+      "id": "values.enums-and-json.enum-number",
+      "operation": "decode",
+      "type": "enum",
+      "parameters": {"names":["Low","Normal","High"]},
+      "input": {"encoding":"json","value":1},
+      "expect": {"error":{"code":"invalid-value"}}
+    },
+    {
+      "id": "values.enums-and-json.json-object",
+      "operation": "decode",
+      "type": "json",
+      "input": {"encoding":"json","value":{"b":1,"a":[1.5,null,"x"]}},
+      "expect": {"value":{"a":[1.5,null,"x"],"b":1}}
+    },
+    {
+      "id": "values.enums-and-json.json-null",
+      "operation": "decode",
+      "type": "json",
+      "input": {"encoding":"json","value":null},
+      "expect": {"value":null}
+    },
+    {
+      "id": "values.enums-and-json.json-null-not-allowed",
+      "operation": "decode",
+      "type": "json",
+      "parameters": {"nullable":false},
+      "input": {"encoding":"json","value":null},
+      "expect": {"error":{"code":"invalid-value"}}
+    },
+    {
+      "id": "values.enums-and-json.json-large-integer",
+      "description": "Read as the nearest double, as a page reads it.",
+      "operation": "decode",
+      "type": "json",
+      "input": {"encoding":"utf8","value":"9007199254740993"},
+      "expect": {"value":9007199254740992}
+    },
+    {
+      "id": "values.enums-and-json.json-depth-64",
+      "description": "64 nested arrays; expect.text gives the normal form as JSON text.",
+      "operation": "decode",
+      "type": "json",
+      "input": {
+        "encoding": "utf8",
+        "value": "[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]"
+      },
+      "expect": {
+        "text": "[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]"
+      }
+    },
+    {
+      "id": "values.enums-and-json.json-depth-65",
+      "operation": "decode",
+      "type": "json",
+      "input": {
+        "encoding": "utf8",
+        "value": "[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]"
+      },
+      "expect": {"error":{"code":"invalid-value"}}
+    }
+  ]
+}

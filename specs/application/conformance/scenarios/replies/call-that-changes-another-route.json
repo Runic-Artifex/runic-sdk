@@ -1,0 +1,96 @@
+{
+  "format": "runic.views.scenario/1",
+  "id": "replies.call-that-changes-another-route.v1",
+  "contract": {"id":"runic.views","version":4},
+  "set": "replies",
+  "roles": ["producer","client"],
+  "description": "A command on one route that changes another: the other route's frame comes before the reply, whose revision is its own route's.",
+  "view": "notes",
+  "ids": {
+    "c1": {"kind":"connection"},
+    "hello-c1": {"kind":"request"},
+    "session": {"kind":"wire","value":"s-1"},
+    "open-notes": {"kind":"call"},
+    "open-notes-request": {"kind":"request"},
+    "presentation": {"kind":"wire","value":"p-1"},
+    "open-detail": {"kind":"call"},
+    "open-detail-request": {"kind":"request"},
+    "detailPresentation": {"kind":"wire","value":"p-detail"},
+    "annotate": {"kind":"call"},
+    "annotate-request": {"kind":"request"}
+  },
+  "arrange": {"model":{}},
+  "steps": [
+    {"connect":"c1"},
+    {
+      "send": {
+        "kind": "hello",
+        "protocol": 4,
+        "session": {"$id":"session"},
+        "client": {"name":{"$any":"string","default":"conformance-client"},"version":{"$any":"string","default":"1.0.0"}}
+      },
+      "id": "hello-c1"
+    },
+    {
+      "receive": {
+        "ok": true,
+        "protocol": 4,
+        "implementation": {"name":{"$any":"string","default":"conformance-producer"},"version":{"$any":"string","default":"1.0.0"}}
+      },
+      "replyTo": "hello-c1"
+    },
+    {"call":{"id":"open-notes","op":"open","route":"notes"}},
+    {"send":{"kind":"open","route":"notes","presentation":{"$id":"presentation"}},"id":"open-notes-request"},
+    {
+      "receive": {
+        "ok": true,
+        "revision": 0,
+        "state": {
+          "title": "",
+          "note": "",
+          "priority": "Normal",
+          "due": null,
+          "elapsed": "PT0S",
+          "rows": [],
+          "count": 0,
+          "summary": "rows: 0",
+          "detail": {"kind":"detail","id":"0123456789abcdef0123456789abcdef"},
+          "canClear": false,
+          "canTouch": true,
+          "canSave": true,
+          "canConfirmClear": false,
+          "isSlowImportExecuting": false,
+          "isConfirmClearExecuting": false
+        },
+        "fields": {"note":{"version":0}},
+        "presentation": "ok"
+      },
+      "replyTo": "open-notes-request"
+    },
+    {"call":{"id":"open-detail","op":"open","route":"content0123456789abcdef0123456789abcdef"}},
+    {
+      "send": {"kind":"open","route":"content0123456789abcdef0123456789abcdef","presentation":{"$id":"detailPresentation"}},
+      "id": "open-detail-request"
+    },
+    {
+      "receive": {"ok":true,"revision":0,"state":{"lastAction":"","canDismiss":true},"presentation":"ok"},
+      "replyTo": "open-detail-request"
+    },
+    {"call":{"id":"annotate","op":"command","route":"notes","member":"annotate","input":"hi"}},
+    {"send":{"kind":"command","route":"notes","member":"annotate","input":"hi"},"id":"annotate-request"},
+    {
+      "receive": {
+        "kind": "frame",
+        "route": "content0123456789abcdef0123456789abcdef",
+        "baseRevision": 0,
+        "revision": 1,
+        "changes": [{"field":"lastAction","kind":"set","value":"hi"}]
+      }
+    },
+    {"receive":{"ok":true,"revision":0},"replyTo":"annotate-request"},
+    {"expect":{"call":{"id":"annotate","resolved":null}}},
+    {
+      "expect": {"state":{"route":"content0123456789abcdef0123456789abcdef","value":{"lastAction":"hi","canDismiss":true}}}
+    }
+  ]
+}
