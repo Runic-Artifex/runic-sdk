@@ -81,16 +81,15 @@ export function onBridgeConnection(listener: (state: BridgeConnectionState) => v
     pollTimer = undefined;
     if (stopped) return;
     if (bridge === undefined && host.__runicBridge !== undefined) attach(host.__runicBridge);
-    if (bridge?.onConnectionChange !== undefined || everConnected) return;
+    if (typeof bridge?.onConnectionChange === "function" || everConnected) return;
     if (bridge?.isConnected()) connectedChanged(true);
     else pollTimer = setTimeout(poll, pollInterval);
   }
   function attach(installed: RunicBridgeClient): void {
     bridge = installed;
     // `onConnectionChange` delivers the current state at once.
-    if (installed.onConnectionChange) { subscriptions.push(installed.onConnectionChange(connectedChanged)); return; }
-    // Without it a loss goes unseen, but a reconnect still means connected.
-    if (installed.onReconnect) subscriptions.push(installed.onReconnect(() => connectedChanged(true)));
+    // A host script of protocol 3 or earlier may lack it; the poll then reports the first connection.
+    if (typeof installed.onConnectionChange === "function") subscriptions.push(installed.onConnectionChange(connectedChanged));
   }
   const target = globalThis as { addEventListener?: typeof addEventListener; removeEventListener?: typeof removeEventListener };
   const pageHide = () => { hidden = true; };

@@ -152,7 +152,7 @@ class InteractionRuntime implements InteractionSession {
     const payload: Record<string, unknown> = { kind, requestId: request.requestId, route: request.route, presentationId: request.presentationId,
       ownerEpoch: request.ownerEpoch, name: request.name, contract: request.contract };
     if (kind === "answered") payload["output"] = output;
-    try { await this.scope.bridge.call("__runicInteractionReply", jsonForInteraction(payload)); }
+    try { await (this.scope.bridge as any).call("__runicInteractionReply", jsonForInteraction(payload)); }
     catch (cause) {
       // The presentation lifecycle cancels the request on .NET; a closed transport is expected here.
       if (this.scope.bridge.isConnected())
@@ -213,7 +213,7 @@ class InteractionRuntime implements InteractionSession {
     const handlers = [...this.handlers.values()].map(handler => ({ name: handler.name, contract: handler.contract }));
     this.capabilitySync = this.capabilitySync.catch(() => undefined).then(async () => {
       if (this.disposed || this.unavailable || !this.scope.live() || !this.scope.bridge.isConnected()) return;
-      const reply = JSON.parse(await this.scope.bridge.call("__runicInteractionControl",
+      const reply = JSON.parse(await (this.scope.bridge as any).call("__runicInteractionControl",
         jsonForInteraction({ route: this.scope.route, presentationId, generation, handlers }))) as { kind?: unknown };
       // A reply about a presentation that a reconnect replaced does not stop its successor.
       if (reply?.kind !== "ok" && this.presentationId === presentationId) {
@@ -292,7 +292,7 @@ class InteractionRuntime implements InteractionSession {
       const handlers = [...this.handlers.values()].map(handler => ({ name: handler.name, contract: handler.contract }));
       let envelope: unknown;
       try {
-        envelope = JSON.parse(await this.scope.bridge.call("__runicInteractionWait",
+        envelope = JSON.parse(await (this.scope.bridge as any).call("__runicInteractionWait",
           jsonForInteraction({ route: this.scope.route, presentationId, generation: this.capabilityGeneration, handlers })));
       } catch {
         // A dropped long poll is retried with backoff; a closed transport pauses the loop.
@@ -317,7 +317,7 @@ class InteractionRuntime implements InteractionSession {
     while (this.current(presentationId)) {
       let envelope: unknown;
       try {
-        envelope = JSON.parse(await this.scope.bridge.call("__runicInteractionControlWait",
+        envelope = JSON.parse(await (this.scope.bridge as any).call("__runicInteractionControlWait",
           jsonForInteraction({ route: this.scope.route, presentationId })));
       } catch {
         // A dropped long poll is retried with backoff; a closed transport pauses the loop.

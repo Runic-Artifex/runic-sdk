@@ -97,14 +97,14 @@ export function installMockMenuBar(menus: readonly MenuBarMenu[], options: MockM
 
   // As on Runic Desktop, a closed connection returns its leases.
   bridge.onConnectionChange(connected => { if (!connected) leases = 0; });
-  bridge.route("__runicMenuBarState", () => envelope());
-  bridge.route("__runicMenuBarWait", (...args) => {
+  (bridge as any).route("__runicMenuBarState", () => envelope());
+  (bridge as any).route("__runicMenuBarWait", (...args: unknown[]) => {
     const after = request(args)?.["after"];
     if (typeof after !== "number") return JSON.stringify({ kind: "invalid-request" });
     if (after !== revision) return envelope();
     return new Promise<string>(resolve => { waiters.push(() => resolve(envelope())); });
   });
-  bridge.route("__runicMenuBarInvoke", (...args) => {
+  (bridge as any).route("__runicMenuBarInvoke", (...args: unknown[]) => {
     const body = request(args);
     const at = body?.["revision"];
     const key = body?.["key"];
@@ -115,7 +115,7 @@ export function installMockMenuBar(menus: readonly MenuBarMenu[], options: MockM
     invocations.push(found.item);
     return JSON.stringify({ kind: options.onInvoke?.(found.item) ?? "executed" });
   });
-  bridge.route("__runicMenuBarControl", (...args) => {
+  (bridge as any).route("__runicMenuBarControl", (...args: unknown[]) => {
     const owner = request(args)?.["shortcuts"];
     if (owner !== "app" && owner !== "runic") return JSON.stringify({ kind: "invalid-request" });
     const before = leases;

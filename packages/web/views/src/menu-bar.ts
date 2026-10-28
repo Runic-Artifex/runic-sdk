@@ -272,7 +272,7 @@ export function createMenuBarController(options: MenuBarControllerOptions = {}):
   const apple = () => platform === undefined ? isApplePlatform() : platform === "macos";
   const call = (name: string, request?: unknown) => {
     if (!bridge) return Promise.reject(new BridgeError("disconnected", "The Bridge is not connected.", { route: name }));
-    return request === undefined ? bridge.call(name) : bridge.call(name, JSON.stringify(request));
+    return (request === undefined ? (bridge as any).call(name) : (bridge as any).call(name, JSON.stringify(request))) as Promise<string>;
   };
 
   const apply = (envelope: Envelope): boolean => {
@@ -306,7 +306,7 @@ export function createMenuBarController(options: MenuBarControllerOptions = {}):
       return;
     }
     const client = bridge;
-    stopReconnect = client.onReconnect?.(() => restart.abort());
+    stopReconnect = (client as any).onReconnect?.(() => restart.abort());
     let first = true;
     // The "app" lease belongs to a connection: it is taken once on each, and not again after a failed long poll.
     let lease = app;
