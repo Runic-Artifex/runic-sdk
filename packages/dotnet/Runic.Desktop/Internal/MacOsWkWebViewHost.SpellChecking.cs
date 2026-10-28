@@ -20,6 +20,14 @@ internal sealed partial class MacOsWkWebViewHost
     // Main thread.
     private void ApplySpellCheckingLanguages(IReadOnlyList<string> languages)
     {
+        // Without languages, and none selected before, macOS's own choice stands, so the shared checker is not created:
+        // creating it starts the spelling service, and since 0.13's spell checking did that for every window, the
+        // native smoke intermittently failed to exit after its last window closed.
+        if (languages.Count == 0 && !s_spellingLanguageSelected)
+        {
+            SpellingLanguages.FirstReport(null);
+            return;
+        }
         var type = Api.GetClass("NSSpellChecker");
         var checker = type == 0 ? 0 : Api.SendNint(type, "sharedSpellChecker");
         if (checker == 0) return;
