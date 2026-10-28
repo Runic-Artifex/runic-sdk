@@ -475,13 +475,17 @@ internal static class WebUiBridge
             configurable: false,
             enumerable: false,
             value: Object.freeze({
+              // Each registration is its own entry, so a function registered twice is called twice and each
+              // returned function removes only its own registration.
               onMessage(listener) {
-                viewsMessageListeners.add(listener);
-                return () => { viewsMessageListeners.delete(listener); };
+                const entry = message => listener(message);
+                viewsMessageListeners.add(entry);
+                return () => { viewsMessageListeners.delete(entry); };
               },
               onConnectionChange(listener) {
-                viewsConnectionListeners.add(listener);
-                return () => { viewsConnectionListeners.delete(listener); };
+                const entry = connected => listener(connected);
+                viewsConnectionListeners.add(entry);
+                return () => { viewsConnectionListeners.delete(entry); };
               },
               isConnected: () => viewsConnected
             })

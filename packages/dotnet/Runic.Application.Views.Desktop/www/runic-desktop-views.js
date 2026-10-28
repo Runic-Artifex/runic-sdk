@@ -1,46 +1,14 @@
 // The Desktop surface serves webui.js; Views clients consume this small,
-// host-neutral call interface instead of the Desktop transport directly.
+// host-neutral Bridge client (Views protocol 4, specs/application/README.md,
+// "Host bridge (page)") instead of the Desktop transport directly.
 (() => {
-  const connected = () => globalThis.webui?.isConnected() ?? false;
-  // The Desktop bridge reconnects its WebSocket without reloading the page.
-  // Generated clients then re-read their routes and re-acknowledge mounted
-  // Views. Observe the transition by polling so an application's own
-  // webui.setEventCallback stays in place. Connection listeners learn of a
-  // dropped WebSocket within one poll, without waiting for the page's next call.
-  const reconnectListeners = new Set();
-  const connectionListeners = new Set();
-  let reconnectTimer;
-  let wasConnected = false;
-  let lost = false;
-  let reported;
-  function reportConnection(now) {
-    if (now === reported) return;
-    reported = now;
-    for (const listener of [...connectionListeners]) {
-      try { listener(now); } catch (error) { console.error("Runic connection listener failed", error); }
-    }
-  }
-  function watchConnection() {
-    const now = connected();
-    reportConnection(now);
-    if (!now && wasConnected) lost = true;
-    wasConnected = now;
-    if (!now || !lost) return;
-    lost = false;
-    for (const listener of [...reconnectListeners]) {
-      try { listener(); } catch (error) { console.error("Runic reconnect listener failed", error); }
-    }
-  }
-  function startWatching() {
-    if (reconnectTimer !== undefined) return;
-    wasConnected = connected();
-    reconnectTimer = setInterval(watchConnection, 250);
-  }
-  function stopWatchingWhenIdle() {
-    if (reconnectListeners.size !== 0 || connectionListeners.size !== 0 || reconnectTimer === undefined) return;
-    clearInterval(reconnectTimer);
-    reconnectTimer = undefined;
-  }
+  // webui.js installs __runicDesktopViews before this script runs: the Views
+  // messages of its reserved raw-data function, in order, and the connection's
+  // transitions, reported from the WebSocket itself (true once its token is
+  // accepted, false when it closes) without taking the application's
+  // webui.setEventCallback. Both are read when used.
+  const views = () => globalThis.__runicDesktopViews;
+  const connected = () => views()?.isConnected() ?? globalThis.webui?.isConnected() ?? false;
 
   // Views frontends own their navigation. Once the bridge connects it cancels
   // navigations, including history.pushState and replaceState, until a Bridge
@@ -54,30 +22,37 @@
     };
   }
 
+  // A page of protocol 3 calls named functions instead; it gets a reply that
+  // makes it report its protocol diagnostic, and nothing reaches the host.
+  const releasedReply = '{"ok":false,"state":null,"error":{"kind":"released","message":"This View was released."}}';
+  const snapshotReply = '{"ok":true,"state":{"revision":0},"error":null,"protocol":4}';
+
   globalThis.__runicBridge = {
     isConnected: connected,
-    call: (name, ...args) => {
+    request: message => {
       if (!globalThis.webui) return Promise.reject(new Error("Runic Desktop is unavailable."));
       globalThis.webui.allowNavigation?.(true);
-      return globalThis.webui.call(name, ...args);
+      return globalThis.webui.call("__runicViews", message);
     },
-    onReconnect: (listener) => {
-      reconnectListeners.add(listener);
-      startWatching();
+    onMessage: listener => views()?.onMessage(listener) ?? (() => {}),
+    // The current state at once, then each transition. A listener never gets
+    // the same value twice in a row, so each true after false is a new
+    // connection.
+    onConnectionChange: listener => {
+      let reported;
+      let active = true;
+      const report = now => {
+        if (!active || now === reported) return;
+        reported = now;
+        try { listener(now); } catch (error) { console.error("Runic connection listener failed", error); }
+      };
+      report(connected());
+      const stop = views()?.onConnectionChange(report);
       return () => {
-        reconnectListeners.delete(listener);
-        stopWatchingWhenIdle();
+        active = false;
+        stop?.();
       };
     },
-    onConnectionChange: (listener) => {
-      if (connectionListeners.size === 0) reported = connected();
-      connectionListeners.add(listener);
-      startWatching();
-      try { listener(reported); } catch (error) { console.error("Runic connection listener failed", error); }
-      return () => {
-        connectionListeners.delete(listener);
-        stopWatchingWhenIdle();
-      };
-    }
+    call: name => Promise.resolve(typeof name === "string" && name.endsWith("Snapshot") ? snapshotReply : releasedReply)
   };
 })();

@@ -38,7 +38,7 @@ public sealed class ManagedWindowTests
         Assert.Contains($"const PORT = {url.Port};", bridge, StringComparison.Ordinal);
         Assert.DoesNotContain("__TOKEN__", bridge, StringComparison.Ordinal);
         Assert.DoesNotContain("__PORT__", bridge, StringComparison.Ordinal);
-        Assert.Contains($"const STATE_PUSH = \"{Runic.Desktop.Internal.WebUiBridge.StatePushFunction}\";", bridge, StringComparison.Ordinal);
+        Assert.Contains($"const VIEWS_PUSH = \"{Runic.Desktop.Internal.WebUiBridge.ViewsPushFunction}\";", bridge, StringComparison.Ordinal);
     }
 
     [Test]
@@ -133,6 +133,43 @@ public sealed class ManagedWindowTests
         finally
         {
             release.TrySetResult();
+        }
+    }
+
+    // Views protocol 4 (P3): the calls of one connection are admitted in the order they arrived. Each call used to
+    // yield to the thread pool before it took the admission gate, so two calls sent back to back could be admitted in
+    // either order: two keystrokes could reach .NET as "12" and then "1".
+    [Test]
+    public async Task AdmitsBurstOfCallsInArrivalOrder()
+    {
+        const int Calls = 200;
+        const int Rounds = 5;
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(20));
+        await using var window = new WebUiWindow();
+        var admitted = new List<int>();
+        var gate = new object();
+        // The handler's synchronous prefix records the admission; awaiting afterwards lets later calls in.
+        window.BindAsync("keystroke", async (e, cancellationToken) =>
+        {
+            var value = int.Parse(e.GetString(), System.Globalization.CultureInfo.InvariantCulture);
+            lock (gate) admitted.Add(value);
+            await Task.Yield();
+            return value;
+        });
+
+        var url = await window.StartServerAsync("<script src=\"webui.js\"></script>");
+        var token = await GetTokenAsync(url);
+        using var socket = await ConnectAsync(url, timeout.Token);
+        await AuthenticateAsync(socket, token, ["__webui_core_api__", "keystroke"], timeout.Token);
+
+        for (var attempt = 0; attempt < Rounds; attempt++)
+        {
+            lock (gate) admitted.Clear();
+            for (var index = 0; index < Calls; index++)
+                await SendBinaryAsync(socket, CreateCallPacket(token, (ushort)(index + 1), "keystroke",
+                    System.Text.Encoding.ASCII.GetBytes(index.ToString(System.Globalization.CultureInfo.InvariantCulture))), timeout.Token);
+            for (var index = 0; index < Calls; index++) await ReceiveBinaryAsync(socket, timeout.Token);
+            lock (gate) Assert.Equal(Enumerable.Range(0, Calls), admitted);
         }
     }
 
@@ -253,12 +290,12 @@ public sealed class ManagedWindowTests
         Assert.Equal("receiveBytes", ReadNullTerminatedString(raw, HeaderSize));
         Assert.Equal([0x41, 0x00, 0x42, 0x00], raw[(HeaderSize + "receiveBytes".Length + 1)..]);
 
-        // D040: a state push is raw data for the bridge's reserved dispatcher, not a script.
-        await window.PushStateAsync("näme", "{\"a\":1}"u8.ToArray(), timeout.Token);
+        // D040: a Views message is raw data for the bridge's reserved dispatcher, not a script: the message only.
+        await window.PushViewsMessageAsync("{\"kind\":\"näme\"}"u8.ToArray(), timeout.Token);
         var push = await ReceiveBinaryAsync(socket, timeout.Token);
         AssertHeader(push, 0, SendRaw);
-        Assert.Equal(Runic.Desktop.Internal.WebUiBridge.StatePushFunction, ReadNullTerminatedString(push, HeaderSize));
-        Assert.Equal([.. "näme"u8, 0, .. "{\"a\":1}"u8, 0], push[(HeaderSize + Runic.Desktop.Internal.WebUiBridge.StatePushFunction.Length + 1)..]);
+        Assert.Equal(Runic.Desktop.Internal.WebUiBridge.ViewsPushFunction, ReadNullTerminatedString(push, HeaderSize));
+        Assert.Equal([.. "{\"kind\":\"näme\"}"u8, 0], push[(HeaderSize + Runic.Desktop.Internal.WebUiBridge.ViewsPushFunction.Length + 1)..]);
 
         await window.NavigateAsync("https://example.test/next", timeout.Token);
         var navigation = await ReceiveBinaryAsync(socket, timeout.Token);

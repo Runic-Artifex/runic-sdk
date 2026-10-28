@@ -316,24 +316,20 @@ internal sealed class SnapshotBatchTests
         }
     }
 
-    private sealed class HeldTransport : IBridgeTransport, IDisposable
+    private sealed class HeldTransport : LegacyTestTransport
     {
-        public InMemoryBridgeTransport Inner { get; } = new();
         public ManualResetEventSlim Release { get; } = new();
         public TaskCompletionSource Entered { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        public IDisposable Bind(string name, Func<IBridgeArguments, string> handler) => Inner.Bind(name, handler);
-        public IDisposable BindAsync(string name, Func<IBridgeArguments, CancellationToken, ValueTask<string>> handler) =>
-            Inner.BindAsync(name, handler);
-        public void Publish(string name, string stateJson)
+        protected override void Publish(string name, string stateJson)
         {
             Entered.TrySetResult();
             Release.Wait(TimeSpan.FromSeconds(10));
         }
 
-        public void Dispose()
+        public override void Dispose()
         {
             Release.Set();
-            Inner.Dispose();
+            base.Dispose();
         }
     }
 

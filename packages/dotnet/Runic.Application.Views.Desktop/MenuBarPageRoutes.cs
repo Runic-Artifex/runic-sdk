@@ -294,6 +294,8 @@ internal sealed class MenuBarPageRoutes : IDisposable, IBridgeRouteHandler
     // connection receives its states in revision order. A state that changes meanwhile is sent once more.
     private async Task DeliverAsync()
     {
+        // Publish starts this under the gate; the pushes are built after the caller released it.
+        await Task.Yield();
         while (true)
         {
             List<(string Connection, ReadOnlyMemory<byte> Push)> pushes = [];

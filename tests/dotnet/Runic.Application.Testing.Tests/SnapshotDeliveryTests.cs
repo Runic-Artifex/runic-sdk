@@ -18,7 +18,7 @@ internal sealed class SnapshotDeliveryTests
         using var ownership = RunicModelContextRegistry.Shared.Bind(context, model);
         using var transport = new ReentrantTransport();
         using var bridge = new ProbeBridge(transport, model);
-        _ = transport.Inner.Call("probeSetValue", new(Int64Value: 7));
+        _ = transport.Call("probeSetValue", new(Int64Value: 7));
         await transport.Delivered.Task.WaitAsync(TimeSpan.FromSeconds(5));
         if (transport.Observed != 7)
             throw new InvalidOperationException("A native delivery callback could not read the model from outside its turn.");
@@ -78,7 +78,6 @@ internal sealed class SnapshotDeliveryTests
         if (!bytes.Frames.Zip(frames).All(pair => pair.First.AsSpan().SequenceEqual(Encoding.UTF8.GetBytes(pair.Second))))
             throw new InvalidOperationException(
                 $"The UTF-8 frames differ from the string frames: [{string.Join(", ", bytes.Frames.Select(Encoding.UTF8.GetString))}].");
-        if (bytes.StringCalls != 0) throw new InvalidOperationException("The Bridge called the string path of a UTF-8 transport.");
     }
 
     private static async Task WaitUntilAsync(Func<bool> condition)
@@ -92,38 +91,28 @@ internal sealed class SnapshotDeliveryTests
         }
     }
 
-    private sealed class RecordingTransport : IBridgeTransport, IDisposable
+    private sealed class RecordingTransport : LegacyTestTransport
     {
         private readonly List<string> _frames = [];
         public string[] Frames { get { lock (_frames) return [.. _frames]; } }
         public int Count { get { lock (_frames) return _frames.Count; } }
-        public IDisposable Bind(string name, Func<IBridgeArguments, string> handler) => throw new NotSupportedException();
-        public IDisposable BindAsync(string name, Func<IBridgeArguments, CancellationToken, ValueTask<string>> handler) =>
-            throw new NotSupportedException();
-        public void Publish(string name, string stateJson)
+        protected override void Publish(string name, string stateJson)
         {
             lock (_frames) _frames.Add(stateJson);
         }
-        public void Dispose() { }
     }
 
-    private sealed class RecordingUtf8Transport : IBridgeUtf8Transport, IDisposable
+    private sealed class RecordingUtf8Transport : LegacyTestTransport
     {
         private readonly List<byte[]> _frames = [];
         public byte[][] Frames { get { lock (_frames) return [.. _frames]; } }
         public int Count { get { lock (_frames) return _frames.Count; } }
-        public int StringCalls { get; private set; }
-        public IDisposable Bind(string name, Func<IBridgeArguments, string> handler) => throw new NotSupportedException();
-        public IDisposable BindAsync(string name, Func<IBridgeArguments, CancellationToken, ValueTask<string>> handler) =>
-            throw new NotSupportedException();
-        public void Publish(string name, string stateJson) => StringCalls++;
-        public ValueTask PublishUtf8Async(string name, ReadOnlyMemory<byte> stateUtf8, CancellationToken cancellationToken = default)
+        protected override ValueTask PublishUtf8Async(string name, ReadOnlyMemory<byte> stateUtf8, CancellationToken cancellationToken)
         {
             // The memory is valid only until the returned task completes.
             lock (_frames) _frames.Add(stateUtf8.ToArray());
             return ValueTask.CompletedTask;
         }
-        public void Dispose() { }
     }
 
     private sealed class Model : INotifyPropertyChanged
@@ -145,41 +134,38 @@ internal sealed class SnapshotDeliveryTests
             writer.WriteEndObject();
         }, [new("Value", vm => vm.Value, (vm, args) => vm.Value = checked((int)args.GetInt64()))], [], []);
 
-    private sealed class ReentrantTransport : IBridgeTransport, IDisposable
+    private sealed class ReentrantTransport : LegacyTestTransport
     {
-        public InMemoryBridgeTransport Inner { get; } = new();
         public TaskCompletionSource Delivered { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
         public int Observed { get; private set; }
-        public IDisposable Bind(string name, Func<IBridgeArguments, string> handler) => Inner.Bind(name, handler);
-        public IDisposable BindAsync(string name, Func<IBridgeArguments, CancellationToken, ValueTask<string>> handler) =>
-            Inner.BindAsync(name, handler);
-        public void Publish(string name, string stateJson)
+        protected override void Publish(string name, string stateJson)
         {
             try
             {
-                using var reply = JsonDocument.Parse(Inner.Call("probeSnapshot"));
+                using var reply = JsonDocument.Parse(Call("probeSnapshot"));
                 Observed = reply.RootElement.GetProperty("state").GetProperty("value").GetInt32();
                 Delivered.TrySetResult();
             }
             catch (Exception error) { Delivered.TrySetException(error); }
         }
-        public void Dispose() => Inner.Dispose();
     }
 
-    private sealed class SlowTransport : IBridgeTransport, IDisposable
+    private sealed class SlowTransport : LegacyTestTransport
     {
         public TaskCompletionSource Entered { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
         public TaskCompletionSource Completed { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
         public ManualResetEventSlim Release { get; } = new();
         public List<string> Frames { get; } = [];
-        public IDisposable Bind(string name, Func<IBridgeArguments, string> handler) => throw new NotSupportedException();
-        public IDisposable BindAsync(string name, Func<IBridgeArguments, CancellationToken, ValueTask<string>> handler) => throw new NotSupportedException();
-        public void Publish(string name, string stateJson)
+        protected override void Publish(string name, string stateJson)
         {
             if (stateJson == "first") { Entered.TrySetResult(); Release.Wait(TimeSpan.FromSeconds(5)); }
             Frames.Add(stateJson);
             if (stateJson == "recovery snapshot") Completed.TrySetResult();
         }
-        public void Dispose() => Release.Dispose();
+        public override void Dispose()
+        {
+            Release.Dispose();
+            base.Dispose();
+        }
     }
 }

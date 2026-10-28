@@ -3,11 +3,28 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { runInNewContext } from "node:vm";
 
+// The page-side host scripts of Views protocol 4 (specs/application/README.md,
+// "Host bridge (page)" and "receive"). Each runs in a vm context with fakes of
+// the host's own script.
 const root = resolve(import.meta.dir, "../..");
-const scripts = [
-  "packages/dotnet/Runic.Application.Views.CsWebUi/www/runic-cswebui.js",
-  "packages/dotnet/Runic.Application.Views.Desktop/www/runic-desktop-views.js",
-];
+const csWebUi = "packages/dotnet/Runic.Application.Views.CsWebUi/www/runic-cswebui.js";
+const desktop = "packages/dotnet/Runic.Application.Views.Desktop/www/runic-desktop-views.js";
+const scripts = [csWebUi, desktop];
+
+function load(script, globals = {}) {
+  const context = {
+    history: { pushState() {}, replaceState() {} }, setInterval, clearInterval, setTimeout, clearTimeout, console,
+    TextDecoder, URL, ...globals,
+  };
+  context.window = context;
+  context.globalThis = context;
+  runInNewContext(readFileSync(resolve(root, script), "utf8"), context);
+  return context;
+}
+
+const settle = () => new Promise(resolve => setTimeout(resolve, 0));
+const poll = () => new Promise(resolve => setTimeout(resolve, 300));
+const outcome = promise => promise.then(value => ({ value }), error => ({ error: error.message }));
 
 // A connected bridge that subscribes to all events cancels navigations,
 // including history updates, until navigation is allowed again (#42).
@@ -19,16 +36,8 @@ for (const script of scripts) {
       pushState(state) { events.push(["pushState", allowed, state]); },
       replaceState(state) { events.push(["replaceState", allowed, state]); },
     };
-    const webui = {
-      isConnected: () => true,
-      allowNavigation: status => { allowed = status; },
-      call: async () => undefined,
-    };
-    const context = { history, setInterval, clearInterval, console };
-    context.window = context;
-    context.globalThis = context;
-    runInNewContext(readFileSync(resolve(root, script), "utf8"), context);
-    context.webui = webui;
+    const context = load(script, { history });
+    context.webui = { isConnected: () => true, allowNavigation: status => { allowed = status; }, call: async () => undefined };
 
     context.history.replaceState({ route: 1 }, "");
     allowed = false;
@@ -36,263 +45,503 @@ for (const script of scripts) {
 
     expect(events).toEqual([["replaceState", true, { route: 1 }], ["pushState", true, { route: 2 }]]);
   });
+
+  // A cached page of protocol 3 reports its protocol diagnostic; nothing reaches the host.
+  test(`${script} answers protocol-3 calls without the host`, async () => {
+    const sent = [];
+    const context = load(script);
+    context.webui = { isConnected: () => true, allowNavigation() {}, call: async name => { sent.push(name); return ""; } };
+    const bridge = context.__runicBridge;
+    expect(await bridge.call("counterSnapshot")).toBe('{"ok":true,"state":{"revision":0},"error":null,"protocol":4}');
+    expect(await bridge.call("counterIncrement", "{}")).toBe(
+      '{"ok":false,"state":null,"error":{"kind":"released","message":"This View was released."}}');
+    expect(await bridge.call("__runicOperationWait")).toBe(
+      '{"ok":false,"state":null,"error":{"kind":"released","message":"This View was released."}}');
+    expect(sent).toEqual([]);
+    expect("onReconnect" in bridge).toBe(false);
+  });
+
+  test(`${script} rejects requests without the host's script`, async () => {
+    const context = load(script);
+    await expect(context.__runicBridge.request('{"kind":"hello"}')).rejects.toThrow(/is unavailable\.$/);
+    expect(context.__runicBridge.isConnected()).toBe(false);
+  });
 }
 
-function loadCsWebUiBridge(webui) {
-  const context = { history: { pushState() {}, replaceState() {} }, setInterval, clearInterval, setTimeout, clearTimeout, console };
-  context.window = context;
-  context.globalThis = context;
-  runInNewContext(readFileSync(resolve(root, scripts[0]), "utf8"), context);
+// ---------------------------------------------------------------------------
+// Runic Desktop: webui.js installs __runicDesktopViews with the Views messages
+// and the connection's transitions; the script adds no poll.
+
+function fakeDesktop({ connected = true } = {}) {
+  const messageListeners = new Set();
+  const connectionListeners = new Set();
+  const views = {
+    connected,
+    onMessage(listener) { messageListeners.add(listener); return () => messageListeners.delete(listener); },
+    onConnectionChange(listener) { connectionListeners.add(listener); return () => connectionListeners.delete(listener); },
+    isConnected: () => views.connected,
+    push: message => { for (const listener of [...messageListeners]) listener(message); },
+    // webui.js reports transitions only; `repeat` simulates a duplicate report.
+    transition(now, { repeat = false } = {}) {
+      if (now === views.connected && !repeat) return;
+      views.connected = now;
+      for (const listener of [...connectionListeners]) listener(now);
+    },
+    messageListeners, connectionListeners,
+  };
+  return views;
+}
+
+function loadDesktop(views, webui) {
+  const intervals = [];
+  const context = load(desktop, { setInterval: (...args) => { intervals.push(args); return 0; } });
+  if (views) context.__runicDesktopViews = views;
+  if (webui) context.webui = webui;
+  context.intervals = intervals;
+  return context;
+}
+
+test("runic-desktop-views.js sends a request on __runicViews and resolves with the reply text", async () => {
+  const calls = [];
+  let allowed = false;
+  const context = loadDesktop(fakeDesktop(), {
+    isConnected: () => true,
+    allowNavigation: status => { allowed = status; },
+    call: async (name, ...args) => { calls.push([name, ...args, allowed]); return '{"ok":true}'; },
+  });
+  const message = '{"kind":"hello","protocol":4,"session":"s","client":{"name":"c","version":"0"}}';
+  expect(await context.__runicBridge.request(message)).toBe('{"ok":true}');
+  expect(calls).toEqual([["__runicViews", message, true]]);
+});
+
+test("runic-desktop-views.js passes a failed request through", async () => {
+  const context = loadDesktop(fakeDesktop(), { isConnected: () => true, call: async () => { throw new Error("closed"); } });
+  await expect(context.__runicBridge.request("{}")).rejects.toThrow("closed");
+});
+
+test("runic-desktop-views.js delivers pushes to its listeners until they unsubscribe", () => {
+  const views = fakeDesktop();
+  const context = loadDesktop(views, { isConnected: () => true, call: async () => "" });
+  const first = [];
+  const second = [];
+  const stopFirst = context.__runicBridge.onMessage(message => first.push(message));
+  context.__runicBridge.onMessage(message => second.push(message));
+  views.push('{"kind":"state","route":"a","revision":1}');
+  views.push('{"kind":"frame","route":"a","baseRevision":1,"revision":2,"changes":[]}');
+  stopFirst();
+  views.push('{"kind":"state","route":"a","revision":3}');
+  expect(first).toEqual(['{"kind":"state","route":"a","revision":1}', '{"kind":"frame","route":"a","baseRevision":1,"revision":2,"changes":[]}']);
+  expect(second.length).toBe(3);
+  expect(views.messageListeners.size).toBe(1);
+});
+
+test("runic-desktop-views.js without __runicDesktopViews has no pushes and reports webui's state", () => {
+  const context = loadDesktop(undefined, { isConnected: () => true, call: async () => "" });
+  const stop = context.__runicBridge.onMessage(() => {});
+  expect(typeof stop).toBe("function");
+  stop();
+  const states = [];
+  context.__runicBridge.onConnectionChange(connected => states.push(connected)).call();
+  expect(states).toEqual([true]);
+  expect(context.__runicBridge.isConnected()).toBe(true);
+});
+
+// A page learns that the host ended when the WebSocket drops, not on its next
+// call (#406). webui.js reports transitions; the script adds the current state.
+test("runic-desktop-views.js reports the connection at once and on each transition", () => {
+  const views = fakeDesktop({ connected: false });
+  const context = loadDesktop(views, { isConnected: () => true, allowNavigation: () => { throw new Error("navigation"); }, call: async () => "" });
+  const bridge = context.__runicBridge;
+  expect(bridge.isConnected()).toBe(false);
+
+  const states = [];
+  const stop = bridge.onConnectionChange(connected => states.push(connected));
+  expect(states).toEqual([false]);
+  views.transition(true);
+  expect(bridge.isConnected()).toBe(true);
+  // A duplicate report reaches no listener twice.
+  views.transition(true, { repeat: true });
+  views.transition(false);
+  views.transition(true);
+  expect(states).toEqual([false, true, false, true]);
+
+  const late = [];
+  const stopLate = bridge.onConnectionChange(connected => late.push(connected));
+  expect(late).toEqual([true]);
+  stop();
+  views.transition(false);
+  expect(states).toEqual([false, true, false, true]);
+  expect(late).toEqual([true, false]);
+  stopLate();
+  expect(views.connectionListeners.size).toBe(0);
+  expect(context.intervals).toEqual([]);
+});
+
+test("runic-desktop-views.js logs a failing listener and goes on", () => {
+  const views = fakeDesktop();
+  const errors = [];
+  const context = loadDesktop(views, { isConnected: () => true, call: async () => "" });
+  context.console = { error: (...args) => errors.push(args[0]) };
+  const states = [];
+  context.__runicBridge.onConnectionChange(() => { throw new Error("listener"); });
+  context.__runicBridge.onConnectionChange(connected => states.push(connected));
+  views.transition(false);
+  expect(states).toEqual([true, false]);
+  expect(errors).toEqual(["Runic connection listener failed", "Runic connection listener failed"]);
+});
+
+// ---------------------------------------------------------------------------
+// CS-WebUI: requests on the __runicViews binding, broadcasts as raw data, and
+// targeted pushes through the mailbox.
+
+const receiveRequest = '{"kind":"receive"}';
+const lostMessage = "The CS-WebUI connection was lost before the call completed.";
+const noHello = '{"ok":false,"error":{"kind":"rejected","reason":"no-hello","message":"No hello."}}';
+
+// A WebUI whose calls the test answers. Every call is recorded with its
+// arguments and settles only when the test resolves or rejects it.
+function fakeCsWebUi() {
+  const webui = {
+    online: true,
+    calls: [],
+    allowed: 0,
+    isConnected: () => webui.online,
+    allowNavigation: status => { if (status) webui.allowed++; },
+    call: (name, ...args) => new Promise((resolve, reject) => {
+      webui.calls.push({ name, args, message: args[0], resolve, reject });
+    }),
+    // The calls not answered yet with the given message.
+    open: message => webui.calls.filter(call => call.message === message && !call.done),
+    answer(call, reply) { call.done = true; call.resolve(reply); },
+    receives: () => webui.calls.filter(call => call.message === receiveRequest),
+  };
+  return webui;
+}
+
+function loadCsWebUi(webui, globals) {
+  const context = load(csWebUi, globals);
   context.webui = webui;
   return context;
 }
 
-const settle = () => new Promise(resolve => setTimeout(resolve, 0));
-
 // WebUI assigns each concurrent call its own event slot since webui#721, which
-// CsWebUi 2.5.0-beta.4.7 and later bundle, so the client sends every call at once.
-test("runic-cswebui.js sends concurrent calls without waiting for replies", async () => {
-  const sent = [];
-  const replies = new Map();
-  const context = loadCsWebUiBridge({
-    isConnected: () => true,
-    call: name => new Promise(resolve => { sent.push(name); replies.set(name, resolve); }),
-  });
-  const bridge = context.__runicBridge;
-
-  const wait = bridge.call("__runicOperationWait");
-  const snapshot = bridge.call("shellSnapshot");
-  const mount = bridge.call("shellMount");
-  expect(sent).toEqual(["__runicOperationWait", "shellSnapshot", "shellMount"]);
-
-  replies.get("shellMount")("mounted");
-  replies.get("shellSnapshot")("snapshot");
-  replies.get("__runicOperationWait")("done");
-  expect(await Promise.all([wait, snapshot, mount])).toEqual(["done", "snapshot", "mounted"]);
+// CsWebUi 2.5.0-beta.4.7 and later bundle, so the client sends every request at once.
+test("runic-cswebui.js sends concurrent requests without waiting for replies", async () => {
+  const webui = fakeCsWebUi();
+  const bridge = loadCsWebUi(webui).__runicBridge;
+  const requests = ["a", "b", "c"].map(route => bridge.request(`{"kind":"snapshot","route":"${route}"}`));
+  expect(webui.calls.map(call => [call.name, ...call.args])).toEqual([
+    ["__runicViews", '{"kind":"snapshot","route":"a"}'],
+    ["__runicViews", '{"kind":"snapshot","route":"b"}'],
+    ["__runicViews", '{"kind":"snapshot","route":"c"}'],
+  ]);
+  expect(webui.allowed).toBe(3);
+  webui.answer(webui.calls[2], "c");
+  webui.answer(webui.calls[0], "a");
+  webui.answer(webui.calls[1], "b");
+  expect(await Promise.all(requests)).toEqual(["a", "b", "c"]);
 });
 
-test("runic-cswebui.js rejects a call that fails to start", async () => {
+test("runic-cswebui.js rejects a request that fails to start and passes failures through", async () => {
   const sent = [];
-  const context = loadCsWebUiBridge({
+  const context = loadCsWebUi({
     isConnected: () => true,
-    call: name => {
-      sent.push(name);
-      if (name === "throws") throw new TypeError("WebUI failed");
-      return name === "missing" ? Promise.reject(new ReferenceError("No binding")) : Promise.resolve(name);
+    call: (name, message) => {
+      sent.push(message);
+      if (message === "throws") throw new TypeError("WebUI failed");
+      return message === "missing" ? Promise.reject(new ReferenceError("No binding")) : Promise.resolve(`${message}-reply`);
     },
   });
-  const thrown = context.__runicBridge.call("throws");
-  const failed = context.__runicBridge.call("missing");
-  const next = context.__runicBridge.call("shellSnapshot");
+  const thrown = context.__runicBridge.request("throws");
+  const failed = context.__runicBridge.request("missing");
+  const next = context.__runicBridge.request("snapshot");
   await expect(thrown).rejects.toThrow("WebUI failed");
   await expect(failed).rejects.toThrow("No binding");
-  expect(await next).toBe("shellSnapshot");
-  expect(sent).toEqual(["throws", "missing", "shellSnapshot"]);
+  expect(await next).toBe("snapshot-reply");
+  expect(sent).toEqual(["throws", "missing", "snapshot"]);
 });
 
-test("runic-cswebui.js does not hold calls behind an unanswered one", async () => {
-  const sent = [];
-  const context = loadCsWebUiBridge({
+test("runic-cswebui.js does not hold requests behind an unanswered one", async () => {
+  const context = loadCsWebUi({
     isConnected: () => true,
-    call: name => { sent.push(name); return name === "unanswered" ? new Promise(() => {}) : Promise.resolve(name); },
+    call: (name, message) => message === "unanswered" ? new Promise(() => {}) : Promise.resolve(message),
   });
-  void context.__runicBridge.call("unanswered");
-  expect(await context.__runicBridge.call("shellSnapshot")).toBe("shellSnapshot");
-  expect(sent).toEqual(["unanswered", "shellSnapshot"]);
+  void context.__runicBridge.request("unanswered");
+  expect(await context.__runicBridge.request("snapshot")).toBe("snapshot");
 });
-
-const lostMessage = "The CS-WebUI connection was lost before the call completed.";
 
 // WebUI never settles calls in flight when its WebSocket closes, so each would
-// wait forever: a command's pending state, an operation start, a long poll.
-test("runic-cswebui.js rejects every call in flight when the connection is lost", async () => {
-  const sent = [];
-  let online = true;
-  let releaseReconnecting;
-  const context = loadCsWebUiBridge({
-    isConnected: () => online,
-    call: name => {
-      sent.push(name);
-      // WebUI holds a call made while it reconnects until the new connection is ready.
-      if (name === "duringReconnect") return new Promise(resolve => { releaseReconnecting = resolve; });
-      return new Promise(() => {});
-    },
-  });
-  const bridge = context.__runicBridge;
-  const outcome = promise => promise.then(value => ({ value }), error => ({ error: error.message }));
-  const inFlight = ["counterIncrement", "counterStartSave", "__runicInteractionWait"].map(name => outcome(bridge.call(name, "{}")));
-  expect(sent).toEqual(["counterIncrement", "counterStartSave", "__runicInteractionWait"]);
+// wait forever: a command's pending state, an operation start, a receive.
+test("runic-cswebui.js rejects every request in flight when the connection is lost", async () => {
+  const webui = fakeCsWebUi();
+  const bridge = loadCsWebUi(webui).__runicBridge;
+  const inFlight = ["set", "start", "watch"].map(kind => outcome(bridge.request(`{"kind":"${kind}"}`)));
 
-  online = false;
+  webui.online = false;
   expect(await Promise.all(inFlight)).toEqual([{ error: lostMessage }, { error: lostMessage }, { error: lostMessage }]);
 
-  // A call sent after the loss belongs to the next connection.
-  const reconnecting = outcome(bridge.call("duringReconnect"));
+  // A request sent after the loss belongs to the next connection: WebUI holds
+  // it until the new connection is ready.
+  const reconnecting = outcome(bridge.request('{"kind":"hello"}'));
   await settle();
-  online = true;
-  await new Promise(resolve => setTimeout(resolve, 300));
-  releaseReconnecting("answered");
+  webui.online = true;
+  await poll();
+  webui.answer(webui.open('{"kind":"hello"}')[0], "answered");
   expect(await reconnecting).toEqual({ value: "answered" });
 });
 
-test("runic-cswebui.js stops watching the connection once every call settled", async () => {
+test("runic-cswebui.js stops watching the connection once every request settled", async () => {
   const intervals = new Set();
-  const context = loadCsWebUiBridge({ isConnected: () => true, call: name => Promise.resolve(name) });
-  context.setInterval = (callback, milliseconds) => { const id = setInterval(callback, milliseconds); intervals.add(id); return id; };
-  context.clearInterval = id => { intervals.delete(id); clearInterval(id); };
-  const replies = await Promise.all(Array.from({ length: 50 }, (_, index) => context.__runicBridge.call(`call${index}`)));
+  const context = loadCsWebUi({ isConnected: () => true, call: (name, message) => Promise.resolve(message) }, {
+    setInterval: (callback, milliseconds) => { const id = setInterval(callback, milliseconds); intervals.add(id); return id; },
+    clearInterval: id => { intervals.delete(id); clearInterval(id); },
+  });
+  const replies = await Promise.all(Array.from({ length: 50 }, (_, index) => context.__runicBridge.request(`${index}`)));
   expect(replies.length).toBe(50);
   expect(intervals.size).toBe(1);
-  await new Promise(resolve => setTimeout(resolve, 300));
+  await poll();
   expect(intervals.size).toBe(0);
 });
 
 // A hidden window throttles timers, so the poll can miss a loss for a while.
-test("runic-cswebui.js sends a call made after an unobserved loss on the next connection", async () => {
-  let online = true;
-  let releaseReconnecting;
-  const context = loadCsWebUiBridge({
-    isConnected: () => online,
-    call: name => name === "duringReconnect" ? new Promise(resolve => { releaseReconnecting = resolve; }) : new Promise(() => {}),
-  });
-  const bridge = context.__runicBridge;
-  bridge.onReconnect(() => {});
-  const before = bridge.call("beforeLoss").catch(error => error.message);
+test("runic-cswebui.js sends a request made after an unobserved loss on the next connection", async () => {
+  const webui = fakeCsWebUi();
+  const bridge = loadCsWebUi(webui).__runicBridge;
+  const before = outcome(bridge.request("before"));
   await settle();
-  online = false;
+  webui.online = false;
   // Sent before the poll runs: the send itself observes the loss.
-  const after = bridge.call("duringReconnect").then(value => value, error => error.message);
-  expect(await before).toBe(lostMessage);
-  online = true;
-  await new Promise(resolve => setTimeout(resolve, 300));
-  releaseReconnecting("answered");
-  expect(await after).toBe("answered");
+  const after = outcome(bridge.request("after"));
+  expect(await before).toEqual({ error: lostMessage });
+  webui.online = true;
+  await poll();
+  webui.answer(webui.open("after")[0], "answered");
+  expect(await after).toEqual({ value: "answered" });
 });
 
-test("runic-cswebui.js passes replies and failures through unchanged", async () => {
-  const context = loadCsWebUiBridge({
-    isConnected: () => true,
-    call: name => name === "fail" ? Promise.reject(new Error("No binding")) : Promise.resolve(`${name}-reply`),
-  });
-  expect(await context.__runicBridge.call("snapshot")).toBe("snapshot-reply");
-  await expect(context.__runicBridge.call("fail")).rejects.toThrow("No binding");
-});
-
-test("runic-cswebui.js watches the connection while a call is unsettled", async () => {
-  let online = true;
-  const context = loadCsWebUiBridge({
-    isConnected: () => online,
-    call: name => name === "lost" ? new Promise(() => {}) : Promise.resolve(name),
-  });
-  const bridge = context.__runicBridge;
-  const lost = bridge.call("lost").catch(error => error.message);
+test("runic-cswebui.js watches the connection while a request is unsettled", async () => {
+  const webui = fakeCsWebUi();
+  const bridge = loadCsWebUi(webui).__runicBridge;
+  const lost = outcome(bridge.request("lost"));
   await settle();
-  online = false;
-  await new Promise(resolve => setTimeout(resolve, 300));
-  // Without a reconnect listener, the poll still observes the loss.
-  expect(await lost).toBe(lostMessage);
-  online = true;
-  expect(await bridge.call("snapshot")).toBe("snapshot");
-});
-
-test("runic-cswebui.js does not resume a listener registered after an unobserved loss", async () => {
-  let online = true;
-  const context = loadCsWebUiBridge({
-    isConnected: () => online,
-    call: name => name === "lost" ? new Promise(() => {}) : Promise.resolve(name),
-  });
-  const bridge = context.__runicBridge;
-  // The waiting call keeps the poll running; no reconnect listener exists.
-  const lost = bridge.call("lost").catch(error => error.message);
-  await settle();
-  online = false;
-  await new Promise(resolve => setTimeout(resolve, 300));
-  expect(await lost).toBe(lostMessage);
-  // The poll stops once idle, so it does not see the reconnect either.
-  await new Promise(resolve => setTimeout(resolve, 300));
-  online = true;
-
-  let resumes = 0;
-  bridge.onReconnect(() => resumes++);
-  await new Promise(resolve => setTimeout(resolve, 600));
-  expect(resumes).toBe(0);
-
-  // A loss observed while the listener exists still resumes it once.
-  online = false;
-  await new Promise(resolve => setTimeout(resolve, 300));
-  online = true;
-  await new Promise(resolve => setTimeout(resolve, 300));
-  expect(resumes).toBe(1);
+  webui.online = false;
+  await poll();
+  // Without a listener, the poll still observes the loss.
+  expect(await lost).toEqual({ error: lostMessage });
 });
 
 // A page learns that the host ended when the WebSocket drops, not on its next
-// call (#406). Each host script reports WebUI's own connection state at once and
-// after each change, reads it without the Bridge's navigation side effect, and
-// stops polling once nothing listens.
-for (const script of scripts) {
-  test(`${script} reports connection changes as they happen`, async () => {
-    let online = true;
-    let allowed = 0;
-    const intervals = new Set();
-    const context = {
-      history: { pushState() {}, replaceState() {} }, setTimeout, clearTimeout, console,
-      setInterval: (callback, milliseconds) => { const id = setInterval(callback, milliseconds); intervals.add(id); return id; },
-      clearInterval: id => { intervals.delete(id); clearInterval(id); },
-    };
-    context.window = context;
-    context.globalThis = context;
-    runInNewContext(readFileSync(resolve(root, script), "utf8"), context);
-    context.webui = { isConnected: () => online, allowNavigation: () => { allowed++; }, call: async () => "" };
-    const bridge = context.__runicBridge;
-
-    const states = [];
-    const stop = bridge.onConnectionChange(connected => states.push(connected));
-    expect(states).toEqual([true]);
-    online = false;
-    await new Promise(resolve => setTimeout(resolve, 300));
-    expect(states).toEqual([true, false]);
-    online = true;
-    await new Promise(resolve => setTimeout(resolve, 300));
-    expect(states).toEqual([true, false, true]);
-    expect(allowed).toBe(0);
-    stop();
-    expect(intervals.size).toBe(0);
-    online = false;
-    await new Promise(resolve => setTimeout(resolve, 300));
-    expect(states).toEqual([true, false, true]);
+// call (#406). The script reports WebUI's own connection state at once and after
+// each change, reads it without the Bridge's navigation side effect, and stops
+// polling once nothing listens.
+test("runic-cswebui.js reports connection changes as they happen", async () => {
+  let online = true;
+  let allowed = 0;
+  const intervals = new Set();
+  const context = loadCsWebUi({ isConnected: () => online, allowNavigation: () => { allowed++; }, call: async () => "" }, {
+    setInterval: (callback, milliseconds) => { const id = setInterval(callback, milliseconds); intervals.add(id); return id; },
+    clearInterval: id => { intervals.delete(id); clearInterval(id); },
   });
-}
+  const bridge = context.__runicBridge;
 
-// D040: .NET sends Views state as WebUI raw data (route, NUL, UTF-8 JSON), which
-// the script parses instead of evaluating, so a policy without 'unsafe-eval' works.
-test("runic-cswebui.js dispatches raw state pushes to the route's callback", () => {
-  const context = loadCsWebUiBridge({ isConnected: () => true, call: async () => undefined });
-  context.TextDecoder = TextDecoder;
-  const received = [];
-  context.__counterChanged = state => received.push(state);
-  const push = (route, json) => context.__runicViewsPush(new Uint8Array([
-    ...new TextEncoder().encode(route), 0, ...new TextEncoder().encode(json)]));
+  const states = [];
+  const stop = bridge.onConnectionChange(connected => states.push(connected));
+  expect(states).toEqual([true]);
+  online = false;
+  await poll();
+  expect(states).toEqual([true, false]);
+  online = true;
+  await poll();
+  expect(states).toEqual([true, false, true]);
+  expect(allowed).toBe(0);
+  stop();
+  expect(intervals.size).toBe(0);
+  online = false;
+  await poll();
+  expect(states).toEqual([true, false, true]);
+});
 
-  push("counter", '{"value":1,"text":"Grüße \\u2028","__proto__":{"polluted":true}}');
-  // An unmounted route is a no-op, as `?.(` was.
-  push("missing", '{"value":2}');
-  context.__runicViewsPush(new Uint8Array([1, 2, 3]));
+// D040: .NET broadcasts Views pushes as WebUI raw data (the UTF-8 JSON), which
+// the script decodes instead of evaluating, so a policy without 'unsafe-eval' works.
+test("runic-cswebui.js delivers raw pushes to every message listener", () => {
+  const errors = [];
+  const context = loadCsWebUi({ isConnected: () => false, call: async () => "" });
+  context.console = { error: (...args) => errors.push(args[0]) };
+  const raw = json => context.__runicViewsPush(new TextEncoder().encode(json));
+  raw('{"kind":"state","route":"dropped","revision":1}');
 
-  expect(received.length).toBe(1);
-  expect(received[0].value).toBe(1);
-  expect(received[0].text).toBe("Grüße \u2028");
-  expect(Object.hasOwn(received[0], "__proto__")).toBe(true);
+  const first = [];
+  const second = [];
+  context.__runicBridge.onMessage(() => { throw new Error("listener"); });
+  const stop = context.__runicBridge.onMessage(message => first.push(message));
+  context.__runicBridge.onMessage(message => second.push(message));
+  const message = '{"kind":"state","route":"counter","revision":2,"state":{"text":"Grüße \\u2028","__proto__":{"polluted":true}}}';
+  raw(message);
+  stop();
+  raw('{"kind":"failure","route":"counter","revision":3,"error":{}}');
+
+  expect(first).toEqual([message]);
+  expect(second).toEqual([message, '{"kind":"failure","route":"counter","revision":3,"error":{}}']);
+  expect(errors).toEqual(["Runic message listener failed", "Runic message listener failed"]);
   expect({}.polluted).toBeUndefined();
   expect(typeof context.__runicContinueNavigation).toBe("function");
 });
 
-// Examples serve their own copy; each must match the package's script.
-test("example copies of runic-cswebui.js match the package script", () => {
-  const expected = readFileSync(resolve(root, scripts[0]), "utf8");
-  for (const example of ["notes-reactive-views", "notes-view-first"])
-    for (const frontend of ["Frontend", "Angular"])
-      expect(readFileSync(resolve(root, `examples/${example}/${frontend}/public/runic-cswebui.js`), "utf8"), `${example}/${frontend}`)
-        .toBe(expected);
+// The mailbox: CS-WebUI cannot push to one connection, so the script drains the
+// connection's targeted pushes with one pending receive.
+test("runic-cswebui.js drains the mailbox in order with one pending receive", async () => {
+  const webui = fakeCsWebUi();
+  const bridge = loadCsWebUi(webui).__runicBridge;
+  const received = [];
+  const stop = bridge.onMessage(message => received.push(message));
+  const stopOther = bridge.onMessage(() => {});
+  expect(webui.receives().length).toBe(1);
+  expect(webui.receives()[0].name).toBe("__runicViews");
+  // A request does not start a second receive.
+  const hello = bridge.request('{"kind":"hello"}');
+  webui.answer(webui.open('{"kind":"hello"}')[0], '{"ok":true}');
+  await hello;
+  await settle();
+  expect(webui.open(receiveRequest).length).toBe(1);
+
+  webui.answer(webui.open(receiveRequest)[0], JSON.stringify({ ok: true, messages: [
+    { kind: "operation", route: "a", operation: "o", status: { kind: "running" } },
+    { kind: "interaction", route: "a", text: "Grüße" },
+  ] }));
+  await settle();
+  expect(received).toEqual([
+    '{"kind":"operation","route":"a","operation":"o","status":{"kind":"running"}}',
+    '{"kind":"interaction","route":"a","text":"Grüße"}',
+  ]);
+  // The next receive follows at once; an empty reply sends another.
+  expect(webui.receives().length).toBe(2);
+  webui.answer(webui.open(receiveRequest)[0], '{"ok":true,"messages":[]}');
+  await settle();
+  expect(webui.receives().length).toBe(3);
+  expect(webui.open(receiveRequest).length).toBe(1);
+
+  // Without listeners, the pending receive's messages are dropped and no other follows.
+  stop();
+  stopOther();
+  webui.answer(webui.open(receiveRequest)[0], '{"ok":true,"messages":[{"kind":"operation"}]}');
+  await settle();
+  expect(received.length).toBe(2);
+  expect(webui.receives().length).toBe(3);
+});
+
+test("runic-cswebui.js pauses the mailbox until a request settles after no-hello", async () => {
+  const webui = fakeCsWebUi();
+  const bridge = loadCsWebUi(webui).__runicBridge;
+  const received = [];
+  bridge.onMessage(message => received.push(message));
+  webui.answer(webui.open(receiveRequest)[0], noHello);
+  await settle();
+  await poll();
+  expect(webui.receives().length).toBe(1);
+
+  // The page's hello settles: the loop resumes.
+  const hello = bridge.request('{"kind":"hello"}');
+  webui.answer(webui.open('{"kind":"hello"}')[0], '{"ok":true,"protocol":4}');
+  await hello;
+  await settle();
+  expect(webui.receives().length).toBe(2);
+  webui.answer(webui.open(receiveRequest)[0], '{"ok":true,"messages":[{"kind":"operation","route":"a"}]}');
+  await settle();
+  expect(received).toEqual(['{"kind":"operation","route":"a"}']);
+});
+
+test("runic-cswebui.js resumes the mailbox at once when the hello settled before its no-hello arrived", async () => {
+  const webui = fakeCsWebUi();
+  const bridge = loadCsWebUi(webui).__runicBridge;
+  bridge.onMessage(() => {});
+  // The receive and the hello race; the hello's reply arrives first.
+  const hello = bridge.request('{"kind":"hello"}');
+  webui.answer(webui.open('{"kind":"hello"}')[0], '{"ok":true,"protocol":4}');
+  await hello;
+  await settle();
+  webui.answer(webui.open(receiveRequest)[0], noHello);
+  await settle();
+  expect(webui.receives().length).toBe(2);
+  expect(webui.open(receiveRequest).length).toBe(1);
+});
+
+test("runic-cswebui.js pauses the mailbox after a failed or unreadable reply", async () => {
+  for (const reply of ['{"ok":false,"error":{"kind":"released","message":"This View was released."}}', "", "not json", '{"ok":true}']) {
+    const webui = fakeCsWebUi();
+    const bridge = loadCsWebUi(webui).__runicBridge;
+    bridge.onMessage(() => {});
+    webui.answer(webui.open(receiveRequest)[0], reply);
+    await settle();
+    expect(webui.receives().length, reply).toBe(1);
+    // A failed request settles too.
+    const request = outcome(bridge.request("{}"));
+    webui.calls.find(call => call.message === "{}").reject(new Error("failed"));
+    await request;
+    await settle();
+    expect(webui.receives().length, reply).toBe(2);
+  }
+});
+
+// WebUI can replace its WebSocket between two polls. The new connection has no
+// hello, so its first receive fails with no-hello after an earlier one succeeded.
+test("runic-cswebui.js reports a connection the poll missed when a receive finds no hello", async () => {
+  const webui = fakeCsWebUi();
+  const bridge = loadCsWebUi(webui).__runicBridge;
+  const states = [];
+  const hellos = [];
+  bridge.onConnectionChange(connected => {
+    states.push(connected);
+    if (connected) hellos.push(bridge.request('{"kind":"hello"}'));
+  });
+  bridge.onMessage(() => {});
+  webui.answer(webui.open('{"kind":"hello"}')[0], '{"ok":true}');
+  await settle();
+  webui.answer(webui.open(receiveRequest)[0], '{"ok":true,"messages":[]}');
+  await settle();
+  const inFlight = outcome(bridge.request('{"kind":"set"}'));
+
+  webui.answer(webui.open(receiveRequest)[0], noHello);
+  await settle();
+  expect(states).toEqual([true, false, true]);
+  // WebUI will not answer a call sent on the replaced WebSocket.
+  expect(await inFlight).toEqual({ error: lostMessage });
+  // The loop waits for the new connection's hello.
+  expect(hellos.length).toBe(2);
+  expect(webui.receives().length).toBe(2);
+  webui.answer(webui.open('{"kind":"hello"}')[0], '{"ok":true}');
+  await settle();
+  expect(webui.receives().length).toBe(3);
+  expect(webui.open(receiveRequest).length).toBe(1);
+});
+
+// A receive in flight when the WebSocket closes is never answered; the loss
+// rejects it, and the next connection starts its own loop.
+test("runic-cswebui.js restarts the mailbox on the next connection", async () => {
+  const webui = fakeCsWebUi();
+  const bridge = loadCsWebUi(webui).__runicBridge;
+  const states = [];
+  bridge.onConnectionChange(connected => states.push(connected));
+  bridge.onMessage(() => {});
+  webui.answer(webui.open(receiveRequest)[0], '{"ok":true,"messages":[]}');
+  await settle();
+  expect(webui.open(receiveRequest).length).toBe(1);
+
+  webui.online = false;
+  await poll();
+  expect(states).toEqual([true, false]);
+  expect(webui.receives().length).toBe(2);
+  webui.online = true;
+  await poll();
+  expect(states).toEqual([true, false, true]);
+  // The abandoned receive stays unanswered; the new connection has its own.
+  expect(webui.receives().length).toBe(3);
+  webui.answer(webui.calls.at(-1), noHello);
+  await settle();
+  const hello = bridge.request('{"kind":"hello"}');
+  webui.answer(webui.open('{"kind":"hello"}')[0], '{"ok":true}');
+  await hello;
+  await settle();
+  expect(webui.receives().length).toBe(4);
 });
 
 // The all-events binding delivers disconnects, but WebUI then also sends a click
@@ -308,14 +557,10 @@ test("runic-cswebui.js stops WebUI from sending click events for elements with i
   const plain = element("", [main]);
   const documentElement = element("", [plain]);
   let observe;
-  const context = {
-    history: { pushState() {}, replaceState() {} }, setInterval, clearInterval, setTimeout, clearTimeout, console,
+  load(csWebUi, {
     document: { documentElement },
     MutationObserver: class { constructor(callback) { observe = callback; } observe() {} },
-  };
-  context.window = context;
-  context.globalThis = context;
-  runInNewContext(readFileSync(resolve(root, scripts[0]), "utf8"), context);
+  });
   expect(main.dataset.webui_click_is_set).toBe("true");
   expect(plain.dataset.webui_click_is_set).toBeUndefined();
 
@@ -342,14 +587,10 @@ test("runic-cswebui.js continues a cancelled same-origin navigation", () => {
     assign: url => actions.push(["assign", url, allowed]),
     replace: url => actions.push(["replace", url, allowed]),
   };
-  const context = {
-    history: { pushState() {}, replaceState() {} }, setInterval, clearInterval, setTimeout, clearTimeout, console, URL,
+  const context = load(csWebUi, {
     location, navigation: { addEventListener: (type, listener) => { if (type === "navigate") navigate = listener; } },
     webui: { allowNavigation: status => { allowed = status; } },
-  };
-  context.window = context;
-  context.globalThis = context;
-  runInNewContext(readFileSync(resolve(root, scripts[0]), "utf8"), context);
+  });
   // WebUI's own listener runs after the script's and cancels the navigation.
   const report = (url, navigationType, { cancelled = true, formData = null } = {}) => {
     const event = { destination: { url, key: "k" }, navigationType, formData, defaultPrevented: false };
@@ -372,4 +613,13 @@ test("runic-cswebui.js continues a cancelled same-origin navigation", () => {
     ["replace", "http://localhost:4000/index.html#notes", true],
   ]);
   expect(allowed).toBe(false);
+});
+
+// Examples serve their own copy; each must match the package's script.
+test("example copies of runic-cswebui.js match the package script", () => {
+  const expected = readFileSync(resolve(root, csWebUi), "utf8");
+  for (const example of ["notes-reactive-views", "notes-view-first"])
+    for (const frontend of ["Frontend", "Angular"])
+      expect(readFileSync(resolve(root, `examples/${example}/${frontend}/public/runic-cswebui.js`), "utf8"), `${example}/${frontend}`)
+        .toBe(expected);
 });
