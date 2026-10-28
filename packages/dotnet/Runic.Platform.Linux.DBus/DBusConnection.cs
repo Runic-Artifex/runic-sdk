@@ -178,7 +178,7 @@ public sealed class DBusConnection : IAsyncDisposable
                         if (!(arguments?.Matches(notification.Value) ?? true) || !writer.TryWrite(notification.Value))
                             DBusSignalSubscription.CloseHandles(notification.Value);
                     }
-                    else if (notification.IsCompletion) writer.TryComplete(Translate(notification.Exception) ?? notification.Exception);
+                    else if (notification.IsCompletion) writer.TryComplete(Translate(notification.CompletionReason) ?? notification.CompletionReason);
                 }, emitOnCapturedContext: false, ObserverFlags.EmitOnConnectionClosed | ObserverFlags.EmitOnReaderFailed)
                 .AsTask().WaitAsync(cancellationToken).ConfigureAwait(false);
             return new DBusSignalSubscription(match, signals);
