@@ -127,20 +127,35 @@ public class CheckedFieldBenchmarks
     public bool StructuralEquals() => _codec.StructuralEquals(_values[0], _copy);
 }
 
-// Bindings go to the in-memory transport; publications are dropped after an
-// optional hold so benchmarks do not retain states.
+// The bridges' protocol-3 routes are called through the window dispatcher's legacy routes until P4; publications are
+// dropped after an optional hold so benchmarks do not retain states.
 public sealed class HostTransport : IBridgeTransport, IDisposable
 {
     private readonly ManualResetEventSlim _released = new(true);
     private TaskCompletionSource? _delivered;
     private string? _finalPrefix;
+    private BridgeDispatcher? _dispatcher;
 
-    public InMemoryBridgeTransport Inner { get; } = new();
+    public HostTransport Inner => this;
 
-    public IDisposable Bind(string name, Func<IBridgeArguments, string> handler) => Inner.Bind(name, handler);
+    public IDisposable Serve(IBridgeRequestHandler handler)
+    {
+        _dispatcher = (BridgeDispatcher)handler;
+        _dispatcher.Legacy.SetPublisher((name, state, _) =>
+        {
+            Publish(name, System.Text.Encoding.UTF8.GetString(state.Span));
+            return ValueTask.CompletedTask;
+        });
+        return this;
+    }
 
-    public IDisposable BindAsync(string name, Func<IBridgeArguments, CancellationToken, ValueTask<string>> handler) =>
-        Inner.BindAsync(name, handler);
+    public ValueTask BroadcastAsync(ReadOnlyMemory<byte> message, CancellationToken cancellationToken = default) =>
+        ValueTask.CompletedTask;
+
+    public string Call(string name, BridgeTestArguments? arguments = null) =>
+        _dispatcher!.Legacy.TryFind(name, out var sync, out _) && sync is not null
+            ? sync(arguments ?? new())
+            : throw new KeyNotFoundException(name);
 
     public Task Hold(string finalPrefix)
     {
@@ -152,7 +167,7 @@ public sealed class HostTransport : IBridgeTransport, IDisposable
 
     public void Release() => _released.Set();
 
-    public void Publish(string name, string stateJson)
+    private void Publish(string name, string stateJson)
     {
         _released.Wait();
         if (_finalPrefix is { } prefix && stateJson.StartsWith(prefix, StringComparison.Ordinal))
@@ -162,7 +177,7 @@ public sealed class HostTransport : IBridgeTransport, IDisposable
     public void Dispose()
     {
         _released.Set();
-        Inner.Dispose();
+        _dispatcher?.Legacy.SetPublisher(null);
     }
 }
 

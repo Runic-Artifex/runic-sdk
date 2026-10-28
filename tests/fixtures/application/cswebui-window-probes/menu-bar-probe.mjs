@@ -99,6 +99,30 @@ try {
   check((await request("menu-bar-shortcuts", { shortcuts: "runic" })).state.shortcuts === "page", "Returning the app lease", state);
   check((await request("menu-bar-unwatch")).ok === true, "Unwatching the bar", state);
 
+  // A reload is a new connection: its receive loop starts again, a hello reusing the closed connection's session is
+  // released, and the new connection's watch receives the next bar through its own mailbox.
+  const session = randomUUID();
+  check((await send({ kind: "hello", protocol: 4, session: "probe-reload-check", client: { name: "menu-bar-probe", version: "0" } })).ok === false,
+    "A second hello on the connection", state);
+  await browser.evaluate("location.reload()").catch(() => undefined);
+  await retry(() => browser.evaluate("window.__runicBridge?.isConnected() === true && window.__menuBarStates === undefined"),
+    "the reloaded page's connection");
+  await browser.evaluate(`(() => {
+    window.__menuBarStates = [];
+    window.__runicBridge.onMessage(text => {
+      const message = JSON.parse(text);
+      if (message.kind === "menu-bar" && message.route === "runic.menu-bar") window.__menuBarStates.push(message.state);
+    });
+  })()`);
+  const reloaded = await send({ kind: "hello", protocol: 4, session, client: { name: "menu-bar-probe", version: "0" } });
+  check(reloaded.ok === true, "The reloaded page's hello", reloaded);
+  state = (await request("menu-bar-watch")).state;
+  check(await invoke(state, "Mode A") === "executed", "Invoking Mode A after the reload", state);
+  state = await retry(async () => {
+    state = await latest(state);
+    return item(state, "Mode A").checked === true && state;
+  }, "the bar Mode A pushed to the reloaded page");
+
   host.stdin.end("\n");
   const code = await waitFor(async () => {
     const value = await Promise.race([exited, pause(200).then(() => undefined)]);
@@ -106,7 +130,7 @@ try {
   }, { timeout: 20_000, label: "the probe's exit", detail });
   if (code.code !== 0 || !output.includes("CSWEBUI_MENU_BAR_OK"))
     throw new Error(`The probe exited with ${code.code}:\n${tail(output)}\n${tail(errors)}`);
-  console.log("CSWEBUI_MENU_BAR_PAGE_OK|state|can-execute-changed|executed|disabled|stale|set-menu-bar|lease");
+  console.log("CSWEBUI_MENU_BAR_PAGE_OK|state|can-execute-changed|executed|disabled|stale|set-menu-bar|lease|reconnect");
 } finally {
   try { await browser?.close(); }
   finally {

@@ -160,7 +160,7 @@ internal sealed class ReplyOrderTests
         }
     }
 
-    // Throws ObjectDisposedException once disposed, as CS-WebUI's RebindableBridgeTransport did.
+    // Throws ObjectDisposedException once disposed, as CS-WebUI's transport did while it published states.
     private sealed class ClosingTransport : LegacyTestTransport
     {
         private volatile bool _disposed;

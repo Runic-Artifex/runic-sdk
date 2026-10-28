@@ -1,6 +1,5 @@
 using Microsoft.Extensions.DependencyInjection;
 using Runic.Application.Views;
-using Runic.Application.Views.CsWebUi;
 using Runic.Navigation;
 
 namespace NotesWindowViews;
@@ -14,8 +13,8 @@ internal static class ViewLifetimeCheck
         using var app = NotesApplication.Create(useSplat);
         await using var scope = app.Services.CreateAsyncScope();
         var vm = scope.ServiceProvider.GetRequiredService<ShellViewModel>();
-        var native = new ProbeTransport();
-        using var transport = new RebindableBridgeTransport(native);
+        using var native = new ProbeTransport();
+        var transport = native;
         // Like a real window, the session binds the shell to the window's model context. A
         // shell without one serializes its bridge with a lock instead of model turns, and a
         // navigation commit that publishes the shell could then deadlock with a snapshot.
@@ -33,8 +32,8 @@ internal static class ViewLifetimeCheck
                 var secondVm = secondScope.ServiceProvider.GetRequiredService<ShellViewModel>();
                 if (ReferenceEquals(vm, secondVm))
                     throw new InvalidOperationException("Two window scopes share a ShellViewModel.");
-                var secondNative = new ProbeTransport();
-                using var secondTransport = new RebindableBridgeTransport(secondNative);
+                using var secondNative = new ProbeTransport();
+                var secondTransport = secondNative;
                 using var secondContent = new WindowContentSession(secondTransport, new WindowContentSessionOptions { ViewLocator = secondScope.ServiceProvider.GetRequiredService<IRunicViewLocator>(), RootModel = secondVm, ModelContext = secondScope.ServiceProvider.GetRequiredService<IRunicModelContext>() });
                 var secondFactory = secondScope.ServiceProvider.GetRequiredService<
                     Func<IBridgeTransport, WindowContentSession, ShellViewModel, IDisposable>>();
@@ -67,12 +66,8 @@ internal static class ViewLifetimeCheck
             Require<EditorView>(0);
             Require<PreviewView>(1);
 
-            // CS-WebUI has no per-route unbind today.  The bridge adapter must
-            // consequently keep its one native binding per stable page route
-            // while the nested Editor/Preview endpoint detaches and reattaches.
-            // This is deliberately bounded: it records route reuse, not a
-            // performance or endurance claim.
-            var nativeBindingsBeforeCycles = native.BindCount;
+            // Twenty Editor/Preview remount cycles detach and reattach the nested endpoint without growing the window's
+            // routes. This is deliberately bounded: it records route reuse, not a performance or endurance claim.
             var activeRoutesBeforeCycles = native.ActiveRoutes;
             for (var cycle = 0; cycle < 20; cycle++)
             {
@@ -92,14 +87,10 @@ internal static class ViewLifetimeCheck
                 Require<EditorView>(0);
                 Require<PreviewView>(1);
             }
-            if (native.BindCount != nativeBindingsBeforeCycles || native.ActiveRoutes != activeRoutesBeforeCycles)
+            if (native.ActiveRoutes != activeRoutesBeforeCycles)
                 throw new InvalidOperationException(
-                    $"Twenty Editor/Preview remount cycles grew native routes: " +
-                    $"bindings {nativeBindingsBeforeCycles} -> {native.BindCount}, " +
-                    $"active {activeRoutesBeforeCycles} -> {native.ActiveRoutes}.");
-            Console.WriteLine(
-                $"VIEW_NATIVE_ROUTE_REUSE|cycles=20|bindings={nativeBindingsBeforeCycles}->{native.BindCount}|" +
-                $"active={activeRoutesBeforeCycles}->{native.ActiveRoutes}");
+                    $"Twenty Editor/Preview remount cycles grew the window's routes: {activeRoutesBeforeCycles} -> {native.ActiveRoutes}.");
+            Console.WriteLine($"VIEW_ROUTE_REUSE|cycles=20|active={activeRoutesBeforeCycles}->{native.ActiveRoutes}");
 
             Unmount(native, preview);
             await documentModel.ShowEditorCommand.ExecuteAsync(null);
@@ -137,10 +128,6 @@ internal static class ViewLifetimeCheck
         }
         Require<SidebarView>(0);
         Require<HomeView>(0);
-        // I-174: a Bridge delivery still on its way when the window disposed its transport ends silently.
-        var closed = new RebindableBridgeTransport(new ProbeTransport());
-        closed.Dispose();
-        closed.Publish("shell", "{}");
         Console.WriteLine($"VIEW_LIFETIME_OK|{(useSplat ? "splat" : "microsoft-di")}|two-scopes|mounted-presentations|nested|dialog|detached");
     }
 
@@ -190,32 +177,32 @@ internal static class ViewLifetimeCheck
             throw new InvalidOperationException($"{typeof(TView).Name}: expected {expected} active views, got {actual}.");
     }
 
-    private sealed class ProbeTransport : IBridgeTransport
+    // The window's transport, without a page. Until the producer speaks protocol 4 (P4), the check calls the
+    // generated bridges' protocol-3 Snapshot, Mount and Unmount routes through the window dispatcher's legacy routes.
+    private sealed class ProbeTransport : IBridgeTransport, IDisposable
     {
-        private readonly Dictionary<string, Func<IBridgeArguments, string>> _handlers = new(StringComparer.Ordinal);
-        private readonly Dictionary<string, Func<IBridgeArguments, CancellationToken, ValueTask<string>>> _asyncHandlers = new(StringComparer.Ordinal);
-        public int BindCount { get; private set; }
-        public int ActiveRoutes => _handlers.Count + _asyncHandlers.Count;
+        private BridgeDispatcher? _dispatcher;
 
-        public IDisposable Bind(string name, Func<IBridgeArguments, string> handler)
+        public int ActiveRoutes => _dispatcher?.Legacy.Names.Count ?? 0;
+
+        public IDisposable Serve(IBridgeRequestHandler handler)
         {
-            _handlers.Add(name, handler);
-            BindCount++;
-            return new Binding(() => _handlers.Remove(name));
+            _dispatcher = (BridgeDispatcher)handler;
+            return this;
         }
 
-        public IDisposable BindAsync(string name,
-            Func<IBridgeArguments, CancellationToken, ValueTask<string>> handler)
-        {
-            _asyncHandlers.Add(name, handler);
-            BindCount++;
-            return new Binding(() => _asyncHandlers.Remove(name));
-        }
+        public ValueTask BroadcastAsync(ReadOnlyMemory<byte> message, CancellationToken cancellationToken = default) =>
+            ValueTask.CompletedTask;
 
-        public void Publish(string name, string stateJson) { }
+        public string Call(string name) => Find(name)(new NoArguments());
+        public string Call(string name, string value) => Find(name)(new StringArguments(value));
 
-        public string Call(string name) => _handlers[name](new NoArguments());
-        public string Call(string name, string value) => _handlers[name](new StringArguments(value));
+        public void Dispose() { }
+
+        private Func<IBridgeArguments, string> Find(string name) =>
+            _dispatcher is { } dispatcher && dispatcher.Legacy.TryFind(name, out var sync, out _) && sync is not null
+                ? sync
+                : throw new KeyNotFoundException($"Route '{name}' is not bound.");
 
         private sealed class NoArguments : IBridgeArguments
         {
@@ -229,11 +216,6 @@ internal static class ViewLifetimeCheck
             public long GetInt64() => throw new NotSupportedException();
             public bool GetBoolean() => throw new NotSupportedException();
             public string GetString() => value;
-        }
-
-        private sealed class Binding(Action release) : IDisposable
-        {
-            public void Dispose() => release();
         }
     }
 }

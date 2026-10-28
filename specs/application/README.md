@@ -94,6 +94,27 @@ interface RunicBridgeClient {
   page reports its protocol diagnostic.
 - A client that finds a `__runicBridge` without `request` reports that the host implements protocol 3 or earlier
   (see [Handshake](#handshake)).
+- Each `onMessage` and `onConnectionChange` registration is its own: a function registered twice is called twice, and
+  each returned function removes only its own registration. A listener never receives the same connection state twice
+  in a row.
+
+#### Mailbox host scripts
+
+A host script whose transport has a [mailbox](#receive) runs the connection's `receive` loop itself:
+
+- While at least one `onMessage` listener exists and the connection is open, it keeps exactly one `receive` pending on
+  the connection. It delivers the `messages` of each reply to the listeners in order, as the JSON text of each
+  message, and then sends the next `receive` at once. Pushes of a reply that arrives after its connection was replaced,
+  and pushes while no listener exists, are dropped.
+- The loop starts when the first `onMessage` listener registers on an open connection, when a new connection opens,
+  and when a request of the page on the connection settles. A request does not start it when it is sent, so the loop
+  does not race the connection's `hello`.
+- A `receive` that fails, because the connection has not completed its `hello` (`no-hello`), because of another failure
+  or because its reply is not a `receive` reply, pauses the loop until a request of the page on the same connection
+  settles after that `receive` was sent; then the loop resumes. A loop therefore never spins on failures.
+- A `no-hello` after the connection's loop already received a successful reply means that the transport replaced the
+  connection without the host script seeing it close. The host script reports the connection lost (`false`, and
+  rejects the connection's unsettled requests) and then the new connection (`true`), whose loop starts paused.
 
 #### Shared globals
 
@@ -138,6 +159,7 @@ Producer rules:
 - A `hello` without a valid `protocol`, `session` or `client` is `rejected` with `invalid-request`. So is a second
   `hello` on a connection that already completed one.
 - A `hello` whose session a closed connection used is `released`.
+- A `hello` whose session another open connection uses is `rejected` with `invalid-request`.
 - Until a `hello` succeeds, every other request is `rejected` with the reason `no-hello`, and the connection receives
   no pushes.
 
@@ -591,7 +613,9 @@ A host script on a transport without targeted pushes sends `{"kind":"receive"}`.
 `{"ok":true,"messages":[…]}` with the connection's queued targeted pushes, in order, as soon as at least one is queued,
 or with an empty list after 25 seconds. The host script delivers each message to its push listeners and sends the next
 `receive`. At most one `receive` per connection is pending; another one answers at once with an empty list. Clients
-never send `receive`: it is part of the host script.
+never send `receive`: it is part of the host script ([mailbox host scripts](#mailbox-host-scripts)). A pending `receive`
+answers with an empty list when its connection closes. A producer whose transport pushes to one connection directly
+answers `receive` at once with an empty list.
 
 ## Message catalogue
 

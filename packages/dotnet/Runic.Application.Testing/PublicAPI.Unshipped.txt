@@ -19,3 +19,11 @@ Runic.Application.Testing.RunicBridgeMessage.ConnectionKey.init -> void
 Runic.Application.Testing.RunicBridgeMessage.Json.get -> string!
 Runic.Application.Testing.RunicBridgeMessage.Json.init -> void
 Runic.Application.Testing.RunicBridgeMessage.RunicBridgeMessage(string! Json, string? ConnectionKey) -> void
+Runic.Application.Testing.RunicBridgeMessage.<Clone>$() -> Runic.Application.Testing.RunicBridgeMessage!
+Runic.Application.Testing.RunicBridgeMessage.Deconstruct(out string! Json, out string? ConnectionKey) -> void
+Runic.Application.Testing.RunicBridgeMessage.Equals(Runic.Application.Testing.RunicBridgeMessage? other) -> bool
+override Runic.Application.Testing.RunicBridgeMessage.Equals(object? obj) -> bool
+override Runic.Application.Testing.RunicBridgeMessage.GetHashCode() -> int
+override Runic.Application.Testing.RunicBridgeMessage.ToString() -> string!
+static Runic.Application.Testing.RunicBridgeMessage.operator !=(Runic.Application.Testing.RunicBridgeMessage? left, Runic.Application.Testing.RunicBridgeMessage? right) -> bool
+static Runic.Application.Testing.RunicBridgeMessage.operator ==(Runic.Application.Testing.RunicBridgeMessage? left, Runic.Application.Testing.RunicBridgeMessage? right) -> bool

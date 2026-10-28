@@ -386,8 +386,11 @@ frames go to its tracker or to `TakePublications`, not both.
 
 ### Lower level
 
-`host.Transport` is the `InMemoryBridgeTransport`, the `IBridgeTransport` the generated
-Bridges bind their routes on. `Call(...)` and `CallAsync(...)` invoke any route with
+`host.Transport` is the `InMemoryBridgeTransport`, the window's `IBridgeTransport`.
+`Request(json)` and `RequestAsync(json)` send a Views protocol 4 request on a connection
+(`hello` first), `CloseConnection` closes it, and `Messages`/`TakeMessages()` list the
+pushes the window sent. Until the generated Bridges speak protocol 4,
+`Call(...)` and `CallAsync(...)` invoke their protocol 3 routes with
 `BridgeTestArguments` and return its raw reply, such as
 `host.Transport.Call($"{host.RootRoute}Snapshot")` for the snapshot envelope that
 `host.Root.Snapshot()` parses. `TakePublications()` returns the frames of every route

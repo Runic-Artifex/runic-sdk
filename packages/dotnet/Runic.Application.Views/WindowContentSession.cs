@@ -848,7 +848,7 @@ public sealed class WindowContentSession : IDisposable
 
     // `Suspend` releases an attachment outside the session gate so user-owned
     // disposal does not run under it. A concurrent `Expose` must nevertheless
-    // wait for that release: RebindableBridgeTransport cannot install the new
+    // wait for that release: the dispatcher's routes cannot install the new
     // handler until the former attachment has relinquished its route lease.
     private void WaitForDetachment(Entry entry)
     {
