@@ -272,9 +272,9 @@ class OperationChannel<TResult, TFailure> {
 
   /** Sends a request about the operation. A transport failure leaves its outcome unknown. */
   async request(kind: string, extra: Readonly<Record<string, unknown>> = {}): Promise<Reply> {
-    this.scope.assertConnected();
     let reply: Reply;
     try {
+      this.scope.assertConnected();
       reply = await this.scope.runtime.request({ kind, route: this.route, member: this.member, operation: this.operation, contract: this.contract, ...extra }, this.route);
     } catch (cause) {
       if (cause instanceof BridgeError && cause.kind !== "disconnected" && cause.kind !== "failed") throw cause;

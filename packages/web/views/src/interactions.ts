@@ -86,6 +86,8 @@ class InteractionRuntime implements InteractionSession {
   private readonly active = new Map<string, AbortController>();
   private readonly cancelled = new Map<string, unknown>();
   private readonly stops: (() => void)[];
+  /** The handlers the latest `open` carried. */
+  private openedWith = "[]";
 
   constructor(private readonly scope: InteractionScope, private readonly definitions: Readonly<Record<string, InteractionDefinition>>) {
     const surface: Record<string, InteractionSurface> = {};
@@ -98,16 +100,21 @@ class InteractionRuntime implements InteractionSession {
   }
 
   handlers(): readonly { readonly name: string; readonly contract: string }[] {
-    return [...this.registered.values()].map(handler => ({ name: handler.name, contract: handler.contract }));
+    const handlers = [...this.registered.values()].map(handler => ({ name: handler.name, contract: handler.contract }));
+    this.openedWith = JSON.stringify(handlers);
+    return handlers;
   }
 
   opened(registration: string | undefined): void {
     this.open = true;
-    const sent = this.handlers();
+    const sent = JSON.parse(this.openedWith) as unknown[];
     if (sent.length !== 0 && registration !== undefined && registration !== "ok" && registration !== "stale")
       this.registration = Promise.reject(this.failure(registration));
     else this.registration = Promise.resolve();
     void this.registration.catch(() => undefined);
+    // Handlers that changed while the presentation was opened are registered with the next generation.
+    const current = [...this.registered.values()].map(handler => ({ name: handler.name, contract: handler.contract }));
+    if (JSON.stringify(current) !== this.openedWith) this.sync();
   }
 
   paused(): void {

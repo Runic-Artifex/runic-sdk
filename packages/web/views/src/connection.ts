@@ -1,9 +1,9 @@
-import { clock, delay } from "./clock.js";
+import { clock, delay, randomId } from "./clock.js";
 import { emitBridgeDiagnostic, emitErrorDiagnostic } from "./diagnostics.js";
 import { BridgeError } from "./errors.js";
 import { bridgeFailure, bridgeSuccess, type BridgeOutcome } from "./outcome.js";
 import { isObject, replyError, type Change, type Message, type Push, type Reply } from "./protocol.js";
-import { errorMessage, sharedRuntimeFor, type SharedRuntime } from "./runtime.js";
+import { currentRuntime, errorMessage, sharedRuntimeFor, type SharedRuntime } from "./runtime.js";
 import { reportBridgeError, waitForBridge } from "./transport.js";
 import { publishConnectionState } from "./connection-state.js";
 import { abortable, abortReason, isAbort, throwIfAborted } from "./lifetime.js";
@@ -192,6 +192,8 @@ class RouteEntry {
   private buffered: Push[] = [];
   private missed: number | undefined;
   private recovery: Promise<boolean> | undefined;
+  /** A frame kept during the recovery that is ending needs another one. */
+  private recoverAgain = false;
   private backoff: { cancel(): void } | undefined;
   private readonly stops: (() => void)[];
 
@@ -342,6 +344,8 @@ class RouteEntry {
     }
   }
 
+  private draining = false;
+
   private drain(accepted: boolean): void {
     const frames = this.buffered;
     const missed = this.missed;
@@ -349,8 +353,11 @@ class RouteEntry {
     this.missed = undefined;
     // After a read that failed, the client keeps its last state and discards the frames it kept.
     if (accepted && this.live()) {
-      for (const frame of frames) this.frame(frame);
-      if (missed !== undefined && (this.revision === undefined || missed > this.revision)) this.recover();
+      this.draining = true;
+      try {
+        for (const frame of frames) this.frame(frame);
+        if (missed !== undefined && (this.revision === undefined || missed > this.revision)) this.recover();
+      } finally { this.draining = false; }
     }
     this.settle();
   }
@@ -358,7 +365,13 @@ class RouteEntry {
   /** Reads the state with `snapshot`, retrying a failed read with backoff. Resolves with whether a state was accepted. */
   recover(): Promise<boolean> {
     if (!this.live()) return Promise.resolve(false);
-    return this.recovery ??= this.read(() => this.readSnapshot()).finally(() => { this.recovery = undefined; });
+    if (this.recovery && this.draining) { this.recoverAgain = true; return this.recovery; }
+    return this.recovery ??= this.read(() => this.readSnapshot()).finally(() => {
+      this.recovery = undefined;
+      if (!this.recoverAgain) return;
+      this.recoverAgain = false;
+      void this.recover();
+    });
   }
 
   private async readSnapshot(): Promise<boolean> {
@@ -400,12 +413,19 @@ class RouteEntry {
         reply = await this.runtime.request({
           kind: "open", route: this.route, presentation: lease.id, ...(handlers.length === 0 ? {} : { handlers }),
         }, this.route);
+        if (lease.disposed) {
+          // Disposed while the open was on its way, as by an aborted connect: the producer registered it, so close it.
+          if (reply.ok && reply["presentation"] === "ok" && this.runtime.connected)
+            void this.runtime.request({ kind: "close", route: this.route, presentation: lease.id }, this.route).catch(() => undefined);
+          return false;
+        }
         if (!reply.ok || !this.live()) return false;
         try { this.accept(reply["revision"] as number, reply["state"] as Message, reply["fields"]); }
         catch (cause) { throw new BridgeError("failed", `The Bridge returned an invalid state: ${errorMessage(cause)}`, { cause, route: this.route }); }
         return true;
       }), signal);
       if (!reply!.ok) throw replyError(reply!.error, this.route, "The View could not be opened.");
+      if (lease.disposed) return;
       if (reply!["presentation"] !== "ignored") {
         lease.registered = true;
         lease.interactions?.opened(typeof reply!["registration"] === "string" ? reply!["registration"] : undefined);
@@ -553,11 +573,11 @@ async function connectRoute<TState>(options: ViewConnectOptions<TState>): Promis
     options.members as Readonly<Record<string, (wire: unknown) => unknown>>, options.checkedFields ?? [], options.collections);
   if (!existing) runtime.routes.set(route, entry);
   const lease: Lease = {
-    id: globalThis.crypto.randomUUID(), disposed: false, registered: false, current: undefined, listeners: new Set(), interactions: undefined,
+    id: randomId(), disposed: false, registered: false, current: undefined, listeners: new Set(), interactions: undefined,
   };
   entry.presentations.add(lease);
 
-  const live = () => !lease.disposed && entry.live() && sharedRuntimeFor(bridge) === runtime;
+  const live = () => !lease.disposed && entry.live() && currentRuntime() === runtime;
   function assertConnected(): void {
     if (!runtime.connected) throw new BridgeError("disconnected", "The Bridge is disconnected.", { route });
     if (!live()) throw new BridgeError("released", "This View was released. Connect its current reference for the current state.", { route });

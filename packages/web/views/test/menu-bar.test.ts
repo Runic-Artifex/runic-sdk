@@ -100,17 +100,48 @@ test("invoke runs enabled items and reports disabled and stale ones", async () =
   assert.equal(await bar.invoke(find), "stale");
 });
 
-test("a host without the routes leaves the controller unavailable", async () => {
-  // Runic Desktop answers an unknown capability with an empty reply, CS-WebUI with its released envelope.
-  for (const reply of ["", "{\"ok\":false,\"state\":null,\"error\":{\"kind\":\"released\",\"message\":\"This View was released.\"}}"]) {
-    const bridge = installMockBridge(createMockBridge());
-    bridge.route("__runicMenuBarState", () => reply);
-    const bar = controller();
-    await until(() => bar.current.status !== "connecting", "The controller kept connecting.");
-    assert.equal(bar.current.status, "unavailable");
-    assert.equal(bar.current.error?.kind, "unavailable");
-    await assert.rejects(bar.invoke(item(fixture.menus, "file.new")), (error: { kind?: string }) => error.kind === "unavailable");
-  }
+test("a host without the menu bar route leaves the controller unavailable", async () => {
+  // A host that does not serve runic.menu-bar answers released, as for any route it does not serve.
+  installMockBridge(createMockBridge());
+  const bar = controller();
+  await until(() => bar.current.status !== "connecting", "The controller kept connecting.");
+  assert.equal(bar.current.status, "unavailable");
+  assert.equal(bar.current.error?.kind, "unavailable");
+  await assert.rejects(bar.invoke(item(fixture.menus, "file.new")), (error: { kind?: string }) => error.kind === "unavailable");
+});
+
+test("a host that rejects the menu bar request leaves the controller failed", async () => {
+  const bridge = installMockBridge(createMockBridge());
+  bridge.intercept(({ route }) => route === "runic.menu-bar"
+    ? { ok: false, error: { kind: "rejected", reason: "invalid-request", message: "The menu bar request is invalid." } } : undefined);
+  const bar = controller();
+  await until(() => bar.current.status !== "connecting", "The controller kept connecting.");
+  assert.equal(bar.current.status, "failed");
+  assert.equal(bar.current.error?.kind, "failed");
+});
+
+test("the controller speaks menu bar page protocol 2 on the Views channel", async () => {
+  const host = installMockMenuBar(fixture.menus, { platform: "linux" });
+  const bar = controller();
+  await until(() => bar.current.status === "ready", "The controller did not connect.");
+  assert.equal(await bar.invoke(item(bar.current.menus, "file.new")), "executed");
+  const calls = host.bridge.calls.map(call => [call.kind, call.route]);
+  assert.deepEqual(calls, [["hello", undefined], ["menu-bar-watch", "runic.menu-bar"], ["menu-bar-invoke", "runic.menu-bar"]]);
+  const invoke = host.bridge.calls.at(-1)!.message;
+  assert.deepEqual(invoke, { kind: "menu-bar-invoke", route: "runic.menu-bar", revision: host.revision, key: item(fixture.menus, "file.new").key });
+  // The host pushes each change of its revision while the controller watches; dispose stops the watch.
+  const pushes: unknown[] = [];
+  const stop = host.bridge.onMessage(message => pushes.push(JSON.parse(message)));
+  host.update({ placement: "window" });
+  await until(() => bar.current.placement === "window", "The push did not reach the controller.");
+  assert.deepEqual(pushes.map(push => (push as { kind: string; route: string }).kind), ["menu-bar"]);
+  assert.equal((pushes[0] as { state: { protocol: number; revision: number } }).state.protocol, 2);
+  assert.equal(bar.current.revision, host.revision);
+  bar.dispose();
+  await until(() => host.bridge.calls.some(call => call.kind === "menu-bar-unwatch"), "dispose did not unwatch.");
+  host.update({ placement: "page" });
+  assert.equal(pushes.length, 1);
+  stop();
 });
 
 test("the page matches shortcuts where the host has no key path, after the page and outside compositions", async () => {
@@ -226,18 +257,20 @@ test("shortcuts: \"app\" takes the lease, handleKeyDown invokes, and dispose or 
   assert.equal(bar.handleKeyDown({ ...event, defaultPrevented: true }), false);
   assert.equal(bar.handleKeyDown({ ...event, key: "q", code: "KeyQ" }), false);
 
-  // A failed long poll keeps the lease; a new connection takes it again.
-  host.bridge.failNext("__runicMenuBarWait", { kind: "transport", message: "dropped" });
-  host.update({ placement: "page" });
-  await until(() => host.bridge.calls.filter(call => call.name === "__runicMenuBarState").length === 1, "The controller did not read the state again.");
-  assert.equal(host.bridge.calls.filter(call => call.name === "__runicMenuBarControl").length, 1);
+  // The lease belongs to a connection: a new connection watches and takes it again.
+  const count = (kind: string) => host.bridge.calls.filter(call => call.kind === kind).length;
+  assert.deepEqual([count("menu-bar-watch"), count("menu-bar-shortcuts")], [1, 1]);
   host.bridge.disconnect();
   assert.equal(host.leased, false);
+  await until(() => bar.current.status === "connecting", "The controller did not see the lost connection.");
   host.bridge.reconnect();
   await until(() => host.leased, "The lease was not taken on the new connection.");
+  assert.deepEqual([count("hello"), count("menu-bar-watch"), count("menu-bar-shortcuts")], [2, 2, 2]);
+  assert.equal(bar.current.status, "ready");
 
   lifetime.abort();
   await until(() => !host.leased, "Aborting did not release the lease.");
+  assert.deepEqual(host.bridge.calls.filter(call => call.kind === "menu-bar-shortcuts").at(-1)!.message["shortcuts"], "runic");
   assert.equal(bar.handleKeyDown(event), false, "A disposed controller matched a shortcut.");
   await assert.rejects(bar.invoke(item(fixture.menus, "file.new")), (error: { kind?: string }) => error.kind === "released");
 });

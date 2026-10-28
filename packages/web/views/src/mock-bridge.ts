@@ -51,7 +51,9 @@ export interface MockBridgeOptions {
   /**
    * Processes requests out of order: each request is admitted when its own delay ends, and requests due together
    * are admitted newest first, as a producer that does not keep a connection's admission order. Setter edits that
-   * arrive after a newer edit of their member then answer `superseded`, as a producer does.
+   * arrive after a newer edit of their member then answer `superseded`, as a producer does. Requests that change
+   * state (`set`, `write`, `command`, `start`) run one at a time in the order they are admitted, as a window's turns:
+   * a command handler that awaits holds the next one until it returns.
    */
   readonly reorderRequests?: boolean;
 }
@@ -909,7 +911,11 @@ export function createMockBridge(options: MockBridgeOptions = {}): MockBridge {
       const identity = { protocol: 4, implementation: mockImplementation };
       if (message["protocol"] !== 4) return { ok: false, ...identity, error: { kind: "failed", reason: "protocol-mismatch",
         message: `The mock implements Views protocol 4, but the client sent protocol ${String(message["protocol"])}.` } };
-      if (connection.session !== undefined || typeof message["session"] !== "string") return { ...invalidRequest("A second or invalid hello."), ...identity };
+      const client = message["client"];
+      if (connection.session !== undefined || typeof message["session"] !== "string" || !isRecord(client)
+        || typeof client["name"] !== "string" || client["name"].length < 1 || client["name"].length > 128
+        || typeof client["version"] !== "string" || client["version"].length < 1 || client["version"].length > 64)
+        return { ...invalidRequest("A second or invalid hello."), ...identity };
       if (closedSessions.has(message["session"])) return { ...released(), ...identity };
       connection.session = message["session"];
       return ok(identity);
@@ -1003,6 +1009,18 @@ export function createMockBridge(options: MockBridgeOptions = {}): MockBridge {
     }
   }
 
+  // Requests that change state are admitted one at a time, as a window's turns: each runs once the previous one
+  // has answered. Reads, operation observation and interaction replies are not held, so a command that waits for
+  // an interaction can receive its reply.
+  let turn: Promise<unknown> = Promise.resolve();
+  const turnKinds = new Set(["set", "write", "command", "start"]);
+  function admitted(kind: string, run: () => Promise<Reply>): Promise<Reply> {
+    if (!turnKinds.has(kind)) return run();
+    const next = turn.then(run, run);
+    turn = next.catch(() => undefined);
+    return next;
+  }
+
   async function flush(): Promise<void> {
     for (let round = 0; round < maximumRounds; round++) {
       for (let task = takeDue(); task; task = takeDue()) task.run();
@@ -1043,7 +1061,7 @@ export function createMockBridge(options: MockBridgeOptions = {}): MockBridge {
         const settle = (run: () => void) => toPage(() => { owner.pending.delete(drop); run(); });
         toProducer(() => {
           if (connection !== owner) return;
-          answer(message, call).then(
+          admitted(call.kind, () => answer(message, call)).then(
             reply => settle(() => resolve(JSON.stringify(reply))),
             error => settle(() => reject(error)));
         });

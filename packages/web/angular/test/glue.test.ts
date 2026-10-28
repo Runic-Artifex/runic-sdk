@@ -313,6 +313,7 @@ function fakeOperation(requestId: string) {
     status: () => terminal,
     completion: terminal,
     wait: () => terminal,
+    subscribe: () => () => {},
     async cancel() { cancels++; return { contract: "test", requestId, kind: "cancellation-requested" }; },
     async outcome() {
       const status = await terminal;
@@ -433,7 +434,8 @@ function hostBridge(initial: boolean) {
   const listeners = new Set<(connected: boolean) => void>();
   const bridge: RunicBridgeClient = {
     isConnected: () => connected,
-    call: () => Promise.reject(new Error("not used")),
+    request: () => Promise.reject(new Error("not used")),
+    onMessage: () => () => {},
     onConnectionChange(listener) {
       listeners.add(listener);
       listener(connected);

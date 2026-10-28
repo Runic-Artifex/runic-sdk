@@ -268,8 +268,8 @@ export function createMenuBarController(options: MenuBarControllerOptions = {}):
     if (!isObject(value) || typeof value["revision"] !== "number") return false;
     if (typeof value["platform"] === "string") platform = value["platform"];
     const revision = value["revision"];
-    // A push older than the state a reply already applied changes nothing.
-    if (state.status === "ready" && revision < state.revision) return true;
+    // A state the controller already has, from a reply or a push, changes nothing.
+    if (state.status === "ready" && revision <= state.revision) return true;
     const placement = text(value["placement"]) && placements.includes(value["placement"])
       ? value["placement"] as MenuBarState["placement"] : "none";
     const shortcuts = text(value["shortcuts"]) && owners.includes(value["shortcuts"])
@@ -290,6 +290,12 @@ export function createMenuBarController(options: MenuBarControllerOptions = {}):
     for (let wait = 25; !disposed; wait = Math.min(wait * 2, 2000)) {
       watching = true;
       try {
+        // The "app" lease is taken first, so the state never shows the host matching the shortcuts.
+        if (app && !leased) {
+          const lease = await request({ kind: "menu-bar-shortcuts", shortcuts: "app" });
+          if (disposed) return;
+          if (lease.ok) { leased = true; apply(lease["state"]); }
+        }
         const watched = await request({ kind: "menu-bar-watch" });
         if (disposed) return;
         if (!watched.ok) {
@@ -301,10 +307,6 @@ export function createMenuBarController(options: MenuBarControllerOptions = {}):
           return;
         }
         if (!apply(watched["state"])) { stop("unavailable", unavailable("The host answered the menu bar with an invalid state.")); return; }
-        if (app) {
-          const lease = await request({ kind: "menu-bar-shortcuts", shortcuts: "app" });
-          if (lease.ok) { leased = true; apply(lease["state"]); }
-        }
         return;
       } catch {
         // A lost connection watches again on the next one; another failure retries with backoff.

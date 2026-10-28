@@ -2,6 +2,7 @@
 // every generated module and every copy of this package through `runic.views.generated-client-runtime`. It owns
 // the connection (`hello` per connection), the only `onMessage` listener, which dispatches pushes by kind and
 // route, the page's edit numbers and the reconnect of open routes.
+import { randomId } from "./clock.js";
 import { emitBridgeDiagnostic, suppressErrorDiagnostic } from "./diagnostics.js";
 import { BridgeError } from "./errors.js";
 import { invalidResponse, readPush, readReply, replyError, type Message, type Push, type PushReading, type Reply } from "./protocol.js";
@@ -44,6 +45,11 @@ export interface SharedRuntime {
 }
 
 const sharedRuntimeKey = Symbol.for("runic.views.generated-client-runtime");
+
+/** The page runtime, without creating one. */
+export function currentRuntime(): SharedRuntime | undefined {
+  return hostCallbacks()[sharedRuntimeKey] as SharedRuntime | undefined;
+}
 
 /** Returns the page runtime for a Bridge, replacing one of another Bridge or protocol. */
 export function sharedRuntimeFor(bridge: RunicBridgeClient): SharedRuntime {
@@ -123,7 +129,7 @@ function createRuntime(bridge: RunicBridgeClient): SharedRuntime {
     const current = connection;
     const promise = (async () => {
       const reply = await send({
-        kind: "hello", protocol: bridgeProtocol, session: globalThis.crypto.randomUUID(),
+        kind: "hello", protocol: bridgeProtocol, session: randomId(),
         client: { name: clientName, version: viewsVersion },
       }, undefined);
       if (reply["protocol"] !== bridgeProtocol && (reply["protocol"] !== undefined || reply.ok)) {

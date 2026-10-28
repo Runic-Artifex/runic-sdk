@@ -7,27 +7,27 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { BridgeError, BridgeOperationUncertainError } from "../dist/index.js";
 import { bridgeOperations, connectView, viewReferences } from "../dist/generated.js";
 import * as bridgeWire from "../dist/wire.js";
-import { createMockBridge, installMockBridge, type MockBridge } from "../dist/mock.js";
+import { createMockBridge, installMockBridge, type MockBridge, type MockCall } from "../dist/mock.js";
 
 type CounterState = { readonly count: number; readonly label: string };
-type Wire = { readonly revision: number; readonly count: unknown; readonly label: unknown };
 const runtimeKey = Symbol.for("runic.views.generated-client-runtime");
 const host = globalThis as unknown as Record<string | symbol, unknown>;
-
-function hydrate(wire: Wire): CounterState {
-  return { count: bridgeWire.integer(wire.count, 0, 1000), label: bridgeWire.string(wire.label) };
-}
+const contract = "Tests.CounterViewModel:fingerprint";
+const members = { count: (value: unknown) => bridgeWire.integer(value, 0, 1000), label: bridgeWire.string };
 
 function freshBridge(): MockBridge {
+  (host[runtimeKey] as { dispose?: () => void } | undefined)?.dispose?.();
   delete host[runtimeKey];
   return installMockBridge(createMockBridge());
 }
 
-function connectCounter(route = "counter", mount = false) {
-  return connectView({ contract: "Tests.CounterViewModel:fingerprint", route, mount, hydrate, operations: bridgeOperations });
+function connectCounter(route = "counter") {
+  return connectView<CounterState>({ contract, route, members, operations: bridgeOperations });
 }
 
-const routeCalls = (bridge: MockBridge, name: string) => bridge.calls.filter(call => call.name === name);
+const requests = (bridge: MockBridge, kind: string, route?: string): MockCall[] =>
+  bridge.calls.filter(call => call.kind === kind && (route === undefined || call.route === route));
+const settle = () => new Promise(resolve => setTimeout(resolve, 0));
 
 function captureReports() {
   const target = globalThis as { reportError?: ((error: unknown) => void) | undefined };
@@ -41,7 +41,7 @@ test("a connected client reads, updates and pushes state through the mock Bridge
   const bridge = freshBridge();
   const counter = bridge.view("counter", {
     state: { count: 1, label: "one" },
-    routes: { Increment: state => ({ count: (state["count"] as number) + 1 }) },
+    commands: { increment: state => ({ count: (state["count"] as number) + 1 }) },
   });
   const client = await connectCounter();
   assert.deepEqual(client.snapshot, { count: 1, label: "one" });
@@ -50,9 +50,9 @@ test("a connected client reads, updates and pushes state through the mock Bridge
   const seen: CounterState[] = [];
   const stop = client.subscribe(state => seen.push(state));
   assert.deepEqual(seen, [{ count: 1, label: "one" }]);
-  assert.deepEqual(await client.command("counterIncrement"), { count: 2, label: "one" });
-  assert.deepEqual(await client.invoke("counterSetLabel", "two"), { count: 2, label: "two" });
-  assert.equal(await client.query("counterCanIncrement"), true);
+  assert.deepEqual(await client.command("increment"), { count: 2, label: "one" });
+  assert.deepEqual(await client.set("label", "two"), { count: 2, label: "two" });
+  assert.equal(await client.can("increment"), true);
   counter.update({ count: 9 });
   assert.equal(client.snapshot.count, 9);
   assert.equal(seen.at(-1)?.count, 9);
@@ -62,19 +62,18 @@ test("a connected client reads, updates and pushes state through the mock Bridge
   client.dispose();
 });
 
-test("an undecodable push neither replaces the state nor advances the revision", async () => {
+test("an undecodable state push neither replaces the state nor advances the revision", async () => {
   const bridge = freshBridge();
-  bridge.view("counter", { state: { count: 1, label: "one" } });
+  const counter = bridge.view("counter", { state: { count: 1, label: "one" } });
   const client = await connectCounter();
   const { reported, restore } = captureReports();
   try {
-    const push = host["__counterChanged"] as (state: unknown) => unknown;
-    push({ revision: 50, count: "not a number", label: "bad" });
+    counter.push({ kind: "state", revision: 50, state: { count: "not a number", label: "bad" } });
     assert.equal(reported.length, 1);
     assert.deepEqual(client.snapshot, { count: 1, label: "one" });
-    push({ revision: 49, count: 2, label: "accepted" });
+    counter.push({ kind: "state", revision: 49, state: { count: 2, label: "accepted" } });
     assert.deepEqual(client.snapshot, { count: 2, label: "accepted" });
-    push({ revision: 10, count: 3, label: "stale" });
+    counter.push({ kind: "state", revision: 10, state: { count: 3, label: "stale" } });
     assert.deepEqual(client.snapshot, { count: 2, label: "accepted" });
   } finally {
     restore();
@@ -101,12 +100,16 @@ test("a throwing subscriber does not stop delivery to later subscribers", async 
   }
 });
 
-test("a disposed client keeps its last snapshot and ignores late subscribers", async () => {
+test("a disposed client closes its presentation, keeps its last snapshot and ignores late subscribers", async () => {
   const bridge = freshBridge();
   const counter = bridge.view("counter", { state: { count: 5, label: "five" } });
   const client = await connectCounter();
+  const presentation = requests(bridge, "open")[0]?.message["presentation"];
+  assert.equal(typeof presentation, "string");
   client.dispose();
   client.dispose();
+  await settle();
+  assert.deepEqual(requests(bridge, "close").map(call => call.message["presentation"]), [presentation]);
   assert.deepEqual(client.snapshot, { count: 5, label: "five" });
   const late: CounterState[] = [];
   const stop = client.subscribe(state => late.push(state));
@@ -114,101 +117,122 @@ test("a disposed client keeps its last snapshot and ignores late subscribers", a
   stop();
   counter.update({ count: 6 });
   assert.deepEqual(late, [{ count: 5, label: "five" }]);
-  await assert.rejects(client.invoke("counterSetCount", 1), (error: unknown) =>
-    error instanceof BridgeError && error.kind === "released");
-  assert.equal(host["__counterChanged"], undefined);
+  await assert.rejects(client.set("count", 1), (error: unknown) =>
+    error instanceof BridgeError && error.kind === "released" && error.route === "counter");
+  assert.equal((host[runtimeKey] as { routes: Map<string, unknown> }).routes.has("counter"), false);
 });
 
-test("leases of one route share a snapshot until the last one is disposed", async () => {
+test("presentations of one route share its state until the last one is disposed", async () => {
   const bridge = freshBridge();
-  bridge.view("counter", { state: { count: 1, label: "one" } });
+  const counter = bridge.view("counter", { state: { count: 1, label: "one" } });
   const first = await connectCounter();
   const second = await connectCounter();
-  assert.equal(routeCalls(bridge, "counterSnapshot").length, 1);
+  const opened = requests(bridge, "open").map(call => call.message["presentation"]);
+  assert.equal(opened.length, 2, "each presentation sends its own open");
+  assert.notEqual(opened[0], opened[1]);
   assert.equal(first.snapshot, second.snapshot);
   first.dispose();
-  assert.equal(typeof host["__counterChanged"], "function");
+  counter.update({ count: 2 });
+  assert.equal(second.snapshot.count, 2, "the route stays open for the remaining presentation");
+  assert.equal(first.snapshot.count, 1);
   second.dispose();
-  assert.equal(host["__counterChanged"], undefined);
+  const routes = (host[runtimeKey] as { routes: Map<string, unknown> }).routes;
+  assert.equal(routes.has("counter"), false);
   const third = await connectCounter();
-  await assert.rejects(connectView({ contract: "Other:fingerprint", route: "counter", mount: false, hydrate }),
+  await assert.rejects(connectView({ contract: "Other:fingerprint", route: "counter", members }),
     (error: unknown) => error instanceof BridgeError && /incompatible/.test(error.message));
   third.dispose();
 });
 
-// .NET rejects a browser session once its connection closed, and a CS-WebUI
-// reconnect can keep the connection key, so the page mounts in a new session.
-test("a reconnect re-reads live routes and mounts each View again in a new browser session", async () => {
+// Specs/application, "Presentations": after a new connection the client sends hello with a new session and opens
+// each route again with the same presentation ids, retrying while the producer answers `ignored`.
+test("a reconnect sends a new hello and opens each presentation again with its id", async () => {
   const bridge = freshBridge();
-  const mounts = ["ok", "ignored", "ok"];
-  const counter = bridge.view("contentabc", {
-    state: { count: 1, label: "before" },
-    routes: { Mount: () => mounts.shift() ?? "unexpected" },
-  });
-  const client = await connectCounter("contentabc", true);
-  const token = routeCalls(bridge, "contentabcMount")[0]?.args[0];
-  assert.equal(typeof token, "string");
+  const counter = bridge.view("contentabc", { state: { count: 1, label: "before" } });
+  const client = await connectCounter("contentabc");
+  const presentation = requests(bridge, "open")[0]?.message["presentation"];
   bridge.disconnect();
   counter.update({ label: "after" });
-  assert.equal(client.snapshot.label, "after", "a push during the outage is still accepted");
-  bridge.reconnect();
-  const deadline = Date.now() + 5_000;
-  while (routeCalls(bridge, "contentabcMount").length < 3 && Date.now() < deadline)
-    await new Promise(resolve => setTimeout(resolve, 20));
-  const remounts = routeCalls(bridge, "contentabcMount").slice(1).map(call => call.args[0] as string);
-  assert.equal(remounts.length, 2, "an ignored remount is retried");
-  const [session, presentation] = (token as string).split(":");
-  assert.ok(remounts.every(remount => remount === remounts[0]));
-  assert.notEqual(remounts[0]!.split(":")[0], session, "the remount starts a new browser session");
-  assert.equal(remounts[0]!.split(":")[1], presentation, "the remount keeps the presentation");
-  assert.ok(routeCalls(bridge, "contentabcSnapshot").length >= 2);
-  client.dispose();
-  assert.equal(routeCalls(bridge, "contentabcUnmount")[0]?.args[0], remounts[0]);
-});
-
-test("calls fail with BridgeError when the transport is unavailable", async () => {
-  const bridge = freshBridge();
-  bridge.view("counter", { state: { count: 1, label: "one" }, routes: { Fail: () => { throw Object.assign(new Error("No."), { kind: "rejected" }); } } });
-  const client = await connectCounter();
-  await assert.rejects(client.command("counterFail"), (error: unknown) => error instanceof BridgeError && error.kind === "rejected");
-  await assert.rejects(client.command("counterMissing"), (error: unknown) => error instanceof BridgeError && error.kind === "failed");
-  bridge.disconnect();
-  await assert.rejects(client.command("counterIncrement"), (error: unknown) => error instanceof BridgeError && error.kind === "disconnected");
-  client.dispose();
-});
-
-test("operations admit, retry a dropped wait and recover by request id", async () => {
-  const bridge = freshBridge();
-  bridge.view("counter", { state: { count: 1, label: "one" } });
-  const contract = "Tests.CounterViewModel:fingerprint:counter";
-  bridge.route("counterStartSave", payload => JSON.stringify({ contract, requestId: JSON.parse(String(payload)).requestId, kind: "accepted", terminal: null }));
-  let dropWait = true;
-  bridge.route("__runicOperationWait", identity => {
-    if (dropWait) { dropWait = false; throw new Error("dropped"); }
-    return JSON.stringify({ contract, requestId: JSON.parse(String(identity)).requestId, kind: "succeeded", result: "7" });
+  assert.equal(client.snapshot.label, "before", "a push during the outage is not delivered");
+  let ignored = 1;
+  const stop = bridge.intercept(call => {
+    if (call.kind !== "open" || ignored === 0) return undefined;
+    ignored--;
+    return { ok: true, revision: counter.revision, state: counter.state, presentation: "ignored" };
   });
-  bridge.route("__runicOperationStatus", identity => JSON.stringify({ contract, requestId: JSON.parse(String(identity)).requestId, kind: "unknown" }));
+  try {
+    bridge.reconnect();
+    const deadline = Date.now() + 5_000;
+    while (requests(bridge, "open").length < 3 && Date.now() < deadline) await new Promise(resolve => setTimeout(resolve, 20));
+    await settle();
+  } finally { stop(); }
+  const opens = requests(bridge, "open").map(call => call.message["presentation"]);
+  assert.deepEqual(opens, [presentation, presentation, presentation], "an ignored open is retried with the same id");
+  const sessions = requests(bridge, "hello").map(call => call.message["session"]);
+  assert.equal(sessions.length, 2);
+  assert.notEqual(sessions[0], sessions[1], "the new connection has a new session");
+  assert.equal(client.snapshot.label, "after", "the reopened route takes the state of the new connection");
+  client.dispose();
+  await settle();
+  assert.deepEqual(requests(bridge, "close").map(call => call.message["presentation"]), [presentation]);
+});
+
+test("calls fail with BridgeError, and with disconnected when the transport is unavailable", async () => {
+  const bridge = freshBridge();
+  bridge.view("counter", {
+    state: { count: 1, label: "one" },
+    commands: { fail: () => { throw Object.assign(new Error("No."), { kind: "rejected" }); }, increment: () => undefined },
+  });
   const client = await connectCounter();
-  const operation = await client.startOperation("Save", "request-1", () => JSON.stringify({ requestId: "request-1", input: 3 }),
-    value => bridgeWire.bigint(value));
-  await assert.rejects(operation.wait(), (error: unknown) => error instanceof BridgeOperationUncertainError);
-  const completion = await operation.completion;
-  assert.equal(completion.kind, "succeeded");
-  assert.equal(completion.result, 7n);
-  await assert.rejects(client.recoverOperation("Save", "request-2", value => value),
-    (error: unknown) => error instanceof BridgeOperationUncertainError && error.requestId === "request-2");
-  await assert.rejects(client.startOperation("Save", "", () => "", value => value), RangeError);
+  await assert.rejects(client.command("fail"), (error: unknown) => error instanceof BridgeError && error.kind === "rejected" && error.route === "counter");
+  await assert.rejects(client.command("missing"), (error: unknown) =>
+    error instanceof BridgeError && error.kind === "rejected" && error.reason === "invalid-request");
+  bridge.disconnect();
+  await assert.rejects(client.command("increment"), (error: unknown) => error instanceof BridgeError && error.kind === "disconnected");
   client.dispose();
 });
 
-test("operations reject without injected operation support and call no route", async () => {
+test("operations start, retry a failed watch and recover by operation id", async () => {
+  const bridge = freshBridge();
+  const counter = bridge.view("counter", { state: { count: 1, label: "one" }, operations: { save: "manual" } });
+  let dropWatch = true;
+  const stop = bridge.intercept(call => {
+    if (call.kind !== "watch" || !dropWatch) return undefined;
+    dropWatch = false;
+    throw new Error("dropped");
+  });
+  const client = await connectCounter();
+  try {
+    const operation = await client.start("save", "request-1", 3, { decode: value => bridgeWire.bigint(value) });
+    assert.equal(operation.requestId, "request-1");
+    assert.deepEqual(requests(bridge, "start")[0]?.message, { kind: "start", route: "counter", member: "save", operation: "request-1",
+      contract, input: 3 });
+    await assert.rejects(operation.wait(), (error: unknown) => error instanceof BridgeOperationUncertainError && error.requestId === "request-1");
+    // The next read watches again.
+    const completion = operation.completion;
+    await settle();
+    counter.operations("save")[0]!.succeed("7");
+    const status = await completion;
+    assert.equal(status.kind, "succeeded");
+    assert.equal(status.kind === "succeeded" ? status.result : undefined, 7n);
+    assert.equal(requests(bridge, "watch").length, 2);
+    await assert.rejects(client.recover("save", "request-2", { decode: value => value }),
+      (error: unknown) => error instanceof BridgeOperationUncertainError && error.requestId === "request-2");
+    await assert.rejects(client.start("save", "", undefined, { decode: value => value }), RangeError);
+  } finally {
+    stop();
+    client.dispose();
+  }
+});
+
+test("operations reject without injected operation support and send no request", async () => {
   const bridge = freshBridge();
   bridge.view("counter", { state: { count: 1, label: "one" } });
-  const client = await connectView({ contract: "Tests.CounterViewModel:fingerprint", route: "counter", mount: false, hydrate });
+  const client = await connectView<CounterState>({ contract, route: "counter", members });
   const callsBefore = bridge.calls.length;
   const unsupported = (error: unknown) => error instanceof BridgeError && error.kind === "failed" && /operation support/.test(error.message);
-  await assert.rejects(client.startOperation("Save", "request-1", () => "request-1", value => value), unsupported);
-  await assert.rejects(client.recoverOperation("Save", "request-1", value => value), unsupported);
+  await assert.rejects(client.start("save", "request-1", undefined, { decode: value => value }), unsupported);
+  await assert.rejects(client.recover("save", "request-1", { decode: value => value }), unsupported);
   assert.equal(bridge.calls.length, callsBefore);
   client.dispose();
 });
@@ -219,14 +243,27 @@ test("content references keep their identity per id", () => {
   assert.notEqual(references("a"), references("b"));
 });
 
-test("an HMR-retained runtime from an earlier generated client gains new fields", async () => {
+test("a runtime of another protocol or Bridge at the shared key is replaced", async () => {
   const bridge = freshBridge();
   bridge.view("counter", { state: { count: 1, label: "one" } });
-  host[runtimeKey] = { bridge, generation: Symbol(), mountSession: "legacy", routes: new Map() };
+  // An HMR-retained runtime of a protocol-3 generated client.
+  const legacy = { bridge, generation: Symbol(), mountSession: "legacy", routes: new Map() };
+  host[runtimeKey] = legacy;
   const client = await connectCounter();
-  const runtime = host[runtimeKey] as { operations?: Map<string, unknown>; routes: Map<string, unknown> };
+  const runtime = host[runtimeKey] as { protocol?: number; operations?: Map<string, unknown>; routes: Map<string, unknown> };
+  assert.notEqual(runtime, legacy);
+  assert.equal(runtime.protocol, 4);
   assert.ok(runtime.operations instanceof Map);
   assert.ok(runtime.routes.has("counter"));
+  assert.equal(legacy.routes.size, 0);
+
+  // A new Bridge gets its own runtime; the old one stops listening.
+  const next = installMockBridge(createMockBridge());
+  next.view("counter", { state: { count: 7, label: "next" } });
+  const other = await connectCounter();
+  assert.notEqual(host[runtimeKey], runtime);
+  assert.equal(other.snapshot.count, 7);
+  other.dispose();
   client.dispose();
 });
 
@@ -251,10 +288,10 @@ test("copies of the package share one page runtime and one BridgeError identity"
 
     const bridge = freshBridge();
     const counter = bridge.view("counter", { state: { count: 1, label: "one" } });
-    const options = { contract: "Tests.CounterViewModel:fingerprint", route: "counter", mount: false, hydrate };
-    const first = await aGenerated.connectView(options);
-    const second = await bGenerated.connectView(options);
-    assert.equal(routeCalls(bridge, "counterSnapshot").length, 1);
+    const options = { contract, route: "counter", members };
+    const first = await aGenerated.connectView<CounterState>(options);
+    const second = await bGenerated.connectView<CounterState>(options);
+    assert.equal(requests(bridge, "hello").length, 1, "both copies use the connection of one runtime");
     counter.update({ count: 2 });
     assert.equal(first.snapshot.count, 2);
     assert.equal(second.snapshot, first.snapshot);

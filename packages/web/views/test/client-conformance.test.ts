@@ -233,7 +233,7 @@ async function run(scenario: Scenario): Promise<void> {
   const diagnostics: string[] = [];
   const stopDiagnostics = onBridgeDiagnostic(diagnostic => { diagnostics.push(diagnostic.code); });
   // The runtime reports errors it cannot throw to a caller, such as a `failure` push, with `reportError`.
-  const page = globalThis as { reportError?: (error: unknown) => void };
+  const page = globalThis as { reportError?: ((error: unknown) => void) | undefined };
   const reportError = page.reportError;
   page.reportError = () => {};
   const requests = new Map<string, Connection["sent"][number]>();
