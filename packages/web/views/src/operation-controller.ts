@@ -15,6 +15,11 @@ export interface OperationState<TResult, TFailure = never> {
   readonly admitting: boolean;
   readonly operation: BridgeOperation<TResult, TFailure> | undefined;
   readonly status: BridgeOperationStatus<TResult, TFailure> | undefined;
+  /**
+   * How far the latest run's operation got, from 0 to 1, while it is running and reports progress
+   * (`BridgeOperation.subscribe`); undefined while the progress is unknown and once the run ended.
+   */
+  readonly progress: number | undefined;
   readonly outcome: BridgeOutcome<TResult, TFailure> | undefined;
   readonly failure: TFailure | undefined;
   /** An unexpected failure, including a `failed` or `timed-out` status. Never a `cancelled` status. */
@@ -59,7 +64,7 @@ export interface OperationController<TArgs extends readonly unknown[], TResult, 
 }
 
 function initial<TResult, TFailure>(): OperationState<TResult, TFailure> {
-  return { pending: false, admitting: false, operation: undefined, status: undefined, outcome: undefined,
+  return { pending: false, admitting: false, operation: undefined, status: undefined, progress: undefined, outcome: undefined,
     failure: undefined, error: undefined, cancelled: false, cancellationRequested: false, cancelling: false, cancellation: undefined, cancelError: undefined };
 }
 
@@ -77,6 +82,14 @@ function publisher<T>(value: T) {
     subscribe(listener: () => void) { listeners.add(listener); return () => { listeners.delete(listener); }; },
     dispose() { listeners.clear(); },
   };
+}
+
+// Follows the `progress` of a running operation; the subscription shares the operation's one watch with `wait()`.
+function observeProgress<TResult, TFailure>(operation: BridgeOperation<TResult, TFailure>,
+  report: (progress: number | undefined) => void): () => void {
+  // A start function may return a test double without `subscribe`.
+  if (typeof operation.subscribe !== "function") return () => {};
+  return operation.subscribe(status => { if (status.kind === "running") report(status.progress); });
 }
 
 function deferred<T>() {
@@ -131,17 +144,22 @@ export function createOperationController<TArgs extends readonly unknown[], TRes
   }
 
   async function execute(run: Run, args: TArgs): Promise<void> {
+    let stopProgress: (() => void) | undefined;
     try {
       if (disposed) return;
       const operation = await start(...args);
       if (disposed || !operation) return;
       run.operation = operation;
       publish(run, { admitting: false, operation });
+      stopProgress = observeProgress(operation, progress => {
+        if (latest === run && state.current.progress !== progress) publish(run, { progress });
+      });
       void cancel(run);
       if (disposed) return;
       const status = await operation.wait();
+      stopProgress();
       if (disposed) return;
-      publish(run, { status });
+      publish(run, { status, progress: undefined });
       if (disposed) return;
       await options.waitForCompletion?.(operation, status);
       if (disposed) return;
@@ -157,6 +175,7 @@ export function createOperationController<TArgs extends readonly unknown[], TRes
     } catch (error) {
       if (run.feedback === feedback) publish(run, { error });
     } finally {
+      stopProgress?.();
       run.settled = true;
       runs.delete(run);
       run.result.resolve(undefined);
@@ -297,6 +316,7 @@ export function createLatestOperationController<TResult = void, TFailure = never
   }
 
   async function execute(intent: Intent): Promise<void> {
+    let stopProgress: (() => void) | undefined;
     let boundaryObserved = false;
     let startAttempted = false;
     try {
@@ -308,9 +328,14 @@ export function createLatestOperationController<TResult = void, TFailure = never
       if (!observed(intent) || !operation) { boundaryObserved = true; return; }
       intent.operation = operation;
       if (isCurrent(intent)) state.publish({ admitting: false, operation });
+      stopProgress = observeProgress(operation, progress => {
+        if (state.current.progress !== progress) publish(intent, { progress });
+      });
       if (intent.superseded) requestCancel(intent);
       if (!observed(intent)) return;
       const status = await operation.wait();
+      stopProgress();
+      if (fresh(intent) && state.current.progress !== undefined) state.publish({ progress: undefined });
       if (!observed(intent)) return;
       if (status.kind === "running" || status.kind === "unknown" || status.kind === "expired" || status.kind === "timed-out")
         throw uncertainOperation(status.contract, undefined, operation.requestId,
@@ -340,6 +365,7 @@ export function createLatestOperationController<TResult = void, TFailure = never
         try { publish(intent, { error }); } catch (callbackError) { state.publish({ error: callbackError }); }
       }
     } finally {
+      stopProgress?.();
       // Terminal/outcome subscribers can introduce supersession and a delayed
       // global control, too. Observe cancellation at the final handoff, after
       // every publication that still owns this intent. Skip an absent promise

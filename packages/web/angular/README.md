@@ -75,6 +75,47 @@ export class CounterPage {
 }
 ```
 
+### Text inputs
+
+Bind a text input to a member with `injectTextField(view, read, write, options?)`,
+which wraps the framework-neutral
+[text field controller](https://github.com/Runic-Artifex/runic-sdk/tree/main/packages/web/views#text-inputs)
+for the lifetime of the injection context:
+
+```ts
+@Component({
+  selector: "person-page",
+  template: `
+    <input [value]="name.value()" (input)="name.input($event)"
+      (compositionstart)="name.compositionStart()" (compositionend)="name.compositionEnd($event)">
+    @if (name.error() !== undefined) { <p role="alert">{{ name.error() }}</p> }
+  `,
+})
+export class PersonPage {
+  readonly page = input.required<PersonPageReference>();
+  readonly person = injectView(this.page);
+  readonly name = injectTextField(this.person, state => state.name, (client, value) => client.setName(value));
+}
+```
+
+It returns the `value`, `editing` and `error` signals with `input(event | text)`,
+`compositionStart()`, `compositionEnd(event | text)` and `reset()`. `view` is an
+`injectView` handle or any pair of `state` and `client` signals. The options are
+`coalesce`, `keepDraftOnError` and `injector` outside an injection context.
+The field shows what the user typed while its writes are in flight, so a reply or
+frame that answers an older keystroke never replaces newer text. At most one write is
+in flight; text typed meanwhile is written next as one value (`coalesce: false` writes
+every change). Nothing is written during IME composition. Once the last write settled,
+the field shows the View's value again, including any normalization the ViewModel
+applied (trimmed, upper-cased). `write` may also be a command or a checked write. A
+failed write keeps the draft and sets `error` (`keepDraftOnError: false` shows the
+View's value instead); `reset()` drops the draft. `editing` is true while a draft
+exists. Don't disable the input on the View's busy state (`isSaving`, `can…`) while
+the user types: the field's own write causes it, and keys typed meanwhile would be
+lost. Test such fields by typing key by key (Playwright `pressSequentially`, Testing
+Library `user.type`) against the mock with `latency: "slow"`; `fill()` sets the whole
+text at once and hides the race.
+
 ## Outlet
 
 Register a component for each generated View kind and pass the current
@@ -166,9 +207,11 @@ readonly push = injectOperation((remote: string) => this.workspace.client()?.sta
 ```
 
 It returns `run(...args)`, `cancel()` and `reset()`, which never reject, and the
-`pending`, `admitting`, `operation`, `status`, `outcome`, `failure`, `error`,
+`pending`, `admitting`, `operation`, `status`, `progress`, `outcome`, `failure`, `error`,
 `cancelled`, `cancellationRequested`, `cancelling`, `cancellation` and `cancelError`
-signals. A run that ends with a `cancelled` status sets `cancelled` and resolves to
+signals. `progress` is how far the running operation got, from 0 to 1, when its
+command reports progress (`RunicOperationProgress.Report` in .NET), for example
+`<progress [value]="push.progress()">`; it is `undefined` while unknown and after the run. A run that ends with a `cancelled` status sets `cancelled` and resolves to
 `undefined` without an `error`; `failed` and `timed-out` statuses are still `error`.
 `pending` stays true after a Cancel response until the operation reaches its terminal
 status. Destroying the injection context settles run promises without cancelling

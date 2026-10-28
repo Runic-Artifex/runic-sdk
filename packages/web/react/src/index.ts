@@ -3,6 +3,7 @@ import {
   useCallback,
   useEffect,
   useInsertionEffect,
+  useMemo,
   useReducer,
   useRef,
   useState,
@@ -14,6 +15,7 @@ import {
   createCommandController,
   createLatestOperationController,
   createOperationController,
+  createTextFieldController,
   createViewController,
   onBridgeConnection,
   type BridgeConnectionOptions,
@@ -321,6 +323,94 @@ export function useLatestOperation<TResult = void, TFailure = never>(): LatestOp
   const read = useCallback(() => controller.current, [controller]);
   const current = useSyncExternalStore(controller.subscribe, read, read);
   return { ...current, run: controller.run, clear: controller.clear };
+}
+
+export interface TextFieldHandle {
+  /** What the input shows: the draft while one exists, otherwise the member's value in the View's state. */
+  readonly value: string;
+  /**
+   * True while a draft exists, from the first input until the last write settled and the state caught up, and after a
+   * failed write. Keep the input enabled while it is true, rather than disabling it on the View's busy state, which
+   * the field's own write causes.
+   */
+  readonly editing: boolean;
+  /** Why the latest write failed, until the next input or `reset()`. */
+  readonly error: unknown;
+  /** The input's `onChange`: the user changed the text. */
+  onChange(event: { readonly currentTarget: { readonly value: string } }): void;
+  /** The input's `onCompositionStart`: the text is kept but not written until the IME composition ends. */
+  onCompositionStart(): void;
+  /** The input's `onCompositionEnd`: the composed text is written. */
+  onCompositionEnd(event: { readonly currentTarget: { readonly value: string } }): void;
+  /** Drops the draft and the error and shows the View's value. Writes in flight still complete. */
+  reset(): void;
+}
+
+export interface UseTextFieldOptions {
+  /**
+   * With `true` (the default) at most one write is in flight, and text typed meanwhile is written next, as one
+   * value. With `false` every change is written. Read when the component mounts.
+   */
+  readonly coalesce?: boolean;
+  /**
+   * With `true` (the default) a failed write keeps the draft and sets `error`; with `false` the field shows the
+   * View's value again. Read when the component mounts.
+   */
+  readonly keepDraftOnError?: boolean;
+}
+
+/** The View a text field binds to: a {@link useView} handle, or any state and client. */
+export interface TextFieldView<TClient extends ViewClient> {
+  readonly state: TClient["snapshot"] | undefined;
+  readonly client: TClient | undefined;
+}
+
+/**
+ * Binds a controlled text input to one member of a View while the component is mounted, through
+ * `createTextFieldController`. Typing key by key never loses characters: while its writes are in flight the field
+ * shows what the user typed, at most one write is in flight (newer text is written next), nothing is written during
+ * IME composition, and once the last write settled it shows the View's value, including any normalization. `read`
+ * and `write` may close over render values; the latest ones are used.
+ *
+ * ```tsx
+ * const person = useView(page);
+ * const name = useTextField(person, state => state.name, (client, value) => client.setName(value));
+ * <input value={name.value} onChange={name.onChange}
+ *   onCompositionStart={name.onCompositionStart} onCompositionEnd={name.onCompositionEnd} />
+ * ```
+ *
+ * `write` may be a generated setter, a command or a checked write. Its failure sets `error` and keeps the draft.
+ * Unmounting writes text that waits for a write in flight, and stops updating the handle.
+ */
+export function useTextField<TClient extends ViewClient>(
+  view: TextFieldView<TClient>,
+  read: (state: TClient["snapshot"]) => string,
+  write: (client: TClient, value: string) => Promise<unknown>,
+  options: UseTextFieldOptions = {},
+): TextFieldHandle {
+  const latest = useRef({ read, write });
+  useInsertionEffect(() => { latest.current = { read, write }; });
+  const controller = useMountedController(() => createTextFieldController<TClient["snapshot"], TClient>({
+    read: state => latest.current.read(state),
+    write: (client, value) => latest.current.write(client, value),
+    ...options.coalesce === undefined ? {} : { coalesce: options.coalesce },
+    ...options.keepDraftOnError === undefined ? {} : { keepDraftOnError: options.keepDraftOnError },
+  }));
+  const { state, client } = view;
+  useEffect(() => {
+    controller.setSource(state === undefined || client === undefined ? undefined : { state, client });
+  }, [controller, state, client]);
+  const readCurrent = useCallback(() => controller.current, [controller]);
+  const current = useSyncExternalStore(controller.subscribe, readCurrent, readCurrent);
+  const handlers = useMemo(() => ({
+    onChange: (event: { readonly currentTarget: { readonly value: string } }) => controller.input(event.currentTarget.value),
+    onCompositionStart: () => controller.compositionStart(),
+    onCompositionEnd: (event: { readonly currentTarget: { readonly value: string } }) => controller.compositionEnd(event.currentTarget.value),
+    reset: () => controller.reset(),
+  }), [controller]);
+  // Without a draft the field shows the state being rendered, which the effect passes to the controller after the render.
+  const value = current.editing ? current.value : state === undefined ? "" : read(state);
+  return { value, editing: current.editing, error: current.error, ...handlers };
 }
 
 export interface BridgeConnectionHandle {
