@@ -30,7 +30,7 @@ public static class BridgeContractShape
     {
         var views = DiscoverViews(model.Assembly);
         var models = views.Select(view => view.ModelType).Append(model).Distinct().ToArray();
-        var parts = new List<string> { "runic-bridge-contract-v4" };
+        var parts = new List<string> { "runic-bridge-contract-v5" };
         var nullability = new NullabilityInfoContext();
         foreach (var known in models.OrderBy(TypeName, StringComparer.Ordinal))
         {
