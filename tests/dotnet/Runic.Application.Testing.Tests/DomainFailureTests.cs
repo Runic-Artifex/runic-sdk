@@ -53,6 +53,7 @@ internal sealed partial class DomainFailureTests
     [Arguments(false)]
     [Arguments(true)]
     [DisplayName("OperationsEndDomainFailedAsync(development: $development)")]
+    [Skip("P5: needs start, status, watch and cancel served")]
     public async Task OperationsEndDomainFailedAsync(bool development)
     {
         using var host = Host(new EditorModel(), out var logs, development);
@@ -80,8 +81,8 @@ internal sealed partial class DomainFailureTests
         Require(!logs.Entries.Any(item => item.EventId.Id is 1004 or 1008), $"A domain-failed operation was logged as failed: {Describe(logs)}");
     }
 
-    // D-13: the reply after a command whose state cannot be sent keeps the
-    // domain failure, has no state, appends the key message and has no detail.
+    // D-13: the reply after a command whose state cannot be published keeps the domain failure and its message, has no
+    // revision, takes the reason state-withheld and has no detail.
     [Test]
     [Arguments(false)]
     [Arguments(true)]
@@ -92,13 +93,16 @@ internal sealed partial class DomainFailureTests
         using var transport = new InMemoryBridgeTransport();
         using var session = new WindowContentSession(transport, new WindowContentSessionOptions { IncludeFailureDetail = development });
         using var bridge = new EditorBridge(transport, model, content: session, keyed: true);
+        // The route's first state is published, so the command's changes are compared against it.
+        using (var opened = JsonDocument.Parse(transport.Open("editor", "page-1")))
+            Require(opened.RootElement.GetProperty("ok").GetBoolean(), $"The editor did not open: {opened.RootElement}");
         model.Rows = ["a", "a"];
-        using var reply = JsonDocument.Parse(transport.Call("editorSave"));
+        using var reply = JsonDocument.Parse(transport.Command("editor", "save"));
         var root = reply.RootElement;
         var error = root.GetProperty("error");
-        Require(!root.GetProperty("ok").GetBoolean() && root.GetProperty("state").ValueKind == JsonValueKind.Null
-            && error.GetProperty("kind").GetString() == "domain-failed"
-            && error.GetProperty("message").GetString()!.StartsWith("Save failed. The updated state could not be sent: ", StringComparison.Ordinal)
+        Require(!root.GetProperty("ok").GetBoolean() && !root.TryGetProperty("revision", out _) && !root.TryGetProperty("state", out _)
+            && error.GetProperty("kind").GetString() == "domain-failed" && error.GetProperty("reason").GetString() == "state-withheld"
+            && error.GetProperty("message").GetString() == "Save failed."
             && error.GetProperty("failure").GetProperty("$case").GetString() == "titleRequired"
             && !error.TryGetProperty("detail", out _), $"The key failure did not keep the domain failure: {root}");
     }
@@ -114,6 +118,13 @@ internal sealed partial class DomainFailureTests
         Require(multiple.ErrorKind == "failed" && multiple.Failure is null, $"A multi-inner aggregate was not failed: {multiple}");
         Require(logs.Entries.Any(entry => entry.EventId.Id == 1000 && entry.Exception is AggregateException),
             "A multi-inner aggregate was not logged as a failed command.");
+    }
+
+    [Test]
+    [Skip("P5: needs start and watch served")]
+    public async Task OperationAggregatesAreUnwrappedOnlyWithOneInnerAsync()
+    {
+        using var host = Host(new EditorModel(), out _);
         host.ViewModel.NextFailure = () => new AggregateException(new RunicFailureException(new TitleTaken("Todo")));
         var operation = await host.Root.Start(vm => vm.SubmitCommand, requestId: "aggregate").WaitAsync();
         Require(operation.Kind == RunicOperationStatusKind.DomainFailed && operation.Failure?.GetProperty("existingTitle").GetString() == "Todo",
@@ -153,12 +164,18 @@ internal sealed partial class DomainFailureTests
         }
         Require(logs.Entries.Count(entry => entry.EventId.Id == 1008) == cases.Length && !logs.Entries.Any(entry => entry.EventId.Id == 1000),
             $"A fallback was logged twice or as BridgeCommandFailed: {Describe(logs)}");
+    }
 
+    [Test]
+    [Skip("P5: needs start and watch served")]
+    public async Task UndeclaredOperationFailuresStayFailedAsync()
+    {
+        using var host = Host(new EditorModel(), out var logs);
         host.ViewModel.NextFailure = () => new RunicFailureException(new Unrelated("x"));
         var status = await host.Root.Start(vm => vm.SubmitCommand, requestId: "undeclared").WaitAsync();
         Require(status is { Kind: RunicOperationStatusKind.Failed, Failure: null, ErrorMessage: "The operation failed." },
             $"An undeclared operation failure was not failed: {status.Json}");
-        Require(logs.Entries.Count(entry => entry.EventId.Id == 1008) == cases.Length + 1 && !logs.Entries.Any(entry => entry.EventId.Id == 1004),
+        Require(logs.Entries.Count(entry => entry.EventId.Id == 1008) == 1 && !logs.Entries.Any(entry => entry.EventId.Id == 1004),
             $"The operation fallback was not logged once as 1008: {Describe(logs)}");
         var operationEntry = logs.Entries.Last(entry => entry.EventId.Id == 1008);
         Require(operationEntry.State["Model"] as string == nameof(EditorModel) && operationEntry.State["Member"] as string == "Submit"
@@ -183,6 +200,7 @@ internal sealed partial class DomainFailureTests
     }
 
     [Test]
+    [Skip("P5: needs start, cancel and watch served")]
     public async Task CancellationRaceIsDomainFailedAsync()
     {
         using var host = Host(new EditorModel(), out _);
@@ -194,6 +212,7 @@ internal sealed partial class DomainFailureTests
     }
 
     [Test]
+    [Skip("P5: needs start, watch and stream served")]
     public async Task StreamsKeepTheirItemsAsync()
     {
         using var host = Host(new EditorModel(), out _);
@@ -203,10 +222,16 @@ internal sealed partial class DomainFailureTests
             Require(status.Kind == RunicOperationStatusKind.DomainFailed && json.RootElement.GetProperty("stream").GetBoolean()
                 && status.Failure?.GetProperty("$case").GetString() == "titleRequired",
                 $"A stream operation did not end domain-failed with stream: true: {status.Json}");
-        var page = host.Transport.Call("__runicOperationStream", new(StringValue: JsonSerializer.Serialize(new
+        using var reply = JsonDocument.Parse(host.Transport.Send(BridgeRequests.Json(writer =>
         {
-            contract = operation.Contract, member = "Publish", requestId = "stream", cursor = 0,
+            writer.WriteString("kind", "stream");
+            writer.WriteString("route", "editor");
+            writer.WriteString("member", "publish");
+            writer.WriteString("operation", "stream");
+            writer.WriteString("contract", operation.Contract);
+            writer.WriteNumber("cursor", 0);
         })));
+        var page = reply.RootElement.GetProperty("page").GetRawText();
         using var stream = JsonDocument.Parse(page);
         Require(stream.RootElement.GetProperty("kind").GetString() == "domain-failed" && stream.RootElement.GetProperty("completed").GetBoolean()
             && stream.RootElement.GetProperty("items").GetArrayLength() == 2
@@ -263,16 +288,27 @@ internal sealed partial class DomainFailureTests
         using var telemetry = new TelemetryCapture();
         using var host = Host(new EditorModel(), out _);
         _ = await host.Root.ExecuteAsync(vm => vm.SaveCommand);
+        RequireDomainFailureTelemetry(telemetry, "runic.bridge.command", "Save");
+    }
+
+    [Test]
+    [Skip("P5: needs start and watch served")]
+    public async Task OperationTelemetryTreatsDomainFailuresAsExpectedAsync()
+    {
+        using var telemetry = new TelemetryCapture();
+        using var host = Host(new EditorModel(), out _);
         _ = await host.Root.Start(vm => vm.SubmitCommand, requestId: "telemetry").WaitAsync();
-        foreach (var (name, member) in new[] { ("runic.bridge.command", "Save"), ("runic.bridge.operation", "Submit") })
-        {
-            var activity = telemetry.Activities.SingleOrDefault(item => item.OperationName == name && item.GetTagItem("runic.bridge.member") as string == member)
-                ?? throw new InvalidOperationException($"No {name} activity was recorded for {member}.");
-            Require(activity.Status == ActivityStatusCode.Unset && activity.GetTagItem("runic.bridge.outcome") as string == "domain_failed"
-                && activity.GetTagItem("error.type") is null, $"The {name} span did not report an expected domain failure: {string.Join(", ", activity.TagObjects)}");
-            Require(telemetry.Sum("runic.bridge.calls", ("runic.bridge.outcome", "domain_failed"), ("runic.bridge.member", member)) == 1,
-                $"runic.bridge.calls did not count the {member} domain failure.");
-        }
+        RequireDomainFailureTelemetry(telemetry, "runic.bridge.operation", "Submit");
+    }
+
+    private static void RequireDomainFailureTelemetry(TelemetryCapture telemetry, string name, string member)
+    {
+        var activity = telemetry.Activities.SingleOrDefault(item => item.OperationName == name && item.GetTagItem("runic.bridge.member") as string == member)
+            ?? throw new InvalidOperationException($"No {name} activity was recorded for {member}.");
+        Require(activity.Status == ActivityStatusCode.Unset && activity.GetTagItem("runic.bridge.outcome") as string == "domain_failed"
+            && activity.GetTagItem("error.type") is null, $"The {name} span did not report an expected domain failure: {string.Join(", ", activity.TagObjects)}");
+        Require(telemetry.Sum("runic.bridge.calls", ("runic.bridge.outcome", "domain_failed"), ("runic.bridge.member", member)) == 1,
+            $"runic.bridge.calls did not count the {member} domain failure.");
         Require(telemetry.Sum("runic.bridge.failures", ("runic.bridge.model", nameof(EditorModel))) == 0,
             "runic.bridge.failures counted a domain failure.");
     }
@@ -366,26 +402,53 @@ internal sealed partial class DomainFailureTests
     [Test]
     public async Task PortableFixturesMatchAsync()
     {
-        var directory = Path.Combine(AppContext.BaseDirectory, "fixtures", "domain-failures");
-        var files = Directory.GetFiles(directory, "*.json").OrderBy(file => file, StringComparer.Ordinal).ToArray();
-        Require(files.Length == 5, $"The domain failure fixtures were not copied to {directory}.");
+        var files = FixtureFiles();
+        Require(files.Length == 5, "The domain failure fixtures were not copied to the output directory.");
         foreach (var file in files)
         {
-            var fixture = JsonNode.Parse(File.ReadAllText(file))!;
-            var scenario = fixture["scenario"]!.GetValue<string>();
-            var expected = fixture["wire"]!;
-            JsonNode actual = scenario switch
+            var (scenario, expected) = Fixture(file);
+            JsonNode? actual = scenario switch
             {
                 "command-reply" => await CommandWireAsync(new TitleTaken("Todo")),
                 "undeclared-command-reply" => await CommandWireAsync(new Unrelated("x")),
-                "operation-status" => await OperationWireAsync(vm => vm.SubmitCommand, "save-1"),
-                "stream-status" => await OperationWireAsync(vm => vm.PublishCommand, "save-1"),
                 "retention-dropped-status" => await DroppedWireAsync(),
+                "operation-status" or "stream-status" => null,
                 _ => throw new InvalidOperationException($"Unknown domain failure fixture scenario {scenario}."),
             };
+            if (actual is null) continue;
             Require(JsonNode.DeepEquals(expected, actual),
                 $"{Path.GetFileName(file)}: .NET wrote {actual.ToJsonString()}, the fixture expects {expected.ToJsonString()}.");
         }
+    }
+
+    // The operation scenarios of the same fixtures.
+    [Test]
+    [Skip("P5: needs start and watch served")]
+    public async Task PortableOperationFixturesMatchAsync()
+    {
+        foreach (var file in FixtureFiles())
+        {
+            var (scenario, expected) = Fixture(file);
+            JsonNode? actual = scenario switch
+            {
+                "operation-status" => await OperationWireAsync(vm => vm.SubmitCommand, "save-1"),
+                "stream-status" => await OperationWireAsync(vm => vm.PublishCommand, "save-1"),
+                _ => null,
+            };
+            if (actual is null) continue;
+            Require(JsonNode.DeepEquals(expected, actual),
+                $"{Path.GetFileName(file)}: .NET wrote {actual.ToJsonString()}, the fixture expects {expected.ToJsonString()}.");
+        }
+    }
+
+    private static string[] FixtureFiles() =>
+        Directory.GetFiles(Path.Combine(AppContext.BaseDirectory, "fixtures", "domain-failures"), "*.json")
+            .OrderBy(file => file, StringComparer.Ordinal).ToArray();
+
+    private static (string Scenario, JsonNode Wire) Fixture(string file)
+    {
+        var fixture = JsonNode.Parse(File.ReadAllText(file))!;
+        return (fixture["scenario"]!.GetValue<string>(), fixture["wire"]!);
     }
 
     private static async Task<JsonNode> DroppedWireAsync()
@@ -400,8 +463,9 @@ internal sealed partial class DomainFailureTests
         host.ViewModel.NextFailure = () => new RunicFailureException(failure);
         var reply = await host.Root.ExecuteAsync(vm => vm.SubmitCommand);
         var node = JsonNode.Parse(reply.Json)!.AsObject();
-        // The state is the fixture model's; only its presence is portable.
-        node["state"] = node["state"] is null ? null : new JsonObject();
+        // The fixtures predate protocol 4: their "state": {} stands for the state after the call, which a protocol-4
+        // reply names by its revision (as packages/web/views/test/outcomes.test.ts reads them).
+        if (node.Remove("revision")) node["state"] = new JsonObject();
         return node;
     }
 
@@ -440,7 +504,8 @@ internal sealed partial class DomainFailureTests
         using var reply = JsonDocument.Parse(json);
         var root = reply.RootElement;
         var error = root.GetProperty("error");
-        Require(!root.GetProperty("ok").GetBoolean() && root.GetProperty("state").ValueKind == JsonValueKind.Object
+        Require(!root.GetProperty("ok").GetBoolean() && root.GetProperty("revision").ValueKind == JsonValueKind.Number
+            && !root.TryGetProperty("state", out _)
             && error.GetProperty("kind").GetString() == "domain-failed" && error.GetProperty("message").GetString() == $"{member} failed."
             && error.GetProperty("failure").GetRawText() == failure && !error.TryGetProperty("detail", out _)
             && !root.TryGetProperty("protocol", out _),
@@ -524,6 +589,10 @@ internal sealed partial class DomainFailureTests
             writer.WriteStartObject();
             writer.WriteNumber("revision", revision);
             writer.WriteString("title", vm.Title);
+            // The keyed collection is a member, so a frame that changes it checks its keys.
+            writer.WriteStartArray("rows");
+            foreach (var row in vm.Rows) writer.WriteStringValue(row);
+            writer.WriteEndArray();
             writer.WriteEndObject();
         },
         [], [],

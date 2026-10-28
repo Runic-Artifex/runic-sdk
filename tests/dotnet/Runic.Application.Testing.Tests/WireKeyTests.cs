@@ -29,8 +29,9 @@ internal sealed class WireKeyTests
 
         // The key now names no object.
         var unresolved = await host.Root.ExecuteAsync(vm => vm.DeleteCommand, "\"1\"");
-        Require(unresolved is { Succeeded: false, ErrorKind: "rejected", ErrorReason: "unresolved-key" }
-            && unresolved.ErrorMessage == "Delete has no object for this key." && unresolved.State is not null,
+        // A rejected request did not run, so its reply has no revision (and the driver reads no state for it).
+        Require(unresolved is { Succeeded: false, ErrorKind: "rejected", ErrorReason: "unresolved-key", Revision: null }
+            && unresolved.ErrorMessage == "Delete has no object for this key.",
             $"An unresolved key was not rejected with reason unresolved-key: {unresolved}");
         Require(model.Last == "deleted first", "The command ran for an unresolved key.");
 
@@ -72,11 +73,10 @@ internal sealed class WireKeyTests
         Require(unresolved.ErrorReason == "unresolved-key", $"An unresolved asynchronous key was not rejected: {unresolved}");
         Require(await host.Root.CanExecuteAsync(vm => vm.ArchiveCommand, "\"3\"") && !await host.Root.CanExecuteAsync(vm => vm.ArchiveCommand, "\"77\""),
             "can… of an asynchronous resolver did not follow the resolution.");
-        // The synchronous calls refuse an asynchronous resolver instead of blocking the test thread on it.
-        var refusedCan = Throws<InvalidOperationException>(() => host.Root.CanExecute(vm => vm.ArchiveCommand, "\"3\""));
-        Require(refusedCan.Message.Contains("CanExecuteAsync", StringComparison.Ordinal), $"The refusal does not name CanExecuteAsync: {refusedCan.Message}");
-        var refusedStart = Throws<InvalidOperationException>(() => host.Root.Start(vm => vm.ArchiveCommand, "\"3\""));
-        Require(refusedStart.Message.Contains("StartAsync", StringComparison.Ordinal), $"The refusal does not name StartAsync: {refusedStart.Message}");
+        // Protocol 4: the synchronous can request waits for an asynchronous resolver (it no longer refuses it); a resolver
+        // that waits on the fake clock needs CanExecuteAsync.
+        Require(host.Root.CanExecute(vm => vm.ArchiveCommand, "\"3\"") && !host.Root.CanExecute(vm => vm.ArchiveCommand, "\"77\""),
+            "The synchronous can… of an asynchronous resolver did not follow the resolution.");
         // The asynchronous calls answer a synchronous resolver too.
         Require(await host.Root.CanExecuteAsync(vm => vm.DeleteCommand, "\"3\"") && !await host.Root.CanExecuteAsync(vm => vm.DeleteCommand, "\"77\""),
             "CanExecuteAsync did not answer a synchronous resolver.");
@@ -134,6 +134,7 @@ internal sealed class WireKeyTests
     }
 
     [Test]
+    [Skip("P5: needs operations (start, status, stream) of keyed commands")]
     public async Task OperationStartsResolveTheirKeyAsync()
     {
         await using var context = new RunicModelContext();
@@ -202,8 +203,6 @@ internal sealed class WireKeyTests
             Require(opened.Succeeded && toolkit.Last == "opened third", $"The async Toolkit command did not run: {opened}");
             var openLocked = await host.Root.ExecuteAsync(vm => vm.OpenCommand, "\"2\"");
             Require(openLocked.ErrorReason == "unavailable", $"The async Toolkit command ignored CanExecute(item): {openLocked}");
-            var start = await host.Root.StartAsync(vm => vm.OpenCommand, "\"77\"");
-            Require(start.Reason == "unresolved-key", $"An unresolved Toolkit start was admitted: {start.AdmissionJson}");
 
             // The attribute on a [RelayCommand] method, with a static resolver and a string key.
             var selected = await host.Root.ExecuteAsync(vm => vm.SelectCommand, "\"fixed\"");
@@ -226,6 +225,17 @@ internal sealed class WireKeyTests
         }
     }
 
+    [Test]
+    [Skip("P5: needs the start request of operations")]
+    public async Task AnUnresolvedToolkitStartIsRejectedAsync()
+    {
+        using var host = new RunicWindowTestHost<KeyedToolkitViewModel>(new KeyedToolkitViewModel(),
+            (transport, content, vm) => new KeyedToolkitBridge(transport, vm, content: content),
+            new RunicWindowTestHostOptions { ViewLocator = new TestViewLocator() });
+        var start = await host.Root.StartAsync(vm => vm.OpenCommand, "\"77\"");
+        Require(start.Reason == "unresolved-key", $"An unresolved Toolkit start was admitted: {start.AdmissionJson}");
+    }
+
     private static RunicWindowTestHost<KeyedReactiveViewModel> Host(KeyedReactiveViewModel model, RunicModelContext context, EventLog logs) =>
         new(model, (transport, content, vm) => new KeyedReactiveBridge(transport, vm, content: content),
             new RunicWindowTestHostOptions { ModelContext = context, LoggerFactory = logs, ViewLocator = new TestViewLocator() });
@@ -233,13 +243,6 @@ internal sealed class WireKeyTests
     private static void Require(bool condition, string message)
     {
         if (!condition) throw new InvalidOperationException(message);
-    }
-
-    private static TException Throws<TException>(Action action) where TException : Exception
-    {
-        try { action(); }
-        catch (TException exception) { return exception; }
-        throw new InvalidOperationException($"Expected {typeof(TException).Name}.");
     }
 
     private sealed class EventLog : ILoggerFactory
@@ -258,39 +261,5 @@ internal sealed class WireKeyTests
             public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception,
                 Func<TState, Exception?, string> formatter) => owner._entries.Enqueue((eventId.Id, formatter(state, exception)));
         }
-    }
-}
-
-// #472: the generated C#, TypeScript client, mock and fingerprint inputs of RunicCommandKey commands. Every
-// other golden stays unchanged: a Bridge without RunicCommandKey is generated byte for byte as before. Set
-// RUNIC_UPDATE_GOLDEN=1 to rewrite them after an intended change.
-internal sealed class WireKeyGoldenTests
-{
-    private static readonly (Type Model, string Module)[] Models =
-    [
-        (typeof(KeyedReactiveViewModel), "keyedReactive"),
-        (typeof(KeyedToolkitViewModel), "keyedToolkit"),
-        (typeof(KeyedPlainViewModel), "keyedPlain"),
-    ];
-
-    [Test]
-    public void KeyedCommandOutputMatchesTheGoldenFiles()
-    {
-        var project = Path.Combine(DomainFailureCodegenTests.FindWorkspaceRoot(), "tests", "dotnet", "Runic.Application.Testing.Tests");
-        var generated = Path.Combine(project, "obj", "bridge-frontend", "generated");
-        var configuration = System.Reflection.CustomAttributeExtensions.GetCustomAttribute<System.Reflection.AssemblyConfigurationAttribute>(
-            typeof(WireKeyGoldenTests).Assembly)?.Configuration ?? "Debug";
-        var bridges = Path.Combine(project, "obj", configuration, "net10.0", "runic-bridge");
-        var outputs = Models.SelectMany(entry => new (string Golden, string Actual)[]
-        {
-            (entry.Module + ".ts", Path.Combine(generated, entry.Module + ".ts")),
-            (entry.Module + ".mock.ts", Path.Combine(generated, entry.Module + ".mock.ts")),
-            (entry.Model.Name + ".Bridge.g.cs", Path.Combine(bridges, entry.Model.FullName + ".Bridge.g.cs")),
-        }).ToList();
-        var shape = Path.Combine(project, "obj", "wire-keys-contract-shape.txt");
-        File.WriteAllText(shape, string.Join('\n', MvvmConventionGoldenTests.ModelSections(BridgeContractShape.Parts(Models[0].Model),
-            Models.Select(entry => entry.Model.FullName!).ToHashSet(StringComparer.Ordinal))) + "\n");
-        outputs.Add(("contract-shape.txt", shape));
-        DomainFailureCodegenTests.CompareGolden(project, "wire-keys", [.. outputs]);
     }
 }

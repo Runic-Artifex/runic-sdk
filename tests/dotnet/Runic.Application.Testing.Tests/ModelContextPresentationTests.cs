@@ -40,17 +40,17 @@ internal sealed class ModelContextPresentationTests
             Require(BoundTo(shell, context), "The window did not bind its root ViewModel to the window's context.");
             var first = host.Root.Snapshot().Reference(vm => vm.Main)!;
             Require(BoundTo(welcome, context), "The window did not bind the child ViewModel it presents.");
-            await RunAsync(host, $"content{first.Id}Increment");
+            await RunAsync(host.Transport, $"content{first.Id}", "increment");
             Require(welcome.Count == 1, "The presented child's command did not run.");
 
             // A child the shell creates in its own command is bound when it is presented.
-            await RunAsync(host, "contextShellOpen");
+            await RunAsync(host.Transport, "contextShell", "open");
             var created = shell.Main!;
             Require(!ReferenceEquals(created, welcome), "The shell command did not create a child.");
             var second = host.Root.Snapshot().Reference(vm => vm.Main)!;
             Require(second.Id != first.Id && BoundTo(created, context),
                 "The window did not bind a child ViewModel created by its ViewModel.");
-            await RunAsync(host, $"content{second.Id}Increment");
+            await RunAsync(host.Transport, $"content{second.Id}", "increment");
             Require(created.Count == 1, "The created child's command did not run on the window's context.");
             Require(!Registry.TryGet(welcome, out _), "The window kept the replaced child bound.");
             created.Dispose();
@@ -93,7 +93,9 @@ internal sealed class ModelContextPresentationTests
         try
         {
             Require(BoundTo(shell, context), "A bridge attached to a hand-built session left its model unbound.");
-            await transport.CallAsync("contextShellOpen").AsTask().WaitAsync(Timeout);
+            // A route publishes once a client read its first state, as the page's open does.
+            using (transport.SnapshotState("contextShell")) { }
+            await RunAsync(transport, "contextShell", "open");
             Require(BoundTo(shell.Main!, context), "A hand-built session did not bind the child it presents.");
         }
         finally { bridge.Dispose(); }
@@ -152,10 +154,10 @@ internal sealed class ModelContextPresentationTests
     private static bool BoundTo(object model, IRunicModelContext context) =>
         Registry.TryGet(model, out var bound) && ReferenceEquals(bound, context);
 
-    private static async Task RunAsync(RunicWindowTestHost<ContextShellViewModel> host, string route)
+    private static async Task RunAsync(InMemoryBridgeTransport transport, string route, string command)
     {
-        using var reply = JsonDocument.Parse(await host.Transport.CallAsync(route).AsTask().WaitAsync(Timeout));
-        Require(reply.RootElement.GetProperty("ok").GetBoolean(), $"{route} failed: {reply.RootElement}");
+        using var reply = JsonDocument.Parse(await transport.CommandAsync(route, command).AsTask().WaitAsync(Timeout));
+        Require(reply.RootElement.GetProperty("ok").GetBoolean(), $"{route} {command} failed: {reply.RootElement}");
     }
 
     private static Exception Throws(Action action)

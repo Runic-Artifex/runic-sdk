@@ -21,7 +21,7 @@ internal sealed class ToolkitAvailabilityTests
             Require(state.EnumerateObject().Count(member => member.Name == "canCreate") == 1,
                 $"canCreate was written more than once: {state}");
         }
-        using (var refused = JsonDocument.Parse(host.Transport.Call("toolkitAvailabilityCreate")))
+        using (var refused = JsonDocument.Parse(host.Transport.Command("toolkitAvailability", "create")))
             Require(!refused.RootElement.GetProperty("ok").GetBoolean() && model.Created == 0,
                 $"An unavailable command ran: {refused.RootElement}");
 
@@ -30,7 +30,7 @@ internal sealed class ToolkitAvailabilityTests
         using (var ready = host.RawSnapshot())
             Require(ready.RootElement.GetProperty("state").GetProperty("canCreate").GetBoolean(),
                 "canCreate did not follow its property.");
-        using (var created = JsonDocument.Parse(host.Transport.Call("toolkitAvailabilityCreate")))
+        using (var created = JsonDocument.Parse(host.Transport.Command("toolkitAvailability", "create")))
             Require(created.RootElement.GetProperty("ok").GetBoolean() && model.Created == 1,
                 $"An available command did not run: {created.RootElement}");
 

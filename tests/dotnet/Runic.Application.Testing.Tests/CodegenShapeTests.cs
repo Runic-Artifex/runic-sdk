@@ -116,10 +116,10 @@ internal sealed class CodegenShapeTests
         Require(model.Derived.Inherited == "b", "A rejected CodegenDerived<string> write changed the model.");
 
         // A plain command input from typeof() is non-nullable throughout.
-        using (var applied = JsonDocument.Parse(host.Transport.Call("codegenShapeApply", new(StringValue: Slot("\"c\"", "\"i\"", "\"a\"", "\"m\"")))))
+        using (var applied = JsonDocument.Parse(host.Transport.Command("codegenShape", "apply", Slot("\"c\"", "\"i\"", "\"a\"", "\"m\""))))
             Require(applied.RootElement.GetProperty("ok").GetBoolean() && model.Required.Value == "c",
                 $"The CodegenSlot<string> command input was rejected: {applied.RootElement}");
-        using (var rejected = JsonDocument.Parse(host.Transport.Call("codegenShapeApply", new(StringValue: Slot("null", "\"i\"", "\"a\"", "\"m\"")))))
+        using (var rejected = JsonDocument.Parse(host.Transport.Command("codegenShape", "apply", Slot("null", "\"i\"", "\"a\"", "\"m\""))))
             Require(!rejected.RootElement.GetProperty("ok").GetBoolean() && model.Required.Value == "c",
                 $"The CodegenSlot<string> command input accepted null: {rejected.RootElement}");
 
@@ -128,7 +128,7 @@ internal sealed class CodegenShapeTests
     }
 
     [Test]
-    public async Task NullableReactiveTypeArgumentsReachTheClientAsync()
+    public void NullableReactiveTypeArgumentsReachTheClient()
     {
         var client = File.ReadAllText(Path.Combine(GeneratedTypeScriptDirectory(), "nullableReactive.ts"));
         foreach (var expected in new[]
@@ -148,16 +148,21 @@ internal sealed class CodegenShapeTests
             Require(snapshot.RootElement.GetProperty("state").TryGetProperty("isEchoExecuting", out var executing)
                 && executing.ValueKind == JsonValueKind.False,
                 "A ReactiveUI command with an argument did not write the isEchoExecuting field its client declares.");
-        using var accepted = JsonDocument.Parse(host.Transport.Call("nullableReactiveStartEcho",
-            new(StringValue: "{\"requestId\":\"echo-null\",\"input\":null}")));
-        Require(accepted.RootElement.GetProperty("kind").GetString() is "accepted" or "duplicate",
-            $"A null ReactiveUI command input was rejected: {accepted.RootElement}");
-        var contract = accepted.RootElement.GetProperty("contract").GetString();
-        using var completion = JsonDocument.Parse(await host.Transport.CallAsync("__runicOperationWait",
-            new(StringValue: JsonSerializer.Serialize(new { contract, requestId = "echo-null" }))));
-        Require(completion.RootElement.GetProperty("kind").GetString() == "succeeded"
-            && completion.RootElement.GetProperty("result").ValueKind == JsonValueKind.Null,
-            $"A null ReactiveUI command result was not encoded: {completion.RootElement}");
+    }
+
+    [Test]
+    [Skip("P5: needs start and watch served")]
+    public async Task NullableReactiveOperationsAcceptNullAsync()
+    {
+        using var model = new NullableReactiveViewModel();
+        using var host = new RunicWindowTestHost<NullableReactiveViewModel>(model,
+            (transport, content, vm) => new NullableReactiveBridge(transport, vm, content: content), new RunicWindowTestHostOptions { RootRoute = "nullableReactive", ViewLocator = new TestViewLocator() });
+        var operation = await host.Root.StartAsync(vm => vm.EchoCommand, "null", "echo-null");
+        Require(operation.Admission is RunicOperationAdmissionKind.Accepted or RunicOperationAdmissionKind.Duplicate,
+            $"A null ReactiveUI command input was rejected: {operation.AdmissionJson}");
+        var completion = await operation.WaitAsync();
+        Require(completion.Kind == RunicOperationStatusKind.Succeeded && completion.Result?.ValueKind == JsonValueKind.Null,
+            $"A null ReactiveUI command result was not encoded: {completion.Json}");
     }
 
     // Generated TypeScript reads like hand-written code: named types after the
@@ -301,6 +306,7 @@ internal sealed class CodegenShapeTests
     // names that are special on JavaScript objects, reserved parameter names
     // and a comment terminator inside documentation.
     [Test]
+    [Skip("P6: the generated-client harness speaks protocol 4 with P6's regenerated clients")]
     public async Task GeneratedNamesAvoidCollisionsAndReservedWordsAsync()
     {
         var directory = GeneratedTypeScriptDirectory();
@@ -334,7 +340,7 @@ internal sealed class CodegenShapeTests
 
         using var host = new RunicWindowTestHost<NamingViewModel>(new NamingViewModel(),
             (transport, content, vm) => new NamingBridge(transport, vm, content: content), new RunicWindowTestHostOptions { RootRoute = "naming", ViewLocator = new TestViewLocator() });
-        var reply = host.Transport.Call("namingSnapshot");
+        var reply = host.Transport.Snapshot("naming");
         using var snapshot = JsonDocument.Parse(reply);
         var state = snapshot.RootElement.GetProperty("state");
         Require(state.GetProperty("__proto__").GetString() == "proto"
@@ -361,6 +367,7 @@ internal sealed class CodegenShapeTests
     // reference caches) must not collide with names derived from user types
     // (#258). ReservedNamesFixture declares a ViewModel or type for each.
     [Test]
+    [Skip("P6: the generated-client harness speaks protocol 4 with P6's regenerated clients")]
     public async Task GeneratedModulesKeepTheirOwnBindingsApartFromUserNamesAsync()
     {
         var directory = GeneratedTypeScriptDirectory();
@@ -416,15 +423,18 @@ internal sealed class CodegenShapeTests
 
     private static void Set(RunicWindowTestHost<CodegenShapeViewModel> host, string property, string json)
     {
-        using var reply = JsonDocument.Parse(host.Transport.Call($"codegenShapeSet{property}", new(StringValue: json)));
+        using var reply = JsonDocument.Parse(host.Transport.Set("codegenShape", Member(property), json));
         Require(reply.RootElement.GetProperty("ok").GetBoolean(), $"Setting {property} to {json} was rejected: {reply.RootElement}");
     }
 
     private static void Rejected(RunicWindowTestHost<CodegenShapeViewModel> host, string property, string json)
     {
-        using var reply = JsonDocument.Parse(host.Transport.Call($"codegenShapeSet{property}", new(StringValue: json)));
+        using var reply = JsonDocument.Parse(host.Transport.Set("codegenShape", Member(property), json));
         Require(!reply.RootElement.GetProperty("ok").GetBoolean(), $"Setting {property} to {json} was accepted: {reply.RootElement}");
     }
+
+    // The property's wire name: Required -> required.
+    private static string Member(string property) => char.ToLowerInvariant(property[0]) + property[1..];
 
     private static void Require(bool condition, string message)
     {

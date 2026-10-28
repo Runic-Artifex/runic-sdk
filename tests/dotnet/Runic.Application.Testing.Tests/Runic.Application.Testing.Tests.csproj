@@ -64,4 +64,10 @@
   </ItemGroup>
   <Import Project="../../../packages/dotnet/Runic.Application.Views/build/Runic.Application.Views.targets" />
   <Import Project="../../../eng/build/application.targets" />
+  <!-- The protocol-3 generated-client fixture exporter; P6 replaces it with a live generated-client harness. -->
+  <ItemGroup>
+    <Compile Remove="ToolkitGeneratedClientFixture.cs" />
+    <Compile Remove="GeneratedClientFixtureExporter.cs" />
+    <Compile Remove="FailureGeneratedClientFixture.cs" />
+  </ItemGroup>
 </Project>

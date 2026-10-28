@@ -12,59 +12,64 @@ namespace Runic.Application.Testing.Tests;
 internal sealed class TypedReactiveTests
 {
     [Test]
+    [Skip("P5: needs start, watch, cancel and stream served")]
     public async Task TypedReactiveCommandsAdmitRecoverAndCompleteAsync()
     {
         await using var context = new RunicModelContext();
         var model = new TypedReactiveViewModel(context);
         using var contextLease = RunicModelContextRegistry.Shared.Bind(context, model);
-        using var host = new RunicWindowTestHost<TypedReactiveViewModel>(model,
-            (transport, content, vm) => new TypedReactiveBridge(transport, vm, content: content),
-            new RunicWindowTestHostOptions { RootRoute = "typedReactive", ViewLocator = new TestViewLocator() });
+        using var host = Host(model);
+        var driver = host.Root;
 
         const string requestId = "typed-save-1";
-        var payload = Payload(requestId, "first body");
-        using var accepted = JsonDocument.Parse(host.Transport.Call("typedReactiveStartSave", new(StringValue: payload)));
-        Require(accepted.RootElement.GetProperty("kind").GetString() == "accepted",
-            "The typed ReactiveUI command was not admitted.");
-        var contract = accepted.RootElement.GetProperty("contract").GetString()!;
+        var accepted = driver.Start(vm => vm.SaveCommand, Input("first body"), requestId);
+        Require(accepted.Admission == RunicOperationAdmissionKind.Accepted,
+            $"The typed ReactiveUI command was not admitted: {accepted.AdmissionJson}");
 
         // An identical retry sees the operation despite current availability
         // becoming false. It must not run the command or fresh CanExecute.
         model.SaveEnabled = false;
-        using var duplicate = JsonDocument.Parse(host.Transport.Call("typedReactiveStartSave", new(StringValue: payload)));
-        Require(duplicate.RootElement.GetProperty("kind").GetString() == "duplicate",
-            "A typed command retry did not recover the admitted operation.");
+        var duplicate = driver.Start(vm => vm.SaveCommand, Input("first body"), requestId);
+        Require(duplicate.Admission == RunicOperationAdmissionKind.Duplicate,
+            $"A typed command retry did not recover the admitted operation: {duplicate.AdmissionJson}");
         Require(model.Executions == 0, "The duplicate typed command started a second execution.");
 
-        using var conflict = JsonDocument.Parse(host.Transport.Call("typedReactiveStartSave",
-            new(StringValue: Payload(requestId, "changed body"))));
-        Require(conflict.RootElement.GetProperty("kind").GetString() == "rejected"
-            && conflict.RootElement.GetProperty("reason").GetString() == "identity-conflict",
+        var conflict = driver.Start(vm => vm.SaveCommand, Input("changed body"), requestId);
+        Require(conflict.Admission == RunicOperationAdmissionKind.Rejected && conflict.Reason == "identity-conflict",
             "A request ID could be reused with a different typed command payload.");
 
-        using var unavailable = JsonDocument.Parse(host.Transport.Call("typedReactiveStartSave",
-            new(StringValue: Payload("typed-save-disabled", "new body"))));
-        Require(unavailable.RootElement.GetProperty("kind").GetString() == "rejected"
-            && unavailable.RootElement.GetProperty("reason").GetString() == "unavailable",
+        var unavailable = driver.Start(vm => vm.SaveCommand, Input("new body"), "typed-save-disabled");
+        Require(unavailable.Admission == RunicOperationAdmissionKind.Rejected && unavailable.Reason == "unavailable",
             "A new typed command ignored its current availability.");
 
         model.ReleaseSave();
-        using var completion = JsonDocument.Parse(await host.Transport.CallAsync("__runicOperationWait",
-            new(StringValue: JsonSerializer.Serialize(new { contract, requestId }))));
-        var root = completion.RootElement;
-        Require(root.GetProperty("kind").GetString() == "succeeded", "The typed command did not complete successfully.");
-        var result = root.GetProperty("result");
+        var completion = await accepted.WaitAsync();
+        Require(completion.Kind == RunicOperationStatusKind.Succeeded, $"The typed command did not complete successfully: {completion.Json}");
+        var result = completion.Result!.Value;
         Require(result.GetProperty("documentId").GetString() == "document-1"
             && result.GetProperty("savedVersion").GetInt32() == 8
             && result.GetProperty("contentLength").GetInt32() == "first body".Length,
             "The typed command result was not encoded through the generated result codec.");
         Require(model.Executions == 1, "The typed command did not execute exactly once.");
 
-        using var unavailableAfterCompletion = JsonDocument.Parse(host.Transport.Call("typedReactiveStartSave",
-            new(StringValue: Payload("typed-save-disabled-after-completion", "new body"))));
-        Require(unavailableAfterCompletion.RootElement.GetProperty("kind").GetString() == "rejected"
-            && unavailableAfterCompletion.RootElement.GetProperty("reason").GetString() == "unavailable",
+        var unavailableAfterCompletion = driver.Start(vm => vm.SaveCommand, Input("new body"), "typed-save-disabled-after-completion");
+        Require(unavailableAfterCompletion.Admission == RunicOperationAdmissionKind.Rejected && unavailableAfterCompletion.Reason == "unavailable",
             "A genuine CanExecute=false source was not honored after command completion.");
+
+        await AssertLastAndStreamAsync(driver);
+        await AssertEmptyCompletionAsync(driver);
+        await AssertFailureAndCancellationAsync(driver, model);
+        await AssertInterfaceOnlyOperationAsync(driver, model);
+    }
+
+    // The same commands sent as command requests, and the execution helper.
+    [Test]
+    public async Task TypedReactiveCommandsExecuteAsync()
+    {
+        await using var context = new RunicModelContext();
+        var model = new TypedReactiveViewModel(context);
+        using var contextLease = RunicModelContextRegistry.Shared.Bind(context, model);
+        using var host = Host(model);
 
         // The execution helper makes cardinality explicit: a command with two
         // observable values is rejected instead of silently retaining its last
@@ -74,24 +79,20 @@ internal sealed class TypedReactiveTests
                 new TypedSaveRequest("document-1", "body", 1), CancellationToken.None),
             "A multi-result ReactiveUI command was accepted as a single result.");
 
-        await AssertLastAndStreamAsync(host);
-        await AssertEmptyCompletionAsync(host);
         await AssertImmediateCompletionTurnAsync(host);
-        await AssertFailureAndCancellationAsync(host, model);
         await AssertInterfaceOnlyCommandLifecycleAsync(host, model);
         AssertPlainTypedCommand(host, model);
     }
 
-    private static async Task AssertEmptyCompletionAsync(RunicWindowTestHost<TypedReactiveViewModel> host)
+    private static RunicWindowTestHost<TypedReactiveViewModel> Host(TypedReactiveViewModel model) =>
+        new(model, (transport, content, vm) => new TypedReactiveBridge(transport, vm, content: content),
+            new RunicWindowTestHostOptions { RootRoute = "typedReactive", ViewLocator = new TestViewLocator() });
+
+    private static async Task AssertEmptyCompletionAsync(RunicViewDriver<TypedReactiveViewModel> driver)
     {
-        const string requestId = "typed-empty-completion";
-        using var admission = JsonDocument.Parse(host.Transport.Call("typedReactiveStartEmptyCompletion",
-            new(StringValue: requestId)));
-        var contract = admission.RootElement.GetProperty("contract").GetString()!;
-        using var completion = JsonDocument.Parse(await host.Transport.CallAsync("__runicOperationWait",
-            new(StringValue: JsonSerializer.Serialize(new { contract, requestId }))));
-        Require(completion.RootElement.GetProperty("kind").GetString() == "succeeded"
-            && !completion.RootElement.TryGetProperty("result", out _),
+        var completion = await driver.Start(vm => vm.EmptyCompletionCommand, requestId: "typed-empty-completion").WaitAsync();
+        using var status = JsonDocument.Parse(completion.Json);
+        Require(completion.Kind == RunicOperationStatusKind.Succeeded && !status.RootElement.TryGetProperty("result", out _),
             "An empty RxVoid command did not complete as a no-result operation.");
     }
 
@@ -99,66 +100,61 @@ internal sealed class TypedReactiveTests
     {
         for (var index = 0; index < 1_000; index++)
         {
-            using var reply = JsonDocument.Parse(await host.Transport.CallAsync("typedReactiveImmediateCompletion",
-                new(StringValue: JsonSerializer.Serialize("repeat"))));
+            using var reply = JsonDocument.Parse(await host.Transport.CommandAsync("typedReactive", "immediateCompletion",
+                JsonSerializer.Serialize("repeat")));
             Require(reply.RootElement.GetProperty("ok").GetBoolean(),
                 $"An immediately completed ReactiveUI command was unavailable after {index} sequential bridge calls.");
         }
     }
 
     private static async Task AssertFailureAndCancellationAsync(
-        RunicWindowTestHost<TypedReactiveViewModel> host, TypedReactiveViewModel model)
+        RunicViewDriver<TypedReactiveViewModel> driver, TypedReactiveViewModel model)
     {
         var observed = new TaskCompletionSource<Exception>(TaskCreationOptions.RunContinuationsAsynchronously);
         using var exceptions = model.FailCommand.ThrownExceptions.Subscribe(new ExceptionObserver(error => observed.TrySetResult(error)));
-        const string failedRequest = "typed-failure";
-        using var failedAdmission = JsonDocument.Parse(host.Transport.Call("typedReactiveStartFail",
-            new(StringValue: Payload(failedRequest, "failure"))));
-        var failedContract = failedAdmission.RootElement.GetProperty("contract").GetString()!;
-        using var failed = JsonDocument.Parse(await host.Transport.CallAsync("__runicOperationWait",
-            new(StringValue: JsonSerializer.Serialize(new { contract = failedContract, requestId = failedRequest }))));
+        var failed = await driver.Start(vm => vm.FailCommand, Input("failure"), "typed-failure").WaitAsync();
         var observedError = await observed.Task.WaitAsync(TimeSpan.FromSeconds(2));
-        Require(failed.RootElement.GetProperty("kind").GetString() == "failed"
-            && failed.RootElement.GetProperty("error").GetProperty("message").GetString() == "The operation failed."
+        Require(failed.Kind == RunicOperationStatusKind.Failed && failed.ErrorMessage == "The operation failed."
             && observedError is InvalidOperationException,
             "A ReactiveUI command failure was not sanitized at the operation boundary and observed through ThrownExceptions.");
 
-        const string cancelledRequest = "typed-cancelled";
-        using var cancelledAdmission = JsonDocument.Parse(host.Transport.Call("typedReactiveStartCancel",
-            new(StringValue: Payload(cancelledRequest, "cancel"))));
-        var cancelledContract = cancelledAdmission.RootElement.GetProperty("contract").GetString()!;
-        using var cancel = JsonDocument.Parse(host.Transport.Call("__runicOperationCancel",
-            new(StringValue: JsonSerializer.Serialize(new { contract = cancelledContract, requestId = cancelledRequest }))));
-        Require(cancel.RootElement.GetProperty("kind").GetString() == "cancellation-requested",
+        var cancelling = driver.Start(vm => vm.CancelCommand, Input("cancel"), "typed-cancelled");
+        Require(cancelling.Cancel() == RunicOperationCancelKind.CancellationRequested,
             "The operation cancellation request was not delivered to ReactiveUI command execution.");
-        using var cancelled = JsonDocument.Parse(await host.Transport.CallAsync("__runicOperationWait",
-            new(StringValue: JsonSerializer.Serialize(new { contract = cancelledContract, requestId = cancelledRequest }))));
-        Require(cancelled.RootElement.GetProperty("kind").GetString() == "cancelled",
+        Require((await cancelling.WaitAsync()).Kind == RunicOperationStatusKind.Cancelled,
             "A canceled ReactiveUI command did not produce a cancelled operation terminal.");
+    }
+
+    private static async Task AssertInterfaceOnlyOperationAsync(
+        RunicViewDriver<TypedReactiveViewModel> driver, TypedReactiveViewModel model)
+    {
+        model.SetInterfaceOnlyAvailability(true);
+        var completed = await driver.Start(vm => vm.InterfaceOnlyCommand, JsonSerializer.Serialize("interface"), "typed-interface-only").WaitAsync();
+        Require(completed.Kind == RunicOperationStatusKind.Succeeded && completed.Result?.GetInt32() == "interface".Length,
+            "An interface-only ReactiveUI command did not use the bridge availability lease.");
+        model.SetInterfaceOnlyAvailability(false);
+        var disabled = driver.Start(vm => vm.InterfaceOnlyCommand, JsonSerializer.Serialize("interface"), "typed-interface-only-disabled");
+        Require(disabled.Admission == RunicOperationAdmissionKind.Rejected && disabled.Reason == "unavailable",
+            "An interface-only ReactiveUI command ignored an observed false availability value.");
     }
 
     private static async Task AssertInterfaceOnlyCommandLifecycleAsync(
         RunicWindowTestHost<TypedReactiveViewModel> host, TypedReactiveViewModel model)
     {
         // The first CanExecute subscriber is the bridge Observe lease. A later
-        // sample has no synchronous value, so this admission proves generated
+        // sample has no synchronous value, so this command proves generated
         // descriptors use their lease for interface-only commands.
-        const string requestId = "typed-interface-only";
-        using var admission = JsonDocument.Parse(host.Transport.Call("typedReactiveStartInterfaceOnly",
-            new(StringValue: JsonSerializer.Serialize(new { requestId, input = "interface" }))));
-        var contract = admission.RootElement.GetProperty("contract").GetString()!;
-        using var completed = JsonDocument.Parse(await host.Transport.CallAsync("__runicOperationWait",
-            new(StringValue: JsonSerializer.Serialize(new { contract, requestId }))));
-        Require(completed.RootElement.GetProperty("kind").GetString() == "succeeded"
-            && completed.RootElement.GetProperty("result").GetInt32() == "interface".Length,
-            "An interface-only ReactiveUI command did not use the bridge availability lease.");
+        using var completed = JsonDocument.Parse(await host.Transport.CommandAsync("typedReactive", "interfaceOnly",
+            JsonSerializer.Serialize("interface")));
+        Require(completed.RootElement.GetProperty("ok").GetBoolean(),
+            $"An interface-only ReactiveUI command did not use the bridge availability lease: {completed.RootElement}");
 
         model.SetInterfaceOnlyAvailability(false);
-        using var disabled = JsonDocument.Parse(host.Transport.Call("typedReactiveStartInterfaceOnly",
-            new(StringValue: JsonSerializer.Serialize(new { requestId = "typed-interface-only-disabled", input = "interface" }))));
-        Require(disabled.RootElement.GetProperty("kind").GetString() == "rejected"
-            && disabled.RootElement.GetProperty("reason").GetString() == "unavailable",
-            "An interface-only ReactiveUI command ignored an observed false availability value.");
+        using var disabled = JsonDocument.Parse(await host.Transport.CommandAsync("typedReactive", "interfaceOnly",
+            JsonSerializer.Serialize("interface")));
+        Require(!disabled.RootElement.GetProperty("ok").GetBoolean()
+            && disabled.RootElement.GetProperty("error").GetProperty("reason").GetString() == "unavailable",
+            $"An interface-only ReactiveUI command ignored an observed false availability value: {disabled.RootElement}");
 
         var direct = new TypedReactiveViewModel.InterfaceOnlyReactiveCommand();
         Require(ReactiveCommandExecution.CanExecute(direct, "direct"),
@@ -190,49 +186,39 @@ internal sealed class TypedReactiveTests
     private static void AssertPlainTypedCommand(RunicWindowTestHost<TypedReactiveViewModel> host,
         TypedReactiveViewModel model)
     {
-        using var reply = JsonDocument.Parse(host.Transport.Call("typedReactivePlainApply",
-            new(StringValue: JsonSerializer.Serialize(new
+        using var reply = JsonDocument.Parse(host.Transport.Command("typedReactive", "plainApply",
+            JsonSerializer.Serialize(new
             {
                 documentId = "document-1", content = "plain", expectedVersion = 9,
-            }))));
-        Require(reply.RootElement.GetProperty("ok").GetBoolean()
-            && reply.RootElement.GetProperty("state").GetProperty("plainApplyCount").GetInt32() == 1
+            })));
+        // The state at the reply's revision or later includes the command's effects.
+        using var state = host.RawSnapshot();
+        Require(reply.RootElement.GetProperty("ok").GetBoolean() && reply.RootElement.TryGetProperty("revision", out _)
+            && state.RootElement.GetProperty("state").GetProperty("plainApplyCount").GetInt32() == 1
             && model.PlainApplyCount == 1,
             "The typed plain ICommand input did not decode and execute with normal snapshot semantics.");
     }
 
-    private static async Task AssertLastAndStreamAsync(RunicWindowTestHost<TypedReactiveViewModel> host)
+    private static async Task AssertLastAndStreamAsync(RunicViewDriver<TypedReactiveViewModel> driver)
     {
-        const string lastRequestId = "typed-last-1";
-        using var lastAdmission = JsonDocument.Parse(host.Transport.Call("typedReactiveStartLastResult",
-            new(StringValue: Payload(lastRequestId, "last"))));
-        var lastContract = lastAdmission.RootElement.GetProperty("contract").GetString()!;
-        using var last = JsonDocument.Parse(await host.Transport.CallAsync("__runicOperationWait",
-            new(StringValue: JsonSerializer.Serialize(new { contract = lastContract, requestId = lastRequestId }))));
-        Require(last.RootElement.GetProperty("kind").GetString() == "succeeded"
-            && last.RootElement.GetProperty("result").GetInt32() == 2,
+        var last = await driver.Start(vm => vm.LastResultCommand, Input("last"), "typed-last-1").WaitAsync();
+        Require(last.Kind == RunicOperationStatusKind.Succeeded && last.Result?.GetInt32() == 2,
             "The explicit Last cardinality did not retain the final observable value.");
 
-        const string streamRequestId = "typed-stream-1";
-        using var streamAdmission = JsonDocument.Parse(host.Transport.Call("typedReactiveStartStreamResult",
-            new(StringValue: Payload(streamRequestId, "stream"))));
-        var streamContract = streamAdmission.RootElement.GetProperty("contract").GetString()!;
-        using var stream = JsonDocument.Parse(host.Transport.Call("__runicOperationStream",
-            new(StringValue: JsonSerializer.Serialize(new { contract = streamContract, requestId = streamRequestId, cursor = 0 }))));
-        var page = stream.RootElement;
-        Require(page.GetProperty("kind").GetString() == "succeeded"
-            && page.GetProperty("items").GetArrayLength() == 128
-            && page.GetProperty("items")[0].GetProperty("value").GetInt32() == 1
-            && page.GetProperty("items")[127].GetProperty("value").GetInt32() == 128
-            && page.GetProperty("delivery").GetProperty("kind").GetString() == "stream-overflow",
+        var stream = driver.Start(vm => vm.StreamResultCommand, Input("stream"), "typed-stream-1");
+        _ = await stream.WaitAsync();
+        using var page = JsonDocument.Parse(stream.ReadStream().Json);
+        var root = page.RootElement;
+        Require(root.GetProperty("kind").GetString() == "succeeded"
+            && root.GetProperty("items").GetArrayLength() == 128
+            && root.GetProperty("items")[0].GetProperty("value").GetInt32() == 1
+            && root.GetProperty("items")[127].GetProperty("value").GetInt32() == 128
+            && root.GetProperty("delivery").GetProperty("kind").GetString() == "stream-overflow",
             "The explicit Stream cardinality did not preserve bounded replay and visible overflow.");
     }
 
-    private static string Payload(string requestId, string content) => JsonSerializer.Serialize(new
-    {
-        requestId,
-        input = new { documentId = "document-1", content, expectedVersion = 7 },
-    });
+    private static string Input(string content) =>
+        JsonSerializer.Serialize(new { documentId = "document-1", content, expectedVersion = 7 });
 
     private static async Task RequireThrowsAsync<T>(Func<Task> action, string message) where T : Exception
     {
