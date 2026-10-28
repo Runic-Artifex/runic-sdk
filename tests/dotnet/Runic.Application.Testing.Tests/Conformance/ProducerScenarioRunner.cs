@@ -130,7 +130,8 @@ internal sealed class ProducerScenarioRunner
         {
             throw new ScenarioFailure($"The producer sent a message that is not JSON ({error.Message}): {Truncate(message.Json)}");
         }
-        _messages.Match(expected, actual);
+        try { _messages.Match(expected, actual); }
+        catch (ScenarioFailure failure) { throw new ScenarioFailure($"{failure.Message}\n  actual: {Truncate(message.Json)}"); }
     }
 
     private ScenarioConnection ConnectionOf(JsonObject step)
