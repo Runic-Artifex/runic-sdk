@@ -1,0 +1,104 @@
+{
+  "format": "runic.views.scenario/1",
+  "id": "replies.revision-timeout.v1",
+  "contract": {"id":"runic.views","version":4},
+  "set": "replies",
+  "roles": ["client"],
+  "description": "If the route has not reached a reply's revision 5 seconds after the reply, the client reads a snapshot, resolves the call after it and reports revision-timeout.",
+  "view": "notes",
+  "requires": ["virtual-clock"],
+  "ids": {
+    "c1": {"kind":"connection"},
+    "hello-c1": {"kind":"request"},
+    "session": {"kind":"wire","value":"s-1"},
+    "open-notes": {"kind":"call"},
+    "open-notes-request": {"kind":"request"},
+    "presentation": {"kind":"wire","value":"p-1"},
+    "touch": {"kind":"call"},
+    "touch-request": {"kind":"request"},
+    "read": {"kind":"request"}
+  },
+  "arrange": {"model":{}},
+  "steps": [
+    {"connect":"c1"},
+    {
+      "send": {
+        "kind": "hello",
+        "protocol": 4,
+        "session": {"$id":"session"},
+        "client": {"name":{"$any":"string","default":"conformance-client"},"version":{"$any":"string","default":"1.0.0"}}
+      },
+      "id": "hello-c1"
+    },
+    {
+      "receive": {
+        "ok": true,
+        "protocol": 4,
+        "implementation": {"name":{"$any":"string","default":"conformance-producer"},"version":{"$any":"string","default":"1.0.0"}}
+      },
+      "replyTo": "hello-c1"
+    },
+    {"call":{"id":"open-notes","op":"open","route":"notes"}},
+    {"send":{"kind":"open","route":"notes","presentation":{"$id":"presentation"}},"id":"open-notes-request"},
+    {
+      "receive": {
+        "ok": true,
+        "revision": 0,
+        "state": {
+          "title": "",
+          "note": "",
+          "priority": "Normal",
+          "due": null,
+          "elapsed": "PT0S",
+          "rows": [],
+          "count": 0,
+          "summary": "rows: 0",
+          "detail": {"kind":"detail","id":"0123456789abcdef0123456789abcdef"},
+          "canClear": false,
+          "canTouch": true,
+          "canSave": true,
+          "canConfirmClear": false,
+          "isSlowImportExecuting": false,
+          "isConfirmClearExecuting": false
+        },
+        "fields": {"note":{"version":0}},
+        "presentation": "ok"
+      },
+      "replyTo": "open-notes-request"
+    },
+    {"call":{"id":"touch","op":"command","route":"notes","member":"touch"}},
+    {"send":{"kind":"command","route":"notes","member":"touch"},"id":"touch-request"},
+    {"receive":{"ok":true,"revision":1},"replyTo":"touch-request"},
+    {"advance":4999},
+    {"expect":{"call":{"id":"touch","pending":true}}},
+    {"advance":1},
+    {"send":{"kind":"snapshot","route":"notes"},"id":"read"},
+    {
+      "receive": {
+        "ok": true,
+        "revision": 1,
+        "state": {
+          "title": "!",
+          "note": "",
+          "priority": "Normal",
+          "due": null,
+          "elapsed": "PT0S",
+          "rows": [],
+          "count": 0,
+          "summary": "rows: 0",
+          "detail": {"kind":"detail","id":"0123456789abcdef0123456789abcdef"},
+          "canClear": false,
+          "canTouch": true,
+          "canSave": true,
+          "canConfirmClear": false,
+          "isSlowImportExecuting": false,
+          "isConfirmClearExecuting": false
+        },
+        "fields": {"note":{"version":0}}
+      },
+      "replyTo": "read"
+    },
+    {"expect":{"call":{"id":"touch","resolved":null}}},
+    {"expect":{"diagnostics":["revision-timeout"]}}
+  ]
+}

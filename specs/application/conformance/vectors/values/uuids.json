@@ -1,0 +1,44 @@
+{
+  "format": "runic.views.vector/1",
+  "id": "values.uuids",
+  "contract": {"id":"runic.views","version":4},
+  "area": "values",
+  "description": "uuid: 8-4-4-4-12 hexadecimal digits, normal form lowercase.",
+  "cases": [
+    {
+      "id": "values.uuids.uuid-lowercase",
+      "operation": "decode",
+      "type": "uuid",
+      "input": {"encoding":"json","value":"6f1c2a9e-0d4b-4c51-9a83-5d2f7e1b0c44"},
+      "expect": {"value":"6f1c2a9e-0d4b-4c51-9a83-5d2f7e1b0c44"}
+    },
+    {
+      "id": "values.uuids.uuid-uppercase",
+      "operation": "decode",
+      "type": "uuid",
+      "input": {"encoding":"json","value":"6F1C2A9E-0D4B-4C51-9A83-5D2F7E1B0C44"},
+      "expect": {"value":"6f1c2a9e-0d4b-4c51-9a83-5d2f7e1b0c44"}
+    },
+    {
+      "id": "values.uuids.uuid-no-hyphens",
+      "operation": "decode",
+      "type": "uuid",
+      "input": {"encoding":"json","value":"6f1c2a9e0d4b4c519a835d2f7e1b0c44"},
+      "expect": {"error":{"code":"invalid-value"}}
+    },
+    {
+      "id": "values.uuids.uuid-braces",
+      "operation": "decode",
+      "type": "uuid",
+      "input": {"encoding":"json","value":"{6f1c2a9e-0d4b-4c51-9a83-5d2f7e1b0c44}"},
+      "expect": {"error":{"code":"invalid-value"}}
+    },
+    {
+      "id": "values.uuids.uuid-not-hex",
+      "operation": "decode",
+      "type": "uuid",
+      "input": {"encoding":"json","value":"6f1c2a9e-0d4b-4c51-9a83-5d2f7e1b0c4g"},
+      "expect": {"error":{"code":"invalid-value"}}
+    }
+  ]
+}

@@ -1,0 +1,77 @@
+{
+  "format": "runic.views.scenario/1",
+  "id": "errors.unresolved-key.v1",
+  "contract": {"id":"runic.views","version":4},
+  "set": "errors",
+  "roles": ["producer","client"],
+  "description": "A key command whose key resolves to nothing is rejected with unresolved-key and runs nothing.",
+  "source": "specs/application/fixtures/error-reasons/unresolved-key.json#unresolved-key",
+  "view": "notes",
+  "ids": {
+    "c1": {"kind":"connection"},
+    "hello-c1": {"kind":"request"},
+    "session": {"kind":"wire","value":"s-1"},
+    "open-notes": {"kind":"call"},
+    "open-notes-request": {"kind":"request"},
+    "presentation": {"kind":"wire","value":"p-1"},
+    "call": {"kind":"call"},
+    "call-request": {"kind":"request"}
+  },
+  "arrange": {"model":{"rows":[{"id":1,"label":"one"}]}},
+  "steps": [
+    {"connect":"c1"},
+    {
+      "send": {
+        "kind": "hello",
+        "protocol": 4,
+        "session": {"$id":"session"},
+        "client": {"name":{"$any":"string","default":"conformance-client"},"version":{"$any":"string","default":"1.0.0"}}
+      },
+      "id": "hello-c1"
+    },
+    {
+      "receive": {
+        "ok": true,
+        "protocol": 4,
+        "implementation": {"name":{"$any":"string","default":"conformance-producer"},"version":{"$any":"string","default":"1.0.0"}}
+      },
+      "replyTo": "hello-c1"
+    },
+    {"call":{"id":"open-notes","op":"open","route":"notes"}},
+    {"send":{"kind":"open","route":"notes","presentation":{"$id":"presentation"}},"id":"open-notes-request"},
+    {
+      "receive": {
+        "ok": true,
+        "revision": 0,
+        "state": {
+          "title": "",
+          "note": "",
+          "priority": "Normal",
+          "due": null,
+          "elapsed": "PT0S",
+          "rows": [{"id":1,"label":"one"}],
+          "count": 1,
+          "summary": "rows: 1",
+          "detail": {"kind":"detail","id":"0123456789abcdef0123456789abcdef"},
+          "canClear": true,
+          "canTouch": true,
+          "canSave": true,
+          "canConfirmClear": true,
+          "isSlowImportExecuting": false,
+          "isConfirmClearExecuting": false
+        },
+        "fields": {"note":{"version":0}},
+        "presentation": "ok"
+      },
+      "replyTo": "open-notes-request"
+    },
+    {"call":{"id":"call","op":"command","route":"notes","member":"removeRow","input":"99"}},
+    {"send":{"kind":"command","route":"notes","member":"removeRow","input":"99"},"id":"call-request"},
+    {
+      "receive": {"ok":false,"error":{"kind":"rejected","reason":"unresolved-key","message":{"$any":"string","default":"…"}}},
+      "replyTo": "call-request"
+    },
+    {"expect":{"call":{"id":"call","rejected":{"kind":"rejected","reason":"unresolved-key"}}}},
+    {"expect":{"diagnostics":["rejected"]}}
+  ]
+}

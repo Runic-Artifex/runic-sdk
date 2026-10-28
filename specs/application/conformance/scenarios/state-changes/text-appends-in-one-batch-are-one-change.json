@@ -1,0 +1,59 @@
+{
+  "format": "runic.views.scenario/1",
+  "id": "state-changes.text-appends-in-one-batch-are-one-change.v1",
+  "contract": {"id":"runic.views","version":4},
+  "set": "state-changes",
+  "roles": ["producer","client"],
+  "description": "An append-only text field publishes a text change: drop trim UTF-16 code units from the start of the length code units the client has, then append text. Case: appends in one batch are one change.",
+  "source": "specs/application/fixtures/text-deltas/text.json#appends in one batch are one change",
+  "view": "log",
+  "ids": {
+    "c1": {"kind":"connection"},
+    "hello-c1": {"kind":"request"},
+    "session": {"kind":"wire","value":"s-1"},
+    "open-log": {"kind":"call"},
+    "open-log-request": {"kind":"request"},
+    "presentation": {"kind":"wire","value":"p-1"},
+    "final-read": {"kind":"request"}
+  },
+  "arrange": {"model":{"log":"a","title":"log"}},
+  "steps": [
+    {"connect":"c1"},
+    {
+      "send": {
+        "kind": "hello",
+        "protocol": 4,
+        "session": {"$id":"session"},
+        "client": {"name":{"$any":"string","default":"conformance-client"},"version":{"$any":"string","default":"1.0.0"}}
+      },
+      "id": "hello-c1"
+    },
+    {
+      "receive": {
+        "ok": true,
+        "protocol": 4,
+        "implementation": {"name":{"$any":"string","default":"conformance-producer"},"version":{"$any":"string","default":"1.0.0"}}
+      },
+      "replyTo": "hello-c1"
+    },
+    {"call":{"id":"open-log","op":"open","route":"log"}},
+    {"send":{"kind":"open","route":"log","presentation":{"$id":"presentation"}},"id":"open-log-request"},
+    {
+      "receive": {"ok":true,"revision":0,"state":{"log":"a","title":"log"},"presentation":"ok"},
+      "replyTo": "open-log-request"
+    },
+    {"mutate":[{"op":"append","member":"log","text":"b"},{"op":"append","member":"log","text":"c"}]},
+    {
+      "receive": {
+        "kind": "frame",
+        "route": "log",
+        "baseRevision": 0,
+        "revision": 2,
+        "changes": [{"field":"log","kind":"text","length":1,"trim":0,"text":"bc"}]
+      }
+    },
+    {"send":{"kind":"snapshot","route":"log"},"id":"final-read","role":"producer"},
+    {"receive":{"ok":true,"revision":2,"state":{"log":"abc","title":"log"}},"replyTo":"final-read","role":"producer"},
+    {"expect":{"state":{"route":"log","value":{"log":"abc","title":"log"}}}}
+  ]
+}

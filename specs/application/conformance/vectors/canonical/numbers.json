@@ -1,0 +1,177 @@
+{
+  "format": "runic.views.vector/1",
+  "id": "canonical.numbers",
+  "contract": {"id":"runic.views","version":4},
+  "area": "canonical",
+  "description": "Numbers are IEEE 754 doubles written with ECMAScript Number::toString (RFC 8785 section 3.2.2.3).",
+  "cases": [
+    {
+      "id": "canonical.numbers.zero",
+      "description": "Zero.",
+      "operation": "canonicalize",
+      "input": {"encoding":"utf8","value":"0"},
+      "expect": {"output":{"encoding":"utf8","value":"0"}}
+    },
+    {
+      "id": "canonical.numbers.negative-zero",
+      "description": "-0 is written 0.",
+      "operation": "canonicalize",
+      "input": {"encoding":"utf8","value":"-0"},
+      "expect": {"output":{"encoding":"utf8","value":"0"}}
+    },
+    {
+      "id": "canonical.numbers.negative-zero-fraction",
+      "description": "-0.0 is written 0.",
+      "operation": "canonicalize",
+      "input": {"encoding":"utf8","value":"-0.0"},
+      "expect": {"output":{"encoding":"utf8","value":"0"}}
+    },
+    {
+      "id": "canonical.numbers.trailing-fraction-zero",
+      "description": "1.0 is written 1.",
+      "operation": "canonicalize",
+      "input": {"encoding":"utf8","value":"1.0"},
+      "expect": {"output":{"encoding":"utf8","value":"1"}}
+    },
+    {
+      "id": "canonical.numbers.exponent-integer",
+      "description": "1E2 is written 100.",
+      "operation": "canonicalize",
+      "input": {"encoding":"utf8","value":"1E2"},
+      "expect": {"output":{"encoding":"utf8","value":"100"}}
+    },
+    {
+      "id": "canonical.numbers.negative-exponent-zero",
+      "description": "-1.5e0 is written -1.5.",
+      "operation": "canonicalize",
+      "input": {"encoding":"utf8","value":"-1.5e0"},
+      "expect": {"output":{"encoding":"utf8","value":"-1.5"}}
+    },
+    {
+      "id": "canonical.numbers.largest-plain",
+      "description": "1e20 is written in full.",
+      "operation": "canonicalize",
+      "input": {"encoding":"utf8","value":"1e20"},
+      "expect": {"output":{"encoding":"utf8","value":"100000000000000000000"}}
+    },
+    {
+      "id": "canonical.numbers.smallest-exponent",
+      "description": "1e21 uses an exponent with an explicit sign.",
+      "operation": "canonicalize",
+      "input": {"encoding":"utf8","value":"1e21"},
+      "expect": {"output":{"encoding":"utf8","value":"1e+21"}}
+    },
+    {
+      "id": "canonical.numbers.small-plain",
+      "description": "0.000001 is written in full.",
+      "operation": "canonicalize",
+      "input": {"encoding":"utf8","value":"0.000001"},
+      "expect": {"output":{"encoding":"utf8","value":"0.000001"}}
+    },
+    {
+      "id": "canonical.numbers.small-exponent",
+      "description": "0.0000001 uses an exponent.",
+      "operation": "canonicalize",
+      "input": {"encoding":"utf8","value":"0.0000001"},
+      "expect": {"output":{"encoding":"utf8","value":"1e-7"}}
+    },
+    {
+      "id": "canonical.numbers.exponent-mantissa",
+      "description": "123e-20 is written 1.23e-18.",
+      "operation": "canonicalize",
+      "input": {"encoding":"utf8","value":"123e-20"},
+      "expect": {"output":{"encoding":"utf8","value":"1.23e-18"}}
+    },
+    {
+      "id": "canonical.numbers.safe-integer-limit",
+      "description": "2^53 is exact.",
+      "operation": "canonicalize",
+      "input": {"encoding":"utf8","value":"9007199254740992"},
+      "expect": {"output":{"encoding":"utf8","value":"9007199254740992"}}
+    },
+    {
+      "id": "canonical.numbers.beyond-safe-integer",
+      "description": "2^53 + 1 rounds to the nearest double, 2^53.",
+      "operation": "canonicalize",
+      "input": {"encoding":"utf8","value":"9007199254740993"},
+      "expect": {"output":{"encoding":"utf8","value":"9007199254740992"}}
+    },
+    {
+      "id": "canonical.numbers.large-integer",
+      "description": "A 30-digit integer rounds to a double.",
+      "operation": "canonicalize",
+      "input": {"encoding":"utf8","value":"123456789012345678901234567890"},
+      "expect": {"output":{"encoding":"utf8","value":"1.2345678901234568e+29"}}
+    },
+    {
+      "id": "canonical.numbers.excess-precision",
+      "description": "0.10000000000000000001 is the double 0.1, so it equals 0.1.",
+      "operation": "canonicalize",
+      "input": {"encoding":"utf8","value":"0.10000000000000000001"},
+      "expect": {"output":{"encoding":"utf8","value":"0.1"}}
+    },
+    {
+      "id": "canonical.numbers.one-tenth",
+      "description": "0.1.",
+      "operation": "canonicalize",
+      "input": {"encoding":"utf8","value":"0.1"},
+      "expect": {"output":{"encoding":"utf8","value":"0.1"}}
+    },
+    {
+      "id": "canonical.numbers.largest-double",
+      "description": "The largest finite double.",
+      "operation": "canonicalize",
+      "input": {"encoding":"utf8","value":"1.7976931348623157e308"},
+      "expect": {"output":{"encoding":"utf8","value":"1.7976931348623157e+308"}}
+    },
+    {
+      "id": "canonical.numbers.smallest-subnormal",
+      "description": "The smallest subnormal double.",
+      "operation": "canonicalize",
+      "input": {"encoding":"utf8","value":"5e-324"},
+      "expect": {"output":{"encoding":"utf8","value":"5e-324"}}
+    },
+    {
+      "id": "canonical.numbers.subnormal-rounding",
+      "description": "4.940656458412465e-324 rounds to the smallest subnormal.",
+      "operation": "canonicalize",
+      "input": {"encoding":"utf8","value":"4.940656458412465e-324"},
+      "expect": {"output":{"encoding":"utf8","value":"5e-324"}}
+    },
+    {
+      "id": "canonical.numbers.underflow",
+      "description": "1e-400 underflows to 0.",
+      "operation": "canonicalize",
+      "input": {"encoding":"utf8","value":"1e-400"},
+      "expect": {"output":{"encoding":"utf8","value":"0"}}
+    },
+    {
+      "id": "canonical.numbers.negative-underflow",
+      "description": "-1e-400 underflows to -0, which is written 0.",
+      "operation": "canonicalize",
+      "input": {"encoding":"utf8","value":"-1e-400"},
+      "expect": {"output":{"encoding":"utf8","value":"0"}}
+    },
+    {
+      "id": "canonical.numbers.overflow",
+      "description": "1e400 is not a finite double and is rejected.",
+      "operation": "canonicalize",
+      "input": {"encoding":"utf8","value":"1e400"},
+      "expect": {"error":{"code":"number-out-of-range"}}
+    },
+    {
+      "id": "canonical.numbers.negative-overflow",
+      "description": "-1e400 is rejected.",
+      "operation": "canonicalize",
+      "input": {"encoding":"utf8","value":"-1e400"},
+      "expect": {"error":{"code":"number-out-of-range"}}
+    },
+    {
+      "id": "canonical.numbers.overflow-nested",
+      "description": "An out-of-range number inside a value rejects the whole value.",
+      "operation": "canonicalize",
+      "input": {"encoding":"utf8","value":"{\"a\":[1,1.8e308]}"},
+      "expect": {"error":{"code":"number-out-of-range"}}
+    }
+  ]
+}

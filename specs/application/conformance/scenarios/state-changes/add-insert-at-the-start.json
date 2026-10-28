@@ -1,0 +1,65 @@
+{
+  "format": "runic.views.scenario/1",
+  "id": "state-changes.add-insert-at-the-start.v1",
+  "contract": {"id":"runic.views","version":4},
+  "set": "state-changes",
+  "roles": ["producer","client"],
+  "description": "An add inserts new rows at index. keys are the keys of the new rows; oldIndex is -1. Case: insert at the start.",
+  "source": "specs/application/fixtures/collection-deltas/add.json#insert at the start",
+  "view": "list",
+  "ids": {
+    "c1": {"kind":"connection"},
+    "hello-c1": {"kind":"request"},
+    "session": {"kind":"wire","value":"s-1"},
+    "open-list": {"kind":"call"},
+    "open-list-request": {"kind":"request"},
+    "presentation": {"kind":"wire","value":"p-1"},
+    "final-read": {"kind":"request"}
+  },
+  "arrange": {"model":{"rows":[{"id":1,"label":"one"}],"title":"rows"}},
+  "steps": [
+    {"connect":"c1"},
+    {
+      "send": {
+        "kind": "hello",
+        "protocol": 4,
+        "session": {"$id":"session"},
+        "client": {"name":{"$any":"string","default":"conformance-client"},"version":{"$any":"string","default":"1.0.0"}}
+      },
+      "id": "hello-c1"
+    },
+    {
+      "receive": {
+        "ok": true,
+        "protocol": 4,
+        "implementation": {"name":{"$any":"string","default":"conformance-producer"},"version":{"$any":"string","default":"1.0.0"}}
+      },
+      "replyTo": "hello-c1"
+    },
+    {"call":{"id":"open-list","op":"open","route":"list"}},
+    {"send":{"kind":"open","route":"list","presentation":{"$id":"presentation"}},"id":"open-list-request"},
+    {
+      "receive": {"ok":true,"revision":0,"state":{"rows":[{"id":1,"label":"one"}],"title":"rows"},"presentation":"ok"},
+      "replyTo": "open-list-request"
+    },
+    {"mutate":[{"op":"insert","index":0,"item":{"id":0,"label":"zero"}}]},
+    {
+      "receive": {
+        "kind": "frame",
+        "route": "list",
+        "baseRevision": 0,
+        "revision": 1,
+        "changes": [{"field":"rows","kind":"add","index":0,"oldIndex":-1,"keys":["0"],"items":[{"id":0,"label":"zero"}]}]
+      }
+    },
+    {"send":{"kind":"snapshot","route":"list"},"id":"final-read","role":"producer"},
+    {
+      "receive": {"ok":true,"revision":1,"state":{"rows":[{"id":0,"label":"zero"},{"id":1,"label":"one"}],"title":"rows"}},
+      "replyTo": "final-read",
+      "role": "producer"
+    },
+    {
+      "expect": {"state":{"route":"list","value":{"rows":[{"id":0,"label":"zero"},{"id":1,"label":"one"}],"title":"rows"}}}
+    }
+  ]
+}

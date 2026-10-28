@@ -1,0 +1,40 @@
+{
+  "format": "runic.views.scenario/1",
+  "id": "handshake.client-refuses-another-protocol.v1",
+  "contract": {"id":"runic.views","version":4},
+  "set": "handshake",
+  "roles": ["client"],
+  "description": "A producer that answers with another protocol is refused: the open rejects with failed, one protocol diagnostic is reported, and no open is sent.",
+  "view": "notes",
+  "ids": {
+    "c1": {"kind":"connection"},
+    "hello-c1": {"kind":"request"},
+    "session": {"kind":"wire","value":"s-1"},
+    "open-notes": {"kind":"call"}
+  },
+  "arrange": {"model":{}},
+  "steps": [
+    {"connect":"c1"},
+    {
+      "send": {
+        "kind": "hello",
+        "protocol": 4,
+        "session": {"$id":"session"},
+        "client": {"name":{"$any":"string"},"version":{"$any":"string"}}
+      },
+      "id": "hello-c1"
+    },
+    {
+      "receive": {
+        "ok": false,
+        "protocol": 5,
+        "implementation": {"name":"conformance-producer","version":"5.0.0"},
+        "error": {"kind":"failed","reason":"protocol-mismatch","message":"This producer implements protocol 5."}
+      },
+      "replyTo": "hello-c1"
+    },
+    {"call":{"id":"open-notes","op":"open","route":"notes"}},
+    {"expect":{"call":{"id":"open-notes","rejected":{"kind":"failed"}}}},
+    {"expect":{"diagnostics":["protocol"]}}
+  ]
+}

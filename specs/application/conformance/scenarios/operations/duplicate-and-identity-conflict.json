@@ -1,0 +1,126 @@
+{
+  "format": "runic.views.scenario/1",
+  "id": "operations.duplicate-and-identity-conflict.v1",
+  "contract": {"id":"runic.views","version":4},
+  "set": "operations",
+  "roles": ["producer"],
+  "description": "A start with a known operation id is a duplicate when member and input are canonically equal (member order and 1.0 versus 1 do not matter), and an identity conflict otherwise.",
+  "view": "notes",
+  "ids": {
+    "c1": {"kind":"connection"},
+    "hello-c1": {"kind":"request"},
+    "session": {"kind":"wire","value":"s-1"},
+    "open-notes-request": {"kind":"request"},
+    "presentation": {"kind":"wire","value":"p-1"},
+    "start-request": {"kind":"request"},
+    "operation": {"kind":"wire","value":"op-1"},
+    "contract": {"kind":"provided"},
+    "duplicate": {"kind":"request"},
+    "other-input": {"kind":"request"},
+    "other-member": {"kind":"request"}
+  },
+  "arrange": {"model":{}},
+  "steps": [
+    {"connect":"c1"},
+    {
+      "send": {
+        "kind": "hello",
+        "protocol": 4,
+        "session": {"$id":"session"},
+        "client": {"name":{"$any":"string","default":"conformance-client"},"version":{"$any":"string","default":"1.0.0"}}
+      },
+      "id": "hello-c1"
+    },
+    {
+      "receive": {
+        "ok": true,
+        "protocol": 4,
+        "implementation": {"name":{"$any":"string","default":"conformance-producer"},"version":{"$any":"string","default":"1.0.0"}}
+      },
+      "replyTo": "hello-c1"
+    },
+    {"send":{"kind":"open","route":"notes","presentation":{"$id":"presentation"}},"id":"open-notes-request"},
+    {
+      "receive": {
+        "ok": true,
+        "revision": 0,
+        "state": {
+          "title": "",
+          "note": "",
+          "priority": "Normal",
+          "due": null,
+          "elapsed": "PT0S",
+          "rows": [],
+          "count": 0,
+          "summary": "rows: 0",
+          "detail": {"kind":"detail","id":"0123456789abcdef0123456789abcdef"},
+          "canClear": false,
+          "canTouch": true,
+          "canSave": true,
+          "canConfirmClear": false,
+          "isSlowImportExecuting": false,
+          "isConfirmClearExecuting": false
+        },
+        "fields": {"note":{"version":0}},
+        "presentation": "ok"
+      },
+      "replyTo": "open-notes-request"
+    },
+    {
+      "send": {
+        "kind": "start",
+        "route": "notes",
+        "member": "slowImport",
+        "operation": {"$id":"operation"},
+        "contract": {"$id":"contract"},
+        "input": {"source":"a","limit":2}
+      },
+      "id": "start-request"
+    },
+    {
+      "receive": {
+        "kind": "frame",
+        "route": "notes",
+        "baseRevision": 0,
+        "revision": 1,
+        "changes": [{"field":"isSlowImportExecuting","kind":"set","value":true}]
+      }
+    },
+    {"receive":{"ok":true,"revision":1,"admission":"accepted","status":{"kind":"running"}},"replyTo":"start-request"},
+    {
+      "send": {
+        "kind": "start",
+        "route": "notes",
+        "member": "slowImport",
+        "operation": {"$id":"operation"},
+        "contract": {"$id":"contract"},
+        "input": {"$json":"{\"limit\":2.0,\"source\":\"a\"}"}
+      },
+      "id": "duplicate"
+    },
+    {"receive":{"ok":true,"revision":1,"admission":"duplicate","status":{"kind":"running"}},"replyTo":"duplicate"},
+    {
+      "send": {
+        "kind": "start",
+        "route": "notes",
+        "member": "slowImport",
+        "operation": {"$id":"operation"},
+        "contract": {"$id":"contract"},
+        "input": {"source":"b","limit":2}
+      },
+      "id": "other-input"
+    },
+    {"receive":{"ok":true,"revision":1,"admission":"rejected","reason":"identity-conflict"},"replyTo":"other-input"},
+    {
+      "send": {
+        "kind": "start",
+        "route": "notes",
+        "member": "confirmClear",
+        "operation": {"$id":"operation"},
+        "contract": {"$id":"contract"}
+      },
+      "id": "other-member"
+    },
+    {"receive":{"ok":true,"revision":1,"admission":"rejected","reason":"identity-conflict"},"replyTo":"other-member"}
+  ]
+}

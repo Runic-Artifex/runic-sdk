@@ -1,0 +1,127 @@
+{
+  "format": "runic.views.scenario/1",
+  "id": "replies.released-by-the-call.v1",
+  "contract": {"id":"runic.views","version":4},
+  "set": "replies",
+  "roles": ["producer","client"],
+  "description": "A command that releases its own route replies released: true without a revision, after the frames it caused; later requests to the route answer released.",
+  "view": "notes",
+  "ids": {
+    "c1": {"kind":"connection"},
+    "hello-c1": {"kind":"request"},
+    "session": {"kind":"wire","value":"s-1"},
+    "open-notes": {"kind":"call"},
+    "open-notes-request": {"kind":"request"},
+    "presentation": {"kind":"wire","value":"p-1"},
+    "open-detail": {"kind":"call"},
+    "open-detail-request": {"kind":"request"},
+    "detailPresentation": {"kind":"wire","value":"p-detail"},
+    "dismiss": {"kind":"call"},
+    "dismiss-request": {"kind":"request"},
+    "late-read": {"kind":"request"}
+  },
+  "arrange": {"model":{}},
+  "steps": [
+    {"connect":"c1"},
+    {
+      "send": {
+        "kind": "hello",
+        "protocol": 4,
+        "session": {"$id":"session"},
+        "client": {"name":{"$any":"string","default":"conformance-client"},"version":{"$any":"string","default":"1.0.0"}}
+      },
+      "id": "hello-c1"
+    },
+    {
+      "receive": {
+        "ok": true,
+        "protocol": 4,
+        "implementation": {"name":{"$any":"string","default":"conformance-producer"},"version":{"$any":"string","default":"1.0.0"}}
+      },
+      "replyTo": "hello-c1"
+    },
+    {"call":{"id":"open-notes","op":"open","route":"notes"}},
+    {"send":{"kind":"open","route":"notes","presentation":{"$id":"presentation"}},"id":"open-notes-request"},
+    {
+      "receive": {
+        "ok": true,
+        "revision": 0,
+        "state": {
+          "title": "",
+          "note": "",
+          "priority": "Normal",
+          "due": null,
+          "elapsed": "PT0S",
+          "rows": [],
+          "count": 0,
+          "summary": "rows: 0",
+          "detail": {"kind":"detail","id":"0123456789abcdef0123456789abcdef"},
+          "canClear": false,
+          "canTouch": true,
+          "canSave": true,
+          "canConfirmClear": false,
+          "isSlowImportExecuting": false,
+          "isConfirmClearExecuting": false
+        },
+        "fields": {"note":{"version":0}},
+        "presentation": "ok"
+      },
+      "replyTo": "open-notes-request"
+    },
+    {"call":{"id":"open-detail","op":"open","route":"content0123456789abcdef0123456789abcdef"}},
+    {
+      "send": {"kind":"open","route":"content0123456789abcdef0123456789abcdef","presentation":{"$id":"detailPresentation"}},
+      "id": "open-detail-request"
+    },
+    {
+      "receive": {"ok":true,"revision":0,"state":{"lastAction":"","canDismiss":true},"presentation":"ok"},
+      "replyTo": "open-detail-request"
+    },
+    {"call":{"id":"dismiss","op":"command","route":"content0123456789abcdef0123456789abcdef","member":"dismiss"}},
+    {
+      "send": {"kind":"command","route":"content0123456789abcdef0123456789abcdef","member":"dismiss"},
+      "id": "dismiss-request"
+    },
+    {
+      "receive": {
+        "kind": "frame",
+        "route": "notes",
+        "baseRevision": 0,
+        "revision": 1,
+        "changes": [{"field":"detail","kind":"set","value":null}]
+      }
+    },
+    {"receive":{"ok":true,"released":true},"replyTo":"dismiss-request"},
+    {"expect":{"call":{"id":"dismiss","resolved":null}}},
+    {
+      "expect": {
+        "state": {
+          "route": "notes",
+          "value": {
+            "title": "",
+            "note": "",
+            "priority": "Normal",
+            "due": null,
+            "elapsed": "PT0S",
+            "rows": [],
+            "count": 0,
+            "summary": "rows: 0",
+            "detail": null,
+            "canClear": false,
+            "canTouch": true,
+            "canSave": true,
+            "canConfirmClear": false,
+            "isSlowImportExecuting": false,
+            "isConfirmClearExecuting": false
+          }
+        }
+      }
+    },
+    {"send":{"kind":"snapshot","route":"content0123456789abcdef0123456789abcdef"},"id":"late-read","role":"producer"},
+    {
+      "receive": {"ok":false,"error":{"kind":"released","message":{"$any":"string"}}},
+      "replyTo": "late-read",
+      "role": "producer"
+    }
+  ]
+}

@@ -1,0 +1,109 @@
+{
+  "format": "runic.views.scenario/1",
+  "id": "state-changes.repeated-frame-is-ignored.v1",
+  "contract": {"id":"runic.views","version":4},
+  "set": "state-changes",
+  "roles": ["client"],
+  "description": "A frame at or below the current revision has no effect and does not notify subscribers.",
+  "view": "notes",
+  "ids": {
+    "c1": {"kind":"connection"},
+    "hello-c1": {"kind":"request"},
+    "session": {"kind":"wire","value":"s-1"},
+    "open-notes": {"kind":"call"},
+    "open-notes-request": {"kind":"request"},
+    "presentation": {"kind":"wire","value":"p-1"}
+  },
+  "arrange": {"model":{}},
+  "steps": [
+    {"connect":"c1"},
+    {
+      "send": {
+        "kind": "hello",
+        "protocol": 4,
+        "session": {"$id":"session"},
+        "client": {"name":{"$any":"string","default":"conformance-client"},"version":{"$any":"string","default":"1.0.0"}}
+      },
+      "id": "hello-c1"
+    },
+    {
+      "receive": {
+        "ok": true,
+        "protocol": 4,
+        "implementation": {"name":{"$any":"string","default":"conformance-producer"},"version":{"$any":"string","default":"1.0.0"}}
+      },
+      "replyTo": "hello-c1"
+    },
+    {"call":{"id":"open-notes","op":"open","route":"notes"}},
+    {"send":{"kind":"open","route":"notes","presentation":{"$id":"presentation"}},"id":"open-notes-request"},
+    {
+      "receive": {
+        "ok": true,
+        "revision": 0,
+        "state": {
+          "title": "",
+          "note": "",
+          "priority": "Normal",
+          "due": null,
+          "elapsed": "PT0S",
+          "rows": [],
+          "count": 0,
+          "summary": "rows: 0",
+          "detail": {"kind":"detail","id":"0123456789abcdef0123456789abcdef"},
+          "canClear": false,
+          "canTouch": true,
+          "canSave": true,
+          "canConfirmClear": false,
+          "isSlowImportExecuting": false,
+          "isConfirmClearExecuting": false
+        },
+        "fields": {"note":{"version":0}},
+        "presentation": "ok"
+      },
+      "replyTo": "open-notes-request"
+    },
+    {
+      "receive": {
+        "kind": "frame",
+        "route": "notes",
+        "baseRevision": 0,
+        "revision": 1,
+        "changes": [{"field":"title","kind":"set","value":"a"}]
+      }
+    },
+    {
+      "receive": {
+        "kind": "frame",
+        "route": "notes",
+        "baseRevision": 0,
+        "revision": 1,
+        "changes": [{"field":"title","kind":"set","value":"a"}]
+      }
+    },
+    {"expect":{"notifications":{"route":"notes","count":1}}},
+    {
+      "expect": {
+        "state": {
+          "route": "notes",
+          "value": {
+            "title": "a",
+            "note": "",
+            "priority": "Normal",
+            "due": null,
+            "elapsed": "PT0S",
+            "rows": [],
+            "count": 0,
+            "summary": "rows: 0",
+            "detail": {"kind":"detail","id":"0123456789abcdef0123456789abcdef"},
+            "canClear": false,
+            "canTouch": true,
+            "canSave": true,
+            "canConfirmClear": false,
+            "isSlowImportExecuting": false,
+            "isConfirmClearExecuting": false
+          }
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,114 @@
+{
+  "format": "runic.views.scenario/1",
+  "id": "operations.declared-failure.v1",
+  "contract": {"id":"runic.views","version":4},
+  "set": "operations",
+  "roles": ["producer"],
+  "description": "An operation that fails as declared ends domain-failed with the encoded failure and without error or detail.",
+  "source": "specs/application/fixtures/domain-failures/operation-status.json#operation-status",
+  "view": "notes",
+  "ids": {
+    "c1": {"kind":"connection"},
+    "hello-c1": {"kind":"request"},
+    "session": {"kind":"wire","value":"s-1"},
+    "open-notes-request": {"kind":"request"},
+    "presentation": {"kind":"wire","value":"p-1"},
+    "start-request": {"kind":"request"},
+    "operation": {"kind":"wire","value":"op-1"},
+    "contract": {"kind":"provided"},
+    "status-request": {"kind":"request"}
+  },
+  "arrange": {"model":{}},
+  "steps": [
+    {"connect":"c1"},
+    {
+      "send": {
+        "kind": "hello",
+        "protocol": 4,
+        "session": {"$id":"session"},
+        "client": {"name":{"$any":"string","default":"conformance-client"},"version":{"$any":"string","default":"1.0.0"}}
+      },
+      "id": "hello-c1"
+    },
+    {
+      "receive": {
+        "ok": true,
+        "protocol": 4,
+        "implementation": {"name":{"$any":"string","default":"conformance-producer"},"version":{"$any":"string","default":"1.0.0"}}
+      },
+      "replyTo": "hello-c1"
+    },
+    {"send":{"kind":"open","route":"notes","presentation":{"$id":"presentation"}},"id":"open-notes-request"},
+    {
+      "receive": {
+        "ok": true,
+        "revision": 0,
+        "state": {
+          "title": "",
+          "note": "",
+          "priority": "Normal",
+          "due": null,
+          "elapsed": "PT0S",
+          "rows": [],
+          "count": 0,
+          "summary": "rows: 0",
+          "detail": {"kind":"detail","id":"0123456789abcdef0123456789abcdef"},
+          "canClear": false,
+          "canTouch": true,
+          "canSave": true,
+          "canConfirmClear": false,
+          "isSlowImportExecuting": false,
+          "isConfirmClearExecuting": false
+        },
+        "fields": {"note":{"version":0}},
+        "presentation": "ok"
+      },
+      "replyTo": "open-notes-request"
+    },
+    {
+      "send": {
+        "kind": "start",
+        "route": "notes",
+        "member": "slowImport",
+        "operation": {"$id":"operation"},
+        "contract": {"$id":"contract"},
+        "input": {"source":"a","limit":2}
+      },
+      "id": "start-request"
+    },
+    {
+      "receive": {
+        "kind": "frame",
+        "route": "notes",
+        "baseRevision": 0,
+        "revision": 1,
+        "changes": [{"field":"isSlowImportExecuting","kind":"set","value":true}]
+      }
+    },
+    {"receive":{"ok":true,"revision":1,"admission":"accepted","status":{"kind":"running"}},"replyTo":"start-request"},
+    {"mutate":[{"op":"finish","member":"slowImport","failure":{"$case":"sourceMissing"}}]},
+    {
+      "receive": {
+        "kind": "frame",
+        "route": "notes",
+        "baseRevision": 1,
+        "revision": 2,
+        "changes": [{"field":"isSlowImportExecuting","kind":"set","value":false}]
+      }
+    },
+    {
+      "send": {
+        "kind": "status",
+        "route": "notes",
+        "member": "slowImport",
+        "operation": {"$id":"operation"},
+        "contract": {"$id":"contract"}
+      },
+      "id": "status-request"
+    },
+    {
+      "receive": {"ok":true,"status":{"kind":"domain-failed","revision":2,"failure":{"$case":"sourceMissing"}}},
+      "replyTo": "status-request"
+    }
+  ]
+}
