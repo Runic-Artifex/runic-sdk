@@ -31,17 +31,17 @@ internal sealed class DataCodecTests
             "An unsafe JSON number must not be accepted as an Int64 string.");
         Require(Throws<FormatException>(() => BridgeWire.ReadDouble(Json("1e999"))),
             "Non-finite floating-point input must be rejected.");
-        Require(BridgeWire.ReadTimeSpan(Json("\"-1.02:03:04.5000007\""))
+        Require(BridgeWire.ReadTimeSpan(Json("\"-P1DT2H3M4.5000007S\""))
             == -TimeSpan.FromDays(1) - TimeSpan.FromHours(2) - TimeSpan.FromMinutes(3)
                 - TimeSpan.FromSeconds(4) - TimeSpan.FromMilliseconds(500) - TimeSpan.FromTicks(7),
-            "Invariant TimeSpan decoding did not preserve a signed day and fraction.");
-        Require(BridgeWire.ReadTimeSpan(Json("\"10675199.02:48:05.4775807\"")) == TimeSpan.MaxValue
-            && BridgeWire.ReadTimeSpan(Json("\"-10675199.02:48:05.4775808\"")) == TimeSpan.MinValue,
-            "Invariant TimeSpan decoding did not accept both tick-range boundaries.");
-        Require(Throws<FormatException>(() => BridgeWire.ReadTimeSpan(Json("\"24:00:00\"")))
-            && Throws<FormatException>(() => BridgeWire.ReadTimeSpan(Json("\"1.24:00:00\"")))
-            && Throws<FormatException>(() => BridgeWire.ReadTimeSpan(Json("\"10675199.02:48:05.4775808\""))),
-            "Invariant TimeSpan decoding accepted an invalid component or tick overflow.");
+            "ISO 8601 duration decoding did not preserve a signed day and fraction.");
+        Require(BridgeWire.ReadTimeSpan(Json("\"P10675199DT2H48M5.4775807S\"")) == TimeSpan.MaxValue
+            && BridgeWire.ReadTimeSpan(Json("\"-P10675199DT2H48M5.4775808S\"")) == TimeSpan.MinValue,
+            "ISO 8601 duration decoding did not accept both tick-range boundaries.");
+        Require(Throws<FormatException>(() => BridgeWire.ReadTimeSpan(Json("\"1.02:03:04\"")))
+            && Throws<FormatException>(() => BridgeWire.ReadTimeSpan(Json("\"P1M\"")))
+            && Throws<FormatException>(() => BridgeWire.ReadTimeSpan(Json("\"P10675199DT2H48M5.4775808S\""))),
+            "ISO 8601 duration decoding accepted the .NET format, a month or tick overflow.");
 
         // JavaScript writes ISO-8601 with millisecond precision (toISOString)
         // or none at all; .NET "O" output has seven digits. Accept all of them.

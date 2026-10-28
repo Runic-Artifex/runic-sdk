@@ -456,8 +456,7 @@ internal sealed class NavigationPresentationTests
         foreach (var expected in new[]
         {
             "  /** The main content; the navigator changes it. */\n  readonly main: ReactiveNavEditorPageReference | NavEditorPageReference | NavHomePageReference | NavLogPagePageReference | null;",
-            "  readonly main: { readonly kind: \"reactiveNavEditor\"; readonly id: string } | { readonly kind: \"navEditor\"; readonly id: string } | { readonly kind: \"navHome\"; readonly id: string } | { readonly kind: \"navLogPage\"; readonly id: string } | null;",
-            "    main: wire.main === null ? null : wire.main.kind === \"reactiveNavEditor\" ? pageReactiveNavEditor(wire.main.id) : wire.main.kind === \"navEditor\" ? pageNavEditor(wire.main.id)",
+            "  main: (wire: unknown) => { if (wire === null) return null; const reference = contentReference(wire); return reference.kind === \"reactiveNavEditor\" ? pageReactiveNavEditor(reference.id) : reference.kind === \"navEditor\" ? pageNavEditor(reference.id)",
         })
             Require(generated.Contains(expected, StringComparison.Ordinal), $"navShell.ts is missing:\n{expected}\n---\n{generated}");
         var mock = File.ReadAllText(Path.Combine(GeneratedTypeScriptDirectory(), "navShell.mock.ts"));

@@ -24,7 +24,7 @@ internal sealed class DataShapeTests
         var state = snapshot.RootElement.GetProperty("state");
         Require(state.GetProperty("exact-id").GetString() == "9007199254740993", "Root RunicAlias was not emitted as an exact Int64 string.");
         Require(state.GetProperty("amount").GetString() == "1234567890.123456789", "Exact decimal state was not emitted as a string.");
-        Require(state.GetProperty("duration").GetString() == "00:00:12.3456789", "Invariant TimeSpan state was not emitted in constant format.");
+        Require(state.GetProperty("duration").GetString() == "PT12.3456789S", "TimeSpan state was not emitted as an ISO 8601 duration.");
         Require(state.GetProperty("optional").ValueKind == JsonValueKind.Null, "Nullable scalar state did not retain null.");
         Require(state.GetProperty("items")[0].GetProperty("source").GetString() == "base"
             && state.GetProperty("items")[0].GetProperty("retry-after").GetInt32() == 3

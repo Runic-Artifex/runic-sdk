@@ -244,17 +244,18 @@ internal sealed class BridgeTypeGraph
             BridgeWireKind.UInt16 => $"bridgeWire.integer({expression}, 0, 65535)",
             BridgeWireKind.Int32 => $"bridgeWire.integer({expression}, -2147483648, 2147483647)",
             BridgeWireKind.UInt32 => $"bridgeWire.integer({expression}, 0, 4294967295)",
-            BridgeWireKind.Single or BridgeWireKind.Double => $"bridgeWire.finiteNumber({expression})",
+            BridgeWireKind.Single => $"bridgeWire.float32({expression})",
+            BridgeWireKind.Double => $"bridgeWire.finiteNumber({expression})",
             BridgeWireKind.Int64 => $"bridgeWire.bigint({expression}, \"-9223372036854775808\", \"9223372036854775807\")",
             BridgeWireKind.UInt64 => $"bridgeWire.bigint({expression}, \"0\", \"18446744073709551615\")",
             BridgeWireKind.BigInteger => $"bridgeWire.bigint({expression})",
             BridgeWireKind.Decimal => $"bridgeWire.decimal({expression})",
             BridgeWireKind.String => $"bridgeWire.string({expression})",
-            BridgeWireKind.Guid => $"bridgeWire.guid({expression})",
-            BridgeWireKind.DateOnly => $"bridgeWire.dateOnly({expression})",
-            BridgeWireKind.TimeOnly => $"bridgeWire.timeOnly({expression})",
+            BridgeWireKind.Guid => $"bridgeWire.uuid({expression})",
+            BridgeWireKind.DateOnly => $"bridgeWire.localDate({expression})",
+            BridgeWireKind.TimeOnly => $"bridgeWire.localTime({expression})",
             BridgeWireKind.DateTime => $"bridgeWire.dateTime({expression})",
-            BridgeWireKind.DateTimeOffset => $"bridgeWire.dateTimeOffset({expression})",
+            BridgeWireKind.DateTimeOffset => $"bridgeWire.offsetDateTime({expression})",
             BridgeWireKind.TimeSpan => $"bridgeWire.duration({expression})",
             BridgeWireKind.Enum => $"bridgeWire.enumName<{TypeScriptNamedTypes.Reference(node)}>({expression}, [{string.Join(", ", node.EnumCases.Select(@case => Quote(@case.WireName)))}])",
             BridgeWireKind.Array or BridgeWireKind.List => $"bridgeWire.array({expression}, item => {ArrowBody(EmitTypeScriptDecoder(node.Element!, "item"))})",
@@ -321,14 +322,14 @@ internal sealed class BridgeTypeGraph
         var nonNull = node.Kind switch
         {
             BridgeWireKind.Int64 or BridgeWireKind.UInt64 or BridgeWireKind.BigInteger => $"{value}.toString()",
-            // TimeSpan is an invariant "c" string. Validate outbound values too:
+            // TimeSpan is an ISO 8601 duration string. Validate outbound values too:
             // generated clients otherwise accept malformed values until the route
             // rejects them, while snapshots are validated on the way in.
             BridgeWireKind.TimeSpan => $"bridgeWire.duration({value})",
-            BridgeWireKind.DateOnly => $"bridgeWire.dateOnly({value})",
-            BridgeWireKind.TimeOnly => $"bridgeWire.timeOnly({value})",
+            BridgeWireKind.DateOnly => $"bridgeWire.localDate({value})",
+            BridgeWireKind.TimeOnly => $"bridgeWire.localTime({value})",
             BridgeWireKind.DateTime => $"bridgeWire.dateTime({value})",
-            BridgeWireKind.DateTimeOffset => $"bridgeWire.dateTimeOffset({value})",
+            BridgeWireKind.DateTimeOffset => $"bridgeWire.offsetDateTime({value})",
             BridgeWireKind.Array or BridgeWireKind.List => $"{value}.map(item => {ArrowBody(EncodeTypeScript(node.Element!, "item"))})",
             BridgeWireKind.StringDictionary => $"Object.fromEntries(Object.entries({value}).map(([key, item]) => [key, {EncodeTypeScript(node.Value!, "item")}]))",
             BridgeWireKind.Dto => "{ " + string.Join(", ", node.Members.Select(member => "[" + Quote(member.WireName) + "]: " + EncodeMemberTypeScript(member, value + "[" + Quote(member.WireName) + "]"))) + " }",

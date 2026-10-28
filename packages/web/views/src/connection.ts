@@ -77,8 +77,9 @@ export interface ViewConnectOptions<TState> extends BridgeConnectOptions {
   /**
    * Interaction handlers by interaction name, registered before `open` and sent with it, so the producer can ask
    * them from the first request on. Handlers registered later through `interactions` are sent with `interactions`.
+   * An `undefined` entry registers nothing, so a generated `connect{Name}` can pass its typed options through.
    */
-  readonly handlers?: Readonly<Record<string, (input: never, context: BridgeInteractionContext) => unknown>>;
+  readonly handlers?: Readonly<Record<string, ((input: never, context: BridgeInteractionContext) => unknown) | undefined>>;
   /** The keyed collections and append-only text fields, from `defineCollections`. */
   readonly collections?: BridgeCollections;
   /** `bridgeOperations`, for a client with operations. */
@@ -591,6 +592,7 @@ async function connectRoute<TState>(options: ViewConnectOptions<TState>): Promis
     route, presentation: lease.id, live, request, onPush: (kind, handler) => runtime.onPush(kind, route, handler),
   });
   for (const [name, handler] of Object.entries(options.handlers ?? {})) {
+    if (handler === undefined) continue;
     const surface = lease.interactions?.surface[name];
     if (!surface) { dispose(); throw new BridgeError("failed", `The View has no interaction ${name}.`, { route }); }
     surface.handle(handler);

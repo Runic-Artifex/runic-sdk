@@ -373,7 +373,7 @@ internal sealed partial class CodegenDiagnosticsTests
                 public sealed partial class NamesWindow : RunicWindow<NamesViewModel>;
                 """, "Fixture.Names is not a supported bridge collection").ConfigureAwait(false);
 
-            // Generated wire, member and route names are checked at build time.
+            // Generated wire and member names are checked at build time.
             await Reject("AliasCollision", """
                 public sealed class AliasViewModel : FixtureModel
                 {
@@ -406,18 +406,10 @@ internal sealed partial class CodegenDiagnosticsTests
                 }
                 public sealed partial class ErrorsWindow : RunicWindow<ErrorsViewModel>;
                 """, "generated state name 'nameErrors' conflicts").ConfigureAwait(false);
-            await Reject("MountRoute", """
-                public sealed class MountViewModel : FixtureModel { public IRelayCommand MountCommand { get; } = new RelayCommand(() => { }); }
-                public sealed partial class MountWindow : RunicWindow<MountViewModel>;
-                """, "generated route name 'Mount' conflicts between the View mount route and MountCommand").ConfigureAwait(false);
             await Reject("SnapshotRoute", """
                 public sealed class SnapshotViewModel : FixtureModel { public IRelayCommand SnapshotCommand { get; } = new RelayCommand(() => { }); }
                 public sealed partial class SnapshotWindow : RunicWindow<SnapshotViewModel>;
                 """, "name 'snapshot' conflicts between the generated snapshot property and SnapshotCommand").ConfigureAwait(false);
-            await Reject("UnmountRoute", """
-                public sealed class UnmountViewModel : FixtureModel { public IRelayCommand<string> UnmountCommand { get; } = new RelayCommand<string>(_ => { }); }
-                public sealed partial class UnmountWindow : RunicWindow<UnmountViewModel>;
-                """, "generated route name 'Unmount' conflicts between the View unmount route and UnmountCommand").ConfigureAwait(false);
             await Reject("ThenableView", """
                 public sealed class ThenViewModel : FixtureModel { public IRelayCommand ThenCommand { get; } = new RelayCommand(() => { }); }
                 public sealed partial class ThenWindow : RunicWindow<ThenViewModel>;
@@ -461,14 +453,6 @@ internal sealed partial class CodegenDiagnosticsTests
                 .GetDiagnostics().Where(diagnostic => diagnostic.Severity == DiagnosticSeverity.Error).ToArray();
             Require(namesakeErrors.Length == 0,
                 $"The generated bridge does not compile beside a type of its name:\n{string.Join('\n', namesakeErrors)}");
-            await Reject("AvailabilityRoute", """
-                public sealed class AvailabilityViewModel : FixtureModel
-                {
-                    public IRelayCommand SaveCommand { get; } = new RelayCommand(() => { });
-                    public IRelayCommand CanSaveCommand { get; } = new RelayCommand(() => { });
-                }
-                public sealed partial class AvailabilityWindow : RunicWindow<AvailabilityViewModel>;
-                """, "generated route name 'CanSave' conflicts between SaveCommand availability query and CanSaveCommand").ConfigureAwait(false);
 
             // Toolkit commands have no result, so a result cardinality is a mistake.
             // A cancel-like name alone cannot establish a plain ICommand's

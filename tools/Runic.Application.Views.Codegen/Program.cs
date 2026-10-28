@@ -605,9 +605,6 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
         || MvvmCodegenConventions.All.Any(convention => InspectCommand(model, property, () => convention.InspectCommand(property)) is not null)).ToArray();
     var properties = declared.Except(commands).Except(interactions.Select(plan => plan.Property))
         .Where(property => !IsCommandAvailability(model, property, commands)).ToArray();
-    if (properties.FirstOrDefault(property => WireName(property) == "revision") is { } revision)
-        throw new BridgeDiagnosticException(BridgeDiagnosticCodes.NameCollision,
-            $"{model.Name}.{revision.Name} conflicts with the generated Bridge revision field.", revision);
     var duplicateWireName = properties.GroupBy(WireName, StringComparer.Ordinal).FirstOrDefault(group => group.Count() > 1);
     if (duplicateWireName is not null)
         throw new BridgeDiagnosticException(BridgeDiagnosticCodes.NameCollision,
@@ -863,39 +860,30 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
     }
     cs.AppendLine($"    internal {shortName}Bridge(global::Runic.Application.Views.IBridgeTransport transport, {fullType} vm, string? routePrefix = null, global::Runic.Application.Views.WindowContentSession? content = null) : base(");
     cs.AppendLine($"        transport, vm, routePrefix ?? \"{prefix}\",");
-    cs.AppendLine(needsCheckedWriter || hasContent
-        ? "        CreateWriter(content),"
-        : "        WriteSnapshot,");
+    cs.AppendLine(hasContent ? "        CreateState(content)," : "        State,");
     cs.AppendLine("        [");
     foreach (var property in properties)
     {
-        var setter = property.SetMethod?.IsPublic == true
-            && valueProperties.TryGetValue(property, out var graph)
-                ? property.PropertyType == typeof(int)
-                    ? $"(vm, e) => vm.{property.Name} = checked((int)e.GetInt64())"
-                    : property.PropertyType == typeof(bool)
-                        ? $"(vm, e) => vm.{property.Name} = e.GetBoolean()"
-                        : property.PropertyType == typeof(string) && !IsNullableString(property)
-                            ? $"(vm, e) => vm.{property.Name} = e.GetString()"
-                            : property.PropertyType == typeof(string)
-                                ? $"(vm, e) => vm.{property.Name} = global::Runic.Application.Views.Generated.BridgeJson.ReadNullableString(e.GetString())"
-                                : $"(vm, e) => {{ using var document = global::System.Text.Json.JsonDocument.Parse(e.GetString()); vm.{property.Name} = {property.Name}ValueCodec.Read(document.RootElement); }}"
+        // A setter reads the request's value with the member's codec.
+        var setter = property.SetMethod?.IsPublic == true && valueProperties.ContainsKey(property)
+            ? $"(vm, value) => vm.{property.Name} = {property.Name}ValueCodec.Read(value)"
             : "null";
+        var descriptorNames = $"\"{property.Name}\", \"{WireName(property)}\"";
         if (regionSlots.Contains(property))
         {
             // The runtime observes the region and binds the window session.
-            cs.AppendLine($"            new global::Runic.Application.Views.Generated.PropertyDescriptor<{fullType}>(\"{property.Name}\", vm => vm.{property.Name}?.Current, null, static vm => vm.{property.Name}),");
+            cs.AppendLine($"            new global::Runic.Application.Views.Generated.PropertyDescriptor<{fullType}>({descriptorNames}, vm => vm.{property.Name}?.Current, null, static vm => vm.{property.Name}),");
             continue;
         }
         if (selectionSlots.Contains(property))
         {
             // The runtime observes the selection's SelectedIndex.
-            cs.AppendLine($"            new global::Runic.Application.Views.Generated.PropertyDescriptor<{fullType}>(\"{property.Name}\", vm => {SelectionIndex(property)}, null, static vm => vm.{property.Name}),");
+            cs.AppendLine($"            new global::Runic.Application.Views.Generated.PropertyDescriptor<{fullType}>({descriptorNames}, vm => {SelectionIndex(property)}, null, static vm => vm.{property.Name}),");
             continue;
         }
         // Validation stays atomic with full states, as for collections.
         var text = textFields.Contains(property) && !hasValidation ? $" {{ AppendOnlyTextField = \"{WireName(property)}\" }}" : "";
-        cs.AppendLine($"            new global::Runic.Application.Views.Generated.PropertyDescriptor<{fullType}>(\"{property.Name}\", vm => vm.{property.Name}, {setter}){text},");
+        cs.AppendLine($"            new global::Runic.Application.Views.Generated.PropertyDescriptor<{fullType}>({descriptorNames}, vm => vm.{property.Name}, {setter}){text},");
     }
     cs.AppendLine("        ],");
     {
@@ -966,32 +954,20 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
     InteractionCodeEmitter.AppendCSharpCodecs(cs, interactions);
     foreach (var convention in MvvmCodegenConventions.All)
         convention.AppendSupportTypes(cs, commandPlans.Values);
-    if (hasContent || needsCheckedWriter)
-    {
-        cs.AppendLine($"    private static global::Runic.Application.Views.Generated.BridgeSnapshotWriter<{fullType}> CreateWriter(global::Runic.Application.Views.WindowContentSession? content)");
-        cs.AppendLine("    {");
-        if (hasContent) cs.AppendLine("        global::System.ArgumentNullException.ThrowIfNull(content);");
-        cs.AppendLine(hasContent
-            ? "        return (writer, current, revision, writeFieldMetadata) => WriteSnapshot(writer, current, revision, content, writeFieldMetadata);"
-            : "        return (writer, current, revision, writeFieldMetadata) => WriteSnapshot(writer, current, revision, writeFieldMetadata);");
-        cs.AppendLine("    }");
-        cs.AppendLine();
-    }
-    cs.AppendLine($"    private static void WriteSnapshot(global::System.Text.Json.Utf8JsonWriter writer, {fullType} vm, long revision{(hasContent ? ", global::Runic.Application.Views.WindowContentSession content" : "")}, global::System.Action<global::System.Text.Json.Utf8JsonWriter> writeFieldMetadata)");
-    cs.AppendLine("    {");
-    cs.AppendLine("        writer.WriteStartObject();");
-    cs.AppendLine("        writer.WriteNumber(\"revision\", revision);");
+    // The state members in order (specs/application, "State and revisions"). Each writes its value; the runtime writes
+    // the member names, and the revision and the checked fields' versions beside the state.
+    var stateMembers = new List<(string Member, string Body)>();
     foreach (var property in properties)
     {
         var jsonName = WireName(property);
         if (contentProperties.TryGetValue(property, out var pageModels))
         {
-            cs.AppendLine($"        writer.WritePropertyName(\"{jsonName}\");");
-            cs.AppendLine($"        if ({ContentAccess(property)} is null) {{ content.Clear(vm, \"{property.Name}\"); writer.WriteNullValue(); }}");
-            cs.AppendLine("        else");
-            cs.AppendLine("        {");
-            cs.AppendLine($"            switch ({ContentAccess(property)})");
-            cs.AppendLine("            {");
+            var writer = new StringBuilder();
+            writer.AppendLine($"if ({ContentAccess(property)} is null) {{ content.Clear(vm, \"{property.Name}\"); writer.WriteNullValue(); }}");
+            writer.AppendLine("else");
+            writer.AppendLine("{");
+            writer.AppendLine($"    switch ({ContentAccess(property)})");
+            writer.AppendLine("    {");
             foreach (var (pageModel, pageName) in pageModels)
             {
                 var pageType = $"global::{pageModel.FullName}";
@@ -1010,37 +986,35 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
                             $"{model.Name}.{property.Name}: no {pageModel.Name} View has contract '{contract}'.", property);
                 var pageKind = PageKind(pageName, contract);
                 var contractArgument = contract is null ? "" : $", contract: \"{contract}\"";
-                cs.AppendLine($"                case {pageType} page:");
-                cs.AppendLine("                {");
+                writer.AppendLine($"        case {pageType} page:");
+                writer.AppendLine("        {");
                 if (selectedView is not null)
-                    cs.AppendLine($"                    var reference = content.Present(vm, \"{property.Name}\", \"{pageKind}\", page, (transport, current, route) => content.AttachPresentation<global::{selectedView.FullName}, {pageType}>(current, route, (presentationTransport, presentationModel, presentationRoute) => new {bridgeType}(presentationTransport, presentationModel, presentationRoute, content){contractArgument}));");
+                    writer.AppendLine($"            var reference = content.Present(vm, \"{property.Name}\", \"{pageKind}\", page, (transport, current, route) => content.AttachPresentation<global::{selectedView.FullName}, {pageType}>(current, route, (presentationTransport, presentationModel, presentationRoute) => new {bridgeType}(presentationTransport, presentationModel, presentationRoute, content){contractArgument}));");
                 else
-                    cs.AppendLine($"                    var reference = content.Present(vm, \"{property.Name}\", \"{pageKind}\", page, (transport, current, route) => new {bridgeType}(transport, current, route, content));");
-                cs.AppendLine("                    writer.WriteStartObject();");
-                cs.AppendLine("                    writer.WriteString(\"kind\", reference.Kind);");
-                cs.AppendLine("                    writer.WriteString(\"id\", reference.Id);");
-                cs.AppendLine("                    writer.WriteEndObject();");
-                cs.AppendLine("                    break;");
-                cs.AppendLine("                }");
+                    writer.AppendLine($"            var reference = content.Present(vm, \"{property.Name}\", \"{pageKind}\", page, (transport, current, route) => new {bridgeType}(transport, current, route, content));");
+                writer.AppendLine("            writer.WriteStartObject();");
+                writer.AppendLine("            writer.WriteString(\"kind\", reference.Kind);");
+                writer.AppendLine("            writer.WriteString(\"id\", reference.Id);");
+                writer.AppendLine("            writer.WriteEndObject();");
+                writer.AppendLine("            break;");
+                writer.AppendLine("        }");
             }
-            cs.AppendLine($"                default: {{ var unregistered = {ContentAccess(property)}!; throw new global::System.NotSupportedException({UnregisteredContentMessage(model, property, regionSlots.Contains(property))}); }}");
-            cs.AppendLine("            }");
-            cs.AppendLine("        }");
+            writer.AppendLine($"        default: {{ var unregistered = {ContentAccess(property)}!; throw new global::System.NotSupportedException({UnregisteredContentMessage(model, property, regionSlots.Contains(property))}); }}");
+            writer.AppendLine("    }");
+            writer.AppendLine("}");
+            stateMembers.Add((jsonName, writer.ToString()));
         }
         else if (contentCollections.TryGetValue(property, out var collectionModels))
         {
-            var activeName = $"active{property.Name}Ids";
-            cs.AppendLine($"        writer.WritePropertyName(\"{jsonName}\");");
-            cs.AppendLine($"        var {activeName} = new global::System.Collections.Generic.HashSet<string>(global::System.StringComparer.Ordinal);");
-            cs.AppendLine($"        if (vm.{property.Name} is null) {{ content.PruneCollection(vm, \"{property.Name}\", {activeName}); writer.WriteNullValue(); }}");
-            cs.AppendLine("        else");
-            cs.AppendLine("        {");
-            cs.AppendLine("            writer.WriteStartArray();");
-            cs.AppendLine($"            foreach (var item in vm.{property.Name})");
-            cs.AppendLine("            {");
-            cs.AppendLine("                if (item is null) { writer.WriteNullValue(); continue; }");
-            cs.AppendLine("                switch (item)");
-            cs.AppendLine("                {");
+            var writer = new StringBuilder();
+            writer.AppendLine("var active = new global::System.Collections.Generic.HashSet<string>(global::System.StringComparer.Ordinal);");
+            writer.AppendLine($"if (vm.{property.Name} is null) {{ content.PruneCollection(vm, \"{property.Name}\", active); writer.WriteNullValue(); return; }}");
+            writer.AppendLine("writer.WriteStartArray();");
+            writer.AppendLine($"foreach (var item in vm.{property.Name})");
+            writer.AppendLine("{");
+            writer.AppendLine("    if (item is null) { writer.WriteNullValue(); continue; }");
+            writer.AppendLine("    switch (item)");
+            writer.AppendLine("    {");
             foreach (var (pageModel, pageName) in collectionModels)
             {
                 var pageType = $"global::{pageModel.FullName}";
@@ -1059,43 +1033,36 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
                             $"{model.Name}.{property.Name}: no {pageModel.Name} View has contract '{contract}'.", property);
                 var pageKind = PageKind(pageName, contract);
                 var contractArgument = contract is null ? "" : $", contract: \"{contract}\"";
-                cs.AppendLine($"                    case {pageType} page:");
-                cs.AppendLine("                    {");
+                writer.AppendLine($"        case {pageType} page:");
+                writer.AppendLine("        {");
                 if (selectedView is not null)
-                    cs.AppendLine($"                        var reference = content.PresentItem(vm, \"{property.Name}\", \"{pageKind}\", page, (transport, current, route) => content.AttachPresentation<global::{selectedView.FullName}, {pageType}>(current, route, (presentationTransport, presentationModel, presentationRoute) => new {bridgeType}(presentationTransport, presentationModel, presentationRoute, content){contractArgument}));");
+                    writer.AppendLine($"            var reference = content.PresentItem(vm, \"{property.Name}\", \"{pageKind}\", page, (transport, current, route) => content.AttachPresentation<global::{selectedView.FullName}, {pageType}>(current, route, (presentationTransport, presentationModel, presentationRoute) => new {bridgeType}(presentationTransport, presentationModel, presentationRoute, content){contractArgument}));");
                 else
-                    cs.AppendLine($"                        var reference = content.PresentItem(vm, \"{property.Name}\", \"{pageKind}\", page, (transport, current, route) => new {bridgeType}(transport, current, route, content));");
-                cs.AppendLine($"                        {activeName}.Add(reference.Id);");
-                cs.AppendLine("                        writer.WriteStartObject();");
-                cs.AppendLine("                        writer.WriteString(\"kind\", reference.Kind);");
-                cs.AppendLine("                        writer.WriteString(\"id\", reference.Id);");
-                cs.AppendLine("                        writer.WriteEndObject();");
-                cs.AppendLine("                        break;");
-                cs.AppendLine("                    }");
+                    writer.AppendLine($"            var reference = content.PresentItem(vm, \"{property.Name}\", \"{pageKind}\", page, (transport, current, route) => new {bridgeType}(transport, current, route, content));");
+                writer.AppendLine("            active.Add(reference.Id);");
+                writer.AppendLine("            writer.WriteStartObject();");
+                writer.AppendLine("            writer.WriteString(\"kind\", reference.Kind);");
+                writer.AppendLine("            writer.WriteString(\"id\", reference.Id);");
+                writer.AppendLine("            writer.WriteEndObject();");
+                writer.AppendLine("            break;");
+                writer.AppendLine("        }");
             }
-            cs.AppendLine($"                    default: {{ var unregistered = item!; throw new global::System.NotSupportedException({UnregisteredContentMessage(model, property, false)}); }}");
-            cs.AppendLine("                }");
-            cs.AppendLine("            }");
-            cs.AppendLine($"            content.PruneCollection(vm, \"{property.Name}\", {activeName});");
-            cs.AppendLine("            writer.WriteEndArray();");
-            cs.AppendLine("        }");
+            writer.AppendLine($"        default: {{ var unregistered = item!; throw new global::System.NotSupportedException({UnregisteredContentMessage(model, property, false)}); }}");
+            writer.AppendLine("    }");
+            writer.AppendLine("}");
+            writer.AppendLine($"content.PruneCollection(vm, \"{property.Name}\", active);");
+            writer.AppendLine("writer.WriteEndArray();");
+            stateMembers.Add((jsonName, writer.ToString()));
         }
         else if (valueProperties.ContainsKey(property))
-        {
-            cs.AppendLine($"        writer.WritePropertyName(\"{jsonName}\");");
-            cs.AppendLine($"        {property.Name}ValueCodec.Write(writer, {(selectionSlots.Contains(property) ? SelectionIndex(property) : $"vm.{property.Name}")});");
-        }
+            stateMembers.Add((jsonName, $"{property.Name}ValueCodec.Write(writer, {(selectionSlots.Contains(property) ? SelectionIndex(property) : $"vm.{property.Name}")})"));
         else throw new InvalidOperationException($"{model.Name}.{property.Name}: no generated value codec.");
-        if (hasErrors)
-            cs.AppendLine($"        global::Runic.Application.Views.Generated.BridgeJson.WriteErrors(writer, vm, \"{property.Name}\", \"{jsonName}Errors\");");
+        if (hasErrors) stateMembers.Add((jsonName + "Errors", $"WriteStateErrors(writer, vm, \"{property.Name}\")"));
     }
     if (hasValidation)
-    {
-        cs.AppendLine("        writer.WritePropertyName(\"validation\");");
-        cs.AppendLine(validationContextFlavors.Length > 0
-            ? "        global::Runic.Application.Views.Generated.BridgeValidation.Write(writer, vm, DataMetadata, ReadValidationContextErrors);"
-            : "        global::Runic.Application.Views.Generated.BridgeValidation.Write(writer, vm, DataMetadata);");
-    }
+        stateMembers.Add(("validation", validationContextFlavors.Length > 0
+            ? "global::Runic.Application.Views.Generated.BridgeValidation.Write(writer, vm, DataMetadata, ReadValidationContextErrors)"
+            : "global::Runic.Application.Views.Generated.BridgeValidation.Write(writer, vm, DataMetadata)"));
     // Availability without an argument is state; a command with an argument
     // is queried through can<Name>(argument). Execution state needs no
     // argument and is written for every asynchronous command that has it.
@@ -1103,14 +1070,61 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
     {
         var plan = commandPlans[command];
         var name = command.Name[..^"Command".Length];
-        if (plan.Command is { } library)
-            library.AppendSnapshotState(cs, command, name, plan);
-        else if (!plan.HasArgument)
-            MvvmCommand.AppendCanExecute(cs, command, name);
+        var members = plan.Command is { } library ? library.StateMembers(command, name, plan)
+            : plan.HasArgument ? [] : [MvvmCommand.CanExecute(command, name)];
+        foreach (var (member, value) in members) stateMembers.Add((member, $"writer.WriteBooleanValue({value})"));
     }
-    if (needsCheckedWriter) cs.AppendLine("        writeFieldMetadata(writer);");
-    cs.AppendLine("        writer.WriteEndObject();");
-    cs.AppendLine("    }");
+    var stateMemberType = $"global::Runic.Application.Views.Generated.BridgeStateMember<{fullType}>";
+    if (hasContent)
+    {
+        cs.AppendLine($"    private static {stateMemberType}[] CreateState(global::Runic.Application.Views.WindowContentSession? content)");
+        cs.AppendLine("    {");
+        cs.AppendLine("        global::System.ArgumentNullException.ThrowIfNull(content);");
+        cs.AppendLine("        return");
+        AppendStateMembers("        ");
+        cs.AppendLine("        ;");
+        cs.AppendLine("    }");
+    }
+    else
+    {
+        cs.AppendLine($"    private static readonly {stateMemberType}[] State =");
+        AppendStateMembers("    ");
+        cs.AppendLine("    ;");
+    }
+    if (hasErrors)
+    {
+        cs.AppendLine();
+        cs.AppendLine("    private static void WriteStateErrors(global::System.Text.Json.Utf8JsonWriter writer, global::System.ComponentModel.INotifyDataErrorInfo vm, string property)");
+        cs.AppendLine("    {");
+        cs.AppendLine("        writer.WriteStartArray();");
+        cs.AppendLine("        if (vm.GetErrors(property) is { } errors)");
+        cs.AppendLine("            foreach (var error in errors)");
+        cs.AppendLine("                writer.WriteStringValue(error is global::System.ComponentModel.DataAnnotations.ValidationResult result");
+        cs.AppendLine("                    ? result.ErrorMessage ?? \"Invalid value.\"");
+        cs.AppendLine("                    : error?.ToString() ?? \"Invalid value.\");");
+        cs.AppendLine("        writer.WriteEndArray();");
+        cs.AppendLine("    }");
+    }
+
+    // One member per line; a member whose writer has several statements gets a block body.
+    void AppendStateMembers(string indent)
+    {
+        cs.AppendLine($"{indent}[");
+        foreach (var (member, body) in stateMembers)
+        {
+            var name = JsonSerializer.Serialize(member);
+            if (!body.Contains('\n'))
+            {
+                cs.AppendLine($"{indent}    new {stateMemberType}({name}, static (writer, vm) => {body}),");
+                continue;
+            }
+            cs.AppendLine($"{indent}    new {stateMemberType}({name}, (writer, vm) =>");
+            cs.AppendLine($"{indent}    {{");
+            foreach (var line in body.TrimEnd('\n').Split('\n')) cs.AppendLine($"{indent}        {line}");
+            cs.AppendLine($"{indent}    }}),");
+        }
+        cs.AppendLine($"{indent}]");
+    }
     if (hasContent || interactions.Length > 0)
     {
         cs.AppendLine("    public override void Dispose()");
@@ -1249,93 +1263,67 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
         ts.AppendLine($"  readonly kind: \"{ownKind}\";");
         ts.AppendLine($"  connect(): Promise<{clientName}>;");
         ts.AppendLine("}");
-        ts.AppendLine($"const {cacheName} = {Ref("viewReferences")}<{referenceType}>(id => ({{ kind: \"{ownKind}\", connect: () => {connectAt}(`content${{id}}`, true) }}));");
+        ts.AppendLine($"const {cacheName} = {Ref("viewReferences")}<{referenceType}>(id => ({{ kind: \"{ownKind}\", connect: () => {connectAt}(`content${{id}}`) }}));");
         ts.AppendLine($"export function page{functionName}(id: string): {referenceType} {{ return {cacheName}(id); }}");
         ts.AppendLine();
     }
-    // The public state is the decoded TypeScript contract. The transport is
-    // JSON, so every graph-backed field must remain unknown until hydrate
-    // validates and converts it (for example Int64 strings to bigint). The
-    // runtime orders states by revision; it is not part of the public state.
-    if (hasContent || needsCheckedWriter || valueProperties.Count > 0 || hasValidation)
+    // The public state is the decoded TypeScript contract. The client passes one
+    // decoder per state member, which validates the member's wire value and
+    // converts it (for example int64 strings to bigint), so a frame's `set`
+    // change decodes only its member.
+    string ContentDecoder(PropertyInfo property, (Type Model, string Name)[] pages, string reference)
     {
-        var names = contentBindings.Select(entry => $"\"{WireName(entry.Key)}\"")
-            .Concat(valueProperties.Keys.Select(property => $"\"{WireName(property)}\""))
-            .Distinct(StringComparer.Ordinal)
-            .ToList();
-        if (hasValidation) names.Add("\"validation\"");
-        if (names.Count == 0) names.Add("never");
-        ts.AppendLine($"type {Ref("WireState")} = Omit<{shortName}State, {string.Join(" | ", names)}> & {{");
-        ts.AppendLine("  readonly revision: number;");
-        if (hasValidation) ts.AppendLine("  readonly validation: unknown;");
-        foreach (var property in valueProperties.Keys)
-            ts.AppendLine($"  readonly {TsPropertyName(WireName(property))}: unknown;");
-        foreach (var (property, pages) in contentProperties)
+        var field = WireName(property);
+        return string.Join(" : ", pages.Select(page =>
+            $"{reference}.kind === \"{PageKind(page.Name, ContractFor(property))}\" ? page{char.ToUpperInvariant(PageKind(page.Name, ContractFor(property))[0])}{PageKind(page.Name, ContractFor(property))[1..]}({reference}.id)"))
+            + $" : (() => {{ throw new {Ref("BridgeError")}(\"failed\", {JsonSerializer.Serialize($"Unknown {field} kind.")}); }})()";
+    }
+    // A decoder is an expression of `wire`, or a block body.
+    var memberDecoders = new List<(string Member, string Decoder)>();
+    var blockDecoders = new HashSet<string>(StringComparer.Ordinal);
+    if (hasValidation) memberDecoders.Add(("validation", $"{Ref("decodeBridgeValidation")}(wire)"));
+    foreach (var property in properties)
+    {
+        var field = WireName(property);
+        if (valueProperties.TryGetValue(property, out var graph))
+            memberDecoders.Add((field, graph.EmitTypeScriptDecoder("wire")));
+        else if (contentProperties.TryGetValue(property, out var pages))
         {
-            var rawType = string.Join(" | ", pages.Select(page => $"{{ readonly kind: \"{PageKind(page.Name, ContractFor(property))}\"; readonly id: string }}"));
-            if (IsNullableContent(property)) rawType += " | null";
-            ts.AppendLine($"  readonly {TsPropertyName(WireName(property))}: {rawType};");
+            var decoder = $"{{ const reference = {Ref("contentReference")}(wire); return {ContentDecoder(property, pages, "reference")}; }}";
+            memberDecoders.Add((field, IsNullableContent(property) ? $"{{ if (wire === null) return null; {decoder[2..]}" : decoder));
+            blockDecoders.Add(field);
         }
-        foreach (var (property, pages) in contentCollections)
+        else if (contentCollections.TryGetValue(property, out var collectionPages))
         {
-            var rawType = "readonly (" + string.Join(" | ", pages.Select(page =>
-                $"{{ readonly kind: \"{PageKind(page.Name, ContractFor(property))}\"; readonly id: string }}")) + ")[]";
-            if (nullability.Create(property).ReadState == NullabilityState.Nullable) rawType += " | null";
-            ts.AppendLine($"  readonly {TsPropertyName(WireName(property))}: {rawType};");
+            var decoder = $"bridgeWire.array(wire, item => {{ const reference = {Ref("contentReference")}(item); return {ContentDecoder(property, collectionPages, "reference")}; }})";
+            memberDecoders.Add((field, nullability.Create(property).ReadState == NullabilityState.Nullable ? $"wire === null ? null : {decoder}" : decoder));
         }
-        if (needsCheckedWriter)
-        {
-            ts.AppendLine("  readonly __runicFields: {");
-            foreach (var property in checkedProperties)
-                ts.AppendLine($"    readonly {TsPropertyName(WireName(property))}: {{ readonly version: number }};");
-            ts.AppendLine("  };");
-        }
-        ts.AppendLine("};");
-        ts.AppendLine($"function {Ref("hydrate")}(wire: {Ref("WireState")}): {shortName}State {{");
-        ts.AppendLine(needsCheckedWriter
-            ? "  const { revision: _revision, __runicFields: _runicFields, ...state } = wire;"
-            : "  const { revision: _revision, ...state } = wire;");
-        ts.AppendLine("  return {");
-        ts.AppendLine("    ...state,");
-        if (hasValidation) ts.AppendLine($"    validation: {Ref("decodeBridgeValidation")}(wire.validation),");
-        foreach (var (property, graph) in valueProperties)
-        {
-            var field = WireName(property);
-            ts.AppendLine($"    {TsLiteralKey(field)}: {graph.EmitTypeScriptDecoder(TsAccess("wire", field))},");
-        }
-        foreach (var (property, pages) in contentProperties)
-        {
-            var field = WireName(property);
-            var expression = string.Join(" : ", pages.Select(page =>
-                $"{TsAccess("wire", field)}.kind === \"{PageKind(page.Name, ContractFor(property))}\" ? page{char.ToUpperInvariant(PageKind(page.Name, ContractFor(property))[0])}{PageKind(page.Name, ContractFor(property))[1..]}({TsAccess("wire", field)}.id)"));
-            expression += $" : (() => {{ throw new {Ref("BridgeError")}(\"failed\", \"Unknown {field} kind.\"); }})()";
-            if (IsNullableContent(property))
-                expression = $"{TsAccess("wire", field)} === null ? null : {expression}";
-            ts.AppendLine($"    {TsLiteralKey(field)}: {expression},");
-        }
-        foreach (var (property, pages) in contentCollections)
-        {
-            var field = WireName(property);
-            var expression = string.Join(" : ", pages.Select(page =>
-                $"item.kind === \"{PageKind(page.Name, ContractFor(property))}\" ? page{char.ToUpperInvariant(PageKind(page.Name, ContractFor(property))[0])}{PageKind(page.Name, ContractFor(property))[1..]}(item.id)"));
-            expression += $" : (() => {{ throw new {Ref("BridgeError")}(\"failed\", \"Unknown {field} kind.\"); }})()";
-            var hydrated = $"{TsAccess("wire", field)}.map(item => {expression})";
-            if (nullability.Create(property).ReadState == NullabilityState.Nullable)
-                hydrated = $"{TsAccess("wire", field)} === null ? null : {hydrated}";
-            ts.AppendLine($"    {TsLiteralKey(field)}: {hydrated},");
-        }
-        ts.AppendLine("  };");
+        if (hasErrors) memberDecoders.Add((field + "Errors", "bridgeWire.array(wire, item => bridgeWire.string(item))"));
+    }
+    foreach (var command in commands)
+    {
+        var plan = commandPlans[command];
+        var name = command.Name[..^"Command".Length];
+        if (!plan.HasArgument) memberDecoders.Add(($"can{name}", "bridgeWire.boolean(wire)"));
+        if (plan.HasExecutionState) memberDecoders.Add(($"is{name}Executing", "bridgeWire.boolean(wire)"));
+    }
+    if (hasContent)
+    {
+        ts.AppendLine($"function {Ref("contentReference")}(wire: unknown): {{ readonly kind: string; readonly id: string }} {{");
+        ts.AppendLine("  return bridgeWire.object(wire, value => ({ kind: bridgeWire.string(value[\"kind\"]), id: bridgeWire.string(value[\"id\"]) }));");
         ts.AppendLine("}");
     }
-    else
-    {
-        ts.AppendLine($"type {Ref("WireState")} = {shortName}State & {{ readonly revision: number }};");
-        ts.AppendLine($"function {Ref("hydrate")}(wire: {Ref("WireState")}): {shortName}State {{ const {{ revision: _revision, ...state }} = wire; return state; }}");
-    }
+    ts.AppendLine($"const {Ref("members")}: {Ref("BridgeMemberDecoders")}<{shortName}State> = {{");
+    foreach (var (member, decoder) in memberDecoders)
+        ts.AppendLine(blockDecoders.Contains(member)
+            ? $"  {TsLiteralKey(member)}: (wire: unknown) => {decoder},"
+            : $"  {TsLiteralKey(member)}: (wire: unknown) => {BridgeTypeGraph.ArrowBody(decoder)},");
+    ts.AppendLine("};");
     ts.AppendLine($"const {Ref("bridgeContract")} = \"{model.FullName}:{contractFingerprint}\";");
     InteractionCodeEmitter.AppendTypeScriptDefinitions(ts, interactions);
     if (needsCheckedWriter)
         ts.AppendLine($"const {Ref("checkedFieldNames")} = [{string.Join(", ", checkedProperties.Select(property => JsonSerializer.Serialize(WireName(property))))}];");
+    OperationTypeScriptEmitter.AppendCodecs(ts, operationPlans);
     ts.AppendLine();
     var hasDeltaFields = incrementalCollections.Count > 0 || textFields.Length > 0;
     if (hasDeltaFields)
@@ -1351,17 +1339,22 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
             ts.AppendLine($"  {TsLiteralKey(WireName(property))}: {Ref("defineText")}({(IsNullableString(property) ? "true" : "")}),");
         ts.AppendLine("});");
     }
-    var connectOptions = $"contract: {Ref("bridgeContract")}, route, mount, {Shorthand("hydrate")}"
+    var connectOptions = $"contract: {Ref("bridgeContract")}, route, {Shorthand("members")}"
         + (hasDeltaFields ? $", collections: {Ref("collectionDefinitions")}" : "")
         + (needsCheckedWriter ? $", checkedFields: {Ref("checkedFieldNames")}" : "")
-        + (interactions.Length > 0 ? $", interactions: {Ref("interactionDefinitions")}" : "")
+        + (interactions.Length > 0 ? $", interactions: {Ref("interactionDefinitions")}, handlers: options?.handlers" : "")
         + (operationPlans.Length > 0 ? $", operations: {Ref("bridgeOperations")}" : "");
-    XmlDocumentation.Append(ts, "", $"Connects a {shortName} client. It waits up to `options.timeout` milliseconds (default 5000) for the\nhost Bridge to connect, then rejects with a `timeout` BridgeError. `options.signal` abandons the connection.\nA `using` declaration disposes the client where the engine has `Symbol.dispose`.");
+    // A View with interactions takes their handlers when it connects, so the producer can ask them from the first
+    // request on (specs/application, "Presentations").
+    var optionsType = interactions.Length > 0 ? $"{shortName}ConnectOptions" : Ref("BridgeConnectOptions");
+    if (interactions.Length > 0)
+        InteractionCodeEmitter.AppendConnectOptions(ts, interactions, shortName);
+    XmlDocumentation.Append(ts, "", $"Connects a {shortName} client. It waits up to `options.timeout` milliseconds (default 5000) for the\nhost Bridge to connect, then rejects with a `timeout` BridgeError. `options.signal` abandons the connection.\nA `using` declaration disposes the client where the engine has `Symbol.dispose`."
+        + (interactions.Length > 0 ? "\n`options.handlers` answers interactions from the first request on." : ""));
     // globalThis.Disposable cannot be shadowed by a named type of the same name.
-    ts.AppendLine($"export function connect{shortName}(options?: {Ref("BridgeConnectOptions")}): Promise<{clientName} & globalThis.Disposable> {{ return {connectAt}(\"{prefix}\", {(interactions.Length > 0 ? "true" : "false")}, options); }}");
-    ts.AppendLine($"async function {connectAt}(route: string, mount = false, options?: {Ref("BridgeConnectOptions")}): Promise<{clientName} & globalThis.Disposable> {{");
-    ts.AppendLine($"  const view = await {Ref("connectView")}({{ {connectOptions}, timeout: options?.timeout, signal: options?.signal }});");
-    OperationTypeScriptEmitter.AppendRuntime(ts, operationPlans);
+    ts.AppendLine($"export function connect{shortName}(options?: {optionsType}): Promise<{clientName} & globalThis.Disposable> {{ return {connectAt}(\"{prefix}\", options); }}");
+    ts.AppendLine($"async function {connectAt}(route: string, options?: {optionsType}): Promise<{clientName} & globalThis.Disposable> {{");
+    ts.AppendLine($"  const view = await {Ref("connectView")}<{shortName}State>({{ {connectOptions}, timeout: options?.timeout, signal: options?.signal }});");
     ts.AppendLine($"  return {Ref("disposable")}<{clientName}>({{");
     ts.AppendLine("    get snapshot() { return view.snapshot; },");
     ts.AppendLine("    subscribe: view.subscribe,");
@@ -1372,17 +1365,12 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
         ts.AppendLine($"    fieldBaseline<K extends keyof {shortName}CheckedFields>(field: K) {{ return view.fieldBaseline(field) as {Ref("FieldBaseline")}<{shortName}CheckedFields[K]>; }},");
     foreach (var property in properties.Where(property => property.SetMethod?.IsPublic == true))
     {
-        ts.AppendLine($"    async set{property.Name}(value) {{");
+        // A setter sends the member's value as an edit (specs/application, "Edits").
+        var member = JsonSerializer.Serialize(WireName(property));
         if (property.PropertyType == typeof(int))
-            ts.AppendLine("      if (!Number.isSafeInteger(value)) throw new RangeError(\"Value must be an integer.\");");
-        var argument = valueProperties.TryGetValue(property, out var valueGraph)
-            && property.PropertyType != typeof(int)
-            && property.PropertyType != typeof(bool)
-            && property.PropertyType != typeof(string)
-                ? $"JSON.stringify({valueGraph.EncodeTypeScript("value")})"
-                : IsNullableString(property) ? "JSON.stringify(value)" : "value";
-        ts.AppendLine($"      return view.invoke(`${{route}}Set{property.Name}`, {argument});");
-        ts.AppendLine("    },");
+            ts.AppendLine($"    async set{property.Name}(value) {{ if (!Number.isSafeInteger(value)) throw new RangeError(\"Value must be an integer.\"); return view.set({member}, value); }},");
+        else
+            ts.AppendLine($"    async set{property.Name}(value) {{ return view.set({member}, {valueProperties[property].EncodeTypeScript("value")}); }},");
     }
     foreach (var property in checkedProperties)
     {
@@ -1400,28 +1388,28 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
                         : "!baseline";
         ts.AppendLine($"      if ({check} || !Number.isSafeInteger(baseline.version) || baseline.version < 0) throw new RangeError(\"A checked field value and baseline are required.\");");
         var valueGraph = valueProperties[property];
-        var encodedBaseline = valueGraph.EncodeTypeScript("baseline.value");
-        var encodedValue = valueGraph.EncodeTypeScript("value");
-        ts.AppendLine($"      return view.writeField<{TsPropertyType(property)}>(`${{route}}Write{property.Name}`, JSON.stringify({{ requestId: options.requestId, expectedVersion: baseline.version, expectedValue: {encodedBaseline}, value: {encodedValue} }}), value => {BridgeTypeGraph.ArrowBody(valueGraph.EmitTypeScriptDecoder("value"))});");
+        ts.AppendLine($"      return view.write<{TsPropertyType(property)}>({JsonSerializer.Serialize(WireName(property))}, {{ requestId: options.requestId, expectedVersion: baseline.version, expectedValue: {valueGraph.EncodeTypeScript("baseline.value")}, value: {valueGraph.EncodeTypeScript("value")} }}, value => {BridgeTypeGraph.ArrowBody(valueGraph.EmitTypeScriptDecoder("value"))});");
         ts.AppendLine("    },");
     }
     foreach (var command in commands)
     {
         var name = command.Name[..^"Command".Length];
+        var member = JsonSerializer.Serialize(LowerFirst(name));
         var plan = commandPlans[command];
         var parameter = plan.ParameterName;
-        var argument = plan.InputGraph is { } inputGraph
-            ? $", JSON.stringify({inputGraph.EncodeTypeScript(parameter)})"
-            : plan.HasStringArgument ? $", JSON.stringify({parameter})" : "";
+        var input = plan.InputGraph is { } inputGraph ? inputGraph.EncodeTypeScript(parameter)
+            : plan.HasStringArgument ? parameter : null;
+        var argument = input is null ? "" : $", {input}";
         ts.AppendLine(plan.FailureGraph is { } failureGraph
-            ? $"    async {LowerFirst(name)}({(plan.HasArgument ? parameter : "")}) {{ return view.commandOutcome(`${{route}}{name}`, value => {BridgeTypeGraph.ArrowBody(failureGraph.EmitTypeScriptDecoder("value"))}{argument}); }},"
-            : $"    async {LowerFirst(name)}({(plan.HasArgument ? parameter : "")}) {{ return view.command(`${{route}}{name}`{argument}); }},");
+            ? $"    async {LowerFirst(name)}({(plan.HasArgument ? parameter : "")}) {{ return view.commandOutcome({member}, value => {BridgeTypeGraph.ArrowBody(failureGraph.EmitTypeScriptDecoder("value"))}{argument}); }},"
+            : $"    async {LowerFirst(name)}({(plan.HasArgument ? parameter : "")}) {{ return view.command({member}{argument}); }},");
         if (plan.HasArgument)
-            ts.AppendLine($"    async can{name}({parameter}) {{ return view.query(`${{route}}Can{name}`{argument}); }},");
+            ts.AppendLine($"    async can{name}({parameter}) {{ return view.can({member}{argument}); }},");
     }
     OperationTypeScriptEmitter.AppendClientMethods(ts, operationPlans);
     ts.AppendLine("  });");
     ts.AppendLine("}");
+
 
     var body = ts.ToString();
     // Application-facing types and errors come from the package root; the
@@ -1438,7 +1426,8 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
     if (operationPlans.Length > 0) publicImports.Add("type " + Import("BridgeOperationStartOptions"));
     if (operationPlans.Any(operation => operation.IsStream)) publicImports.Add("type " + Import("BridgeStreamOperation"));
     if (interactions.Length > 0) publicImports.Add("type " + Import("BridgeInteractionContext"));
-    var runtimeImports = new List<string> { Import("connectView"), Import("disposable"), Import("viewReferences") };
+    var runtimeImports = new List<string> { Import("connectView"), Import("disposable"), Import("viewReferences"), "type " + Import("BridgeMemberDecoders") };
+    if (operationPlans.Length > 0) runtimeImports.Add("type " + Import("BridgeOperationCodec"));
     if (incrementalCollections.Count > 0) runtimeImports.Add(Import("defineCollection"));
     if (hasDeltaFields) runtimeImports.Add(Import("defineCollections"));
     if (textFields.Length > 0) runtimeImports.Add(Import("defineText"));
@@ -1472,16 +1461,13 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
         MockDefaults(),
         checkedProperties.Select(WireName).ToArray(),
         properties.Where(property => property.SetMethod?.IsPublic == true && valueProperties.ContainsKey(property))
-            .Select(property => new MockSetter($"set{property.Name}", $"Set{property.Name}", WireName(property), TsPropertyType(property),
-                property.PropertyType == typeof(int) || property.PropertyType == typeof(bool)
-                    || property.PropertyType == typeof(string) && !IsNullableString(property)
-                    ? "raw" : "JSON.parse(raw as string)",
-                checkedProperties.Contains(property) ? $"Write{property.Name}" : null)).ToArray(),
+            .Select(property => new MockSetter($"set{property.Name}", WireName(property), TsPropertyType(property),
+                checkedProperties.Contains(property) ? $"write{property.Name}" : null)).ToArray(),
         commands.Select(command =>
         {
             var plan = commandPlans[command];
             var name = command.Name[..^"Command".Length];
-            return new MockCommand(LowerFirst(name), name, plan.HasArgument ? CommandInputType(plan) : null,
+            return new MockCommand(LowerFirst(name), LowerFirst(name), plan.HasArgument ? CommandInputType(plan) : null,
                 plan.HasArgument ? plan.InputGraph?.EmitTypeScriptDecoder("wire") ?? "bridgeWire.string(wire)" : null,
                 plan.HasArgument ? null : $"can{name}", plan.FailureGraph?.TypeScriptType(), plan.FailureGraph?.EncodeTypeScript("typed"),
                 plan.Key is null ? null : plan.ParameterName);
@@ -1490,7 +1476,7 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
         {
             var plan = commandPlans[command];
             var name = command.Name[..^"Command".Length];
-            return new MockOperation(LowerFirst(name), name, plan.HasArgument ? CommandInputType(plan) : "void",
+            return new MockOperation(LowerFirst(name), LowerFirst(name), plan.HasArgument ? CommandInputType(plan) : "void",
                 plan.ResultGraph?.TypeScriptType() ?? "void", plan.InputGraph?.EmitTypeScriptDecoder("wire"),
                 plan.ResultGraph?.EncodeTypeScript("typed"), plan.Command?.Cardinality is RunicCommandResultCardinality.Stream,
                 plan.FailureGraph?.TypeScriptType(), plan.FailureGraph?.EncodeTypeScript("typed"));
@@ -2142,12 +2128,13 @@ sealed record GeneratedCommandPlan(
             if (!descriptor.EndsWith(')')) throw new InvalidOperationException("A command descriptor must be a constructor call.");
             descriptor = descriptor[..^1] + $", EncodeFailure: failure => failure is {FailureGraph.RootCSharpType()} declared ? global::Runic.Application.Views.Generated.BridgeWire.EncodeCanonical(writer => {property.Name}FailureCodec.Write(writer, declared)) : null)";
         }
-        var initializer = Command?.DescriptorInitializer(property, this);
+        // The member name of command, can and start requests (specs/application, "Routes and members").
+        var initializer = $"WireName = \"{char.ToLowerInvariant(property.Name[0])}{property.Name[1..^"Command".Length]}\"";
+        if (Command?.DescriptorInitializer(property, this) is { } library) initializer += ", " + library;
         if (Key is { } key)
-            initializer = (initializer is null ? "" : initializer + ", ") + key.Initializer(modelType);
+            initializer += ", " + key.Initializer(modelType);
         if (Retirement is not RunicOperationRetirement.Keep)
-            initializer = (initializer is null ? "" : initializer + ", ")
-                + $"Retirement = global::Runic.Application.Views.RunicOperationRetirement.{Retirement}";
+            initializer += $", Retirement = global::Runic.Application.Views.RunicOperationRetirement.{Retirement}";
         return CommandDescriptorSyntax.WithInitializer(descriptor, initializer);
     }
 
@@ -2159,7 +2146,7 @@ sealed record GeneratedCommandPlan(
         var plainGraph = InputGraph ?? throw new InvalidOperationException("Plain ICommand is missing its input graph.");
         var plainInputType = plainGraph.RootCSharpType();
         var name = property.Name[..^"Command".Length];
-        return $"new global::Runic.Application.Views.Generated.CommandDescriptor<{modelType}>(\"{name}\", vm => (object)vm.{property.Name}, ReadArgument: e => {{ using var document = global::System.Text.Json.JsonDocument.Parse(e.GetString()); return {property.Name}InputCodec.Read(document.RootElement); }}, EncodeArgument: argument => global::Runic.Application.Views.Generated.BridgeWire.EncodeCanonical(writer => {property.Name}InputCodec.Write(writer, ({plainInputType})argument!)))";
+        return $"new global::Runic.Application.Views.Generated.CommandDescriptor<{modelType}>(\"{name}\", vm => (object)vm.{property.Name}, ReadInput: input => {property.Name}InputCodec.Read(input), EncodeArgument: argument => global::Runic.Application.Views.Generated.BridgeWire.EncodeCanonical(writer => {property.Name}InputCodec.Write(writer, ({plainInputType})argument!)))";
     }
 }
 

@@ -90,15 +90,16 @@ internal abstract class MvvmCommand
     /// </summary>
     internal virtual string? DescriptorInitializer(PropertyInfo property, GeneratedCommandPlan plan) => null;
 
-    /// <summary>Appends the command's availability and execution state to the snapshot writer.</summary>
-    internal virtual void AppendSnapshotState(StringBuilder cs, PropertyInfo command, string name, GeneratedCommandPlan plan)
-    {
-        if (!plan.HasArgument) AppendCanExecute(cs, command, name);
-    }
+    /// <summary>
+    /// The command's availability and execution state members: each wire name with the C# Boolean expression of its
+    /// value, which reads the ViewModel as <c>vm</c>.
+    /// </summary>
+    internal virtual IEnumerable<(string Member, string Value)> StateMembers(PropertyInfo command, string name, GeneratedCommandPlan plan) =>
+        plan.HasArgument ? [] : [CanExecute(command, name)];
 
     /// <summary>Availability through <see cref="System.Windows.Input.ICommand"/>, for a command without an argument.</summary>
-    internal static void AppendCanExecute(StringBuilder cs, PropertyInfo command, string name) =>
-        cs.AppendLine($"        writer.WriteBoolean(\"can{name}\", ((global::System.Windows.Input.ICommand)vm.{command.Name}).CanExecute(null));");
+    internal static (string Member, string Value) CanExecute(PropertyInfo command, string name) =>
+        ($"can{name}", $"((global::System.Windows.Input.ICommand)vm.{command.Name}).CanExecute(null)");
 }
 
 /// <summary>An interaction recognised by an MVVM library convention.</summary>
