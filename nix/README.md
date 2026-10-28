@@ -104,6 +104,7 @@ Arguments that `buildDotnetModule` also takes (`dotnetFlags`, `runtimeDeps`,
 | `host` | `"desktop"` | `desktop` (GTK 3, WebKitGTK 4.1), `desktop-gtk4` (GTK 4, WebKitGTK 6.0), `cswebui`, or `null`: which libraries the host loads at run time. |
 | `withMedia` | `false` | GStreamer plugins for audio and video in WebKitGTK. |
 | `withSpeechSynthesis` | `true` | WebKitGTK with speech synthesis. `false` uses one built without it; see [Without speech synthesis](#without-speech-synthesis). |
+| `spellingDictionaries` | `[ ]` | Hunspell dictionaries for WebKitGTK's spell checker, such as `[ hunspellDicts.de_CH hunspellDicts.en_US ]`, on the wrapper's `XDG_DATA_DIRS`; see [Spell checking](#spell-checking). Only with `desktop` and `desktop-gtk4`. |
 | `nativeAot` | `false` | Publish `projectFile` with NativeAOT; see [NativeAOT](#nativeaot). Self-contained either way when set. |
 | `selfContainedBuild` | `nativeAot` | A self-contained JIT build. |
 | `testRunner` | `"VSTest"` | How `doCheck` runs `testProjectFile`: `"VSTest"` with nixpkgs' `dotnet test`, or `"Microsoft.Testing.Platform"`; see [Tests](#tests). |
@@ -366,6 +367,30 @@ same package (`<prefix>/bin/<name>`, with the program below `<prefix>`). That pa
 NixOS or Home Manager, the modules' user service starts whatever version is
 installed.
 
+### Spell checking
+
+Runic Desktop turns WebKitGTK's spell checker on in every window, with the
+languages of `DesktopHostOptions.SpellCheckingLanguages` or the user's
+([Spell checking](../packages/dotnet/Runic.Desktop/README.md#spell-checking)).
+It checks with hunspell dictionaries that enchant finds in `share/hunspell` of
+the directories on `XDG_DATA_DIRS`. NixOS installs none by default, and then no
+word is marked. `spellingDictionaries` adds the share directories of the given
+packages to the wrapper's `XDG_DATA_DIRS`, ahead of the user's:
+
+```nix
+runic-sdk.lib.buildRunicApplication pkgs {
+  # ...
+  host = "desktop-gtk4";
+  spellingDictionaries = with pkgs.hunspellDicts; [ de_CH en_US ];
+};
+```
+
+Ship the dictionaries of the languages the application sets; a user's own,
+such as those of `environment.systemPackages` on NixOS, are found too, through
+the session's `XDG_DATA_DIRS`. A language without a dictionary is reported as
+`spell-checking-dictionary-missing` and not checked. `cswebui` and `null` reject
+the argument: an installed browser has its own dictionaries.
+
 ### Without speech synthesis
 
 WebKitGTK implements the Web Speech API's `speechSynthesis` with flite, which
@@ -521,6 +546,9 @@ build agree; `buildRunicApplication` takes the same two arguments. Other
   store path that only a writable evaluation adds.
 - The `builder-completions` flake check installs the bash, zsh and fish
   completions of a Runic.CommandLine program with `completions`.
+- The `builder-spelling-dictionaries` flake check evaluates the wrapper's
+  `XDG_DATA_DIRS` with `spellingDictionaries` for both GTK hosts, and that
+  `cswebui` rejects them.
 - The `builder-file-types` flake check builds a project with
   `RunicApplicationFileTypes` and `RunicApplicationUrlSchemes` and compares the
   installed MIME definitions and `MimeType=` with

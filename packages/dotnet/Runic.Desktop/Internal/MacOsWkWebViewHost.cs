@@ -386,6 +386,8 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
             Api.SendVoid(_window, "close");
             throw new InvalidOperationException("WebKit could not create a WKWebView.");
         }
+        _reportDiagnostic = options.ReportDiagnostic;
+        ApplySpellCheckingLanguages(options.SpellCheckingLanguages);
         if (WebViewClass != 0)
         {
             _drops = new FileDropPairing(drop => FilesDropped?.Invoke(this, drop), FileDropSupport.LabelWait);
