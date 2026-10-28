@@ -78,6 +78,10 @@
             pkgs = import nixpkgs { system = "x86_64-linux"; };
             inherit self;
           };
+          builder-spelling-dictionaries = import ./nix/tests/spelling-dictionaries.nix {
+            pkgs = import nixpkgs { system = "x86_64-linux"; };
+            inherit self;
+          };
         };
 
       # The portal backends are intentionally split into two images. A picker

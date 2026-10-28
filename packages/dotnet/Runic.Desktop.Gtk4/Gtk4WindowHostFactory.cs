@@ -735,6 +735,7 @@ internal sealed partial class Gtk4WindowHost : IDesktopNativeDispatchWindowHost,
             using var webContext = WebContext.New();
             // DesktopWindowOptions.Language: the page's navigator.language and Accept-Language.
             if (options.Language is { } language) webContext.SetPreferredLanguages([language]);
+            ApplySpellChecking(webContext, options.SpellCheckingLanguages);
             using var contextValue = new GObject.Value(webContext);
             webView = WebView.NewWithProperties(
                 [new GObject.ConstructArgument("web-context", contextValue)]);

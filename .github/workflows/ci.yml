@@ -783,7 +783,8 @@ jobs:
         if: runner.os == 'Linux'
         uses: ./.github/actions/apt-install
         with:
-          packages: libwebkit2gtk-4.1-0 libwebkitgtk-6.0-4 xvfb dbus-x11 at-spi2-core xdotool
+          # hunspell-en-us: a dictionary for the spell-checking smoke (#662).
+          packages: libwebkit2gtk-4.1-0 libwebkitgtk-6.0-4 xvfb dbus-x11 at-spi2-core xdotool hunspell-en-us
       # A window manager for the GTK 4 placement check (#663), without Openbox's recommended configuration tools.
       - name: Install Openbox for the X11 placement check
         if: runner.os == 'Linux'
@@ -861,6 +862,11 @@ jobs:
           done
           # B17: GtkAlertDialog message boxes for a GTK 4 window, answered by activating their buttons and closing them.
           GDK_BACKEND=x11 GSETTINGS_BACKEND=memory xvfb-run -a dbus-run-session -- dotnet run --project tests/native/Runic.Desktop.Gtk4.Smoke -c Release --no-build -- --message-boxes
+          # #662: WebKitGTK's spell checker on with the application's languages, changed in an open window and off in a
+          # window, with GTK 3 and GTK 4.
+          for toolkit in gtk3 gtk4; do
+            GDK_BACKEND=x11 GSETTINGS_BACKEND=memory xvfb-run -a dbus-run-session -- dotnet run --project tests/native/Runic.Desktop.Gtk4.Smoke -c Release --no-build -- --spelling "$toolkit"
+          done
           # Right-to-left (W315-019): an Arabic process locale reaches the page's navigator.language, GTK 4's own
           # direction is right to left without a translation, and the application can override it.
           sudo locale-gen ar_EG.UTF-8

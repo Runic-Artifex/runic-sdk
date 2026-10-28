@@ -334,6 +334,21 @@ public sealed class DesktopSurface : IAsyncDisposable
     internal ValueTask CloseWindowForShutdownAsync() =>
         Volatile.Read(ref _window) is { } window ? window.CloseAsync() : ValueTask.CompletedTask;
 
+    // DesktopHost.SetSpellCheckingLanguagesAsync: the current embedded window applies them; a window that is opening
+    // applies them once it is open (WebUiWindow), and one that closes meanwhile needs none.
+    internal async ValueTask ApplySpellCheckingLanguagesAsync(IReadOnlyList<string> languages, CancellationToken cancellationToken)
+    {
+        if (Volatile.Read(ref _window) is not { IsOpen: true } window) return;
+        try
+        {
+            await _engine.SetEmbeddedSpellCheckingLanguagesAsync(languages, cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception error) when (error is InvalidOperationException or ObjectDisposedException && !window.IsOpen)
+        {
+            // The window closed meanwhile.
+        }
+    }
+
     internal async ValueTask CloseWindowAsync(DesktopWindow window)
     {
         await _windowGate.WaitAsync().ConfigureAwait(false);
@@ -443,6 +458,7 @@ public sealed class DesktopSurface : IAsyncDisposable
         _engine.SetColorScheme(options.ColorScheme);
         _engine.SetMonitorAndLanguage(options.MonitorId, options.LayoutDirection, options.Language);
         _engine.SetMacOS(options.MacOS);
+        _engine.SetSpellChecking(options.SpellChecking);
     }
 
     private static string FallbackRemediation(Exception exception) => exception is DesktopException { Code: var code }

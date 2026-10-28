@@ -71,6 +71,10 @@ if (Array.IndexOf(args, "--monitors") is var monitors and >= 0)
 // --placement [--window-manager] (#663): a restored placement's position on X11, also under a window manager.
 if (args.Contains("--placement", StringComparer.Ordinal)) return PlacementSmoke.Run(args.Contains("--window-manager", StringComparer.Ordinal));
 
+// --spelling gtk3|gtk4 (#662): WebKitGTK's spell checker with the application's languages, and off in a window.
+if (Array.IndexOf(args, "--spelling") is var spelling and >= 0)
+    return SpellCheckingSmoke.Run(spelling + 1 < args.Length ? args[spelling + 1] : "gtk4");
+
 if (args.Contains("--message-boxes", StringComparer.Ordinal)) return MessageBoxSmoke.Run();
 
 if (args.Any(arg => arg.StartsWith("--notification-", StringComparison.Ordinal)))

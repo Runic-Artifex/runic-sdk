@@ -217,6 +217,23 @@ internal sealed partial class LinuxWebKitGtkHost : IWebUiEmbeddedHost
         }
     }
 
+    // DesktopHost.SetSpellCheckingLanguagesAsync. WebKitGTK's checker belongs to the process, so this window's context
+    // sets the languages of every window.
+    public ValueTask SetSpellCheckingLanguagesAsync(IReadOnlyList<string> languages, CancellationToken cancellationToken = default)
+    {
+        var (dictionaries, missing) = SpellingLanguages.ForWebKitGtk(languages);
+        return InvokeWindowAsync(() =>
+        {
+            if (_webView != 0) Api.SetSpellChecking(Api.WebKitWebViewGetContext(_webView), dictionaries);
+            ReportMissingDictionaries(missing);
+        }, cancellationToken);
+    }
+
+    private void ReportMissingDictionaries(DesktopDiagnostic? missing)
+    {
+        if (SpellingLanguages.FirstReport(missing)) _options?.ReportDiagnostic?.Invoke(missing!);
+    }
+
     private ValueTask InvokeWindowAsync(Action action, CancellationToken cancellationToken)
     {
         ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
@@ -232,7 +249,9 @@ internal sealed partial class LinuxWebKitGtkHost : IWebUiEmbeddedHost
     {
         var options = _options ?? throw new InvalidOperationException("The embedded host has no launch options.");
         _window = Api.GtkWindowNew();
-        _webView = Api.WebKitWebViewNew(options.Language);
+        var (dictionaries, missing) = SpellingLanguages.ForWebKitGtk(options.SpellCheckingLanguages);
+        _webView = Api.WebKitWebViewNew(options.Language, dictionaries);
+        ReportMissingDictionaries(missing);
         if (_window == 0 || _webView == 0)
         {
             throw new InvalidOperationException("GTK could not create the embedded WebView window.");
@@ -1163,6 +1182,8 @@ internal sealed partial class LinuxWebKitGtkHost : IWebUiEmbeddedHost
                 GtkWindowFullscreenOnMonitorPointer = Optional(_gtk, "gtk_window_fullscreen_on_monitor");
                 GtkWidgetSetDirectionPointer = Optional(_gtk, "gtk_widget_set_direction");
                 WebKitWebContextSetPreferredLanguagesPointer = Optional(_webkit, "webkit_web_context_set_preferred_languages");
+                WebKitWebContextSetSpellCheckingEnabledPointer = Optional(_webkit, "webkit_web_context_set_spell_checking_enabled");
+                WebKitWebContextSetSpellCheckingLanguagesPointer = Optional(_webkit, "webkit_web_context_set_spell_checking_languages");
                 GdkWaylandDisplayGetTypePointer = Optional(_gtk, "gdk_wayland_display_get_type");
                 GtkSelectionDataGetUrisPointer = Optional(_gtk, "gtk_selection_data_get_uris");
                 GStrfreevPointer = Optional(_gtk, "g_strfreev");
@@ -1346,6 +1367,8 @@ internal sealed partial class LinuxWebKitGtkHost : IWebUiEmbeddedHost
         private nint GtkWindowFullscreenOnMonitorPointer { get; }
         private nint GtkWidgetSetDirectionPointer { get; }
         private nint WebKitWebContextSetPreferredLanguagesPointer { get; }
+        private nint WebKitWebContextSetSpellCheckingEnabledPointer { get; }
+        private nint WebKitWebContextSetSpellCheckingLanguagesPointer { get; }
 
         // GTK 3.22 monitors (gdk_display_get_monitor and the GdkMonitor getters) on the GTK thread.
         internal bool CanListMonitors => IsAvailable && GdkDisplayGetNMonitorsPointer != 0 && GdkDisplayGetMonitorPointer != 0 &&
@@ -1662,6 +1685,10 @@ internal sealed partial class LinuxWebKitGtkHost : IWebUiEmbeddedHost
             ? null
             : Marshal.PtrToStringUTF8(((delegate* unmanaged[Cdecl]<nint, nint>)WebKitUriRequestGetUriPointer)(request));
 
+        // The view's web context, owned by the view.
+        internal nint WebKitWebViewGetContext(nint webView) =>
+            ((delegate* unmanaged[Cdecl]<nint, nint>)WebKitWebViewGetContextPointer)(webView);
+
         // Connects download-started on the view's web context and keeps a reference to the context for the disconnection.
         internal (nint Context, ulong Handler) ConnectDownloadStarted(nint webView, nint callback, LinuxWebKitGtkHost host)
         {
@@ -1851,13 +1878,14 @@ internal sealed partial class LinuxWebKitGtkHost : IWebUiEmbeddedHost
             return handler;
         }
 
-        internal nint WebKitWebViewNew(string? language = null)
+        internal nint WebKitWebViewNew(string? language, string[] spellingDictionaries)
         {
             var context = ((delegate* unmanaged[Cdecl]<nint>)WebKitWebContextNewPointer)();
             if (context == 0)
             {
                 return 0;
             }
+            SetSpellChecking(context, spellingDictionaries);
             // DesktopWindowOptions.Language: the page's navigator.language and Accept-Language.
             if (language is not null && WebKitWebContextSetPreferredLanguagesPointer != 0)
             {
@@ -1875,6 +1903,36 @@ internal sealed partial class LinuxWebKitGtkHost : IWebUiEmbeddedHost
             finally
             {
                 ((delegate* unmanaged[Cdecl]<nint, void>)GObjectUnrefPointer)(context);
+            }
+        }
+
+        // DesktopWindowOptions.SpellChecking and DesktopHostOptions.SpellCheckingLanguages: WebKitGTK checks nothing until
+        // its checker is on and has dictionaries. Both are the process's (TextChecker), whichever context sets them; a
+        // window that keeps the checker off does so with spellcheck="false" in its documents.
+        internal void SetSpellChecking(nint context, string[] dictionaries)
+        {
+            if (context == 0 || WebKitWebContextSetSpellCheckingEnabledPointer == 0 || WebKitWebContextSetSpellCheckingLanguagesPointer == 0)
+            {
+                return;
+            }
+            ((delegate* unmanaged[Cdecl]<nint, int, void>)WebKitWebContextSetSpellCheckingEnabledPointer)(context, 1);
+            var names = new Utf8String[dictionaries.Length];
+            var list = new nint[dictionaries.Length + 1];
+            try
+            {
+                for (var index = 0; index < dictionaries.Length; index++)
+                {
+                    names[index] = Utf8String.Create(dictionaries[index]);
+                    list[index] = (nint)names[index].Pointer;
+                }
+                fixed (nint* languages = list)
+                {
+                    ((delegate* unmanaged[Cdecl]<nint, nint*, void>)WebKitWebContextSetSpellCheckingLanguagesPointer)(context, languages);
+                }
+            }
+            finally
+            {
+                foreach (var name in names) name?.Dispose();
             }
         }
 

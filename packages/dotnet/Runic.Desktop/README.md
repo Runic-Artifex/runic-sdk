@@ -1360,6 +1360,59 @@ var window = await surface.OpenWindowAsync(new DesktopWindowOptions
 [right-to-left guide](https://docs.runic-artifex.eu/guides/desktop/right-to-left/)
 lists every native piece per platform.
 
+## Spell checking
+
+Every embedded window checks spelling in the fields the HTML `spellcheck`
+attribute selects: text areas, text inputs and `contenteditable` elements,
+unless they or an ancestor have `spellcheck="false"`. WebView2 and WKWebView do
+so on their own; on Linux, Runic turns WebKitGTK's checker on, which checks
+nothing until an application does
+([#662](https://github.com/Runic-Artifex/runic-sdk/issues/662)). The languages
+are the application's, because the checkers of WebKitGTK and macOS belong to the
+process, not to a window:
+
+```csharp
+var options = new DesktopHostOptions { SpellCheckingLanguages = ["de-CH", "en"] };
+// Later, when the open document's language changes:
+await host.SetSpellCheckingLanguagesAsync(["fr-CA"]);
+```
+
+A word is correct when one of the languages accepts it; the page's `lang`
+attribute chooses no dictionary on any platform. Without languages, the
+checker uses the user's.
+
+| Window host | Languages | `SpellChecking = false` |
+| --- | --- | --- |
+| Linux, GTK 3 and GTK 4 (WebKitGTK) | Installed hunspell dictionaries through enchant: `de-CH` selects `de_CH`, or a dictionary for `de` alone, never another region's. `en` selects the region of the user's locale when it is English (`en_GB` under `LANG=en_GB.UTF-8`), else the most common one (`en_US`), else any installed. Without languages, those of `LANGUAGE`, `LC_ALL`, `LC_MESSAGES` and `LANG`. | `spellcheck="false"` on each document's root |
+| macOS, WKWebView | `NSSpellChecker`: one language selects it; several, or none, let macOS identify each paragraph's language among the user's spelling languages, because `NSSpellChecker` cannot be limited to a set | `spellcheck="false"` on each document's root |
+| Windows, WebView2, and WPF `RunicWebView` | Ignored: WebView2 has no setting for its spelling languages and checks in its own language, which `DesktopWindowOptions.Language` sets; `Validate` warns with `window-option-unsupported` | `spellcheck="false"` on each document's root |
+| Installed browsers | Their own settings | Ignored; `Validate` warns |
+
+`DesktopWindowOptions.SpellChecking = false` keeps the native checker off in one
+window, for an editor that draws its own spelling marks. No platform can turn
+its checker off for one window, so every document in the window starts with
+`spellcheck="false"` on `<html>`, which the fields inherit. An element with its
+own `spellcheck="true"` is still checked, so leave the attribute off the
+editor. A custom window host applies the option by running
+`DesktopWindowHostOptions.DocumentStartScript`.
+
+A language without a dictionary is not checked; the window reports
+`spell-checking-dictionary-missing` to `DesktopHostOptions.DiagnosticSink` and
+the logger once, as a warning. A Linux desktop may have no dictionaries at all:
+install them with the distribution's packages, such as `hunspell-de-ch`, or, with
+Nix, pass them to `buildRunicApplication` as `spellingDictionaries`
+([Nix](https://github.com/Runic-Artifex/runic-sdk/blob/main/nix/README.md#spell-checking)).
+
+**Editors that rewrite their text.** WebKitGTK checks the text around an edit
+as the user types, and keeps a mark on the text node it checked; it does not
+check the field again later. A word whose text node the editor replaces after
+the check, as ProseMirror does when an inline decoration changes around it, can
+lose its mark until the word is edited again. In a test with WebKitGTK 2.54,
+words typed into a plain ProseMirror editor were marked as in a text area, and a
+word that a decoration wrapped as it was completed lost its mark. Keep such
+decorations off the words the native checker marks, or draw the marks yourself
+with `SpellChecking = false`.
+
 ## Web process crashes on Linux
 
 WebKitGTK renders the page in a separate web process. When it crashes or
@@ -1581,10 +1634,11 @@ The optional interfaces each add one feature:
 | `IDesktopWindowStateHost` | `DesktopWindow.State`, `StateChanged` and restoring `DesktopWindowHostOptions.Placement` ([Window state and restore](#window-state-and-restore)) | `DesktopWindowCapabilities.State` |
 | `IDesktopFileDropWindowHost` | `DesktopWindow.FilesDropped`, with paths from the native drop, never from the page ([File drops](#file-drops)) | `DesktopWindowCapabilities.FileDrop` |
 | `IDesktopDragSourceWindowHost` | `DesktopWindow.StartDragAsync`, with data the application checked ([Dragging files out](#dragging-files-out)) | `DesktopWindowCapabilities.FileDrag` |
+| `IDesktopSpellCheckingWindowHost` | `DesktopHost.SetSpellCheckingLanguagesAsync` in an open window; apply `DesktopWindowHostOptions.SpellCheckingLanguages` when opening ([Spell checking](#spell-checking)) | — |
 | `IDesktopEventLoopWindowHostFactory` | A toolkit loop on the process main thread | — |
 | `ILinuxDesktopWindowHostFactory` | The Linux toolkit the factory loads | `Backend` |
 
-The GTK 4 host implements the first three and its factory the last two;
+The GTK 4 host implements the first three and `IDesktopSpellCheckingWindowHost`, and its factory the last two;
 `RunicWebView` implements `IDesktopFileDropWindowHost`. A host that reports
 `DesktopWindowCapabilities.Announcements` implements `AnnounceAsync`
 ([Accessibility](#accessibility)). Report events of an open window, such as a

@@ -144,6 +144,12 @@ and whether the compositor honours the monitor for full screen is its choice.
 header bar and the view, and `Language` WebKitGTK's preferred languages
 (`navigator.language`, `Accept-Language`) for the window's own web context.
 
+WebKitGTK's spell checker is on in every window, with enchant dictionaries for
+`DesktopHostOptions.SpellCheckingLanguages`, and the host implements
+`IDesktopSpellCheckingWindowHost` for `DesktopHost.SetSpellCheckingLanguagesAsync`.
+The checker and its languages belong to the process, whichever window's context
+sets them. See [Spell checking](../Runic.Desktop/README.md#spell-checking).
+
 The window reports `DesktopWindowCapabilities.FileDrop` once it finds WebKit's
 own drop target on the view. WebKit's target claims a drop, so a second target
 would leave the page without its drop event; Runic instead adds GLib emission
