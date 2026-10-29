@@ -10,6 +10,13 @@ The adapter is supported and follows the SDK's versioning: it ships with the
 `@runic-artifex/views` version of your generated clients. A .NET command's
 declared failure (`[RunicFailure]`) arrives as the tagged `ViewDomainFailure`.
 
+It is **headless**: its root entry depends on no UI framework and works from any
+TypeScript, and its only framework adapter is React
+(`@runic-artifex/views-effect/react`). There are no Vue, Svelte or Angular
+adapters, and none are planned for 1.0: in those frameworks, render state with
+the framework package (`useView`, `injectView`) and run Effect workflows through
+the headless API, as [Framework helpers](#framework-helpers) shows.
+
 ```sh
 npm install @runic-artifex/views-effect@preview @runic-artifex/views@preview effect
 pnpm add @runic-artifex/views-effect@preview @runic-artifex/views@preview effect
@@ -52,6 +59,7 @@ const program = Effect.gen(function* () {
 | `connect(source)` | `Effect<Client, ViewError, Scope>` | Connects a generated `connect<Name>` function or a page reference and disposes the client when the scope closes. |
 | `clientLayer(service, source)` | `Layer<I, ViewError>` | Provides a connected client as a `Context` service. It connects when the layer is built and disposes the client when the layer's scope closes. |
 | `states(client, { bufferSize? })` | `Stream<State>` | The current state, then each accepted state. A slow consumer skips to the latest state (`bufferSize` defaults to 1). |
+| `connectionStates({ lostAfter? })` | `Stream<BridgeConnectionState>` | The page's connection to .NET (`connecting`, `connected`, `reconnecting`, `lost`), then each change. A slow consumer skips to the latest state. |
 | `command(() => client.method(...))` | `Effect<A, ViewError>` | Runs a command, setter, `can…` query or checked write. A command that declares a failure succeeds with its value and adds `ViewDomainFailure<F>`. |
 | `operation(start, options?)` | `Effect<Result, ViewOperationError>` | Starts a `start<Command>` operation and waits for its terminal status; `Result` is `void` for a command without one. A declared failure adds `ViewDomainFailure<F>`. |
 | `catchCase(effect, handlers)` | `Effect<A \| …, E \| …, R \| …>` | Handles every `$case` of a declared `[RunicUnion]` failure in the error channel; a missing case is a type error. |
@@ -157,8 +165,20 @@ A declared failure is a terminal outcome, so `operation`'s `retry` never retries
 
 ### State streams
 
-`states` ends only when it is interrupted, so run it in the scope that
-connected the client. When .NET pushes a collection change the client cannot
+`states` and `connectionStates` end only when they are interrupted, so run them
+in the scope that connected the client. `connectionStates` follows
+`onBridgeConnection`: `reconnecting` after the transport dropped (clients keep
+their last state meanwhile), `lost` after `lostAfter` milliseconds (5000 by
+default) without a connection, and `connected` again when the host is back:
+
+```ts
+yield* Effect.forkScoped(connectionStates().pipe(
+  Stream.filter(state => state === "lost"),
+  Stream.runForEach(() => Effect.log("The application stopped responding.")),
+));
+```
+
+`states` ends only when it is interrupted. When .NET pushes a collection change the client cannot
 apply, or the transport reconnects, the runtime re-reads the snapshot and the
 stream receives it as an ordinary state; the stream does not fail. Read
 failures of that re-read are reported through `onBridgeDiagnostic` from
@@ -201,8 +221,9 @@ export function EditorPage({ page }: { page: EditorPageReference }) {
 }
 ```
 
-Outside React, wrap `createEffectAction` in your framework's store and call
-`dispose()` when the component is destroyed. In Vue:
+Outside React there is no adapter (the package is headless): wrap
+`createEffectAction` in your framework's store and call `dispose()` when the
+component is destroyed. In Vue:
 
 ```ts
 import { createEffectAction, operation } from "@runic-artifex/views-effect";

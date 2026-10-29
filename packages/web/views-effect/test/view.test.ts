@@ -9,7 +9,7 @@ import { Cause, Context, Effect, Exit, Fiber, Layer, ManagedRuntime, Schedule, S
 import { TestClock } from "effect/testing";
 import { afterEach, beforeEach, describe, expect, expectTypeOf, test } from "vitest";
 import {
-  catchCase, clientLayer, command, connect, followViewport, fromBridgeError, operation, states, ViewFailed, ViewDisconnected, ViewDomainFailure, ViewReleased,
+  catchCase, clientLayer, command, connect, connectionStates, followViewport, fromBridgeError, operation, states, ViewFailed, ViewDisconnected, ViewDomainFailure, ViewReleased,
   type ViewError, type ViewOperationError, type ViewportRange,
 } from "../dist/index.js";
 
@@ -200,6 +200,24 @@ describe("states", () => {
     client.dispose();
     expect(seen[0]).toEqual({ count: 1, title: "One" });
     expect(seen.map(state => state.title)).not.toContain("Lost");
+  });
+});
+
+describe("connectionStates", () => {
+  test("streams the connection to .NET and its changes until interrupted", async () => {
+    const seen: string[] = [];
+    const fiber = Effect.runFork(Stream.runForEach(connectionStates({ lostAfter: 20 }), state => Effect.sync(() => { seen.push(state); })));
+    await until(() => seen.at(-1) === "connected");
+    bridge.disconnect();
+    await until(() => seen.at(-1) === "reconnecting");
+    await until(() => seen.at(-1) === "lost");
+    bridge.reconnect();
+    await until(() => seen.at(-1) === "connected");
+    await Effect.runPromise(Fiber.interrupt(fiber));
+    bridge.disconnect();
+    await new Promise(resolve => setTimeout(resolve, 30));
+    expect(seen.at(-1)).toBe("connected");
+    expect(seen).toEqual(["connected", "reconnecting", "lost", "connected"]);
   });
 });
 

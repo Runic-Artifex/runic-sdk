@@ -225,10 +225,10 @@ describe("useView options", () => {
       expect(typeof (root_ as Record<string, unknown>)[name]).toBe("function");
   });
 
-  test("the root entry keeps every earlier export and adds useBridgeConnection and useMenuBar (0.11), useField and FieldError (0.14)", () => {
+  test("the root entry keeps every earlier export and adds useBridgeConnection and useMenuBar (0.11), useField, FieldError and useViewState (0.14)", () => {
     expect(Object.keys(root_).sort()).toEqual([
       "FieldError", "ViewOutlet", "onBridgeConnection", "retrySuspenseView", "useBridgeConnection", "useCollectionViewport", "useCommand", "useField", "useLatestOperation",
-      "useMenuBar", "useOperation", "useSuspenseView", "useTextField", "useView",
+      "useMenuBar", "useOperation", "useSuspenseView", "useTextField", "useView", "useViewState",
     ]);
     // The connection API that useBridgeConnection wraps is re-exported, as the menu-bar types are (0.11).
     expect(root_.onBridgeConnection).toBe(viewsOnBridgeConnection);
@@ -369,7 +369,7 @@ describe("useSuspenseView", () => {
 
   test("suspends until the reference connects in StrictMode, renders pushes and disposes after unmount", async () => {
     const reference = fakeReference(4);
-    await renderSuspense(reference, true);
+    await renderSuspense(reference, true, { keepAlive: 0 });
     expect(text()).toBe("suspended");
     await act(async () => { reference.resolveAll(); await tick(); });
     expect(text()).toBe("4");

@@ -38,13 +38,13 @@ import {
   type ViewControllerState,
   type ViewSource,
 } from "@runic-artifex/views";
-import { isViewClient, viewSourceIdentity } from "@runic-artifex/views/bindings";
+import { isViewClient, viewSourceIdentity, viewSourcePreview } from "@runic-artifex/views/bindings";
 
 // React itself requires bundlers to define process.env.NODE_ENV.
 declare const process: { readonly env: { readonly NODE_ENV?: string } };
 
 export interface ViewHandle<TClient extends ViewClient> {
-  /** The latest state, or undefined until the client connects. */
+  /** The latest state, or undefined until the client connects. While the same reference connects again it stays the last state. */
   readonly state: TClient["snapshot"] | undefined;
   /** The connected client for commands, or undefined until it connects. */
   readonly client: TClient | undefined;
@@ -128,9 +128,14 @@ export interface UseViewOptions<TClient extends ViewClient> {
 
 /**
  * Connects a generated View reference for the lifetime of the component and
- * renders its state through `useSyncExternalStore`. A changed reference
- * disposes the previous client; StrictMode's extra mount disposes its
- * connection when it resolves.
+ * renders its state through `useSyncExternalStore`.
+ *
+ * When the component unmounts or the reference changes, the client stays
+ * connected for `keepAlive` milliseconds (2000 by default), and the next
+ * `useView` of the same reference takes it over with its state: StrictMode's
+ * simulated unmount, Fast Refresh, `<Activity>` and A→B→A navigation neither
+ * show "Connecting…" nor open the route again. A component that mounts while a
+ * client of its reference is kept renders its state in the first render.
  *
  * A reference is identified by its `connect` function, so an inline
  * `{ connect: connectWorkspace }` does not reconnect. In development a
@@ -150,8 +155,9 @@ export function useView<TClient extends ViewClient>(source: ViewSource<TClient>,
     if (process.env.NODE_ENV !== "production" && source && !isViewClient(source)) warnInlineConnect(tracker.current, source.connect);
     controller.setSource(source);
     store.refresh();
-    // A following run refreshes the store; after unmount nothing renders it.
-    return () => { controller.setSource(null); };
+    // The client is kept for the next run (StrictMode, Fast Refresh, <Activity>) or the next component of the same
+    // reference; `current` stays, so a hidden <Activity> renders its last state.
+    return () => { controller.release(); };
     // The source is identified by its client or connect function, not by its wrapper object.
   }, [controller, store, identity]);
   const current = useSyncExternalStore(store.subscribe, store.read, store.read);
@@ -161,10 +167,60 @@ export function useView<TClient extends ViewClient>(source: ViewSource<TClient>,
   // A connected client is readable before the effect observes it.
   if (observed && current.client !== observed)
     return { state: observed.snapshot, client: observed, error: undefined, pending: false, retry };
-  // Until the effect follows a changed reference, do not show the previous one.
-  if (viewSourceIdentity(current.source) !== identity)
+  // Until the effect follows a changed reference, do not show the previous one; show a client kept for it instead.
+  if (viewSourceIdentity(current.source) !== identity) {
+    const preview = viewSourcePreview(source);
+    if (preview) return { state: preview.state, client: preview.client, error: undefined, pending: false, retry };
     return { state: undefined, client: undefined, error: undefined, pending: source !== null && source !== undefined, retry };
+  }
   return { state: current.state, client: current.client, error: current.error, pending: current.pending, retry };
+}
+
+/**
+ * Renders one selected part of a View's state and re-renders only when that part changes, by `isEqual`
+ * (`Object.is` by default), like `useSyncExternalStoreWithSelector`. Pass the connected client, which keeps its
+ * identity, to a memoized child, so the child renders when its member changes and not on every change of the View:
+ *
+ * ```tsx
+ * const Title = memo(function Title({ editor }: { editor: EditorClient | undefined }) {
+ *   const title = useViewState(editor, state => state.title);
+ *   return <h1>{title ?? "…"}</h1>;
+ * });
+ * const view = useView(page);
+ * <Title editor={view.client} />
+ * ```
+ *
+ * A `useView` handle works too, for example in the component that calls `useView`; that component still renders
+ * on every change of the handle. Returns `undefined` while there is no client and no state. The selector may be an
+ * inline function: a new function selects again, and an equal result keeps the previous value. Members the View did
+ * not change keep their identity, so selecting a member, or an object or array member, needs no `isEqual`; pass one
+ * for a derived value such as `state => state.items.filter(…)`.
+ */
+export function useViewState<TClient extends ViewClient, TSelected>(
+  view: ViewHandle<TClient> | TClient | null | undefined,
+  selector: (state: TClient["snapshot"]) => TSelected,
+  isEqual: (left: TSelected, right: TSelected) => boolean = Object.is,
+): TSelected | undefined {
+  const client = view && isViewClient(view as TClient) ? view as TClient : (view as ViewHandle<TClient> | null | undefined)?.client;
+  const fallback = client ? undefined : (view as ViewHandle<TClient> | null | undefined)?.state;
+  const subscribe = useCallback((onChange: () => void) => client ? client.subscribe(() => onChange()) : () => {}, [client]);
+  // The value last rendered, so a selector recreated on every render keeps an equal selection's identity.
+  const rendered = useRef<{ value: TSelected | undefined } | undefined>(undefined);
+  const read = useMemo(() => {
+    let memo: { readonly state: unknown; readonly value: TSelected | undefined } | undefined;
+    return (): TSelected | undefined => {
+      const state = client ? client.snapshot : fallback;
+      if (memo && Object.is(memo.state, state)) return memo.value;
+      let value = state === undefined ? undefined : selector(state);
+      const previous = memo ?? rendered.current;
+      if (previous && previous.value !== undefined && value !== undefined && isEqual(previous.value, value)) value = previous.value;
+      memo = { state, value };
+      return value;
+    };
+  }, [client, fallback, selector, isEqual]);
+  const value = useSyncExternalStore(subscribe, read, read);
+  useEffect(() => { rendered.current = { value }; }, [value]);
+  return value;
 }
 
 /**

@@ -1,7 +1,7 @@
 {
   "name": "@runic-artifex/views-effect",
   "version": "0.13.0",
-  "description": "Optional Effect 4 adapter for generated Runic Views clients",
+  "description": "Optional Effect 4 adapter for generated Runic Views clients: headless, with React helpers",
   "license": "MIT",
   "type": "module",
   "packageManager": "bun@1.4.4",
@@ -71,6 +71,8 @@
     "runic-artifex",
     "runic",
     "views",
-    "effect"
+    "effect",
+    "headless",
+    "react"
   ]
 }

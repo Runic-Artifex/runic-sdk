@@ -48,20 +48,78 @@ replaces `client.dispose()` for a client the hook connected, for example to keep
 a client alive in a cache:
 
 - A generated page reference, or `{ connect: connect<Name> }` for a root
-  ViewModel, is connected while the component is mounted and disposed when it
-  unmounts or the reference changes. A reference is identified by its `connect`
-  function, so an inline `{ connect: connectWorkspace }` does not reconnect.
+  ViewModel, is connected while the component is mounted. A reference is
+  identified by its `connect` function, so an inline
+  `{ connect: connectWorkspace }` does not reconnect.
+- When the component unmounts or the reference changes, the client stays
+  connected for `options.keepAlive` milliseconds (2000 by default), and the
+  next `useView` of the same reference takes it over with its state. StrictMode's
+  second mount, Fast Refresh, `<Activity>` and A→B→A navigation therefore
+  neither flash "Connecting…" nor remount a `ViewOutlet` subtree nor open the
+  route again; a component that mounts while its reference's client is kept
+  renders the state in its first render. `keepAlive: 0` disposes at once.
+  Kept clients are handed over, not shared: two mounted components of the same
+  reference have a client each.
 - An already connected client is observed and left to its owner.
 - `state` renders through `useSyncExternalStore`, so concurrent rendering sees
-  one consistent snapshot. StrictMode's extra mount disposes its connection.
+  one consistent snapshot.
 - `pending` is true while a reference connects. `error` holds a failed
-  connection; `retry()` connects again.
+  connection; `retry()` connects again. While the same reference connects again
+  (after `retry()`, or after a hidden `<Activity>` outlived the grace period),
+  `state` stays the last state.
 
 A `connect` function created during render, such as
 `useView({ connect: () => connectWorkspace() })`, is a new reference on every
 render, so each render reconnects. In development `useView` logs a warning when
 this repeats. Pass the generated function itself, a generated page reference,
 or memoize the source with `useMemo`.
+
+### Selecting state: `useViewState(view, selector, isEqual?)`
+
+`useView` renders its component on every change of the View. A component that
+shows one member can select it and re-render only when it changes, like
+`useSyncExternalStoreWithSelector`. Pass the connected client, which keeps its
+identity, to a memoized child:
+
+```tsx
+const Title = memo(function Title({ editor }: { editor: EditorClient | undefined }) {
+  const title = useViewState(editor, state => state.title);
+  return <h1>{title ?? "…"}</h1>;
+});
+
+function EditorPage({ page }: { page: EditorPageReference }) {
+  const editor = useView(page);
+  return <><Title editor={editor.client} /><Body editor={editor.client} /></>;
+}
+```
+
+`view` is a client or a `useView` handle (`undefined` while nothing is
+connected returns `undefined`). The selector may be an inline function.
+Members the View did not change keep their identity, so selecting a member,
+also an object or a list, needs no `isEqual`; pass one for a derived value, such
+as `state => state.items.filter(item => item.done)` with a shallow comparison.
+
+### Large lists and concurrent rendering
+
+The client applies each frame when it arrives and notifies once per animation
+frame (0.14), so a burst of .NET changes renders once per frame, not once per
+frame received. `useSyncExternalStore` renders those updates synchronously,
+though, so a component that renders thousands of rows blocks typing for the
+length of that render. Let React render the list in a background pass with
+`useDeferredValue`, and keep the input outside the deferred part:
+
+```tsx
+const { state } = useView(page);
+const rows = useDeferredValue(state?.rows);
+const stale = rows !== state?.rows;
+<input {...filter.inputProps} />
+<List rows={rows ?? []} style={{ opacity: stale ? 0.6 : 1 }} />  {/* List is memo() */}
+```
+
+`useTransition` is not needed for commands: their calls are asynchronous and
+the state they produce arrives as a View change. For a scrolling window over a
+large .NET collection, request only the visible rows with
+[`useCollectionViewport`](#usecollectionviewportoptions).
 
 ### Read-only state and two-way binding
 
@@ -199,8 +257,10 @@ function Counter({ page }: { page: CounterPageReference }) {
 ```
 
 Components that pass a reference with the same `connect` function share one
-client, which is disposed after the last of them unmounts. The reference must
-be stable: a `connect` function created during render never resolves.
+client, which is disposed `options.keepAlive` milliseconds (2000 by default,
+`0` at once) after the last of them unmounts, so a component that mounts again
+meanwhile renders without suspending. The reference must be stable: a `connect`
+function created during render never resolves.
 
 The connections live in a module-wide cache until a component claims them,
 because Suspense discards the state of a component that never mounted.
@@ -429,14 +489,17 @@ Check items are `Menubar.CheckboxItem checked`, radio groups
 ## Errors
 
 The `error` of `useView` and of a command or operation handle is typed
-`unknown`: it holds whatever the connection or the call rejected with. A Bridge
-failure is a `BridgeError` from `@runic-artifex/views`; narrow it with
-`instanceof` before reading `kind`, `route` or `detail`:
+`unknown`: it holds whatever the connection or the call rejected with. Show it
+with `describeBridgeError(error)`, one English sentence, instead of
+`String(error)`. A Bridge failure is a `BridgeError` from
+`@runic-artifex/views`; narrow it with `isBridgeError` (or `instanceof`) before
+reading `kind`, `route` or `detail`:
 
-```ts
-import { BridgeError } from "@runic-artifex/views";
+```tsx
+import { describeBridgeError, isBridgeError } from "@runic-artifex/views";
 
-const offline = error instanceof BridgeError && error.kind === "disconnected";
+const offline = isBridgeError(error, "disconnected");
+{error !== undefined && <p role="alert">{describeBridgeError(error)}</p>}
 ```
 
 `instanceof` holds for errors from every copy of the package on the page.
