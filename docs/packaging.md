@@ -28,6 +28,17 @@ missing tool stops it before it builds anything (`RAPPPKG1002`, which names the
 package that provides the tool). Run every target in a CI job of its operating
 system to ship all of them.
 
+## Publishing with dotnet publish
+
+Without the packaging command, `dotnet publish` produces a framework-dependent,
+self-contained, self-contained trimmed (`-p:PublishTrimmed=true`) or NativeAOT
+(`-p:PublishAot=true`) build of a Runic Desktop or CS-WebUI application. CI
+publishes the Runic Desktop example self-contained and trimmed for `linux-x64`
+and drives it in a browser. WPF can't be trimmed, so neither can an application
+that uses `Runic.Application.Views.Wpf` or `Runic.Navigation.Wpf`: the .NET SDK
+stops a trimmed WPF publish with `NETSDK1168`. Publish those framework-dependent,
+or self-contained without `PublishTrimmed`.
+
 ## The manifests
 
 The command fills manifests from the project file's identity: `ApplicationId`,

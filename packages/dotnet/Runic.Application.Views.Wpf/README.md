@@ -10,6 +10,8 @@ API, is a Runic Desktop
 [custom window host](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Desktop/README.md#custom-window-hosts),
 stable since 0.10.0; remove suppressions of its former ID `RUNICDESK100`.
 The XAML namespace is `https://runic-artifex.eu/xaml/views`, with the prefix `rv`.
+The package isn't trimmable, because WPF isn't: publish the application without
+`PublishTrimmed`.
 
 ## Host a web View in XAML
 

@@ -36,6 +36,13 @@ internal static partial class Gtk4Application
         return RunCore(application, applicationId, "Gtk4Application.Run");
     }
 
+    // Not inline in RunCore's finally: ILLink 10.0 rewrites RunCore (it folds OperatingSystem.IsLinux) and drops a
+    // try/finally nested in a finally handler, here the lock's release (dotnet/runtime#136414).
+    private static void EndLifetime()
+    {
+        lock (Gate) _state = 3;
+    }
+
     // entryPoint names the API the application called, for the error messages.
     internal static int RunCore(Func<Task<int>> application, string? applicationId, string entryPoint)
     {
@@ -89,10 +96,7 @@ internal static partial class Gtk4Application
             nativeApplication.OnActivate -= OnActivate;
             Gtk4Dispatcher.Instance.Detach(nativeApplication);
             nativeApplication.Dispose();
-            lock (Gate)
-            {
-                _state = 3;
-            }
+            EndLifetime();
         }
         if (failure is not null)
         {
