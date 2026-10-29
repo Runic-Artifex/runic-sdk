@@ -1,29 +1,37 @@
 <script setup lang="ts">
 import { computed } from "vue";
-import { useCommand, useView } from "@runic-artifex/vue";
-import type { CounterPageReference } from "../generated/counter.js";
+import { useCommand, useField, useView } from "@runic-artifex/vue";
+import { CounterFields, type CounterPageReference } from "../generated/counter.js";
 
 const props = defineProps<{ page: CounterPageReference }>();
 const { state, client, error: connection } = useView(() => props.page);
 const { run: increment, pending: incrementing, error: incrementError } = useCommand(() => client.value?.increment());
-// Step has a public C# setter, so the client has setStep for v-model.
-// Count's setter is private: the page only reads it.
-const { run: setStep, error: stepError } = useCommand((value: number) => client.value?.setStep(value));
-const step = computed({ get: () => state.value?.step ?? 1, set: value => void setStep(value) });
-const error = computed(() => incrementError.value ?? stepError.value ?? connection.value);
+// Step and Label have public C# setters, so the generated CounterFields has a
+// field for each; useField writes them through v-model and keeps what the user
+// typed while the writes are on their way. Count's setter is private: the page
+// only reads it.
+const step = useField({ state, client }, CounterFields.step);
+const label = useField({ state, client }, CounterFields.label);
+const error = computed(() => incrementError.value ?? step.error ?? label.error ?? connection.value);
 </script>
 
 <template>
   <section>
     <h2>Counter View</h2>
+    <p class="caption">{{ state?.label ?? "…" }}</p>
     <p class="count">{{ state?.count ?? "…" }}</p>
     <label>
       Step
-      <select v-model.number="step" :disabled="!client">
+      <select v-model="step.value" :disabled="!client" @blur="step.commit">
         <option v-for="value in [1, 2, 5, 10]" :key="value" :value="value">{{ value }}</option>
       </select>
     </label>
-    <button :disabled="!client || incrementing" @click="increment()">Increment</button>
+    <label>
+      Label
+      <input v-model="label.value" :disabled="!client" @blur="label.commit">
+    </label>
+    <!-- Increment waits until the Step it adds has been written. -->
+    <button :disabled="!client || incrementing || step.editing" @click="increment()">Increment</button>
     <p v-if="error !== undefined" role="alert">{{ String(error) }}</p>
   </section>
 </template>

@@ -1,26 +1,35 @@
-import { useCommand, useView } from "@runic-artifex/react";
-import type { CounterPageReference } from "../generated/counter.js";
+import { useCommand, useField, useView } from "@runic-artifex/react";
+import { CounterFields, type CounterPageReference } from "../generated/counter.js";
 
 const steps = [1, 2, 5, 10];
 
 export function CounterPage({ page }: { page: CounterPageReference }) {
-  const { state, client, error: connection } = useView(page);
+  const counter = useView(page);
+  const { state, client, error: connection } = counter;
+  // Step and Label have public C# setters, so the generated CounterFields has a
+  // field for each; useField writes them and keeps what the user typed while the
+  // writes are on their way. Count's setter is private: the page only reads it.
+  const step = useField(counter, CounterFields.step);
+  const label = useField(counter, CounterFields.label);
   const increment = useCommand(() => client?.increment());
-  // Step has a public C# setter, so the client has setStep for a two-way
-  // binding. Count's setter is private: the page only reads it.
-  const setStep = useCommand((step: number) => client?.setStep(step));
-  const error = increment.error ?? setStep.error ?? connection;
+  const error = increment.error ?? step.error ?? label.error ?? connection;
 
   return <section>
     <h2>Counter View</h2>
+    <p className="caption">{state?.label ?? "…"}</p>
     <p className="count">{state?.count ?? "…"}</p>
     <label>
       Step{" "}
-      <select value={state?.step ?? 1} disabled={!client} onChange={event => void setStep.run(Number(event.currentTarget.value))}>
-        {steps.map(step => <option key={step} value={step}>{step}</option>)}
+      <select {...step.inputProps} disabled={!client}>
+        {steps.map(value => <option key={value} value={value}>{value}</option>)}
       </select>
     </label>
-    <button disabled={!client || increment.pending} onClick={() => void increment.run()}>Increment</button>
+    <label>
+      Label{" "}
+      <input {...label.inputProps} disabled={!client} />
+    </label>
+    {/* Increment waits until the Step it adds has been written. */}
+    <button disabled={!client || increment.pending || step.editing} onClick={() => void increment.run()}>Increment</button>
     {error !== undefined && <p role="alert">{String(error)}</p>}
   </section>;
 }

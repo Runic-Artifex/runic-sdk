@@ -1,11 +1,12 @@
-import type { EditorClient } from "./generated/editor.js";
-import { EditorWrites } from "./editor-writes.js";
+import { createFieldController } from "@runic-artifex/views";
+import { EditorFields, type EditorClient } from "./generated/editor.js";
+import { bindTextInput, commitFields } from "./field-input.js";
 import { describeSaveFailure } from "./save-failure.js";
 
 export function mountEditor(host: HTMLElement, view: EditorClient): () => void {
   host.innerHTML = `<h2>Full editor</h2><label>Title<input data-title></label><label>Body<textarea data-body></textarea></label><button data-save>Save</button><button data-discard>Discard changes</button><p data-message role="status"></p><p data-failure role="alert" hidden></p><p data-activation class="muted"></p>`;
-  const title = host.querySelector<HTMLInputElement>("[data-title]")!;
-  const body = host.querySelector<HTMLTextAreaElement>("[data-body]")!;
+  const titleInput = host.querySelector<HTMLInputElement>("[data-title]")!;
+  const bodyInput = host.querySelector<HTMLTextAreaElement>("[data-body]")!;
   const save = host.querySelector<HTMLButtonElement>("[data-save]")!;
   const discard = host.querySelector<HTMLButtonElement>("[data-discard]")!;
   const message = host.querySelector<HTMLElement>("[data-message]")!;
@@ -13,20 +14,31 @@ export function mountEditor(host: HTMLElement, view: EditorClient): () => void {
   const failure = host.querySelector<HTMLElement>("[data-failure]")!;
   const showFailure = (text: string | undefined) => { failure.textContent = text ?? ""; failure.hidden = text === undefined; };
   const report = (error: unknown) => { message.textContent = String(error); message.classList.add("error"); };
-  const writes = new EditorWrites(cause => { if (cause !== undefined) report(cause); });
+  // A field is written after a pause in typing or when it loses focus, not on every keystroke.
+  const title = createFieldController(EditorFields.title, { commit: "pause" });
+  const body = createFieldController(EditorFields.body, { commit: "pause" });
+  const reportWriteError = (field: typeof title) => {
+    let reported: unknown;
+    return field.subscribe(() => {
+      const cause = field.current.error;
+      if (cause !== undefined && !Object.is(cause, reported)) report(cause);
+      reported = cause;
+    });
+  };
+  const stopTitle = reportWriteError(title);
+  const stopBody = reportWriteError(body);
+  const unbindTitle = bindTextInput(titleInput, title, view);
+  const unbindBody = bindTextInput(bodyInput, body, view);
   const removeDiscardHandler = view.interactions.confirmDiscard.handle(async (request, { signal }) => {
     if (signal.aborted) throw signal.reason;
     return window.confirm(`Discard the ${request.bodyLength} unsaved characters in “${request.title}”?`);
   });
   const unsubscribe = view.subscribe(state => {
-    if (document.activeElement !== title) title.value = state.title;
-    if (document.activeElement !== body) body.value = state.body;
     save.disabled = !state.canSave;
     message.textContent = state.savedMessage;
     activation.textContent = `Activated ${state.activationCount} × · deactivated ${state.deactivationCount} ×`;
   });
-  const titleChanged = () => { const value = title.value; writes.enqueue(() => view.setTitle(value)); };
-  const bodyChanged = () => { const value = body.value; writes.enqueue(() => view.setBody(value)); };
+  // Save and Discard follow the fields' writes; a write that failed stops them.
   // Save declares SaveFailure, so a missing title resolves the outcome instead
   // of rejecting; only unexpected failures reach the catch.
   // The latest save wins: an earlier one that settles later shows nothing.
@@ -34,17 +46,17 @@ export function mountEditor(host: HTMLElement, view: EditorClient): () => void {
   const saveClicked = () => {
     const save = ++saves;
     showFailure(undefined);
-    void writes.run(() => view.save()).then(outcome => {
+    void commitFields(title, body).then(() => view.save()).then(outcome => {
       if (save === saves) showFailure(outcome.ok ? undefined : describeSaveFailure(outcome.failure));
     }, error => { if (save === saves) report(error); });
   };
-  const discardClicked = () => { void writes.run(() => view.discard()).catch(report); };
-  title.addEventListener("change", titleChanged);
-  body.addEventListener("change", bodyChanged);
+  const discardClicked = () => { void commitFields(title, body).then(() => view.discard()).catch(report); };
   save.addEventListener("click", saveClicked);
   discard.addEventListener("click", discardClicked);
   return () => {
-    title.removeEventListener("change", titleChanged); body.removeEventListener("change", bodyChanged);
+    stopTitle(); stopBody(); unbindTitle(); unbindBody();
+    // Text that waits for its pause is written before the editor is released.
+    title.dispose(); body.dispose();
     save.removeEventListener("click", saveClicked); discard.removeEventListener("click", discardClicked);
     removeDiscardHandler(); unsubscribe(); view.dispose(); host.replaceChildren();
   };

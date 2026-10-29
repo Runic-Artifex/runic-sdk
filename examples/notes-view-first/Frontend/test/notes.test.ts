@@ -3,13 +3,13 @@
 // ViewModel member breaks these tests at compile time (`bun run typecheck:test`).
 import assert from "node:assert/strict";
 import { beforeEach, test } from "node:test";
-import { BridgeError } from "@runic-artifex/views";
+import { BridgeError, createFieldController } from "@runic-artifex/views";
 import { createMockBridge, installMockBridge, mockFailure, type MockBridge, type MockCall } from "@runic-artifex/views/mock";
 import type { SaveFailure } from "../src/generated/editor.js";
 import { describeSaveFailure } from "../src/save-failure.js";
 import { mountContent } from "../src/content.js";
-import { EditorWrites } from "../src/editor-writes.js";
-import { connectEditor } from "../src/generated/editor.js";
+import { commitFields } from "../src/field-input.js";
+import { connectEditor, EditorFields } from "../src/generated/editor.js";
 import { mockEditor, type EditorMockState } from "../src/generated/editor.mock.js";
 import { pageHome } from "../src/generated/home.js";
 import { mockHome } from "../src/generated/home.mock.js";
@@ -27,26 +27,34 @@ let bridge: MockBridge;
 // Each test installs a new Bridge; generated clients then start from a new page runtime.
 beforeEach(() => { bridge = installMockBridge(createMockBridge()); });
 
-test("a rejected field write stops the save that follows it", async () => {
+test("Save follows the field's write, and a rejected write stops it", async () => {
   const editor = mockEditor(bridge, {
     state: draft,
     setters: { setTitle: (_state, title) => ({ isDirty: title !== "Untitled" }) },
     commands: { save: state => ({ isDirty: false, savedMessage: `Saved ${state.title}` }) },
   });
   const client = await connectEditor();
-  const reported: unknown[] = [];
-  const writes = new EditorWrites(cause => reported.push(cause));
+  const title = createFieldController(EditorFields.title, { commit: "pause" });
+  const follow = client.subscribe(state => title.setSource({ state, client }));
+  // As the editor's Save button does.
+  const save = async () => { await commitFields(title); return client.save(); };
 
-  writes.enqueue(() => client.setTitle("Groceries"));
-  await writes.run(() => client.save());
+  title.inputText("Groceries");
+  // Nothing is written until the pause ends or the field is committed.
+  assert.deepEqual(editor.calls.map(request), ["open"]);
+  await save();
   assert.equal(client.snapshot.savedMessage, "Saved Groceries");
   assert.deepEqual(editor.calls.map(request), ["open", "set title", "command save"]);
 
   editor.failNext("setTitle", { kind: "rejected", message: "Titles are limited to 80 characters." });
-  writes.enqueue(() => client.setTitle("x".repeat(81)));
-  await assert.rejects(writes.run(() => client.save()), (error: unknown) => error instanceof BridgeError && error.kind === "rejected");
-  assert.equal(reported.at(-1) instanceof BridgeError, true);
+  title.inputText("x".repeat(81));
+  await assert.rejects(save(), (error: unknown) => error instanceof BridgeError && error.kind === "rejected");
+  // The field keeps what the user typed and shows the failure.
+  assert.equal(title.current.text, "x".repeat(81));
+  assert.equal(title.current.error instanceof BridgeError, true);
   assert.equal(editor.calls.filter(call => request(call) === "command save").length, 1);
+  follow();
+  title.dispose();
   client.dispose();
 });
 

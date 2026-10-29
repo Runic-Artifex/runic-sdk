@@ -41,6 +41,7 @@ public sealed class CounterViewModel : ReactiveObject, IWorkspacePage
 {
     private int _count;
     private int _step = 1;
+    private string _label = "Clicks";
 
     public CounterViewModel() =>
         IncrementCommand = ReactiveCommand.Create(() => { Count += Step; });
@@ -58,6 +59,13 @@ public sealed class CounterViewModel : ReactiveObject, IWorkspacePage
     {
         get => _step;
         set => this.RaiseAndSetIfChanged(ref _step, value);
+    }
+
+    // A text form field: the page edits it with the same field binding as Step.
+    public string Label
+    {
+        get => _label;
+        set => this.RaiseAndSetIfChanged(ref _label, value);
     }
 
     public ReactiveCommand<RxVoid, RxVoid> IncrementCommand { get; }
@@ -103,7 +111,11 @@ public sealed partial class WelcomeViewModel : ObservableObject, IWorkspacePage
 
 public sealed partial class CounterViewModel : ObservableObject, IWorkspacePage
 {
-    public CounterViewModel() => Step = 1;
+    public CounterViewModel()
+    {
+        Step = 1;
+        Label = "Clicks";
+    }
 
     // As for any MVVM View, the setter's accessibility decides what the web
     // frontend may set: Count is read-only state, Step is a form field, so the
@@ -113,6 +125,10 @@ public sealed partial class CounterViewModel : ObservableObject, IWorkspacePage
 
     [ObservableProperty]
     public partial int Step { get; set; }
+
+    // A text form field: the page edits it with the same field binding as Step.
+    [ObservableProperty]
+    public partial string Label { get; set; }
 
     [RelayCommand]
     private void Increment() => Count += Step;

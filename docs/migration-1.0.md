@@ -862,3 +862,21 @@ gets one console warning that points to `__runicBridge.request`.
 | A CS-WebUI page without its own `webui.setEventCallback` showed WebUI's "Connection with the backend is lost" banner | No banner: `runic-cswebui.js` installs an event callback, and WebUI shows the banner only without one. Show the connection state yourself, from `__runicBridge.onConnectionChange` or the Views connection-state stream ([Connection state](../packages/web/views/README.md#connection-state)) |
 
 Details: 0.14.0 [Client and host performance](../eng/release/notes/0.14.0.md#client-and-host-performance-t2).
+
+### Fields
+
+0.14.0 adds a field API for every frontend framework and member type, over the generated `{View}Fields`
+descriptors ([Fields](../packages/web/views/README.md#fields)). Text fields bound with `useTextField`,
+`injectTextField` or `createTextFieldController` keep working; check the receipts row if their `write` is a checked
+write.
+
+| 0.13 | 0.14 |
+| --- | --- |
+| `useTextField(view, state => state.title, (client, value) => client.writeTitle(value, …))`: a `rejected` or `conflict` receipt resolved like a success and dropped the draft | The draft stays and `error` is a `FieldError` (`rejected`, `conflict`); `committed-with-error` sets `error`, and the receipt's `validation` is `errors`. Code that read the receipt itself to show an error can read `error` instead |
+| Tests that compared the whole text field state, `{ value, editing, error }` | The state also has `text`, `errors` and `conflict` |
+| A number or choice member bound through a command or a hand-made computed (`useCommand(value => client.setStep(value))`) | `useField(view, CounterFields.step)`: React `inputProps`, Vue `v-model="step.value"`, Svelte `{@attach step.attach}`, Angular `injectField` or `[runicField]` |
+| App-local form adapters (Reactive Forms bridges, Svelte function bindings) | `[runicField]` from `@runic-artifex/angular/forms` with `[formControl]`, Signal Forms' `runicFieldModel` and `validateRunicField`; Svelte `useField` |
+| Native `change` events or a hand-written debounce to write after a pause and on blur | `useField(view, field, { commit: "pause", delay })`; `await field.commit()` before a command that depends on the field, such as Save; it resolves with the field's state, so Save can skip a failed write |
+| Showing `{name}Errors` or `validation.errors` next to an input by hand | The field's `errors` |
+
+Details: 0.14.0 [Frontend field API](../eng/release/notes/0.14.0.md#frontend-field-api-f1).

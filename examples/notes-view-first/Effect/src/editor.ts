@@ -1,17 +1,18 @@
-import { command, createEffectAction, operation, states } from "@runic-artifex/views-effect";
+import { createEffectAction, operation, states } from "@runic-artifex/views-effect";
 import * as Effect from "effect/Effect";
 import * as Schedule from "effect/Schedule";
-import * as Semaphore from "effect/Semaphore";
 import * as Stream from "effect/Stream";
-import type { EditorClient, EditorState } from "../../Frontend/src/generated/editor.js";
+import { createFieldController } from "@runic-artifex/views";
+import { bindTextInput, commitFields } from "../../Frontend/src/field-input.js";
+import { EditorFields, type EditorClient, type EditorState } from "../../Frontend/src/generated/editor.js";
 import { describeSaveFailure } from "../../Frontend/src/save-failure.js";
 
 // The Effect variant of Frontend/src/editor.ts. The rest of the page is the
 // plain frontend; build.mjs swaps in this module.
 export function mountEditor(host: HTMLElement, editor: EditorClient): () => void {
   host.innerHTML = `<h2>Editor</h2><label>Title <input></label><label>Body <textarea></textarea></label><button data-save>Save</button><p data-message role="status"></p><p data-error role="alert" hidden></p>`;
-  const title = host.querySelector("input")!;
-  const body = host.querySelector("textarea")!;
+  const titleInput = host.querySelector("input")!;
+  const bodyInput = host.querySelector("textarea")!;
   const save = host.querySelector<HTMLButtonElement>("[data-save]")!;
   const message = host.querySelector<HTMLElement>("[data-message]")!;
   const error = host.querySelector<HTMLElement>("[data-error]")!;
@@ -23,23 +24,36 @@ export function mountEditor(host: HTMLElement, editor: EditorClient): () => void
     error.hidden = cause === undefined;
   };
   const render = (state: EditorState) => {
-    if (document.activeElement !== title) title.value = state.title;
-    if (document.activeElement !== body) body.value = state.body;
     canSave = state.canSave;
     save.disabled = !canSave || saving.current.pending;
     message.textContent = `${state.isDirty ? "Unsaved changes. " : ""}${state.savedMessage}`;
   };
 
-  // One permit keeps field writes in order. A Save takes its turn only to wait
-  // for the writes queued before it, so edits made while it runs are not held up.
-  const writes = Semaphore.makeUnsafe(1);
-  const write = (run: () => Promise<EditorState>) => Effect.runFork(writes.withPermit(command(run)).pipe(
-    Effect.match({ onFailure: showError, onSuccess: () => showError(undefined) })));
+  // A field is written after a pause in typing or when it loses focus. A failed write shows until the field's next
+  // successful one.
+  const title = createFieldController(EditorFields.title, { commit: "pause" });
+  const body = createFieldController(EditorFields.body, { commit: "pause" });
+  let writeError: unknown;
+  const showWriteError = () => {
+    const cause = title.current.error ?? body.current.error;
+    if (Object.is(cause, writeError)) return;
+    writeError = cause;
+    showError(cause === undefined ? undefined : { message: String(cause) });
+  };
+  const stopTitle = title.subscribe(showWriteError);
+  const stopBody = body.subscribe(showWriteError);
+  const unbindTitle = bindTextInput(titleInput, title, editor);
+  const unbindBody = bindTextInput(bodyInput, body, editor);
+  // Save waits for the fields' writes, and does not start after one that failed.
+  const fieldsWritten = Effect.tryPromise({
+    try: () => commitFields(title, body),
+    catch: cause => ({ _tag: "FieldWriteFailed", message: String(cause) }) as const,
+  });
 
   // An explicit request ID makes the retry safe: a repeated start returns the
   // operation .NET is already running. The timeout cancels it in .NET; after
   // the editor is gone, a failed observation is no longer retried.
-  const saving = createEffectAction(() => writes.withPermit(Effect.void).pipe(Effect.andThen(operation(id => editor.startSave({ requestId: id }), {
+  const saving = createEffectAction(() => fieldsWritten.pipe(Effect.andThen(operation(id => editor.startSave({ requestId: id }), {
     requestId: globalThis.crypto.randomUUID(),
     retry: Schedule.recurs(2),
     while: () => active,
@@ -53,21 +67,22 @@ export function mountEditor(host: HTMLElement, editor: EditorClient): () => void
   });
 
   const following = Effect.runFork(Stream.runForEach(states(editor), state => Effect.sync(() => render(state))));
-  const titleChanged = () => { const value = title.value; write(() => editor.setTitle(value)); };
-  const bodyChanged = () => { const value = body.value; write(() => editor.setBody(value)); };
   const saveClicked = () => { void saving.run(); };
-  title.addEventListener("change", titleChanged);
-  body.addEventListener("change", bodyChanged);
   save.addEventListener("click", saveClicked);
   return () => {
     active = false;
-    title.removeEventListener("change", titleChanged);
-    body.removeEventListener("change", bodyChanged);
     save.removeEventListener("click", saveClicked);
     // Leaving the editor keeps a save running in .NET, as the plain editor does,
     // so this does not interrupt it; setting `active` stops its retries.
     stopSaving();
     following.interruptUnsafe();
+    stopTitle();
+    stopBody();
+    unbindTitle();
+    unbindBody();
+    // Text that waits for its pause is written before the editor is released.
+    title.dispose();
+    body.dispose();
     editor.dispose();
     host.replaceChildren();
   };

@@ -1,8 +1,7 @@
-import { createElement as h, Fragment, useEffect, useRef, useState, type ReactNode } from "react";
+import { createElement as h, Fragment, type ReactNode } from "react";
 import { createRoot } from "react-dom/client";
-import { useCommand, useView } from "../../../../packages/web/react/src/index.js";
-import type { EditorClient } from "../../Frontend/src/generated/editor.js";
-import { EditorWrites } from "../../Frontend/src/editor-writes.js";
+import { useCommand, useField, useView } from "../../../../packages/web/react/src/index.js";
+import { EditorFields, type EditorClient } from "../../Frontend/src/generated/editor.js";
 import { describeSaveFailure } from "../../Frontend/src/save-failure.js";
 
 // The React variant of Frontend/src/editor.ts. The rest of the page is the
@@ -19,37 +18,26 @@ export function mountEditor(host: HTMLElement, editor: EditorClient): () => void
 
 function Editor({ editor }: { readonly editor: EditorClient }): ReactNode {
   // The client is already connected, so useView only follows it.
-  const { state } = useView(editor);
-  const [writeError, setWriteError] = useState<unknown>();
-  const [writes] = useState(() => new EditorWrites(setWriteError));
-  // A declared failure is save.failure; save.error holds unexpected ones.
-  const save = useCommand(() => writes.run(() => editor.save()));
-  const title = useRef<HTMLInputElement>(null);
-  const body = useRef<HTMLTextAreaElement>(null);
-  // Native change events, as the other variants use: a field is written once
-  // it is committed, not on every keystroke.
-  useEffect(() => {
-    const fields = [[title.current, (value: string) => editor.setTitle(value)], [body.current, (value: string) => editor.setBody(value)]] as const;
-    const stops = fields.map(([field, write]) => {
-      if (!field) return () => {};
-      const changed = () => { const value = field.value; writes.enqueue(() => write(value)); };
-      field.addEventListener("change", changed);
-      return () => field.removeEventListener("change", changed);
-    });
-    return () => { for (const stop of stops) stop(); };
-  }, [editor, writes, state !== undefined]);
-  useEffect(() => {
-    if (!state) return;
-    if (title.current && document.activeElement !== title.current) title.current.value = state.title;
-    if (body.current && document.activeElement !== body.current) body.current.value = state.body;
-  }, [state]);
+  const view = useView(editor);
+  const { state } = view;
+  // A field is written after a pause in typing or when it loses focus, not on every keystroke.
+  const title = useField(view, EditorFields.title, { commit: "pause" });
+  const body = useField(view, EditorFields.body, { commit: "pause" });
+  // Save waits for the fields' writes, and does not start after one that failed: that
+  // write shows as the field's error. commit() resolves with the field's state, because
+  // this render's title.error is older than the writes. A declared failure is
+  // save.failure; save.error holds unexpected ones.
+  const save = useCommand(async () => {
+    const fields = await Promise.all([title.commit(), body.commit()]);
+    return fields.every(field => field.error === undefined) ? editor.save() : undefined;
+  });
   if (!state) return h("p", null, "Connecting…");
-  const issue = save.error ?? writeError;
+  const issue = save.error ?? title.error ?? body.error;
   const alert = save.failure !== undefined ? describeSaveFailure(save.failure) : issue !== undefined ? String(issue) : undefined;
   return h(Fragment, null,
     h("h2", null, "Editor"),
-    h("label", null, "Title ", h("input", { ref: title, defaultValue: state.title })),
-    h("label", null, "Body ", h("textarea", { ref: body, defaultValue: state.body })),
+    h("label", null, "Title ", h("input", title.inputProps)),
+    h("label", null, "Body ", h("textarea", body.inputProps)),
     h("button", { "data-save": "", disabled: !state.canSave || save.pending, onClick: () => void save.run() }, "Save"),
     h("p", { "data-message": "", role: "status" }, `${state.isDirty ? "Unsaved changes. " : ""}${state.savedMessage}`),
     alert === undefined ? null : h("p", { role: "alert" }, alert));

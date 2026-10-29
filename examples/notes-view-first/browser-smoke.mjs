@@ -22,7 +22,8 @@ try {
   const { evaluate } = browser;
   const query = expression => evaluate(expression);
   const click = selector => evaluate(`document.querySelector(${JSON.stringify(selector)}).click()`);
-  const change = (selector, value) => evaluate(`(() => { const field = document.querySelector(${JSON.stringify(selector)}); field.value = ${JSON.stringify(value)}; field.dispatchEvent(new Event("input", { bubbles: true })); field.dispatchEvent(new Event("change", { bubbles: true })); return true; })()`);
+  // Sets the text as typing does: through the element's own value setter, which React's controlled inputs observe.
+  const change = (selector, value) => evaluate(`(() => { const field = document.querySelector(${JSON.stringify(selector)}); Object.getOwnPropertyDescriptor(Object.getPrototypeOf(field), "value").set.call(field, ${JSON.stringify(value)}); field.dispatchEvent(new Event("input", { bubbles: true })); field.dispatchEvent(new Event("change", { bubbles: true })); return true; })()`);
   const { snapshot } = viewsProbe(evaluate);
   // Clicks a button that has focus, as a keyboard or pointer activation leaves it.
   const press = selector => evaluate(`(() => { const button = document.querySelector(${JSON.stringify(selector)}); button.focus(); button.click(); return true; })()`);

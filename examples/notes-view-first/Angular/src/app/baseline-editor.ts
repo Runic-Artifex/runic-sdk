@@ -1,44 +1,42 @@
-import { Component, inject, input, signal } from "@angular/core";
-import type { EditorPageReference, EditorClient } from "../../../Frontend/src/generated/editor.js";
-import { EditorWrites } from "../../../Frontend/src/editor-writes.js";
+import { Component, DestroyRef, inject, input } from "@angular/core";
+import { EditorFields, type EditorPageReference } from "../../../Frontend/src/generated/editor.js";
 import { describeSaveFailure } from "../../../Frontend/src/save-failure.js";
 import { injectPage, WindowOperations } from "./window-operations";
 import { injectCommand } from "../../../../../packages/web/angular/src/inject-command";
+import { injectField } from "../../../../../packages/web/angular/src/inject-field";
 
+// The variant without forms: the fields are bound by hand in the template.
 @Component({
   selector: "notes-baseline-editor",
   template: `
     @if (editor.state(); as state) {
       <h2>Editor</h2>
-      <label>Title <input [value]="state.title" (change)="changeTitle($event)" /></label>
-      <label>Body <textarea [value]="state.body" (change)="changeBody($event)"></textarea></label>
+      <label>Title <input [value]="title.text()" (input)="title.inputText($event)" (blur)="title.commit()"
+        (compositionstart)="title.compositionStart()" (compositionend)="title.compositionEnd($event)" /></label>
+      <label>Body <textarea [value]="body.text()" (input)="body.inputText($event)" (blur)="body.commit()"
+        (compositionstart)="body.compositionStart()" (compositionend)="body.compositionEnd($event)"></textarea></label>
       <button data-save [disabled]="!state.canSave" (click)="save.run()">Save</button>
       <p data-message role="status">{{ state.isDirty ? "Unsaved changes. " : "" }}{{ state.savedMessage }}</p>
     } @else { <p>Connecting…</p> }
     @if (save.failure(); as failure) { <p role="alert">{{ describeSaveFailure(failure) }}</p> }
-    @else if (save.error() ?? writeError() ?? editor.error(); as issue) { <p role="alert">{{ issue }}</p> }
+    @else if (save.error() ?? title.error() ?? body.error() ?? editor.error(); as issue) { <p role="alert">{{ issue }}</p> }
     @if (editor.error()) { <button (click)="editor.retry()">Retry editor</button> }
   `,
 })
 export class BaselineEditorComponent {
+  // Registered before the page, so text that waits for its pause is written before the editor is released.
+  private readonly flushOnDestroy = inject(DestroyRef).onDestroy(() => { void this.title.commit(); void this.body.commit(); });
   readonly page = input.required<EditorPageReference>();
   readonly editor = injectPage(this.page);
-  readonly writeError = signal<unknown>(undefined);
   readonly describeSaveFailure = describeSaveFailure;
   private readonly operations = inject(WindowOperations);
-  private readonly writes = new EditorWrites(cause => this.writeError.set(cause));
-  readonly save = injectCommand(() => this.operations.run(this.editor.client(), view => this.writes.run(() => view.save())));
-
-  changeTitle(event: Event): void {
-    const value = (event.target as HTMLInputElement).value;
-    this.write(view => view.setTitle(value));
-  }
-  changeBody(event: Event): void {
-    const value = (event.target as HTMLTextAreaElement).value;
-    this.write(view => view.setBody(value));
-  }
-  private write(action: (view: EditorClient) => Promise<unknown>): void {
-    const view = this.editor.client();
-    if (view) this.writes.enqueue(() => this.operations.run(view, action));
-  }
+  // A field is written after a pause in typing or when it loses focus, not on every keystroke.
+  readonly title = injectField(this.editor, this.operations.field(EditorFields.title), { commit: "pause" });
+  readonly body = injectField(this.editor, this.operations.field(EditorFields.body), { commit: "pause" });
+  // Save waits for the fields' writes, and does not start after one that failed.
+  readonly save = injectCommand(async () => {
+    await Promise.all([this.title.commit(), this.body.commit()]);
+    if (this.title.error() !== undefined || this.body.error() !== undefined) return undefined;
+    return this.operations.run(this.editor.client(), view => view.save());
+  });
 }
