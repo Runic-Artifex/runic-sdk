@@ -61,7 +61,13 @@ public sealed class ContentAndLifecycleTests
         await using var window = new WebUiWindow(host, "signals");
         await window.StartServerAsync("signals");
 
-        // ConsoleLifetime would cancel SIGINT and SIGTERM, leaving the process running.
+        // ConsoleLifetime would cancel SIGINT and SIGTERM, leaving the process running. The native server (X1) has no
+        // generic host and handles no signal.
+        if (PresentationServers.UseNativeServer)
+        {
+            Assert.Null(host.Services?.GetService(typeof(IHostLifetime)));
+            return;
+        }
         Assert.IsType<ProcessOwnedLifetime>(host.Services?.GetService(typeof(IHostLifetime)));
     }
 
@@ -74,7 +80,14 @@ public sealed class ContentAndLifecycleTests
         await using var window = new WebUiWindow(host, "watch");
         await window.StartServerAsync("watch");
 
-        // Rooted at the working directory with reload on, the host would watch that whole tree (#606).
+        // Rooted at the working directory with reload on, the host would watch that whole tree (#606). The native
+        // server (X1) reads no configuration at all.
+        if (PresentationServers.UseNativeServer)
+        {
+            Assert.Null(host.Services?.GetService(typeof(IConfiguration)));
+            Assert.Null(host.Services?.GetService(typeof(IHostEnvironment)));
+            return;
+        }
         var configuration = Assert.IsAssignableFrom<IConfigurationRoot>(host.Services?.GetService(typeof(IConfiguration)));
         Assert.DoesNotContain(
             configuration.Providers.OfType<FileConfigurationProvider>(),
