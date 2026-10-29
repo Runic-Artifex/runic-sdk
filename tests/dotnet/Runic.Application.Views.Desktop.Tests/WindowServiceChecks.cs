@@ -430,7 +430,8 @@ internal sealed class WindowServiceChecks
             typeof(IDesktopMonitors), typeof(IDesktopMessageBoxes)];
         Type[] application = [typeof(IDesktopSettings), typeof(IDesktopNotifications), typeof(IDesktopStatusIcon), typeof(IDesktopGlobalShortcuts),
             typeof(IDesktopLoginStartup), typeof(IDesktopInhibition), typeof(IDesktopSecretStore), typeof(IDesktopTrash), typeof(IDesktopFileTransfers),
-            typeof(IDesktopVolumes), typeof(IDesktopNetworkStatus), typeof(IDesktopApplications), typeof(IDesktopThumbnails), typeof(IDesktopFileBookmarks)];
+            typeof(IDesktopVolumes), typeof(IDesktopNetworkStatus), typeof(IDesktopApplications), typeof(IDesktopThumbnails), typeof(IDesktopFileBookmarks),
+            typeof(IApplicationPlatformServices)];
         // Registration names the application's entries, so only the overload with an application ID registers it.
         Type[] withApplicationId = [typeof(IDesktopOpenRegistration)];
         // Privileged actions need declared actions and a provider package; the instance claim runs before any host, and

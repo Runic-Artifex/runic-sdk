@@ -198,6 +198,10 @@ public static class WindowsPlatformProvider
         return new NativePickerBackend(owner, new WindowsFilePicker(owner));
     }
 
+    // The application's shell handoffs without a window, on the application's UI thread.
+    [SupportedOSPlatform("windows8.0")]
+    internal static IDesktopFileLauncher CreateApplicationFileLauncher() => new WindowsFileLauncher(WindowsApplicationThread.Shared);
+
     // File dialogs without a parent window, on the application's UI thread, for a presentation without a native owner.
     [SupportedOSPlatform("windows8.0")]
     internal static IPickerBackend CreateUnownedFileDialogs()

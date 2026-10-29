@@ -103,7 +103,7 @@ internal sealed class PlatformServicesChecks
         Require(await services.FileDialogs.OpenFileAsync(new()) is PickerResult<IReadFileLease>.Unavailable(PlatformUnavailableReason.OwnerUnavailable)
             && await services.FileDialogs.OpenDocumentAsync(new()) is PickerResult<IDocumentFileLease>.Unavailable(PlatformUnavailableReason.OwnerUnavailable)
             && await services.FileDialogs.SaveDocumentAsync(new("notes.txt")) is PickerResult<IDocumentFileLease>.Unavailable(PlatformUnavailableReason.OwnerUnavailable)
-            && await services.FileLauncher.LaunchAsync(Path.Combine(Path.GetTempPath(), "notes.txt")) is PlatformResult<PlatformUnit>.Unavailable(PlatformUnavailableReason.OwnerUnavailable),
+            && services.MessageBoxes is not null,
             "A window without native dispatch did not report the owner unavailable.");
         // #712: it still runs on the user's desktop, so OwnerPolicy.PreferOwner shows unowned file dialogs; the capabilities
         // tell them from owned ones, and every other service still reports the missing owner.
@@ -114,10 +114,14 @@ internal sealed class PlatformServicesChecks
             && statuses[PlatformCapabilityIds.ClipboardReadText] is CapabilityStatus.Unavailable(PlatformUnavailableReason.OwnerUnavailable)
             && statuses[PlatformCapabilityIds.MessageBoxes] is CapabilityStatus.Unavailable(PlatformUnavailableReason.OwnerUnavailable),
             $"A window without native dispatch did not report unowned file dialogs: {string.Join(", ", statuses)}.");
+        // #723: its launcher is the application's, which needs no owner.
+        Require(statuses[PlatformCapabilityIds.FilesLaunch] is CapabilityStatus.Available && statuses[PlatformCapabilityIds.UrisLaunch] is CapabilityStatus.Available,
+            $"A window without native dispatch did not launch through the application: {string.Join(", ", statuses)}.");
         await window.DisposeAsync();
         Require(await services.FileDialogs.OpenFileAsync(new(OwnerPolicy.PreferOwner)) is PickerResult<IReadFileLease>.Unavailable(PlatformUnavailableReason.OwnerClosed)
+            && await services.FileLauncher.LaunchUriAsync(new Uri("https://example.org/")) is PlatformResult<PlatformUnit>.Unavailable(PlatformUnavailableReason.OwnerClosed)
             && services.GetSnapshot().Statuses[PlatformCapabilityIds.DialogsUnowned] is CapabilityStatus.Unavailable(PlatformUnavailableReason.OwnerClosed),
-            "The unowned dialogs of a closed window did not report the owner closed.");
+            "The unowned dialogs and launcher of a closed window did not report the owner closed.");
     }
 
     [Test, NotInParallel(Order = 16)]
@@ -354,18 +358,35 @@ internal sealed class PlatformServicesChecks
             "The drag of stopped services did not report the owner closed.");
     }
 
-    // A1: the application-scoped URI handoff applies the launcher's policy before anything native runs, so a path or a
-    // program never reaches the desktop, with or without a window.
+    // #723: the application's launcher needs no window and is one instance, also from the container; it applies the
+    // launcher's policy before anything native runs, so a path or a program never reaches the desktop.
     [Test]
-    public async Task OpenUriRejectsWhatTheLauncherRejects()
+    public async Task ApplicationLauncherRejectsWhatTheLauncherRejects()
     {
+        var application = DesktopPlatformServices.ForApplication();
+        await using (var provider = CreateProvider())
+            Require(ReferenceEquals(provider.GetRequiredService<IApplicationPlatformServices>(), application)
+                    && ReferenceEquals(DesktopPlatformServices.ForApplication(), application),
+                "AddRunicPlatformServices did not register the application's services.");
+        var statuses = application.GetSnapshot().Statuses;
+        Require(statuses.Keys.Order(StringComparer.Ordinal).SequenceEqual(ApplicationPlatformServices.CapabilityIds.Order(StringComparer.Ordinal))
+            && statuses[PlatformCapabilityIds.UrisLaunch] is CapabilityStatus.Available && statuses[PlatformCapabilityIds.FilesLaunch] is CapabilityStatus.Available,
+            $"The application's launcher is not available: {string.Join(", ", statuses)}.");
         foreach (var uri in new[] { new Uri("file:///etc/passwd"), new Uri("javascript:alert(1)"), new Uri("relative/path", UriKind.Relative) })
         {
             var rejected = false;
-            try { _ = await DesktopPlatformServices.OpenUriAsync(uri); }
+            try { _ = await application.FileLauncher.LaunchUriAsync(uri); }
             catch (ArgumentException) { rejected = true; }
-            Require(rejected, $"OpenUriAsync accepted {uri}.");
+            Require(rejected, $"The application's launcher accepted {uri}.");
         }
+        var relative = false;
+        try { _ = await application.FileLauncher.LaunchAsync("relative.txt", DesktopFileOperation.Reveal); }
+        catch (ArgumentException) { relative = true; }
+        Require(relative, "The application's launcher accepted a relative path.");
+        var unavailable = ApplicationPlatformServices.Unavailable(PlatformUnavailableReason.ProviderNotConfigured);
+        Require(await unavailable.FileLauncher.LaunchUriAsync(new Uri("https://example.org/")) is PlatformResult<PlatformUnit>.Unavailable(PlatformUnavailableReason.ProviderNotConfigured)
+            && unavailable.GetSnapshot().Statuses.Values.All(static status => status is CapabilityStatus.Unavailable(PlatformUnavailableReason.ProviderNotConfigured)),
+            "Unavailable application services did not report their reason.");
     }
 
     // #313: a Window opened for a forwarded launch is presented with the launch's activation context as soon as it is

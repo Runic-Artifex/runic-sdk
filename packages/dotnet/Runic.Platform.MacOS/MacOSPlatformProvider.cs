@@ -178,6 +178,13 @@ public static class MacOSPlatformProvider
     internal static IDesktopFileLauncher CreateFileLauncher(INativeWindowOwner owner)
     { ArgumentNullException.ThrowIfNull(owner); if (!OperatingSystem.IsMacOS()) throw new PlatformNotSupportedException(); return new MacDesktopFileLauncher(owner); }
 
+    // The application's NSWorkspace handoffs without a window, on the main queue.
+    internal static IDesktopFileLauncher CreateApplicationFileLauncher()
+    {
+        if (!OperatingSystem.IsMacOS()) throw new PlatformNotSupportedException("AppKit requires macOS.");
+        return new MacDesktopFileLauncher(MacApplicationOwner.Shared);
+    }
+
     // AppKit file panels without a window, for a presentation without a native owner: shown as panels of their own.
     internal static IPickerBackend CreateUnownedFileDialogs()
     {

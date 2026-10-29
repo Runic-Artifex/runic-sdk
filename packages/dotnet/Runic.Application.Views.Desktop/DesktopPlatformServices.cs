@@ -888,27 +888,31 @@ public static partial class DesktopPlatformServices
     private static IPickerBackend CreateUnownedMacOSFileDialogs() => MacOSPlatformProvider.CreateUnownedFileDialogs();
 #endif
 
-    // The services of a presentation without a native owner: unowned file dialogs for OwnerPolicy.PreferOwner, and every
-    // other service unavailable for the missing owner, as before. Closing the window ends them (OwnerClosed).
+    // The services of a presentation without a native owner: unowned file dialogs for OwnerPolicy.PreferOwner, the
+    // application's launcher (#723), which needs no owner, and every other service unavailable for the missing owner, as
+    // before. Closing the window ends them (OwnerClosed).
     private sealed class UnownedWindowPlatformServices : IWindowPlatformServices, IAsyncDisposable
     {
         private static readonly IWindowPlatformServices NoOwner = WindowPlatformServices.Unavailable(PlatformUnavailableReason.OwnerUnavailable);
         private readonly PresentationLifetime _lifetime;
         private readonly PresentationFiles _files;
+        private readonly PresentationApplicationLauncher _launcher;
 
         public UnownedWindowPlatformServices(Guid generation, IPickerBackend unowned)
         {
             _lifetime = new PresentationLifetime(static () => false, generation);
             _files = new PresentationFiles(_lifetime, backend: null, unowned);
+            _launcher = new PresentationApplicationLauncher(_lifetime, ForApplication());
         }
 
         public IFileDialogs FileDialogs => _files;
         public ITextClipboard Clipboard => NoOwner.Clipboard;
-        public IDesktopFileLauncher FileLauncher => NoOwner.FileLauncher;
+        public IDesktopFileLauncher FileLauncher => _launcher;
         public IDesktopMonitors Monitors => NoOwner.Monitors;
         public IDesktopMessageBoxes MessageBoxes => NoOwner.MessageBoxes;
 
-        public CapabilitySnapshot GetSnapshot() => new(_lifetime.Generation, NoOwner.GetSnapshot().Statuses.SetItems(_files.GetSnapshot().Statuses));
+        public CapabilitySnapshot GetSnapshot() => new(_lifetime.Generation, NoOwner.GetSnapshot().Statuses
+            .SetItems(_files.GetSnapshot().Statuses).SetItems(_launcher.GetSnapshot().Statuses));
 
         public ValueTask<PlatformResult<PlatformUnit>> SetBadgeAsync(DesktopBadge? badge, CancellationToken cancellationToken = default) =>
             NoOwner.SetBadgeAsync(badge, cancellationToken);
@@ -920,90 +924,115 @@ public static partial class DesktopPlatformServices
         public ValueTask DisposeAsync() => _lifetime.DisposeAsync();
     }
 
-    /// <summary>
-    /// Opens an absolute <c>http</c>, <c>https</c>, <c>mailto</c> or <c>ms-settings</c> URI in the user's default
-    /// handler, such as the default browser, without a window: the application-scoped form of
-    /// <see cref="IDesktopFileLauncher.LaunchUriAsync"/>.
-    /// </summary>
+    // The application's launcher for a window without a native owner: it works until the window closes, and is drained
+    // when it does.
+    private sealed class PresentationApplicationLauncher(PresentationLifetime lifetime, IApplicationPlatformServices application)
+        : IDesktopFileLauncher, IPlatformCapabilities
+    {
+        public ValueTask<PlatformResult<PlatformUnit>> LaunchAsync(string path, DesktopFileOperation operation = DesktopFileOperation.Open,
+            CancellationToken cancellationToken = default)
+        {
+            DesktopServiceValidation.FilePath(path, operation);
+            return RunAsync(token => application.FileLauncher.LaunchAsync(path, operation, token), cancellationToken);
+        }
+
+        public ValueTask<PlatformResult<PlatformUnit>> LaunchUriAsync(Uri uri, CancellationToken cancellationToken = default)
+        {
+            DesktopUriPolicy.Require(uri);
+            return RunAsync(token => application.FileLauncher.LaunchUriAsync(uri, token), cancellationToken);
+        }
+
+        public CapabilitySnapshot GetSnapshot()
+        {
+            var statuses = application.GetSnapshot().Statuses;
+            if (lifetime.IsClosing)
+                statuses = statuses.SetItems(statuses.Keys.Select(static id =>
+                    KeyValuePair.Create(id, (CapabilityStatus)new CapabilityStatus.Unavailable(PlatformUnavailableReason.OwnerClosed))));
+            return new(lifetime.Generation, statuses);
+        }
+
+        private async ValueTask<PlatformResult<PlatformUnit>> RunAsync(
+            Func<CancellationToken, ValueTask<PlatformResult<PlatformUnit>>> launch, CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            using var admitted = lifetime.TryBeginOperation();
+            if (admitted is null) return new PlatformResult<PlatformUnit>.Unavailable(PlatformUnavailableReason.OwnerClosed);
+            using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, lifetime.Shutdown);
+            try { return await launch(linked.Token).ConfigureAwait(false); }
+            catch (OperationCanceledException) when (lifetime.IsClosing && !cancellationToken.IsCancellationRequested)
+            { return new PlatformResult<PlatformUnit>.Unavailable(PlatformUnavailableReason.OwnerClosed); }
+        }
+    }
+
+    /// <summary>Gets the application's platform services, which need no window: open URIs and files, and reveal files.</summary>
+    /// <returns>The one instance of the process; it needs no disposal.</returns>
     /// <remarks>
     /// <para>
-    /// It needs no native window, so it works for an application behind a status icon and for Windows served under
-    /// <see cref="RunicDesktopHostOptions.ServeOnly"/>, where the window services report
-    /// <see cref="PlatformUnavailableReason.OwnerUnavailable"/>. Open a served Window in the user's browser:
+    /// <see cref="DesktopPlatformServiceCollectionExtensions.AddRunicPlatformServices(IServiceCollection)"/> registers it as
+    /// <see cref="IApplicationPlatformServices"/>, so a service without a window takes it in its constructor; code that runs
+    /// before the container exists calls this method. It works before the first window opens, with every window closed,
+    /// behind a status icon, and for Windows served under <see cref="RunicDesktopHostOptions.ServeOnly"/>, where the window
+    /// services report <see cref="PlatformUnavailableReason.OwnerUnavailable"/>. Open a served Window in the user's
+    /// browser:
     /// <code>
-    /// if (RunicDesktopHost.GetSurface(window) is { } surface) await DesktopPlatformServices.OpenUriAsync(surface.Url);
+    /// if (RunicDesktopHost.GetSurface(window) is { } surface)
+    ///     await DesktopPlatformServices.ForApplication().FileLauncher.LaunchUriAsync(surface.Url);
     /// </code>
     /// </para>
     /// <para>
-    /// The URI policy and results are those of <see cref="IDesktopFileLauncher.LaunchUriAsync"/>. Linux asks the
-    /// desktop portal (OpenURI) without a parent window; Windows hands the URI to the shell on a thread of its own;
-    /// macOS asks NSWorkspace on the main thread, which the Desktop event loop runs. Prefer a Window's
-    /// <see cref="IDesktopFileLauncher"/> while it is shown, so the desktop can place a chooser over it.
+    /// The launcher has the URI policy and results of <see cref="IDesktopFileLauncher"/>. Windows hands files and URIs to
+    /// the shell on an STA thread of the application's own; Linux asks the desktop portal (OpenURI) without a parent
+    /// window, with either toolkit or none; macOS asks NSWorkspace on the main thread, which the Desktop event loop runs.
+    /// <see cref="DesktopFileOperation.ChooseApplication"/> shows the platform's chooser without a parent. Prefer a
+    /// Window's <see cref="IDesktopFileLauncher"/> while it is shown, so the desktop can place a chooser over it. Elsewhere
+    /// every operation reports <see cref="PlatformUnavailableReason.ProviderNotConfigured"/>.
     /// </para>
     /// </remarks>
-    /// <param name="uri">The URI. Relative URIs, paths and every other scheme are rejected before anything native runs.</param>
-    /// <param name="cancellationToken">Cancels before the request reaches the desktop.</param>
-    /// <exception cref="ArgumentException"><paramref name="uri"/> is relative or its scheme is not allowed.</exception>
-    public static ValueTask<PlatformResult<PlatformUnit>> OpenUriAsync(Uri uri, CancellationToken cancellationToken = default)
+    public static IApplicationPlatformServices ForApplication() => DesktopApplicationPlatformServices.Instance;
+
+    // The application's launcher for the running operating system, or null where Runic has none.
+    internal static IDesktopFileLauncher? CreateApplicationFileLauncher()
     {
-        ArgumentNullException.ThrowIfNull(uri);
-        cancellationToken.ThrowIfCancellationRequested();
-        if (OperatingSystem.IsWindowsVersionAtLeast(8)) return OpenUriWindows(uri, cancellationToken);
+        if (OperatingSystem.IsWindowsVersionAtLeast(8)) return CreateWindowsApplicationFileLauncher();
 #if RUNIC_PORTABLE_PLATFORMS
-        if (OperatingSystem.IsLinux()) return OpenUriLinux(uri, cancellationToken);
-        if (OperatingSystem.IsMacOS()) return OpenUriMacOS(uri, cancellationToken);
+        if (OperatingSystem.IsLinux()) return CreatePortalApplicationFileLauncher();
+        if (OperatingSystem.IsMacOS()) return CreateMacOSApplicationFileLauncher();
 #endif
-        return ValueTask.FromResult<PlatformResult<PlatformUnit>>(
-            new PlatformResult<PlatformUnit>.Unavailable(PlatformUnavailableReason.ProviderNotConfigured));
+        return null;
     }
 
     [SupportedOSPlatform("windows8.0")]
     [MethodImpl(MethodImplOptions.NoInlining)]
-    private static ValueTask<PlatformResult<PlatformUnit>> OpenUriWindows(Uri uri, CancellationToken cancellationToken) =>
-        new WindowsUriLauncher(ApplicationUriOwner.StaThread).LaunchAsync(uri, cancellationToken);
+    private static IDesktopFileLauncher CreateWindowsApplicationFileLauncher() => WindowsPlatformProvider.CreateApplicationFileLauncher();
 
 #if RUNIC_PORTABLE_PLATFORMS
     [SupportedOSPlatform("linux")]
     [MethodImpl(MethodImplOptions.NoInlining)]
-    private static ValueTask<PlatformResult<PlatformUnit>> OpenUriLinux(Uri uri, CancellationToken cancellationToken) =>
-        PortalApplication.Inferred.CreateUnparentedFileLauncher().LaunchUriAsync(uri, cancellationToken);
+    private static IDesktopFileLauncher CreatePortalApplicationFileLauncher() => PortalApplication.Inferred.CreateUnparentedFileLauncher();
 
     [SupportedOSPlatform("macos")]
     [MethodImpl(MethodImplOptions.NoInlining)]
-    private static ValueTask<PlatformResult<PlatformUnit>> OpenUriMacOS(Uri uri, CancellationToken cancellationToken) =>
-        new MacUriLauncher(ApplicationUriOwner.MainQueue).LaunchAsync(uri, cancellationToken);
+    private static IDesktopFileLauncher CreateMacOSApplicationFileLauncher() => MacOSPlatformProvider.CreateApplicationFileLauncher();
 #endif
 
-    // The application, not a window, owns a URI handoff: Windows runs it on an STA thread of its own, macOS on the main
-    // queue, both without a window handle.
-    private sealed class ApplicationUriOwner(Func<Action<nint>, ValueTask> invoke) : INativeWindowOwner
+    // The services ForApplication returns. Providers are created on first use, so a process that never launches
+    // anything loads none of them.
+    private sealed class DesktopApplicationPlatformServices : IApplicationPlatformServices
     {
-        [SupportedOSPlatform("windows")]
-        internal static readonly ApplicationUriOwner StaThread = new(static action =>
-        {
-            var completion = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-            var thread = new Thread(() =>
-            {
-                try { action(0); completion.SetResult(); }
-                catch (Exception error) { completion.SetException(error); }
-            })
-            { IsBackground = true, Name = "Runic URI launch" };
-            thread.SetApartmentState(ApartmentState.STA);
-            thread.Start();
-            return new(completion.Task);
-        });
+        internal static readonly DesktopApplicationPlatformServices Instance = new();
+        private static readonly IApplicationPlatformServices NotConfigured =
+            ApplicationPlatformServices.Unavailable(PlatformUnavailableReason.ProviderNotConfigured);
+        private readonly Lazy<IDesktopFileLauncher?> _launcher = new(CreateApplicationFileLauncher);
+        private readonly Guid _generation = Guid.NewGuid();
 
-#if RUNIC_PORTABLE_PLATFORMS
-        [SupportedOSPlatform("macos")]
-        internal static readonly ApplicationUriOwner MainQueue = new(static action => MacOsMainQueue.InvokeAsync(() => action(0)));
-#endif
+        public IDesktopFileLauncher FileLauncher => _launcher.Value ?? NotConfigured.FileLauncher;
 
-        public Guid Generation { get; } = Guid.NewGuid();
-        public bool IsAvailable => true;
-        public ValueTask InvokeAsync(Action<nint> action, CancellationToken cancellationToken = default)
+        public CapabilitySnapshot GetSnapshot()
         {
-            cancellationToken.ThrowIfCancellationRequested();
-            return invoke(action);
+            CapabilityStatus launch = _launcher.Value is null
+                ? new CapabilityStatus.Unavailable(PlatformUnavailableReason.ProviderNotConfigured) : new CapabilityStatus.Available();
+            return new(_generation, ImmutableDictionary<string, CapabilityStatus>.Empty
+                .Add(PlatformCapabilityIds.FilesLaunch, launch).Add(PlatformCapabilityIds.UrisLaunch, launch));
         }
     }
 
@@ -1742,7 +1771,8 @@ public static class DesktopPlatformServiceCollectionExtensions
     /// <summary>
     /// Registers every Runic platform service: one <see cref="DesktopWindowPlatformServices"/> per window scope, exposed
     /// as <see cref="IWindowPlatformServices"/>, <see cref="IFileDialogs"/>, <see cref="ITextClipboard"/>, <see cref="IDesktopClipboard"/> and
-    /// <see cref="IDesktopFileLauncher"/>, <see cref="IDesktopMonitors"/> and <see cref="IDesktopMessageBoxes"/>, and one <see cref="IDesktopSettings"/>, <see cref="IDesktopNotifications"/>,
+    /// <see cref="IDesktopFileLauncher"/>, <see cref="IDesktopMonitors"/> and <see cref="IDesktopMessageBoxes"/>, and one
+    /// <see cref="IApplicationPlatformServices"/> (<see cref="DesktopPlatformServices.ForApplication"/>), <see cref="IDesktopSettings"/>, <see cref="IDesktopNotifications"/>,
     /// <see cref="IDesktopStatusIcon"/>, <see cref="IDesktopGlobalShortcuts"/>, <see cref="IDesktopLoginStartup"/>, <see cref="IDesktopInhibition"/>,
     /// <see cref="IDesktopSecretStore"/>, <see cref="IDesktopTrash"/>, <see cref="IDesktopFileTransfers"/>,
     /// <see cref="IDesktopVolumes"/>, <see cref="IDesktopNetworkStatus"/>, <see cref="IDesktopApplications"/>, <see cref="IDesktopThumbnails"/> and
@@ -1803,6 +1833,7 @@ public static class DesktopPlatformServiceCollectionExtensions
 
     private static IServiceCollection AddPlatformServices(this IServiceCollection services, string? applicationId)
     {
+        services.TryAddSingleton(static _ => DesktopPlatformServices.ForApplication());
         services.TryAddSingleton(static _ => DesktopPlatformServices.CreateSettings());
         services.TryAddSingleton(provider => DesktopPlatformServices.CreateNotifications(applicationId,
             provider.GetService<ILoggerFactory>()?.CreateLogger(DesktopBridgeTransport.LogCategory)));

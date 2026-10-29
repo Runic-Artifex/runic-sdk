@@ -64,7 +64,16 @@ internal sealed class MacDesktopFileLauncher(INativeWindowOwner owner) : IDeskto
                     }
                     catch (Exception error) { result.TrySetException(error); }
                 });
-                try { Args(panel, Sel("beginSheetModalForWindow:completionHandler:"), window, block); }
+                try
+                {
+                    if (window != 0) Args(panel, Sel("beginSheetModalForWindow:completionHandler:"), window, block);
+                    else
+                    {
+                        // The application's launcher (MacApplicationOwner) has no window: a panel of its own, in front.
+                        BoolArg(Send(Class("NSApplication"), Sel("sharedApplication")), Sel("activateIgnoringOtherApps:"), 1);
+                        Arg(panel, Sel("beginWithCompletionHandler:"), block);
+                    }
+                }
                 finally { MacDesktopBlock.Release(block); }
             }, cancellationToken).ConfigureAwait(false);
             registration = cancellationToken.Register(() => cancellationTask = MacOsMainQueue.InvokeAsync(() =>
