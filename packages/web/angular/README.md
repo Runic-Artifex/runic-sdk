@@ -23,6 +23,7 @@ signals and `retry()`:
 ```ts
 import { Component, input } from "@angular/core";
 import { injectCommand, injectView } from "@runic-artifex/angular";
+import { describeBridgeError } from "@runic-artifex/views";
 import type { CounterPageReference } from "./generated/counter";
 
 @Component({
@@ -31,13 +32,14 @@ import type { CounterPageReference } from "./generated/counter";
     <button [disabled]="!counter.client() || increment.pending()" (click)="increment.run()">
       {{ counter.state()?.count ?? "…" }}
     </button>
-    @if (increment.error() ?? counter.error(); as issue) { <p role="alert">{{ issue }}</p> }
+    @if (increment.error() ?? counter.error(); as issue) { <p role="alert">{{ describe(issue) }}</p> }
   `,
 })
 export class CounterPage {
   readonly page = input.required<CounterPageReference>();
   readonly counter = injectView(this.page);
   readonly increment = injectCommand(() => this.counter.client()?.increment());
+  readonly describe = describeBridgeError;
 }
 ```
 
@@ -46,6 +48,63 @@ Pass a signal, such as an input, to follow it: a reference with a different
 already connected client is observed and left to its owner. Outside an
 injection context, pass `{ injector }`; pass `{ release }` to defer disposal,
 for example until queued commands finish.
+
+A released client stays connected for `keepAlive` milliseconds (2000 by
+default), and the next `injectView` of the same reference takes it over with
+its state, before its effect runs: an `@if` that toggles, HMR and A→B→A
+navigation show the View at once instead of "Connecting…" and do not open the
+route again. `{ keepAlive: 0 }` disposes at once.
+
+### As a resource: `injectViewResource(source, options?)`
+
+`injectViewResource` connects like `injectView` and returns an Angular
+`Resource` (D053.11): `status()` is `loading` until the View connected, then
+`resolved`, or `error` with the failure in `error()`; `value()` is the state,
+never `undefined` once `hasValue()` is true; `client()` is the client and
+`reload()` connects again. Templates branch on it as on any resource:
+
+```ts
+@Component({
+  selector: "counter-page",
+  template: `
+    @if (counter.hasValue()) {
+      <button (click)="counter.client()?.increment()">{{ counter.value().count }}</button>
+    } @else if (counter.error(); as issue) {
+      <p role="alert">{{ describe(issue) }}</p>
+      <button (click)="counter.reload()">Retry</button>
+    } @else {
+      <p>Connecting…</p>
+    }
+  `,
+})
+export class CounterPage {
+  readonly page = input.required<CounterPageReference>();
+  readonly counter = injectViewResource(this.page);
+  readonly describe = describeBridgeError;
+}
+```
+
+A changed reference loads the new one, `null` makes it `idle`, and the
+injector's destruction releases the client, with the same `keepAlive` as
+`injectView`.
+
+### Selecting state: `computed`
+
+`state()` changes with every change of the View. A `computed` that selects a
+member notifies its consumers only when its value changed (`Object.is`, or its
+`equal` option), so a template binding or an `effect` that reads `title()` does
+not run again when another member changes:
+
+```ts
+readonly editor = injectView(this.page);
+readonly title = computed(() => this.editor.state()?.title);
+readonly done = computed(() => this.editor.state()?.items.filter(item => item.done) ?? [],
+  { equal: (left, right) => left.length === right.length && left.every((item, index) => item === right[index]) });
+```
+
+Members the View did not change keep their identity, so selecting a member,
+also an object or a list, needs no `equal`; a derived value such as `filter`
+does.
 
 ### Read-only state and two-way binding
 
@@ -494,14 +553,16 @@ export class AppMenuBar {
 
 The `error()` signal of `injectView` and of a command or operation is typed
 `unknown`: it holds whatever the connection or the call rejected with. A Bridge
-failure is a `BridgeError` from `@runic-artifex/views`; narrow it with
-`instanceof` before reading `kind`, `route` or `detail`:
+failure is a `BridgeError` from `@runic-artifex/views`. Show it with
+`describeBridgeError(error)`, one English sentence, instead of interpolating
+the error, and narrow it with `isBridgeError` (or `instanceof`) before reading
+`kind`, `route` or `detail`:
 
 ```ts
-import { BridgeError } from "@runic-artifex/views";
+import { describeBridgeError, isBridgeError } from "@runic-artifex/views";
 
-const error = this.view.error();
-const offline = error instanceof BridgeError && error.kind === "disconnected";
+readonly offline = computed(() => isBridgeError(this.view.error(), "disconnected"));
+readonly message = computed(() => describeBridgeError(this.view.error()));
 ```
 
 `instanceof` holds for errors from every copy of the package on the page.
