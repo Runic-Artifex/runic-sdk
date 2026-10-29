@@ -91,7 +91,10 @@ XAML that names `assembly=Runic.Application.Wpf` names
 `Runic.Application.Views.Wpf`, or uses the `rv` namespace
 `https://runic-artifex.eu/xaml/views` (0.7.0-preview.8).
 
-<!-- TODO(A1): link the [Obsolete(error: true)] tombstones for removed types once they ship -->
+Since 0.14, the removed types that the table marks 0.9.0 and that
+[Removed types](#removed-types) lists, such as `RunicReactiveSchedulerProvider`,
+`INativePickerOwner` and `RunicBridgeJsonIgnore`, fail with `CS0619` naming
+their replacement instead of `CS0246`, for one release.
 
 | 0.7/0.8 | 1.0 | Release |
 | --- | --- | --- |
@@ -108,7 +111,7 @@ XAML that names `assembly=Runic.Application.Wpf` names
 | `INativePickerOwner` | `INativeWindowOwner` (`Runic.Platform.Runtime`); for WPF dialogs, `WpfPlatformServices.ForWindow(window)` instead of an owner of your own | 0.9.0 |
 | `IUiDispatcher`, `PresentationDispatcher` | Removed; run window work through `DesktopNativeOwner.InvokeAsync` | 0.9.0 |
 | `PortalPlatformProvider`, the owner-scoped `Create…(owner)` factories of the platform providers, `Gtk3PortalWindowOwner`, `Gtk4PortalWindowOwner` | `new PortalApplication(applicationId, sink).Create…()`; window services from `DesktopPlatformServices.ForWindow(window)` or `AddRunicPlatformServices()`; the host parents portal requests | 0.9.0 |
-| `DesktopPlatform.OpenUrl(url)`, `OpenUriAsync(owner, uri)` | `await launcher.LaunchUriAsync(new Uri(url))` on the window's `IDesktopFileLauncher` | 0.9.0 |
+| `DesktopPlatform.OpenUrl(url)`, `OpenUriAsync(owner, uri)` | `await launcher.LaunchUriAsync(new Uri(url))` on the window's `IDesktopFileLauncher`; without a window, `DesktopPlatformServices.OpenUriAsync(uri)` (since 0.14) | 0.9.0 |
 | `PlatformFailureCode.IoError`; stored `PlatformFailureCode` numbers | `IOError` for I/O failures, `Other` for the rest, and a default arm; add 1 to each stored number | 0.9.0 |
 | `new DesktopMenuCommand("open", "Open window")` | `new DesktopMenuItem(Title: "Open window", CommandId: "open")`. **The arguments swap:** both are strings, so the old order still compiles. The item then shows the command id as its title and runs a command named after the title, or the menu is refused with `ArgumentException` when that title is not a valid command id. Name the arguments. See [Menu model and status icons](#menu-model-and-status-icons) | 0.10.0 |
 | `session.BeginCloseAsync(timeout)`, `RunicWindowTestHost.BeginCloseAsync(timeout)` | `DrainAsync(timeout, cancellationToken)`; the token stops only the wait | 0.9.0 |
@@ -139,7 +142,10 @@ XAML that names `assembly=Runic.Application.Wpf` names
 | `dotnet runic support`, `RAPPSUP` codes | `runic-translations support` (Runic Translations), `RTRSUP` codes | 0.9.0 |
 | `runic-create create MyApp`, `--directory`; template `--host desktop-gtk4` | `runic-create MyApp`, `--output`/`-o`; `--host desktop --linux-gtk 4` | 0.9.0 |
 
-<!-- TODO(A1): mention the analyzer/code fix for the DesktopMenuItem argument swap once it ships -->
+`RUNICPLAT001` (since 0.14) warns about a `DesktopMenuItem` whose title looks
+like a command id and whose command id looks like a title, and its code fix
+swaps and names the arguments; see
+[Menu model and status icons](#menu-model-and-status-icons).
 
 An application that parses its own command line with Runic Command Line meets
 these changes in Command Line 0.8.0
@@ -837,3 +843,11 @@ Since 0.14, a type removed in 0.9 or 0.13 that the code still names fails with
 
 A page that still calls the host's `__runicBridge.call(name)`, the protocol-3 API, now
 gets one console warning that points to `__runicBridge.request`.
+
+### Nix and the toolchain
+
+| 0.13 | 0.14 |
+| --- | --- |
+| A package installed its own `share/mime/packages/<ApplicationId>.xml` (with `magic` or `sub-class-of`) in `postFixup`, after `buildRunicApplication` replaced it with a definition by extension | Install it in `postInstall`: the builder keeps it, and fails when it lacks a type of `RunicApplicationFileTypes` ([File types and URL schemes](../nix/README.md#file-types-and-url-schemes)) |
+| One build per out-of-date `frontend.hash` or `dotnetTools.hashes` entry | `nix run .#<package>.fixedOutputHashes` prints them all ([Fixed-output hashes](../nix/README.md#fixed-output-hashes)) |
+| .NET SDK 10.0.401 or Bun 1.4.2 built without a word | Warning `RUNICBRIDGE033`; `dotnet runic doctor` already failed. Install SDK 10.0.403 and Bun 1.4.4 or later, or add the code to `NoWarn` while nixpkgs still packages the older ones |
