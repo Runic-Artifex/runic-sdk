@@ -26,6 +26,7 @@ function document(bridge: MockBridge, body = large) {
 }
 const connect = () => connectView<State>({ contract: "Tests.Doc:fp", route: "doc", members, texts: ["body", "title"] });
 const sets = (bridge: MockBridge) => bridge.calls.filter(call => call.kind === "set").map(call => call.message);
+const writes = (bridge: MockBridge) => bridge.calls.filter(call => call.kind === "write").map(call => call.message);
 const frames = (pushes: string[]) => pushes.map(text => JSON.parse(text) as Record<string, unknown>).filter(push => push["kind"] === "frame");
 
 test("the single splice keeps the common prefix and suffix and never splits a surrogate pair", () => {
@@ -122,6 +123,45 @@ test("a splice the producer refuses is sent again in full as the latest edit", a
   assert.ok(refused!["splice"] !== undefined && full!["value"] === large + "!");
   assert.deepEqual([refused!["edit"], full!["edit"]], [1, 2]);
   assert.equal(doc.state.body, large + "!");
+  client.dispose();
+});
+
+test("checked writes of long text members send splices, short ones and other members full values", async () => {
+  const bridge = fresh();
+  const doc = bridge.view("doc", { state: { body: large, title: "t" }, texts: ["body", "title"], checkedFields: ["body", "title"] });
+  const client = await connectView<State>({ contract: "Tests.Doc:fp", route: "doc", members, texts: ["body", "title"], checkedFields: ["body", "title"] });
+  const receipt = await client.write("body", { requestId: "w-1", expectedVersion: 0, expectedValue: large, value: `${large}!` }, String);
+  assert.deepEqual(receipt, { kind: "applied", snapshot: { value: `${large}!`, version: 1 } });
+  await client.write("title", { requestId: "w-2", expectedVersion: 0, expectedValue: "t", value: "u" }, String);
+  const [spliced, short] = writes(bridge);
+  assert.deepEqual(spliced, { kind: "write", route: "doc", member: "body", requestId: "w-1", expectedVersion: 0, splice: { length: 100_000, index: 100_000, delete: 0, text: "!" } });
+  assert.deepEqual(short, { kind: "write", route: "doc", member: "title", requestId: "w-2", expectedVersion: 0, expectedValue: "t", value: "u" });
+  assert.equal(doc.state.body, `${large}!`);
+  client.dispose();
+});
+
+test("a checked write whose splice the producer refuses is sent again in full with the same requestId", async () => {
+  const bridge = fresh();
+  const doc = bridge.view("doc", { state: { body: large, title: "t" }, texts: ["body", "title"], checkedFields: ["body"] });
+  const client = await connectView<State>({ contract: "Tests.Doc:fp", route: "doc", members, texts: ["body", "title"], checkedFields: ["body"] });
+  bridge.failNext({ route: "doc", kind: "write", member: "body" }, { kind: "rejected", reason: "splice-base", message: "No base." });
+  const receipt = await client.write("body", { requestId: "w-1", expectedVersion: 0, expectedValue: large, value: `x${large}` }, String);
+  assert.deepEqual(receipt, { kind: "applied", snapshot: { value: `x${large}`, version: 1 } });
+  const [refused, full] = writes(bridge);
+  assert.deepEqual(refused!["splice"], { length: 100_000, index: 0, delete: 0, text: "x" });
+  assert.deepEqual([full!["requestId"], full!["expectedValue"], full!["value"], Object.hasOwn(full!, "splice")], ["w-1", large, `x${large}`, false]);
+  assert.equal(doc.state.body, `x${large}`);
+  client.dispose();
+});
+
+test("without text-splice/1 checked writes send whole values", async () => {
+  const bridge = fresh();
+  bridge.view("doc", { state: { body: large, title: "t" }, texts: ["body", "title"], checkedFields: ["body"] });
+  bridge.intercept(call => call.kind === "hello"
+    ? { ok: true, protocol: 4, implementation: { name: "Runic.Application.Views", version: "0.13.0" } } : undefined);
+  const client = await connectView<State>({ contract: "Tests.Doc:fp", route: "doc", members, texts: ["body", "title"], checkedFields: ["body"] });
+  await client.write("body", { requestId: "w-1", expectedVersion: 0, expectedValue: large, value: `${large}!` }, String);
+  assert.equal(writes(bridge)[0]!["value"], `${large}!`);
   client.dispose();
 });
 

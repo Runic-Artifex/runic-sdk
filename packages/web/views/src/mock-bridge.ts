@@ -387,6 +387,10 @@ function deferred<T>(): Deferred<T> {
 
 type Reply = Readonly<Record<string, unknown>>;
 const ok = (members: Record<string, unknown> = {}): Reply => ({ ok: true, ...members });
+// A checked write's splice (README "Text splices in write"): no base, safe integers and a string text.
+const isWriteSplice = (value: unknown): value is Readonly<Record<string, unknown>> => isRecord(value)
+  && !Object.hasOwn(value, "baseEdit") && !Object.hasOwn(value, "baseRevision") && isSafe(value["length"])
+  && isSafe(value["index"]) && isSafe(value["delete"]) && typeof value["text"] === "string";
 const failed = (kind: string, message: string, members: Record<string, unknown> = {}): Reply => ({ ok: false, error: { kind, message, ...members } });
 const invalidRequest = (message: string) => failed("rejected", message, { reason: "invalid-request" });
 const released = () => failed("released", "This View was released.");
@@ -901,31 +905,48 @@ export function createMockBridge(options: MockBridgeOptions = {}): MockBridge {
     return { ok: false, ...(ran && failure.kind !== "rejected" ? { revision: view.revision } : {}), error: failure };
   }
 
-  async function writeChecked(view: MockRegisteredView, message: Record<string, unknown>): Promise<Reply> {
+  async function writeChecked(view: MockRegisteredView, message: Record<string, unknown>, splicing: boolean): Promise<Reply> {
     const field = message["member"] as string;
     if (!view.definition.checkedFields?.includes(field)) return invalidRequest(`${field} is not a checked field.`);
-    if (typeof message["requestId"] !== "string" || !isSafe(message["expectedVersion"]) || !Object.hasOwn(message, "value"))
+    // text-splice/1: a checked text member's write may carry a splice of the field's value at expectedVersion instead
+    // of expectedValue and value.
+    const splice = message["splice"];
+    const spliced = Object.hasOwn(message, "splice");
+    if (typeof message["requestId"] !== "string" || !isSafe(message["expectedVersion"])
+      || (spliced ? Object.hasOwn(message, "value") || Object.hasOwn(message, "expectedValue") || !isWriteSplice(splice)
+        : !Object.hasOwn(message, "value")))
       return invalidRequest(`${field} has an invalid checked write.`);
+    if (spliced && (!splicing || view.definition.texts?.includes(field) !== true))
+      return invalidRequest(`${field} is not a checked text member that accepts splices.`);
     const reply = (receipt: Record<string, unknown>) => ok({ revision: view.revision, receipt });
-    // A retried request id returns its first receipt, and reusing it for another write is a conflict.
+    // A retried request id returns its first receipt, and reusing it for another write, or the same write in the other
+    // form, is a conflict.
     const key = `${field}\u0000${message["requestId"]}`;
-    const request = canonicalJson([message["expectedVersion"], message["expectedValue"], message["value"]]);
+    const request = isWriteSplice(splice)
+      ? canonicalJson(["splice", message["expectedVersion"], splice["length"], splice["index"], splice["delete"], splice["text"]])
+      : canonicalJson([message["expectedVersion"], message["expectedValue"], message["value"]]);
     const previous = view.writes.get(key);
     const version = () => view.fieldVersions.get(field) ?? 0;
     if (previous) return reply(previous.request === request ? previous.receipt
       : { kind: "conflict", incoming: { value: view.state[field], version: version() },
         message: "The request identity was already used with a different checked write." });
     const retain = (receipt: Record<string, unknown>) => { view.writes.set(key, { request, receipt }); return reply(receipt); };
-    if (message["expectedVersion"] !== version() || !sameJson(message["expectedValue"], view.state[field]))
+    if (message["expectedVersion"] !== version() || (!spliced && !sameJson(message["expectedValue"], view.state[field])))
       return retain({ kind: "conflict", incoming: { value: view.state[field], version: version() }, message: "The field baseline no longer matches." });
+    let value = message["value"];
+    if (isWriteSplice(splice)) {
+      // The base is the field's current value; a splice that does not fit it writes and retains nothing.
+      try { value = applySplice(view.state[field], splice); }
+      catch { return failed("rejected", `The splice of ${field} does not fit its value; send the write in full.`, { reason: "splice-base" }); }
+    }
     try {
-      const patch = await view.definition.set?.[field]?.(view.state, message["value"]);
-      commit(view, { ...view.state, [field]: message["value"], ...(patch ?? {}) });
+      const patch = await view.definition.set?.[field]?.(view.state, value);
+      commit(view, { ...view.state, [field]: value, ...(patch ?? {}) });
     } catch (error) {
       const failure = failureFromError(error);
       // A handler error with kind "committed-with-error" keeps the value, as a setter that ran before its validation failed does.
       if (failure.kind !== "committed-with-error") return retain({ kind: "rejected", message: failure.message });
-      commit(view, { ...view.state, [field]: message["value"] });
+      commit(view, { ...view.state, [field]: value });
       return retain({ kind: "committed-with-error", snapshot: { value: view.state[field], version: version() }, message: failure.message });
     }
     return retain({ kind: "applied", snapshot: { value: view.state[field], version: version() } });
@@ -1069,7 +1090,7 @@ export function createMockBridge(options: MockBridgeOptions = {}): MockBridge {
         } catch (error) { return errorReply(view, error, true); }
         return ok({ revision: view.revision });
       }
-      case "write": return writeChecked(view, message);
+      case "write": return writeChecked(view, message, connection.features.has(textSpliceFeature));
       case "command": case "can": {
         if (member === undefined) return invalidRequest("The request has no member.");
         const handler = view.definition.commands?.[member];

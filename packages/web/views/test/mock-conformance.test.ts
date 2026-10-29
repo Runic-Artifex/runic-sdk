@@ -422,6 +422,44 @@ test("checked writes compare the expected value canonically and retries by reque
   raw.done();
 });
 
+test("checked writes of a text member carry a splice of the field's value at expectedVersion (text-splice/1)", async () => {
+  const long = "Splices keep the text a page already has and send only what changed in it, here and now.";
+  const { raw } = await connected({}, mock => mock.view("doc", { state: { body: long, count: 0 }, checkedFields: ["body", "count"], texts: ["body"] }));
+  await raw.send({ kind: "hello", protocol: 4, session: `session-${++sessions}`, client, features: ["text-splice/1"] });
+  await raw.send({ kind: "open", route: "doc", presentation: "p-1" });
+  const write = (requestId: string, members: Record<string, unknown>) => raw.send({ kind: "write", route: "doc", member: "body", requestId, ...members });
+  // A splice that does not fit the field's value writes and retains nothing.
+  assert.deepEqual(errorOf(await write("w-1", { expectedVersion: 0, splice: { length: 87, index: 87, delete: 0, text: "!" } })), { kind: "rejected", reason: "splice-base" });
+  const request = { expectedVersion: 0, splice: { length: 88, index: 88, delete: 0, text: "!" } };
+  const applied = await write("w-1", request);
+  assert.deepEqual(applied["receipt"], { kind: "applied", snapshot: { value: `${long}!`, version: 1 } });
+  // A retry of the splice gets the first receipt; another splice, or the same write in full, is a conflict.
+  assert.deepEqual((await write("w-1", request))["receipt"], applied["receipt"]);
+  assert.equal(((await write("w-1", { ...request, splice: { ...request.splice, text: "?" } }))["receipt"] as { kind: string }).kind, "conflict");
+  assert.equal(((await write("w-1", { expectedVersion: 0, expectedValue: long, value: `${long}!` }))["receipt"] as { kind: string }).kind, "conflict");
+  // The version comes before the base.
+  assert.deepEqual((await write("w-2", request))["receipt"],
+    { kind: "conflict", incoming: { value: `${long}!`, version: 1 }, message: "The field baseline no longer matches." });
+  assert.equal(raw.frames("doc").length, 1);
+  // Invalid forms and members that are not checked text members are invalid-request.
+  for (const members of [
+    { ...request, value: "x" }, { ...request, expectedValue: long }, { expectedVersion: 1, splice: { ...request.splice, baseRevision: 0 } },
+    { expectedVersion: 1, splice: { length: 89, index: -1, delete: 0, text: "x" } },
+  ]) assert.deepEqual(errorOf(await write("w-3", members)), { kind: "rejected", reason: "invalid-request" });
+  assert.deepEqual(errorOf(await raw.send({ kind: "write", route: "doc", member: "count", requestId: "w-3", expectedVersion: 0, splice: { length: 0, index: 0, delete: 0, text: "1" } })),
+    { kind: "rejected", reason: "invalid-request" });
+  raw.done();
+});
+
+test("checked writes with a splice need text-splice/1", async () => {
+  const { raw } = await connected({}, mock => mock.view("doc", { state: { body: "abc" }, checkedFields: ["body"], texts: ["body"] }));
+  await raw.hello();
+  await raw.send({ kind: "open", route: "doc", presentation: "p-1" });
+  assert.deepEqual(errorOf(await raw.send({ kind: "write", route: "doc", member: "body", requestId: "w-1", expectedVersion: 0, splice: { length: 3, index: 3, delete: 0, text: "d" } })),
+    { kind: "rejected", reason: "invalid-request" });
+  raw.done();
+});
+
 test("an operation start with a known id is a duplicate for a canonically equal input and an identity conflict otherwise", async () => {
   const { bridge, raw } = await connected();
   const view = notes(bridge);
