@@ -40,6 +40,28 @@ Or suppress it where you use the API, for a file or a region of one:
 #pragma warning restore RUNICDBUS100
 ```
 
+<a id="experimental-packages"></a>
+
+## Experimental packages
+
+A whole package can be experimental. It is not part of the release inventory,
+and its build targets report its ID as an error, as the compiler does for an
+experimental API, until the project suppresses it.
+
+<a id="RUNICDESK102"></a>
+
+## RUNICDESK102
+
+The native Desktop server, `Runic.Desktop.NativeServer` (X1). Referencing the
+package serves Runic Desktop surfaces from a native Rust (axum) HTTP and
+WebSocket server instead of ASP.NET Core Kestrel: the same Views protocol,
+admission, content and bootstrap code run over it, and a trimmed or NativeAOT
+application no longer contains Kestrel. Set `RunicDesktopServer` to `Kestrel`
+to build the same project on Kestrel; any other value fails with
+[`RUNICDESK003`](diagnostics.md#runicdesk003). See the
+[package README](../packages/dotnet/Runic.Desktop.NativeServer/README.md) for
+the supported runtime identifiers and what differs from Kestrel.
+
 <a id="retired"></a>
 
 ## Graduated and retired IDs

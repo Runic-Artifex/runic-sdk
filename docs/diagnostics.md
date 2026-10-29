@@ -1069,7 +1069,8 @@ above in the build output.
 
 ## Runic Desktop build
 
-The `Runic.Desktop` build targets report these errors.
+The `Runic.Desktop` build targets report these errors; `RUNICDESK003` and `RUNICDESK102` come
+from the experimental `Runic.Desktop.NativeServer` package.
 
 ### RUNICDESK001
 
@@ -1085,6 +1086,24 @@ statically, but the restored `Microsoft.Web.WebView2` package has no
 
 **Fix:** restore the project for the runtime identifier again, so the
 `Microsoft.Web.WebView2` native SDK assets are present.
+
+### RUNICDESK003
+
+`RunicDesktopServer` has a value other than `Native` or `Kestrel`. The property
+exists only with the experimental `Runic.Desktop.NativeServer` package
+([`RUNICDESK102`](experimental.md#RUNICDESK102)).
+
+**Fix:** set it to `Native` for the native server, `Kestrel` for ASP.NET Core
+Kestrel, or remove it for `Native`.
+
+### RUNICDESK102
+
+The project references the experimental native Desktop server,
+`Runic.Desktop.NativeServer`, without accepting that it is experimental. Its
+entry in [Experimental APIs](experimental.md#RUNICDESK102) describes it.
+
+**Fix:** add `RUNICDESK102` to `NoWarn` to use it, or set `RunicDesktopServer`
+to `Kestrel`.
 
 ## Navigation ReactiveUI build
 

@@ -1,0 +1,27 @@
+<Project>
+  <!-- This repository's own Desktop executables (tests, examples, benchmarks) built with -p:RunicDesktopServer=Native
+       reference Runic.Desktop as a project, so they get the package's targets here and the library that
+       eng/native/build-runic-server.sh wrote under artifacts/native/runic-server/<rid>/. Not packed. -->
+  <PropertyGroup>
+    <_RunicDesktopNativeServerArtifacts>$(MSBuildThisFileDirectory)../../../../artifacts/native/runic-server/</_RunicDesktopNativeServerArtifacts>
+    <RunicDesktopNativeServerStaticRoot>$(_RunicDesktopNativeServerArtifacts)</RunicDesktopNativeServerStaticRoot>
+    <_RunicDesktopNativeServerRuntime>$(RuntimeIdentifier)</_RunicDesktopNativeServerRuntime>
+    <_RunicDesktopNativeServerRuntime Condition="'$(_RunicDesktopNativeServerRuntime)' == ''">$(NETCoreSdkRuntimeIdentifier)</_RunicDesktopNativeServerRuntime>
+    <!-- Passing the property is this repository's opt-in. -->
+    <NoWarn>$(NoWarn);RUNICDESK102</NoWarn>
+  </PropertyGroup>
+  <Import Project="../buildTransitive/Runic.Desktop.NativeServer.targets" />
+  <PropertyGroup>
+    <_RunicDesktopNativeServerDirectory>$(_RunicDesktopNativeServerArtifacts)$(_RunicDesktopNativeServerRuntime)/</_RunicDesktopNativeServerDirectory>
+    <_RunicDesktopNativeServerLibrary Condition="Exists('$(_RunicDesktopNativeServerDirectory)librunic_server.so')">$(_RunicDesktopNativeServerDirectory)librunic_server.so</_RunicDesktopNativeServerLibrary>
+    <_RunicDesktopNativeServerLibrary Condition="Exists('$(_RunicDesktopNativeServerDirectory)librunic_server.dylib')">$(_RunicDesktopNativeServerDirectory)librunic_server.dylib</_RunicDesktopNativeServerLibrary>
+    <_RunicDesktopNativeServerLibrary Condition="Exists('$(_RunicDesktopNativeServerDirectory)runic_server.dll')">$(_RunicDesktopNativeServerDirectory)runic_server.dll</_RunicDesktopNativeServerLibrary>
+  </PropertyGroup>
+  <ItemGroup Condition="'$(_RunicDesktopNativeServerLibrary)' != ''">
+    <None Include="$(_RunicDesktopNativeServerLibrary)" Link="%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" Visible="false" />
+  </ItemGroup>
+  <Target Name="RunicDesktopRequireRepositoryNativeServer" BeforeTargets="PrepareForBuild">
+    <Error Condition="'$(_RunicDesktopNativeServerLibrary)' == ''"
+           Text="RunicDesktopServer=Native needs the native server for $(_RunicDesktopNativeServerRuntime) under $(_RunicDesktopNativeServerArtifacts). Run eng/native/build-runic-server.sh $(_RunicDesktopNativeServerRuntime) first." />
+  </Target>
+</Project>

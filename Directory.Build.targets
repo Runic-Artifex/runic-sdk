@@ -7,4 +7,7 @@
        ProjectReference does not. Projects that reference Runic.Desktop set
        RunicImportDesktopTargets (checked by eng/desktop-targets.test.mjs). -->
   <Import Project="packages/dotnet/Runic.Desktop/buildTransitive/Runic.Desktop.targets" Condition="'$(RunicImportDesktopTargets)' == 'true'" />
+  <!-- The experimental native Desktop server (X1) for an in-repository Desktop executable built with
+       -p:RunicDesktopServer=Native; package consumers get it from Runic.Desktop.NativeServer instead. -->
+  <Import Project="packages/dotnet/Runic.Desktop.NativeServer/build/Runic.Desktop.NativeServer.Repository.targets" Condition="'$(RunicImportDesktopTargets)' == 'true' and '$(RunicDesktopServer)' == 'Native'" />
 </Project>
