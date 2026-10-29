@@ -34,6 +34,10 @@ internal static class ReactiveValidationConventions
     internal static bool IsContextProperty(PropertyInfo property) =>
         property.Name == ContextProperty && property.DeclaringType is { } owner && IsValidatable(owner);
 
+    // The generator and the reflection contract shape (Hot Reload, never trimmed) call this; under trimming an
+    // interface that no kept type implements cannot match, so a removed one changes nothing.
+    [System.Diagnostics.CodeAnalysis.UnconditionalSuppressMessage("Trimming", "IL2070",
+        Justification = "Build-time and Debug-only contract inspection by interface name.")]
     private static Type[] Interfaces(Type type)
     {
         Type[] interfaces;
