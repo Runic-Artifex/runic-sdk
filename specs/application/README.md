@@ -12,8 +12,8 @@ protocol to .NET and TypeScript is in the [language mappings](language-mappings.
 
 | Document | Content |
 | --- | --- |
-| This document | Conventions, transport, host bridge, handshake, requests and replies, state and revisions, publication, edits, checked writes, commands, presentations, operations, interactions, versions |
-| [state-changes.md](state-changes.md) | Frames and their changes (`set`, keyed collections, text), producing and applying them, delivery bounds and recovery |
+| This document | Conventions, transport, host bridge, handshake and features, requests and replies, state and revisions, publication, edits, checked writes, commands, presentations, operations, interactions, versions |
+| [state-changes.md](state-changes.md) | Frames and their changes (`set`, keyed collections, text, text splices), producing and applying them, delivery bounds and recovery |
 | [values.md](values.md) | The JSON profile, wire value types and the canonical form (RFC 8785) |
 | [language-mappings.md](language-mappings.md) | The .NET producer and the TypeScript client |
 | [conformance/](conformance/README.md) | Vectors and scenarios |
@@ -140,8 +140,8 @@ Another client implementation for the web SHOULD use the same keys.
 The first request on each connection is `hello`:
 
 ```json
-{"kind":"hello","protocol":4,"session":"6f1c2a9e-0d4b-4c51-9a83-5d2f7e1b0c44","client":{"name":"@runic-artifex/views","version":"0.13.0"}}
-{"ok":true,"protocol":4,"implementation":{"name":"Runic.Application.Views","version":"0.13.0"}}
+{"kind":"hello","protocol":4,"session":"6f1c2a9e-0d4b-4c51-9a83-5d2f7e1b0c44","client":{"name":"@runic-artifex/views","version":"0.14.0"},"features":["text-splice/1"]}
+{"ok":true,"protocol":4,"implementation":{"name":"Runic.Application.Views","version":"0.14.0"},"features":["text-splice/1"]}
 ```
 
 | Member | Contract |
@@ -149,6 +149,7 @@ The first request on each connection is `hello`:
 | `protocol` | The protocol version the sender implements: `4`. |
 | `session` | An identifier the client chooses for this connection. A client MUST send a new session for each connection. |
 | `client`, `implementation` | `{name, version}`: the name of the client or producer implementation (1 to 128 characters) and its version (1 to 64 characters, SemVer without build metadata recommended). They are informational. |
+| `features` | Optional: the [features](#features) the sender implements, in the request and in a successful reply. Absent means none. |
 
 Producer rules:
 
@@ -156,25 +157,62 @@ Producer rules:
 - A `hello` whose `protocol` is not 4 is answered
   `{"ok":false,"protocol":4,"implementation":{…},"error":{"kind":"failed","reason":"protocol-mismatch","message":"…"}}`.
   The producer logs this once per connection, naming both versions.
-- A `hello` without a valid `protocol`, `session` or `client` is `rejected` with `invalid-request`. So is a second
-  `hello` on a connection that already completed one.
+- A `hello` without a valid `protocol`, `session` or `client`, or whose `features` is present but not an array of at
+  most 64 strings of at most 64 characters each, is `rejected` with `invalid-request`. So is a second `hello` on a
+  connection that already completed one.
 - A `hello` whose session a closed connection used is `released`.
 - A `hello` whose session another open connection uses is `rejected` with `invalid-request`.
-- Until a `hello` succeeds, every other request is `rejected` with the reason `no-hello`, and the connection receives
-  no pushes.
+- A successful reply lists every feature the producer implements, whether or not the request listed it.
+- **Requests before the `hello`.** A request other than `hello` and `receive` that arrives on a connection whose
+  `hello` has not succeeded is held. When a `hello` of the connection succeeds, the producer admits the held requests in
+  the order they arrived, before any request that arrives after the `hello`. A held request is answered `rejected` with
+  the reason `no-hello` when a `hello` of the connection fails, when the connection closes, or 5 seconds after it arrived
+  without a successful `hello`. At most 64 requests are held per connection; another one is `rejected` with `capacity` at
+  once. A transport that does not keep the order of a connection's requests can deliver a request sent after the
+  `hello` before it; this rule makes that order irrelevant.
+- A `receive` before a successful `hello` is answered `no-hello` at once and is never held: mailbox host scripts read
+  that reply as a replaced connection ([Mailbox host scripts](#mailbox-host-scripts)).
+- Until a `hello` succeeds, the connection receives no pushes.
 
 Client rules:
 
-- It sends `hello` before any other request on a connection, and again after each new connection.
+- It sends `hello` before any other request on a connection, and again after each new connection. It MAY send other
+  requests right after the `hello`, without waiting for its reply, as `@runic-artifex/views` does with the `open` of
+  each route it shows.
+- A request answered `no-hello` while the connection's `hello` succeeded, before or after that reply arrived, did not
+  run: the client sends it once more after the `hello`. A producer that does not hold requests, or one whose hold ended,
+  answers so. A `no-hello` to a request sent after the `hello`'s successful reply arrived means that the producer lost
+  the connection's `hello`.
 - It refuses a producer whose reply has a `protocol` other than its own, or a successful reply without `protocol`:
-  every pending and later call of that connection rejects with one `failed` error whose message names both versions
-  and the fix (use the producer and client of one release, rebuild so the generated clients are regenerated, and
-  reload). It reports this with one diagnostic with code `protocol`, once per page, and with no other diagnostic, and
-  sends no `open`.
+  every pending and later call of that connection, including the requests sent with the `hello`, rejects with one
+  `failed` error whose message names both versions and the fix (use the producer and client of one release, rebuild so
+  the generated clients are regenerated, and reload). It reports this with one diagnostic with code `protocol`, once per
+  page, and with no other diagnostic, and sends no request after the reply.
 - A client MAY compare `implementation.version` with its own release when `implementation.name` names the producer it
   is released with. `@runic-artifex/views` reports a diagnostic with code `version` when `implementation.name` is
   `Runic.Application.Views` and the version differs from its own, once per page, and keeps working. It reports no
   version diagnostic for other producers.
+
+## Features
+
+A feature is an addition to the protocol that a client and a producer use only when both implement it. Each side lists
+the features it implements in `hello`; a feature is **in use** on a connection when the request and the successful
+reply both list the same string. Features are negotiated per connection, and again on each new connection.
+
+- **Names.** A feature is named `{name}/{version}`: `name` is a kebab-case token of 1 to 48 characters and `version` a
+  positive integer without leading zeros, such as `text-splice/1`. `text-splice/1` and `text-splice/2` are different
+  features; a feature's specification says which version is used when both sides list several.
+- **Unknown features.** A side ignores a string it does not implement, including one that is not a feature name.
+- **Messages.** A side sends the members, change kinds and request members of a feature only on a connection that uses
+  it. A side that receives them on another connection applies the base rules: unknown members are ignored, a client
+  recovers from an unknown change kind, and a request that misses the members the base protocol requires is
+  `invalid-request`.
+- A feature never changes the meaning of a message of the base protocol, so a client and a producer of one protocol
+  version always connect, whatever features they implement.
+
+| Feature | Specification | Since |
+| --- | --- | --- |
+| `text-splice/1` | Text members change with splices: [`set` with a splice](#text-splices-in-set) and [`splice` changes](state-changes.md#text-splices) | 0.14 |
 
 ## Requests and replies
 
@@ -207,12 +245,13 @@ it.
 | `reason` | `kind` | Sent when |
 | --- | --- | --- |
 | `invalid-request` | `rejected` | The request is not a request of this protocol: an unknown `kind`, a missing member or a member of the wrong JSON type, or a `member` that the route does not have for that kind. |
-| `no-hello` | `rejected` | The connection has not completed a `hello`. |
+| `no-hello` | `rejected` | The connection has not completed a `hello` ([Handshake](#handshake)). |
+| `splice-base` | `rejected` | A `set` with a splice names a base the producer does not have, or the splice does not fit it ([Text splices in `set`](#text-splices-in-set)). |
 | `protocol-mismatch` | `failed` | A `hello` named another protocol version. |
 | `invalid-input` | `rejected` | A value or input does not decode as its type ([values](values.md#wire-value-types)), the setter or command rejects it as invalid input, or the request is larger than the input limit. |
 | `unavailable` | `rejected` | A command is not available ([Commands](#commands-and-availability)). |
 | `unresolved-key` | `rejected` | The key of a key command resolves to nothing. |
-| `capacity` | `rejected` | A limit of the window or connection is reached: 64 awaited commands, 64 presentations per route and connection, or 64 watches per connection. |
+| `capacity` | `rejected` | A limit of the window or connection is reached: 64 awaited commands, 64 presentations per route and connection, 64 watches per connection, or 64 requests held before a connection's `hello`. |
 | `state-withheld` | any | The request ran, but the producer cannot publish a state that includes its effects, because a keyed collection has invalid keys ([state changes](state-changes.md#invalid-keys)). |
 
 A request that names a route the producer does not serve, because it was never bound or because it was released, is
@@ -349,6 +388,56 @@ A setter request carries an edit number:
   connection.
 - **Values.** `value` is encoded as the member's type. A value that does not decode, or that the setter rejects as
   invalid input, is `rejected` with `invalid-input`. The reply of a successful `set` is `{"ok":true,"revision":R}`.
+- On a connection that uses `text-splice/1`, a `set` of a [text member](state-changes.md#text-members) may carry
+  `splice` instead of `value` (below). A `set` carries exactly one of them.
+
+### Text splices in `set`
+
+With the feature `text-splice/1`, a setter of a long text member sends what changed instead of the whole value:
+
+```json
+{"kind":"set","route":"editor","member":"body","edit":8,"splice":{"baseEdit":7,"length":100000,"index":5120,"delete":0,"text":"x"}}
+{"ok":true,"revision":43}
+```
+
+| Member of `splice` | Contract |
+| --- | --- |
+| `baseEdit` or `baseRevision` | Exactly one: the value the splice applies to. `baseEdit` names the member's edit of that number on this connection: the value that edit carried. `baseRevision` names the member's value in the route's state at that revision. |
+| `length` | The length of that value, in UTF-16 code units. |
+| `index`, `delete`, `text` | The [splice](state-changes.md#text-splices): replace `delete` code units at `index` with `text`. |
+
+**Meaning.** A `set` with a splice is exactly the `set` whose `value` is the base with the splice applied. The producer
+rebuilds that value and runs the setter with it, so the reply, `revision`, `invalid-input` and every other rule of a
+`set` are unchanged; the setter's last writer wins, as with a whole value. The producer's current value of the member
+plays no part, only whether the producer still has the base.
+
+**Producer.** In this order:
+
+1. A `set` with `splice` on a connection that does not use `text-splice/1`, or for a member that is not a settable text
+   member, or with a `splice` that is not an object of the members above, is `rejected` with `invalid-request`.
+2. Edit numbers come first: a `set` whose `edit` is not higher than one admitted before is `superseded`, as any `set`.
+3. The base: for `baseEdit`, the producer has it when it is the highest edit of the member admitted on this connection
+   and that edit's value was a string; for `baseRevision`, when no publication of the route after `baseRevision`
+   changed the member and `baseRevision` is not beyond the route's last publication, and the member's value then was a
+   string. The splice must fit the base as a frame's splice must ([applying a splice](state-changes.md#text-splices)).
+4. When the producer does not have the base, or the splice does not fit it, the `set` is `rejected` with the reason
+   `splice-base` and is **not admitted**: the edit number is not raised, so an earlier edit that arrives later still
+   applies.
+5. Otherwise the edit is admitted, and the producer keeps the rebuilt value as the value of that edit.
+
+A producer keeps, for each connection that uses the feature, route and text member, the value of the highest admitted
+edit (one string), and for each route and text member its last published value and the revision of the publication
+that last changed it.
+
+**Client.** A client that uses `text-splice/1` sends a splice for a settable text member when the new value and the
+base are strings and the [single splice](state-changes.md#producing-splices) from the base to the new value keeps at
+least 64 code units of the base. The base is the value the client exposes before the edit: while the member shows an
+overlay, the latest edit's value (`baseEdit`, when that edit was sent on the current connection); otherwise the
+member's value in the route's state (`baseRevision`, the route's current revision, when the state was read on the
+current connection). In every other case it sends `value`. When a splice is answered `splice-base`, the client sends
+the same value as `value` with the member's next edit number if that edit is still the member's latest, and the
+setter's call settles with that request; otherwise the call settles as a superseded one, because a later edit carries
+a newer value.
 
 ### Client overlay
 
@@ -367,6 +456,9 @@ A client that exposes state to a user interface MUST apply this rule; a client w
 - The overlay covers only the member that was set. Members derived from it, such as `validation` and the member's
   `{name}Errors` ([validation](#validation)), are never overlaid: they show the state's value, which describes the
   producer's value of the member until the frame of the edit arrives.
+- An edit sent as a splice is overlaid like any other: the overlay exposes the value the splice produces from its base,
+  which is the value the client set. Frames splice the producer's state underneath the overlay; pending splices are not
+  rebased onto them.
 
 ## Checked writes
 
@@ -695,11 +787,11 @@ Requests:
 
 | `kind` | Members | Success reply |
 | --- | --- | --- |
-| `hello` | `protocol`, `session`, `client {name, version}` | `protocol`, `implementation {name, version}` |
+| `hello` | `protocol`, `session`, `client {name, version}`, `features?` | `protocol`, `implementation {name, version}`, `features?` |
 | `open` | `route`, `presentation`, `handlers?` | `revision`, `state`, `fields?`, `presentation`, `registration?` |
 | `snapshot` | `route` | `revision`, `state`, `fields?` |
 | `close` | `route`, `presentation` | `presentation` |
-| `set` | `route`, `member`, `value`, `edit` | `revision`, `superseded?` |
+| `set` | `route`, `member`, `value` or `splice` (`text-splice/1`), `edit` | `revision`, `superseded?` |
 | `write` | `route`, `member`, `requestId`, `expectedVersion`, `expectedValue`, `value` | `revision`, `receipt` |
 | `command` | `route`, `member`, `input?` | `revision` |
 | `can` | `route`, `member`, `input?` | `value` |
@@ -737,11 +829,12 @@ The protocol version is strict: a client and a producer of different versions do
 - A producer answers a request kind it does not know with `rejected` and `invalid-request`.
 - `reason` values and diagnostic codes are open sets.
 
-The version changes only when a client built for the previous version could misread a message.
+The version changes only when a client built for the previous version could misread a message. Additions that both
+sides must implement are [features](#features), listed in `hello`.
 
 | Version | Release | Change |
 | --- | --- | --- |
 | 1 | 0.6 | Named routes with a snapshot and a state callback per route; collection delta frames were added in 0.7 without a version change. |
 | 2 | 0.9 | The `domain-failed` error and operation status kind. |
 | 3 | 0.10 | A released View answers `released` instead of `disconnected`; the reply error `reason`; a strict version check ([protocol 3](https://github.com/Runic-Artifex/runic-sdk/blob/v0.12.1/specs/application/README.md)). |
-| 4 | 0.13 | One message channel with `hello`; `set` changes in frames; replies by revision; edit numbers; `open`/`close`; operation `watch` and `progress`; RFC 8785 canonical form; value types named by value; ISO 8601 durations; a language-neutral specification and conformance corpus. |
+| 4 | 0.13 | One message channel with `hello`; `set` changes in frames; replies by revision; edit numbers; `open`/`close`; operation `watch` and `progress`; RFC 8785 canonical form; value types named by value; ISO 8601 durations; a language-neutral specification and conformance corpus. 0.14 added, without a version change, `hello` `features` with the first feature `text-splice/1`, and requests held behind the `hello`. |

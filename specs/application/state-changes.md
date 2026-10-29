@@ -26,8 +26,8 @@ A frame changes the state of one route from the revision `baseRevision` to the r
 Ordering rules:
 
 - A frame has at most one `set` per field, and a field with a `set` has no other change in the same frame.
-- The collection or text changes of one field apply in order: each index refers to the array as the previous change of
-  that field left it.
+- The collection, text or splice changes of one field apply in order: each index refers to the array or string as the
+  previous change of that field left it.
 - Changes of different fields are independent, so their order in `changes` carries no meaning.
 
 A client rejects a frame that breaks these rules and recovers ([Applying frames](#applying-frames)).
@@ -83,6 +83,44 @@ nullable), such as a live log. Its changes are:
 | `trim` | The number of UTF-16 code units dropped from its start, from 0 to `length`. |
 | `text` | The text appended after them. |
 
+### Text members
+
+A **text member** is a state member whose wire type is `string`, nullable or not, other than an append-only text field:
+settable members, read-only members and checked fields alike. Members of other types whose wire values are strings
+(`uuid`, enums, dates, 64-bit integers and so on) are not text members. Which members are text members follows from
+the contract; a client knows them from its generated code.
+
+### Text splices
+
+With the feature `text-splice/1` ([features](README.md#features)), frames may change a text member with splices:
+
+`{"field","kind":"splice","length","index","delete","text","version"?}`
+
+| Member | Contract |
+| --- | --- |
+| `length` | The length, in UTF-16 code units, of the value the splice applies to. |
+| `index` | Where the splice starts, in UTF-16 code units, from 0 to `length`. |
+| `delete` | The number of code units the splice removes there, from 0 to `length − index`. |
+| `text` | The text it inserts there. |
+| `version` | Present exactly when the member is a checked field: the field's version after the frame. |
+
+The result is the first `index` code units of the value, then `text`, then the value from `index + delete` on.
+
+- **Code points.** Neither `index` nor `index + delete` lies between the high and the low surrogate of a pair in the
+  value. JSON cannot carry a lone surrogate in `text`, so the result is always well formed.
+- **Graphemes.** Splices are not aligned to grapheme clusters. A splice reproduces the exact string, so a cluster is
+  never broken relative to the whole value: input methods produce edits inside clusters (a combining mark, an emoji
+  modifier), and a diff may cut inside one. Strings are not normalized ([values](values.md)).
+- **Order.** A field may have several splices in one frame; each applies to the value the previous change of the field
+  left. A field with a `set` has no splice in the same frame.
+- **Units.** Indices count UTF-16 code units, as the `text` change and the canonical form's member order do. Because
+  they never split a pair, an implementation whose strings are UTF-8 or UTF-32 converts them exactly: a code point
+  outside the Basic Multilingual Plane counts 2, every other code point 1.
+
+A producer sends splice changes only on connections that use `text-splice/1`. A producer whose transport sends one
+message to every connection sends a frame with splices only while every connection that completed its `hello` uses the
+feature, and otherwise the same frame with a `set` of each spliced field's value after the frame.
+
 ## Invalid keys
 
 A producer never publishes a state or frame with a `null` row or a missing, empty or duplicate key, and never fails
@@ -122,8 +160,9 @@ time runs them without that interval.
 
 At publication time, for each member other than keyed collections and text fields, the producer compares the member's
 encoding with the encoding it last published on the route, by [canonical equality](values.md#canonical-equality).
-Every member that differs becomes a `set`. A checked field whose version changed is a `set` with the new version, even
-when its value is equal.
+Every member that differs becomes a `set`, except that a text member may become splices (below). A checked field whose
+version changed is a `set` with the new version, even when its value is equal. A string's encoding is equal exactly
+when the strings are equal, so a producer MAY compare text members as strings.
 
 This comparison is deliberately not driven by change notifications: members that are computed from others and never
 announce a change, availability members and validation results stay correct. Its cost is the encoding of the members
@@ -155,6 +194,27 @@ kept, `trim` is `length` and `text` is the whole value. It publishes a `set` ins
 `null`, or when `text` would start inside a surrogate pair. Because the comparison happens at publication, several
 appends in one unit are one change, and the result is the same in the producer and the client up to UTF-16 code
 units.
+
+### Producing splices
+
+On a connection that uses `text-splice/1`, a text member whose value changed from `O` to `N` publishes:
+
+1. a `set`, when `O` or `N` is `null`;
+2. otherwise the **single splice**: `p` is the length of the common prefix of `O` and `N`, minus 1 when `O[p−1]` is a
+   high surrogate; `s` is the length of the common suffix of `O[p..]` and `N[p..]`, minus 1 when that suffix starts with
+   a low surrogate. The splice is `{index: p, delete: |O| − p − s, text: N[p .. |N| − s]}` and keeps `p + s` code units;
+3. when the single splice keeps fewer than half of `O` (`2(p + s) < |O|`), the **pair** instead, if it keeps more: `k`
+   is the length of the longest suffix of `O`, shorter than `O`, that `N` starts with, as for append-only text fields.
+   The pair is `{index: 0, delete: |O| − k, text: ""}`, followed, when `|N| > k`, by `{index: k, delete: 0, text:
+   N[k..]}`; it keeps `k`. A pair that would split a surrogate pair is not used;
+4. the chosen shape when it keeps at least 64 code units; otherwise a `set`.
+
+Without the feature, a text member's change is a `set`. Append-only text fields keep their `text` changes either way.
+
+The rule is normative so that the scenarios can check a producer exactly. Its reasons: a splice costs about 60 bytes
+more than a `set` of the text it keeps, so below 64 kept code units a `set` is as small; the single splice covers edits
+anywhere in a value with two linear comparisons; and the pair covers values that drop their start and grow at their
+end, such as a log, which the single splice cannot express without resending them.
 
 ### Full states
 
@@ -204,9 +264,13 @@ The client holds the current state and revision of each open route. For an incom
      given keys; a `replace` has `oldIndex` different from `index`; a `remove` or `move` has items; or the result has
      duplicate or empty keys;
    - for a `text` change: the current value is not a string or its length differs from `length`; `trim` is not a
-     non-negative safe integer up to `length`; or `text` is not a string.
+     non-negative safe integer up to `length`; or `text` is not a string;
+   - for a `splice` change: `field` is not a text member; the current value is not a string or its length differs from
+     `length`; `index` or `delete` is not a non-negative safe integer, or `index + delete` exceeds `length`; `index` or
+     `index + delete` lies between the high and the low surrogate of a pair of the current value; `text` is not a
+     string; or `version` is missing for a checked field, present for another member, or not a safe integer.
 5. Commits the new state and revision and notifies subscribers once. Members and rows that no change touched keep
-   their identity. A `set` with `version` updates the checked field's version.
+   their identity. A `set` or `splice` with `version` updates the checked field's version.
 
 A pushed full state is accepted when its revision is greater than the current revision. A full state's text field
 must be a string, or `null` when it is nullable.

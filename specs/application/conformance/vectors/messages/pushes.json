@@ -297,6 +297,25 @@
         }
       },
       "expect": {"result":"valid"}
+    },
+    {
+      "id": "messages.pushes.frame-with-splices",
+      "description": "A field's splices apply in order, each to the value the previous one left.",
+      "operation": "read-push",
+      "input": {"encoding":"json","value":{"kind":"frame","route":"notes","baseRevision":1,"revision":2,"changes":[{"field":"title","kind":"splice","length":100,"index":0,"delete":10,"text":""},{"field":"title","kind":"splice","length":90,"index":90,"delete":0,"text":"more"}]}},
+      "expect": {"result":"valid"}
+    },
+    {
+      "id": "messages.pushes.frame-with-a-splice-beyond-its-length",
+      "operation": "read-push",
+      "input": {"encoding":"json","value":{"kind":"frame","route":"notes","baseRevision":1,"revision":2,"changes":[{"field":"title","kind":"splice","length":10,"index":8,"delete":3,"text":""}]}},
+      "expect": {"result":"invalid"}
+    },
+    {
+      "id": "messages.pushes.frame-with-a-set-and-a-splice-of-one-field",
+      "operation": "read-push",
+      "input": {"encoding":"json","value":{"kind":"frame","route":"notes","baseRevision":1,"revision":2,"changes":[{"field":"title","kind":"set","value":"x"},{"field":"title","kind":"splice","length":1,"index":0,"delete":0,"text":"y"}]}},
+      "expect": {"result":"invalid"}
     }
   ]
 }
