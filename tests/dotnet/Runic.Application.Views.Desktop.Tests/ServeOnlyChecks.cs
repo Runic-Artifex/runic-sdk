@@ -71,6 +71,80 @@ internal sealed class ServeOnlyChecks
         }
     }
 
+    // A1: RunicDesktopHostOptions.ServeOnly serves as the environment variable does, without setting it, and Run then
+    // starts no window toolkit loop, so a headless machine reports no display diagnostics.
+    [Test, NotInParallel(Order = 1)]
+    public async Task ServeOnlyOptionServesWithoutTheEnvironmentVariable()
+    {
+        string? serveOnly = Environment.GetEnvironmentVariable("RUNIC_APPLICATION_SERVE_ONLY");
+        var console = Console.Out;
+        var input = Console.In;
+        var lines = new LineReader();
+        var output = new StringWriter();
+        try
+        {
+            Environment.SetEnvironmentVariable("RUNIC_APPLICATION_SERVE_ONLY", null);
+            Console.SetIn(lines);
+            Console.SetOut(output);
+            var services = new ServiceCollection();
+            services.AddScoped<OrderedCollectionModel>();
+            services.AddScoped<Func<IBridgeTransport, OrderedCollectionModel, IDisposable>>(
+                _ => (transport, model) => new OrderedCollectionBridge(transport, model));
+            await using var provider = services.BuildServiceProvider();
+            var factory = new NativeDispatchFactory();
+            await using (var desktop = await DesktopHost.StartAsync(new DesktopHostOptions { WindowHostFactory = factory, WaitForConnection = false }))
+            {
+                var host = new RunicDesktopHost(provider, desktop, new RunicDesktopHostOptions
+                {
+                    SurfaceOptions = new DesktopSurfaceOptions { Content = new DesktopContent.Html("<!doctype html>") },
+                    ServeOnly = true,
+                });
+                Check(host.ServeOnly, "RunicDesktopHost.ServeOnly did not follow the option.");
+                await using var window = await host.OpenWindowAsync<ProbeWindow>();
+                var served = (DesktopBridgeWindow<OrderedCollectionModel>)window.Host;
+                Check(factory.Hosts.Count == 0, "The serve-only option opened a window.");
+                Check(output.ToString().Contains($"RUNIC_APPLICATION_URL={served.Surface.Url}", StringComparison.Ordinal),
+                    $"The serve-only option did not write the surface URL: '{output}'.");
+                Check(Environment.GetEnvironmentVariable("RUNIC_APPLICATION_SERVE_ONLY") is null,
+                    "The serve-only option set the environment variable that child processes inherit.");
+                lines.Send("\n");
+                await window.WaitForCloseAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(5));
+            }
+
+            if (!OperatingSystem.IsMacOS())
+            {
+                // Run with an event-loop toolkit that has no display: serve-only neither prepares nor reports it.
+                var loop = new NoDisplayLoopFactory();
+                List<DesktopDiagnostic> reported = [];
+                var result = RunicDesktopHost.Run(provider, new DesktopHostOptions { WindowHostFactory = loop, DiagnosticSink = reported.Add },
+                    new RunicDesktopHostOptions { ServeOnly = true }, host => Task.FromResult(host.ServeOnly ? 6 : 0));
+                Check(result == 6 && loop.Prepares == 0 && reported.Count == 0,
+                    $"A serve-only Run prepared the window toolkit ({loop.Prepares}) or reported {string.Join(", ", reported.Select(item => item.Code))}.");
+            }
+        }
+        finally
+        {
+            lines.Send(null);
+            Console.SetOut(console);
+            Console.SetIn(input);
+            Environment.SetEnvironmentVariable("RUNIC_APPLICATION_SERVE_ONLY", serveOnly);
+        }
+    }
+
+    private sealed class NoDisplayLoopFactory : IDesktopEventLoopWindowHostFactory
+    {
+        public int Prepares { get; private set; }
+        public bool IsSupported => true;
+        public IDesktopWindowHost Create() => throw new NotSupportedException();
+        public IReadOnlyList<DesktopDiagnostic> GetAvailabilityDiagnostics() => [];
+        public IReadOnlyList<DesktopDiagnostic> PrepareEventLoop()
+        {
+            Prepares++;
+            return [new DesktopDiagnostic(DesktopErrorCategory.Unavailable, "loop-display-unavailable", "no display", false)];
+        }
+        public int RunEventLoop(Func<Task<int>> application) => throw new InvalidOperationException("The loop started.");
+    }
+
     // #310: a line ends the Windows serving when it is read; a Window opened after it serves until the next line,
     // and has no native owner to present.
     [Test, NotInParallel(Order = 2)]

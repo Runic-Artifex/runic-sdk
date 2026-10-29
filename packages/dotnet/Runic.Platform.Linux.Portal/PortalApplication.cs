@@ -239,6 +239,9 @@ public sealed class PortalApplication
     /// by the window from the host instead.</remarks>
     public IPickerBackend CreateUnparentedFileDialogs() => CreateFileDialogs(new PortalPlatformProvider.UnparentedOwner());
 
+    // File and URI handoffs without a parent window, for an application that shows none (serve-only).
+    internal IDesktopFileLauncher CreateUnparentedFileLauncher() => new PortalFileLauncher(new PortalPlatformProvider.UnparentedOwner(), this);
+
     // The window's badge and progress on the application's launcher entry; without an ApplicationId it reports
     // BackendUnavailable.
     internal IWindowTaskbar CreateWindowTaskbar(string? address = null) => new PortalWindowTaskbar(this, address);

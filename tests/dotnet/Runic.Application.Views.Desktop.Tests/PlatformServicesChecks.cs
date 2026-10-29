@@ -341,6 +341,20 @@ internal sealed class PlatformServicesChecks
             "The drag of stopped services did not report the owner closed.");
     }
 
+    // A1: the application-scoped URI handoff applies the launcher's policy before anything native runs, so a path or a
+    // program never reaches the desktop, with or without a window.
+    [Test]
+    public async Task OpenUriRejectsWhatTheLauncherRejects()
+    {
+        foreach (var uri in new[] { new Uri("file:///etc/passwd"), new Uri("javascript:alert(1)"), new Uri("relative/path", UriKind.Relative) })
+        {
+            var rejected = false;
+            try { _ = await DesktopPlatformServices.OpenUriAsync(uri); }
+            catch (ArgumentException) { rejected = true; }
+            Require(rejected, $"OpenUriAsync accepted {uri}.");
+        }
+    }
+
     // #313: a Window opened for a forwarded launch is presented with the launch's activation context as soon as it is
     // shown, so that the compositor gives it focus. Without a context, for a hidden window and for a window without
     // native dispatch nothing is presented, and a presentation that fails does not fail the open.

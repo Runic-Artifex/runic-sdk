@@ -30,8 +30,8 @@ namespace Runic.Application.Views.Desktop;
 /// <c>ApplicationInstance.ClaimAsync</c> before <c>Run</c> and bring an open Window forward with
 /// <see cref="DesktopPlatformServices.PresentAsync(IRunicWindow, Runic.Platform.DesktopActivationContext?, CancellationToken)"/> when another launch arrives, or open one for it with
 /// <see cref="OpenWindowAsync{TWindow}(RunicWindowOptions?, DesktopActivationContext?, CancellationToken)"/>.
-/// When the <c>RUNIC_APPLICATION_SERVE_ONLY</c> environment variable is <c>1</c>, as on CS-WebUI, no window or browser
-/// is opened: each window creates its surface, writes <c>RUNIC_APPLICATION_URL=&lt;url&gt;</c> to standard output, and
+/// When <see cref="RunicDesktopHostOptions.ServeOnly"/> is set or the <c>RUNIC_APPLICATION_SERVE_ONLY</c> environment
+/// variable is <c>1</c>, as on CS-WebUI, no window or browser is opened, and <c>Run</c> starts no window toolkit loop: each window creates its surface, writes <c>RUNIC_APPLICATION_URL=&lt;url&gt;</c> to standard output, and
 /// keeps serving until a line is read from standard input, shutdown is requested or the process ends; then
 /// <see cref="RunicWindow{TViewModel}.WaitForCloseAsync"/> returns. A line ends every Window serving when it is read; a
 /// Window opened after it serves until the next line. The surface admits one browser, a guarded Window
@@ -105,7 +105,16 @@ public sealed class RunicDesktopHost : IRunicWindowHost
             throw new ArgumentOutOfRangeException(nameof(options), options.MaximumInputBytes,
                 "MaximumInputBytes must be between 1 024 and 67 108 864 bytes.");
         _maximumInputBytes = options.MaximumInputBytes;
+        _serveOnly = options.ServeOnly;
     }
+
+    private readonly bool _serveOnly;
+
+    /// <summary>
+    /// Whether this host serves its Windows to a browser instead of showing them:
+    /// <see cref="RunicDesktopHostOptions.ServeOnly"/>, or <c>RUNIC_APPLICATION_SERVE_ONLY=1</c>, read when a Window opens.
+    /// </summary>
+    public bool ServeOnly => _serveOnly || ServeOnlyRequested;
 
     private readonly bool? _includeFailureDetail;
     private readonly int? _maximumInputBytes;
@@ -261,7 +270,9 @@ public sealed class RunicDesktopHost : IRunicWindowHost
         // The factory is lent for the run: later messages go to Trace, since the caller then disposes services.
         var lent = options.LoggerFactory is null ? LentLoggerFactory.From(services.GetService<ILoggerFactory>()) : null;
         if (lent is not null) options = options with { LoggerFactory = lent };
-        try { return DesktopEventLoop.Run(options, desktop => application(new RunicDesktopHost(services, desktop, hostOptions))); }
+        // A serve-only application shows no window, so the window toolkit's loop, and its display check, do not run.
+        var presentsWindows = !(hostOptions.ServeOnly || ServeOnlyRequested);
+        try { return DesktopEventLoop.Run(options, desktop => application(new RunicDesktopHost(services, desktop, hostOptions)), presentsWindows); }
         finally { lent?.Return(); }
     }
 
@@ -311,7 +322,7 @@ public sealed class RunicDesktopHost : IRunicWindowHost
     IReadOnlyList<RunicWindowDiagnostic> IRunicWindowHost.Validate(RunicWindowOptions options)
     {
         var windowOptions = WindowOptionsFor(options);
-        if (!ServeOnlyRequested) return [.. Desktop.Validate(windowOptions).Diagnostics.Select(ToWindowDiagnostic)];
+        if (!ServeOnly) return [.. Desktop.Validate(windowOptions).Diagnostics.Select(ToWindowDiagnostic)];
         // Validation makes the serve-only decision of OpenAsync (#238): a serve-only window has no presentation, so
         // what this machine lacks to present one does not apply. The configuration is still checked, since it fails
         // on every launch that presents a window. The preflight runs DesktopHost.Validate's checks without logging the
@@ -423,7 +434,7 @@ public sealed class RunicDesktopHost : IRunicWindowHost
             var attachment = opening.AttachBridge(transport, content);
             try { owner.Attach(attachment); }
             catch { attachment.Dispose(); throw; }
-            if (ServeOnlyRequested)
+            if (ServeOnly)
             {
                 // Without a presentation, nothing can keep a window open (D018.10), as on CS-WebUI.
                 if (opening.CloseGuard is not null) opening.ReportCloseGuardUnavailable("serve-only mode");
