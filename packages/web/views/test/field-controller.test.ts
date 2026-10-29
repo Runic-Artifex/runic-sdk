@@ -382,3 +382,39 @@ test("commit() resolves once the field's writes settled, so Save can follow them
   checkedField.controller.inputText("Mine 2");
   await checkedField.controller.commit();
 });
+
+test("with notifications paced by animation frames, a settled write drops the draft at once, and commit() follows", async () => {
+  Object.assign(clock, realClock);
+  // Frames that never arrive unless the test runs them: only what an awaited call delivers reaches the field.
+  const frames: (() => void)[] = [];
+  const host = globalThis as { requestAnimationFrame?: unknown; cancelAnimationFrame?: unknown };
+  const saved = { request: host.requestAnimationFrame, cancel: host.cancelAnimationFrame };
+  host.requestAnimationFrame = (callback: () => void) => frames.push(callback);
+  host.cancelAnimationFrame = () => {};
+  try {
+    const { createMockBridge, installMockBridge } = await import("../dist/mock.js");
+    const { connectView } = await import("../dist/generated.js");
+    const wire = await import("../dist/wire.js");
+    const bridge = installMockBridge(createMockBridge());
+    bridge.view("frames", { state: { title: "a" }, set: { title: (_state, value) => ({ title: (value as string).trim() }) } });
+    type FramesState = { readonly title: string };
+    const view = await connectView<FramesState>({ contract: "Tests.Frames:fp", route: "frames", members: { title: wire.string } });
+    const field: BridgeField<typeof view, FramesState, string> = {
+      name: "title", kind: "text", read: state => state.title, write: (client, value) => client.set("title", value),
+    };
+    const controller = createFieldController(field, { commit: "pause", delay: 10_000 });
+    view.subscribe(state => controller.setSource({ state, client: view }));
+    controller.inputText("b ");
+    const state = await controller.commit();
+    // The producer trimmed the value; the field shows it without waiting for an animation frame.
+    assert.deepEqual(state, { value: "b", text: "b", editing: false, error: undefined, errors: [], conflict: undefined });
+    assert.equal(controller.current, state);
+    for (const frame of frames.splice(0)) frame();
+    assert.deepEqual(controller.current, state);
+    controller.dispose();
+    view.dispose();
+  } finally {
+    host.requestAnimationFrame = saved.request;
+    host.cancelAnimationFrame = saved.cancel;
+  }
+});
