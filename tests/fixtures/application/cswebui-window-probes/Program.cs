@@ -295,7 +295,7 @@ static int ProbeMenuBar()
             return 0;
         });
         if (result != 0) return result;
-        if (probe.Saves != 1 || probe.Locks != 1 || !probe.Modes.SequenceEqual(["b"]) || probe.Undos != 0)
+        if (probe.Saves != 1 || probe.Locks != 1 || !probe.Modes.SequenceEqual(["b", "a"]) || probe.Undos != 0)
             throw new InvalidOperationException(
                 $"The menu commands ran {probe.Saves} saves, {probe.Locks} locks, {probe.Undos} undos and modes [{string.Join(", ", probe.Modes)}].");
         Console.WriteLine("CSWEBUI_MENU_BAR_OK");

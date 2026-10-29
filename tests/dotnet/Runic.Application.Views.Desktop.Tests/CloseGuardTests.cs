@@ -541,73 +541,90 @@ sealed class GuardedShellModel : INotifyPropertyChanged
     public event PropertyChangedEventHandler? PropertyChanged { add { } remove { } }
 }
 
-// What the generator writes for a ViewModel with one NavigationRegion property: the snapshot presents the region's
-// current page as content and names its reference, so the page is served by routes of its own.
+// What the generator writes for a ViewModel with one NavigationRegion property: the state presents the region's
+// current page as content and names its reference, so the page is served by a route of its own.
 sealed class GuardedShellBridge(IBridgeTransport transport, GuardedShellModel vm, WindowContentSession content)
-    : ViewModelBridge<GuardedShellModel>(transport, vm, "guardedShell",
-        (writer, model, revision, _) => Write(content, writer, model, revision),
-        [new PropertyDescriptor<GuardedShellModel>("Main", static vm => vm.Main.Current, null, static vm => vm.Main)], [],
+    : ViewModelBridge<GuardedShellModel>(transport, vm, "guardedShell", State(content),
+        [new PropertyDescriptor<GuardedShellModel>("Main", "page", static vm => vm.Main.Current, null, static vm => vm.Main)], [],
         [], content: content)
 {
-    private static void Write(WindowContentSession content, Utf8JsonWriter writer, GuardedShellModel vm, long revision)
+    private static BridgeStateMember<GuardedShellModel>[] State(WindowContentSession content) =>
+    [
+        new("title", static (writer, vm) =>
+        {
+            if (vm.Main.Current is { } page) writer.WriteStringValue(page.Title);
+            else writer.WriteNullValue();
+        }),
+        new("page", (writer, vm) =>
+        {
+            if (vm.Main.Current is not { } page)
+            {
+                content.Clear(vm, "Main");
+                writer.WriteNullValue();
+                return;
+            }
+            var presented = content.Present(vm, "Main", "page", page,
+                (transport, presented, route) => new PageBridge(transport, content, new PageModel(presented), route));
+            writer.WriteStartObject();
+            writer.WriteString("kind", "page");
+            writer.WriteString("id", presented.Id);
+            writer.WriteEndObject();
+        }),
+    ];
+
+    private sealed class PageModel(GuardedPage page) : INotifyPropertyChanged
     {
-        writer.WriteStartObject();
-        writer.WriteNumber("revision", revision);
-        if (vm.Main.Current is { } page)
-        {
-            writer.WriteString("title", page.Title);
-            writer.WriteString("page", content.Present(vm, "Main", "page", page, (transport, presented, route) =>
-                presented.Rows.Count == 0 ? new PageBridge() : new ListPageBridge(transport, content, presented, route)).Id);
-        }
-        else
-        {
-            content.Clear(vm, "Main");
-            writer.WriteNull("title");
-            writer.WriteNull("page");
-        }
-        writer.WriteEndObject();
+        public GuardedPage Page { get; } = page;
+        public event PropertyChangedEventHandler? PropertyChanged { add { } remove { } }
     }
 
-    // The page's own bridge; the content session serves its Mount and Unmount routes around it.
-    private sealed class PageBridge : IDisposable
-    {
-        public void Dispose() { }
-    }
-
-    // What the generator writes for a page with a collection of content: the snapshot presents every row, and
-    // disposing the bridge releases the rows with it, so the page and its rows are released as one tree.
-    private sealed class ListPageBridge : IDisposable
+    // The page's bridge. A list page presents every row as content, and disposing the bridge releases the rows with it,
+    // so the page and its rows are released as one tree.
+    private sealed class PageBridge : ViewModelBridge<PageModel>
     {
         private readonly WindowContentSession _content;
         private readonly GuardedPage _page;
-        private readonly IDisposable _snapshot;
 
-        public ListPageBridge(IBridgeTransport transport, WindowContentSession content, GuardedPage page, string route)
+        public PageBridge(IBridgeTransport transport, WindowContentSession content, PageModel model, string route)
+            : base(transport, model, route, State(content), [], [], [], content: content)
         {
             _content = content;
-            _page = page;
-            _snapshot = transport.Bind($"{route}Snapshot", _ => JsonSerializer.Serialize(page.Rows.Select(row =>
-                content.PresentItem(page, "Rows", "row", row, static (rows, _, rowRoute) => new RowBridge(rows, rowRoute)).Id)));
+            _page = model.Page;
         }
 
-        public void Dispose()
+        private static BridgeStateMember<PageModel>[] State(WindowContentSession content) =>
+        [
+            new("title", static (writer, model) => writer.WriteStringValue(model.Page.Title)),
+            new("rows", (writer, model) =>
+            {
+                writer.WriteStartArray();
+                foreach (var row in model.Page.Rows)
+                    writer.WriteStringValue(content.PresentItem(model.Page, "Rows", "row", row,
+                        static (rows, _, rowRoute) => new RowBridge(rows, new RowModel(), rowRoute)).Id);
+                writer.WriteEndArray();
+            }),
+        ];
+
+        public override void Dispose()
         {
-            _snapshot.Dispose();
+            base.Dispose();
             _content.ClearOwner(_page);
         }
     }
 
-    // A row's Snapshot route and four setters; the content session adds its Mount and Unmount.
-    private sealed class RowBridge(IBridgeTransport transport, string route) : IDisposable
+    private sealed class RowModel : INotifyPropertyChanged
     {
-        private readonly IDisposable[] _routes =
-            [.. new[] { "Snapshot", "SetName", "SetCount", "SetDone", "SetNote" }.Select(name => transport.Bind(route + name, static _ => "ok"))];
-
-        public void Dispose()
-        {
-            foreach (var bound in _routes) bound.Dispose();
-        }
+        public string Note { get; set; } = "";
+        public event PropertyChangedEventHandler? PropertyChanged { add { } remove { } }
     }
+
+    // A row's bridge, with a settable note.
+    private sealed class RowBridge(IBridgeTransport transport, RowModel model, string route)
+        : ViewModelBridge<RowModel>(transport, model, route,
+            [new("note", static (writer, model) => writer.WriteStringValue(model.Note))],
+            [new PropertyDescriptor<RowModel>("Note", "note", static model => model.Note,
+                static (model, value) => model.Note = value.GetString() ?? throw new FormatException("Expected a string."))],
+            [], []);
 }
 
 sealed class ConfirmingWindowFactory : IDesktopWindowHostFactory

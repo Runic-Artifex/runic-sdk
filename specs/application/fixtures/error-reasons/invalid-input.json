@@ -1,8 +1,0 @@
-{
-  "description": "A command argument that does not decode is rejected with reason invalid-input, as is a setter value. The client rejects with BridgeError(\"rejected\") whose reason is invalid-input. \"state\": {} stands for the model's state; detail is left out because it is development-only.",
-  "scenario": "invalid-input",
-  "producer": "Runic.Application.Views",
-  "route": "command",
-  "wire": { "ok": false, "state": {}, "error": { "kind": "rejected", "message": "Add has an invalid argument.", "reason": "invalid-input" } },
-  "client": { "error": { "kind": "rejected", "reason": "invalid-input" }, "diagnostics": ["rejected"] }
-}

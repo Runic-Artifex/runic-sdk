@@ -217,6 +217,14 @@ onScopeDispose(() => { stop(); void save.dispose(); });
 Svelte does the same with `$state` and an `$effect` cleanup, and Angular with a
 `signal` and `DestroyRef.onDestroy`.
 
+Bind text inputs with the framework packages' `useTextField` (Angular
+`injectTextField`) rather than a `command` per keystroke in an Effect action: a
+new `run` interrupts the previous one, which abandons its reply but not the write,
+and the binding keeps the draft and orders and coalesces the writes. `operation`
+completes with the outcome only; to show a running operation's `progress`, use the
+framework packages' `useOperation` (`injectOperation`) or the handle's
+`subscribe(listener)` of `@runic-artifex/views`.
+
 A program that needs services runs through your runtime:
 `createEffectAction(program, { runFork: runtime.runFork })`, with `runtime` a
 `ManagedRuntime`. Helpers based on `effect/reactivity` atoms will follow when
@@ -232,13 +240,16 @@ import { installMockBridge } from "@runic-artifex/views/mock";
 import { TestClock } from "effect/testing";
 
 const bridge = installMockBridge();
-// Register views and the __runicOperationWait/__runicOperationCancel routes, then:
+// Serve the View with its state; "manual" keeps its Save operations running until the test ends them.
+bridge.view("editor", { state: editorState, operations: { save: "manual" } });
+const client = await connectEditor();
 const exit = await Effect.runPromise(Effect.gen(function* () {
   const fiber = yield* Effect.forkChild(operation(() => client.startSave()).pipe(Effect.timeout("5 seconds")));
   yield* TestClock.adjust("5 seconds");
   return yield* Fiber.await(fiber);
 }).pipe(Effect.provide(TestClock.layer())));
-// bridge.calls now contains __runicOperationCancel.
+// The timeout cancelled the operation: bridge.calls now contains its `cancel` request.
+bridge.calls.some(call => call.kind === "cancel" && call.member === "save"); // true
 ```
 
 ## Bundle cost

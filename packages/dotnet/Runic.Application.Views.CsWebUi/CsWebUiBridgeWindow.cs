@@ -24,7 +24,7 @@ public sealed class CsWebUiBridgeWindow<TViewModel> : IBridgeWindow, ICsWebUiNat
     private readonly object _closeGate = new();
     private readonly IServiceScope _scope;
     private readonly WebUiWindow _window;
-    private readonly RebindableBridgeTransport _transport;
+    private readonly CsWebUiBridgeTransport _transport;
     private readonly WindowContentSession _content;
     private readonly IDisposable _connectionBinding;
     private Task? _webUiClosed;
@@ -38,7 +38,7 @@ public sealed class CsWebUiBridgeWindow<TViewModel> : IBridgeWindow, ICsWebUiNat
     internal CsWebUiBridgeWindow(
         IServiceScope scope,
         WebUiWindow window,
-        RebindableBridgeTransport transport,
+        CsWebUiBridgeTransport transport,
         WindowContentSession content,
         IDisposable connectionBinding,
         TViewModel viewModel)

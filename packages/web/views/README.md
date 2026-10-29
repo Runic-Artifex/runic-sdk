@@ -61,8 +61,8 @@ with a `BridgeError` whose `kind` is `rejected`, `cancelled`, `failed`,
 `wait({ signal })` and `outcome({ signal })` take an `AbortSignal`. When it
 aborts first, the call rejects with `signal.reason`: an `AbortError`
 `DOMException`, unless `abort(reason)` gave another value. An aborted signal
-rejects at once and calls no route. An aborted connect releases what it had
-connected, including the View's mount, and reports no diagnostic. Aborting after
+rejects at once and sends no request. An aborted connect releases what it had
+connected, including the View's presentation (`open`), and reports no diagnostic. Aborting after
 the client was returned has no effect, and every call removes its abort listener
 when it settles. Aborting an operation wait abandons only that wait: unlike
 `timeout`, it sends no cancellation request, and the operation and other waits
@@ -100,8 +100,8 @@ type-checks with `lib: ["ES2022", "DOM"]` (TypeScript 5.2 or later); running
 `using` still needs an engine or polyfill with `Symbol.dispose`.
 
 All generated modules on a page share one runtime instance, even when several
-bundles or copies of this package load: a route has one push callback and one
-revision, and `instanceof BridgeError` holds for errors from any copy.
+bundles or copies of this package load: it is the Bridge's only push listener, a
+route has one revision, and `instanceof BridgeError` holds for errors from any copy.
 
 The framework packages `@runic-artifex/react`, `@runic-artifex/vue`,
 `@runic-artifex/svelte` and `@runic-artifex/angular` connect and dispose
@@ -139,7 +139,7 @@ minified and gzip size of the checked-in example clients.
 
 A .NET ViewModel can mark a read-only collection of DTO rows with
 `[RunicCollection(nameof(Row.Id))]`. Its generated client then receives indexed
-add, remove, replace and move frames instead of the whole state, applies them on
+add, remove, replace and move changes in frames instead of the whole field, applies them on
 top of its current revision, and reads a fresh snapshot if a frame is missing
 or invalid, retrying a failed read and keeping frames that arrive meanwhile.
 Rows that a frame does not touch keep their object identity, so frameworks can
@@ -218,7 +218,7 @@ packages wrap this in `useCollectionViewport` (`injectCollectionViewport` in
 Angular), which follows the container's scroll position and size. The
 [DynamicData example](https://github.com/Runic-Artifex/runic-sdk/tree/main/examples/dynamicdata) shows a complete page. The frame
 format, fallbacks and recovery rules are specified in
-[Collection delta frames](https://github.com/Runic-Artifex/runic-sdk/blob/main/specs/application/collection-deltas.md).
+[State changes](https://github.com/Runic-Artifex/runic-sdk/blob/main/specs/application/state-changes.md).
 
 ## Framework bindings
 
@@ -259,14 +259,84 @@ change, and `subscribe(listener)`, which returns an unsubscribe function.
   intent. React, Vue and Svelte `useLatestOperation` and Angular `injectLatestOperation`
   wrap it. See [Operation feedback and latest selection](#operation-feedback-and-latest-selection).
 
+## Text inputs
+
+A text input that writes on every key sends many requests while the user types,
+and their replies and frames arrive while newer keys are already in the field.
+How a field stays correct depends on what it calls:
+
+- **A setter** (`set<Property>(value)`) numbers each edit. Until the route reached
+  the state that includes the latest edit, `snapshot` and `subscribe` show that
+  edit's value, so an input bound to state (`value={state.name}` and
+  `onInput={event => client.setName(event.currentTarget.value)}`) never shows an
+  older value over newer keys. A failed setter rejects and the member shows the
+  View's value again. An edit that reaches .NET after a newer edit of the same
+  member is skipped (`superseded`), and its call still resolves. Because
+  `snapshot` shows a pending value, await the setter's promise when the page needs
+  to know that .NET accepted it, for example for a "Saved" indicator.
+- **A command** called per key, such as `client.rename(value)`, has no such
+  overlay: each reply's state still holds the text of its own request, so an input
+  bound to state loses keys typed meanwhile. Bind text to a setter, or use the
+  text field binding below with the command as `write`.
+
+### The text field binding
+
+`createTextFieldController({ read, write, coalesce?, keepDraftOnError? })` binds a text
+input to one View member, so typing key by key never loses characters: while its
+writes are in flight it shows the user's draft, at most one write is in flight (text
+typed meanwhile is written next), nothing is written during IME composition, and once
+the last write settled it shows the View's value with any normalization. Angular
+`injectTextField` and React, Vue and Svelte `useTextField` wrap it; prefer those
+([Angular](https://github.com/Runic-Artifex/runic-sdk/tree/main/packages/web/angular#text-inputs),
+[React](https://github.com/Runic-Artifex/runic-sdk/tree/main/packages/web/react#text-inputs-usetextfieldview-read-write-options),
+[Vue](https://github.com/Runic-Artifex/runic-sdk/tree/main/packages/web/vue#text-inputs-usetextfieldview-read-write-options),
+[Svelte](https://github.com/Runic-Artifex/runic-sdk/tree/main/packages/web/svelte#text-inputs-usetextfieldview-read-write-options)).
+
+```ts
+const name = createTextFieldController({ read: (state: Person) => state.name, write: (client: PersonClient, value) => client.setName(value) });
+const stopState = client.subscribe(state => { name.setSource({ state, client }); render(name.current); });
+const stopField = name.subscribe(() => render(name.current));
+input.addEventListener("input", () => name.input(input.value));
+input.addEventListener("compositionstart", () => name.compositionStart());
+input.addEventListener("compositionend", () => name.compositionEnd(input.value));
+```
+
+`current` has `value`, `editing` and `error`. Call `setSource` with each new state; it
+does not notify. `write` may be a setter, a command or a checked write
+(`write<Property>`); with a setter the binding adds coalescing and keeps the draft
+after an error. `coalesce: false` writes every value. A failed write keeps the draft
+and sets `error` until `reset()` or the next input (`keepDraftOnError: false` shows
+the View's value instead). `editing` is true while a draft exists.
+
+### Normalizing and busy state
+
+- **Normalize on commit, not per key.** A setter that trims, reformats or rejects
+  partial input on every key fights the user: the binding shows its result once
+  the writes settled, which can drop a space the user just typed. Keep the per-key
+  setter lossless and normalize when the user commits, in a command run on `blur`,
+  `change` or Enter, or in the command that saves.
+- **Don't disable a field on its own busy state.** A field's write makes
+  `is<Command>Executing`, `can<Command>` or an application `IsBusy` change, and a
+  field disabled for it loses focus and the keys typed meanwhile. Keep the input
+  enabled while `editing` and disable the buttons that start other work instead.
+
+During `vite dev`, `@runic-artifex/vite-plugin-runic` warns once per input
+(diagnostic code `stale-input`) when script sets a focused input to a value it
+had earlier in the current typing burst while a Bridge request is in flight: the
+sign of a command per key or of an application-side copy of the state. See
+[the plugin guide](https://github.com/Runic-Artifex/runic-sdk/tree/main/packages/web/vite-plugin-runic)
+to turn it off. To test a field, type into it key by key against a slow mock
+([Typing in tests](#typing-in-tests)).
+
 ## Operation feedback and latest selection
 
 An operation Start receipt proves admission; it does not prove completion. A Cancel
 response proves only that the cancellation request was observed. Keep the UI pending
-until the public handle's terminal `wait()` completes. The desktop transport admits
-control callbacks while this wait is active, so short status polling is unnecessary.
-Render domain progress and recovery from the generated View snapshot: the operation
-handle supplies protocol status and outcome, not application progress.
+until the public handle's terminal `wait()` completes. `wait()` follows the operation
+through the producer's `watch` pushes, so polling its status is unnecessary.
+A command that reports progress (`RunicOperationProgress.Report` in .NET) is followed
+through `operation.subscribe`, and the controller exposes it as `progress`. Render
+other domain state and recovery from the generated View snapshot.
 
 ```ts
 import { createOperationController } from "@runic-artifex/views";
@@ -280,9 +350,10 @@ stop();
 push.dispose();
 ```
 
-`current` has `pending`, `admitting`, `operation`, `status`, `outcome`, `failure`,
+`current` has `pending`, `admitting`, `operation`, `status`, `progress`, `outcome`, `failure`,
 `error`, `cancelled`, `cancellationRequested`, `cancelling`, `cancellation` and
-`cancelError`. `pending` spans Start admission, terminal wait, any completion barrier
+`cancelError`. `progress` is the latest run's progress from 0 to 1 while its operation
+runs, and `undefined` while unknown and once the run ended. `pending` spans Start admission, terminal wait, any completion barrier
 and outcome delivery. A declared failure is an outcome and `failure`; an unexpected
 failure, including a `failed` or `timed-out` status, is `error`. A `cancelled` status,
 whether this UI or .NET requested it, is a normal end: `cancelled` becomes true,
@@ -424,8 +495,8 @@ bar.subscribe(() => {
 await bar.invoke(item); // "executed", "disabled" or "stale"
 ```
 
-- `status` is `connecting`, then `ready`; `unavailable` on a host without the
-  in-page menu bar routes (an earlier Runic Desktop or CS-WebUI host), and `failed`
+- `status` is `connecting`, then `ready`; `unavailable` on a host that does not
+  serve the in-page menu bar (the reserved route `runic.menu-bar`), and `failed`
   with `error` otherwise. `placement` is `page`, `window`, `global` or `none`.
 - By default Runic keeps the items' shortcuts, so they work whichever component
   renders the bar: the host matches them after the page saw the key
@@ -441,15 +512,16 @@ await bar.invoke(item); // "executed", "disabled" or "stale"
   `"app"` lease. The controller follows the window across reconnects.
 
 `installMockMenuBar(menus, options)` from `@runic-artifex/views/mock` serves
-the routes on the mock Bridge for tests and development without .NET; its
+`runic.menu-bar` on the mock Bridge for tests and development without .NET; its
 `update` changes the bar and `invocations` lists the invoked items. The wire is
 specified in
 [specs/desktop/menu-bar-page.md](https://github.com/Runic-Artifex/runic-sdk/blob/main/specs/desktop/menu-bar-page.md).
 
 ## Developing without .NET
 
-`@runic-artifex/views/mock` provides an in-memory Bridge. Install it before the
-first `connect<Name>()` call, for example in a Vite `mock` mode:
+`@runic-artifex/views/mock` provides an in-memory Bridge, a Views protocol 4
+producer. Install it before the first `connect<Name>()` call, for example in a
+Vite `mock` mode:
 
 ```ts
 import { installMockBridge } from "@runic-artifex/views/mock";
@@ -458,19 +530,31 @@ if (import.meta.env.MODE === "mock") {
   const bridge = installMockBridge();
   const counter = bridge.view("counter", {
     state: { count: 0, canIncrement: true },
-    routes: { Increment: state => ({ count: Number(state.count) + 1 }) },
+    commands: { increment: state => ({ count: Number(state.count) + 1 }) },
   });
   setInterval(() => counter.update(state => ({ ...state, count: Number(state.count) + 1 })), 5_000);
 }
 ```
 
-A mock View answers `Snapshot`, `Mount`, `Unmount`, `Set<Property>` (storing
-the argument) and `Can<Command>` (`true`) by default. Route handlers receive
-the state and call arguments; a returned object is merged into the state, a
-boolean answers an availability query and a thrown error becomes a failed
-reply. State uses the wire representation: for example `Int64` values are
-strings. `bridge.route(name, handler)` serves any other route, such as
-operation status, and `disconnect()`/`reconnect()` exercise the reconnect path.
+A mock View answers `open`, `close` and `snapshot`, and handles members by their
+wire names, as requests name them:
+
+- `set` applies the value to the state member. A handler in `set`, such as
+  `set: { title: (state, value) => ({ title: String(value).trim() }) }`, runs
+  first: its returned changes are merged after the value, and a throw rejects it.
+- `commands` handlers receive the state and the command's wire input; a returned
+  object is merged into the state, and a thrown error becomes a failed reply.
+- `can` answers from a handler in `can`, otherwise `false` only when the state's
+  `can<Command>` member is `false`.
+- `checkedFields`, `collections`, `operations` and `streams` declare checked
+  fields, keyed collections (edited with `view.collection(field)`) and operations.
+
+Every change is published as a producer does: a frame at the window's next
+revision with a `set` change for each member whose value changed. State uses the
+wire representation: for example `Int64` values are strings.
+`bridge.intercept(handler)` answers any request before the mock does,
+`bridge.push(message)` and `view.push(message)` push raw messages, and
+`disconnect()`/`reconnect()` exercise the reconnect path.
 
 The wire protocol is specified in the
 [Application Views specification](https://github.com/Runic-Artifex/runic-sdk/tree/main/specs/application).
@@ -558,36 +642,43 @@ The returned mock has `state`, `update(changes)` (pushes a full state like a
 `failNext(method, { kind: "domain-failed", failure })` for a method's declared failure,
 `pushFailure({ message })` (a failure notice: the client keeps its last state
 and reports the error), `collections.<field>` with `add`, `remove`, `replace`
-and `move` (each pushes a delta frame; `batch(edit)` combines edits into one),
-and `interactions.<name>.request(input)`, which resolves with the mounted
-client handler's answer, or `unhandled` when none is registered.
+and `move` (each pushes a frame; `batch(edit)` combines edits into one),
+and `interactions.<name>.request(input)`, which resolves with the answer of the
+open presentation's handler, or `unhandled` when none is registered.
 
 `createMockBridge({ scheduling: "manual" })` queues every reply and pushed
 frame until the test calls `flush()`, `flushUntil(promise)` or `advance(ms)`,
 so the test decides when the client observes each one. `sleep(ms)` resolves in
 virtual time, which only `advance` moves, in both scheduling modes.
-`failNext(route, { kind: "transport" })` rejects the call itself, like a
-dropped connection, and `disconnect()`/`reconnect()` exercise the reconnect
+`bridge.failNext({ route, kind, member? }, { kind: "transport" })` rejects the
+request itself, like a dropped connection, and `disconnect()`/`reconnect()` exercise the reconnect
 path. `failNext` takes no `disconnected` kind, because .NET never sends it: use
 `disconnect()` for a lost connection.
 
-The mock follows the .NET protocol where a client can observe it:
+The mock follows the .NET producer where a client can observe it, and its
+replies and pushes are checked against the
+[conformance corpus](https://github.com/Runic-Artifex/runic-sdk/tree/main/specs/application/conformance):
 
-- Collection frames match the .NET producer for the same edits (checked against
-  the shared collection delta fixtures). Each change advances the revision, and a
-  frame of more than 4,096 changes is sent as a full state.
-- With manual scheduling, a full state or failure notice replaces the frames of its
-  route that the client has not received yet, as .NET delivery does.
+- `hello` answers protocol 4 and the implementation `@runic-artifex/views/mock`;
+  a client of another protocol gets `protocol-mismatch`.
+- Replies name the revision that includes their effects, and the frame of that
+  revision is pushed before the reply. Collection frames match the .NET producer
+  for the same edits, and a unit of more than 4,096 changes sets the collection
+  fields whole.
+- Edits are numbered per member: a `set` older than one already applied answers
+  `superseded` and changes nothing.
 - A checked write retried with the same request id returns its first receipt, and
   reusing the id for another write is a `conflict`. A setter handler that throws an
   error with `kind: "committed-with-error"` keeps the value and returns that receipt.
-- Only snapshot replies carry `protocol` (3), and a declared failure replies
-  `domain-failed` with `failure` and the state after the call.
-- `disconnect()` ends the mounted presentations, and a later `Mount` in their
-  browser session answers `released`, as .NET does when a CS-WebUI reconnect
-  keeps the connection key. After `reconnect()` the client mounts its Views again
-  in a new browser session. Both are reported to `onConnectionChange` listeners,
-  so `onBridgeConnection` sees `reconnecting` and `connected`.
+- A declared failure replies `domain-failed` with `failure` and the revision after
+  the call. Inputs and request ids are compared in the RFC 8785 canonical form.
+- Requests that change state (`set`, `write`, `command`, `start`) run one at a time,
+  as a window's turns do.
+- `disconnect()` closes the connection's presentations and watches, and a later
+  `hello` with its session answers `released`. After `reconnect()` the client sends
+  a new `hello` and opens its Views again. Both are reported to
+  `onConnectionChange` listeners, so `onBridgeConnection` sees `reconnecting` and
+  `connected`.
 
 It does not model the .NET delivery queue (its 64-frame and 1 MiB bounds and the
 recovery they trigger) or the producer's key checks: an edit that would leave an
@@ -597,6 +688,45 @@ failure notice. Use `pushFailure` and `push(frame)` for those client paths.
 The [CommunityToolkit Notes example](https://github.com/Runic-Artifex/runic-sdk/tree/main/examples/notes-view-first/Frontend/test)
 tests its frontend this way with `bun test`; any runner that loads ES modules,
 such as Vitest, works the same.
+
+### Typing in tests
+
+With the default mock, replies arrive before the next key, so a test that types
+never sees the race a real host has. Give the mock latency:
+
+- `createMockBridge({ latency: "slow" })` delays every request, reply and push by
+  30 to 120 ms each; `latency` also takes a number of milliseconds or
+  `{ min, max }`. Replies and pushes keep their order, as the transports
+  guarantee. With `immediate` scheduling the delays run on real timers, with
+  `manual` on the virtual clock that `advance(ms)` moves.
+- `reorderRequests: true` admits requests out of order, newest first among those
+  due together, as a producer that does not keep a connection's order may. Stale
+  edits then answer `superseded`.
+
+Type key by key, as a user does: Playwright `locator.pressSequentially(text)`,
+Testing Library `await user.type(input, text)`. `fill()` and setting `value` write
+the whole text at once and hide the race. A page for a browser test can bind its
+field to a mock View:
+
+```ts
+// test/browser/person.ts, bundled for the browser test
+import { createMockBridge, installMockBridge } from "@runic-artifex/views/mock";
+
+const bridge = installMockBridge(createMockBridge({ latency: "slow", reorderRequests: true }));
+bridge.view("person", { state: { name: "" } });
+// ...connect the generated client and render the input with the framework's text field binding
+```
+
+```ts
+// test/person.browser.test.ts
+await page.getByRole("textbox", { name: "Name" }).pressSequentially("Ada Lovelace");
+await expect(page.getByRole("textbox", { name: "Name" })).toHaveValue("Ada Lovelace");
+```
+
+Expect every character in the field and in the mock's state (`view.state`), and
+check that no value the page set on the field was older than what was already
+typed. The framework packages' `text-field.browser.test.ts` tests do this for each
+binding.
 
 ## Declared failures
 
@@ -679,9 +809,9 @@ A `BridgeError` names what failed and why:
   same way.
 - A command that replaces or leaves its own page in a navigation region ran,
   so its call resolves, with the last state the client accepted, although .NET
-  released the page's View before the reply. A later call of the released View,
-  including its snapshot read and its `Mount`, rejects with `released`.
-- `route` is the Bridge route that failed, such as `counterIncrement`.
+  released the page's View before the reply (`released: true`). A later request
+  of the released View, including its `snapshot` and `open`, rejects with `released`.
+- `route` is the View route of the request that failed, such as `counter`.
 - `cause` is the underlying error, such as the transport rejection or the
   decoder error of an invalid state.
 - `detail` is `{type, message, stack}` of the .NET exception. .NET sends it
@@ -744,7 +874,11 @@ and reconnect work (those are also passed to `reportError`), `protocol` for a
 .NET host that speaks another Views protocol version (the only diagnostic of the
 reads it fails) and `version` for a .NET
 host whose `Runic.Application.Views` is of another release than this package
-(each once per Bridge). Each failure is delivered once. `@runic-artifex/vite-plugin-runic`
+(each once per Bridge; no other producer is compared), `revision-timeout` for a
+reply whose revision the route did not reach within five seconds (a producer bug;
+the client then reads a snapshot), and `stale-input`, which only
+`@runic-artifex/vite-plugin-runic` reports in development
+([Text inputs](#text-inputs)). Each failure is delivered once. `@runic-artifex/vite-plugin-runic`
 forwards them to its DevTools dock during development. A call of a released
 View is expected around every navigation, so its `released` rejection reaches
 the caller but is not reported as a diagnostic; `onBridgeConnection` reports a
@@ -769,7 +903,7 @@ const stop = onBridgeConnection(state => {
 | State | Meaning |
 | --- | --- |
 | `connecting` | The Bridge has not connected yet. |
-| `connected` | The Bridge is connected. Generated clients re-read their state after a reconnect. |
+| `connected` | The Bridge is connected. After a reconnect, generated clients send a new `hello` and open their Views again. |
 | `reconnecting` | The connection dropped; the host transport is restoring it. |
 | `lost` | No connection for `lostAfter` milliseconds (default 5000; `0` makes a drop `lost` at once), or none since the page loaded. Not terminal: it becomes `connected` when the host comes back. |
 
@@ -778,9 +912,7 @@ example when the host process ends or is killed. Neither sends a heartbeat, so a
 connection that silently stops passing data (a remote CS-WebUI browser behind a
 broken network path) is seen only when the transport notices it. While the page
 unloads (`pagehide`), the state is not reported, so a reload or a navigation to
-another page does not show `reconnecting`. A host script without
-`onConnectionChange`, from a release before it, reports the first connection
-and each reconnect but not a loss.
+another page does not show `reconnecting`.
 
 Each subscription follows the host from the moment it starts, so one that starts
 while the connection is down reports `connecting`, not `reconnecting`. The

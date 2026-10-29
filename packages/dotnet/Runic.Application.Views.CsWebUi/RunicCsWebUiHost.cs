@@ -209,9 +209,8 @@ public sealed class RunicCsWebUiHost : IRunicWindowHost
         var scope = opening.Scope;
         var loop = _loop;
         WebUiWindow? window = null;
-        RebindableBridgeTransport? transport = null;
+        CsWebUiBridgeTransport? transport = null;
         WindowContentSession? content = null;
-        WebUiBinding? connectionBinding = null;
         MenuBarPageRoutes? menuRoutes = null;
         CsWebUiBridgeWindow<TViewModel>? host = null;
         try
@@ -220,7 +219,7 @@ public sealed class RunicCsWebUiHost : IRunicWindowHost
             var viewModel = opening.ViewModel;
             CsWebUiLog.WarnIfNativeLibraryUnchecked(scope.ServiceProvider);
             window = new WebUiWindow();
-            transport = new RebindableBridgeTransport(new CsWebUiBridgeTransport(window));
+            transport = new CsWebUiBridgeTransport(window);
             content = new WindowContentSession(transport, new WindowContentSessionOptions
             {
                 ViewLocator = scope.ServiceProvider.GetService<IRunicViewLocator>(),
@@ -230,33 +229,13 @@ public sealed class RunicCsWebUiHost : IRunicWindowHost
                 IncludeFailureDetail = opening.Options.IncludeFailureDetail ?? _includeFailureDetail,
                 MaximumInputBytes = opening.Options.MaximumInputBytes ?? _maximumInputBytes,
             });
-            var session = content;
             var menuLogger = (scope.ServiceProvider.GetService<ILoggerFactory>()?.CreateLogger(CsWebUiLog.LogCategory))
                 ?? Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance;
-            // The reserved routes of the in-page menu bar, bound before the page loads (D036.14).
+            // The reserved route of the in-page menu bar, served before the page loads (D036.14). The transport reports
+            // closed connections to the window's dispatcher, which releases their mounts and menu bar watches.
             menuRoutes = new MenuBarPageRoutes(_menuBar, transport, menuLogger);
             var menu = menuRoutes;
-            // Only the all-events binding receives disconnects. runic-cswebui.js
-            // stops WebUI from also sending click events for elements with ids.
-            connectionBinding = window.Bind("", e =>
-            {
-                if (e.EventType == WebUiEventType.Disconnected)
-                {
-                    var connection = $"{e.ClientId}:{e.ConnectionId}";
-                    session.ReleaseConnection(connection);
-                    menu.ReleaseConnection(connection);
-                }
-                // With this binding, WebUI cancels the page's navigations from each (re)connect until
-                // runic-cswebui.js allows them before a Bridge call, and reports each one here; ignoring it dropped a
-                // reload or a link before the first call (#196). Since WebUI 597243906 (webui#724) the event carries
-                // the destination URL, but not the navigation's type (reload, traversal, replace) or form data, and
-                // only the page can repeat it, so the page repeats the navigation it recorded, if it stays on its
-                // origin.
-                else if (e.EventType == WebUiEventType.Navigation)
-                    e.SendRaw(ContinueNavigationFunction, ContinueNavigationData);
-            });
-            var bindings = new Bindings(connectionBinding, menuRoutes);
-            connectionBinding = null;
+            var bindings = new Bindings(menuRoutes);
             menuRoutes = null;
             host = new CsWebUiBridgeWindow<TViewModel>(scope, window, transport, content, bindings, viewModel);
             var attachment = opening.AttachBridge(transport, content);
@@ -298,7 +277,6 @@ public sealed class RunicCsWebUiHost : IRunicWindowHost
             if (host is not null) await host.DisposeAsync().ConfigureAwait(false);
             else
             {
-                connectionBinding?.Dispose();
                 menuRoutes?.Dispose();
                 content?.Dispose();
                 transport?.Dispose();
@@ -309,9 +287,9 @@ public sealed class RunicCsWebUiHost : IRunicWindowHost
         }
     }
 
-    // The window's all-events binding, its menu bar routes and its menu commands, released together when the window
-    // closes. A binding added after the window closed is released at once.
-    private sealed class Bindings(IDisposable connection, IDisposable routes) : IDisposable
+    // The window's menu bar route and its menu commands, released together when the window closes. A binding added
+    // after the window closed is released at once.
+    private sealed class Bindings(IDisposable routes) : IDisposable
     {
         private readonly object _gate = new();
         private MenuCommandBinding? _commands;
@@ -339,20 +317,10 @@ public sealed class RunicCsWebUiHost : IRunicWindowHost
                 _disposed = true;
                 commands = _commands;
             }
-            try { connection.Dispose(); }
-            finally
-            {
-                try { routes.Dispose(); }
-                finally { commands?.Dispose(); }
-            }
+            try { routes.Dispose(); }
+            finally { commands?.Dispose(); }
         }
     }
-
-    // runic-cswebui.js records each navigation WebUI cancels; this function repeats the last one with navigation
-    // allowed. It is called with raw data, not a script, so the page's policy needs no 'unsafe-eval'. WebUI sends
-    // nothing for empty data, so the call carries one ignored byte.
-    internal const string ContinueNavigationFunction = "__runicContinueNavigation";
-    private static ReadOnlySpan<byte> ContinueNavigationData => [0];
 
     // The process main thread: shows windows while idle, then waits in WebUiApplication.Wait while any is shown.
     private sealed class MainThreadLoop

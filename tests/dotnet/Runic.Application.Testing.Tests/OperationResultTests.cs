@@ -39,7 +39,6 @@ internal sealed class OperationResultTests
         Require((await registry.WaitForTerminalAsync(request.Identity.RegistryKey, "Delete")).Kind is BridgeOperationStatusKind.Unknown,
             "A wait for a different command member attached to the original operation.");
 
-        AssertMemberBoundRecoveryRoutes();
 
         var terminal = await registry.WaitForTerminalAsync(request.Identity.RegistryKey);
         Require(terminal.Kind is BridgeOperationStatusKind.Succeeded && terminal.Result?.DeliveryFailure?.Kind is BridgeOperationDeliveryFailureKind.ResultTooLarge,
@@ -162,37 +161,24 @@ internal sealed class OperationResultTests
         await running.WaitForTerminalAsync(afterRelease.RequestId);
     }
 
-    private static void AssertMemberBoundRecoveryRoutes()
+    // A status request finds an operation by its key and member: an operation started for another member is unknown.
+    [Test]
+    public async Task RecoveryIsBoundToTheMemberAsync()
     {
         using var transport = new InMemoryBridgeTransport();
         using var router = new BridgeOperationRouter(transport, "member-bound-router");
-        var request = new BridgeOperationRequest("same-result-contract", "Save", "same-result-id", "same-result-input");
-        var admitted = router.Accept(request, () => true,
+        var identity = BridgeOperationIdentity.Create("Same.Result:contract", "route", "same-result-id");
+        var request = BridgeOperationRequest.Create(identity, "save", "same-result-input");
+        var admitted = router.AcceptUnlessRefused(request, () => null,
             _ => Task.FromResult(BridgeOperationResult.Succeeded("7")));
         Require(admitted.Kind is BridgeOperationAdmissionKind.Accepted,
-            "The member-bound recovery fixture did not admit its Save operation.");
-
-        using var wrong = JsonDocument.Parse(transport.Call(BridgeOperationRouter.StatusRoute,
-            new(StringValue: JsonSerializer.Serialize(new
-            {
-                contract = request.Identity.Contract,
-                member = "Delete",
-                requestId = request.Identity.RequestId,
-            }))));
-        Require(wrong.RootElement.GetProperty("kind").GetString() == "unknown",
-            "A recovery request for Delete read Save's same-shaped numeric result.");
-
-        // Existing hand-written clients omit member and retain their established
-        // contract/requestId recovery behavior.
-        using var legacy = JsonDocument.Parse(transport.Call(BridgeOperationRouter.StatusRoute,
-            new(StringValue: JsonSerializer.Serialize(new
-            {
-                contract = request.Identity.Contract,
-                requestId = request.Identity.RequestId,
-            }))));
-        Require(legacy.RootElement.GetProperty("kind").GetString() == "succeeded" &&
-                legacy.RootElement.GetProperty("result").GetInt32() == 7,
-            "The optional member binding broke legacy operation recovery.");
+            "The member-bound recovery fixture did not admit its save operation.");
+        await Task.Yield();
+        Require(router.Lookup(identity, "delete").Kind is BridgeOperationStatusKind.Unknown,
+            "A recovery request for delete read save's same-shaped numeric result.");
+        var right = router.Lookup(identity, "save");
+        Require(right.Kind is BridgeOperationStatusKind.Succeeded && right.Result?.EncodedJson == "7",
+            "The member's own status request did not recover its result.");
     }
 
     private static void Require(bool condition, string message)

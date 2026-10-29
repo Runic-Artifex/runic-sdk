@@ -1,0 +1,37 @@
+{
+  "format": "runic.views.scenario/1",
+  "id": "handshake.producer-refuses-another-protocol.v1",
+  "contract": {"id":"runic.views","version":4},
+  "set": "handshake",
+  "roles": ["producer"],
+  "description": "A hello with another protocol fails with protocol-mismatch and names protocol 4; the connection then answers every request no-hello.",
+  "view": "notes",
+  "ids": {
+    "c1": {"kind":"connection"},
+    "hello-c1": {"kind":"request"},
+    "session": {"kind":"wire","value":"s-1"},
+    "read": {"kind":"request"}
+  },
+  "arrange": {"model":{}},
+  "steps": [
+    {"connect":"c1"},
+    {
+      "send": {"kind":"hello","protocol":5,"session":{"$id":"session"},"client":{"name":"conformance-client","version":"5.0.0"}},
+      "id": "hello-c1"
+    },
+    {
+      "receive": {
+        "ok": false,
+        "protocol": 4,
+        "implementation": {"name":{"$any":"string"},"version":{"$any":"string"}},
+        "error": {"kind":"failed","reason":"protocol-mismatch","message":{"$any":"string"}}
+      },
+      "replyTo": "hello-c1"
+    },
+    {"send":{"kind":"snapshot","route":"notes"},"id":"read"},
+    {
+      "receive": {"ok":false,"error":{"kind":"rejected","reason":"no-hello","message":{"$any":"string","default":"…"}}},
+      "replyTo": "read"
+    }
+  ]
+}

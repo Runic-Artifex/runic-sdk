@@ -45,6 +45,6 @@ export function injectOperation<TArgs extends readonly unknown[], TResult, TFail
     pending: field("pending"), admitting: field("admitting"), operation: field("operation"), status: field("status"),
     outcome: field("outcome"), failure: field("failure"), error: field("error"), cancelled: field("cancelled"),
     cancellationRequested: field("cancellationRequested"), cancelling: field("cancelling"),
-    cancellation: field("cancellation"), cancelError: field("cancelError"),
+    progress: field("progress"), cancellation: field("cancellation"), cancelError: field("cancelError"),
   };
 }

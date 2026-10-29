@@ -2,17 +2,20 @@ using System.Text.Json;
 
 namespace Runic.Application.Testing;
 
-/// <summary>The reply of a generated setter or command route.</summary>
+/// <summary>The reply of a <c>set</c> or <c>command</c> request.</summary>
 public sealed class RunicCallReply<TModel> where TModel : class
 {
-    internal RunicCallReply(string route, string json)
+    internal RunicCallReply(string route, string json, RunicViewState<TModel>? state)
     {
         Route = route;
         Json = json;
         using var document = JsonDocument.Parse(json);
         var root = document.RootElement;
         Succeeded = root.GetProperty("ok").GetBoolean();
-        if (root.TryGetProperty("state", out var state) && state.ValueKind == JsonValueKind.Object) State = new(state);
+        State = state;
+        if (root.TryGetProperty("revision", out var revision) && revision.ValueKind == JsonValueKind.Number) Revision = revision.GetInt64();
+        Released = root.TryGetProperty("released", out var released) && released.ValueKind == JsonValueKind.True;
+        Superseded = root.TryGetProperty("superseded", out var superseded) && superseded.ValueKind == JsonValueKind.True;
         if (root.TryGetProperty("error", out var error) && error.ValueKind == JsonValueKind.Object)
         {
             ErrorKind = error.GetProperty("kind").GetString();
@@ -22,12 +25,18 @@ public sealed class RunicCallReply<TModel> where TModel : class
         }
     }
 
-    /// <summary>The route that was called.</summary>
+    /// <summary>The route, request kind and member that were called.</summary>
     public string Route { get; }
     /// <summary>The reply as .NET serialized it.</summary>
     public string Json { get; }
     /// <summary>Whether the call succeeded.</summary>
     public bool Succeeded { get; }
+    /// <summary>The revision of the first state of the route that includes the request's effects, when the request ran.</summary>
+    public long? Revision { get; }
+    /// <summary>Whether the request released its own route while it ran.</summary>
+    public bool Released { get; }
+    /// <summary>Whether a <c>set</c> was not applied because a later edit of the member was admitted before it.</summary>
+    public bool Superseded { get; }
     /// <summary>
     /// The BridgeError kind of a failed call, such as <c>rejected</c> or <c>failed</c>, <c>released</c> for a
     /// released View or closed window, or <c>domain-failed</c> for a command's declared failure (<see cref="Failure"/>).
@@ -46,7 +55,7 @@ public sealed class RunicCallReply<TModel> where TModel : class
     public string? ErrorMessage { get; }
     /// <summary>The encoded declared failure of a <c>domain-failed</c> reply, such as <c>{"$case":"titleRequired"}</c>.</summary>
     public JsonElement? Failure { get; }
-    /// <summary>The state after the call, when the reply carries one.</summary>
+    /// <summary>The route's state after the call, read when the reply carries a revision.</summary>
     public RunicViewState<TModel>? State { get; }
 
     /// <summary>Returns this reply, or throws when the call failed.</summary>
@@ -61,13 +70,13 @@ public sealed class RunicCallReply<TModel> where TModel : class
 /// <summary>The receipt of a checked field write.</summary>
 public sealed class RunicFieldWriteReceipt<TModel> where TModel : class
 {
-    internal RunicFieldWriteReceipt(string route, string json)
+    internal RunicFieldWriteReceipt(string route, string json, RunicViewState<TModel>? state)
     {
         Route = route;
         Json = json;
+        State = state;
         using var document = JsonDocument.Parse(json);
         var root = document.RootElement;
-        if (root.TryGetProperty("state", out var state) && state.ValueKind == JsonValueKind.Object) State = new(state);
         if (!root.TryGetProperty("receipt", out var receipt) || receipt.ValueKind != JsonValueKind.Object)
         {
             Kind = RunicFieldWriteReceiptKind.Failed;
@@ -99,7 +108,7 @@ public sealed class RunicFieldWriteReceipt<TModel> where TModel : class
     public JsonElement? Value { get; }
     /// <summary>The field version that goes with <see cref="Value"/>.</summary>
     public long? Version { get; }
-    /// <summary>The state after the write, when the reply carries one.</summary>
+    /// <summary>The route's state after the write, read when the reply carries a revision.</summary>
     public RunicViewState<TModel>? State { get; }
 
     /// <inheritdoc />
@@ -130,81 +139,116 @@ public sealed record RunicOperationStatus(RunicOperationStatusKind Kind, JsonEle
     }
 }
 
-/// <summary>An operation started through a generated <c>Start{Command}</c> route.</summary>
+/// <summary>An operation started with a <c>start</c> request.</summary>
 public sealed class RunicTestOperation
 {
     private readonly InMemoryBridgeTransport _transport;
-    private readonly string _identity;
+    private readonly string _route;
 
-    internal RunicTestOperation(InMemoryBridgeTransport transport, string contract, string member, string requestId, string admissionJson)
+    internal RunicTestOperation(InMemoryBridgeTransport transport, string route, string contract, string member, string requestId, string admissionJson)
     {
         _transport = transport;
+        _route = route;
         Contract = contract;
         Member = member;
         RequestId = requestId;
         AdmissionJson = admissionJson;
-        using (var document = JsonDocument.Parse(admissionJson))
+        using var document = JsonDocument.Parse(admissionJson);
+        var root = document.RootElement;
+        if (root.GetProperty("ok").GetBoolean())
         {
-            var root = document.RootElement;
-            Admission = RunicOperationWire.Admission(root.TryGetProperty("kind", out var kind) ? kind.GetString() : null);
+            Admission = RunicOperationWire.Admission(root.TryGetProperty("admission", out var admission) ? admission.GetString() : null);
             Reason = root.TryGetProperty("reason", out var reason) && reason.ValueKind == JsonValueKind.String ? reason.GetString() : null;
         }
-        _identity = RunicJson.Write(writer =>
+        else
         {
-            writer.WriteStartObject();
-            writer.WriteString("contract", contract);
-            writer.WriteString("member", member);
-            writer.WriteString("requestId", requestId);
-            writer.WriteEndObject();
-        });
+            var error = root.GetProperty("error");
+            Admission = RunicOperationWire.Admission(error.GetProperty("kind").GetString());
+            Reason = error.TryGetProperty("reason", out var reason) && reason.ValueKind == JsonValueKind.String
+                ? reason.GetString() : error.GetProperty("message").GetString();
+        }
     }
 
-    /// <summary>The operation contract: ViewModel type, contract fingerprint and route.</summary>
+    /// <summary>The operation contract: <c>{view}:{fingerprint}</c>.</summary>
     public string Contract { get; }
-    /// <summary>The command member, such as <c>Save</c>.</summary>
+    /// <summary>The command member, such as <c>save</c>.</summary>
     public string Member { get; }
-    /// <summary>The request id the operation was started with.</summary>
+    /// <summary>The operation id the operation was started with.</summary>
     public string RequestId { get; }
-    /// <summary>How the start route answered.</summary>
+    /// <summary>How the start request was answered.</summary>
     public RunicOperationAdmissionKind Admission { get; }
     /// <summary>Why the operation was not accepted.</summary>
     public string? Reason { get; }
     /// <summary>The admission reply as .NET serialized it.</summary>
     public string AdmissionJson { get; }
 
-    /// <summary>Reads the current status through the window's status route.</summary>
-    public RunicOperationStatus GetStatus() => RunicOperationStatus.Parse(_transport.Call("__runicOperationStatus", new(StringValue: _identity)));
+    private string Request(string kind, long? cursor = null) =>
+        RequestAsync(kind, cursor).AsTask().GetAwaiter().GetResult();
 
-    /// <summary>Waits for the terminal status.</summary>
-    public async Task<RunicOperationStatus> WaitAsync(CancellationToken cancellationToken = default) =>
-        RunicOperationStatus.Parse(await _transport.CallAsync("__runicOperationWait", new(StringValue: _identity), cancellationToken).ConfigureAwait(false));
+    private ValueTask<string> RequestAsync(string kind, long? cursor = null, CancellationToken cancellationToken = default)
+    {
+        _transport.EnsureHello(InMemoryBridgeTransport.DefaultConnectionKey);
+        return _transport.RequestAsync(RunicJson.Write(writer =>
+        {
+            writer.WriteStartObject();
+            writer.WriteString("kind", kind);
+            writer.WriteString("route", _route);
+            writer.WriteString("member", Member);
+            writer.WriteString("operation", RequestId);
+            writer.WriteString("contract", Contract);
+            if (cursor is { } value) writer.WriteNumber("cursor", value);
+            writer.WriteEndObject();
+        }), cancellationToken: cancellationToken);
+    }
 
-    /// <summary>Requests cancellation and returns how .NET answered.</summary>
+    // The status of a status, watch or unwatch reply.
+    private static RunicOperationStatus StatusOf(string reply)
+    {
+        using var document = JsonDocument.Parse(reply);
+        var root = document.RootElement;
+        return root.TryGetProperty("status", out var status)
+            ? RunicOperationStatus.Parse(status.GetRawText())
+            : throw new InvalidOperationException($"The operation request failed: {reply}");
+    }
+
+    /// <summary>Reads the current status with a <c>status</c> request.</summary>
+    public RunicOperationStatus GetStatus() => StatusOf(Request("status"));
+
+    /// <summary>Waits for the terminal status: <c>watch</c>, then the operation's pushes.</summary>
+    public async Task<RunicOperationStatus> WaitAsync(CancellationToken cancellationToken = default)
+    {
+        while (true)
+        {
+            var next = _transport.NextMessage;
+            var status = StatusOf(await RequestAsync("watch", cancellationToken: cancellationToken).ConfigureAwait(false));
+            if (status.Kind is not RunicOperationStatusKind.Running) return status;
+            await next.WaitAsync(cancellationToken).ConfigureAwait(false);
+        }
+    }
+
+    /// <summary>Requests cancellation with a <c>cancel</c> request and returns how .NET answered.</summary>
     public RunicOperationCancelKind Cancel()
     {
-        using var document = JsonDocument.Parse(_transport.Call("__runicOperationCancel", new(StringValue: _identity)));
-        return RunicOperationWire.Cancel(document.RootElement.GetProperty("kind").GetString());
+        var reply = Request("cancel");
+        using var document = JsonDocument.Parse(reply);
+        return document.RootElement.TryGetProperty("cancellation", out var cancellation)
+            ? RunicOperationWire.Cancel(cancellation.GetString())
+            : throw new InvalidOperationException($"The cancel request failed: {reply}");
     }
 
     /// <summary>
-    /// Reads the retained items of a streamed operation after <paramref name="cursor"/> through the window's stream
-    /// route, as the generated client's <c>stream(cursor)</c> does.
+    /// Reads the stream page that starts at <paramref name="cursor"/> with a <c>stream</c> request, as the generated
+    /// client's <c>stream()</c> does.
     /// </summary>
-    /// <param name="cursor">The <see cref="RunicOperationStreamPage.Cursor"/> of the previous page, or 0 for the first.</param>
     /// <exception cref="ArgumentOutOfRangeException"><paramref name="cursor"/> is negative.</exception>
     public RunicOperationStreamPage ReadStream(long cursor = 0)
     {
         ArgumentOutOfRangeException.ThrowIfNegative(cursor);
-        var request = RunicJson.Write(writer =>
-        {
-            writer.WriteStartObject();
-            writer.WriteString("contract", Contract);
-            writer.WriteString("member", Member);
-            writer.WriteString("requestId", RequestId);
-            writer.WriteNumber("cursor", cursor);
-            writer.WriteEndObject();
-        });
-        return new(_transport.Call("__runicOperationStream", new(StringValue: request)), cursor);
+        var reply = Request("stream", cursor);
+        using var document = JsonDocument.Parse(reply);
+        return document.RootElement.TryGetProperty("page", out var page)
+            ? new(page.GetRawText(), cursor)
+            : throw new InvalidOperationException($"The stream request failed: {reply}");
     }
 }
 

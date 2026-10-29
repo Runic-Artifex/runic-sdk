@@ -130,14 +130,12 @@ internal sealed class ValidationTests
         Require(HasError(errors, ["lookup", "primary", "label"], "Primary label required"),
             "Generated dictionary validation path was incorrect.");
 
-        _ = host.Transport.TakePublications();
+        _ = host.Root.TakePublications();
         model.Server.SetErrors(nameof(ValidationErrorsOnly.Detail), "Server returned an error");
-        Require(await PublishedAsync(host.Transport, publication =>
-        {
-            using var state = JsonDocument.Parse(publication.Json);
-            return HasError(state.RootElement.GetProperty("validation").GetProperty("errors"),
-                ["server", "detail"], "Server returned an error");
-        }), "An errors-only nested object did not publish its validation change.");
+        // The change is a frame that sets the validation member.
+        Require(await PublishedAsync(host.Root, publication => publication.Sets.Any(set => set.Field == "validation"
+            && HasError(set.Value.GetProperty("errors"), ["server", "detail"], "Server returned an error"))),
+            "An errors-only nested object did not publish its validation change.");
     }
 
     [Test]
@@ -234,12 +232,13 @@ internal sealed class ValidationTests
         return true;
     });
 
-    private static async Task<bool> PublishedAsync(InMemoryBridgeTransport transport, Func<RunicViewPublication, bool> predicate)
+    private static async Task<bool> PublishedAsync<TModel>(RunicViewDriver<TModel> driver, Func<RunicViewPublication, bool> predicate)
+        where TModel : class
     {
         var deadline = DateTime.UtcNow.AddSeconds(5);
         while (DateTime.UtcNow < deadline)
         {
-            if (transport.TakePublications().Any(predicate)) return true;
+            if (driver.TakePublications().Any(predicate)) return true;
             await Task.Delay(10);
         }
         return false;

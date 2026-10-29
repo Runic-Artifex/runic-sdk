@@ -23,7 +23,7 @@ function fresh(): MockBridge {
   const { mockDataShape } = await load("dataShape.mock");
   const item = { source: "a", ["__proto__"]: "proto", "retry-after": 5 };
   const state = {
-    "exact-id": 9007199254740993n, amount: "12.50", day: "2026-10-07", when: "2026-10-07T12:00:00+00:00", duration: "1.02:03:04",
+    "exact-id": 9007199254740993n, amount: "12.50", day: "2026-10-07", when: "2026-10-07T12:00:00+00:00", duration: "P1DT2H3M4S",
     optionalItem: null, optional: 3, items: [item], optionalItems: [null, item], groups: [{ items: [item] }], lookup: Object.assign(Object.create(null) as Record<string, typeof item>, { first: item }),
     payload: { $case: "text", text: "hello" }, money: "1.00", whole: item,
   };
@@ -62,7 +62,7 @@ function fresh(): MockBridge {
   client.dispose();
 }
 
-// Keyed collection edits reach the client as delta frames that keep unchanged rows.
+// Keyed collection edits reach the client as frames that keep unchanged rows.
 {
   const bridge = fresh();
   const { connectCollectionDelta } = await load("collectionDelta");
@@ -70,17 +70,20 @@ function fresh(): MockBridge {
   const mock = mockCollectionDelta(bridge, { state: { title: "rows", rows: [{ id: 1, label: "one" }, { id: 2, label: "two" }] } });
   const client = await connectCollectionDelta();
   const first = client.snapshot.rows[0];
-  const frames: unknown[] = [];
-  const host = globalThis as unknown as Record<string, (frame: unknown) => void>;
-  const push = host["__collectionDeltaChanged"]!;
-  host["__collectionDeltaChanged"] = frame => { frames.push(frame); push(frame); };
+  const frames: { readonly kind: string; readonly changes: readonly { readonly kind: string }[] }[] = [];
+  const stopFrames = bridge.onMessage(message => {
+    const push = JSON.parse(message);
+    if (push.route === "collectionDelta") frames.push(push);
+  });
   mock.batch(() => {
     mock.collections.rows.add({ id: 3, label: "three" }, 0);
     mock.collections.rows.replace("2", { id: 2, label: "TWO" });
   });
   mock.collections.rows.move("3", 2);
+  await bridge.flush();
+  stopFrames();
   assert.equal(frames.length, 2);
-  assert.ok(frames.every(frame => (frame as { __runicDelta?: number }).__runicDelta === 1));
+  assert.ok(frames.every(frame => frame.kind === "frame" && frame.changes.every(change => change.kind !== "set")));
   assert.deepEqual(client.snapshot.rows.map((row: { id: number }) => row.id), [1, 2, 3]);
   assert.equal(client.snapshot.rows[0], first);
   assert.deepEqual(mock.collections.rows.keys, ["1", "2", "3"]);
@@ -207,9 +210,10 @@ function fresh(): MockBridge {
   await assert.rejects(client.delete(3n), (error: unknown) =>
     error instanceof BridgeError && error.kind === "rejected" && error.reason === "unavailable");
   // An injected rejection carries its reason to commands and operation starts.
-  bridge.failNext("keyedReactiveArchive", { kind: "rejected", reason: "unresolved-key", message: "Archive has no object for this key." });
+  bridge.failNext({ route: "keyedReactive", kind: "command", member: "archive" },
+    { kind: "rejected", reason: "unresolved-key", message: "Archive has no object for this key." });
   await assert.rejects(client.archive(3n), (error: unknown) => error instanceof BridgeError && error.reason === "unresolved-key");
-  bridge.failNext("keyedReactiveStartArchive", { kind: "rejected", reason: "unresolved-key" });
+  bridge.failNext({ route: "keyedReactive", kind: "start", member: "archive" }, { kind: "rejected", reason: "unresolved-key" });
   await assert.rejects(client.startArchive(3n), (error: unknown) =>
     error instanceof BridgeError && error.kind === "rejected" && error.reason === "unresolved-key");
   client.dispose();

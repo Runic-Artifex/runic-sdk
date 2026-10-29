@@ -1,0 +1,197 @@
+{
+  "format": "runic.views.vector/1",
+  "id": "values.exact-numbers",
+  "contract": {"id":"runic.views","version":4},
+  "area": "values",
+  "description": "int64, uint64, big-integer and decimal travel as strings.",
+  "cases": [
+    {
+      "id": "values.exact-numbers.int64-maximum",
+      "operation": "decode",
+      "type": "int64",
+      "input": {"encoding":"json","value":"9223372036854775807"},
+      "expect": {"value":"9223372036854775807"}
+    },
+    {
+      "id": "values.exact-numbers.int64-minimum",
+      "operation": "decode",
+      "type": "int64",
+      "input": {"encoding":"json","value":"-9223372036854775808"},
+      "expect": {"value":"-9223372036854775808"}
+    },
+    {
+      "id": "values.exact-numbers.int64-above",
+      "operation": "decode",
+      "type": "int64",
+      "input": {"encoding":"json","value":"9223372036854775808"},
+      "expect": {"error":{"code":"invalid-value"}}
+    },
+    {
+      "id": "values.exact-numbers.int64-negative-zero",
+      "operation": "decode",
+      "type": "int64",
+      "input": {"encoding":"json","value":"-0"},
+      "expect": {"value":"0"}
+    },
+    {
+      "id": "values.exact-numbers.int64-leading-zero",
+      "operation": "decode",
+      "type": "int64",
+      "input": {"encoding":"json","value":"01"},
+      "expect": {"error":{"code":"invalid-value"}}
+    },
+    {
+      "id": "values.exact-numbers.int64-plus",
+      "operation": "decode",
+      "type": "int64",
+      "input": {"encoding":"json","value":"+1"},
+      "expect": {"error":{"code":"invalid-value"}}
+    },
+    {
+      "id": "values.exact-numbers.int64-fraction",
+      "operation": "decode",
+      "type": "int64",
+      "input": {"encoding":"json","value":"1.0"},
+      "expect": {"error":{"code":"invalid-value"}}
+    },
+    {
+      "id": "values.exact-numbers.int64-number",
+      "operation": "decode",
+      "type": "int64",
+      "input": {"encoding":"json","value":1},
+      "expect": {"error":{"code":"invalid-value"}}
+    },
+    {
+      "id": "values.exact-numbers.int64-too-long",
+      "description": "Longer than 4,096 characters.",
+      "operation": "decode",
+      "type": "int64",
+      "input": {
+        "encoding": "json",
+        "value": "10000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+      },
+      "expect": {"error":{"code":"invalid-value"}}
+    },
+    {
+      "id": "values.exact-numbers.uint64-maximum",
+      "operation": "decode",
+      "type": "uint64",
+      "input": {"encoding":"json","value":"18446744073709551615"},
+      "expect": {"value":"18446744073709551615"}
+    },
+    {
+      "id": "values.exact-numbers.uint64-above",
+      "operation": "decode",
+      "type": "uint64",
+      "input": {"encoding":"json","value":"18446744073709551616"},
+      "expect": {"error":{"code":"invalid-value"}}
+    },
+    {
+      "id": "values.exact-numbers.uint64-negative",
+      "operation": "decode",
+      "type": "uint64",
+      "input": {"encoding":"json","value":"-1"},
+      "expect": {"error":{"code":"invalid-value"}}
+    },
+    {
+      "id": "values.exact-numbers.big-integer-large",
+      "operation": "decode",
+      "type": "big-integer",
+      "input": {"encoding":"json","value":"-123456789012345678901234567890"},
+      "expect": {"value":"-123456789012345678901234567890"}
+    },
+    {
+      "id": "values.exact-numbers.big-integer-exponent",
+      "operation": "decode",
+      "type": "big-integer",
+      "input": {"encoding":"json","value":"1e3"},
+      "expect": {"error":{"code":"invalid-value"}}
+    },
+    {
+      "id": "values.exact-numbers.decimal-trailing-zeros",
+      "description": "Trailing zeros are significant.",
+      "operation": "decode",
+      "type": "decimal",
+      "input": {"encoding":"json","value":"1.50"},
+      "expect": {"value":"1.50"}
+    },
+    {
+      "id": "values.exact-numbers.decimal-integer",
+      "operation": "decode",
+      "type": "decimal",
+      "input": {"encoding":"json","value":"42"},
+      "expect": {"value":"42"}
+    },
+    {
+      "id": "values.exact-numbers.decimal-negative-zero",
+      "operation": "decode",
+      "type": "decimal",
+      "input": {"encoding":"json","value":"-0.00"},
+      "expect": {"value":"0.00"}
+    },
+    {
+      "id": "values.exact-numbers.decimal-largest",
+      "description": "2^96 - 1.",
+      "operation": "decode",
+      "type": "decimal",
+      "input": {"encoding":"json","value":"79228162514264337593543950335"},
+      "expect": {"value":"79228162514264337593543950335"}
+    },
+    {
+      "id": "values.exact-numbers.decimal-beyond-largest",
+      "operation": "decode",
+      "type": "decimal",
+      "input": {"encoding":"json","value":"79228162514264337593543950336"},
+      "expect": {"error":{"code":"invalid-value"}}
+    },
+    {
+      "id": "values.exact-numbers.decimal-scale-28",
+      "operation": "decode",
+      "type": "decimal",
+      "input": {"encoding":"json","value":"0.0000000000000000000000000001"},
+      "expect": {"value":"0.0000000000000000000000000001"}
+    },
+    {
+      "id": "values.exact-numbers.decimal-scale-29",
+      "operation": "decode",
+      "type": "decimal",
+      "input": {"encoding":"json","value":"0.00000000000000000000000000001"},
+      "expect": {"error":{"code":"invalid-value"}}
+    },
+    {
+      "id": "values.exact-numbers.decimal-exponent",
+      "operation": "decode",
+      "type": "decimal",
+      "input": {"encoding":"json","value":"1e5"},
+      "expect": {"error":{"code":"invalid-value"}}
+    },
+    {
+      "id": "values.exact-numbers.decimal-bare-fraction",
+      "operation": "decode",
+      "type": "decimal",
+      "input": {"encoding":"json","value":".5"},
+      "expect": {"error":{"code":"invalid-value"}}
+    },
+    {
+      "id": "values.exact-numbers.decimal-empty-fraction",
+      "operation": "decode",
+      "type": "decimal",
+      "input": {"encoding":"json","value":"1."},
+      "expect": {"error":{"code":"invalid-value"}}
+    },
+    {
+      "id": "values.exact-numbers.decimal-plus",
+      "operation": "decode",
+      "type": "decimal",
+      "input": {"encoding":"json","value":"+1"},
+      "expect": {"error":{"code":"invalid-value"}}
+    },
+    {
+      "id": "values.exact-numbers.decimal-number",
+      "operation": "decode",
+      "type": "decimal",
+      "input": {"encoding":"json","value":1.5},
+      "expect": {"error":{"code":"invalid-value"}}
+    }
+  ]
+}

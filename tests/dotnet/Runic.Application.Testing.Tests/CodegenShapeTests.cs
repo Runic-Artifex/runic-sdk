@@ -27,7 +27,7 @@ internal sealed class CodegenShapeTests
                 "Nullable or non-nullable struct DTO state was not written.");
             Require(state.GetProperty("labels")[1].ValueKind == JsonValueKind.Null,
                 "A nullable array element was not written as null.");
-            Require(state.GetProperty("stamp").GetString() == "2026-10-03T12:30:00.0000000+02:00",
+            Require(state.GetProperty("stamp").GetString() == "2026-10-03T12:30:00+02:00",
                 "A DateTimeOffset snapshot lost its offset.");
             // A default JsonElement holds no value and crosses as null.
             Require(state.GetProperty("any").ValueKind == JsonValueKind.Null && state.GetProperty("maybeAny").ValueKind == JsonValueKind.Null
@@ -116,10 +116,10 @@ internal sealed class CodegenShapeTests
         Require(model.Derived.Inherited == "b", "A rejected CodegenDerived<string> write changed the model.");
 
         // A plain command input from typeof() is non-nullable throughout.
-        using (var applied = JsonDocument.Parse(host.Transport.Call("codegenShapeApply", new(StringValue: Slot("\"c\"", "\"i\"", "\"a\"", "\"m\"")))))
+        using (var applied = JsonDocument.Parse(host.Transport.Command("codegenShape", "apply", Slot("\"c\"", "\"i\"", "\"a\"", "\"m\""))))
             Require(applied.RootElement.GetProperty("ok").GetBoolean() && model.Required.Value == "c",
                 $"The CodegenSlot<string> command input was rejected: {applied.RootElement}");
-        using (var rejected = JsonDocument.Parse(host.Transport.Call("codegenShapeApply", new(StringValue: Slot("null", "\"i\"", "\"a\"", "\"m\"")))))
+        using (var rejected = JsonDocument.Parse(host.Transport.Command("codegenShape", "apply", Slot("null", "\"i\"", "\"a\"", "\"m\""))))
             Require(!rejected.RootElement.GetProperty("ok").GetBoolean() && model.Required.Value == "c",
                 $"The CodegenSlot<string> command input accepted null: {rejected.RootElement}");
 
@@ -128,14 +128,15 @@ internal sealed class CodegenShapeTests
     }
 
     [Test]
-    public async Task NullableReactiveTypeArgumentsReachTheClientAsync()
+    public void NullableReactiveTypeArgumentsReachTheClient()
     {
         var client = File.ReadAllText(Path.Combine(GeneratedTypeScriptDirectory(), "nullableReactive.ts"));
         foreach (var expected in new[]
         {
             "echo(input: string | null): Promise<NullableReactiveState>;",
             "export interface NullableReactiveEchoOperation extends BridgeOperation<string | null> {}",
-            "view.recoverOperation<string | null>(\"Echo\", requestId,",
+            "const echoOperation: BridgeOperationCodec<string | null> = ",
+            "recoverEcho(requestId: string) { return view.recover(\"echo\", requestId, echoOperation); },",
             "handle(handler: (input: string, context: NullableReactiveInteractionContext) => string | null | Promise<string | null>): () => void;",
         })
             Require(client.Contains(expected, StringComparison.Ordinal),
@@ -148,16 +149,20 @@ internal sealed class CodegenShapeTests
             Require(snapshot.RootElement.GetProperty("state").TryGetProperty("isEchoExecuting", out var executing)
                 && executing.ValueKind == JsonValueKind.False,
                 "A ReactiveUI command with an argument did not write the isEchoExecuting field its client declares.");
-        using var accepted = JsonDocument.Parse(host.Transport.Call("nullableReactiveStartEcho",
-            new(StringValue: "{\"requestId\":\"echo-null\",\"input\":null}")));
-        Require(accepted.RootElement.GetProperty("kind").GetString() is "accepted" or "duplicate",
-            $"A null ReactiveUI command input was rejected: {accepted.RootElement}");
-        var contract = accepted.RootElement.GetProperty("contract").GetString();
-        using var completion = JsonDocument.Parse(await host.Transport.CallAsync("__runicOperationWait",
-            new(StringValue: JsonSerializer.Serialize(new { contract, requestId = "echo-null" }))));
-        Require(completion.RootElement.GetProperty("kind").GetString() == "succeeded"
-            && completion.RootElement.GetProperty("result").ValueKind == JsonValueKind.Null,
-            $"A null ReactiveUI command result was not encoded: {completion.RootElement}");
+    }
+
+    [Test]
+    public async Task NullableReactiveOperationsAcceptNullAsync()
+    {
+        using var model = new NullableReactiveViewModel();
+        using var host = new RunicWindowTestHost<NullableReactiveViewModel>(model,
+            (transport, content, vm) => new NullableReactiveBridge(transport, vm, content: content), new RunicWindowTestHostOptions { RootRoute = "nullableReactive", ViewLocator = new TestViewLocator() });
+        var operation = await host.Root.StartAsync(vm => vm.EchoCommand, "null", "echo-null");
+        Require(operation.Admission is RunicOperationAdmissionKind.Accepted or RunicOperationAdmissionKind.Duplicate,
+            $"A null ReactiveUI command input was rejected: {operation.AdmissionJson}");
+        var completion = await operation.WaitAsync();
+        Require(completion.Kind == RunicOperationStatusKind.Succeeded && completion.Result?.ValueKind == JsonValueKind.Null,
+            $"A null ReactiveUI command result was not encoded: {completion.Json}");
     }
 
     // Generated TypeScript reads like hand-written code: named types after the
@@ -175,8 +180,7 @@ internal sealed class CodegenShapeTests
         foreach (var expected in new[]
         {
             "  /** The shown tab. */\n  readonly tabs: number | null;",
-            "  readonly tabs: unknown;",
-            "    tabs: (wire.tabs === null ? null : bridgeWire.integer(wire.tabs, -2147483648, 2147483647)),",
+            "  tabs: (wire: unknown) => (wire === null ? null : bridgeWire.integer(wire, -2147483648, 2147483647)),",
             "  selectTab(index: number): Promise<NavTabsState>;",
         })
             Require(tabs.Contains(expected, StringComparison.Ordinal), $"navTabs.ts is missing:\n{expected}\n---\n{tabs}");
@@ -211,11 +215,11 @@ internal sealed class CodegenShapeTests
             // Any JSON value is unknown; a JsonNode is never JSON null.
             ("codegenShape.ts", shape, "  readonly any: unknown;\n  readonly maybeAny: unknown;\n  readonly node: unknown;\n  readonly json: CodegenJson;"),
             ("types.ts", types, "export interface CodegenJson {\n  readonly any?: unknown;\n  readonly node: unknown;\n  readonly required: NonNullable<unknown>;\n}"),
-            ("codegenShape.ts", shape, "any: bridgeWire.json(wire.any),"),
+            ("codegenShape.ts", shape, "any: (wire: unknown) => bridgeWire.json(wire),"),
             ("codegenShape.ts", shape, "required: bridgeWire.json(value[\"required\"], false)"),
             // The typeof() command input shares the state property's declaration.
             ("codegenShape.ts", shape, "  apply(codegenSlot: CodegenSlotOfString): Promise<CodegenShapeState>;"),
-            ("codegenShape.ts", shape, "bridgeWire.object<CodegenSlotOfString>(wire.required, value => ({ value: bridgeWire.string(value[\"value\"]), "),
+            ("codegenShape.ts", shape, "required: (wire: unknown) => bridgeWire.object<CodegenSlotOfString>(wire, value => ({ value: bridgeWire.string(value[\"value\"]), "),
             ("types.ts", types, "export type DataShapePayload =\n  | ({ readonly $case: \"count\" } & DataShapeCount)\n  | ({ readonly $case: \"text\" } & DataShapeText);"),
             ("documented.ts", documented, "import type { CodegenPoint, DocumentedItem, DocumentedLayout } from \"./types.js\";\nexport type { CodegenPoint, DocumentedItem, DocumentedLayout } from \"./types.js\";"),
             ("documented.ts", documented, "  /** The current layout. */\n  readonly layout: DocumentedLayout;"),
@@ -230,9 +234,9 @@ internal sealed class CodegenShapeTests
                 "  /** A C# `long` is a `bigint`: a JavaScript `number` is exact only up to 2^53. */\n  readonly \"exact-id\": bigint;"),
             // The connect timeout is an option of the generated connect function (default 5000 ms).
             ("documented.ts", documented, "export function connectDocumented(options?: BridgeConnectOptions): Promise<DocumentedClient & globalThis.Disposable> {"),
-            ("documented.ts", documented, "hydrate, checkedFields: checkedFieldNames, timeout: options?.timeout, signal: options?.signal });"),
+            ("documented.ts", documented, "members, checkedFields: checkedFieldNames, timeout: options?.timeout, signal: options?.signal });"),
             ("documented.ts", documented, " * Generated TypeScript names its enum and DTO types after the C# types,"),
-            ("documented.ts", documented, "layout: bridgeWire.enumName<DocumentedLayout>(wire.layout, [\"List\", \"Grid\"]),"),
+            ("documented.ts", documented, "layout: (wire: unknown) => bridgeWire.enumName<DocumentedLayout>(wire, [\"List\", \"Grid\"]),"),
             ("collectionDelta.ts", collection, "rows: defineCollection<CollectionRow>(wire => bridgeWire.object<CollectionRow>(wire,"),
         })
             Require(text.Contains(expected, StringComparison.Ordinal),
@@ -265,11 +269,11 @@ internal sealed class CodegenShapeTests
         var reactive = File.ReadAllText(Path.Combine(directory, "nullableReactive.ts")).ReplaceLineEndings("\n");
         foreach (var (file, text, expected) in new[]
         {
-            ("documented.ts", documented, "import { connectView, disposable, viewReferences } from \"@runic-artifex/views/generated\";\nimport * as bridgeWire from \"@runic-artifex/views/generated/wire\";\n"),
-            ("nullableReactive.ts", reactive, "import { connectView, disposable, viewReferences, defineInteractions, bridgeOperations } from \"@runic-artifex/views/generated\";\n"),
+            ("documented.ts", documented, "import { connectView, disposable, viewReferences, type BridgeMemberDecoders } from \"@runic-artifex/views/generated\";\nimport * as bridgeWire from \"@runic-artifex/views/generated/wire\";\n"),
+            ("nullableReactive.ts", reactive, "import { connectView, disposable, viewReferences, type BridgeMemberDecoders, type BridgeOperationCodec, defineInteractions, bridgeOperations } from \"@runic-artifex/views/generated\";\n"),
             ("nullableReactive.ts", reactive, "const interactionDefinitions = defineInteractions({"),
-            ("nullableReactive.ts", reactive, "interactions: interactionDefinitions, operations: bridgeOperations, timeout: options?.timeout, signal: options?.signal });"),
-            ("collectionDelta.ts", collection, "import { connectView, disposable, viewReferences, defineCollection, defineCollections } from \"@runic-artifex/views/generated\";\n"),
+            ("nullableReactive.ts", reactive, "interactions: interactionDefinitions, handlers: options?.handlers, operations: bridgeOperations, timeout: options?.timeout, signal: options?.signal });"),
+            ("collectionDelta.ts", collection, "import { connectView, disposable, viewReferences, type BridgeMemberDecoders, defineCollection, defineCollections } from \"@runic-artifex/views/generated\";\n"),
             ("collectionDelta.ts", collection, "const collectionDefinitions = defineCollections({"),
         })
             Require(text.Contains(expected, StringComparison.Ordinal),
@@ -301,7 +305,7 @@ internal sealed class CodegenShapeTests
     // names that are special on JavaScript objects, reserved parameter names
     // and a comment terminator inside documentation.
     [Test]
-    public async Task GeneratedNamesAvoidCollisionsAndReservedWordsAsync()
+    public void GeneratedNamesAvoidCollisionsAndReservedWords()
     {
         var directory = GeneratedTypeScriptDirectory();
         var types = File.ReadAllText(Path.Combine(directory, "types.ts")).ReplaceLineEndings("\n");
@@ -317,9 +321,9 @@ internal sealed class CodegenShapeTests
             ("naming.ts", naming, "  readonly removed: Testsdelete;"),
             ("naming.ts", naming, "  readonly first: AlphaTag;\n  readonly second: BetaTag;\n  readonly inner: TestsNamingState;\n  readonly box: GenericBoxOfArrayOfInt32;\n  readonly nothing: EmptyKind | null;"),
             ("naming.ts", naming, "This comment contains *\\/ and must not end the TSDoc block."),
-            ("naming.ts", naming, "    [\"__proto__\"]: bridgeWire.string(wire[\"__proto__\"]),"),
-            ("naming.ts", naming, "    constructor: bridgeWire.string(wire.constructor),"),
-            ("naming.ts", naming, "    prototype: bridgeWire.string(wire.prototype),"),
+            ("naming.ts", naming, "  [\"__proto__\"]: (wire: unknown) => bridgeWire.string(wire),"),
+            ("naming.ts", naming, "  constructor: (wire: unknown) => bridgeWire.string(wire),"),
+            ("naming.ts", naming, "  prototype: (wire: unknown) => bridgeWire.string(wire),"),
             ("naming.ts", naming, "  rename(defaultValue: string): Promise<NamingState>;"),
             ("naming.ts", naming, "  show(viewValue: string): Promise<NamingState>;"),
             ("naming.ts", naming, "  readonly new: string;"),
@@ -331,30 +335,19 @@ internal sealed class CodegenShapeTests
             "Same-named C# types were not qualified with their namespaces.");
         Require(!types.Contains("export interface delete ", StringComparison.Ordinal),
             "A C# type named like a TypeScript reserved word was not renamed.");
+    }
 
+    // The generated client reads a real NamingViewModel state over Views protocol 4.
+    [Test]
+    public async Task GeneratedClientReadsSpecialWireNamesAsync()
+    {
+        var directory = GeneratedTypeScriptDirectory();
         using var host = new RunicWindowTestHost<NamingViewModel>(new NamingViewModel(),
             (transport, content, vm) => new NamingBridge(transport, vm, content: content), new RunicWindowTestHostOptions { RootRoute = "naming", ViewLocator = new TestViewLocator() });
-        var reply = host.Transport.Call("namingSnapshot");
-        using var snapshot = JsonDocument.Parse(reply);
-        var state = snapshot.RootElement.GetProperty("state");
-        Require(state.GetProperty("__proto__").GetString() == "proto"
-            && state.GetProperty("constructor").GetString() == "constructor"
-            && state.GetProperty("prototype").GetString() == "prototype"
-            && state.GetProperty("nothing").ValueKind == JsonValueKind.Null,
-            $"Special wire names were not written as state fields: {state}");
-
-        var replyPath = Path.Combine(Path.GetTempPath(), $"runic-naming-snapshot-{Guid.NewGuid():N}.json");
-        try
-        {
-            File.WriteAllText(replyPath, reply);
-            var root = Path.GetFullPath(Path.Combine(directory, "..", "..", "..", "..", "..", ".."));
-            await GeneratedHarnessProcess.RunAsync("bun", [Path.Combine(root, "tests", "dotnet", "Runic.Application.Testing.Tests",
-                "GeneratedSpecialNamesHarness.ts"), replyPath, directory], root).ConfigureAwait(false);
-        }
-        finally
-        {
-            File.Delete(replyPath);
-        }
+        var root = Path.GetFullPath(Path.Combine(directory, "..", "..", "..", "..", "..", ".."));
+        using var live = new GeneratedClientLiveHost().Serve("naming", host.Transport);
+        await GeneratedHarnessProcess.RunAsync("bun", [Path.Combine(root, "tests", "dotnet", "Runic.Application.Testing.Tests",
+            "GeneratedSpecialNamesHarness.ts"), directory], root, live).ConfigureAwait(false);
     }
 
     // A generated module's own bindings (runtime imports, the wire type, page
@@ -377,13 +370,12 @@ internal sealed class CodegenShapeTests
         foreach (var (file, expected) in new[]
         {
             ("wire.ts", "export interface WireState {"),
-            ("wire.ts", "type _WireState = Omit<WireState, "),
-            ("wire.ts", "function hydrate(wire: _WireState): WireState {"),
+            ("wire.ts", "const members: BridgeMemberDecoders<WireState> = {"),
             ("view.ts", "import type { BridgeConnectOptions, ViewClient as _ViewClient } from \"@runic-artifex/views\";"),
-            ("view.ts", "import { connectView as _connectView, disposable, viewReferences } from \"@runic-artifex/views/generated\";"),
+            ("view.ts", "import { connectView as _connectView, disposable, viewReferences, type BridgeMemberDecoders } from \"@runic-artifex/views/generated\";"),
             ("view.ts", "export interface ViewClient extends _ViewClient<ViewState> {"),
             ("view.ts", "export function connectView(options?: BridgeConnectOptions): Promise<ViewClient & globalThis.Disposable> {"),
-            ("view.ts", "  const view = await _connectView({ contract: bridgeContract, "),
+            ("view.ts", "  const view = await _connectView<ViewState>({ contract: bridgeContract, "),
             ("bridge.ts", "export type BridgeInteractionContext = _BridgeInteractionContext;"),
             ("bridge.ts", "export interface BridgeStreamOperation extends _BridgeStreamOperation<number> {}"),
             ("bridge.ts", "export interface BridgeSaveOperation extends BridgeOperation<number> {}"),
@@ -395,8 +387,8 @@ internal sealed class CodegenShapeTests
             ("shelf.ts", "import { pageShelfReferences, type ShelfReferencesPageReference } from \"./shelfReferences.js\";"),
             ("shelf.ts", "const _pageShelfReferences = viewReferences<ShelfPageReference>("),
             // A module without a colliding user name keeps the plain bindings.
-            ("naming.ts", "type WireState = "),
-            ("naming.ts", "  const view = await connectView({ contract: bridgeContract, "),
+            ("naming.ts", "const members: BridgeMemberDecoders<NamingState> = {"),
+            ("naming.ts", "  const view = await connectView<NamingState>({ contract: bridgeContract, "),
         })
             Require(Read(file).Contains(expected, StringComparison.Ordinal),
                 $"Generated {file} is missing:\n{expected}\n--- {file} ---\n{Read(file)}");
@@ -416,15 +408,18 @@ internal sealed class CodegenShapeTests
 
     private static void Set(RunicWindowTestHost<CodegenShapeViewModel> host, string property, string json)
     {
-        using var reply = JsonDocument.Parse(host.Transport.Call($"codegenShapeSet{property}", new(StringValue: json)));
+        using var reply = JsonDocument.Parse(host.Transport.Set("codegenShape", Member(property), json));
         Require(reply.RootElement.GetProperty("ok").GetBoolean(), $"Setting {property} to {json} was rejected: {reply.RootElement}");
     }
 
     private static void Rejected(RunicWindowTestHost<CodegenShapeViewModel> host, string property, string json)
     {
-        using var reply = JsonDocument.Parse(host.Transport.Call($"codegenShapeSet{property}", new(StringValue: json)));
+        using var reply = JsonDocument.Parse(host.Transport.Set("codegenShape", Member(property), json));
         Require(!reply.RootElement.GetProperty("ok").GetBoolean(), $"Setting {property} to {json} was accepted: {reply.RootElement}");
     }
+
+    // The property's wire name: Required -> required.
+    private static string Member(string property) => char.ToLowerInvariant(property[0]) + property[1..];
 
     private static void Require(bool condition, string message)
     {

@@ -17,13 +17,18 @@ internal sealed class NavigationPresentationTests
     [Test]
     public async Task UnregisteredContentNamesRegionAndTypeAsync()
     {
-        await using var window = new Window();
+        var logs = new ExceptionLog();
+        await using var window = new Window(logs);
         await Wait(window.Shell.Main.PushAsync(NavigationTarget.Own<INavPageViewModel>(new NavOrphanViewModel())));
         Exception? failure = null;
         try { window.Host.Root.Snapshot(); }
         catch (Exception error) { failure = error; }
-        var messages = string.Join(" | ", Chain(failure).Select(error => error.Message));
-        Require(Chain(failure).OfType<NotSupportedException>().Any(error =>
+        // Protocol 4: the snapshot answers failed without the exception, which the window logs.
+        Require(failure is InvalidOperationException && failure.Message.Contains("\"kind\":\"failed\"", StringComparison.Ordinal),
+            $"Presenting a ViewModel without a View did not fail the snapshot: {failure}");
+        var logged = logs.Errors.SelectMany(Chain).ToArray();
+        var messages = string.Join(" | ", logged.Select(error => error.Message));
+        Require(logged.OfType<NotSupportedException>().Any(error =>
                 error.Message.Contains("navigation region NavShellViewModel.Main", StringComparison.Ordinal)
                 && error.Message.Contains(typeof(NavOrphanViewModel).FullName!, StringComparison.Ordinal)
                 && error.Message.Contains("public sealed partial class NavOrphanView : RunicView<NavOrphanViewModel>;", StringComparison.Ordinal)),
@@ -78,7 +83,7 @@ internal sealed class NavigationPresentationTests
             "The pending web navigation did not end Closed.");
         window.Host.Dispose();
         await window.Navigator.DisposeAsync();
-        Require(window.Host.Transport.Routes.Count == 0 && window.Navigator.UnretiredEntryCount == 0,
+        Require(!Serves(window.Host, window.Host.RootRoute) && window.Navigator.UnretiredEntryCount == 0,
             "Closing the web context leaked navigation entries or bridge routes.");
     }
 
@@ -108,7 +113,7 @@ internal sealed class NavigationPresentationTests
 
         var back = await Wait(window.Shell.Main.BackAsync());
         Require(back is NavigationResult<INavPageViewModel>.Committed && second.Disposed == 1, $"Back gave {back}.");
-        Require(!host.Transport.Routes.Contains($"content{secondReference.Id}Snapshot"),
+        Require(!Serves(host, $"content{secondReference.Id}"),
             "The retired owned entry's routes were not forgotten.");
         Require(!RunicModelContextRegistry.Shared.TryGet(second, out _), "The retired entry kept a model-context lease.");
         var returned = host.Root.Snapshot().Reference(vm => vm.Main)!;
@@ -137,8 +142,9 @@ internal sealed class NavigationPresentationTests
         // Retirement forgets the content when Back completes; the frontend may
         // still hold the old reference until the next capture.
         await Wait(window.Shell.Main.BackAsync());
-        Require(Throws<KeyNotFoundException>(() => host.Transport.Call($"content{stale.Id}SetDraft", new(StringValue: "late"))),
-            "An invocation on a retired entry's route was not rejected.");
+        using (var late = JsonDocument.Parse(host.Transport.Set($"content{stale.Id}", "draft", "\"late\"")))
+            Require(late.RootElement.GetProperty("error").GetProperty("kind").GetString() == "released",
+                $"An invocation on a retired entry's route was not rejected: {late.RootElement}");
         Require(page.Draft == "" && page.Disposed == 1, "The retired page was changed through its stale route.");
         var current = host.Root.Snapshot().Reference(vm => vm.Main)!;
         Require(current.Kind == "navHome", $"The next capture presented {current}.");
@@ -226,7 +232,7 @@ internal sealed class NavigationPresentationTests
         await Wait(window.Shell.Main.PushAsync(NavigationTarget.Own<INavPageViewModel>(owned)));
         var reference = next.Root.Snapshot().Reference(vm => vm.Main)!;
         await Wait(window.Shell.Main.BackAsync());
-        Require(!next.Transport.Routes.Contains($"content{reference.Id}Snapshot"), "The rebound window did not forget retired content.");
+        Require(!Serves(next, $"content{reference.Id}"), "The rebound window did not forget retired content.");
         next.Dispose();
         await window.Navigator.DisposeAsync();
         await window.Context.DisposeAsync();
@@ -353,7 +359,7 @@ internal sealed class NavigationPresentationTests
         var reference = host.Root.Snapshot().Reference(vm => vm.Main)!;
         var view = host.Root.View<NavEditorViewModel>(vm => vm.Main);
         view.Mount(connectionKey: "first");
-        host.Content.ReleaseConnection("first");
+        host.Transport.CloseConnection("first");
         view.Mount(connectionKey: "second");
         Require(window.Shell.Main.CurrentEntry == entry && entry.State == NavigationEntryState.Active && page.Disposed == 0
             && window.Navigator.UnretiredEntryCount == 2,
@@ -375,10 +381,11 @@ internal sealed class NavigationPresentationTests
         var observersBefore = ChangeObserverCount(shell.Main);
         using (var bridge = new RuntimeShellBridge(transport, shell, session))
         {
-            transport.TakePublications();
+            // A route publishes once a client read its first state, as the page's open does.
+            using (transport.SnapshotState("runtimeShell")) { }
+            _ = transport.TakePushes("runtimeShell");
             await Wait(shell.Main.PushAsync(NavigationTarget.Own<INavPageViewModel>(new NavEditorViewModel("runtime"))));
-            await Until(() => transport.TakePublications().Any(publication => publication.Route == "runtimeShell"
-                && publication.Json.Contains("\"title\":\"runtime\"", StringComparison.Ordinal)),
+            await Until(() => PushedTitles(transport).Contains("runtime"),
                 "A Bridge built from runtime descriptors did not publish when Current changed.");
             using var otherTransport = new InMemoryBridgeTransport();
             using var other = new WindowContentSession(otherTransport, new WindowContentSessionOptions { ModelContext = context });
@@ -389,10 +396,10 @@ internal sealed class NavigationPresentationTests
         // has no observer that the Bridge added.
         Require(ChangeObserverCount(shell.Main) == observersBefore,
             "Disposing the Bridge did not release its subscription to the region.");
-        transport.TakePublications();
+        _ = transport.TakePushes("runtimeShell");
         await Wait(shell.Main.BackAsync());
         await Task.Delay(50);
-        Require(!transport.TakePublications().Any(publication => publication.Route == "runtimeShell"),
+        Require(transport.TakePushes("runtimeShell").Count == 0,
             "A disposed Bridge still observed the region.");
     }
 
@@ -412,14 +419,15 @@ internal sealed class NavigationPresentationTests
             var value = host.Root.Snapshot().Get(vm => vm.Tabs);
             return value.ValueKind == JsonValueKind.Null ? null : value.GetInt32();
         }
-        bool Published(int index) => host.Transport.TakePublications()
-            .Any(publication => publication.Json.Contains($"\"tabs\":{index}", StringComparison.Ordinal));
+        bool Published(int index) => host.Root.TakePublications().Any(publication =>
+            publication.Sets.Any(set => set.Field == "tabs" && set.Value.ValueKind == JsonValueKind.Number && set.Value.GetInt32() == index)
+            || publication.State is { } state && state.GetProperty("tabs").ValueKind == JsonValueKind.Number && state.GetProperty("tabs").GetInt32() == index);
         Require(Shown() == 0 && host.Root.Snapshot().Reference(vm => vm.Inbox)?.Kind == "navHome"
                 && host.Root.Snapshot().Reference(vm => vm.Archive)?.Kind == "navEditor",
             "The initial selection or the tab slots were not presented.");
 
         inbox.Guard = _ => ValueTask.FromResult(false);
-        host.Transport.TakePublications();
+        _ = host.Root.TakePublications();
         var vetoed = await Wait(tabs.Tabs.SelectAsync(tabs.Archive));
         Require(vetoed is NavigationResult<object>.Rejected, $"The vetoed switch gave {vetoed}.");
         await Task.Delay(50);
@@ -432,10 +440,10 @@ internal sealed class NavigationPresentationTests
         Require(Shown() == 1, $"The snapshot presents tab {Shown()}, not 1.");
 
         // A frontend selects through a command that returns the request's outcome.
-        using (var reply = JsonDocument.Parse(await Wait(host.Transport.CallAsync("navTabsSelectTab", new(StringValue: "0")))))
-            Require(reply.RootElement.GetProperty("ok").GetBoolean() && reply.RootElement.GetProperty("state").GetProperty("tabs").GetInt32() == 0
-                    && tabs.Tabs.SelectedIndex == 0,
-                $"The select command did not select the first tab: {reply.RootElement}");
+        // Protocol 4: the reply carries the revision; the state at it includes the selection.
+        var reply = await host.Root.ExecuteAsync(vm => vm.SelectTabCommand, "0").WaitAsync(Timeout);
+        Require(reply.Succeeded && reply.State?.Get(vm => vm.Tabs).GetInt32() == 0 && tabs.Tabs.SelectedIndex == 0,
+            $"The select command did not select the first tab: {reply}");
     }
 
     [Test]
@@ -448,8 +456,7 @@ internal sealed class NavigationPresentationTests
         foreach (var expected in new[]
         {
             "  /** The main content; the navigator changes it. */\n  readonly main: ReactiveNavEditorPageReference | NavEditorPageReference | NavHomePageReference | NavLogPagePageReference | null;",
-            "  readonly main: { readonly kind: \"reactiveNavEditor\"; readonly id: string } | { readonly kind: \"navEditor\"; readonly id: string } | { readonly kind: \"navHome\"; readonly id: string } | { readonly kind: \"navLogPage\"; readonly id: string } | null;",
-            "    main: wire.main === null ? null : wire.main.kind === \"reactiveNavEditor\" ? pageReactiveNavEditor(wire.main.id) : wire.main.kind === \"navEditor\" ? pageNavEditor(wire.main.id)",
+            "  main: (wire: unknown) => { if (wire === null) return null; const reference = contentReference(wire); return reference.kind === \"reactiveNavEditor\" ? pageReactiveNavEditor(reference.id) : reference.kind === \"navEditor\" ? pageNavEditor(reference.id)",
         })
             Require(generated.Contains(expected, StringComparison.Ordinal), $"navShell.ts is missing:\n{expected}\n---\n{generated}");
         var mock = File.ReadAllText(Path.Combine(GeneratedTypeScriptDirectory(), "navShell.mock.ts"));
@@ -464,6 +471,26 @@ internal sealed class NavigationPresentationTests
             if (Directory.Exists(candidate)) return candidate;
         }
         throw new DirectoryNotFoundException("The generated TypeScript directory was not found.");
+    }
+
+    // Whether the window's dispatcher still serves a route.
+    private static bool Serves<TViewModel>(RunicWindowTestHost<TViewModel> host, string route) where TViewModel : class =>
+        BridgeDispatcher.For(host.Transport).Serves(route);
+
+    // The titles the runtime shell's pushes published, from its states and the set changes of its frames.
+    private static List<string?> PushedTitles(InMemoryBridgeTransport transport)
+    {
+        List<string?> titles = [];
+        foreach (var push in transport.TakePushes("runtimeShell"))
+            using (push)
+            {
+                var root = push.RootElement;
+                if (root.TryGetProperty("state", out var state)) titles.Add(state.GetProperty("title").GetString());
+                if (root.TryGetProperty("changes", out var changes))
+                    titles.AddRange(changes.EnumerateArray().Where(change => change.GetProperty("field").GetString() == "title")
+                        .Select(change => change.GetProperty("value").GetString()));
+            }
+        return titles;
     }
 
     private static async Task<T> Wait<T>(ValueTask<T> task) => await task.AsTask().WaitAsync(Timeout);
@@ -492,13 +519,13 @@ internal sealed class NavigationPresentationTests
     // One window: its scoped model context and navigator, the shell and a test host.
     private sealed class Window : IAsyncDisposable
     {
-        public Window()
+        public Window(Microsoft.Extensions.Logging.ILoggerFactory? logs = null)
         {
             Navigator = new RunicNavigator(new RunicNavigatorOptions { ModelContext = Context });
             Shell = new NavShellViewModel(Navigator, Home);
             Host = new RunicWindowTestHost<NavShellViewModel>(Shell,
                 (transport, content, vm) => new NavShellBridge(transport, vm, content: content),
-                new RunicWindowTestHostOptions { ModelContext = Context, ViewLocator = new NavViewLocator() });
+                new RunicWindowTestHostOptions { ModelContext = Context, ViewLocator = new NavViewLocator(), LoggerFactory = logs });
         }
 
         public RunicModelContext Context { get; } = new();
@@ -516,26 +543,37 @@ internal sealed class NavigationPresentationTests
         }
     }
 
+    // Records the exceptions the window logs.
+    private sealed class ExceptionLog : Microsoft.Extensions.Logging.ILoggerFactory, Microsoft.Extensions.Logging.ILogger
+    {
+        private readonly System.Collections.Concurrent.ConcurrentQueue<Exception> _errors = new();
+        public IReadOnlyList<Exception> Errors => [.. _errors];
+        public void AddProvider(Microsoft.Extensions.Logging.ILoggerProvider provider) => throw new NotSupportedException();
+        public Microsoft.Extensions.Logging.ILogger CreateLogger(string categoryName) => this;
+        public void Dispose() { }
+        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+        public bool IsEnabled(Microsoft.Extensions.Logging.LogLevel logLevel) => true;
+        public void Log<TState>(Microsoft.Extensions.Logging.LogLevel logLevel, Microsoft.Extensions.Logging.EventId eventId, TState state,
+            Exception? exception, Func<TState, Exception?, string> formatter)
+        {
+            if (exception is not null) _errors.Enqueue(exception);
+        }
+    }
+
     // The number of PropertyChanged handlers on a region, read from the event's backing field.
     private static int ChangeObserverCount<T>(NavigationRegion<T> region) where T : class =>
         (typeof(NavigationRegion<T>).GetField("PropertyChanged", BindingFlags.Instance | BindingFlags.NonPublic)?
             .GetValue(region) as Delegate)?.GetInvocationList().Length ?? 0;
 
     private sealed class RuntimeShellBridge(IBridgeTransport transport, NavShellViewModel vm, WindowContentSession content)
-        : ViewModelBridge<NavShellViewModel>(transport, vm, "runtimeShell", Write,
-            [new PropertyDescriptor<NavShellViewModel>("Main", static vm => vm.Main.Current, null, static vm => vm.Main)],
+        : ViewModelBridge<NavShellViewModel>(transport, vm, "runtimeShell",
+            [new BridgeStateMember<NavShellViewModel>("title", static (writer, vm) =>
+            {
+                if (vm.Main?.Current is { } page) writer.WriteStringValue(page.Title);
+                else writer.WriteNullValue();
+            })],
+            [new PropertyDescriptor<NavShellViewModel>("Main", "main", static vm => vm.Main.Current, null, static vm => vm.Main)],
             [], [], content: content)
     {
-        private static void Write(Utf8JsonWriter writer, NavShellViewModel vm, long revision, Action<Utf8JsonWriter> writeFieldMetadata)
-        {
-            writer.WriteStartObject();
-            writer.WriteNumber("revision", revision);
-            switch (vm.Main?.Current)
-            {
-                case null: writer.WriteNull("title"); break;
-                case var page: writer.WriteString("title", page.Title); break;
-            }
-            writer.WriteEndObject();
-        }
     }
 }

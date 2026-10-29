@@ -85,12 +85,15 @@ internal static class BridgeTelemetry
         Failures.Add(1, new(KindTag, kind), new(ModelTag, model), new(MemberTag, member), new(ErrorTypeTag, ErrorType(error)));
     }
 
-    internal static void RecordFrame(string model, string frame, string payload, long startedTimestamp)
+    internal static void RecordFrame(string model, string frame, string payload, long startedTimestamp) =>
+        RecordFrame(model, frame, Encoding.UTF8.GetByteCount(payload), startedTimestamp);
+
+    internal static void RecordFrame(string model, string frame, int byteCount, long startedTimestamp)
     {
         var frameTag = new KeyValuePair<string, object?>(FrameTag, frame);
         var modelTag = new KeyValuePair<string, object?>(ModelTag, model);
         if (SnapshotFrames.Enabled) SnapshotFrames.Add(1, modelTag, frameTag);
-        if (SnapshotSize.Enabled) SnapshotSize.Record(Encoding.UTF8.GetByteCount(payload), modelTag, frameTag);
+        if (SnapshotSize.Enabled) SnapshotSize.Record(byteCount, modelTag, frameTag);
         if (DeliveryDuration.Enabled && startedTimestamp != 0)
             DeliveryDuration.Record(Stopwatch.GetElapsedTime(startedTimestamp).TotalSeconds, modelTag, frameTag);
     }
@@ -286,6 +289,23 @@ internal static partial class ViewsLog
     [LoggerMessage(EventId = 1017, EventName = "BridgeOperationRetired", Level = LogLevel.Debug,
         Message = "The navigation entry that started Bridge operation {Member} on route {Route} retired; its retirement policy is {Policy}.")]
     internal static partial void OperationRetired(ILogger logger, string member, RunicOperationRetirement policy, string route);
+
+    // Views protocol 4 dispatcher (BridgeDispatcher): logged once per connection.
+    [LoggerMessage(EventId = 1018, EventName = "BridgeProtocolMismatch", Level = LogLevel.Warning,
+        Message = "A page on connection {Connection} implements Views protocol {ClientProtocol}, and this host implements protocol {HostProtocol}; the page was refused. Use the Runic packages of one release and rebuild the frontend.")]
+    internal static partial void ProtocolMismatch(ILogger logger, long clientProtocol, int hostProtocol, string connection);
+
+    [LoggerMessage(EventId = 1019, EventName = "BridgeRequestBeforeHello", Level = LogLevel.Debug,
+        Message = "A {Kind} request on connection {Connection} arrived before the connection's hello and was rejected.")]
+    internal static partial void RequestBeforeHello(ILogger logger, string kind, string connection);
+
+    [LoggerMessage(EventId = 1022, EventName = "BridgeRequestFailed", Level = LogLevel.Error,
+        Message = "A Bridge request failed with {ErrorType}.")]
+    internal static partial void RequestFailed(ILogger logger, Exception? exception, string errorType);
+
+    [LoggerMessage(EventId = 1023, EventName = "BridgeMailboxOverflowed", Level = LogLevel.Warning,
+        Message = "The mailbox of connection {Connection} overflowed: {Dropped} older pushes were dropped. The page does not receive its targeted pushes.")]
+    internal static partial void MailboxOverflowed(ILogger logger, string connection, int dropped);
 
     [LoggerMessage(EventId = 1020, EventName = "ViewMountFailed", Level = LogLevel.Error,
         Message = "Runic View mount on route {Route} failed with {ErrorType}.")]

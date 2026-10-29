@@ -1,0 +1,169 @@
+{
+  "format": "runic.views.scenario/1",
+  "id": "edits.overlay.v1",
+  "contract": {"id":"runic.views","version":4},
+  "set": "edits",
+  "roles": ["producer","client"],
+  "description": "While an edit is in flight the client shows the latest edit value; an echo of an older edit does not replace it. The overlay ends when the route reaches the latest edit's reply revision. After the frame of edit 1, the reply to edit 1, the frame of edit 2 and the reply to edit 2 arrive in any order that keeps each reply after its own frame; this client run delivers the reply to edit 1 first, overlay-with-a-later-frame-first the frame of edit 2.",
+  "view": "notes",
+  "ids": {
+    "c1": {"kind":"connection"},
+    "hello-c1": {"kind":"request"},
+    "session": {"kind":"wire","value":"s-1"},
+    "open-notes": {"kind":"call"},
+    "open-notes-request": {"kind":"request"},
+    "presentation": {"kind":"wire","value":"p-1"},
+    "type-a": {"kind":"call"},
+    "edit-1": {"kind":"request"},
+    "type-ab": {"kind":"call"},
+    "edit-2": {"kind":"request"}
+  },
+  "arrange": {"model":{}},
+  "steps": [
+    {"connect":"c1"},
+    {
+      "send": {
+        "kind": "hello",
+        "protocol": 4,
+        "session": {"$id":"session"},
+        "client": {"name":{"$any":"string","default":"conformance-client"},"version":{"$any":"string","default":"1.0.0"}}
+      },
+      "id": "hello-c1"
+    },
+    {
+      "receive": {
+        "ok": true,
+        "protocol": 4,
+        "implementation": {"name":{"$any":"string","default":"conformance-producer"},"version":{"$any":"string","default":"1.0.0"}}
+      },
+      "replyTo": "hello-c1"
+    },
+    {"call":{"id":"open-notes","op":"open","route":"notes"}},
+    {"send":{"kind":"open","route":"notes","presentation":{"$id":"presentation"}},"id":"open-notes-request"},
+    {
+      "receive": {
+        "ok": true,
+        "revision": 0,
+        "state": {
+          "title": "",
+          "note": "",
+          "priority": "Normal",
+          "due": null,
+          "elapsed": "PT0S",
+          "rows": [],
+          "count": 0,
+          "summary": "rows: 0",
+          "detail": {"kind":"detail","id":"0123456789abcdef0123456789abcdef"},
+          "canClear": false,
+          "canTouch": true,
+          "canSave": true,
+          "canConfirmClear": false,
+          "isSlowImportExecuting": false,
+          "isConfirmClearExecuting": false
+        },
+        "fields": {"note":{"version":0}},
+        "presentation": "ok"
+      },
+      "replyTo": "open-notes-request"
+    },
+    {"call":{"id":"type-a","op":"set","route":"notes","member":"title","value":"a"}},
+    {"send":{"kind":"set","route":"notes","member":"title","value":"a","edit":1},"id":"edit-1"},
+    {"call":{"id":"type-ab","op":"set","route":"notes","member":"title","value":"ab"}},
+    {"send":{"kind":"set","route":"notes","member":"title","value":"ab","edit":2},"id":"edit-2"},
+    {
+      "expect": {
+        "state": {
+          "route": "notes",
+          "value": {
+            "title": "ab",
+            "note": "",
+            "priority": "Normal",
+            "due": null,
+            "elapsed": "PT0S",
+            "rows": [],
+            "count": 0,
+            "summary": "rows: 0",
+            "detail": {"kind":"detail","id":"0123456789abcdef0123456789abcdef"},
+            "canClear": false,
+            "canTouch": true,
+            "canSave": true,
+            "canConfirmClear": false,
+            "isSlowImportExecuting": false,
+            "isConfirmClearExecuting": false
+          }
+        }
+      }
+    },
+    {
+      "receive": {
+        "kind": "frame",
+        "route": "notes",
+        "baseRevision": 0,
+        "revision": 1,
+        "changes": [{"field":"title","kind":"set","value":"a"}]
+      }
+    },
+    {"receive":{"ok":true,"revision":1},"replyTo":"edit-1","unordered":true},
+    {"expect":{"call":{"id":"type-a","resolved":null}}},
+    {
+      "expect": {
+        "state": {
+          "route": "notes",
+          "value": {
+            "title": "ab",
+            "note": "",
+            "priority": "Normal",
+            "due": null,
+            "elapsed": "PT0S",
+            "rows": [],
+            "count": 0,
+            "summary": "rows: 0",
+            "detail": {"kind":"detail","id":"0123456789abcdef0123456789abcdef"},
+            "canClear": false,
+            "canTouch": true,
+            "canSave": true,
+            "canConfirmClear": false,
+            "isSlowImportExecuting": false,
+            "isConfirmClearExecuting": false
+          }
+        }
+      }
+    },
+    {
+      "receive": {
+        "kind": "frame",
+        "route": "notes",
+        "baseRevision": 1,
+        "revision": 2,
+        "changes": [{"field":"title","kind":"set","value":"ab"}]
+      },
+      "unordered": true
+    },
+    {"receive":{"ok":true,"revision":2},"replyTo":"edit-2","unordered":true},
+    {"expect":{"call":{"id":"type-ab","resolved":null}}},
+    {
+      "expect": {
+        "state": {
+          "route": "notes",
+          "value": {
+            "title": "ab",
+            "note": "",
+            "priority": "Normal",
+            "due": null,
+            "elapsed": "PT0S",
+            "rows": [],
+            "count": 0,
+            "summary": "rows: 0",
+            "detail": {"kind":"detail","id":"0123456789abcdef0123456789abcdef"},
+            "canClear": false,
+            "canTouch": true,
+            "canSave": true,
+            "canConfirmClear": false,
+            "isSlowImportExecuting": false,
+            "isConfirmClearExecuting": false
+          }
+        }
+      }
+    }
+  ]
+}

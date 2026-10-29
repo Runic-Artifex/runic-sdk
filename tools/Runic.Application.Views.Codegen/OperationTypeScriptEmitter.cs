@@ -18,11 +18,10 @@ internal sealed record OperationTypeScriptPlan(
     string? FailureType = null,
     string? DecodeFailureExpression = null)
 {
-    // Type arguments of the handle, and the trailing start/recover arguments
-    // that pass the declared failure's decoder.
+    // Type arguments of the handle and the codec.
     internal string TypeArguments => FailureType is null ? ResultType : $"{ResultType}, {FailureType}";
-    internal string FailureArguments => DecodeFailureExpression is null ? (IsStream ? ", true" : "")
-        : $", {(IsStream ? "true" : "false")}, value => {BridgeTypeGraph.ArrowBody(DecodeFailureExpression)}";
+    // The member name of the start, status and watch requests.
+    internal string Member => char.ToLowerInvariant(Name[0]) + Name[1..];
 }
 
 internal static class OperationTypeScriptEmitter
@@ -38,26 +37,27 @@ internal static class OperationTypeScriptEmitter
         if (operations.Length > 0) ts.AppendLine();
     }
 
-    // Emits one starter per operation inside connectXAt. It depends only on
-    // the `view` connection created there.
-    internal static void AppendRuntime(StringBuilder ts, IEnumerable<OperationTypeScriptPlan> plans)
+    // Emits one module-level codec per operation, which its start and recover methods share.
+    internal static void AppendCodecs(StringBuilder ts, IEnumerable<OperationTypeScriptPlan> plans)
     {
         foreach (var operation in plans)
         {
-            var parameter = operation.HasInput ? $", {operation.InputName}: {operation.InputType}" : string.Empty;
-            var payload = operation.HasInput ? $"JSON.stringify({{ requestId, input: {operation.EncodeInputExpression} }})" : "requestId";
-            ts.AppendLine($"  const start{operation.Name}Operation = (requestId: string{parameter}) => view.startOperation<{operation.TypeArguments}>({JsonSerializer.Serialize(operation.Name)}, requestId, () => {payload}, value => {BridgeTypeGraph.ArrowBody(operation.DecodeResultExpression)}{operation.FailureArguments});");
+            var failure = operation.DecodeFailureExpression is null ? ""
+                : $", decodeFailure: value => {BridgeTypeGraph.ArrowBody(operation.DecodeFailureExpression)}";
+            ts.AppendLine($"const {Ref(operation.Member + "Operation")}: {Ref("BridgeOperationCodec")}<{operation.TypeArguments}> = {{ decode: value => {BridgeTypeGraph.ArrowBody(operation.DecodeResultExpression)}{failure}{(operation.IsStream ? ", stream: true" : "")} }};");
         }
     }
 
+    // The start and recover methods of the client. An operation's id is `options.requestId`, or a random UUID.
     internal static void AppendClientMethods(StringBuilder ts, IEnumerable<OperationTypeScriptPlan> plans)
     {
         foreach (var operation in plans)
         {
             var parameter = operation.HasInput ? $"{operation.InputName}: {operation.InputType}, " : string.Empty;
-            var argument = operation.HasInput ? $", {operation.InputName}" : string.Empty;
-            ts.AppendLine($"    start{operation.Name}({parameter}options?: {Ref("BridgeOperationStartOptions")}) {{ return start{operation.Name}Operation(options?.requestId ?? globalThis.crypto.randomUUID(){argument}); }},");
-            ts.AppendLine($"    recover{operation.Name}(requestId: string) {{ return view.recoverOperation<{operation.TypeArguments}>({JsonSerializer.Serialize(operation.Name)}, requestId, value => {BridgeTypeGraph.ArrowBody(operation.DecodeResultExpression)}{operation.FailureArguments}); }},");
+            var input = operation.HasInput ? operation.EncodeInputExpression : "undefined";
+            var member = JsonSerializer.Serialize(operation.Member);
+            ts.AppendLine($"    start{operation.Name}({parameter}options?: {Ref("BridgeOperationStartOptions")}) {{ return view.start({member}, options?.requestId ?? globalThis.crypto.randomUUID(), {input}, {Ref(operation.Member + "Operation")}); }},");
+            ts.AppendLine($"    recover{operation.Name}(requestId: string) {{ return view.recover({member}, requestId, {Ref(operation.Member + "Operation")}); }},");
         }
     }
 }

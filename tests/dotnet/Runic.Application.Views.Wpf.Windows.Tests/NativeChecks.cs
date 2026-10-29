@@ -1,5 +1,7 @@
+using System.ComponentModel;
 using Microsoft.Extensions.DependencyInjection;
 using Runic.Application.Views;
+using Runic.Application.Views.Generated;
 using Runic.Application.Views.Wpf;
 using Runic.Desktop;
 using Runic.Navigation.Wpf;
@@ -830,18 +832,10 @@ internal sealed class NativeChecks
         const string Policy = "default-src 'self'; script-src 'self'; object-src 'none'; base-uri 'self'";
         var received = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
         var collection = new ServiceCollection();
+        // The page reaches the window over the Views channel: it completes its hello, opens the probe's route, runs the
+        // command that changes its state, and reports the frame it received with another command.
         collection.AddSingleton<Func<IBridgeTransport, HostedModel, IDisposable>>((transport, _) =>
-            new Bindings(
-                transport.Bind("cspReady", _ =>
-                {
-                    transport.Publish("cspProbe", "{\"value\":42,\"text\":\"Grüße\"}");
-                    return "ok";
-                }),
-                transport.Bind("cspReceived", arguments =>
-                {
-                    received.TrySetResult(arguments.GetString());
-                    return "ok";
-                })));
+            new CspProbeBridge(transport, new CspProbeModel(received)));
         await using var services = collection.BuildServiceProvider();
         var host = new RunicViewHost
         {
@@ -854,15 +848,21 @@ internal sealed class NativeChecks
                         <script>document.title = 'inline script ran';</script>
                         """), "text/html; charset=utf-8"),
                     "/csp.js" => new ContentResponse(System.Text.Encoding.UTF8.GetBytes("""
-                        globalThis.__cspProbeChanged = state => {
+                        const request = message => webui.call('__runicViews', JSON.stringify(message));
+                        globalThis.__runicDesktopViews.onMessage(text => {
+                          const push = JSON.parse(text);
+                          if (push.kind !== 'frame') return;
+                          const state = Object.fromEntries(push.changes.map(change => [change.field, change.value]));
                           let evaluation = 'allowed';
                           try { new Function('return 1')(); } catch (error) { evaluation = error.name; }
-                          cspReceived(`${state.value}:${state.text}:${evaluation}:${document.title}`).catch(() => {});
-                        };
-                        (function ready() {
-                          if (typeof globalThis.cspReady === 'function') cspReady().catch(() => setTimeout(ready, 50));
-                          else setTimeout(ready, 50);
-                        })();
+                          request({ kind: 'command', route: 'csp', member: 'report',
+                            input: `${state.value}:${state.text}:${evaluation}:${document.title}` }).catch(() => {});
+                        });
+                        webui.connected
+                          .then(() => request({ kind: 'hello', protocol: 4, session: 'csp', client: { name: 'csp', version: '0' } }))
+                          .then(() => request({ kind: 'open', route: 'csp', presentation: 'csp' }))
+                          .then(() => request({ kind: 'command', route: 'csp', member: 'publish' }))
+                          .catch(() => {});
                         """), "text/javascript; charset=utf-8"),
                     _ => null,
                 })),
@@ -1013,4 +1013,48 @@ internal sealed class NativeChecks
         internal TaskCompletionSource Released { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
         public void Dispose() { Disposed = true; Released.TrySetResult(); }
     }
+}
+
+// The View of HostSendsItsContentSecurityPolicy's page: publish changes the state, which the page receives as a frame,
+// and report hands back what the page received.
+file sealed class CspProbeModel : INotifyPropertyChanged
+{
+    public CspProbeModel(TaskCompletionSource<string> received)
+    {
+        Publish = new ProbeCommand(_ =>
+        {
+            Value = 42;
+            Text = "Grüße";
+        });
+        Report = new ProbeCommand(text => received.TrySetResult((string)text!));
+    }
+
+    public int Value { get; private set; }
+    public string Text { get; private set; } = "";
+    public ICommand Publish { get; }
+    public ICommand Report { get; }
+    public event PropertyChangedEventHandler? PropertyChanged { add { } remove { } }
+
+    private sealed class ProbeCommand(Action<object?> execute) : ICommand
+    {
+        public event EventHandler? CanExecuteChanged { add { } remove { } }
+        public bool CanExecute(object? parameter) => true;
+        public void Execute(object? parameter) => execute(parameter);
+    }
+}
+
+file sealed class CspProbeBridge(IBridgeTransport transport, CspProbeModel model)
+    : ViewModelBridge<CspProbeModel>(transport, model, "csp", State, [], [], Commands)
+{
+    private static readonly BridgeStateMember<CspProbeModel>[] State =
+    [
+        new("value", static (writer, model) => writer.WriteNumberValue(model.Value)),
+        new("text", static (writer, model) => writer.WriteStringValue(model.Text)),
+    ];
+
+    private static readonly CommandDescriptor<CspProbeModel>[] Commands =
+    [
+        new("Publish", static model => model.Publish),
+        new("Report", static model => model.Report) { ReadInput = static input => input.GetString() },
+    ];
 }

@@ -1,0 +1,91 @@
+{
+  "format": "runic.views.vector/1",
+  "id": "values.floats",
+  "contract": {"id":"runic.views","version":4},
+  "area": "values",
+  "description": "float64 and float32.",
+  "cases": [
+    {
+      "id": "values.floats.float64-one-tenth",
+      "operation": "decode",
+      "type": "float64",
+      "input": {"encoding":"json","value":0.1},
+      "expect": {"value":0.1}
+    },
+    {
+      "id": "values.floats.float64-largest",
+      "operation": "decode",
+      "type": "float64",
+      "input": {"encoding":"json","value":1.7976931348623157e+308},
+      "expect": {"value":1.7976931348623157e+308}
+    },
+    {
+      "id": "values.floats.float64-beyond-safe-integer",
+      "description": "Read as the nearest double.",
+      "operation": "decode",
+      "type": "float64",
+      "input": {"encoding":"json","value":9007199254740992},
+      "expect": {"value":9007199254740992}
+    },
+    {
+      "id": "values.floats.float64-string",
+      "operation": "decode",
+      "type": "float64",
+      "input": {"encoding":"json","value":"1"},
+      "expect": {"error":{"code":"invalid-value"}}
+    },
+    {
+      "id": "values.floats.float64-null",
+      "operation": "decode",
+      "type": "float64",
+      "input": {"encoding":"json","value":null},
+      "expect": {"error":{"code":"invalid-value"}}
+    },
+    {
+      "id": "values.floats.float32-one-tenth",
+      "description": "The single nearest to 0.1 is written 0.1.",
+      "operation": "decode",
+      "type": "float32",
+      "input": {"encoding":"json","value":0.1},
+      "expect": {"value":0.1}
+    },
+    {
+      "id": "values.floats.float32-rounded-integer",
+      "description": "2^24 + 1 rounds to 2^24.",
+      "operation": "decode",
+      "type": "float32",
+      "input": {"encoding":"json","value":16777217},
+      "expect": {"value":16777216}
+    },
+    {
+      "id": "values.floats.float32-largest",
+      "operation": "decode",
+      "type": "float32",
+      "input": {"encoding":"json","value":3.4028234663852886e+38},
+      "expect": {"value":3.4028235e+38}
+    },
+    {
+      "id": "values.floats.float32-overflow",
+      "description": "Rounds to an infinite single.",
+      "operation": "decode",
+      "type": "float32",
+      "input": {"encoding":"json","value":1e+39},
+      "expect": {"error":{"code":"invalid-value"}}
+    },
+    {
+      "id": "values.floats.float32-smallest-subnormal",
+      "operation": "decode",
+      "type": "float32",
+      "input": {"encoding":"json","value":1.401298464324817e-45},
+      "expect": {"value":1e-45}
+    },
+    {
+      "id": "values.floats.float32-underflow",
+      "description": "Rounds to zero, which is finite.",
+      "operation": "decode",
+      "type": "float32",
+      "input": {"encoding":"json","value":1e-46},
+      "expect": {"value":0}
+    }
+  ]
+}

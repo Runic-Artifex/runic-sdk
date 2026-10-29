@@ -6,7 +6,9 @@ namespace Runic.Application.Testing.Tests;
 
 // Runs the shared collection delta fixtures through RunicStateTracker: it must reach
 // the fixture state from the producer's frames, reject a frame after a lost one, and
-// reject frames the generated client rejects.
+// reject frames the generated client rejects. The fixtures (specs/application/fixtures/collection-deltas) are
+// protocol 3; their frames are translated to the protocol-4 pushes state, frame and failure. The producer side of
+// the same cases is in the conformance corpus (specs/application/conformance/scenarios/state-changes).
 internal sealed class TrackerConformanceTests
 {
     private const string Route = "collectionDelta";
@@ -30,19 +32,19 @@ internal sealed class TrackerConformanceTests
     public void TrackerReachesTheFixtureState(string name, JsonObject testCase)
     {
         if (testCase["error"] is not null && testCase["steps"]!.AsArray().Count == 0) return;
-        var initial = CollectionDeltaConformanceTests.Expand(testCase["initial"]!).AsObject();
+        var initial = Expand(testCase["initial"]!).AsObject();
         using var host = Host(initial);
         var tracker = host.Root.Track();
         var offset = tracker.Revision - initial["revision"]!.GetValue<long>();
         var dropped = testCase["dropped"]?.AsArray().Select(index => index!.GetValue<int>()).ToHashSet() ?? [];
-        var frames = CollectionDeltaConformanceTests.Expand(testCase["frames"]!).AsArray();
+        var frames = Expand(testCase["frames"]!).AsArray();
         for (var index = 0; index < frames.Count; index++)
         {
             if (dropped.Contains(index)) continue;
             var frame = frames[index]!.AsObject();
             foreach (var key in new[] { "revision", "baseRevision" })
                 if (frame[key] is { } value) frame[key] = value.GetValue<long>() + offset;
-            host.Transport.Publish(Route, frame.ToJsonString());
+            Push(host, Translate(frame));
             if (dropped.Count > 0 && index > dropped.Min() && frame["__runicDelta"] is not null)
             {
                 Require(Throws(() => tracker.Apply(), "lost or reordered"), $"{name}: a delta after a lost frame was applied.");
@@ -51,11 +53,9 @@ internal sealed class TrackerConformanceTests
             tracker.Apply();
         }
         Require(dropped.Count == 0, $"{name}: the lost frame was not detected.");
-        var expected = CollectionDeltaConformanceTests.Expand(testCase["expected"] ?? testCase["initial"]!).AsObject();
+        var expected = Expand(testCase["expected"] ?? testCase["initial"]!).AsObject();
         expected.Remove("revision");
         var actual = JsonNode.Parse(tracker.State.Json.GetRawText())!.AsObject();
-        actual.Remove("revision");
-        actual.Remove("__runicFields");
         Require(JsonNode.DeepEquals(expected, actual), $"{name}: the tracker reached {actual.ToJsonString()[..Math.Min(400, actual.ToJsonString().Length)]}");
         var failures = frames.Count(frame => frame!["__runicFailure"] is not null);
         Require(tracker.Failures.Count == failures, $"{name}: the tracker recorded {tracker.Failures.Count} failure notices, not {failures}.");
@@ -83,13 +83,86 @@ internal sealed class TrackerConformanceTests
             var tracker = host.Root.Track();
             var frame = new JsonObject
             {
-                ["__runicDelta"] = 1, ["baseRevision"] = tracker.Revision, ["revision"] = tracker.Revision + 1,
+                ["kind"] = "frame", ["route"] = Route, ["baseRevision"] = tracker.Revision, ["revision"] = tracker.Revision + 1,
                 ["changes"] = new JsonArray(change),
             };
-            host.Transport.Publish(Route, frame.ToJsonString());
+            Push(host, frame);
             Require(Throws(() => tracker.Apply(), problem), $"The tracker accepted a frame with {problem}.");
         }
     }
+
+    // Broadcasts a push on the host's transport, as the window would.
+    private static void Push(RunicWindowTestHost<CollectionDeltaViewModel> host, JsonObject push) =>
+        host.Transport.BroadcastAsync(System.Text.Encoding.UTF8.GetBytes(push.ToJsonString())).AsTask().GetAwaiter().GetResult();
+
+    // A protocol-3 fixture frame as the protocol-4 push: a delta is a frame, a failure notice a failure, and anything
+    // else a full state.
+    private static JsonObject Translate(JsonObject frame)
+    {
+        var fixture = frame.DeepClone().AsObject();
+        var push = new JsonObject();
+        if (fixture.Remove("__runicDelta"))
+        {
+            push["kind"] = "frame";
+            push["route"] = Route;
+            foreach (var key in new[] { "baseRevision", "revision", "changes" }) push[key] = fixture[key]!.DeepClone();
+        }
+        else if (fixture.Remove("__runicFailure"))
+        {
+            push["kind"] = "failure";
+            push["route"] = Route;
+            foreach (var key in new[] { "revision", "error" }) push[key] = fixture[key]!.DeepClone();
+        }
+        else
+        {
+            push["kind"] = "state";
+            push["route"] = Route;
+            push["revision"] = fixture["revision"]!.DeepClone();
+            fixture.Remove("revision");
+            push["state"] = fixture.DeepClone();
+        }
+        return push;
+    }
+
+    // Expands the fixture generators documented in specs/application/collection-deltas.md.
+    private static JsonNode Expand(JsonNode node)
+    {
+        switch (node)
+        {
+            case JsonArray array:
+                var result = new JsonArray();
+                foreach (var item in array)
+                {
+                    if (item is JsonObject { Count: 1 } generator && generator["$rows"] is JsonArray rows)
+                        foreach (var (id, width) in Range(rows)) result.Add(RowNode(id, width));
+                    else if (item is JsonObject { Count: 1 } adds && adds["$adds"] is JsonArray range)
+                        foreach (var (id, width) in Range(range))
+                            result.Add(new JsonObject
+                            {
+                                ["field"] = "rows", ["kind"] = "add", ["index"] = id, ["oldIndex"] = -1,
+                                ["keys"] = new JsonArray(id.ToString(System.Globalization.CultureInfo.InvariantCulture)),
+                                ["items"] = new JsonArray(RowNode(id, width)),
+                            });
+                    else result.Add(item is null ? null : Expand(item));
+                }
+                return result;
+            case JsonObject value:
+                var copy = new JsonObject();
+                foreach (var (key, child) in value) copy[key] = child is null ? null : Expand(child);
+                return copy;
+            default:
+                return node.DeepClone();
+        }
+    }
+
+    private static IEnumerable<(int Id, int Width)> Range(JsonArray range)
+    {
+        var start = range[0]!.GetValue<int>();
+        var width = range.Count > 2 ? range[2]!.GetValue<int>() : 0;
+        return Enumerable.Range(start, range[1]!.GetValue<int>()).Select(id => (id, width));
+    }
+
+    private static JsonObject RowNode(int id, int width) => new() { ["id"] = id, ["label"] = $"row {id}".PadRight(width, '.') };
 
     private static RunicWindowTestHost<CollectionDeltaViewModel> Host(JsonObject initial)
     {

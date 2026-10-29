@@ -313,6 +313,7 @@ function fakeOperation(requestId: string) {
     status: () => terminal,
     completion: terminal,
     wait: () => terminal,
+    subscribe: () => () => {},
     async cancel() { cancels++; return { contract: "test", requestId, kind: "cancellation-requested" }; },
     async outcome() {
       const status = await terminal;
@@ -433,7 +434,8 @@ function hostBridge(initial: boolean) {
   const listeners = new Set<(connected: boolean) => void>();
   const bridge: RunicBridgeClient = {
     isConnected: () => connected,
-    call: () => Promise.reject(new Error("not used")),
+    request: () => Promise.reject(new Error("not used")),
+    onMessage: () => () => {},
     onConnectionChange(listener) {
       listeners.add(listener);
       listener(connected);
@@ -500,7 +502,7 @@ describe("injectBridgeConnection", () => {
     expect(() => injectBridgeConnection()).toThrow();
     expect(Object.keys(root).sort()).toEqual([
       "RunicViewOutlet", "ViewOutlet", "injectBridgeConnection", "injectCollectionViewport", "injectCommand", "injectLatestOperation",
-      "injectMenuBar", "injectOperation", "injectView", "onBridgeConnection",
+      "injectMenuBar", "injectOperation", "injectTextField", "injectView", "onBridgeConnection",
     ]);
     // The connection API that useBridgeConnection wraps is re-exported, as the menu-bar types are (0.11).
     expect(root.onBridgeConnection).toBe(viewsOnBridgeConnection);

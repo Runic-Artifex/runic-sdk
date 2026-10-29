@@ -13,7 +13,7 @@ export interface OperationHandle<TArgs extends readonly unknown[], TResult, TFai
  * Tracks Start admission, pending work, cancellation and terminal feedback as
  * reactive properties. Call during component initialization. Owner destruction
  * detaches observation and settles run promises without cancelling accepted work.
- * Progress remains in the generated View snapshot, where the application owns it.
+ * `progress` follows the running operation (`BridgeOperation.subscribe`).
  */
 export function useOperation<TArgs extends readonly unknown[], TResult, TFailure = never>(
   start: (...args: TArgs) => BridgeOperation<TResult, TFailure> | undefined | PromiseLike<BridgeOperation<TResult, TFailure> | undefined>,
@@ -36,6 +36,7 @@ export function useOperation<TArgs extends readonly unknown[], TResult, TFailure
     get admitting() { return current.admitting; },
     get operation() { return current.operation; },
     get status() { return current.status; },
+    get progress() { return current.progress; },
     get outcome() { return current.outcome; },
     get failure() { return current.failure; },
     get error() { return current.error; },

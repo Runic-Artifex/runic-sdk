@@ -3,7 +3,7 @@ import { readFile, rm, writeFile } from "node:fs/promises";
 import { createServer } from "node:net";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { launchChromium, pause, tail, waitFor } from "../shared/smoke.mjs";
+import { launchChromium, pause, tail, waitFor, viewsProbe } from "../shared/smoke.mjs";
 
 const frontend = process.env.RUNIC_HMR_FRONTEND;
 if (frontend !== "angular" && frontend !== "svelte")
@@ -87,7 +87,7 @@ try {
   const { evaluate } = browser;
   const query = expression => evaluate(expression);
   const click = selector => evaluate(`document.querySelector(${JSON.stringify(selector)}).click()`);
-  const snapshot = route => evaluate(`(async () => JSON.parse(await window.__runicBridge.call(${JSON.stringify(route + "Snapshot")})))()`);
+  const { snapshot, isOpen } = viewsProbe(evaluate);
 
   try {
     await retry(async () => await query('document.querySelector("#main h1")?.textContent') === "Reactive Notes");
@@ -130,12 +130,13 @@ try {
   await retry(async () => await query('document.querySelector("#document-pane [data-message]")?.textContent') === "Saved After HMR");
   await click("[data-pane=preview]");
   await retry(async () => (await snapshot(editorRoute)).error?.kind === "released");
-  await retry(async () => await query(`typeof window.__${editorRoute}Changed`) === "undefined");
+  // The page closed the released route: its runtime no longer has it open.
+  await retry(async () => !(await isOpen(editorRoute)));
   if ((await snapshot(compactRoute)).state.activationCount - (await snapshot(compactRoute)).state.deactivationCount !== 1)
     throw new Error("The compact View lost its activation after HMR and nested navigation.");
   await click("[data-go=home]");
   await retry(async () => (await snapshot(compactRoute)).error?.kind === "released");
-  await retry(async () => await query(`typeof window.__${compactRoute}Changed`) === "undefined");
+  await retry(async () => !(await isOpen(compactRoute)));
   if (viaRunicDev) {
     await retry(async () => (await query('(async () => (await fetch("/__runic_dev/status")).json())()')).generation === 1);
     await pause(300);

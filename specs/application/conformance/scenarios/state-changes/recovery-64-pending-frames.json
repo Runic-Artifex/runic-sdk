@@ -1,0 +1,60 @@
+{
+  "format": "runic.views.scenario/1",
+  "id": "state-changes.recovery-64-pending-frames.v1",
+  "contract": {"id":"runic.views","version":4},
+  "set": "state-changes",
+  "roles": ["producer","client"],
+  "description": "Recovery paths. A route retains at most 64 undelivered pushes or 1 MiB of them before a recovery state supersedes them; a client that misses a frame reads one snapshot, applies frames that arrive during the read after it, and retries a failed read. Case: 64 pending frames.",
+  "source": "specs/application/fixtures/collection-deltas/recovery.json#64 pending frames",
+  "view": "list",
+  "requires": ["held-delivery"],
+  "ids": {
+    "c1": {"kind":"connection"},
+    "hello-c1": {"kind":"request"},
+    "session": {"kind":"wire","value":"s-1"},
+    "open-list": {"kind":"call"},
+    "open-list-request": {"kind":"request"},
+    "presentation": {"kind":"wire","value":"p-1"},
+    "final-read": {"kind":"request"}
+  },
+  "arrange": {"model":{"rows":[],"title":"rows"}},
+  "steps": [
+    {"connect":"c1"},
+    {
+      "send": {
+        "kind": "hello",
+        "protocol": 4,
+        "session": {"$id":"session"},
+        "client": {"name":{"$any":"string","default":"conformance-client"},"version":{"$any":"string","default":"1.0.0"}}
+      },
+      "id": "hello-c1"
+    },
+    {
+      "receive": {
+        "ok": true,
+        "protocol": 4,
+        "implementation": {"name":{"$any":"string","default":"conformance-producer"},"version":{"$any":"string","default":"1.0.0"}}
+      },
+      "replyTo": "hello-c1"
+    },
+    {"call":{"id":"open-list","op":"open","route":"list"}},
+    {"send":{"kind":"open","route":"list","presentation":{"$id":"presentation"}},"id":"open-list-request"},
+    {
+      "receive": {"ok":true,"revision":0,"state":{"rows":[],"title":"rows"},"presentation":"ok"},
+      "replyTo": "open-list-request"
+    },
+    {"delivery":"hold"},
+    {"mutate":[{"op":"appendRows","start":0,"count":67}],"units":"each"},
+    {"delivery":"release"},
+    {"receive":{"kind":"frame","route":"list","baseRevision":0,"revision":1,"changes":[{"$adds":[0,1]}]}},
+    {"receive":{"kind":"state","route":"list","revision":66,"state":{"rows":[{"$rows":[0,66]}],"title":"rows"}}},
+    {"receive":{"kind":"frame","route":"list","baseRevision":66,"revision":67,"changes":[{"$adds":[66,1]}]}},
+    {"send":{"kind":"snapshot","route":"list"},"id":"final-read","role":"producer"},
+    {
+      "receive": {"ok":true,"revision":67,"state":{"rows":[{"$rows":[0,67]}],"title":"rows"}},
+      "replyTo": "final-read",
+      "role": "producer"
+    },
+    {"expect":{"state":{"route":"list","value":{"rows":[{"$rows":[0,67]}],"title":"rows"}}}}
+  ]
+}

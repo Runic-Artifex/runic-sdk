@@ -1,7 +1,11 @@
 # Collection delta frames
 
+> Protocol 3. [State changes](state-changes.md) replaces this document for protocol 4. It is kept, with
+> [its fixtures](fixtures/collection-deltas), only because `TrackerConformanceTests` in
+> `tests/dotnet/Runic.Application.Testing.Tests` still translates those fixtures to protocol-4 pushes.
+
 This is the contract for incremental collection updates in the
-[Runic Application Views wire protocol](README.md), version 1. The producer is
+[Runic Application Views wire protocol](https://github.com/Runic-Artifex/runic-sdk/blob/v0.12.1/specs/application/README.md), version 1. The producer is
 the generated `ViewModelBridge` in `Runic.Application.Views`. The consumer is the
 shared browser runtime in `@runic-artifex/views`, used by generated clients.
 Both are tested against the [conformance fixtures](fixtures/collection-deltas).
@@ -183,11 +187,8 @@ A full state's text field must be a string (or `null` for `defineText(true)`).
 A client from before text changes treats a text field as unknown, discards the
 frame and reads a snapshot.
 
-Fixtures: [text](fixtures/text-deltas/text.json), with a `log` text field and a
-`title` (`"log"`), and the mutations `{ "op": "append", "text" }`,
-`{ "op": "set", "value" }` and `{ "op": "title", "value" }`. The .NET test
-`TextDeltaConformanceTests` and the views test `text-fixtures.test.ts` run
-them like the collection fixtures.
+The text fixtures are converted into the protocol-4
+[`state-changes`](conformance/scenarios/state-changes) scenarios (`text-*`).
 
 ## Producing frames
 

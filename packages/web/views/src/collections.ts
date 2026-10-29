@@ -1,6 +1,11 @@
-/** Generated item codecs and stable keys for an incremental state collection. */
+// Keyed collections and append-only text fields (specs/application/state-changes.md). A generated client passes
+// `defineCollections(…)` to `connectView` only when its View has them, so other Views do not bundle this code.
+
+/** Generated row codec and key of a keyed collection, or an append-only text field (`defineText`). */
 export interface BridgeCollectionDefinition {
+  /** Decodes one row; throws for an invalid one. */
   readonly decode: (wire: unknown) => unknown;
+  /** The row's key: the string, the normal form of a `uuid`, or the decimal form of an `int32` key field. */
   readonly key: (item: unknown) => string;
   /** An append-only text field (`defineText`) rather than a keyed collection. */
   readonly text?: { readonly nullable: boolean };
@@ -12,7 +17,7 @@ export function defineCollection<T>(decode: (wire: unknown) => T, key: (item: T)
 }
 
 /**
- * An append-only text field, a C# `[RunicAppendOnlyText]` string: its frames drop
+ * An append-only text field, such as a C# `[RunicAppendOnlyText]` string: its frames drop
  * characters from its start and append text, instead of resending it.
  */
 export function defineText(nullable = false): BridgeCollectionDefinition {
@@ -20,145 +25,116 @@ export function defineText(nullable = false): BridgeCollectionDefinition {
 }
 
 /**
- * The keyed collections of one generated client, passed to `connectView` as
- * `collections`. A View without keyed collections does not bundle this code.
+ * The keyed collections and text fields of one generated client, passed to `connectView` as `collections`. Its
+ * members are internal to the runtime.
  */
 export interface BridgeCollections {
-  /** Throws when a decoded state has a missing collection or invalid keys. */
-  validate(state: unknown): void;
-  /** Applies a collection change frame to a decoded state. Throws for an unusable frame. */
-  apply(state: unknown, changes: unknown): unknown;
-  /** Applies a frame that `apply` accepted to the wire state. */
-  applyWire(wire: unknown, changes: readonly unknown[]): Record<string, unknown>;
+  /** Whether `field` is a keyed collection or a text field. */
+  kind(field: string): "collection" | "text" | undefined;
+  /** Throws when a decoded value of `field` is not a valid collection (rows with nonempty, unique keys) or text. */
+  validate(field: string, value: unknown): void;
+  /**
+   * Applies one indexed or text change to `current`, the field's value as the previous change of the frame left it.
+   * `owned` says that `current` is already a copy the frame made, which this may change in place.
+   */
+  apply(field: string, current: unknown, change: Readonly<Record<string, unknown>>, owned: boolean): unknown;
 }
 
 /** Binds the collection codecs of a generated client to the code that applies their changes. */
 export function defineCollections(definitions: Readonly<Record<string, BridgeCollectionDefinition>>): BridgeCollections {
+  const definition = (field: string) => Object.hasOwn(definitions, field) ? definitions[field] : undefined;
   return {
-    validate: state => validateCollections(state, definitions),
-    apply: (state, changes) => applyCollectionDelta(state, changes, definitions),
-    applyWire: applyWireDelta,
+    kind: field => {
+      const found = definition(field);
+      return found === undefined ? undefined : found.text ? "text" : "collection";
+    },
+    validate(field, value) {
+      const found = definition(field);
+      if (!found) return;
+      if (found.text) {
+        if (typeof value !== "string" && !(found.text.nullable && value === null)) throw new Error(`The text field ${field} is not a string.`);
+        return;
+      }
+      if (!Array.isArray(value)) throw new Error(`The collection ${field} is not an array.`);
+      keys(value, found, field);
+    },
+    apply(field, current, change, owned) {
+      const found = definition(field);
+      if (!found) throw new Error(`${field} is not a keyed collection or text field.`);
+      if (found.text) {
+        if (change["kind"] !== "text") throw new Error(`The text field ${field} received a ${String(change["kind"])} change.`);
+        return applyText(current, change);
+      }
+      if (change["kind"] === "text") throw new Error(`The collection ${field} received a text change.`);
+      if (!Array.isArray(current)) throw new Error(`The collection ${field} is not an array.`);
+      const rows = owned ? current as unknown[] : [...current];
+      applyIndexed(rows, change, found);
+      return rows;
+    },
   };
 }
 
-function object(value: unknown): Record<string, unknown> {
-  if (value === null || typeof value !== "object" || Array.isArray(value)) throw new Error("Invalid collection change.");
-  return value as Record<string, unknown>;
-}
-
-function index(value: unknown): number {
-  if (typeof value !== "number" || !Number.isSafeInteger(value) || value < 0) throw new Error("Invalid collection index.");
-  return value;
-}
-
-function keys(items: readonly unknown[], definition: BridgeCollectionDefinition): string[] {
-  const result = items.map(definition.key);
+function keys(items: readonly unknown[], definition: BridgeCollectionDefinition, field: string): string[] {
+  const result = items.map(item => {
+    if (item === null || item === undefined) throw new Error(`The collection ${field} has a missing row.`);
+    return definition.key(item);
+  });
   if (result.some(key => typeof key !== "string" || key.length === 0) || new Set(result).size !== result.length)
-    throw new Error("Collection keys must be nonempty and unique.");
+    throw new Error(`The keys of ${field} must be nonempty and unique.`);
   return result;
 }
 
-export function validateCollections(state: unknown, definitions: Readonly<Record<string, BridgeCollectionDefinition>>): void {
-  if (Object.keys(definitions).length === 0) return;
-  const values = object(state);
-  for (const [field, definition] of Object.entries(definitions)) {
-    if (definition.text) {
-      if (typeof values[field] !== "string" && !(definition.text.nullable && values[field] === null)) throw new Error("Invalid text state.");
-      continue;
-    }
-    if (!Array.isArray(values[field])) throw new Error("Invalid collection state.");
-    keys(values[field], definition);
-  }
-}
+const index = (value: unknown): number => {
+  if (typeof value !== "number" || !Number.isSafeInteger(value) || value < 0) throw new Error("Invalid collection index.");
+  return value;
+};
 
-/** Applies a complete frame transactionally, preserving every unchanged item reference. */
-export function applyCollectionDelta(state: unknown, changes: unknown,
-  definitions: Readonly<Record<string, BridgeCollectionDefinition>>): unknown {
-  if (!Array.isArray(changes) || changes.length === 0 || changes.length > 4096) throw new Error("Invalid collection frame.");
-  const next = { ...object(state) };
-  const edited = new Set<string>();
-  for (const raw of changes) {
-    const change = object(raw);
-    const field = change.field;
-    if (typeof field !== "string" || !Object.hasOwn(definitions, field)) throw new Error("Unknown collection field.");
-    const definition = definitions[field]!;
-    if (definition.text) {
-      next[field] = applyText(next[field], change);
-      continue;
+/** Applies one `add`, `remove`, `replace` or `move` change to `rows` in place; unchanged rows keep their identity. */
+function applyIndexed(rows: unknown[], change: Readonly<Record<string, unknown>>, definition: BridgeCollectionDefinition): void {
+  const at = index(change["index"]);
+  const oldKeys = change["keys"] as readonly string[];
+  const values = (change["items"] as readonly unknown[]).map(definition.decode);
+  const count = oldKeys.length;
+  const verify = (start: number) => {
+    if (start + count > rows.length || oldKeys.some((key, offset) => definition.key(rows[start + offset]) !== key))
+      throw new Error("The collection no longer has the rows this change names.");
+  };
+  switch (change["kind"]) {
+    case "add":
+      if (at > rows.length) throw new Error("The insertion point is outside the collection.");
+      if (values.some((value, offset) => definition.key(value) !== oldKeys[offset])) throw new Error("The added rows do not have the given keys.");
+      rows.splice(at, 0, ...values);
+      break;
+    case "remove":
+      verify(at);
+      rows.splice(at, count);
+      break;
+    case "replace":
+      verify(at);
+      rows.splice(at, count, ...values);
+      break;
+    case "move": {
+      const from = index(change["oldIndex"]);
+      verify(from);
+      const moved = rows.splice(from, count);
+      if (at > rows.length) throw new Error("The move destination is outside the collection.");
+      rows.splice(at, 0, ...moved);
+      break;
     }
-    if (change.kind === "text") throw new Error("A text change for a collection field.");
-    if (!Array.isArray(next[field])) throw new Error("Invalid collection state.");
-    if (!edited.has(field)) { next[field] = [...next[field]]; edited.add(field); }
-    const items = next[field] as unknown[];
-    const at = index(change.index);
-    if (at > items.length || !Array.isArray(change.keys) || !Array.isArray(change.items)) throw new Error("Invalid collection change.");
-    const oldKeys = change.keys;
-    if (oldKeys.length === 0 || oldKeys.some(key => typeof key !== "string" || key.length === 0)) throw new Error("Invalid collection keys.");
-    const values = change.items.map(definition.decode);
-    const count = oldKeys.length;
-    const verify = (start: number) => {
-      if (start + count > items.length || oldKeys.some((key, offset) => definition.key(items[start + offset]) !== key))
-        throw new Error("The collection baseline no longer matches.");
-    };
-    switch (change.kind) {
-      case "add":
-        if (values.length !== count || values.some((value, offset) => definition.key(value) !== oldKeys[offset])) throw new Error("Invalid added rows.");
-        items.splice(at, 0, ...values);
-        break;
-      case "remove":
-        if (values.length !== 0) throw new Error("Invalid removed rows.");
-        verify(at); items.splice(at, count);
-        break;
-      case "replace":
-        if (values.length !== count || index(change.oldIndex) !== at) throw new Error("Invalid replaced rows.");
-        verify(at); items.splice(at, count, ...values);
-        break;
-      case "move": {
-        if (values.length !== 0) throw new Error("Invalid moved rows.");
-        const from = index(change.oldIndex);
-        verify(from);
-        const moved = items.splice(from, count);
-        if (at > items.length) throw new Error("Invalid move destination.");
-        items.splice(at, 0, ...moved);
-        break;
-      }
-      default: throw new Error("Unknown collection operation.");
-    }
+    default: throw new Error(`Unknown collection change ${String(change["kind"])}.`);
   }
-  for (const field of edited) keys(next[field] as readonly unknown[], definitions[field]!);
-  return next;
 }
 
 /**
- * Applies a text change `{ field, kind: "text", length, trim, text }`: the
- * current value must have `length` UTF-16 code units; the first `trim` are
- * dropped and `text` is appended.
+ * Applies a text change `{ field, kind: "text", length, trim, text }`: the current value must have `length` UTF-16
+ * code units; the first `trim` are dropped and `text` is appended.
  */
-function applyText(current: unknown, change: Record<string, unknown>): string {
-  if (change.kind !== "text" || typeof current !== "string" || typeof change.text !== "string") throw new Error("Invalid text change.");
-  const length = index(change.length);
-  const trim = index(change.trim);
-  if (length !== current.length) throw new Error("The text baseline no longer matches.");
+function applyText(current: unknown, change: Readonly<Record<string, unknown>>): string {
+  if (typeof current !== "string") throw new Error("A text change needs a string value.");
+  const length = index(change["length"]);
+  const trim = index(change["trim"]);
+  if (typeof change["text"] !== "string") throw new Error("Invalid text change.");
+  if (length !== current.length) throw new Error("The text no longer has the length this change names.");
   if (trim > length) throw new Error("Invalid text trim.");
-  return current.slice(trim) + change.text;
-}
-
-/**
- * Applies a frame that `applyCollectionDelta` accepted to the wire state, so the
- * wire stays comparable with a later full state at the same revision.
- */
-export function applyWireDelta(wire: unknown, changes: readonly unknown[]): Record<string, unknown> {
-  const next = { ...(wire as Record<string, unknown>) };
-  const edited = new Set<string>();
-  for (const change of changes as readonly { field: string; kind: string; index: number; oldIndex: number; keys: unknown[]; items: unknown[] }[]) {
-    if (change.kind === "text") { next[change.field] = applyText(next[change.field], change as unknown as Record<string, unknown>); continue; }
-    if (!edited.has(change.field)) { next[change.field] = [...(next[change.field] as unknown[])]; edited.add(change.field); }
-    const rows = next[change.field] as unknown[];
-    const count = change.keys.length;
-    if (change.kind === "add") rows.splice(change.index, 0, ...change.items);
-    else if (change.kind === "remove") rows.splice(change.index, count);
-    else if (change.kind === "replace") rows.splice(change.index, count, ...change.items);
-    else rows.splice(change.index, 0, ...rows.splice(change.oldIndex, count));
-  }
-  return next;
+  return current.slice(trim) + change["text"];
 }

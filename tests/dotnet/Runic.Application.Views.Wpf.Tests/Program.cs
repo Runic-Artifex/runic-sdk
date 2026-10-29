@@ -58,7 +58,8 @@ internal sealed class Program
         var url = view.Surface.Url;
         Check(ReferenceEquals(view.ViewModel, model), "The host substituted a model.");
         Check(ReferenceEquals(RunicModelContextRegistry.Shared.GetRequired(model), context), "The session changed the model context.");
-        var save = calls.CallAsync("editorSave").AsTask();
+        _ = await calls.RequestAsync("{\"kind\":\"hello\",\"protocol\":4,\"session\":\"s-1\",\"client\":{\"name\":\"tests\",\"version\":\"0\"}}");
+        var save = calls.RequestAsync("{\"kind\":\"command\",\"route\":\"editor\",\"member\":\"save\"}").AsTask();
         await model.Started.Task.WaitAsync(TimeSpan.FromSeconds(5));
         var result = await view.CloseAsync(TimeSpan.Zero);
         Check(!result.Drained && result.RemainingOperations == 1 && !result.Completion.IsCompleted, "Close did not retain accepted work.");
@@ -205,8 +206,7 @@ internal sealed class Program
         public void Dispose() => Disposed = true;
     }
     private sealed class SlowBridge(IBridgeTransport transport, Model model, WindowContentSession content)
-        : ViewModelBridge<Model>(transport, model, "editor", static (writer, _, revision, _) =>
-        { writer.WriteStartObject(); writer.WriteNumber("revision", revision); writer.WriteEndObject(); }, [], [],
+        : ViewModelBridge<Model>(transport, model, "editor", [], [], [],
         [new("Save", vm => vm.Save) { ExecuteAsync = (vm, _, _) => vm.SaveAsync(), CanExecute = (_, _) => true }], content: content);
     private sealed class NoopCommand : ICommand
     {

@@ -6,12 +6,14 @@ using static TypeScriptModuleBindings;
 // `mock{Name}(bridge, definition)`. Its state, handler and failure types derive
 // from the client module, so renaming a ViewModel member breaks the mock at
 // compile time. The codecs here mirror the client's wire encoding; the
-// scheduling, routes and protocol live in @runic-artifex/views/mock.
+// scheduling and protocol live in @runic-artifex/views/mock. Setters, commands
+// and operations name the member their requests address.
 internal sealed record MockValueField(string WireName, BridgeTypeGraph Graph);
 internal sealed record MockContentField(string WireName, string ReferenceType, bool IsCollection, bool IsNullable);
-internal sealed record MockSetter(string Method, string Route, string WireName, string ValueType, string ReadExpression, string? CheckedRoute);
-// KeyName: the key parameter of a [RunicCommandKey] command, whose InputType is the key's.
-internal sealed record MockCommand(string Method, string Route, string? InputType, string? ReadExpression, string? AvailabilityField,
+// CheckedMethod: the client method of the member's checked write, if it has one.
+internal sealed record MockSetter(string Method, string WireName, string ValueType, string? CheckedMethod);
+// DecodeInput decodes `wire`. KeyName: the key parameter of a [RunicCommandKey] command, whose InputType is the key's.
+internal sealed record MockCommand(string Method, string Member, string? InputType, string? DecodeInput, string? AvailabilityField,
     string? FailureType = null, string? EncodeFailure = null, string? KeyName = null);
 internal sealed record MockOperation(string Method, string Member, string InputType, string ResultType, string? DecodeInput,
     string? EncodeResult, bool IsStream, string? FailureType = null, string? EncodeFailure = null)
@@ -154,14 +156,14 @@ internal static class MockTypeScriptEmitter
         {
             body.AppendLine("  setters: {");
             foreach (var setter in plan.Setters)
-                body.AppendLine($"    {setter.Method}: {{ route: {Quote(setter.Route)}, field: {Quote(setter.WireName)}, read: (raw: unknown) => {setter.ReadExpression}{(setter.CheckedRoute is null ? "" : $", checked: {Quote(setter.CheckedRoute)}")} }},");
+                body.AppendLine($"    {setter.Method}: {{ member: {Quote(setter.WireName)}{(setter.CheckedMethod is null ? "" : $", checked: {Quote(setter.CheckedMethod)}")} }},");
             body.AppendLine("  },");
         }
         if (plan.Commands.Count > 0)
         {
             body.AppendLine("  commands: {");
             foreach (var command in plan.Commands)
-                body.AppendLine($"    {command.Method}: {{ route: {Quote(command.Route)}{(command.ReadExpression is null ? "" : $", read: (raw: unknown) => {{ const wire: unknown = JSON.parse(raw as string); return {command.ReadExpression}; }}")}{(command.AvailabilityField is null ? "" : $", available: {Quote(command.AvailabilityField)}")}{(command.EncodeFailure is null ? "" : $", encodeFailure: (value: unknown) => {Encode(command.EncodeFailure, command.FailureType!)}")} }},");
+                body.AppendLine($"    {command.Method}: {{ member: {Quote(command.Member)}{(command.DecodeInput is null ? "" : $", decodeInput: (wire: unknown) => {BridgeTypeGraph.ArrowBody(command.DecodeInput)}")}{(command.AvailabilityField is null ? "" : $", available: {Quote(command.AvailabilityField)}")}{(command.EncodeFailure is null ? "" : $", encodeFailure: (value: unknown) => {Encode(command.EncodeFailure, command.FailureType!)}")} }},");
             body.AppendLine("  },");
         }
         if (plan.Operations.Count > 0)

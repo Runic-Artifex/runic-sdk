@@ -29,18 +29,18 @@ export interface ConfirmNavigationMock extends MockTypedView<ConfirmNavigationMo
 const spec: MockTypedViewSpec = {
   kind: "confirmNavigation",
   route: "confirmNavigation",
-  contract: "NotesWindowViews.ConfirmNavigationViewModel:7E66E532FEB7FFF8F3E463213E7A1FACC34E333EBB3B5C9C71E6B8307E1E37C3",
+  contract: "NotesWindowViews.ConfirmNavigationViewModel:1160496013C85294527537E950775D8901F2B81EC31DE93996835B51444AF521",
   fields: {
     message: { encode: (value: unknown) => { const typed = value as string; return typed; }, decode: (wire: unknown) => bridgeWire.string(wire) },
   },
   defaults: { canConfirm: true, isConfirmExecuting: false, canCancel: true, isCancelExecuting: false },
   commands: {
-    confirm: { route: "Confirm", available: "canConfirm" },
-    cancel: { route: "Cancel", available: "canCancel" },
+    confirm: { member: "confirm", available: "canConfirm" },
+    cancel: { member: "cancel", available: "canCancel" },
   },
   operations: {
-    confirm: { member: "Confirm" },
-    cancel: { member: "Cancel" },
+    confirm: { member: "confirm" },
+    cancel: { member: "cancel" },
   },
 };
 

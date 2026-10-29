@@ -110,8 +110,10 @@ A `NavigationResult<T>` holds .NET content: return its `Outcome`, a
 ### RUNICBRIDGE004
 
 Two generated names collide: ViewModel names, presentation kinds, state wire
-names, the reserved `revision` and `validation` fields, interactions, routes,
-client members, or generated files (including a hand-written `types.ts`). A
+names, the reserved `validation` field, interactions, client members, or
+generated files (including a hand-written `types.ts`). Since 0.13 (Views
+protocol 4) requests name their kind and member, so host route names no longer
+collide, and a state member may be named `revision`. A
 generated TypeScript module that declares one name twice would collide too.
 Since 0.10 the generated C# bridges are in the
 `Runic.Application.Views.Generated.Bridges` namespace, so a type of yours named

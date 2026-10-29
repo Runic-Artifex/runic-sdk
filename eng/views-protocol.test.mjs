@@ -4,7 +4,7 @@ import { join, relative, resolve } from "node:path";
 import test from "node:test";
 import { root } from "./run.mjs";
 
-// Views protocol 3 (specs/application/README.md): .NET answers a released View `released`.
+// Since Views protocol 3, .NET answers a released View `released`.
 // `disconnected` is client-only (the Bridge is not connected), so no .NET wire code sends it.
 const wirePackages = [
   "Runic.Application.Views",
@@ -36,12 +36,16 @@ test("no .NET Views, Desktop or CS-WebUI code sends the wire token disconnected"
   assert.deepEqual(offenders, []);
 });
 
+// The .NET producer and the npm client speak the specification's version; the engineering job fails when one of
+// them moves without the other.
 test("the .NET runtime, the npm runtime and the specification name one protocol version", () => {
   const dotnet = readFileSync(resolve(root, "packages/dotnet/Runic.Application.Views/Generated/BridgeRuntime.cs"), "utf8")
     .match(/public const int Version = (\d+);/)?.[1];
   const npm = readFileSync(resolve(root, "packages/web/views/src/version.ts"), "utf8").match(/export const bridgeProtocol = (\d+);/)?.[1];
-  const spec = readFileSync(resolve(root, "specs/application/README.md"), "utf8").match(/This is the protocol, version (\d+),/)?.[1];
+  const spec = readFileSync(resolve(root, "specs/application/README.md"), "utf8").match(/This is the Runic Application Views protocol, version (\d+),/)?.[1];
   assert.ok(dotnet, "BridgeProtocol.Version not found");
-  assert.equal(npm, dotnet);
-  assert.equal(spec, dotnet);
+  assert.ok(npm, "bridgeProtocol not found");
+  assert.ok(spec, "the specification's version not found");
+  assert.equal(dotnet, spec, "BridgeProtocol.Version differs from the specification's version");
+  assert.equal(npm, spec, "bridgeProtocol differs from the specification's version");
 });

@@ -195,19 +195,20 @@ public sealed class DesktopSurface : IAsyncDisposable
     internal Task RunJavaScriptAsync(string script, CancellationToken cancellationToken = default) =>
         _engine.RunJavaScriptAsync(script, cancellationToken);
 
-    /// <summary>Pushes a View's state to every authenticated presentation session.</summary>
+    /// <summary>Pushes one Views message to every authenticated presentation session.</summary>
     /// <remarks>
-    /// The page's bridge parses the JSON and calls <c>globalThis["__{route}Changed"]</c> with it when that is a
-    /// function. The state travels as data to a dispatcher in the served bridge script, not as script, so a policy
-    /// without <c>'unsafe-eval'</c> allows it.
+    /// The message travels as data to the served bridge script, not as script, so a policy without
+    /// <c>'unsafe-eval'</c> allows it. The bridge script hands its text to the listeners of
+    /// <c>globalThis.__runicDesktopViews</c>. The packets are built before this returns.
     /// </remarks>
-    internal Task PushStateAsync(string route, string stateJson, CancellationToken cancellationToken = default) =>
-        _engine.PushStateAsync(route, Encoding.UTF8.GetBytes(stateJson), cancellationToken);
+    internal Task PushViewsMessageAsync(ReadOnlyMemory<byte> message, CancellationToken cancellationToken = default) =>
+        _engine.PushViewsMessageAsync(message, cancellationToken);
 
-    /// <summary><see cref="PushStateAsync(string, string, CancellationToken)"/> for state encoded as UTF-8. The packets
-    /// are built before this returns.</summary>
-    internal Task PushStateUtf8Async(string route, ReadOnlyMemory<byte> stateUtf8, CancellationToken cancellationToken = default) =>
-        _engine.PushStateAsync(route, stateUtf8, cancellationToken);
+    /// <summary>Pushes one Views message to the presentation session of one connection.</summary>
+    /// <returns>False when the connection (<see cref="PresentationSession.Id"/>) is not open.</returns>
+    internal Task<bool> PushViewsMessageAsync(ulong connectionId, ReadOnlyMemory<byte> message,
+        CancellationToken cancellationToken = default) =>
+        _engine.PushViewsMessageAsync(checked((nuint)connectionId), message, cancellationToken);
 
     /// <summary>Runs JavaScript and returns its string result from an authenticated presentation session.</summary>
     /// <param name="script">The script; its <c>return</c> value is the result.</param>

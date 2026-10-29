@@ -56,6 +56,13 @@ export type {
 } from "./operations.js";
 export type { BridgeInteractionContext, InteractionSurface } from "./interactions.js";
 export {
+  createTextFieldController,
+  type TextFieldController,
+  type TextFieldControllerOptions,
+  type TextFieldSource,
+  type TextFieldState,
+} from "./text-field.js";
+export {
   collectionViewport,
   createCollectionViewportController,
   type CollectionViewport,
@@ -64,8 +71,8 @@ export {
 } from "./viewport.js";
 
 /**
- * A generated content reference: a logical .NET View presented in a ViewModel slot, the
- * counterpart of .NET `PageReference`. Generated `{Name}PageReference` types satisfy it.
+ * A generated content reference: a View presented in a content slot, such as a ViewModel slot of .NET
+ * `PageReference`. Generated `{Name}PageReference` types satisfy it.
  */
 export interface PageReference<TClient = unknown> {
   /** The View kind, which selects the component in a `ViewOutlet` registry. */

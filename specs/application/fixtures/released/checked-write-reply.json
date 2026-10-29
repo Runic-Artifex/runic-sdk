@@ -1,8 +1,0 @@
-{
-  "description": "A checked write that released its own View was processed, but the reply has neither state nor receipt: released, with released: true. The client rejects with BridgeError(\"released\") and reports nothing.",
-  "scenario": "checked-write-reply",
-  "producer": "Runic.Application.Views",
-  "route": "write",
-  "wire": { "ok": false, "state": null, "error": { "kind": "released", "message": "The Bridge is closed." }, "released": true },
-  "client": { "error": { "kind": "released" }, "diagnostics": [] }
-}

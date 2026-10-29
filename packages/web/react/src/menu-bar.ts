@@ -80,7 +80,7 @@ function createMenuBarStore(shortcuts: MenuBarControllerOptions["shortcuts"]): M
     },
     invoke: item => controller
       ? controller.invoke(item)
-      : Promise.reject(new BridgeError("disconnected", "The menu bar is not connected yet.", { route: "__runicMenuBarInvoke" })),
+      : Promise.reject(new BridgeError("disconnected", "The menu bar is not connected yet.", { route: "runic.menu-bar" })),
     handleKeyDown: event => controller?.handleKeyDown(event) ?? false,
   };
 }

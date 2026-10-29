@@ -72,6 +72,44 @@ Read state one way from `state`. A property with a public C# setter also gets a
 </select>
 ```
 
+### Text inputs: `useTextField(view, read, write, options?)`
+
+Call during component initialization to bind a text input to a member through the
+framework-neutral
+[text field controller](https://github.com/Runic-Artifex/runic-sdk/tree/main/packages/web/views#text-inputs):
+
+```svelte
+<script lang="ts">
+  import { useTextField, useView } from "@runic-artifex/svelte";
+  import type { PersonPageReference } from "./generated/person.js";
+
+  let { page }: { page: PersonPageReference } = $props();
+  const person = useView(() => page);
+  const name = useTextField(() => person, state => state.name, (client, value) => client.setName(value));
+</script>
+
+<input bind:value={name.value} oncompositionstart={name.compositionStart} oncompositionend={name.compositionEnd}>
+{#if name.error !== undefined}<p role="alert">{String(name.error)}</p>{/if}
+```
+
+It returns `value`, which `bind:value` reads and sets, the reactive `editing` and
+`error`, and `compositionStart()`, `compositionEnd(event | text)` and `reset()`.
+`view` returns a `useView` handle or any `{ state, client }`. The options are
+`coalesce` and `keepDraftOnError`.
+The field shows what the user typed while its writes are in flight, so a reply or
+frame that answers an older keystroke never replaces newer text. At most one write is
+in flight; text typed meanwhile is written next as one value (`coalesce: false` writes
+every change). Nothing is written during IME composition. Once the last write settled,
+the field shows the View's value again, including any normalization the ViewModel
+applied (trimmed, upper-cased). `write` may also be a command or a checked write. A
+failed write keeps the draft and sets `error` (`keepDraftOnError: false` shows the
+View's value instead); `reset()` drops the draft. `editing` is true while a draft
+exists. Don't disable the input on the View's busy state (`isSaving`, `can…`) while
+the user types: the field's own write causes it, and keys typed meanwhile would be
+lost. Test such fields by typing key by key (Playwright `pressSequentially`, Testing
+Library `user.type`) against the mock with `latency: "slow"`; `fill()` sets the whole
+text at once and hides the race.
+
 ## `ViewOutlet`
 
 Renders the component registered for a generated reference's `kind` and passes
@@ -134,8 +172,7 @@ neither.
 ## `useOperation(start, options?)`
 
 Call during component initialization to observe a generated operation's admission,
-pending state, terminal outcome and cancellation. Progress and recovery stay in the
-generated View snapshot:
+pending state, progress, terminal outcome and cancellation:
 
 ```svelte
 <script lang="ts">
@@ -148,16 +185,18 @@ generated View snapshot:
 
 <button disabled={!workspace.client || push.pending} onclick={() => push.run("origin")}>Push</button>
 {#if push.pending}
-  <p role="status">{workspace.state?.operationMessage ?? "Starting…"}</p>
+  <progress value={push.progress}></progress>
   <button disabled={push.cancellationRequested} onclick={() => push.cancel()}>Cancel</button>
 {/if}
 {#if push.cancelled}<p role="status">Push cancelled.</p>{/if}
 {#if push.error ?? push.cancelError}<p role="alert">{String(push.error ?? push.cancelError)}</p>{/if}
 ```
 
-The result exposes reactive `pending`, `admitting`, `operation`, `status`, `outcome`,
+The result exposes reactive `pending`, `admitting`, `operation`, `status`, `progress`, `outcome`,
 `failure`, `error`, `cancelled`, `cancellationRequested`, `cancelling`, `cancellation`
-and `cancelError`, with `run(...args)`, `cancel()` and `reset()`. Both async methods never
+and `cancelError`, with `run(...args)`, `cancel()` and `reset()`. `progress` is how far
+the running operation got, from 0 to 1, when its command reports progress
+(`RunicOperationProgress.Report` in .NET); it is `undefined` while unknown and after the run. Both async methods never
 reject. A run that ends with a `cancelled` status sets `cancelled` and leaves `error`
 undefined; `failed` and `timed-out` statuses are still `error`. Cancel before a delayed Start receipt is retained for that captured run;
 its response does not release pending state. `reset()` clears feedback while

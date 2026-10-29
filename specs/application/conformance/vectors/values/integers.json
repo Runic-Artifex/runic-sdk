@@ -1,0 +1,170 @@
+{
+  "format": "runic.views.vector/1",
+  "id": "values.integers",
+  "contract": {"id":"runic.views","version":4},
+  "area": "values",
+  "description": "Integer types: a JSON number whose value is an integer within the type's range.",
+  "cases": [
+    {
+      "id": "values.integers.int8-minimum",
+      "operation": "decode",
+      "type": "int8",
+      "input": {"encoding":"json","value":-128},
+      "expect": {"value":-128}
+    },
+    {
+      "id": "values.integers.int8-maximum",
+      "operation": "decode",
+      "type": "int8",
+      "input": {"encoding":"json","value":127},
+      "expect": {"value":127}
+    },
+    {
+      "id": "values.integers.int8-above",
+      "operation": "decode",
+      "type": "int8",
+      "input": {"encoding":"json","value":128},
+      "expect": {"error":{"code":"invalid-value"}}
+    },
+    {
+      "id": "values.integers.int8-below",
+      "operation": "decode",
+      "type": "int8",
+      "input": {"encoding":"json","value":-129},
+      "expect": {"error":{"code":"invalid-value"}}
+    },
+    {
+      "id": "values.integers.uint8-minimum",
+      "operation": "decode",
+      "type": "uint8",
+      "input": {"encoding":"json","value":0},
+      "expect": {"value":0}
+    },
+    {
+      "id": "values.integers.uint8-maximum",
+      "operation": "decode",
+      "type": "uint8",
+      "input": {"encoding":"json","value":255},
+      "expect": {"value":255}
+    },
+    {
+      "id": "values.integers.uint8-above",
+      "operation": "decode",
+      "type": "uint8",
+      "input": {"encoding":"json","value":256},
+      "expect": {"error":{"code":"invalid-value"}}
+    },
+    {
+      "id": "values.integers.uint8-negative",
+      "operation": "decode",
+      "type": "uint8",
+      "input": {"encoding":"json","value":-1},
+      "expect": {"error":{"code":"invalid-value"}}
+    },
+    {
+      "id": "values.integers.int16-minimum",
+      "operation": "decode",
+      "type": "int16",
+      "input": {"encoding":"json","value":-32768},
+      "expect": {"value":-32768}
+    },
+    {
+      "id": "values.integers.int16-maximum",
+      "operation": "decode",
+      "type": "int16",
+      "input": {"encoding":"json","value":32767},
+      "expect": {"value":32767}
+    },
+    {
+      "id": "values.integers.int16-above",
+      "operation": "decode",
+      "type": "int16",
+      "input": {"encoding":"json","value":32768},
+      "expect": {"error":{"code":"invalid-value"}}
+    },
+    {
+      "id": "values.integers.int16-below",
+      "operation": "decode",
+      "type": "int16",
+      "input": {"encoding":"json","value":-32769},
+      "expect": {"error":{"code":"invalid-value"}}
+    },
+    {
+      "id": "values.integers.uint16-maximum",
+      "operation": "decode",
+      "type": "uint16",
+      "input": {"encoding":"json","value":65535},
+      "expect": {"value":65535}
+    },
+    {
+      "id": "values.integers.uint16-above",
+      "operation": "decode",
+      "type": "uint16",
+      "input": {"encoding":"json","value":65536},
+      "expect": {"error":{"code":"invalid-value"}}
+    },
+    {
+      "id": "values.integers.int32-minimum",
+      "operation": "decode",
+      "type": "int32",
+      "input": {"encoding":"json","value":-2147483648},
+      "expect": {"value":-2147483648}
+    },
+    {
+      "id": "values.integers.int32-maximum",
+      "operation": "decode",
+      "type": "int32",
+      "input": {"encoding":"json","value":2147483647},
+      "expect": {"value":2147483647}
+    },
+    {
+      "id": "values.integers.int32-above",
+      "operation": "decode",
+      "type": "int32",
+      "input": {"encoding":"json","value":2147483648},
+      "expect": {"error":{"code":"invalid-value"}}
+    },
+    {
+      "id": "values.integers.int32-below",
+      "operation": "decode",
+      "type": "int32",
+      "input": {"encoding":"json","value":-2147483649},
+      "expect": {"error":{"code":"invalid-value"}}
+    },
+    {
+      "id": "values.integers.int32-fraction",
+      "operation": "decode",
+      "type": "int32",
+      "input": {"encoding":"json","value":1.5},
+      "expect": {"error":{"code":"invalid-value"}}
+    },
+    {
+      "id": "values.integers.int32-string",
+      "operation": "decode",
+      "type": "int32",
+      "input": {"encoding":"json","value":"1"},
+      "expect": {"error":{"code":"invalid-value"}}
+    },
+    {
+      "id": "values.integers.uint32-maximum",
+      "operation": "decode",
+      "type": "uint32",
+      "input": {"encoding":"json","value":4294967295},
+      "expect": {"value":4294967295}
+    },
+    {
+      "id": "values.integers.uint32-above",
+      "operation": "decode",
+      "type": "uint32",
+      "input": {"encoding":"json","value":4294967296},
+      "expect": {"error":{"code":"invalid-value"}}
+    },
+    {
+      "id": "values.integers.uint32-negative",
+      "operation": "decode",
+      "type": "uint32",
+      "input": {"encoding":"json","value":-1},
+      "expect": {"error":{"code":"invalid-value"}}
+    }
+  ]
+}

@@ -1,0 +1,163 @@
+{
+  "format": "runic.views.vector/1",
+  "id": "canonical.strings",
+  "contract": {"id":"runic.views","version":4},
+  "area": "canonical",
+  "description": "String escaping (RFC 8785 section 3.2.2.2) and the I-JSON rules for strings.",
+  "cases": [
+    {
+      "id": "canonical.strings.controls",
+      "description": "U+0000 to U+001F without a short form are escaped as \\u00xx with lowercase hex.",
+      "operation": "canonicalize",
+      "input": {"encoding":"utf8","value":"\"\\u0000\\u0001\\u001F\\u000b\""},
+      "expect": {"output":{"encoding":"utf8","value":"\"\\u0000\\u0001\\u001f\\u000b\""}}
+    },
+    {
+      "id": "canonical.strings.short-escapes",
+      "description": "\\b, \\t, \\n, \\f and \\r use their short forms, also when the input used \\u.",
+      "operation": "canonicalize",
+      "input": {"encoding":"utf8","value":"\"\\u0008\\u0009\\u000A\\u000c\\u000D\""},
+      "expect": {"output":{"encoding":"utf8","value":"\"\\b\\t\\n\\f\\r\""}}
+    },
+    {
+      "id": "canonical.strings.quote-backslash",
+      "description": "Only quotation mark and reverse solidus are escaped among the printable characters.",
+      "operation": "canonicalize",
+      "input": {"encoding":"utf8","value":"\"\\u0022\\u005C\""},
+      "expect": {"output":{"encoding":"utf8","value":"\"\\\"\\\\\""}}
+    },
+    {
+      "id": "canonical.strings.solidus",
+      "description": "\\/ is written as a literal /.",
+      "operation": "canonicalize",
+      "input": {"encoding":"utf8","value":"\"a\\/b\""},
+      "expect": {"output":{"encoding":"utf8","value":"\"a/b\""}}
+    },
+    {
+      "id": "canonical.strings.delete",
+      "description": "U+007F is literal.",
+      "operation": "canonicalize",
+      "input": {"encoding":"utf8","value":"\"\\u007f\""},
+      "expect": {"output":{"encoding":"utf8","value":"\"\""}}
+    },
+    {
+      "id": "canonical.strings.html-sensitive",
+      "description": "<, >, &, ' and + are literal.",
+      "operation": "canonicalize",
+      "input": {"encoding":"utf8","value":"\"\\u003c\\u003e\\u0026\\u0027\\u002b\""},
+      "expect": {"output":{"encoding":"utf8","value":"\"<>&'+\""}}
+    },
+    {
+      "id": "canonical.strings.non-ascii",
+      "description": "Non-ASCII characters are literal UTF-8, whatever the case of the input escape.",
+      "operation": "canonicalize",
+      "input": {"encoding":"utf8","value":"\"\\u00E9\\u00fc\\u4e2d\""},
+      "expect": {"output":{"encoding":"utf8","value":"\"éü中\""}}
+    },
+    {
+      "id": "canonical.strings.line-separators",
+      "description": "U+2028 and U+2029 are literal.",
+      "operation": "canonicalize",
+      "input": {"encoding":"utf8","value":"\"\\u2028\\u2029\""},
+      "expect": {"output":{"encoding":"utf8","value":"\"  \""}}
+    },
+    {
+      "id": "canonical.strings.surrogate-pair",
+      "description": "An escaped surrogate pair is one literal code point (4 UTF-8 bytes).",
+      "operation": "canonicalize",
+      "input": {"encoding":"utf8","value":"\"\\ud83d\\ude00\""},
+      "expect": {"output":{"encoding":"utf8","value":"\"😀\""}}
+    },
+    {
+      "id": "canonical.strings.literal-astral",
+      "description": "A literal supplementary code point stays literal.",
+      "operation": "canonicalize",
+      "input": {"encoding":"utf8","value":"\"😀\""},
+      "expect": {"output":{"encoding":"utf8","value":"\"😀\""}}
+    },
+    {
+      "id": "canonical.strings.byte-order-mark-inside",
+      "description": "U+FEFF inside a string is literal.",
+      "operation": "canonicalize",
+      "input": {"encoding":"utf8","value":"\"\\ufeff\""},
+      "expect": {"output":{"encoding":"utf8","value":"\"﻿\""}}
+    },
+    {
+      "id": "canonical.strings.noncharacter",
+      "description": "U+FFFF is a scalar value and stays literal.",
+      "operation": "canonicalize",
+      "input": {"encoding":"utf8","value":"\"\\uffff\""},
+      "expect": {"output":{"encoding":"utf8","value":"\"￿\""}}
+    },
+    {
+      "id": "canonical.strings.lone-high-surrogate",
+      "description": "An escaped high surrogate without a low surrogate is rejected.",
+      "operation": "canonicalize",
+      "input": {"encoding":"utf8","value":"\"\\ud800\""},
+      "expect": {"error":{"code":"lone-surrogate"}}
+    },
+    {
+      "id": "canonical.strings.lone-low-surrogate",
+      "description": "An escaped low surrogate without a high surrogate is rejected.",
+      "operation": "canonicalize",
+      "input": {"encoding":"utf8","value":"\"\\udc00\""},
+      "expect": {"error":{"code":"lone-surrogate"}}
+    },
+    {
+      "id": "canonical.strings.surrogate-then-letter",
+      "description": "A high surrogate followed by another escape is rejected.",
+      "operation": "canonicalize",
+      "input": {"encoding":"utf8","value":"\"\\ud800\\u0041\""},
+      "expect": {"error":{"code":"lone-surrogate"}}
+    },
+    {
+      "id": "canonical.strings.reversed-pair",
+      "description": "A low surrogate before a high surrogate is rejected.",
+      "operation": "canonicalize",
+      "input": {"encoding":"utf8","value":"\"\\ude00\\ud83d\""},
+      "expect": {"error":{"code":"lone-surrogate"}}
+    },
+    {
+      "id": "canonical.strings.lone-surrogate-in-name",
+      "description": "A member name with a lone surrogate is rejected.",
+      "operation": "canonicalize",
+      "input": {"encoding":"utf8","value":"{\"\\udbff\":1}"},
+      "expect": {"error":{"code":"lone-surrogate"}}
+    },
+    {
+      "id": "canonical.strings.encoded-surrogate",
+      "description": "A surrogate encoded directly in UTF-8 (ED A0 80) is not UTF-8.",
+      "operation": "canonicalize",
+      "input": {"encoding":"base64","value":"Iu2ggCI="},
+      "expect": {"error":{"code":"invalid-utf8"}}
+    },
+    {
+      "id": "canonical.strings.invalid-continuation",
+      "description": "C3 followed by a byte that is not a continuation byte is not UTF-8.",
+      "operation": "canonicalize",
+      "input": {"encoding":"base64","value":"IsMoIg=="},
+      "expect": {"error":{"code":"invalid-utf8"}}
+    },
+    {
+      "id": "canonical.strings.overlong",
+      "description": "An overlong encoding of / (C0 AF) is not UTF-8.",
+      "operation": "canonicalize",
+      "input": {"encoding":"base64","value":"IsCvIg=="},
+      "expect": {"error":{"code":"invalid-utf8"}}
+    },
+    {
+      "id": "canonical.strings.unescaped-control",
+      "description": "A literal tab inside a string is not JSON.",
+      "operation": "canonicalize",
+      "input": {"encoding":"utf8","value":"\"a\tb\""},
+      "expect": {"error":{"code":"invalid-json"}}
+    },
+    {
+      "id": "canonical.strings.invalid-escape",
+      "description": "\\x is not a JSON escape.",
+      "operation": "canonicalize",
+      "input": {"encoding":"utf8","value":"\"\\x41\""},
+      "expect": {"error":{"code":"invalid-json"}}
+    }
+  ]
+}

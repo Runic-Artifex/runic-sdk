@@ -72,7 +72,7 @@ internal sealed class ToolkitCodegenConvention : MvvmCodegenConvention
             var toolkitType = contract.Input is null ? null : plan.ParameterCSharpType ?? BridgeTypeGraph.CSharpType(contract.Input);
             var keyType = plan.InputGraph?.RootCSharpType() ?? toolkitType;
             var readArgument = contract.HasInput
-                ? $"ReadArgument: e => {{ using var document = global::System.Text.Json.JsonDocument.Parse(e.GetString()); return {property.Name}InputCodec.Read(document.RootElement); }}" : null;
+                ? $"ReadInput: input => {property.Name}InputCodec.Read(input)" : null;
             var encodeArgument = contract.HasInput
                 ? $"EncodeArgument: argument => global::Runic.Application.Views.Generated.BridgeWire.EncodeCanonical(writer => {property.Name}InputCodec.Write(writer, ({keyType})argument!))" : null;
             // IsRunning can change without CanExecuteChanged (for example with
@@ -86,11 +86,9 @@ internal sealed class ToolkitCodegenConvention : MvvmCodegenConvention
                 resultType, encodeResult);
         }
 
-        internal override void AppendSnapshotState(StringBuilder cs, PropertyInfo command, string name, GeneratedCommandPlan plan)
-        {
-            base.AppendSnapshotState(cs, command, name, plan);
-            if (contract.IsAsync)
-                cs.AppendLine($"        writer.WriteBoolean(\"is{name}Executing\", ((global::CommunityToolkit.Mvvm.Input.IAsyncRelayCommand)vm.{command.Name}).IsRunning);");
-        }
+        internal override IEnumerable<(string Member, string Value)> StateMembers(PropertyInfo command, string name, GeneratedCommandPlan plan) =>
+            contract.IsAsync
+                ? [.. base.StateMembers(command, name, plan), ($"is{name}Executing", $"((global::CommunityToolkit.Mvvm.Input.IAsyncRelayCommand)vm.{command.Name}).IsRunning")]
+                : base.StateMembers(command, name, plan);
     }
 }

@@ -11,6 +11,11 @@ namespace Runic.Application.Views;
 // before the reply was ready. A transport is one window's connection, so the
 // page applies those states before the call's promise resolves.
 //
+// Only that direction is ordered. Pushes that later requests caused can reach
+// the transport before the reply, because the reply follows its wait through
+// continuations the runtime may schedule later; clients rely on revisions
+// (specs/application/README.md, "Reply order").
+//
 // The wait is bounded: a page that does not take frames for ReplyWaitLimit
 // gets the reply anyway. A synchronous route that is called inside the
 // model turn it would wait for does not wait at all.

@@ -35,7 +35,7 @@ const spec: MockTypedViewSpec = {
   },
   defaults: {},
   commands: {
-    pick: { route: "Pick", read: (raw: unknown) => { const wire: unknown = JSON.parse(raw as string); return bridgeWire.integer(wire, -2147483648, 2147483647); } },
+    pick: { member: "pick", decodeInput: (wire: unknown) => bridgeWire.integer(wire, -2147483648, 2147483647) },
   },
 };
 

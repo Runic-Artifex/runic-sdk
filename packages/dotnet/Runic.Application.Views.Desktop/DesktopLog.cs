@@ -9,8 +9,8 @@ namespace Runic.Application.Views.Desktop;
 internal static partial class DesktopLog
 {
     [LoggerMessage(EventId = 2000, EventName = "DesktopSnapshotDeliveryFailed", Level = LogLevel.Error,
-        Message = "Desktop Bridge state delivery on route {Route} failed with {ErrorType}.")]
-    internal static partial void SnapshotDeliveryFailed(ILogger logger, Exception? exception, string route, string errorType);
+        Message = "Desktop Bridge push delivery failed with {ErrorType}.")]
+    internal static partial void PushDeliveryFailed(ILogger logger, Exception? exception, string errorType);
 
     [LoggerMessage(EventId = 2002, EventName = "DesktopWindowCloseAfterOpen", Level = LogLevel.Warning,
         Message = "{Variable}=1 is set; the Desktop window that just opened is being closed.")]

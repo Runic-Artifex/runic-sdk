@@ -35,7 +35,7 @@
     "clean": "bun -e \"import('node:fs').then(({rmSync}) => rmSync('dist', { recursive: true, force: true }))\"",
     "build": "bun run --bun clean && svelte-package -i src -o dist",
     "check": "svelte-check --tsconfig ./tsconfig.json",
-    "test": "bun run --bun build && svelte-check --tsconfig ./tsconfig.json --fail-on-warnings && vitest run test/use-view.svelte.test.ts test/glue.svelte.test.ts test/use-operation.svelte.test.ts test/use-latest-operation.svelte.test.ts test/lifecycle.svelte.test.ts test/use-bridge-connection.svelte.test.ts test/use-menu-bar.svelte.test.ts",
+    "test": "bun run --bun build && svelte-check --tsconfig ./tsconfig.json --fail-on-warnings && vitest run test/use-view.svelte.test.ts test/glue.svelte.test.ts test/use-operation.svelte.test.ts test/use-latest-operation.svelte.test.ts test/lifecycle.svelte.test.ts test/use-bridge-connection.svelte.test.ts test/use-menu-bar.svelte.test.ts test/use-text-field.svelte.test.ts test/text-field.browser.test.ts",
     "pack:check": "bun pm pack --dry-run"
   },
   "peerDependencies": {
@@ -60,6 +60,7 @@
     "@sveltejs/vite-plugin-svelte": "7.3.1",
     "@types/node": "24.19.1",
     "happy-dom": "^21.0.4",
+    "playwright-core": "1.63.0",
     "svelte": "5.57.1",
     "svelte-check": "4.7.6",
     "typescript": "6.0.3",

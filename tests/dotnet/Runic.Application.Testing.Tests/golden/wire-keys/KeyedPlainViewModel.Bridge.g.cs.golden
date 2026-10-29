@@ -6,14 +6,14 @@ internal sealed class KeyedPlainBridge : global::Runic.Application.Views.Generat
 {
     internal KeyedPlainBridge(global::Runic.Application.Views.IBridgeTransport transport, global::Runic.Application.Testing.Tests.KeyedPlainViewModel vm, string? routePrefix = null, global::Runic.Application.Views.WindowContentSession? content = null) : base(
         transport, vm, routePrefix ?? "keyedPlain",
-        WriteSnapshot,
+        State,
         [
-            new global::Runic.Application.Views.Generated.PropertyDescriptor<global::Runic.Application.Testing.Tests.KeyedPlainViewModel>("Picked", vm => vm.Picked, null),
+            new global::Runic.Application.Views.Generated.PropertyDescriptor<global::Runic.Application.Testing.Tests.KeyedPlainViewModel>("Picked", "picked", vm => vm.Picked, null),
         ],
         [
         ],
         [
-            new global::Runic.Application.Views.Generated.CommandDescriptor<global::Runic.Application.Testing.Tests.KeyedPlainViewModel>("Pick", vm => (object)vm.PickCommand) { ReadArgument = e => { using var document = global::System.Text.Json.JsonDocument.Parse(e.GetString()); return PickCommandInputCodec.Read(document.RootElement); }, EncodeArgument = argument => global::Runic.Application.Views.Generated.BridgeWire.EncodeCanonical(writer => PickCommandInputCodec.Write(writer, (global::System.Int32)argument!)), ResolveArgument = (vm, key) => global::Runic.Application.Testing.Tests.KeyedPlainViewModel.FindSlot((global::System.Int32)key!) },
+            new global::Runic.Application.Views.Generated.CommandDescriptor<global::Runic.Application.Testing.Tests.KeyedPlainViewModel>("Pick", vm => (object)vm.PickCommand) { ReadInput = input => PickCommandInputCodec.Read(input), EncodeArgument = argument => global::Runic.Application.Views.Generated.BridgeWire.EncodeCanonical(writer => PickCommandInputCodec.Write(writer, (global::System.Int32)argument!)), WireName = "pick", ResolveArgument = (vm, key) => global::Runic.Application.Testing.Tests.KeyedPlainViewModel.FindSlot((global::System.Int32)key!) },
         ], "<fingerprint>", content,
         null,
         dataSubscriptions: DataMetadata,
@@ -62,12 +62,9 @@ private static class PickCommandInputCodec
 
 }
 
-    private static void WriteSnapshot(global::System.Text.Json.Utf8JsonWriter writer, global::Runic.Application.Testing.Tests.KeyedPlainViewModel vm, long revision, global::System.Action<global::System.Text.Json.Utf8JsonWriter> writeFieldMetadata)
-    {
-        writer.WriteStartObject();
-        writer.WriteNumber("revision", revision);
-        writer.WritePropertyName("picked");
-        PickedValueCodec.Write(writer, vm.Picked);
-        writer.WriteEndObject();
-    }
+    private static readonly global::Runic.Application.Views.Generated.BridgeStateMember<global::Runic.Application.Testing.Tests.KeyedPlainViewModel>[] State =
+    [
+        new global::Runic.Application.Views.Generated.BridgeStateMember<global::Runic.Application.Testing.Tests.KeyedPlainViewModel>("picked", static (writer, vm) => PickedValueCodec.Write(writer, vm.Picked)),
+    ]
+    ;
 }

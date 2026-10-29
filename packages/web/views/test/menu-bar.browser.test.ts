@@ -56,26 +56,35 @@ render();
 globalThis.menuBarTest = { host, bar, requests };
 </script></body></html>`;
 
-test("Chromium: the page renders the mock bar, and keys and clicks reach the controller", {
-  timeout: 60_000,
-  skip: !process.env["PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH"],
-}, async () => {
+const chromiumPath = process.env["PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH"];
+
+/** Serves the page, the fixture and `dist` on `origin` without a server. */
+async function open(browser: Browser, origin: string) {
+  const tab = await browser.newPage();
+  const errors: string[] = [];
+  tab.on("pageerror", error => errors.push(String(error)));
+  await tab.route(`${origin}/**`, async route => {
+    const path = new URL(route.request().url()).pathname;
+    if (path === "/") return route.fulfill({ contentType: "text/html", body: page });
+    if (path === "/fixture.json") return route.fulfill({ contentType: "application/json", body: await readFile(fixture, "utf8") });
+    if (path.startsWith("/dist/") && !path.includes(".."))
+      return route.fulfill({ contentType: "text/javascript", body: await readFile(new URL(path.slice("/dist/".length), dist), "utf8") });
+    return route.fulfill({ status: 404, body: "" });
+  });
+  await tab.goto(`${origin}/`);
+  return { tab, errors };
+}
+
+const ready = () => (globalThis as { menuBarTest?: { bar: { current: { status: string } } } }).menuBarTest?.bar.current.status === "ready";
+
+// The runtime needs crypto.randomUUID (session and presentation ids), which a page has only in a secure context;
+// the hosts serve secure contexts (custom schemes, http://localhost), so the page is served from localhost.
+test("Chromium: the page renders the mock bar, and keys and clicks reach the controller", { timeout: 60_000, skip: !chromiumPath }, async () => {
   let browser: Browser | undefined;
   try {
-    browser = await chromium.launch({ executablePath: process.env["PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH"]!, headless: true });
-    const tab = await browser.newPage();
-    const errors: string[] = [];
-    tab.on("pageerror", error => errors.push(String(error)));
-    await tab.route("http://runic.test/**", async route => {
-      const path = new URL(route.request().url()).pathname;
-      if (path === "/") return route.fulfill({ contentType: "text/html", body: page });
-      if (path === "/fixture.json") return route.fulfill({ contentType: "application/json", body: await readFile(fixture, "utf8") });
-      if (path.startsWith("/dist/") && !path.includes(".."))
-        return route.fulfill({ contentType: "text/javascript", body: await readFile(new URL(path.slice("/dist/".length), dist), "utf8") });
-      return route.fulfill({ status: 404, body: "" });
-    });
-    await tab.goto("http://runic.test/");
-    await tab.waitForFunction(() => (globalThis as { menuBarTest?: { bar: { current: { status: string } } } }).menuBarTest?.bar.current.status === "ready");
+    browser = await chromium.launch({ executablePath: chromiumPath!, headless: true });
+    const { tab, errors } = await open(browser, "http://localhost");
+    await tab.waitForFunction(ready);
     const invocations = () => tab.evaluate(() =>
       (globalThis as unknown as { menuBarTest: { host: { invocations: { commandId: string }[] } } }).menuBarTest.host.invocations.map(item => item.commandId));
     const requests = () => tab.evaluate(() => (globalThis as unknown as { menuBarTest: { requests: string[] } }).menuBarTest.requests);
@@ -112,6 +121,19 @@ test("Chromium: the page renders the mock bar, and keys and clicks reach the con
     });
     await tab.locator("[data-command=file\\.new]").waitFor({ state: "detached" });
     assert.deepEqual(errors, []);
+  } finally {
+    await browser?.close();
+  }
+});
+
+test("Chromium: outside a secure context the controller does not stay connecting without a request", { timeout: 60_000 }, async () => {
+  let browser: Browser | undefined;
+  try {
+    browser = await chromium.launch({ executablePath: chromiumPath!, headless: true });
+    const { tab } = await open(browser, "http://runic.test");
+    assert.equal(await tab.evaluate(() => globalThis.isSecureContext), false);
+    await tab.waitForFunction(() => (globalThis as { menuBarTest?: { bar: { current: { status: string } } } }).menuBarTest?.bar.current.status !== "connecting",
+      undefined, { timeout: 10_000 });
   } finally {
     await browser?.close();
   }

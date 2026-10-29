@@ -10,19 +10,25 @@ internal sealed class TestingSurfaceTests
 {
     private static readonly Assembly Testing = typeof(RunicWindowTestHost).Assembly;
 
-    // D21 apptest-04: one transport named for the interface it implements, one publication type, one verb.
+    // D21 apptest-04: one transport named for the interface it implements, one publication type, one verb. Protocol 4:
+    // the transport sends requests and records pushes; the drivers take parsed publications.
     [Test]
     public void TransportUsesBridgeNamesAndOnePublicationType()
     {
-        foreach (var name in new[] { "InMemoryViewTransport", "ViewTestArguments", "ViewTestPublication" })
+        foreach (var name in new[] { "InMemoryViewTransport", "ViewTestArguments", "ViewTestPublication", "BridgeTestArguments" })
             Require(Testing.GetType($"Runic.Application.Testing.{name}") is null, $"{name} must be gone.");
-        Require(typeof(IBridgeTransport).IsAssignableFrom(typeof(InMemoryBridgeTransport))
-            && typeof(IBridgeArguments).IsAssignableFrom(typeof(BridgeTestArguments)),
-            "The transport and its arguments must implement the Bridge interfaces.");
-        Require(typeof(InMemoryBridgeTransport).GetMethod("DrainPublications") is null
-            && typeof(InMemoryBridgeTransport).GetMethod(nameof(InMemoryBridgeTransport.TakePublications))!.ReturnType
+        Require(typeof(IBridgeConnectionTransport).IsAssignableFrom(typeof(InMemoryBridgeTransport)),
+            "The transport must implement the Bridge transport interfaces.");
+        foreach (var name in new[] { "Call", "CallAsync", "Bind", "BindAsync", "Publish", "TakePublications", "DrainPublications" })
+            Require(typeof(InMemoryBridgeTransport).GetMethod(name) is null, $"InMemoryBridgeTransport.{name} must be gone.");
+        Require(typeof(InMemoryBridgeTransport).GetProperty("Routes") is null, "InMemoryBridgeTransport.Routes must be gone.");
+        Require(typeof(InMemoryBridgeTransport).GetMethod(nameof(InMemoryBridgeTransport.Request))!.ReturnType == typeof(string)
+            && typeof(InMemoryBridgeTransport).GetMethod(nameof(InMemoryBridgeTransport.TakeMessages))!.ReturnType
+                == typeof(IReadOnlyList<RunicBridgeMessage>),
+            "The transport must send requests and take its recorded pushes.");
+        Require(typeof(RunicViewDriver<object>).GetMethod(nameof(RunicViewDriver<object>.TakePublications))!.ReturnType
                 == typeof(IReadOnlyList<RunicViewPublication>),
-            "The transport must take parsed publications, as drivers do.");
+            "The drivers must take parsed publications.");
     }
 
     // I-017: the interaction exceptions have the standard exception constructors (CA1032).
@@ -55,8 +61,7 @@ internal sealed class TestingSurfaceTests
             "A driver's Unmount must not return the raw reply.");
     }
 
-    // D37 apptest-07: Task everywhere except CallAsync, which mirrors IBridgeTransport; the path watch tester takes tokens.
-    // BindAsync registers a route (IBridgeTransport) and is not awaited.
+    // D37 apptest-07: Task everywhere except the members that mirror IBridgeTransport; the path watch tester takes tokens.
     [Test]
     public void AsyncMembersReturnTasksAndTakeTokens()
     {
@@ -69,7 +74,9 @@ internal sealed class TestingSurfaceTests
             var valueTask = method.ReturnType == typeof(ValueTask) || method.ReturnType.IsGenericType
                 && method.ReturnType.GetGenericTypeDefinition() == typeof(ValueTask<>);
             // ValueTask where a Bridge interface or IAsyncDisposable sets the shape.
-            Require(valueTask == name is "InMemoryBridgeTransport.CallAsync" or "InMemoryBridgeTransport.PublishUtf8Async"
+            // InMemoryBridgeTransport.RequestAsync returns what the window's IBridgeRequestHandler.HandleAsync does.
+            Require(valueTask == name is "InMemoryBridgeTransport.BroadcastAsync"
+                    or "InMemoryBridgeTransport.SendAsync" or "InMemoryBridgeTransport.RequestAsync"
                     or "RunicServeOnlyApplication.DisposeAsync" or "RunicTestNavigationEntry`1.DisposeAsync",
                 $"{name} returns {method.ReturnType.Name}.");
             var parameters = method.GetParameters();
@@ -117,35 +124,37 @@ internal sealed class TestingSurfaceTests
         using var host = new RunicWindowTestHost<ToolkitTypedViewModel>(model,
             (transport, content, vm) => new ToolkitTypedBridge(transport, vm, content: content),
             new RunicWindowTestHostOptions { ViewLocator = new TestViewLocator() });
+        // A route publishes once a client read its first state, as the page's open does.
+        _ = host.Root.Snapshot();
         (await host.Root.ExecuteAsync(vm => vm.AsyncIntCommand, "4")).ThrowIfFailed();
         var deadline = DateTime.UtcNow.AddSeconds(5);
-        IReadOnlyList<RunicViewPublication> taken = [];
-        while (taken.Count == 0 && DateTime.UtcNow < deadline)
+        List<RunicViewPublication> taken = [];
+        while (!taken.Any(TotalIsFour) && DateTime.UtcNow < deadline)
         {
-            taken = host.Transport.TakePublications();
-            if (taken.Count == 0) await Task.Delay(10);
+            taken.AddRange(host.Root.TakePublications());
+            if (!taken.Any(TotalIsFour)) await Task.Delay(10);
         }
-        Require(taken.Count > 0 && taken.All(publication => publication.Route == host.RootRoute && publication.Kind == RunicPublicationKind.State
-                && publication.State?.GetProperty("total").GetInt32() is 4 or 0),
-            $"The transport did not return parsed state frames: {string.Join(", ", taken)}");
+        // Protocol 4: changes after the first state are frames of set changes.
+        Require(taken.Any(TotalIsFour) && taken.All(publication => publication.Route == host.RootRoute && publication.Kind == RunicPublicationKind.Frame),
+            $"The transport did not return parsed frames: {string.Join(", ", taken)}");
+
+        static bool TotalIsFour(RunicViewPublication publication) =>
+            publication.Sets.Any(set => set.Field == "total" && set.Value.GetInt32() == 4);
     }
 
     // An operation the window does not know reads as Unknown, and an unrecognized wire token fails loudly.
     [Test]
     public void OperationKindsComeFromTheWire()
     {
-        var admission = """{"kind":"accepted","status":"running","reason":null,"terminal":null}""";
-        using var host = new RunicWindowTestHost<ScriptedViewModel>(new ScriptedViewModel(), (transport, _, _) =>
-        {
-            var snapshot = transport.Bind("scriptedSnapshot", _ => """{"ok":true,"state":{"revision":0},"error":null}""");
-            var start = transport.Bind("scriptedStartRun", _ => admission);
-            return new Bindings(snapshot, start);
-        }, new RunicWindowTestHostOptions { RootRoute = "scripted" });
+        var route = new ScriptedRoute { Admission = "accepted" };
+        using var host = new RunicWindowTestHost<ScriptedViewModel>(new ScriptedViewModel(),
+            (transport, _, _) => BridgeDispatcher.For(transport).RegisterRoute("scripted", route),
+            new RunicWindowTestHostOptions { RootRoute = "scripted" });
         var operation = host.Root.Start(vm => vm.RunCommand);
         Require(operation.Admission == RunicOperationAdmissionKind.Accepted, $"Admission was {operation.Admission}.");
         Require(operation.GetStatus().Kind == RunicOperationStatusKind.Unknown, "An operation the window never admitted was not Unknown.");
         Require(operation.Cancel() == RunicOperationCancelKind.Unknown, "Cancelling an unknown operation did not answer Unknown.");
-        admission = """{"kind":"queued","status":"running","reason":null,"terminal":null}""";
+        route.Admission = "queued";
         try
         {
             _ = host.Root.Start(vm => vm.RunCommand);
@@ -202,12 +211,19 @@ internal sealed class TestingSurfaceTests
         public object? RunCommand { get; }
     }
 
-    private sealed class Bindings(params IDisposable[] bindings) : IDisposable
+    // A route that answers start with a scripted admission, and status and cancel as for an operation it never admitted.
+    private sealed class ScriptedRoute : IBridgeRouteHandler
     {
-        public void Dispose()
-        {
-            foreach (var binding in bindings) binding.Dispose();
-        }
+        public string Admission { get; set; } = "";
+
+        public ValueTask<ReadOnlyMemory<byte>> HandleAsync(BridgeRouteRequest request, CancellationToken cancellationToken) =>
+            new(System.Text.Encoding.UTF8.GetBytes(request.Kind switch
+            {
+                "start" => $$$"""{"ok":true,"revision":0,"admission":"{{{Admission}}}","status":{"kind":"running"}}""",
+                "status" => """{"ok":true,"status":{"kind":"unknown"}}""",
+                "cancel" => """{"ok":true,"cancellation":"unknown"}""",
+                _ => """{"ok":true,"revision":0,"state":{}}""",
+            }));
     }
 
     private static void Require(bool condition, string message)

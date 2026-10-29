@@ -65,8 +65,8 @@ public sealed class RunicWindowTestHost<TViewModel> : IDisposable where TViewMod
                 _attachment = attach(Transport, Content, viewModel)
                     ?? throw new InvalidOperationException("The generated Bridge factory returned no attachment.");
                 attachment = _attachment;
-                if (!Transport.Routes.Contains($"{rootRoute}Snapshot"))
-                    throw new InvalidOperationException($"The root snapshot route '{rootRoute}Snapshot' was not attached.");
+                if (!Transport.Serves(rootRoute))
+                    throw new InvalidOperationException($"The root route '{rootRoute}' was not attached.");
             }
             catch
             {

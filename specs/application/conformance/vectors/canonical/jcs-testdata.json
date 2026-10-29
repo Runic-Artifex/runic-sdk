@@ -1,0 +1,88 @@
+{
+  "format": "runic.views.vector/1",
+  "id": "canonical.jcs-testdata",
+  "contract": {"id":"runic.views","version":4},
+  "area": "canonical",
+  "description": "The sample inputs of the RFC 8785 reference test data and their canonical forms.",
+  "source": {
+    "name": "cyberphone/json-canonicalization testdata",
+    "url": "https://github.com/cyberphone/json-canonicalization/tree/master/testdata",
+    "license": "Apache-2.0"
+  },
+  "cases": [
+    {
+      "id": "canonical.jcs-testdata.arrays",
+      "description": "Arrays keep their order; member names sort as strings, so \"10\" sorts before \"d\" and after \"1\".",
+      "operation": "canonicalize",
+      "input": {"encoding":"utf8","value":"[56, {\n  \"d\": true,\n  \"10\": null,\n  \"1\": [ ]\n}\n]\n"},
+      "expect": {"output":{"encoding":"utf8","value":"[56,{\"1\":[],\"10\":null,\"d\":true}]"}}
+    },
+    {
+      "id": "canonical.jcs-testdata.french",
+      "description": "Member names sort by UTF-16 code units, not by locale.",
+      "operation": "canonicalize",
+      "input": {
+        "encoding": "utf8",
+        "value": "{\n  \"peach\": \"This sorting order\",\n  \"péché\": \"is wrong according to French\",\n  \"pêche\": \"but canonicalization MUST\",\n  \"sin\":   \"ignore locale\"\n}\n"
+      },
+      "expect": {
+        "output": {
+          "encoding": "utf8",
+          "value": "{\"peach\":\"This sorting order\",\"péché\":\"is wrong according to French\",\"pêche\":\"but canonicalization MUST\",\"sin\":\"ignore locale\"}"
+        }
+      }
+    },
+    {
+      "id": "canonical.jcs-testdata.structures",
+      "description": "Nested objects sort recursively; an empty name sorts first; 56.0 is written 56.",
+      "operation": "canonicalize",
+      "input": {
+        "encoding": "utf8",
+        "value": "{\n  \"1\": {\"f\": {\"f\": \"hi\",\"F\": 5} ,\"\\n\": 56.0},\n  \"10\": { },\n  \"\": \"empty\",\n  \"a\": { },\n  \"111\": [ {\"e\": \"yes\",\"E\": \"no\" } ],\n  \"A\": { }\n}\n"
+      },
+      "expect": {
+        "output": {
+          "encoding": "utf8",
+          "value": "{\"\":\"empty\",\"1\":{\"\\n\":56,\"f\":{\"F\":5,\"f\":\"hi\"}},\"10\":{},\"111\":[{\"E\":\"no\",\"e\":\"yes\"}],\"A\":{},\"a\":{}}"
+        }
+      }
+    },
+    {
+      "id": "canonical.jcs-testdata.unicode",
+      "description": "Strings are not normalized: A followed by U+030A stays two code points.",
+      "operation": "canonicalize",
+      "input": {"encoding":"utf8","value":"{\n  \"Unnormalized Unicode\":\"A\\u030a\"\n}\n"},
+      "expect": {"output":{"encoding":"utf8","value":"{\"Unnormalized Unicode\":\"Å\"}"}}
+    },
+    {
+      "id": "canonical.jcs-testdata.values",
+      "description": "Numbers use the shortest round-trip form; strings escape only what JSON requires.",
+      "operation": "canonicalize",
+      "input": {
+        "encoding": "utf8",
+        "value": "{\n  \"numbers\": [333333333.33333329, 1E30, 4.50, 2e-3, 0.000000000000000000000000001],\n  \"string\": \"\\u20ac$\\u000F\\u000aA'\\u0042\\u0022\\u005c\\\\\\\"\\/\",\n  \"literals\": [null, true, false]\n}\n"
+      },
+      "expect": {
+        "output": {
+          "encoding": "utf8",
+          "value": "{\"literals\":[null,true,false],\"numbers\":[333333333.3333333,1e+30,4.5,0.002,1e-27],\"string\":\"€$\\u000f\\nA'B\\\"\\\\\\\\\\\"/\"}"
+        }
+      }
+    },
+    {
+      "id": "canonical.jcs-testdata.weird",
+      "description": "Escaped and literal names sort by their UTF-16 code units; U+0080, U+007F and </script> are literal.",
+      "operation": "canonicalize",
+      "input": {
+        "encoding": "utf8",
+        "value": "{\n  \"\\u20ac\": \"Euro Sign\",\n  \"\\r\": \"Carriage Return\",\n  \"\\u000a\": \"Newline\",\n  \"1\": \"One\",\n  \"\\u0080\": \"Control\\u007f\",\n  \"\\ud83d\\ude02\": \"Smiley\",\n  \"\\u00f6\": \"Latin Small Letter O With Diaeresis\",\n  \"\\ufb33\": \"Hebrew Letter Dalet With Dagesh\",\n  \"</script>\": \"Browser Challenge\"\n}\n"
+      },
+      "expect": {
+        "output": {
+          "encoding": "utf8",
+          "value": "{\"\\n\":\"Newline\",\"\\r\":\"Carriage Return\",\"1\":\"One\",\"</script>\":\"Browser Challenge\",\"\":\"Control\",\"ö\":\"Latin Small Letter O With Diaeresis\",\"€\":\"Euro Sign\",\"😂\":\"Smiley\",\"דּ\":\"Hebrew Letter Dalet With Dagesh\"}"
+        }
+      }
+    }
+  ]
+}

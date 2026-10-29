@@ -15,6 +15,13 @@
     <RunicPackDiagnosticsHelpLinks>true</RunicPackDiagnosticsHelpLinks>
   </PropertyGroup>
   <ItemGroup>
+    <!-- The host adapters serve their reserved menu bar route on the window's Views dispatcher (BridgeDispatcher) and
+         share its reply envelopes; packing pins the exact version (eng/build/README.md). -->
+    <InternalsVisibleTo Include="Runic.Application.Views.Desktop" />
+    <InternalsVisibleTo Include="Runic.Application.Views.CsWebUi" />
+    <InternalsVisibleTo Include="Runic.Application.Views.Desktop.Tests" />
+  </ItemGroup>
+  <ItemGroup>
     <!-- The generated-code support API (Generated/) is used throughout the runtime. -->
     <Using Include="Runic.Application.Views.Generated" />
   </ItemGroup>

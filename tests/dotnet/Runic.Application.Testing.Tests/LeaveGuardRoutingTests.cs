@@ -179,13 +179,13 @@ internal sealed class LeaveGuardRoutingTests
         using var attachedB = descriptor.Attach(windowB, model, route);
         using var mountsA = windowA.AttachRootInteractionPresentation(route);
         using var mountsB = windowB.AttachRootInteractionPresentation(route);
-        Require(transportA.Call($"{route}Mount", new(StringValue: "a:present", ClientKey: Client, ConnectionKey: Connection)) == "ok",
-            "Window A's presentation did not mount.");
-        var waitA = transportA.CallAsync(BridgeInteractionRouter.WaitRoute, new(StringValue: JsonSerializer.Serialize(new
-        {
-            route, presentationId = "a:present", handlers = new[] { new { name = "confirm", contract = "testing.confirm.v1" } },
-        }), ClientKey: Client, ConnectionKey: Connection)).AsTask();
-        await Task.Yield();
+        using var serverA = new RouteServerBridge(transportA, route, windowA);
+        using var serverB = new RouteServerBridge(transportB, route, windowB);
+        using (var opened = JsonDocument.Parse(transportA.Open(route, "a-present", Connection, Client,
+            """[{"name":"confirm","contract":"testing.confirm.v1"}]""")))
+            Require(opened.RootElement.GetProperty("presentation").GetString() == "ok"
+                && opened.RootElement.GetProperty("registration").GetString() == "ok", $"Window A's presentation did not open: {opened.RootElement}");
+        var waitA = NextPromptAsync(transportA, Connection, "a-present", []);
 
         using (RunicInteractionInvocation.Enter(windowB, route, Client, Connection))
             Require(!await ((Task<bool>)model.Confirm.Handle("from window B's command")).WaitAsync(Timeout),
@@ -201,11 +201,8 @@ internal sealed class LeaveGuardRoutingTests
         using var request = JsonDocument.Parse(await waitA.WaitAsync(Timeout));
         var root = request.RootElement;
         Require(root.GetProperty("input").GetString() == "from window A's close", $"Window A's close was not asked: {root}.");
-        Require(Kind(transportA.Call(BridgeInteractionRouter.ReplyRoute, new(StringValue: JsonSerializer.Serialize(new
-        {
-            kind = "answered", requestId = root.GetProperty("requestId").GetString(), route, presentationId = "a:present",
-            ownerEpoch = root.GetProperty("ownerEpoch").GetInt64(), name = "confirm", contract = "testing.confirm.v1", output = true,
-        }), ClientKey: Client, ConnectionKey: Connection))) == "ok" && await answer.WaitAsync(Timeout),
+        Require(Result(transportA.Send(ReplyJson(route, "a-present", root, "confirm", "testing.confirm.v1", true), Connection, Client)) == "ok"
+            && await answer.WaitAsync(Timeout),
             "Window A's presentation did not answer its own close.");
     }
 
@@ -251,17 +248,54 @@ internal sealed class LeaveGuardRoutingTests
         var json = await wait.WaitAsync(Timeout);
         using var request = JsonDocument.Parse(json);
         var root = request.RootElement;
-        Require(root.GetProperty("kind").GetString() == "request"
+        Require(root.GetProperty("kind").GetString() == "interaction"
             && root.GetProperty("input").GetProperty("title").GetString() == "reactive editor"
             && root.GetProperty("input").GetProperty("draft").GetString() == "changed",
             $"The web View did not receive the typed leave prompt: {root}.");
         return json;
     }
 
-    private static string Kind(string json)
+    private static string? Result(string json)
     {
         using var reply = JsonDocument.Parse(json);
-        return reply.RootElement.GetProperty("kind").GetString()!;
+        return reply.RootElement.TryGetProperty("result", out var result) ? result.GetString() : json;
+    }
+
+    // {"kind":"interaction-reply"} answering an interaction push.
+    private static string ReplyJson(string route, string presentation, JsonElement request, string name, string contract, bool output) =>
+        BridgeRequests.Json(writer =>
+        {
+            writer.WriteString("kind", "interaction-reply");
+            writer.WriteString("route", route);
+            writer.WriteString("presentation", presentation);
+            writer.WriteString("requestId", request.GetProperty("requestId").GetString());
+            writer.WriteNumber("ownerEpoch", request.GetProperty("ownerEpoch").GetInt64());
+            writer.WriteString("name", name);
+            writer.WriteString("contract", contract);
+            writer.WriteString("outcome", "answered");
+            writer.WriteBoolean("output", output);
+        });
+
+    // The next interaction push to the connection's presentation that is not in seen, as JSON; it is added to seen.
+    private static async Task<string> NextPromptAsync(InMemoryBridgeTransport transport, string connection, string presentation,
+        HashSet<string> seen)
+    {
+        var deadline = DateTime.UtcNow + Timeout;
+        while (true)
+        {
+            foreach (var message in transport.Messages)
+            {
+                if (message.ConnectionKey != connection) continue;
+                using var document = JsonDocument.Parse(message.Json);
+                var root = document.RootElement;
+                if (root.GetProperty("kind").GetString() != "interaction" || root.GetProperty("presentation").GetString() != presentation)
+                    continue;
+                lock (seen)
+                    if (seen.Add(root.GetProperty("requestId").GetString()!)) return message.Json;
+            }
+            if (DateTime.UtcNow > deadline) throw new TimeoutException($"No interaction reached {presentation}.");
+            await Task.Delay(10);
+        }
     }
 
     private static async Task Until(Func<bool> condition)
@@ -355,33 +389,47 @@ internal sealed class LeaveGuardRoutingTests
             await Until(() => Native.Host.Root.Snapshot().Reference(vm => vm.Main)?.Kind == "reactiveNavEditor"
                 && ReactiveCommandExecution.CanExecute(ViewModel.BackCommand, RxVoid.Default));
             var view = Native.Host.Root.View<ReactiveNavEditorViewModel>(vm => vm.Main);
-            var presentation = new EditorPresentation(Transport, (ReactiveNavEditorViewModel)ViewModel.Main.Current!, view,
-                view.Mount(clientKey: Client, connectionKey: Connection), Client, Connection);
+            var presentation = EditorPresentation.Open(Transport, (ReactiveNavEditorViewModel)ViewModel.Main.Current!, view,
+                Client, Connection);
             view.Set(vm => vm.Draft, "changed");
             return presentation;
         }
 
-        // The shell's Back, started by the browser client on the connection; returns the settled outcome.
+        // The shell's Back, started by the browser client on the connection as an operation; returns the settled outcome.
         public async Task<string> BackAsync(string client, string connection)
         {
             var requestId = $"back-{Interlocked.Increment(ref _requests)}";
-            string operation;
-            using (var admission = JsonDocument.Parse(Transport.Call("reactiveNavShellStartBack",
-                new(StringValue: requestId, ClientKey: client, ConnectionKey: connection))))
-            {
-                Require(admission.RootElement.GetProperty("kind").GetString() == "accepted",
+            using (var admission = JsonDocument.Parse(Transport.Send(BackRequest("start", requestId), connection, client)))
+                Require(admission.RootElement.GetProperty("ok").GetBoolean()
+                    && admission.RootElement.GetProperty("admission").GetString() == "accepted",
                     $"The web Back command was not admitted: {admission.RootElement}.");
-                operation = admission.RootElement.GetProperty("contract").GetString()!;
+            var deadline = DateTime.UtcNow + Timeout;
+            while (true)
+            {
+                using var reply = JsonDocument.Parse(Transport.Send(BackRequest("status", requestId), connection, client));
+                var status = reply.RootElement.GetProperty("status");
+                var kind = status.GetProperty("kind").GetString()!;
+                if (kind != "running")
+                {
+                    if (kind != "succeeded") return kind;
+                    var result = status.GetProperty("result");
+                    return result.GetProperty("kind").GetString()!.ToLowerInvariant()
+                        + (result.GetProperty("rejection").ValueKind == JsonValueKind.Null ? ""
+                            : ":" + result.GetProperty("rejection").GetString()!.ToLowerInvariant());
+                }
+                if (DateTime.UtcNow > deadline) throw new TimeoutException("The web Back did not settle.");
+                await Task.Delay(10);
             }
-            using var completion = JsonDocument.Parse(await Transport.CallAsync("__runicOperationWait",
-                new(StringValue: JsonSerializer.Serialize(new { contract = operation, requestId }))));
-            var status = completion.RootElement;
-            if (status.GetProperty("kind").GetString() != "succeeded") return status.GetProperty("kind").GetString()!;
-            var result = status.GetProperty("result");
-            return result.GetProperty("kind").GetString()!.ToLowerInvariant()
-                + (result.GetProperty("rejection").ValueKind == JsonValueKind.Null ? ""
-                    : ":" + result.GetProperty("rejection").GetString()!.ToLowerInvariant());
         }
+
+        private string BackRequest(string kind, string requestId) => BridgeRequests.Json(writer =>
+        {
+            writer.WriteString("kind", kind);
+            writer.WriteString("route", Native.Host.RootRoute);
+            writer.WriteString("member", "back");
+            writer.WriteString("operation", requestId);
+            writer.WriteString("contract", $"{typeof(ReactiveNavShellViewModel).FullName}:{BridgeContractShape.Compute(typeof(ReactiveNavShellViewModel))}");
+        });
 
         public async ValueTask DisposeAsync()
         {
@@ -390,111 +438,52 @@ internal sealed class LeaveGuardRoutingTests
         }
     }
 
-    // The browser side of one mounted editor View: it waits for the guard's question and answers it.
+    // The browser side of one open editor View: it registers its confirmDiscard handler, waits for the guard's question
+    // and answers it.
     private sealed record EditorPresentation(InMemoryBridgeTransport Transport, ReactiveNavEditorViewModel ViewModel,
         RunicViewDriver<ReactiveNavEditorViewModel> View, string Mount, string Client, string Connection)
     {
-        public EditorPresentation MountAgain(string client, string connection) =>
-            this with { Mount = View.Mount(clientKey: client, connectionKey: connection), Client = client, Connection = connection };
+        private readonly HashSet<string> _seen = [];
 
-        public Task<string> WaitForPromptAsync()
+        // Opens the View on the connection and registers the handler as generation 1 (open registers none).
+        public static EditorPresentation Open(InMemoryBridgeTransport transport, ReactiveNavEditorViewModel viewModel,
+            RunicViewDriver<ReactiveNavEditorViewModel> view, string client, string connection)
         {
-            var wait = Transport.CallAsync(BridgeInteractionRouter.WaitRoute, new(StringValue: JsonSerializer.Serialize(new
-            {
-                route = View.Route,
-                presentationId = Mount,
-                handlers = new[] { new { name = "confirmDiscard", contract = Contract } },
-            }), ClientKey: Client, ConnectionKey: Connection)).AsTask();
-            return wait;
+            var presentation = new EditorPresentation(transport, viewModel, view, view.Mount(clientKey: client, connectionKey: connection),
+                client, connection);
+            presentation.Register();
+            return presentation;
         }
+
+        public EditorPresentation MountAgain(string client, string connection) => Open(Transport, ViewModel, View, client, connection);
+
+        private void Register()
+        {
+            var reply = Transport.Send(BridgeRequests.Json(writer =>
+            {
+                writer.WriteString("kind", "interactions");
+                writer.WriteString("route", View.Route);
+                writer.WriteString("presentation", Mount);
+                writer.WriteNumber("generation", 1);
+                writer.WriteStartArray("handlers");
+                writer.WriteStartObject();
+                writer.WriteString("name", "confirmDiscard");
+                writer.WriteString("contract", Contract);
+                writer.WriteEndObject();
+                writer.WriteEndArray();
+            }), Connection, Client);
+            using var document = JsonDocument.Parse(reply);
+            Require(document.RootElement.TryGetProperty("registration", out var registration) && registration.GetString() == "ok",
+                $"The confirmDiscard handler was not registered: {reply}");
+        }
+
+        public Task<string> WaitForPromptAsync() => NextPromptAsync(Transport, Connection, Mount, _seen);
 
         public void Answer(string prompt, bool discard)
         {
             using var request = JsonDocument.Parse(prompt);
-            var root = request.RootElement;
-            var reply = JsonSerializer.Serialize(new
-            {
-                kind = "answered",
-                requestId = root.GetProperty("requestId").GetString(),
-                route = View.Route,
-                presentationId = Mount,
-                ownerEpoch = root.GetProperty("ownerEpoch").GetInt64(),
-                name = "confirmDiscard",
-                contract = Contract,
-                output = discard,
-            });
-            Require(Kind(Transport.Call(BridgeInteractionRouter.ReplyRoute,
-                new(StringValue: reply, ClientKey: Client, ConnectionKey: Connection))) == "ok", "The web answer was rejected.");
+            Require(Result(Transport.Send(ReplyJson(View.Route, Mount, request.RootElement, "confirmDiscard", Contract, discard),
+                Connection, Client)) == "ok", "The web answer was rejected.");
         }
-    }
-}
-
-// Opens Windows on RunicWindowTestHost, so a test drives a Window's routes as its browser does. It has no close request
-// of its own: RequestCloseAsync asks the Window's close guard and then closes it, and UserCloseAsync asks the guard as
-// Runic Desktop's close button does.
-internal sealed class TestWindowHost(IServiceProvider services) : IRunicWindowHost
-{
-    public IServiceProvider Services { get; } = services;
-
-    public IReadOnlyList<RunicWindowDiagnostic> Validate(RunicWindowOptions options) => [];
-
-    public async ValueTask<IBridgeWindow> OpenAsync<TViewModel>(RunicWindowOpening<TViewModel> opening,
-        CancellationToken cancellationToken) where TViewModel : class
-    {
-        try
-        {
-            var host = new RunicWindowTestHost<TViewModel>(opening.ViewModel,
-                (transport, content, _) => opening.AttachBridge(transport, content),
-                new RunicWindowTestHostOptions
-                {
-                    ViewLocator = new NavViewLocator(),
-                    ModelContext = opening.Scope.ServiceProvider.GetRequiredService<IRunicModelContext>(),
-                });
-            return new TestWindow<TViewModel>(opening.Scope, host, opening.CloseGuard);
-        }
-        catch
-        {
-            await opening.Scope.DisposeAsync();
-            throw;
-        }
-    }
-}
-
-internal sealed class TestWindow<TViewModel>(AsyncServiceScope scope, RunicWindowTestHost<TViewModel> host,
-    Func<CancellationToken, ValueTask<bool>>? closeGuard) : IBridgeWindow where TViewModel : class
-{
-    private readonly object _gate = new();
-    private readonly TaskCompletionSource _closed = new(TaskCreationOptions.RunContinuationsAsynchronously);
-    private Task<RunicWindowCloseResult>? _closing;
-
-    public RunicWindowTestHost<TViewModel> Host { get; } = host;
-    public bool IsOpen => !_closed.Task.IsCompleted;
-
-    // The user's close button: the Window's close guard decides, then the window closes.
-    public async Task<bool> UserCloseAsync()
-    {
-        if (closeGuard is not null && !await closeGuard(CancellationToken.None)) return false;
-        await CloseAsync(TimeSpan.FromSeconds(5));
-        return true;
-    }
-
-    public ValueTask<RunicWindowCloseResult> CloseAsync(TimeSpan timeout, CancellationToken cancellationToken = default)
-    {
-        lock (_gate) _closing ??= Task.Run(() => CloseCoreAsync(timeout));
-        return new(_closing.WaitAsync(cancellationToken));
-    }
-
-    public ValueTask WaitForCloseAsync(CancellationToken cancellationToken = default) =>
-        new(_closed.Task.WaitAsync(cancellationToken));
-
-    public async ValueTask DisposeAsync() => await CloseAsync(TimeSpan.Zero);
-
-    private async Task<RunicWindowCloseResult> CloseCoreAsync(TimeSpan timeout)
-    {
-        _closed.TrySetResult();
-        var result = await Host.DrainAsync(timeout);
-        Host.Dispose();
-        await scope.DisposeAsync();
-        return result;
     }
 }

@@ -1,0 +1,114 @@
+{
+  "format": "runic.views.vector/1",
+  "id": "canonical.syntax",
+  "contract": {"id":"runic.views","version":4},
+  "area": "canonical",
+  "description": "Whitespace, literals and inputs that are not JSON text (RFC 8259).",
+  "cases": [
+    {
+      "id": "canonical.syntax.whitespace",
+      "description": "Insignificant whitespace is removed.",
+      "operation": "canonicalize",
+      "input": {"encoding":"utf8","value":" \t\n\r{ \"a\" : [ 1 , 2 ] } \n"},
+      "expect": {"output":{"encoding":"utf8","value":"{\"a\":[1,2]}"}}
+    },
+    {
+      "id": "canonical.syntax.literals",
+      "description": "true, false and null.",
+      "operation": "canonicalize",
+      "input": {"encoding":"utf8","value":"[true,false,null]"},
+      "expect": {"output":{"encoding":"utf8","value":"[true,false,null]"}}
+    },
+    {
+      "id": "canonical.syntax.top-level-string",
+      "description": "A scalar is a value.",
+      "operation": "canonicalize",
+      "input": {"encoding":"utf8","value":"\"x\""},
+      "expect": {"output":{"encoding":"utf8","value":"\"x\""}}
+    },
+    {
+      "id": "canonical.syntax.top-level-null",
+      "description": "null is a value.",
+      "operation": "canonicalize",
+      "input": {"encoding":"utf8","value":"null"},
+      "expect": {"output":{"encoding":"utf8","value":"null"}}
+    },
+    {
+      "id": "canonical.syntax.empty",
+      "description": "An empty input is not JSON.",
+      "operation": "canonicalize",
+      "input": {"encoding":"utf8","value":""},
+      "expect": {"error":{"code":"invalid-json"}}
+    },
+    {
+      "id": "canonical.syntax.byte-order-mark",
+      "description": "A leading byte order mark is rejected.",
+      "operation": "canonicalize",
+      "input": {"encoding":"base64","value":"77u/e30="},
+      "expect": {"error":{"code":"invalid-json"}}
+    },
+    {
+      "id": "canonical.syntax.trailing-comma",
+      "description": "A trailing comma is not JSON.",
+      "operation": "canonicalize",
+      "input": {"encoding":"utf8","value":"[1,]"},
+      "expect": {"error":{"code":"invalid-json"}}
+    },
+    {
+      "id": "canonical.syntax.two-values",
+      "description": "Two values are not one JSON text.",
+      "operation": "canonicalize",
+      "input": {"encoding":"utf8","value":"1 2"},
+      "expect": {"error":{"code":"invalid-json"}}
+    },
+    {
+      "id": "canonical.syntax.leading-zero",
+      "description": "01 is not a JSON number.",
+      "operation": "canonicalize",
+      "input": {"encoding":"utf8","value":"01"},
+      "expect": {"error":{"code":"invalid-json"}}
+    },
+    {
+      "id": "canonical.syntax.leading-plus",
+      "description": "+1 is not a JSON number.",
+      "operation": "canonicalize",
+      "input": {"encoding":"utf8","value":"+1"},
+      "expect": {"error":{"code":"invalid-json"}}
+    },
+    {
+      "id": "canonical.syntax.bare-fraction",
+      "description": ".5 is not a JSON number.",
+      "operation": "canonicalize",
+      "input": {"encoding":"utf8","value":".5"},
+      "expect": {"error":{"code":"invalid-json"}}
+    },
+    {
+      "id": "canonical.syntax.empty-fraction",
+      "description": "1. is not a JSON number.",
+      "operation": "canonicalize",
+      "input": {"encoding":"utf8","value":"1."},
+      "expect": {"error":{"code":"invalid-json"}}
+    },
+    {
+      "id": "canonical.syntax.nan",
+      "description": "NaN is not JSON.",
+      "operation": "canonicalize",
+      "input": {"encoding":"utf8","value":"NaN"},
+      "expect": {"error":{"code":"invalid-json"}}
+    },
+    {
+      "id": "canonical.syntax.single-quotes",
+      "description": "Single-quoted strings are not JSON.",
+      "operation": "canonicalize",
+      "input": {"encoding":"utf8","value":"{'a':1}"},
+      "expect": {"error":{"code":"invalid-json"}}
+    },
+    {
+      "id": "canonical.syntax.comment",
+      "description": "Comments are not JSON.",
+      "operation": "canonicalize",
+      "input": {"encoding":"utf8","value":"[1/*x*/]"},
+      "expect": {"error":{"code":"invalid-json"}}
+    }
+  ]
+}

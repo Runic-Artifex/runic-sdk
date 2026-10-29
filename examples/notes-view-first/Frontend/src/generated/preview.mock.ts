@@ -18,7 +18,7 @@ export interface PreviewMock extends MockTypedView<PreviewMockState, PreviewClie
 const spec: MockTypedViewSpec = {
   kind: "preview",
   route: "preview",
-  contract: "NotesWindowViews.PreviewViewModel:7E66E532FEB7FFF8F3E463213E7A1FACC34E333EBB3B5C9C71E6B8307E1E37C3",
+  contract: "NotesWindowViews.PreviewViewModel:1160496013C85294527537E950775D8901F2B81EC31DE93996835B51444AF521",
   fields: {
     heading: { encode: (value: unknown) => { const typed = value as string; return typed; }, decode: (wire: unknown) => bridgeWire.string(wire) },
     excerpt: { encode: (value: unknown) => { const typed = value as string; return typed; }, decode: (wire: unknown) => bridgeWire.string(wire) },

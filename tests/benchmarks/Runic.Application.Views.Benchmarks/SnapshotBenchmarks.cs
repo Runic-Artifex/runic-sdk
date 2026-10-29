@@ -1,20 +1,19 @@
 using System.Globalization;
 using System.Text.Json;
 using BenchmarkDotNet.Attributes;
-using Runic.Application.Testing;
 using Runic.Application.Views;
 
 namespace Runic.Application.Views.Benchmarks;
 
-// Snapshot publication and route replies. PropertyBurst holds the host's
-// first delivery while the model changes, then measures until the final
-// revision has been delivered, like a busy native host that coalesces.
+// State publication and replies. PropertyBurst holds the host's first
+// delivery while the model changes, then measures until the frame with the
+// final value has been delivered, like a busy native host.
 public class SnapshotBenchmarks
 {
     private HostTransport _host = null!;
     private BoardModel _model = null!;
     private BoardBridge _bridge = null!;
-    private long _revision;
+    private long _counter;
 
     [Params(200)]
     public int Rows { get; set; }
@@ -28,6 +27,8 @@ public class SnapshotBenchmarks
         _host = new HostTransport();
         _model = new BoardModel(Rows);
         _bridge = new BoardBridge(_host, _model, content: null);
+        // A page reads the state before the route publishes frames.
+        _ = _host.Request("{\"kind\":\"snapshot\",\"route\":\"board\"}");
     }
 
     [GlobalCleanup]
@@ -40,8 +41,8 @@ public class SnapshotBenchmarks
     [Benchmark]
     public async Task PropertyBurst()
     {
-        _revision += Changes;
-        var delivered = _host.Hold($"{{\"revision\":{_revision.ToString(CultureInfo.InvariantCulture)},");
+        _counter += Changes;
+        var delivered = _host.Hold($"{{\"field\":\"counter\",\"kind\":\"set\",\"value\":{_counter.ToString(CultureInfo.InvariantCulture)}}}");
         for (var change = 0; change < Changes; change++) _model.Counter++;
         _host.Release();
         await delivered.ConfigureAwait(false);
@@ -49,7 +50,7 @@ public class SnapshotBenchmarks
 
 }
 
-// The snapshot route reply embeds the state in its envelope.
+// The snapshot reply carries the full state.
 public class ReplyBenchmarks
 {
     private HostTransport _host = null!;
@@ -70,7 +71,7 @@ public class ReplyBenchmarks
     }
 
     [Benchmark]
-    public string SnapshotReply() => _host.Inner.Call("boardSnapshot");
+    public string SnapshotReply() => _host.Request("{\"kind\":\"snapshot\",\"route\":\"board\"}");
 }
 
 // Checked structured field writes and the canonical comparer they use.
@@ -115,9 +116,9 @@ public class CheckedFieldBenchmarks
     public string CheckedWrite()
     {
         var current = (int)(_version % 2);
-        var payload = $"{{\"requestId\":\"write-{_version.ToString(CultureInfo.InvariantCulture)}\",\"expectedVersion\":{_version.ToString(CultureInfo.InvariantCulture)},\"expectedValue\":{_encoded[current]},\"value\":{_encoded[1 - current]}}}";
+        var request = $"{{\"kind\":\"write\",\"route\":\"board\",\"member\":\"preferences\",\"requestId\":\"write-{_version.ToString(CultureInfo.InvariantCulture)}\",\"expectedVersion\":{_version.ToString(CultureInfo.InvariantCulture)},\"expectedValue\":{_encoded[current]},\"value\":{_encoded[1 - current]}}}";
         _version++;
-        return _host.Inner.Call("boardWritePreferences", new(StringValue: payload));
+        return _host.Request(request);
     }
 
     [Benchmark]
@@ -127,42 +128,63 @@ public class CheckedFieldBenchmarks
     public bool StructuralEquals() => _codec.StructuralEquals(_values[0], _copy);
 }
 
-// Bindings go to the in-memory transport; publications are dropped after an
-// optional hold so benchmarks do not retain states.
+// The window's transport without a page: requests go to the window's request handler on one connection, after its
+// hello, and pushes are dropped after an optional hold so benchmarks do not retain states.
 public sealed class HostTransport : IBridgeTransport, IDisposable
 {
     private readonly ManualResetEventSlim _released = new(true);
     private TaskCompletionSource? _delivered;
-    private string? _finalPrefix;
+    private byte[]? _final;
+    private IBridgeRequestHandler? _handler;
+    private bool _greeted;
 
-    public InMemoryBridgeTransport Inner { get; } = new();
+    public IDisposable Serve(IBridgeRequestHandler handler)
+    {
+        _handler = handler;
+        return this;
+    }
 
-    public IDisposable Bind(string name, Func<IBridgeArguments, string> handler) => Inner.Bind(name, handler);
+    public ValueTask BroadcastAsync(ReadOnlyMemory<byte> message, CancellationToken cancellationToken = default)
+    {
+        _released.Wait(cancellationToken);
+        if (_final is { } final && message.Span.IndexOf(final) >= 0) _delivered?.TrySetResult();
+        return ValueTask.CompletedTask;
+    }
 
-    public IDisposable BindAsync(string name, Func<IBridgeArguments, CancellationToken, ValueTask<string>> handler) =>
-        Inner.BindAsync(name, handler);
+    public string Request(string json)
+    {
+        if (!_greeted)
+        {
+            _greeted = true;
+            _ = Send("{\"kind\":\"hello\",\"protocol\":4,\"session\":\"benchmarks\",\"client\":{\"name\":\"benchmarks\",\"version\":\"1.0.0\"}}");
+        }
+        return Send(json);
+    }
 
-    public Task Hold(string finalPrefix)
+    // Completes when a push containing finalChange was delivered.
+    public Task Hold(string finalChange)
     {
         _released.Reset();
-        _finalPrefix = finalPrefix;
+        _final = System.Text.Encoding.UTF8.GetBytes(finalChange);
         _delivered = new(TaskCreationOptions.RunContinuationsAsynchronously);
         return _delivered.Task;
     }
 
     public void Release() => _released.Set();
 
-    public void Publish(string name, string stateJson)
+    private string Send(string json)
     {
-        _released.Wait();
-        if (_finalPrefix is { } prefix && stateJson.StartsWith(prefix, StringComparison.Ordinal))
-            _delivered?.TrySetResult();
+        var handler = _handler ?? throw new InvalidOperationException("No window serves the transport.");
+        var reply = handler.HandleAsync(new BridgeRequest(System.Text.Encoding.UTF8.GetBytes(json), "benchmarks", "benchmarks"),
+            CancellationToken.None).AsTask().GetAwaiter().GetResult();
+        return System.Text.Encoding.UTF8.GetString(reply.Span);
     }
 
     public void Dispose()
     {
         _released.Set();
-        Inner.Dispose();
+        _released.Dispose();
+        _handler = null;
     }
 }
 

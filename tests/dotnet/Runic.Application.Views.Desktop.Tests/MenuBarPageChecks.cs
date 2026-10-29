@@ -12,9 +12,10 @@ using Runic.Platform;
 using TUnit.Core;
 using static DesktopChecks;
 
-// B10 PR 4: the in-page menu bar (specs/desktop/menu-bar-page.md). A Page window's bar state reaches the page through
-// the reserved __runicMenuBar* routes, follows CanExecute, and the page's invoke runs the item through
-// DesktopWindow.TryExecuteMenuItemAsync: the window's commands, then the application's.
+// B10 PR 4: the in-page menu bar (specs/desktop/menu-bar-page.md, protocol 2). A Page window's bar state reaches the page
+// through the reserved Views route runic.menu-bar, which pushes each new state to a watching connection, follows
+// CanExecute, and the page's invoke runs the item through DesktopWindow.TryExecuteMenuItemAsync: the window's commands,
+// then the application's.
 internal sealed class MenuBarPageChecks
 {
     private static readonly IReadOnlyList<DesktopMenu> Bar =
@@ -38,10 +39,14 @@ internal sealed class MenuBarPageChecks
         Require(JsonNode.DeepEquals(actual, fixture["menus"]),
             $"The state's menus differ from specs/desktop/fixtures/menu-bar-page.json:\n{actual!.ToJsonString(new JsonSerializerOptions { WriteIndented = true })}");
 
-        var envelope = JsonNode.Parse(MenuBarPageState.WriteEnvelope(7, "page", "host", MenuPlatform.Linux, json))!.AsObject();
-        Require(envelope["kind"]!.GetValue<string>() == "state" && envelope["protocol"]!.GetValue<int>() == 1
-            && envelope["revision"]!.GetValue<long>() == 7 && envelope["platform"]!.GetValue<string>() == "linux"
-            && JsonNode.DeepEquals(envelope["menus"], fixture["menus"]), $"The state envelope is wrong: {envelope.ToJsonString()}");
+        var reply = JsonNode.Parse(MenuBarPageState.WriteReply(7, "page", "host", MenuPlatform.Linux, json))!.AsObject();
+        var state = reply["state"]!.AsObject();
+        Require(reply["ok"]!.GetValue<bool>() && state["kind"] is null && state["protocol"]!.GetValue<int>() == 2
+            && state["revision"]!.GetValue<long>() == 7 && state["platform"]!.GetValue<string>() == "linux"
+            && JsonNode.DeepEquals(state["menus"], fixture["menus"]), $"The state reply is wrong: {reply.ToJsonString()}");
+        var push = JsonNode.Parse(MenuBarPageState.WritePush(7, "page", "app", MenuPlatform.Linux, json))!.AsObject();
+        Require(push["kind"]!.GetValue<string>() == "menu-bar" && push["route"]!.GetValue<string>() == "runic.menu-bar"
+            && push["state"]!["shortcuts"]!.GetValue<string>() == "app", $"The state push is wrong: {push.ToJsonString()}");
     }
 
     [Test, NotInParallel(Order = 42)]
@@ -115,14 +120,17 @@ internal sealed class MenuBarPageChecks
             var chain = native.MenuCommands ?? throw new InvalidOperationException("The window host has no command path.");
             var saveItem = (DesktopMenuItem)desktop.MenuBar[0].Items[1];
             Require(chain.CanExecute(saveItem), "The host's own path could not run Save before the lease.");
-            var leased = JsonNode.Parse(await page.CallAsync("__runicMenuBarControl", cancellation, "{\"shortcuts\":\"app\"}"))!;
+            var leased = await ShortcutsAsync(page, "app", cancellation);
             Require(leased["shortcuts"]!.GetValue<string>() == "app", $"The lease was not reported: {leased.ToJsonString()}");
             Require(!chain.CanExecute(saveItem), "The host kept matching shortcuts under the page's lease.");
             revision = leased["revision"]!.GetValue<long>();
             key = Item(leased.AsObject(), "file.save")!["key"]!.GetValue<string>();
             Require(await InvokeAsync(page, revision, key, cancellation) == "executed", "The page's invoke stopped under its lease.");
-            var invalid = await page.CallAsync("__runicMenuBarControl", cancellation, "{\"shortcuts\":\"none\"}");
-            Require(invalid == "{\"kind\":\"invalid-request\"}", $"An unknown shortcut owner was answered {invalid}.");
+            var invalid = await page.RequestAsync("{\"kind\":\"menu-bar-shortcuts\",\"route\":\"runic.menu-bar\",\"shortcuts\":\"none\"}", cancellation);
+            Require(Reason(invalid) == "invalid-request", $"An unknown shortcut owner was answered {invalid}.");
+            // menu-bar-unwatch ends the pushes; the next watch answers the current state again.
+            Require(await page.RequestAsync("{\"kind\":\"menu-bar-unwatch\",\"route\":\"runic.menu-bar\"}", cancellation) == "{\"ok\":true}",
+                "menu-bar-unwatch did not answer ok.");
 
             page.Dispose();
             await WaitUntilAsync(() => chain.CanExecute(saveItem), "The lease was not released with its connection.");
@@ -161,14 +169,21 @@ internal sealed class MenuBarPageChecks
                 while (state["placement"]!.GetValue<string>() == "none" && placement != "none") state = await WaitAsync(page, state, timeout.Token);
                 Require(state["placement"]!.GetValue<string>() == placement && state["shortcuts"]!.GetValue<string>() == "page",
                     $"A {presentation} window without a native bar reported {state.ToJsonString()}.");
-                var leased = JsonNode.Parse(await page.CallAsync("__runicMenuBarControl", timeout.Token, "{\"shortcuts\":\"app\"}"))!;
+                var leased = await ShortcutsAsync(page, "app", timeout.Token);
                 Require(leased["shortcuts"]!.GetValue<string>() == (placement == "page" ? "app" : "page"),
                     $"The lease applies only while the bar is in the page: {leased.ToJsonString()}");
-                // A revision that is not a number is an invalid request, not a failed call.
-                foreach (var (route, request) in new[] { ("__runicMenuBarInvoke", "{\"revision\":\"1\",\"key\":\"0m/0i\"}"), ("__runicMenuBarWait", "{\"after\":\"1\"}") })
+                // A revision that is not a number, a kind the route does not have, and a menu bar kind on a View's route
+                // are invalid requests, not failed calls.
+                foreach (var request in new[]
                 {
-                    var reply = await page.CallAsync(route, timeout.Token, request);
-                    Require(JsonNode.Parse(reply)?["kind"]?.GetValue<string>() == "invalid-request", $"{route} answered {request} with {reply}.");
+                    "{\"kind\":\"menu-bar-invoke\",\"route\":\"runic.menu-bar\",\"revision\":\"1\",\"key\":\"0m/0i\"}",
+                    "{\"kind\":\"menu-bar-wait\",\"route\":\"runic.menu-bar\",\"after\":1}",
+                    "{\"kind\":\"snapshot\",\"route\":\"runic.menu-bar\"}",
+                    "{\"kind\":\"menu-bar-watch\",\"route\":\"menu\"}",
+                })
+                {
+                    var reply = await page.RequestAsync(request, timeout.Token);
+                    Require(Reason(reply) == "invalid-request", $"{request} was answered {reply}.");
                 }
             }
             finally
@@ -178,28 +193,49 @@ internal sealed class MenuBarPageChecks
         }
     }
 
+    // Completes the hello and watches the bar: the reply's state, and later states as pushes.
     private static async Task<JsonObject> StateAsync(DesktopWireClient page, CancellationToken cancellationToken)
     {
-        var reply = await page.CallAsync("__runicMenuBarState", cancellationToken);
-        var state = JsonNode.Parse(reply)!.AsObject();
-        Require(state["kind"]!.GetValue<string>() == "state", $"The state route answered {reply}.");
-        return state;
+        await page.HelloAsync(cancellationToken);
+        var reply = await page.RequestAsync("{\"kind\":\"menu-bar-watch\",\"route\":\"runic.menu-bar\"}", cancellationToken);
+        var state = JsonNode.Parse(reply)!["state"]?.AsObject();
+        Require(state is not null && state["protocol"]!.GetValue<int>() == 2, $"menu-bar-watch answered {reply}.");
+        return state!;
     }
 
+    // The next state the watch pushes; its revision is higher than the one before.
     private static async Task<JsonObject> WaitAsync(DesktopWireClient page, JsonObject after, CancellationToken cancellationToken)
     {
-        var reply = await page.CallAsync("__runicMenuBarWait", cancellationToken, $"{{\"after\":{after["revision"]!.GetValue<long>()}}}");
-        var state = JsonNode.Parse(reply)!.AsObject();
-        Require(state["kind"]!.GetValue<string>() == "state", $"The wait route answered {reply}.");
-        return state;
+        while (true)
+        {
+            var push = JsonNode.Parse(await page.NextPushAsync(cancellationToken))!.AsObject();
+            if (push["kind"]?.GetValue<string>() != "menu-bar") continue;
+            Require(push["route"]!.GetValue<string>() == "runic.menu-bar", $"The push names another route: {push.ToJsonString()}");
+            var state = push["state"]!.AsObject();
+            if (state["revision"]!.GetValue<long>() > after["revision"]!.GetValue<long>()) return state;
+        }
     }
 
     private static async Task<string> InvokeAsync(DesktopWireClient page, long revision, string key, CancellationToken cancellationToken)
     {
-        var reply = await page.CallAsync("__runicMenuBarInvoke", cancellationToken,
-            JsonSerializer.Serialize(new Dictionary<string, object> { ["revision"] = revision, ["key"] = key }));
-        return JsonNode.Parse(reply)!["kind"]!.GetValue<string>();
+        var reply = await page.RequestAsync(JsonSerializer.Serialize(new Dictionary<string, object>
+        {
+            ["kind"] = "menu-bar-invoke", ["route"] = "runic.menu-bar", ["revision"] = revision, ["key"] = key,
+        }), cancellationToken);
+        return JsonNode.Parse(reply)!["result"]!.GetValue<string>();
     }
+
+    private static async Task<JsonObject> ShortcutsAsync(DesktopWireClient page, string owner, CancellationToken cancellationToken)
+    {
+        var reply = await page.RequestAsync(
+            $"{{\"kind\":\"menu-bar-shortcuts\",\"route\":\"runic.menu-bar\",\"shortcuts\":\"{owner}\"}}", cancellationToken);
+        return JsonNode.Parse(reply)!["state"]!.AsObject();
+    }
+
+    // The reason of a Views failure reply, if the reply is one.
+    private static string? Reason(string reply) =>
+        JsonNode.Parse(reply) is JsonObject { } envelope && envelope["ok"]?.GetValue<bool>() == false
+            ? envelope["error"]?["reason"]?.GetValue<string>() : null;
 
     private static JsonObject? Item(JsonObject state, string commandId)
     {

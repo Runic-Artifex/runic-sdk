@@ -104,39 +104,23 @@ internal sealed class ConformanceTests
             name, contract, value => value.Confirm, static value => JsonSerializer.Serialize(value), static value => value.GetBoolean())
             .Attach(session, model, route);
         using var rootMount = session.AttachRootInteractionPresentation(route);
+        // The route is served, so that open answers.
+        using var bridge = new ConformanceInteractionBridge<ConformanceInteractionModel>(transport, model, route, session);
 
         using (RunicInteractionInvocation.Enter(session, route, "client", "connection"))
             Require(await model.Confirm.Handle("fallback"), "An interaction without an eligible browser did not fall back to .NET.");
 
-        const string presentation = "scope:present";
-        Require(transport.Call($"{route}Mount", new(StringValue: presentation, ClientKey: "client", ConnectionKey: "connection")) == "ok",
-            "The interaction presentation did not mount.");
-        var wait = transport.CallAsync(BridgeInteractionRouter.WaitRoute,
-            new(StringValue: JsonSerializer.Serialize(new { route, presentationId = presentation,
-                handlers = new[] { new { name, contract } } }), ClientKey: "client", ConnectionKey: "connection")).AsTask();
-        await Task.Yield();
+        const string presentation = "scope-present";
+        await ConformanceRequests.OpenAsync(transport, route, presentation, name, contract);
         Task<bool> answer;
         using (RunicInteractionInvocation.Enter(session, route, "client", "connection"))
             answer = model.Confirm.Handle("browser");
-        using var request = JsonDocument.Parse(await wait);
+        using var request = await ConformanceRequests.NextPushAsync(transport, "interaction");
         var root = request.RootElement;
-        Require(root.GetProperty("kind").GetString() == "request" && root.GetProperty("input").GetString() == "browser",
+        Require(root.GetProperty("presentation").GetString() == presentation && root.GetProperty("input").GetString() == "browser",
             "The typed browser interaction request was not delivered.");
-        var reply = JsonSerializer.Serialize(new
-        {
-            kind = "answered",
-            requestId = root.GetProperty("requestId").GetString(),
-            route,
-            presentationId = presentation,
-            ownerEpoch = root.GetProperty("ownerEpoch").GetInt64(),
-            name,
-            contract,
-            output = false,
-        });
-        using var response = JsonDocument.Parse(transport.Call(BridgeInteractionRouter.ReplyRoute,
-            new(StringValue: reply, ClientKey: "client", ConnectionKey: "connection")));
-        Require(response.RootElement.GetProperty("kind").GetString() == "ok" && !await answer,
-            "A typed browser reply did not complete the ReactiveUI interaction.");
+        var result = await ConformanceRequests.ReplyAsync(transport, route, presentation, root, name, contract, output: false);
+        Require(result == "ok" && !await answer, "A typed browser reply did not complete the ReactiveUI interaction.");
     }
 
     // A leave confirmation asked through a bridged interaction: the browser answers it, and a superseded departure
@@ -145,8 +129,9 @@ internal sealed class ConformanceTests
     public async Task NavigationInteractionSemanticsAsync()
     {
         using var transport = new InMemoryBridgeTransport();
-        using var session = new WindowContentSession(transport);
         await using var context = new RunicModelContext();
+        // The bridge of the editor takes the model context the navigator bound it to.
+        using var session = new WindowContentSession(transport, new WindowContentSessionOptions { ModelContext = context });
         await using var navigator = new RunicNavigator(new RunicNavigatorOptions { ModelContext = context });
         var region = navigator.CreateRegion<object>(new object(), NavigationTarget.Borrow<object>(new object()));
         var editor = new ConformanceEditorModel();
@@ -158,13 +143,11 @@ internal sealed class ConformanceTests
             name, contract, value => value.ConfirmDiscard, static value => JsonSerializer.Serialize(value), static value => value.GetBoolean())
             .Attach(session, editor, route);
         using var rootMount = session.AttachRootInteractionPresentation(route);
-        const string presentation = "editor:present";
-        Require(transport.Call($"{route}Mount", new(StringValue: presentation, ClientKey: "client", ConnectionKey: "connection")) == "ok",
-            "The editor's interaction presentation did not mount.");
+        using var bridge = new ConformanceInteractionBridge<ConformanceEditorModel>(transport, editor, route, session);
+        const string presentation = "editor-present";
+        await ConformanceRequests.OpenAsync(transport, route, presentation, name, contract);
 
-        Task<string> Wait() => transport.CallAsync(BridgeInteractionRouter.WaitRoute,
-            new(StringValue: JsonSerializer.Serialize(new { route, presentationId = presentation, handlers = new[] { new { name, contract } } }),
-                ClientKey: "client", ConnectionKey: "connection")).AsTask();
+        Task<JsonDocument> Wait() => ConformanceRequests.NextPushAsync(transport, "interaction");
         // The Back starts where a bridged command of the editor would, inside its invocation.
         Task<NavigationResult<object>> Close()
         {
@@ -173,50 +156,27 @@ internal sealed class ConformanceTests
         }
 
         // Superseded: the browser receives the question, then a cancellation of the same request.
-        var control = transport.CallAsync(BridgeInteractionRouter.ControlWaitRoute, new(StringValue:
-            JsonSerializer.Serialize(new { route, presentationId = presentation }), ClientKey: "client", ConnectionKey: "connection")).AsTask();
-        var wait = Wait();
-        await Task.Yield();
         var superseded = Close();
-        using (var request = JsonDocument.Parse(await wait.WaitAsync(TimeSpan.FromSeconds(10))))
+        using (var request = await Wait().WaitAsync(TimeSpan.FromSeconds(10)))
         {
-            Require(request.RootElement.GetProperty("kind").GetString() == "request"
-                && request.RootElement.GetProperty("input").GetString() == "discard draft",
+            Require(request.RootElement.GetProperty("input").GetString() == "discard draft",
                 $"The leave confirmation did not reach the browser: {request.RootElement}.");
             var requestId = request.RootElement.GetProperty("requestId").GetString();
             var winner = await region.PushAsync(NavigationTarget.Own(new object())).AsTask().WaitAsync(TimeSpan.FromSeconds(10));
             Require(winner is NavigationResult<object>.Committed
                 && await superseded.WaitAsync(TimeSpan.FromSeconds(10)) is NavigationResult<object>.Superseded,
                 "A push did not supersede the departure that asked the browser.");
-            using var cancelled = JsonDocument.Parse(await control.WaitAsync(TimeSpan.FromSeconds(10)));
-            Require(cancelled.RootElement.GetProperty("kind").GetString() == "cancelled"
-                && cancelled.RootElement.GetProperty("requestId").GetString() == requestId,
+            using var cancelled = await ConformanceRequests.NextPushAsync(transport, "interaction-cancelled").WaitAsync(TimeSpan.FromSeconds(10));
+            Require(cancelled.RootElement.GetProperty("requestId").GetString() == requestId,
                 $"The superseded departure did not abort the browser handler's request: {cancelled.RootElement}.");
         }
         await region.BackAsync();
 
         // Answered: the browser's yes lets the editor depart and discards once.
-        wait = Wait();
-        await Task.Yield();
         var closing = Close();
-        using (var request = JsonDocument.Parse(await wait.WaitAsync(TimeSpan.FromSeconds(10))))
-        {
-            var root = request.RootElement;
-            var reply = JsonSerializer.Serialize(new
-            {
-                kind = "answered",
-                requestId = root.GetProperty("requestId").GetString(),
-                route,
-                presentationId = presentation,
-                ownerEpoch = root.GetProperty("ownerEpoch").GetInt64(),
-                name,
-                contract,
-                output = true,
-            });
-            using var response = JsonDocument.Parse(transport.Call(BridgeInteractionRouter.ReplyRoute,
-                new(StringValue: reply, ClientKey: "client", ConnectionKey: "connection")));
-            Require(response.RootElement.GetProperty("kind").GetString() == "ok", "The browser's answer was rejected.");
-        }
+        using (var request = await Wait().WaitAsync(TimeSpan.FromSeconds(10)))
+            Require(await ConformanceRequests.ReplyAsync(transport, route, presentation, request.RootElement, name, contract, output: true) == "ok",
+                "The browser's answer was rejected.");
         var closed = await closing.WaitAsync(TimeSpan.FromSeconds(10));
         Require(closed is NavigationResult<object>.Committed && editor.Discards == 1,
             $"A browser yes gave {closed} with {editor.Discards} discards.");
@@ -1024,13 +984,109 @@ sealed class EmptyDisposable : IDisposable
     public void Dispose() { }
 }
 
-sealed class ConformanceInteractionModel
+sealed class ConformanceInteractionModel : System.ComponentModel.INotifyPropertyChanged
 {
     public Interaction<string, bool> Confirm { get; } = new();
+    public event System.ComponentModel.PropertyChangedEventHandler? PropertyChanged { add { } remove { } }
 }
 
-sealed class ConformanceEditorModel : INavigationDepartureGuard
+// Serves a route without state, so that open answers; the tests attach the interaction themselves.
+sealed class ConformanceInteractionBridge<TModel>(IBridgeTransport transport, TModel model, string route, WindowContentSession session)
+    : ViewModelBridge<TModel>(transport, model, route, Array.Empty<BridgeStateMember<TModel>>(), [], [], [], content: session)
+    where TModel : System.ComponentModel.INotifyPropertyChanged;
+
+// Views protocol 4 requests of the interaction tests, on the connection "connection" of the client "client".
+static class ConformanceRequests
 {
+    private const string Connection = "connection";
+    private const string Client = "client";
+
+    // hello, then open with the presentation's handler (generation 0).
+    internal static async Task OpenAsync(InMemoryBridgeTransport transport, string route, string presentation, string name, string contract)
+    {
+        var hello = await transport.RequestAsync(Json(writer =>
+        {
+            writer.WriteString("kind", "hello");
+            writer.WriteNumber("protocol", BridgeProtocol.Version);
+            writer.WriteString("session", "conformance");
+            writer.WriteStartObject("client");
+            writer.WriteString("name", "conformance");
+            writer.WriteString("version", "1.0.0");
+            writer.WriteEndObject();
+        }), Connection, Client);
+        if (!hello.StartsWith("{\"ok\":true", StringComparison.Ordinal)) throw new InvalidOperationException($"The hello was refused: {hello}");
+        var reply = await transport.RequestAsync(Json(writer =>
+        {
+            writer.WriteString("kind", "open");
+            writer.WriteString("route", route);
+            writer.WriteString("presentation", presentation);
+            writer.WriteStartArray("handlers");
+            writer.WriteStartObject();
+            writer.WriteString("name", name);
+            writer.WriteString("contract", contract);
+            writer.WriteEndObject();
+            writer.WriteEndArray();
+        }), Connection, Client);
+        using var document = JsonDocument.Parse(reply);
+        if (!document.RootElement.TryGetProperty("registration", out var registration) || registration.GetString() != "ok")
+            throw new InvalidOperationException($"The interaction presentation did not open with its handler: {reply}");
+    }
+
+    // The next push of the kind to the connection; the messages before it are taken.
+    internal static async Task<JsonDocument> NextPushAsync(InMemoryBridgeTransport transport, string kind)
+    {
+        var deadline = DateTime.UtcNow.AddSeconds(10);
+        while (DateTime.UtcNow < deadline)
+        {
+            foreach (var message in transport.TakeMessages())
+            {
+                if (message.ConnectionKey != Connection) continue;
+                var document = JsonDocument.Parse(message.Json);
+                if (document.RootElement.GetProperty("kind").GetString() == kind) return document;
+                document.Dispose();
+            }
+            await Task.Delay(10);
+        }
+        throw new TimeoutException($"No {kind} push reached the connection.");
+    }
+
+    // interaction-reply answering the request; returns the reply's result.
+    internal static async Task<string?> ReplyAsync(InMemoryBridgeTransport transport, string route, string presentation,
+        JsonElement request, string name, string contract, bool output)
+    {
+        var reply = await transport.RequestAsync(Json(writer =>
+        {
+            writer.WriteString("kind", "interaction-reply");
+            writer.WriteString("route", route);
+            writer.WriteString("presentation", presentation);
+            writer.WriteString("requestId", request.GetProperty("requestId").GetString());
+            writer.WriteNumber("ownerEpoch", request.GetProperty("ownerEpoch").GetInt64());
+            writer.WriteString("name", name);
+            writer.WriteString("contract", contract);
+            writer.WriteString("outcome", "answered");
+            writer.WriteBoolean("output", output);
+        }), Connection, Client);
+        using var document = JsonDocument.Parse(reply);
+        return document.RootElement.TryGetProperty("result", out var result) ? result.GetString() : reply;
+    }
+
+    private static string Json(Action<Utf8JsonWriter> writeMembers)
+    {
+        using var stream = new MemoryStream();
+        using (var writer = new Utf8JsonWriter(stream))
+        {
+            writer.WriteStartObject();
+            writeMembers(writer);
+            writer.WriteEndObject();
+        }
+        return System.Text.Encoding.UTF8.GetString(stream.ToArray());
+    }
+}
+
+sealed class ConformanceEditorModel : INavigationDepartureGuard, System.ComponentModel.INotifyPropertyChanged
+{
+    public event System.ComponentModel.PropertyChangedEventHandler? PropertyChanged { add { } remove { } }
+
     private readonly LeaveConfirmation _leave;
 
     public ConformanceEditorModel() =>

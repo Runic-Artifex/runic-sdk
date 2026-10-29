@@ -33,6 +33,8 @@ internal sealed class ReactiveNavigationTests
         const string client = "editor-client";
         const string connection = "editor-connection";
 
+        var opened = 0;
+        // The editor's presentation registers its confirmDiscard handler with its open (generation 0).
         async Task<(NavigationResultRequest<INavPageViewModel, string> Request, RunicViewDriver<ReactiveNavEditorViewModel> View, string Mount)> OpenAsync()
         {
             var request = model.Main.PushForResult<string>(
@@ -41,7 +43,12 @@ internal sealed class ReactiveNavigationTests
                 "The editor was not pushed.");
             await Until(() => host.Root.Snapshot().Reference(vm => vm.Main)?.Kind == "reactiveNavEditor");
             var view = host.Root.View<ReactiveNavEditorViewModel>(vm => vm.Main);
-            return (request, view, view.Mount(clientKey: client, connectionKey: connection));
+            var presentation = $"editor{++opened}";
+            var open = host.Transport.Open(view.Route, presentation, connection, client,
+                JsonSerializer.Serialize(new[] { new { name = "confirmDiscard", contract } }));
+            Require(open.Contains("\"presentation\":\"ok\"", StringComparison.Ordinal)
+                && open.Contains("\"registration\":\"ok\"", StringComparison.Ordinal), $"The editor did not open with its handler: {open}");
+            return (request, view, presentation);
         }
 
         static string StatusOutcome(RunicOperationStatus status) =>
@@ -55,43 +62,37 @@ internal sealed class ReactiveNavigationTests
         // Close with a draft from the browser: the same connection receives the typed prompt and answers.
         async Task<string> CloseAnsweringAsync(RunicViewDriver<ReactiveNavEditorViewModel> view, string mount, bool answer)
         {
-            var wait = host.Transport.CallAsync(BridgeInteractionRouter.WaitRoute, new(StringValue: JsonSerializer.Serialize(new
-            {
-                route = view.Route,
-                presentationId = mount,
-                handlers = new[] { new { name = "confirmDiscard", contract } },
-            }), ClientKey: client, ConnectionKey: connection)).AsTask();
-            await Task.Yield();
-            var requestId = $"close-{answer}";
-            using var admission = JsonDocument.Parse(host.Transport.Call($"{view.Route}StartClose",
-                new(StringValue: requestId, ClientKey: client, ConnectionKey: connection)));
-            Require(admission.RootElement.GetProperty("kind").GetString() == "accepted",
+            var operation = $"close-{answer}";
+            var operationContract = BridgeRequests.OperationContract<ReactiveNavEditorViewModel>();
+            using var admission = JsonDocument.Parse(host.Transport.Start(view.Route, "close", operation, operationContract,
+                connectionKey: connection, clientKey: client));
+            Require(admission.RootElement.GetProperty("ok").GetBoolean() && admission.RootElement.GetProperty("admission").GetString() == "accepted",
                 $"The web Close command was not admitted: {admission.RootElement}.");
-            var operation = admission.RootElement.GetProperty("contract").GetString()!;
-            using (var request = JsonDocument.Parse(await wait.WaitAsync(Timeout)))
+            using (var request = await host.Transport.TakePushAsync(connection, "interaction", Timeout))
             {
                 var root = request.RootElement;
-                Require(root.GetProperty("kind").GetString() == "request"
+                Require(root.GetProperty("route").GetString() == view.Route && root.GetProperty("presentation").GetString() == mount
                     && root.GetProperty("input").GetProperty("title").GetString() == "reactive editor"
                     && root.GetProperty("input").GetProperty("draft").GetString() == "changed",
                     $"The web View did not receive the typed leave prompt: {root}.");
                 var reply = JsonSerializer.Serialize(new
                 {
-                    kind = "answered",
-                    requestId = root.GetProperty("requestId").GetString(),
+                    kind = "interaction-reply",
                     route = view.Route,
-                    presentationId = mount,
+                    presentation = mount,
+                    requestId = root.GetProperty("requestId").GetString(),
                     ownerEpoch = root.GetProperty("ownerEpoch").GetInt64(),
                     name = "confirmDiscard",
                     contract,
+                    outcome = "answered",
                     output = answer,
                 });
-                using var response = JsonDocument.Parse(host.Transport.Call(BridgeInteractionRouter.ReplyRoute,
-                    new(StringValue: reply, ClientKey: client, ConnectionKey: connection)));
-                Require(response.RootElement.GetProperty("kind").GetString() == "ok", $"The web answer was rejected: {response.RootElement}.");
+                using var response = JsonDocument.Parse(host.Transport.Send(reply, connection, client));
+                Require(response.RootElement.GetProperty("ok").GetBoolean() && response.RootElement.GetProperty("result").GetString() == "ok",
+                    $"The web answer was rejected: {response.RootElement}.");
             }
-            using var completion = JsonDocument.Parse(await host.Transport.CallAsync("__runicOperationWait",
-                new(StringValue: JsonSerializer.Serialize(new { contract = operation, requestId }))).AsTask().WaitAsync(Timeout));
+            using var completion = await host.Transport.WaitForOperationAsync(view.Route, "close", operation, operationContract, Timeout,
+                connection);
             var status = completion.RootElement;
             return Outcome(status.GetProperty("kind").GetString()!, status.TryGetProperty("result", out var result) ? result : null);
         }
@@ -147,19 +148,16 @@ internal sealed class ReactiveNavigationTests
 
         var executing = new List<RunicModelContext?>();
         using var observed = model.BackCommand.IsExecuting.Subscribe(new Observer<bool>(_ => { lock (executing) executing.Add(RunicModelContext.Current); }));
-        const string requestId = "back";
-        using var admission = JsonDocument.Parse(host.Transport.Call("reactiveNavShellStartBack", new(StringValue: requestId)));
-        Require(admission.RootElement.GetProperty("kind").GetString() == "accepted", "The web back command was not admitted.");
-        var contract = admission.RootElement.GetProperty("contract").GetString()!;
-        using var completion = JsonDocument.Parse(await host.Transport.CallAsync("__runicOperationWait",
-            new(StringValue: JsonSerializer.Serialize(new { contract, requestId }))).AsTask().WaitAsync(Timeout));
-        var root = completion.RootElement;
-        Require(root.GetProperty("kind").GetString() == "succeeded"
-            && root.GetProperty("result").GetProperty("kind").GetString() is "committed" or "Committed"
-            && root.GetProperty("result").GetProperty("rejection").ValueKind == JsonValueKind.Null
-            && root.GetProperty("result").GetProperty("arrival").GetString() == "Failed"
-            && !root.GetRawText().Contains("internal reload detail", StringComparison.Ordinal),
-            $"The back command did not return a committed outcome with a failed arrival and no exception: {root}.");
+        var operation = host.Root.Start(vm => vm.BackCommand, requestId: "back");
+        Require(operation.Admission == RunicOperationAdmissionKind.Accepted, $"The web back command was not admitted: {operation.AdmissionJson}");
+        var status = await operation.WaitAsync().WaitAsync(Timeout);
+        var result = status.Result;
+        Require(status.Kind == RunicOperationStatusKind.Succeeded && result is { } outcome
+            && outcome.GetProperty("kind").GetString() is "committed" or "Committed"
+            && outcome.GetProperty("rejection").ValueKind == JsonValueKind.Null
+            && outcome.GetProperty("arrival").GetString() == "Failed"
+            && !status.Json.Contains("internal reload detail", StringComparison.Ordinal),
+            $"The back command did not return a committed outcome with a failed arrival and no exception: {status.Json}.");
         Require(model.Main.Current == home, "The bridged back command did not go back.");
         await Until(() => { lock (executing) return executing.Count >= 3; });
         lock (executing)
@@ -200,14 +198,12 @@ internal sealed class ReactiveNavigationTests
         await Until(() => ReactiveCommandExecution.CanExecute(model.OpenCommand, RxVoid.Default));
 
         using var cancellation = new CancellationTokenSource();
-        const string requestId = "navigation";
-        string? contract = null;
+        RunicTestOperation? operation = null;
         Task<RxVoid>? native = null;
         if (web)
         {
-            using var admission = JsonDocument.Parse(host.Transport.Call("reactiveNavShellStartOpen", new(StringValue: requestId)));
-            Require(admission.RootElement.GetProperty("kind").GetString() == "accepted", "The web navigation command was not admitted.");
-            contract = admission.RootElement.GetProperty("contract").GetString()!;
+            operation = host.Root.Start(vm => vm.OpenCommand, requestId: "navigation");
+            Require(operation.Admission == RunicOperationAdmissionKind.Accepted, "The web navigation command was not admitted.");
         }
         else native = ReactiveCommandExecution.Execute(model.OpenCommand, RxVoid.Default, cancellation.Token);
         await entered.Task.WaitAsync(Timeout);
@@ -219,24 +215,21 @@ internal sealed class ReactiveNavigationTests
                 "The framework command committed before its guard answered.");
             if (web)
             {
-                using var unavailable = JsonDocument.Parse(host.Transport.Call("reactiveNavShellStartOpen", new(StringValue: "second")));
-                Require(unavailable.RootElement.GetProperty("kind").GetString() == "rejected"
-                    && unavailable.RootElement.GetProperty("reason").GetString() == "unavailable",
+                var unavailable = host.Root.Start(vm => vm.OpenCommand, requestId: "second");
+                Require(unavailable.Admission == RunicOperationAdmissionKind.Rejected && unavailable.Reason == "unavailable",
                     "The generated web bridge ignored observable command availability.");
             }
             if (outcome == "cancelled")
             {
-                if (web)
-                    host.Transport.Call("__runicOperationCancel", new(StringValue: JsonSerializer.Serialize(new { contract, requestId })));
+                if (web) _ = operation!.Cancel();
                 else cancellation.Cancel();
             }
             else release.SetResult(outcome == "committed");
 
             if (web)
             {
-                using var completion = JsonDocument.Parse(await host.Transport.CallAsync("__runicOperationWait",
-                    new(StringValue: JsonSerializer.Serialize(new { contract, requestId }))).AsTask().WaitAsync(Timeout));
-                Require(completion.RootElement.GetProperty("kind").GetString() == (outcome == "cancelled" ? "cancelled" : "succeeded"),
+                var completion = await operation!.WaitAsync().WaitAsync(Timeout);
+                Require(completion.Kind == (outcome == "cancelled" ? RunicOperationStatusKind.Cancelled : RunicOperationStatusKind.Succeeded),
                     "The bridge command ended with the wrong operation terminal.");
             }
             else

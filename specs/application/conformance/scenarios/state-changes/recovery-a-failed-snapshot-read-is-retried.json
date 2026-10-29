@@ -1,0 +1,74 @@
+{
+  "format": "runic.views.scenario/1",
+  "id": "state-changes.recovery-a-failed-snapshot-read-is-retried.v1",
+  "contract": {"id":"runic.views","version":4},
+  "set": "state-changes",
+  "roles": ["producer","client"],
+  "description": "Recovery paths. A route retains at most 64 undelivered pushes or 1 MiB of them before a recovery state supersedes them; a client that misses a frame reads one snapshot, applies frames that arrive during the read after it, and retries a failed read. Case: a failed snapshot read is retried.",
+  "source": "specs/application/fixtures/collection-deltas/recovery.json#a failed snapshot read is retried",
+  "view": "list",
+  "requires": ["virtual-clock"],
+  "ids": {
+    "c1": {"kind":"connection"},
+    "hello-c1": {"kind":"request"},
+    "session": {"kind":"wire","value":"s-1"},
+    "open-list": {"kind":"call"},
+    "open-list-request": {"kind":"request"},
+    "presentation": {"kind":"wire","value":"p-1"},
+    "recovery-1": {"kind":"request"},
+    "recovery-2": {"kind":"request"},
+    "final-read": {"kind":"request"}
+  },
+  "arrange": {"model":{"rows":[{"$rows":[0,1]}],"title":"rows"}},
+  "steps": [
+    {"connect":"c1"},
+    {
+      "send": {
+        "kind": "hello",
+        "protocol": 4,
+        "session": {"$id":"session"},
+        "client": {"name":{"$any":"string","default":"conformance-client"},"version":{"$any":"string","default":"1.0.0"}}
+      },
+      "id": "hello-c1"
+    },
+    {
+      "receive": {
+        "ok": true,
+        "protocol": 4,
+        "implementation": {"name":{"$any":"string","default":"conformance-producer"},"version":{"$any":"string","default":"1.0.0"}}
+      },
+      "replyTo": "hello-c1"
+    },
+    {"call":{"id":"open-list","op":"open","route":"list"}},
+    {"send":{"kind":"open","route":"list","presentation":{"$id":"presentation"}},"id":"open-list-request"},
+    {
+      "receive": {"ok":true,"revision":0,"state":{"rows":[{"$rows":[0,1]}],"title":"rows"},"presentation":"ok"},
+      "replyTo": "open-list-request"
+    },
+    {"mutate":[{"op":"appendRows","start":1,"count":3}],"units":"each"},
+    {"receive":{"kind":"frame","route":"list","baseRevision":0,"revision":1,"changes":[{"$adds":[1,1]}]}},
+    {"receive":{"kind":"frame","route":"list","baseRevision":1,"revision":2,"changes":[{"$adds":[2,1]}]},"drop":true},
+    {"receive":{"kind":"frame","route":"list","baseRevision":2,"revision":3,"changes":[{"$adds":[3,1]}]}},
+    {"send":{"kind":"snapshot","route":"list"},"id":"recovery-1","role":"client"},
+    {
+      "receive": {"ok":false,"error":{"kind":"failed","message":"The read failed."}},
+      "replyTo": "recovery-1",
+      "role": "client"
+    },
+    {"advance":250,"role":"client"},
+    {"send":{"kind":"snapshot","route":"list"},"id":"recovery-2","role":"client"},
+    {
+      "receive": {"ok":true,"revision":3,"state":{"rows":[{"$rows":[0,4]}],"title":"rows"}},
+      "replyTo": "recovery-2",
+      "role": "client"
+    },
+    {"send":{"kind":"snapshot","route":"list"},"id":"final-read","role":"producer"},
+    {
+      "receive": {"ok":true,"revision":3,"state":{"rows":[{"$rows":[0,4]}],"title":"rows"}},
+      "replyTo": "final-read",
+      "role": "producer"
+    },
+    {"expect":{"state":{"route":"list","value":{"rows":[{"$rows":[0,4]}],"title":"rows"}}}},
+    {"expect":{"diagnostics":["failed"]}}
+  ]
+}

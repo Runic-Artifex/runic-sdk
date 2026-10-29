@@ -24,8 +24,6 @@
     <Compile Include="../Runic.Desktop/Internal/DesktopMenuPlanner.cs" Link="Shared/DesktopMenuPlanner.cs" />
     <Compile Include="../Runic.Platform/DesktopMenuRules.cs" Link="Shared/DesktopMenuRules.cs" />
     <Compile Include="../Runic.Platform/DesktopShortcutKeys.cs" Link="Shared/DesktopShortcutKeys.cs" />
-    <!-- The test-only view lifetime check of the notes-view-first example wraps a probe transport. -->
-    <InternalsVisibleTo Include="NotesViewFirst" />
     <None Include="README.md" Pack="true" PackagePath="/" />
     <None Update="build/Runic.Application.Views.CsWebUi.targets" Pack="true" PackagePath="buildTransitive/Runic.Application.Views.CsWebUi.targets" />
     <None Update="build/Runic.Application.Views.CsWebUi.props" Pack="true" PackagePath="buildTransitive/Runic.Application.Views.CsWebUi.props" />

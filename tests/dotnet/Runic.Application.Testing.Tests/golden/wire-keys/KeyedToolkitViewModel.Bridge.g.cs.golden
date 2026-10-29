@@ -6,16 +6,16 @@ internal sealed class KeyedToolkitBridge : global::Runic.Application.Views.Gener
 {
     internal KeyedToolkitBridge(global::Runic.Application.Views.IBridgeTransport transport, global::Runic.Application.Testing.Tests.KeyedToolkitViewModel vm, string? routePrefix = null, global::Runic.Application.Views.WindowContentSession? content = null) : base(
         transport, vm, routePrefix ?? "keyedToolkit",
-        WriteSnapshot,
+        State,
         [
-            new global::Runic.Application.Views.Generated.PropertyDescriptor<global::Runic.Application.Testing.Tests.KeyedToolkitViewModel>("Last", vm => vm.Last, null),
+            new global::Runic.Application.Views.Generated.PropertyDescriptor<global::Runic.Application.Testing.Tests.KeyedToolkitViewModel>("Last", "last", vm => vm.Last, null),
         ],
         [
         ],
         [
-            new global::Runic.Application.Views.Generated.CommandDescriptor<global::Runic.Application.Testing.Tests.KeyedToolkitViewModel>("Lock", vm => (object)vm.LockCommand) { ReadArgument = e => { using var document = global::System.Text.Json.JsonDocument.Parse(e.GetString()); return LockCommandInputCodec.Read(document.RootElement); }, EncodeArgument = argument => global::Runic.Application.Views.Generated.BridgeWire.EncodeCanonical(writer => LockCommandInputCodec.Write(writer, (global::System.UInt64)argument!)), ResolveArgument = (vm, key) => vm.FindItem((global::System.UInt64)key!) },
-            new global::Runic.Application.Views.Generated.CommandDescriptor<global::Runic.Application.Testing.Tests.KeyedToolkitViewModel>("Open", vm => (object)vm.OpenCommand) { ExecuteAsync = async (vm, token, argument) => { token.ThrowIfCancellationRequested(); var command = (global::CommunityToolkit.Mvvm.Input.IAsyncRelayCommand<global::Runic.Application.Testing.Tests.KeyedItem>)vm.OpenCommand; using var registration = token.Register(command.Cancel); await command.ExecuteAsync((global::Runic.Application.Testing.Tests.KeyedItem)argument!).ConfigureAwait(false); }, ReadArgument = e => { using var document = global::System.Text.Json.JsonDocument.Parse(e.GetString()); return OpenCommandInputCodec.Read(document.RootElement); }, EncodeArgument = argument => global::Runic.Application.Views.Generated.BridgeWire.EncodeCanonical(writer => OpenCommandInputCodec.Write(writer, (global::System.UInt64)argument!)), Subscribe = (vm, changed) => new ToolkitRunningSubscription(vm.OpenCommand, changed), ResolveArgumentAsync = async (vm, key, token) => await vm.FindItemAsync((global::System.UInt64)key!).ConfigureAwait(false) },
-            new global::Runic.Application.Views.Generated.CommandDescriptor<global::Runic.Application.Testing.Tests.KeyedToolkitViewModel>("Select", vm => (object)vm.SelectCommand) { ReadArgument = e => { using var document = global::System.Text.Json.JsonDocument.Parse(e.GetString()); return SelectCommandInputCodec.Read(document.RootElement); }, EncodeArgument = argument => global::Runic.Application.Views.Generated.BridgeWire.EncodeCanonical(writer => SelectCommandInputCodec.Write(writer, (global::System.String)argument!)), ResolveArgument = (vm, key) => global::Runic.Application.Testing.Tests.KeyedToolkitViewModel.Lookup((global::System.String)key!) },
+            new global::Runic.Application.Views.Generated.CommandDescriptor<global::Runic.Application.Testing.Tests.KeyedToolkitViewModel>("Lock", vm => (object)vm.LockCommand) { ReadInput = input => LockCommandInputCodec.Read(input), EncodeArgument = argument => global::Runic.Application.Views.Generated.BridgeWire.EncodeCanonical(writer => LockCommandInputCodec.Write(writer, (global::System.UInt64)argument!)), WireName = "lock", ResolveArgument = (vm, key) => vm.FindItem((global::System.UInt64)key!) },
+            new global::Runic.Application.Views.Generated.CommandDescriptor<global::Runic.Application.Testing.Tests.KeyedToolkitViewModel>("Open", vm => (object)vm.OpenCommand) { ExecuteAsync = async (vm, token, argument) => { token.ThrowIfCancellationRequested(); var command = (global::CommunityToolkit.Mvvm.Input.IAsyncRelayCommand<global::Runic.Application.Testing.Tests.KeyedItem>)vm.OpenCommand; using var registration = token.Register(command.Cancel); await command.ExecuteAsync((global::Runic.Application.Testing.Tests.KeyedItem)argument!).ConfigureAwait(false); }, ReadInput = input => OpenCommandInputCodec.Read(input), EncodeArgument = argument => global::Runic.Application.Views.Generated.BridgeWire.EncodeCanonical(writer => OpenCommandInputCodec.Write(writer, (global::System.UInt64)argument!)), Subscribe = (vm, changed) => new ToolkitRunningSubscription(vm.OpenCommand, changed), WireName = "open", ResolveArgumentAsync = async (vm, key, token) => await vm.FindItemAsync((global::System.UInt64)key!).ConfigureAwait(false) },
+            new global::Runic.Application.Views.Generated.CommandDescriptor<global::Runic.Application.Testing.Tests.KeyedToolkitViewModel>("Select", vm => (object)vm.SelectCommand) { ReadInput = input => SelectCommandInputCodec.Read(input), EncodeArgument = argument => global::Runic.Application.Views.Generated.BridgeWire.EncodeCanonical(writer => SelectCommandInputCodec.Write(writer, (global::System.String)argument!)), WireName = "select", ResolveArgument = (vm, key) => global::Runic.Application.Testing.Tests.KeyedToolkitViewModel.Lookup((global::System.String)key!) },
         ], "<fingerprint>", content,
         null,
         dataSubscriptions: DataMetadata,
@@ -111,13 +111,10 @@ private static class SelectCommandInputCodec
         public void Dispose() => _command.PropertyChanged -= _handler;
     }
 
-    private static void WriteSnapshot(global::System.Text.Json.Utf8JsonWriter writer, global::Runic.Application.Testing.Tests.KeyedToolkitViewModel vm, long revision, global::System.Action<global::System.Text.Json.Utf8JsonWriter> writeFieldMetadata)
-    {
-        writer.WriteStartObject();
-        writer.WriteNumber("revision", revision);
-        writer.WritePropertyName("last");
-        LastValueCodec.Write(writer, vm.Last);
-        writer.WriteBoolean("isOpenExecuting", ((global::CommunityToolkit.Mvvm.Input.IAsyncRelayCommand)vm.OpenCommand).IsRunning);
-        writer.WriteEndObject();
-    }
+    private static readonly global::Runic.Application.Views.Generated.BridgeStateMember<global::Runic.Application.Testing.Tests.KeyedToolkitViewModel>[] State =
+    [
+        new global::Runic.Application.Views.Generated.BridgeStateMember<global::Runic.Application.Testing.Tests.KeyedToolkitViewModel>("last", static (writer, vm) => LastValueCodec.Write(writer, vm.Last)),
+        new global::Runic.Application.Views.Generated.BridgeStateMember<global::Runic.Application.Testing.Tests.KeyedToolkitViewModel>("isOpenExecuting", static (writer, vm) => writer.WriteBooleanValue(((global::CommunityToolkit.Mvvm.Input.IAsyncRelayCommand)vm.OpenCommand).IsRunning)),
+    ]
+    ;
 }

@@ -1,4 +1,5 @@
 import {
+  computed,
   defineComponent,
   h,
   shallowRef,
@@ -9,11 +10,13 @@ import {
   type Ref,
   type SetupContext,
   type VNodeChild,
+  type WritableComputedRef,
 } from "vue";
 import {
   createCommandController,
   createLatestOperationController,
   createOperationController,
+  createTextFieldController,
   createViewController,
   onBridgeConnection,
   type BridgeConnectionOptions,
@@ -248,6 +251,78 @@ export function useLatestOperation<TResult = void, TFailure = never>(): LatestOp
   });
   releaseWithScope("useLatestOperation", () => controller.dispose());
   return { ...refs, run: controller.run, clear: controller.clear } as LatestOperationHandle<TResult, TFailure>;
+}
+
+export interface TextFieldHandle {
+  /**
+   * What the input shows: the draft while one exists, otherwise the member's value in the View's state. Setting it
+   * is an input by the user, as `v-model` does; `v-model` also writes nothing during IME composition.
+   */
+  readonly value: WritableComputedRef<string>;
+  /**
+   * True while a draft exists, from the first input until the last write settled and the state caught up, and after a
+   * failed write. Keep the input enabled while it is true, rather than disabling it on the View's busy state, which
+   * the field's own write causes.
+   */
+  readonly editing: Readonly<Ref<boolean>>;
+  /** Why the latest write failed, until the next input or `reset()`. */
+  readonly error: Readonly<Ref<unknown>>;
+  /** Drops the draft and the error and shows the View's value. Writes in flight still complete. */
+  reset(): void;
+}
+
+export interface UseTextFieldOptions {
+  /**
+   * With `true` (the default) at most one write is in flight, and text typed meanwhile is written next, as one
+   * value. With `false` every input is written.
+   */
+  readonly coalesce?: boolean;
+  /** With `true` (the default) a failed write keeps the draft and sets `error`; with `false` the field shows the View's value again. */
+  readonly keepDraftOnError?: boolean;
+}
+
+/** The View a text field binds to: a {@link useView} handle, or any state and client refs. */
+export interface TextFieldView<TClient extends ViewClient> {
+  readonly state: Readonly<Ref<TClient["snapshot"] | undefined>>;
+  readonly client: Readonly<Ref<TClient | undefined>>;
+}
+
+/**
+ * Binds a text input to one member of a View while the current effect scope is active, through
+ * `createTextFieldController`. Typing key by key never loses characters: while its writes are in flight the field
+ * shows what the user typed, at most one write is in flight (newer text is written next), and once the last write
+ * settled it shows the View's value, including any normalization. Each field is a ref, so the handle can be
+ * destructured. Call it in `setup()` or `effectScope().run()`: outside an effect scope it is never released
+ * (development builds warn).
+ *
+ * ```vue
+ * const person = useView(() => props.page);
+ * const { value: name, editing } = useTextField(person, state => state.name, (client, value) => client.setName(value));
+ * <input v-model="name">
+ * ```
+ *
+ * `write` may be a generated setter, a command or a checked write. Its failure sets `error` and keeps the draft.
+ */
+export function useTextField<TClient extends ViewClient>(
+  view: TextFieldView<TClient>,
+  read: (state: TClient["snapshot"]) => string,
+  write: (client: TClient, value: string) => Promise<unknown>,
+  options: UseTextFieldOptions = {},
+): TextFieldHandle {
+  const controller = createTextFieldController<TClient["snapshot"], TClient>({ read, write, ...options });
+  const current = shallowRef(controller.current);
+  controller.subscribe(() => { current.value = controller.current; });
+  watch([view.state, view.client], ([state, client]) => {
+    controller.setSource(state === undefined || client === undefined ? undefined : { state, client });
+    current.value = controller.current;
+  }, { immediate: true });
+  releaseWithScope("useTextField", () => controller.dispose());
+  return {
+    value: computed({ get: () => current.value.value, set: text => controller.input(text) }),
+    editing: computed(() => current.value.editing),
+    error: computed(() => current.value.error),
+    reset: () => controller.reset(),
+  };
 }
 
 export interface BridgeConnectionHandle {

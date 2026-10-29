@@ -1,6 +1,5 @@
 using Microsoft.Extensions.DependencyInjection;
 using Runic.Application.Views;
-using Runic.Application.Views.CsWebUi;
 using Runic.Navigation;
 
 namespace NotesWindowViews;
@@ -14,8 +13,8 @@ internal static class ViewLifetimeCheck
         using var app = NotesApplication.Create(useSplat);
         await using var scope = app.Services.CreateAsyncScope();
         var vm = scope.ServiceProvider.GetRequiredService<ShellViewModel>();
-        var native = new ProbeTransport();
-        using var transport = new RebindableBridgeTransport(native);
+        using var native = new ProbeTransport();
+        var transport = native;
         // Like a real window, the session binds the shell to the window's model context. A
         // shell without one serializes its bridge with a lock instead of model turns, and a
         // navigation commit that publishes the shell could then deadlock with a snapshot.
@@ -33,8 +32,8 @@ internal static class ViewLifetimeCheck
                 var secondVm = secondScope.ServiceProvider.GetRequiredService<ShellViewModel>();
                 if (ReferenceEquals(vm, secondVm))
                     throw new InvalidOperationException("Two window scopes share a ShellViewModel.");
-                var secondNative = new ProbeTransport();
-                using var secondTransport = new RebindableBridgeTransport(secondNative);
+                using var secondNative = new ProbeTransport();
+                var secondTransport = secondNative;
                 using var secondContent = new WindowContentSession(secondTransport, new WindowContentSessionOptions { ViewLocator = secondScope.ServiceProvider.GetRequiredService<IRunicViewLocator>(), RootModel = secondVm, ModelContext = secondScope.ServiceProvider.GetRequiredService<IRunicModelContext>() });
                 var secondFactory = secondScope.ServiceProvider.GetRequiredService<
                     Func<IBridgeTransport, WindowContentSession, ShellViewModel, IDisposable>>();
@@ -50,9 +49,9 @@ internal static class ViewLifetimeCheck
 
             Unmount(native, initial.Main);
             await vm.Sidebar.OpenNotesCommand.ExecuteAsync(null);
-            using var documentShellState = System.Text.Json.JsonDocument.Parse(native.Call("shellSnapshot"));
+            using var documentShellState = System.Text.Json.JsonDocument.Parse(native.Snapshot("shell"));
             var document = Mount(native, ReferenceId(documentShellState, "main"));
-            using var editorState = System.Text.Json.JsonDocument.Parse(native.Call($"content{document.Id}Snapshot"));
+            using var editorState = System.Text.Json.JsonDocument.Parse(native.Snapshot($"content{document.Id}"));
             var editor = Mount(native, ReferenceId(editorState, "currentPane"));
             Require<HomeView>(0);
             Require<DocumentView>(1);
@@ -62,24 +61,21 @@ internal static class ViewLifetimeCheck
             var documentModel = (DocumentViewModel)vm.Main.Current!;
             Unmount(native, editor);
             await documentModel.ShowPreviewCommand.ExecuteAsync(null);
-            using var previewState = System.Text.Json.JsonDocument.Parse(native.Call($"content{document.Id}Snapshot"));
+            using var previewState = System.Text.Json.JsonDocument.Parse(native.Snapshot($"content{document.Id}"));
             var preview = Mount(native, ReferenceId(previewState, "currentPane"));
             Require<EditorView>(0);
             Require<PreviewView>(1);
 
-            // CS-WebUI has no per-route unbind today.  The bridge adapter must
-            // consequently keep its one native binding per stable page route
-            // while the nested Editor/Preview endpoint detaches and reattaches.
-            // This is deliberately bounded: it records route reuse, not a
-            // performance or endurance claim.
-            var nativeBindingsBeforeCycles = native.BindCount;
+            // Twenty Editor/Preview remount cycles detach and reattach the nested View without growing the window's
+            // served routes: every pane the cycles leave is released. This is deliberately bounded: it records route
+            // reuse, not a performance or endurance claim.
             var activeRoutesBeforeCycles = native.ActiveRoutes;
             for (var cycle = 0; cycle < 20; cycle++)
             {
                 Unmount(native, preview);
                 await documentModel.ShowEditorCommand.ExecuteAsync(null);
                 using var editorCycleState = System.Text.Json.JsonDocument.Parse(
-                    native.Call($"content{document.Id}Snapshot"));
+                    native.Snapshot($"content{document.Id}"));
                 editor = Mount(native, ReferenceId(editorCycleState, "currentPane"));
                 Require<EditorView>(1);
                 Require<PreviewView>(0);
@@ -87,29 +83,25 @@ internal static class ViewLifetimeCheck
                 Unmount(native, editor);
                 await documentModel.ShowPreviewCommand.ExecuteAsync(null);
                 using var previewCycleState = System.Text.Json.JsonDocument.Parse(
-                    native.Call($"content{document.Id}Snapshot"));
+                    native.Snapshot($"content{document.Id}"));
                 preview = Mount(native, ReferenceId(previewCycleState, "currentPane"));
                 Require<EditorView>(0);
                 Require<PreviewView>(1);
             }
-            if (native.BindCount != nativeBindingsBeforeCycles || native.ActiveRoutes != activeRoutesBeforeCycles)
+            if (native.ActiveRoutes != activeRoutesBeforeCycles)
                 throw new InvalidOperationException(
-                    $"Twenty Editor/Preview remount cycles grew native routes: " +
-                    $"bindings {nativeBindingsBeforeCycles} -> {native.BindCount}, " +
-                    $"active {activeRoutesBeforeCycles} -> {native.ActiveRoutes}.");
-            Console.WriteLine(
-                $"VIEW_NATIVE_ROUTE_REUSE|cycles=20|bindings={nativeBindingsBeforeCycles}->{native.BindCount}|" +
-                $"active={activeRoutesBeforeCycles}->{native.ActiveRoutes}");
+                    $"Twenty Editor/Preview remount cycles grew the window's routes: {activeRoutesBeforeCycles} -> {native.ActiveRoutes}.");
+            Console.WriteLine($"VIEW_ROUTE_REUSE|cycles=20|active={activeRoutesBeforeCycles}->{native.ActiveRoutes}");
 
             Unmount(native, preview);
             await documentModel.ShowEditorCommand.ExecuteAsync(null);
-            using var remountedEditorState = System.Text.Json.JsonDocument.Parse(native.Call($"content{document.Id}Snapshot"));
+            using var remountedEditorState = System.Text.Json.JsonDocument.Parse(native.Snapshot($"content{document.Id}"));
             editor = Mount(native, ReferenceId(remountedEditorState, "currentPane"));
             documentModel.Editor.Title = "Unsaved";
             // Leaving waits in the document's guard until the dialog answers.
             var cancelled = vm.Sidebar.OpenHomeCommand.ExecuteAsync(null);
             await UntilAsync(() => vm.Dialog.Current is not null, "The guard did not open the dialog.");
-            using var cancelDialogState = System.Text.Json.JsonDocument.Parse(native.Call("shellSnapshot"));
+            using var cancelDialogState = System.Text.Json.JsonDocument.Parse(native.Snapshot("shell"));
             var cancelDialog = Mount(native, ReferenceId(cancelDialogState, "dialog"));
             Require<ConfirmNavigationView>(1);
             Unmount(native, cancelDialog);
@@ -117,18 +109,18 @@ internal static class ViewLifetimeCheck
             await cancelled;
             if (vm.Main.Current != documentModel || vm.Dialog.Current is not null)
                 throw new InvalidOperationException("Cancelling the dialog did not keep the document.");
-            native.Call("shellSnapshot");
+            native.Snapshot("shell");
             Require<ConfirmNavigationView>(0);
 
             var confirmed = vm.Sidebar.OpenHomeCommand.ExecuteAsync(null);
             await UntilAsync(() => vm.Dialog.Current is not null, "The guard did not open the dialog again.");
-            using var confirmDialogState = System.Text.Json.JsonDocument.Parse(native.Call("shellSnapshot"));
+            using var confirmDialogState = System.Text.Json.JsonDocument.Parse(native.Snapshot("shell"));
             _ = Mount(native, ReferenceId(confirmDialogState, "dialog"));
             Unmount(native, editor);
             Unmount(native, document);
             await ((ConfirmNavigationViewModel)vm.Dialog.Current!).ConfirmCommand.ExecuteAsync(null);
             await confirmed;
-            using var homeState = System.Text.Json.JsonDocument.Parse(native.Call("shellSnapshot"));
+            using var homeState = System.Text.Json.JsonDocument.Parse(native.Snapshot("shell"));
             _ = Mount(native, ReferenceId(homeState, "main"));
             Require<DocumentView>(0);
             Require<EditorView>(0);
@@ -137,10 +129,6 @@ internal static class ViewLifetimeCheck
         }
         Require<SidebarView>(0);
         Require<HomeView>(0);
-        // I-174: a Bridge delivery still on its way when the window disposed its transport ends silently.
-        var closed = new RebindableBridgeTransport(new ProbeTransport());
-        closed.Dispose();
-        closed.Publish("shell", "{}");
         Console.WriteLine($"VIEW_LIFETIME_OK|{(useSplat ? "splat" : "microsoft-di")}|two-scopes|mounted-presentations|nested|dialog|detached");
     }
 
@@ -156,7 +144,7 @@ internal static class ViewLifetimeCheck
 
     private static ShellMounts MountShell(ProbeTransport transport)
     {
-        using var state = System.Text.Json.JsonDocument.Parse(transport.Call("shellSnapshot"));
+        using var state = System.Text.Json.JsonDocument.Parse(transport.Snapshot("shell"));
         return new ShellMounts(
             Mount(transport, ReferenceId(state, "sidebar")),
             Mount(transport, ReferenceId(state, "main")));
@@ -164,16 +152,18 @@ internal static class ViewLifetimeCheck
 
     private static MountedReference Mount(ProbeTransport transport, string id)
     {
-        var mounted = new MountedReference(id, $"view-lifetime:{id}");
-        if (transport.Call($"content{mounted.Id}Mount", mounted.Token) != "ok")
-            throw new InvalidOperationException($"The presentation {id} did not acknowledge its mount.");
+        var mounted = new MountedReference(id, $"view-lifetime-{id}");
+        var reply = transport.Request($"{{\"kind\":\"open\",\"route\":\"content{id}\",\"presentation\":\"{mounted.Presentation}\"}}");
+        if (!reply.Contains("\"presentation\":\"ok\"", StringComparison.Ordinal))
+            throw new InvalidOperationException($"The presentation {id} was not opened: {reply}");
         return mounted;
     }
 
     private static void Unmount(ProbeTransport transport, MountedReference mounted)
     {
-        if (transport.Call($"content{mounted.Id}Unmount", mounted.Token) != "ok")
-            throw new InvalidOperationException($"The presentation {mounted.Id} did not acknowledge its unmount.");
+        var reply = transport.Request($"{{\"kind\":\"close\",\"route\":\"content{mounted.Id}\",\"presentation\":\"{mounted.Presentation}\"}}");
+        if (reply != "{\"ok\":true,\"presentation\":\"ok\"}")
+            throw new InvalidOperationException($"The presentation {mounted.Id} was not closed: {reply}");
     }
 
     private static string ReferenceId(System.Text.Json.JsonDocument state, string property) =>
@@ -181,7 +171,7 @@ internal static class ViewLifetimeCheck
         ?? throw new InvalidOperationException($"The {property} presentation has no id.");
 
     private sealed record ShellMounts(MountedReference Sidebar, MountedReference Main);
-    private sealed record MountedReference(string Id, string Token);
+    private sealed record MountedReference(string Id, string Presentation);
 
     private static void Require<TView>(int expected)
     {
@@ -190,50 +180,55 @@ internal static class ViewLifetimeCheck
             throw new InvalidOperationException($"{typeof(TView).Name}: expected {expected} active views, got {actual}.");
     }
 
-    private sealed class ProbeTransport : IBridgeTransport
+    // The window's transport, without a page: the check sends Views protocol 4 requests on one connection, as a page
+    // does, and remembers every route it reached.
+    private sealed class ProbeTransport : IBridgeTransport, IDisposable
     {
-        private readonly Dictionary<string, Func<IBridgeArguments, string>> _handlers = new(StringComparer.Ordinal);
-        private readonly Dictionary<string, Func<IBridgeArguments, CancellationToken, ValueTask<string>>> _asyncHandlers = new(StringComparer.Ordinal);
-        public int BindCount { get; private set; }
-        public int ActiveRoutes => _handlers.Count + _asyncHandlers.Count;
+        private readonly HashSet<string> _routes = new(StringComparer.Ordinal);
+        private IBridgeRequestHandler? _handler;
+        private bool _greeted;
 
-        public IDisposable Bind(string name, Func<IBridgeArguments, string> handler)
+        // How many of the routes the check reached are still served.
+        public int ActiveRoutes => _routes.ToArray().Count(route => Request($"{{\"kind\":\"snapshot\",\"route\":\"{route}\"}}")
+            .StartsWith("{\"ok\":true", StringComparison.Ordinal));
+
+        public IDisposable Serve(IBridgeRequestHandler handler)
         {
-            _handlers.Add(name, handler);
-            BindCount++;
-            return new Binding(() => _handlers.Remove(name));
+            _handler = handler;
+            return this;
         }
 
-        public IDisposable BindAsync(string name,
-            Func<IBridgeArguments, CancellationToken, ValueTask<string>> handler)
+        public ValueTask BroadcastAsync(ReadOnlyMemory<byte> message, CancellationToken cancellationToken = default) =>
+            ValueTask.CompletedTask;
+
+        // A snapshot reply, which must be ok.
+        public string Snapshot(string route)
         {
-            _asyncHandlers.Add(name, handler);
-            BindCount++;
-            return new Binding(() => _asyncHandlers.Remove(name));
+            var reply = Request($"{{\"kind\":\"snapshot\",\"route\":\"{route}\"}}");
+            return reply.StartsWith("{\"ok\":true", StringComparison.Ordinal)
+                ? reply : throw new InvalidOperationException($"The snapshot of {route} failed: {reply}");
         }
 
-        public void Publish(string name, string stateJson) { }
-
-        public string Call(string name) => _handlers[name](new NoArguments());
-        public string Call(string name, string value) => _handlers[name](new StringArguments(value));
-
-        private sealed class NoArguments : IBridgeArguments
+        public string Request(string json)
         {
-            public long GetInt64() => throw new NotSupportedException();
-            public bool GetBoolean() => throw new NotSupportedException();
-            public string GetString() => throw new NotSupportedException();
+            if (!_greeted)
+            {
+                _greeted = true;
+                _ = Send("{\"kind\":\"hello\",\"protocol\":4,\"session\":\"view-lifetime\",\"client\":{\"name\":\"view-lifetime\",\"version\":\"1.0.0\"}}");
+            }
+            using (var request = System.Text.Json.JsonDocument.Parse(json))
+                if (request.RootElement.TryGetProperty("route", out var route)) _routes.Add(route.GetString()!);
+            return Send(json);
         }
 
-        private sealed class StringArguments(string value) : IBridgeArguments
-        {
-            public long GetInt64() => throw new NotSupportedException();
-            public bool GetBoolean() => throw new NotSupportedException();
-            public string GetString() => value;
-        }
+        public void Dispose() => _handler = null;
 
-        private sealed class Binding(Action release) : IDisposable
+        private string Send(string json)
         {
-            public void Dispose() => release();
+            var handler = _handler ?? throw new InvalidOperationException("No window serves the transport.");
+            var reply = handler.HandleAsync(new BridgeRequest(System.Text.Encoding.UTF8.GetBytes(json), "view-lifetime", "view-lifetime"),
+                CancellationToken.None).AsTask().GetAwaiter().GetResult();
+            return System.Text.Encoding.UTF8.GetString(reply.Span);
         }
     }
 }

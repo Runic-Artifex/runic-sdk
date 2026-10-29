@@ -1,0 +1,88 @@
+{
+  "format": "runic.views.vector/1",
+  "id": "values.booleans-and-strings",
+  "contract": {"id":"runic.views","version":4},
+  "area": "values",
+  "description": "boolean and string, and nullable values.",
+  "cases": [
+    {
+      "id": "values.booleans-and-strings.boolean-true",
+      "operation": "decode",
+      "type": "boolean",
+      "input": {"encoding":"json","value":true},
+      "expect": {"value":true}
+    },
+    {
+      "id": "values.booleans-and-strings.boolean-false",
+      "operation": "decode",
+      "type": "boolean",
+      "input": {"encoding":"json","value":false},
+      "expect": {"value":false}
+    },
+    {
+      "id": "values.booleans-and-strings.boolean-string-true",
+      "operation": "decode",
+      "type": "boolean",
+      "input": {"encoding":"json","value":"true"},
+      "expect": {"error":{"code":"invalid-value"}}
+    },
+    {
+      "id": "values.booleans-and-strings.boolean-number-one",
+      "operation": "decode",
+      "type": "boolean",
+      "input": {"encoding":"json","value":1},
+      "expect": {"error":{"code":"invalid-value"}}
+    },
+    {
+      "id": "values.booleans-and-strings.boolean-null",
+      "operation": "decode",
+      "type": "boolean",
+      "input": {"encoding":"json","value":null},
+      "expect": {"error":{"code":"invalid-value"}}
+    },
+    {
+      "id": "values.booleans-and-strings.boolean-nullable-null",
+      "operation": "decode",
+      "type": "boolean",
+      "parameters": {"nullable":true},
+      "input": {"encoding":"json","value":null},
+      "expect": {"value":null}
+    },
+    {
+      "id": "values.booleans-and-strings.string-text",
+      "operation": "decode",
+      "type": "string",
+      "input": {"encoding":"json","value":"Grüße 😀"},
+      "expect": {"value":"Grüße 😀"}
+    },
+    {
+      "id": "values.booleans-and-strings.string-empty",
+      "operation": "decode",
+      "type": "string",
+      "input": {"encoding":"json","value":""},
+      "expect": {"value":""}
+    },
+    {
+      "id": "values.booleans-and-strings.string-number",
+      "operation": "decode",
+      "type": "string",
+      "input": {"encoding":"json","value":1},
+      "expect": {"error":{"code":"invalid-value"}}
+    },
+    {
+      "id": "values.booleans-and-strings.string-null",
+      "operation": "decode",
+      "type": "string",
+      "input": {"encoding":"json","value":null},
+      "expect": {"error":{"code":"invalid-value"}}
+    },
+    {
+      "id": "values.booleans-and-strings.string-nullable-null",
+      "operation": "decode",
+      "type": "string",
+      "parameters": {"nullable":true},
+      "input": {"encoding":"json","value":null},
+      "expect": {"value":null}
+    }
+  ]
+}

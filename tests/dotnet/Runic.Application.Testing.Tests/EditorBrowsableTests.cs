@@ -17,7 +17,6 @@ internal sealed class EditorBrowsableTests
         typeof(PropertyDescriptor<>),
         typeof(CheckedPropertyDescriptor<>),
         typeof(CheckedFieldValueKind),
-        typeof(BridgeSnapshotWriter<>),
         typeof(CommandDescriptor<>),
         typeof(BridgeProtocol),
         typeof(ViewModelBridge<>),

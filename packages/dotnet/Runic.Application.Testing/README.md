@@ -116,8 +116,8 @@ Work that waits on the clock does not finish by itself:
 
 Content ids are `1`, `2`, ... in presentation order, so routes are `content1`,
 `content2`, ... and snapshots are stable. Set `CreateId` for another sequence. The
-drivers issue mount tokens `test:mount1`, ... and operation request ids `request1`,
-....
+drivers number presentation ids `test-presentation1`, ..., operation ids
+`request1`, ... and checked-write request ids `write1`, ... from one counter.
 
 For real time, set `TimeProvider = TimeProvider.System` in the options.
 
@@ -181,8 +181,13 @@ already have. A `RunicViewDriver<T>` has:
   such a command instead of blocking the test thread, which may own the fake clock
   or the model turn the resolver waits for. A reply has `Succeeded`, `ErrorKind`, `ErrorReason` (since 0.11:
   `unavailable`, `invalid-input` or `unresolved-key` for a `rejected` call),
-  `ErrorMessage` and `State`;
-  `ThrowIfFailed()` throws for a failed call, as `NavigationResult` does. A
+  `ErrorMessage`, `Revision`, `Released` and `Superseded`. A Views protocol 4
+  reply names the `revision` that includes the call's effects instead of
+  carrying state, so the driver reads `State` with a `snapshot` request after
+  the reply, when the reply has a revision. `Released` is `true` when the call
+  released its own route, as a command that navigates away does, and
+  `Superseded` when a `set` was not applied because a later edit of the member
+  was admitted first. `ThrowIfFailed()` throws for a failed call, as `NavigationResult` does. A
   command's declared failure (`[RunicFailure]`) replies with `ErrorKind`
   `domain-failed` and the encoded failure as `Failure`, such as
   `{"$case":"titleRequired"}`. A call of a released View or a closed window
@@ -204,13 +209,21 @@ already have. A `RunicViewDriver<T>` has:
 - `Write(vm => vm.Title, value, expectedVersion)` for a checked write. It uses the
   current value and version as the baseline unless `expectedVersion` is given, so a
   stale version tests the `Conflict` receipt. A receipt has a
-  `RunicFieldWriteReceiptKind` `Kind`, `ErrorMessage`, `Value` and `Version`.
-- `Mount()` and `Unmount(token)` acknowledge a browser presentation. Both throw
+  `RunicFieldWriteReceiptKind` `Kind`, `ErrorMessage`, `Value`, `Version` and
+  `State`, read like a reply's.
+- `Mount(presentation)` sends `open` for a presentation of the route, as a page
+  that shows the View does, and returns the presentation id
+  (`test-presentation{n}` when omitted); `Unmount(presentation)` sends `close`.
+  Both take optional client and connection keys and throw
   `InvalidOperationException` naming the route's reply unless it accepted the
-  call, for example when another client's keys unmount it (`ignored`).
-- `TakePublications()` and `NextPublicationAsync()` return this route's pushed
-  frames in order: `State`, `Delta` with its `RunicCollectionChange`s, or
-  `Failure`.
+  request, for example when another client's keys close it (`ignored`) or the
+  route was released.
+- `TakePublications()` and `NextPublicationAsync()` return this route's pushes
+  in order, each a `RunicViewPublication` whose `Kind` is `State` (with `State`
+  and `Fields`), `Frame` (with `BaseRevision`, the member `Sets`
+  (`RunicMemberSet`), the keyed collection `Changes` (`RunicCollectionChange`)
+  and the text `Texts` (`RunicTextChange`)), or `Failure`. `Revision` names the
+  revision of each.
 
 ### Navigation
 
@@ -343,7 +356,7 @@ using var handler = detail.ConfirmDiscard.RegisterHandler(context =>
 
 This is the supported test path for a question that a web View answers in the
 browser. The host does not run the generated TypeScript client, and a
-driver's `Mount()` acknowledges a presentation without registering any
+driver's `Mount()` opens a presentation without registering any
 interaction handler, so the question never waits for a browser: it goes to
 the .NET handlers. The test still covers everything the ViewModel decides: the
 guard, the prompt's input, and what each answer keeps or discards. With no
@@ -362,14 +375,18 @@ CommunityToolkit.Mvvm has no interaction type: a Toolkit guard asks in a
 dialog region, and a test answers it by executing the dialog's command through
 its driver, as in [Navigation](#navigation).
 
-### Collections and deltas
+### Collections and frames
 
-`Track()` follows a route from a snapshot through its frames, as the generated
-client does: newer full states replace the state, deltas must continue the tracked
-revision and name the row keys they change, and failure notices are collected.
-A frame the client could not apply throws, naming the problem: a lost or reordered
-frame, an index outside the rows, a row key that does not match, an item count that
-does not match the keys, or an empty or duplicate key.
+`Track()` follows a route from a snapshot through its pushes, as the generated
+client does: newer full states replace the state, frames must continue the tracked
+revision (`BaseRevision`), and their keyed collection changes must name the row
+keys they change; failure notices are collected. A frame the client could not
+apply throws, naming the problem: a lost or reordered frame, more than 4,096
+changes, a `set` beside another change of the same member, a member the View
+does not have, a missing or unexpected checked-field version, a text change
+whose length does not match, an index outside the rows, a row key that does not
+match, an item count that does not match the keys, or an empty or duplicate key.
+`FullStates` counts the full states and `Deltas` the frames it applied.
 
 ```csharp
 var tracker = host.Root.View<HomeViewModel>(vm => vm.Main).Track();
@@ -386,16 +403,20 @@ frames go to its tracker or to `TakePublications`, not both.
 
 ### Lower level
 
-`host.Transport` is the `InMemoryBridgeTransport`, the `IBridgeTransport` the generated
-Bridges bind their routes on. `Call(...)` and `CallAsync(...)` invoke any route with
-`BridgeTestArguments` and return its raw reply, such as
-`host.Transport.Call($"{host.RootRoute}Snapshot")` for the snapshot envelope that
-`host.Root.Snapshot()` parses. `TakePublications()` returns the frames of every route
-as `RunicViewPublication`s, the type the drivers return; drivers and trackers then
-miss them. The verb is Take, as on the drivers, because the frames are removed;
-Drain names `DrainAsync`, which waits for accepted work. A driver's `Mount` and
-`Unmount` with client and connection keys and `Content.ReleaseConnection` test View
-lifetimes and client disconnects. Await `host.DrainAsync(timeout)` before disposing
+`host.Transport` is the `InMemoryBridgeTransport`, the window's
+`IBridgeConnectionTransport`.
+`Request(json)` and `RequestAsync(json)` send a Views protocol 4 request on a connection
+(`hello` first), `CloseConnection` closes it, and `Messages`/`TakeMessages()` list the
+pushes the window sent, such as
+`host.Transport.Request($$"""{"kind":"snapshot","route":"{{host.RootRoute}}"}""")` for
+the raw reply that `host.Root.Snapshot()` parses. Each `RunicBridgeMessage` has the
+push's `Json` and the `ConnectionKey` of a push to one connection, or `null` for a
+broadcast. `DefaultConnectionKey` (`connection-1`) and `DefaultClientKey`
+(`client-1`) are the keys of requests that name none. The verb is Take, as on the drivers,
+because the pushes are removed; Drain names `DrainAsync`, which waits for accepted
+work. A driver's `Mount` and `Unmount` (`open` and `close`) with client and
+connection keys and `Transport.CloseConnection` test View lifetimes and client
+disconnects. Await `host.DrainAsync(timeout)` before disposing
 a host that has accepted background operations. It stops admission, as a closing
 window does. With a fake clock its timeout passes only when the clock advances, and
 its token stops only the wait.
@@ -409,6 +430,105 @@ To drive the whole application in a browser, use `RunicServeOnlyApplication`
 test, use `DesktopBridgeWindow<TViewModel>.Surface.ExecuteJavaScriptAsync`. See the
 [Runic.Application.Views.Desktop automation](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Application.Views.Desktop/README.md#automation)
 section.
+
+### Custom window hosts
+
+Runic Desktop, CS-WebUI, WPF and this package carry the Views protocol over an
+`IBridgeTransport` from `Runic.Application.Views`. A host of your own, such as
+one that serves pages over its own WebSocket, implements the same interface;
+the protocol it carries is in the
+[Views protocol](../../../specs/application/README.md#transport). The window
+calls `Serve` once with its `IBridgeRequestHandler` and sends every push
+through `BroadcastAsync`. A transport that can push to one connection outside a
+request also implements `IBridgeConnectionTransport.SendAsync`; without it, the
+window keeps each connection's targeted pushes in a mailbox (1,024 pushes and
+4 MiB at most), and the page's host script drains it with `receive` requests,
+as CS-WebUI's does. The transport:
+
+- passes each request to `HandleAsync` as a `BridgeRequest` with the message
+  and the client and connection keys it authenticated, never keys read from the
+  message, in the order the connection received them, without waiting for
+  earlier replies: a `receive` or an awaited command stays open for long;
+- sends the replies and pushes of one connection in the order the window sent
+  them, and completes `BroadcastAsync` and `SendAsync` once the push is queued
+  on every connection ahead of later sends;
+- answers a request while no handler is served with the `released` reply, and
+  reports each closed connection once with `ConnectionClosed`. A reconnect is a
+  new connection with a new connection key.
+
+```csharp
+using System.Collections.Concurrent;
+using Runic.Application.Views;
+
+// PageSocket is the host's own connection: it writes replies and pushes in call order, and its
+// Closing token is cancelled when the connection closes.
+public sealed class SocketBridgeTransport : IBridgeConnectionTransport
+{
+    private static readonly byte[] Released =
+        """{"ok":false,"error":{"kind":"released","message":"This View was released."}}"""u8.ToArray();
+    private readonly ConcurrentDictionary<string, PageSocket> _pages = new();
+    private IBridgeRequestHandler? _handler;
+
+    public IDisposable Serve(IBridgeRequestHandler handler)
+    {
+        if (Interlocked.CompareExchange(ref _handler, handler, null) is not null)
+            throw new InvalidOperationException("The transport already serves a handler.");
+        return new Lease(() => Interlocked.CompareExchange(ref _handler, null, handler));
+    }
+
+    public async ValueTask BroadcastAsync(ReadOnlyMemory<byte> message, CancellationToken cancellationToken = default)
+    {
+        foreach (var page in _pages.Values) await page.PushAsync(message, cancellationToken);
+    }
+
+    public async ValueTask<bool> SendAsync(string connectionKey, ReadOnlyMemory<byte> message,
+        CancellationToken cancellationToken = default)
+    {
+        if (!_pages.TryGetValue(connectionKey, out var page)) return false;
+        await page.PushAsync(message, cancellationToken);
+        return true;
+    }
+
+    public void Opened(PageSocket page) => _pages[page.ConnectionKey] = page;
+
+    // The socket's read loop calls this for each request, in arrival order, with a buffer of its own.
+    public void Received(PageSocket page, long requestId, ReadOnlyMemory<byte> message)
+    {
+        if (Volatile.Read(ref _handler) is not { } handler) { _ = page.ReplyAsync(requestId, Released); return; }
+        _ = ReplyAsync(page, requestId, handler.HandleAsync(
+            new BridgeRequest(message, page.ClientKey, page.ConnectionKey), page.Closing));
+    }
+
+    public void Closed(PageSocket page)
+    {
+        if (_pages.TryRemove(page.ConnectionKey, out _)) Volatile.Read(ref _handler)?.ConnectionClosed(page.ConnectionKey);
+    }
+
+    private static async Task ReplyAsync(PageSocket page, long requestId, ValueTask<ReadOnlyMemory<byte>> reply) =>
+        await page.ReplyAsync(requestId, await reply);
+
+    private sealed class Lease(Action dispose) : IDisposable
+    {
+        public void Dispose() => dispose();
+    }
+}
+```
+
+The page's script installs `__runicBridge` with `request`, `onMessage` and
+`onConnectionChange`, as the
+[host bridge](../../../specs/application/README.md#host-bridge-page) describes, and
+the window attaches its generated Bridge to the transport with
+`new WindowContentSession(transport, options)` and the factory that
+`AddRunicViews()` registers, as the constructors above take it.
+
+Test the window side over `InMemoryBridgeTransport`, which implements the same
+contract: `RunicWindowTestHost` runs the window on it, and a host's own
+composition can take `new InMemoryBridgeTransport()` in place of its transport
+and drive it with `Request`, `CloseConnection` and `TakeMessages`. Test the
+transport itself with a stub `IBridgeRequestHandler` that records the
+requests, keys and `ConnectionClosed` calls it receives and replies in an order
+the test chooses, so a test can check that replies and pushes keep their order
+and that a slow reply does not hold up the next request.
 
 ### Compatibility
 

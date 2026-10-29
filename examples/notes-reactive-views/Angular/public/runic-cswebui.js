@@ -1,18 +1,18 @@
 // CS-WebUI owns the browser transport; generated ViewModel modules use this
-// small host-neutral Bridge client contract instead of importing CS-WebUI.
+// small host-neutral Bridge client (Views protocol 4, specs/application/README.md,
+// "Host bridge (page)") instead of importing CS-WebUI.
 (() => {
   const connected = () => window.webui?.isConnected() ?? false;
-  // A WebSocket reconnect keeps the page. Generated clients then re-read their
-  // routes and re-acknowledge mounted Views. Observe the transition by polling
-  // so an application's own webui.setEventCallback stays in place. The poll
-  // also runs while a call is unsettled, so a lost connection settles it.
-  // Connection listeners learn of a dropped WebSocket within one poll, without
+  // A WebSocket reconnect keeps the page, and each new connection needs its own
+  // hello. Observe the transitions by polling so an application's own
+  // webui.setEventCallback stays in place. The poll runs while a listener
+  // exists or a call is unsettled, so a lost connection settles the call, and
+  // connection listeners learn of a dropped WebSocket within one poll, without
   // waiting for the page's next call.
-  const reconnectListeners = new Set();
   const connectionListeners = new Set();
-  let reconnectTimer;
+  const messageListeners = new Set();
+  let watchTimer;
   let wasConnected = false;
-  let lost = false;
   let reported;
   function reportConnection(now) {
     if (now === reported || connectionListeners.size === 0) return;
@@ -22,7 +22,6 @@
     }
   }
   function connectionLost() {
-    lost = true;
     wasConnected = false;
     reportConnection(false);
     const previous = connection;
@@ -35,27 +34,21 @@
     const now = connected();
     if (!now && wasConnected) connectionLost();
     reportConnection(now);
+    const opened = now && !wasConnected;
     wasConnected = now;
-    if (now && lost) {
-      lost = false;
-      for (const listener of [...reconnectListeners]) {
-        try { listener(); } catch (error) { console.error("Runic reconnect listener failed", error); }
-      }
-    }
+    if (opened) receive();
     if (idle()) stopWatching();
   }
-  const idle = () => reconnectListeners.size === 0 && connectionListeners.size === 0 && unsettled === 0;
+  const idle = () => connectionListeners.size === 0 && messageListeners.size === 0 && unsettled === 0;
   function startWatching() {
-    if (reconnectTimer !== undefined) return;
+    if (watchTimer !== undefined) return;
     wasConnected = connected();
-    reconnectTimer = setInterval(watchConnection, 250);
+    watchTimer = setInterval(watchConnection, 250);
   }
   function stopWatching() {
-    if (reconnectTimer === undefined) return;
-    clearInterval(reconnectTimer);
-    reconnectTimer = undefined;
-    // A loss nobody listened for must not resume a listener registered later.
-    lost = false;
+    if (watchTimer === undefined) return;
+    clearInterval(watchTimer);
+    watchTimer = undefined;
   }
 
   // Views frontends own their navigation. Once the bridge connects it cancels
@@ -118,18 +111,22 @@
     }
   };
 
-  // .NET publishes Views state as raw data (webui_send_raw): the route, NUL and
-  // the state's UTF-8 JSON, which has no raw NUL. Parsing data instead of
-  // running a script lets a Content-Security-Policy without 'unsafe-eval'
-  // receive state. WebUI evaluates the name when no such function exists, so
-  // an older copy of this script misses every state.
+  function deliver(message) {
+    for (const listener of [...messageListeners]) {
+      try { listener(message); } catch (error) { console.error("Runic message listener failed", error); }
+    }
+  }
+
+  // .NET broadcasts Views pushes as raw data (webui_send_raw): the message's
+  // UTF-8 JSON. Decoding data instead of running a script lets a
+  // Content-Security-Policy without 'unsafe-eval' receive them. WebUI
+  // evaluates the name when no such function exists, so an older copy of this
+  // script misses every push.
   let decoder;
   window.__runicViewsPush = data => {
-    const separator = data.lastIndexOf(0);
-    if (separator < 0) return;
+    if (messageListeners.size === 0) return;
     decoder ??= new TextDecoder();
-    const callback = window[`__${decoder.decode(data.subarray(0, separator))}Changed`];
-    if (typeof callback === "function") callback(JSON.parse(decoder.decode(data.subarray(separator + 1))));
+    deliver(decoder.decode(data));
   };
 
   // The window's all-events binding delivers disconnects to .NET, and WebUI has
@@ -153,17 +150,22 @@
   }
 
   // WebUI never settles a call that was in flight when its WebSocket closed,
-  // so an awaited reply or long poll would wait forever. Each connection holds
+  // so an awaited reply or a receive would wait forever. Each connection holds
   // the rejections of the calls sent on it until they settle, and the lost
   // transition rejects the rest. A call sent while WebUI reconnects belongs to
-  // the next connection.
-  const nextConnection = () => ({ calls: new Set() });
+  // the next connection. A connection also holds the state of its receive loop.
+  const nextConnection = () => ({ calls: new Set(), settled: 0, receiving: false, paused: false, received: false });
   let connection = nextConnection();
   let unsettled = 0;
-  function send(name, args) {
-    // A throttled poll may not have seen the loss yet. Check now, so this call
-    // cannot join the old connection while WebUI sends it on the new one.
+  // The connection a call sent now joins. A throttled poll may not have seen
+  // the loss yet. Check now, so a call cannot join the old connection while
+  // WebUI sends it on the new one.
+  function currentConnection() {
     if (wasConnected && !connected()) connectionLost();
+    return connection;
+  }
+  function send(joined, name, args) {
+    const calls = joined.calls;
     unsettled++;
     startWatching();
     let reply;
@@ -173,7 +175,6 @@
       unsettled--;
       return Promise.reject(error);
     }
-    const calls = connection.calls;
     const settled = new Promise((resolve, reject) => {
       calls.add(reject);
       Promise.resolve(reply).then(resolve, reject).finally(() => calls.delete(reject));
@@ -183,28 +184,107 @@
     return settled;
   }
 
+  // The mailbox (specs/application/README.md, "receive"). WebUI cannot send to
+  // one client outside a call, so .NET queues a connection's targeted pushes
+  // (operations, interactions) and this loop drains them: while a message
+  // listener exists and the connection is open, exactly one receive request is
+  // pending on it. Its reply carries the queued messages, as soon as one is
+  // queued or empty after 25 seconds, and the next receive is sent at once.
+  // The pending receive does not hold up the page's other calls: WebUI runs
+  // each call on its own native thread and assigns each its own event slot.
+  //
+  // A receive fails with no-hello until the page's hello on this connection
+  // has completed; the page's runtime sends it through request(). Any failed or
+  // unreadable reply pauses the loop until a request() sent on the same
+  // connection settles after the failed receive was sent, so the loop never
+  // spins. If such a request already settled when the failure arrives (a
+  // receive racing the hello), the loop sends the next receive at once. A
+  // no-hello after this connection's loop received a reply means that WebUI
+  // replaced the WebSocket between two polls: the page has a new connection,
+  // so its listeners see false and then true, and its unsettled calls, which
+  // WebUI will not settle, are rejected.
+  // A receive rejected because its connection was lost ends that connection's
+  // loop; the next connection starts a new one when the poll sees it open or
+  // when a request settles on it. A receive rejected otherwise is a failure.
+  const receiveRequest = '{"kind":"receive"}';
+  function receive() {
+    if (messageListeners.size === 0 || !window.webui || !connected()) return;
+    const loop = currentConnection();
+    if (loop.receiving || loop.paused) return;
+    loop.receiving = true;
+    const since = loop.settled;
+    const failed = () => {
+      if (loop.settled !== since) receive();
+      else loop.paused = true;
+    };
+    send(loop, "__runicViews", [receiveRequest]).then(text => {
+      loop.receiving = false;
+      if (loop !== connection) return;
+      let reply;
+      try { reply = JSON.parse(text); } catch { reply = undefined; }
+      if (reply?.ok === true && Array.isArray(reply.messages)) {
+        loop.received = true;
+        // Messages that arrive while no listener exists are dropped.
+        for (const message of reply.messages) deliver(JSON.stringify(message));
+        receive();
+      } else if (reply?.ok === false && reply.error?.reason === "no-hello" && loop.received) {
+        connectionLost();
+        connection.paused = true;
+        if (connected()) {
+          wasConnected = true;
+          reportConnection(true);
+        }
+      } else {
+        failed();
+      }
+    }, () => {
+      loop.receiving = false;
+      if (loop === connection) failed();
+    });
+  }
+  function requestSettled(joined) {
+    joined.settled++;
+    if (joined !== connection) return;
+    joined.paused = false;
+    receive();
+  }
+
+  // A page of protocol 3 calls named functions instead; it gets a reply that
+  // makes it report its protocol diagnostic, and nothing reaches the host.
+  const releasedReply = '{"ok":false,"state":null,"error":{"kind":"released","message":"This View was released."}}';
+  const snapshotReply = '{"ok":true,"state":{"revision":0},"error":null,"protocol":4}';
+
   window.__runicBridge = {
     isConnected: () => {
       const isConnected = connected();
       if (isConnected) window.webui.allowNavigation?.(true);
       return isConnected;
     },
-    call: (name, ...args) => {
+    request: message => {
       if (!window.webui) return Promise.reject(new Error("CS-WebUI is unavailable."));
       window.webui.allowNavigation?.(true);
-      return send(name, args);
+      const joined = currentConnection();
+      const reply = send(joined, "__runicViews", [message]);
+      const settled = () => requestSettled(joined);
+      reply.then(settled, settled);
+      return reply;
     },
-    onReconnect: (listener) => {
-      reconnectListeners.add(listener);
+    onMessage: listener => {
+      // Each subscription is its own entry, even for a listener added twice.
+      const subscription = message => listener(message);
+      messageListeners.add(subscription);
       startWatching();
+      receive();
       return () => {
-        reconnectListeners.delete(listener);
+        messageListeners.delete(subscription);
         if (idle()) stopWatching();
       };
     },
     // Reads WebUI's state directly: the Bridge's isConnected() also allows navigation.
-    onConnectionChange: (listener) => {
+    onConnectionChange: listener => {
+      // A later listener gets the current state, not the one the last poll saw: WebUI can have connected since.
       if (connectionListeners.size === 0) reported = connected();
+      else watchConnection();
       connectionListeners.add(listener);
       startWatching();
       try { listener(reported); } catch (error) { console.error("Runic connection listener failed", error); }
@@ -212,6 +292,7 @@
         connectionListeners.delete(listener);
         if (idle()) stopWatching();
       };
-    }
+    },
+    call: name => Promise.resolve(typeof name === "string" && name.endsWith("Snapshot") ? snapshotReply : releasedReply)
   };
 })();

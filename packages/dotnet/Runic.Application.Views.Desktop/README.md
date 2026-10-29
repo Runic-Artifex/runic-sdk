@@ -79,8 +79,9 @@ The same Window and `async host => ...` body run on CS-WebUI with
   their own (`DesktopSurfaceOptions.ContentSecurityPolicy`). It is a header of
   its own next to the surface's `frame-ancestors` policy, and the WebView
   enforces both. The Bridge needs `'self'` scripts and connections and no
-  `'unsafe-eval'`: `DesktopBridgeTransport` sends state as data, which the
-  served bridge script parses with `JSON.parse` before it calls the View, so
+  `'unsafe-eval'`: `DesktopBridgeTransport` sends Views pushes as raw data to
+  `__runicViewsPush`, which the served bridge script hands to
+  `runic-desktop-views.js` without evaluating them, so
   `default-src 'self'; script-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'`
   works and blocks inline, foreign and evaluated scripts. Only
   `DesktopSurface.ExecuteJavaScriptAsync`, which evaluates a string in the
@@ -202,8 +203,9 @@ The same Window and `async host => ...` body run on CS-WebUI with
   Declare the menus in `DesktopHostOptions.MenuBar`; macOS and the GTK 3 and GTK 4
   windows show them. With `MenuBarPresentation = DesktopMenuBarPresentation.Page`
   in `WindowOptions` the page renders the bar with its own components through
-  `createMenuBarController` in `@runic-artifex/views`; every Window serves its
-  routes (see
+  `createMenuBarController` in `@runic-artifex/views`; every Window serves the
+  reserved route `runic.menu-bar` on its Views connection, with
+  [menu bar page protocol 2](../../../specs/desktop/menu-bar-page.md) (see
   [In-page menu bar](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/web/views/README.md#in-page-menu-bar)),
   and a page's invoke runs through `DesktopWindow.TryExecuteMenuItemAsync`. Each
   item's `CommandParameter` is the command's parameter. A ViewModel that takes
@@ -470,7 +472,18 @@ The same Window and `async host => ...` body run on CS-WebUI with
   `new DesktopNativeOwner(window)`.
 - `DesktopBridgeTransport` connects a `DesktopSurface` to a
   `WindowContentSession` directly, for applications that compose a surface
-  themselves.
+  themselves. It is an `IBridgeConnectionTransport`: `Serve` delivers the
+  Views protocol 4 requests that the page sends on the one capability
+  `__runicViews`, `BroadcastAsync` pushes to every page of the surface and
+  `SendAsync` to one connection, both as raw data to `__runicViewsPush`. A
+  connection is one authenticated WebSocket; its Desktop connection id is
+  both its connection and its client key, so a reconnect is a new connection.
+  The requests of one connection are admitted in the order the page sent
+  them. Disposing the transport removes the capability and stops pushes; the
+  surface stays open. The per-route `Bind`, `BindAsync`, `Publish`,
+  `PublishAsync` and `PublishUtf8Async` of earlier releases are gone; see
+  [Custom window hosts](../Runic.Application.Testing/README.md#custom-window-hosts)
+  for the transport contract.
 
 The surface owns authenticated browser or embedded WebView sessions and
 removable capability bindings; the application Window owns its ViewModel scope
@@ -479,7 +492,9 @@ select the browser or embedded backend; the Runic Desktop guide lists the
 native prerequisites for each platform.
 
 The package's build targets copy `runic-desktop-views.js` into `www/`, also as
-`runic-views.js`. Load `webui.js` (served by the surface) and `runic-views.js`
+`runic-views.js`. It installs `__runicBridge`: requests go to `__runicViews`,
+and pushes arrive on the WebSocket as they are sent, so the script does not
+poll. Load `webui.js` (served by the surface) and `runic-views.js`
 before the generated client in `index.html`; the same page then runs on
 CS-WebUI, whose package copies its own client as `runic-views.js`. A project
 that references both hosts sets `RunicApplicationHost` (`desktop` or

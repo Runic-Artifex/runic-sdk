@@ -1,0 +1,322 @@
+{
+  "format": "runic.views.vector/1",
+  "id": "messages.requests",
+  "contract": {"id":"runic.views","version":4},
+  "area": "messages",
+  "description": "Requests as a producer reads them. Only the envelope is checked: routes and members are checked by the scenarios.",
+  "cases": [
+    {
+      "id": "messages.requests.hello",
+      "operation": "read-request",
+      "input": {
+        "encoding": "json",
+        "value": {"kind":"hello","protocol":4,"session":"s-1","client":{"name":"test-client","version":"1.0.0"}}
+      },
+      "expect": {"result":"valid"}
+    },
+    {
+      "id": "messages.requests.hello-without-session",
+      "operation": "read-request",
+      "input": {"encoding":"json","value":{"kind":"hello","protocol":4,"client":{"name":"test-client","version":"1.0.0"}}},
+      "expect": {"result":"invalid","error":{"kind":"rejected","reason":"invalid-request"}}
+    },
+    {
+      "id": "messages.requests.hello-with-unknown-member",
+      "description": "Unknown members are ignored.",
+      "operation": "read-request",
+      "input": {
+        "encoding": "json",
+        "value": {"kind":"hello","protocol":4,"session":"s-1","client":{"name":"test-client","version":"1.0.0"},"future":true}
+      },
+      "expect": {"result":"valid"}
+    },
+    {
+      "id": "messages.requests.hello-session-too-long",
+      "operation": "read-request",
+      "input": {
+        "encoding": "json",
+        "value": {
+          "kind": "hello",
+          "protocol": 4,
+          "session": "sssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssss",
+          "client": {"name":"test-client","version":"1.0.0"}
+        }
+      },
+      "expect": {"result":"invalid","error":{"kind":"rejected","reason":"invalid-request"}}
+    },
+    {
+      "id": "messages.requests.set",
+      "operation": "read-request",
+      "input": {"encoding":"json","value":{"kind":"set","route":"notes","member":"title","value":"Draft","edit":7}},
+      "expect": {"result":"valid"}
+    },
+    {
+      "id": "messages.requests.set-without-edit",
+      "operation": "read-request",
+      "input": {"encoding":"json","value":{"kind":"set","route":"notes","member":"title","value":"Draft"}},
+      "expect": {"result":"invalid","error":{"kind":"rejected","reason":"invalid-request"}}
+    },
+    {
+      "id": "messages.requests.set-edit-zero",
+      "description": "Edit numbers are positive.",
+      "operation": "read-request",
+      "input": {"encoding":"json","value":{"kind":"set","route":"notes","member":"title","value":"Draft","edit":0}},
+      "expect": {"result":"invalid","error":{"kind":"rejected","reason":"invalid-request"}}
+    },
+    {
+      "id": "messages.requests.set-edit-beyond-safe-integer",
+      "operation": "read-request",
+      "input": {
+        "encoding": "utf8",
+        "value": "{\"kind\":\"set\",\"route\":\"notes\",\"member\":\"title\",\"value\":\"x\",\"edit\":9007199254740992}"
+      },
+      "expect": {"result":"invalid","error":{"kind":"rejected","reason":"invalid-request"}}
+    },
+    {
+      "id": "messages.requests.set-without-value",
+      "operation": "read-request",
+      "input": {"encoding":"json","value":{"kind":"set","route":"notes","member":"title","edit":7}},
+      "expect": {"result":"invalid","error":{"kind":"rejected","reason":"invalid-request"}}
+    },
+    {
+      "id": "messages.requests.set-null-value",
+      "description": "null is a value; whether the member accepts it is the member's type.",
+      "operation": "read-request",
+      "input": {"encoding":"json","value":{"kind":"set","route":"notes","member":"title","value":null,"edit":7}},
+      "expect": {"result":"valid"}
+    },
+    {
+      "id": "messages.requests.unknown-kind",
+      "description": "A producer rejects a request kind it does not know.",
+      "operation": "read-request",
+      "input": {"encoding":"json","value":{"kind":"teleport","route":"notes"}},
+      "expect": {"result":"invalid","error":{"kind":"rejected","reason":"invalid-request"}}
+    },
+    {
+      "id": "messages.requests.without-kind",
+      "operation": "read-request",
+      "input": {"encoding":"json","value":{"route":"notes"}},
+      "expect": {"result":"invalid","error":{"kind":"rejected","reason":"invalid-request"}}
+    },
+    {
+      "id": "messages.requests.array",
+      "operation": "read-request",
+      "input": {"encoding":"json","value":[{"kind":"set","route":"notes","member":"title","value":"Draft","edit":7}]},
+      "expect": {"result":"invalid","error":{"kind":"rejected","reason":"invalid-request"}}
+    },
+    {
+      "id": "messages.requests.duplicate-member",
+      "operation": "read-request",
+      "input": {
+        "encoding": "utf8",
+        "value": "{\"kind\":\"set\",\"route\":\"notes\",\"member\":\"title\",\"value\":\"a\",\"value\":\"b\",\"edit\":1}"
+      },
+      "expect": {"result":"invalid","error":{"kind":"rejected","reason":"invalid-request"}}
+    },
+    {
+      "id": "messages.requests.depth-65",
+      "description": "The message is nested 65 deep.",
+      "operation": "read-request",
+      "input": {
+        "encoding": "utf8",
+        "value": "{\"kind\":\"set\",\"route\":\"notes\",\"member\":\"data\",\"edit\":1,\"value\":[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]}"
+      },
+      "expect": {"result":"invalid","error":{"kind":"rejected","reason":"invalid-request"}}
+    },
+    {
+      "id": "messages.requests.over-input-limit",
+      "description": "A request larger than the input limit.",
+      "operation": "read-request",
+      "limits": {"inputBytes":1024},
+      "input": {
+        "encoding": "json",
+        "value": {
+          "kind": "set",
+          "route": "notes",
+          "member": "title",
+          "value": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+          "edit": 7
+        }
+      },
+      "expect": {"result":"invalid","error":{"kind":"rejected","reason":"invalid-input"}}
+    },
+    {
+      "id": "messages.requests.command-without-input",
+      "operation": "read-request",
+      "input": {"encoding":"json","value":{"kind":"command","route":"notes","member":"clear"}},
+      "expect": {"result":"valid"}
+    },
+    {
+      "id": "messages.requests.command-null-input",
+      "operation": "read-request",
+      "input": {"encoding":"json","value":{"kind":"command","route":"notes","member":"addRow","input":null}},
+      "expect": {"result":"valid"}
+    },
+    {
+      "id": "messages.requests.content-route",
+      "operation": "read-request",
+      "input": {"encoding":"json","value":{"kind":"snapshot","route":"content0123456789abcdef0123456789abcdef"}},
+      "expect": {"result":"valid"}
+    },
+    {
+      "id": "messages.requests.route-with-space",
+      "operation": "read-request",
+      "input": {"encoding":"json","value":{"kind":"snapshot","route":"my notes"}},
+      "expect": {"result":"invalid","error":{"kind":"rejected","reason":"invalid-request"}}
+    },
+    {
+      "id": "messages.requests.start",
+      "operation": "read-request",
+      "input": {
+        "encoding": "json",
+        "value": {"kind":"start","route":"notes","member":"slowImport","operation":"op-1","contract":"Tests.Notes:fp-1"}
+      },
+      "expect": {"result":"valid"}
+    },
+    {
+      "id": "messages.requests.start-contract-without-colon",
+      "operation": "read-request",
+      "input": {
+        "encoding": "json",
+        "value": {"kind":"start","route":"notes","member":"slowImport","operation":"op-1","contract":"Tests.Notes"}
+      },
+      "expect": {"result":"invalid","error":{"kind":"rejected","reason":"invalid-request"}}
+    },
+    {
+      "id": "messages.requests.start-empty-operation",
+      "operation": "read-request",
+      "input": {
+        "encoding": "json",
+        "value": {"kind":"start","route":"notes","member":"slowImport","operation":"","contract":"Tests.Notes:fp-1"}
+      },
+      "expect": {"result":"invalid","error":{"kind":"rejected","reason":"invalid-request"}}
+    },
+    {
+      "id": "messages.requests.start-operation-too-long",
+      "operation": "read-request",
+      "input": {
+        "encoding": "json",
+        "value": {
+          "kind": "start",
+          "route": "notes",
+          "member": "slowImport",
+          "operation": "ooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooo",
+          "contract": "Tests.Notes:fp-1"
+        }
+      },
+      "expect": {"result":"invalid","error":{"kind":"rejected","reason":"invalid-request"}}
+    },
+    {
+      "id": "messages.requests.stream-without-cursor",
+      "operation": "read-request",
+      "input": {
+        "encoding": "json",
+        "value": {"kind":"stream","route":"notes","member":"slowImport","operation":"op-1","contract":"Tests.Notes:fp-1"}
+      },
+      "expect": {"result":"invalid","error":{"kind":"rejected","reason":"invalid-request"}}
+    },
+    {
+      "id": "messages.requests.open-with-handlers",
+      "operation": "read-request",
+      "input": {
+        "encoding": "json",
+        "value": {"kind":"open","route":"notes","presentation":"p-1","handlers":[{"name":"confirm","contract":"c-1"}]}
+      },
+      "expect": {"result":"valid"}
+    },
+    {
+      "id": "messages.requests.open-handlers-not-array",
+      "operation": "read-request",
+      "input": {"encoding":"json","value":{"kind":"open","route":"notes","presentation":"p-1","handlers":{"name":"confirm"}}},
+      "expect": {"result":"invalid","error":{"kind":"rejected","reason":"invalid-request"}}
+    },
+    {
+      "id": "messages.requests.write-without-expected-value",
+      "operation": "read-request",
+      "input": {
+        "encoding": "json",
+        "value": {"kind":"write","route":"notes","member":"note","requestId":"w-1","expectedVersion":0,"value":"x"}
+      },
+      "expect": {"result":"invalid","error":{"kind":"rejected","reason":"invalid-request"}}
+    },
+    {
+      "id": "messages.requests.interaction-reply-answered",
+      "operation": "read-request",
+      "input": {
+        "encoding": "json",
+        "value": {
+          "kind": "interaction-reply",
+          "route": "notes",
+          "presentation": "p-1",
+          "requestId": "r-1",
+          "ownerEpoch": 1,
+          "name": "confirm",
+          "contract": "c-1",
+          "outcome": "answered",
+          "output": {"accepted":true}
+        }
+      },
+      "expect": {"result":"valid"}
+    },
+    {
+      "id": "messages.requests.interaction-reply-answered-without-output",
+      "operation": "read-request",
+      "input": {
+        "encoding": "json",
+        "value": {
+          "kind": "interaction-reply",
+          "route": "notes",
+          "presentation": "p-1",
+          "requestId": "r-1",
+          "ownerEpoch": 1,
+          "name": "confirm",
+          "contract": "c-1",
+          "outcome": "answered"
+        }
+      },
+      "expect": {"result":"invalid","error":{"kind":"rejected","reason":"invalid-request"}}
+    },
+    {
+      "id": "messages.requests.interaction-reply-cancelled",
+      "operation": "read-request",
+      "input": {
+        "encoding": "json",
+        "value": {
+          "kind": "interaction-reply",
+          "route": "notes",
+          "presentation": "p-1",
+          "requestId": "r-1",
+          "ownerEpoch": 1,
+          "name": "confirm",
+          "contract": "c-1",
+          "outcome": "cancelled"
+        }
+      },
+      "expect": {"result":"valid"}
+    },
+    {
+      "id": "messages.requests.interaction-reply-unknown-outcome",
+      "operation": "read-request",
+      "input": {
+        "encoding": "json",
+        "value": {
+          "kind": "interaction-reply",
+          "route": "notes",
+          "presentation": "p-1",
+          "requestId": "r-1",
+          "ownerEpoch": 1,
+          "name": "confirm",
+          "contract": "c-1",
+          "outcome": "ignored"
+        }
+      },
+      "expect": {"result":"invalid","error":{"kind":"rejected","reason":"invalid-request"}}
+    },
+    {
+      "id": "messages.requests.receive",
+      "operation": "read-request",
+      "input": {"encoding":"json","value":{"kind":"receive"}},
+      "expect": {"result":"valid"}
+    }
+  ]
+}

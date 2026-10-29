@@ -200,7 +200,7 @@ internal sealed class AcceptedWorkScopeTests
         using var transport = new InMemoryBridgeTransport();
         using var session = new WindowContentSession(transport, new WindowContentSessionOptions { RootModel = model });
         using var bridge = new RecoveryBridge(transport, model, session);
-        var invocation = transport.CallAsync("recoverySave").AsTask();
+        var invocation = transport.CommandAsync("recovery", "save").AsTask();
         try
         {
             await started.Task.WaitAsync(Deadline);
@@ -352,12 +352,7 @@ internal sealed class AcceptedWorkScopeTests
     }
 
     private sealed class RecoveryBridge(IBridgeTransport transport, RecoveryModel model, WindowContentSession content)
-        : ViewModelBridge<RecoveryModel>(transport, model, "recovery", static (writer, _, revision, _) =>
-        {
-            writer.WriteStartObject();
-            writer.WriteNumber("revision", revision);
-            writer.WriteEndObject();
-        }, [], [],
+        : ViewModelBridge<RecoveryModel>(transport, model, "recovery", [], [], [],
         [new("Save", vm => (System.Windows.Input.ICommand)vm.Save) { ExecuteAsync = (vm, cancellation, _) => ReactiveCommandExecution.ExecuteCompletion(vm.Save, RxVoid.Default, cancellation), CanExecute = (_, _) => true }],
         content: content);
 

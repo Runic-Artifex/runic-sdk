@@ -58,7 +58,7 @@ export function useMenuBar(options: UseMenuBarOptions = {}): MenuBarHandle {
     }));
     return {
       state,
-      invoke: () => Promise.reject(new BridgeError("unavailable", "The menu bar is not followed during server rendering.", { route: "__runicMenuBarInvoke" })),
+      invoke: () => Promise.reject(new BridgeError("unavailable", "The menu bar is not followed during server rendering.", { route: "runic.menu-bar" })),
       handleKeyDown: () => false,
     };
   }

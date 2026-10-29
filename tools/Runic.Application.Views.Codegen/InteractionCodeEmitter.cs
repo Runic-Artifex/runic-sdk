@@ -47,11 +47,11 @@ internal static class InteractionCodeEmitter
     }
 
     /// <summary>
-    /// Checks every generated TypeScript state/view member and every .NET
-    /// route suffix before emitting any files. A collision is otherwise a
-    /// surprisingly easy way to ship a client whose declaration looks valid
-    /// but whose object literal overwrites a method, whose JSON snapshot has
-    /// duplicate keys, or whose route binding fails only at runtime.
+    /// Checks every generated TypeScript state/view member before emitting any
+    /// files. A collision is otherwise a surprisingly easy way to ship a client
+    /// whose declaration looks valid but whose object literal overwrites a
+    /// method or whose JSON state has duplicate keys. Requests name their kind
+    /// and member, so .NET has no route names that could collide.
     /// </summary>
     internal static void ValidatePublicSurface(string modelName, IEnumerable<PropertyInfo> properties,
         IEnumerable<PropertyInfo> commands, IReadOnlyDictionary<PropertyInfo, GeneratedCommandPlan> commandPlans,
@@ -70,9 +70,7 @@ internal static class InteractionCodeEmitter
         var commandProperties = commands.ToArray();
         var checkedMembers = checkedProperties.ToArray();
         var state = new MemberNames(modelName, "state");
-        state.Add("revision", "the generated revision field");
         if (hasValidation) state.Add("validation", "the generated validation state");
-        if (checkedMembers.Length > 0) state.Add("__runicFields", "the generated checked-field metadata");
         foreach (var property in stateProperties)
         {
             state.Add(wireName(property), property.Name);
@@ -125,21 +123,6 @@ internal static class InteractionCodeEmitter
         foreach (var interaction in interactionPlans)
             interactionSurface.Add(LowerFirst(interaction.Property.Name), interaction.Property.Name);
 
-        // .NET binds these suffixes under the bridge's route prefix.
-        var routes = new MemberNames(modelName, "route");
-        routes.Add("Snapshot", "the generated snapshot route");
-        routes.Add("Mount", "the View mount route");
-        routes.Add("Unmount", "the View unmount route");
-        foreach (var property in stateProperties.Where(property => property.SetMethod?.IsPublic == true))
-            routes.Add("Set" + property.Name, property.Name + " setter");
-        foreach (var property in checkedMembers) routes.Add("Write" + property.Name, property.Name + " checked writer");
-        foreach (var command in commandProperties)
-        {
-            var name = command.Name[..^"Command".Length];
-            routes.Add(name, command.Name);
-            routes.Add("Can" + name, command.Name + " availability query");
-            if (commandPlans[command].IsAsync) routes.Add("Start" + name, command.Name + " operation starter");
-        }
     }
 
     /// <summary>Appends direct AOT-safe codecs used by the generated descriptor.</summary>
@@ -210,6 +193,25 @@ internal static class InteractionCodeEmitter
             source.AppendLine($"  {LowerFirst(plan.Property.Name)}: {{ contract: \"{plan.ContractId}\", decodeInput: (value: unknown) => {BridgeTypeGraph.ArrowBody(plan.Input.EmitTypeScriptDecoder("value"))}, encodeOutput: (value: unknown) => {BridgeTypeGraph.ArrowBody(plan.Output.EncodeTypeScript(typedValue))} }},");
         }
         source.AppendLine("});");
+    }
+
+    /// <summary>
+    /// Appends <c>{Name}ConnectOptions</c>: the connect options with typed interaction handlers, which the client
+    /// registers before <c>open</c> and sends with it.
+    /// </summary>
+    internal static void AppendConnectOptions(StringBuilder source, IEnumerable<GeneratedInteractionPlan> plans, string shortName)
+    {
+        source.AppendLine($"/** Options of `connect{shortName}`. */");
+        source.AppendLine($"export interface {shortName}ConnectOptions extends {Ref("BridgeConnectOptions")} {{");
+        source.AppendLine("  /**");
+        source.AppendLine("   * Interaction handlers, registered before the client opens the View, so .NET can ask them from the first");
+        source.AppendLine("   * request on. Handlers registered later through `interactions` replace them.");
+        source.AppendLine("   */");
+        source.AppendLine("  readonly handlers?: {");
+        foreach (var plan in plans)
+            source.AppendLine($"    readonly {LowerFirst(plan.Property.Name)}?: (input: {plan.Input.TypeScriptType()}, context: {shortName}InteractionContext) => {plan.Output.TypeScriptType()} | Promise<{plan.Output.TypeScriptType()}>;");
+        source.AppendLine("  };");
+        source.AppendLine("}");
     }
 
     private static string LowerFirst(string value) => value.Length == 0 ? value

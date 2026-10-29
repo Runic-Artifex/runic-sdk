@@ -56,7 +56,7 @@ public static class ToolkitCommandInspector
         if (contract is null || (contract.Input is not null && contract.Input != typeof(string))) return null;
 
         var readArgument = contract.HasInput
-            ? "ReadArgument: e => global::Runic.Application.Views.Generated.BridgeJson.ReadRequiredString(e.GetString())"
+            ? "ReadInput: input => global::Runic.Application.Views.Generated.BridgeWire.ReadString(input)"
             : null;
         return (contract.HasInput, contract.IsAsync,
             DescriptorFor(command, modelType, contract, "string", readArgument));

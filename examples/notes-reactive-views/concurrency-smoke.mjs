@@ -1,6 +1,6 @@
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
-import { launchChromium, pause, tail, waitFor } from "../shared/smoke.mjs";
+import { launchChromium, pause, tail, viewsProbe, waitFor } from "../shared/smoke.mjs";
 
 const clients = [];
 const detail = async () => [
@@ -13,10 +13,18 @@ async function openClient(url) {
   const browser = await launchChromium(url, { profilePrefix: "runic-reactive-client-", timeout: 15_000 });
   clients.push(browser);
   const { evaluate } = browser;
+  const { snapshot, command } = viewsProbe(evaluate);
   return {
     evaluate,
-    snapshot: route => evaluate(`(async () => JSON.parse(await window.__runicBridge.call(${JSON.stringify(route + "Snapshot")})))()`),
-    call: route => evaluate(`window.__runicBridge.call(${JSON.stringify(route)})`),
+    snapshot,
+    // Runs a command of a route, such as `shell`, without an input. An overlapping call can find its command
+    // unavailable while the other client's command runs: the window admits one change at a time.
+    call: async (route, member, { overlapping = false } = {}) => {
+      const reply = await command(route, member);
+      if (reply.ok !== true && !(overlapping && reply.error?.reason === "unavailable"))
+        throw new Error(`The ${member} command of ${route} failed: ${JSON.stringify(reply)}`);
+      return reply;
+    },
     kill: () => browser.kill(),
     dispose: () => browser.close(),
   };
@@ -46,11 +54,11 @@ try {
   const pinnedBefore = (await first.snapshot("shell")).state.pinned;
   if (pinnedBefore.length !== 2 || (await second.snapshot("shell")).state.pinned[0]?.id !== pinnedBefore[0].id)
     throw new Error("The clients did not share the same routed View collection.");
-  await first.call("shellSwapPinned");
+  await first.call("shell", "swapPinned");
   await retry(async () => (await second.snapshot("shell")).state.pinned[0]?.id === pinnedBefore[1].id);
-  await first.call("shellRemovePinned");
+  await first.call("shell", "removePinned");
   await retry(async () => (await second.snapshot(`content${pinnedBefore[0].id}`)).error?.kind === "released");
-  await first.call("shellRestorePinned");
+  await first.call("shell", "restorePinned");
   await retry(async () => (await second.snapshot("shell")).state.pinned[0]?.id === pinnedBefore[0].id);
 
   await first.evaluate('document.querySelector("[data-go=document]").click()');
@@ -65,15 +73,18 @@ try {
 
   // Both clients command the same routers. Settle on Editor after overlapping
   // calls and require both component trees to recover from transient routes.
-  await Promise.all([first.call("shellOpenHome"), second.call("shellOpenDocument")]);
-  await second.call("shellOpenDocument");
+  const overlap = { overlapping: true };
+  await Promise.all([first.call("shell", "openHome", overlap), second.call("shell", "openDocument", overlap)]);
+  await second.call("shell", "openDocument", overlap);
   for (const client of [first, second])
     await retry(async () => await client.evaluate('document.querySelector("#document-pane h2")?.textContent') === "Full editor");
+  // Open Home released the Document it left, so the shell can present a new one.
+  const documentRoute = `content${(await first.snapshot("shell")).state.main.id}`;
   await Promise.all([
-    first.call(`content${documentId}ShowPreview`),
-    second.call(`content${documentId}ShowEditor`),
+    first.call(documentRoute, "showPreview", overlap),
+    second.call(documentRoute, "showEditor", overlap),
   ]);
-  await second.call(`content${documentId}ShowEditor`);
+  await second.call(documentRoute, "showEditor", overlap);
   for (const client of [first, second])
     await retry(async () => await client.evaluate('document.querySelector("#document-pane h2")?.textContent') === "Full editor");
   const settled = (await second.snapshot(editorRoute)).state;

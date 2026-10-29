@@ -1,0 +1,134 @@
+{
+  "format": "runic.views.scenario/1",
+  "id": "edits.superseded-reply-keeps-the-overlay.v1",
+  "contract": {"id":"runic.views","version":4},
+  "set": "edits",
+  "roles": ["client"],
+  "description": "A superseded reply resolves its call but does not end the overlay of a later edit.",
+  "view": "notes",
+  "ids": {
+    "c1": {"kind":"connection"},
+    "hello-c1": {"kind":"request"},
+    "session": {"kind":"wire","value":"s-1"},
+    "open-notes": {"kind":"call"},
+    "open-notes-request": {"kind":"request"},
+    "presentation": {"kind":"wire","value":"p-1"},
+    "type-a": {"kind":"call"},
+    "edit-1": {"kind":"request"},
+    "type-ab": {"kind":"call"},
+    "edit-2": {"kind":"request"}
+  },
+  "arrange": {"model":{}},
+  "steps": [
+    {"connect":"c1"},
+    {
+      "send": {
+        "kind": "hello",
+        "protocol": 4,
+        "session": {"$id":"session"},
+        "client": {"name":{"$any":"string","default":"conformance-client"},"version":{"$any":"string","default":"1.0.0"}}
+      },
+      "id": "hello-c1"
+    },
+    {
+      "receive": {
+        "ok": true,
+        "protocol": 4,
+        "implementation": {"name":{"$any":"string","default":"conformance-producer"},"version":{"$any":"string","default":"1.0.0"}}
+      },
+      "replyTo": "hello-c1"
+    },
+    {"call":{"id":"open-notes","op":"open","route":"notes"}},
+    {"send":{"kind":"open","route":"notes","presentation":{"$id":"presentation"}},"id":"open-notes-request"},
+    {
+      "receive": {
+        "ok": true,
+        "revision": 0,
+        "state": {
+          "title": "",
+          "note": "",
+          "priority": "Normal",
+          "due": null,
+          "elapsed": "PT0S",
+          "rows": [],
+          "count": 0,
+          "summary": "rows: 0",
+          "detail": {"kind":"detail","id":"0123456789abcdef0123456789abcdef"},
+          "canClear": false,
+          "canTouch": true,
+          "canSave": true,
+          "canConfirmClear": false,
+          "isSlowImportExecuting": false,
+          "isConfirmClearExecuting": false
+        },
+        "fields": {"note":{"version":0}},
+        "presentation": "ok"
+      },
+      "replyTo": "open-notes-request"
+    },
+    {"call":{"id":"type-a","op":"set","route":"notes","member":"title","value":"a"}},
+    {"send":{"kind":"set","route":"notes","member":"title","value":"a","edit":1},"id":"edit-1"},
+    {"call":{"id":"type-ab","op":"set","route":"notes","member":"title","value":"ab"}},
+    {"send":{"kind":"set","route":"notes","member":"title","value":"ab","edit":2},"id":"edit-2"},
+    {"receive":{"ok":true,"revision":0,"superseded":true},"replyTo":"edit-1"},
+    {"expect":{"call":{"id":"type-a","resolved":null}}},
+    {
+      "expect": {
+        "state": {
+          "route": "notes",
+          "value": {
+            "title": "ab",
+            "note": "",
+            "priority": "Normal",
+            "due": null,
+            "elapsed": "PT0S",
+            "rows": [],
+            "count": 0,
+            "summary": "rows: 0",
+            "detail": {"kind":"detail","id":"0123456789abcdef0123456789abcdef"},
+            "canClear": false,
+            "canTouch": true,
+            "canSave": true,
+            "canConfirmClear": false,
+            "isSlowImportExecuting": false,
+            "isConfirmClearExecuting": false
+          }
+        }
+      }
+    },
+    {
+      "receive": {
+        "kind": "frame",
+        "route": "notes",
+        "baseRevision": 0,
+        "revision": 1,
+        "changes": [{"field":"title","kind":"set","value":"ab"}]
+      }
+    },
+    {"receive":{"ok":true,"revision":1},"replyTo":"edit-2"},
+    {
+      "expect": {
+        "state": {
+          "route": "notes",
+          "value": {
+            "title": "ab",
+            "note": "",
+            "priority": "Normal",
+            "due": null,
+            "elapsed": "PT0S",
+            "rows": [],
+            "count": 0,
+            "summary": "rows: 0",
+            "detail": {"kind":"detail","id":"0123456789abcdef0123456789abcdef"},
+            "canClear": false,
+            "canTouch": true,
+            "canSave": true,
+            "canConfirmClear": false,
+            "isSlowImportExecuting": false,
+            "isConfirmClearExecuting": false
+          }
+        }
+      }
+    }
+  ]
+}

@@ -14,13 +14,19 @@ internal sealed class GeneratedInteractionTests
         using var host = new RunicWindowTestHost<GeneratedInteractionViewModel>(model,
             (transport, content, vm) => new GeneratedInteractionBridge(transport, vm, content: content),
             new RunicWindowTestHostOptions { RootRoute = "generatedInteraction", ViewLocator = new TestViewLocator() });
-        string Mount(string token, string connection = "connection") => host.Transport.Call("generatedInteractionMount",
-            new(StringValue: token, ClientKey: "client", ConnectionKey: connection));
+        // A connection holds at most 64 presentations per route; another open is rejected with capacity.
+        string Open(string presentation, string connection = "connection")
+        {
+            using var reply = JsonDocument.Parse(host.Transport.Open("generatedInteraction", presentation, connection, "client"));
+            var root = reply.RootElement;
+            return root.GetProperty("ok").GetBoolean() ? root.GetProperty("presentation").GetString()!
+                : root.GetProperty("error").GetProperty("reason").GetString()!;
+        }
         for (var index = 0; index < 64; index++)
-            Require(Mount($"page:{index}") == "ok", $"Presentation {index} did not mount.");
-        Require(Mount("page:64") == "invalid", "A 65th interaction presentation of one owner was mounted.");
-        Require(Mount("page:0") == "ok", "An exact duplicate interaction mount was refused.");
-        Require(Mount("page:64", "other") == "ok", "Another connection's first interaction presentation was limited.");
+            Require(Open($"page-{index}") == "ok", $"Presentation {index} did not open.");
+        Require(Open("page-64") == "capacity", "A 65th interaction presentation of one owner was opened.");
+        Require(Open("page-0") == "ok", "An exact repeat of an open presentation was refused.");
+        Require(Open("page-64", "other") == "ok", "Another connection's first interaction presentation was limited.");
     }
 
     [Test]
@@ -32,11 +38,14 @@ internal sealed class GeneratedInteractionTests
             new RunicWindowTestHostOptions { RootRoute = "generatedInteraction", ViewLocator = new TestViewLocator() });
 
         const string route = "generatedInteraction";
-        const string presentation = "generated:interaction";
+        const string presentation = "generated-interaction";
         const string client = "generated-client";
         const string connection = "generated-connection";
-        Require(host.Transport.Call(route + "Mount", new(StringValue: presentation, ClientKey: client,
-            ConnectionKey: connection)) == "ok", "The generated interaction root did not mount.");
+        using (var opened = JsonDocument.Parse(host.Transport.Open(route, presentation, connection, client,
+            $$"""[{"name":"confirm","contract":{{JsonSerializer.Serialize(InteractionContract())}}}]""")))
+            Require(opened.RootElement.GetProperty("presentation").GetString() == "ok"
+                && opened.RootElement.GetProperty("registration").GetString() == "ok",
+                $"The generated interaction root did not open with its handler: {opened.RootElement}");
 
         await AnswerAsync(false);
         Require(model.Attempt == 1 && model.AcceptedCount == 0,
@@ -47,37 +56,26 @@ internal sealed class GeneratedInteractionTests
 
         async Task AnswerAsync(bool answer)
         {
-            var wait = host.Transport.CallAsync(BridgeInteractionRouter.WaitRoute,
-                new(StringValue: JsonSerializer.Serialize(new
-                {
-                    route,
-                    presentationId = presentation,
-                    handlers = new[] { new { name = "confirm", contract = InteractionContract() } },
-                }), ClientKey: client, ConnectionKey: connection)).AsTask();
-            await Task.Yield();
-
-            var command = host.Transport.CallAsync(route + "Ask", new(ClientKey: client,
-                ConnectionKey: connection)).AsTask();
-            var wireRequest = await wait.WaitAsync(TimeSpan.FromSeconds(2));
-            using var request = JsonDocument.Parse(wireRequest);
+            var command = host.Transport.CommandAsync(route, "ask", connectionKey: connection, clientKey: client).AsTask();
+            using var request = await NextInteractionAsync(host.Transport, connection);
             var root = request.RootElement;
-            Require(root.GetProperty("kind").GetString() == "request"
-                && root.GetProperty("input").GetProperty("title").GetString() == "Generated request",
-                $"The generated bridge did not encode the typed interaction input: {wireRequest}");
-            var reply = JsonSerializer.Serialize(new
+            Require(root.GetProperty("input").GetProperty("title").GetString() == "Generated request",
+                $"The generated bridge did not encode the typed interaction input: {root}");
+            var reply = BridgeRequests.Json(writer =>
             {
-                kind = "answered",
-                requestId = root.GetProperty("requestId").GetString(),
-                route,
-                presentationId = presentation,
-                ownerEpoch = root.GetProperty("ownerEpoch").GetInt64(),
-                name = "confirm",
-                contract = InteractionContract(),
-                output = answer,
+                writer.WriteString("kind", "interaction-reply");
+                writer.WriteString("route", route);
+                writer.WriteString("presentation", presentation);
+                writer.WriteString("requestId", root.GetProperty("requestId").GetString());
+                writer.WriteNumber("ownerEpoch", root.GetProperty("ownerEpoch").GetInt64());
+                writer.WriteString("name", "confirm");
+                writer.WriteString("contract", InteractionContract());
+                writer.WriteString("outcome", "answered");
+                writer.WriteBoolean("output", answer);
             });
-            Require(Kind(host.Transport.Call(BridgeInteractionRouter.ReplyRoute,
-                new(StringValue: reply, ClientKey: client, ConnectionKey: connection))) == "ok",
-                "The generated interaction reply was rejected.");
+            using (var replied = JsonDocument.Parse(host.Transport.Send(reply, connection, client)))
+                Require(replied.RootElement.GetProperty("result").GetString() == "ok",
+                    $"The generated interaction reply was rejected: {replied.RootElement}");
             using var completed = JsonDocument.Parse(await command);
             Require(completed.RootElement.GetProperty("ok").GetBoolean(),
                 "The command awaiting a generated interaction did not complete.");
@@ -87,10 +85,21 @@ internal sealed class GeneratedInteractionTests
             $"{BridgeContractShape.Compute(typeof(GeneratedInteractionViewModel))}:interaction:Confirm";
     }
 
-    private static string Kind(string json)
+    // The next interaction push to the connection; the messages before it are taken.
+    private static async Task<JsonDocument> NextInteractionAsync(InMemoryBridgeTransport transport, string connection)
     {
-        using var document = JsonDocument.Parse(json);
-        return document.RootElement.GetProperty("kind").GetString()!;
+        var deadline = DateTime.UtcNow.AddSeconds(2);
+        while (DateTime.UtcNow < deadline)
+        {
+            foreach (var message in transport.TakeMessages().Where(message => message.ConnectionKey == connection))
+            {
+                var document = JsonDocument.Parse(message.Json);
+                if (document.RootElement.GetProperty("kind").GetString() == "interaction") return document;
+                document.Dispose();
+            }
+            await Task.Delay(10);
+        }
+        throw new TimeoutException("No interaction reached the connection.");
     }
 
     private static void Require(bool condition, string message)

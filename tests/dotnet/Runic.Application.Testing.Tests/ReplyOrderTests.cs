@@ -18,27 +18,28 @@ internal sealed class ReplyOrderTests
     public async Task AnAwaitedCommandRepliesAfterTheShellStateItChangedAsync()
     {
         await using var window = await Window.OpenAsync();
-        using var reply = JsonDocument.Parse(await window.Transport.Inner.CallAsync("pageLoad"));
-        Require(reply, "pageLoad");
-        window.RequireShellValue(1, "the awaited command pageLoad");
+        using var reply = JsonDocument.Parse(await window.Transport.RequestAsync("""{"kind":"command","route":"page","member":"load"}"""));
+        Require(reply, "load");
+        window.RequireShellValue(1, "the awaited command load");
     }
 
     [Test]
     public async Task ASynchronousCommandRepliesAfterTheShellStateItChangedAsync()
     {
         await using var window = await Window.OpenAsync();
-        using var reply = JsonDocument.Parse(await Task.Run(() => window.Transport.Inner.Call("pageBump")));
-        Require(reply, "pageBump");
-        window.RequireShellValue(1, "the synchronous command pageBump");
+        using var reply = JsonDocument.Parse(await Task.Run(() => window.Transport.Request(Bump)));
+        Require(reply, "bump");
+        window.RequireShellValue(1, "the synchronous command bump");
     }
 
     [Test]
     public async Task ASetterRepliesAfterTheShellStateItChangedAsync()
     {
         await using var window = await Window.OpenAsync();
-        using var reply = JsonDocument.Parse(await Task.Run(() => window.Transport.Inner.Call("pageSetValue", new(Int64Value: 7))));
-        Require(reply, "pageSetValue");
-        window.RequireShellValue(7, "the setter pageSetValue");
+        using var reply = JsonDocument.Parse(await Task.Run(() =>
+            window.Transport.Request("""{"kind":"set","route":"page","member":"value","value":7,"edit":1}""")));
+        Require(reply, "set value");
+        window.RequireShellValue(7, "the setter of value");
     }
 
     // A synchronous route called inside the model turn cannot wait for a capture that needs that turn. It replies
@@ -48,8 +49,8 @@ internal sealed class ReplyOrderTests
     {
         await using var window = await Window.OpenAsync();
         var started = TimeProvider.System.GetTimestamp();
-        var reply = await window.Context.InvokeAsync(() => window.Transport.Inner.Call("pageBump"));
-        using (var document = JsonDocument.Parse(reply)) Require(document, "pageBump");
+        var reply = await window.Context.InvokeAsync(() => window.Transport.Request(Bump));
+        using (var document = JsonDocument.Parse(reply)) Require(document, "bump");
         if (TimeProvider.System.GetElapsedTime(started) >= BridgeReplyOrder.ReplyWaitLimit)
             throw new InvalidOperationException("A call inside the model turn waited for a capture that needs that turn.");
         await window.WaitForShellValueAsync(1);
@@ -66,8 +67,9 @@ internal sealed class ReplyOrderTests
         {
             capturing.Set();
             release.Wait(TimeSpan.FromSeconds(5));
-            return """{"value":1}""";
-        }, nameof(ShellModel), log);
+            return """{"kind":"state","route":"shell","revision":1,"state":{"value":1}}"""u8.ToArray();
+        }, static () => { }, nameof(ShellModel), log);
+        transport.Hello();
         delivery.RequestState();
         if (!capturing.Wait(TimeSpan.FromSeconds(5))) throw new TimeoutException("The drain did not capture the state.");
         // A closing window releases its bridges, then disposes its transport, while the drain holds a state.
@@ -79,6 +81,8 @@ internal sealed class ReplyOrderTests
         if (log.Errors.Count != 0)
             throw new InvalidOperationException($"A drain after the transport was disposed logged: {string.Join("; ", log.Errors)}");
     }
+
+    private const string Bump = """{"kind":"command","route":"page","member":"bump"}""";
 
     private static void Require(JsonDocument reply, string route)
     {
@@ -112,8 +116,8 @@ internal sealed class ReplyOrderTests
         {
             var window = new Window(new RunicModelContext());
             // The initial state of each route was read by a snapshot call; no frame is outstanding.
-            _ = window.Transport.Inner.Call("shellSnapshot");
-            _ = window.Transport.Inner.Call("pageSnapshot");
+            _ = window.Transport.Request("""{"kind":"snapshot","route":"shell"}""");
+            _ = window.Transport.Request("""{"kind":"snapshot","route":"page"}""");
             await Task.CompletedTask;
             return window;
         }
@@ -146,40 +150,50 @@ internal sealed class ReplyOrderTests
         }
     }
 
-    // The page takes each frame slowly, as a busy WebView does. Frames are recorded once they were taken.
-    private sealed class SlowPageTransport : IBridgeUtf8Transport, IDisposable
+    // The page takes each push slowly, as a busy WebView does. The shell's values are recorded once they were taken.
+    private sealed class SlowPageTransport : PushTestTransport
     {
         private readonly List<int> _shellValues = [];
-        public InMemoryBridgeTransport Inner { get; } = new();
         public int[] ShellValues { get { lock (_shellValues) return [.. _shellValues]; } }
-        public IDisposable Bind(string name, Func<IBridgeArguments, string> handler) => Inner.Bind(name, handler);
-        public IDisposable BindAsync(string name, Func<IBridgeArguments, CancellationToken, ValueTask<string>> handler) =>
-            Inner.BindAsync(name, handler);
-        public void Publish(string name, string stateJson) => throw new NotSupportedException();
-        public async ValueTask PublishUtf8Async(string name, ReadOnlyMemory<byte> stateUtf8, CancellationToken cancellationToken = default)
+        protected override async ValueTask OnBroadcastAsync(ReadOnlyMemory<byte> message, CancellationToken cancellationToken)
         {
-            using var state = JsonDocument.Parse(stateUtf8);
-            var value = state.RootElement.GetProperty("value").GetInt32();
+            int? value;
+            string? route;
+            using (var push = JsonDocument.Parse(message))
+            {
+                var root = push.RootElement;
+                route = root.GetProperty("route").GetString();
+                value = root.GetProperty("kind").GetString() switch
+                {
+                    "state" => root.GetProperty("state").GetProperty("value").GetInt32(),
+                    "frame" => root.GetProperty("changes").EnumerateArray()
+                        .Where(change => change.GetProperty("field").GetString() == "value" && change.GetProperty("kind").GetString() == "set")
+                        .Select(change => (int?)change.GetProperty("value").GetInt32()).FirstOrDefault(),
+                    _ => null,
+                };
+            }
             await Task.Delay(200, cancellationToken);
-            if (name == "shell") lock (_shellValues) _shellValues.Add(value);
+            if (route == "shell" && value is { } shell) lock (_shellValues) _shellValues.Add(shell);
         }
-        public void Dispose() => Inner.Dispose();
     }
 
-    // Throws ObjectDisposedException once disposed, as CS-WebUI's RebindableBridgeTransport did.
-    private sealed class ClosingTransport : IBridgeTransport, IDisposable
+    // Throws ObjectDisposedException once disposed, as CS-WebUI's transport did while it published states.
+    private sealed class ClosingTransport : PushTestTransport
     {
         private volatile bool _disposed;
         public TaskCompletionSource Attempted { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        public IDisposable Bind(string name, Func<IBridgeArguments, string> handler) => throw new NotSupportedException();
-        public IDisposable BindAsync(string name, Func<IBridgeArguments, CancellationToken, ValueTask<string>> handler) =>
-            throw new NotSupportedException();
-        public void Publish(string name, string stateJson)
+        protected override void OnBroadcast(string json)
         {
             Attempted.TrySetResult();
             ObjectDisposedException.ThrowIf(_disposed, this);
         }
-        public void Dispose() => _disposed = true;
+        // The window disposes its transport while a push is on its way: it keeps receiving pushes, which then fail as a
+        // disposed transport's did.
+        public override void Dispose()
+        {
+            _disposed = true;
+            base.Dispose();
+        }
     }
 
     private sealed class ShellModel : INotifyPropertyChanged
@@ -214,20 +228,13 @@ internal sealed class ReplyOrderTests
     }
 
     private sealed class ShellBridge(IBridgeTransport transport, ShellModel model) : ViewModelBridge<ShellModel>(
-        transport, model, "shell", static (writer, vm, _, _) =>
-        {
-            writer.WriteStartObject();
-            writer.WriteNumber("value", vm.Value);
-            writer.WriteEndObject();
-        }, [], [], []);
+        transport, model, "shell",
+        [new BridgeStateMember<ShellModel>("value", static (writer, vm) => writer.WriteNumberValue(vm.Value))], [], [], []);
 
     private sealed class PageBridge(IBridgeTransport transport, PageModel model) : ViewModelBridge<PageModel>(
-        transport, model, "page", static (writer, _, _, _) =>
-        {
-            writer.WriteStartObject();
-            writer.WriteNumber("value", 0);
-            writer.WriteEndObject();
-        }, [new("Value", vm => vm.Value, (vm, args) => vm.Value = checked((int)args.GetInt64()))], [],
+        transport, model, "page",
+        [new BridgeStateMember<PageModel>("value", static (writer, _) => writer.WriteNumberValue(0))],
+        [new("Value", "value", vm => vm.Value, (vm, value) => vm.Value = BridgeWire.ReadInt32(value))], [],
         [
             new("Bump", vm => vm.Bump),
             new("Load", vm => vm.Bump)

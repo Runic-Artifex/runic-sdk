@@ -6,14 +6,15 @@ import {
   mockFailureOf,
   type MockBridge,
   type MockCall,
+  type MockCommand,
   type MockDomainFailure,
   type MockErrorFailure,
   type MockFailure,
   type MockInteractionOptions,
+  type MockOperation,
   type MockOperationHandler,
   type MockOperationKind,
-  type MockRegisteredView,
-  type MockRoute,
+  type MockSetter,
   type MockState,
   type MockView,
 } from "./mock-bridge.js";
@@ -54,6 +55,10 @@ export interface MockTypedOperation<TInput, TResult, TFailure = never> {
   readonly signal: AbortSignal;
   /** Stream values emitted so far. */
   readonly items: readonly TResult[];
+  /** The latest progress the operation reported, from 0 to 1, or undefined. */
+  readonly progress: number | undefined;
+  /** Reports progress, clamped to 0 to 1; watching clients receive it as `running` with `progress`. */
+  reportProgress(value: number): void;
   succeed(...result: [TResult] extends [void] ? [] : [result: TResult]): void;
   fail(message?: string, detail?: BridgeFailureDetail): void;
   /** Ends the operation with its declared failure (`domain-failed`). */
@@ -84,7 +89,7 @@ export type MockFailureOf<TMethod> = TMethod extends (...args: never[]) => Promi
   ? R extends { outcome(...args: never[]): Promise<infer O> } ? BridgeOutcomeFailure<O> : BridgeOutcomeFailure<R>
   : never;
 
-/** A keyed collection of a typed mock. Each edit pushes a delta frame. */
+/** A keyed collection of a typed mock. Each edit pushes a frame. */
 export interface MockTypedCollection<TItem> {
   readonly items: readonly TItem[];
   readonly keys: readonly string[];
@@ -94,9 +99,9 @@ export interface MockTypedCollection<TItem> {
   move(key: string, index: number): void;
 }
 
-/** An interaction that .NET asks the browser to handle. */
+/** An interaction that the producer asks the browser to handle. */
 export interface MockTypedInteraction<TInput, TOutput> {
-  /** Whether a mounted client currently handles it. */
+  /** Whether an open client presentation currently handles it. */
   readonly handled: boolean;
   /** Sends a request to the client's handler and resolves with its reply. */
   request(input: TInput, options?: MockInteractionOptions): Promise<
@@ -110,7 +115,7 @@ export type MockMethodName<TClient> = Exclude<keyof TClient & string,
 
 /** The typed mock of one generated client, created by a generated `mock{Name}()`. */
 export interface MockTypedView<TState, TClient, TKind extends string = string> {
-  /** The route prefix, such as `editor` for a root View or `content1` for content. */
+  /** The route, such as `editor` for a root View or `content1` for content. */
   readonly route: string;
   /** Put this in a parent mock's state to present this View as content. */
   readonly reference: MockReference<TKind>;
@@ -118,9 +123,9 @@ export interface MockTypedView<TState, TClient, TKind extends string = string> {
   readonly revision: number;
   /** The untyped mock View, for raw frames. */
   readonly raw: MockView;
-  /** Calls to this View's routes, in order. */
+  /** Requests to this View's route, in order. */
   readonly calls: readonly MockCall[];
-  /** Merges state changes and pushes the new state, like a .NET publication. */
+  /** Merges state changes and publishes them, like a producer: one frame with the members that changed. */
   update(patch: Patch<TState> | ((state: TState) => Patch<TState>)): void;
   /**
    * Answers the next `times` calls of a client method with `failure`: an unexpected
@@ -130,7 +135,7 @@ export interface MockTypedView<TState, TClient, TKind extends string = string> {
     failure: MockErrorFailure | MockDomainFailure<MockFailureOf<TClient[M]>>, times?: number): void;
   /** Pushes a failure notice; the client keeps its last state and reports the error. */
   pushFailure(failure: { readonly kind?: BridgeErrorKind; readonly message: string; readonly detail?: BridgeFailureDetail }): void;
-  /** Pushes the collection edits made by `edit` as one delta frame. */
+  /** Publishes the collection edits and updates made by `edit` as one frame. */
   batch(edit: () => void): void;
 }
 
@@ -139,7 +144,7 @@ interface FieldCodec { encode(value: unknown): unknown; decode(wire: unknown): u
 /** What a generated `mock{Name}()` knows about its client. Generated code is its only intended caller. */
 export interface MockTypedViewSpec {
   readonly kind: string;
-  /** The root route prefix. */
+  /** The root route. */
   readonly route: string;
   /** Codecs of value fields by wire name. Other fields, such as content references, are stored as given. */
   readonly fields: Readonly<Record<string, FieldCodec>>;
@@ -148,17 +153,23 @@ export interface MockTypedViewSpec {
   readonly checkedFields?: readonly string[];
   /** Keyed collections by wire name: a row codec and its key. */
   readonly collections?: Readonly<Record<string, FieldCodec & { key(item: never): string }>>;
-  /** Setters by client method: route suffix, wire field, and how to read the route argument as a wire value. */
-  readonly setters?: Readonly<Record<string, { readonly route: string; readonly field: string; readonly read: (argument: unknown) => unknown;
-    readonly checked?: string }>>;
-  /** Commands by client method. `encodeFailure` encodes a declared failure. */
-  readonly commands?: Readonly<Record<string, { readonly route: string; readonly read?: (argument: unknown) => unknown;
+  /**
+   * Setters by client method (`setTitle`): the member's wire name, and the client method of its checked write
+   * (`writeTitle`) when it has one.
+   */
+  readonly setters?: Readonly<Record<string, { readonly member: string; readonly checked?: string }>>;
+  /**
+   * Commands by client method (`save`): the member's wire name, `decodeInput` for a command with an input,
+   * `available`, the state member of its availability, and `encodeFailure` for a declared failure. A command with an
+   * input also has the client method `can{Method}`.
+   */
+  readonly commands?: Readonly<Record<string, { readonly member: string; readonly decodeInput?: (wire: unknown) => unknown;
     readonly available?: string; readonly encodeFailure?: (value: unknown) => unknown }>>;
-  /** Operations by client command method. `encodeFailure` encodes a declared failure. */
+  /** Operations by client command method (`start{Method}`). `encodeFailure` encodes a declared failure. */
   readonly operations?: Readonly<Record<string, { readonly member: string; readonly decodeInput?: (wire: unknown) => unknown;
     readonly encodeResult?: (value: unknown) => unknown; readonly stream?: boolean;
     readonly encodeFailure?: (value: unknown) => unknown }>>;
-  /** The generated contract, `{ViewModel full name}:{fingerprint}`. */
+  /** The View's operation contract, `{view}:{fingerprint}`. */
   readonly contract?: string;
   readonly interactions?: Readonly<Record<string, { readonly encodeInput: (value: unknown) => unknown; readonly decodeOutput: (wire: unknown) => unknown }>>;
 }
@@ -175,7 +186,7 @@ export interface MockTypedViewDefinition {
   readonly commands?: object;
   readonly canExecute?: object;
   /**
-   * Key resolution of `[RunicCommandKey]` commands by client method: whether .NET would find an object for the
+   * Key resolution of key commands by client method: whether the producer would find an object for the
    * key. Absent, every key resolves.
    */
   readonly resolveKey?: object;
@@ -202,7 +213,6 @@ export function mockTypedView(bridge: MockBridge, spec: MockTypedViewSpec, defin
   const route = definition.id === undefined ? spec.route : `content${definition.id}`;
   if (definition.id !== undefined && !/^[A-Za-z0-9_-]+$/.test(definition.id))
     throw new RangeError("A mock content id must contain only letters, digits, '_' and '-'.");
-  const internals = mockBridgeInternals(bridge);
   const fields = spec.fields;
   const encode = (state: object): MockState => {
     const wire: MockState = {};
@@ -217,43 +227,44 @@ export function mockTypedView(bridge: MockBridge, spec: MockTypedViewSpec, defin
     return state as never;
   };
   const patchOf = (patch: unknown) => patch !== null && typeof patch === "object" ? encode(patch) : undefined;
-  const registered = () => internals.registered(route) as MockRegisteredView;
+  const handlersOf = (group: object | undefined, method: string) => (group as Record<string, unknown> | undefined)?.[method];
 
-  const routes: Record<string, MockRoute> = {};
+  const set: Record<string, MockSetter> = {};
   for (const [method, setter] of Object.entries(spec.setters ?? {})) {
-    const handler = (definition.setters as Record<string, unknown> | undefined)?.[method] as MockSetterHandler<unknown, unknown> | undefined;
-    const apply = async (state: MockState, wire: unknown) => {
-      const value = fields[setter.field]?.decode(wire) ?? wire;
+    const handler = handlersOf(definition.setters, method) as MockSetterHandler<unknown, unknown> | undefined;
+    set[setter.member] = async (state, wire) => {
+      const value = fields[setter.member]?.decode(wire) ?? wire;
       return patchOf(handler ? await handler(decode(state), value) : undefined);
     };
-    routes[setter.route] = async (state, argument) => {
-      const wire = setter.read(argument);
-      return { [setter.field]: wire, ...((await apply(state, wire)) ?? {}) };
-    };
-    if (setter.checked) routes[setter.checked] = (_state, payload) => internals.writeChecked(registered(), setter.field, payload, apply);
   }
+  const commands: Record<string, MockCommand> = {};
+  const can: Record<string, (state: MockState, input: unknown) => boolean> = {};
   for (const [method, command] of Object.entries(spec.commands ?? {})) {
-    const handler = (definition.commands as Record<string, unknown> | undefined)?.[method] as MockCommandHandler<unknown, unknown[]> | undefined;
-    const available = (definition.canExecute as Record<string, unknown> | undefined)?.[method] as ((state: unknown, ...args: unknown[]) => boolean) | undefined;
-    const resolves = (definition.resolveKey as Record<string, unknown> | undefined)?.[method] as ((state: unknown, ...args: unknown[]) => boolean) | undefined;
+    const handler = handlersOf(definition.commands, method) as MockCommandHandler<unknown, unknown[]> | undefined;
+    const available = handlersOf(definition.canExecute, method) as ((state: unknown, ...args: unknown[]) => boolean) | undefined;
+    const resolves = handlersOf(definition.resolveKey, method) as ((state: unknown, ...args: unknown[]) => boolean) | undefined;
     const name = upperFirst(method);
-    // As in .NET: the key is resolved before availability is evaluated.
-    routes[command.route] = async (state, ...args) => {
-      const input = command.read && args.length > 0 ? [command.read(args[0])] : [];
-      if (resolves && !resolves(decode(state), ...input)) throw rejected(`${name} has no object for this key.`, "unresolved-key");
-      if (command.available && state[command.available] === false) throw rejected(`${name} is unavailable.`, "unavailable");
-      if (available && !available(decode(state), ...input)) throw rejected(`${name} is unavailable.`, "unavailable");
-      try { return patchOf(handler ? await handler(decode(state), ...input) : undefined); }
-      catch (error) { throw encodedFailure(error, command.encodeFailure); }
+    const inputOf = (wire: unknown) => command.decodeInput && wire !== undefined ? [command.decodeInput(wire)] : [];
+    // As a producer does, the key is resolved before availability is evaluated.
+    const check = (state: MockState, wire: unknown): "unresolved-key" | "unavailable" | undefined => {
+      const input = inputOf(wire);
+      if (resolves && !resolves(decode(state), ...input)) return "unresolved-key";
+      if (command.available && state[command.available] === false) return "unavailable";
+      if (available && !available(decode(state), ...input)) return "unavailable";
+      return undefined;
     };
-    if (command.read) routes[`Can${name}`] = (state, argument) => {
-      const input = command.read!(argument);
-      if (resolves && !resolves(decode(state), input)) return false;
-      return available ? available(decode(state), input) : true;
+    can[command.member] = (state, wire) => {
+      const problem = check(state, wire);
+      if (problem === "unresolved-key") throw rejected(`${name} has no object for this key.`, "unresolved-key");
+      return problem === undefined;
+    };
+    commands[command.member] = async (state, wire) => {
+      try { return patchOf(handler ? await handler(decode(state), ...inputOf(wire)) : undefined); }
+      catch (error) { throw encodedFailure(error, command.encodeFailure); }
     };
   }
   const operations: Record<string, MockOperationHandler | "manual"> = {};
-  const wrapOperation = (method: string) => (raw: ReturnType<MockView["operations"]>[number]): MockTypedOperation<unknown, unknown, unknown> => {
+  const wrapOperation = (method: string) => (raw: MockOperation): MockTypedOperation<unknown, unknown, unknown> => {
     const plan = spec.operations![method]!;
     return {
       get requestId() { return raw.requestId; },
@@ -261,6 +272,8 @@ export function mockTypedView(bridge: MockBridge, spec: MockTypedViewSpec, defin
       get kind() { return raw.kind; },
       get signal() { return raw.signal; },
       get items() { return raw.items; },
+      get progress() { return raw.progress; },
+      reportProgress: value => raw.reportProgress(value),
       succeed: (...result: unknown[]) => raw.succeed(result.length === 0 || !plan.encodeResult ? result[0] : plan.encodeResult(result[0])),
       fail: (message, detail) => raw.fail(message, detail),
       failWith: failure => raw.failWith(plan.encodeFailure ? plan.encodeFailure(failure) : failure),
@@ -271,7 +284,7 @@ export function mockTypedView(bridge: MockBridge, spec: MockTypedViewSpec, defin
     };
   };
   for (const [method, plan] of Object.entries(spec.operations ?? {})) {
-    const handler = (definition.operations as Record<string, unknown> | undefined)?.[method] as MockTypedOperationHandler<unknown, unknown, unknown, unknown> | "manual" | undefined;
+    const handler = handlersOf(definition.operations, method) as MockTypedOperationHandler<unknown, unknown, unknown, unknown> | "manual" | undefined;
     if (handler === "manual") operations[plan.member] = "manual";
     else if (handler) {
       operations[plan.member] = async (state, _input, operation) => {
@@ -290,7 +303,9 @@ export function mockTypedView(bridge: MockBridge, spec: MockTypedViewSpec, defin
 
   const raw = bridge.view(route, {
     state: { ...spec.defaults, ...encode(definition.state) },
-    routes,
+    set,
+    commands,
+    can,
     ...(spec.checkedFields ? { checkedFields: spec.checkedFields } : {}),
     ...(spec.collections ? { collections: Object.fromEntries(Object.entries(spec.collections)
       .map(([field, codec]) => [field, (item: unknown) => codec.key(codec.decode(item) as never)])) } : {}),
@@ -298,6 +313,18 @@ export function mockTypedView(bridge: MockBridge, spec: MockTypedViewSpec, defin
     ...(spec.contract ? { contract: spec.contract } : {}),
     streams: Object.values(spec.operations ?? {}).filter(plan => plan.stream).map(plan => plan.member),
   });
+
+  // Client methods by name: which request kind and member each one sends.
+  const requests = new Map<string, { readonly kind: string; readonly member: string }>();
+  for (const [method, setter] of Object.entries(spec.setters ?? {})) {
+    requests.set(method, { kind: "set", member: setter.member });
+    if (setter.checked) requests.set(setter.checked, { kind: "write", member: setter.member });
+  }
+  for (const [method, command] of Object.entries(spec.commands ?? {})) {
+    requests.set(method, { kind: "command", member: command.member });
+    requests.set(`can${upperFirst(method)}`, { kind: "can", member: command.member });
+  }
+  for (const [method, plan] of Object.entries(spec.operations ?? {})) requests.set(`start${upperFirst(method)}`, { kind: "start", member: plan.member });
 
   const collections: Record<string, MockTypedCollection<unknown>> = {};
   for (const [field, codec] of Object.entries(spec.collections ?? {})) {
@@ -323,6 +350,7 @@ export function mockTypedView(bridge: MockBridge, spec: MockTypedViewSpec, defin
       },
     };
   }
+  mockBridgeInternals(bridge);
 
   const view: MockTypedView<unknown, unknown> & Record<string, unknown> = {
     route,
@@ -330,20 +358,22 @@ export function mockTypedView(bridge: MockBridge, spec: MockTypedViewSpec, defin
     get state() { return decode(raw.state); },
     get revision() { return raw.revision; },
     raw,
-    get calls() { return bridge.calls.filter(call => ownedBy(call.name)); },
+    get calls() { return bridge.calls.filter(call => call.route === route); },
     update(patch) {
       raw.update(state => ({ ...state, ...encode(typeof patch === "function" ? (patch as (state: never) => object)(decode(state)) : patch as object) }));
     },
     failNext(method, typed, times) {
-      const name = method as string;
+      const target = requests.get(method as string);
+      if (!target) throw new RangeError(`The mock ${spec.kind} has no client method ${String(method)}.`);
       let failure: MockFailure = typed as MockFailure;
       if (failure.kind === "domain-failed") {
         // A start{Command} failure is encoded by the operation's codec, a command's by its own.
-        const operation = /^start[A-Z]/.test(name) ? spec.operations?.[name.charAt(5).toLowerCase() + name.slice(6)] : undefined;
-        const encode = operation ? operation.encodeFailure : spec.commands?.[name]?.encodeFailure;
-        failure = { ...failure, failure: encode ? encode(failure.failure) : failure.failure };
+        const encodeFailure = target.kind === "start"
+          ? Object.values(spec.operations ?? {}).find(plan => plan.member === target.member)?.encodeFailure
+          : Object.values(spec.commands ?? {}).find(command => command.member === target.member)?.encodeFailure;
+        failure = { ...failure, failure: encodeFailure ? encodeFailure(failure.failure) : failure.failure };
       }
-      bridge.failNext(`${route}${upperFirst(name)}`, failure, times);
+      raw.failNext(target, failure, times);
     },
     pushFailure: failure => raw.pushFailure(failure),
     batch: edit => raw.batch(edit),
@@ -351,12 +381,5 @@ export function mockTypedView(bridge: MockBridge, spec: MockTypedViewSpec, defin
     operations: operationLog,
     interactions,
   };
-  // A longer registered route (`content1` vs `content12`) owns its own calls.
-  function ownedBy(name: string): boolean {
-    if (!name.startsWith(route)) return false;
-    for (let length = name.length; length > route.length; length--)
-      if (internals.registered(name.slice(0, length))) return false;
-    return true;
-  }
   return view;
 }

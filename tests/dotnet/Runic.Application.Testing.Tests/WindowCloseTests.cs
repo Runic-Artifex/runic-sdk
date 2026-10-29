@@ -18,14 +18,14 @@ public sealed class WindowCloseTests
         using var transport = new InMemoryBridgeTransport();
         var session = new WindowContentSession(transport, new WindowContentSessionOptions { RootModel = model });
         using var bridge = new SlowBridge(transport, model, session);
-        var call = transport.CallAsync("slowSave").AsTask();
+        var call = transport.CommandAsync("slow", "save").AsTask();
         Require(await model.Started.Task.WaitAsync(TimeSpan.FromSeconds(5)), "The awaited command did not start.");
 
         var close = session.DrainAsync(TimeSpan.FromSeconds(10)).AsTask();
         await Task.Delay(50);
         Require(!close.IsCompleted && !model.Cancelled,
             "Close did not wait for an awaited command, or cancelled it before its timeout.");
-        using (var rejected = JsonDocument.Parse(await transport.CallAsync("slowSave")))
+        using (var rejected = JsonDocument.Parse(await transport.CommandAsync("slow", "save")))
             Require(rejected.RootElement.GetProperty("error").GetProperty("kind").GetString() == "released",
                 "A closing window admitted a new awaited command.");
 
@@ -46,7 +46,7 @@ public sealed class WindowCloseTests
         using var transport = new InMemoryBridgeTransport();
         var session = new WindowContentSession(transport, new WindowContentSessionOptions { RootModel = model });
         using var bridge = new SlowBridge(transport, model, session);
-        var call = transport.CallAsync("slowSave").AsTask();
+        var call = transport.CommandAsync("slow", "save").AsTask();
         Require(await model.Started.Task.WaitAsync(TimeSpan.FromSeconds(5)), "The awaited command did not start.");
 
         using var stop = new CancellationTokenSource();
@@ -57,7 +57,7 @@ public sealed class WindowCloseTests
         catch (OperationCanceledException) { cancelled = true; }
         Require(cancelled, "Cancelling the token did not stop the drain wait.");
         Require(!model.Cancelled, "Cancelling the wait cancelled the accepted command.");
-        using (var rejected = JsonDocument.Parse(await transport.CallAsync("slowSave")))
+        using (var rejected = JsonDocument.Parse(await transport.CommandAsync("slow", "save")))
             Require(rejected.RootElement.GetProperty("error").GetProperty("kind").GetString() == "released",
                 "A cancelled drain reopened admission.");
         model.Release.TrySetResult();
@@ -74,7 +74,7 @@ public sealed class WindowCloseTests
         using var transport = new InMemoryBridgeTransport();
         var session = new WindowContentSession(transport, new WindowContentSessionOptions { RootModel = model });
         using var bridge = new SlowBridge(transport, model, session);
-        var call = transport.CallAsync("slowSave").AsTask();
+        var call = transport.CommandAsync("slow", "save").AsTask();
         Require(await model.Started.Task.WaitAsync(TimeSpan.FromSeconds(5)), "The awaited command did not start.");
 
         var timedOut = await session.DrainAsync(TimeSpan.Zero);
@@ -131,12 +131,7 @@ public sealed class WindowCloseTests
     }
 
     private sealed class SlowBridge(IBridgeTransport transport, SlowModel model, WindowContentSession content)
-        : ViewModelBridge<SlowModel>(transport, model, "slow", static (writer, _, revision, _) =>
-        {
-            writer.WriteStartObject();
-            writer.WriteNumber("revision", revision);
-            writer.WriteEndObject();
-        }, [], [],
+        : ViewModelBridge<SlowModel>(transport, model, "slow", [], [], [],
         [new("Save", vm => vm.Save) { ExecuteAsync = (vm, cancellation, _) => vm.SaveAsync(cancellation), CanExecute = (_, _) => true }],
         content: content);
 

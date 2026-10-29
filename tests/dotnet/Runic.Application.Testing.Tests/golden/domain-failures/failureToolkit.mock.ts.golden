@@ -48,17 +48,17 @@ const spec: MockTypedViewSpec = {
   defaults: { canSave: true, canPublish: true, isPublishExecuting: false, canDiscard: true, isDiscardExecuting: false },
   checkedFields: ["title"],
   setters: {
-    setTitle: { route: "SetTitle", field: "title", read: (raw: unknown) => raw, checked: "WriteTitle" },
+    setTitle: { member: "title", checked: "writeTitle" },
   },
   commands: {
-    reserve: { route: "Reserve", read: (raw: unknown) => { const wire: unknown = JSON.parse(raw as string); return bridgeWire.integer(wire, -2147483648, 2147483647); }, encodeFailure: (value: unknown) => { const typed = value as NoteQuotaExceeded; return { ["limit"]: typed["limit"], ["requested"]: typed["requested"] }; } },
-    save: { route: "Save", available: "canSave", encodeFailure: (value: unknown) => { const typed = value as NoteSaveFailure; return (() => { const bridgeUnion0: any = bridgeWire.encodeUnion(typed); switch (bridgeUnion0.$case) { case "titleRequired": return { "$case": "titleRequired" }; case "titleTaken": return { "$case": "titleTaken", ["existingTitle"]: bridgeUnion0["existingTitle"] }; default: throw new RangeError("Unknown union case."); } })(); } },
-    publish: { route: "Publish", available: "canPublish", encodeFailure: (value: unknown) => { const typed = value as NotePublishBlock; return typed; } },
-    discard: { route: "Discard", available: "canDiscard" },
+    reserve: { member: "reserve", decodeInput: (wire: unknown) => bridgeWire.integer(wire, -2147483648, 2147483647), encodeFailure: (value: unknown) => { const typed = value as NoteQuotaExceeded; return { ["limit"]: typed["limit"], ["requested"]: typed["requested"] }; } },
+    save: { member: "save", available: "canSave", encodeFailure: (value: unknown) => { const typed = value as NoteSaveFailure; return (() => { const bridgeUnion0: any = bridgeWire.encodeUnion(typed); switch (bridgeUnion0.$case) { case "titleRequired": return { "$case": "titleRequired" }; case "titleTaken": return { "$case": "titleTaken", ["existingTitle"]: bridgeUnion0["existingTitle"] }; default: throw new RangeError("Unknown union case."); } })(); } },
+    publish: { member: "publish", available: "canPublish", encodeFailure: (value: unknown) => { const typed = value as NotePublishBlock; return typed; } },
+    discard: { member: "discard", available: "canDiscard" },
   },
   operations: {
-    publish: { member: "Publish", encodeFailure: (value: unknown) => { const typed = value as NotePublishBlock; return typed; } },
-    discard: { member: "Discard" },
+    publish: { member: "publish", encodeFailure: (value: unknown) => { const typed = value as NotePublishBlock; return typed; } },
+    discard: { member: "discard" },
   },
 };
 

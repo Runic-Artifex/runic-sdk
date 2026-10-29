@@ -27,129 +27,152 @@ internal sealed class DesktopBridgeTransportTests
     [After(HookType.Test)]
     public async Task StopHostAsync() => await host.DisposeAsync();
 
+    // The producer's frames reach the page through BroadcastAsync, in order and one at a time: changes made while a
+    // frame is being sent wait for it, and no change is lost or reordered (the frames' revisions chain).
     [Test, NotInParallel(Order = 3)]
     public async Task GeneratedCollectionDeliveryPreservesPendingFrames()
     {
         await using var surface = await host.CreateSurfaceAsync();
-        var scripts = new List<string>();
+        var messages = new List<string>();
         var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        using var transport = new DesktopBridgeTransport(surface, (_, state) =>
+        using var transport = new DesktopBridgeTransport(surface, (message, _) =>
         {
-            lock (scripts)
+            lock (messages)
             {
-                scripts.Add(state);
-                if (scripts.Count == 1) { started.TrySetResult(); return release.Task; }
+                messages.Add(System.Text.Encoding.UTF8.GetString(message.Span));
+                if (messages.Count == 1) { started.TrySetResult(); return release.Task; }
             }
             return Task.CompletedTask;
-        });
+        }, static (_, _, _) => Task.FromResult(true));
         var model = new OrderedCollectionModel();
         using var bridge = new OrderedCollectionBridge(transport, model);
+        // A connection completed its hello and read the route's state, as a page does before it receives frames.
+        await RequestAsync(transport, "{\"kind\":\"hello\",\"protocol\":4,\"session\":\"s-1\",\"client\":{\"name\":\"tests\",\"version\":\"0\"}}");
+        await RequestAsync(transport, "{\"kind\":\"snapshot\",\"route\":\"ordered\"}");
         try
         {
             model.Rows.Add(1);
             await started.Task.WaitAsync(TimeSpan.FromSeconds(5));
             model.Rows.Add(2);
             model.Rows.Add(3);
-            lock (scripts) Require(scripts.Count == 1, "Dependent frames bypassed the in-flight delivery.");
+            lock (messages) Require(messages.Count == 1, "Dependent frames bypassed the in-flight delivery.");
             release.TrySetResult();
             var deadline = DateTime.UtcNow.AddSeconds(5);
-            while (DateTime.UtcNow < deadline)
-            {
-                lock (scripts) if (scripts.Count == 3) break;
-                await Task.Delay(5);
-            }
-            lock (scripts)
-                Require(scripts.Count == 3 && scripts.Select((script, index) => script.Contains($"\"items\":[{index + 1}]", StringComparison.Ordinal)).All(value => value),
-                    "Desktop coalesced or reordered dependent collection frames.");
+            while (DateTime.UtcNow < deadline && Added(messages).Count < 3) await Task.Delay(5);
+            Require(Added(messages).SequenceEqual([1, 2, 3]), $"Desktop lost or reordered collection changes: {string.Join(", ", messages)}");
+            long? revision = null;
+            lock (messages)
+                foreach (var message in messages)
+                {
+                    using var frame = JsonDocument.Parse(message);
+                    var root = frame.RootElement;
+                    Require(revision is null || root.GetProperty("baseRevision").GetInt64() == revision,
+                        $"A frame does not follow the frame before it: {string.Join(", ", messages)}");
+                    revision = root.GetProperty("revision").GetInt64();
+                }
         }
         finally { release.TrySetResult(); }
+
+        static List<int> Added(List<string> messages)
+        {
+            lock (messages)
+                return [.. messages.SelectMany(message =>
+                {
+                    using var frame = JsonDocument.Parse(message);
+                    return frame.RootElement.GetProperty("changes").EnumerateArray()
+                        .Where(change => change.GetProperty("kind").GetString() == "add")
+                        .SelectMany(change => change.GetProperty("items").EnumerateArray().Select(item => item.GetInt32())).ToArray();
+                })];
+        }
     }
 
+    // Sends a request on Desktop connection 1 through the window's dispatcher, as the page's request capability does.
+    private static async Task<string> RequestAsync(IBridgeTransport transport, string json)
+    {
+        var reply = await BridgeDispatcher.For(transport).HandleAsync(
+            new BridgeRequest(System.Text.Encoding.UTF8.GetBytes(json), "client-1", "1"), CancellationToken.None);
+        var text = System.Text.Encoding.UTF8.GetString(reply.Span);
+        Require(text.StartsWith("{\"ok\":true", StringComparison.Ordinal), $"{json} was answered {text}.");
+        return text;
+    }
+
+    // Views protocol 4: a broadcast is sent as it is, in call order, without coalescing; the transport awaits each send.
     [Test, NotInParallel(Order = 2)]
-    public async Task PublishDoesNotBlockAndCoalescesPerRoute()
+    public async Task BroadcastSendsEveryMessageInOrder()
     {
         await using var surface = await host.CreateSurfaceAsync();
-        var scripts = new List<string>();
+        var sent = new List<string>();
         var inFlight = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        using var transport = new DesktopBridgeTransport(surface, (route, state) =>
+        using var transport = new DesktopBridgeTransport(surface, (message, _) =>
         {
-            lock (scripts) scripts.Add($"{route}:{state}");
-            return state.Contains("first", StringComparison.Ordinal) ? inFlight.Task : Task.CompletedTask;
-        });
+            var text = System.Text.Encoding.UTF8.GetString(message.Span);
+            lock (sent) sent.Add(text);
+            return text.Contains("first", StringComparison.Ordinal) ? inFlight.Task : Task.CompletedTask;
+        }, static (_, _, _) => Task.FromResult(true));
 
-        transport.Publish("counter", "{\"value\":\"first\"}");
-        transport.Publish("counter", "{\"value\":\"superseded\"}");
-        transport.Publish("counter", "{\"value\":\"latest\"}");
-        transport.Publish("other", "{\"value\":\"independent\"}");
-        lock (scripts)
-            Require(scripts.Count == 2 && scripts.Any(script => script.Contains("independent", StringComparison.Ordinal)),
-                "A pending publication blocked the caller or another route.");
-
+        var first = transport.BroadcastAsync("{\"kind\":\"first\"}"u8.ToArray()).AsTask();
+        Require(!first.IsCompleted, "A broadcast completed before its send did.");
         inFlight.SetResult();
-        var deadline = DateTime.UtcNow.AddSeconds(5);
-        while (DateTime.UtcNow < deadline)
-        {
-            lock (scripts) if (scripts.Count == 3) break;
-            await Task.Delay(10);
-        }
-        lock (scripts)
-        {
-            Require(scripts.Count == 3 && scripts[2].Contains("latest", StringComparison.Ordinal)
-                && !scripts.Any(script => script.Contains("superseded", StringComparison.Ordinal)),
-                "A route did not deliver only its latest pending state after the in-flight script.");
-            Require(scripts[0] == "counter:{\"value\":\"first\"}",
-                $"The publication changed shape: {scripts[0]}");
-        }
+        await first.WaitAsync(TimeSpan.FromSeconds(5));
+        await transport.BroadcastAsync("{\"kind\":\"second\"}"u8.ToArray());
+        await transport.BroadcastAsync("{\"kind\":\"third\"}"u8.ToArray());
+        lock (sent)
+            Require(sent.SequenceEqual(["{\"kind\":\"first\"}", "{\"kind\":\"second\"}", "{\"kind\":\"third\"}"]),
+                $"The broadcasts were coalesced or reordered: {string.Join(", ", sent)}");
     }
 
-    // I-018: the UTF-8 path sends the same state bytes as the string path, without a string in between.
+    // A targeted push names the Desktop connection id; a key that is not one, or a closed connection, sends nothing.
     [Test, NotInParallel(Order = 4)]
-    public async Task Utf8PublicationSendsTheBytesOfTheStringState()
+    public async Task SendAddressesOneConnectionByItsId()
     {
         await using var surface = await host.CreateSurfaceAsync();
-        var scripts = new List<(string Route, string State)>();
-        var encoded = new List<(string Route, byte[] State)>();
-        using var transport = new DesktopBridgeTransport(surface, (route, state) =>
+        var sent = new List<(ulong Connection, string Message)>();
+        using var transport = new DesktopBridgeTransport(surface, static (_, _) => Task.CompletedTask, (connection, message, _) =>
         {
-            lock (scripts) scripts.Add((route, state));
-            return Task.CompletedTask;
-        }, (route, state) =>
-        {
-            lock (encoded) encoded.Add((route, state.ToArray()));
-            return Task.CompletedTask;
+            lock (sent) sent.Add((connection, System.Text.Encoding.UTF8.GetString(message.Span)));
+            return Task.FromResult(connection == 7);
         });
-        const string state = "{\"title\":\"Grüße 🎉 \\u2028\"}";
-        await transport.PublishAsync("näme", state);
-        await ((IBridgeUtf8Transport)transport).PublishUtf8Async("näme", System.Text.Encoding.UTF8.GetBytes(state));
-        Require(scripts.Count == 1 && encoded.Count == 1 && scripts[0] == ("näme", state) && encoded[0].Route == "näme"
-            && encoded[0].State.AsSpan().SequenceEqual(System.Text.Encoding.UTF8.GetBytes(scripts[0].State)),
-            $"The UTF-8 state differs from the string state: {scripts.FirstOrDefault()}");
+        Require(await transport.SendAsync("7", "{\"kind\":\"operation\"}"u8.ToArray()), "The open connection was not sent to.");
+        Require(!await transport.SendAsync("8", "{}"u8.ToArray()), "A closed connection reported a send.");
+        Require(!await transport.SendAsync("client:7", "{}"u8.ToArray()), "A key that is no Desktop connection id was sent to.");
         transport.Dispose();
-        await transport.PublishUtf8Async("näme", System.Text.Encoding.UTF8.GetBytes(state));
-        Require(encoded.Count == 1, "A disposed transport delivered a UTF-8 frame.");
+        Require(!await transport.SendAsync("7", "{}"u8.ToArray()), "A disposed transport sent a push.");
+        await transport.BroadcastAsync("{}"u8.ToArray());
+        lock (sent) Require(sent.Count == 2 && sent[0] == (7UL, "{\"kind\":\"operation\"}"), "The targeted pushes differ.");
     }
 
+    // Serving registers the one request capability; releasing the lease or disposing the transport removes it, and a
+    // disposed transport refuses to serve.
     [Test, NotInParallel(Order = 4)]
-    public async Task DisposedTransportReleasesRoutesAndDelivery()
+    public async Task DisposedTransportReleasesItsCapability()
     {
         await using var surface = await host.CreateSurfaceAsync();
-        var delivered = 0;
-        var transport = new DesktopBridgeTransport(surface, (_, _) =>
-        {
-            Interlocked.Increment(ref delivered);
-            return Task.CompletedTask;
-        });
-        var first = transport.Bind("first", _ => "ok");
-        _ = transport.BindAsync("second", (_, _) => ValueTask.FromResult("ok"));
-        first.Dispose();
-        Require(transport.RegisteredRouteCount == 1, "Releasing one route did not unregister it.");
+        var transport = new DesktopBridgeTransport(surface, static (_, _) => Task.CompletedTask, static (_, _, _) => Task.FromResult(true));
+        var handler = new RecordingHandler();
+        var lease = transport.Serve(handler);
+        Require(transport.IsServing, "Serving did not register the request capability.");
+        Require(Throws<InvalidOperationException>(() => transport.Serve(handler)), "A second handler was served.");
+        lease.Dispose();
+        Require(!transport.IsServing, "Releasing the lease left the capability registered.");
+        _ = transport.Serve(handler);
         transport.Dispose();
-        Require(transport.RegisteredRouteCount == 0, "Disposing the transport left routes registered.");
-        using var late = transport.Bind("late", _ => "ok");
-        transport.Publish("late", "{}");
-        Require(transport.RegisteredRouteCount == 0 && Volatile.Read(ref delivered) == 0,
-            "A disposed transport registered a route or delivered state.");
+        Require(!transport.IsServing, "Disposing the transport left the capability registered.");
+        Require(Throws<ObjectDisposedException>(() => transport.Serve(handler)), "A disposed transport served a handler.");
+    }
+
+    private static bool Throws<T>(Action action) where T : Exception
+    {
+        try { action(); return false; }
+        catch (T) { return true; }
+    }
+
+    private sealed class RecordingHandler : IBridgeRequestHandler
+    {
+        public List<string> Closed { get; } = [];
+        public ValueTask<ReadOnlyMemory<byte>> HandleAsync(BridgeRequest request, CancellationToken cancellationToken) =>
+            ValueTask.FromResult<ReadOnlyMemory<byte>>("{\"ok\":true}"u8.ToArray());
+        public void ConnectionClosed(string connectionKey) { lock (Closed) Closed.Add(connectionKey); }
     }
 
     [Test, NotInParallel(Order = 5)]
@@ -171,13 +194,14 @@ internal sealed class DesktopBridgeTransportTests
         // call it; its admission still belongs to the window's content session.
         using var calls = new InMemoryBridgeTransport();
         window.Attach(new SlowBridge(calls, model, content));
-        Require(transport.RegisteredRouteCount > 0, "The window session registered no Desktop routes.");
+        Require(transport.IsServing, "The window session serves no Desktop requests.");
 
-        var call = calls.CallAsync("slowSave").AsTask();
+        _ = await calls.RequestAsync("{\"kind\":\"hello\",\"protocol\":4,\"session\":\"s-1\",\"client\":{\"name\":\"tests\",\"version\":\"0\"}}");
+        var call = calls.RequestAsync("{\"kind\":\"command\",\"route\":\"slow\",\"member\":\"save\"}").AsTask();
         Require(await model.Started.Task.WaitAsync(TimeSpan.FromSeconds(5)), "The awaited command did not start.");
         var result = await window.CloseAsync(TimeSpan.Zero);
         Require(!result.Drained && result.RemainingOperations == 1, "Close did not report the running command.");
-        Require(transport.RegisteredRouteCount == 0, "A timed-out close left the window's Desktop routes registered.");
+        Require(!transport.IsServing, "A timed-out close left the window's Desktop requests served.");
         Require(!probe.Disposed, "The window scope was disposed while accepted work was still running.");
 
         model.Release.SetResult();
@@ -521,12 +545,12 @@ sealed class OrderedCollectionModel : INotifyPropertyChanged
 }
 
 sealed class OrderedCollectionBridge(IBridgeTransport transport, OrderedCollectionModel model)
-    : ViewModelBridge<OrderedCollectionModel>(transport, model, "ordered", static (writer, vm, revision, _) =>
+    : ViewModelBridge<OrderedCollectionModel>(transport, model, "ordered", [new BridgeStateMember<OrderedCollectionModel>("rows", static (writer, vm) =>
     {
-        writer.WriteStartObject(); writer.WriteNumber("revision", revision); writer.WriteStartArray("rows");
+        writer.WriteStartArray();
         foreach (var value in vm.Rows) writer.WriteNumberValue(value);
-        writer.WriteEndArray(); writer.WriteEndObject();
-    }, [new("Rows", vm => vm.Rows, null)], [], [], collections:
+        writer.WriteEndArray();
+    })], [new("Rows", "rows", vm => vm.Rows, null)], [], [], collections:
     [new("rows", vm => vm.Rows, static (writer, item) => writer.WriteNumberValue((int)item!),
         static item => ((int)item!).ToString(System.Globalization.CultureInfo.InvariantCulture))]);
 
@@ -547,12 +571,7 @@ sealed class SlowModel : INotifyPropertyChanged
 }
 
 sealed class SlowBridge(IBridgeTransport transport, SlowModel model, WindowContentSession content)
-    : ViewModelBridge<SlowModel>(transport, model, "slow", static (writer, _, revision, _) =>
-    {
-        writer.WriteStartObject();
-        writer.WriteNumber("revision", revision);
-        writer.WriteEndObject();
-    }, [], [],
+    : ViewModelBridge<SlowModel>(transport, model, "slow", [], [], [],
     [new("Save", vm => vm.Save) { ExecuteAsync = (vm, _, _) => vm.SaveAsync(), CanExecute = (_, _) => true }],
     content: content);
 

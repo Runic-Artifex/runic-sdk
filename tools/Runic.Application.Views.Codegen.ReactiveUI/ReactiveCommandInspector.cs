@@ -52,7 +52,7 @@ public static class ReactiveCommandInspector
             ? $"global::Runic.Application.Views.ReactiveUI.Generated.ReactiveCommandExecution.Execute((global::ReactiveUI.IReactiveCommand<string, global::ReactiveUI.Primitives.RxVoid>)vm.{command.Name}, (string)argument!, token)"
             : $"global::Runic.Application.Views.ReactiveUI.Generated.ReactiveCommandExecution.Execute((global::ReactiveUI.IReactiveCommand<global::ReactiveUI.Primitives.RxVoid, global::ReactiveUI.Primitives.RxVoid>)vm.{command.Name}, global::ReactiveUI.Primitives.RxVoid.Default, token)";
         var readArgument = hasStringArgument
-            ? ", ReadArgument: e => global::Runic.Application.Views.Generated.BridgeJson.ReadRequiredString(e.GetString())"
+            ? ", ReadInput: input => global::Runic.Application.Views.Generated.BridgeWire.ReadString(input)"
             : "";
         var descriptor = $"new global::Runic.Application.Views.Generated.CommandDescriptor<{modelType}>(\"{contract.Name}\", vm => (global::System.Windows.Input.ICommand)(object)vm.{command.Name}, "
             + $"async (vm, token, argument) => {{ await {execution}.ConfigureAwait(false); }}{readArgument})";
