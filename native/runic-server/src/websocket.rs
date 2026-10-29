@@ -57,6 +57,10 @@ impl Socket {
         self.leases.lock().unwrap().remove(&message);
     }
 
+    pub(crate) fn is_close_queued(&self) -> bool {
+        self.close_queued.load(Ordering::Acquire)
+    }
+
     pub(crate) fn abort(&self) {
         self.aborted.send_replace(true);
     }
@@ -115,11 +119,12 @@ impl Drop for Start {
     }
 }
 
-pub(crate) fn upgrade(inner: &Arc<Inner>, id: u64, upgrade: WebSocketUpgrade, protocol: Option<String>) -> Response {
-    let socket = inner.sockets.lock().unwrap().get(&id).cloned();
-    let Some(socket) = socket else {
-        return Response::builder().status(500).body(axum::body::Body::empty()).expect("valid response");
-    };
+pub(crate) fn upgrade(
+    inner: &Arc<Inner>,
+    socket: Arc<Socket>,
+    upgrade: WebSocketUpgrade,
+    protocol: Option<String>,
+) -> Response {
     let limit = inner.config.max_message_bytes;
     let mut upgrade = upgrade.max_message_size(limit).max_frame_size(limit);
     if let Some(protocol) = protocol {

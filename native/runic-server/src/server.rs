@@ -141,7 +141,7 @@ pub(crate) enum Payload {
 
 pub(crate) enum Decision {
     Respond { status: StatusCode, headers: HeaderMap, payload: Payload },
-    Accept { protocol: Option<String>, headers: HeaderMap },
+    Accept { protocol: Option<String>, headers: HeaderMap, socket: Arc<Socket> },
 }
 
 type BodySender = mpsc::Sender<Result<Bytes, io::Error>>;
@@ -292,8 +292,9 @@ impl Server {
     pub fn accept_websocket(&self, id: u64, protocol: Option<String>, headers: HeaderMap) -> Result<(), ServerError> {
         let decision = self.inner.pending.lock().unwrap().remove(&id).ok_or(ServerError::UnknownId)?;
         let socket = Socket::new(id, self.inner.config.receive_window);
-        self.inner.sockets.lock().unwrap().insert(id, socket);
-        if decision.send(Decision::Accept { protocol, headers }).is_err() {
+        self.inner.sockets.lock().unwrap().insert(id, socket.clone());
+        // The decision carries the socket, so a release before the handshake still completes it and then closes.
+        if decision.send(Decision::Accept { protocol, headers, socket }).is_err() {
             self.inner.sockets.lock().unwrap().remove(&id);
             return Err(ServerError::Closed);
         }
@@ -339,11 +340,14 @@ impl Server {
         }
     }
 
-    /// The host is done with connection `connection`: it is aborted if still open and its undelivered messages freed.
-    /// No pointer from [`Handler::message`] for it may be used afterwards.
+    /// The host is done with connection `connection`: its undelivered messages are freed, and it is aborted unless the
+    /// host queued a close, which is still written (the close handshake then ends within a grace period). No pointer
+    /// from [`Handler::message`] for it may be used afterwards.
     pub fn release_websocket(&self, connection: u64) {
         if let Some(socket) = self.inner.sockets.lock().unwrap().remove(&connection) {
-            socket.abort();
+            if !socket.is_close_queued() {
+                socket.abort();
+            }
             socket.release();
         }
     }
@@ -543,14 +547,14 @@ async fn handle(State(inner): State<Arc<Inner>>, ConnectInfo(peer): ConnectInfo<
                 }
             }
         }
-        Decision::Accept { protocol, mut headers } => {
+        Decision::Accept { protocol, mut headers, socket } => {
             guard.disarm();
             let Some(upgrade) = upgrade else {
                 inner.sockets.lock().unwrap().remove(&id);
                 return status_only(StatusCode::BAD_REQUEST);
             };
             defaults(&mut headers);
-            let mut response = websocket::upgrade(&inner, id, upgrade, protocol);
+            let mut response = websocket::upgrade(&inner, socket, upgrade, protocol);
             for (name, value) in &headers {
                 response.headers_mut().entry(name).or_insert_with(|| value.clone());
             }

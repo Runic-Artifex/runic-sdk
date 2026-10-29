@@ -272,8 +272,11 @@ async fn a_websocket_exchanges_messages_within_its_receive_window_and_closes() {
     server.consume(id, delivered[1].0);
     let Event::Closed { connection, code, .. } = next(&mut events).await else { panic!("closed") };
     assert_eq!((connection, code), (id, Some(1005)));
+    // The host answers the close and releases the connection at once; the reply still completes the handshake.
     server.close_websocket(id, 1000, "bye".to_owned(), 0).unwrap();
     server.release_websocket(id);
+    let reply = tokio::time::timeout(Duration::from_secs(5), socket.next()).await.expect("the close reply in time");
+    assert!(matches!(reply, Some(Ok(Message::Close(_)))), "{reply:?}");
     drop(server);
 }
 
@@ -292,6 +295,9 @@ async fn a_host_close_reaches_the_client_after_queued_messages() {
     server.send(id, MessageKind::Text, Bytes::from_static(b"last"), 0).unwrap();
     server.close_websocket(id, 1001, "going away".to_owned(), 0).unwrap();
     assert!(server.send(id, MessageKind::Text, Bytes::from_static(b"late"), 0).is_err());
+    // A host that releases the connection right after closing it, as a .NET WebSocket disposed after CloseOutputAsync
+    // does, still gets its close frame written.
+    server.release_websocket(id);
     let (mut socket, _) = client.await.unwrap().expect("handshake");
     assert_eq!(socket.next().await.unwrap().unwrap(), Message::Text("last".into()));
     let Message::Close(Some(frame)) = socket.next().await.unwrap().unwrap() else { panic!("a close frame") };
