@@ -16,6 +16,8 @@ internal sealed partial class WindowsFilePicker(INativeWindowOwner owner, bool u
 {
     private const int Cancelled = unchecked((int)0x800704C7);
     internal TaskCompletionSource Shown { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    // Tests follow cancellation: each close attempt and its outcome, and Show's HRESULT.
+    internal Action<string>? Trace { get; set; }
 
     public bool SupportsMultipleSelection => true;
 
@@ -66,10 +68,18 @@ internal sealed partial class WindowsFilePicker(INativeWindowOwner owner, bool u
         {
             for (int attempt = 0; attempt < 50 && !shown.Task.IsCompleted; attempt++)
             {
-                try { await owner.InvokeAsync(_ => { if (dialog != 0) Close(dialog); }, CancellationToken.None).ConfigureAwait(false); }
+                Trace?.Invoke($"close {attempt}");
+                try
+                {
+                    await owner.InvokeAsync(_ =>
+                    {
+                        Trace?.Invoke($"close {attempt} runs, dialog {(dialog != 0 ? "open" : "gone")}");
+                        if (dialog != 0) Close(dialog);
+                    }, CancellationToken.None).ConfigureAwait(false);
+                }
                 catch (OwnerClosedException) { return; }
                 catch (ObjectDisposedException) { return; }
-                catch (Exception) { /* Close failed (HRESULT): the dialog is not closable yet. */ }
+                catch (Exception error) { Trace?.Invoke($"close {attempt} failed: {error.GetType().Name} 0x{error.HResult:X8}"); }
                 await Task.WhenAny(shown.Task, Task.Delay(100, CancellationToken.None)).ConfigureAwait(false);
             }
         }
@@ -85,6 +95,7 @@ internal sealed partial class WindowsFilePicker(INativeWindowOwner owner, bool u
                     Configure(dialog, save, directory, multiple, request);
                     Shown.TrySetResult();
                     int result = Show(dialog, handle);
+                    Trace?.Invoke($"show returned 0x{result:X8}");
                     if (result == Cancelled) return;
                     Marshal.ThrowExceptionForHR(result);
                     List<NativeFileSelection> paths = multiple ? GetPaths(dialog) : [new(GetPath(dialog), null, true)];

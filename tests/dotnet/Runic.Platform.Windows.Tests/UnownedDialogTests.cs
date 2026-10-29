@@ -42,6 +42,8 @@ internal sealed partial class UnownedDialogTests
     {
         var thread = WindowsApplicationThread.Shared;
         var picker = new WindowsFilePicker(thread, unowned: true);
+        var trace = new System.Collections.Concurrent.ConcurrentQueue<string>();
+        picker.Trace = trace.Enqueue;
         using var cancel = new CancellationTokenSource();
         var pending = picker.SelectAsync(new NativeFileDialogRequest(false, null) { Title = "Runic unowned dialog" }, cancel.Token).AsTask();
         await picker.Shown.Task.WaitAsync(Wait);
@@ -52,7 +54,9 @@ internal sealed partial class UnownedDialogTests
         Check(dialog != 0, "the unowned dialog is shown with its title");
         Check(GetWindow(dialog, GW_OWNER) == 0, "the dialog has no owner window");
         cancel.Cancel();
-        Check(await Record(() => pending.WaitAsync(Wait)) is OperationCanceledException or null, "cancellation ends the dialog");
+        var ended = await Record(() => pending.WaitAsync(Wait));
+        Console.WriteLine($"Unowned file dialog cancellation: {string.Join("; ", trace)}");
+        Check(ended is OperationCanceledException or null, $"cancellation ends the dialog ({ended?.GetType().Name}): {string.Join("; ", trace)}");
         Check(!IsWindow(dialog), "cancellation closed the dialog");
         Console.WriteLine("PASS an unowned file dialog shows and closes");
     }
