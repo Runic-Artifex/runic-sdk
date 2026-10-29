@@ -18,8 +18,6 @@
     <RunicGenerateReleaseLinks>true</RunicGenerateReleaseLinks>
   </PropertyGroup>
   <ItemGroup>
-    <Compile Remove="CodeFixes/**" />
-    <None Remove="CodeFixes/**" />
     <PackageReference Include="Microsoft.CodeAnalysis.CSharp" PrivateAssets="all" />
     <AdditionalFiles Include="AnalyzerReleases.Shipped.md;AnalyzerReleases.Unshipped.md" />
     <InternalsVisibleTo Include="Runic.Platform.Analyzers.CodeFixes" />

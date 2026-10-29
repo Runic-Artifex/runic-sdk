@@ -1,7 +1,7 @@
 <!-- A publish passes RuntimeIdentifier and PublishAot to every project it reaches, including during restore;
      they apply to applications, never to this netstandard2.0 code fix. -->
 <Project Sdk="Microsoft.NET.Sdk" TreatAsLocalProperty="RuntimeIdentifier;SelfContained;PublishAot;PublishTrimmed">
-  <Import Project="../../../../eng/build/platform.props" />
+  <Import Project="../../../eng/build/platform.props" />
   <PropertyGroup>
     <!-- The IDE code fixes of Runic.Platform.Analyzers, packed beside them into Runic.Platform under analyzers/. A
          separate assembly, so the compiler loads no Workspaces reference with the analyzers. -->
@@ -17,7 +17,7 @@
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="Microsoft.CodeAnalysis.CSharp.Workspaces" PrivateAssets="all" />
-    <ProjectReference Include="../Runic.Platform.Analyzers.csproj" />
+    <ProjectReference Include="../Runic.Platform.Analyzers/Runic.Platform.Analyzers.csproj" />
   </ItemGroup>
-  <Import Project="../../../../eng/build/application.targets" />
+  <Import Project="../../../eng/build/application.targets" />
 </Project>

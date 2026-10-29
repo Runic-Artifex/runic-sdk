@@ -88,7 +88,7 @@ export const platformRules = [
   // under WPF's dispatcher; Runic.Navigation also carries their model-turn flow), the Bridge generator, the IDE host
   // and Windows administration.
   // The Runic.Platform analyzers run in the compiler only; the WPF suite builds with Runic.Platform, which packs them.
-  { platforms: ["win-x64"], paths: ["packages/dotnet/Runic.Platform.Analyzers"] },
+  { platforms: ["win-x64"], paths: ["packages/dotnet/Runic.Platform.Analyzers", "packages/dotnet/Runic.Platform.Analyzers.CodeFixes"] },
   { platforms: ["win-x64"], paths: ["packages/dotnet/Runic.Navigation", "packages/dotnet/Runic.Navigation.Wpf", "tests/dotnet/Runic.Navigation.Wpf.Tests",
     "packages/dotnet/Runic.Application.Views.ReactiveUI*",
     "tests/fixtures/navigation/wpf-consumer", "packages/dotnet/Runic.Application.Views.Wpf", "tests/dotnet/Runic.Application.Views.Wpf.Tests",

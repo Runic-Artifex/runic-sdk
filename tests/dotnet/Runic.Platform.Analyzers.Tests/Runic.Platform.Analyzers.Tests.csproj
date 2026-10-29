@@ -17,7 +17,7 @@
     <PackageReference Include="Microsoft.CodeAnalysis.CSharp.Workspaces" />
     <ProjectReference Include="../../../packages/dotnet/Runic.Platform/Runic.Platform.csproj" />
     <ProjectReference Include="../../../packages/dotnet/Runic.Platform.Analyzers/Runic.Platform.Analyzers.csproj" />
-    <ProjectReference Include="../../../packages/dotnet/Runic.Platform.Analyzers/CodeFixes/Runic.Platform.Analyzers.CodeFixes.csproj" />
+    <ProjectReference Include="../../../packages/dotnet/Runic.Platform.Analyzers.CodeFixes/Runic.Platform.Analyzers.CodeFixes.csproj" />
   </ItemGroup>
   <Import Project="../../../eng/build/application.targets" />
 </Project>

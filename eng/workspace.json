@@ -178,6 +178,7 @@
       "paths": [
         "packages/dotnet/Runic.Platform",
         "packages/dotnet/Runic.Platform.Analyzers",
+        "packages/dotnet/Runic.Platform.Analyzers.CodeFixes",
         "tests/dotnet/Runic.Platform.Analyzers.Tests"
       ]
     },

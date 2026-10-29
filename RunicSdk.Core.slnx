@@ -33,7 +33,7 @@
     <Project Path="packages/dotnet/Runic.Platform.Linux.DBus/Runic.Platform.Linux.DBus.csproj" />
     <Project Path="packages/dotnet/Runic.Platform.Linux.DBus.Generator/Runic.Platform.Linux.DBus.Generator.csproj" />
     <Project Path="packages/dotnet/Runic.Platform.Analyzers/Runic.Platform.Analyzers.csproj" />
-    <Project Path="packages/dotnet/Runic.Platform.Analyzers/CodeFixes/Runic.Platform.Analyzers.CodeFixes.csproj" />
+    <Project Path="packages/dotnet/Runic.Platform.Analyzers.CodeFixes/Runic.Platform.Analyzers.CodeFixes.csproj" />
     <Project Path="packages/dotnet/Runic.Platform.Linux.Portal/Runic.Platform.Linux.Portal.csproj" />
     <Project Path="packages/dotnet/Runic.Platform.Linux.Polkit/Runic.Platform.Linux.Polkit.csproj" />
     <Project Path="packages/dotnet/Runic.Platform.Windows.Elevation/Runic.Platform.Windows.Elevation.csproj" />
