@@ -78,6 +78,10 @@
             pkgs = import nixpkgs { system = "x86_64-linux"; };
             inherit self;
           };
+          builder-spelling-dictionaries = import ./nix/tests/spelling-dictionaries.nix {
+            pkgs = import nixpkgs { system = "x86_64-linux"; };
+            inherit self;
+          };
         };
 
       # The portal backends are intentionally split into two images. A picker
@@ -260,6 +264,8 @@
             gst_all_1.gst-plugins-bad
             gst_all_1.gst-libav
             xvfb-run
+            # A window manager for Xvfb: the GTK 4 placement smoke (--placement --window-manager) runs under Openbox.
+            openbox
           ];
         in
         {

@@ -41,8 +41,10 @@ differential results, and language-specific API baselines are evidence, not
 contract sources.
 
 Run `npm run verify:contract` to validate the contract identity and version,
-the committed schemas, every scenario and vector fixture, Markdown artifact
-links, and the closed authored fixture set. This is repository-local format
+the committed schemas and operation vocabulary, every scenario and vector
+fixture, that every scenario creates each resource it uses, Markdown artifact
+links, and the closed authored fixture set. The engineering CI job runs it
+through `eng/verify-desktop-contract.test.mjs`. This is repository-local format
 verification; language implementations still supply their own conformance and
 platform evidence.
 

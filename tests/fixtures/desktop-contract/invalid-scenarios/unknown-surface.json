@@ -1,0 +1,18 @@
+{
+  "format": "runic.desktop.conformance-scenario/1",
+  "id": "errors.unknown-surface.v1",
+  "contract": { "id": "runic.desktop.presentation", "version": 1 },
+  "area": "errors",
+  "ids": { "session": "session-1", "invocation": "invocation-1" },
+  "arrange": [
+    { "op": "session.createAuthenticated", "target": "session-1", "arguments": { "surface": "surface-1" } }
+  ],
+  "steps": [
+    { "op": "invocation.start", "target": "invocation-1", "arguments": { "session": "session-1", "capability": "sample.echo" } }
+  ],
+  "expect": {
+    "events": [{ "type": "invocation.accepted", "subject": "invocation-1" }],
+    "states": [{ "subject": "session-1", "state": "authenticated" }],
+    "outcomes": []
+  }
+}

@@ -28,6 +28,7 @@ public sealed class DesktopHost : IAsyncDisposable
         _core = CreateCore(options, options.Port);
         _logger = options.LoggerFactory?.CreateLogger(DesktopLog.Category);
         _menuBar = [.. options.MenuBar];
+        _spellCheckingLanguages = [.. options.SpellCheckingLanguages];
         Monitors = CreateMonitors(options);
         if (options.StandardMenuTitles is { } titles) Internal.MacOsWkWebViewHost.SetStandardMenuTitles(titles);
         if (_logger is not null) Internal.MacOsWkWebViewHost.SetMenuLogger(_logger);
@@ -182,6 +183,60 @@ public sealed class DesktopHost : IAsyncDisposable
         }
     }
 
+    private IReadOnlyList<string> _spellCheckingLanguages;
+
+    /// <summary>
+    /// Gets the languages the embedded windows' spell checker checks: <see cref="DesktopHostOptions.SpellCheckingLanguages"/>,
+    /// or those of the last <see cref="SetSpellCheckingLanguagesAsync"/>; empty for the user's languages.
+    /// </summary>
+    public IReadOnlyList<string> SpellCheckingLanguages => Volatile.Read(ref _spellCheckingLanguages);
+
+    /// <summary>
+    /// Changes the languages the spell checker checks, in every open window and in the windows that open later, for
+    /// example when the language of the open document changes.
+    /// </summary>
+    /// <param name="languages">BCP 47 language tags, such as <c>de-CH</c> and <c>en</c>; empty for the user's languages.</param>
+    /// <param name="cancellationToken">Cancels waiting for the windows' native threads.</param>
+    /// <returns>A task that completes when every open window has applied the languages.</returns>
+    /// <remarks>
+    /// The platforms apply the languages as <see cref="DesktopHostOptions.SpellCheckingLanguages"/> describes: WebKitGTK
+    /// and macOS check with them in every window of the process, and WebView2 ignores them. New and edited text is
+    /// checked with them; text checked before may keep its marks until it is edited. With
+    /// <see cref="DesktopHostOptions.WindowHostFactory"/>, each window applies them when its host implements
+    /// <see cref="IDesktopSpellCheckingWindowHost"/>, as the GTK 4 host does.
+    /// </remarks>
+    /// <exception cref="ArgumentException">A language is not a BCP 47 language tag.</exception>
+    /// <exception cref="ObjectDisposedException">The host is disposed.</exception>
+    /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> was cancelled.</exception>
+    public async ValueTask SetSpellCheckingLanguagesAsync(IReadOnlyList<string> languages, CancellationToken cancellationToken = default)
+    {
+        ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
+        var copy = CheckSpellCheckingLanguages(languages, nameof(languages));
+        cancellationToken.ThrowIfCancellationRequested();
+        Volatile.Write(ref _spellCheckingLanguages, copy);
+        // A window that opens meanwhile reads the new languages, or applies them after it opened (WebUiWindow).
+        foreach (var surface in _surfaces.Values.ToArray())
+        {
+            await surface.ApplySpellCheckingLanguagesAsync(copy, cancellationToken).ConfigureAwait(false);
+        }
+    }
+
+    internal static string[] CheckSpellCheckingLanguages(IReadOnlyList<string> languages, string parameter)
+    {
+        ArgumentNullException.ThrowIfNull(languages, parameter);
+        string[] copy = [.. languages];
+        foreach (var language in copy)
+        {
+            if (language is null || !DesktopSurface.IsLanguageTag(language))
+            {
+                throw new ArgumentException(
+                    "SpellCheckingLanguages must hold BCP 47 language tags such as de-CH or en: letters and digits in subtags of 1 to 8, joined by hyphens.",
+                    parameter);
+            }
+        }
+        return copy;
+    }
+
     /// <summary>Gets the desktop's monitors, in the units of this host's windows.</summary>
     /// <remarks>
     /// <para>
@@ -266,6 +321,9 @@ public sealed class DesktopHost : IAsyncDisposable
         {
             DesktopWindowOptionValidation.AddEmbeddedChecks(
                 configured, _options.WindowHostFactory, _options.Linux.EmbeddedBackend, optionDiagnostics);
+            // WebView2 has no setting for its spelling languages.
+            if (OperatingSystem.IsWindows() && _options.WindowHostFactory is null && _options.SpellCheckingLanguages.Count > 0)
+                optionDiagnostics.Add(DesktopWindowOptionValidation.SpellCheckingLanguagesIgnored());
         }
         else if (DesktopWindowOptionValidation.IsLaunchable(preferredBrowser))
         {
@@ -671,6 +729,7 @@ public sealed class DesktopHost : IAsyncDisposable
         ArgumentNullException.ThrowIfNull(options.MenuBar);
         _ = DesktopMenuBar.Check(options.MenuBar, DesktopMenuPlanner.CurrentPlatform, DesktopMenuBarPresentation.Native, nativeBar: true);
         options.StandardMenuTitles?.Validate();
+        _ = CheckSpellCheckingLanguages(options.SpellCheckingLanguages, nameof(options));
         if (options.BrowserLaunchAttempts is < 1 or > DesktopHostOptions.MaximumBrowserLaunchAttempts)
         {
             throw new ArgumentOutOfRangeException(

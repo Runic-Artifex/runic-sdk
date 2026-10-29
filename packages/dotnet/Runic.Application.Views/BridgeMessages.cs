@@ -79,7 +79,7 @@ internal static class BridgeMessages
     internal static byte[] Write(Action<Utf8JsonWriter> write)
     {
         var buffer = new ArrayBufferWriter<byte>(256);
-        using (var writer = new Utf8JsonWriter(buffer)) write(writer);
+        using (var writer = new Utf8JsonWriter(buffer, BridgeJsonEncoder.WriterOptions)) write(writer);
         return buffer.WrittenSpan.ToArray();
     }
 

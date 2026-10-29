@@ -202,6 +202,50 @@ public sealed record DesktopHostOptions
     /// </remarks>
     public DesktopStandardMenuTitles? StandardMenuTitles { get; init; }
 
+    /// <summary>
+    /// Gets the BCP 47 languages that the embedded windows' spell checker checks, such as <c>de-CH</c> and <c>en</c>;
+    /// empty, the default, for the user's languages.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The spell checkers of WebKitGTK and macOS belong to the process, not to a window, so the languages are the
+    /// application's: every window checks with them, and <see cref="DesktopHost.SetSpellCheckingLanguagesAsync"/> changes
+    /// them for all, for example when the language of the open document changes. A word is correct when one of the
+    /// languages accepts it; the page's <c>lang</c> attribute does not choose a dictionary on any platform.
+    /// <see cref="DesktopWindowOptions.SpellChecking"/> turns the checker off in a window.
+    /// </para>
+    /// <list type="bullet">
+    /// <item><description>
+    /// Linux (WebKitGTK): each language selects an installed hunspell dictionary through enchant. <c>de-CH</c> selects
+    /// <c>de_CH</c>, or else a dictionary for <c>de</c> alone, never one for another region. A language without a region
+    /// selects the region of the user's locale when it has the same language, such as <c>en_GB</c> for <c>en</c> with
+    /// <c>LANG=en_GB.UTF-8</c>, else the language's most common region, else any installed region of it. Without languages,
+    /// the dictionaries of the user's <c>LANGUAGE</c>, <c>LC_ALL</c>, <c>LC_MESSAGES</c> and <c>LANG</c> are used, and
+    /// WebKitGTK chooses one when none of them is installed. A language without a dictionary is not checked, and the
+    /// window reports <c>spell-checking-dictionary-missing</c> once. A desktop may have no dictionaries at all: install
+    /// them with the distribution's hunspell packages, or with Nix through <c>buildRunicApplication</c>'s
+    /// <c>spellingDictionaries</c>.
+    /// </description></item>
+    /// <item><description>
+    /// macOS: WKWebView checks with the application's <c>NSSpellChecker</c>. One language selects that language
+    /// (<c>setLanguage:</c>), matched against <c>availableLanguages</c> as on Linux. With several languages, or none,
+    /// macOS identifies each paragraph's language among the user's spelling languages (System Settings › Keyboard ›
+    /// Text Input), because <c>NSSpellChecker</c> cannot be limited to a set of languages.
+    /// </description></item>
+    /// <item><description>
+    /// Windows: WebView2 has no setting for its spelling languages; it checks in its own language, which
+    /// <see cref="DesktopWindowOptions.Language"/> sets. It ignores the option, and <see cref="DesktopHost.Validate"/>
+    /// reports <c>window-option-unsupported</c>.
+    /// </description></item>
+    /// </list>
+    /// <para>
+    /// Installed browsers use their own settings. Two hosts in one process share the platform's checker, so the
+    /// languages set last apply. Building the host throws <see cref="ArgumentException"/> for a value that is not a
+    /// BCP 47 language tag.
+    /// </para>
+    /// </remarks>
+    public IReadOnlyList<string> SpellCheckingLanguages { get; init; } = [];
+
     /// <summary>Gets an optional sink for redacted host diagnostics.</summary>
     public Action<DesktopDiagnostic>? DiagnosticSink { get; init; }
 
@@ -613,11 +657,12 @@ public sealed record DesktopWindowOptions
     /// </para>
     /// <para>
     /// A saved placement never fails the open: a zero width or height keeps <see cref="Width"/> or <see cref="Height"/>,
-    /// a position with only one coordinate is ignored, and a size above 65535 is reduced to it. The GTK 4 window
-    /// restores the size and maximized state and ignores the position, which GTK 4 cannot set. An installed browser
-    /// opens with the saved size and position as it would with <see cref="Width"/>, <see cref="Height"/>,
-    /// <see cref="X"/> and <see cref="Y"/>, without fitting them to a monitor or maximizing; <see cref="DesktopHost.Validate"/>
-    /// reports the ignored maximized state.
+    /// a position with only one coordinate is ignored, and a size above 65535 is reduced to it. On Linux the position
+    /// is restored on X11 only: on Wayland the compositor places every window, so the GTK 3 and GTK 4 windows restore
+    /// the size, maximized and full-screen state there and ignore the position, which Wayland cannot set; a placement
+    /// saved on Wayland has none. An installed browser opens with the saved size and position as it would with
+    /// <see cref="Width"/>, <see cref="Height"/>, <see cref="X"/> and <see cref="Y"/>, without fitting them to a monitor
+    /// or maximizing; <see cref="DesktopHost.Validate"/> reports the ignored maximized state.
     /// </para>
     /// </remarks>
     public DesktopWindowPlacement? Placement { get; init; }
@@ -759,6 +804,28 @@ public sealed record DesktopWindowOptions
     /// </para>
     /// </remarks>
     public string? Language { get; init; }
+
+    /// <summary>
+    /// Gets whether the embedded window's spell checker marks misspelled words in the page's editable fields;
+    /// <see langword="true"/>, the default.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// With the default, every platform checks the fields the HTML <c>spellcheck</c> attribute selects: text areas,
+    /// text inputs and <c>contenteditable</c> elements, unless they or an ancestor have <c>spellcheck="false"</c>.
+    /// WebView2 and WKWebView do so on their own; on Linux, Runic turns WebKitGTK's spell checker on. The languages are
+    /// the application's, <see cref="DesktopHostOptions.SpellCheckingLanguages"/>.
+    /// </para>
+    /// <para>
+    /// <see langword="false"/> keeps the native checker off in this window, for example for an editor that draws its own
+    /// spelling marks: every document in the window starts with <c>spellcheck="false"</c> on its root element, which the
+    /// page's fields inherit. An element with its own <c>spellcheck="true"</c> is still checked. WebView2, WKWebView and
+    /// WebKitGTK have no switch for one window (the checkers of WebKitGTK and macOS belong to the process), so every
+    /// platform applies the option this way. A window host applies it when it runs
+    /// <see cref="DesktopWindowHostOptions.DocumentStartScript"/>, as every built-in host does. Installed browsers ignore it.
+    /// </para>
+    /// </remarks>
+    public bool SpellChecking { get; init; } = true;
 
     /// <summary>Gets additional command-line arguments for the browser or WebView2 runtime.</summary>
     /// <remarks>

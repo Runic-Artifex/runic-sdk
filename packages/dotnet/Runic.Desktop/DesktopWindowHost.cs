@@ -126,6 +126,23 @@ public interface IDesktopPlacementWindowHost : IDesktopWindowHost
     ValueTask MoveToMonitorAsync(string monitorId, CancellationToken cancellationToken = default);
 }
 
+/// <summary>An optional native host whose spell checker takes languages.</summary>
+/// <remarks>
+/// Runic Desktop finds it by type, like <see cref="IDesktopWindowStateHost"/>, and calls
+/// <see cref="SetSpellCheckingLanguagesAsync"/> after <see cref="DesktopHost.SetSpellCheckingLanguagesAsync"/>, and after
+/// the window opened when the languages changed while it was opening. When opening, apply
+/// <see cref="DesktopWindowHostOptions.SpellCheckingLanguages"/>. A host whose checker has no languages, such as
+/// WebView2, does not implement it.
+/// </remarks>
+public interface IDesktopSpellCheckingWindowHost : IDesktopWindowHost
+{
+    /// <summary>Changes the languages the window's spell checker checks.</summary>
+    /// <param name="languages">BCP 47 language tags, checked by <see cref="DesktopHost"/>; empty for the user's languages.</param>
+    /// <param name="cancellationToken">Cancels the queued native work.</param>
+    /// <returns>A task that completes when the checker uses the languages.</returns>
+    ValueTask SetSpellCheckingLanguagesAsync(IReadOnlyList<string> languages, CancellationToken cancellationToken = default);
+}
+
 /// <summary>An optional native host that shows the menu bar and context menus.</summary>
 /// <remarks>
 /// <para>
@@ -423,6 +440,24 @@ public sealed record DesktopWindowHostOptions
     public string? Language { get; init; }
 
     /// <summary>
+    /// Gets whether the page's fields are spell-checked, from <see cref="DesktopWindowOptions.SpellChecking"/>;
+    /// <see langword="true"/> by default.
+    /// </summary>
+    /// <remarks>
+    /// Runic Desktop applies <see langword="false"/> through <see cref="DocumentStartScript"/>, which then sets
+    /// <c>spellcheck="false"</c> on every document's root element, so a host that runs that script need do nothing
+    /// more. A host with a spell checker that is off until it is turned on, such as WebKitGTK's, turns it on.
+    /// </remarks>
+    public bool SpellChecking { get; init; } = true;
+
+    /// <summary>
+    /// Gets the BCP 47 languages the spell checker checks, from <see cref="DesktopHost.SpellCheckingLanguages"/>; empty
+    /// for the user's languages.
+    /// </summary>
+    /// <remarks>A host implementing <see cref="IDesktopSpellCheckingWindowHost"/> applies them; others ignore them.</remarks>
+    public IReadOnlyList<string> SpellCheckingLanguages { get; init; } = [];
+
+    /// <summary>
     /// Gets the callback that reports an event of the open window, such as a crashed web process, to
     /// <see cref="DesktopHostOptions.DiagnosticSink"/> and the Desktop logger (event 3010). The host may call it on any
     /// thread, including the window's own; a sink that throws is logged, not rethrown.
@@ -574,7 +609,14 @@ internal sealed class DesktopWindowHostAdapter : IWebUiEmbeddedHost
             MonitorId = options.MonitorId,
             LayoutDirection = options.LayoutDirection,
             Language = options.Language,
+            SpellChecking = options.SpellChecking,
+            SpellCheckingLanguages = options.SpellCheckingLanguages,
         }, cancellationToken);
+
+    public ValueTask SetSpellCheckingLanguagesAsync(IReadOnlyList<string> languages, CancellationToken cancellationToken = default) =>
+        _host is IDesktopSpellCheckingWindowHost spellingHost
+            ? spellingHost.SetSpellCheckingLanguagesAsync(languages, cancellationToken)
+            : ValueTask.CompletedTask;
 
     public ValueTask NavigateAsync(Uri url, CancellationToken cancellationToken = default) =>
         _host.NavigateAsync(url, cancellationToken);

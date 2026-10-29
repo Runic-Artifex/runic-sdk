@@ -27,6 +27,7 @@
     "affected": "bun eng/run.mjs affected",
     "example:first-window": "bun eng/run.mjs example:first-window",
     "example:notes": "bun eng/run.mjs example:notes",
+    "verify:contract": "bun eng/verify-desktop-contract.mjs",
     "verify:templates": "bun eng/verify-templates.mjs",
     "verify:candidate": "bun eng/run.mjs verify:candidate",
     "version:bump": "bun eng/version.mjs bump",

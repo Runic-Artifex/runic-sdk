@@ -60,6 +60,27 @@ public sealed class ConfigurationValidationTests
     }
 
 
+    // #663: X11 restores a placement's position; Wayland cannot and ignores it, so a placement saved on X11 or by
+    // another backend still opens there without a diagnostic.
+    [Test]
+    [SupportedOSPlatform("linux")]
+    public async Task Gtk4OnWaylandOpensAPlacementWithAPositionWithoutRejectingIt()
+    {
+        var placement = new DesktopWindowOptions
+        {
+            HighContrast = false,
+            Placement = new DesktopWindowPlacement { X = 150, Y = 110, Width = 420, Height = 300, Maximized = true },
+        };
+        using (new GdkEnvironment("wayland", "wayland-0", null))
+        await using (var host = await StartGtk4HostAsync())
+        {
+            Assert.Empty(host.GetPresentationPreflight(placement).OptionDiagnostics);
+            // Validate also reports whether the GTK 4 runtime and a display are available, which depends on the machine.
+            Assert.DoesNotContain(host.Validate(placement).Errors, static item =>
+                item.Option is "DesktopWindowOptions.X" or "DesktopWindowOptions.Y" or "DesktopWindowOptions.Placement");
+        }
+    }
+
     // I-146: GTK 4 positions windows on X11, and on Wayland still rejects a position. Before GTK opens its display,
     // validation follows GDK's backend order: GDK_BACKEND's entries, by default Wayland before X11.
     [Test]

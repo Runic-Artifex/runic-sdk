@@ -1,0 +1,126 @@
+{
+  "format": "runic.desktop.conformance-operations/1",
+  "contract": { "id": "runic.desktop.presentation", "version": 1 },
+  "kinds": ["host", "listener", "surface", "stream", "request", "session", "invocation"],
+  "operations": {
+    "host.create": {
+      "target": { "role": "creates", "kind": "host" },
+      "arguments": {
+        "listener": { "role": "creates", "kind": "listener", "required": false }
+      }
+    },
+    "host.createStarted": {
+      "target": { "role": "creates", "kind": "host" },
+      "arguments": {
+        "listener": { "role": "creates", "kind": "listener", "required": false }
+      }
+    },
+    "host.start": {
+      "target": { "role": "references", "kind": "host" },
+      "arguments": {}
+    },
+    "surface.create": {
+      "target": { "role": "creates", "kind": "surface" },
+      "arguments": {
+        "host": { "role": "references", "kind": "host", "required": true },
+        "credential": { "role": "value", "required": false }
+      }
+    },
+    "surface.createStarted": {
+      "target": { "role": "creates", "kind": "surface" },
+      "arguments": {
+        "host": { "role": "references", "kind": "host", "required": true },
+        "credential": { "role": "value", "required": false }
+      }
+    },
+    "surface.close": {
+      "target": { "role": "references", "kind": "surface" },
+      "arguments": {}
+    },
+    "capability.registerFailing": {
+      "target": { "role": "references", "kind": "surface" },
+      "arguments": {
+        "name": { "role": "value", "required": true },
+        "privateDetail": { "role": "value", "required": false }
+      }
+    },
+    "response.stream": {
+      "target": { "role": "creates", "kind": "stream" },
+      "arguments": {
+        "chunks": { "role": "value", "required": false },
+        "contentType": { "role": "value", "required": false },
+        "contentLength": { "role": "value", "required": false }
+      }
+    },
+    "stream.acceptNext": {
+      "target": { "role": "references", "kind": "stream" },
+      "arguments": {}
+    },
+    "request.start": {
+      "target": { "role": "creates", "kind": "request" },
+      "arguments": {
+        "surface": { "role": "references", "kind": "surface", "required": true },
+        "stream": { "role": "references", "kind": "stream", "required": false }
+      }
+    },
+    "request.head": {
+      "target": { "role": "creates", "kind": "request" },
+      "arguments": {
+        "surface": { "role": "references", "kind": "surface", "required": true },
+        "path": { "role": "value", "required": false },
+        "stream": { "role": "references", "kind": "stream", "required": false }
+      }
+    },
+    "request.probe": {
+      "target": { "role": "references", "kind": "surface" },
+      "arguments": {}
+    },
+    "request.disconnect": {
+      "target": { "role": "references", "kind": "request" },
+      "arguments": {}
+    },
+    "session.createAuthenticated": {
+      "target": { "role": "creates", "kind": "session" },
+      "arguments": {
+        "surface": { "role": "references", "kind": "surface", "required": true },
+        "client": { "role": "value", "required": false }
+      }
+    },
+    "session.connect": {
+      "target": { "role": "creates", "kind": "session" },
+      "arguments": {
+        "surface": { "role": "references", "kind": "surface", "required": true },
+        "client": { "role": "value", "required": false },
+        "credential": { "role": "value", "required": false },
+        "origin": { "role": "value", "required": false }
+      }
+    },
+    "session.authenticate": {
+      "target": { "role": "references", "kind": "session" },
+      "arguments": {}
+    },
+    "session.disconnect": {
+      "target": { "role": "references", "kind": "session" },
+      "arguments": {}
+    },
+    "invocation.start": {
+      "target": { "role": "creates", "kind": "invocation" },
+      "arguments": {
+        "session": { "role": "references", "kind": "session", "required": true },
+        "capability": { "role": "value", "required": true }
+      }
+    },
+    "invocation.startPending": {
+      "target": { "role": "creates", "kind": "invocation" },
+      "arguments": {
+        "session": { "role": "references", "kind": "session", "required": true }
+      }
+    },
+    "invocation.deliverLateSuccess": {
+      "target": { "role": "references", "kind": "invocation" },
+      "arguments": {
+        "session": { "role": "references", "kind": "session", "required": true }
+      }
+    }
+  }
+}

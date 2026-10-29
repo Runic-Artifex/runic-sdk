@@ -428,6 +428,8 @@ internal sealed partial class Gtk4WindowHost : IDesktopNativeDispatchWindowHost,
     // when a hidden window is first shown, and the X event connection that reports moves.
     private (int X, int Y)? _normalPosition;
     private (int X, int Y)? _pendingPosition;
+    // GTK thread only: the window opens maximized or full-screen, so _pendingPosition is where it restores to.
+    private bool _pendingPositionIsRestoredBounds;
     private (nint Display, nuint Handler) _moveWatch;
     private FileDropPairing? _drops;
     private bool _receivesFileDrops;
@@ -632,18 +634,28 @@ internal sealed partial class Gtk4WindowHost : IDesktopNativeDispatchWindowHost,
 
     private static nint SurfaceOf(Gtk.Window window) => window.GetSurface()?.Handle.DangerousGetHandle() ?? 0;
 
-    // GTK thread. Presents the window and, on X11, places a window shown for the first time at its requested position.
-    // A window manager places a newly mapped window itself, so the position is requested again once it is mapped.
+    // GTK thread. Presents the window and, on X11, places a window that is not shown yet at its pending position. It
+    // takes the position before it is mapped, with the hints that keep a window manager from placing a new window
+    // itself (Gtk4X11Placement.PlaceBeforeMap). A window manager that ignores them places the window when it is mapped,
+    // so a window that opens neither maximized nor full-screen is moved again once mapped; a maximized or full-screen
+    // one keeps the position as the bounds it restores to, which a move would replace.
     private void Present(Gtk.Window window)
     {
-        window.Present();
         if (_pendingPosition is not { } position)
         {
+            window.Present();
             return;
         }
         _pendingPosition = null;
-        var surface = SurfaceOf(window);
-        Gtk4X11Placement.Move(surface, position.X, position.Y);
+        var restoredBoundsOnly = _pendingPositionIsRestoredBounds;
+        _pendingPositionIsRestoredBounds = false;
+        Gtk4X11Placement.PlaceBeforeMap(SurfaceOf(window), position.X, position.Y);
+        window.Present();
+        if (restoredBoundsOnly)
+        {
+            return;
+        }
+        Gtk4X11Placement.Move(SurfaceOf(window), position.X, position.Y);
         Gtk4Dispatcher.Instance.Post(() =>
         {
             try
@@ -723,6 +735,7 @@ internal sealed partial class Gtk4WindowHost : IDesktopNativeDispatchWindowHost,
             using var webContext = WebContext.New();
             // DesktopWindowOptions.Language: the page's navigator.language and Accept-Language.
             if (options.Language is { } language) webContext.SetPreferredLanguages([language]);
+            ApplySpellChecking(webContext, options.SpellCheckingLanguages);
             using var contextValue = new GObject.Value(webContext);
             webView = WebView.NewWithProperties(
                 [new GObject.ConstructArgument("web-context", contextValue)]);
@@ -852,9 +865,9 @@ internal sealed partial class Gtk4WindowHost : IDesktopNativeDispatchWindowHost,
             ((Gtk.Widget)window).Realize();
             if (position is { } initial)
             {
-                // Before mapping, which is all a window manager-less X server needs; Present requests it again.
-                Gtk4X11Placement.Move(SurfaceOf(window), initial.X, initial.Y);
+                // Present places the window there when it is first shown.
                 _pendingPosition = initial;
+                _pendingPositionIsRestoredBounds = options.Kiosk || options.Placement is { Maximized: true } or { FullScreen: true };
                 _normalPosition = initial;
             }
             finalization = new NativeObjectFinalizationProbe();
@@ -957,9 +970,9 @@ internal sealed partial class Gtk4WindowHost : IDesktopNativeDispatchWindowHost,
     {
         ArgumentNullException.ThrowIfNull(options);
         List<DesktopDiagnostic> diagnostics = [];
-        // A restored placement keeps its size and maximized state; its position is ignored, not rejected, so a
-        // placement saved by another backend still opens.
-        // On X11 Runic positions the window through Xlib (Gtk4X11Placement).
+        // On X11 Runic positions the window through Xlib (Gtk4X11Placement), also at a restored placement's position.
+        // On Wayland a placement keeps its size and maximized state and its position is ignored, not rejected, so a
+        // placement saved on X11 or by another backend still opens.
         var x11 = Gtk4X11Placement.IsActive;
         if (options.X is not null && options.Placement is null && !x11)
             diagnostics.Add(Unsupported(nameof(DesktopWindowOptions.X), "GTK 4 positions windows only on X11; on Wayland the compositor places every window."));

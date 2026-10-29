@@ -1,0 +1,1121 @@
+{
+  "format": "runic.views.vector/1",
+  "id": "canonical.p2",
+  "contract": {
+    "id": "runic.views",
+    "version": 4
+  },
+  "area": "canonical",
+  "description": "RFC 8785 (JCS) canonical form: RFC 8785 examples and Appendix B numbers, plus Runic cases (I-JSON rejections, depth 64). Expected outputs of accepted cases are JSON.stringify with sorted member names.",
+  "cases": [
+    {
+      "id": "canonical.p2.rfc8785-b.0000000000000001",
+      "description": "RFC 8785 Appendix B: the double 0x0000000000000001.",
+      "operation": "canonicalize",
+      "input": {
+        "encoding": "utf8",
+        "value": "4.9406564584124654e-324"
+      },
+      "expect": {
+        "output": {
+          "encoding": "utf8",
+          "value": "5e-324"
+        }
+      }
+    },
+    {
+      "id": "canonical.p2.rfc8785-b.8000000000000001",
+      "description": "RFC 8785 Appendix B: the double 0x8000000000000001.",
+      "operation": "canonicalize",
+      "input": {
+        "encoding": "utf8",
+        "value": "-4.9406564584124654e-324"
+      },
+      "expect": {
+        "output": {
+          "encoding": "utf8",
+          "value": "-5e-324"
+        }
+      }
+    },
+    {
+      "id": "canonical.p2.rfc8785-b.7fefffffffffffff",
+      "description": "RFC 8785 Appendix B: the double 0x7fefffffffffffff.",
+      "operation": "canonicalize",
+      "input": {
+        "encoding": "utf8",
+        "value": "1.7976931348623157e+308"
+      },
+      "expect": {
+        "output": {
+          "encoding": "utf8",
+          "value": "1.7976931348623157e+308"
+        }
+      }
+    },
+    {
+      "id": "canonical.p2.rfc8785-b.ffefffffffffffff",
+      "description": "RFC 8785 Appendix B: the double 0xffefffffffffffff.",
+      "operation": "canonicalize",
+      "input": {
+        "encoding": "utf8",
+        "value": "-1.7976931348623157e+308"
+      },
+      "expect": {
+        "output": {
+          "encoding": "utf8",
+          "value": "-1.7976931348623157e+308"
+        }
+      }
+    },
+    {
+      "id": "canonical.p2.rfc8785-b.4340000000000000",
+      "description": "RFC 8785 Appendix B: the double 0x4340000000000000.",
+      "operation": "canonicalize",
+      "input": {
+        "encoding": "utf8",
+        "value": "9007199254740992.0"
+      },
+      "expect": {
+        "output": {
+          "encoding": "utf8",
+          "value": "9007199254740992"
+        }
+      }
+    },
+    {
+      "id": "canonical.p2.rfc8785-b.c340000000000000",
+      "description": "RFC 8785 Appendix B: the double 0xc340000000000000.",
+      "operation": "canonicalize",
+      "input": {
+        "encoding": "utf8",
+        "value": "-9007199254740992.0"
+      },
+      "expect": {
+        "output": {
+          "encoding": "utf8",
+          "value": "-9007199254740992"
+        }
+      }
+    },
+    {
+      "id": "canonical.p2.rfc8785-b.4430000000000000",
+      "description": "RFC 8785 Appendix B: the double 0x4430000000000000.",
+      "operation": "canonicalize",
+      "input": {
+        "encoding": "utf8",
+        "value": "2.9514790517935283e+20"
+      },
+      "expect": {
+        "output": {
+          "encoding": "utf8",
+          "value": "295147905179352830000"
+        }
+      }
+    },
+    {
+      "id": "canonical.p2.rfc8785-b.44b52d02c7e14af5",
+      "description": "RFC 8785 Appendix B: the double 0x44b52d02c7e14af5.",
+      "operation": "canonicalize",
+      "input": {
+        "encoding": "utf8",
+        "value": "9.9999999999999975e+22"
+      },
+      "expect": {
+        "output": {
+          "encoding": "utf8",
+          "value": "9.999999999999997e+22"
+        }
+      }
+    },
+    {
+      "id": "canonical.p2.rfc8785-b.44b52d02c7e14af6",
+      "description": "RFC 8785 Appendix B: the double 0x44b52d02c7e14af6.",
+      "operation": "canonicalize",
+      "input": {
+        "encoding": "utf8",
+        "value": "9.9999999999999992e+22"
+      },
+      "expect": {
+        "output": {
+          "encoding": "utf8",
+          "value": "1e+23"
+        }
+      }
+    },
+    {
+      "id": "canonical.p2.rfc8785-b.44b52d02c7e14af7",
+      "description": "RFC 8785 Appendix B: the double 0x44b52d02c7e14af7.",
+      "operation": "canonicalize",
+      "input": {
+        "encoding": "utf8",
+        "value": "1.0000000000000001e+23"
+      },
+      "expect": {
+        "output": {
+          "encoding": "utf8",
+          "value": "1.0000000000000001e+23"
+        }
+      }
+    },
+    {
+      "id": "canonical.p2.rfc8785-b.444b1ae4d6e2ef4e",
+      "description": "RFC 8785 Appendix B: the double 0x444b1ae4d6e2ef4e.",
+      "operation": "canonicalize",
+      "input": {
+        "encoding": "utf8",
+        "value": "9.9999999999999974e+20"
+      },
+      "expect": {
+        "output": {
+          "encoding": "utf8",
+          "value": "999999999999999700000"
+        }
+      }
+    },
+    {
+      "id": "canonical.p2.rfc8785-b.444b1ae4d6e2ef4f",
+      "description": "RFC 8785 Appendix B: the double 0x444b1ae4d6e2ef4f.",
+      "operation": "canonicalize",
+      "input": {
+        "encoding": "utf8",
+        "value": "9.9999999999999987e+20"
+      },
+      "expect": {
+        "output": {
+          "encoding": "utf8",
+          "value": "999999999999999900000"
+        }
+      }
+    },
+    {
+      "id": "canonical.p2.rfc8785-b.444b1ae4d6e2ef50",
+      "description": "RFC 8785 Appendix B: the double 0x444b1ae4d6e2ef50.",
+      "operation": "canonicalize",
+      "input": {
+        "encoding": "utf8",
+        "value": "1.0000000000000000e+21"
+      },
+      "expect": {
+        "output": {
+          "encoding": "utf8",
+          "value": "1e+21"
+        }
+      }
+    },
+    {
+      "id": "canonical.p2.rfc8785-b.3eb0c6f7a0b5ed8c",
+      "description": "RFC 8785 Appendix B: the double 0x3eb0c6f7a0b5ed8c.",
+      "operation": "canonicalize",
+      "input": {
+        "encoding": "utf8",
+        "value": "9.9999999999999974e-7"
+      },
+      "expect": {
+        "output": {
+          "encoding": "utf8",
+          "value": "9.999999999999997e-7"
+        }
+      }
+    },
+    {
+      "id": "canonical.p2.rfc8785-b.3eb0c6f7a0b5ed8d",
+      "description": "RFC 8785 Appendix B: the double 0x3eb0c6f7a0b5ed8d.",
+      "operation": "canonicalize",
+      "input": {
+        "encoding": "utf8",
+        "value": "9.9999999999999995e-7"
+      },
+      "expect": {
+        "output": {
+          "encoding": "utf8",
+          "value": "0.000001"
+        }
+      }
+    },
+    {
+      "id": "canonical.p2.rfc8785-b.41b3de4355555553",
+      "description": "RFC 8785 Appendix B: the double 0x41b3de4355555553.",
+      "operation": "canonicalize",
+      "input": {
+        "encoding": "utf8",
+        "value": "333333333.33333319"
+      },
+      "expect": {
+        "output": {
+          "encoding": "utf8",
+          "value": "333333333.3333332"
+        }
+      }
+    },
+    {
+      "id": "canonical.p2.rfc8785-b.41b3de4355555554",
+      "description": "RFC 8785 Appendix B: the double 0x41b3de4355555554.",
+      "operation": "canonicalize",
+      "input": {
+        "encoding": "utf8",
+        "value": "333333333.33333325"
+      },
+      "expect": {
+        "output": {
+          "encoding": "utf8",
+          "value": "333333333.33333325"
+        }
+      }
+    },
+    {
+      "id": "canonical.p2.rfc8785-b.41b3de4355555555",
+      "description": "RFC 8785 Appendix B: the double 0x41b3de4355555555.",
+      "operation": "canonicalize",
+      "input": {
+        "encoding": "utf8",
+        "value": "333333333.33333331"
+      },
+      "expect": {
+        "output": {
+          "encoding": "utf8",
+          "value": "333333333.3333333"
+        }
+      }
+    },
+    {
+      "id": "canonical.p2.rfc8785-b.41b3de4355555556",
+      "description": "RFC 8785 Appendix B: the double 0x41b3de4355555556.",
+      "operation": "canonicalize",
+      "input": {
+        "encoding": "utf8",
+        "value": "333333333.33333337"
+      },
+      "expect": {
+        "output": {
+          "encoding": "utf8",
+          "value": "333333333.3333334"
+        }
+      }
+    },
+    {
+      "id": "canonical.p2.rfc8785-b.41b3de4355555557",
+      "description": "RFC 8785 Appendix B: the double 0x41b3de4355555557.",
+      "operation": "canonicalize",
+      "input": {
+        "encoding": "utf8",
+        "value": "333333333.33333343"
+      },
+      "expect": {
+        "output": {
+          "encoding": "utf8",
+          "value": "333333333.33333343"
+        }
+      }
+    },
+    {
+      "id": "canonical.p2.rfc8785-b.becbf647612f3696",
+      "description": "RFC 8785 Appendix B: the double 0xbecbf647612f3696.",
+      "operation": "canonicalize",
+      "input": {
+        "encoding": "utf8",
+        "value": "-0.0000033333333333333333"
+      },
+      "expect": {
+        "output": {
+          "encoding": "utf8",
+          "value": "-0.0000033333333333333333"
+        }
+      }
+    },
+    {
+      "id": "canonical.p2.rfc8785-b.43143ff3c1cb0959",
+      "description": "RFC 8785 Appendix B: the double 0x43143ff3c1cb0959.",
+      "operation": "canonicalize",
+      "input": {
+        "encoding": "utf8",
+        "value": "1424953923781206.3"
+      },
+      "expect": {
+        "output": {
+          "encoding": "utf8",
+          "value": "1424953923781206.2"
+        }
+      }
+    },
+    {
+      "id": "canonical.p2.numbers.zero",
+      "description": "Zero.",
+      "operation": "canonicalize",
+      "input": {
+        "encoding": "utf8",
+        "value": "0"
+      },
+      "expect": {
+        "output": {
+          "encoding": "utf8",
+          "value": "0"
+        }
+      }
+    },
+    {
+      "id": "canonical.p2.numbers.negative-zero",
+      "description": "-0 is 0.",
+      "operation": "canonicalize",
+      "input": {
+        "encoding": "utf8",
+        "value": "-0"
+      },
+      "expect": {
+        "output": {
+          "encoding": "utf8",
+          "value": "0"
+        }
+      }
+    },
+    {
+      "id": "canonical.p2.numbers.negative-zero-exponent",
+      "description": "-0.0e5 is 0.",
+      "operation": "canonicalize",
+      "input": {
+        "encoding": "utf8",
+        "value": "-0.0e5"
+      },
+      "expect": {
+        "output": {
+          "encoding": "utf8",
+          "value": "0"
+        }
+      }
+    },
+    {
+      "id": "canonical.p2.numbers.one-fraction",
+      "description": "1.0 is 1.",
+      "operation": "canonicalize",
+      "input": {
+        "encoding": "utf8",
+        "value": "1.0"
+      },
+      "expect": {
+        "output": {
+          "encoding": "utf8",
+          "value": "1"
+        }
+      }
+    },
+    {
+      "id": "canonical.p2.numbers.one-exponent",
+      "description": "1e0 is 1.",
+      "operation": "canonicalize",
+      "input": {
+        "encoding": "utf8",
+        "value": "1e0"
+      },
+      "expect": {
+        "output": {
+          "encoding": "utf8",
+          "value": "1"
+        }
+      }
+    },
+    {
+      "id": "canonical.p2.numbers.one-negative-exponent",
+      "description": "10e-1 is 1.",
+      "operation": "canonicalize",
+      "input": {
+        "encoding": "utf8",
+        "value": "10e-1"
+      },
+      "expect": {
+        "output": {
+          "encoding": "utf8",
+          "value": "1"
+        }
+      }
+    },
+    {
+      "id": "canonical.p2.numbers.trailing-zeros",
+      "description": "1.2500 is 1.25.",
+      "operation": "canonicalize",
+      "input": {
+        "encoding": "utf8",
+        "value": "1.2500"
+      },
+      "expect": {
+        "output": {
+          "encoding": "utf8",
+          "value": "1.25"
+        }
+      }
+    },
+    {
+      "id": "canonical.p2.numbers.small-plain",
+      "description": "0.000001 is written in full.",
+      "operation": "canonicalize",
+      "input": {
+        "encoding": "utf8",
+        "value": "0.000001"
+      },
+      "expect": {
+        "output": {
+          "encoding": "utf8",
+          "value": "0.000001"
+        }
+      }
+    },
+    {
+      "id": "canonical.p2.numbers.small-exponent",
+      "description": "1E-7 uses an exponent.",
+      "operation": "canonicalize",
+      "input": {
+        "encoding": "utf8",
+        "value": "1E-7"
+      },
+      "expect": {
+        "output": {
+          "encoding": "utf8",
+          "value": "1e-7"
+        }
+      }
+    },
+    {
+      "id": "canonical.p2.numbers.large-plain",
+      "description": "1e20 is written in full.",
+      "operation": "canonicalize",
+      "input": {
+        "encoding": "utf8",
+        "value": "1e20"
+      },
+      "expect": {
+        "output": {
+          "encoding": "utf8",
+          "value": "100000000000000000000"
+        }
+      }
+    },
+    {
+      "id": "canonical.p2.numbers.large-exponent",
+      "description": "1e21 uses an exponent with a sign.",
+      "operation": "canonicalize",
+      "input": {
+        "encoding": "utf8",
+        "value": "1e21"
+      },
+      "expect": {
+        "output": {
+          "encoding": "utf8",
+          "value": "1e+21"
+        }
+      }
+    },
+    {
+      "id": "canonical.p2.numbers.negative-exponent-form",
+      "description": "-12.5e30.",
+      "operation": "canonicalize",
+      "input": {
+        "encoding": "utf8",
+        "value": "-12.5e30"
+      },
+      "expect": {
+        "output": {
+          "encoding": "utf8",
+          "value": "-1.25e+31"
+        }
+      }
+    },
+    {
+      "id": "canonical.p2.numbers.underflow",
+      "description": "1e-400 underflows to 0.",
+      "operation": "canonicalize",
+      "input": {
+        "encoding": "utf8",
+        "value": "1e-400"
+      },
+      "expect": {
+        "output": {
+          "encoding": "utf8",
+          "value": "0"
+        }
+      }
+    },
+    {
+      "id": "canonical.p2.numbers.beyond-double-precision",
+      "description": "Digits beyond double precision are rounded away.",
+      "operation": "canonicalize",
+      "input": {
+        "encoding": "utf8",
+        "value": "0.10000000000000000001"
+      },
+      "expect": {
+        "output": {
+          "encoding": "utf8",
+          "value": "0.1"
+        }
+      }
+    },
+    {
+      "id": "canonical.p2.numbers.above-safe-integer",
+      "description": "2^53 + 1 is the double 2^53.",
+      "operation": "canonicalize",
+      "input": {
+        "encoding": "utf8",
+        "value": "9007199254740993"
+      },
+      "expect": {
+        "output": {
+          "encoding": "utf8",
+          "value": "9007199254740992"
+        }
+      }
+    },
+    {
+      "id": "canonical.p2.numbers.long-integer",
+      "description": "A 21-digit integer is rounded to a double.",
+      "operation": "canonicalize",
+      "input": {
+        "encoding": "utf8",
+        "value": "123456789012345678901"
+      },
+      "expect": {
+        "output": {
+          "encoding": "utf8",
+          "value": "123456789012345680000"
+        }
+      }
+    },
+    {
+      "id": "canonical.p2.numbers.fifteen-digits",
+      "description": "A 15-digit integer is exact.",
+      "operation": "canonicalize",
+      "input": {
+        "encoding": "utf8",
+        "value": "-999999999999999"
+      },
+      "expect": {
+        "output": {
+          "encoding": "utf8",
+          "value": "-999999999999999"
+        }
+      }
+    },
+    {
+      "id": "canonical.p2.numbers.sixteen-digits",
+      "description": "A 16-digit integer.",
+      "operation": "canonicalize",
+      "input": {
+        "encoding": "utf8",
+        "value": "1234567890123456"
+      },
+      "expect": {
+        "output": {
+          "encoding": "utf8",
+          "value": "1234567890123456"
+        }
+      }
+    },
+    {
+      "id": "canonical.p2.numbers.many-digits",
+      "description": "A long decimal rounds to the nearest double.",
+      "operation": "canonicalize",
+      "input": {
+        "encoding": "utf8",
+        "value": "3.14159265358979323846264338327950288419716939937510"
+      },
+      "expect": {
+        "output": {
+          "encoding": "utf8",
+          "value": "3.141592653589793"
+        }
+      }
+    },
+    {
+      "id": "canonical.p2.numbers.overflow",
+      "description": "1e400 is beyond the double range.",
+      "operation": "canonicalize",
+      "input": {
+        "encoding": "utf8",
+        "value": "1e400"
+      },
+      "expect": {
+        "error": {
+          "code": "number-out-of-range"
+        }
+      }
+    },
+    {
+      "id": "canonical.p2.numbers.negative-overflow",
+      "description": "-1e400 is beyond the double range.",
+      "operation": "canonicalize",
+      "input": {
+        "encoding": "utf8",
+        "value": "[-1e400]"
+      },
+      "expect": {
+        "error": {
+          "code": "number-out-of-range"
+        }
+      }
+    },
+    {
+      "id": "canonical.p2.rfc8785-3.2.2",
+      "description": "RFC 8785 section 3.2.2: numbers, strings and literals.",
+      "operation": "canonicalize",
+      "input": {
+        "encoding": "utf8",
+        "value": "{\n  \"numbers\": [333333333.33333329, 1E30, 4.50, 2e-3, 0.000000000000000000000000001],\n  \"string\": \"\\u20ac$\\u000F\\u000aA'\\u0042\\u0022\\u005c\\\\\\\"\\/\",\n  \"literals\": [null, true, false]\n}"
+      },
+      "expect": {
+        "output": {
+          "encoding": "utf8",
+          "value": "{\"literals\":[null,true,false],\"numbers\":[333333333.3333333,1e+30,4.5,0.002,1e-27],\"string\":\"€$\\u000f\\nA'B\\\"\\\\\\\\\\\"/\"}"
+        }
+      }
+    },
+    {
+      "id": "canonical.p2.rfc8785-3.2.3",
+      "description": "RFC 8785 section 3.2.3: member names sort by UTF-16 code units.",
+      "operation": "canonicalize",
+      "input": {
+        "encoding": "utf8",
+        "value": "{\n  \"\\u20ac\": \"Euro Sign\",\n  \"\\r\": \"Carriage Return\",\n  \"\\ufb33\": \"Hebrew Letter Dalet With Dagesh\",\n  \"1\": \"One\",\n  \"\\ud83d\\ude00\": \"Emoji: Grinning Face\",\n  \"\\u0080\": \"Control\",\n  \"\\u00f6\": \"Latin Small Letter O With Diaeresis\"\n}"
+      },
+      "expect": {
+        "output": {
+          "encoding": "utf8",
+          "value": "{\"\\r\":\"Carriage Return\",\"1\":\"One\",\"\":\"Control\",\"ö\":\"Latin Small Letter O With Diaeresis\",\"€\":\"Euro Sign\",\"😀\":\"Emoji: Grinning Face\",\"דּ\":\"Hebrew Letter Dalet With Dagesh\"}"
+        }
+      }
+    },
+    {
+      "id": "canonical.p2.strings.short-escapes",
+      "description": "Control characters with a short form use it.",
+      "operation": "canonicalize",
+      "input": {
+        "encoding": "utf8",
+        "value": "\"\\b\\t\\n\\f\\r\""
+      },
+      "expect": {
+        "output": {
+          "encoding": "utf8",
+          "value": "\"\\b\\t\\n\\f\\r\""
+        }
+      }
+    },
+    {
+      "id": "canonical.p2.strings.control-lowercase",
+      "description": "Other control characters are \\u00xx in lowercase.",
+      "operation": "canonicalize",
+      "input": {
+        "encoding": "utf8",
+        "value": "\"\\u0000\\u0001\\u001F\\u000b\""
+      },
+      "expect": {
+        "output": {
+          "encoding": "utf8",
+          "value": "\"\\u0000\\u0001\\u001f\\u000b\""
+        }
+      }
+    },
+    {
+      "id": "canonical.p2.strings.delete-literal",
+      "description": "U+007F is not escaped.",
+      "operation": "canonicalize",
+      "input": {
+        "encoding": "utf8",
+        "value": "\"\\u007f\""
+      },
+      "expect": {
+        "output": {
+          "encoding": "utf8",
+          "value": "\"\""
+        }
+      }
+    },
+    {
+      "id": "canonical.p2.strings.html-literal",
+      "description": "HTML-significant characters are not escaped.",
+      "operation": "canonicalize",
+      "input": {
+        "encoding": "utf8",
+        "value": "\"<a href='x'>&+</a>\""
+      },
+      "expect": {
+        "output": {
+          "encoding": "utf8",
+          "value": "\"<a href='x'>&+</a>\""
+        }
+      }
+    },
+    {
+      "id": "canonical.p2.strings.solidus",
+      "description": "An escaped solidus is written literally.",
+      "operation": "canonicalize",
+      "input": {
+        "encoding": "utf8",
+        "value": "\"\\/\""
+      },
+      "expect": {
+        "output": {
+          "encoding": "utf8",
+          "value": "\"/\""
+        }
+      }
+    },
+    {
+      "id": "canonical.p2.strings.line-separators",
+      "description": "U+2028 and U+2029 are literal.",
+      "operation": "canonicalize",
+      "input": {
+        "encoding": "utf8",
+        "value": "\"\\u2028\\u2029\""
+      },
+      "expect": {
+        "output": {
+          "encoding": "utf8",
+          "value": "\"  \""
+        }
+      }
+    },
+    {
+      "id": "canonical.p2.strings.non-ascii-literal",
+      "description": "Non-ASCII characters are literal UTF-8.",
+      "operation": "canonicalize",
+      "input": {
+        "encoding": "utf8",
+        "value": "\"\\u00fcber \\u20ac é\""
+      },
+      "expect": {
+        "output": {
+          "encoding": "utf8",
+          "value": "\"über € é\""
+        }
+      }
+    },
+    {
+      "id": "canonical.p2.strings.pair-literal",
+      "description": "An escaped surrogate pair is the literal character.",
+      "operation": "canonicalize",
+      "input": {
+        "encoding": "utf8",
+        "value": "\"\\ud83d\\ude00\""
+      },
+      "expect": {
+        "output": {
+          "encoding": "utf8",
+          "value": "\"😀\""
+        }
+      }
+    },
+    {
+      "id": "canonical.p2.strings.quote-backslash",
+      "description": "A quote and a backslash are escaped.",
+      "operation": "canonicalize",
+      "input": {
+        "encoding": "utf8",
+        "value": "\"\\\"\\\\\""
+      },
+      "expect": {
+        "output": {
+          "encoding": "utf8",
+          "value": "\"\\\"\\\\\""
+        }
+      }
+    },
+    {
+      "id": "canonical.p2.strings.lone-high-surrogate",
+      "description": "A lone high surrogate escape is rejected.",
+      "operation": "canonicalize",
+      "input": {
+        "encoding": "utf8",
+        "value": "\"\\ud800\""
+      },
+      "expect": {
+        "error": {
+          "code": "lone-surrogate"
+        }
+      }
+    },
+    {
+      "id": "canonical.p2.strings.lone-low-surrogate",
+      "description": "A lone low surrogate escape is rejected.",
+      "operation": "canonicalize",
+      "input": {
+        "encoding": "utf8",
+        "value": "[\"\\udc00x\"]"
+      },
+      "expect": {
+        "error": {
+          "code": "lone-surrogate"
+        }
+      }
+    },
+    {
+      "id": "canonical.p2.strings.lone-surrogate-name",
+      "description": "A lone surrogate in a member name is rejected.",
+      "operation": "canonicalize",
+      "input": {
+        "encoding": "utf8",
+        "value": "{\"\\udbff\":1}"
+      },
+      "expect": {
+        "error": {
+          "code": "lone-surrogate"
+        }
+      }
+    },
+    {
+      "id": "canonical.p2.strings.invalid-byte",
+      "description": "A byte that is not UTF-8 is rejected.",
+      "operation": "canonicalize",
+      "input": {
+        "encoding": "base64",
+        "value": "ImH/Ig=="
+      },
+      "expect": {
+        "error": {
+          "code": "invalid-utf8"
+        }
+      }
+    },
+    {
+      "id": "canonical.p2.strings.encoded-surrogate",
+      "description": "A UTF-8 encoded surrogate is rejected.",
+      "operation": "canonicalize",
+      "input": {
+        "encoding": "base64",
+        "value": "Iu2ggCI="
+      },
+      "expect": {
+        "error": {
+          "code": "invalid-utf8"
+        }
+      }
+    },
+    {
+      "id": "canonical.p2.strings.invalid-name",
+      "description": "A member name that is not UTF-8 is rejected.",
+      "operation": "canonicalize",
+      "input": {
+        "encoding": "base64",
+        "value": "eyLAryI6MX0="
+      },
+      "expect": {
+        "error": {
+          "code": "invalid-utf8"
+        }
+      }
+    },
+    {
+      "id": "canonical.p2.members.sorted",
+      "description": "Members are sorted.",
+      "operation": "canonicalize",
+      "input": {
+        "encoding": "utf8",
+        "value": "{\"b\":1,\"a\":2,\"c\":{\"z\":true,\"m\":null}}"
+      },
+      "expect": {
+        "output": {
+          "encoding": "utf8",
+          "value": "{\"a\":2,\"b\":1,\"c\":{\"m\":null,\"z\":true}}"
+        }
+      }
+    },
+    {
+      "id": "canonical.p2.members.utf16-order",
+      "description": "U+1F600 (surrogates D83D DE00) sorts before U+FFFF.",
+      "operation": "canonicalize",
+      "input": {
+        "encoding": "utf8",
+        "value": "{\"\\uffff\":1,\"\\ud83d\\ude00\":2}"
+      },
+      "expect": {
+        "output": {
+          "encoding": "utf8",
+          "value": "{\"😀\":2,\"￿\":1}"
+        }
+      }
+    },
+    {
+      "id": "canonical.p2.members.prefix-order",
+      "description": "A name sorts after its prefix.",
+      "operation": "canonicalize",
+      "input": {
+        "encoding": "utf8",
+        "value": "{\"ab\":1,\"a\":2,\"\":3}"
+      },
+      "expect": {
+        "output": {
+          "encoding": "utf8",
+          "value": "{\"\":3,\"a\":2,\"ab\":1}"
+        }
+      }
+    },
+    {
+      "id": "canonical.p2.members.escaped-and-ascii",
+      "description": "Decoded and ASCII names sort together.",
+      "operation": "canonicalize",
+      "input": {
+        "encoding": "utf8",
+        "value": "{\"\\u00e9\":1,\"z\":2,\"\\u00e0\":3,\"a\":4,\"\\u0041\":5}"
+      },
+      "expect": {
+        "output": {
+          "encoding": "utf8",
+          "value": "{\"A\":5,\"a\":4,\"z\":2,\"à\":3,\"é\":1}"
+        }
+      }
+    },
+    {
+      "id": "canonical.p2.members.nested-arrays",
+      "description": "Objects in arrays are sorted; arrays keep their order.",
+      "operation": "canonicalize",
+      "input": {
+        "encoding": "utf8",
+        "value": "[{\"y\":2,\"x\":1},[3,1,2],{\"b\":[{\"d\":0,\"c\":1}],\"a\":1}]"
+      },
+      "expect": {
+        "output": {
+          "encoding": "utf8",
+          "value": "[{\"x\":1,\"y\":2},[3,1,2],{\"a\":1,\"b\":[{\"c\":1,\"d\":0}]}]"
+        }
+      }
+    },
+    {
+      "id": "canonical.p2.members.whitespace",
+      "description": "Whitespace is removed.",
+      "operation": "canonicalize",
+      "input": {
+        "encoding": "utf8",
+        "value": " { \"a\" : [ 1 , 2 ] , \"b\" : { } } "
+      },
+      "expect": {
+        "output": {
+          "encoding": "utf8",
+          "value": "{\"a\":[1,2],\"b\":{}}"
+        }
+      }
+    },
+    {
+      "id": "canonical.p2.members.duplicate",
+      "description": "A duplicate member name is rejected.",
+      "operation": "canonicalize",
+      "input": {
+        "encoding": "utf8",
+        "value": "{\"a\":1,\"a\":1}"
+      },
+      "expect": {
+        "error": {
+          "code": "duplicate-member"
+        }
+      }
+    },
+    {
+      "id": "canonical.p2.members.duplicate-escaped",
+      "description": "A duplicate spelled with an escape is rejected.",
+      "operation": "canonicalize",
+      "input": {
+        "encoding": "utf8",
+        "value": "{\"a\":1,\"\\u0061\":2}"
+      },
+      "expect": {
+        "error": {
+          "code": "duplicate-member"
+        }
+      }
+    },
+    {
+      "id": "canonical.p2.members.duplicate-nested",
+      "description": "A nested duplicate rejects the whole value.",
+      "operation": "canonicalize",
+      "input": {
+        "encoding": "utf8",
+        "value": "{\"b\":1,\"a\":[{\"x\":1,\"y\":2,\"x\":3}]}"
+      },
+      "expect": {
+        "error": {
+          "code": "duplicate-member"
+        }
+      }
+    },
+    {
+      "id": "canonical.p2.limits.depth-64",
+      "description": "64 nested arrays are accepted.",
+      "operation": "canonicalize",
+      "input": {
+        "encoding": "utf8",
+        "value": "[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]"
+      },
+      "expect": {
+        "output": {
+          "encoding": "utf8",
+          "value": "[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]"
+        }
+      }
+    },
+    {
+      "id": "canonical.p2.limits.depth-65",
+      "description": "65 nested arrays are rejected.",
+      "operation": "canonicalize",
+      "input": {
+        "encoding": "utf8",
+        "value": "[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]"
+      },
+      "expect": {
+        "error": {
+          "code": "depth-exceeded"
+        }
+      }
+    },
+    {
+      "id": "canonical.p2.limits.depth-65-objects",
+      "description": "65 nested objects are rejected.",
+      "operation": "canonicalize",
+      "input": {
+        "encoding": "utf8",
+        "value": "{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}"
+      },
+      "expect": {
+        "error": {
+          "code": "depth-exceeded"
+        }
+      }
+    },
+    {
+      "id": "canonical.p2.syntax.trailing-value",
+      "description": "A second value is rejected.",
+      "operation": "canonicalize",
+      "input": {
+        "encoding": "utf8",
+        "value": "1 2"
+      },
+      "expect": {
+        "error": {
+          "code": "invalid-json"
+        }
+      }
+    },
+    {
+      "id": "canonical.p2.syntax.empty",
+      "description": "Empty input is rejected.",
+      "operation": "canonicalize",
+      "input": {
+        "encoding": "utf8",
+        "value": ""
+      },
+      "expect": {
+        "error": {
+          "code": "invalid-json"
+        }
+      }
+    },
+    {
+      "id": "canonical.p2.syntax.byte-order-mark",
+      "description": "A byte order mark is rejected.",
+      "operation": "canonicalize",
+      "input": {
+        "encoding": "base64",
+        "value": "77u/MQ=="
+      },
+      "expect": {
+        "error": {
+          "code": "invalid-json"
+        }
+      }
+    }
+  ]
+}

@@ -11,6 +11,8 @@
     "invocation": "invocation-1"
   },
   "arrange": [
+    { "op": "host.createStarted", "target": "host-1" },
+    { "op": "surface.createStarted", "target": "surface-1", "arguments": { "host": "host-1" } },
     { "op": "session.createAuthenticated", "target": "session-1", "arguments": { "surface": "surface-1" } },
     { "op": "capability.registerFailing", "target": "surface-1", "arguments": { "name": "sample.failure", "privateDetail": "secret-stack" } }
   ],

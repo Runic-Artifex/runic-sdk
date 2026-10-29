@@ -21,6 +21,33 @@ streaming, security, and errors against
   request identifier.
 - `expect.absentEvents` lists events that must never occur.
 
+[`operations.json`](operations.json) is the closed operation vocabulary. For
+each operation it states whether the operation creates or references its
+`target`, and whether each argument creates a resource, references an existing
+one, or carries a plain value (credentials, origins, client identities,
+capability names, paths, response bodies). The schema's operation names and
+required arguments match it.
+
+### Self-contained scenarios
+
+Every scenario creates every resource it uses. A runner needs nothing but the
+scenario file and never invents a resource or chooses a default:
+
+- `arrange` or an earlier step creates each host, listener, surface, stream,
+  request, session, and invocation before an operation, argument, or
+  expectation names it. Nothing exists before `arrange` runs.
+- Every operation names the resources it acts on: a surface names its `host`;
+  every request and session operation names its `surface`; every invocation
+  names its `session`. There is no implicit only surface or current session.
+- Each identifier names exactly one resource of one kind, and `ids` lists
+  exactly the resources the scenario creates.
+
+A runner reports a scenario that references an id it was not told to create
+as a failure of the scenario, not as a default to fill in. Contract
+verification (`npm run verify:contract`) rejects such scenarios; its invalid
+examples are in
+[`tests/fixtures/desktop-contract/invalid-scenarios`](../../../tests/fixtures/desktop-contract/invalid-scenarios).
+
 Scenarios inject identifiers, clock values, limits, and policy. They never use
 wall-clock sleeps, ephemeral ports, random credentials, CLR exception names,
 Effect internals, browser process identifiers, or physical packet boundaries.

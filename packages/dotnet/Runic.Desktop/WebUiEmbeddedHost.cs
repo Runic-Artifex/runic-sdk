@@ -126,6 +126,10 @@ internal interface IWebUiEmbeddedHost : IAsyncDisposable
     /// <summary>Moves the window onto a monitor; requires <see cref="DesktopWindowCapabilities.MonitorPlacement"/>.</summary>
     ValueTask MoveToMonitorAsync(string monitorId, CancellationToken cancellationToken = default) =>
         ValueTask.FromException(new NotSupportedException("This host cannot place its window on a monitor."));
+
+    /// <summary>Applies DesktopHost.SetSpellCheckingLanguagesAsync; a host whose checker has no languages ignores it.</summary>
+    ValueTask SetSpellCheckingLanguagesAsync(IReadOnlyList<string> languages, CancellationToken cancellationToken = default) =>
+        ValueTask.CompletedTask;
 }
 
 /// <summary>Describes the initial state of an embedded platform WebView window.</summary>
@@ -209,4 +213,10 @@ internal sealed record WebUiEmbeddedHostOptions
 
     /// <summary>The macOS title bar (DesktopWindowOptions.MacOS); other hosts ignore it.</summary>
     public MacOSWindowOptions MacOS { get; init; } = new();
+
+    /// <summary>Whether the page's fields are spell-checked (DesktopWindowOptions.SpellChecking); off is in <see cref="DocumentStartScript"/>.</summary>
+    public bool SpellChecking { get; init; } = true;
+
+    /// <summary>The application's spell-checking languages (DesktopHost.SpellCheckingLanguages); empty for the user's.</summary>
+    public IReadOnlyList<string> SpellCheckingLanguages { get; init; } = [];
 }

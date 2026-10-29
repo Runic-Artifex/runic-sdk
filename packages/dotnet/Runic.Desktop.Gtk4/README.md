@@ -97,10 +97,14 @@ position of the window's X window through Xlib, as GTK 3 did: `X` and `Y` open
 the window there, the window reports `DesktopWindowCapabilities.Move` and
 `MoveAsync` moves it, and `DesktopWindow.State` and its `Placement` report the
 position in logical pixels: the top-left corner of the frame the window manager
-draws, or of GTK's own decorations without their shadow. A hidden window takes
-its position when it is first shown. The window manager may still adjust a
-requested position, as with GTK 3. Whether a process uses X11 follows GDK:
-`GDK_BACKEND`, else Wayland when `WAYLAND_DISPLAY` is set and X11 otherwise.
+draws (its `_NET_FRAME_EXTENTS`, also when it does not reparent the window, as
+KWin does for X11 windows on Wayland), or of GTK's own decorations without their
+shadow. A window opening at a position, or a hidden window shown for the first
+time, carries it in its `WM_NORMAL_HINTS` (`USPosition`, as GTK 3's
+`gtk_window_move` set it), so the window manager keeps it instead of placing
+the new window itself. The window manager may still adjust a requested
+position, as with GTK 3. Whether a process uses X11 follows GDK: `GDK_BACKEND`,
+else Wayland when `WAYLAND_DISPLAY` is set and X11 otherwise.
 
 On Wayland the compositor places every window: an explicit `X` and `Y` are
 rejected, the window has no `Move`, and the position in `State` is `null`.
@@ -112,9 +116,12 @@ while it is maximized, so it is the restored (unmaximized) size to save.
 Restoring `DesktopWindowOptions.Placement` applies its size and maximized state,
 without the `window-option-unsupported` error an explicit `X` and `Y` cause on
 Wayland, so a placement saved with GTK 3 or on another machine still opens. On
-X11 its position is applied too, kept on a monitor's work area as GTK 3 does; on
-Wayland GTK 4 cannot tell which monitor the compositor will choose, so the
-position is ignored and the restored size is fitted to the largest monitor. See
+X11 its position is restored too, kept on a monitor's work area as GTK 3 does; a
+maximized placement opens maximized and restores to the saved position and size.
+On Wayland the position cannot be restored: Wayland gives clients no global
+coordinates, GTK 4 cannot tell which monitor the compositor will choose, so the
+position is ignored and the restored size is fitted to the largest monitor, and
+a placement saved on Wayland has no position. See
 [Window state and restore](../Runic.Desktop/README.md#window-state-and-restore).
 
 `DesktopHost.Monitors` lists GDK's monitors in logical pixels while
@@ -136,6 +143,12 @@ and whether the compositor honours the monitor for full screen is its choice.
 `DesktopWindowOptions.LayoutDirection` sets the direction of the window, its
 header bar and the view, and `Language` WebKitGTK's preferred languages
 (`navigator.language`, `Accept-Language`) for the window's own web context.
+
+WebKitGTK's spell checker is on in every window, with enchant dictionaries for
+`DesktopHostOptions.SpellCheckingLanguages`, and the host implements
+`IDesktopSpellCheckingWindowHost` for `DesktopHost.SetSpellCheckingLanguagesAsync`.
+The checker and its languages belong to the process, whichever window's context
+sets them. See [Spell checking](../Runic.Desktop/README.md#spell-checking).
 
 The window reports `DesktopWindowCapabilities.FileDrop` once it finds WebKit's
 own drop target on the view. WebKit's target claims a drop, so a second target
