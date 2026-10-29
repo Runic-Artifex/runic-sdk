@@ -31,6 +31,17 @@ the browser outlet that mounts it. Microsoft DI owns one scope per window, and
 the Views and the default View locator. The `--splat` variant locates Views
 through ReactiveUI's Splat instead, with the same scoped ViewModels.
 
+Every Editor binds Title and Body to the generated `EditorFields` descriptors:
+`useField` in React, Vue and Svelte, `injectField` in Angular, and
+`createFieldController` in the plain and Effect frontends (see
+[Fields](../../packages/web/views/README.md#fields)). A field is written after
+a pause in typing (`commit: "pause"`) or when it loses focus, and Save awaits
+the fields' `commit()`, so it saves what the user typed. The Angular Editor binds its Reactive Forms
+controls with `[runicField]` from `@runic-artifex/angular/forms`; its
+`?mode=baseline` variant binds the fields in the template without forms. Its
+field writes go through `WindowOperations`, so they take their turn with the
+window's other operations.
+
 ## Run it from this repository
 
 ```sh
@@ -48,7 +59,7 @@ dotnet run --project examples/notes-view-first/NotesViewFirst.csproj -- --web-ro
 
 The `Effect` folder is the plain frontend with its Editor written with
 [`@runic-artifex/views-effect`](../../packages/web/views-effect/README.md):
-field writes and Save run as Effects, and Save is an operation with an explicit
+Save runs as an Effect after the fields' writes, and it is an operation with an explicit
 request ID, retries and a timeout that cancels it in .NET. Its build swaps
 [`Effect/src/editor.ts`](Effect/src/editor.ts) in for `Frontend/src/editor.ts`,
 so the plain bundle does not change:

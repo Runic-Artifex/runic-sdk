@@ -1,5 +1,5 @@
 import { inject, Injectable, type Signal } from "@angular/core";
-import type { ViewClient } from "@runic-artifex/views";
+import type { BridgeField, FieldDefinition, ViewClient } from "@runic-artifex/views";
 import { injectView } from "../../../../../packages/web/angular/src/inject-view";
 
 interface DisposableView { dispose(): void; }
@@ -49,6 +49,15 @@ export class WindowOperations {
       lease.pending--;
       this.disposeWhenReleased(view, lease);
     });
+  }
+
+  /**
+   * A generated field descriptor whose writes take their turn with the window's other operations, for
+   * `injectField`. It writes with the setter, so the checked write is left out.
+   */
+  field<V extends DisposableView, S, T>(field: BridgeField<V, S, T>): FieldDefinition<V, S, T> {
+    const { checked: _checked, baseline: _baseline, ...setter } = field;
+    return { ...setter, write: (view, value) => this.run(view, target => field.write(target, value)) };
   }
 
   release(view: DisposableView): void {
