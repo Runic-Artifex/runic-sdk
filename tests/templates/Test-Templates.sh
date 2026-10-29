@@ -667,6 +667,9 @@ verify_template() {
   else
     frontend_script "$manager" "$output/Frontend" typecheck
   fi
+  # The frontend test runs the page against the generated typed mocks, which the build wrote.
+  test -f "$output/Frontend/src/generated/workspace.mock.ts"
+  frontend_script "$manager" "$output/Frontend" test
   if [[ "$host" == cswebui ]]; then
     serve_and_fetch "$output" "$output/serve-release.log" "$output/release-document.html" false \
       dotnet run --project "$output/$project_name.csproj" --configuration Release --no-build

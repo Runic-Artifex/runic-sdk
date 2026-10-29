@@ -1,5 +1,7 @@
 <main>
   <header><h1>Runic Views</h1><p>Window/View starter · Angular</p></header>
+  @if (connection() === "reconnecting") { <p role="status">Reconnecting to the .NET Window…</p> }
+  @if (connection() === "lost") { <p role="alert">The connection to the .NET Window was lost. The page reconnects when the application is back.</p> }
   <nav aria-label="Main navigation">
     <button [disabled]="!workspace.client()" (click)="navigate.run('showWelcome')">Welcome</button>
     <button [disabled]="!workspace.client()" (click)="navigate.run('showCounter')">Counter</button>

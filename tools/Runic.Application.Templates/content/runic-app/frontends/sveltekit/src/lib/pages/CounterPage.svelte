@@ -2,6 +2,7 @@
 
 <script lang="ts">
   import { useCommand, useField, useView } from "@runic-artifex/svelte";
+  import { describeBridgeError } from "@runic-artifex/views";
   import { CounterFields, type CounterPageReference } from "../../generated/counter.js";
 
   let { page }: { page: CounterPageReference } = $props();
@@ -32,5 +33,5 @@
   </label>
   <!-- Increment waits until the Step it adds has been written. -->
   <button disabled={!counter.client || increment.pending || step.editing} onclick={() => increment.run()}>Increment</button>
-  {#if error !== undefined}<p role="alert">{String(error)}</p>{/if}
+  {#if error !== undefined}<p role="alert">{describeBridgeError(error)}</p>{/if}
 </section>

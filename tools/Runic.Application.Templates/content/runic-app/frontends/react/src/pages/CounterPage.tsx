@@ -1,4 +1,5 @@
 import { useCommand, useField, useView } from "@runic-artifex/react";
+import { describeBridgeError } from "@runic-artifex/views";
 import { CounterFields, type CounterPageReference } from "../generated/counter.js";
 
 const steps = [1, 2, 5, 10];
@@ -30,6 +31,6 @@ export function CounterPage({ page }: { page: CounterPageReference }) {
     </label>
     {/* Increment waits until the Step it adds has been written. */}
     <button disabled={!client || increment.pending || step.editing} onClick={() => void increment.run()}>Increment</button>
-    {error !== undefined && <p role="alert">{String(error)}</p>}
+    {error !== undefined && <p role="alert">{describeBridgeError(error)}</p>}
   </section>;
 }
