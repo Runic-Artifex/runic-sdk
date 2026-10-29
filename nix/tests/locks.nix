@@ -3,6 +3,8 @@
 # - A Bun frontend whose lock file changed while its hash did not fails. Nix names a fixed-output derivation by
 #   its name and hash alone, so the install of the earlier lock file is reused; here the copy of the current install
 #   is given the changed lock file, as such a reuse does.
+# - Through buildRunicApplication, with src a path, the install is named after a digest of the lock files instead:
+#   the changed lock file names another install, which Nix fetches and reports with its hash.
 # - The Bun install for another system is a fixed-output derivation that this system can build.
 # - An npm frontend without a hash in a lib.fileset.toSource source installs from package-lock.json, which the
 #   builder reads at evaluation from the unfiltered source: the filtered one's store path exists only once a
@@ -28,6 +30,22 @@ let
     };
   current = bunFrontend "current";
   stale = pkgs.testers.testBuildFailure (current.overrideAttrs { src = fixtures + "/frontend-lock/changed"; });
+
+  # The install's name, through buildRunicApplication, for the frontend in tests/fixtures/nix/frontend-lock/<directory>.
+  installName =
+    directory:
+    (runic.buildRunicApplication pkgs {
+      pname = "runic-frontend-lock-fixture";
+      version = "0.0.0";
+      src = fixtures + "/frontend-lock";
+      projectFile = "App.csproj";
+      frontend = {
+        inherit directory;
+        packageManager = "bun";
+        hash = lib.fakeHash;
+      };
+      host = null;
+    }).frontendNodeModules.fetched.name;
 
   npmFiltered =
     (runic.buildRunicApplication pkgs {
@@ -67,6 +85,8 @@ assert evaluates {
 assert !evaluates [ locks.both ];
 assert !evaluates { linux-arm64 = [ locks.linux-arm64 ]; };
 assert !evaluates { linux-x64 = [ locks.linux-arm64 ]; };
+assert installName "current" != installName "changed";
+assert lib.hasPrefix "runic-frontend-lock-fixture-frontend-node-modules-" (installName "current");
 pkgs.runCommand "runic-builder-locks" { } ''
   grep -q 'frontend.hash is out of date' ${stale}/testBuildFailure.log
   test -d ${current}/node_modules/is-number

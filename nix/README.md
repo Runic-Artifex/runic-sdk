@@ -83,6 +83,15 @@ network, and installs the template into `~/.templateengine`, as
 }
 ```
 
+A `github:` input is GitHub's tarball of the tag. The SDK's `.gitattributes`
+gives its PowerShell scripts CRLF line endings, and GitHub's tarball has
+them, so it differs from the committed files that a Git input
+(`git+https://github.com/Runic-Artifex/runic-sdk?ref=refs/tags/v0.13.0&shallow=1`)
+fetches: the two kinds of input lock different `narHash` values. The same
+`github:` URL locks the same `narHash` in Nix 2.34.9, 2.35.2 and a 2.36
+prerelease (checked for `v0.8.0-preview.6` and `v0.13.0`), so either kind of
+input works; keep the one the lock file was written with.
+
 Every function of `runic-sdk.lib` takes the consumer's nixpkgs first.
 `overlays.default` adds `pkgs.buildRunicApplication` for package files that
 `callPackage` loads.
@@ -204,8 +213,8 @@ A build step that runs a local tool from `dotnet-tools.json`, such as the
 which runs `dotnet tool run runic-translations`, needs the tool restored, and
 `dotnet tool restore` downloads it. `dotnetTools` restores the tools of a
 manifest offline instead. Each tool package is a fixed-output download from
-nuget.org by the hash of its `.nupkg`; start each with `lib.fakeHash` and copy
-the hash that `nix build` reports:
+nuget.org by the hash of its `.nupkg`;
+[`fixedOutputHashes`](#fixed-output-hashes) prints them all:
 
 ```nix
 dotnetTools = {
@@ -231,7 +240,8 @@ dotnetTools = {
 
 A relative `manifest` of such a `src` is read from its store path, which a
 read-only evaluation cannot do before a writable one has added it. Every tool
-in the manifest needs a hash, and a new tool version a new one. The build runs `dotnet tool restore --tool-manifest`
+in the manifest needs a hash, and a new tool version a new one; the evaluation
+names every tool without one. The build runs `dotnet tool restore --tool-manifest`
 before the restore of the projects; `dotnet tool run` then finds the manifest
 from the directory it runs in, as during development. A manifest at the root
 of `src` needs `dotnetTools` as well: nixpkgs restores its tools by itself, from
@@ -254,11 +264,16 @@ Runic targets build the frontend without installing.
 
 A required hash starts as `lib.fakeHash`. The first `nix build` fails and
 reports the real hash; replace it, and update it whenever the lock file
-changes. Nix names the download by its hash, so a changed lock file with the
-previous hash would get the previous download. The npm and Bun builds compare
-the lock file the download came from with the frontend's and fail when they
-differ; pnpm installs from the frontend's lock file and fails when the download
-lacks a package.
+changes. [`fixedOutputHashes`](#fixed-output-hashes) prints it, with every
+other hash of the package. The download is named after a digest of the lock
+files, so a changed lock file under the previous hash is downloaded again and
+`nix build` reports its new hash. The digest is read at evaluation, as npm's
+lock file is without a hash: from `src` when it is a path, or from the
+unfiltered source of a filtered one. Any other `src` names the download by its
+hash alone, and a changed lock file with the previous hash gets the previous
+download: the npm and Bun builds then compare the lock file the download came
+from with the frontend's and fail when they differ, and pnpm installs from the
+frontend's lock file and fails when the download lacks a package.
 
 Bun installs only one system's optional packages, such as a bundler's native
 binary, so its hash can differ per system. `hash` then takes one per system:
@@ -276,8 +291,9 @@ frontend = {
 The install is told the system's OS and CPU (`bun install --os=linux
 --cpu=arm64`), so any system can compute another's hash:
 `nix build .#default.frontendNodeModules.fetchedFor.aarch64-linux` installs the
-`aarch64-linux` packages and reports their hash. Nix names the download by its
-hash alone, so a build on `aarch64-linux` uses the same download.
+`aarch64-linux` packages and reports their hash, and `fixedOutputHashes`
+prints the hash of every system that `hash` names. A build on `aarch64-linux`
+uses the same download.
 
 The build runs `npm run build`, `pnpm run build` or `bun run --bun build` as
 usual, with pnpm told not to fetch the version that `package.json` names and
@@ -290,6 +306,33 @@ Only the frontend directory's `package.json`, lock file, `.npmrc` and
 `package.json` needs `frontend.nodeModules`, which replaces the fetch with any
 derivation that has `node_modules` at its root; `null` builds a frontend
 without dependencies.
+
+### Fixed-output hashes
+
+A build stops at the first download whose hash does not match, so a package
+with several out-of-date hashes would take one build for each.
+`fixedOutputHashes`, a program that every package has, prints them all in one
+run, ready to paste:
+
+```console
+$ nix run .#default.fixedOutputHashes
+frontend.hash = {
+  aarch64-linux = "sha256-qab2mPnz9L+4BfJMwu0HvBCTC9culrZ37qb+V1dTZF4=";
+  x86_64-linux = "sha256-rOMt1nJourAtS+2P0D+OWVjpgiuRrN+dRGRem85YmsQ=";
+};
+dotnetTools.hashes = {
+  dotnet-runic = "sha256-SRL48V4APy3qpzjP44yqJgjunh6A7w9+Y4qK6JiHHNc=";
+  dotnet-runic-translations = "sha256-rqTx4tM5QGkbR7psgzoU0agznrFVc0fe+IM5R1gmge0=";
+};
+```
+
+It downloads the frontend's packages, for each system that `frontend.hash`
+names, and each tool of `dotnetTools` once more under `lib.fakeHash`, with
+`nix-store --realise --keep-going`, and prints the hash that Nix reports for
+each, whatever the package's hashes say. It evaluates while hashes are
+missing. npm without a hash and `frontend.nodeModules` have no hash to print.
+`nix build --keep-going` also reports every mismatch of one build, but not a
+missing tool hash, which fails the evaluation.
 
 ### Shell completions
 
@@ -334,6 +377,20 @@ repeats them:
 <ApplicationId>org.example.Notes</ApplicationId>
 <RunicApplicationFileTypes>.notes=application/x-example-notes</RunicApplicationFileTypes>
 <RunicApplicationUrlSchemes>org.example.notes</RunicApplicationUrlSchemes>
+```
+
+A definition by extension cannot say that a type is a ZIP file
+(`sub-class-of`) or how to recognise its content (`magic`). Install your own
+definition in `postInstall` instead, at the same path; the build keeps it as
+it is, or as the link to it, and only adds its types to the desktop entry. It
+must define every MIME type of `RunicApplicationFileTypes`, or the build fails
+naming the one it lacks:
+
+```nix
+postInstall = ''
+  install -Dm644 ${./packaging/linux/org.example.Notes.xml} \
+    $out/share/mime/packages/org.example.Notes.xml
+'';
 ```
 
 A file type or scheme that the package command rejects (`RAPPPKG1001`) fails
@@ -544,6 +601,8 @@ build agree; `buildRunicApplication` takes the same two arguments. Other
   workflow runs `nix flake check --no-build --all-systems` first, a read-only
   evaluation on an empty store, which fails when a builder reads a file from a
   store path that only a writable evaluation adds.
+  `builder-dotnet-tools-fixed-output-hashes` builds the fixture's
+  `fixedOutputHashes`; running it needs the Nix daemon and nuget.org.
 - The `builder-completions` flake check installs the bash, zsh and fish
   completions of a Runic.CommandLine program with `completions`.
 - The `builder-spelling-dictionaries` flake check evaluates the wrapper's
@@ -553,7 +612,10 @@ build agree; `buildRunicApplication` takes the same two arguments. Other
   `RunicApplicationFileTypes` and `RunicApplicationUrlSchemes` and compares the
   installed MIME definitions and `MimeType=` with
   `tests/fixtures/nix/file-types/expected`, which the package command's tests
-  (`Runic.Application.Tool.Tests`) compare its own output with. The `create`
+  (`Runic.Application.Tool.Tests`) compare its own output with.
+  `builder-desktop-integration` runs the same step on a package that installs
+  its own definition, with `magic` and `sub-class-of`, and checks that it is
+  kept and that one without a declared type fails. The `create`
   check builds the create app's wrapper. Creating a project downloads from
   nuget.org, so it runs outside the sandbox:
   `nix run .#create -- MyApp --yes --nix` in an environment without `dotnet`.
@@ -581,6 +643,8 @@ build agree; `buildRunicApplication` takes the same two arguments. Other
   `RUNIC_NIX_TEMPLATE_WINDOW=1` each application opens its window under Xvfb
   and must load GTK and WebKitGTK from the store.
 - The `builder-locks` flake check requires that a Bun frontend whose lock
-  changed without its hash fails, that another system's Bun install builds,
+  changed without its hash fails, that `buildRunicApplication` names the
+  install of a changed lock file differently, that another system's Bun install
+  builds,
   that an npm frontend without a hash installs from a `lib.fileset.toSource`
   source, and that lock files are chosen and checked per runtime identifier.

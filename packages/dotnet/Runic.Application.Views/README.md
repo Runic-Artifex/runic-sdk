@@ -1285,7 +1285,7 @@ generator, such as a CommunityToolkit `[ObservableProperty]`, points at its
 a link to its entry in the [diagnostics catalog](https://github.com/Runic-Artifex/runic-sdk/blob/main/docs/diagnostics.md#bridge-code-generator)
 for the release you use.
 
-`RUNICBRIDGE013`, `015`, `019`, `020`, `028`, `029`, `030`, `031` and `032` are warnings; the generator's
+`RUNICBRIDGE013`, `015`, `019`, `020`, `028`, `029`, `030`, `031`, `032` and `033` are warnings; the generator's
 (`013`, `020`, `028`, `031` and `032`) repeat on builds that reuse the cached generation. Every other
 code fails the build. The
 [diagnostics catalog](https://github.com/Runic-Artifex/runic-sdk/blob/main/docs/diagnostics.md#bridge-code-generator)

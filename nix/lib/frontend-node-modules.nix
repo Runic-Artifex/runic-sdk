@@ -7,6 +7,10 @@
 #   Bun:  `bun install --frozen-lockfile` for the system's OS and CPU in a fixed-output derivation (a hash is
 #         required), then a copy with patched shebangs, which a fixed-output derivation cannot contain. The copy
 #         fails when the lock file changed but the hash did not.
+#
+# Each fixed-output derivation is named after lockDigest, a digest of the lock files that the builder reads at
+# evaluation when it can: a changed lock file then names another output path, which Nix fetches again and reports with
+# the hash it got, instead of reusing the output of the previous hash. passthru.fixedOutputs has them for each system.
 {
   lib,
   stdenv,
@@ -30,10 +34,13 @@
   packageManager,
   # A hash, or { <system> = <hash>; } for a hash that differs per system, such as Bun's.
   hash ? null,
+  # A digest of the lock files for the names of the fixed-output derivations, or null.
+  lockDigest ? null,
   pnpmFetcherVersion ? 4,
 }:
 let
   name = "${pname}-frontend-node-modules";
+  fetchName = name + lib.optionalString (lockDigest != null) "-${lockDigest}";
   system = stdenvNoCC.hostPlatform.system;
   hashes = if lib.isAttrs hash then hash else null;
   hash' =
@@ -42,7 +49,7 @@ let
     else
       hashes.${system} or (throw ''
         buildRunicApplication: frontend.hash has no hash for ${system}, only for ${lib.concatStringsSep ", " (lib.attrNames hashes)}.
-        Add ${system} = lib.fakeHash; and build: Nix reports the hash.'');
+        Add ${system} = lib.fakeHash; and build: Nix reports the hash. `nix run .#<package>.fixedOutputHashes` prints every hash.'');
   install = ''
     runHook preInstall
     mkdir -p $out
@@ -51,7 +58,7 @@ let
   '';
   requireHash =
     assert lib.assertMsg (hash' != null)
-      "buildRunicApplication: frontend.hash is required for ${packageManager}; set it to lib.fakeHash, build, and copy the hash Nix reports.";
+      "buildRunicApplication: frontend.hash is required for ${packageManager}; set it to lib.fakeHash, build, and copy the hash Nix reports, or run `nix run .#<package>.fixedOutputHashes`, which prints every hash.";
     hash';
 in
 if packageManager == "npm" && hash' == null then
@@ -69,12 +76,15 @@ if packageManager == "npm" && hash' == null then
       '';
     };
   }
+  // {
+    fixedOutputs = { };
+  }
 else if packageManager == "npm" then
-  stdenv.mkDerivation {
+  stdenv.mkDerivation (finalAttrs: {
     pname = name;
     inherit version src;
     npmDeps = fetchNpmDeps {
-      name = "${name}-npm-deps";
+      name = "${fetchName}-npm-deps";
       inherit src;
       hash = requireHash;
     };
@@ -85,13 +95,14 @@ else if packageManager == "npm" then
     ];
     dontBuild = true;
     installPhase = install;
-  }
+    passthru.fixedOutputs.${system} = finalAttrs.npmDeps;
+  })
 else if packageManager == "pnpm" then
-  stdenv.mkDerivation {
+  stdenv.mkDerivation (finalAttrs: {
     pname = name;
     inherit version src;
     pnpmDeps = fetchPnpmDeps {
-      pname = name;
+      pname = fetchName;
       inherit version src pnpm;
       hash = requireHash;
       fetcherVersion = pnpmFetcherVersion;
@@ -104,7 +115,8 @@ else if packageManager == "pnpm" then
     ];
     dontBuild = true;
     installPhase = install;
-  }
+    passthru.fixedOutputs.${system} = finalAttrs.pnpmDeps;
+  })
 else if packageManager == "bun" then
   let
     # Bun installs the optional packages of one operating system and CPU, which it is told rather than detects,
@@ -116,9 +128,9 @@ else if packageManager == "bun" then
     fetchedFor =
       target: outputHash:
       stdenvNoCC.mkDerivation {
-        # The output path depends only on its name and hash: name the Bun version, so another Bun installs again
-        # rather than reusing what an earlier one installed.
-        pname = "${name}-bun-${bun.version}-install";
+        # The output path depends only on its name and hash: name the lock files and the Bun version, so a changed lock
+        # file or another Bun installs again rather than reusing what an earlier one installed.
+        pname = "${fetchName}-bun-${bun.version}-install";
         inherit version src;
         nativeBuildInputs = [
           bun
@@ -151,6 +163,7 @@ else if packageManager == "bun" then
         outputHashMode = "recursive";
       };
     fetched = fetchedFor system requireHash;
+    fetchedForEach = lib.mapAttrs fetchedFor (if hashes == null then { ${system} = requireHash; } else hashes);
   in
   stdenv.mkDerivation {
     pname = name;
@@ -161,7 +174,7 @@ else if packageManager == "bun" then
     installPhase = ''
       runHook preInstall
       if ! diff -r ${fetched}/installed-from "$src"; then
-        echo "error: frontend.hash is out of date: package.json or bun.lock changed since ${fetched} was installed with it. Set the hash to lib.fakeHash, build, and copy the hash Nix reports." >&2
+        echo "error: frontend.hash is out of date: package.json or bun.lock changed since ${fetched} was installed with it. Run \`nix run .#<package>.fixedOutputHashes\`, which prints every hash, or set the hash to lib.fakeHash, build, and copy the hash Nix reports." >&2
         exit 1
       fi
       mkdir -p $out
@@ -175,7 +188,8 @@ else if packageManager == "bun" then
       inherit fetched;
       # The fixed-output install for each system that hash names, for computing another system's hash here:
       # nix build .#default.frontendNodeModules.fetchedFor.aarch64-linux
-      fetchedFor = lib.mapAttrs fetchedFor (if hashes == null then { ${system} = requireHash; } else hashes);
+      fetchedFor = fetchedForEach;
+      fixedOutputs = fetchedForEach;
     };
   }
 else

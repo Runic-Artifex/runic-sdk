@@ -70,6 +70,9 @@
             pkgs = import nixpkgs { system = "x86_64-linux"; };
             runic = self.lib;
           };
+          builder-desktop-integration = import ./nix/tests/desktop-integration.nix {
+            pkgs = import nixpkgs { system = "x86_64-linux"; };
+          };
           builder-locks = import ./nix/tests/locks.nix {
             pkgs = import nixpkgs { system = "x86_64-linux"; };
             runic = self.lib;

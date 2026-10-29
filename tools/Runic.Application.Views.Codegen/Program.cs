@@ -1882,6 +1882,8 @@ static class BridgeDiagnosticCodes
     internal const string UnrecognizedValidation = "RUNICBRIDGE031";
     /// <summary>Warning: an observable collection of DTO rows is not a RunicCollection.</summary>
     internal const string CollectionWithoutKey = "RUNICBRIDGE032";
+    /// <summary>Warning: the .NET SDK or Bun is older than the Runic release supports.</summary>
+    internal const string Toolchain = "RUNICBRIDGE033";
 
     // Every code with its severity and title, in ID order: the source of the machine-readable list
     // (--list-diagnostics, docs/runicbridge-diagnostics.json). eng/diagnostics.test.mjs checks the
@@ -1920,6 +1922,7 @@ static class BridgeDiagnosticCodes
         (FrontendDelivery, "warning", "RunicApplicationFrontendDelivery is unknown, or Embedded cannot apply"),
         (UnrecognizedValidation, "warning", "A type implements an IValidatableViewModel that is not ReactiveUI.Validation's"),
         (CollectionWithoutKey, "warning", "An observable collection of DTO rows is not a [RunicCollection]"),
+        (Toolchain, "warning", "The .NET SDK or Bun is older than this release supports"),
     ];
 
     // Schema version 1: { schemaVersion, diagnostics: [{ id, severity: "error" | "warning", title }] }. A later

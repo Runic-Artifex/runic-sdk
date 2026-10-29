@@ -1394,7 +1394,20 @@ its checker off for one window, so every document in the window starts with
 `spellcheck="false"` on `<html>`, which the fields inherit. An element with its
 own `spellcheck="true"` is still checked, so leave the attribute off the
 editor. A custom window host applies the option by running
-`DesktopWindowHostOptions.DocumentStartScript`.
+`DesktopWindowHostOptions.DocumentStartScript`. With `RunicDesktopHost`
+(`Runic.Application.Views.Desktop`), set it for every Window:
+
+```csharp
+var hostOptions = new RunicDesktopHostOptions
+{
+    WindowOptions = RunicDesktopHost.DefaultWindowOptions with { SpellChecking = false },
+};
+```
+
+An application that brings its own checker turns the native one off, so that
+the two do not both mark words, and checks the text itself in every field it
+wants checked: the native checker then checks no field without its own
+`spellcheck="true"`.
 
 A language without a dictionary is not checked; the window reports
 `spell-checking-dictionary-missing` to `DesktopHostOptions.DiagnosticSink` and

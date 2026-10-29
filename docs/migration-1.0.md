@@ -1,7 +1,10 @@
-# Upgrading from 0.9 to 1.0
+# Upgrading to 1.0
 
 This guide collects what an application written against Runic SDK 0.9.x changes
-to run on 1.0. 0.10.0 made every breaking change planned before 1.0; 0.11.0 only
+to run on 1.0. An application still on a 0.7 or 0.8 preview starts with
+[From 0.7/0.8 previews](#from-0708-previews), which lists what 0.7.0-preview.7 to
+0.9.0 removed and renamed, and then follows the rest of the guide. 0.10.0 made
+every breaking change planned before 1.0; 0.11.0 only
 added APIs but changed some defaults; 0.12.0 changed macOS behaviour and macOS
 packaging, which needed breaking changes; 0.13.0 replaced Views protocol 3 with
 protocol 4, which 1.0 keeps; the `1.0.0-rc.N` releases and 1.0.0 take fixes only.
@@ -38,13 +41,134 @@ the release notes, which give the full detail and the pull requests:
 4. Builds with `TreatWarningsAsErrors` meet the new warnings `RUNICNAV002`,
    `RUNICBRIDGE029` and `RUNICDBUS013`; see the [diagnostics catalog](diagnostics.md).
 
-Compatible versions: Runic Command Line 0.9 for the SDK tools (no SDK library
-depends on it), CsWebUi 2.5.0-beta.4.8 or later, Vite `>=8.3.3 <9`, TypeScript 5.2
-or later, Node `^24.18.0 || ^26.0.0` (Node 24 is the certified version).
+Compatible versions: CsWebUi 2.5.0-beta.4.8 or later, Vite `>=8.3.3 <9`,
+TypeScript 5.2 or later, Node `^24.18.0 || ^26.0.0` (Node 24 is the certified
+version). The SDK tools (`dotnet-runic`, `Runic.Create` and the asset packer
+that `Runic.Assets` runs during the build) are built with Runic Command Line
+0.9.1 and carry their own copy; no SDK library references Command Line, so an
+application may use any Command Line version itself (0.10.0 is current).
+
+The toolchain floor is .NET SDK 10.0.403 or later (runtime 10.0.14) and, for a
+Bun frontend, Bun 1.4.4 or later, each within its major version (0.12.1); for
+an npm or pnpm frontend, `dotnet runic doctor` also wants Node 24.22.1 or a
+later Node 24, or Node 26. On an older SDK or Bun, such as SDK 10.0.401 or Bun
+1.4.2, `dotnet runic doctor` fails its `dotnet-sdk`, `javascript-runtime` or
+`package-manager` check, and so exits 1 under the default `--fail-on fail`.
+Since 0.14 the build warns too
+([`RUNICBRIDGE033`](diagnostics.md#runicbridge033)): for the SDK on every build,
+for Bun when it builds a Bun frontend. Under Nix, `buildRunicApplication`
+builds with your nixpkgs' SDK and Bun, which may still be older.
+
 `Runic.Desktop` now brings `Runic.Platform` and `Runic.Platform.Linux.DBus` at its
 own exact version, and Tmds.DBus.Protocol, on every OS.
 On macOS, Runic supports macOS 15 or later on Apple silicon (`osx-arm64`) only;
 see [From 0.11 to 0.12](#from-011-to-012).
+
+## From 0.7/0.8 previews
+
+An application on a 0.7 or 0.8 preview makes these changes first, then the
+rest of this guide. Rebuild after updating: generated Bridges, TypeScript
+clients and mocks change. Most old names were removed rather than deprecated,
+so code that uses them no longer compiles. The tables name each type or
+package; member renames in the same areas are in the 0.9.0
+[Upgrading](../eng/release/notes/0.9.0.md#upgrading) tables, and the Window
+and build property renames of 0.7.0-preview.7 in
+[Moved and renamed since 0.7.0-preview.6](../packages/dotnet/Runic.Application.Views/README.md#moved-and-renamed-since-070-preview6).
+
+The old package IDs end at 0.7.0-preview.6; changing only the version fails
+restore with `NU1101` or `NU1102`. Namespaces are unchanged (0.7.0-preview.7):
+
+| Old package | New package |
+| --- | --- |
+| `Runic.Application` | `Runic.Application.Views` |
+| `Runic.Application.CsWebUi` | `Runic.Application.Views.CsWebUi` |
+| `Runic.Application.Desktop` | `Runic.Application.Views.Desktop` |
+| `Runic.Application.Wpf` | `Runic.Application.Views.Wpf` |
+| `Runic.Application.ReactiveUI` | `Runic.Application.Views.ReactiveUI` |
+| `Runic.Application.ReactiveUI.Reactive` | `Runic.Application.Views.ReactiveUI.Reactive` |
+
+XAML that names `assembly=Runic.Application.Wpf` names
+`Runic.Application.Views.Wpf`, or uses the `rv` namespace
+`https://runic-artifex.eu/xaml/views` (0.7.0-preview.8).
+
+Since 0.14, the removed types that the table marks 0.9.0 and that
+[Removed types](#removed-types) lists, such as `RunicReactiveSchedulerProvider`,
+`INativePickerOwner` and `RunicBridgeJsonIgnore`, fail with `CS0619` naming
+their replacement instead of `CS0246`, for one release.
+
+| 0.7/0.8 | 1.0 | Release |
+| --- | --- | --- |
+| `RunicBridge*` build properties, `RunicViewsWindowProject`, `RunicBridgeFrontendInput` items | `RunicApplicationFrontend*` names; an old name fails with `RUNICBRIDGE017`, which names the new one | 0.7.0-preview.7; errors since 0.9.0 |
+| `RunicApplicationId`, `RunicApplicationName` | `ApplicationId`, `ApplicationTitle` (`RUNICBRIDGE017`); macOS and Polkit read `ApplicationId` too | 0.9.0 |
+| `<ProjectName>.RunicBridgeComposition` | `<RootNamespace>.RunicViewsComposition`; set `RunicApplicationFrontendCompositionType` to keep the old name | 0.9.0 |
+| `RunicApplicationFrontendPackageDirectory`, `RunicApplicationFrontendViteDevServerEnabled=true`, `RunicApplicationHostAdapter` | Removed (the frontend directory is the package directory), `RunicApplicationFrontendDevServerKind=vite`, internal (set `RunicApplicationFrontendGenerationEnabled=true`) | 0.9.0 |
+| Privileged actions: `RunicPolkitPolicy`, `RunicMacLaunchDaemonPlist`, `RunicElevatedHelper`; `RunicPrivilegedAction` metadata `AllowAny`, `AllowInactive`, `AllowActive`, `AllowGui`, `IconName` | `RunicPolkitPolicyCopyEnabled`, `RunicMacLaunchDaemonPlistCopyEnabled`, `RunicWindowsElevatedHelper`; `PolkitAllowAny`, `PolkitAllowInactive`, `PolkitAllowActive`, `PolkitAllowGui`, `PolkitIconName`. The old names fail with `RUNICPA108` | 0.9.0 |
+| D-Bus `AdditionalFiles` metadata `Namespace="…"` | `RunicDBusNamespace="…"` (the old name works until 2.0) | 0.9.0 |
+| `CsWebUiWindow<T>`, `ReactiveRunicWindow<T>`, `provider.OpenWindow<…>`, `OpenDesktopWindowAsync`, `WebUiApplication.Wait()` | `RunicWindow<T>`, opened with `host.OpenWindowAsync<TWindow>()` inside `RunicDesktopHost.Run` or `RunicCsWebUiHost.Run` | 0.7.0-preview.7 |
+| `CsWebUiConfigurationException`; CS-WebUI's `WebUiException` when a window cannot be shown | `RunicWindowConfigurationException` (`Diagnostics`) | 0.7.0-preview.7, 0.8.0-preview.1 |
+| `PlatformServices.ForWindow(…)`, `.CreateStatusIcon()`, `.PresentAsync(…)` and the other members | `DesktopPlatformServices.…` (`Runic.Application.Views.Desktop`) | 0.9.0 |
+| `new RunicDesktopHost(provider, desktop) { WindowOptions = …, MenuCommands = … }`, `new RunicCsWebUiHost(provider) { UseWebView = true }` | `RunicDesktopHostOptions` or `RunicCsWebUiHostOptions` passed to `Run` or the constructor; `using var menu = host.UseApplicationMenu(commands);` | 0.9.0 |
+| `INativePickerOwner` | `INativeWindowOwner` (`Runic.Platform.Runtime`); for WPF dialogs, `WpfPlatformServices.ForWindow(window)` instead of an owner of your own | 0.9.0 |
+| `IUiDispatcher`, `PresentationDispatcher` | Removed; run window work through `DesktopNativeOwner.InvokeAsync` | 0.9.0 |
+| `PortalPlatformProvider`, the owner-scoped `Create…(owner)` factories of the platform providers, `Gtk3PortalWindowOwner`, `Gtk4PortalWindowOwner` | `new PortalApplication(applicationId, sink).Create…()`; window services from `DesktopPlatformServices.ForWindow(window)` or `AddRunicPlatformServices()`; the host parents portal requests | 0.9.0 |
+| `DesktopPlatform.OpenUrl(url)`, `OpenUriAsync(owner, uri)` | `await launcher.LaunchUriAsync(new Uri(url))` on the window's `IDesktopFileLauncher`; without a window, `DesktopPlatformServices.OpenUriAsync(uri)` (since 0.14) | 0.9.0 |
+| `PlatformFailureCode.IoError`; stored `PlatformFailureCode` numbers | `IOError` for I/O failures, `Other` for the rest, and a default arm; add 1 to each stored number | 0.9.0 |
+| `new DesktopMenuCommand("open", "Open window")` | `new DesktopMenuItem(Title: "Open window", CommandId: "open")`. **The arguments swap:** both are strings, so the old order still compiles. The item then shows the command id as its title and runs a command named after the title, or the menu is refused with `ArgumentException` when that title is not a valid command id. Name the arguments. See [Menu model and status icons](#menu-model-and-status-icons) | 0.10.0 |
+| `session.BeginCloseAsync(timeout)`, `RunicWindowTestHost.BeginCloseAsync(timeout)` | `DrainAsync(timeout, cancellationToken)`; the token stops only the wait | 0.9.0 |
+| `new RunicReactiveSchedulerProvider().For(context)`, `RunicReactiveSchedulerProvider.InstallMainThreadScheduler(…)`, `IRunicReactiveSchedulerProvider` | `ReactiveSchedulers.For(context)`, `ReactiveSchedulers.InstallMainThreadScheduler(…)`, `IReactiveSchedulerProvider` (`Runic.Application.Views.ReactiveUI` or `.Reactive`) | 0.9.0 |
+| `using Runic.Navigation.ReactiveUI;` for `AddRunicReactiveModelContext()` | `using Runic.Application.Views.ReactiveUI;` (or `.Reactive`); reference `Runic.Navigation.ReactiveUI` yourself for region observables and `CreateBackCommand` | 0.7.0-preview.7 |
+| `[assembly: RunicBridgeJsonIgnore]` | Delete it. DTO members with an unconditional `[JsonIgnore]` (condition `Always` or none) or `[JsonExtensionData]` are left out of the Bridge contract by default; `[assembly: RunicIncludeJsonIgnored]` in the ViewModel's assembly keeps them | 0.9.0 |
+| `BridgeDiagnostics.IncludeFailureDetail = x` | `RunicWindowOptions.IncludeFailureDetail` per window, or the host options' default | 0.9.0 |
+| `RunicBridgeHotReload`, `[RunicBridgeCodec]`, `IRunicBridgeCodec<T>`, `BridgeWindowCloseResult`, `BridgeValidationMessage`, `BridgeCommandResultCardinality` | `RunicViewsHotReload` (`(sender, e)` handler), `[RunicCodec]`, `IRunicCodec<T>`, `RunicWindowCloseResult`, `RunicValidationMessage`, `RunicCommandResultCardinality` | 0.9.0 |
+| `ViewModelBridge<T>`, `PropertyDescriptor<T>`, `CommandDescriptor<T>`, `BridgeWire` in hand-written code | `Runic.Application.Views.Generated`, for generated code only; rebuild | 0.9.0 |
+| `RunicInteractionInvocation.Enter(…)` | Removed; work outside a Bridge invocation uses a .NET handler | 0.9.0 |
+| Routes bound by hand with `IBridgeTransport.Bind`/`BindAsync` and called from the page with `__runicBridge.call(name, …)` | No custom routes: expose a ViewModel command, operation or property and call it through the generated client. A custom transport: see [Views protocol 4](#views-protocol-4) | 0.13.0 |
+| `INavigationActivated`, `OnActivatedAsync`, `INavigationRegionGuard.CanLeaveAsync`, `NavigationResume`, `INavigationRegion`, `INavigationEntry` | `INavigationArrived`, `OnArrivedAsync`, `CanDepartAsync`, `NavigationArrival`, `NavigationRegion`, `NavigationEntry` | 0.9.0 |
+| `ReactiveRoutedRegion<T>`; `RunicNavigator.DiagnosticId` and `RUNICNAV001` suppressions | `NavigationRegion<TContent>`; remove them (navigation is stable) | 0.9.0; 0.7.0-preview.7 |
+| `InMemoryViewTransport`, `ViewTestArguments`, `host.Transport.DrainPublications()` | `InMemoryBridgeTransport`; `TakeMessages()` (`TakePublications()` from 0.9 to 0.12); `RunicViewDriver` calls instead of arguments. See [Mocks and tests](#mocks-and-tests) | 0.9.0, 0.13.0 |
+| `reply.Ok`, `reply.EnsureOk()`, `host.Snapshot()` | `reply.Succeeded`, `reply.ThrowIfFailed()`, `host.Root.Snapshot()` | 0.9.0 |
+| `IAssetSnapshotSource`, `IAssetManifestProvider`; `OpenSnapshotAsync`, `OpenReadAsync` | `IAssetSource`; `OpenAsync` | 0.9.0 |
+| The five `IWindows…Client` interfaces of `Runic.Platform.Administration.Windows`; synchronous service, share and domain calls | Removed (wrap the sealed clients for test fakes); `…Async(…, cancellationToken)` | 0.9.0 |
+| `new DBusSignal(…)`, `new DBusPropertyChanges(…)` | Created only by the connection; `DBusProxy.ReadPropertyChanges(signal)` | 0.9.0 |
+| `import … from "@runic-artifex/svelte/views"` | `from "@runic-artifex/svelte"` | 0.9.0 |
+| `@runic-artifex/vite-plugin-runic/virtual` references, named imports from `virtual:runic/client`, `reportRunicState`, `preserveRunicHmrResource` | Removed; `import "@runic-artifex/vite-plugin-runic/client";` has no exports | 0.9.0 |
+| `mockTypedView` from `@runic-artifex/views/mock`; `isViewClient`, `viewSourceIdentity` from `@runic-artifex/views` | `@runic-artifex/views/generated/mock` (rebuilding regenerates `*.mock.ts`); `@runic-artifex/views/bindings` | 0.9.0 |
+| Core types (`ViewSource`, `ViewClient`, `CollectionViewport`, …) from `@runic-artifex/react`, `vue`, `svelte` or `angular` | `from "@runic-artifex/views"` | 0.9.0 |
+| `runicSpaPageOptions` from `@runic-artifex/sveltekit` | `from "@runic-artifex/sveltekit/page-options"` | 0.9.0 |
+| `RunicViewOutlet` (`@runic-artifex/angular`) | `ViewOutlet`; the old name is a deprecated alias, removed in the next major release | 0.7.0-preview.7 |
+| `BridgeErrorKind` `disconnected` for a released View; views-effect `ViewDisconnected` for it | `released`; `ViewReleased` | 0.8.0-preview.6 |
+| `ViewReference`, `"timedOut"`, `client.startSaveWithRequestId(id, input)`, `waitForBridge(5000)`, views-effect `ViewBridgeTimeout`, `ViewCommandFailed` | `PageReference`, `"timed-out"`, `client.startSave(input, { requestId: id })`, `waitForBridge({ timeout: 5000 })`, `ViewTimeout`, `ViewFailed` | 0.9.0 |
+| `dotnet runic … --output json`, `Runic.Assets.Packer … --output json`; tool-specific exit codes | `--format json`; 0, 1, 2, 3 and 130 as below. See [CLI tools](#cli-tools) | 0.9.0 |
+| `dotnet runic support`, `RAPPSUP` codes | `runic-translations support` (Runic Translations), `RTRSUP` codes | 0.9.0 |
+| `runic-create create MyApp`, `--directory`; template `--host desktop-gtk4` | `runic-create MyApp`, `--output`/`-o`; `--host desktop --linux-gtk 4` | 0.9.0 |
+
+`RUNICPLAT001` (since 0.14) warns about a `DesktopMenuItem` whose title looks
+like a command id and whose command id looks like a title, and its code fix
+swaps and names the arguments; see
+[Menu model and status icons](#menu-model-and-status-icons).
+
+An application that parses its own command line with Runic Command Line meets
+these changes in Command Line 0.8.0
+([notes](https://github.com/Runic-Artifex/runic-cli-sdk/blob/v0.8.0/eng/release/notes/0.8.0.md#upgrading)).
+The SDK tools made the same change in 0.9.0:
+
+| Command Line 0.7 | Command Line 0.8 and later |
+| --- | --- |
+| `tool --output json` | `tool --format json`. `OutputSelector("--format", "--output")` on the catalog keeps `--output` as a hidden alias; `OutputSelector("--output")` keeps the old spelling. A command option named `--format` is `RCLI0026` |
+| Exit codes 3 validation, 4 cancelled, 5 unavailable, 10 command failure, 70 host failure | 0 success; 1 expected failure, including unavailable and command failure; 2 usage and validation errors; 3 unexpected (host) failure; 130 cancelled. A repeated termination signal still exits with 128 plus the signal number. Scripts that test the old numbers test the new ones, or read the JSON fault code where they must tell categories apart |
+
+Command Line 0.11.0 does not accept `--output` by default either, but a catalog
+without it answers `--output json` with `Did you mean '--format'?`. An
+application whose commands have their own `--format` (an export format, say)
+moves the selector with `[assembly: OutputSelector("--output-format")]`. It
+also states which category a handler returns: `Validation` (exit 2) for input
+of the wrong shape, `CommandFailure` or `Unavailable` (exit 1) for a domain
+failure on well-formed input; a handler that returned `Validation` for a
+refused operation returns `CommandFailure`
+([0.11.0 notes](https://github.com/Runic-Artifex/runic-cli-sdk/blob/main/eng/release/notes/0.11.0.md)).
+
+Notification activations need a check since 0.11.0 (SEC-09): see
+[Linux portal and D-Bus](#linux-portal-and-d-bus).
 
 ## MSBuild
 
@@ -272,7 +396,15 @@ is `Failed(InvalidData)`.
 ### Linux portal and D-Bus
 
 - Notification activations that match no notification the process showed keep
-  only `http`, `https` and `mailto` links and are untrusted.
+  only `http`, `https` and `mailto` links and are untrusted (SEC-09, 0.11.0):
+  another process on the session bus can send one, and one also arrives after a
+  restart. In `IDesktopNotifications.Activated`, check
+  `DesktopNotificationActivation.IsTrusted` before acting on `NotificationId`,
+  `ActionId` or `ActivationUri`. When it is `false`, look the identifiers up in
+  the application's own state and act only on what you find there; don't open a
+  document, run an action or follow a link because an activation names it.
+  Windows and macOS activations, and Linux activations of a notification the
+  running process showed, are trusted.
 - Portal diagnostics are logged at their `Severity`; some `status-icon-*`,
   `login-startup-*` and `desktop-application-*` codes become warnings.
 - Exported D-Bus objects run at most 16 calls with 64 waiting
@@ -469,7 +601,7 @@ Windows and Linux ignore `Origin`; every built-in host writes `TopLeft`
 | --- | --- |
 | `osx-x64` (Intel) publishes and packages | Not a Runic target: publish for `osx-arm64`. `dotnet runic package` refuses `osx-x64` with `RAPPPKG1004`, and `dotnet runic doctor --runtime osx-x64` fails `target-rid` |
 | `dotnet runic package macos --runtime osx-arm64,osx-x64` built a universal bundle | Refused with `RAPPPKG1004`: every target takes one runtime identifier |
-| Every published file in `Contents/MacOS` | Only Mach-O files; the others move to `Contents/Resources` with a symbolic link left in `Contents/MacOS`. `AppContext.BaseDirectory` lookups work unchanged; code that enumerates `Contents/MacOS` sees links |
+| Every published file in `Contents/MacOS` | Only Mach-O files; every other file moves to `Contents/Resources` with a relative symbolic link left in `Contents/MacOS`, and a folder without Mach-O files moves whole, leaving one link to the folder (a folder with Mach-O files stays and keeps only them; `www` moves to `Contents/Resources/www` without a link). `AppContext.BaseDirectory` lookups work unchanged; code that enumerates `Contents/MacOS` sees links. A script that copies into, signs or walks `Contents/MacOS` after `dotnet runic package` handles the links: it puts new non-code files in `Contents/Resources` (writing through a linked folder lands there anyway), copies the bundle with a tool that keeps links, such as `ditto`, signs the Mach-O files and not the links (the bundle's signature seals a link as a resource), and follows or skips links when it walks the folder |
 | `.txt`, `.md`, `.png` and other system types exported as `<ApplicationId>.<ext>` with rank `Owner` | The system type with rank `Alternate`. Set `RunicMacFileTypeHandlerRank=Default` to ask to be the default handler, and `RunicMacFileTypeIdentifiers` (`.log=public.log`) for a type the built-in list does not know. Your own extensions stay exported with `Owner` |
 | Nested libraries and executables left unsigned, or signing failed | Each is signed with the hardened runtime, deepest first; the bundle is verified with `codesign --verify --deep --strict` |
 | No camera or microphone usage strings | `RunicMacCameraUsageDescription`, `RunicMacMicrophoneUsageDescription`; without them a page's `getUserMedia` fails with `NotAllowedError`, even with `MediaCapture` |
@@ -573,7 +705,7 @@ client implements protocol 3 …") and its calls fail.
 | `TimeSpan` values as `"1.02:03:04.5000000"` (.NET `c` format) | ISO 8601 durations, `"P1DT2H3M4.5S"`, `"PT0S"`, `"-PT1.5S"`. The TypeScript type stays `string`: parse it with `Temporal.Duration.from` or your own code, and update stored or compared strings |
 | A custom `IBridgeTransport` with `Bind`/`BindAsync`/`Publish`, `IAsyncBridgeTransport` or `IBridgeUtf8Transport` | `Serve(IBridgeRequestHandler)` and `BroadcastAsync`, plus `IBridgeConnectionTransport.SendAsync` if the transport can address one connection; report closed connections with `ConnectionClosed`. See [Custom window hosts](../packages/dotnet/Runic.Application.Testing/README.md#custom-window-hosts) |
 | Code that reads `IBridgeArguments` | Removed; generated descriptors read the request's JSON value |
-| A custom `__runicBridge` or a test double with `call(name, …args)` and `onReconnect` | `request(message): Promise<string>`, `onMessage(listener)` and the now required `onConnectionChange(listener)` ([Host bridge](../specs/application/README.md#host-bridge-page)) |
+| A custom `__runicBridge` or a test double with `call(name, …args)` and `onReconnect`, or code that wraps the host's `__runicBridge`, such as a wrapper that intercepts or logs its `call`s | `request(message): Promise<string>`, `onMessage(listener)` and the now required `onConnectionChange(listener)` ([Host bridge](../specs/application/README.md#host-bridge-page)). A wrapper wraps `request`, `onMessage` and `onConnectionChange` instead of `call`, and passes each through: a 0.13 client never calls `call`, so a wrapper of `call` sees nothing |
 | A copy of `runic-desktop-views.js` or `runic-cswebui.js` kept outside the web content | Take the 0.13 copy; a 0.12 copy speaks protocol 3 |
 | `snapshot` changed only after .NET confirmed a setter | It shows the setter's value at once, until the state that includes the edit arrives. A failed setter rejects and the member returns to .NET's value. Await the setter's promise where the page needs .NET's confirmation, such as a "Saved" indicator |
 | A text input bound to state with `(input)="client.setName(…)"`, or a command per key | It keeps working with a setter. Prefer `injectTextField` ([Angular](../packages/web/angular/README.md#text-inputs)) or `useTextField` ([React](../packages/web/react/README.md#text-inputs-usetextfieldview-read-write-options), [Vue](../packages/web/vue/README.md#text-inputs-usetextfieldview-read-write-options), [Svelte](../packages/web/svelte/README.md#text-inputs-usetextfieldview-read-write-options)) for coalescing and keeping the draft after an error, a setter rather than a command per key, and don't disable the field on its own busy state ([Text inputs](../packages/web/views/README.md#text-inputs)) |
@@ -620,6 +752,30 @@ Generated typed mocks (`mock<Name>(bridge, definition)`) keep their definitions.
 | Spelling languages: the platform's choice | `DesktopHostOptions.SpellCheckingLanguages` (BCP 47, for the whole application) and `DesktopHost.SetSpellCheckingLanguagesAsync`. Linux uses enchant dictionaries, falling back to the user's locale variables; macOS sets `NSSpellChecker`'s language for one language and identifies the language automatically for several; Windows ignores them (`window-option-unsupported`, WebView2 uses `DesktopWindowOptions.Language`). A language without a dictionary is reported as `spell-checking-dictionary-missing` |
 | A Nix-packaged application had no dictionaries | `buildRunicApplication { spellingDictionaries = with pkgs.hunspellDicts; [ en_US de_CH ]; }` (`desktop` and `desktop-gtk4` hosts) |
 | GTK 4 on X11: a restored `DesktopWindowPlacement` opened where the window manager placed it, a maximized one restored there, and KWin positions drifted by the frame | The window opens at the saved position, a maximized placement restores to its saved bounds, and the reported position is the frame's top-left corner. Saved placements need nothing. On Wayland the position is still ignored |
+
+An application that opens its Windows through `RunicDesktopHost` turns the
+checker off for every Window through the host options, starting from the
+host's defaults:
+
+```csharp
+return RunicDesktopHost.Run(services, new DesktopHostOptions(), new RunicDesktopHostOptions
+{
+    WindowOptions = RunicDesktopHost.DefaultWindowOptions with { SpellChecking = false },
+}, async host =>
+{
+    await using var window = await host.OpenWindowAsync<MainWindow>();
+    await window.WaitForCloseAsync();
+    return 0;
+});
+```
+
+An application that brings its own spell checker, such as an editor that draws
+its own marks, turns the native checker off in those windows, so that the two
+do not both mark words. Off means `spellcheck="false"` on each document's
+`<html>`, which the fields inherit; an element with its own
+`spellcheck="true"` is still checked by the native checker, so leave the
+attribute off the editor. See
+[Spell checking](../packages/dotnet/Runic.Desktop/README.md#spell-checking).
 
 Details: 0.13.0 [Breaking changes](../eng/release/notes/0.13.0.md#breaking-changes),
 [Behaviour changes](../eng/release/notes/0.13.0.md#behaviour-changes) and
@@ -687,3 +843,11 @@ Since 0.14, a type removed in 0.9 or 0.13 that the code still names fails with
 
 A page that still calls the host's `__runicBridge.call(name)`, the protocol-3 API, now
 gets one console warning that points to `__runicBridge.request`.
+
+### Nix and the toolchain
+
+| 0.13 | 0.14 |
+| --- | --- |
+| A package installed its own `share/mime/packages/<ApplicationId>.xml` (with `magic` or `sub-class-of`) in `postFixup`, after `buildRunicApplication` replaced it with a definition by extension | Install it in `postInstall`: the builder keeps it, and fails when it lacks a type of `RunicApplicationFileTypes` ([File types and URL schemes](../nix/README.md#file-types-and-url-schemes)) |
+| One build per out-of-date `frontend.hash` or `dotnetTools.hashes` entry | `nix run .#<package>.fixedOutputHashes` prints them all ([Fixed-output hashes](../nix/README.md#fixed-output-hashes)) |
+| .NET SDK 10.0.401 or Bun 1.4.2 built without a word | Warning `RUNICBRIDGE033`; `dotnet runic doctor` already failed. Install SDK 10.0.403 and Bun 1.4.4 or later, or add the code to `NoWarn` while nixpkgs still packages the older ones |

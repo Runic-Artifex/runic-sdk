@@ -160,6 +160,11 @@
       "id": "RUNICBRIDGE032",
       "severity": "warning",
       "title": "An observable collection of DTO rows is not a [RunicCollection]"
+    },
+    {
+      "id": "RUNICBRIDGE033",
+      "severity": "warning",
+      "title": "The .NET SDK or Bun is older than this release supports"
     }
   ]
 }

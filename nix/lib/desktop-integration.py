@@ -4,7 +4,9 @@ usage: desktop-integration.py <properties.json> <project file> <prefix>
 
 <properties.json> is the output of `dotnet msbuild <project> -getProperty:ApplicationId,ApplicationTitle,AssemblyName,
 RunicApplicationFileTypes,RunicApplicationUrlSchemes`. With file types, writes their shared-mime-info definitions to
-<prefix>/share/mime/packages/<ApplicationId>.xml. With file types or URL schemes, adds their MIME types to MimeType=
+<prefix>/share/mime/packages/<ApplicationId>.xml, unless the package already installs that file (in postInstall): a
+definition of the application's own, with magic or sub-class-of, stays as it is, and a type of RunicApplicationFileTypes
+that it does not define is reported. With file types or URL schemes, adds their MIME types to MimeType=
 of the desktop entry <prefix>/share/applications/<ApplicationId>.desktop (or, without it, of every desktop entry
 there), and %U to its Exec= when it has no field code for files or URLs.
 
@@ -18,6 +20,7 @@ import os
 import re
 import sys
 import tempfile
+import xml.etree.ElementTree as ElementTree
 
 APPLICATION_ID = re.compile(r"^[A-Za-z][A-Za-z0-9]*(\.[A-Za-z][A-Za-z0-9]*)+$")
 URL_SCHEME = re.compile(r"^[a-z][a-z0-9+.-]*$")
@@ -81,6 +84,18 @@ def mime_info(application_id, name, types):
                  f'\n    <glob pattern="*{extension}"/>'
                  "\n  </mime-type>")
     return text + "\n</mime-info>\n"
+
+
+def defined_mime_types(path):
+    """The MIME types that a shared-mime-info definition defines, or None when it is not one."""
+    try:
+        root = ElementTree.parse(path).getroot()
+    except (ElementTree.ParseError, OSError):
+        return None
+    namespace = "{http://www.freedesktop.org/standards/shared-mime-info}"
+    if root.tag != namespace + "mime-info":
+        return None
+    return {element.get("type", "").lower() for element in root.findall(namespace + "mime-type")}
 
 
 def write(path, text, mode):
@@ -150,8 +165,22 @@ def main(arguments):
 
     if types:
         path = os.path.join(prefix, "share", "mime", "packages", application_id + ".xml")
-        write(path, mime_info(application_id, name, types), 0o444)
-        print(f"Installed the file types of {project} in {path}")
+        if os.path.lexists(path):
+            # The application's own definition, which may say more than an extension can: magic, sub-class-of.
+            defined = defined_mime_types(path)
+            if defined is None:
+                fail(f"{path} is not a shared-mime-info definition (<mime-info xmlns=\"http://www.freedesktop.org/"
+                     "standards/shared-mime-info\">). Install a valid one, or none to have the build write it.")
+            missing = [linux_mime_type(application_id, extension, mime_type) for extension, mime_type in types
+                       if linux_mime_type(application_id, extension, mime_type) not in defined]
+            if missing:
+                fail(f"{path} does not define {', '.join(missing)}, which RunicApplicationFileTypes of {project} "
+                     "declares. Define each in it, with <mime-type type=\"...\">, or remove the file to have the build "
+                     "write it.")
+            print(f"Kept the file types that the package installs in {path}")
+        else:
+            write(path, mime_info(application_id, name, types), 0o444)
+            print(f"Installed the file types of {project} in {path}")
 
     mime_types = [f"x-scheme-handler/{scheme}" for scheme in schemes] + [
         linux_mime_type(application_id, extension, mime_type) for extension, mime_type in types]

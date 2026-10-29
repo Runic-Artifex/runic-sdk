@@ -94,6 +94,14 @@ test("the compatibility set embeds the support matrix", () => {
   assert.deepEqual(set.support, embedded);
 });
 
+// RUNICBRIDGE033 warns below the versions that `dotnet runic doctor` requires: the compatibility set's toolchain.
+test("the build's toolchain floor is the compatibility set's", () => {
+  const set = JSON.parse(readFileSync(resolve(root, "tools/dotnet-runic/metadata/runic.compatibility-set.json"), "utf8"));
+  const targets = readFileSync(resolve(root, "packages/dotnet/Runic.Application.Views/build/Runic.Application.Views.targets"), "utf8");
+  assert.equal(targets.match(/<_RunicMinimumDotNetSdkVersion>([^<]+)</)?.[1], set.toolchain.dotnetSdk);
+  assert.equal(targets.match(/<_RunicMinimumBunVersion>([^<]+)</)?.[1], set.toolchain.bun);
+});
+
 test("support validation rejects incomplete entries", () => {
   const clone = () => structuredClone(support);
   const broken = clone();
