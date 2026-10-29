@@ -878,23 +878,26 @@ internal sealed partial class NavigationTests
                 $"A retirement admitted while a switch committed gave {back.Result}.");
         }
 
-        // Admission inside a model turn doesn't block, and no hook runs in that turn.
+        // Admission inside a model turn doesn't block, and no hook runs in that turn: the guard runs in a turn of its own (#714).
         await using (var fixture = new Fixture())
         {
             var tabs = await TabsAsync(fixture);
             var selection = tabs.Page.Selection;
-            var inTurn = new List<bool>();
+            var admitting = false;
+            var inTurn = new List<(bool InTurn, bool InAdmittingTurn)>();
             tabs.Editor.Guard = (_, _) =>
             {
-                lock (inTurn) inTurn.Add(fixture.Context.IsExecuting);
+                lock (inTurn) inTurn.Add((fixture.Context.IsExecuting, admitting));
                 return ValueTask.FromResult(true);
             };
             var (pending, admitted) = await fixture.Context.InvokeAsync(() =>
             {
+                admitting = true;
                 var task = selection.SelectAsync(tabs.Page.Tabs[1]).AsTask();
+                admitting = false;
                 return (task, selection.IsTransitioning && !task.IsCompleted);
             });
-            Require(admitted && await Wait(pending) is NavigationResult<object>.Committed && inTurn is [false],
+            Require(admitted && await Wait(pending) is NavigationResult<object>.Committed && inTurn is [(true, false)],
                 "A switch requested in a model turn blocked the turn or ran its guard in it.");
         }
     }

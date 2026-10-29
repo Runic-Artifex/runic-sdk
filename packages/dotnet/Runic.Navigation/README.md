@@ -963,24 +963,27 @@ that such a close asks once rather than once per region.
 
 ### Threading
 
-Without a scheduler, as with `RunicModelContext`, hooks (factories, guards,
-initialize and resume) run outside turns on the thread that runs the
-transition, and owned content is disposed there too. A model context whose
-model has thread affinity, such as a UI dispatcher context, can also implement
-`IRunicModelHookScheduler`. The navigator then runs each hook and each owned
-content disposal as its own operation on the model's thread: never inline in
-the caller, never inside a turn. Hook operations don't count as turns. Once
-the context is closed, disposal runs on the thread pool. A decorator that
-wraps a scheduling context must implement and forward the interface too.
+A model context can implement `IRunicModelHookScheduler`; `RunicModelContext`
+and `DispatcherModelContext` both do. The navigator then runs each hook
+(factories, guards, initialize, resume and arrival) and each owned content
+disposal as its own operation in the model context: never inline in the
+caller, never inside a commit turn. With `RunicModelContext` a hook starts in a
+turn of its own and its awaits resume in later turns, as code started in a
+turn does; with `DispatcherModelContext` it runs on the UI thread. No turn is
+held across a hook's awaits, so commits run between them. Once the context is
+closed, disposal runs on the thread pool. A decorator that wraps a scheduling
+context must implement and forward the interface too; one that doesn't hides
+it, and hooks then run outside turns on the thread that runs the transition,
+or on the thread pool.
 
-An initialize hook may set the state of content created for its entry
-(`NavigationTarget.Create`, or a new instance handed over with `Own`) directly,
-also after `await`: nothing presents that content before the entry commits,
-and the navigator commits in a turn after the awaited hook. Commit with
-`ModelContext.InvokeAsync` state that is already presented or that other work
-also writes, such as a `Borrow` target, a service or another page, and read or
-write state that way in guards and resume hooks, which run while the content
-may be presented.
+A scheduled hook sets the state of its page directly, before and after `await`:
+its code runs in the model context, like a command body. A hook must not block
+its operation, for example with `Wait()` on work that needs another turn. With
+a context that doesn't schedule hooks, commit with `ModelContext.InvokeAsync`
+state that is already presented or that other work also writes, such as a
+`Borrow` target, a service or another page; an initialize hook may still set
+the state of content created for its entry directly, since nothing presents
+that content before the entry commits.
 
 A context that can close on its own, for example when its UI thread shuts
 down, can also implement `IRunicModelContextLifetime`. The navigator subscribes

@@ -386,7 +386,7 @@ that outlives its owner. For navigation:
 
 ### State in InitializeAsync
 
-`InitializeAsync` runs outside model turns, before the entry commits. Content
+`InitializeAsync` runs outside commit turns, before the entry commits. Content
 that the navigator created for the entry (`NavigationTarget.Create`, or a new
 instance handed over with `Own`) is not presented until that commit, and the
 commit turn runs after the awaited hook. So the hook sets that content's own
@@ -429,9 +429,9 @@ turn. `LeaveConfirmation.InDialog` stays for apps that prefer a dialog region.
   logged by the navigator as `NavigationGuardFailed` (event 1060, category
   `Runic.Navigation`) with that exception type as `ErrorType`. A handler that
   throws fails it the same way. The entry stays current.
-- **Threads.** The question is asked outside model turns, on the thread that
-  runs the guard: the dispatcher for a navigator on WPF's
-  `DispatcherModelContext`, the thread pool otherwise.
+- **Threads.** The question is asked outside commit turns, where the guard
+  runs: on the dispatcher for a navigator on WPF's `DispatcherModelContext`,
+  in a turn of its own under `RunicModelContext`.
 
 Each presentation answers the same interaction natively. In WPF, register the
 handler in the View's `WhenActivated`. The View needs ReactiveUI.WPF and a

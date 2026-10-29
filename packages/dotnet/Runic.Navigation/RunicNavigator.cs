@@ -59,15 +59,16 @@ public sealed class RunicNavigatorOptions
 /// <para>
 /// Each region admits one transition at a time: a later request supersedes earlier ones that have not
 /// started committing, or, in a region created with <see cref="NavigationAdmission.RejectWhileBusy"/>, is rejected
-/// while an earlier one runs. Guards, initialize and resume run outside model turns; a commit re-checks the
+/// while an earlier one runs. Guards, initialize and resume run outside commit turns; a commit re-checks the
 /// region and applies the new state in one turn. Disposing the navigator cancels in-flight transitions
-/// and retires every entry; owned content is disposed outside model turns.
+/// and retires every entry; owned content is disposed outside commit turns.
 /// </para>
 /// <para>
-/// When the model context implements <see cref="IRunicModelHookScheduler"/>, factories, guards, initialize and resume
-/// hooks and the disposal of owned content each run as a separate operation on the model's thread, never inline in the
-/// caller's frame or in a commit turn. Otherwise they run outside turns, on the caller's thread until its first await or
-/// on the thread pool. The navigator's own work between hooks always continues on the thread pool.
+/// When the model context implements <see cref="IRunicModelHookScheduler"/>, as <see cref="RunicModelContext"/> and
+/// Runic.Navigation.Wpf's <c>DispatcherModelContext</c> do, factories, guards, initialize, resume and arrival hooks and
+/// the disposal of owned content each run as a separate operation on the model's thread, never inline in the caller's
+/// frame or in a commit turn. Otherwise they run outside turns, on the caller's thread until its first await or on the
+/// thread pool. The navigator's own work between hooks always continues on the thread pool.
 /// </para>
 /// </remarks>
 public sealed class RunicNavigator : IAsyncDisposable, IDisposable
@@ -2307,7 +2308,11 @@ public sealed class RunicNavigator : IAsyncDisposable, IDisposable
                 if (request is not null) FinishResult(request, NavigationResultDismissal.Dismissed);
                 if (pushing is not null)
                 {
-                    Cancel([pushing]);
+                    // From the push's own hook, cancel in its frame, so the hook's token is cancelled when DismissAsync
+                    // returns also where the hook runs on the model's thread (a scheduled hook). The callbacks then run
+                    // in that hook's operation, which is user code, never in a commit turn.
+                    if (ReferenceEquals(NavigationHookMarker.Active, pushing)) CancelAll([pushing]);
+                    else Cancel([pushing]);
                     return Task.FromResult(TransitionOutcome.Reject(NavigationRejection.Cancelled));
                 }
                 // The push already ended another way (superseded, closed): report that, without
