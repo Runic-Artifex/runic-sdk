@@ -1,8 +1,0 @@
-{
-  "description": "Runic Desktop (a recently released capability) and CS-WebUI (an unbound route) answer this envelope on any route, including Can, Mount and Start routes. The client rejects with BridgeError(\"released\") and reports nothing.",
-  "scenario": "unbound-route",
-  "producer": "host",
-  "route": "command",
-  "wire": { "ok": false, "state": null, "error": { "kind": "released", "message": "This View was released." } },
-  "client": { "error": { "kind": "released" }, "diagnostics": [] }
-}

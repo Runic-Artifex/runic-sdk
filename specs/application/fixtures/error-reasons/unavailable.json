@@ -1,8 +1,0 @@
-{
-  "description": "A command whose CanExecute is false is rejected with reason unavailable. The client rejects with BridgeError(\"rejected\") whose reason is unavailable. \"state\": {} stands for the model's state.",
-  "scenario": "unavailable",
-  "producer": "Runic.Application.Views",
-  "route": "command",
-  "wire": { "ok": false, "state": {}, "error": { "kind": "rejected", "message": "Add is unavailable.", "reason": "unavailable" } },
-  "client": { "error": { "kind": "rejected", "reason": "unavailable" }, "diagnostics": ["rejected"] }
-}

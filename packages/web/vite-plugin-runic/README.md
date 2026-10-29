@@ -53,6 +53,19 @@ The plugin adds `@runic-artifex/vite-plugin-runic/client` to
 client: with a cold `node_modules/.vite` cache, the first page would otherwise
 discover it, and Vite would reload the page and close the host's connection.
 
+The development client also warns about a text field that loses typed
+characters: when script sets the focused `<input>` or `<textarea>` to a value
+it had before the user's last edit while a Bridge request is in flight, which
+happens when a field is bound with a command per key. It reports a
+`stale-input` Views diagnostic, shown on the timeline and passed to
+`onBridgeDiagnostic` listeners, and logs a console warning, once per field.
+The warning names the field by its `id` or `name`, never its value. Bind text
+fields with the text-field binding of your framework package
+(`injectTextField` in `@runic-artifex/angular`, `useTextField` in
+`@runic-artifex/react`, `vue` or `svelte`) or a setter. Turn the warning off with
+`runic({ staleInputWarning: false })`, or from the page by setting
+`globalThis[Symbol.for("runic.vite.staleInputWarning")] = false`.
+
 Under `dotnet runic dev`, the Vite process gets a random value for the session
 in `RUNIC_APPLICATION_DEV_SESSION`, and `/__runic/state` answers with it in the
 `X-Runic-Dev-Session` header. Since 0.11, `dev` treats the server as ready

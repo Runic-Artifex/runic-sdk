@@ -17,7 +17,7 @@ protocol to .NET and TypeScript is in the [language mappings](language-mappings.
 | [values.md](values.md) | The JSON profile, wire value types and the canonical form (RFC 8785) |
 | [language-mappings.md](language-mappings.md) | The .NET producer and the TypeScript client |
 | [conformance/](conformance/README.md) | Vectors and scenarios |
-| [protocol-3.md](protocol-3.md), [collection-deltas.md](collection-deltas.md) | Protocol 3, which the implementations still speak until protocol 4 lands |
+| [collection-deltas.md](collection-deltas.md) | Protocol 3's collection delta frames, kept with their fixtures while the .NET state tracker's tests read them |
 
 The key words MUST, MUST NOT, SHOULD and MAY are used as in RFC 2119. The independent MessageFormat 2 specification is
 maintained by [Runic Translations](https://github.com/Runic-Artifex/runic-translations-sdk).
@@ -690,5 +690,5 @@ The version changes only when a client built for the previous version could misr
 | --- | --- | --- |
 | 1 | 0.6 | Named routes with a snapshot and a state callback per route; collection delta frames were added in 0.7 without a version change. |
 | 2 | 0.9 | The `domain-failed` error and operation status kind. |
-| 3 | 0.10 | A released View answers `released` instead of `disconnected`; the reply error `reason`; a strict version check ([protocol 3](protocol-3.md)). |
+| 3 | 0.10 | A released View answers `released` instead of `disconnected`; the reply error `reason`; a strict version check ([protocol 3](https://github.com/Runic-Artifex/runic-sdk/blob/v0.12.1/specs/application/README.md)). |
 | 4 | 0.13 | One message channel with `hello`; `set` changes in frames; replies by revision; edit numbers; `open`/`close`; operation `watch` and `progress`; RFC 8785 canonical form; value types named by value; ISO 8601 durations; a language-neutral specification and conformance corpus. |

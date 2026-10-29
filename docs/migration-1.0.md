@@ -3,10 +3,11 @@
 This guide collects what an application written against Runic SDK 0.9.x changes
 to run on 1.0. 0.10.0 made every breaking change planned before 1.0; 0.11.0 only
 added APIs but changed some defaults; 0.12.0 changed macOS behaviour and macOS
-packaging, which needed breaking changes; the `1.0.0-rc.N` releases and 1.0.0
-take fixes only. An application already on 0.11 needs only
-[From 0.11 to 0.12](#from-011-to-012). Each section links the release notes,
-which give the full detail and the pull requests:
+packaging, which needed breaking changes; 0.13.0 replaced Views protocol 3 with
+protocol 4, which 1.0 keeps; the `1.0.0-rc.N` releases and 1.0.0 take fixes only.
+An application already on 0.12 needs only [From 0.12 to 0.13](#from-012-to-013),
+and one on 0.11 also [From 0.11 to 0.12](#from-011-to-012). Each section links
+the release notes, which give the full detail and the pull requests:
 
 - 0.10.0: [Upgrading](../eng/release/notes/0.10.0.md#upgrading),
   [Behaviour changes](../eng/release/notes/0.10.0.md#behaviour-changes),
@@ -17,11 +18,14 @@ which give the full detail and the pull requests:
 - 0.12.0: [Upgrading](../eng/release/notes/0.12.0.md#upgrading),
   [Behaviour changes](../eng/release/notes/0.12.0.md#behaviour-changes),
   [Breaking changes](../eng/release/notes/0.12.0.md#breaking-changes)
+- 0.13.0: [Upgrading](../eng/release/notes/0.13.0.md#upgrading),
+  [Breaking changes](../eng/release/notes/0.13.0.md#breaking-changes),
+  [Behaviour changes](../eng/release/notes/0.13.0.md#behaviour-changes)
 
 ## Before you start
 
 1. Update every Runic NuGet and npm package to the same release, then rebuild and
-   regenerate. Views protocol 3 is a strict match: a page and a .NET host from
+   regenerate. Views protocol 4 is a strict match: a page and a .NET host from
    different protocol versions do not connect (`BridgeError` kind `failed` with
    one `protocol` diagnostic). `Runic.Application.Views.CsWebUi` keeps a
    prerelease version of its own; take the one listed in the release notes.
@@ -73,14 +77,14 @@ new RunicWindowTestHost<ShellViewModel>(shell, (t, c, vm) => new ShellBridge(t, 
 
 | 0.9 | 1.0 |
 | --- | --- |
-| `BridgeProtocol.Version` 2; telemetry and testing `ErrorKind` `disconnected` for a released View | 3; `released` (`RunicCallReply<T>.ErrorKind`, `RunicViewPublication.ErrorKind`, `RunicViewDriver.Mount`/`Unmount` messages) |
+| `BridgeProtocol.Version` 2; telemetry and testing `ErrorKind` `disconnected` for a released View | 4 (3 in 0.10 to 0.12; see [Views protocol 4](#views-protocol-4)); `released` (`RunicCallReply<T>.ErrorKind`, `RunicViewPublication.ErrorKind`, `RunicViewDriver.Mount`/`Unmount` messages) |
 | `ObserveOn(ReactiveSchedulers.For(context))` added after a plain `command.Execute()` in a turn | Remove it: the result, `IsExecuting`, `CanExecute` and `ThrownExceptions` arrive on the turn's model context. Don't block a turn on them (it deadlocks) |
 | CPU-heavy `MainThreadScheduler` work after `ConfigureAwait(false)`, in `Task.Run` or from a timer created in a turn | Runs on that turn's model context; move it to `TaskPoolScheduler` |
 | Event 1042 logged at once for a fire-and-forget failure in a Bridge call | Logged when the outermost Bridge call ends; use `ObserveBridgeExceptions` where your code handles a bridged command's exception itself |
-| Setter values and command arguments unlimited; checked writes, operation starts and interactions 64 KiB | All limited to the window's input limit, 1 MiB UTF-8 by default; raise `MaximumInputBytes` (`RunicWindowOptions`, `RunicDesktopHostOptions`, `RunicCsWebUiHostOptions`) if a page sends more. Also: numbers 4 096 characters, 64 awaited command calls per window, mount tokens 256 characters |
+| Setter values and command arguments unlimited; checked writes, operation starts and interactions 64 KiB | All limited to the window's input limit, 1 MiB UTF-8 by default; raise `MaximumInputBytes` (`RunicWindowOptions`, `RunicDesktopHostOptions`, `RunicCsWebUiHostOptions`) if a page sends more. Also: numbers 4 096 characters, 64 awaited command calls per window, presentation and other identifiers 128 characters (mount tokens of 256 characters in 0.10 to 0.12) |
 | A `ReactiveValidationObject` property message repeated at `[]` | `[]` holds only object-level rules; Toolkit object-level results that name a member appear once, at the member |
 | A reply could arrive before the call's state frames on other Views | The reply waits up to 5 s for them |
-| Views state sent to the page as a script | Sent as data to `__runicViewsPush`; pages still get `__{route}Changed(state)` |
+| Views state sent to the page as a script | Sent as data on the connection's push channel, which `__runicBridge.onMessage` delivers (`__{route}Changed(state)` in 0.10 to 0.12) |
 
 `IRunicWindowHost.Validate` and the Views.Desktop menu commands follow the menu
 changes in [Desktop and hosts](#desktop-and-hosts).
@@ -313,8 +317,8 @@ grep -rlE "@runic-artifex/[a-z-]+/experimental" src | xargs sed -i -E 's#(@runic
 | --- | --- |
 | Telling "unavailable" from "invalid argument" by `BridgeError.message` | `BridgeError.reason` (`"unavailable"`, `"invalid-input"`; open); views-effect `ViewRejected.cause.reason` |
 | Mock `failNext(route, { kind: "disconnected" })` | `bridge.disconnect()` |
-| Mock or hand-written snapshot replies with `protocol: 2` or none | `protocol: 3` |
-| A custom `IBridgeTransport` answering an unbound route `kind: "disconnected"` | `kind: "released"`, `message: "This View was released."` |
+| Mock or hand-written snapshot replies with `protocol: 2` or none | A `hello` reply with `protocol: 4` and `implementation`; see [Views protocol 4](#views-protocol-4) |
+| A custom `IBridgeTransport` answering an unbound route `kind: "disconnected"` | The window's dispatcher answers `kind: "released"`, `message: "This View was released."`; a transport only implements `Serve` and `BroadcastAsync` ([Views protocol 4](#views-protocol-4)) |
 | A hand-written `createLatestOperationController` wrapper in a component | `useLatestOperation()` (React, Vue, Svelte), `injectLatestOperation()` (Angular) |
 | Generated client `Promise<<Name>Client>` | `Promise<<Name>Client & globalThis.Disposable>`; the `.d.ts` files need TypeScript 5.2 (`esnext.disposable`) |
 | Vite `>=8.0.12 <9` | `>=8.3.3 <9` |
@@ -538,3 +542,78 @@ switch (await write.CommitAsync())
 Details: 0.12.0 [Upgrading](../eng/release/notes/0.12.0.md#upgrading),
 [Behaviour changes](../eng/release/notes/0.12.0.md#behaviour-changes) and
 [Breaking changes](../eng/release/notes/0.12.0.md#breaking-changes).
+
+## From 0.12 to 0.13
+
+0.13.0 replaces Views protocol 3 with protocol 4, the protocol that 1.0 keeps,
+and turns on spell checking in Linux windows. Generated code changes with the
+protocol; application code changes only where it implements or calls the host
+bridge or a transport itself, uses the untyped mock or `InMemoryBridgeTransport`
+directly, or reads `TimeSpan` text. The tables also apply to an application
+coming from 0.9.
+
+### Views protocol 4
+
+Update every Runic NuGet and npm package to 0.13.0 together, rebuild so the
+generated clients, bridges and mocks are regenerated, and reload open pages. A
+page and a host of different protocol versions do not connect: a cached 0.12 page
+reports a `protocol` diagnostic ("The .NET host uses Views protocol 4, but this
+client implements protocol 3 …") and its calls fail.
+
+| 0.12 | 0.13 |
+| --- | --- |
+| Views protocol 3: one host route per member (`counterSetStep`), a `Snapshot` and `Mount`/`Unmount` per View, `__{route}Changed` pushes, long-poll routes for operations, interactions and the menu bar | Protocol 4: one request endpoint and one push channel per connection, a `hello` handshake, `open`/`close`, frames with member changes, replies that name a revision, `watch` pushes. Nothing to change in code that uses generated clients |
+| `TimeSpan` values as `"1.02:03:04.5000000"` (.NET `c` format) | ISO 8601 durations, `"P1DT2H3M4.5S"`, `"PT0S"`, `"-PT1.5S"`. The TypeScript type stays `string`: parse it with `Temporal.Duration.from` or your own code, and update stored or compared strings |
+| A custom `IBridgeTransport` with `Bind`/`BindAsync`/`Publish`, `IAsyncBridgeTransport` or `IBridgeUtf8Transport` | `Serve(IBridgeRequestHandler)` and `BroadcastAsync`, plus `IBridgeConnectionTransport.SendAsync` if the transport can address one connection; report closed connections with `ConnectionClosed`. See [Custom window hosts](../packages/dotnet/Runic.Application.Testing/README.md#custom-window-hosts) |
+| Code that reads `IBridgeArguments` | Removed; generated descriptors read the request's JSON value |
+| A custom `__runicBridge` or a test double with `call(name, …args)` and `onReconnect` | `request(message): Promise<string>`, `onMessage(listener)` and the now required `onConnectionChange(listener)` ([Host bridge](../specs/application/README.md#host-bridge-page)) |
+| A copy of `runic-desktop-views.js` or `runic-cswebui.js` kept outside the web content | Take the 0.13 copy; a 0.12 copy speaks protocol 3 |
+| `snapshot` changed only after .NET confirmed a setter | It shows the setter's value at once, until the state that includes the edit arrives. A failed setter rejects and the member returns to .NET's value. Await the setter's promise where the page needs .NET's confirmation, such as a "Saved" indicator |
+| A text input bound to state with `(input)="client.setName(…)"`, or a command per key | It keeps working with a setter. Prefer `injectTextField` ([Angular](../packages/web/angular/README.md#text-inputs)) or `useTextField` ([React](../packages/web/react/README.md#text-inputs-usetextfieldview-read-write-options), [Vue](../packages/web/vue/README.md#text-inputs-usetextfieldview-read-write-options), [Svelte](../packages/web/svelte/README.md#text-inputs-usetextfieldview-read-write-options)) for coalescing and keeping the draft after an error, a setter rather than a command per key, and don't disable the field on its own busy state ([Text inputs](../packages/web/views/README.md#text-inputs)) |
+| `BridgeFailureDetail.type` is `string` | `string \| undefined` |
+| `BridgeError.route` such as `counterIncrement` | The View route, such as `counter` |
+| `BridgeOperationUncertainError.contract` `{ViewModel}:{fingerprint}:{route prefix}` | `{view}:{fingerprint}`; `route` is separate |
+| An operation started by 0.12 and recovered after the upgrade | `unknown`: every contract fingerprint changes (`runic-bridge-contract-v5`) |
+| The `version` diagnostic for any producer | Only for `Runic.Application.Views`; another producer is identified by `implementation` in `hello` |
+| Telemetry `runic.bridge.route` holding a host route such as `editorSetTitle` | The View route (`editor`), with the member in `runic.bridge.member`; `runic.bridge.frame` is `state`, `frame` or `failure` |
+| Content of a parent View presented at the parent's first change | Presented once a client read the parent's state (`open` or `snapshot`): a route publishes nothing before its first state |
+| A page that calls the menu bar routes (`__runicMenuBarWatch`, `__runicMenuBarInvoke`, `__runicMenuBarWait`) itself | Menu bar page protocol 2: requests to the reserved route `runic.menu-bar` and `menu-bar` pushes ([menu-bar-page.md](../specs/desktop/menu-bar-page.md)); `createMenuBarController` does this |
+| Code that compared `BridgeWire.EncodeCanonical` output with stored strings | RFC 8785 (JCS): numbers as IEEE doubles written as ECMAScript does, minimal string escaping. `0.1` and `0.10000000000000000001` are one value; `1e400` and invalid Unicode throw `FormatException` |
+
+Generated TypeScript (`@runic-artifex/views/generated`, `/generated/wire`) and
+generated C# descriptors change shape; regenerate rather than edit them. The
+wire decoders `guid`, `dateOnly`, `timeOnly` and `dateTimeOffset` are now
+`uuid`, `localDate`, `localTime` and `offsetDateTime`, and `float32` is new.
+
+### Mocks and tests
+
+The untyped mock (`@runic-artifex/views/mock`) answers protocol-4 requests,
+addressed by request kind and member wire name instead of route suffixes.
+Generated typed mocks (`mock<Name>(bridge, definition)`) keep their definitions.
+
+| 0.12 | 0.13 |
+| --- | --- |
+| `bridge.view("counter", { routes: { Increment: state => … } })` | `bridge.view("counter", { commands: { increment: state => … } })` |
+| `routes: { SetName: (state, value) => … }` | `set: { name: (state, value) => … }`; without a handler a `set` applies the value |
+| `routes: { CanIncrement: () => false }` | `can: { increment: () => false }`, or `canIncrement: false` in the state |
+| `bridge.route(name, handler)` for any other route | `bridge.intercept(request => reply \| undefined)` and `bridge.push(message)` |
+| `bridge.failNext("counterIncrement", failure)` | `bridge.failNext({ route: "counter", kind: "command", member: "increment" }, failure)`, or `view.failNext({ kind, member }, …)`; typed mocks keep `failNext(method, …)` |
+| `bridge.calls` with route names such as `editorSave` | `MockCall { kind, route, member, message }` with wire member names: `{ kind: "command", route: "editor", member: "save" }`. Typed mocks' `calls` hold the same objects |
+| Typing tests against an instant mock | `createMockBridge({ latency: "slow", reorderRequests: true })` and key-by-key typing ([Typing in tests](../packages/web/views/README.md#typing-in-tests)) |
+| `InMemoryBridgeTransport.Call("counterSetStep", new BridgeTestArguments(Int64Value: 5))`, `CallAsync`, `Routes` | `host.Root.Set(vm => vm.Step, 5)` and the other `RunicViewDriver` calls, or `transport.Request("""{"kind":"set","route":"counter","member":"step","value":5,"edit":1}""")` after a `hello` |
+| `InMemoryBridgeTransport.TakePublications()`, `RunicPublicationKind.Delta` | `TakeMessages()` (`RunicBridgeMessage(Json, ConnectionKey)`) on the transport, the drivers' `TakePublications()`; `RunicPublicationKind.Frame` with `Sets`, `Texts` and `Fields` |
+| `RunicViewDriver.Mount(token)`/`Unmount(token)` | `Mount(presentation)`/`Unmount(presentation)` send `open`/`close` |
+| `RunicCallReply.State` from the reply | Read with a `snapshot` after the reply, which carries `Revision`, `Released` and `Superseded` |
+
+### Spell checking and windows
+
+| 0.12 | 0.13 |
+| --- | --- |
+| Linux (GTK 3 and GTK 4) windows never checked spelling | They check `spellcheck` fields by default, as WebView2 and WKWebView did. Set `DesktopWindowOptions.SpellChecking = false` for the 0.12 behaviour, for example in an editor that draws its own marks |
+| Spelling languages: the platform's choice | `DesktopHostOptions.SpellCheckingLanguages` (BCP 47, for the whole application) and `DesktopHost.SetSpellCheckingLanguagesAsync`. Linux uses enchant dictionaries, falling back to the user's locale variables; macOS sets `NSSpellChecker`'s language for one language and identifies the language automatically for several; Windows ignores them (`window-option-unsupported`, WebView2 uses `DesktopWindowOptions.Language`). A language without a dictionary is reported as `spell-checking-dictionary-missing` |
+| A Nix-packaged application had no dictionaries | `buildRunicApplication { spellingDictionaries = with pkgs.hunspellDicts; [ en_US de_CH ]; }` (`desktop` and `desktop-gtk4` hosts) |
+| GTK 4 on X11: a restored `DesktopWindowPlacement` opened where the window manager placed it, a maximized one restored there, and KWin positions drifted by the frame | The window opens at the saved position, a maximized placement restores to its saved bounds, and the reported position is the frame's top-left corner. Saved placements need nothing. On Wayland the position is still ignored |
+
+Details: 0.13.0 [Breaking changes](../eng/release/notes/0.13.0.md#breaking-changes),
+[Behaviour changes](../eng/release/notes/0.13.0.md#behaviour-changes) and
+[Added](../eng/release/notes/0.13.0.md#added).

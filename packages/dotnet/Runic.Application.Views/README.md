@@ -150,9 +150,9 @@ TypeScript module per ViewModel.
 
 A View is a logical .NET presentation object with typed `DataContext`. Its
 browser counterpart can be a plain TypeScript function or a framework
-component. The browser acknowledges mount and unmount, so a content session
-creates a fresh View for each presentation and releases it when the outlet
-changes. The ViewModel belongs to its application or window DI scope and may
+component. The browser opens and closes a presentation of each View it shows,
+so a content session creates a fresh View for each presentation and releases it
+when the outlet changes. The ViewModel belongs to its application or window DI scope and may
 survive View changes. Window-local routes and operation admission are
 host-neutral; native window creation belongs to the host adapter.
 
@@ -198,8 +198,8 @@ checked-field registries, only while it is attached. Replacing, clearing, or
 pruning it releases both; the window keeps a weak identity so presenting the same
 object again returns the same reference. When the browser still shows a suspended
 reference, as after `Main = b; Main = a;` in one command, its mount resumes on the
-re-attached bridge with a fresh View. Snapshot revisions increase across the whole
-window, so a re-attached route never publishes an older revision. The
+re-attached bridge with a fresh View. A window has one revision counter for all
+its routes, so a re-attached route never publishes an older revision. The
 [wire protocol](https://github.com/Runic-Artifex/runic-sdk/blob/main/specs/application/README.md)
 describes these rules.
 
@@ -959,12 +959,14 @@ private async Task SaveAsync(CancellationToken token)
 
 A command, setter or checked write often changes another View than the one
 it was called on, such as a page command that adds a document to its shell's
-list. The call's reply carries only its own View's state; the other Views'
-states travel as separate frames. Since 0.11, Runic sends every state frame
-that the call produced, on every route of the window, before it sends the
-reply (read-your-writes). When the page's call resolves, the other Views'
-clients have already applied those states, so code after `await` can read
-them without waiting for a subscription:
+list. A reply carries no state: it names the `revision` of the first state of
+its route that includes the call's effects, and every View's state travels as
+pushed states and frames. Runic sends every push that the call produced, on
+every route of the window, before it sends the reply (read-your-writes), and
+the client resolves the call once its route has reached that revision. When
+the page's call resolves, the other Views' clients have already applied those
+states, so code after `await` can read them without waiting for a
+subscription:
 
 ```ts
 await workspace.load(request);
@@ -975,23 +977,26 @@ const document = shell.snapshot.documents.at(-1); // includes what load added
   command, or in a model turn that ran before its reply, is included. A
   change that work outside the command makes later, such as a timer or a
   `Task.Run` that commits afterwards, arrives as an ordinary frame.
-- The guarantee covers awaited and synchronous commands (`{View}{Command}`),
-  setters (`{View}Set{Property}`) and checked writes (`{View}Write{Property}`)
-  on Runic Desktop, CS-WebUI, WPF and `Runic.Application.Testing`'s
-  in-memory transport. An operation's admission (`start{Command}`) replies at
-  once, as before; its status follows the [operation rules](#operation-results-and-parameterised-queries).
-- A reply waits at most 5 seconds for those frames. A page that takes no
-  frames for longer, for example because it is frozen in the debugger, gets
-  the reply anyway, and the states follow.
+- The guarantee covers the `command`, `set` and `write` requests of awaited
+  and synchronous commands, setters and checked writes on Runic Desktop,
+  CS-WebUI, WPF and `Runic.Application.Testing`'s in-memory transport. An
+  operation's admission (`start`) also names a revision; its status follows the
+  [operation rules](#operation-results-and-parameterised-queries).
+- A reply waits at most 5 seconds for those pushes. A page that takes no
+  pushes for longer, for example because it is frozen in the debugger, gets
+  the reply anyway, and the states follow. A client whose route has not reached
+  the reply's revision 5 seconds later reads a `snapshot` of the route.
 - A synchronous route that a test calls inside the model turn, for example
   through `IRunicModelContext.InvokeAsync`, replies at once: the states
   cannot be captured until that turn ends.
 - A custom `IBridgeTransport` keeps the guarantee when `BroadcastAsync` (and
   `IBridgeConnectionTransport.SendAsync`) returns once the push is on the
-  connection ahead of later sends, as Runic's hosts do.
+  connection ahead of later sends, as Runic's hosts do (see
+  [Custom window hosts](../Runic.Application.Testing/README.md#custom-window-hosts)).
 
-The wire is unchanged (Views protocol 3); clients of earlier releases see the
-same frames, only in this order.
+The rules are in the protocol's
+[reply order](../../../specs/application/README.md#reply-order) and
+[client resolution](../../../specs/application/README.md#client-resolution).
 
 ## Read-only and settable state
 
@@ -1172,12 +1177,12 @@ so a malformed reply never reaches application state.
 | `long`, `ulong`, `BigInteger` | `bigint` | A decimal string, such as `"9007199254740993"`. |
 | `decimal` | `string` | Invariant decimal text, such as `"12.50"`, so no digit is lost. |
 | `string` | `string` | |
-| `Guid` | `string` | `"d3b07384-d9a0-4c9b-8f1e-2a6c0e5f7b11"`, in lower case. |
-| `DateTimeOffset` | `string` | ISO 8601 with its offset: `"2026-10-03T12:30:00.0000000+02:00"`. The browser's `new Date().toISOString()` is accepted. |
-| `DateTime` | `string` | ISO 8601 round-trip text: `Z` for UTC, an offset for local time, none for an unspecified kind. A value ending in `Z` reads back as UTC. |
+| `Guid` | `string` | `"d3b07384-d9a0-4c9b-8f1e-2a6c0e5f7b11"`, written in lower case; either case is accepted. |
+| `DateTimeOffset` | `string` | ISO 8601 with its offset, `Z` for a zero offset: `"2026-10-03T12:30:00+02:00"`, `"2026-10-03T10:30:00.5Z"`. The browser's `new Date().toISOString()` is accepted. |
+| `DateTime` | `string` | ISO 8601: `Z` for UTC, an offset for local time, none for an unspecified kind. A value ending in `Z` reads back as UTC. |
 | `DateOnly` | `string` | `"2026-10-03"` |
-| `TimeOnly` | `string` | `"08:15:00.0000000"`; `"08:15:00"` is accepted. |
-| `TimeSpan` | `string` | .NET's invariant `c` format, `[-][d.]hh:mm:ss[.fffffff]`, such as `"1.02:03:04"`. |
+| `TimeOnly` | `string` | `"08:15:00"`, `"08:15:00.5"`: a fraction of up to 7 digits, written without trailing zeros. |
+| `TimeSpan` | `string` | An ISO 8601 duration of days, hours, minutes and seconds, such as `"PT12.3456789S"`, `"-P1DT2H3M4.5S"` or `"PT0S"`; `Temporal.Duration.from` reads it. Years, months and weeks are rejected. |
 | An enum | A union of its wire names, such as `"Editor" \| "Preview"` | The C# name, or its `[RunicAlias]`. A `[Flags]` enum needs a `[RunicCodec]`. |
 | `T?`, for a value or a reference type | `T \| null` | `null`. In a value that reaches the page the member is always present; see [Optional members](#optional-members) for values the page sends. |
 | `T` with nullable reference types enabled | `T` | Never `null`. Without annotations (`#nullable disable`), a reference type is `T` too. |
@@ -1482,9 +1487,9 @@ host.
 On every host the Bridge works under a Content-Security-Policy that allows
 only same-origin scripts and connections and no `'unsafe-eval'`, such as
 `default-src 'self'; script-src 'self'; object-src 'none'; base-uri 'self'`.
-The host's scripts are served from the page's origin, and Bridge calls and
-state are data: the host's bridge script parses each state with `JSON.parse` before it calls
-`__{route}Changed`. Runic Desktop sends the policy as a header
+The host's scripts are served from the page's origin, and Bridge requests,
+replies and pushes are data: JSON text that the client parses with
+`JSON.parse`. Runic Desktop sends the policy as a header
 (`RunicDesktopHostOptions.ContentSecurityPolicy`); a CS-WebUI page carries it
 in a `<meta>` element. APIs that run your own script in the page, such as
 `DesktopSurface.ExecuteJavaScriptAsync`, still need `'unsafe-eval'`. See the
@@ -1882,10 +1887,9 @@ using (BridgeSnapshotBatch.Begin(document))
 }
 ```
 
-Nested scopes on the same model capture and publish one final snapshot per
-attached bridge when the outer scope ends. Notifications still advance the
-revision, and direct command/checked-write replies capture current state
-immediately. A batch controls snapshot work; it does not make mutations atomic
+Nested scopes on the same model publish one frame per attached bridge when
+the outer scope ends: the batch is one publication unit. A batch controls
+when changes are published; it does not make mutations atomic
 or own the model scheduler. Enter the model's execution context as usual and
 keep the batch around synchronous changes, after awaiting I/O. The translations
 editor uses this during bulk document reconciliation and command result updates.
@@ -1919,12 +1923,12 @@ The page sees an ordinary `log: string`. The Bridge compares the new value with
 the value the page has and publishes a frame with the number of UTF-16 code
 units dropped from its start and the text appended, keeping the longest text
 the two share. Appends in one `BridgeSnapshotBatch` are one change. A cleared
-or replaced log is a frame that drops everything. `null` (for `string?`), a
-change together with other state, a ViewModel with validation, and a page that
-missed a frame get full states, as with `[RunicCollection]`. The property must
-be a read-only `string` or `string?` state property (`RUNICBRIDGE008`). The
-frame format is in
-[collection delta frames](../../../specs/application/collection-deltas.md#text-changes).
+or replaced log is a frame that drops everything. A change from or to `null`
+(for `string?`) is a `set` of the whole value, and other members that changed
+travel as `set` changes in the same frame. A page that falls behind recovers
+with a full state, as with `[RunicCollection]`. The property must be a
+read-only `string` or `string?` state property (`RUNICBRIDGE008`). The frame
+format is in [state changes](../../../specs/application/state-changes.md#text).
 
 ## Structured validation
 
@@ -2235,8 +2239,8 @@ region's request in its own command and reads `Committed.ArrivalError`.
 ### Operations and navigation entries
 
 Operations belong to the Window, not to the page that started them: their
-status, wait, Cancel and stream routes are Window routes, so a remounted or
-another presentation still observes them. By default an operation keeps running
+`status`, `watch`, `cancel` and `stream` requests are answered by the Window,
+so a remounted or another presentation still observes them. By default an operation keeps running
 when the navigation entry whose page started it retires (Back, Replace, Reset
 or Clear removed the entry), and the navigator disposes the page, its entry
 scope and its model-context lease at once. When the operation uses the page or
@@ -2390,15 +2394,19 @@ NativeAOT symbols and what to attach to a bug report.
 | 1007 | `BridgeOperationDomainFailed` | Debug | An admitted operation throws its declared failure. | `Member`, `FailureType` |
 | 1008 | `BridgeDomainFailureNotEncoded` | Error | A `RunicFailureException` from a command or operation is undeclared, cannot be encoded or is over 4 KiB, so it is reported as failed. When the encoder threw, the entry carries both exceptions. | `Model`, `Member`, `Route`, `FailureType`, `Reason` |
 | 1010 | `BridgeSnapshotCaptureFailed` | Error | A state snapshot writer throws. | `Model`, `Route`, `ErrorType` |
-| 1011 | `BridgeSnapshotDeliveryFailed` | Error | A host rejects a state or delta frame. | `Model`, `Route`, `ErrorType` |
+| 1011 | `BridgeSnapshotDeliveryFailed` | Error | A transport rejects a `state`, `frame` or `failure` push. | `Model`, `Route`, `ErrorType` |
 | 1012 | `BridgeCollectionKeysRejected` | Error | A `[RunicCollection]` has a null row or a null, empty or duplicate key, so the route withholds its state. | `Model`, `Field`, `Key`, `Route` |
 | 1013 | `AcceptedWorkFailed` | Error | A task owned by an `AcceptedWorkScope` faults. | `ErrorType` |
 | 1014 | `AcceptedWorkDomainFailed` | Debug | A task owned by an `AcceptedWorkScope` throws a declared failure. | `FailureType` |
 | 1015 | `PathWatchProblem` | Warning | A `RunicPathWatcher` started without a `failed` callback meets a problem it works around: lost events, a watch limit or a watch that could not start. Always written to `Trace`. | `Problem` |
 | 1016 | `PathWatchPolling` | Debug | A `RunicPathWatcher` started without a `failed` callback polls for a directory that does not exist yet, such as a state directory created on the first start. Not written to `Trace`. | `Problem` |
 | 1017 | `BridgeOperationRetired` | Debug | The navigation entry whose page started an operation declared `RunicOperationRetirement.Cancel` or `Drain` retires: a `Cancel` operation is asked to cancel, and the page is disposed after the operation ends. | `Member`, `Policy`, `Route` |
+| 1018 | `BridgeProtocolMismatch` | Warning | A page's `hello` names another Views protocol than 4, so the page is refused; use the Runic packages of one release and rebuild the frontend. Once per connection. | `ClientProtocol`, `HostProtocol`, `Connection` |
+| 1019 | `BridgeRequestBeforeHello` | Debug | A request arrives on a connection before its `hello` and is rejected (`no-hello`). Once per connection. | `Kind`, `Connection` |
 | 1020 | `ViewMountFailed` | Error | A .NET View fails to mount. | `Route`, `ErrorType` |
 | 1021 | `ViewRemountFailed` | Error | A View fails to mount again after a reconnect. | `Route`, `ErrorType` |
+| 1022 | `BridgeRequestFailed` | Error | Handling a request outside a command, setter or operation, sending a targeted push, or reporting a closed connection or an operation's status throws. A failed request is answered `failed`. | `ErrorType` |
+| 1023 | `BridgeMailboxOverflowed` | Warning | The mailbox of a connection whose transport cannot push to one connection (CS-WebUI) exceeds 1,024 pushes or 4 MiB, so its oldest pushes are dropped. Once per connection. | `Connection`, `Dropped` |
 | 1033 | `ModelContextReleaseFailed` | Error | A window session's own model context fails to shut down in the background. | `ErrorType` |
 | 1040, 1041 | Retired | | Reported by `ReactiveRoutedRegion<T>`, removed in 0.9; not reused. | |
 | 1042 | `ReactiveCommandFailed` | Error | A bridged ReactiveUI command reports on `ThrownExceptions` an exception that no Bridge call received, while a generated Bridge presents it, or a command or object observed with `ObserveBridgeExceptions(logger)` reports one; declared `RunicFailureException`s and cancellations are not logged. An exception raised in a Bridge call's flow, such as by a plain `Execute` in a wrapper command, is held until the outermost Bridge call in that flow ends, and not logged if a call received it or an exception wrapping it. Still logged when hand-written code receives and handles it from a plain `Execute`; never when it ran the command with `RunAsync`. A streamed operation holds nothing. Also logged after the Bridge detached, with its logger, for an execution that a Bridge call or `RunAsync` stopped awaiting when it was cancelled, such as an operation that a retiring navigation entry cancels. | `Source` (`Model.Command` for the Bridge; the command expression or `sourceName` for `ObserveBridgeExceptions`), `ErrorType` |
@@ -2418,7 +2426,7 @@ NativeAOT symbols and what to attach to a bug report.
 | 1112 | `ViewHostPresentationChangeFailed` | Error | A `RunicViewHost` presentation change throws outside its open. | `ErrorType` |
 | 1113 | `ViewHostCleanupFailed` | Error | Releasing a `RunicViewHost` presentation throws. | `ErrorType` |
 | 1114 | `ChildViewCleanupFailed` | Error | A `WpfBridgeView` fails to release after its presentation closed. | `ErrorType` |
-| 2000 | `DesktopSnapshotDeliveryFailed` | Error | Runic Desktop cannot run a state delivery script. | `Route`, `ErrorType` |
+| 2000 | `DesktopSnapshotDeliveryFailed` | Error | Runic Desktop cannot deliver a push to a page. | `ErrorType` |
 | 2002 | `DesktopWindowCloseAfterOpen` | Warning | `RUNIC_APPLICATION_CLOSE_AFTER_OPEN=1` closed a Desktop window right after it opened. | `Variable` |
 | 2003 | `DesktopPortalDiagnostic` | Warning or Debug | On Linux, xdg-desktop-portal reports a diagnostic for the portal services `AddRunicPlatformServices()` registers (notifications, status icon, login startup and inhibition): Warning for a rejected identity, an unavailable portal or a denied request, Debug for an accepted request or registration. | `Code`, `DiagnosticMessage`, `Remediation` |
 | 2004 | `DesktopMenuCommandFailed` | Error | A menu bar command of a Window's root ViewModel (`IRunicMenuCommandSource`) or of `RunicDesktopHost.UseApplicationMenu` threw, or binding the menu bar's ids failed. | `CommandId`, `ErrorType` |
@@ -2455,7 +2463,7 @@ NativeAOT symbols and what to attach to a bug report.
 as `content12`). A declared failure is an expected outcome, so it is logged at
 Debug, still with its exception; `FailureType` is the failure value's type.
 
-Events 1000-1012, 1020, 1021, 1050-1053 and 1100-1102 use the category `Runic.Application.Views`
+Events 1000-1012, 1018-1023, 1050-1053 and 1100-1102 use the category `Runic.Application.Views`
 (`RunicViewsTelemetry.LogCategory`); the Hot Reload events 1100-1102 use the
 logger of the window session that owns the Bridge. Events 1110-1114 use
 `Runic.Application.Views.Wpf` and the factory of the host's `Services`. Event 1033 here is a window session's
@@ -2507,7 +2515,7 @@ expected outcome: its span status stays Unset, it has no `error.type`, and
 | `runic.bridge.calls` | Counter | `{call}` | kind, model, member, outcome, `error.type` |
 | `runic.bridge.call.duration` | Histogram | `s` | kind, model, member, outcome, `error.type` |
 | `runic.bridge.failures` | Counter | `{failure}` | kind (a call kind, `snapshot.capture`, `snapshot.delivery`, `collection.keys` or `mount`), model, member, `error.type` |
-| `runic.bridge.snapshot.frames` | Counter | `{frame}` | model, `runic.bridge.frame` (`state`, `delta` or `failure`) |
+| `runic.bridge.snapshot.frames` | Counter | `{frame}` | model, `runic.bridge.frame` (`state`, `frame` or `failure`) |
 | `runic.bridge.snapshot.size` | Histogram | `By` | model, frame |
 | `runic.bridge.snapshot.delivery.duration` | Histogram | `s` | model, frame |
 | `runic.bridge.snapshot.recoveries` | Counter | `{snapshot}` | model |

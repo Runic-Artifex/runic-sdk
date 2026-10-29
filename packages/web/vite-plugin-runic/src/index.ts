@@ -27,6 +27,10 @@ export type {
 const virtualClientId = "virtual:runic/client";
 const resolvedVirtualClientId = `\0${virtualClientId}`;
 const clientPackageId = "@runic-artifex/vite-plugin-runic/client";
+// Turns the client's `stale-input` warning off. A separate module, because the import of the
+// client is hoisted above any statement in the virtual client module.
+const staleInputOffId = "virtual:runic/stale-input-off";
+const resolvedStaleInputOffId = `\0${staleInputOffId}`;
 const stateEvent = "runic:state";
 const diagnosticEvent = "runic:diagnostic";
 const connectionEvent = "runic:connection";
@@ -57,6 +61,12 @@ export interface RunicViteOptions {
    */
   readonly devtools?: boolean | "auto";
   readonly maxTimelineEntries?: number;
+  /**
+   * `false` turns off the development client's `stale-input` warning: script that sets a
+   * focused text field to a value from before the user's last edit while a Bridge request
+   * is in flight. Defaults to `true`.
+   */
+  readonly staleInputWarning?: boolean;
   /** Injects the Runic Desktop bootstrap without taking ownership of Vite or HMR. */
   readonly desktop?: boolean | Readonly<{
     /** Absolute development bootstrap URL; production uses the surface-relative default. */
@@ -91,6 +101,9 @@ export interface RunicDevelopmentState {
 
 export function runic(options: RunicViteOptions = {}): RunicVitePlugin {
   const maxTimelineEntries = timelineLimit(options.maxTimelineEntries);
+  if (options.staleInputWarning !== undefined && typeof options.staleInputWarning !== "boolean") {
+    throw new TypeError("staleInputWarning must be true or false.");
+  }
   let server: ViteDevServer | undefined;
   let sharedState: { mutate: (update: (draft: RunicDevelopmentState) => void) => void } | undefined;
   let jsonRenderer: JsonRenderer | undefined;
@@ -223,11 +236,18 @@ export function runic(options: RunicViteOptions = {}): RunicVitePlugin {
       });
     },
     resolveId(id) {
-      return id === virtualClientId ? resolvedVirtualClientId : undefined;
+      if (id === virtualClientId) return resolvedVirtualClientId;
+      return id === staleInputOffId ? resolvedStaleInputOffId : undefined;
     },
     load(id) {
+      if (id === resolvedStaleInputOffId) {
+        return `globalThis[Symbol.for("runic.vite.staleInputWarning")] = false;`;
+      }
       if (id !== resolvedVirtualClientId) return undefined;
-      return `import ${JSON.stringify(clientPackageId)};`;
+      // Imports evaluate in order, so the flag is set before the client installs the warning.
+      return options.staleInputWarning === false
+        ? `import ${JSON.stringify(staleInputOffId)};\nimport ${JSON.stringify(clientPackageId)};`
+        : `import ${JSON.stringify(clientPackageId)};`;
     },
     devtools: {
       async setup(context) {

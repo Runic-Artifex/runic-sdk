@@ -1,8 +1,0 @@
-{
-  "description": "A snapshot read of a View that .NET released replies released, without state, and states the protocol like every snapshot reply. \"version\" is left out because it is the package version. The client rejects with BridgeError(\"released\") and reports nothing.",
-  "scenario": "snapshot-reply",
-  "producer": "Runic.Application.Views",
-  "route": "snapshot",
-  "wire": { "ok": false, "state": null, "error": { "kind": "released", "message": "The Bridge is closed." }, "protocol": 3 },
-  "client": { "error": { "kind": "released" }, "diagnostics": [] }
-}

@@ -46,9 +46,6 @@
   <ItemGroup>
     <None Include="../../../specs/application/fixtures/collection-deltas/*.json" Link="fixtures/collection-deltas/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
     <None Include="../../../specs/application/fixtures/domain-failures/*.json" Link="fixtures/domain-failures/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
-    <None Include="../../../specs/application/fixtures/text-deltas/*.json" Link="fixtures/text-deltas/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
-    <None Include="../../../specs/application/fixtures/released/*.json" Link="fixtures/released/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
-    <None Include="../../../specs/application/fixtures/error-reasons/*.json" Link="fixtures/error-reasons/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
     <!-- RFC 8785 canonical-form vectors (runic.views.vector/1): this suite's own, and the
          protocol 4 conformance corpus's once it is on this branch. -->
     <None Include="vectors/canonical/*.json" Link="vectors/canonical/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
