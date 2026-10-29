@@ -1,7 +1,9 @@
 // The development client that the plugin injects into served pages. It forwards the
-// diagnostics and connection state of `@runic-artifex/views` to the DevTools dock. It has
-// no exports: applications do not import it.
+// diagnostics and connection state of `@runic-artifex/views` to the DevTools dock and warns
+// about script that overwrites a focused text field with an older value (`stale-input`). It
+// has no exports: applications do not import it.
 import { sanitizeDiagnosticSummary } from "./diagnostics.js";
+import { installStaleInputWarning } from "./stale-input.js";
 
 interface ViteHotContextLike {
   readonly data: Record<string, unknown>;
@@ -40,6 +42,7 @@ interface ViewsDiagnostic {
 function fallbackType(code: string): string {
   if (code === "reported") return "Error";
   if (code === "uncertain") return "BridgeOperationUncertainError";
+  if (code === "stale-input") return "StaleInputWarning";
   return "BridgeError";
 }
 
@@ -111,3 +114,6 @@ function connectViewsConnection(): void {
 
 connectViewsDiagnostics();
 connectViewsConnection();
+// Development only: without Vite's HMR context (a production build that imports the client)
+// nothing is installed. Installs once per page; HMR re-evaluation leaves it in place.
+if (hot) installStaleInputWarning(globalThis);

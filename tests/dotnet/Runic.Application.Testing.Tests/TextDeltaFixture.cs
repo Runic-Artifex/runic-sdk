@@ -3,7 +3,7 @@ using Runic.Application.Views;
 
 namespace Runic.Application.Testing.Tests;
 
-// The ViewModel of the text delta fixtures (specs/application/fixtures/text-deltas): a live log and a title.
+// The ViewModel of the former protocol-3 text delta fixtures: a live log and a title.
 public sealed class TextDeltaViewModel : INotifyPropertyChanged
 {
     private string? _log = "";

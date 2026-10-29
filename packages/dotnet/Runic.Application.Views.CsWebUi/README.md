@@ -77,13 +77,12 @@ Both hosts share one lifetime contract, `IBridgeWindow` from
 operations can keep the Window's DI scope alive after the visible window
 closes, so dispose the Window with `await using` before the application returns.
 
-State snapshots and collection delta frames are written, in order, as WebSocket
-messages to every connected client. Runic Desktop waits until the WebView has run
-each frame. CS-WebUI cannot do that for several clients, so its writes block
-instead until each socket accepts the frame or the write times out. A slow
-browser therefore holds back delivery at the TCP level. Frames queue in the
-bridge, which sends a recovery snapshot once the queue is full, and the window's
-other clients wait for the same write. Other CS-WebUI windows are not held back:
+Pushes to every client, such as the `state` and `frame` pushes of the Views
+protocol, are written in order as WebSocket messages to every connected client
+(WebUI raw data). The writes block until each socket accepts the push or the
+write times out, so a slow browser holds back delivery at the TCP level.
+Frames queue in the bridge, which sends a recovery state once the queue is
+full, and the window's other clients wait for the same write. Other CS-WebUI windows are not held back:
 WebUI before nightly `9264f7ae9` (webui-dev/webui#723) wrote every WebSocket
 frame under one process-wide lock, so one stalled client delayed every window in
 the process by up to 30 seconds per frame. CsWebUi 2.5.0-beta.4.8, the lowest
@@ -208,9 +207,12 @@ The page reads the bar with `createMenuBarController()` from
 `@runic-artifex/views`, or `useMenuBar` and `injectMenuBar` in the framework
 adapters; see
 [In-page menu bar](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/web/views/README.md#in-page-menu-bar).
-The routes are those of Runic Desktop
+The bar is served on the reserved route `runic.menu-bar`, with menu bar page
+protocol 2 as on Runic Desktop
 ([specs/desktop/menu-bar-page.md](https://github.com/Runic-Artifex/runic-sdk/blob/main/specs/desktop/menu-bar-page.md)),
-from the same source, so the same frontend runs on both hosts:
+from the same source, so the same frontend runs on both hosts. Its pushes to
+one connection travel through the connection's mailbox
+([Requests and pushes](#requests-and-pushes)). On CS-WebUI:
 
 - `placement` is `"page"` on every platform while the host declares menus, and
   `"none"` with an empty bar.
@@ -237,10 +239,10 @@ A project that references both hosts sets `RunicApplicationHost` (`cswebui` or
 `desktop`); see
 [the host of a page](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Application.Views/README.md#the-host-of-a-page).
 Pages that load `runic-cswebui.js` keep working. The script adapts
-`window.webui` to the generated client's transport contract.
+`window.webui` to the generated client's transport contract, `__runicBridge`.
 
-The script sends each Bridge call as soon as the page makes it, so several
-calls can reach WebUI at once. Runic relies on WebUI's fix for concurrent calls
+The script sends each Bridge request as soon as the page makes it, so several
+requests can reach WebUI at once. Runic relies on WebUI's fix for concurrent calls
 (webui-dev/webui#721): before it, native WebUI could assign one event slot to
 two calls that arrive together. One call could then run with the other's
 arguments or receive the other's reply, and one of them could receive no reply
@@ -255,14 +257,14 @@ calls, and `2b35db13f` or later for the behaviour this package is tested with.
 WebUI reports no version or commit that Runic could check, so the host logs
 event 2101 `CsWebUiNativeLibraryUnchecked` (Warning) once, before the first
 window opens, when such a library is configured.
-Applications that keep their own copy of `runic-cswebui.js` should update it.
-Since 0.11.0 the host sends Views state to the script's `__runicViewsPush`
-function and carries out navigations through `__runicContinueNavigation`, both
-as WebUI raw data. A copy from before 0.11.0 has no `__runicViewsPush`: WebUI
-then tries to call it as a script, which fails, and the page's Views receive no
-state pushes (a Content-Security-Policy reports the refusal). The build
-replaces the copy in `www/` on every build, so only a copy the application
-keeps elsewhere, such as in a frontend's `public/` folder, can be stale.
+Applications that keep their own copy of `runic-cswebui.js` must update it: the
+script and the host speak one Views protocol, 4 in this release. A copy from
+an earlier release speaks Views protocol 3, so its Views do not connect. The build replaces the
+copy in `www/` on every build, so only a copy the application keeps elsewhere,
+such as in a frontend's `public/` folder, can be stale. The host sends pushes
+to the script's `__runicViewsPush` function and carries out navigations
+through `__runicContinueNavigation`, both as WebUI raw data, so the page's
+Content-Security-Policy needs no `'unsafe-eval'`.
 
 The window binds all WebUI events because only that binding delivers
 disconnects. The script stops WebUI from also sending a click event for every
@@ -276,11 +278,32 @@ The host carries out a same-origin one, such as a reload, a link to another
 page or a fragment, so the page does not stay put before its first Bridge call.
 A cross-origin navigation and a form submission stay cancelled.
 
-A window-local `CreateBridgeSession()` retains one native binding for each route
-name and swaps the active managed handler as Views change; an inactive route
-returns the reply error `released` (Views protocol 3). CS-WebUI cannot remove a native route registration
-before its window closes. Retained page references reuse routes; new page
-identities still add routes.
+### Requests and pushes
+
+`CreateBridgeSession()` returns the window's `IBridgeTransport`, with the same
+signature as before. It binds one native function, `__runicViews`, which the
+script calls with each Views protocol 4 request; routes and members travel
+inside the request, so Views that come and go add no bindings. CS-WebUI cannot
+remove a binding before its window closes, so the binding stays while the
+window's request handler changes, and a request while none is served gets the
+`released` reply. Dispose the transport before the `WebUiWindow`. The trusted
+client key is WebUI's client id, and the connection key `clientId:connectionId`.
+
+- `BroadcastAsync` writes a push to every client of the window with WebUI's
+  `SendRaw`.
+- WebUI cannot send to one client outside an event, so the transport does not
+  implement `IBridgeConnectionTransport`. The window queues each connection's
+  targeted pushes, such as operation status, interactions and the in-page menu
+  bar, in a mailbox, and the script drains it with a `receive` loop: one
+  `receive` request pending per connection, answered as soon as a push is
+  queued or with an empty list after 25 seconds. A mailbox keeps at most 1,024
+  pushes and 4 MiB; beyond that it drops its oldest pushes and logs event 1023
+  `BridgeMailboxOverflowed` once per connection.
+- A pending `receive` holds one native WebUI thread. WebUI runs every call on
+  its own thread, so it does not hold up the client's other requests, but it
+  does not keep their order either: a request may be admitted before one the
+  page sent earlier. Edits carry their own numbers, so a later edit still wins,
+  and a broadcast and a mailbox push are not ordered relative to each other.
 
 ## Security
 

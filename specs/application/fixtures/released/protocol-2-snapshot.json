@@ -1,8 +1,0 @@
-{
-  "description": "Mixed versions: the snapshot reply of a protocol-2 (0.9) .NET host. A protocol-3 client refuses it: the connect rejects with BridgeError(\"failed\") whose message names both protocol versions, and the only diagnostic is protocol.",
-  "scenario": "protocol-2-snapshot",
-  "producer": "protocol-2",
-  "route": "snapshot",
-  "wire": { "ok": true, "state": {}, "error": null, "protocol": 2, "version": "0.9.1" },
-  "client": { "error": { "kind": "failed", "message": "uses Views protocol 2, but this client implements protocol 3" }, "diagnostics": ["protocol"] }
-}

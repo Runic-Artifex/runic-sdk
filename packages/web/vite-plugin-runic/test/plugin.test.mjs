@@ -680,6 +680,7 @@ const version = await load(views + "version.js", "views/version");
 const transport = await load(views + "transport.js", "views/transport");
 const connectionState = await load(views + "connection-state.js", "views/connection-state");
 const pluginDiagnostics = await load("dist/diagnostics.js", "plugin/diagnostics");
+await load("dist/stale-input.js", "plugin/stale-input");
 const client = await load("dist/client.js", "plugin/client", (meta) => { meta.hot = hot; });
 const link = (from) => (specifier) => {
   const name = from + "/" + specifier.replace("./", "").replace(".js", "");
@@ -755,6 +756,7 @@ const loaded = [
 ];
 const connectionState = await load(views + "connection-state.js", "views/connection-state");
 const pluginDiagnostics = await load("dist/diagnostics.js", "plugin/diagnostics");
+await load("dist/stale-input.js", "plugin/stale-input");
 const client = await load("dist/client.js", "plugin/client", (meta) => { meta.hot = hot; });
 const link = (from) => (specifier) => {
   const module = modules.get(from + "/" + specifier.replace("./", "").replace(".js", ""));
