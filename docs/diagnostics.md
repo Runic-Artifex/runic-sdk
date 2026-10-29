@@ -76,6 +76,7 @@ and severities are open.
 | [`RUNICBRIDGE029`](#runicbridge029) | Warning | Build targets | `RunicApplicationFrontendPackageManager` is not `npm`, `pnpm` or `bun` |
 | [`RUNICBRIDGE030`](#runicbridge030) | Warning | Build targets | `RunicApplicationFrontendDelivery` is unknown, or Embedded cannot apply |
 | [`RUNICBRIDGE031`](#runicbridge031) | Warning | Generator | A type implements an IValidatableViewModel that is not ReactiveUI.Validation's |
+| [`RUNICBRIDGE032`](#runicbridge032) | Warning | Generator | An observable collection of DTO rows is not a `[RunicCollection]` |
 
 ### RUNICBRIDGE001
 
@@ -558,6 +559,24 @@ and the interface. Since 0.14.
 `RunicArtifex.ReactiveUI.Validation.Reactive`, or implement
 `INotifyDataErrorInfo` on the type. See
 [Structured validation](../packages/dotnet/Runic.Application.Views/README.md#structured-validation).
+
+### RUNICBRIDGE032
+
+A warning from the Bridge generator (since 0.14). A state property is an
+observable collection of DTO rows, such as `ObservableCollection<Row>` or
+`ReadOnlyObservableCollection<Row>`, but not a `[RunicCollection]`. Such a
+member is published by comparison: each change of the collection, or of a row
+the Bridge observes, encodes the whole list, compares it with what the page has
+and sends it whole when it differs. At thousands of rows every edit costs
+milliseconds and megabytes. A `[RunicCollection]` sends only the rows that
+were added, removed, moved or replaced. A plain list or array, which the
+ViewModel replaces, is not reported.
+
+**Fix:** declare the key of the rows, for example
+`[RunicCollection(nameof(Row.Id))]`, with a non-nullable `string`, `Guid` or
+`Int32` row property that does not change during a row's lifetime (see
+[`RUNICBRIDGE010`](#runicbridge010)). For a list that stays small, suppress the
+warning with `<NoWarn>$(NoWarn);RUNICBRIDGE032</NoWarn>`.
 
 ## dotnet runic
 

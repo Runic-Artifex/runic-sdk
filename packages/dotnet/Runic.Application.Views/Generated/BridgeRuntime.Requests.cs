@@ -45,7 +45,7 @@ public partial class ViewModelBridge<T>
         {
             writer.WriteString("presentation", outcome == BridgePresentationOutcome.Ok ? "ok" : "ignored");
             if (registration is not null) writer.WriteString("registration", registration);
-        });
+        }, reuseFirstState: true);
     }
 
     private BridgePresentationOutcome OpenPresentation(string presentation, BridgeConnection connection)
@@ -66,10 +66,12 @@ public partial class ViewModelBridge<T>
             return BridgeMessages.Presentation(_presentations?.Close(presentation, request.Connection, out _) ?? BridgePresentationOutcome.Ok);
     }
 
-    private ReadOnlyMemory<byte> Snapshot() => ReadState(static _ => { });
+    private ReadOnlyMemory<byte> Snapshot() => ReadState(static _ => { }, reuseFirstState: false);
 
-    // The reply of open and snapshot: the route's full state, after everything pending was published.
-    private ReadOnlyMemory<byte> ReadState(Action<Utf8JsonWriter> writeMore)
+    // The reply of open and snapshot: the route's full state, after everything pending was published. An open while
+    // the route's first state is current copies that state (CaptureFirstState); a snapshot, which a page sends to
+    // recover, always writes the state again.
+    private ReadOnlyMemory<byte> ReadState(Action<Utf8JsonWriter> writeMore, bool reuseFirstState)
     {
         try
         {
@@ -78,19 +80,21 @@ public partial class ViewModelBridge<T>
                 lock (_modelGate)
                 {
                     if (IsInactive) return BridgeMessages.Released;
-                    // Before the route's first state, the state this read writes is that state.
-                    if (_baselines is not null) PublishUnitCore();
+                    // Before the route's first state, the state this read writes is that state. Until the route
+                    // changes, the first state is the state: the read copies it.
+                    var first = reuseFirstState && FirstStateIsCurrent;
+                    if (_baselines is not null && !first) PublishUnitCore();
                     try
                     {
-                        var reply = WriteMessage(writer =>
-                        {
-                            writer.WriteStartObject();
-                            writer.WriteBoolean("ok", true);
-                            WriteState(writer, updateBaselines: !_delivery.StateRequested);
-                            writeMore(writer);
-                            writer.WriteEndObject();
-                        });
-                        return IsInactive ? BridgeMessages.Released : reply;
+                        using var message = BridgePublicationWriter.Rent();
+                        var writer = message.Writer;
+                        writer.WriteStartObject();
+                        writer.WriteBoolean("ok", true);
+                        if (first) WriteFirstState(writer);
+                        else WriteState(message, updateBaselines: !_delivery.StateRequested);
+                        writeMore(writer);
+                        writer.WriteEndObject();
+                        return IsInactive ? BridgeMessages.Released : message.ToArray();
                     }
                     catch (Exception released) when (released is BridgeSnapshotDetachedException || IsInactive)
                     {

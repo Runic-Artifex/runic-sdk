@@ -44,8 +44,11 @@ internal sealed class ForkIntegrationTests
 
         // Replaying the frames on the state they start from gives the snapshot.
         var tracker = host.Root.Track();
+        // Each change waits for its frame, so the changes are not one unit.
         await context.InvokeAsync(() => model.Add(5));
+        await tracker.WaitUntilAsync(state => state["rows"].GetArrayLength() == 4);
         await context.InvokeAsync(() => model.Move(0, 2));
+        await tracker.WaitUntilAsync(_ => tracker.Deltas >= 2);
         await context.InvokeAsync(() => model.RemoveAt(1));
         await tracker.WaitUntilAsync(state => state["rows"].GetArrayLength() == 3 && state["log"].GetString()!.EndsWith("+5-", StringComparison.Ordinal));
         tracker.Verify();

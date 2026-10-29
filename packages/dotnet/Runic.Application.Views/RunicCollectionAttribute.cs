@@ -22,4 +22,4 @@ internal sealed record BridgeCollectionChange<T>(
     int Index,
     int OldIndex,
     string[] Keys,
-    string[] Items);
+    byte[][] Items);

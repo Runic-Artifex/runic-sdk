@@ -80,6 +80,24 @@ internal sealed class BridgeModelTurn : IBridgeModelTurn
         return TryRunNotification(() => result = work()) ? result : closed;
     }
 
+    // A turn for work that can wait for it without holding a thread, as a route's delivery does: awaited, not blocked
+    // on. Inline inside the turn; a model without a context takes the model's lock, which turns hold only briefly.
+    public ValueTask RunAsync(Action work)
+    {
+        ArgumentNullException.ThrowIfNull(work);
+        if (_context is null)
+        {
+            lock (_gate) work();
+            return ValueTask.CompletedTask;
+        }
+        if (_context.IsExecuting)
+        {
+            work();
+            return ValueTask.CompletedTask;
+        }
+        return _context.InvokeAsync(work);
+    }
+
     // Releases subscriptions even after an application-owned context was
     // disposed before the bridge that captured it.
     public void RunForTeardown(Action work)

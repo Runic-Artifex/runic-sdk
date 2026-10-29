@@ -60,6 +60,9 @@ internal sealed class DotNetConformanceViews : IConformanceViews
 
     public IConformanceWindow CreateWindow(string view, JsonObject model, ConformanceWindowSettings settings)
     {
+        // The scenarios expect one publication unit per step; the producer may coalesce notifications that arrive
+        // within its minimum unit interval (specs/application/state-changes.md leaves unit size to the producer).
+        BridgeDispatcher.For(settings.Transport).MinimumUnitInterval = TimeSpan.Zero;
         var ids = 0;
         var session = new WindowContentSession(settings.Transport, new WindowContentSessionOptions
         {

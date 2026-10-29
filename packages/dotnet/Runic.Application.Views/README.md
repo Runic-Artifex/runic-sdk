@@ -1266,8 +1266,8 @@ generator, such as a CommunityToolkit `[ObservableProperty]`, points at its
 a link to its entry in the [diagnostics catalog](https://github.com/Runic-Artifex/runic-sdk/blob/main/docs/diagnostics.md#bridge-code-generator)
 for the release you use.
 
-`RUNICBRIDGE013`, `015`, `019`, `020`, `028`, `029`, `030` and `031` are warnings; the generator's
-(`013`, `020`, `028` and `031`) repeat on builds that reuse the cached generation. Every other
+`RUNICBRIDGE013`, `015`, `019`, `020`, `028`, `029`, `030`, `031` and `032` are warnings; the generator's
+(`013`, `020`, `028`, `031` and `032`) repeat on builds that reuse the cached generation. Every other
 code fails the build. The
 [diagnostics catalog](https://github.com/Runic-Artifex/runic-sdk/blob/main/docs/diagnostics.md#bridge-code-generator)
 lists every code with its severity, what reports it, its cause and its fix.
@@ -1875,6 +1875,30 @@ and [`@runic-artifex/views`](https://github.com/Runic-Artifex/runic-sdk/tree/mai
 
 `Bytes` is a `double` because a `long` would be a `bigint` in TypeScript; see
 [Wire types](#wire-types).
+
+## Large lists and frequent changes
+
+A route publishes each change of its state as a frame. What a frame costs
+depends on the member:
+
+- A `[RunicCollection(nameof(Row.Id))]` list publishes only the rows that were
+  added, removed, moved or replaced, and a row's own property change replaces
+  that row. Use it for any list that can grow beyond a few dozen rows or
+  changes often.
+- Every other member is compared: a publication unit encodes it and sends it
+  whole when the encoding differs from what the page has. The generator reports
+  an observable collection of DTO rows that is not a `[RunicCollection]` as
+  `RUNICBRIDGE032`.
+
+A notification requests a publication unit, and a route starts its units at
+least 8 ms apart: the first change after a pause is published at once, and the
+changes of the next 8 ms follow together in one frame once the interval has
+passed, so the last change is always published. A model that raises thousands
+of notifications a second, such as progress or a live counter, therefore sends
+at most about 125 frames a second per route. A setter, command or checked write
+is not delayed: it publishes its change, with any change that waits for the
+interval, before it replies. Wrap a bulk change in a `BridgeSnapshotBatch`
+(below) to publish it as one frame when the batch ends.
 
 ## Batch synchronous model updates
 

@@ -452,6 +452,9 @@ as CS-WebUI's does. The transport:
 - sends the replies and pushes of one connection in the order the window sent
   them, and completes `BroadcastAsync` and `SendAsync` once the push is queued
   on every connection ahead of later sends;
+- copies a push that it keeps after `BroadcastAsync` or `SendAsync` completed:
+  the message is valid only until then, because the window returns its pooled
+  memory and reuses it for later pushes;
 - answers a request while no handler is served with the `released` reply, and
   reports each closed connection once with `ConnectionClosed`. A reconnect is a
   new connection with a new connection key.

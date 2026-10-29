@@ -410,6 +410,8 @@ public partial class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBr
     private readonly ICommand[] _subscribedCommands;
     private readonly string? _contractFingerprint;
     private readonly IDisposable[] _bindings;
+    // The data graph the Bridge observes; each publication unit releases what changes detached from it.
+    private readonly BridgeDataSubscriptions? _dataSubscriptions;
     private readonly INotifyDataErrorInfo? _errors;
     private readonly BridgeValidationReader? _validationReader;
     private readonly Dictionary<string, INotifyCollectionChanged> _collections = new();
@@ -510,7 +512,7 @@ public partial class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBr
             if (content is not null && interactions is not null)
                 foreach (var interaction in interactions) bindings.Add(interaction.Attach(content, vm, name));
             if (dataSubscriptions is { Length: > 0 })
-                bindings.Add(new BridgeDataSubscriptions(vm, dataSubscriptions, OnNestedChanged, TryPublishCollection, TryPublishItem,
+                bindings.Add(_dataSubscriptions = new BridgeDataSubscriptions(vm, dataSubscriptions, OnNestedChanged, TryPublishCollection, TryPublishItem,
                     rootObservedExternally: true, incrementalCollectionNames: _incrementalCollections.Select(descriptor => descriptor.Name).ToHashSet(StringComparer.Ordinal),
                     observeValidation: validationReader?.Observe, collectionChangedOutsideTurn: WarnIfOutsideModelTurn));
             // Register the per-window observer before this Bridge subscribes
@@ -789,6 +791,7 @@ public partial class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBr
             if (_disposed) return;
             _disposed = true;
             _delivery.Dispose();
+            ReleaseFirstState();
             _vm.PropertyChanged -= OnChanged;
             foreach (var collection in _collections.Values) collection.CollectionChanged -= OnCollectionChanged;
             _collections.Clear();

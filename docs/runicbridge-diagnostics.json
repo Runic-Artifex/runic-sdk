@@ -155,6 +155,11 @@
       "id": "RUNICBRIDGE031",
       "severity": "warning",
       "title": "A type implements an IValidatableViewModel that is not ReactiveUI.Validation's"
+    },
+    {
+      "id": "RUNICBRIDGE032",
+      "severity": "warning",
+      "title": "An observable collection of DTO rows is not a [RunicCollection]"
     }
   ]
 }

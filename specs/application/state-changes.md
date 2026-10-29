@@ -113,8 +113,10 @@ frame on that route (or a full state, below), and the unit's publication takes t
 counter. A unit never shows part of another unit's changes, and a frame is one unit, so a View whose validation spans
 several members stays consistent.
 
-How large a unit is, is the producer's choice: one change notification, a batch the application opens, or everything a
-window turn changed. The conformance scenarios make each mutation step one unit.
+How large a unit is, is the producer's choice: one change notification, a batch the application opens, everything a
+window turn changed, or the notifications of a short interval, as a producer that keeps a minimum time between the units
+of a route does. The conformance scenarios make each mutation step one unit; a producer that coalesces notifications by
+time runs them without that interval.
 
 ### Members
 
