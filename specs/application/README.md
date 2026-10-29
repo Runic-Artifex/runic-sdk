@@ -240,7 +240,7 @@ In development, a producer MAY add `detail` to an error caused by an unexpected 
 `type` is the producer's name for the error's type, if it has one; `message` is the failure's own message; `stack` is
 text that describes where it came from, such as a stack trace and its causes. A producer MUST NOT send `detail` in
 production, and a `domain-failed` error never has it. When a producer is in development is its own configuration
-([language mappings](language-mappings.md#failure-detail)).
+([language mappings](language-mappings.md#net-producer)).
 
 ### Routes and members
 
@@ -555,7 +555,7 @@ A status is an object with `kind`:
 ### Progress
 
 A command reports progress as a number from 0 to 1 while it runs; how is the producer's
-([language mappings](language-mappings.md#operations)). The producer clamps reported values to the range and ignores
+([language mappings](language-mappings.md#net-producer)). The producer clamps reported values to the range and ignores
 values that are not numbers. `progress` stays absent until the first report.
 
 ### Limits and window close
