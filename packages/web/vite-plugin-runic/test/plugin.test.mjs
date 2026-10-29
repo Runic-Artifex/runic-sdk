@@ -12,10 +12,25 @@ import { runic, runicDevSession, runicDevSessionProxy } from "../dist/index.js";
 const execFile = promisify(execFileCallback);
 
 test("exposes a real virtual client and bounded diagnostics endpoint", () => {
-  const plugin = runic({ devtools: false });
-  plugin.configResolved({ command: "serve", mode: "development", root: process.cwd() });
+  const plugin = runic();
+  plugin.configResolved({ command: "serve", mode: "development", root: process.cwd(), plugins: [] });
   assert.equal(plugin.resolveId("virtual:runic/client"), "\0virtual:runic/client");
-  assert.equal(plugin.load("\0virtual:runic/client"), 'import "@runic-artifex/vite-plugin-runic/client";');
+  assert.equal(plugin.load("\0virtual:runic/client"),
+    'import "virtual:runic/client-options";\nimport "@runic-artifex/vite-plugin-runic/client";');
+  // An application import of the package takes the same module; the virtual module's own import does not.
+  assert.equal(plugin.resolveId("@runic-artifex/vite-plugin-runic/client", "/src/hooks.client.ts"), "\0virtual:runic/client");
+  assert.equal(plugin.resolveId("@runic-artifex/vite-plugin-runic/client", "\0virtual:runic/client"), undefined);
+  assert.equal(plugin.resolveId("@runic-artifex/vite-plugin-runic/client", "/src/hooks.ts", { ssr: true }),
+    "\0virtual:runic/client-disabled", "the server never runs the client");
+  assert.equal(plugin.load("\0virtual:runic/client-disabled"), "export {};");
+  const disabled = runic({ devtools: false });
+  disabled.configResolved({ command: "serve", mode: "development", root: process.cwd(), plugins: [] });
+  assert.equal(disabled.resolveId("virtual:runic/client"), "\0virtual:runic/client-disabled");
+  const built = runic();
+  built.configResolved({ command: "build", mode: "production", root: process.cwd(), plugins: [] });
+  for (const id of ["virtual:runic/client", "@runic-artifex/vite-plugin-runic/client"]) {
+    assert.equal(built.resolveId(id, "/src/main.ts"), "\0virtual:runic/client-disabled", id);
+  }
 
   const handlers = new Map();
   const middleware = [];
@@ -30,7 +45,7 @@ test("exposes a real virtual client and bounded diagnostics endpoint", () => {
   assert.equal(handlers.has("runic:connection"), true);
   assert.equal(handlers.has("runic:diagnostic"), true);
   assert.equal(handlers.has("runic:state"), false, "the page no longer reports a runtime state");
-  assert.equal(middleware[0][0], "/__runic/state");
+  assert.deepEqual(middleware.map(([path]) => path), ["/__runic/state", "/__runic/diagnostics"]);
 });
 
 test("injects the Desktop bootstrap while leaving Vite and HMR ownership intact", async () => {
@@ -230,8 +245,8 @@ test("runs the Vite, HMR, and SSR fixtures without browser-only state", async ()
       `http://127.0.0.1:${serverPort(server)}/@id/virtual:runic/client`,
     );
     assert.equal(virtual.status, 200);
-    // The development client has no exports; the virtual module only loads it.
-    assert.match(await virtual.text(), /^import ".*vite-plugin-runic\/(dist\/)?client(\.js)?";?\s*$/m);
+    // devtools: false turns the development client off: the virtual module is empty.
+    assert.match(await virtual.text(), /^export \{\s*\};?\s*$/m);
 
     assert.equal((await server.ssrLoadModule("/src/ssr-entry.js")).revision, 1);
     const changed = new Promise((resolve) => server.watcher.once("change", resolve));
@@ -323,16 +338,12 @@ test("runicDevSessionProxy and runicDevSession confirm the session without runic
   const previous = process.env.RUNIC_APPLICATION_DEV_SESSION;
   const session = "fedcba9876543210".repeat(4);
   try {
-    delete process.env.RUNIC_APPLICATION_DEV_SESSION;
-    assert.deepEqual(runicDevSessionProxy(), {}, "Without dotnet runic dev the proxy configuration is unchanged.");
-    process.env.RUNIC_APPLICATION_DEV_SESSION = "not a session value";
-    assert.deepEqual(runicDevSessionProxy(), {});
     process.env.RUNIC_APPLICATION_DEV_SESSION = session;
-    // The Angular CLI passes its proxyConfig to Vite as server.proxy and adds no Vite plugins. SvelteKit takes
-    // runicDevSession(), which has no transformIndexHtml hook for SvelteKit to warn about.
-    const setups = [{ plugins: [], proxy: runicDevSessionProxy() }, { plugins: [runicDevSession()] }];
+    // The Angular CLI passes its proxyConfig to Vite as server.proxy and adds no Vite plugins.
+    const setups = [{ plugins: [], proxy: runicDevSessionProxy(), status: 200 },
+      { plugins: [runicDevSession()], status: 204 }];
     assert.equal("transformIndexHtml" in runicDevSession(), false);
-    for (const { plugins, proxy } of setups) {
+    for (const { plugins, proxy, status } of setups) {
       const server = await createServer({ configFile: false, logLevel: "silent", plugins,
         server: { host: "127.0.0.1", port: 0, strictPort: false, proxy } });
       try {
@@ -340,7 +351,7 @@ test("runicDevSessionProxy and runicDevSession confirm the session without runic
         const base = `http://127.0.0.1:${serverPort(server)}`;
         for (const path of ["/__runic/state", "/__runic/state?probe=1"]) {
           const state = await fetch(`${base}${path}`);
-          assert.equal(state.status, 204, path);
+          assert.equal(state.status, status, path);
           assert.equal(state.headers.get("x-runic-dev-session"), session, path);
           assert.equal(state.headers.get("cache-control"), "no-store", path);
           await state.arrayBuffer();
@@ -352,11 +363,136 @@ test("runicDevSessionProxy and runicDevSession confirm the session without runic
         }
       } finally { await server.close(); }
     }
+    // Without dotnet runic dev (or with a value of another shape) the state answers without a session.
+    for (const value of [undefined, "not a session value"]) {
+      if (value === undefined) delete process.env.RUNIC_APPLICATION_DEV_SESSION;
+      else process.env.RUNIC_APPLICATION_DEV_SESSION = value;
+      await withProxyServer({}, async (base) => {
+        const state = await fetch(`${base}/__runic/state`);
+        assert.equal(state.status, 200);
+        assert.equal(state.headers.get("x-runic-dev-session"), null);
+        assert.deepEqual((await state.json()).timeline, []);
+      });
+    }
   } finally {
     if (previous === undefined) delete process.env.RUNIC_APPLICATION_DEV_SESSION;
     else process.env.RUNIC_APPLICATION_DEV_SESSION = previous;
   }
 });
+
+test("runicDevSessionProxy keeps the client's diagnostics and prints failures to the terminal", async () => {
+  const printed = [];
+  const warn = console.warn;
+  console.warn = (...values) => printed.push(values.join(" "));
+  try {
+    await withProxyServer({ maxTimelineEntries: 2 }, async (base) => {
+      const post = (message, init = {}) => fetch(`${base}/__runic/diagnostics`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Origin: base, ...init.headers },
+        body: typeof message === "string" ? message : JSON.stringify(message),
+      });
+      const failure = {
+        source: "views", kind: "error", label: "editorSave failed", detail: { code: "failed", route: "editorSave" },
+        failure: { type: "System.InvalidOperationException", message: "Disk full. password=hunter2\u001b[31m",
+          stack: "System.InvalidOperationException: Disk full.\n   at Notes.Editor.Save() in /src/Notes/Editor.cs:line 12" },
+      };
+      assert.equal((await post({ event: "runic:connection", data: { state: "connected" } })).status, 204);
+      assert.equal((await post({ event: "runic:diagnostic", data: failure })).status, 204);
+      let state = await fetch(`${base}/__runic/state`).then((response) => response.json());
+      assert.equal(state.connection.state, "connected");
+      assert.equal(state.timeline.length, 1);
+      assert.equal(state.timeline[0].label, "editorSave failed");
+      assert.equal("failure" in state.timeline[0], false, "the state endpoint stays path-free");
+      assert.equal(printed.length, 1);
+      assert.match(printed[0], /^\[runic\] views editorSave failed\n {2}System\.InvalidOperationException: Disk full\. password=\[redacted\]/u);
+      assert.match(printed[0], /\n {4}at Notes\.Editor\.Save\(\) in \/src\/Notes\/Editor\.cs:line 12$/u);
+      assert.doesNotMatch(printed[0], /hunter2|\u001b/u, "credentials and terminal escapes never reach the terminal");
+
+      // Only same-origin JSON messages of a known event, within the size limit.
+      const rejected = [
+        [await fetch(`${base}/__runic/diagnostics`), 405],
+        [await post({ event: "runic:diagnostic", data: failure }, { headers: { Origin: "http://evil.test" } }), 403],
+        [await post({ event: "runic:diagnostic", data: failure }, { headers: { "Sec-Fetch-Site": "cross-site" } }), 403],
+        [await post({ event: "runic:diagnostic", data: failure }, { headers: { "Content-Type": "text/plain" } }), 415],
+        [await post("{", {}), 400],
+        [await post({ event: "runic:state", data: {} }), 400],
+        [await post({ event: "runic:diagnostic", data: { ...failure, label: "x".repeat(70_000) } }), 413],
+      ];
+      for (const [response, status] of rejected) {
+        assert.equal(response.status, status);
+        await response.arrayBuffer();
+      }
+      for (const label of ["first", "second", "third"]) {
+        await post({ event: "runic:diagnostic", data: { source: "views", kind: "operation", label } });
+      }
+      state = await fetch(`${base}/__runic/state`).then((response) => response.json());
+      assert.deepEqual(state.timeline.map((entry) => entry.label), ["second", "third"], "the timeline is bounded");
+    });
+  } finally {
+    console.warn = warn;
+  }
+  printed.length = 0;
+  await withProxyServer({ printFailures: false }, async (base) => {
+    const response = await fetch(`${base}/__runic/diagnostics`, {
+      method: "POST", headers: { "Content-Type": "application/json", Origin: base },
+      body: JSON.stringify({ event: "runic:diagnostic", data: { source: "views", kind: "error", label: "x failed",
+        failure: { type: "Error", message: "quiet" } } }),
+    });
+    assert.equal(response.status, 204);
+  });
+  assert.deepEqual(printed, []);
+  assert.throws(() => runicDevSessionProxy({ printFailures: "no" }), /printFailures must be true or false/u);
+});
+
+test("runic() accepts the client's messages over HTTP, and html: false leaves HTML alone", async () => {
+  assert.equal("transformIndexHtml" in runic({ html: false }), false, "SvelteKit warns about any transformIndexHtml");
+  assert.equal("transformIndexHtml" in runic(), true);
+  assert.throws(() => runic({ html: false, desktop: true }), /desktop requires html: true/u);
+  assert.throws(() => runic({ html: "no" }), /html must be true or false/u);
+  const root = await fixtureRoot();
+  const server = await createServer({ root, configFile: false, logLevel: "silent", plugins: [runic({ html: false })],
+    server: { host: "127.0.0.1", port: 0, strictPort: false } });
+  try {
+    await server.listen();
+    const base = `http://127.0.0.1:${serverPort(server)}`;
+    const html = await fetch(`${base}/`).then((response) => response.text());
+    assert.doesNotMatch(html, /virtual:runic\/client/u, "html: false injects nothing");
+    const response = await fetch(`${base}/__runic/diagnostics`, {
+      method: "POST", headers: { "Content-Type": "application/json", Origin: base },
+      body: JSON.stringify({ event: "runic:diagnostic", data: { source: "views", kind: "operation", label: "Saved" } }),
+    });
+    assert.equal(response.status, 204);
+    const state = await fetch(`${base}/__runic/state`).then((answer) => answer.json());
+    assert.deepEqual(state.timeline.map((entry) => entry.label), ["Saved"]);
+    // An application import of the package is the virtual client while serving.
+    await writeFile(join(root, "src", "hooks-client.js"), 'import "@runic-artifex/vite-plugin-runic/client";\n');
+    const served = await fetch(`${base}/src/hooks-client.js`).then((answer) => answer.text());
+    assert.match(served, /virtual:runic\/client/u);
+  } finally {
+    await server.close();
+  }
+  try {
+    // The build replaces the client with an empty module.
+    await writeFile(join(root, "index.html"),
+      '<!doctype html><html><body><script type="module" src="/src/hooks-client.js"></script></body></html>');
+    await build({ root, configFile: false, logLevel: "silent", plugins: [runic({ html: false })],
+      build: { outDir: "html-false-dist" } });
+    const assets = join(root, "html-false-dist", "assets");
+    const output = (await Promise.all((await readdir(assets)).map((name) => readFile(join(assets, name), "utf8")))).join("\n");
+    assert.doesNotMatch(output, /runic:diagnostic|__runic|stale-input/u);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+async function withProxyServer(options, run) {
+  const server = await createServer({ configFile: false, logLevel: "silent", plugins: [],
+    server: { host: "127.0.0.1", port: 0, strictPort: false, proxy: runicDevSessionProxy(options) } });
+  try {
+    await server.listen();
+    await run(`http://127.0.0.1:${serverPort(server)}`);
+  } finally { await server.close(); }
+}
 
 test("official DevTools registers a live Runic dock under Bun", { timeout: 30_000 }, async () => {
   const root = await fixtureRoot();
@@ -681,6 +817,9 @@ const transport = await load(views + "transport.js", "views/transport");
 const connectionState = await load(views + "connection-state.js", "views/connection-state");
 const pluginDiagnostics = await load("dist/diagnostics.js", "plugin/diagnostics");
 await load("dist/stale-input.js", "plugin/stale-input");
+await load("dist/channel.js", "plugin/channel");
+// virtual:runic/client selects the HMR channel before the client evaluates.
+context[Symbol.for("runic.vite.client")] = { channel: "hot" };
 const client = await load("dist/client.js", "plugin/client", (meta) => { meta.hot = hot; });
 const link = (from) => (specifier) => {
   const name = from + "/" + specifier.replace("./", "").replace(".js", "");
@@ -757,6 +896,9 @@ const loaded = [
 const connectionState = await load(views + "connection-state.js", "views/connection-state");
 const pluginDiagnostics = await load("dist/diagnostics.js", "plugin/diagnostics");
 await load("dist/stale-input.js", "plugin/stale-input");
+await load("dist/channel.js", "plugin/channel");
+// virtual:runic/client selects the HMR channel before the client evaluates.
+context[Symbol.for("runic.vite.client")] = { channel: "hot" };
 const client = await load("dist/client.js", "plugin/client", (meta) => { meta.hot = hot; });
 const link = (from) => (specifier) => {
   const module = modules.get(from + "/" + specifier.replace("./", "").replace(".js", ""));

@@ -1,19 +1,18 @@
 /// <reference types="@vitejs/devtools-kit" />
 
-import type { Plugin, ResolvedConfig, ViteDevServer } from "vite";
+import type { Plugin, ViteDevServer } from "vite";
 import type { JsonRenderer, JsonRenderSpec } from "@vitejs/devtools-kit";
-import type {
-  RunicDiagnosticEntry,
-  RunicDiagnosticDetail,
-  RunicDiagnosticFailure,
-  RunicDiagnosticSource,
-} from "./diagnostics.js";
+import type { RunicDiagnosticEntry } from "./diagnostics.js";
+import type { RunicDevelopmentState } from "./timeline.js";
 import { isAbsolute, relative } from "node:path";
-import { sanitizeDiagnosticSummary } from "./diagnostics.js";
 import { rewriteHostScripts, webRootPrefix } from "./host-scripts.js";
-import { devSessionHeader, devSessionValue, devSessionVariable } from "./dev-session.js";
+import { clientOptionsKey, connectionEvent, diagnosticEvent, diagnosticsPath } from "./channel.js";
+import { answerClientMessage, answerState, devSessionValue, devSessionVariable, statePath } from "./dev-session.js";
+import { createDevelopmentTimeline, initialDevelopmentState, timelineLimit, withoutFailures } from "./timeline.js";
 
 export { runicDevSession, runicDevSessionProxy } from "./dev-session.js";
+export type { RunicDevSessionProxyOptions } from "./dev-session.js";
+export type { RunicDevelopmentState } from "./timeline.js";
 
 export type {
   RunicDiagnosticDetail,
@@ -27,16 +26,14 @@ export type {
 const virtualClientId = "virtual:runic/client";
 const resolvedVirtualClientId = `\0${virtualClientId}`;
 const clientPackageId = "@runic-artifex/vite-plugin-runic/client";
-// Turns the client's `stale-input` warning off. A separate module, because the import of the
-// client is hoisted above any statement in the virtual client module.
-const staleInputOffId = "virtual:runic/stale-input-off";
-const resolvedStaleInputOffId = `\0${staleInputOffId}`;
+// Sets the client's options (the HMR channel, the `stale-input` warning) on `globalThis`. A separate module, because
+// the import of the client is hoisted above any statement in the virtual client module.
+const clientOptionsId = "virtual:runic/client-options";
+const resolvedClientOptionsId = `\0${clientOptionsId}`;
+// What an import of the client resolves to where it must not run: the build, the server, `devtools: false`.
+const resolvedEmptyClientId = "\0virtual:runic/client-disabled";
 const stateEvent = "runic:state";
-const diagnosticEvent = "runic:diagnostic";
-const connectionEvent = "runic:connection";
 const stateKey = "runic:state";
-const defaultTimelineLimit = 200;
-const maximumTimelineLimit = 500;
 
 /** The API another Vite plugin reaches through `plugin.api`, Vite's inter-plugin convention. */
 export interface RunicVitePluginApi {
@@ -67,6 +64,13 @@ export interface RunicViteOptions {
    * is in flight. Defaults to `true`.
    */
   readonly staleInputWarning?: boolean;
+  /**
+   * `false` leaves HTML alone: the plugin has no `transformIndexHtml` hook, which SvelteKit warns about, injects
+   * neither the development client nor the Desktop bootstrap, and does not rewrite host scripts. The page loads the
+   * client itself with `import "@runic-artifex/vite-plugin-runic/client"`, which the plugin serves while serving and
+   * replaces with an empty module in the build. Cannot be combined with `desktop`. Defaults to `true`.
+   */
+  readonly html?: boolean;
   /** Injects the Runic Desktop bootstrap without taking ownership of Vite or HMR. */
   readonly desktop?: boolean | Readonly<{
     /** Absolute development bootstrap URL; production uses the surface-relative default. */
@@ -74,75 +78,64 @@ export interface RunicViteOptions {
   }>;
 }
 
-export interface RunicDevelopmentState {
-  readonly contract: Readonly<{
-    identity: string;
-    version: string;
-    fingerprint: string;
-  }>;
-  readonly vite: Readonly<{
-    command: string;
-    mode: string;
-    root: string;
-  }>;
-  /**
-   * The page's connection to its .NET host, as `@runic-artifex/views` reports it
-   * (`BridgeConnectionState`), or `unknown` until a View connects.
-   */
-  readonly connection: Readonly<{
-    state: "connecting" | "connected" | "reconnecting" | "lost" | "unknown";
-  }>;
-  readonly timeline: readonly Readonly<Required<Pick<RunicDiagnosticEntry, "id" | "timestamp" | "kind" | "label">> & {
-    source?: RunicDiagnosticSource;
-    detail: RunicDiagnosticDetail;
-    failure?: RunicDiagnosticFailure;
-  }>[];
-}
-
 export function runic(options: RunicViteOptions = {}): RunicVitePlugin {
   const maxTimelineEntries = timelineLimit(options.maxTimelineEntries);
   if (options.staleInputWarning !== undefined && typeof options.staleInputWarning !== "boolean") {
     throw new TypeError("staleInputWarning must be true or false.");
   }
+  if (options.html !== undefined && typeof options.html !== "boolean") {
+    throw new TypeError("html must be true or false.");
+  }
+  const html = options.html !== false;
+  const client = options.devtools !== false;
   let server: ViteDevServer | undefined;
   let sharedState: { mutate: (update: (draft: RunicDevelopmentState) => void) => void } | undefined;
   let jsonRenderer: JsonRenderer | undefined;
-  let state = initialState(options);
-  let nextDiagnosticSequence = 1;
   let resolvedRoot = process.cwd();
   let base = "/";
   const desktopBootstrapUrl = resolveDesktopBootstrapUrl(options.desktop);
+  if (!html && desktopBootstrapUrl !== undefined) {
+    throw new TypeError("desktop requires html: true: the Desktop bootstrap is a script tag the plugin adds to the HTML.");
+  }
 
-  const publish = (): void => {
+  const timeline = createDevelopmentTimeline(initialDevelopmentState(options.contract), maxTimelineEntries, (state) => {
     sharedState?.mutate((draft) => Object.assign(draft, structuredClone(state)));
     void jsonRenderer?.updateSpec(createDevtoolsSpec(state));
     server?.ws.send({ type: "custom", event: stateEvent, data: state });
+  });
+  const deliver = (event: string, data: unknown): void => {
+    if (event === connectionEvent) timeline.applyConnection(data);
+    else if (event === diagnosticEvent) timeline.appendDiagnostic(data);
   };
+  const command = (): string => timeline.state.vite.command;
 
-  const applyConnection = (candidate: unknown): void => {
-    const next = connectionState(isRecord(candidate) ? candidate.state : undefined);
-    if (next === state.connection.state) return;
-    state = { ...state, connection: { state: next } };
-    publish();
-  };
-
-  const appendDiagnostic = (
-    candidate: unknown,
-    defaultSource?: RunicDiagnosticSource,
-  ): void => {
-    const summary = sanitizeDiagnosticSummary(candidate, defaultSource);
-    if (!summary) return;
-    const entry: RunicDevelopmentState["timeline"][number] = {
-      ...summary,
-      id: `diagnostic-${nextDiagnosticSequence}`,
-      timestamp: new Date().toISOString(),
-    };
-    nextDiagnosticSequence += 1;
-    state = {
-      ...state,
-      timeline: [...state.timeline, entry].slice(-maxTimelineEntries),
-    };
-    publish();
+  const transformIndexHtml: Plugin["transformIndexHtml"] = {
+    order: "post" as const,
+    handler: (document, context) => {
+      const prefix = webRootPrefix(context.path);
+      const tags = [
+        ...(desktopBootstrapUrl === undefined ? [] : [{
+          tag: "script",
+          attrs: {
+            src: command() === "build" || desktopBootstrapUrl === "./runic-desktop.js"
+              ? `${prefix}runic-desktop.js`
+              : desktopBootstrapUrl,
+          },
+          injectTo: "head-prepend" as const,
+        }]),
+        // The development client forwards Views runtime failures to the
+        // timeline. It loads before application modules, so a missing Bridge
+        // at startup is reported too.
+        ...(command() !== "serve" || !client ? [] : [{
+          tag: "script",
+          attrs: { type: "module", src: `${base}@id/${virtualClientId}` },
+          injectTo: "head" as const,
+        }]),
+      ];
+      return command() === "serve"
+        ? { html: rewriteHostScripts(document, context.path, false), tags }
+        : tags;
+    },
   };
 
   return {
@@ -154,7 +147,7 @@ export function runic(options: RunicViteOptions = {}): RunicVitePlugin {
         // which the dependency scanner cannot see. Pre-bundling it up front
         // keeps a cold optimizer cache from discovering it on the first page
         // load and reloading the page, which drops a host's Bridge connection.
-        return options.devtools === false ? undefined : { optimizeDeps: { include: [clientPackageId] } };
+        return client ? { optimizeDeps: { include: [clientPackageId] } } : undefined;
       }
       if (desktopBootstrapUrl === undefined) return undefined;
       if (config.base !== undefined && config.base !== "./") {
@@ -162,47 +155,23 @@ export function runic(options: RunicViteOptions = {}): RunicVitePlugin {
       }
       return { base: "./" };
     },
-    // The build parses HTML in a later transform, so host scripts are marked
-    // vite-ignore here; the dev server has no such pass and uses the hook below.
-    transform: {
-      filter: { id: /\.html$/ },
-      handler(code, id) {
-        if (state.vite.command !== "build" || !id.endsWith(".html")) return undefined;
-        const documentPath = relative(resolvedRoot, id);
-        if (documentPath.startsWith("..") || isAbsolute(documentPath)) return undefined;
-        const rewritten = rewriteHostScripts(code, documentPath, true);
-        return rewritten === code ? undefined : { code: rewritten, map: null };
+    // With html: false there is no transformIndexHtml property at all: SvelteKit warns about any plugin that has one.
+    ...(html ? {
+      // The build parses HTML in a later transform, so host scripts are marked
+      // vite-ignore here; the dev server has no such pass and uses the hook below.
+      transform: {
+        filter: { id: /\.html$/ },
+        handler(code: string, id: string) {
+          if (command() !== "build" || !id.endsWith(".html")) return undefined;
+          const documentPath = relative(resolvedRoot, id);
+          if (documentPath.startsWith("..") || isAbsolute(documentPath)) return undefined;
+          const rewritten = rewriteHostScripts(code, documentPath, true);
+          return rewritten === code ? undefined : { code: rewritten, map: null };
+        },
       },
-    },
-    transformIndexHtml: {
-      order: "post" as const,
-      handler: (html, context) => {
-        const prefix = webRootPrefix(context.path);
-        const tags = [
-          ...(desktopBootstrapUrl === undefined ? [] : [{
-            tag: "script",
-            attrs: {
-              src: state.vite.command === "build" || desktopBootstrapUrl === "./runic-desktop.js"
-                ? `${prefix}runic-desktop.js`
-                : desktopBootstrapUrl,
-            },
-            injectTo: "head-prepend" as const,
-          }]),
-          // The development client forwards Views runtime failures to the
-          // timeline. It loads before application modules, so a missing Bridge
-          // at startup is reported too.
-          ...(state.vite.command !== "serve" || options.devtools === false ? [] : [{
-            tag: "script",
-            attrs: { type: "module", src: `${base}@id/${virtualClientId}` },
-            injectTo: "head" as const,
-          }]),
-        ];
-        return state.vite.command === "serve"
-          ? { html: rewriteHostScripts(html, context.path, false), tags }
-          : tags;
-      },
-    },
-    api: { reportDiagnostic: (entry) => appendDiagnostic(entry) },
+      transformIndexHtml,
+    } : {}),
+    api: { reportDiagnostic: (entry) => { timeline.appendDiagnostic(entry); } },
     configResolved(resolved) {
       if (resolved.command === "build" && desktopBootstrapUrl !== undefined && resolved.base !== "./") {
         throw new TypeError("desktop: true requires the resolved Vite base to be './' for relocatable surface output.");
@@ -214,46 +183,55 @@ export function runic(options: RunicViteOptions = {}): RunicVitePlugin {
       resolvedRoot = resolved.root;
       const configuredBase = resolved.base || "/";
       base = configuredBase.endsWith("/") ? configuredBase : `${configuredBase}/`;
-      state = {
+      timeline.configure((state) => ({
         ...state,
         vite: { command: resolved.command, mode: resolved.mode, root: resolved.root },
-      };
+      }));
     },
     async configureServer(viteServer) {
       server = viteServer;
-      viteServer.ws.on(connectionEvent, (payload) => applyConnection(payload));
-      viteServer.ws.on(diagnosticEvent, (payload) => appendDiagnostic(payload));
+      viteServer.ws.on(connectionEvent, (payload) => deliver(connectionEvent, payload));
+      viteServer.ws.on(diagnosticEvent, (payload) => deliver(diagnosticEvent, payload));
       const devSession = devSessionValue(process.env[devSessionVariable]);
-      viteServer.middlewares.use("/__runic/state", (_request, response) => {
-        response.statusCode = 200;
-        response.setHeader("Content-Type", "application/json; charset=utf-8");
-        response.setHeader("Cache-Control", "no-store");
-        if (devSession !== undefined) response.setHeader(devSessionHeader, devSession);
-        response.end(JSON.stringify(withoutFailures(state)));
+      viteServer.middlewares.use(statePath, (_request, response) => {
+        answerState(response, timeline.state, devSession);
+      });
+      // A client that the page loads without the HMR channel posts here (channel.ts).
+      viteServer.middlewares.use(diagnosticsPath, (request, response, next) => {
+        answerClientMessage(request, response, deliver).catch(next);
       });
       viteServer.httpServer?.once("close", () => {
         server = undefined;
       });
     },
-    resolveId(id) {
-      if (id === virtualClientId) return resolvedVirtualClientId;
-      return id === staleInputOffId ? resolvedStaleInputOffId : undefined;
+    resolveId(id, importer, resolveOptions) {
+      if (id === virtualClientId || (id === clientPackageId && importer !== resolvedVirtualClientId)) {
+        // The client runs only in a served page. An application import of the package goes through the virtual
+        // module too, so that it takes this plugin's options and channel, and is empty in the build.
+        const served = client && command() === "serve" && resolveOptions?.ssr !== true &&
+          this.environment?.config.consumer !== "server";
+        return served ? resolvedVirtualClientId : resolvedEmptyClientId;
+      }
+      return id === clientOptionsId ? resolvedClientOptionsId : undefined;
     },
     load(id) {
-      if (id === resolvedStaleInputOffId) {
-        return `globalThis[Symbol.for("runic.vite.staleInputWarning")] = false;`;
+      if (id === resolvedEmptyClientId) return "export {};";
+      if (id === resolvedClientOptionsId) {
+        const statements = [`globalThis[Symbol.for(${JSON.stringify(clientOptionsKey.description)})] = { channel: "hot" };`];
+        if (options.staleInputWarning === false) {
+          statements.push(`globalThis[Symbol.for("runic.vite.staleInputWarning")] = false;`);
+        }
+        return statements.join("\n");
       }
       if (id !== resolvedVirtualClientId) return undefined;
-      // Imports evaluate in order, so the flag is set before the client installs the warning.
-      return options.staleInputWarning === false
-        ? `import ${JSON.stringify(staleInputOffId)};\nimport ${JSON.stringify(clientPackageId)};`
-        : `import ${JSON.stringify(clientPackageId)};`;
+      // Imports evaluate in order, so the options are set before the client reads them.
+      return `import ${JSON.stringify(clientOptionsId)};\nimport ${JSON.stringify(clientPackageId)};`;
     },
     devtools: {
       async setup(context) {
-        if (options.devtools === false) return;
-        sharedState = await context.rpc.sharedState.get(stateKey, { initialValue: state });
-        const renderer = context.createJsonRenderer(createDevtoolsSpec(state));
+        if (!client) return;
+        sharedState = await context.rpc.sharedState.get(stateKey, { initialValue: timeline.state });
+        const renderer = context.createJsonRenderer(createDevtoolsSpec(timeline.state));
         jsonRenderer = renderer;
         context.docks.register({
           id: "runic:overview",
@@ -265,7 +243,7 @@ export function runic(options: RunicViteOptions = {}): RunicVitePlugin {
         context.commands.register({
           id: "runic:copy-diagnostic-state",
           title: "Runic: Copy sanitized diagnostic state",
-          handler: () => JSON.stringify(withoutFailures(state), null, 2),
+          handler: () => JSON.stringify(withoutFailures(timeline.state), null, 2),
         });
       },
     },
@@ -287,19 +265,6 @@ function resolveDesktopBootstrapUrl(
     throw new TypeError("desktop.bootstrapUrl must be ./runic-desktop.js or an absolute HTTP(S) URL.");
   }
   return url.href;
-}
-
-function initialState(options: RunicViteOptions): RunicDevelopmentState {
-  return {
-    contract: {
-      identity: cleanString(options.contract?.identity),
-      version: cleanString(options.contract?.version),
-      fingerprint: cleanString(options.contract?.fingerprint),
-    },
-    vite: { command: "serve", mode: "development", root: "" },
-    connection: { state: "unknown" },
-    timeline: [],
-  };
 }
 
 function createDevtoolsSpec(current: RunicDevelopmentState): JsonRenderSpec {
@@ -334,15 +299,6 @@ function createDevtoolsSpec(current: RunicDevelopmentState): JsonRenderSpec {
   };
 }
 
-// Failures keep file paths and stacks for the local dock only. The state
-// endpoint and the copied state stay path-free.
-function withoutFailures(current: RunicDevelopmentState): RunicDevelopmentState {
-  return {
-    ...current,
-    timeline: current.timeline.map(({ failure: _failure, ...entry }) => entry),
-  };
-}
-
 function lastFailure(current: RunicDevelopmentState): Record<string, string> {
   const entry = [...current.timeline].reverse().find((candidate) => candidate.failure !== undefined);
   if (!entry?.failure) return { Failure: "none" };
@@ -353,23 +309,4 @@ function lastFailure(current: RunicDevelopmentState): Record<string, string> {
     Message: entry.failure.message,
     ...(entry.failure.stack ? { Stack: entry.failure.stack } : {}),
   };
-}
-
-function connectionState(value: unknown): RunicDevelopmentState["connection"]["state"] {
-  return value === "connecting" || value === "connected" || value === "reconnecting" || value === "lost"
-    ? value
-    : "unknown";
-}
-
-function timelineLimit(value: number | undefined): number {
-  if (typeof value !== "number" || !Number.isFinite(value)) return defaultTimelineLimit;
-  return Math.min(maximumTimelineLimit, Math.max(1, Math.floor(value)));
-}
-
-function cleanString(value: unknown): string {
-  return typeof value === "string" ? value.slice(0, 512) : "";
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
 }

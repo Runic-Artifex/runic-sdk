@@ -16,11 +16,27 @@ export default defineConfig({
 });
 ```
 
-Under `dotnet runic dev`, add `runicDevSession()` from
-`@runic-artifex/vite-plugin-runic` to the plugins, as the template does, so
-that `dev` can confirm that the development server on its port is the one it
-started. Use it instead of `runic()`, whose `transformIndexHtml` hook SvelteKit
-warns about.
+For Runic development diagnostics, add `runic({ html: false })` from
+`@runic-artifex/vite-plugin-runic` to the plugins and load its development
+client from `src/hooks.client.ts`, as the template does:
+
+```ts
+// vite.config.ts
+plugins: [sveltekit({ adapter: runicAdapter() }), runic({ html: false })],
+```
+
+```ts
+// src/hooks.client.ts
+import "@runic-artifex/vite-plugin-runic/client";
+```
+
+Under `vite dev` the client forwards Views failures and the connection state to
+the plugin's timeline (and its DevTools dock, with `DevTools()` registered) and
+warns about a text field that loses typed characters; the build replaces the
+import with an empty module. The plugin also lets `dotnet runic dev` confirm
+that the development server on its port is the one it started.
+`html: false` drops `runic()`'s `transformIndexHtml` hook, which SvelteKit warns
+about. It replaces `runicDevSession()`, which answered only the dev session.
 
 The package requires SvelteKit 3 and `@sveltejs/adapter-static` 4, which take
 their configuration through the `sveltekit()` Vite plugin, Svelte 5.57.1 or

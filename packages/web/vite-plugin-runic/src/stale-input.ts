@@ -38,7 +38,8 @@ export const staleInputMessage =
   "typed characters. Bind text inputs with the text-field binding of your framework package " +
   "(`injectTextField` in @runic-artifex/angular, `useTextField` in @runic-artifex/react, vue or svelte) " +
   "or a setter instead of a command per key. This warning comes from @runic-artifex/vite-plugin-runic " +
-  "in development; turn it off with runic({ staleInputWarning: false }).";
+  "in development; turn it off with runic({ staleInputWarning: false }) or, without runic(), by setting " +
+  "globalThis[Symbol.for(\"runic.vite.staleInputWarning\")] = false.";
 
 interface Burst {
   readonly values: Set<string>;
