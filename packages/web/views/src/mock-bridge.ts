@@ -2,6 +2,7 @@ import type { BridgeErrorKind, BridgeErrorReason, BridgeFailureDetail } from "./
 import type { RunicBridgeClient } from "./transport.js";
 import { viewsVersion } from "./version.js";
 import { applySplice, producerSplices, textSpliceFeature } from "./text.js";
+import { insertRows } from "./collections.js";
 
 /** A View's wire state: one member per state member, by wire name, encoded as on the wire. */
 export type MockState = Record<string, unknown>;
@@ -641,7 +642,7 @@ export function createMockBridge(options: MockBridgeOptions = {}): MockBridge {
         const next = [...rows()];
         const at = index ?? next.length;
         if (!Number.isSafeInteger(at) || at < 0 || at > next.length) throw new RangeError("The insert index is outside the collection.");
-        next.splice(at, 0, ...added);
+        insertRows(next, at, added);
         const keys = next.map(key);
         if (new Set(keys).size !== keys.length) throw new RangeError(`The mock collection ${field} would contain a duplicate key.`);
         edit(next, { field, kind: "add", index: at, oldIndex: -1, keys: added.map(key), items: added });

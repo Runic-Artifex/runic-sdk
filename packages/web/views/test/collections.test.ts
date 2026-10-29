@@ -255,3 +255,61 @@ test("the mock's collection edits reach the client as indexed changes", async ()
   assert.equal(bridge.calls.filter(call => call.kind === "snapshot").length, 0);
   client.dispose();
 });
+
+test("a frame checks the keys of the rows it changes, not of the whole collection", () => {
+  let keyCalls = 0;
+  const counted = defineCollections({ rows: defineCollection(decode, row => { keyCalls++; return String(row.id); }) });
+  const rows = Array.from({ length: 10000 }, (_, id) => ({ id, label: `row ${id}` }));
+  counted.validate("rows", rows);
+  assert.equal(keyCalls, 10000);
+  keyCalls = 0;
+  let current: unknown = rows;
+  for (let at = 0; at < 50; at++) {
+    current = counted.apply("rows", current, change("replace", at, [String(at)], [{ id: at, label: "edited" }]), false);
+    counted.validate("rows", current);
+  }
+  current = counted.apply("rows", current, change("add", 0, ["10000"], [{ id: 10000, label: "added" }]), false);
+  current = counted.apply("rows", current, change("remove", 1, ["0"]), true);
+  counted.validate("rows", current);
+  assert.ok(keyCalls < 200, `${keyCalls} key calls`);
+  assert.equal((current as Row[]).length, 10000);
+  assert.equal(rows[0]!.label, "row 0");
+});
+
+test("the key index rejects duplicates a change introduces and survives a failed frame", () => {
+  const rows = [{ id: 1, label: "one" }, { id: 2, label: "two" }];
+  collections.validate("rows", rows);
+  assert.throws(() => collections.apply("rows", rows, change("add", 2, ["1"], [{ id: 1, label: "again" }]), false), /unique/);
+  assert.throws(() => collections.apply("rows", rows, change("replace", 0, ["1"], [{ id: 2, label: "two again" }]), false), /unique/);
+  assert.throws(() => collections.apply("rows", rows, change("add", 0, ["3", "3"], [{ id: 3, label: "a" }, { id: 3, label: "b" }]), false), /unique/);
+  // The previous value is still usable after the failed changes, and its keys are still known.
+  const next = collections.apply("rows", rows, change("replace", 0, ["1"], [{ id: 3, label: "three" }]), false) as Row[];
+  collections.validate("rows", next);
+  assert.deepEqual(next.map(row => row.id), [3, 2]);
+  assert.throws(() => collections.apply("rows", next, change("add", 0, ["2"], [{ id: 2, label: "dup" }]), false), /unique/);
+  const again = collections.apply("rows", next, change("add", 0, ["1"], [{ id: 1, label: "one" }]), false) as Row[];
+  collections.validate("rows", again);
+  assert.deepEqual(again.map(row => row.id), [1, 3, 2]);
+  assert.deepEqual(rows.map(row => row.id), [1, 2]);
+  collections.validate("rows", rows);
+});
+
+test("changes of more rows than an engine accepts as arguments apply in parts", () => {
+  type Big = { readonly id: number };
+  const big = defineCollections({ rows: defineCollection(wire => ({ id: (wire as Big).id }), (row: Big) => String(row.id)) });
+  const count = 150000;
+  const added = Array.from({ length: count }, (_, offset) => ({ id: 1000 + offset }));
+  const keys = added.map(row => String(row.id));
+  const start = [{ id: 1 }, { id: 2 }, { id: 3 }];
+  big.validate("rows", start);
+  let rows = big.apply("rows", start, { field: "rows", kind: "add", index: 1, oldIndex: -1, keys, items: added }, false) as Big[];
+  big.validate("rows", rows);
+  assert.equal(rows.length, count + 3);
+  assert.deepEqual([rows[0], rows[1], rows[count], rows[count + 1], rows[count + 2]].map(row => row!.id), [1, 1000, 1000 + count - 1, 2, 3]);
+  rows = big.apply("rows", rows, { field: "rows", kind: "move", index: 2, oldIndex: 1, keys, items: [] }, false) as Big[];
+  assert.deepEqual([rows[0], rows[1], rows[2], rows[count + 2]].map(row => row!.id), [1, 2, 1000, 3]);
+  const replaced = added.map(row => ({ id: row.id + count }));
+  rows = big.apply("rows", rows, { field: "rows", kind: "replace", index: 2, oldIndex: 2, keys, items: replaced }, false) as Big[];
+  big.validate("rows", rows);
+  assert.deepEqual([rows[1], rows[2], rows[count + 1], rows[count + 2]].map(row => row!.id), [2, 1000 + count, 1000 + 2 * count - 1, 3]);
+});
