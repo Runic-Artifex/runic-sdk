@@ -55,6 +55,18 @@ with a `BridgeError` whose `kind` is `rejected`, `cancelled`, `failed`,
 `disconnected`, `released`, `timeout` or `unavailable`; see
 [Errors and diagnostics](#errors-and-diagnostics).
 
+### Notifications
+
+The client applies each frame as soon as it arrives, but delivers the resulting
+state to subscribers once per animation frame, so a burst of frames renders once
+with the newest state. While the page is hidden, when the browser runs no
+animation frames, a short timer delivers it instead. `snapshot` is always the
+state subscribers last received. Nothing that a caller awaits waits for a frame:
+a setter shows its value at once (so a controlled input keeps its caret), and a
+call that resolves, such as `await counter.increment()` or a checked write,
+first delivers every state that arrived before its reply. The mock Bridge
+delivers each push at once (see [Testing](#testing)).
+
 ### Cancellation and `using`
 
 `connect<Name>({ signal })`, `waitForBridge({ signal })` and an operation's
@@ -666,7 +678,11 @@ open presentation's handler, or `unhandled` when none is registered.
 `createMockBridge({ scheduling: "manual" })` queues every reply and pushed
 frame until the test calls `flush()`, `flushUntil(promise)` or `advance(ms)`,
 so the test decides when the client observes each one. `sleep(ms)` resolves in
-virtual time, which only `advance` moves, in both scheduling modes.
+virtual time, which only `advance` moves, in both scheduling modes. Unlike a
+real host, whose frames reach subscribers once per animation frame
+([Notifications](#notifications)), the mock delivers the state of each push to
+subscribers at once, and `flush()` delivers the rest, so a test reads the
+result of a push right after it.
 `bridge.failNext({ route, kind, member? }, { kind: "transport" })` rejects the
 request itself, like a dropped connection, and `disconnect()`/`reconnect()` exercise the reconnect
 path. `failNext` takes no `disconnected` kind, because .NET never sends it: use
