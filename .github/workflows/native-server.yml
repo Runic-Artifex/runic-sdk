@@ -1,0 +1,191 @@
+# The experimental native Desktop server (X1, docs/experimental.md#RUNICDESK102). Runs only when the native server,
+# its .NET binding or this workflow changes; applications that do not reference Runic.Desktop.NativeServer are covered
+# by ci.yml alone.
+name: Native Desktop server (experimental)
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'native/**'
+      - 'eng/native/build-runic-server.sh'
+      - 'eng/native/crates.mjs'
+      - 'packages/dotnet/Runic.Desktop.NativeServer/**'
+      - 'packages/dotnet/Runic.Desktop/Internal/NativeServer/**'
+      - 'packages/dotnet/Runic.Desktop/Internal/PresentationServer.cs'
+      - 'packages/dotnet/Runic.Desktop/Internal/PresentationHostCore.cs'
+      - 'tests/benchmarks/native-server/**'
+      - 'tests/benchmarks/Runic.Desktop.ServerBenchmarks/**'
+      - 'nix/runic-server.nix'
+      - '.github/workflows/native-server.yml'
+  pull_request:
+    paths:
+      - 'native/**'
+      - 'eng/native/build-runic-server.sh'
+      - 'eng/native/crates.mjs'
+      - 'packages/dotnet/Runic.Desktop.NativeServer/**'
+      - 'packages/dotnet/Runic.Desktop/Internal/NativeServer/**'
+      - 'packages/dotnet/Runic.Desktop/Internal/PresentationServer.cs'
+      - 'packages/dotnet/Runic.Desktop/Internal/PresentationHostCore.cs'
+      - 'tests/benchmarks/native-server/**'
+      - 'tests/benchmarks/Runic.Desktop.ServerBenchmarks/**'
+      - 'nix/runic-server.nix'
+      - '.github/workflows/native-server.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: native-server-${{ github.ref }}
+  cancel-in-progress: true
+env:
+  CARGO_TERM_COLOR: never
+jobs:
+  rust:
+    name: Rust checks
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # rustup installs the toolchain native/rust-toolchain.toml pins.
+      - name: Format, lint and test
+        working-directory: native
+        run: |
+          rustup show active-toolchain
+          cargo fmt --check
+          cargo clippy --locked --all-targets -- -D warnings
+          cargo test --locked
+      # Licenses, THIRD-PARTY-NOTICES.md and D038's one-day rule for crate versions.
+      - name: Check the crates
+        run: node eng/native/crates.mjs check --release-age
+
+  libraries:
+    name: Library / ${{ matrix.rid }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # cargo-zigbuild links every Linux library on one runner, with a glibc floor for the gnu ones.
+          - { rid: linux-x64, os: ubuntu-24.04, target: x86_64-unknown-linux-gnu, zig: true }
+          - { rid: linux-arm64, os: ubuntu-24.04, target: aarch64-unknown-linux-gnu, zig: true }
+          - { rid: linux-musl-x64, os: ubuntu-24.04, target: x86_64-unknown-linux-musl, zig: true }
+          - { rid: linux-musl-arm64, os: ubuntu-24.04, target: aarch64-unknown-linux-musl, zig: true }
+          # MSVC and the Apple SDK: their own runners.
+          - { rid: win-x64, os: windows-2025, target: x86_64-pc-windows-msvc }
+          - { rid: win-arm64, os: windows-2025, target: aarch64-pc-windows-msvc }
+          - { rid: osx-arm64, os: macos-15, target: aarch64-apple-darwin }
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install the Rust target
+        working-directory: native
+        run: rustup target add ${{ matrix.target }}
+      - name: Install cargo-zigbuild
+        if: matrix.zig
+        run: python3 -m pip install --user cargo-zigbuild==0.24.0 ziglang==0.17.0
+      - name: Build
+        env:
+          RUNIC_CARGO_BUILD: ${{ matrix.zig && 'cargo zigbuild' || 'cargo build' }}
+          RUNIC_GLIBC: "2.28"
+        run: eng/native/build-runic-server.sh ${{ matrix.rid }}
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: runic-server-${{ matrix.rid }}
+          path: artifacts/native/runic-server/${{ matrix.rid }}
+          if-no-files-found: error
+
+  desktop:
+    name: Desktop contracts on the native server
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-sdk
+        with:
+          nuget: native
+          node: "true"
+          package-managers: "false"
+      - uses: ./.github/actions/install-browser
+      - name: Build the native server
+        run: eng/native/build-runic-server.sh linux-x64
+      - name: Build the shared Views runtime
+        working-directory: packages/web/views
+        run: bun run --bun build
+      # The same suite the native job runs on Kestrel, with every surface on the native server.
+      - name: Build managed desktop contracts on the native server
+        run: dotnet build tests/dotnet/Runic.Desktop.Tests -c Release -p:RunicDesktopServer=Native
+      - name: Test managed desktop contracts on the native server
+        timeout-minutes: 8
+        run: >-
+          dotnet run --project tests/dotnet/Runic.Desktop.Tests -c Release --no-build --
+          --timeout 6m --output detailed
+          --results-directory ${{ github.workspace }}/artifacts/native-server-tests --report-trx --report-trx-filename desktop.trx
+      - name: Exercise the Desktop example on the native server
+        run: |
+          dotnet build examples/first-window-desktop -c Release -p:RunicDesktopServer=Native
+          node examples/first-window-desktop/browser-smoke.mjs
+      # NativeAOT links the library statically: the published executable is the whole application.
+      - name: Publish the Desktop example with NativeAOT on the native server
+        run: |
+          dotnet publish examples/first-window-desktop/FirstWindowDesktop.csproj -c Release -r linux-x64 \
+            -p:RunicDesktopServer=Native -p:PublishAot=true -o artifacts/native-server-aot
+          test ! -e artifacts/native-server-aot/librunic_server.so
+          node tests/benchmarks/native-server/startup.mjs artifacts/native-server-aot/FirstWindowDesktop 5
+      - name: Retain diagnostics
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: native-server-tests-${{ github.run_id }}
+          path: artifacts/native-server-tests
+          if-no-files-found: ignore
+
+  package:
+    name: Package
+    needs: libraries
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-sdk
+        with:
+          nuget: native
+          install: "false"
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          pattern: runic-server-*
+          path: artifacts/native/runic-server
+      - name: Lay out the libraries by runtime identifier
+        run: |
+          cd artifacts/native/runic-server
+          for directory in runic-server-*; do mv "$directory" "${directory#runic-server-}"; done
+          ls -R
+      - name: Pack with every runtime identifier
+        run: dotnet pack packages/dotnet/Runic.Desktop.NativeServer -c Release -p:RunicNativeServerRequireAllRuntimes=true -o artifacts/native-server-package
+      - name: Check the package layout
+        run: |
+          package=$(ls artifacts/native-server-package/Runic.Desktop.NativeServer.*.nupkg)
+          unzip -l "$package" | tee artifacts/native-server-package/contents.txt
+          for rid in linux-x64 linux-arm64 linux-musl-x64 linux-musl-arm64 osx-arm64; do
+            grep -q "runtimes/$rid/native/librunic_server" artifacts/native-server-package/contents.txt
+            grep -q "build/native/$rid/librunic_server.a" artifacts/native-server-package/contents.txt
+          done
+          for rid in win-x64 win-arm64; do
+            grep -q "runtimes/$rid/native/runic_server.dll" artifacts/native-server-package/contents.txt
+            grep -q "build/native/$rid/runic_server.lib" artifacts/native-server-package/contents.txt
+          done
+          grep -q "buildTransitive/Runic.Desktop.NativeServer.targets" artifacts/native-server-package/contents.txt
+          grep -q "THIRD-PARTY-NOTICES.md" artifacts/native-server-package/contents.txt
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: runic-desktop-native-server-package-${{ github.run_id }}
+          path: artifacts/native-server-package
