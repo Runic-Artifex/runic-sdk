@@ -17,20 +17,28 @@ namespace Runic.Application.Views;
 // (specs/application/README.md, "Reply order").
 //
 // The wait is bounded: a page that does not take frames for ReplyWaitLimit
-// gets the reply anyway. A synchronous route that is called inside the
-// model turn it would wait for does not wait at all.
+// gets the reply anyway, and the first reply of a window that waited that long
+// is logged (1024). A synchronous route that is called inside the model turn
+// it would wait for does not wait at all.
 internal sealed class BridgeReplyOrder
 {
     internal static readonly TimeSpan ReplyWaitLimit = TimeSpan.FromSeconds(5);
     private static readonly ConditionalWeakTable<IBridgeTransport, BridgeReplyOrder> Orders = new();
     private readonly HashSet<BridgeSnapshotDelivery> _deliveries = [];
+    private readonly IBridgeTransport _transport;
+    private int _waitExceededLogged;
+
+    private BridgeReplyOrder(IBridgeTransport transport) => _transport = transport;
 
     // The deliveries of a transport that have outstanding work.
     internal static BridgeReplyOrder For(IBridgeTransport transport)
     {
         ArgumentNullException.ThrowIfNull(transport);
-        return Orders.GetValue(transport, static _ => new());
+        return Orders.GetValue(transport, static key => new(key));
     }
+
+    // How long a reply waits for the window's pushes; tests shorten it for their own transport.
+    internal TimeSpan WaitLimit { get; set; } = ReplyWaitLimit;
 
     internal void Add(BridgeSnapshotDelivery delivery)
     {
@@ -68,10 +76,27 @@ internal sealed class BridgeReplyOrder
     internal async ValueTask<string> AfterPublishedAsync(string reply, CancellationToken cancellationToken)
     {
         if (WhenPublished() is not { } published) return reply;
-        try { await published.WaitAsync(ReplyWaitLimit, cancellationToken).ConfigureAwait(false); }
-        catch (TimeoutException) { }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { }
+        await WaitAsync(published, "", cancellationToken).ConfigureAwait(false);
         return reply;
+    }
+
+    // Waits for what WhenPublished returned, at most WaitLimit. The first wait of the window that runs out is logged
+    // with the routes that still had pushes to deliver, because the reply then reaches the page before its frames.
+    internal async ValueTask WaitAsync(Task published, string route, CancellationToken cancellationToken)
+    {
+        try { await published.WaitAsync(WaitLimit, cancellationToken).ConfigureAwait(false); }
+        catch (TimeoutException) { ReportWaitExceeded(route); }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { }
+    }
+
+    private void ReportWaitExceeded(string route)
+    {
+        if (Interlocked.Exchange(ref _waitExceededLogged, 1) != 0) return;
+        string pending;
+        lock (_deliveries)
+            pending = string.Join(", ", _deliveries.Select(static delivery => delivery.Route).Order(StringComparer.Ordinal));
+        ViewsLog.ReplyWaitExceeded(BridgeDispatcher.For(_transport).Logger, route, WaitLimit.TotalSeconds,
+            pending.Length == 0 ? "none" : pending);
     }
 
     // A synchronous route, called outside the model turn: it blocks the host's
@@ -81,7 +106,7 @@ internal sealed class BridgeReplyOrder
     internal string AfterPublished(string reply, bool inTurn)
     {
         if (inTurn || WhenPublished() is not { } published) return reply;
-        published.Wait(ReplyWaitLimit);
+        if (!published.Wait(WaitLimit)) ReportWaitExceeded("");
         return reply;
     }
 }

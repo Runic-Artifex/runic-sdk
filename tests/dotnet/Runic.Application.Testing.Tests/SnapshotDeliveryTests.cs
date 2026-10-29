@@ -82,6 +82,30 @@ internal sealed class SnapshotDeliveryTests
                 $"The UTF-8 pushes differ from the queued ones: [{string.Join(", ", bytes.Frames.Select(Encoding.UTF8.GetString))}].");
     }
 
+    // 0.13.1: a reply's wait for the pushes before it completed inside the drain, so the caller resumed there. A caller
+    // that then waited synchronously for the next push of the same route waited for the drain it held: the route kept a
+    // unit requested but never run, and every later reply waited for ReplyWaitLimit.
+    [Test]
+    public async Task AWaitForThePushesDoesNotResumeOnTheDrainAsync()
+    {
+        using var transport = new GatedTransport();
+        using var delivery = Delivery(transport);
+        transport.Hello();
+        if (!delivery.EnqueueFrame(Bytes("first"))) throw new InvalidOperationException("The first frame was rejected.");
+        await transport.Entered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        var settled = delivery.WhenSettled() ?? throw new InvalidOperationException("A frame on its way did not keep the delivery unsettled.");
+        var resumed = settled.ContinueWith(_ =>
+        {
+            // What a test or a custom transport does after an awaited reply: send the next request, which queues a
+            // frame, and wait for it synchronously.
+            if (!delivery.EnqueueFrame(Bytes("second"))) throw new InvalidOperationException("The second frame was rejected.");
+            return transport.Second.Wait(TimeSpan.FromSeconds(2));
+        }, CancellationToken.None, TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
+        transport.Release.Set();
+        if (!await resumed.WaitAsync(TimeSpan.FromSeconds(10)))
+            throw new InvalidOperationException("The caller resumed on the drain, which could not deliver the frame it waited for.");
+    }
+
     private static byte[] Bytes(string text) => Encoding.UTF8.GetBytes(text);
 
     // A delivery queue of a route "rows" that captures no state and runs no unit of its own.
@@ -140,6 +164,24 @@ internal sealed class SnapshotDeliveryTests
                 Delivered.TrySetResult();
             }
             catch (Exception error) { Delivered.TrySetException(error); }
+        }
+    }
+
+    // Holds the first push until Release is set, and reports the second one.
+    private sealed class GatedTransport : PushTestTransport
+    {
+        public TaskCompletionSource Entered { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public ManualResetEventSlim Release { get; } = new();
+        public ManualResetEventSlim Second { get; } = new();
+        protected override void OnBroadcast(string json)
+        {
+            if (json == "first") { Entered.TrySetResult(); Release.Wait(TimeSpan.FromSeconds(5)); }
+            else if (json == "second") Second.Set();
+        }
+        public override void Dispose()
+        {
+            Release.Set();
+            base.Dispose();
         }
     }
 

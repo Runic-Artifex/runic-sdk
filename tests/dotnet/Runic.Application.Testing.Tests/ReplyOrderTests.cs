@@ -56,6 +56,54 @@ internal sealed class ReplyOrderTests
         await window.WaitForShellValueAsync(1);
     }
 
+    // 0.13.1 (Artificers Storyline): an awaited reply resumed its caller inside the delivery of the route whose frame it
+    // waited for. A test that then sent a synchronous request blocked that delivery: the shell kept a unit requested but
+    // never run, and this reply and every later one waited the full ReplyWaitLimit.
+    [Test]
+    public async Task ACallerResumingAfterAReplyDoesNotHoldTheDeliveryAsync()
+    {
+        await using var window = await Window.OpenAsync();
+        using (var first = JsonDocument.Parse(await window.Transport.RequestAsync(
+            """{"kind":"set","route":"page","member":"value","value":7,"edit":1}""").ConfigureAwait(false)))
+            Require(first, "set value");
+        var started = TimeProvider.System.GetTimestamp();
+        using (var second = JsonDocument.Parse(window.Transport.Request(
+            """{"kind":"set","route":"page","member":"value","value":8,"edit":2}""")))
+            Require(second, "set value");
+        var elapsed = TimeProvider.System.GetElapsedTime(started);
+        if (elapsed >= BridgeReplyOrder.ReplyWaitLimit)
+            throw new InvalidOperationException($"The second reply waited {elapsed} for a delivery that its own caller held.");
+        window.RequireShellValue(8, "the second setter of value");
+    }
+
+    // A reply that waits for ReplyWaitLimit is sent without its frames, and the window logs the first such reply.
+    [Test]
+    public async Task AReplyThatWaitsTooLongIsLoggedOnceAsync()
+    {
+        var log = new LogCapture();
+        using var transport = new StalledTransport();
+        var shell = new ShellModel();
+        var page = new PageModel(shell);
+        BridgeDispatcher.For(transport).Configure(WindowContentSessionOptions.DefaultMaximumInputBytes, log, TimeProvider.System);
+        BridgeReplyOrder.For(transport).WaitLimit = TimeSpan.FromMilliseconds(100);
+        using var shellBridge = new ShellBridge(transport, shell);
+        using var pageBridge = new PageBridge(transport, page);
+        _ = transport.Request("""{"kind":"snapshot","route":"shell"}""");
+        _ = transport.Request("""{"kind":"snapshot","route":"page"}""");
+        try
+        {
+            for (var edit = 1; edit <= 2; edit++)
+                using (var reply = JsonDocument.Parse(await transport.RequestAsync(
+                    $$"""{"kind":"set","route":"page","member":"value","value":{{edit}},"edit":{{edit}}}""")))
+                    Require(reply, "set value");
+        }
+        finally { transport.Release.Set(); }
+        var warnings = log.Warnings;
+        if (warnings.Count != 1 || !warnings[0].StartsWith("1024 ", StringComparison.Ordinal)
+            || !warnings[0].Contains("route page", StringComparison.Ordinal) || !warnings[0].EndsWith("deliver: shell. The page did not take pushes, or code blocked a route's delivery. Logged once per window.", StringComparison.Ordinal))
+            throw new InvalidOperationException($"The reply wait was not logged once: [{string.Join("; ", warnings)}]");
+    }
+
     [Test]
     public async Task AFrameOnItsWayWhenTheWindowClosesEndsSilentlyAsync()
     {
@@ -247,16 +295,31 @@ internal sealed class ReplyOrderTests
             },
         ]);
 
+    // Takes no push until Release is set, as a page that stopped reading does.
+    private sealed class StalledTransport : PushTestTransport
+    {
+        public ManualResetEventSlim Release { get; } = new();
+        protected override void OnBroadcast(string json) => Release.Wait(TimeSpan.FromSeconds(5));
+        public override void Dispose()
+        {
+            Release.Set();
+            base.Dispose();
+        }
+    }
+
     private sealed class LogCapture : ILogger
     {
         private readonly List<string> _errors = [];
+        private readonly List<string> _warnings = [];
         public IReadOnlyList<string> Errors { get { lock (_errors) return [.. _errors]; } }
+        public IReadOnlyList<string> Warnings { get { lock (_warnings) return [.. _warnings]; } }
         public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
         public bool IsEnabled(LogLevel logLevel) => true;
         public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception,
             Func<TState, Exception?, string> formatter)
         {
             if (logLevel >= LogLevel.Error) lock (_errors) _errors.Add($"{eventId.Id} {formatter(state, exception)}");
+            else if (logLevel == LogLevel.Warning) lock (_warnings) _warnings.Add($"{eventId.Id} {formatter(state, exception)}");
         }
     }
 }

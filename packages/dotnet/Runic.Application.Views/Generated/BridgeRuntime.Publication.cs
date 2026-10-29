@@ -79,9 +79,7 @@ public partial class ViewModelBridge<T>
     private async ValueTask WaitForPublishedAsync(CancellationToken cancellationToken)
     {
         if (_modelTurn.IsCurrent || _replyOrder.WhenPublished() is not { } published) return;
-        try { await published.WaitAsync(BridgeReplyOrder.ReplyWaitLimit, cancellationToken).ConfigureAwait(false); }
-        catch (TimeoutException) { }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { }
+        await _replyOrder.WaitAsync(published, _name, cancellationToken).ConfigureAwait(false);
     }
 
     // A change: requests a publication unit, which a batch defers to its end. Before the route's first state, the unit
