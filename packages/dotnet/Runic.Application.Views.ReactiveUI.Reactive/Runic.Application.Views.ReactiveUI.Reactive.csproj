@@ -32,6 +32,7 @@
     <Compile Include="../Runic.Application.Views.ReactiveUI/ReactiveServiceCollectionExtensions.cs" Link="Shared/ReactiveServiceCollectionExtensions.cs" />
     <Compile Include="../Runic.Application.Views.ReactiveUI/ReactiveSchedulerDiagnostics.cs" Link="Shared/ReactiveSchedulerDiagnostics.cs" />
     <Compile Include="../Runic.Application.Views.ReactiveUI/ReactiveUIBuilderExtensions.cs" Link="Shared/ReactiveUIBuilderExtensions.cs" />
+    <Compile Include="../Runic.Application.Views.ReactiveUI/RemovedTypes.cs" Link="Shared/RemovedTypes.cs" />
     <None Include="README.md" Pack="true" PackagePath="/" />
   </ItemGroup>
   <Import Project="../../../eng/build/application.targets" />

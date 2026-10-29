@@ -253,6 +253,18 @@
   // makes it report its protocol diagnostic, and nothing reaches the host.
   const releasedReply = '{"ok":false,"state":null,"error":{"kind":"released","message":"This View was released."}}';
   const snapshotReply = '{"ok":true,"state":{"revision":0},"error":null,"protocol":4}';
+  // A protocol-3 page, or a wrapper written for it, calls call(name) and sees only released Views: say why, once.
+  let legacyCallReported = false;
+  const legacyCall = name => {
+    if (!legacyCallReported) {
+      legacyCallReported = true;
+      console.warn(`Runic: this page called __runicBridge.call(${JSON.stringify(String(name))}), the Views protocol 3 API. ` +
+        "This host speaks Views protocol 4 and answers call() only with a released View, so nothing reaches .NET. " +
+        "Rebuild the frontend with the matching @runic-artifex/views and reload; code that calls the host bridge itself " +
+        "sends protocol 4 messages with __runicBridge.request(message).");
+    }
+    return Promise.resolve(typeof name === "string" && name.endsWith("Snapshot") ? snapshotReply : releasedReply);
+  };
 
   window.__runicBridge = {
     isConnected: () => {
@@ -293,6 +305,6 @@
         if (idle()) stopWatching();
       };
     },
-    call: name => Promise.resolve(typeof name === "string" && name.endsWith("Snapshot") ? snapshotReply : releasedReply)
+    call: legacyCall
   };
 })();

@@ -22,3 +22,8 @@ Runic.Application.Views.RunicWindowParameter<TParameter>
 Runic.Application.Views.RunicWindowParameter<TParameter>.RunicWindowParameter(TParameter! value) -> void
 Runic.Application.Views.RunicWindowParameter<TParameter>.Value.get -> TParameter!
 static Runic.Application.Views.RunicWindowHostExtensions.OpenWindowAsync<TWindow, TParameter>(this Runic.Application.Views.IRunicWindowHost! host, TParameter! parameter, Runic.Application.Views.RunicWindowOptions? options = null, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<TWindow!>
+Runic.Application.Views.IAsyncBridgeTransport
+Runic.Application.Views.IBridgeArguments
+Runic.Application.Views.IBridgeUtf8Transport
+Runic.Application.Views.RunicBridgeJsonIgnoreAttribute
+Runic.Application.Views.RunicBridgeJsonIgnoreAttribute.RunicBridgeJsonIgnoreAttribute() -> void

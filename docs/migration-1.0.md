@@ -670,3 +670,20 @@ Details: 0.14.0 [Text splices and requests with `hello`](../eng/release/notes/0.
 | --- | --- |
 | `((RunicDesktopHost)host).OpenWindowAsync<TWindow>(options, activation)`, or a separate `RunicDesktopHost` parameter, to open with a launch's activation context | `host.OpenWindowAsync<TWindow>(options, activation)` on any `IRunicWindowHost`. |
 | A singleton that hands a value to the next Window's ViewModel, guarded by a semaphore | `windows.OpenWindowAsync<TWindow, TParameter>(parameter)`, and `IRunicWindowParameter<TParameter>` in the ViewModel's constructor. |
+
+### Removed types
+
+Since 0.14, a type removed in 0.9 or 0.13 that the code still names fails with
+`CS0619` and its replacement instead of `CS0246`, for one release:
+
+| Removed | Use |
+| --- | --- |
+| `[assembly: RunicBridgeJsonIgnore]` (0.9) | Delete it; add `[assembly: RunicIncludeJsonIgnored]` to keep `[JsonIgnore]` members |
+| `RunicReactiveSchedulerProvider`, `IRunicReactiveSchedulerProvider` (0.9) | `ReactiveSchedulers.For(context)`, `ReactiveSchedulers.InstallMainThreadScheduler(loggerFactory)`, `IReactiveSchedulerProvider` |
+| `INativePickerOwner` (0.9) | `INativeWindowOwner` |
+| `IAsyncBridgeTransport`, `IBridgeUtf8Transport` (0.13) | `IBridgeTransport.Serve` and `BroadcastAsync`, `IBridgeConnectionTransport.SendAsync` |
+| `IBridgeArguments` (0.13) | Rebuild: generated descriptors read the request's JSON value |
+| `BridgeTestArguments` (0.13) | The `RunicViewDriver` methods, such as `SetAsync` and `ExecuteAsync(command, input)` |
+
+A page that still calls the host's `__runicBridge.call(name)`, the protocol-3 API, now
+gets one console warning that points to `__runicBridge.request`.

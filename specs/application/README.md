@@ -91,7 +91,8 @@ interface RunicBridgeClient {
 - A protocol-4 host script also keeps a `call(name)` member for pages of protocol 3. It answers a name that ends in
   `Snapshot` with `{"ok":true,"state":{"revision":0},"error":null,"protocol":4}` and every other name with
   `{"ok":false,"state":null,"error":{"kind":"released","message":"This View was released."}}`, so a cached protocol-3
-  page reports its protocol diagnostic.
+  page reports its protocol diagnostic. The first `call` of a page SHOULD also write one warning to the page console
+  that names the call and points to `request`, since code written for protocol 3 otherwise sees only released Views.
 - A client that finds a `__runicBridge` without `request` reports that the host implements protocol 3 or earlier
   (see [Handshake](#handshake)).
 - Each `onMessage` and `onConnectionChange` registration is its own: a function registered twice is called twice, and
