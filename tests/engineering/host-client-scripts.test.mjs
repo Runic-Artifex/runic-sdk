@@ -127,6 +127,23 @@ test("runic-desktop-views.js sends a request on __runicViews and resolves with t
   expect(calls).toEqual([["__runicViews", message, true]]);
 });
 
+// 0.14 T2: webui.js's `request` sends the call right behind the token check; the
+// script prefers it to webui.call, which waits for the token reply.
+test("runic-desktop-views.js sends a request through webui.js's request when it has one", async () => {
+  const requests = [];
+  const views = fakeDesktop();
+  views.request = async (name, ...args) => { requests.push([name, ...args]); return '{"ok":true}'; };
+  let allowed = false;
+  const context = loadDesktop(views, {
+    isConnected: () => false,
+    allowNavigation: status => { allowed = status; },
+    call: async () => { throw new Error("webui.call"); },
+  });
+  expect(await context.__runicBridge.request('{"kind":"hello"}')).toBe('{"ok":true}');
+  expect(requests).toEqual([["__runicViews", '{"kind":"hello"}']]);
+  expect(allowed).toBe(true);
+});
+
 test("runic-desktop-views.js passes a failed request through", async () => {
   const context = loadDesktop(fakeDesktop(), { isConnected: () => true, call: async () => { throw new Error("closed"); } });
   await expect(context.__runicBridge.request("{}")).rejects.toThrow("closed");
@@ -665,6 +682,228 @@ test("runic-cswebui.js continues a cancelled same-origin navigation", () => {
     ["replace", "http://localhost:4000/index.html#notes", true],
   ]);
   expect(allowed).toBe(false);
+});
+
+// ---------------------------------------------------------------------------
+// CS-WebUI connection events. webui.js defines the WebuiBridge class and
+// creates window.webui when the document has loaded; WebUI reports CONNECTED
+// once the token is accepted and DISCONNECTED when the WebSocket closes, each
+// only when it differs from the last event it reported, to its one callback.
+
+function fakeWebuiBridge() {
+  class WebuiBridge {
+    #eventsCallback = null;
+    #lastEvent = -1;
+    event = { CONNECTED: 0, DISCONNECTED: 1 };
+    online = false;
+    calls = [];
+    isConnected() { return this.online; }
+    allowNavigation() {}
+    call(name, ...args) {
+      return new Promise((resolve, reject) => { this.calls.push({ name, args, message: args[0], resolve, reject }); });
+    }
+    setEventCallback(callback) { this.#eventsCallback = callback; }
+    // WebUI's #userEventCallback.
+    report(event) {
+      if (this.#eventsCallback && event != this.#lastEvent) {
+        this.#lastEvent = event;
+        this.#eventsCallback(event);
+      }
+    }
+    connect() { this.online = true; this.report(this.event.CONNECTED); }
+    disconnect() { this.online = false; this.report(this.event.DISCONNECTED); }
+    open(message) { return this.calls.filter(call => call.message === message && !call.done); }
+    answer(call, reply) { call.done = true; call.resolve(reply); }
+  }
+  return WebuiBridge;
+}
+
+// Loads the script as a page does: after webui.js, before the document has loaded.
+function loadWebuiPage() {
+  const WebuiBridge = fakeWebuiBridge();
+  const loaded = [];
+  const intervals = [];
+  const context = load(csWebUi, {
+    WebuiBridge,
+    document: { addEventListener: (type, listener) => { if (type === "DOMContentLoaded") loaded.push(listener); } },
+    setInterval: (...args) => { intervals.push(args); return intervals.length; },
+  });
+  context.intervals = intervals;
+  // webui.js's own listener runs first and creates the instance.
+  context.domContentLoaded = () => {
+    context.webui = new WebuiBridge();
+    for (const listener of loaded) listener();
+    return context.webui;
+  };
+  return context;
+}
+
+test("runic-cswebui.js sends hello as soon as WebUI reports the connection, without a poll", () => {
+  const context = loadWebuiPage();
+  const bridge = context.__runicBridge;
+  // A module script subscribes before the document has loaded, so before window.webui exists.
+  const states = [];
+  bridge.onConnectionChange(connected => {
+    states.push(connected);
+    if (connected) void bridge.request('{"kind":"hello"}');
+  });
+  const webui = context.domContentLoaded();
+  expect(states).toEqual([false]);
+  webui.connect();
+  // The hello goes out within WebUI's own event, not up to 250 ms later.
+  expect(states).toEqual([false, true]);
+  expect(webui.calls.map(call => call.message)).toEqual(['{"kind":"hello"}']);
+  webui.disconnect();
+  webui.connect();
+  expect(states).toEqual([false, true, false, true]);
+  expect(webui.calls.length).toBe(2);
+  expect(context.intervals).toEqual([]);
+});
+
+test("runic-cswebui.js keeps the application's own event callback", () => {
+  const context = loadWebuiPage();
+  const webui = context.domContentLoaded();
+  const application = [];
+  // Before the Bridge watches, WebUI calls the application's callback itself.
+  webui.setEventCallback(function (event) { application.push(["first", event, this === webui]); });
+  webui.connect();
+  const states = [];
+  context.__runicBridge.onConnectionChange(connected => states.push(connected));
+  webui.disconnect();
+  // The application replaces its callback while the Bridge's is installed.
+  webui.setEventCallback(function (event) { application.push(["second", event, this === webui]); });
+  webui.connect();
+  webui.setEventCallback(null);
+  webui.disconnect();
+  expect(application).toEqual([["first", 0, true], ["first", 1, true], ["second", 0, true]]);
+  expect(states).toEqual([true, false, true, false]);
+  expect(context.intervals).toEqual([]);
+});
+
+test("runic-cswebui.js gives the application's callback each event even when a listener throws", () => {
+  const context = loadWebuiPage();
+  const webui = context.domContentLoaded();
+  const errors = [];
+  context.console = { error: (...args) => errors.push(args[0]) };
+  const application = [];
+  webui.setEventCallback(event => application.push(event));
+  context.__runicBridge.onConnectionChange(connected => { if (connected) throw new Error("listener"); });
+  webui.connect();
+  expect(application).toEqual([0]);
+  expect(errors).toEqual(["Runic connection listener failed"]);
+});
+
+test("runic-cswebui.js rejects calls in flight when WebUI reports the close", async () => {
+  const context = loadWebuiPage();
+  const bridge = context.__runicBridge;
+  const webui = context.domContentLoaded();
+  webui.connect();
+  const received = [];
+  bridge.onMessage(message => received.push(message));
+  const inFlight = outcome(bridge.request('{"kind":"set"}'));
+  expect(webui.open(receiveRequest).length).toBe(1);
+  webui.disconnect();
+  expect(await inFlight).toEqual({ error: lostMessage });
+  // The new connection starts its own receive loop at once.
+  webui.connect();
+  expect(webui.open(receiveRequest).length).toBe(2);
+  webui.answer(webui.calls.at(-1), '{"ok":true,"messages":[{"kind":"operation","route":"a"}]}');
+  await settle();
+  expect(received).toEqual(['{"kind":"operation","route":"a"}']);
+  expect(context.intervals).toEqual([]);
+});
+
+// WebUI reports an event only when it differs from the last one it reported,
+// and records none while no callback is set. An application that cleared its
+// callback can leave a stale last event, so the first close after the Bridge
+// installs its own goes unreported; the next CONNECTED shows the new connection.
+test("runic-cswebui.js reports a new connection when WebUI reports CONNECTED without the close", async () => {
+  const context = loadWebuiPage();
+  const bridge = context.__runicBridge;
+  const webui = context.domContentLoaded();
+  webui.setEventCallback(() => {});
+  webui.connect();
+  webui.disconnect();
+  webui.setEventCallback(null);
+  webui.connect();
+  const states = [];
+  bridge.onConnectionChange(connected => states.push(connected));
+  const inFlight = outcome(bridge.request('{"kind":"set"}'));
+  webui.disconnect();
+  expect(states).toEqual([true]);
+  webui.connect();
+  expect(states).toEqual([true, false, true]);
+  expect(await inFlight).toEqual({ error: lostMessage });
+});
+
+test("runic-cswebui.js polls when the page created window.webui before the script ran", async () => {
+  const WebuiBridge = fakeWebuiBridge();
+  const intervals = [];
+  const webui = new WebuiBridge();
+  webui.online = true;
+  const context = load(csWebUi, {
+    WebuiBridge, webui,
+    setInterval: (callback, milliseconds) => { intervals.push(milliseconds); return setInterval(callback, milliseconds); },
+  });
+  const application = [];
+  webui.setEventCallback(event => application.push(event));
+  const states = [];
+  const stop = context.__runicBridge.onConnectionChange(connected => states.push(connected));
+  expect(intervals).toEqual([250]);
+  webui.disconnect();
+  await poll();
+  expect(states).toEqual([true, false]);
+  expect(application).toEqual([1]);
+  stop();
+});
+
+// The mailbox: .NET writes each queued message into the receive reply as it
+// was queued (BridgeMessages.Receive). The script slices the texts out, so
+// the page parses each message once, and they keep their bytes.
+test("runic-cswebui.js delivers the mailbox messages as .NET wrote them, without parsing the reply", async () => {
+  const webui = fakeCsWebUi();
+  let parsed = 0;
+  let serialized = 0;
+  const counting = {
+    parse: (...args) => { parsed++; return JSON.parse(...args); },
+    stringify: (...args) => { serialized++; return JSON.stringify(...args); },
+  };
+  const context = load(csWebUi, { JSON: counting });
+  context.webui = webui;
+  const received = [];
+  context.__runicBridge.onMessage(message => received.push(message));
+  const messages = [
+    '{"kind":"interaction","route":"a","text":"Gr\\u00FC\\u00DFe \\u2028 } ] { [ \\"quoted\\" \\\\"}',
+    '{"kind":"operation","route":"a","operation":"o","status":{"kind":"running","steps":[[1,{"a":[]}],{}]}}',
+    '{"kind":"interaction","route":"b","text":"\\\\"}',
+    '{}',
+  ];
+  webui.answer(webui.open(receiveRequest)[0], `{"ok":true,"messages":[${messages.join(",")}]}`);
+  await settle();
+  expect(received).toEqual(messages);
+  expect([parsed, serialized]).toEqual([0, 0]);
+  for (const message of received) JSON.parse(message);
+
+  // Another layout of a successful reply is parsed and each message serialized, as before.
+  webui.answer(webui.open(receiveRequest)[0], '{"ok":true, "messages":[ {"kind":"operation","route":"c"} ]}');
+  await settle();
+  expect(received.at(-1)).toBe('{"kind":"operation","route":"c"}');
+  expect(webui.open(receiveRequest).length).toBe(1);
+});
+
+test("runic-cswebui.js pauses the mailbox after a reply that only looks like a receive reply", async () => {
+  for (const reply of [
+    '{"ok":true,"messages":[{"a":1},]}', '{"ok":true,"messages":[{"a":"}]}', '{"ok":true,"messages":[{"a":1}{"b":2}]}',
+    '{"ok":true,"messages":[{"a":1}]]}', '{"ok":true,"messages":[1]}x]}',
+  ]) {
+    const webui = fakeCsWebUi();
+    const received = [];
+    loadCsWebUi(webui).__runicBridge.onMessage(message => received.push(message));
+    webui.answer(webui.open(receiveRequest)[0], reply);
+    await settle();
+    expect(received, reply).toEqual([]);
+    expect(webui.receives().length, reply).toBe(1);
+  }
 });
 
 // Examples serve their own copy; each must match the package's script.

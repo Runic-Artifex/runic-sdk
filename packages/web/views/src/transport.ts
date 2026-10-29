@@ -78,13 +78,35 @@ export async function waitForBridge(options: WaitForBridgeOptions = {}): Promise
       if (error.kind === "unavailable") page[unavailableReported] = true;
       throw error;
     }
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    try { await abortable(new Promise<void>(resolve => { timer = setTimeout(resolve, 50); }), signal); }
-    finally { clearTimeout(timer); }
+    const wait = nextCheck(host.__runicBridge);
+    try { await abortable(wait.promise, signal); }
+    finally { wait.cancel(); }
   }
   const bridge = host.__runicBridge;
   assertMessageBridge(bridge);
   return bridge;
+}
+
+// How often `waitForBridge` looks for a Bridge, and checks an installed one that reports no connection change.
+const checkInterval = 50;
+
+/**
+ * Resolves when an installed Bridge reports a connection, so a page connects as soon as its host does, or after
+ * `checkInterval` to look again, as for a Bridge that is not installed yet.
+ */
+function nextCheck(bridge: RunicBridgeClient | undefined): { readonly promise: Promise<void>; cancel(): void } {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  let stop: (() => void) | undefined;
+  const promise = new Promise<void>(resolve => {
+    timer = setTimeout(resolve, checkInterval);
+    if (typeof bridge?.onConnectionChange !== "function") return;
+    // The first report is the state `isConnected()` just returned; a later `true` is the connection.
+    let initial = true;
+    try { stop = bridge.onConnectionChange(connected => { if (connected && !initial) resolve(); }); }
+    catch { stop = undefined; }
+    initial = false;
+  });
+  return { promise, cancel() { clearTimeout(timer); stop?.(); } };
 }
 
 // Bridges whose protocol mismatch was reported: once per page and Bridge.

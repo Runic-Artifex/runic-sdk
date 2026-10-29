@@ -180,6 +180,71 @@ public sealed class BrowserBridgeTests
         }
     }
 
+    // 0.14 T2: the Views connection opens once the token check is sent, before its reply, and requests made at once
+    // follow the token check on the socket, in order, and are answered.
+    [Test]
+    public async Task ViewsRequestsFollowTheTokenCheckWithoutWaitingInChromium()
+    {
+        var chrome = FindChrome();
+        if (chrome is null)
+        {
+            return;
+        }
+
+        const string Policy = "default-src 'self'; script-src 'self'; object-src 'none'; base-uri 'self'";
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(20));
+        await using var window = new WebUiWindow();
+        window.SetFileHandler((path, _) => ValueTask.FromResult<WebUiContent?>(path switch
+        {
+            "/strict.html" => new WebUiContent("""
+                <!doctype html>
+                <html><head><title>WAIT</title><script src="webui.js"></script><script src="strict.js"></script></head>
+                <body data-result="waiting"></body></html>
+                """u8.ToArray(), "text/html; charset=utf-8", headers: new Dictionary<string, string> { ["Content-Security-Policy"] = Policy }),
+            "/strict.js" => WebUiContent.FromText("""
+                const views = globalThis.__runicDesktopViews;
+                let tokenAcceptedAtOpen;
+                views.onConnectionChange(connected => {
+                  if (connected && tokenAcceptedAtOpen === undefined) tokenAcceptedAtOpen = webui.isConnected();
+                });
+                Promise.all([views.request('echo', 'first'), views.request('echo', 'second')]).then(replies => {
+                  document.body.dataset.result = `${replies.join('|')}:${tokenAcceptedAtOpen}:${webui.isConnected()}`;
+                  document.title = 'PASS';
+                }).catch(error => {
+                  globalThis.testError = String(error?.stack ?? error);
+                  document.title = 'FAIL';
+                });
+                """, "text/javascript; charset=utf-8"),
+            _ => null,
+        }));
+        window.Bind("echo", static e => $"{e.GetString()}");
+
+        var url = new Uri(await window.StartServerAsync("unused", timeout.Token), "strict.html");
+        var profile = Directory.CreateTempSubdirectory("runic-desktop-chrome-");
+        using var process = StartChrome(chrome, profile.FullName, url);
+        using var browserOutputLifetime = new CancellationTokenSource();
+        Task<string> browserErrors = ReadBrowserErrorsAsync(process.StandardError, browserOutputLifetime.Token);
+        try
+        {
+            var debuggerPort = await ReadDebuggerPortAsync(profile.FullName, timeout.Token);
+            var debuggerUrl = await FindPageDebuggerUrlAsync(debuggerPort, url, timeout.Token);
+            using var devTools = new ClientWebSocket();
+            await devTools.ConnectAsync(debuggerUrl, timeout.Token);
+
+            await WaitForBridgeResultAsync(devTools, "first|second:false:true", timeout.Token);
+        }
+        finally
+        {
+            try { await StopChromeAsync(process, profile.FullName); }
+            finally
+            {
+                await browserOutputLifetime.CancelAsync();
+                output.WriteLine(await browserErrors.WaitAsync(TimeSpan.FromSeconds(5)));
+            }
+            await BrowserTestProfile.DeleteAsync(profile.FullName, TimeSpan.FromSeconds(10));
+        }
+    }
+
     // I-184: an announcement the host sends while the page has the focus reaches a live region of the Bridge's own, under
     // the template's policy (no string evaluation, no inline style). The host's empty message adds both regions before
     // the first message, a repeated message is added again, and the regions are visually hidden through the CSSOM

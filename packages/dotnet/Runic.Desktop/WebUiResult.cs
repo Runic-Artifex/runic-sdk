@@ -4,11 +4,18 @@ namespace Runic.Desktop;
 internal readonly struct WebUiResult
 {
     private readonly object? _value;
+    private readonly ReadOnlyMemory<byte> _utf8;
 
     private WebUiResult(WebUiResultKind kind, object? value)
     {
         Kind = kind;
         _value = value;
+    }
+
+    private WebUiResult(ReadOnlyMemory<byte> utf8)
+    {
+        Kind = WebUiResultKind.Utf8;
+        _utf8 = utf8;
     }
 
     /// <summary>Gets a JavaScript null response.</summary>
@@ -29,6 +36,10 @@ internal readonly struct WebUiResult
     /// <summary>Creates a string response.</summary>
     public static WebUiResult FromString(string? value) => new(WebUiResultKind.String, value ?? string.Empty);
 
+    /// <summary>Creates a string response from its UTF-8 bytes, which the page receives as they are.</summary>
+    /// <remarks>The bytes are copied into the reply packet; the caller must not change them until the reply was sent.</remarks>
+    internal static WebUiResult FromUtf8(ReadOnlyMemory<byte> value) => new(value);
+
     /// <summary>Creates a string result implicitly.</summary>
     public static implicit operator WebUiResult(string value) => FromString(value);
 
@@ -48,6 +59,8 @@ internal readonly struct WebUiResult
     internal bool BooleanValue => _value is bool value && value;
 
     internal string StringValue => _value as string ?? string.Empty;
+
+    internal ReadOnlyMemory<byte> Utf8Value => _utf8;
 }
 
 /// <summary>Identifies a managed binding response value category.</summary>
@@ -67,4 +80,7 @@ internal enum WebUiResultKind
 
     /// <summary>Returns a string.</summary>
     String,
+
+    /// <summary>Returns a string given as UTF-8 bytes.</summary>
+    Utf8,
 }

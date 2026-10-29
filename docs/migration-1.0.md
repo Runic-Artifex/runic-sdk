@@ -851,3 +851,14 @@ gets one console warning that points to `__runicBridge.request`.
 | A package installed its own `share/mime/packages/<ApplicationId>.xml` (with `magic` or `sub-class-of`) in `postFixup`, after `buildRunicApplication` replaced it with a definition by extension | Install it in `postInstall`: the builder keeps it, and fails when it lacks a type of `RunicApplicationFileTypes` ([File types and URL schemes](../nix/README.md#file-types-and-url-schemes)) |
 | One build per out-of-date `frontend.hash` or `dotnetTools.hashes` entry | `nix run .#<package>.fixedOutputHashes` prints them all ([Fixed-output hashes](../nix/README.md#fixed-output-hashes)) |
 | .NET SDK 10.0.401 or Bun 1.4.2 built without a word | Warning `RUNICBRIDGE033`; `dotnet runic doctor` already failed. Install SDK 10.0.403 and Bun 1.4.4 or later, or add the code to `NoWarn` while nixpkgs still packages the older ones |
+
+### Client notifications
+
+| 0.13 | 0.14 |
+| --- | --- |
+| `subscribe` listeners ran once per frame, while the WebSocket message was handled, and `snapshot` changed with each frame | Once per animation frame with the newest state (a timer while the page is hidden); `snapshot` is the state listeners last received ([Notifications](../packages/web/views/README.md#notifications)). Code that counted notifications or logged every intermediate state sees only the newest. Several Views' changes can now reach the DOM in one task, so a `MutationObserver` callback can see records of elements that the same update removed. A setter's value and the result of an awaited call are still delivered at once |
+| `snapshot` read right after a frame arrived, outside an awaited call | It can be up to one frame behind until the next animation frame; await the call whose result you need, or read the state in `subscribe` |
+| A test double for `__runicBridge` saw subscribers notified during its `onMessage` call | Notified at the end of the task in an environment without `requestAnimationFrame` (Node, bun), or at the next animation frame where one exists (jsdom, happy-dom, browsers). The mock Bridge still delivers each push at once, and its `flush()` delivers the rest |
+| A CS-WebUI page without its own `webui.setEventCallback` showed WebUI's "Connection with the backend is lost" banner | No banner: `runic-cswebui.js` installs an event callback, and WebUI shows the banner only without one. Show the connection state yourself, from `__runicBridge.onConnectionChange` or the Views connection-state stream ([Connection state](../packages/web/views/README.md#connection-state)) |
+
+Details: 0.14.0 [Client and host performance](../eng/release/notes/0.14.0.md#client-and-host-performance-t2).

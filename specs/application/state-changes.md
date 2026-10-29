@@ -272,6 +272,11 @@ The client holds the current state and revision of each open route. For an incom
 5. Commits the new state and revision and notifies subscribers once. Members and rows that no change touched keep
    their identity. A `set` or `splice` with `version` updates the checked field's version.
 
+A client MAY deliver the states of several frames to its subscribers together, such as once per animation frame of
+the page, with the newest state. It still applies each frame when it arrives, delivers a setter's overlay at once
+([Client overlay](README.md#client-overlay)), and delivers every state it applied before a call that waited for it
+resolves, so the caller and the subscribers see the same state.
+
 A pushed full state is accepted when its revision is greater than the current revision. A full state's text field
 must be a string, or `null` when it is nullable.
 

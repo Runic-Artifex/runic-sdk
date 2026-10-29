@@ -181,9 +181,11 @@ public sealed partial class RunicWebView : HwndHost
                     target => view.Dispatcher.BeginInvoke(() => _controller?.Navigate(target)));
                 // The page's prefers-color-scheme (DesktopWindowHostOptions.ColorScheme); the WPF window keeps its own chrome.
                 initializing.SetPreferredColorScheme(options.ColorScheme);
-                if (options.DocumentStartScript is { } script)
-                    await initializing.AddDocumentStartScriptAsync(script);
-                await initializing.EnableFileDropsAsync(url, drop => FilesDropped?.Invoke(this, drop));
+                // Added in this order; the registrations complete concurrently, and the navigation waits for both.
+                var documentStart = options.DocumentStartScript is { } script
+                    ? initializing.AddDocumentStartScriptAsync(script)
+                    : Task.CompletedTask;
+                await Task.WhenAll(documentStart, initializing.EnableFileDropsAsync(url, drop => FilesDropped?.Invoke(this, drop)));
                 cancellationToken.ThrowIfCancellationRequested();
                 ObjectDisposedException.ThrowIf(_closing || view._child == 0, this);
                 _controller = initializing;

@@ -3,10 +3,11 @@
 // "Host bridge (page)") instead of the Desktop transport directly.
 (() => {
   // webui.js installs __runicDesktopViews before this script runs: the Views
-  // messages of its reserved raw-data function, in order, and the connection's
-  // transitions, reported from the WebSocket itself (true once its token is
-  // accepted, false when it closes) without taking the application's
-  // webui.setEventCallback. Both are read when used.
+  // messages of its reserved raw-data function, in order, the connection's
+  // transitions, reported from the WebSocket itself (true once its token check
+  // is sent, false when it closes) without taking the application's
+  // webui.setEventCallback, and `request`, which sends a call right behind the
+  // token check instead of waiting for its reply. All are read when used.
   const views = () => globalThis.__runicDesktopViews;
   const connected = () => views()?.isConnected() ?? globalThis.webui?.isConnected() ?? false;
 
@@ -44,7 +45,10 @@
     request: message => {
       if (!globalThis.webui) return Promise.reject(new Error("Runic Desktop is unavailable."));
       globalThis.webui.allowNavigation?.(true);
-      return globalThis.webui.call("__runicViews", message);
+      const host = views();
+      return typeof host?.request === "function"
+        ? host.request("__runicViews", message)
+        : globalThis.webui.call("__runicViews", message);
     },
     onMessage: listener => views()?.onMessage(listener) ?? (() => {}),
     // The current state at once, then each transition. A listener never gets

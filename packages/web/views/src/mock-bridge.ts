@@ -2,6 +2,8 @@ import type { BridgeErrorKind, BridgeErrorReason, BridgeFailureDetail } from "./
 import type { RunicBridgeClient } from "./transport.js";
 import { viewsVersion } from "./version.js";
 import { applySplice, producerSplices, textSpliceFeature } from "./text.js";
+import { insertRows } from "./collections.js";
+import { flushNotifications } from "./notifications.js";
 
 /** A View's wire state: one member per state member, by wire name, encoded as on the wire. */
 export type MockState = Record<string, unknown>;
@@ -327,7 +329,10 @@ export interface MockBridge extends RunicBridgeClient {
   reconnect(): void;
   /** Resolves after `milliseconds` of virtual time, for handlers that model latency. */
   sleep(milliseconds: number): Promise<void>;
-  /** Delivers every queued request, reply and push that is due, until the client is idle. */
+  /**
+   * Delivers every queued request, reply and push that is due, until the client is idle, and the client's pending
+   * subscriber notifications.
+   */
   flush(): Promise<void>;
   /** Flushes until `promise` settles, then returns its result. Fails when it cannot settle without time passing. */
   flushUntil<T>(promise: Promise<T>): Promise<T>;
@@ -520,7 +525,9 @@ export function createMockBridge(options: MockBridgeOptions = {}): MockBridge {
   /** Sends a reply or push to the page over the FIFO channel; dropped when its connection closed meanwhile. */
   function toPage(run: () => void): void {
     const owner = connection.id;
-    const send = () => { if (connected && connection.id === owner) run(); };
+    // A real host's pushes reach subscribers once per animation frame; the mock delivers each one at once, so a test
+    // reads the state a push produced right after it.
+    const send = () => { if (connected && connection.id === owner) { run(); flushNotifications(); } };
     if (manual) {
       outboundDue = Math.max(now + sample(), outboundDue);
       schedule(outboundDue, send);
@@ -641,7 +648,7 @@ export function createMockBridge(options: MockBridgeOptions = {}): MockBridge {
         const next = [...rows()];
         const at = index ?? next.length;
         if (!Number.isSafeInteger(at) || at < 0 || at > next.length) throw new RangeError("The insert index is outside the collection.");
-        next.splice(at, 0, ...added);
+        insertRows(next, at, added);
         const keys = next.map(key);
         if (new Set(keys).size !== keys.length) throw new RangeError(`The mock collection ${field} would contain a duplicate key.`);
         edit(next, { field, kind: "add", index: at, oldIndex: -1, keys: added.map(key), items: added });
@@ -1126,6 +1133,8 @@ export function createMockBridge(options: MockBridgeOptions = {}): MockBridge {
     for (let round = 0; round < maximumRounds; round++) {
       for (let task = takeDue(); task; task = takeDue()) task.run();
       await yieldToEventLoop();
+      // The states the client produced reach its subscribers without waiting for an animation frame.
+      flushNotifications();
       if (!tasks.some(task => task.due <= now)) return;
     }
     throw new Error("The mock Bridge did not become idle: the client keeps requesting or the mock keeps pushing.");

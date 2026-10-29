@@ -8,6 +8,7 @@ import { reportBridgeError, waitForBridge } from "./transport.js";
 import { publishConnectionState } from "./connection-state.js";
 import { abortable, abortReason, isAbort, throwIfAborted } from "./lifetime.js";
 import { applySplice, minimumKept, singleSplice, textSpliceFeature } from "./text.js";
+import { deferNotification, flushNotifications } from "./notifications.js";
 // Interactions, operations and keyed collections are injected by the generated
 // clients that use them, so this module imports only their types.
 import type { BridgeCollections } from "./collections.js";
@@ -20,12 +21,17 @@ export interface ViewClient<TState = unknown> {
    * The latest state, with the value of each setter call that is still on its way (specs/application, "Client
    * overlay"): a member shows the latest value the page set until the producer's state includes that edit, or the
    * edit failed. After `dispose()` or a Bridge session change it stays the last state the client exposed.
+   *
+   * It is the state subscribers last received. The client applies each frame when it arrives and delivers the
+   * resulting state once per animation frame (a timer while the page is hidden). A setter call shows its value at
+   * once, and a call resolves only after the state it waited for was delivered.
    */
   readonly snapshot: TState;
   /**
    * Delivers the current state, then each change of `snapshot`, until the returned
-   * function is called. After `dispose()` it delivers the last state once and
-   * returns a no-op.
+   * function is called: at most once per animation frame for the producer's
+   * frames, and at once for a setter call or before a call resolves. After
+   * `dispose()` it delivers the last state once and returns a no-op.
    */
   subscribe(listener: (state: TState) => void): () => void;
   /** Releases this connection. Further calls reject with a `released` BridgeError, or `disconnected` while the Bridge is disconnected. */
@@ -211,6 +217,8 @@ class RouteEntry {
   private recoverAgain = false;
   private backoff: { cancel(): void } | undefined;
   private readonly stops: (() => void)[];
+  /** Delivers the exposed state to the presentations; queued once per animation frame by `publish`. */
+  private readonly deliver = () => this.notify();
 
   constructor(readonly runtime: SharedRuntime, readonly route: string, readonly contract: string,
     readonly members: Readonly<Record<string, (wire: unknown) => unknown>>, readonly checkedFields: readonly string[],
@@ -487,7 +495,10 @@ class RouteEntry {
 
   /** Resolves once the route reached `revision` and no read is in flight; at once when the route is not open. */
   waitForRevision(revision: number): Promise<void> {
-    if (!this.live() || this.reading === 0 && this.revision !== undefined && this.revision >= revision) return Promise.resolve();
+    if (!this.live() || this.reading === 0 && this.revision !== undefined && this.revision >= revision) {
+      flushNotifications();
+      return Promise.resolve();
+    }
     return new Promise<void>(resolve => {
       const waiter: Waiter = { revision, resolve, timer: undefined };
       waiter.timer = clock.set(() => {
@@ -499,6 +510,7 @@ class RouteEntry {
         });
         void this.recover().finally(() => {
           if (!this.waiters.delete(waiter)) return;
+          flushNotifications();
           resolve();
         });
       }, revisionTimeout);
@@ -506,8 +518,12 @@ class RouteEntry {
     });
   }
 
-  /** Ends overlays and resolves waiters whose revision the route reached, then publishes the exposed state. */
-  settle(all = false): void {
+  /**
+   * Ends overlays and resolves waiters whose revision the route reached, then publishes the exposed state. A resolved
+   * waiter, or `immediate`, delivers it at once: a caller that awaited it reads the state it waited for.
+   */
+  settle(all = false, immediate = false): void {
+    let resolved = false;
     if (this.reading === 0 && this.revision !== undefined) {
       for (const [member, overlay] of this.overlays)
         if (overlay.revision !== undefined && this.revision >= overlay.revision) this.overlays.delete(member);
@@ -516,27 +532,42 @@ class RouteEntry {
           this.waiters.delete(waiter);
           clock.clear(waiter.timer);
           waiter.resolve();
+          resolved = true;
         }
     }
-    this.publish();
+    // The waiters' continuations run after this returns, so they see the delivered state.
+    this.publish(immediate || resolved);
   }
 
-  /** Recomputes the exposed state and notifies the presentations when a member changed. */
-  publish(): void {
-    if (this.state === undefined) return;
-    let next: State = this.state;
-    if (this.overlays.size !== 0) {
-      next = { ...this.state };
-      for (const [member, overlay] of this.overlays) if (Object.hasOwn(overlay, "value")) setMember(next, member, overlay.value);
+  /**
+   * Recomputes the exposed state and, when a member changed, queues its delivery to the presentations for the next
+   * animation frame. `immediate` delivers every pending state of the page now.
+   */
+  publish(immediate = false): void {
+    if (this.state !== undefined) {
+      let next: State = this.state;
+      if (this.overlays.size !== 0) {
+        next = { ...this.state };
+        for (const [member, overlay] of this.overlays) if (Object.hasOwn(overlay, "value")) setMember(next, member, overlay.value);
+      }
+      const previous = this.exposed;
+      if (previous === undefined || !Object.keys(this.members).every(member => Object.is(previous[member], next[member]))) {
+        this.exposed = next;
+        deferNotification(this.deliver);
+      }
     }
-    const previous = this.exposed;
-    if (previous !== undefined && Object.keys(this.members).every(member => Object.is(previous[member], next[member]))) return;
-    this.exposed = next;
+    if (immediate) flushNotifications();
+  }
+
+  /** Delivers the exposed state to each presentation that has not received it. */
+  private notify(): void {
+    const exposed = this.exposed;
+    if (exposed === undefined) return;
     for (const lease of this.presentations) {
-      if (lease.disposed) continue;
-      lease.current = next;
+      if (lease.disposed || lease.current === exposed) continue;
+      lease.current = exposed;
       for (const listener of [...lease.listeners]) {
-        try { listener(next); } catch (error) { reportBridgeError(error, this.route); }
+        try { listener(exposed); } catch (error) { reportBridgeError(error, this.route); }
       }
     }
   }
@@ -550,7 +581,8 @@ class RouteEntry {
     let overlay: Overlay = { edit, connection };
     try { overlay = { edit, connection, value: this.members[member]!(value) }; } catch { /* the producer rejects it */ }
     this.overlays.set(member, overlay);
-    this.publish();
+    // The page shows its own edit at once, such as the value of a controlled input.
+    this.publish(true);
     return edit;
   }
 
@@ -588,7 +620,7 @@ class RouteEntry {
     if (overlay?.edit !== edit) return;
     if (revision === undefined) this.overlays.delete(member);
     else overlay.revision = revision;
-    this.settle();
+    this.settle(false, true);
   }
 }
 
@@ -676,6 +708,8 @@ async function connectRoute<TState>(options: ViewConnectOptions<TState>): Promis
   }
   if (!live()) { dispose(); throw new BridgeError(runtime.connected ? "released" : "disconnected", "The View was released during connection.", { route }); }
   if (signal?.aborted) { dispose(); throw abortReason(signal); }
+  // The other presentations of the route receive the state this one starts with.
+  flushNotifications();
   lease.current = entry.exposed;
 
   const ready = async () => { await lease.interactions?.ready(); };
@@ -683,6 +717,8 @@ async function connectRoute<TState>(options: ViewConnectOptions<TState>): Promis
   // A call that ran resolves once the route reached its revision; a failed one rejects after that.
   const settled = async (reply: Reply): Promise<void> => {
     if (reply.revision !== undefined) await entry.waitForRevision(reply.revision);
+    // The caller reads the state of every frame that arrived before the reply.
+    flushNotifications();
   };
   const failure = async (reply: Reply, fallback: string): Promise<never> => {
     await settled(reply);
@@ -726,7 +762,7 @@ async function connectRoute<TState>(options: ViewConnectOptions<TState>): Promis
         if (!reply.ok && reply.error?.reason === "splice-base") {
           // The producer no longer has the splice's base, and admitted nothing. A later edit carries a newer value;
           // otherwise this value is sent in full as a new edit.
-          if (entry.latestEdit(member) !== edit) return current();
+          if (entry.latestEdit(member) !== edit) { flushNotifications(); return current(); }
           edit = entry.beginEdit(member, value);
           reply = await request({ kind: "set", route, member, value, edit });
         }

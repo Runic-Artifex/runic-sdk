@@ -190,6 +190,89 @@ public sealed class ManagedWindowTests
         Assert.Equal(0, response[HeaderSize]);
     }
 
+    // 0.14 T2: the page's Views requests follow its token check without waiting for the reply. The socket's packets
+    // are read in order, so the call is admitted after the token check authenticated the socket, and after the
+    // Connected event.
+    [Test]
+    public async Task AdmitsACallSentRightBehindTheTokenCheck()
+    {
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        await using var window = new WebUiWindow();
+        var order = new System.Collections.Concurrent.ConcurrentQueue<string>();
+        window.Bind(string.Empty, e => { if (e.EventType == WebUiEventType.Connected) order.Enqueue("connected"); });
+        window.Bind("echo", e =>
+        {
+            order.Enqueue(e.GetString());
+            return e.GetString();
+        });
+        var url = await window.StartServerAsync("bridge");
+        var token = await GetTokenAsync(url);
+        using var socket = await ConnectAsync(url, timeout.Token);
+
+        await SendBinaryAsync(socket, CreatePacket(token, 0, CheckToken, [0]), timeout.Token);
+        await SendBinaryAsync(socket, CreateCallPacket(token, 1, "echo", "first"u8.ToArray()), timeout.Token);
+        await SendBinaryAsync(socket, CreateCallPacket(token, 2, "echo", "second"u8.ToArray()), timeout.Token);
+
+        var handshake = await ReceiveBinaryAsync(socket, timeout.Token);
+        AssertHeader(handshake, 0, CheckToken);
+        Assert.Equal(1, handshake[HeaderSize]);
+        // Calls run concurrently once admitted, so their replies and handlers can finish in either order; the Connected
+        // event is dispatched before either call is admitted.
+        var replies = new[] { await ReceiveBinaryAsync(socket, timeout.Token), await ReceiveBinaryAsync(socket, timeout.Token) }
+            .OrderBy(reply => BinaryPrimitives.ReadUInt16LittleEndian(reply.AsSpan(5, 2)))
+            .ToArray();
+        AssertCallResult(replies[0], 1, "first");
+        AssertCallResult(replies[1], 2, "second");
+        Assert.Equal("connected", order.First());
+        Assert.Equal(["first", "second"], order.Skip(1).Order());
+    }
+
+    // A call that follows a token check that failed, or that comes before any token check, is dropped: nothing runs
+    // and nothing is answered, although the call's own header carries the right token.
+    [Test]
+    public async Task DropsACallSentRightBehindARejectedTokenCheck()
+    {
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        await using var window = new WebUiWindow();
+        var calls = 0;
+        window.Bind("echo", e => { Interlocked.Increment(ref calls); return e.GetString(); });
+        var url = await window.StartServerAsync("bridge");
+        var token = await GetTokenAsync(url);
+        using var socket = await ConnectAsync(url, timeout.Token);
+
+        var invalidToken = token == uint.MaxValue ? token - 1 : token + 1;
+        await SendBinaryAsync(socket, CreatePacket(invalidToken, 0, CheckToken, [0]), timeout.Token);
+        await SendBinaryAsync(socket, CreateCallPacket(token, 1, "echo", "first"u8.ToArray()), timeout.Token);
+
+        var handshake = await ReceiveBinaryAsync(socket, timeout.Token);
+        AssertHeader(handshake, 0, CheckToken);
+        Assert.Equal(0, handshake[HeaderSize]);
+        // The server closes the rejected socket; no reply to the call comes before the close.
+        var buffer = new byte[256];
+        var closed = await socket.ReceiveAsync(buffer, timeout.Token);
+        Assert.Equal(WebSocketMessageType.Close, closed.MessageType);
+        Assert.Equal(0, Volatile.Read(ref calls));
+    }
+
+    [Test]
+    public async Task DropsACallSentBeforeTheTokenCheck()
+    {
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        await using var window = new WebUiWindow();
+        var calls = new System.Collections.Concurrent.ConcurrentQueue<string>();
+        window.Bind("echo", e => { calls.Enqueue(e.GetString()); return e.GetString(); });
+        var url = await window.StartServerAsync("bridge");
+        var token = await GetTokenAsync(url);
+        using var socket = await ConnectAsync(url, timeout.Token);
+
+        await SendBinaryAsync(socket, CreateCallPacket(token, 1, "echo", "early"u8.ToArray()), timeout.Token);
+        await AuthenticateAsync(socket, token, ["__webui_core_api__", "echo"], timeout.Token);
+        await SendBinaryAsync(socket, CreateCallPacket(token, 2, "echo", "admitted"u8.ToArray()), timeout.Token);
+
+        AssertCallResult(await ReceiveBinaryAsync(socket, timeout.Token), 2, "admitted");
+        Assert.Equal(["admitted"], calls);
+    }
+
     [Test]
     public async Task AnnouncesBindingsAddedAfterAuthentication()
     {
@@ -390,6 +473,43 @@ public sealed class ManagedWindowTests
         }
 
         AssertCallResult(await ReceiveBinaryAsync(socket, timeout.Token), 23, "150000");
+    }
+
+    // The reply of a capability that returns UTF-8 bytes (a Views reply) reaches the page as those bytes.
+    [Test]
+    public async Task SendsAUtf8ResultAsItIs()
+    {
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        await using var window = new WebUiWindow();
+        var reply = "{\"text\":\"Grüße ☃\"}"u8.ToArray();
+        window.Bind("utf8", e => WebUiResult.FromUtf8(reply));
+        var url = await window.StartServerAsync("bridge");
+        var token = await GetTokenAsync(url);
+        using var socket = await ConnectAsync(url, timeout.Token);
+        await AuthenticateAsync(socket, token, ["__webui_core_api__", "utf8"], timeout.Token);
+
+        await SendBinaryAsync(socket, CreateCallPacket(token, 3, "utf8"), timeout.Token);
+        var response = await ReceiveBinaryAsync(socket, timeout.Token);
+        AssertHeader(response, 3, CallFunction);
+        Assert.Equal([.. reply, 0], response[HeaderSize..]);
+    }
+
+    // A message longer than the receive buffer arrives in several reads; its arguments are slices of the whole message.
+    [Test]
+    public async Task ReceivesAMessageLongerThanTheReceiveBuffer()
+    {
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        await using var window = new WebUiWindow();
+        window.Bind("echo", static e => e.GetString(1) + e.GetString());
+        var url = await window.StartServerAsync("bridge");
+        var token = await GetTokenAsync(url);
+        using var socket = await ConnectAsync(url, timeout.Token);
+        await AuthenticateAsync(socket, token, ["__webui_core_api__", "echo"], timeout.Token);
+
+        var text = string.Concat(Enumerable.Range(0, 40_000).Select(static index => (char)('a' + index % 26)));
+        await SendBinaryAsync(socket, CreateCallPacket(token, 24, "echo", Encoding.UTF8.GetBytes(text), "ü"u8.ToArray()), timeout.Token);
+
+        AssertCallResult(await ReceiveBinaryAsync(socket, timeout.Token), 24, "ü" + text);
     }
 
     [Test]

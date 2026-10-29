@@ -6,7 +6,7 @@ namespace Runic.Desktop;
 /// <summary>Represents one browser event while its managed binding is executing.</summary>
 internal sealed class WebUiEvent
 {
-    private readonly byte[][] _arguments;
+    private readonly ReadOnlyMemory<byte>[] _arguments;
     private readonly Guid _sessionId;
     private int _active = 1;
 
@@ -15,7 +15,7 @@ internal sealed class WebUiEvent
         Guid sessionId,
         WebUiEventType eventType,
         string element,
-        byte[][] arguments,
+        ReadOnlyMemory<byte>[] arguments,
         nuint eventNumber,
         nuint bindingId,
         nuint clientId,
@@ -113,7 +113,7 @@ internal sealed class WebUiEvent
     }
 
     /// <summary>Gets an argument as a UTF-8 string.</summary>
-    public string GetString(nuint index = 0) => Encoding.UTF8.GetString(GetArgument(index));
+    public string GetString(nuint index = 0) => Encoding.UTF8.GetString(GetArgument(index).Span);
 
     /// <summary>Copies an argument's raw bytes into managed memory.</summary>
     public byte[] GetBytes(nuint index = 0) => GetArgument(index).ToArray();
@@ -176,7 +176,8 @@ internal sealed class WebUiEvent
         return Window.CloseSessionAsync(_sessionId, cancellationToken);
     }
 
-    private byte[] GetArgument(nuint index)
+    // The argument is a slice of the received packet, which no other event shares and nothing reuses.
+    private ReadOnlyMemory<byte> GetArgument(nuint index)
     {
         ThrowIfInactive();
         ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(index, (nuint)_arguments.Length, nameof(index));

@@ -1,6 +1,5 @@
 using System.Diagnostics;
 using System.Globalization;
-using System.Text;
 using Microsoft.Extensions.Logging;
 using Runic.Application.Views;
 using Runic.Desktop;
@@ -149,11 +148,12 @@ public sealed class DesktopBridgeTransport : IBridgeConnectionTransport, IDispos
     {
         if (invocation.ArgumentCount < 1) return PresentationResult.None;
         var key = invocation.Session.Id.ToString(CultureInfo.InvariantCulture);
-        // The argument is valid only while the invocation is active; the handler reads it before it first yields, and
-        // the copy keeps it for an awaited request.
-        var request = new BridgeRequest(invocation.GetBytes(0).ToArray(), key, key);
+        // The request's UTF-8 JSON is a slice of the page's packet, which no other invocation shares and nothing
+        // reuses; it stays valid while this capability handler awaits the request. The reply's UTF-8 JSON, which the
+        // handler does not reuse, is copied into the reply packet as it is: neither is decoded to a string.
+        var request = new BridgeRequest(invocation.GetBytes(0), key, key);
         var reply = await handler.HandleAsync(request, cancellationToken).ConfigureAwait(false);
-        return PresentationResult.FromString(Encoding.UTF8.GetString(reply.Span));
+        return PresentationResult.FromUtf8(reply);
     }
 
     private void ReportDeliveryFailure(Exception error)

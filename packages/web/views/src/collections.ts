@@ -44,6 +44,18 @@ export interface BridgeCollections {
 /** Binds the collection codecs of a generated client to the code that applies their changes. */
 export function defineCollections(definitions: Readonly<Record<string, BridgeCollectionDefinition>>): BridgeCollections {
   const definition = (field: string) => Object.hasOwn(definitions, field) ? definitions[field] : undefined;
+  // The keys of each collection value the client holds, all nonempty and unique. A frame's changes keep the index
+  // of the value they change, so a frame checks only the rows it names instead of every key. A value whose index
+  // was lost, such as the previous value of a frame that failed, gets a new one when it is used again.
+  const indexes = new WeakMap<readonly unknown[], Set<string>>();
+  const indexOf = (rows: readonly unknown[], found: BridgeCollectionDefinition, field: string): Set<string> => {
+    const known = indexes.get(rows);
+    if (known !== undefined && known.size === rows.length) return known;
+    const built = new Set<string>();
+    for (const row of rows) addKey(built, keyOf(row, found, field), field);
+    indexes.set(rows, built);
+    return built;
+  };
   return {
     kind: field => {
       const found = definition(field);
@@ -57,7 +69,7 @@ export function defineCollections(definitions: Readonly<Record<string, BridgeCol
         return;
       }
       if (!Array.isArray(value)) throw new Error(`The collection ${field} is not an array.`);
-      keys(value, found, field);
+      indexOf(value, found, field);
     },
     apply(field, current, change, owned) {
       const found = definition(field);
@@ -68,21 +80,26 @@ export function defineCollections(definitions: Readonly<Record<string, BridgeCol
       }
       if (change["kind"] === "text") throw new Error(`The collection ${field} received a text change.`);
       if (!Array.isArray(current)) throw new Error(`The collection ${field} is not an array.`);
-      const rows = owned ? current as unknown[] : [...current];
-      applyIndexed(rows, change, found);
+      // The index moves to the changed value; the value it leaves gets a new one if it is used again.
+      const keys = indexOf(current, found, field);
+      indexes.delete(current);
+      const rows = owned ? current as unknown[] : current.slice();
+      try { applyIndexed(rows, change, found, field, keys); }
+      catch (error) { indexes.delete(rows); throw error; }
+      indexes.set(rows, keys);
       return rows;
     },
   };
 }
 
-function keys(items: readonly unknown[], definition: BridgeCollectionDefinition, field: string): string[] {
-  const result = items.map(item => {
-    if (item === null || item === undefined) throw new Error(`The collection ${field} has a missing row.`);
-    return definition.key(item);
-  });
-  if (result.some(key => typeof key !== "string" || key.length === 0) || new Set(result).size !== result.length)
-    throw new Error(`The keys of ${field} must be nonempty and unique.`);
-  return result;
+function keyOf(row: unknown, definition: BridgeCollectionDefinition, field: string): string {
+  if (row === null || row === undefined) throw new Error(`The collection ${field} has a missing row.`);
+  return definition.key(row);
+}
+
+function addKey(keys: Set<string>, key: string, field: string): void {
+  if (typeof key !== "string" || key.length === 0 || keys.has(key)) throw new Error(`The keys of ${field} must be nonempty and unique.`);
+  keys.add(key);
 }
 
 const index = (value: unknown): number => {
@@ -90,8 +107,24 @@ const index = (value: unknown): number => {
   return value;
 };
 
-/** Applies one `add`, `remove`, `replace` or `move` change to `rows` in place; unchanged rows keep their identity. */
-function applyIndexed(rows: unknown[], change: Readonly<Record<string, unknown>>, definition: BridgeCollectionDefinition): void {
+// Rows passed as the arguments of one call. Engines limit the number of arguments: V8 throws a RangeError for about
+// 120,000, so larger inserts go in parts of this size.
+const chunk = 8_192;
+
+/** Inserts `values` at `at` in place, in parts small enough for every engine's argument limit. */
+export function insertRows(rows: unknown[], at: number, values: readonly unknown[]): void {
+  if (values.length <= chunk) { rows.splice(at, 0, ...values); return; }
+  const tail = rows.splice(at);
+  for (let start = 0; start < values.length; start += chunk) rows.push(...values.slice(start, start + chunk));
+  for (let start = 0; start < tail.length; start += chunk) rows.push(...tail.slice(start, start + chunk));
+}
+
+/**
+ * Applies one `add`, `remove`, `replace` or `move` change to `rows` in place and updates `keys`, the index of `rows`;
+ * unchanged rows keep their identity. Throws for a change that does not fit, which can leave `rows` and `keys` changed.
+ */
+function applyIndexed(rows: unknown[], change: Readonly<Record<string, unknown>>, definition: BridgeCollectionDefinition,
+  field: string, keys: Set<string>): void {
   const at = index(change["index"]);
   const oldKeys = change["keys"] as readonly string[];
   const values = (change["items"] as readonly unknown[]).map(definition.decode);
@@ -100,26 +133,33 @@ function applyIndexed(rows: unknown[], change: Readonly<Record<string, unknown>>
     if (start + count > rows.length || oldKeys.some((key, offset) => definition.key(rows[start + offset]) !== key))
       throw new Error("The collection no longer has the rows this change names.");
   };
+  const addAll = () => { for (const value of values) addKey(keys, keyOf(value, definition, field), field); };
   switch (change["kind"]) {
     case "add":
       if (at > rows.length) throw new Error("The insertion point is outside the collection.");
-      if (values.some((value, offset) => definition.key(value) !== oldKeys[offset])) throw new Error("The added rows do not have the given keys.");
-      rows.splice(at, 0, ...values);
+      if (values.length !== count || values.some((value, offset) => keyOf(value, definition, field) !== oldKeys[offset]))
+        throw new Error("The added rows do not have the given keys.");
+      addAll();
+      insertRows(rows, at, values);
       break;
     case "remove":
       verify(at);
+      for (const key of oldKeys) keys.delete(key);
       rows.splice(at, count);
       break;
     case "replace":
       verify(at);
-      rows.splice(at, count, ...values);
+      for (const key of oldKeys) keys.delete(key);
+      addAll();
+      if (values.length <= chunk) rows.splice(at, count, ...values);
+      else { rows.splice(at, count); insertRows(rows, at, values); }
       break;
     case "move": {
       const from = index(change["oldIndex"]);
       verify(from);
       const moved = rows.splice(from, count);
       if (at > rows.length) throw new Error("The move destination is outside the collection.");
-      rows.splice(at, 0, ...moved);
+      insertRows(rows, at, moved);
       break;
     }
     default: throw new Error(`Unknown collection change ${String(change["kind"])}.`);

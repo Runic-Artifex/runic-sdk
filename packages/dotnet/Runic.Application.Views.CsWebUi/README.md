@@ -240,6 +240,12 @@ A project that references both hosts sets `RunicApplicationHost` (`cswebui` or
 [the host of a page](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Application.Views/README.md#the-host-of-a-page).
 Pages that load `runic-cswebui.js` keep working. The script adapts
 `window.webui` to the generated client's transport contract, `__runicBridge`.
+Load it right after `webui.js`: it then observes WebUI's connection events
+through `webui.setEventCallback` and passes every event on to the callback the
+application sets there, before or after. As with any event callback, WebUI then
+shows no "Connection with the backend is lost" banner; the page shows the
+connection state itself. Loaded after WebUI created `window.webui`, the script
+checks the connection every 250 ms instead.
 
 The script sends each Bridge request as soon as the page makes it, so several
 requests can reach WebUI at once. Runic relies on WebUI's fix for concurrent calls

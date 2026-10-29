@@ -39,7 +39,9 @@ export function keepFocusAcrossDisabling(): void {
   // One observer for the whole document, so nothing outlives the elements it watched.
   new MutationObserver(records => {
     for (const { target } of records) {
-      if (!(target instanceof HTMLElement)) continue;
+      // A control removed since its change, such as a dialog's button disabled by the update that also closed the
+      // dialog, cannot take focus back; a later record must not replace a control that can.
+      if (!(target instanceof HTMLElement) || !target.isConnected) continue;
       if (isDisabled(target)) {
         // The browser may move focus to the body only after this callback runs.
         if (target === lastFocused && (document.activeElement === target || focusIsLost())) returnTo = target;

@@ -114,6 +114,9 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
     private bool _resizable = true;
     private bool _frameless;
     private bool _transparent;
+    // The served bootstrap scripts, as UTF-8, for the inputs they were built from.
+    private BootstrapScript? _bridgeScript;
+    private BootstrapScript? _desktopBootstrapScript;
     private bool _centered;
     private bool? _highContrast;
     private uint? _width;
@@ -1689,12 +1692,12 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
     internal async ValueTask<WebUiResult> InvokeCallbackAsync(
         WebUiSession session,
         string element,
-        byte[][] arguments,
+        ReadOnlyMemory<byte>[] arguments,
         CancellationToken cancellationToken)
     {
         if (element == "__webui_core_api__")
         {
-            return arguments.Length > 0 && Encoding.UTF8.GetString(arguments[0]) == "high_contrast"
+            return arguments.Length > 0 && arguments[0].Span.SequenceEqual("high_contrast"u8)
                 ? WebUiResult.FromBoolean(_highContrast ?? WebUiSystemTheme.IsHighContrast)
                 : WebUiResult.None;
         }
@@ -1730,7 +1733,7 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
         WebUiSession session,
         WebUiEventType eventType,
         string element,
-        byte[][] arguments,
+        ReadOnlyMemory<byte>[] arguments,
         CancellationToken cancellationToken)
     {
         var eventNumber = (nuint)Interlocked.Increment(ref _nextEventNumber);
@@ -1876,7 +1879,7 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
         BindingRegistration registration,
         WebUiEventType eventType,
         string element,
-        byte[][] arguments,
+        ReadOnlyMemory<byte>[] arguments,
         nuint eventNumber,
         CancellationToken cancellationToken)
     {
@@ -2807,44 +2810,51 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
         return true;
     }
 
-    private async Task ServeBridgeAsync(HttpContext context)
+    // Each page load requests its bootstrap scripts, so each is built once for the inputs that can change between
+    // presentations and served from its UTF-8 bytes. The response keeps PrepareResponseAsync's no-store: in an installed
+    // browser the script carries the token and the session credential, which must not outlive the session in a disk
+    // cache, and in an embedded window it names the port of this run, which a WebView profile would keep.
+    private Task ServeBridgeAsync(HttpContext context)
     {
         if (!AdmitsBootstrapRequest(context))
         {
-            return;
+            return Task.CompletedTask;
         }
 
-        context.Response.ContentType = "text/javascript; charset=utf-8";
-        var (token, sessionCredential) = GetBootstrapCredentialExpressions();
-        var script = WebUiBridge.Script
-            .Replace("__TOKEN__", token, StringComparison.Ordinal)
-            .Replace("__PORT__", Url?.Port.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? "0", StringComparison.Ordinal)
-            .Replace("__BASE_PATH__", _surface?.PathBase ?? string.Empty, StringComparison.Ordinal)
-            .Replace("__SESSION_CREDENTIAL__", sessionCredential, StringComparison.Ordinal)
-            .Replace("__CUSTOM_WINDOW_DRAG__", _embeddedHost is not null && _frameless ? "true" : "false", StringComparison.Ordinal);
-        context.Response.ContentLength = Encoding.UTF8.GetByteCount(script);
-        if (!HttpMethods.IsHead(context.Request.Method))
-        {
-            await context.Response.WriteAsync(script, context.RequestAborted).ConfigureAwait(false);
-        }
+        return SendScriptAsync(context, GetBootstrapScript(ref _bridgeScript, BuildBridgeScript));
     }
 
-    private async Task ServeDesktopBootstrapAsync(HttpContext context)
+    private string BuildBridgeScript(BootstrapInputs inputs)
+    {
+        var (token, sessionCredential) = GetBootstrapCredentialExpressions(inputs.DocumentStartScript);
+        return WebUiBridge.Script
+            .Replace("__TOKEN__", token, StringComparison.Ordinal)
+            .Replace("__PORT__", inputs.Port.ToString(System.Globalization.CultureInfo.InvariantCulture), StringComparison.Ordinal)
+            .Replace("__BASE_PATH__", inputs.PathBase, StringComparison.Ordinal)
+            .Replace("__SESSION_CREDENTIAL__", sessionCredential, StringComparison.Ordinal)
+            .Replace("__CUSTOM_WINDOW_DRAG__", inputs.CustomWindowDrag ? "true" : "false", StringComparison.Ordinal);
+    }
+
+    private Task ServeDesktopBootstrapAsync(HttpContext context)
     {
         if (!AdmitsBootstrapRequest(context))
         {
-            return;
+            return Task.CompletedTask;
         }
 
-        context.Response.ContentType = "text/javascript; charset=utf-8";
-        var webSocketPath = $"{_surface?.PathBase ?? string.Empty}{WebSocketPath}";
-        var (token, sessionCredential) = GetBootstrapCredentialExpressions();
-        var script = $$"""
+        return SendScriptAsync(context, GetBootstrapScript(ref _desktopBootstrapScript, BuildDesktopBootstrapScript));
+    }
+
+    private string BuildDesktopBootstrapScript(BootstrapInputs inputs)
+    {
+        var webSocketPath = $"{inputs.PathBase}{WebSocketPath}";
+        var (token, sessionCredential) = GetBootstrapCredentialExpressions(inputs.DocumentStartScript);
+        return $$"""
             (() => {
               "use strict";
               const endpoint = new URL({{EncodeJavaScriptString(webSocketPath)}}, globalThis.location.href);
               endpoint.protocol = endpoint.protocol === "https:" ? "wss:" : "ws:";
-              endpoint.port = {{Url?.Port.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? "0"}};
+              endpoint.port = {{inputs.Port.ToString(System.Globalization.CultureInfo.InvariantCulture)}};
               Object.defineProperty(globalThis, "runicDesktop", {
                 configurable: false,
                 enumerable: true,
@@ -2858,11 +2868,36 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
               });
             })();
             """;
-        context.Response.ContentLength = Encoding.UTF8.GetByteCount(script);
-        if (!HttpMethods.IsHead(context.Request.Method))
-        {
-            await context.Response.WriteAsync(script, context.RequestAborted).ConfigureAwait(false);
-        }
+    }
+
+    private static Task SendScriptAsync(HttpContext context, byte[] script)
+    {
+        context.Response.ContentType = "text/javascript; charset=utf-8";
+        context.Response.ContentLength = script.Length;
+        return HttpMethods.IsHead(context.Request.Method)
+            ? Task.CompletedTask
+            : context.Response.Body.WriteAsync(script, context.RequestAborted).AsTask();
+    }
+
+    // The inputs of a bootstrap script that can change between presentations of one window: the server's port and path,
+    // whether the embedded host hands the credentials to the document, and the frameless window's own drag.
+    private readonly record struct BootstrapInputs(int Port, string PathBase, bool DocumentStartScript, bool CustomWindowDrag);
+
+    private sealed record BootstrapScript(BootstrapInputs Inputs, byte[] Utf8);
+
+    private byte[] GetBootstrapScript(ref BootstrapScript? cache, Func<BootstrapInputs, string> build)
+    {
+        var embeddedHost = _embeddedHost;
+        var inputs = new BootstrapInputs(
+            Url?.Port ?? 0,
+            _surface?.PathBase ?? string.Empty,
+            embeddedHost?.SupportsDocumentStartScript == true,
+            embeddedHost is not null && _frameless);
+        var cached = Volatile.Read(ref cache);
+        if (cached is not null && cached.Inputs == inputs) return cached.Utf8;
+        var built = new BootstrapScript(inputs, Encoding.UTF8.GetBytes(build(inputs)));
+        Volatile.Write(ref cache, built);
+        return built.Utf8;
     }
 
     private static string EncodeJavaScriptString(string value) =>
@@ -2871,8 +2906,8 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
     // A host that runs a document-start script hands the credentials only to
     // documents from admitted origins. Fetchable scripts then read them from the
     // document instead of carrying them to every requester.
-    private (string Token, string SessionCredential) GetBootstrapCredentialExpressions() =>
-        _embeddedHost?.SupportsDocumentStartScript == true
+    private (string Token, string SessionCredential) GetBootstrapCredentialExpressions(bool documentStartScript) =>
+        documentStartScript
             ? ($"({DocumentBootstrapProperty}?.token ?? 0)", $"({DocumentBootstrapProperty}?.sessionCredential ?? \"\")")
             : (_token.ToString(System.Globalization.CultureInfo.InvariantCulture), EncodeJavaScriptString(_sessionCredential));
 
