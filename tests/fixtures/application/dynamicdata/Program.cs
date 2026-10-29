@@ -102,10 +102,11 @@ using var sortLease = RunicModelContextRegistry.Shared.Bind(sortContext, sortMod
 await sortContext.InvokeAsync(() => { });
 var sortTransport = new Benchmarks.MeteredTransport();
 using var sortBridge = new SortProofBridge(sortTransport, sortModel, "sorted");
+// The comparer changes in the model turn, in order with the changesets that ObserveOn delivers there.
+// The comparer changes in the model turn, in order with the changesets that ObserveOn delivers there.
 await ReplayAsync(sortTransport, "sorted", sortContext, async () =>
 {
-    sortModel.SortBy(SortProofViewModel.ByValueDescending);
-    await sortContext.InvokeAsync(() => { });
+    await sortContext.InvokeAsync(() => sortModel.SortBy(SortProofViewModel.ByValueDescending));
     sortSource.Edit(updater =>
     {
         updater.AddOrUpdate(new Row(3, "Row moved", 9));
@@ -113,10 +114,8 @@ await ReplayAsync(sortTransport, "sorted", sortContext, async () =>
         updater.AddOrUpdate(new Row(40, "Row added", 2));
     });
     await sortContext.InvokeAsync(() => { });
-    sortModel.SortBy(SortProofViewModel.ByLabel);
-    await sortContext.InvokeAsync(() => { });
-    sortModel.SortBy(SortProofViewModel.ByRank);
-    await sortContext.InvokeAsync(() => { });
+    await sortContext.InvokeAsync(() => sortModel.SortBy(SortProofViewModel.ByLabel));
+    await sortContext.InvokeAsync(() => sortModel.SortBy(SortProofViewModel.ByRank));
     // A refresh after a rank change moves the row, forward and back.
     foreach (var (id, rank) in new[] { (5, 100), (30, -1), (12, 50) })
     {
@@ -124,7 +123,7 @@ await ReplayAsync(sortTransport, "sorted", sortContext, async () =>
         sortSource.Refresh(sortSource.Lookup(id).Value);
         await sortContext.InvokeAsync(() => { });
     }
-    sortModel.SortBy(SortProofViewModel.ById);
+    await sortContext.InvokeAsync(() => sortModel.SortBy(SortProofViewModel.ById));
 }, minimumFrames: 3, requiredKinds: ["move", "set", "add", "remove"]);
 Console.WriteLine("DYNAMICDATA_RUNIC_OK: independent viewports, deferred batching, off-screen suppression, generated collection deltas, withheld invalid keys and frames that replay to the snapshot.");
 
