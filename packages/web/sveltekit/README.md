@@ -36,7 +36,19 @@ warns about a text field that loses typed characters; the build replaces the
 import with an empty module. The plugin also lets `dotnet runic dev` confirm
 that the development server on its port is the one it started.
 `html: false` drops `runic()`'s `transformIndexHtml` hook, which SvelteKit warns
-about. It replaces `runicDevSession()`, which answered only the dev session.
+about. It replaces `runicDevSession()`, which answered only the dev session;
+`runicDevSession()` is deprecated and removed in 0.15.
+
+The template does not register the DevTools dock, like the other Vite
+templates. To add it, install `@vitejs/devtools` (a peer of this plugin) and
+register `DevTools()` next to `runic()`:
+
+```ts
+// vite.config.ts
+import { DevTools } from "@vitejs/devtools";
+
+plugins: [sveltekit({ adapter: runicAdapter() }), runic({ html: false }), DevTools()],
+```
 
 The package requires SvelteKit 3 and `@sveltejs/adapter-static` 4, which take
 their configuration through the `sveltekit()` Vite plugin, Svelte 5.57.1 or

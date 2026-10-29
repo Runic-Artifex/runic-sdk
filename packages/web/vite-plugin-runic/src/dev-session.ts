@@ -120,8 +120,11 @@ function readBody(request: IncomingMessage): Promise<string | undefined> {
 
 /**
  * A Vite plugin that only answers `/__runic/state` with the `dotnet runic dev` session. Without `dotnet runic dev`
- * the plugin does nothing. Since 0.14 SvelteKit takes `runic({ html: false })`, which also adds the development
- * client; this plugin remains for a configuration that wants the session answer alone.
+ * the plugin does nothing.
+ *
+ * @deprecated Use `runic({ html: false })`, which answers the session too and adds the development client (load it
+ * with `import "@runic-artifex/vite-plugin-runic/client"` from SvelteKit's `src/hooks.client.ts`). `runicDevSession`
+ * is removed in 0.15.
  */
 export function runicDevSession(): Plugin {
   return {

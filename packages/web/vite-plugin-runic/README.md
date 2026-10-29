@@ -165,8 +165,8 @@ times out with `RAPPDEV1007`.
 `dotnet runic dev` expects the answer from an Angular frontend whose
 `package.json` declares this package. `runicDevSession()` is a Vite plugin
 that answers only the session, without the development client; SvelteKit
-configurations from before 0.14 use it, and `runic({ html: false })` replaces
-it.
+configurations from before 0.14 use it. It is deprecated in 0.14 and removed
+in 0.15: use `runic({ html: false })` instead.
 
 The `runic-app` template's SvelteKit and Angular frontends are set up this way.
 
