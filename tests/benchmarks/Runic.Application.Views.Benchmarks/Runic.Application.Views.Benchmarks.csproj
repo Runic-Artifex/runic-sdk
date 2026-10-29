@@ -3,6 +3,7 @@
   <PropertyGroup>
     <!-- Not named *Tests: the managed CI groups must not run benchmarks. -->
     <OutputType>Exe</OutputType>
+    <RunicImportDesktopTargets>true</RunicImportDesktopTargets>
     <TargetFramework>$(RunicApplicationDefaultTargetFramework)</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <IsPackable>false</IsPackable>
