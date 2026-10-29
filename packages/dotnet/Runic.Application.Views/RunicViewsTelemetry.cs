@@ -255,6 +255,11 @@ internal static partial class ViewsLog
     internal static partial void DomainFailureNotEncoded(ILogger logger, Exception? exception, string model, string member, string route,
         string failureType, string reason);
 
+    [LoggerMessage(EventId = 1024, EventName = "BridgeCollectionChangedOutsideModelTurn", Level = LogLevel.Warning,
+        Message = "{Model}.{Field} on route {Route} changed outside the window's model turn, so the change waited for a turn and can race the window. "
+            + "Change the collection in a model turn: for DynamicData, ObserveOn the window's scheduler (ReactiveSchedulers.For) before Bind.")]
+    internal static partial void CollectionChangedOutsideModelTurn(ILogger logger, string model, string field, string route);
+
     [LoggerMessage(EventId = 1010, EventName = "BridgeSnapshotCaptureFailed", Level = LogLevel.Error,
         Message = "Bridge snapshot capture for {Model} on route {Route} failed with {ErrorType}.")]
     internal static partial void SnapshotCaptureFailed(ILogger logger, Exception? exception, string model, string route, string errorType);

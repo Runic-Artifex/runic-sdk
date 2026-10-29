@@ -16,6 +16,8 @@
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="ReactiveUI" />
+    <!-- The generated ValidationContext reader and observer under NativeAOT, with the fork's DynamicData package. -->
+    <PackageReference Include="RunicArtifex.ReactiveUI.Validation" />
     <ProjectReference Include="../../../../packages/dotnet/Runic.Application.Views/Runic.Application.Views.csproj" />
     <ProjectReference Include="../../../../packages/dotnet/Runic.Application.Views.ReactiveUI/Runic.Application.Views.ReactiveUI.csproj" />
   </ItemGroup>

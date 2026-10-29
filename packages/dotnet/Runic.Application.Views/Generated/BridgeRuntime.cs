@@ -512,7 +512,7 @@ public partial class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBr
             if (dataSubscriptions is { Length: > 0 })
                 bindings.Add(new BridgeDataSubscriptions(vm, dataSubscriptions, OnNestedChanged, TryPublishCollection, TryPublishItem,
                     rootObservedExternally: true, incrementalCollectionNames: _incrementalCollections.Select(descriptor => descriptor.Name).ToHashSet(StringComparer.Ordinal),
-                    observeValidation: validationReader?.Observe));
+                    observeValidation: validationReader?.Observe, collectionChangedOutsideTurn: WarnIfOutsideModelTurn));
             // Register the per-window observer before this Bridge subscribes
             // its publisher. A synchronous setter then advances the
             // field version before any published state can describe the value.
@@ -599,7 +599,7 @@ public partial class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBr
     // after the presentation was opened; returns the open reply's registration, or null for none.
     private partial string? RegisterOpenHandlers(string presentation, BridgeConnection connection, JsonElement handlers);
 
-    private void OnChanged(object? sender, PropertyChangedEventArgs e) => _modelTurn.Run(() =>
+    private void OnChanged(object? sender, PropertyChangedEventArgs e) => _modelTurn.TryRunNotification(() =>
     {
         lock (_modelGate)
         {
@@ -620,7 +620,22 @@ public partial class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBr
 
     private void OnCollectionChanged(object? sender, NotifyCollectionChangedEventArgs e)
     {
+        if (sender is INotifyCollectionChanged changed && _collections.FirstOrDefault(entry => ReferenceEquals(entry.Value, changed)).Key is { } field)
+            WarnIfOutsideModelTurn(field);
         if (sender is not INotifyCollectionChanged collection || !TryPublishCollection(collection, e)) ScheduleUnit();
+    }
+
+    // The fields whose change outside a model turn was logged (event 1024), once per Bridge and field.
+    private readonly HashSet<string> _offTurnFields = new(StringComparer.Ordinal);
+
+    // A collection that changes outside the model context's turn, such as a DynamicData Bind without ObserveOn the
+    // window's scheduler, makes the notifying thread wait for a turn while the collection may change under the window.
+    private void WarnIfOutsideModelTurn(string field)
+    {
+        if (!_modelTurn.IsOutsideContextTurn || IsInactive) return;
+        bool first;
+        lock (_offTurnFields) first = _offTurnFields.Add(field);
+        if (first) ViewsLog.CollectionChangedOutsideModelTurn(_logger, ModelName, field, _name);
     }
 
     private void OnErrorsChanged(object? sender, DataErrorsChangedEventArgs e) => ScheduleUnit();
@@ -644,7 +659,7 @@ public partial class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBr
 
     // An object nested in the data graph changed. A nested change inside a row cannot be located, so each keyed
     // collection becomes a set of the field.
-    private void OnNestedChanged() => _modelTurn.Run(() =>
+    private void OnNestedChanged() => _modelTurn.TryRunNotification(() =>
     {
         lock (_modelGate)
         {

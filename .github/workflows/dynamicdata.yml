@@ -2,9 +2,9 @@ name: DynamicData consumer
 on:
   push:
     branches: [main]
-    paths: ['packages/dotnet/Runic.Application.*/**', 'packages/web/views/**', 'tools/Runic.Application.Views.*/**', 'examples/dynamicdata/**', 'tests/fixtures/application/dynamicdata/**', 'eng/workspace.json', '.github/workflows/dynamicdata.yml']
+    paths: ['packages/dotnet/Runic.Application.*/**', 'packages/web/views/**', 'tools/Runic.Application.Views.*/**', 'examples/dynamicdata/**', 'tests/fixtures/application/dynamicdata/**', 'tests/fixtures/application/dynamicdata-reactive/**', 'eng/workspace.json', '.github/workflows/dynamicdata.yml']
   pull_request:
-    paths: ['packages/dotnet/Runic.Application.*/**', 'packages/web/views/**', 'tools/Runic.Application.Views.*/**', 'examples/dynamicdata/**', 'tests/fixtures/application/dynamicdata/**', 'eng/workspace.json', '.github/workflows/dynamicdata.yml']
+    paths: ['packages/dotnet/Runic.Application.*/**', 'packages/web/views/**', 'tools/Runic.Application.Views.*/**', 'examples/dynamicdata/**', 'tests/fixtures/application/dynamicdata/**', 'tests/fixtures/application/dynamicdata-reactive/**', 'eng/workspace.json', '.github/workflows/dynamicdata.yml']
   workflow_dispatch:
 permissions:
   contents: read
@@ -43,6 +43,10 @@ jobs:
           persist-credentials: false
       - name: Run generated consumer
         run: dotnet run --project tests/fixtures/application/dynamicdata -c Release -p:DynamicDataForkRoot="$GITHUB_WORKSPACE/.cache/dynamicdata-fork"
+      # The System.Reactive flavor: DynamicData.Reactive, ReactiveUI.Reactive, Runic.Application.Views.ReactiveUI.Reactive
+      # and BatchBridgeSnapshots.
+      - name: Run System.Reactive consumer
+        run: dotnet run --project tests/fixtures/application/dynamicdata-reactive -c Release -p:DynamicDataForkRoot="$GITHUB_WORKSPACE/.cache/dynamicdata-fork"
       - name: Build runnable example and check generated TypeScript
         run: |
           bun run --cwd packages/web/views build

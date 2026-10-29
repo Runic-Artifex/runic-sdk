@@ -84,6 +84,8 @@ internal sealed class BridgeDataSubscriptions : IDisposable, IBridgeSnapshotBatc
     // Validation kept outside INotifyDataErrorInfo, such as a ReactiveUI.Validation ValidationContext.
     private readonly Func<object, Action, IDisposable?>? _observeValidation;
     private readonly Dictionary<object, ValidationWatch> _validationWatches = new(ReferenceEqualityComparer.Instance);
+    // Reports the member of a collection that changed outside the model context's turn.
+    private readonly Action<string>? _collectionChangedOutsideTurn;
     private readonly NodeKey _rootKey;
     private bool _disposed;
 
@@ -95,7 +97,8 @@ internal sealed class BridgeDataSubscriptions : IDisposable, IBridgeSnapshotBatc
         Func<object, bool>? itemChanged = null,
         bool rootObservedExternally = false,
         IReadOnlySet<string>? incrementalCollectionNames = null,
-        Func<object, Action, IDisposable?>? observeValidation = null)
+        Func<object, Action, IDisposable?>? observeValidation = null,
+        Action<string>? collectionChangedOutsideTurn = null)
     {
         ArgumentNullException.ThrowIfNull(root);
         ArgumentNullException.ThrowIfNull(members);
@@ -108,6 +111,7 @@ internal sealed class BridgeDataSubscriptions : IDisposable, IBridgeSnapshotBatc
         _rootObservedExternally = rootObservedExternally;
         _incrementalCollectionNames = incrementalCollectionNames;
         _observeValidation = observeValidation;
+        _collectionChangedOutsideTurn = collectionChangedOutsideTurn;
         _modelTurn = BridgeModelTurn.For(root);
         _rootKey = new(root, members);
         _modelTurn.Run(() =>
@@ -122,7 +126,7 @@ internal sealed class BridgeDataSubscriptions : IDisposable, IBridgeSnapshotBatc
         // before CollectionChanged. Its collection event reconciles the edge.
         if (owner is INotifyCollectionChanged && args.PropertyName is "Count" or "Item[]") return;
         var itemOnly = false;
-        var changed = _modelTurn.Run(() =>
+        var changed = _modelTurn.RunNotification(() =>
         {
             lock (_gate)
             {
@@ -149,7 +153,7 @@ internal sealed class BridgeDataSubscriptions : IDisposable, IBridgeSnapshotBatc
                 if (topologyMayHaveChanged) SweepOrDefer();
                 return true;
             }
-        });
+        }, closed: false);
         // ViewModelBridge observes the root itself; this graph owns only its
         // child subscriptions and must not capture the root notification twice.
         if (changed && (!_rootObservedExternally || !ReferenceEquals(owner, _root)) &&
@@ -158,19 +162,23 @@ internal sealed class BridgeDataSubscriptions : IDisposable, IBridgeSnapshotBatc
 
     private void OnCollectionChanged(INotifyCollectionChanged collection, NotifyCollectionChangedEventArgs args)
     {
+        var outsideOfTurn = _modelTurn.IsOutsideContextTurn;
         var collectionOnly = false;
-        var changed = _modelTurn.Run(() =>
+        string? outsideTurn = null;
+        var changed = _modelTurn.RunNotification(() =>
         {
             lock (_gate)
             {
                 if (_disposed || !_collectionWatches.TryGetValue(collection, out var watch)) return false;
+                if (_collectionChangedOutsideTurn is not null && watch.Edges.FirstOrDefault() is { } first) outsideTurn = first.Member.Name;
                 collectionOnly = watch.Edges.All(edge => ReferenceEquals(edge.Node.Owner, _root) &&
                     _incrementalCollectionNames?.Contains(edge.Member.Name) == true);
                 foreach (var edge in watch.Edges.ToArray()) ReconcileCollection(edge, args);
                 if (args.Action != NotifyCollectionChangedAction.Move) SweepOrDefer();
                 return true;
             }
-        });
+        }, closed: false);
+        if (outsideTurn is not null && outsideOfTurn) _collectionChangedOutsideTurn!(outsideTurn);
         if (changed && (!collectionOnly || _collectionChanged?.Invoke(collection, args) != true)) _changed();
     }
 
@@ -179,26 +187,26 @@ internal sealed class BridgeDataSubscriptions : IDisposable, IBridgeSnapshotBatc
         if (!BridgeSnapshotBatch.TryDefer(_root, this)) SweepDetached();
     }
 
-    void IBridgeSnapshotBatchParticipant.FlushSnapshotBatch() => _modelTurn.Run(() =>
+    void IBridgeSnapshotBatchParticipant.FlushSnapshotBatch() => _modelTurn.TryRunNotification(() =>
     {
         lock (_gate) if (!_disposed) SweepDetached();
     });
 
     private void OnErrorsChanged(INotifyDataErrorInfo source, DataErrorsChangedEventArgs args)
     {
-        var changed = _modelTurn.Run(() =>
+        var changed = _modelTurn.RunNotification(() =>
         {
             lock (_gate) return !_disposed && _errorWatches.ContainsKey(source);
-        });
+        }, closed: false);
         if (changed) _changed();
     }
 
     private void OnValidationChanged(ValidationWatch watch)
     {
-        var changed = _modelTurn.Run(() =>
+        var changed = _modelTurn.RunNotification(() =>
         {
             lock (_gate) return !_disposed && _validationWatches.TryGetValue(watch.Owner, out var current) && current == watch;
-        });
+        }, closed: false);
         if (changed) _changed();
     }
 

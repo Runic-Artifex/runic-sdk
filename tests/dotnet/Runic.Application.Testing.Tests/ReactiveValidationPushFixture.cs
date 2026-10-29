@@ -156,3 +156,49 @@ public sealed class ValidatableOnlyAddress : ReactiveObject, ReactiveUI.Validati
 }
 
 public sealed partial class ValidatableOnlyWindow : Runic.Application.Views.RunicWindow<ValidatableOnlyViewModel>;
+
+// A ViewModel with validation, a keyed collection and append-only text: its frames carry the collection's indexed
+// changes, the text's change and the validation they cause together.
+public sealed class ValidatedRowsViewModel : ReactiveValidationObject
+{
+    internal const string TooMany = "At most 3 rows.";
+
+    private readonly ObservableCollection<ValidatedRow> _rows = [];
+    private readonly ValidationSignal _fewRows = new(true);
+
+    public ValidatedRowsViewModel()
+    {
+        Rows = new(_rows);
+        this.ValidationRule(_fewRows, TooMany);
+    }
+
+    [Runic.Application.Views.RunicCollection(nameof(ValidatedRow.Id))]
+    public ReadOnlyObservableCollection<ValidatedRow> Rows { get; }
+
+    [Runic.Application.Views.RunicAppendOnlyText]
+    public string Log
+    {
+        get;
+        private set => this.RaiseAndSetIfChanged(ref field, value);
+    } = "";
+
+    internal void Add(int id)
+    {
+        _rows.Add(new(id, $"row {id}"));
+        Log += $"+{id}";
+        _fewRows.Value = _rows.Count <= 3;
+    }
+
+    internal void RemoveAt(int index)
+    {
+        _rows.RemoveAt(index);
+        Log += "-";
+        _fewRows.Value = _rows.Count <= 3;
+    }
+
+    internal void Move(int oldIndex, int newIndex) => _rows.Move(oldIndex, newIndex);
+}
+
+public sealed record ValidatedRow(int Id, string Label);
+
+public sealed partial class ValidatedRowsWindow : Runic.Application.Views.RunicWindow<ValidatedRowsViewModel>;

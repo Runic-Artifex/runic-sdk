@@ -62,10 +62,16 @@ internal sealed class OutsideModelTurnReporter
             || assembly == typeof(WindowContentSession).Assembly)
             return true;
         var name = assembly.GetName().Name ?? string.Empty;
-        return name.StartsWith("System", StringComparison.Ordinal) || name.StartsWith("Microsoft.", StringComparison.Ordinal)
-            || name.StartsWith("ReactiveUI", StringComparison.Ordinal) || name.StartsWith("DynamicData", StringComparison.Ordinal)
-            || name.StartsWith("Splat", StringComparison.Ordinal);
+        return LibraryFamilies.Any(family => IsInFamily(name, family));
     }
+
+    // Library assemblies by name: the family's own assembly or one of its dotted children, so an application's
+    // "DynamicDataViewer" or "ReactiveUIDemo" still names its ViewModel.
+    private static readonly string[] LibraryFamilies = ["System", "Microsoft", "ReactiveUI", "DynamicData", "Splat"];
+
+    internal static bool IsInFamily(string assembly, string family) =>
+        assembly.StartsWith(family, StringComparison.Ordinal)
+        && (assembly.Length == family.Length || assembly[family.Length] == '.');
 }
 
 // Events 1090 and 1091: when a Runic Desktop, CS-WebUI or test-host window opens and ReactiveUI's main-thread

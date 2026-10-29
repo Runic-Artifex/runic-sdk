@@ -45,7 +45,46 @@ for (var attempt = 0; attempt < 500 && !status.Contains("\"succeeded\"", StringC
 }
 if (!status.Contains("9007199254740994", StringComparison.Ordinal))
     throw new InvalidOperationException($"Generated typed command result was not retained: {status}");
-Console.WriteLine("ReactiveUI 25 generated codec NativeAOT proof passed.");
+// RunicArtifex.ReactiveUI.Validation: the property rule reports at its path, and a rule that names no member pushes a
+// frame that sets validation (the ValidationContext is observed).
+var rules = new AotRulesViewModel { Name = "far too long" };
+using var rulesLease = RunicModelContextRegistry.Shared.Bind(context, rules);
+var rulesTransport = new AotTransport();
+using var rulesContent = new WindowContentSession(rulesTransport, new WindowContentSessionOptions { RootModel = rules });
+using var rulesBridge = new AotRulesBridge(rulesTransport, rules, content: rulesContent);
+Require(await rulesTransport.RequestAsync("""{"kind":"hello","protocol":4,"session":"aot-rules","client":{"name":"aot-proof","version":"1.0.0"}}"""), "hello");
+using (var rulesSnapshot = JsonDocument.Parse(Require(await rulesTransport.RequestAsync("""{"kind":"snapshot","route":"aotRules"}"""), "snapshot")))
+{
+    var errors = rulesSnapshot.RootElement.GetProperty("state").GetProperty("validation").GetProperty("errors");
+    if (errors.GetArrayLength() != 1 || errors[0].GetProperty("path")[0].GetString() != "name"
+        || errors[0].GetProperty("message").GetString() != AotRulesViewModel.NameTooLong)
+        throw new InvalidOperationException($"The ReactiveValidationObject's validation was {errors}.");
+}
+await context.InvokeAsync(() => rules.Approve(false));
+var pushed = false;
+for (var attempt = 0; attempt < 500 && !pushed; attempt++)
+{
+    if (attempt > 0) await Task.Delay(10);
+    while (rulesTransport.Pushes.TryDequeue(out var push))
+        pushed |= push.Contains("\"frame\"", StringComparison.Ordinal) && push.Contains(AotRulesViewModel.ApprovalRequired, StringComparison.Ordinal);
+}
+if (!pushed) throw new InvalidOperationException("A rule that names no member did not push its validation under NativeAOT.");
+
+// A ViewModel that implements only IValidatableViewModel has validation too.
+var only = new AotValidatableOnlyViewModel();
+using var onlyLease = RunicModelContextRegistry.Shared.Bind(context, only);
+var onlyTransport = new AotTransport();
+using var onlyContent = new WindowContentSession(onlyTransport, new WindowContentSessionOptions { RootModel = only });
+using var onlyBridge = new AotValidatableOnlyBridge(onlyTransport, only, content: onlyContent);
+Require(await onlyTransport.RequestAsync("""{"kind":"hello","protocol":4,"session":"aot-only","client":{"name":"aot-proof","version":"1.0.0"}}"""), "hello");
+using (var onlySnapshot = JsonDocument.Parse(Require(await onlyTransport.RequestAsync("""{"kind":"snapshot","route":"aotValidatableOnly"}"""), "snapshot")))
+{
+    var validation = onlySnapshot.RootElement.GetProperty("state").GetProperty("validation");
+    if (!validation.GetProperty("hasErrors").GetBoolean()
+        || validation.GetProperty("errors")[0].GetProperty("message").GetString() != AotValidatableOnlyViewModel.NameRequired)
+        throw new InvalidOperationException($"The IValidatableViewModel's validation was {validation}.");
+}
+Console.WriteLine("ReactiveUI 25 generated codec and ReactiveUI.Validation NativeAOT proof passed.");
 
 static string Require(string reply, string request) => reply.StartsWith("{\"ok\":true", StringComparison.Ordinal)
     ? reply : throw new InvalidOperationException($"The {request} request failed: {reply}");

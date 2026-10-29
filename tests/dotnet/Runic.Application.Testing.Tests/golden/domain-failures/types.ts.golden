@@ -271,6 +271,11 @@ export interface ValidatableOnlyAddress {
   readonly city: string;
 }
 
+export interface ValidatedRow {
+  readonly id: number;
+  readonly label: string;
+}
+
 export interface ValidationErrorsOnly {
   readonly detail: string;
 }
