@@ -505,7 +505,7 @@ test application itself (`testRunner = "Microsoft.Testing.Platform"`), since
 The frontend's packages are one fixed-output download. Its hash in
 `flake.nix` is `lib.fakeHash` until the first `nix build`, which fails and
 reports the real hash: replace `lib.fakeHash` with it, and update it whenever
-the lock file changes.
+the lock file changes. `nix run .#default.fixedOutputHashes` prints it too.
 
 <!--#endif -->
 The package installs the program in `bin`, the desktop entry

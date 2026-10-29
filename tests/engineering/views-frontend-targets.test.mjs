@@ -174,6 +174,8 @@ function packageManagers() {
   for (const name of ["npm", "pnpm", "bun"]) {
     writeFileSync(join(bin, `${name}.mjs`), `
 import { appendFileSync, mkdirSync } from "node:fs";
+// The build asks Bun for its version (RUNICBRIDGE033).
+if (process.argv[2] === "--version") { console.log(process.env.RUNIC_TEST_VERSION ?? "1.4.4"); process.exit(0); }
 appendFileSync("../commands.log", ["${name}", ...process.argv.slice(2)].join(" ") + "\\n");
 mkdirSync("node_modules", { recursive: true });
 `);
@@ -608,6 +610,41 @@ test("supported, differently cased or empty package managers, and unused values,
     [yarn, "RunicApplicationFrontendInstallEnabled=false", "RunicApplicationFrontendBuildCommand=yarn build"]), []);
   assert.deepEqual(packageManagerWarnings("no-build", [yarn, "RunicApplicationFrontendBuildEnabled=false"]), []);
   assert.deepEqual(packageManagerWarnings("no-frontend", [yarn], { packageJson: false }), []);
+});
+
+// RUNICBRIDGE033: the .NET SDK and Bun below the versions that `dotnet runic doctor` requires warn, and newer ones,
+// prereleases of a newer SDK included, do not.
+function toolchainWarnings(output) {
+  return [...new Set(output.split("\n").filter(line => / warning RUNICBRIDGE033:/.test(line)).map(line => line.trim()))];
+}
+
+test("a .NET SDK older than the floor warns with RUNICBRIDGE033", () => {
+  const app = fixture("toolchain-sdk", { name: "app", private: true });
+  for (const [version, warns] of [["10.0.401", true], ["10.0.100-rc.2.25502.107", true], ["10.0.403", false],
+    ["10.0.500", false], ["11.0.100-preview.1.26101.1", false]]) {
+    const result = build(app, { targets: "RunicViewsCheckDotNetSdkVersion", properties: [`NETCoreSdkVersion=${version}`] });
+    assert.equal(result.status, 0, result.output);
+    const warnings = toolchainWarnings(result.output);
+    assert.equal(warnings.length, warns ? 1 : 0, `${version}: ${result.output}`);
+    if (warns) assert.ok(warnings[0].includes(`.NET SDK ${version} is older than 10.0.403`), warnings[0]);
+  }
+});
+
+test("a Bun older than the floor warns with RUNICBRIDGE033 when the build runs the frontend build", () => {
+  const env = packageManagers();
+  for (const [version, warns] of [["1.4.2", true], ["1.4.4", false], ["1.5.0", false]]) {
+    const app = fixture(`toolchain-bun-${version}`, { name: "app", private: true, packageManager: "bun@1.4.4" });
+    const result = build(app, { env: { ...env, RUNIC_TEST_VERSION: version } });
+    assert.equal(result.status, 0, result.output);
+    assert.deepEqual(result.commands, ["install", "build"], version);
+    const warnings = toolchainWarnings(result.output);
+    assert.equal(warnings.length, warns ? 1 : 0, `${version}: ${result.output}`);
+    if (warns) assert.ok(warnings[0].includes(`Bun ${version} is older than 1.4.4`), warnings[0]);
+  }
+  // npm and pnpm frontends do not run Bun.
+  const npm = fixture("toolchain-npm", { name: "app", private: true });
+  const result = build(npm, { env: { ...env, RUNIC_TEST_VERSION: "1.0.0" } });
+  assert.deepEqual(toolchainWarnings(result.output), []);
 });
 
 // #237: a page that loads runic-views.js runs on every host; the referenced host supplies the client.

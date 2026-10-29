@@ -67,7 +67,19 @@ The same Window and `async host => ...` body run on CS-WebUI with
   to `RunicDesktopHost.Run(provider, desktopOptions, hostOptions, async host => ...)`,
   or to `new RunicDesktopHost(provider, desktop, hostOptions)` for a host on a
   `DesktopHost` you started yourself. `RunicDesktopHost.DefaultWindowOptions` opens
-  the embedded WebView and falls back to an installed browser. A build with
+  the embedded WebView and falls back to an installed browser; change one option
+  of every Window with `with`, such as the native spell checker, which an
+  application that brings its own turns off
+  ([Spell checking](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Desktop/README.md#spell-checking)):
+
+  ```csharp
+  var hostOptions = new RunicDesktopHostOptions
+  {
+      WindowOptions = RunicDesktopHost.DefaultWindowOptions with { SpellChecking = false },
+  };
+  ```
+
+  A build with
   `RunicApplicationFrontendDelivery=Embedded` embeds the frontend in the
   assembly, and the host serves that archive in place of `www/`; see
   [Ship the frontend inside the executable](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Application.Views/README.md#ship-the-frontend-inside-the-executable).

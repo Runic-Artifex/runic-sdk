@@ -4,6 +4,7 @@
 # - default: src is a path in the flake's source, which has only the files Git tracks, without build output.
 # - filtered-source: src is lib.fileset.toSource, and the manifest is found beside the project.
 # - manifest-path: src is filtered by builtins.path, and dotnetTools.manifest is a path read as it is.
+# - fixed-output-hashes: the program that prints the tool's hash.
 #
 # A filtered source's store path exists only once a writable evaluation has added it, so the last two evaluate
 # only when the builder reads the manifest from elsewhere: nix flake check --no-build --all-systems, which the Nix
@@ -34,6 +35,9 @@ let
 in
 {
   default = application { };
+  # passthru.fixedOutputHashes builds, with ShellCheck, without building the downloads it prints the hashes of; it
+  # needs the Nix daemon and nuget.org to run, outside the sandbox: nix run .#checks.x86_64-linux.builder-dotnet-tools.fixedOutputHashes
+  fixed-output-hashes = (application { }).fixedOutputHashes;
   filtered-source = application {
     pname = "runic-dotnet-tools-filtered-source-fixture";
     src = lib.fileset.toSource {

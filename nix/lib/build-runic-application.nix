@@ -178,21 +178,35 @@ let
         manifestFile = if builtins.isPath manifest then manifest else sourceForEvaluation manifest;
         tools = (lib.importJSON manifestFile).tools or { };
         hashes = dotnetTools.hashes or { };
+        # All of them at once, rather than one per evaluation.
+        missing = lib.filter (id: !hashes ? ${id}) (lib.attrNames tools);
         fetch =
           id: tool:
           fetchNupkg {
             pname = id;
             inherit (tool) version;
-            hash =
-              hashes.${id} or (throw ''
-                buildRunicApplication: dotnetTools.hashes has no hash for ${id} ${tool.version}, a tool in ${toString manifest}.
-                Set dotnetTools.hashes.${id} = lib.fakeHash, build, and copy the hash Nix reports.'');
+            hash = hashes.${id};
           };
       in
       {
         # Relative to src, or the manifest's own store path.
         manifest = if builtins.isPath manifest then "${manifest}" else manifest;
-        packages = lib.mapAttrsToList fetch tools;
+        packages =
+          assert lib.assertMsg (missing == [ ]) ''
+            buildRunicApplication: dotnetTools.hashes has no hash for ${
+              lib.concatMapStringsSep ", " (id: "${id} ${tools.${id}.version}") missing
+            }, tools in ${toString manifest}.
+            Run `nix run .#<package>.fixedOutputHashes`, which prints every hash, or set each to lib.fakeHash, build with --keep-going, and copy the hashes Nix reports.'';
+          lib.mapAttrsToList fetch tools;
+        # Each tool's download under lib.fakeHash, for passthru.fixedOutputHashes.
+        fakeHashDownloads = lib.mapAttrs (
+          id: tool:
+          (fetchNupkg {
+            pname = id;
+            inherit (tool) version;
+            hash = lib.fakeHash;
+          }).src
+        ) tools;
       };
 
   frontend' =
@@ -204,31 +218,76 @@ let
         packageManager =
           frontend.packageManager or (throw "buildRunicApplication: set frontend.packageManager to npm, pnpm or bun");
         # Only what the install reads, so an edit to the frontend's sources does not fetch again.
+        lockFileNames = [
+          "package.json"
+          "package-lock.json"
+          "npm-shrinkwrap.json"
+          "pnpm-lock.yaml"
+          "pnpm-workspace.yaml"
+          "bun.lock"
+          ".npmrc"
+        ];
         lockSource =
           runCommand "${pname}-frontend-lock" { } ''
             mkdir $out
-            for file in package.json package-lock.json npm-shrinkwrap.json pnpm-lock.yaml pnpm-workspace.yaml bun.lock .npmrc; do
+            for file in ${lib.escapeShellArgs lockFileNames}; do
               if [[ -e ${src}/${directory}/$file ]]; then cp ${src}/${directory}/$file $out/; fi
             done
           '';
-        nodeModules =
-          if frontend ? nodeModules then
-            frontend.nodeModules
+        # A digest of the lock files in the names of the fixed-output downloads, so a changed lock file under the
+        # previous hash is fetched again and its hash reported. Read at evaluation only where that reads no store
+        # path (a path, or a filtered one): a source that is a derivation keeps names without it.
+        lockDigest =
+          if builtins.isPath src || src._isLibCleanSourceWith or false then
+            builtins.substring 0 12 (
+              builtins.hashString "sha256" (
+                lib.concatMapStrings (
+                  file:
+                  let
+                    path = sourceForEvaluation "${directory}/${file}";
+                  in
+                  if builtins.pathExists path then "${file}\n${builtins.hashFile "sha256" path}\n" else ""
+                ) lockFileNames
+              )
+            )
           else
-            callPackage ./frontend-node-modules.nix { inherit nodejs pnpm bun; } {
-              inherit pname version packageManager;
-              # importNpmLock reads package.json and package-lock.json at evaluation.
-              src =
-                if packageManager == "npm" && frontend.hash or null == null then
-                  sourceForEvaluation directory
-                else
-                  lockSource;
-              hash = frontend.hash or null;
-              pnpmFetcherVersion = frontend.pnpmFetcherVersion or 4;
-            };
+            null;
+        nodeModulesWith =
+          hash:
+          callPackage ./frontend-node-modules.nix { inherit nodejs pnpm bun; } {
+            inherit
+              pname
+              version
+              packageManager
+              hash
+              lockDigest
+              ;
+            # importNpmLock reads package.json and package-lock.json at evaluation.
+            src =
+              if packageManager == "npm" && frontend.hash or null == null then
+                sourceForEvaluation directory
+              else
+                lockSource;
+            pnpmFetcherVersion = frontend.pnpmFetcherVersion or 4;
+          };
+        nodeModules = if frontend ? nodeModules then frontend.nodeModules else nodeModulesWith (frontend.hash or null);
+        hashPerSystem = lib.isAttrs (frontend.hash or null);
       in
       {
-        inherit directory packageManager nodeModules;
+        inherit
+          directory
+          packageManager
+          nodeModules
+          hashPerSystem
+          ;
+        # The downloads under lib.fakeHash, for each system that frontend.hash names, for passthru.fixedOutputHashes.
+        fakeHashDownloads =
+          if frontend ? nodeModules || (packageManager == "npm" && frontend.hash or null == null) then
+            { }
+          else
+            (nodeModulesWith (
+              if hashPerSystem then lib.mapAttrs (_: _: lib.fakeHash) frontend.hash else lib.fakeHash
+            )).fixedOutputs;
         tool =
           {
             npm = [ ];
@@ -580,6 +639,13 @@ buildDotnetModule (
       // lib.optionalAttrs (frontend' != null) { frontendNodeModules = frontend'.nodeModules; }
       // {
         inherit host nativeAot testRunner;
+        # nix run .#<package>.fixedOutputHashes: the hashes of frontend.hash and dotnetTools.hashes, all in one run.
+        fixedOutputHashes = callPackage ./fixed-output-hashes.nix { } {
+          inherit pname;
+          frontend = if frontend' == null then { } else frontend'.fakeHashDownloads;
+          frontendPerSystem = frontend' != null && frontend'.hashPerSystem;
+          tools = if dotnetTools' == null then { } else dotnetTools'.fakeHashDownloads;
+        };
       };
 
     meta = {

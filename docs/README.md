@@ -34,6 +34,6 @@ itself with Generic Host and `Microsoft.Extensions.Configuration`, ships
 `appsettings.json`, and stores per-user settings; Runic has no configuration API
 of its own.
 
-The [migration guide](migration-1.0.md) takes an application from 0.9 to 1.0:
-what to change for each breaking or behaviour change of 0.10.0, 0.11.0 and
-0.12.0.
+The [migration guide](migration-1.0.md) takes an application from 0.9, or from
+a 0.7 or 0.8 preview, to 1.0: what to change for each breaking or behaviour
+change since then.

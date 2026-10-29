@@ -78,6 +78,7 @@ and severities are open.
 | [`RUNICBRIDGE030`](#runicbridge030) | Warning | Build targets | `RunicApplicationFrontendDelivery` is unknown, or Embedded cannot apply |
 | [`RUNICBRIDGE031`](#runicbridge031) | Warning | Generator | A type implements an IValidatableViewModel that is not ReactiveUI.Validation's |
 | [`RUNICBRIDGE032`](#runicbridge032) | Warning | Generator | An observable collection of DTO rows is not a `[RunicCollection]` |
+| [`RUNICBRIDGE033`](#runicbridge033) | Warning | Build targets | The .NET SDK or Bun is older than this release supports |
 
 ### RUNICBRIDGE001
 
@@ -585,6 +586,23 @@ ViewModel replaces, is not reported.
 `Int32` row property that does not change during a row's lifetime (see
 [`RUNICBRIDGE010`](#runicbridge010)). For a list that stays small, suppress the
 warning with `<NoWarn>$(NoWarn);RUNICBRIDGE032</NoWarn>`.
+
+### RUNICBRIDGE033
+
+A warning from the `Runic.Application.Views` build targets. The build runs on a
+.NET SDK older than 10.0.403, or builds a Bun frontend with a Bun older than
+1.4.4: the oldest versions that this release supports, with the October 2026
+security fixes, and that `dotnet runic doctor` accepts. The SDK is checked on
+every build; Bun when the build runs the frontend build of a project whose
+package manager is Bun. Older ones still build, but a self-contained or
+NativeAOT package embeds the runtime of the SDK. Under Nix,
+`buildRunicApplication` uses your nixpkgs' `dotnetCorePackages.sdk_10_0` and
+`bun` unless you pass `dotnet-sdk`, and the warning shows while nixpkgs still
+packages older ones. Since 0.14.
+
+**Fix:** install .NET SDK 10.0.403 or a newer 10.0 release (runtime 10.0.14),
+and Bun 1.4.4 or a newer 1.x release, then rebuild and republish. Until you
+can, suppress the warning with `<NoWarn>$(NoWarn);RUNICBRIDGE033</NoWarn>`.
 
 ## dotnet runic
 

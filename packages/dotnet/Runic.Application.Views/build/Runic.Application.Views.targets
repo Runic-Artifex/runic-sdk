@@ -388,6 +388,20 @@
              Text="RunicApplicationFrontendPackageManager is '$(RunicApplicationFrontendPackageManager)', which is not npm, pnpm or bun, so the default frontend install and build commands use npm. Set it to npm, pnpm or bun, or remove it to follow package.json or the lock file. Another package manager needs RunicApplicationFrontendInstallCommand and RunicApplicationFrontendBuildCommand." />
   </Target>
 
+  <!-- RUNICBRIDGE033: the toolchain is older than the floor of this release, the versions that `dotnet runic doctor`
+       requires (tools/dotnet-runic/metadata/runic.compatibility-set.json; eng/support.test.mjs keeps them equal). The
+       .NET SDK is checked here, for free; Bun in RunicViewsBuildFrontend, which runs it anyway. -->
+  <PropertyGroup>
+    <_RunicMinimumDotNetSdkVersion>10.0.403</_RunicMinimumDotNetSdkVersion>
+    <_RunicMinimumBunVersion>1.4.4</_RunicMinimumBunVersion>
+  </PropertyGroup>
+  <Target Name="RunicViewsCheckDotNetSdkVersion" BeforeTargets="PrepareForBuild"
+          Condition="'$(DesignTimeBuild)' != 'true' and '$(RunicApplicationFrontendBootstrap)' != 'true' and '$(_RunicBridgeMarkupTemporary)' != 'true' and '$(NETCoreSdkVersion)' != ''">
+    <Warning Code="RUNICBRIDGE033" File="$(MSBuildProjectFullPath)" HelpLink="$(_RunicDiagnosticsHelpLinkBase)runicbridge033"
+             Condition="$([MSBuild]::VersionLessThan('$(NETCoreSdkVersion)', '$(_RunicMinimumDotNetSdkVersion)'))"
+             Text=".NET SDK $(NETCoreSdkVersion) is older than $(_RunicMinimumDotNetSdkVersion), the oldest SDK that this Runic release supports; 'dotnet runic doctor' rejects it. Install .NET SDK $(_RunicMinimumDotNetSdkVersion) or a newer 10.0 release, and rebuild self-contained and NativeAOT packages, which embed its runtime." />
+  </Target>
+
   <!-- Generation turns on for a project that references Runic.Application.Views
        directly, or that references a host adapter directly or transitively:
        each adapter's props set _RunicApplicationHostAdapter=true. -->
@@ -964,6 +978,18 @@
          their codes and locations, and svelte-check errors with their
          locations; any other failure, such as a Vite error,
          gets one RUNICBRIDGE016 instead of MSB3073. -->
+    <Exec Command="bun --version" WorkingDirectory="$(RunicApplicationFrontendDirectory)" Condition="'$(RunicApplicationFrontendPackageManager)' == 'bun'"
+          EchoOff="true" StandardOutputImportance="low" StandardErrorImportance="low"
+          ConsoleToMSBuild="true" IgnoreExitCode="true" IgnoreStandardErrorWarningFormat="true">
+      <Output TaskParameter="ExitCode" PropertyName="_RunicBunVersionExitCode" />
+      <Output TaskParameter="ConsoleOutput" PropertyName="_RunicBunVersionOutput" />
+    </Exec>
+    <PropertyGroup Condition="'$(_RunicBunVersionExitCode)' == '0'">
+      <_RunicBunVersion>$([System.Text.RegularExpressions.Regex]::Match('$(_RunicBunVersionOutput)', '^\d+\.\d+\.\d+'))</_RunicBunVersion>
+    </PropertyGroup>
+    <Warning Code="RUNICBRIDGE033" File="$(MSBuildProjectFullPath)" HelpLink="$(_RunicDiagnosticsHelpLinkBase)runicbridge033"
+             Condition="'$(_RunicBunVersion)' != '' and $([MSBuild]::VersionLessThan('$(_RunicBunVersion)', '$(_RunicMinimumBunVersion)'))"
+             Text="Bun $(_RunicBunVersion) is older than $(_RunicMinimumBunVersion), the oldest Bun that this Runic release supports; 'dotnet runic doctor' rejects it. Install Bun $(_RunicMinimumBunVersion) or a newer 1.x release." />
     <Exec Command="$(RunicApplicationFrontendBuildCommand)" WorkingDirectory="$(RunicApplicationFrontendDirectory)"
           EnvironmentVariables="RUNIC_APPLICATION_HOST=$(RunicApplicationHost)"
           ConsoleToMSBuild="true" IgnoreExitCode="true" IgnoreStandardErrorWarningFormat="true">
