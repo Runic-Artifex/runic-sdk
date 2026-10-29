@@ -1,15 +1,11 @@
 #nullable enable
 Runic.Application.Views.Desktop.DesktopBridgeTransport
-Runic.Application.Views.Desktop.DesktopBridgeTransport.Bind(string! name, System.Func<Runic.Application.Views.IBridgeArguments!, string!>! handler) -> System.IDisposable!
-Runic.Application.Views.Desktop.DesktopBridgeTransport.BindAsync(string! name, System.Func<Runic.Application.Views.IBridgeArguments!, System.Threading.CancellationToken, System.Threading.Tasks.ValueTask<string!>>! handler) -> System.IDisposable!
 Runic.Application.Views.Desktop.DesktopBridgeTransport.DesktopBridgeTransport(Runic.Desktop.DesktopSurface! surface) -> void
 Runic.Application.Views.Desktop.DesktopBridgeTransport.Dispose() -> void
-Runic.Application.Views.Desktop.DesktopBridgeTransport.Publish(string! name, string! stateJson) -> void
 Runic.Application.Views.Desktop.DesktopBridgeWindow<TViewModel>
 Runic.Application.Views.Desktop.DesktopBridgeWindow<TViewModel>.DisposeAsync() -> System.Threading.Tasks.ValueTask
 Runic.Application.Views.Desktop.DesktopBridgeWindow<TViewModel>.Surface.get -> Runic.Desktop.DesktopSurface!
 Runic.Application.Views.Desktop.DesktopBridgeWindow<TViewModel>.ViewModel.get -> TViewModel!
-Runic.Application.Views.Desktop.DesktopBridgeTransport.PublishAsync(string! name, string! stateJson) -> System.Threading.Tasks.ValueTask
 Runic.Application.Views.Desktop.DesktopBridgeWindow<TViewModel>.NativeOwner.get -> Runic.Application.Views.Desktop.DesktopNativeOwner!
 Runic.Application.Views.Desktop.DesktopNativeOwner
 Runic.Application.Views.Desktop.DesktopNativeOwner.CheckAccess() -> bool
@@ -95,7 +91,6 @@ static Runic.Application.Views.Desktop.DesktopPlatformServices.GetWindowState(Ru
 static Runic.Application.Views.Desktop.DesktopPlatformServices.CreateApplications(string! applicationId) -> Runic.Platform.IDesktopApplications!
 static Runic.Application.Views.Desktop.DesktopPlatformServices.CreateSecretStore(string! applicationId) -> Runic.Platform.IDesktopSecretStore!
 static Runic.Application.Views.Desktop.DesktopPlatformServices.GetDesktopWindow(Runic.Application.Views.IRunicWindow! window) -> Runic.Desktop.DesktopWindow?
-Runic.Application.Views.Desktop.DesktopBridgeTransport.PublishUtf8Async(string! name, System.ReadOnlyMemory<byte> stateUtf8, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask
 Runic.Application.Views.Desktop.RunicDesktopHostOptions.MaximumInputBytes.get -> int?
 Runic.Application.Views.Desktop.RunicDesktopHostOptions.MaximumInputBytes.init -> void
 Runic.Application.Views.Desktop.DesktopWindowPlatformServices.Monitors.get -> Runic.Platform.IDesktopMonitors!
@@ -111,3 +106,6 @@ Runic.Application.Views.Desktop.DesktopWindowPlatformServices.MessageBoxes.get -
 static Runic.Application.Views.Desktop.DesktopPlatformServices.CreateNetworkStatus() -> Runic.Platform.IDesktopNetworkStatus!
 static Runic.Application.Views.Desktop.DesktopPlatformServices.CreateGlobalShortcuts(string? applicationId = null) -> Runic.Platform.IDesktopGlobalShortcuts!
 static Runic.Application.Views.Desktop.DesktopPlatformServices.CreateSecretStore(string? applicationId, Runic.Platform.DesktopSecretStoreOptions! options) -> Runic.Platform.IDesktopSecretStore!
+Runic.Application.Views.Desktop.DesktopBridgeTransport.BroadcastAsync(System.ReadOnlyMemory<byte> message, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask
+Runic.Application.Views.Desktop.DesktopBridgeTransport.SendAsync(string! connectionKey, System.ReadOnlyMemory<byte> message, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<bool>
+Runic.Application.Views.Desktop.DesktopBridgeTransport.Serve(Runic.Application.Views.IBridgeRequestHandler! handler) -> System.IDisposable!

@@ -121,138 +121,138 @@
   },
   {
     "id": "Runic.Application.Testing",
-    "version": "0.12.1",
-    "contentHash": "ANc/eVWajnQJd1VpORuFwhfZspSdTAFMKjt6uWelYVHWOcBV0KL3q30jN6vOscW2JMBlHrbdSftimDjfj7xmOg=="
+    "version": "0.13.0",
+    "contentHash": "eVwIlRp2Fwx2QRLPIUUm1kUPIvX/O54yEMZIu39UDeV6n7YIgQ/u74/NS70ymir1/RR0VaHa+AVVjB9AesdR7Q=="
   },
   {
     "id": "Runic.Application.Views.CsWebUi",
-    "version": "0.12.1-preview.1",
-    "contentHash": "abwK4OiqGxct+YmIvtUELNCqwF75o5triTaH9J3bZPOV0d8aIwKZkTCupH+okqi4H+KxpFdMz6jNHYBnTgs8+g=="
+    "version": "0.13.0-preview.1",
+    "contentHash": "3ojDkB26t8msa/AI5zYjhy+jqVVSnSh84cclK+tUUfsfokPp6EDtzfzcon+gbyXx9mEMSVyfbtWSFrmJB7qzjA=="
   },
   {
     "id": "Runic.Application.Views.Desktop",
-    "version": "0.12.1",
-    "contentHash": "xk396UidtEFjPqPOGir4iW/WUUWZ/tGsg25T6gsSEZRC9h/zqss4TvZF6BsQzPbW2oaUN0XxAzPkTvLrFpssLw=="
+    "version": "0.13.0",
+    "contentHash": "RN6wRQYh658ibptY8pcQCEuVLGwY+hIefDGjxAhmd5b2sUKFD1BmW8LCG5kincX2GVPF+sLyag+b4G0wksjNmA=="
   },
   {
     "id": "Runic.Application.Views.ReactiveUI.Reactive",
-    "version": "0.12.1",
-    "contentHash": "cbrEYhbnks1haz41oPY3GhhVOXWJ+OgvhWy8cpGxdkt3jFnprBAkspRhx1CQuQZfZKEx6YP3xhIVaQQ163hvng=="
+    "version": "0.13.0",
+    "contentHash": "FZftvMiyn8EDKBWceJPQCy5o5m+Ez3n6KIqlvuOAl7YTLK6E6z9W5U1NDJEsIs98CLDYIztPFU96ShI8bikCUQ=="
   },
   {
     "id": "Runic.Application.Views.ReactiveUI",
-    "version": "0.12.1",
-    "contentHash": "w1iIFaVa26R0+YyFxmuUBqMraBdwV0g2k2Nr3loIYoR2FSUaGOzWLnxXeN1Lros5TBIwLlh7ylxsZp4UZFZd3Q=="
+    "version": "0.13.0",
+    "contentHash": "dw0PveXdYG1fXF1pd2Zm2kHaKqdGDcNkpMNYFsOjWRnR3cuR6Np31tSFC7B9vLOh3y4c4p95s1D9xs4sVPnR3g=="
   },
   {
     "id": "Runic.Application.Views.Wpf",
-    "version": "0.12.1",
-    "contentHash": "2DoBun6YgG9vR9XOZEOgdPEnXaH5gAD3YbpGXx5pOaTP3miK42Tc9Fu87+lRJLOg6V+srG4yHKT1jHSIpxYREw=="
+    "version": "0.13.0",
+    "contentHash": "DsbDlt+zCVMBwhxvOiYBF3mtzD86Fkc4Qid+cnMh+cIpel0Ma4P4im26K0T7Lc489++et9u4eKbqPLU2T5F2Fg=="
   },
   {
     "id": "Runic.Application.Views",
-    "version": "0.12.1",
-    "contentHash": "yRvyOi2MKQSLFsVDEolS6BlWEP4P2Qlc1gTp6YJsebbSBZdkMC3oK8KdxHshnCBIBaKnfapcWWu9OpECuPsG4w=="
+    "version": "0.13.0",
+    "contentHash": "G6BMtNU0qMk+ayP4FszynDxLvbiO7wPJLQjhk9LIITOLjQEjIVyeBX+VqFE4og61dD0d65ImbdZtWN4kJW/PSA=="
   },
   {
     "id": "Runic.Assets.AspNetCore",
-    "version": "0.12.1",
-    "contentHash": "HFsDCr0OGfBSa6PWXQJu8h6qFycOuRVlAsOkJ88HoStk+zncTGndYQu8dpqyb6TSzY0TXhEEjluMSnSMSl0eVA=="
+    "version": "0.13.0",
+    "contentHash": "UcdHowX93srr8H2uQ0xrrwkOYydCbhFRWxXFvwYP0MEOuDhUciLVFCz6ViRopHzbi7qta7ao+Xe25E5naYQA+Q=="
   },
   {
     "id": "Runic.Assets.Desktop",
-    "version": "0.12.1",
-    "contentHash": "Jdbb5P3vwxZaz4JTcsl/UTpcGeGx/m2WCvLdXW/3HhS3AvYq1CAznTqGWCAeGenQ+ufLksFjJ1vbk5pPC8IwAg=="
+    "version": "0.13.0",
+    "contentHash": "GyFN7Zuuq8Mp178oROOixuIgjRdO6AAr1fHqxUlZA6GJgUqAR5kpcJfAAcjdV9r7NAmEe0jumyth+Q8a0b/KHw=="
   },
   {
     "id": "Runic.Assets",
-    "version": "0.12.1",
-    "contentHash": "FinwkBChF5kq+iv4UL9Nt8t9jTB3PZJQLuolCDWQBpbNq4F/AUJMvWTdAzUqrdaYEg3nyiF9hjwBhnaUsbW3sg=="
+    "version": "0.13.0",
+    "contentHash": "Ihj8envmik+rE01Vm0C2jBc/QPFDDyDG5OKzOsapeJPGPzajvqNalVEdg41PZjwKLS8NShVFErZ01mqDYF26/g=="
   },
   {
     "id": "Runic.Desktop.Gtk4",
-    "version": "0.12.1",
-    "contentHash": "4UjF+5hu6y8FtgADvFFpE+HCTiHm4lGdTdx3nHmU/kiRJFPOSI0qzRUIoGp4AocGCtb3xCnNHgJB6tToA8AFxg=="
+    "version": "0.13.0",
+    "contentHash": "Hwd+v4u4RycLz2HrxcGs1pj/e1aV4nmhtlnot3BW5G8uZ5Ifx0aZId3Nv7hzT2FiOHB5xdLGuUE2wKTWYPICew=="
   },
   {
     "id": "Runic.Desktop",
-    "version": "0.12.1",
-    "contentHash": "lmq1eRrWGLaMpRBPSuNQnFFmfk+fKJ9BzSwnj7xPJ6nSvWupUvL0mPEBK11MhQqj+qVLHI35uWIEXiQrcufygQ=="
+    "version": "0.13.0",
+    "contentHash": "guebn/XXETiqPwTFT7GCRFhZcJ938qoWgHLKtHaMVMLWHBvxp8C4aqduCHa2MWySoNlqrrVYy4ZBjG3LllxyUg=="
   },
   {
     "id": "Runic.Navigation.ReactiveUI.Reactive",
-    "version": "0.12.1",
-    "contentHash": "dDqWMdk0jaZysGBL5JCRR8n8q5IzDJI/jNbS5Bkq8AllZhsUNnJ/Of4bU3Z5UnQB+da2ryf6sV0xwkRRv5JXtQ=="
+    "version": "0.13.0",
+    "contentHash": "1K/8FMl+LxmWIFo9glvry4ml9sm8CI9TbovfdeoC4drqfCQtutRv+HsJSePJwQgjp1cWbdnBxb0OWRXoMeiCGg=="
   },
   {
     "id": "Runic.Navigation.ReactiveUI",
-    "version": "0.12.1",
-    "contentHash": "4nmp0bWndacgUSB5YeuWaPPLei0Fh0yJ+7RxHZsuq8QvqZdEd3zHZasKdH8PKCQXD7sYJJWSq+v3XFigxS3UMA=="
+    "version": "0.13.0",
+    "contentHash": "L+RxkBVrlbhkIFEKTiWSQSnF0zm1WiPVTBsadjOsuBRE9Q4ty2gs/zhM8hwyD9mwJ+4htds8a72zxof117CqUQ=="
   },
   {
     "id": "Runic.Navigation.Wpf",
-    "version": "0.12.1",
-    "contentHash": "RZN4xwId2Gd3BlcsZaEm57ZFsCbvN/Scc9A0rEvdzLH4IbDnGiOc+I7QSNBdJisL/DM8mOe4hV0yY0CykVgLmw=="
+    "version": "0.13.0",
+    "contentHash": "whnPbLNgLH2E8pI/eQIlkVVny77RiZMc8Pb0duLqX0gLVdZz2zLqPImIepOZ2LUlbZ2yrm9vjDkDqCkmAXjuvw=="
   },
   {
     "id": "Runic.Navigation",
-    "version": "0.12.1",
-    "contentHash": "RRBlKrzzwBn6saSODkVzc/YTZbirlBW2ytEp6PI/XRjNoOJggy+wOXVjakdqFa99/IPk6QzUOQPgf8+UWVOvxw=="
+    "version": "0.13.0",
+    "contentHash": "n0SriFrC7tfqXzL3fzgdz3dK2Av9v6xEeo8y98wpbDfmgDmF825EuLiFc5iDqkGnMxJOMUdqmyUIrxzw3RCwIg=="
   },
   {
     "id": "Runic.Platform.Administration.Windows",
-    "version": "0.12.1",
-    "contentHash": "ECBFzrhsWYHDPySJRzilI5MA7ox3u52bi7DwN7ZsflCj/3ipYZZryZjzIvcAxEG3jcif051WcvJXcVPas8UWSw=="
+    "version": "0.13.0",
+    "contentHash": "yfawIiD2XiOOIaZBerqjow9NPR6+Yi+AqI+KQcuEsMZqt1Xw0MNkJnkTBgwF2/SFKWGg8Zplw7lBMohoFfAnuA=="
   },
   {
     "id": "Runic.Platform.Linux.DBus",
-    "version": "0.12.1",
-    "contentHash": "IuyPyGaRWeWIjYDG3kElEDZxwnB4gkLEdUdDPoci9smQPfar9TvV3FiJ0w3pQAgh9c1d5FluyQvqD1dIxxlopw=="
+    "version": "0.13.0",
+    "contentHash": "zVlSgR5vX///jBAUZGbsAgqjfDa9kcLUeL4sgFwhLsnQ+3/2UlPwFzy+Kb5Jxvf0st6qwh7lYXLl874y06essg=="
   },
   {
     "id": "Runic.Platform.Linux.Gtk4",
-    "version": "0.12.1",
-    "contentHash": "RzofWKOZAB9ToDicq39NnmPdLs6EDrTaOZr4sExCTgT4Zn0rO7ZlH1c/Cb7KmmG35LwVNBS6PUvJkjEjsHzLJA=="
+    "version": "0.13.0",
+    "contentHash": "6dn5N9V4O1FX/wE/twmY4M5q1/ZOpDs09zsvHqMMkDbDfxt111XaENkURISnc2DdozHF1wBmyYMot8MH2GsW/g=="
   },
   {
     "id": "Runic.Platform.Linux.Polkit",
-    "version": "0.12.1",
-    "contentHash": "pgpZklUb716M2rUcY7TT5ofOf8X/W1v6fB7EnYb7Qbie/C9cksRD/LSALFD97y2U+APVMbai4tl6S3+Y41iSpg=="
+    "version": "0.13.0",
+    "contentHash": "lUy05RMod9+impgUdRNKb9+26KFS8SGph5BWVjVd8t1PGmztOh0fTpiY8FApmmGzSwjPVczhAKgbmjUlJ5WzCQ=="
   },
   {
     "id": "Runic.Platform.Linux.Portal",
-    "version": "0.12.1",
-    "contentHash": "Mx+opjcFNJg/QWRehDhZCnS0RAUDeGX/u2KtrO9NYlh15pU7Sx6vQoCJYO8DVfytfwuCqMDJOXanhQDTyt02zw=="
+    "version": "0.13.0",
+    "contentHash": "5lNTuVpmINY4RbANLXiTYXmwyZEwMYiToMsVtFJ39SDRd5B1oanyxozivsQfkfuonN+nVyfbxCaTbpnmwBbAGQ=="
   },
   {
     "id": "Runic.Platform.Linux",
-    "version": "0.12.1",
-    "contentHash": "MROajpLkXygWajF+EF0H4A2RvEQ5n3CVIaaiq0m/e1rEXkm69je4c+DjrSyThooMXS3IrFbjygo7nGsDWVrTCg=="
+    "version": "0.13.0",
+    "contentHash": "GVzdZug+HqoAXqgg1esSYiRNDnyiKgjfRFdmtaOUwuRynb95sH7eNUMgct15YRI06+H2YD8QJIgAFBP9nxZiCw=="
   },
   {
     "id": "Runic.Platform.MacOS",
-    "version": "0.12.1",
-    "contentHash": "7Pot4xaX+U3LdAstHHYAWQH19b/43pSf3loN6bfOZq+ybG1gfh70HrNWXdl+nCOd5jobhuP2Mp6ZzT7UfO/hew=="
+    "version": "0.13.0",
+    "contentHash": "eQJRryTI1bJ25WzOk/kkwTBzSFRnLyNkGICwM2W05mXQusxpwDuNf+HRc34Ik4aiALEqlbU/yNtPXr4+Qgn5aQ=="
   },
   {
     "id": "Runic.Platform.Runtime",
-    "version": "0.12.1",
-    "contentHash": "/mKU9RcYlTm1UdUndIDGPp1eg3MNJuukluseZyupLOHoAeLwnEGZtFxkj+2TwrXQ01xWqa6Bf+Ew8b0TShjzIQ=="
+    "version": "0.13.0",
+    "contentHash": "w77D5vVu5fVcDNEc5V8ln7OEOHvne2stlM39PZOrQgyxGYYIALtSoqryw0vXbVcr15I6G4gXhKecun8FstSYpw=="
   },
   {
     "id": "Runic.Platform.Windows.Elevation",
-    "version": "0.12.1",
-    "contentHash": "iECdH0LQtZ+f4cZc0yUoOvJkZZCgJrISAlkXyncLgtI946TxtA9DhV2vR7OSNw6ikHhLXEf0jNtoQSTwZkKu2w=="
+    "version": "0.13.0",
+    "contentHash": "h31U8MkWiTBiEPcFTHrw1PnOz4Y0R459ddnms4wdQ1FvHluKB45WZo2kxW1cIKqvyyPyZZ1UeKrBw8mAAOoM7Q=="
   },
   {
     "id": "Runic.Platform.Windows",
-    "version": "0.12.1",
-    "contentHash": "XFbvBYdsMNXY7GbCuxY4a3WPconeIeADb4mt8D4ZTuvXxPEgVDPeqpy3DTX7lsSQeEWEGaCyMJKmqAEBAX8Oag=="
+    "version": "0.13.0",
+    "contentHash": "2K+aU9MfhtJ3SpLH3/itBWOkcg3hM+f1zrvCJCNcKzprXOsHvgnHXG9w6E7TcpJEKGRLZLMvjOau52aZnz9bbA=="
   },
   {
     "id": "Runic.Platform",
-    "version": "0.12.1",
-    "contentHash": "twuM8dIkjXUfGU80Juz3HN3oa3I5gBfZAnnj23uj4GQwABvUccT4ohJRE9Dz5CZ5oggAexlcwYTCgXQEO4ZlEQ=="
+    "version": "0.13.0",
+    "contentHash": "v1NN6RMFW2TnuyQFvfcQ/076WrbQzBfQ691E+O1+1oN9rFJQfqx7RCcti/ExC3WHMchcLjeMEmkAGUhYyc9/9w=="
   },
   {
     "id": "runtime.linux-arm64.Microsoft.DotNet.ILCompiler",

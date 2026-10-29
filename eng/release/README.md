@@ -345,7 +345,7 @@ whose release guides add only their own rules. The
 same policy.
 
 Applications on 0.9 follow the [migration guide to 1.0](../../docs/migration-1.0.md),
-which collects the breaking and behaviour changes of 0.10.0, 0.11.0 and 0.12.0.
+which collects the breaking and behaviour changes of 0.10.0, 0.11.0, 0.12.0 and 0.13.0.
 
 ### Version numbers
 
