@@ -310,6 +310,9 @@ internal sealed class SnapshotBatchTests
             PushTestTransport push => push.Request(snapshot),
             _ => throw new ArgumentException("An unknown transport.", nameof(transport)),
         };
+        // The route's first unit, requested when the Bridge attached, may still be on its way and capture after this
+        // read; the captures are counted after it settled.
+        BridgeReplyOrder.For(transport).WhenPublished()?.Wait(TimeSpan.FromSeconds(5));
         counter.Count = 0;
         using var document = JsonDocument.Parse(reply);
         return document.RootElement.GetProperty("revision").GetInt64();

@@ -307,6 +307,11 @@ internal static partial class ViewsLog
         Message = "The mailbox of connection {Connection} overflowed: {Dropped} older pushes were dropped. The page does not receive its targeted pushes.")]
     internal static partial void MailboxOverflowed(ILogger logger, string connection, int dropped);
 
+    // BridgeReplyOrder: logged once per window.
+    [LoggerMessage(EventId = 1024, EventName = "BridgeReplyWaitExceeded", Level = LogLevel.Warning,
+        Message = "A reply on route {Route} waited {LimitSeconds} s for the window's pushes and was sent before them; routes with pushes still to deliver: {Pending}. The page did not take pushes, or code blocked a route's delivery. Logged once per window.")]
+    internal static partial void ReplyWaitExceeded(ILogger logger, string route, double limitSeconds, string pending);
+
     [LoggerMessage(EventId = 1020, EventName = "ViewMountFailed", Level = LogLevel.Error,
         Message = "Runic View mount on route {Route} failed with {ErrorType}.")]
     internal static partial void MountFailed(ILogger logger, Exception? exception, string route, string errorType);

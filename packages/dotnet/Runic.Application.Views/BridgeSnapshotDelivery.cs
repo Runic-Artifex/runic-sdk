@@ -54,6 +54,9 @@ internal sealed class BridgeSnapshotDelivery : IDisposable
         _logger = logger ?? TraceFallbackLogger.Instance;
     }
 
+    // The route this delivery publishes.
+    public string Route => _route;
+
     // Whether the queue holds a captured full state.
     public bool StateQueued
     {
@@ -143,12 +146,16 @@ internal sealed class BridgeSnapshotDelivery : IDisposable
     // deliver, or the delivery was disposed. Null when nothing is outstanding. The drain does not wait for the reply
     // that waits for this task: the next push, which a later request can have caused, may reach the transport before
     // that reply does (specs/application/README.md, "Reply order").
+    //
+    // The task's continuations never run on the drain: a reply that resumed inside Settle held the drain until its
+    // caller yielded, and a caller that then waited synchronously for its next reply waited for the drain it blocked,
+    // which left a requested unit unrun and every later reply waiting for ReplyWaitLimit.
     internal Task? WhenSettled()
     {
         lock (_gate)
         {
             if (_disposed || _settled >= _produced) return null;
-            var settled = new TaskCompletionSource();
+            var settled = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
             (_waiters ??= []).Add((_produced, settled));
             return settled.Task;
         }
