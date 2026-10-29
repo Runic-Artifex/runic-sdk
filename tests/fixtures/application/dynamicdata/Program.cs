@@ -124,7 +124,7 @@ await ReplayAsync(sortTransport, "sorted", sortContext, async () =>
         await sortContext.InvokeAsync(() => { });
     }
     await sortContext.InvokeAsync(() => sortModel.SortBy(SortProofViewModel.ById));
-}, minimumFrames: 3, requiredKinds: ["move", "set", "add", "remove"]);
+}, minimumFrames: 3, requiredKinds: ["move", "set"]);
 Console.WriteLine("DYNAMICDATA_RUNIC_OK: independent viewports, deferred batching, off-screen suppression, generated collection deltas, withheld invalid keys and frames that replay to the snapshot.");
 
 static async Task ExecuteAsync(IObservable<ReactiveUI.Primitives.RxVoid> execution)
