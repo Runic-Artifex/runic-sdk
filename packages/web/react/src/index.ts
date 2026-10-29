@@ -15,13 +15,18 @@ import {
   createCommandController,
   createLatestOperationController,
   createOperationController,
+  createFieldController,
   createTextFieldController,
   createViewController,
   onBridgeConnection,
   type BridgeConnectionOptions,
   type BridgeConnectionState,
+  type BridgeField,
   type BridgeOperation,
   type BridgeOutcomeFailure,
+  type FieldDefinition,
+  type FieldOptions,
+  type FieldState,
   type LatestOperationController,
   type LatestOperationState,
   type OperationController,
@@ -379,7 +384,9 @@ export interface TextFieldView<TClient extends ViewClient> {
  *   onCompositionStart={name.onCompositionStart} onCompositionEnd={name.onCompositionEnd} />
  * ```
  *
- * `write` may be a generated setter, a command or a checked write. Its failure sets `error` and keeps the draft.
+ * `write` may be a generated setter, a command or a checked write. Its failure, and a checked write's `rejected` or
+ * `conflict` receipt, keep the draft and set `error` (a receipt's is a `FieldError`). For a generated member, prefer
+ * `useField` with its `{View}Fields` descriptor.
  * Unmounting writes text that waits for a write in flight, and stops updating the handle.
  */
 export function useTextField<TClient extends ViewClient>(
@@ -411,6 +418,146 @@ export function useTextField<TClient extends ViewClient>(
   // Without a draft the field shows the state being rendered, which the effect passes to the controller after the render.
   const value = current.editing ? current.value : state === undefined ? "" : read(state);
   return { value, editing: current.editing, error: current.error, ...handlers };
+}
+
+/**
+ * What {@link useField} spreads on a checkbox (`<input type="checkbox">`): a boolean field. `onChange` reads `checked`.
+ */
+export interface FieldCheckboxProps {
+  readonly checked: boolean;
+  readonly onChange: (event: { readonly currentTarget: { readonly checked: boolean } }) => void;
+  /** Commits the field (see `FieldHandle.commit`). */
+  readonly onBlur: () => void;
+  /** True while the field has validation messages (`errors`) or an `error`. */
+  readonly "aria-invalid": boolean;
+}
+
+/**
+ * What {@link useField} spreads on an `<input>`, `<textarea>` or `<select>` of any field but a boolean one: the field's
+ * `text`, written through `inputText` (so `-` and `1.` survive typing into a number field), and IME composition.
+ */
+export interface FieldTextProps {
+  readonly value: string;
+  readonly onChange: (event: { readonly currentTarget: { readonly value: string } }) => void;
+  /** The text is kept but not written until the IME composition ends. */
+  readonly onCompositionStart: () => void;
+  /** The composed text is written. */
+  readonly onCompositionEnd: (event: { readonly currentTarget: { readonly value: string } }) => void;
+  /** Commits the field (see `FieldHandle.commit`). */
+  readonly onBlur: () => void;
+  /** True while the field has validation messages (`errors`) or an `error`. */
+  readonly "aria-invalid": boolean;
+}
+
+/** The props of a field's element: {@link FieldCheckboxProps} for a boolean field, otherwise {@link FieldTextProps}. */
+export type FieldInputProps<TValue> = [TValue] extends [boolean | null] ? FieldCheckboxProps : FieldTextProps;
+
+/** A field bound by {@link useField}: what it shows, the props of its element and its actions. */
+export type FieldHandle<TValue> = FieldState<TValue> & {
+  /** Spread on the field's `<input>`, `<textarea>` or `<select>`. The handlers are the same on every render. */
+  readonly inputProps: FieldInputProps<TValue>;
+  /** The user changed the value, such as from a custom control. */
+  input(value: TValue): void;
+  /**
+   * The user is done with the field (`onBlur` calls it): with `commit: "pause"` the draft is written now. Resolves with
+   * the field's state once its writes settled, so a command that depends on the field can run after it and skip a
+   * failed write: `if ((await title.commit()).error === undefined) await editor.save()`. The handle is the state of
+   * the render that created it, so read the error from the resolved state. Never rejects.
+   */
+  commit(): Promise<FieldState<TValue>>;
+  /** Writes the draft again after a failed write; after a `conflict`, over the producer's value. */
+  retry(): void;
+  /** Drops the draft, the error and a conflict and shows the View's value. Writes in flight still complete. */
+  reset(): void;
+};
+
+const noFieldErrors: readonly string[] = Object.freeze([]);
+
+/** The text a field shows for a value, as the field controller formats it. */
+function formatFieldValue(value: unknown): string {
+  switch (typeof value) {
+    case "string": return value;
+    case "number": case "bigint": case "boolean": return String(value);
+    default: return "";
+  }
+}
+
+/**
+ * Binds an element to one View member while the component is mounted, through `createFieldController`: pass a
+ * generated descriptor such as `EditorFields.title`, or any definition with `read` and `write`. Spread `inputProps` on
+ * an `<input>`, `<textarea>` or `<select>` (a checkbox for a boolean field). Typing never loses characters: the field
+ * shows a draft while its writes are in flight, writes nothing during IME composition, keeps text that does not
+ * parse (such as `1.` in a number field) as the draft, and once the last write settled shows the View's value.
+ * `options` are read when the component mounts; the descriptor's `read`, `write` and `errors` may close over render
+ * values, and the latest ones are used.
+ *
+ * ```tsx
+ * const editor = useView(page);
+ * const title = useField(editor, EditorFields.title, { commit: "pause", checked: true });
+ * <input {...title.inputProps} />
+ * {title.conflict && <button onClick={title.retry}>Keep mine</button>}
+ * ```
+ *
+ * With `checked: true` a `rejected` or `conflict` receipt keeps the draft and sets `error` (a `FieldError`), and a
+ * conflict holds further writes until `retry()` or `reset()`. Unmounting writes a value that waits to be written.
+ */
+export function useField<TClient extends ViewClient, TValue>(
+  view: TextFieldView<TClient>,
+  field: BridgeField<NoInfer<TClient>, NoInfer<TClient>["snapshot"], TValue> | FieldDefinition<NoInfer<TClient>, NoInfer<TClient>["snapshot"], TValue>,
+  options: FieldOptions = {},
+): FieldHandle<TValue> {
+  type State = TClient["snapshot"];
+  const latest = useRef(field);
+  useInsertionEffect(() => { latest.current = field; });
+  const controller = useMountedController(() => createFieldController<State, TClient, TValue>({
+    ...field.name === undefined ? {} : { name: field.name },
+    ...field.kind === undefined ? {} : { kind: field.kind },
+    ...field.nullable === undefined ? {} : { nullable: field.nullable },
+    ...field.integer === undefined ? {} : { integer: field.integer },
+    ...field.choices === undefined ? {} : { choices: field.choices },
+    read: state => latest.current.read(state),
+    write: (client, value) => latest.current.write(client, value),
+    ...field.checked === undefined ? {} : { checked: (client, value, write) => latest.current.checked!(client, value, write) },
+    ...field.baseline === undefined ? {} : { baseline: client => latest.current.baseline!(client) },
+    ...field.errors === undefined ? {} : { errors: state => latest.current.errors!(state) },
+  }, options));
+  const { state, client } = view;
+  useEffect(() => {
+    controller.setSource(state === undefined || client === undefined ? undefined : { state, client });
+  }, [controller, state, client]);
+  const readCurrent = useCallback(() => controller.current, [controller]);
+  const current = useSyncExternalStore(controller.subscribe, readCurrent, readCurrent);
+  const actions = useMemo(() => ({
+    input: (value: TValue) => controller.input(value),
+    commit: () => controller.commit(),
+    retry: () => controller.retry(),
+    reset: () => controller.reset(),
+    onBlur: () => { void controller.commit(); },
+    onChange: (event: { readonly currentTarget: { readonly value: string } }) => controller.inputText(event.currentTarget.value),
+    onCheck: (event: { readonly currentTarget: { readonly checked: boolean } }) => controller.input(event.currentTarget.checked as TValue),
+    onCompositionStart: () => controller.compositionStart(),
+    onCompositionEnd: (event: { readonly currentTarget: { readonly value: string } }) => controller.compositionEnd(event.currentTarget.value),
+  }), [controller]);
+  // Without a draft the field shows the state being rendered, which the effect passes to the controller after the
+  // render (setSource does not notify). Text that still means that value (such as `1.` for 1) stays.
+  const kind = controller.field.kind;
+  const value = current.editing ? current.value
+    : state === undefined ? (kind === "text" || kind === undefined ? "" : undefined) as TValue
+    : field.read(state);
+  const text = Object.is(value, current.value) ? current.text : formatFieldValue(value);
+  const errors = field.errors === undefined ? current.errors : state === undefined ? noFieldErrors : field.errors(state);
+  const invalid = errors.length > 0 || current.error !== undefined;
+  const inputProps = kind === "boolean"
+    ? { checked: value === true, onChange: actions.onCheck, onBlur: actions.onBlur, "aria-invalid": invalid }
+    : {
+      value: text, onChange: actions.onChange, onCompositionStart: actions.onCompositionStart,
+      onCompositionEnd: actions.onCompositionEnd, onBlur: actions.onBlur, "aria-invalid": invalid,
+    };
+  return {
+    value, text, editing: current.editing, error: current.error, errors, conflict: current.conflict,
+    inputProps: inputProps as FieldInputProps<TValue>,
+    input: actions.input, commit: actions.commit, retry: actions.retry, reset: actions.reset,
+  };
 }
 
 export interface BridgeConnectionHandle {
@@ -452,6 +599,16 @@ const serverConnectionState = (): BridgeConnectionState => "connecting";
 export { retrySuspenseView, useSuspenseView, type SuspenseViewHandle, type SuspenseViewOptions } from "./suspense.js";
 export { useCollectionViewport, type CollectionViewportHandle } from "./viewport.js";
 export { onBridgeConnection, type BridgeConnectionOptions, type BridgeConnectionState } from "@runic-artifex/views";
+export {
+  FieldError,
+  type BridgeField,
+  type BridgeFieldKind,
+  type FieldBaseline,
+  type FieldDefinition,
+  type FieldErrorKind,
+  type FieldOptions,
+  type FieldState,
+} from "@runic-artifex/views";
 export {
   useMenuBar,
   type MenuBarEntry,

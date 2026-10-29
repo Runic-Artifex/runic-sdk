@@ -88,8 +88,8 @@ describe("useBridgeConnection", () => {
 
   test("is a root export (0.11) and the root keeps every earlier export", () => {
     expect(Object.keys(root).sort()).toEqual([
-      "ViewOutlet", "onBridgeConnection", "useBridgeConnection", "useCollectionViewport", "useCommand", "useLatestOperation", "useMenuBar",
-      "useOperation", "useTextField", "useView",
+      "FieldError", "ViewOutlet", "onBridgeConnection", "useBridgeConnection", "useCollectionViewport", "useCommand", "useField",
+      "useLatestOperation", "useMenuBar", "useOperation", "useTextField", "useView",
     ]);
   });
 });

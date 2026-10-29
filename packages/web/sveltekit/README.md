@@ -62,6 +62,31 @@ A SPA without `desktop` exports `ssr` and `prerender` from `runicSpaPageOptions`
 the same way. A Desktop SPA exports neither: SvelteKit rejects page options with
 the hash router.
 
+## Fields
+
+Pages bind inputs with `useField` from `@runic-artifex/svelte` and the generated
+`{View}Fields` descriptor, as any Svelte application does:
+
+```svelte
+<script lang="ts">
+  import { useField, useView } from "@runic-artifex/svelte";
+  import { EditorFields, type EditorPageReference } from "$lib/generated/editor.js";
+
+  let { page }: { page: EditorPageReference } = $props();
+  const editor = useView(() => page);
+  const title = useField(() => editor, EditorFields.title, { commit: "pause", checked: true });
+</script>
+
+<input {@attach title.attach}>
+```
+
+`commit: "pause"` writes on blur or after a pause, `checked: true` keeps a rejected
+or conflicting draft with its `FieldError` until `retry()` or `reset()`, and `errors`
+holds the member's validation messages; see the
+[`@runic-artifex/svelte` README](https://www.npmjs.com/package/@runic-artifex/svelte).
+This package's entry is the build-time adapter, which runs in Node, so it does not
+re-export the browser bindings.
+
 Translation routing helpers moved to
 [`@runic-artifex/translations-sveltekit`](https://www.npmjs.com/package/@runic-artifex/translations-sveltekit).
 Import them from there instead of `@runic-artifex/sveltekit`.

@@ -217,8 +217,10 @@ onScopeDispose(() => { stop(); void save.dispose(); });
 Svelte does the same with `$state` and an `$effect` cleanup, and Angular with a
 `signal` and `DestroyRef.onDestroy`.
 
-Bind text inputs with the framework packages' `useTextField` (Angular
-`injectTextField`) rather than a `command` per keystroke in an Effect action: a
+This package has no field binding of its own. Bind inputs with `createFieldController`
+from `@runic-artifex/views` and a generated `{View}Fields` descriptor, or with the
+framework packages' `useField` (React `useField` from `@runic-artifex/react`), rather
+than a `command` per keystroke in an Effect action: a
 new `run` interrupts the previous one, which abandons its reply but not the write,
 and the binding keeps the draft and orders and coalesces the writes. `operation`
 completes with the outcome only; to show a running operation's `progress`, use the

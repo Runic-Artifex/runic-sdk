@@ -2,6 +2,7 @@ import {
   computed,
   defineComponent,
   h,
+  reactive,
   shallowRef,
   toValue,
   watch,
@@ -16,13 +17,18 @@ import {
   createCommandController,
   createLatestOperationController,
   createOperationController,
+  createFieldController,
   createTextFieldController,
   createViewController,
   onBridgeConnection,
   type BridgeConnectionOptions,
   type BridgeConnectionState,
+  type BridgeField,
   type BridgeOperation,
   type BridgeOutcomeFailure,
+  type FieldBaseline,
+  type FieldDefinition,
+  type FieldOptions,
   type LatestOperationController,
   type LatestOperationState,
   type OperationController,
@@ -301,7 +307,9 @@ export interface TextFieldView<TClient extends ViewClient> {
  * <input v-model="name">
  * ```
  *
- * `write` may be a generated setter, a command or a checked write. Its failure sets `error` and keeps the draft.
+ * `write` may be a generated setter, a command or a checked write. Its failure, and a checked write's `rejected` or
+ * `conflict` receipt, keep the draft and set `error` (a receipt's is a `FieldError`). For a generated member, prefer
+ * `useField` with its `{View}Fields` descriptor.
  */
 export function useTextField<TClient extends ViewClient>(
   view: TextFieldView<TClient>,
@@ -323,6 +331,108 @@ export function useTextField<TClient extends ViewClient>(
     error: computed(() => current.value.error),
     reset: () => controller.reset(),
   };
+}
+
+/**
+ * A field bound by {@link useField}: a `reactive` object, so a template binds its members directly, such as
+ * `v-model="title.value"`.
+ */
+export interface FieldHandle<TValue> {
+  /**
+   * The draft while one exists, otherwise the member's value in the View's state. Setting it is an input by the user,
+   * as `v-model` does: a string set on a field that is not text (such as from `<input type="number">` while its text
+   * does not parse) is the field's text, as `text` is.
+   */
+  value: TValue;
+  /**
+   * What a text input shows: the text typed while it does not parse or still means `value` (so `1.` stays while typing
+   * `1.5`), otherwise `value` formatted. Setting it is an input of text, parsed for the field's kind: bind number
+   * inputs with `v-model="step.text"`. The number `v-model` sets on `<input type="number">` once its text is one is
+   * an input of that value.
+   */
+  text: string;
+  /**
+   * True while a draft exists, from the first input until the last write settled and the state caught up, and after a
+   * failed write. Keep the input enabled while it is true, rather than disabling it on the View's busy state.
+   */
+  readonly editing: boolean;
+  /** Why the latest write or text failed (a `BridgeError` or a {@link FieldError}), until the next input, `retry()` or `reset()`. */
+  readonly error: unknown;
+  /** The member's validation messages in the View's state, or of the last checked write's receipt; `[]` when valid. */
+  readonly errors: readonly string[];
+  /** The producer's field while a checked write's `conflict` keeps the draft; `undefined` otherwise. */
+  readonly conflict: FieldBaseline<TValue> | undefined;
+  /** The user changed the value. */
+  input(value: TValue): void;
+  /**
+   * The user is done with the field (`@blur="title.commit"`): with `commit: "pause"` the draft is written now.
+   * Resolves once the field's writes settled, so a command that depends on the field can run after it:
+   * `await title.commit(); await editor.save()`. Never rejects; a failure is `error`.
+   */
+  commit(): Promise<void>;
+  /** Writes the draft again after a failed write; after a `conflict`, over the producer's value. */
+  retry(): void;
+  /** Drops the draft, the error and a conflict and shows the View's value. Writes in flight still complete. */
+  reset(): void;
+}
+
+/**
+ * Binds an element to one View member while the current effect scope is active, through `createFieldController`:
+ * pass a generated descriptor such as `EditorFields.title`, or any definition with `read` and `write`. The handle is
+ * `reactive`; bind `v-model` to its `value` (`text` for number inputs) and call `commit` on blur. `v-model` already
+ * writes nothing while an IME composition is in progress. `options` are read once, when the field is created. Call
+ * it in `setup()` or `effectScope().run()`: outside an effect scope it is never released (development builds warn).
+ *
+ * ```vue
+ * const editor = useView(() => props.page);
+ * const title = useField(editor, EditorFields.title, { commit: "pause", checked: true });
+ * <input v-model="title.value" @blur="title.commit" :aria-invalid="title.errors.length > 0 || title.error !== undefined">
+ * <input type="number" v-model="step.text" @blur="step.commit">
+ * <input type="checkbox" v-model="done.value">
+ * ```
+ *
+ * With `checked: true` a `rejected` or `conflict` receipt keeps the draft and sets `error` (a `FieldError`), and a
+ * conflict holds further writes until `retry()` or `reset()`. Leaving the scope writes a value that waits to be
+ * written.
+ */
+export function useField<TClient extends ViewClient, TValue>(
+  view: TextFieldView<TClient>,
+  field: BridgeField<NoInfer<TClient>, NoInfer<TClient>["snapshot"], TValue> | FieldDefinition<NoInfer<TClient>, NoInfer<TClient>["snapshot"], TValue>,
+  options: FieldOptions = {},
+): FieldHandle<TValue> {
+  const controller = createFieldController<TClient["snapshot"], TClient, TValue>(field, options);
+  const current = shallowRef(controller.current);
+  controller.subscribe(() => { current.value = controller.current; });
+  watch([view.state, view.client], ([state, client]) => {
+    controller.setSource(state === undefined || client === undefined ? undefined : { state, client });
+    current.value = controller.current;
+  }, { immediate: true });
+  releaseWithScope("useField", () => controller.dispose());
+  const kind = controller.field.kind;
+  // `v-model` on `<input type="number">` sets a string while its text is not a number.
+  const textual = kind === undefined || kind === "text";
+  return reactive({
+    value: computed({
+      get: () => current.value.value,
+      set: (value: TValue) => {
+        if (typeof value === "string" && !textual) controller.inputText(value);
+        else controller.input(value);
+      },
+    }),
+    // `v-model` on `<input type="number">` sets a number once its text is one.
+    text: computed({
+      get: () => current.value.text,
+      set: (text: string) => { if (typeof text === "string") controller.inputText(text); else controller.input(text as TValue); },
+    }),
+    editing: computed(() => current.value.editing),
+    error: computed(() => current.value.error),
+    errors: computed(() => current.value.errors),
+    conflict: computed(() => current.value.conflict),
+    input: (value: TValue) => controller.input(value),
+    commit: async () => { await controller.commit(); },
+    retry: () => controller.retry(),
+    reset: () => controller.reset(),
+  }) as FieldHandle<TValue>;
 }
 
 export interface BridgeConnectionHandle {
@@ -350,6 +460,16 @@ export function useBridgeConnection(options: BridgeConnectionOptions = {}): Brid
 
 export { useCollectionViewport, type CollectionViewportHandle } from "./viewport.js";
 export { onBridgeConnection, type BridgeConnectionOptions, type BridgeConnectionState } from "@runic-artifex/views";
+export {
+  FieldError,
+  type BridgeField,
+  type BridgeFieldKind,
+  type FieldBaseline,
+  type FieldDefinition,
+  type FieldErrorKind,
+  type FieldOptions,
+  type FieldState,
+} from "@runic-artifex/views";
 export {
   useMenuBar,
   type MenuBarEntry,

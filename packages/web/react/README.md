@@ -88,6 +88,59 @@ export function CounterPage({ page }: { page: CounterPageReference }) {
 The control shows the ViewModel's value, so it reverts when the setter throws
 or keeps a different value.
 
+### Fields: `useField(view, field, options?)`
+
+Binds an `<input>`, `<textarea>` or `<select>` to a member while the component is mounted. Pass the generated
+`{View}Fields` descriptor; it knows the member's kind, setter, checked write and validation:
+
+```tsx
+import { EditorFields, type EditorPageReference } from "./generated/editor.js";
+
+export function EditorPage({ page }: { page: EditorPageReference }) {
+  const editor = useView(page);
+  const title = useField(editor, EditorFields.title, { commit: "pause", checked: true });
+  const step = useField(editor, EditorFields.step);
+  const done = useField(editor, EditorFields.done);
+  return <>
+    <input {...title.inputProps} />
+    {title.errors.map(message => <p key={message} role="alert">{message}</p>)}
+    {title.conflict && <p role="alert">
+      Changed elsewhere to “{title.conflict.value}”.
+      <button onClick={title.retry}>Keep mine</button> <button onClick={title.reset}>Take theirs</button>
+    </p>}
+    <input inputMode="decimal" {...step.inputProps} />
+    <input type="checkbox" {...done.inputProps} />
+  </>;
+}
+```
+
+It returns the field's state (`value`, `text`, `editing`, `error`, `errors`, `conflict`), `input(value)`,
+`commit()`, `retry()`, `reset()` and `inputProps`. For a boolean field `inputProps` is `checked`, `onChange`,
+`onBlur` and `aria-invalid` for a checkbox; otherwise it is the field's `text` as `value`, `onChange`, the
+composition handlers, `onBlur` and `aria-invalid`. Text inputs of numbers keep `-` and `1.` while the user types: a
+text that does not parse stays the draft with an `invalid-text` error and nothing is written. The handlers are the
+same on every render. `aria-invalid` is true while the field has `errors` or an `error`.
+
+`options` are read once, when the field is created:
+
+- `commit: "pause"` writes the draft after `delay` milliseconds without input (700 by default) and at once on
+  `commit()`, which blur calls; use it where each write is an undo step or starts work in .NET. The default,
+  `commit: "input"`, writes each input. `commit()` resolves with the field's state once its writes settled, so a
+  command that depends on the field can follow them and skip a failed write:
+  `if ((await title.commit()).error === undefined) await editor.save()`. Read the error from the resolved state: the
+  handle is the state of the render that created it.
+- `checked: true` writes with the member's checked write, so a change by another writer while the user edits is a
+  conflict instead of being overwritten. A `rejected` receipt keeps the draft and sets `error` to a `FieldError` with
+  the setter's message; a `conflict` keeps the draft, sets `conflict` to the producer's `{ value, version }` and
+  writes nothing until `retry()` writes the draft over it or `reset()` takes it.
+- `coalesce` and `keepDraftOnError` as for text inputs below.
+
+`errors` holds the member's validation messages from the descriptor (`[]` when valid), `error` why the latest write
+or text failed (a `BridgeError` or a `FieldError`, whose `kind` is `rejected`, `conflict`, `committed-with-error` or
+`invalid-text`). `FieldError`, `FieldOptions`, `FieldState` and `BridgeField` are exported from this package. See the
+[field controller](https://github.com/Runic-Artifex/runic-sdk/tree/main/packages/web/views#fields) for the receipts
+and text forms.
+
 ### Text inputs: `useTextField(view, read, write, options?)`
 
 Binds a controlled text input to a member through the framework-neutral
@@ -115,9 +168,11 @@ frame that answers an older keystroke never replaces newer text. At most one wri
 in flight; text typed meanwhile is written next as one value (`coalesce: false` writes
 every change). Nothing is written during IME composition. Once the last write settled,
 the field shows the View's value again, including any normalization the ViewModel
-applied (trimmed, upper-cased). `write` may also be a command or a checked write. A
-failed write keeps the draft and sets `error` (`keepDraftOnError: false` shows the
-View's value instead); `reset()` drops the draft. `editing` is true while a draft
+applied (trimmed, upper-cased). `write` may also be a command or a checked write,
+whose receipt the field reads: `rejected` and `conflict` keep the draft and set `error`
+to a `FieldError` of that kind, `committed-with-error` drops the draft and sets it too,
+and `applied.validation` is `errors`. A failed write keeps the draft and sets `error`
+(`keepDraftOnError: false` shows the View's value instead); `reset()` drops the draft. `editing` is true while a draft
 exists. Don't disable the input on the View's busy state (`isSaving`, `can…`) while
 the user types: the field's own write causes it, and keys typed meanwhile would be
 lost. Test such fields by typing key by key (Playwright `pressSequentially`, Testing
