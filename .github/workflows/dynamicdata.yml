@@ -2,9 +2,9 @@ name: DynamicData consumer
 on:
   push:
     branches: [main]
-    paths: ['packages/dotnet/Runic.Application.*/**', 'packages/web/views/**', 'tools/Runic.Application.Views.*/**', 'examples/dynamicdata/**', 'tests/fixtures/application/dynamicdata/**', 'tests/fixtures/application/dynamicdata-reactive/**', 'eng/workspace.json', '.github/workflows/dynamicdata.yml']
+    paths: ['packages/dotnet/Runic.Application.*/**', 'packages/web/views/**', 'tools/Runic.Application.Views.*/**', 'examples/dynamicdata/**', 'tests/fixtures/application/dynamicdata/**', 'tests/fixtures/application/dynamicdata-reactive/**', 'packages/dotnet/Runic.Navigation/**', 'Directory.Packages.props', 'Directory.Build.*', 'examples/Directory.*', 'global.json', '.github/actions/setup-sdk/**', 'eng/workspace.json', '.github/workflows/dynamicdata.yml']
   pull_request:
-    paths: ['packages/dotnet/Runic.Application.*/**', 'packages/web/views/**', 'tools/Runic.Application.Views.*/**', 'examples/dynamicdata/**', 'tests/fixtures/application/dynamicdata/**', 'tests/fixtures/application/dynamicdata-reactive/**', 'eng/workspace.json', '.github/workflows/dynamicdata.yml']
+    paths: ['packages/dotnet/Runic.Application.*/**', 'packages/web/views/**', 'tools/Runic.Application.Views.*/**', 'examples/dynamicdata/**', 'tests/fixtures/application/dynamicdata/**', 'tests/fixtures/application/dynamicdata-reactive/**', 'packages/dotnet/Runic.Navigation/**', 'Directory.Packages.props', 'Directory.Build.*', 'examples/Directory.*', 'global.json', '.github/actions/setup-sdk/**', 'eng/workspace.json', '.github/workflows/dynamicdata.yml']
   workflow_dispatch:
 permissions:
   contents: read
@@ -32,7 +32,8 @@ jobs:
             const { dynamicData } = JSON.parse(require("node:fs").readFileSync("eng/workspace.json", "utf8"));
             if (!/^[\w.-]+\/[\w.-]+$/.test(dynamicData?.repository ?? "")) throw new Error("dynamicData.repository must be owner/repo");
             if (!/^[0-9a-f]{40}$/.test(dynamicData?.forkRevision ?? "")) throw new Error("dynamicData.forkRevision must be a full commit SHA");
-            console.log("repository=" + dynamicData.repository + "\nrevision=" + dynamicData.forkRevision);
+            if (!/^[\w.-]+$/.test(dynamicData?.packageVersion ?? "")) throw new Error("dynamicData.packageVersion must be a package version");
+            console.log("repository=" + dynamicData.repository + "\nrevision=" + dynamicData.forkRevision + "\nversion=" + dynamicData.packageVersion);
           ' >> "$GITHUB_OUTPUT"
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -41,6 +42,17 @@ jobs:
           path: .cache/dynamicdata-fork
           fetch-depth: 0
           persist-credentials: false
+      # The pinned revision is the release that the lock files resolve (eng/workspace.test.mjs checks the locks).
+      - name: Check that the fork pin is the locked release
+        env:
+          REVISION: ${{ steps.fork.outputs.revision }}
+          VERSION: ${{ steps.fork.outputs.version }}
+        run: |
+          tagged="$(git -C .cache/dynamicdata-fork rev-parse --verify --quiet "refs/tags/v$VERSION^{commit}" || true)"
+          if [ "$tagged" != "$REVISION" ]; then
+            echo "::error::dynamicData.forkRevision $REVISION is not the fork's tag v$VERSION (${tagged:-missing}); update eng/workspace.json and the lock files together."
+            exit 1
+          fi
       - name: Run generated consumer
         run: dotnet run --project tests/fixtures/application/dynamicdata -c Release -p:DynamicDataForkRoot="$GITHUB_WORKSPACE/.cache/dynamicdata-fork"
       # The System.Reactive flavor: DynamicData.Reactive, ReactiveUI.Reactive, Runic.Application.Views.ReactiveUI.Reactive

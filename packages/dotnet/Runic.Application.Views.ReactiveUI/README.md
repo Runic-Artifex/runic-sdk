@@ -547,14 +547,21 @@ The browser is asked when the page's own window starts the departure:
   outcome is `Failed`, a close keeps the window open, and the navigator logs
   event 1060 with the `UnhandledInteractionException` type.
 
-## System.Reactive flavor
+## DynamicData
 
-For DynamicData changesets, place `BatchBridgeSnapshots(model)` (namespace
-`Runic.Application.Views`, for any `IObservable<T>`) after
-`ObserveOn(modelSequencer)` and before `Bind` or `SortAndBind`. The downstream
-delivery owns the batch even when scheduling is deferred. Annotate a read-only
-DTO collection with `[RunicCollection(nameof(Row.Id))]` to publish indexed
-updates. See the [DynamicData guide](https://docs.runic-artifex.eu/guides/application/guides/dynamicdata/).
+For DynamicData changesets, in either flavor, place `BatchBridgeSnapshots(model)`
+(namespace `Runic.Application.Views`, for any `IObservable<T>`) after
+`ObserveOn(ReactiveSchedulers.For(context))` and before `Bind` or
+`SortAndBind`. The downstream delivery owns the batch even when scheduling is
+deferred, so each changeset is one frame. Annotate a read-only DTO collection
+with `[RunicCollection(nameof(Row.Id))]` to publish indexed updates; a
+ViewModel with validation publishes them too. A `Bind` that runs outside the
+window's model turn is logged once per field as event 1025
+`BridgeCollectionChangedOutsideModelTurn`. Changes after the window's model
+context closed are ignored and do not end the binding. See the
+[DynamicData guide](https://docs.runic-artifex.eu/guides/application/guides/dynamicdata/).
+
+## System.Reactive flavor
 
 Applications using `ReactiveUI.Reactive`, `ReactiveUI.Binding.Reactive`,
 `System.Reactive.Unit`, or `IScheduler` should instead reference

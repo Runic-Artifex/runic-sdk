@@ -3,7 +3,8 @@
   "version": "0.13.0",
   "dynamicData": {
     "repository": "Runic-Artifex/DynamicData",
-    "forkRevision": "373946771c763bdbedb84a089723abcdd0e4c046"
+    "forkRevision": "373946771c763bdbedb84a089723abcdd0e4c046",
+    "packageVersion": "10.0.0-runic.118"
   },
   "npm": [
     {
