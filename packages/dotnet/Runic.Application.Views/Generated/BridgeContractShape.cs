@@ -112,6 +112,10 @@ public static class BridgeContractShape
             AppendType(parts, property.PropertyType, nullability.Create(property), $"{model.Name}.{WireName(property)}", [], honorJsonIgnore, property.GetCustomAttribute<RunicCodecAttribute>(true));
         }
         parts.Add($"validation-errors:{TypeName(model)}:{typeof(INotifyDataErrorInfo).IsAssignableFrom(model)}");
+        // D053.3: a ReactiveUI.Validation ViewModel without INotifyDataErrorInfo has validation too. Only such models
+        // add the part, so other fingerprints stay.
+        if (!typeof(INotifyDataErrorInfo).IsAssignableFrom(model) && ReactiveValidationConventions.IsValidatable(model))
+            parts.Add($"validation-context:{TypeName(model)}:true");
     }
 
     // A RunicCommandKey command sends its resolver's key instead of its parameter. Only such commands add
@@ -148,6 +152,8 @@ public static class BridgeContractShape
         parts.Add($"wire:{path}:type:{TypeName(type)}:nullable:{nullable}");
         if (typeof(INotifyDataErrorInfo).IsAssignableFrom(type))
             parts.Add($"validation-errors:{path}:true");
+        else if (ReactiveValidationConventions.IsValidatable(type))
+            parts.Add($"validation-context:{path}:true");
         if (IsScalar(type)) return;
         if (type.IsEnum)
         {

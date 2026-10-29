@@ -132,6 +132,53 @@ internal sealed partial class CodegenDiagnosticsTests
         }
     }
 
+    // RUNICBRIDGE031 (D053.3): an IValidatableViewModel of neither ReactiveUI.Validation flavor is a located warning,
+    // on the ViewModel and on a DTO of its state; the ViewModel gets no validation member from it.
+    [Test]
+    public async Task UnrecognizedValidatableViewModelIsAWarningAsync()
+    {
+        var root = FindWorkspaceRoot();
+        var configuration = System.Reflection.CustomAttributeExtensions.GetCustomAttribute<System.Reflection.AssemblyConfigurationAttribute>(
+            typeof(CodegenDiagnosticsTests).Assembly)?.Configuration ?? "Release";
+        var generator = Path.Combine(root, "tools", "Runic.Application.Views.Codegen", "bin", configuration, "net10.0",
+            "BridgeCodegen.dll");
+        var temporaryRoot = Path.Combine(Path.GetTempPath(), $"runic-codegen-validatable-{Guid.NewGuid():N}");
+        try
+        {
+            const string Source = Preamble + """
+                public interface IValidatableViewModel { }
+                public sealed class OtherAddress : IValidatableViewModel
+                {
+                    public string City { get; set; } = "";
+                }
+                public sealed class OtherValidationViewModel : FixtureModel, IValidatableViewModel
+                {
+                    public string Name { get; set; } = "";
+                    public OtherAddress Address { get; } = new();
+                }
+                public sealed partial class OtherValidationWindow : RunicWindow<OtherValidationViewModel>;
+                """;
+            var (exitCode, output, directory) = await RunGeneratorAsync(generator, temporaryRoot, "Validatable", Source).ConfigureAwait(false);
+            var warnings = output.Split('\n').Where(text => text.Contains("warning RUNICBRIDGE031:", StringComparison.Ordinal)).ToArray();
+            int Line(string declaration) => Source.Split('\n').ToList().FindIndex(text => text.Contains(declaration, StringComparison.Ordinal)) + 1;
+            bool At(string declaration, string message) => warnings.Any(text =>
+                text.StartsWith($"{Path.Combine(directory, "Fixture.cs")}({Line(declaration)},", StringComparison.Ordinal)
+                && text.Contains(message, StringComparison.Ordinal));
+            Require(exitCode == 0 && warnings.Length == 2
+                    && At("public sealed class OtherValidationViewModel", "OtherValidationViewModel: Fixture.IValidatableViewModel is not the IValidatableViewModel of")
+                    && At("public sealed class OtherAddress", "OtherValidationViewModel (OtherAddress): Fixture.IValidatableViewModel")
+                    && warnings.All(text => text.TrimEnd().EndsWith($" See {HelpLink("RUNICBRIDGE031")}", StringComparison.Ordinal)),
+                $"An unrecognized IValidatableViewModel was not reported as located RUNICBRIDGE031 warnings.\n{output}");
+            var bridge = File.ReadAllText(Path.Combine(directory, "cs", "Fixture.OtherValidationViewModel.Bridge.g.cs"));
+            Require(!bridge.Contains("\"validation\"", StringComparison.Ordinal) && !bridge.Contains("ValidationReader", StringComparison.Ordinal),
+                "An unrecognized IValidatableViewModel gave the ViewModel a validation member.");
+        }
+        finally
+        {
+            if (Directory.Exists(temporaryRoot)) Directory.Delete(temporaryRoot, recursive: true);
+        }
+    }
+
     [Test]
     public async Task GeneratorRejectsUnsupportedModelsWithLocatedDiagnosticsAsync()
     {
