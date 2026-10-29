@@ -492,7 +492,10 @@ internal sealed class ConformanceTests
     public async Task AdapterNamingAndSchedulerEntryPointAsync()
     {
         var assembly = typeof(ReactiveSchedulers).Assembly;
-        var names = assembly.GetExportedTypes().Select(type => type.Name).ToHashSet();
+        // 0.14 keeps removed scheduler types for one release as error tombstones that name the replacement; they are no API.
+        var names = assembly.GetExportedTypes()
+            .Where(type => type.GetCustomAttributes(typeof(ObsoleteAttribute), false) is not [ObsoleteAttribute { IsError: true }])
+            .Select(type => type.Name).ToHashSet();
         foreach (var removed in new[] { "RunicReactiveExceptions", "RunicReactiveSchedulerProvider", "IRunicReactiveSchedulerProvider",
                      "RunicReactiveUIBuilderExtensions", "ReactiveRoutedRegion`1" })
             Require(!names.Contains(removed), $"{removed} is still public.");
