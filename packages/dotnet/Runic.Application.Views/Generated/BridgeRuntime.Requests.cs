@@ -218,16 +218,26 @@ public partial class ViewModelBridge<T>
             return EncodeFailure(new("failed", "Acknowledged field writes require a WindowContentSession."));
         if (!_checkedByMember.TryGetValue(member, out var property))
             return BridgeMessages.Rejected("invalid-request", $"The route {_name} has no checked field '{member}'.");
-        BridgeFieldWriteRequest<object?> write;
+        // text-splice/1: a checked text member's write may carry a splice of the field's value at expectedVersion
+        // instead of expectedValue and value (specs/application/README.md, "Checked writes").
+        var hasSplice = request.Root.TryGetProperty("splice", out var splice);
+        if (hasSplice && (!request.Connection.UsesTextSplice || !Array.Exists(_textMembers, text => text.WireName == member)))
+            return BridgeMessages.Rejected("invalid-request", request.Connection.UsesTextSplice
+                ? $"The route {_name} has no checked text member '{member}' that accepts splices."
+                : "The connection does not use text-splice/1.");
+        BridgeFieldWriteRequest<object?>? write = null;
+        string requestId;
+        long expectedVersion;
         try
         {
             var root = request.Root;
-            var requestId = root.GetProperty("requestId").GetString()!;
+            requestId = root.GetProperty("requestId").GetString()!;
             if (requestId.Length > MaximumFieldWriteRequestIdLength) throw new FormatException("The requestId is too long.");
-            BridgeRequestEnvelope.TryReadInteger(root.GetProperty("expectedVersion"), out var expectedVersion);
-            write = new(requestId, expectedVersion,
-                ReadCheckedValue(root.GetProperty("expectedValue"), property.Descriptor),
-                ReadCheckedValue(root.GetProperty("value"), property.Descriptor));
+            BridgeRequestEnvelope.TryReadInteger(root.GetProperty("expectedVersion"), out expectedVersion);
+            if (!hasSplice)
+                write = new(requestId, expectedVersion,
+                    ReadCheckedValue(root.GetProperty("expectedValue"), property.Descriptor),
+                    ReadCheckedValue(root.GetProperty("value"), property.Descriptor));
         }
         catch (Exception error) when (error is ArgumentException or FormatException or JsonException or InvalidOperationException
             or KeyNotFoundException or OverflowException)
@@ -235,6 +245,7 @@ public partial class ViewModelBridge<T>
             return EncodeFailure(new("rejected", $"{property.Descriptor.Name} has an invalid checked write.",
                 BridgeFailureDetails.Capture(error, IncludesFailureDetail), Reason: BridgeFailure.InvalidInput));
         }
+        var waits = true;
         ReadOnlyMemory<byte> reply;
         try
         {
@@ -246,7 +257,18 @@ public partial class ViewModelBridge<T>
                     var call = BridgeCall.Start(BridgeCallKind.Write, ModelName, _name, member);
                     try
                     {
-                        var receipt = property.Registry.Apply(write);
+                        BridgeFieldWriteReceipt<object?> receipt;
+                        if (write is not null) receipt = property.Registry.Apply(write);
+                        else if (ApplySplice(property, requestId, expectedVersion, splice) is { } spliced) receipt = spliced;
+                        else
+                        {
+                            // The field's value at expectedVersion is not text, or the splice does not fit it: nothing
+                            // was written or retained, and the client sends the write in full with the same requestId.
+                            call.Complete(BridgeCallOutcome.Rejected);
+                            waits = false;
+                            return BridgeMessages.Rejected("splice-base",
+                                $"The splice of {property.Descriptor.Name} does not fit its value at version {expectedVersion}; send the write in full.");
+                        }
                         call.Complete(BridgeCallOutcome.Ok);
                         return RanReply(null, writer => WriteReceipt(writer, receipt, property));
                     }
@@ -260,8 +282,25 @@ public partial class ViewModelBridge<T>
             });
         }
         catch (ObjectDisposedException) { return BridgeMessages.Released; }
+        if (!waits) return reply;
         await WaitForPublishedAsync(cancellationToken).ConfigureAwait(false);
         return ReleasedIfInactive(reply);
+    }
+
+    // A checked write with a splice: the registry rebuilds the value from the field's value at expectedVersion. Null
+    // when that value is not a string or the splice does not fit it (splice-base).
+    private static BridgeFieldWriteReceipt<object?>? ApplySplice(CheckedPropertyBinding property, string requestId,
+        long expectedVersion, JsonElement splice)
+    {
+        var length = Integer(splice, "length");
+        var index = Integer(splice, "index");
+        var delete = Integer(splice, "delete");
+        var text = splice.GetProperty("text").GetString()!;
+        // The retry identity of the splice; the text comes last, so the numbers before it are unambiguous.
+        var identity = string.Create(System.Globalization.CultureInfo.InvariantCulture, $"{length}:{index}:{delete}:{text}");
+        return property.Registry.ApplySplice(requestId, expectedVersion, identity, value =>
+            value is string current && BridgeTextSplice.TryApply(current, length, index, delete, text, out var rebuilt)
+                ? (true, rebuilt) : (false, null));
     }
 
     private static void WriteReceipt(Utf8JsonWriter writer, BridgeFieldWriteReceipt<object?> receipt, CheckedPropertyBinding property)

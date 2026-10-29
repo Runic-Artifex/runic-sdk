@@ -102,6 +102,64 @@ internal sealed class CheckedWriteGuaranteeTests
             "An oversized receipt was neither bounded nor protected by an expiry tombstone.");
     }
 
+    // text-splice/1: a splice write retains its expectedVersion and splice, and a retry must repeat that form.
+    [Test]
+    public void ASpliceWriteReplaysOnlyTheSameSplice()
+    {
+        var value = new string('a', 100);
+        var applies = 0;
+        using var registry = new BridgeFieldWriteRegistry<string>("owner", "text", () => value, next =>
+        {
+            applies++;
+            value = next;
+        }, canonicalize: static text => text, retainedValueByteCount: static text => Encoding.UTF8.GetByteCount(text));
+        static (bool, string) Append(string current) => (true, current + "!");
+
+        var first = registry.ApplySplice("splice", 0, "100:100:0:!", Append);
+        Require(first is { Kind: BridgeFieldWriteReceiptKind.Applied } && first.Current.Value == new string('a', 100) + "!" && applies == 1,
+            "A splice write was not applied as the full write of its rebuilt value.");
+        var replay = registry.ApplySplice("splice", 0, "100:100:0:!", Append);
+        Require(replay is { Kind: BridgeFieldWriteReceiptKind.Applied } && replay.Current == first.Current && applies == 1,
+            "A splice-write retry did not replay its original receipt.");
+        Require(registry.ApplySplice("splice", 0, "100:100:0:?", Append)?.Kind == BridgeFieldWriteReceiptKind.Conflict
+            && registry.ApplySplice("splice", 1, "100:100:0:!", Append)?.Kind == BridgeFieldWriteReceiptKind.Conflict,
+            "Reusing a splice write's request ID with another splice or version did not conflict.");
+        RequireDifferentPayload(registry.Apply(new("splice", 0, new string('a', 100), new string('a', 100) + "!")),
+            "A full write repeated a splice write's request ID.");
+
+        // A full write's request ID does not replay for a splice write of the same change.
+        _ = registry.Apply(new("full", 1, value, value + "!"));
+        RequireDifferentPayload(registry.ApplySplice("full", 1, "101:101:0:!", Append)!, "A splice write repeated a full write's request ID.");
+        Require(applies == 2, "A reused request ID wrote.");
+    }
+
+    [Test]
+    public void ASpliceThatDoesNotFitItsBaseRetainsNothing()
+    {
+        var value = "base";
+        var applies = 0;
+        using var registry = new BridgeFieldWriteRegistry<string>("owner", "text", () => value, next =>
+        {
+            applies++;
+            value = next;
+        }, canonicalize: static text => text, retainedValueByteCount: static text => Encoding.UTF8.GetByteCount(text));
+
+        // The version is checked before the base: a stale splice write is a retained conflict.
+        Require(registry.ApplySplice("stale", 3, "9:0:0:x", static current => (false, current))?.Kind == BridgeFieldWriteReceiptKind.Conflict
+            && registry.Lookup("stale").Kind == BridgeFieldWriteStatusKind.Retained,
+            "A splice write of another version was not a retained conflict.");
+        Require(registry.ApplySplice("misfit", 0, "9:0:0:x", static current => (false, current)) is null,
+            "A splice that does not fit its base returned a receipt.");
+        Require(registry.Lookup("misfit").Kind == BridgeFieldWriteStatusKind.Unknown && applies == 0,
+            "A splice that does not fit its base was retained or written.");
+        Require(registry.Apply(new("misfit", 0, "base", "based")).Kind == BridgeFieldWriteReceiptKind.Applied && value == "based",
+            "The request ID of a splice that did not fit was not free for the full write.");
+    }
+
+    private static void RequireDifferentPayload<T>(BridgeFieldWriteReceipt<T> receipt, string message) => Require(
+        receipt.Kind == BridgeFieldWriteReceiptKind.Conflict
+            && receipt.Message?.Contains("different checked-write payload", StringComparison.Ordinal) == true, message);
+
     private static string Canonical(int value) => value.ToString(CultureInfo.InvariantCulture);
 
     private static void RequireConflict(BridgeFieldWriteReceipt<int> receipt, string changedMember) => Require(

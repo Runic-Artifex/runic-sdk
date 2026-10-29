@@ -131,8 +131,7 @@ internal sealed class BridgeRequestEnvelope : IDisposable
                 return ReadMember(root)
                     ?? Identifier(root, "requestId")
                     ?? Integer(root, "expectedVersion", minimum: 0)
-                    ?? Present(root, "expectedValue")
-                    ?? Present(root, "value");
+                    ?? WriteValue(root);
             case "command":
             case "can":
                 return ReadMember(root);
@@ -191,6 +190,22 @@ internal sealed class BridgeRequestEnvelope : IDisposable
         if (bases != 1) return "The request's splice does not have exactly one of baseEdit and baseRevision.";
         return (splice.TryGetProperty("baseEdit", out _) ? Integer(splice, "baseEdit", minimum: 1) : Integer(splice, "baseRevision", minimum: 0))
             ?? Integer(splice, "length", minimum: 0)
+            ?? Integer(splice, "index", minimum: 0)
+            ?? Integer(splice, "delete", minimum: 0)
+            ?? String(splice, "text");
+    }
+
+    // A checked write carries expectedValue and value, or a text splice of the field's value at expectedVersion
+    // (text-splice/1): exactly one of value and splice, and no expectedValue with a splice.
+    private static string? WriteValue(JsonElement root)
+    {
+        if (!root.TryGetProperty("splice", out var splice)) return Present(root, "expectedValue") ?? Present(root, "value");
+        if (root.TryGetProperty("value", out _)) return "The request has both a value and a splice.";
+        if (root.TryGetProperty("expectedValue", out _)) return "The request has both an expectedValue and a splice.";
+        if (splice.ValueKind != JsonValueKind.Object) return "The request's splice is not an object.";
+        if (splice.TryGetProperty("baseEdit", out _) || splice.TryGetProperty("baseRevision", out _))
+            return "The splice of a checked write has no baseEdit or baseRevision: its base is the field's value at expectedVersion.";
+        return Integer(splice, "length", minimum: 0)
             ?? Integer(splice, "index", minimum: 0)
             ?? Integer(splice, "delete", minimum: 0)
             ?? String(splice, "text");

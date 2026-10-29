@@ -154,47 +154,106 @@ internal sealed class BridgeFieldWriteRegistry<T> : IDisposable
                 return Retain(identity, new(request.RequestId, BridgeFieldWriteReceiptKind.Conflict, _current,
                     "The write baseline no longer matches the authoritative field.", null));
 
-            try
+            return Write(identity, request.RequestId, request.Value);
+        }
+    }
+
+    // A checked write that carries a text splice (text-splice/1, specs/application/README.md, "Checked writes"): the full
+    // write whose expected value is the field's value at expectedVersion and whose value is that base with the splice
+    // applied. rebuild applies the splice to the base, or fails when the base is not text or the splice does not fit
+    // it; then the write is not made, nothing is retained and the result is null (the reply splice-base). A retained
+    // request ID matches only a splice write with the same expectedVersion and splice identity.
+    internal BridgeFieldWriteReceipt<T>? ApplySplice(string requestId, long expectedVersion, string spliceIdentity,
+        Func<T, (bool Ok, T Value)> rebuild)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(requestId);
+        ArgumentNullException.ThrowIfNull(spliceIdentity);
+        ArgumentNullException.ThrowIfNull(rebuild);
+
+        return InTurn(() => ApplySpliceCore(requestId, expectedVersion, spliceIdentity, rebuild));
+    }
+
+    private BridgeFieldWriteReceipt<T>? ApplySpliceCore(string requestId, long expectedVersion, string spliceIdentity,
+        Func<T, (bool Ok, T Value)> rebuild)
+    {
+        lock (_gate)
+        {
+            ThrowIfDisposed();
+            if (_receipts.TryGetValue(requestId, out var existing))
             {
-                _applying = true;
-                _apply(request.Value);
-                var applied = Capture(_read()); // Preserve setter normalization in the receipt.
-                _current = Advance(applied);
+                if (existing.Identity.MatchesSplice(expectedVersion, spliceIdentity))
+                    return CopyReceipt(existing.Receipt);
+                return new(requestId, BridgeFieldWriteReceiptKind.Conflict, CopySnapshot(_current),
+                    "The request identity was already used with a different checked-write payload.", null);
             }
-            catch (Exception error)
+            if (_expiredRequestIds.Contains(RequestIdDigest(requestId)))
+                return new(requestId, BridgeFieldWriteReceiptKind.Conflict, CopySnapshot(_current),
+                    "The request identity expired. Reconcile authoritative field state before issuing a new write.", null);
+
+            var identity = RequestIdentity.CaptureSplice(expectedVersion, spliceIdentity);
+
+            var actual = Capture(_read());
+            if (!_equals.Equals(actual, _current.Value))
             {
-                // A setter may validate before or after changing its backing
-                // field. Re-read it so a receipt never leaves the owner with a
-                // stale observed snapshot.
-                var afterFailure = Capture(_read());
-                if (!_equals.Equals(afterFailure, _current.Value))
-                {
-                    _current = Advance(afterFailure);
-                    return Retain(identity, new(request.RequestId, BridgeFieldWriteReceiptKind.PostApplyValidationFailed, _current,
-                        error.Message, null));
-                }
-                return Retain(identity, new(request.RequestId, BridgeFieldWriteReceiptKind.Rejected, _current,
-                    error.Message, null));
-            }
-            finally
-            {
-                _applying = false;
+                _current = Advance(actual);
+                return Retain(identity, new(requestId, BridgeFieldWriteReceiptKind.Conflict, _current,
+                    "The authoritative value changed without an observed field update.", null));
             }
 
-            // Validation may inspect other application state and fail after
-            // the setter has already committed. That is not a rejected write:
-            // retain the post-setter snapshot and make the failure explicit so
-            // a dependent action cannot proceed under a false assumption.
-            try
+            if (expectedVersion != _current.Version)
+                return Retain(identity, new(requestId, BridgeFieldWriteReceiptKind.Conflict, _current,
+                    "The write baseline no longer matches the authoritative field.", null));
+
+            // The base is the field's value at expectedVersion, which is its current value.
+            var (ok, value) = rebuild(Capture(_current.Value));
+            if (!ok) return null;
+            return Write(identity, requestId, value);
+        }
+    }
+
+    // Runs the setter for a write whose baseline matched, inside the gate, and retains its receipt.
+    private BridgeFieldWriteReceipt<T> Write(RequestIdentity identity, string requestId, T value)
+    {
+        try
+        {
+            _applying = true;
+            _apply(value);
+            var applied = Capture(_read()); // Preserve setter normalization in the receipt.
+            _current = Advance(applied);
+        }
+        catch (Exception error)
+        {
+            // A setter may validate before or after changing its backing
+            // field. Re-read it so a receipt never leaves the owner with a
+            // stale observed snapshot.
+            var afterFailure = Capture(_read());
+            if (!_equals.Equals(afterFailure, _current.Value))
             {
-                return Retain(identity, new(request.RequestId, BridgeFieldWriteReceiptKind.Applied, _current,
-                    null, _validate?.Invoke(Capture(_current.Value))));
-            }
-            catch (Exception error)
-            {
-                return Retain(identity, new(request.RequestId, BridgeFieldWriteReceiptKind.PostApplyValidationFailed, _current,
+                _current = Advance(afterFailure);
+                return Retain(identity, new(requestId, BridgeFieldWriteReceiptKind.PostApplyValidationFailed, _current,
                     error.Message, null));
             }
+            return Retain(identity, new(requestId, BridgeFieldWriteReceiptKind.Rejected, _current,
+                error.Message, null));
+        }
+        finally
+        {
+            _applying = false;
+        }
+
+        // Validation may inspect other application state and fail after
+        // the setter has already committed. That is not a rejected write:
+        // retain the post-setter snapshot and make the failure explicit so
+        // a dependent action cannot proceed under a false assumption.
+        try
+        {
+            return Retain(identity, new(requestId, BridgeFieldWriteReceiptKind.Applied, _current,
+                null, _validate?.Invoke(Capture(_current.Value))));
+        }
+        catch (Exception error)
+        {
+            return Retain(identity, new(requestId, BridgeFieldWriteReceiptKind.PostApplyValidationFailed, _current,
+                error.Message, null));
         }
     }
 
@@ -367,16 +426,27 @@ internal sealed class BridgeFieldWriteRegistry<T> : IDisposable
         private readonly string? _valueDigest;
         private readonly T? _expectedValue;
         private readonly T? _value;
+        // The digest of a splice write's splice (text-splice/1); null for a write of a full value.
+        private readonly string? _spliceDigest;
 
         private RequestIdentity(long expectedVersion, string? expectedDigest, string? valueDigest,
-            T? expectedValue, T? value)
+            T? expectedValue, T? value, string? spliceDigest = null)
         {
             _expectedVersion = expectedVersion;
             _expectedDigest = expectedDigest;
             _valueDigest = valueDigest;
             _expectedValue = expectedValue;
             _value = value;
+            _spliceDigest = spliceDigest;
         }
+
+        // A splice write retains its expected version and the digest of its splice, not the rebuilt value.
+        internal static RequestIdentity CaptureSplice(long expectedVersion, string spliceIdentity) =>
+            new(expectedVersion, null, null, default, default, Digest(spliceIdentity));
+
+        // A retry repeats the original's form: a splice write matches only a splice write.
+        internal bool MatchesSplice(long expectedVersion, string spliceIdentity) =>
+            _spliceDigest is not null && _expectedVersion == expectedVersion && _spliceDigest == Digest(spliceIdentity);
 
         internal static RequestIdentity Capture(BridgeFieldWriteRequest<T> request, Func<T, T> snapshot,
             Func<T, string>? canonicalize) => canonicalize is null
@@ -386,7 +456,7 @@ internal sealed class BridgeFieldWriteRegistry<T> : IDisposable
         internal bool Matches(BridgeFieldWriteRequest<T> request, IEqualityComparer<T> equals,
             Func<T, string>? canonicalize)
         {
-            if (_expectedVersion != request.ExpectedVersion) return false;
+            if (_spliceDigest is not null || _expectedVersion != request.ExpectedVersion) return false;
             if (_expectedDigest is not null || _valueDigest is not null)
                 return canonicalize is not null
                     && _expectedDigest == Digest(canonicalize(request.ExpectedValue))
@@ -396,7 +466,8 @@ internal sealed class BridgeFieldWriteRegistry<T> : IDisposable
         }
 
         internal int RetainedBytes(Func<T, int>? count) => checked(sizeof(long)
-            + (_expectedDigest is not null ? _expectedDigest.Length + _valueDigest!.Length
+            + (_spliceDigest is not null ? _spliceDigest.Length
+                : _expectedDigest is not null ? _expectedDigest.Length + _valueDigest!.Length
                 : (count?.Invoke(_expectedValue!) ?? EstimateRetainedValueBytes(_expectedValue!))
                     + (count?.Invoke(_value!) ?? EstimateRetainedValueBytes(_value!))));
 
