@@ -198,8 +198,6 @@
       "runic.platform": {
         "type": "Project"
       },
-
-
       "runic.platform.linux": {
         "type": "Project",
         "dependencies": {
