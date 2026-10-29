@@ -277,3 +277,26 @@ test("exposed third-party packages are bounded to their tested major and referen
   const effect = json("packages/web/views-effect/package.json").peerDependencies.effect;
   assert.match(effect, /^\^\d+\./, "views-effect bounds effect to its major");
 });
+
+// The DynamicData fork pin (dynamicData.forkRevision, which the DynamicData consumer workflow builds from source) and
+// the RunicArtifex.DynamicData packages that lock files resolve, such as the one ReactiveUI.Validation brings, are one
+// release: every lock resolves dynamicData.packageVersion, and the workflow requires the fork's tag
+// v{packageVersion} to point at forkRevision.
+test("the DynamicData fork pin matches the locked RunicArtifex.DynamicData version", () => {
+  const { dynamicData } = workspace;
+  assert.match(dynamicData.forkRevision, /^[0-9a-f]{40}$/);
+  assert.match(dynamicData.packageVersion, /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/);
+  const locks = spawnSync("git", ["ls-files", "*packages.lock.json"], { cwd: root, encoding: "utf8" }).stdout.split("\n").filter(Boolean);
+  let resolved = 0;
+  for (const path of locks) {
+    for (const [framework, packages] of Object.entries(json(path).dependencies ?? {}))
+      for (const [name, entry] of Object.entries(packages))
+        if (name === "RunicArtifex.DynamicData" || name === "RunicArtifex.DynamicData.Reactive") {
+          resolved++;
+          assert.equal(entry.resolved, dynamicData.packageVersion,
+            `${path} (${framework}) resolves ${name} ${entry.resolved}, but eng/workspace.json pins the fork at ${dynamicData.packageVersion}`);
+        }
+  }
+  assert.ok(resolved > 0, "No lock file resolves RunicArtifex.DynamicData; check the pin another way.");
+});
+
