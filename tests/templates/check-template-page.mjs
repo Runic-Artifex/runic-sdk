@@ -121,6 +121,12 @@ async function checkPage(url, expectedHeader, metaPolicy) {
     await count.filter({ hasText: /^\s*0\s*$/ }).waitFor({ timeout });
     await page.getByRole("button", { name: "Increment", exact: true }).click({ timeout });
     await count.filter({ hasText: /^\s*1\s*$/ }).waitFor({ timeout });
+    // The field bindings: a number field (Step) and a text field (Label) write through their setters.
+    await page.getByLabel("Step").selectOption("5", { timeout });
+    await page.getByRole("button", { name: "Increment", exact: true }).click({ timeout });
+    await count.filter({ hasText: /^\s*6\s*$/ }).waitFor({ timeout });
+    await page.getByLabel("Label").fill("Taps", { timeout });
+    await page.locator(".caption").filter({ hasText: /^\s*Taps\s*$/ }).waitFor({ timeout });
     // Violations are reported asynchronously; give late ones, such as from a mount effect, time to arrive.
     await page.waitForTimeout(1_000);
     const report = csp.report();

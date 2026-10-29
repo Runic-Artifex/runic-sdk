@@ -270,9 +270,14 @@ instead; see the
 ## Read-only and settable state
 
 As in any MVVM View, the C# setters decide what the frontend may set. The
-Counter's `Count` has a private setter, so the page only reads it; `Step` has a
-public setter, so the generated client has `setStep` and the page binds it two
-way. Give status such as `IsDirty`, `Error` or a collection a private setter
+Counter's `Count` has a private setter, so the page only reads it; `Step` and
+`Label` have public setters, so the generated client has `setStep` and
+`setLabel`, and the generated `CounterFields` has a field descriptor for each.
+The page binds them with the framework's field binding (`useField`, or
+`injectField` in Angular), which writes what the user types, keeps it while
+the writes are on their way, parses numbers, and reports the member's
+validation messages. Pass `{ commit: "pause" }` to write after a pause and
+when the field loses focus instead of on every input. Give status such as `IsDirty`, `Error` or a collection a private setter
 <!--#if (viewModels == "reactiveui") -->
 (`private set => this.RaiseAndSetIfChanged(...)`, or `[Reactive]` with
 `{ get; private set; }`), and keep form fields publicly settable.

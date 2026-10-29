@@ -1,27 +1,36 @@
 <svelte:options runes={true} />
 
 <script lang="ts">
-  import { useCommand, useView } from "@runic-artifex/svelte";
-  import type { CounterPageReference } from "../generated/counter.js";
+  import { useCommand, useField, useView } from "@runic-artifex/svelte";
+  import { CounterFields, type CounterPageReference } from "../generated/counter.js";
 
   let { page }: { page: CounterPageReference } = $props();
   const counter = useView(() => page);
   const increment = useCommand(() => counter.client?.increment());
-  // Step has a public C# setter, so the client has setStep for a two-way
-  // binding. Count's setter is private: the page only reads it.
-  const setStep = useCommand((step: number) => counter.client?.setStep(step));
-  const error = $derived(increment.error ?? setStep.error ?? counter.error);
+  // Step and Label have public C# setters, so the generated CounterFields has a
+  // field for each; the field's attachment writes them and keeps what the user
+  // typed while the writes are on their way. Count's setter is private: the page
+  // only reads it.
+  const step = useField(() => counter, CounterFields.step);
+  const label = useField(() => counter, CounterFields.label);
+  const error = $derived(increment.error ?? step.error ?? label.error ?? counter.error);
 </script>
 
 <section>
   <h2>Counter View</h2>
+  <p class="caption">{counter.state?.label ?? "…"}</p>
   <p class="count">{counter.state?.count ?? "…"}</p>
   <label>
     Step
-    <select disabled={!counter.client} bind:value={() => counter.state?.step ?? 1, step => setStep.run(step)}>
-      {#each [1, 2, 5, 10] as step (step)}<option value={step}>{step}</option>{/each}
+    <select disabled={!counter.client} {@attach step.attach}>
+      {#each [1, 2, 5, 10] as value (value)}<option value={value}>{value}</option>{/each}
     </select>
   </label>
-  <button disabled={!counter.client || increment.pending} onclick={() => increment.run()}>Increment</button>
+  <label>
+    Label
+    <input disabled={!counter.client} {@attach label.attach}>
+  </label>
+  <!-- Increment waits until the Step it adds has been written. -->
+  <button disabled={!counter.client || increment.pending || step.editing} onclick={() => increment.run()}>Increment</button>
   {#if error !== undefined}<p role="alert">{String(error)}</p>{/if}
 </section>
