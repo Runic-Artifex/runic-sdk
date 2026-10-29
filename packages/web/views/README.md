@@ -291,34 +291,78 @@ How a field stays correct depends on what it calls:
   bound to state loses keys typed meanwhile. Bind text to a setter, or use the
   text field binding below with the command as `write`.
 
-### The text field binding
+### Fields
 
-`createTextFieldController({ read, write, coalesce?, keepDraftOnError? })` binds a text
-input to one View member, so typing key by key never loses characters: while its
-writes are in flight it shows the user's draft, at most one write is in flight (text
-typed meanwhile is written next), nothing is written during IME composition, and once
-the last write settled it shows the View's value with any normalization. Angular
-`injectTextField` and React, Vue and Svelte `useTextField` wrap it; prefer those
-([Angular](https://github.com/Runic-Artifex/runic-sdk/tree/main/packages/web/angular#text-inputs),
-[React](https://github.com/Runic-Artifex/runic-sdk/tree/main/packages/web/react#text-inputs-usetextfieldview-read-write-options),
-[Vue](https://github.com/Runic-Artifex/runic-sdk/tree/main/packages/web/vue#text-inputs-usetextfieldview-read-write-options),
-[Svelte](https://github.com/Runic-Artifex/runic-sdk/tree/main/packages/web/svelte#text-inputs-usetextfieldview-read-write-options)).
+The generator emits a descriptor for each settable member of a View, `{View}Fields`:
 
 ```ts
-const name = createTextFieldController({ read: (state: Person) => state.name, write: (client: PersonClient, value) => client.setName(value) });
-const stopState = client.subscribe(state => { name.setSource({ state, client }); render(name.current); });
-const stopField = name.subscribe(() => render(name.current));
-input.addEventListener("input", () => name.input(input.value));
-input.addEventListener("compositionstart", () => name.compositionStart());
-input.addEventListener("compositionend", () => name.compositionEnd(input.value));
+import { EditorFields } from "./generated/editor.js";
+EditorFields.title; // { name: "title", kind: "text", read, write, checked, baseline, errors? }
+EditorFields.step;  // { name: "step", kind: "number", integer: true, … }
 ```
 
-`current` has `value`, `editing` and `error`. Call `setSource` with each new state; it
-does not notify. `write` may be a setter, a command or a checked write
-(`write<Property>`); with a setter the binding adds coalescing and keeps the draft
-after an error. `coalesce: false` writes every value. A failed write keeps the draft
-and sets `error` until `reset()` or the next input (`keepDraftOnError: false` shows
-the View's value instead). `editing` is true while a draft exists.
+`kind` is `text` (any TypeScript `string`: strings, `Guid`, dates, decimals), `number` (`integer` for integer
+types), `bigint`, `boolean`, `choice` (an enum; `choices` lists its names) or `value` (objects, lists, unions), and
+`nullable` marks nullable members. `read` and `write` are the member and its setter; `checked` and `baseline` its
+checked write and `fieldBaseline`. A View with validation adds `errors(state)`: the member's messages from
+`{name}Errors`, or from `validation` at the member's path, followed by the messages below it, such as those of an
+object's members.
+
+`createFieldController(field, options)` binds one input to a member, for any kind. Angular `injectField` and React,
+Vue and Svelte `useField` wrap it with each framework's wiring; prefer those. Typing key by key never loses
+characters: while its writes are in flight the field shows the user's draft, at most one write is in flight (text
+typed meanwhile is written next), nothing is written during IME composition, and once the last write settled it
+shows the View's value with any normalization.
+
+```ts
+const title = createFieldController(EditorFields.title, { commit: "pause" });
+const stopState = editor.subscribe(state => { title.setSource({ state, client: editor }); render(title.current); });
+const stopField = title.subscribe(() => render(title.current));
+input.addEventListener("input", () => title.inputText(input.value));
+input.addEventListener("compositionstart", () => title.compositionStart());
+input.addEventListener("compositionend", () => title.compositionEnd(input.value));
+input.addEventListener("blur", () => title.commit());
+```
+
+`current` has:
+
+- `value`: the draft while one exists, otherwise the member's value in the View's state;
+- `text`: what a text input shows: the text typed while it does not parse or still means `value` (`1.` while typing
+  `1.5` into a number field), otherwise `value` formatted;
+- `editing`: a draft exists. Keep the input enabled while it is true;
+- `error`: why the latest write or text failed: a `BridgeError`, or a `FieldError` (below);
+- `errors`: the member's validation messages (`[]` when valid);
+- `conflict`: the producer's `{value, version}` while a checked write's conflict keeps the draft.
+
+`input(value)` takes a value, `inputText(text)` the text of an input, parsed for the field's kind: `-` or `1e` in a
+number field stay the draft with a `FieldError` of kind `invalid-text`, and nothing is written until the text parses.
+An empty text is `null` for a nullable number, choice or boolean.
+
+Options:
+
+- `commit: "input"` (the default) writes each input, coalesced (`coalesce: false` writes every one, in order by
+  their edit numbers). `commit: "pause"` writes the draft after `delay` milliseconds without input (700 by default)
+  and at once on `commit()`, which the framework bindings call when the element loses focus; text that was not
+  written yet is written when the field is disposed. Use it where each write is an undo step or starts work in .NET.
+  `commit()` resolves with the field's state once its writes settled, so a command that depends on the field can
+  follow them and skip a failed write: `if ((await title.commit()).error === undefined) await editor.save()`.
+- `checked: true` writes with the member's checked write instead of its setter. The write is checked against the
+  value and version the field showed when the draft started and then against each receipt, so a change by another
+  writer meanwhile is a conflict instead of being overwritten. Checked writes are one at a time.
+- `keepDraftOnError: false` shows the View's value after a failed, rejected or conflicting write instead of the
+  draft.
+
+Receipts of checked writes, also when `write` of a text field calls one:
+
+| Receipt | Field |
+| --- | --- |
+| `applied` | Success. The receipt's `validation`, if any, is `errors` when the descriptor has no `errors`. |
+| `rejected` | The draft stays; `error` is a `FieldError` `rejected` with the setter's message. The next input writes again. |
+| `conflict` | The draft stays; `conflict` and `error.current` are the producer's field, `error` is a `FieldError` `conflict`. Nothing is written until `retry()` writes the draft over the producer's value or `reset()` takes it. A conflict whose incoming value is the value sent is a success. |
+| `committed-with-error` | The value was committed and the draft is dropped; `error` is a `FieldError` `committed-with-error`. |
+
+`createTextFieldController({ read, write, … })` is the string case for a hand-written `read` and `write`, such as a
+command; `injectTextField` and `useTextField` wrap it.
 
 ### Long text: splices
 
@@ -330,7 +374,7 @@ setter with it, exactly as if the page had sent the whole value. Frames change l
 keystroke in a 100,000-character editor sends about 130 bytes and receives about 160, instead of about 100 KB each
 way.
 
-Nothing changes in code: setters, `createTextFieldController` and the framework text field bindings send splices on
+Nothing changes in code: setters, checked writes, the field controllers and the framework field bindings send splices on
 their own, and `snapshot` holds whole strings. A splice that keeps fewer than 64 characters of the old value, a change
 from or to `null`, and any value when the host lists no features cross whole. When .NET no longer has the value a
 splice was based on, such as after a reconnect or when another window changed the member, the setter sends the value

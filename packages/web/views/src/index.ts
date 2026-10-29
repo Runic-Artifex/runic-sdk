@@ -57,6 +57,17 @@ export type {
 } from "./operations.js";
 export type { BridgeInteractionContext, InteractionSurface } from "./interactions.js";
 export {
+  createFieldController,
+  FieldError,
+  type FieldCommit,
+  type FieldController,
+  type FieldDefinition,
+  type FieldErrorKind,
+  type FieldOptions,
+  type FieldSource,
+  type FieldState,
+} from "./field-controller.js";
+export {
   createTextFieldController,
   type TextFieldController,
   type TextFieldControllerOptions,
