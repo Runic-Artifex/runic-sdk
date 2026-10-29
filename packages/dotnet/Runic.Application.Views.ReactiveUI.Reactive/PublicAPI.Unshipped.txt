@@ -1,1 +1,4 @@
 #nullable enable
+Runic.Application.Views.ReactiveUI.Reactive.IRunicReactiveSchedulerProvider
+Runic.Application.Views.ReactiveUI.Reactive.RunicReactiveSchedulerProvider
+static Runic.Application.Views.ReactiveUI.Reactive.RunicReactiveSchedulerProvider.InstallMainThreadScheduler(Microsoft.Extensions.Logging.ILoggerFactory? loggerFactory = null) -> bool

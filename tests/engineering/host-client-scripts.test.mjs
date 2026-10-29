@@ -61,6 +61,19 @@ for (const script of scripts) {
     expect("onReconnect" in bridge).toBe(false);
   });
 
+  // A1: a page wrapper written for protocol 3 sees nothing reach .NET; the first call says why in the console, once.
+  test(`${script} warns once when a page uses the protocol-3 call stub`, async () => {
+    const warnings = [];
+    const context = load(script, { console: { ...console, warn: (...args) => warnings.push(args.join(" ")) } });
+    context.webui = { isConnected: () => true, allowNavigation() {}, call: async () => "" };
+    const bridge = context.__runicBridge;
+    await bridge.call("counterSnapshot");
+    await bridge.call("counterIncrement", "{}");
+    expect(warnings.length).toBe(1);
+    expect(warnings[0]).toContain('__runicBridge.call("counterSnapshot")');
+    expect(warnings[0]).toContain("__runicBridge.request(message)");
+  });
+
   test(`${script} rejects requests without the host's script`, async () => {
     const context = load(script);
     await expect(context.__runicBridge.request('{"kind":"hello"}')).rejects.toThrow(/is unavailable\.$/);

@@ -58,7 +58,9 @@ internal sealed class EditorBrowsableTests
         // Every other [EditorBrowsable(Never)] type of the core package is host-adapter API, not generated-code support.
         var hidden = typeof(WindowContentSession).Assembly.GetExportedTypes()
             .Where(type => type.GetCustomAttribute<EditorBrowsableAttribute>(false)?.State == EditorBrowsableState.Never
-                && type.Namespace == "Runic.Application.Views")
+                && type.Namespace == "Runic.Application.Views"
+                // Error tombstones of removed types (0.14) are hidden too; they are no API.
+                && type.GetCustomAttribute<ObsoleteAttribute>(false) is not { IsError: true })
             .Select(type => type.Name).Order(StringComparer.Ordinal);
         Require(hidden.SequenceEqual(["IRunicWindowOpeningObserver", "RunicWindowOpening`1"]),
             $"Unexpected hidden types in Runic.Application.Views: {string.Join(", ", hidden)}");

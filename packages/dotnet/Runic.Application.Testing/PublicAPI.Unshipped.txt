@@ -42,3 +42,4 @@ Runic.Application.Testing.RunicViewDriver<TModel>.ViewsAsync<TContent>(System.Li
 Runic.Application.Testing.RunicViewDriver<TModel>.WriteAsync<TValue>(System.Linq.Expressions.Expression<System.Func<TModel!, TValue>!>! property, TValue value, long? expectedVersion = null, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<Runic.Application.Testing.RunicFieldWriteReceipt<TModel!>!>!
 Runic.Application.Testing.RunicWindowTestHost<TViewModel>.Services.get -> System.IServiceProvider?
 static Runic.Application.Testing.RunicWindowTestHost.Create<TViewModel>(System.IServiceProvider! services, TViewModel! viewModel, Runic.Application.Testing.RunicWindowTestHostOptions? options = null) -> Runic.Application.Testing.RunicWindowTestHost<TViewModel!>!
+Runic.Application.Testing.BridgeTestArguments
