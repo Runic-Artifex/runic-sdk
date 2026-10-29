@@ -107,14 +107,159 @@ frame that answers an older keystroke never replaces newer text. At most one wri
 in flight; text typed meanwhile is written next as one value (`coalesce: false` writes
 every change). Nothing is written during IME composition. Once the last write settled,
 the field shows the View's value again, including any normalization the ViewModel
-applied (trimmed, upper-cased). `write` may also be a command or a checked write. A
-failed write keeps the draft and sets `error` (`keepDraftOnError: false` shows the
-View's value instead); `reset()` drops the draft. `editing` is true while a draft
+applied (trimmed, upper-cased). `write` may also be a command or a checked write,
+whose receipt is read: a `rejected` or `conflict` receipt keeps the draft and sets
+`error` to a `FieldError` of that kind, and `committed-with-error` drops the draft and
+sets one too (see [Fields](#fields)). A failed write keeps the draft and sets `error`
+(`keepDraftOnError: false` shows the View's value instead); `reset()` drops the draft. `editing` is true while a draft
 exists. Don't disable the input on the View's busy state (`isSaving`, `can…`) while
 the user types: the field's own write causes it, and keys typed meanwhile would be
 lost. Test such fields by typing key by key (Playwright `pressSequentially`, Testing
 Library `user.type`) against the mock with `latency: "slow"`; `fill()` sets the whole
 text at once and hides the race.
+
+## Fields
+
+For generated Views prefer `injectField(view, field, options?)`: pass a descriptor of the
+generated `{View}Fields`, such as `EditorFields.title`. It wraps the framework-neutral
+[field controller](https://github.com/Runic-Artifex/runic-sdk/tree/main/packages/web/views#fields)
+for every kind (text, numbers, booleans, enums) and returns signals and actions:
+
+- `value`, `text` (what a text input shows: `1.` stays while typing `1.5`), `editing`,
+  `error` (a `BridgeError` or a `FieldError`), `errors` (the member's validation
+  messages) and `conflict`;
+- `input(value)`, `inputText(event | text)`, `compositionStart()`,
+  `compositionEnd(event | text)`, `commit()`, `retry()` and `reset()`;
+- `field`: the descriptor's `kind`, `nullable`, `integer` and `choices`.
+
+```ts
+import { Component, input } from "@angular/core";
+import { injectField, injectView } from "@runic-artifex/angular";
+import { EditorFields, type EditorPageReference } from "./generated/editor";
+
+@Component({
+  selector: "editor-page",
+  template: `
+    <input [value]="title.text()" [attr.aria-invalid]="title.errors().length > 0 || null"
+      (input)="title.inputText($event)" (blur)="title.commit()"
+      (compositionstart)="title.compositionStart()" (compositionend)="title.compositionEnd($event)">
+    @for (message of title.errors(); track message) { <p role="alert">{{ message }}</p> }
+  `,
+})
+export class EditorPage {
+  readonly page = input.required<EditorPageReference>();
+  readonly editor = injectView(this.page);
+  readonly title = injectField(this.editor, EditorFields.title);
+}
+```
+
+The options are those of the controller and `injector`:
+
+- `commit: "pause"` writes the draft after `delay` milliseconds without input (700
+  by default) and at once on `commit()`, which blur calls; use it where each write is
+  an undo step or starts work in .NET. `commit()` resolves once the field's writes
+  settled, so a command that depends on the field can follow it:
+  `await this.title.commit(); await this.editor.client()?.save();`.
+- `checked: true` writes with the member's checked write: a change by another writer
+  since the draft started is a conflict instead of being overwritten.
+- `coalesce` and `keepDraftOnError`, as for `injectTextField`.
+
+A checked write's receipt is read: `rejected` keeps the draft with a `FieldError`
+`rejected`; `conflict` keeps the draft, sets `conflict` to the producer's
+`{ value, version }` and writes nothing until `retry()` (write the draft over it) or
+`reset()` (take the producer's value); `committed-with-error` keeps the committed value
+with a `FieldError`. `errors` follows the member's validation in the View's state:
+
+```html
+@if (title.conflict(); as theirs) {
+  <p role="alert">Changed elsewhere to “{{ theirs.value }}”.
+    <button (click)="title.retry()">Keep mine</button> <button (click)="title.reset()">Take theirs</button></p>
+}
+```
+
+### `[runicField]` and Reactive Forms
+
+`@runic-artifex/angular/forms` needs `@angular/forms` (an optional peer; the main
+entry does not). `RunicFieldDirective` wires an `<input>`, `<textarea>` or
+`<select>` in one attribute: input (`change` for checkboxes, radios and selects),
+composition, `commit()` on blur, the element's `value` or `checked`, and
+`aria-invalid`:
+
+```ts
+import { RunicFieldDirective } from "@runic-artifex/angular/forms";
+
+@Component({
+  selector: "editor-page",
+  imports: [RunicFieldDirective],
+  template: `<input [runicField]="title"> <input type="checkbox" [runicField]="pinned">`,
+})
+export class EditorPage {
+  readonly page = input.required<EditorPageReference>();
+  readonly editor = injectView(this.page);
+  readonly title = injectField(this.editor, EditorFields.title, { commit: "pause" });
+  readonly pinned = injectField(this.editor, EditorFields.pinned);
+}
+```
+
+It is also the `ControlValueAccessor` and validator of a `formControl` or
+`formControlName` on the same element. The View's value flows into the control
+without marking it dirty or emitting `valueChanges`, and a control's initial value
+is not written; what the user types reaches the control as usual; `setValue`,
+`patchValue` and `reset` write through to the View when they change the value (a
+`null` from `reset()` of a nullable control is ignored for a non-nullable field);
+`disable()` disables the element; and the control has the error
+`{ runic: errors }` while the View reports validation messages for the member:
+
+```ts
+import { FormControl, FormGroup, ReactiveFormsModule } from "@angular/forms";
+
+@Component({
+  selector: "editor-page",
+  imports: [RunicFieldDirective, ReactiveFormsModule],
+  template: `
+    <form [formGroup]="form">
+      <input formControlName="title" [runicField]="title">
+      @if (form.controls.title.errors?.["runic"]; as messages) { <p role="alert">{{ messages[0] }}</p> }
+    </form>
+  `,
+})
+export class EditorPage {
+  readonly page = input.required<EditorPageReference>();
+  readonly editor = injectView(this.page);
+  readonly title = injectField(this.editor, EditorFields.title);
+  readonly form = new FormGroup({ title: new FormControl("", { nonNullable: true }) });
+}
+```
+
+### Signal Forms
+
+`runicFieldModel(handle)` is a `WritableSignal` over a field for `form()` from
+`@angular/forms/signals`: it reads `value`, and `set`/`update` call `input`.
+`validateRunicField(path, handle)` adds the field's `errors` to the schema as
+errors of kind `runic` with the message:
+
+```ts
+import { form, FormField } from "@angular/forms/signals";
+import { runicFieldModel, validateRunicField } from "@runic-artifex/angular/forms";
+
+@Component({
+  selector: "editor-page",
+  imports: [FormField],
+  template: `<input [formField]="titleForm" (blur)="title.commit()">`,
+})
+export class EditorPage {
+  readonly page = input.required<EditorPageReference>();
+  readonly editor = injectView(this.page);
+  readonly title = injectField(this.editor, EditorFields.title);
+  readonly titleForm = form(runicFieldModel(this.title), path => validateRunicField(path, this.title));
+}
+```
+
+Signal Forms does not tell the field when the element loses focus: always bind
+`(blur)="title.commit()"` next to `[formField]`, as above. Without it a
+`commit: "pause"` field writes only after the pause, and a value typed just before
+Save may still wait. `[formField]` also writes during IME composition; prefer
+`[runicField]` where composition matters.
 
 ## Outlet
 

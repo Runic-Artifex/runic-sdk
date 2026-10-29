@@ -37,7 +37,7 @@ const companions = {
   svelte: () => ({}),
   vite: () => ({}),
   // The Angular packages are released together with one version.
-  "@angular/core": floor => Object.fromEntries(["common", "compiler", "compiler-cli", "platform-browser"].map(name => [`@angular/${name}`, floor])),
+  "@angular/core": floor => Object.fromEntries(["common", "compiler", "compiler-cli", "forms", "platform-browser"].map(name => [`@angular/${name}`, floor])),
 };
 
 export function lowestVersion(range) {
