@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { BridgeError, BridgeOperationUncertainError, onBridgeDiagnostic, type BridgeDiagnostic } from "../dist/index.js";
+import { BridgeError, BridgeOperationUncertainError, createOperationController, onBridgeDiagnostic, type BridgeDiagnostic } from "../dist/index.js";
 import { bridgeOperations, connectView, defineCollection, defineCollections, defineInteractions } from "../dist/generated.js";
 import * as bridgeWire from "../dist/wire.js";
 import { createMockBridge, installMockBridge, type MockBridge, type MockBridgeOptions, type MockTypedCollection,
@@ -210,6 +210,25 @@ test("progress reports reach the watching client as running statuses", async () 
   mock.succeed("saved");
   await operation.wait();
   assert.deepEqual(seen, ["running", 0.25, 1, "succeeded"]);
+  client.dispose();
+});
+
+test("an operation controller shows the progress the producer pushes to its watch", async () => {
+  const bridge = fresh();
+  const notes = mockNotes(bridge, { state: { title: "a", count: 0n, rows: [] }, operations: { save: "manual" } });
+  const client = await connect();
+  const controller = createOperationController(() => client.start("save", "request-1", undefined, text));
+  const result = controller.run();
+  await until(() => bridge.calls.some(call => call.kind === "watch"), "The client did not watch the operation.");
+  notes.operations.save[0]!.reportProgress(0.4);
+  await until(() => controller.current.progress === 0.4, "The progress did not reach the controller.");
+  notes.operations.save[0]!.succeed("saved");
+  await result;
+  assert.equal(controller.current.progress, undefined);
+  assert.equal(controller.current.status?.kind, "succeeded");
+  // The progress subscription and wait() share one watch.
+  assert.equal(bridge.calls.filter(call => call.kind === "watch").length, 1);
+  controller.dispose();
   client.dispose();
 });
 

@@ -30,6 +30,7 @@ export function useLatestOperation<TResult = void, TFailure = never>(): LatestOp
     get admitting() { return current.admitting; },
     get operation() { return current.operation; },
     get status() { return current.status; },
+    get progress() { return current.progress; },
     get outcome() { return current.outcome; },
     get failure() { return current.failure; },
     get error() { return current.error; },

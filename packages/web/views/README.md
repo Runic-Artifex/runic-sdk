@@ -259,14 +259,38 @@ change, and `subscribe(listener)`, which returns an unsubscribe function.
   intent. React, Vue and Svelte `useLatestOperation` and Angular `injectLatestOperation`
   wrap it. See [Operation feedback and latest selection](#operation-feedback-and-latest-selection).
 
+## Text inputs
+
+`createTextFieldController({ read, write, coalesce?, keepDraftOnError? })` binds a text
+input to one View member, so typing key by key never loses characters: while its
+writes are in flight it shows the user's draft, at most one write is in flight (text
+typed meanwhile is written next), nothing is written during IME composition, and once
+the last write settled it shows the View's value with any normalization. Angular
+`injectTextField` and React, Vue and Svelte `useTextField` wrap it; prefer those.
+
+```ts
+const name = createTextFieldController({ read: (state: Person) => state.name, write: (client: PersonClient, value) => client.setName(value) });
+const stopState = client.subscribe(state => { name.setSource({ state, client }); render(name.current); });
+const stopField = name.subscribe(() => render(name.current));
+input.addEventListener("input", () => name.input(input.value));
+input.addEventListener("compositionstart", () => name.compositionStart());
+input.addEventListener("compositionend", () => name.compositionEnd(input.value));
+```
+
+`current` has `value`, `editing` and `error`. Call `setSource` with each new state; it
+does not notify. A failed write keeps the draft and sets `error` until `reset()` or
+the next input. Keep the input enabled while `editing`, rather than disabling it on
+the View's busy state, which the field's own write causes.
+
 ## Operation feedback and latest selection
 
 An operation Start receipt proves admission; it does not prove completion. A Cancel
 response proves only that the cancellation request was observed. Keep the UI pending
 until the public handle's terminal `wait()` completes. The desktop transport admits
 control callbacks while this wait is active, so short status polling is unnecessary.
-Render domain progress and recovery from the generated View snapshot: the operation
-handle supplies protocol status and outcome, not application progress.
+A command that reports progress (`RunicOperationProgress.Report` in .NET) is followed
+through `operation.subscribe`, and the controller exposes it as `progress`. Render
+other domain state and recovery from the generated View snapshot.
 
 ```ts
 import { createOperationController } from "@runic-artifex/views";
@@ -280,9 +304,10 @@ stop();
 push.dispose();
 ```
 
-`current` has `pending`, `admitting`, `operation`, `status`, `outcome`, `failure`,
+`current` has `pending`, `admitting`, `operation`, `status`, `progress`, `outcome`, `failure`,
 `error`, `cancelled`, `cancellationRequested`, `cancelling`, `cancellation` and
-`cancelError`. `pending` spans Start admission, terminal wait, any completion barrier
+`cancelError`. `progress` is the latest run's progress from 0 to 1 while its operation
+runs, and `undefined` while unknown and once the run ended. `pending` spans Start admission, terminal wait, any completion barrier
 and outcome delivery. A declared failure is an outcome and `failure`; an unexpected
 failure, including a `failed` or `timed-out` status, is `error`. A `cancelled` status,
 whether this UI or .NET requested it, is a normal end: `cancelled` becomes true,

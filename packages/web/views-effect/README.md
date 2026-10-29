@@ -217,6 +217,14 @@ onScopeDispose(() => { stop(); void save.dispose(); });
 Svelte does the same with `$state` and an `$effect` cleanup, and Angular with a
 `signal` and `DestroyRef.onDestroy`.
 
+Bind text inputs with the framework packages' `useTextField` (Angular
+`injectTextField`) rather than a `command` per keystroke in an Effect action: a
+new `run` interrupts the previous one, which abandons its reply but not the write,
+and the binding keeps the draft and orders and coalesces the writes. `operation`
+completes with the outcome only; to show a running operation's `progress`, use the
+framework packages' `useOperation` (`injectOperation`) or the handle's
+`subscribe(listener)` of `@runic-artifex/views`.
+
 A program that needs services runs through your runtime:
 `createEffectAction(program, { runFork: runtime.runFork })`, with `runtime` a
 `ManagedRuntime`. Helpers based on `effect/reactivity` atoms will follow when

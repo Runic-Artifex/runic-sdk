@@ -628,3 +628,73 @@ for (const feedback of ["status", "outcome"] as const) {
     assert.equal((await latest)?.ok, true);
   });
 }
+
+function reporting(requestId: string) {
+  const work = held(requestId);
+  const listeners = new Set<(status: BridgeOperationStatus) => void>();
+  const operation: BridgeOperation = {
+    ...work.operation,
+    get completion() { return work.operation.completion; },
+    subscribe(listener) { listeners.add(listener); return () => { listeners.delete(listener); }; },
+  };
+  const report = (progress?: number) => {
+    for (const listener of [...listeners]) listener({ contract: "test", requestId, kind: "running", ...progress === undefined ? {} : { progress } });
+  };
+  return { ...work, operation, report, observers: () => listeners.size };
+}
+
+test("operation feedback reports the running operation's progress until the run ends", async () => {
+  const work = reporting("upload");
+  const controller = createOperationController(() => work.operation);
+  const seen: (number | undefined)[] = [];
+  controller.subscribe(() => seen.push(controller.current.progress));
+  const result = controller.run();
+  await settle();
+  assert.equal(controller.current.progress, undefined);
+  assert.equal(work.observers(), 1);
+  work.report(0.25);
+  work.report(0.25);
+  work.report(0.5);
+  assert.equal(controller.current.progress, 0.5);
+  work.report();
+  assert.equal(controller.current.progress, undefined, "unknown progress");
+  work.report(0.75);
+  work.finish();
+  await result;
+  assert.equal(controller.current.progress, undefined);
+  assert.equal(controller.current.status?.kind, "succeeded");
+  assert.equal(work.observers(), 0, "the progress subscription ends with the run");
+  assert.deepEqual(seen.filter((value, index) => index === 0 || value !== seen[index - 1]), [undefined, 0.25, 0.5, undefined, 0.75, undefined]);
+});
+
+test("only the latest run reports progress", async () => {
+  const first = reporting("first");
+  const second = reporting("second");
+  const controller = createOperationController((work: ReturnType<typeof reporting>) => work.operation);
+  void controller.run(first);
+  await settle();
+  void controller.run(second);
+  await settle();
+  first.report(0.9);
+  assert.equal(controller.current.progress, undefined);
+  second.report(0.1);
+  assert.equal(controller.current.progress, 0.1);
+  controller.dispose();
+  first.finish();
+  second.finish();
+  await settle();
+  assert.equal(first.observers() + second.observers(), 0);
+});
+
+test("latest-operation feedback reports progress and clears it at the terminal status", async () => {
+  const work = reporting("load");
+  const controller = createLatestOperationController();
+  const result = controller.run({ start: () => work.operation });
+  await settle();
+  work.report(0.4);
+  assert.equal(controller.current.progress, 0.4);
+  work.finish();
+  await result;
+  assert.equal(controller.current.progress, undefined);
+  assert.equal(work.observers(), 0);
+});

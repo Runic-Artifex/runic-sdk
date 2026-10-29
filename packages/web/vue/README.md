@@ -85,6 +85,46 @@ const step = computed({ get: () => state.value?.step ?? 1, set: value => void se
 </template>
 ```
 
+### Text inputs: `useTextField(view, read, write, options?)`
+
+Binds a text input to a member through the framework-neutral
+[text field controller](https://github.com/Runic-Artifex/runic-sdk/tree/main/packages/web/views#text-inputs)
+while the effect scope is active. Each field is a ref, so the handle can be destructured:
+
+```vue
+<script setup lang="ts">
+import { useTextField, useView } from "@runic-artifex/vue";
+import type { PersonPageReference } from "./generated/person.js";
+
+const props = defineProps<{ page: PersonPageReference }>();
+const person = useView(() => props.page);
+const { value: name, error } = useTextField(person, state => state.name, (client, value) => client.setName(value));
+</script>
+
+<template>
+  <input v-model="name">
+  <p v-if="error !== undefined" role="alert">{{ String(error) }}</p>
+</template>
+```
+
+It returns `value`, a writable computed for `v-model`, the `editing` and `error`
+refs and `reset()`. `v-model` already writes nothing during IME composition. `view`
+is a `useView` handle or any `{ state, client }` refs. The options are `coalesce` and
+`keepDraftOnError`.
+The field shows what the user typed while its writes are in flight, so a reply or
+frame that answers an older keystroke never replaces newer text. At most one write is
+in flight; text typed meanwhile is written next as one value (`coalesce: false` writes
+every change). Nothing is written during IME composition. Once the last write settled,
+the field shows the View's value again, including any normalization the ViewModel
+applied (trimmed, upper-cased). `write` may also be a command or a checked write. A
+failed write keeps the draft and sets `error` (`keepDraftOnError: false` shows the
+View's value instead); `reset()` drops the draft. `editing` is true while a draft
+exists. Don't disable the input on the View's busy state (`isSaving`, `can…`) while
+the user types: the field's own write causes it, and keys typed meanwhile would be
+lost. Test such fields by typing key by key (Playwright `pressSequentially`, Testing
+Library `user.type`) against the mock with `latency: "slow"`; `fill()` sets the whole
+text at once and hides the race.
+
 ## `ViewOutlet`
 
 Renders the component registered for a generated reference's `kind` and
@@ -165,12 +205,15 @@ const { run: push, cancel, pending, cancellationRequested, cancelled, error } =
 </template>
 ```
 
-The result has `pending`, `admitting`, `operation`, `status`, `outcome`, `failure`,
+The result has `pending`, `admitting`, `operation`, `status`, `progress`, `outcome`, `failure`,
 `error`, `cancelled`, `cancellationRequested`, `cancelling`, `cancellation` and
 `cancelError`, with `run(...args)`, `cancel()` and `reset()`, which never reject. A
 run that ends with a `cancelled` status sets `cancelled` and resolves to `undefined`
 without an `error`; `failed` and `timed-out` statuses are still `error`. `pending`
 stays true after a Cancel response until the operation reaches its terminal status.
+`progress` is how far the running operation got, from 0 to 1, when its command
+reports progress (`RunicOperationProgress.Report` in .NET), for example
+`<progress :value="progress">`; it is `undefined` while unknown and after the run.
 Disposing the effect scope settles run promises without cancelling accepted work.
 
 ## `useLatestOperation()`
