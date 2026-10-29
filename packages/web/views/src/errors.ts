@@ -19,7 +19,7 @@ export type BridgeErrorKind = "rejected" | "cancelled" | "failed" | "disconnecte
  */
 export type BridgeErrorReason =
   | "unavailable" | "invalid-input" | "unresolved-key" | "capacity" | "invalid-request" | "no-hello" | "protocol-mismatch"
-  | "state-withheld" | (string & {});
+  | "state-withheld" | "splice-base" | (string & {});
 
 /**
  * Failure detail that a producer adds to an error reply only in development (.NET: host environment

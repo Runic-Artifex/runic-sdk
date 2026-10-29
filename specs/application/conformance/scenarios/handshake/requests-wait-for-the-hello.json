@@ -1,0 +1,24 @@
+{
+  "format": "runic.views.scenario/1",
+  "id": "handshake.requests-wait-for-the-hello.v1",
+  "contract": {"id":"runic.views","version":4},
+  "set": "handshake",
+  "roles": ["producer"],
+  "description": "A request that arrives before the connection's hello, as on a transport that does not keep a connection's order, waits for it and is admitted once the hello succeeded.",
+  "view": "log",
+  "ids": {
+    "c1": {"kind":"connection"},
+    "hello-c1": {"kind":"request"},
+    "session": {"kind":"wire","value":"s-1"},
+    "open-log-request": {"kind":"request"},
+    "presentation": {"kind":"wire","value":"p-1"}
+  },
+  "arrange": {"model":{}},
+  "steps": [
+    {"connect":"c1"},
+    {"send":{"kind":"open","route":"log","presentation":{"$id":"presentation"}},"id":"open-log-request"},
+    {"send":{"kind":"hello","protocol":4,"session":{"$id":"session"},"client":{"name":{"$any":"string","default":"conformance-client"},"version":{"$any":"string","default":"1.0.0"}},"features":["text-splice/1"]},"id":"hello-c1"},
+    {"receive":{"ok":true,"protocol":4,"implementation":{"name":{"$any":"string","default":"conformance-producer"},"version":{"$any":"string","default":"1.0.0"}},"features":{"$any":"array","default":["text-splice/1"]}},"replyTo":"hello-c1","unordered":true},
+    {"receive":{"ok":true,"revision":0,"state":{"log":"","title":""},"presentation":"ok"},"replyTo":"open-log-request","unordered":true}
+  ]
+}

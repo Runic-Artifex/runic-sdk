@@ -82,7 +82,7 @@ const discardOperation: BridgeOperationCodec<void> = { decode: value => undefine
  */
 export function connectFailureToolkit(options?: BridgeConnectOptions): Promise<FailureToolkitClient & globalThis.Disposable> { return connectFailureToolkitAt("failureToolkit", options); }
 async function connectFailureToolkitAt(route: string, options?: BridgeConnectOptions): Promise<FailureToolkitClient & globalThis.Disposable> {
-  const view = await connectView<FailureToolkitState>({ contract: bridgeContract, route, members, checkedFields: checkedFieldNames, operations: bridgeOperations, timeout: options?.timeout, signal: options?.signal });
+  const view = await connectView<FailureToolkitState>({ contract: bridgeContract, route, members, checkedFields: checkedFieldNames, texts: ["title"], operations: bridgeOperations, timeout: options?.timeout, signal: options?.signal });
   return disposable<FailureToolkitClient>({
     get snapshot() { return view.snapshot; },
     subscribe: view.subscribe,

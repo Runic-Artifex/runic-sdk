@@ -1,1 +1,24 @@
 #nullable enable
+Runic.Application.Testing.RunicTextSplice
+Runic.Application.Testing.RunicTextSplice.<Clone>$() -> Runic.Application.Testing.RunicTextSplice!
+Runic.Application.Testing.RunicTextSplice.Deconstruct(out string! Field, out int Length, out int Index, out int Delete, out string! Text, out long? Version) -> void
+Runic.Application.Testing.RunicTextSplice.Delete.get -> int
+Runic.Application.Testing.RunicTextSplice.Delete.init -> void
+Runic.Application.Testing.RunicTextSplice.Equals(Runic.Application.Testing.RunicTextSplice? other) -> bool
+Runic.Application.Testing.RunicTextSplice.Field.get -> string!
+Runic.Application.Testing.RunicTextSplice.Field.init -> void
+Runic.Application.Testing.RunicTextSplice.Index.get -> int
+Runic.Application.Testing.RunicTextSplice.Index.init -> void
+Runic.Application.Testing.RunicTextSplice.Length.get -> int
+Runic.Application.Testing.RunicTextSplice.Length.init -> void
+Runic.Application.Testing.RunicTextSplice.RunicTextSplice(string! Field, int Length, int Index, int Delete, string! Text, long? Version) -> void
+Runic.Application.Testing.RunicTextSplice.Text.get -> string!
+Runic.Application.Testing.RunicTextSplice.Text.init -> void
+Runic.Application.Testing.RunicTextSplice.Version.get -> long?
+Runic.Application.Testing.RunicTextSplice.Version.init -> void
+Runic.Application.Testing.RunicViewPublication.Splices.get -> System.Collections.Generic.IReadOnlyList<Runic.Application.Testing.RunicTextSplice!>!
+override Runic.Application.Testing.RunicTextSplice.Equals(object? obj) -> bool
+override Runic.Application.Testing.RunicTextSplice.GetHashCode() -> int
+override Runic.Application.Testing.RunicTextSplice.ToString() -> string!
+static Runic.Application.Testing.RunicTextSplice.operator !=(Runic.Application.Testing.RunicTextSplice? left, Runic.Application.Testing.RunicTextSplice? right) -> bool
+static Runic.Application.Testing.RunicTextSplice.operator ==(Runic.Application.Testing.RunicTextSplice? left, Runic.Application.Testing.RunicTextSplice? right) -> bool

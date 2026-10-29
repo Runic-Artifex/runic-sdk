@@ -26,7 +26,8 @@
         "kind": "hello",
         "protocol": 4,
         "session": {"$id":"session"},
-        "client": {"name":{"$any":"string","default":"conformance-client"},"version":{"$any":"string","default":"1.0.0"}}
+        "client": {"name":{"$any":"string","default":"conformance-client"},"version":{"$any":"string","default":"1.0.0"}},
+        "features": {"$any":"array","default":["text-splice/1"]}
       },
       "id": "hello-c1"
     },
@@ -34,7 +35,8 @@
       "receive": {
         "ok": true,
         "protocol": 4,
-        "implementation": {"name":{"$any":"string","default":"conformance-producer"},"version":{"$any":"string","default":"1.0.0"}}
+        "implementation": {"name":{"$any":"string","default":"conformance-producer"},"version":{"$any":"string","default":"1.0.0"}},
+        "features": {"$any":"array","default":["text-splice/1"]}
       },
       "replyTo": "hello-c1"
     },

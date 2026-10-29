@@ -55,7 +55,7 @@ const openOperation: BridgeOperationCodec<void> = { decode: value => undefined }
  */
 export function connectKeyedToolkit(options?: BridgeConnectOptions): Promise<KeyedToolkitClient & globalThis.Disposable> { return connectKeyedToolkitAt("keyedToolkit", options); }
 async function connectKeyedToolkitAt(route: string, options?: BridgeConnectOptions): Promise<KeyedToolkitClient & globalThis.Disposable> {
-  const view = await connectView<KeyedToolkitState>({ contract: bridgeContract, route, members, operations: bridgeOperations, timeout: options?.timeout, signal: options?.signal });
+  const view = await connectView<KeyedToolkitState>({ contract: bridgeContract, route, members, texts: ["last"], operations: bridgeOperations, timeout: options?.timeout, signal: options?.signal });
   return disposable<KeyedToolkitClient>({
     get snapshot() { return view.snapshot; },
     subscribe: view.subscribe,

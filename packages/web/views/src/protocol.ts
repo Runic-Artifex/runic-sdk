@@ -81,7 +81,8 @@ function validError(value: unknown): value is ReplyError {
 
 const replyMembers: Readonly<Record<string, (reply: Message) => boolean>> = {
   hello: reply => reply["protocol"] !== 4 || isObject(reply["implementation"]) && isString(reply["implementation"]["name"])
-    && isString(reply["implementation"]["version"]),
+    && isString(reply["implementation"]["version"])
+    && (reply["features"] === undefined || Array.isArray(reply["features"]) && reply["features"].every(isString)),
   open: reply => isSafe(reply["revision"]) && isObject(reply["state"]) && validFields(reply["fields"]) && isString(reply["presentation"]),
   snapshot: reply => isSafe(reply["revision"]) && isObject(reply["state"]) && validFields(reply["fields"]),
   close: () => true,
@@ -122,7 +123,7 @@ export function readReply(kind: string, text: unknown): Reply | undefined {
   return members === undefined || members(reply) ? reply as Reply : undefined;
 }
 
-const changeKinds = new Set(["set", "add", "remove", "replace", "move", "text"]);
+const changeKinds = new Set(["set", "add", "remove", "replace", "move", "text", "splice"]);
 
 /** Checks a frame's changes against the shape and ordering rules of state-changes.md; returns a reason or undefined. */
 function invalidChanges(changes: unknown): string | undefined {
@@ -146,6 +147,12 @@ function invalidChanges(changes: unknown): string | undefined {
     if (kind === "text") {
       const { length, trim, text } = change as Record<string, unknown>;
       if (!isSafe(length) || !isSafe(trim) || trim > length || !isString(text)) return `The text change of ${field} is invalid.`;
+      continue;
+    }
+    if (kind === "splice") {
+      const { length, index, delete: removed, text, version } = change as Record<string, unknown>;
+      if (!isSafe(length) || !isSafe(index) || !isSafe(removed) || index > length || removed > length - index || !isString(text)
+        || version !== undefined && !isSafe(version)) return `The splice of ${field} is invalid.`;
       continue;
     }
     const { index, oldIndex, keys, items } = change as Record<string, unknown>;

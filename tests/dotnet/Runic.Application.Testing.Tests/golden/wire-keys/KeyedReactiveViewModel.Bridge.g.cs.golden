@@ -9,7 +9,7 @@ internal sealed class KeyedReactiveBridge : global::Runic.Application.Views.Gene
         State,
         [
             new global::Runic.Application.Views.Generated.PropertyDescriptor<global::Runic.Application.Testing.Tests.KeyedReactiveViewModel>("Enabled", "enabled", vm => vm.Enabled, (vm, value) => vm.Enabled = EnabledValueCodec.Read(value)),
-            new global::Runic.Application.Views.Generated.PropertyDescriptor<global::Runic.Application.Testing.Tests.KeyedReactiveViewModel>("Last", "last", vm => vm.Last, null),
+            new global::Runic.Application.Views.Generated.PropertyDescriptor<global::Runic.Application.Testing.Tests.KeyedReactiveViewModel>("Last", "last", vm => vm.Last, null) { TextMember = true },
         ],
         [
             new global::Runic.Application.Views.Generated.CheckedPropertyDescriptor<global::Runic.Application.Testing.Tests.KeyedReactiveViewModel>("Enabled", "enabled", global::Runic.Application.Views.Generated.CheckedFieldValueKind.Json, vm => vm.Enabled, (vm, value) => vm.Enabled = (global::System.Boolean)value!, readValue: element => EnabledValueCodec.Read(element), writeValue: (writer, value) => EnabledValueCodec.Write(writer, (global::System.Boolean)value!)),

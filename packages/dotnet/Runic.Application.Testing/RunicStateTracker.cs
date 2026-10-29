@@ -134,11 +134,11 @@ public sealed class RunicStateTracker<TModel> where TModel : class
                 if (frame.Revision <= Revision) return;
                 if (frame.BaseRevision != Revision)
                     throw Invalid(frame, $"it applies to revision {frame.BaseRevision}, but the tracked state is at {Revision}; a frame was lost or reordered");
-                var count = frame.Changes.Count + frame.Sets.Count + frame.Texts.Count;
+                var count = frame.Changes.Count + frame.Sets.Count + frame.Texts.Count + frame.Splices.Count;
                 if (count is 0 or > 4096)
                     throw Invalid(frame, $"it has {count} changes; a frame has 1 to 4096");
                 var fields = frame.Sets.Select(set => set.Field).Concat(frame.Changes.Select(change => change.Field))
-                    .Concat(frame.Texts.Select(text => text.Field)).ToArray();
+                    .Concat(frame.Texts.Select(text => text.Field)).Concat(frame.Splices.Select(splice => splice.Field)).ToArray();
                 foreach (var set in frame.Sets)
                     if (fields.Count(field => field == set.Field) != 1)
                         throw Invalid(frame, $"it has another change of '{set.Field}' beside its set");
@@ -164,6 +164,19 @@ public sealed class RunicStateTracker<TModel> where TModel : class
                     if (current.Length != text.Length || text.Trim < 0 || text.Trim > text.Length)
                         throw Invalid(frame, $"its text change of '{text.Field}' applies to {text.Length} code units, but the tracked value has {current.Length}");
                     next[text.Field] = current[text.Trim..] + text.Text;
+                }
+                foreach (var splice in frame.Splices)
+                {
+                    if (next[splice.Field] is not JsonValue value || value.GetValueKind() != JsonValueKind.String)
+                        throw Invalid(frame, $"its splice of '{splice.Field}' applies to a value that is not a string");
+                    var current = value.GetValue<string>();
+                    if (!Runic.Application.Views.BridgeTextSplice.TryApply(current, splice.Length, splice.Index, splice.Delete, splice.Text, out var spliced))
+                        throw Invalid(frame, $"its splice of '{splice.Field}' does not fit the tracked value of {current.Length} code units");
+                    next[splice.Field] = spliced;
+                    var isChecked = nextFields?.ContainsKey(splice.Field) == true;
+                    if (isChecked != splice.Version.HasValue)
+                        throw Invalid(frame, $"its splice of '{splice.Field}' {(isChecked ? "has no" : "has a")} version");
+                    if (splice.Version is { } version) nextFields![splice.Field] = new JsonObject { ["version"] = version };
                 }
                 _state = next;
                 _fields = nextFields;

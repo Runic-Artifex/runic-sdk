@@ -9,11 +9,11 @@ internal sealed class ToolkitTypedBridge : global::Runic.Application.Views.Gener
         State,
         [
             new global::Runic.Application.Views.Generated.PropertyDescriptor<global::Runic.Application.Testing.Tests.ToolkitTypedViewModel>("Total", "total", vm => vm.Total, null),
-            new global::Runic.Application.Views.Generated.PropertyDescriptor<global::Runic.Application.Testing.Tests.ToolkitTypedViewModel>("Label", "label", vm => vm.Label, null),
-            new global::Runic.Application.Views.Generated.PropertyDescriptor<global::Runic.Application.Testing.Tests.ToolkitTypedViewModel>("OptionalDocumentId", "optionalDocumentId", vm => vm.OptionalDocumentId, null),
-            new global::Runic.Application.Views.Generated.PropertyDescriptor<global::Runic.Application.Testing.Tests.ToolkitTypedViewModel>("AsyncDocumentId", "asyncDocumentId", vm => vm.AsyncDocumentId, null),
-            new global::Runic.Application.Views.Generated.PropertyDescriptor<global::Runic.Application.Testing.Tests.ToolkitTypedViewModel>("AsyncLabel", "asyncLabel", vm => vm.AsyncLabel, null),
-            new global::Runic.Application.Views.Generated.PropertyDescriptor<global::Runic.Application.Testing.Tests.ToolkitTypedViewModel>("AsyncOptionalDocumentId", "asyncOptionalDocumentId", vm => vm.AsyncOptionalDocumentId, null),
+            new global::Runic.Application.Views.Generated.PropertyDescriptor<global::Runic.Application.Testing.Tests.ToolkitTypedViewModel>("Label", "label", vm => vm.Label, null) { TextMember = true },
+            new global::Runic.Application.Views.Generated.PropertyDescriptor<global::Runic.Application.Testing.Tests.ToolkitTypedViewModel>("OptionalDocumentId", "optionalDocumentId", vm => vm.OptionalDocumentId, null) { TextMember = true },
+            new global::Runic.Application.Views.Generated.PropertyDescriptor<global::Runic.Application.Testing.Tests.ToolkitTypedViewModel>("AsyncDocumentId", "asyncDocumentId", vm => vm.AsyncDocumentId, null) { TextMember = true },
+            new global::Runic.Application.Views.Generated.PropertyDescriptor<global::Runic.Application.Testing.Tests.ToolkitTypedViewModel>("AsyncLabel", "asyncLabel", vm => vm.AsyncLabel, null) { TextMember = true },
+            new global::Runic.Application.Views.Generated.PropertyDescriptor<global::Runic.Application.Testing.Tests.ToolkitTypedViewModel>("AsyncOptionalDocumentId", "asyncOptionalDocumentId", vm => vm.AsyncOptionalDocumentId, null) { TextMember = true },
             new global::Runic.Application.Views.Generated.PropertyDescriptor<global::Runic.Application.Testing.Tests.ToolkitTypedViewModel>("CancelledCount", "cancelledCount", vm => vm.CancelledCount, null),
         ],
         [

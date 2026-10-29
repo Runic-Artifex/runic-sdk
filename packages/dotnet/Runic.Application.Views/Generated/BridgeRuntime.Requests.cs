@@ -119,7 +119,16 @@ public partial class ViewModelBridge<T>
         if (!_settable.TryGetValue(member, out var property))
             return BridgeMessages.Rejected("invalid-request", $"The route {_name} has no settable member '{member}'.");
         BridgeRequestEnvelope.TryReadInteger(request.Root.GetProperty("edit"), out var edit);
-        var value = request.Root.GetProperty("value");
+        // text-splice/1: a text member's value may come as a splice of a base the client names
+        // (specs/application/README.md, "Edits"). Each edit's text is kept as the base of the next splice.
+        var connection = request.Connection;
+        var hasSplice = request.Root.TryGetProperty("splice", out var splice);
+        var textSetter = connection.UsesTextSplice ? property.TextSetter : null;
+        if (hasSplice && textSetter is null)
+            return BridgeMessages.Rejected("invalid-request", connection.UsesTextSplice
+                ? $"The route {_name} has no text member '{member}' that accepts splices."
+                : "The connection does not use text-splice/1.");
+        var value = hasSplice ? default : request.Root.GetProperty("value");
         var waits = true;
         ReadOnlyMemory<byte> reply;
         try
@@ -130,7 +139,7 @@ public partial class ViewModelBridge<T>
                 {
                     if (IsInactive) return BridgeMessages.Released;
                     // A set whose edit is not higher than one admitted before is not applied.
-                    if (!request.Connection.AdmitEdit(_name, member, edit))
+                    if (!connection.IsNewEdit(_name, member, edit))
                     {
                         waits = false;
                         return WriteMessage(writer =>
@@ -142,10 +151,27 @@ public partial class ViewModelBridge<T>
                             writer.WriteEndObject();
                         });
                     }
+                    string? text = null;
+                    if (hasSplice)
+                    {
+                        // A base the producer no longer has, or a splice that does not fit it, admits nothing: the client
+                        // sends the value in full.
+                        if (SpliceBase(connection, property, splice) is not { } spliceBase
+                            || !BridgeTextSplice.TryApply(spliceBase, Integer(splice, "length"), Integer(splice, "index"),
+                                Integer(splice, "delete"), splice.GetProperty("text").GetString()!, out text))
+                        {
+                            waits = false;
+                            return BridgeMessages.Rejected("splice-base",
+                                $"The base of the splice of {property.Name} is not the value this host has for it; send the value.");
+                        }
+                    }
+                    else if (textSetter is not null && value.ValueKind == JsonValueKind.String) text = value.GetString();
+                    connection.AdmitEdit(_name, member, edit, text);
                     var call = BridgeCall.Start(BridgeCallKind.Set, ModelName, _name, member);
                     try
                     {
-                        property.Set(_vm, value);
+                        if (text is not null && textSetter is not null) textSetter(_vm, text);
+                        else property.Set(_vm, value);
                         call.Complete(BridgeCallOutcome.Ok);
                         return RanReply(null);
                     }
@@ -169,6 +195,20 @@ public partial class ViewModelBridge<T>
         if (!waits) return reply;
         await WaitForPublishedAsync(cancellationToken).ConfigureAwait(false);
         return ReleasedIfInactive(reply);
+    }
+
+    // The value a set's splice applies to: the connection's latest admitted edit of the member, or the member's value
+    // in the route's state at a revision. Null when the producer does not have it, or it is not text.
+    private string? SpliceBase(BridgeConnection connection, PropertyDescriptor<T> property, JsonElement splice) =>
+        splice.TryGetProperty("baseEdit", out var baseEdit)
+            ? connection.EditText(_name, property.WireName, Integer(splice, "baseEdit"))
+            : PublishedText(property, Integer(splice, "baseRevision"));
+
+    // An integer member the envelope already validated.
+    private static long Integer(JsonElement owner, string name)
+    {
+        BridgeRequestEnvelope.TryReadInteger(owner.GetProperty(name), out var value);
+        return value;
     }
 
     private async ValueTask<ReadOnlyMemory<byte>> WriteAsync(BridgeRouteRequest request, CancellationToken cancellationToken)

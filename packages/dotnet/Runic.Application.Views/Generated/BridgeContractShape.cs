@@ -30,7 +30,8 @@ public static class BridgeContractShape
     {
         var views = DiscoverViews(model.Assembly);
         var models = views.Select(view => view.ModelType).Append(model).Distinct().ToArray();
-        var parts = new List<string> { "runic-bridge-contract-v5" };
+        // v6: text members accept splices (text-splice/1), so they are part of the wire contract.
+        var parts = new List<string> { "runic-bridge-contract-v6" };
         var nullability = new NullabilityInfoContext();
         foreach (var known in models.OrderBy(TypeName, StringComparer.Ordinal))
         {
@@ -91,6 +92,8 @@ public static class BridgeContractShape
                 parts.Add($"collection:{TypeName(model)}:{WireName(property)}:key:{collection.KeyProperty}");
             if (property.GetCustomAttribute<RunicAppendOnlyTextAttribute>(true) is not null)
                 parts.Add($"append-only-text:{TypeName(model)}:{WireName(property)}");
+            else if (property.PropertyType == typeof(string) && property.GetCustomAttribute<RunicCodecAttribute>(true) is null)
+                parts.Add($"text:{TypeName(model)}:{WireName(property)}");
             // A NavigationRegion<TContent> slot presents its Current; the region
             // kind is part of the contract because its wire value is nullable.
             if (NavigationRegionContent(property.PropertyType) is { } regionContent)

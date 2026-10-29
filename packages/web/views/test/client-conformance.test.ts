@@ -29,6 +29,8 @@ const failure = (value: unknown) => wire.union(value);
 interface ViewModel {
   readonly members: Record<string, (value: unknown) => unknown>;
   readonly checkedFields?: readonly string[];
+  /** Text members (text-splice/1). */
+  readonly texts?: readonly string[];
   readonly collections?: ReturnType<typeof defineCollections>;
   readonly interactions?: ReturnType<typeof defineInteractions>;
   /** Commands that declare a failure. */
@@ -37,8 +39,9 @@ interface ViewModel {
 }
 
 const models: Record<string, ViewModel> = {
-  list: { members: { rows, title: wire.string }, collections: rowCollections },
-  log: { members: { log: value => value === null ? null : wire.string(value), title: wire.string }, collections: defineCollections({ log: defineText(true) }) },
+  list: { members: { rows, title: wire.string }, texts: ["title"], collections: rowCollections },
+  log: { members: { log: value => value === null ? null : wire.string(value), title: wire.string }, texts: ["title"],
+    collections: defineCollections({ log: defineText(true) }) },
   notes: {
     members: {
       title: wire.string, note: wire.string, priority: value => wire.enumName(value, ["Low", "Normal", "High"]),
@@ -47,6 +50,7 @@ const models: Record<string, ViewModel> = {
       isSlowImportExecuting: wire.boolean, isConfirmClearExecuting: wire.boolean,
     },
     checkedFields: ["note"],
+    texts: ["title", "note", "summary"],
     collections: rowCollections,
     interactions: defineInteractions({
       confirm: { contract: "Tests.Notes:confirm", decodeInput: value => value, encodeOutput: value => value },
@@ -54,8 +58,8 @@ const models: Record<string, ViewModel> = {
     declared: { save: failure, slowImport: failure },
     operations: { slowImport: { decode: int32, decodeFailure: failure } },
   },
-  detail: { members: { lastAction: wire.string, canDismiss: wire.boolean } },
-  form: { members: { name: wire.string, nameErrors: value => wire.array(value, wire.string), validation: decodeBridgeValidation } },
+  detail: { members: { lastAction: wire.string, canDismiss: wire.boolean }, texts: ["lastAction"] },
+  form: { members: { name: wire.string, nameErrors: value => wire.array(value, wire.string), validation: decodeBridgeValidation }, texts: ["name"] },
 };
 const modelOf = (route: string) => route.startsWith("content") ? models["detail"]! : models[route]!;
 
@@ -295,6 +299,7 @@ async function run(scenario: Scenario): Promise<void> {
               const view = await connectView<Record<string, unknown>>({
                 contract: route === "notes" ? "Tests.Notes:fp-1" : `Tests.${route}:fp-1`, route, members: model.members,
                 ...(model.checkedFields ? { checkedFields: model.checkedFields } : {}),
+                ...(model.texts ? { texts: model.texts } : {}),
                 ...(model.collections ? { collections: model.collections } : {}),
                 ...(model.interactions ? { interactions: model.interactions } : {}),
                 ...(handlers.has(route) ? { handlers: handlers.get(route)! } : {}),

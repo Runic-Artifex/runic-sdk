@@ -9,7 +9,7 @@ internal sealed class ToolkitCancelBridge : global::Runic.Application.Views.Gene
         State,
         [
             new global::Runic.Application.Views.Generated.PropertyDescriptor<global::Runic.Application.Testing.Tests.ToolkitCancelViewModel>("CancelledCount", "cancelledCount", vm => vm.CancelledCount, null),
-            new global::Runic.Application.Views.Generated.PropertyDescriptor<global::Runic.Application.Testing.Tests.ToolkitCancelViewModel>("ExportInput", "exportInput", vm => vm.ExportInput, null),
+            new global::Runic.Application.Views.Generated.PropertyDescriptor<global::Runic.Application.Testing.Tests.ToolkitCancelViewModel>("ExportInput", "exportInput", vm => vm.ExportInput, null) { TextMember = true },
         ],
         [
         ],

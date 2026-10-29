@@ -1,6 +1,7 @@
 import type { BridgeErrorKind, BridgeErrorReason, BridgeFailureDetail } from "./errors.js";
 import type { RunicBridgeClient } from "./transport.js";
 import { viewsVersion } from "./version.js";
+import { applySplice, producerSplices, textSpliceFeature } from "./text.js";
 
 /** A View's wire state: one member per state member, by wire name, encoded as on the wire. */
 export type MockState = Record<string, unknown>;
@@ -213,6 +214,11 @@ export interface MockViewDefinition {
   readonly collections?: Readonly<Record<string, (item: unknown) => string>>;
   /** Wire names of checked fields (`write` and their `fields` versions). */
   readonly checkedFields?: readonly string[];
+  /**
+   * Wire names of text members (string members other than append-only text fields). On a connection that uses
+   * `text-splice/1`, frames change them with splices, and setters accept splices, as a producer does.
+   */
+  readonly texts?: readonly string[];
   /**
    * Operation handlers by command member, such as `save`. Without one, an
    * operation runs the command's handler, if any, and succeeds.
@@ -434,6 +440,8 @@ interface MockRegisteredView {
   /** The state as last published, which the next publication compares members with. */
   published: MockState;
   revision: number;
+  /** The revision of the last publication that changed each text member. */
+  readonly textChanged: Map<string, number>;
   handle: MockView;
 }
 
@@ -442,10 +450,19 @@ interface Connection {
   session: string | undefined;
   /** The highest admitted edit per route and member. */
   readonly edits: Map<string, number>;
+  /** The text value of the highest admitted edit of a text member, on a connection that uses text-splice/1. */
+  readonly editTexts: Map<string, string | undefined>;
+  /** The features in use on the connection. */
+  features: ReadonlySet<string>;
+  /** Requests that wait for the connection's hello, in arrival order: each resolves with whether it succeeded. */
+  readonly held: ((succeeded: boolean) => void)[];
   readonly pending: Set<(error: Error) => void>;
 }
 
 interface Task { readonly due: number; readonly sequence: number; readonly run: () => void }
+
+const newConnection = (id: number): Connection =>
+  ({ id, session: undefined, edits: new Map(), editTexts: new Map(), features: new Set(), held: [], pending: new Set() });
 
 export function createMockBridge(options: MockBridgeOptions = {}): MockBridge {
   const manual = options.scheduling === "manual";
@@ -471,7 +488,7 @@ export function createMockBridge(options: MockBridgeOptions = {}): MockBridge {
   const tasks: Task[] = [];
   let connected = true;
   let connectionCount = 1;
-  let connection: Connection = { id: 1, session: undefined, edits: new Map(), pending: new Set() };
+  let connection: Connection = newConnection(1);
   let revision = 0;
   let now = 0;
   let sequence = 0;
@@ -554,11 +571,29 @@ export function createMockBridge(options: MockBridgeOptions = {}): MockBridge {
     const indexed = view.pending.splice(0);
     const indexedFields = new Set(indexed.map(change => change.field));
     const changes: Record<string, unknown>[] = [];
+    const splicing = connection.features.has(textSpliceFeature);
+    const texts: string[] = [];
     for (const field of new Set([...Object.keys(view.published), ...Object.keys(view.state)])) {
       if (indexedFields.has(field) || sameJson(view.published[field], view.state[field])) continue;
       const checked = view.definition.checkedFields?.includes(field) === true;
       if (checked) view.fieldVersions.set(field, (view.fieldVersions.get(field) ?? 0) + 1);
-      changes.push({ field, kind: "set", value: view.state[field] ?? null, ...(checked ? { version: view.fieldVersions.get(field) } : {}) });
+      const version = checked ? { version: view.fieldVersions.get(field) } : {};
+      const previous = view.published[field];
+      const value = view.state[field];
+      const text = view.definition.texts?.includes(field) === true;
+      if (text) texts.push(field);
+      // text-splice/1: a text member changes by splices when they keep enough of its value.
+      const splices = text && splicing && typeof previous === "string" && typeof value === "string"
+        ? producerSplices(previous, value) : undefined;
+      if (splices === undefined) {
+        changes.push({ field, kind: "set", value: value ?? null, ...version });
+        continue;
+      }
+      let length = (previous as string).length;
+      for (const splice of splices) {
+        changes.push({ field, kind: "splice", length, index: splice.index, delete: splice.delete, text: splice.text, ...version });
+        length += splice.text.length - splice.delete;
+      }
     }
     // A unit of more than 4,096 changes publishes the collections as sets of their fields.
     if (changes.length + indexed.length > 4096) {
@@ -569,6 +604,7 @@ export function createMockBridge(options: MockBridgeOptions = {}): MockBridge {
     if (changes.length + indexed.length === 0) return;
     const base = view.revision;
     view.revision = ++revision;
+    for (const field of texts) view.textChanged.set(field, view.revision);
     pushMessage({ kind: "frame", route: view.route, baseRevision: base, revision: view.revision, changes: [...indexed, ...changes] });
   }
 
@@ -901,26 +937,75 @@ export function createMockBridge(options: MockBridgeOptions = {}): MockBridge {
     return failed(failure.kind, text, { ...(failure.detail ? { detail: failure.detail } : {}), ...(failure.reason === undefined ? {} : { reason: failure.reason }) });
   }
 
+  /** Resolves with whether the connection's hello succeeded, or false after 5 seconds without one. */
+  function helloOf(owner: Connection): Promise<boolean> {
+    return new Promise<boolean>(resolve => {
+      let done = false;
+      let stop = () => {};
+      const settle = (succeeded: boolean) => {
+        if (done) return;
+        done = true;
+        stop();
+        resolve(succeeded);
+      };
+      owner.held.push(settle);
+      const expire = () => {
+        const at = owner.held.indexOf(settle);
+        if (at >= 0) owner.held.splice(at, 1);
+        settle(false);
+      };
+      if (manual) {
+        const task = schedule(now + 5_000, expire);
+        stop = () => { const at = tasks.indexOf(task); if (at >= 0) tasks.splice(at, 1); };
+      } else {
+        const timer = realSetTimeout(expire, 5_000);
+        stop = () => clearTimeout(timer);
+      }
+    });
+  }
+
+  const noHello = () => failed("rejected", "The connection has not completed hello.", { reason: "no-hello" });
+
+  /** A hello that failed: the requests that waited for it answer no-hello. */
+  function refuseHeld(reply: Reply): Reply {
+    for (const resume of connection.held.splice(0)) resume(false);
+    return reply;
+  }
+
   async function answer(message: Record<string, unknown>, call: MockCall): Promise<Reply> {
     for (const interceptor of [...interceptors]) {
       const reply = await interceptor(call);
-      if (reply !== undefined) return reply;
+      if (reply === undefined) continue;
+      // An intercepted hello ends the wait of the requests sent with it.
+      if (call.kind === "hello" && reply["ok"] !== true) refuseHeld(reply as Reply);
+      else if (call.kind === "hello" && connection.session === undefined && typeof message["session"] === "string") {
+        connection.session = message["session"];
+        for (const resume of connection.held.splice(0)) resume(true);
+      }
+      return reply;
     }
     const kind = call.kind;
     if (kind === "hello") {
       const identity = { protocol: 4, implementation: mockImplementation };
-      if (message["protocol"] !== 4) return { ok: false, ...identity, error: { kind: "failed", reason: "protocol-mismatch",
-        message: `The mock implements Views protocol 4, but the client sent protocol ${String(message["protocol"])}.` } };
+      if (message["protocol"] !== 4) return refuseHeld({ ok: false, ...identity, error: { kind: "failed", reason: "protocol-mismatch",
+        message: `The mock implements Views protocol 4, but the client sent protocol ${String(message["protocol"])}.` } });
       const client = message["client"];
       if (connection.session !== undefined || typeof message["session"] !== "string" || !isRecord(client)
         || typeof client["name"] !== "string" || client["name"].length < 1 || client["name"].length > 128
         || typeof client["version"] !== "string" || client["version"].length < 1 || client["version"].length > 64)
-        return { ...invalidRequest("A second or invalid hello."), ...identity };
-      if (closedSessions.has(message["session"])) return { ...released(), ...identity };
+        return refuseHeld({ ...invalidRequest("A second or invalid hello."), ...identity });
+      const listed = message["features"];
+      if (listed !== undefined && (!Array.isArray(listed) || listed.length > 64
+        || listed.some(feature => typeof feature !== "string" || feature.length > 64)))
+        return refuseHeld({ ...invalidRequest("The hello's features are not an array of at most 64 strings."), ...identity });
+      if (closedSessions.has(message["session"])) return refuseHeld({ ...released(), ...identity });
       connection.session = message["session"];
-      return ok(identity);
+      connection.features = new Set((listed as string[] | undefined ?? []).filter(feature => feature === textSpliceFeature));
+      // Requests that waited for the hello are admitted in the order they arrived.
+      for (const resume of connection.held.splice(0)) resume(true);
+      return ok({ ...identity, features: [textSpliceFeature] });
     }
-    if (connection.session === undefined) return failed("rejected", "The connection has not completed hello.", { reason: "no-hello" });
+    if (connection.session === undefined) return noHello();
     if (kind === "receive") return ok({ messages: [] });
     const route = message["route"];
     if (typeof route !== "string") return invalidRequest("The request has no route.");
@@ -948,16 +1033,32 @@ export function createMockBridge(options: MockBridgeOptions = {}): MockBridge {
       }
       case "snapshot": return ok(state());
       case "set": {
-        if (member === undefined || !Object.hasOwn(message, "value") || !isSafe(message["edit"]) || message["edit"] === 0)
+        const splice = message["splice"];
+        if (member === undefined || Object.hasOwn(message, "value") === (splice !== undefined) || !isSafe(message["edit"]) || message["edit"] === 0)
           return invalidRequest("The set request is invalid.");
         const handler = view.definition.set?.[member];
         if (!handler && !Object.hasOwn(view.state, member)) return invalidRequest(`${route} has no member ${member}.`);
+        const text = view.definition.texts?.includes(member) === true && connection.features.has(textSpliceFeature);
+        if (splice !== undefined && (!text || !isRecord(splice))) return invalidRequest(`${route} has no text member ${member} that accepts splices.`);
         const key = `${route}\u0000${member}`;
         if (message["edit"] <= (connection.edits.get(key) ?? 0)) return ok({ revision: view.revision, superseded: true });
+        let value = message["value"];
+        if (isRecord(splice)) {
+          // The base is the connection's latest admitted edit, or the published value at a revision no later
+          // publication changed; without it, nothing is admitted and the client sends the value in full.
+          const baseEdit = splice["baseEdit"];
+          const baseRevision = splice["baseRevision"];
+          const base = isSafe(baseEdit) ? (connection.edits.get(key) === baseEdit ? connection.editTexts.get(key) : undefined)
+            : isSafe(baseRevision) && baseRevision <= view.revision && baseRevision >= (view.textChanged.get(member) ?? 0) ? view.published[member]
+            : undefined;
+          try { value = applySplice(base, splice); }
+          catch { return failed("rejected", `The base of the splice of ${member} is not the mock's value; send the value.`, { reason: "splice-base" }); }
+        }
         connection.edits.set(key, message["edit"]);
+        if (text) connection.editTexts.set(key, typeof value === "string" ? value : undefined);
         try {
-          const patch = await handler?.(view.state, message["value"]);
-          commit(view, { ...view.state, [member]: message["value"], ...(patch ?? {}) });
+          const patch = await handler?.(view.state, value);
+          commit(view, { ...view.state, [member]: value, ...(patch ?? {}) });
         } catch (error) { return errorReply(view, error, true); }
         return ok({ revision: view.revision });
       }
@@ -1061,9 +1162,17 @@ export function createMockBridge(options: MockBridgeOptions = {}): MockBridge {
         const settle = (run: () => void) => toPage(() => { owner.pending.delete(drop); run(); });
         toProducer(() => {
           if (connection !== owner) return;
-          admitted(call.kind, () => answer(message, call)).then(
+          const run = () => admitted(call.kind, () => answer(message, call)).then(
             reply => settle(() => resolve(JSON.stringify(reply))),
             error => settle(() => reject(error)));
+          // A request that arrives before the hello waits for it, up to 5 seconds, and is then admitted in arrival
+          // order; a receive never waits.
+          if (call.kind === "hello" || call.kind === "receive" || owner.session !== undefined) { run(); return; }
+          void helloOf(owner).then(succeeded => {
+            if (connection !== owner) return;
+            if (succeeded) run();
+            else settle(() => resolve(JSON.stringify(noHello())));
+          });
         });
       });
     },
@@ -1081,7 +1190,7 @@ export function createMockBridge(options: MockBridgeOptions = {}): MockBridge {
       const state = { ...definition.state };
       const view: MockRegisteredView = {
         route, definition, contract: definition.contract ?? `mock.${route}:mock`, fieldVersions: new Map(), presentations: new Map(),
-        requests: new Map(), writes: new Map(), batching: false, pending: [], state, published: state, revision,
+        requests: new Map(), writes: new Map(), batching: false, pending: [], state, published: state, revision, textChanged: new Map(),
         handle: undefined as unknown as MockView,
       };
       view.handle = {
@@ -1134,7 +1243,7 @@ export function createMockBridge(options: MockBridgeOptions = {}): MockBridge {
         for (const presentation of [...view.presentations.values()]) if (presentation.connection === closed.id) endPresentation(view, presentation);
       for (const record of operations.values()) record.watchers.delete(closed.id);
       for (const drop of [...closed.pending]) drop(new Error("The mock Bridge is disconnected."));
-      connection = { id: ++connectionCount, session: undefined, edits: new Map(), pending: new Set() };
+      connection = newConnection(++connectionCount);
       notifyConnection(false);
     },
     reconnect() {

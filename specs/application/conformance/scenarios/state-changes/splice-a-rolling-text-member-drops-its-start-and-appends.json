@@ -1,0 +1,33 @@
+{
+  "format": "runic.views.scenario/1",
+  "id": "state-changes.splice-a-rolling-text-member-drops-its-start-and-appends.v1",
+  "contract": {"id":"runic.views","version":4},
+  "set": "state-changes",
+  "roles": ["producer","client"],
+  "description": "A text member whose new value keeps the end of the old one, like a log that drops its oldest lines, is published as two splices: one that drops the start and one that appends.",
+  "view": "log",
+  "requires": ["text-splice/1"],
+  "ids": {
+    "c1": {"kind":"connection"},
+    "hello-c1": {"kind":"request"},
+    "session": {"kind":"wire","value":"s-1"},
+    "open-log": {"kind":"call"},
+    "open-log-request": {"kind":"request"},
+    "final-read": {"kind":"request"},
+    "presentation": {"kind":"wire","value":"p-1"}
+  },
+  "arrange": {"model":{"title":"line 01\nline 02\nline 03\nline 04\nline 05\nline 06\nline 07\nline 08\nline 09\nline 10\nline 11\nline 12\n"}},
+  "steps": [
+    {"connect":"c1"},
+    {"send":{"kind":"hello","protocol":4,"session":{"$id":"session"},"client":{"name":{"$any":"string","default":"conformance-client"},"version":{"$any":"string","default":"1.0.0"}},"features":["text-splice/1"]},"id":"hello-c1"},
+    {"receive":{"ok":true,"protocol":4,"implementation":{"name":{"$any":"string","default":"conformance-producer"},"version":{"$any":"string","default":"1.0.0"}},"features":{"$any":"array","default":["text-splice/1"]}},"replyTo":"hello-c1"},
+    {"call":{"id":"open-log","op":"open","route":"log"}},
+    {"send":{"kind":"open","route":"log","presentation":{"$id":"presentation"}},"id":"open-log-request"},
+    {"receive":{"ok":true,"revision":0,"state":{"log":"","title":"line 01\nline 02\nline 03\nline 04\nline 05\nline 06\nline 07\nline 08\nline 09\nline 10\nline 11\nline 12\n"},"presentation":"ok"},"replyTo":"open-log-request"},
+    {"mutate":[{"op":"assign","member":"title","value":"line 03\nline 04\nline 05\nline 06\nline 07\nline 08\nline 09\nline 10\nline 11\nline 12\nline 13\nline 14\n"}]},
+    {"receive":{"kind":"frame","route":"log","baseRevision":0,"revision":1,"changes":[{"field":"title","kind":"splice","length":96,"index":0,"delete":16,"text":""},{"field":"title","kind":"splice","length":80,"index":80,"delete":0,"text":"line 13\nline 14\n"}]}},
+    {"send":{"kind":"snapshot","route":"log"},"id":"final-read","role":"producer"},
+    {"receive":{"ok":true,"revision":1,"state":{"log":"","title":"line 03\nline 04\nline 05\nline 06\nline 07\nline 08\nline 09\nline 10\nline 11\nline 12\nline 13\nline 14\n"}},"replyTo":"final-read","role":"producer"},
+    {"expect":{"state":{"route":"log","value":{"log":"","title":"line 03\nline 04\nline 05\nline 06\nline 07\nline 08\nline 09\nline 10\nline 11\nline 12\nline 13\nline 14\n"}}}}
+  ]
+}

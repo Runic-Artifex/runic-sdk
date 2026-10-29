@@ -1,5 +1,6 @@
 // Keyed collections and append-only text fields (specs/application/state-changes.md). A generated client passes
 // `defineCollections(…)` to `connectView` only when its View has them, so other Views do not bundle this code.
+import { applyText } from "./text.js";
 
 /** Generated row codec and key of a keyed collection, or an append-only text field (`defineText`). */
 export interface BridgeCollectionDefinition {
@@ -123,18 +124,4 @@ function applyIndexed(rows: unknown[], change: Readonly<Record<string, unknown>>
     }
     default: throw new Error(`Unknown collection change ${String(change["kind"])}.`);
   }
-}
-
-/**
- * Applies a text change `{ field, kind: "text", length, trim, text }`: the current value must have `length` UTF-16
- * code units; the first `trim` are dropped and `text` is appended.
- */
-function applyText(current: unknown, change: Readonly<Record<string, unknown>>): string {
-  if (typeof current !== "string") throw new Error("A text change needs a string value.");
-  const length = index(change["length"]);
-  const trim = index(change["trim"]);
-  if (typeof change["text"] !== "string") throw new Error("Invalid text change.");
-  if (length !== current.length) throw new Error("The text no longer has the length this change names.");
-  if (trim > length) throw new Error("Invalid text trim.");
-  return current.slice(trim) + change["text"];
 }

@@ -65,7 +65,7 @@ const checkedFieldNames = ["note"];
  */
 export function connectDocumented(options?: BridgeConnectOptions): Promise<DocumentedClient & globalThis.Disposable> { return connectDocumentedAt("documented", options); }
 async function connectDocumentedAt(route: string, options?: BridgeConnectOptions): Promise<DocumentedClient & globalThis.Disposable> {
-  const view = await connectView<DocumentedState>({ contract: bridgeContract, route, members, checkedFields: checkedFieldNames, timeout: options?.timeout, signal: options?.signal });
+  const view = await connectView<DocumentedState>({ contract: bridgeContract, route, members, checkedFields: checkedFieldNames, texts: ["note"], timeout: options?.timeout, signal: options?.signal });
   return disposable<DocumentedClient>({
     get snapshot() { return view.snapshot; },
     subscribe: view.subscribe,

@@ -381,7 +381,8 @@ internal sealed class ListBridge(IBridgeTransport transport, ListViewModel vm, W
         ],
         [
             new("Rows", "rows", model => model.Rows, null),
-            new("Title", "title", model => model.Title, (model, value) => model.Title = ConformanceWire.String(value)),
+            new("Title", "title", model => model.Title, (model, value) => model.Title = ConformanceWire.String(value))
+                { TextMember = true, TextSetter = static (model, value) => model.Title = value },
         ],
         [], [], "conformance-list", content,
         collections: [new("rows", model => model.Rows, (writer, row) => ConformanceRow.Write(writer, (ConformanceRow)row!), ConformanceRow.KeyOf)]);
@@ -447,7 +448,8 @@ internal sealed class LogBridge(IBridgeTransport transport, LogViewModel vm, Win
         ],
         [
             new("Log", "log", model => model.Log, null) { AppendOnlyTextField = "log" },
-            new("Title", "title", model => model.Title, (model, value) => model.Title = ConformanceWire.String(value)),
+            new("Title", "title", model => model.Title, (model, value) => model.Title = ConformanceWire.String(value))
+                { TextMember = true, TextSetter = static (model, value) => model.Title = value },
         ],
         [], [], "conformance-log", content);
 
@@ -487,7 +489,7 @@ internal sealed class DetailBridge(IBridgeTransport transport, DetailViewModel v
             new("lastAction", ConformanceWire.Value<DetailViewModel>(model => model.LastAction)),
             new("canDismiss", ConformanceWire.Boolean<DetailViewModel>(model => model.DismissCommand.CanExecute(null))),
         ],
-        [new("LastAction", "lastAction", model => model.LastAction, null)],
+        [new("LastAction", "lastAction", model => model.LastAction, null) { TextMember = true }],
         [],
         [new CommandDescriptor<DetailViewModel>("Dismiss", model => model.DismissCommand)],
         "conformance-detail", content);
@@ -705,7 +707,10 @@ internal sealed class NotesBridge(IBridgeTransport transport, NotesViewModel vm,
 
     private static readonly PropertyDescriptor<NotesViewModel>[] Properties =
     [
-        new("Title", "title", model => model.Title, (model, value) => model.Title = ConformanceWire.String(value)),
+        new("Title", "title", model => model.Title, (model, value) => model.Title = ConformanceWire.String(value))
+            { TextMember = true, TextSetter = static (model, value) => model.Title = value },
+        new("Note", "note", model => model.Note, null) { TextMember = true },
+        new("Summary", "summary", model => model.Summary, null) { TextMember = true },
         new("Priority", "priority", model => model.Priority, (model, value) => model.Priority = ReadPriority(value)),
         new("Due", "due", model => model.Due, (model, value) => model.Due = ConformanceWire.ReadDate(value)),
         new("Elapsed", "elapsed", model => model.Elapsed, (model, value) => model.Elapsed = ConformanceWire.ReadDuration(value)),

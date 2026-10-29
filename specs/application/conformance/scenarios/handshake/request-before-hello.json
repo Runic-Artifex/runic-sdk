@@ -4,8 +4,9 @@
   "contract": {"id":"runic.views","version":4},
   "set": "handshake",
   "roles": ["producer"],
-  "description": "A request before hello is rejected with no-hello; after hello the same request succeeds.",
+  "description": "A request that arrives before any hello waits for one; after 5 seconds without a hello that succeeds it answers no-hello. After hello the same request succeeds.",
   "view": "notes",
+  "requires": ["virtual-clock"],
   "ids": {
     "c1": {"kind":"connection"},
     "early-read": {"kind":"request"},
@@ -17,6 +18,7 @@
   "steps": [
     {"connect":"c1"},
     {"send":{"kind":"snapshot","route":"notes"},"id":"early-read"},
+    {"advance":5000},
     {
       "receive": {"ok":false,"error":{"kind":"rejected","reason":"no-hello","message":{"$any":"string","default":"…"}}},
       "replyTo": "early-read"
@@ -26,7 +28,8 @@
         "kind": "hello",
         "protocol": 4,
         "session": {"$id":"session"},
-        "client": {"name":{"$any":"string","default":"conformance-client"},"version":{"$any":"string","default":"1.0.0"}}
+        "client": {"name":{"$any":"string","default":"conformance-client"},"version":{"$any":"string","default":"1.0.0"}},
+        "features": {"$any":"array","default":["text-splice/1"]}
       },
       "id": "hello-c1"
     },
@@ -34,7 +37,8 @@
       "receive": {
         "ok": true,
         "protocol": 4,
-        "implementation": {"name":{"$any":"string","default":"conformance-producer"},"version":{"$any":"string","default":"1.0.0"}}
+        "implementation": {"name":{"$any":"string","default":"conformance-producer"},"version":{"$any":"string","default":"1.0.0"}},
+        "features": {"$any":"array","default":["text-splice/1"]}
       },
       "replyTo": "hello-c1"
     },

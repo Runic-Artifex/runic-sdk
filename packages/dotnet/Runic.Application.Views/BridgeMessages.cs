@@ -54,6 +54,10 @@ internal static class BridgeMessages
             writer.WriteStartObject();
             writer.WriteBoolean("ok", true);
             WriteIdentity(writer);
+            // Every feature this producer implements; a feature is in use when the client lists it too.
+            writer.WriteStartArray("features");
+            writer.WriteStringValue(BridgeDispatcher.TextSpliceFeature);
+            writer.WriteEndArray();
             writer.WriteEndObject();
         });
 

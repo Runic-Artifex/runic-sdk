@@ -6,10 +6,11 @@ namespace Runic.Application.Views.Generated;
 
 // The publication of a Bridge's state (specs/application/state-changes.md, "Producing frames").
 //
-// A publication unit compares the encoding of each member other than keyed collections and append-only text fields with
-// the encoding last published on the route, and publishes every member that differs as a set change, together with the
-// pending changes of keyed collections and the text appended to text fields, as one frame at the window's next
-// revision. A unit that changes nothing publishes nothing.
+// A publication unit compares the encoding of each member other than keyed collections and text members with the
+// encoding last published on the route, and publishes every member that differs as a set change, together with the
+// pending changes of keyed collections, the text appended to append-only text fields, and the splices of the other text
+// members (text-splice/1, or a set when a connection does not use it), as one frame at the window's next revision. A
+// unit that changes nothing publishes nothing.
 //
 // Notifications request a unit, which the delivery runs in a later model turn, so a burst of notifications publishes
 // one frame; requested units start at least the window's minimum unit interval apart (BridgeSnapshotDelivery). A
@@ -41,8 +42,11 @@ public partial class ViewModelBridge<T>
     private readonly Dictionary<BridgeCollectionDescriptor<T>, BridgeCollectionKeyBaseline> _collectionKeys = [];
     private readonly List<BridgeCollectionChange<T>> _pendingCollectionChanges = [];
     private readonly Dictionary<BridgeCollectionDescriptor<T>, Dictionary<object, int>> _collectionIndexes = [];
-    // Append-only text: the value of each field as last published.
+    // Append-only text fields and text members: the value of each as last published.
     private readonly Dictionary<PropertyDescriptor<T>, string?> _textBaselines = [];
+    // Text members: the revision of the last publication that changed each, so a set's splice can name the published
+    // value by a revision at or after it (specs/application/state-changes.md, "Text splices").
+    private readonly Dictionary<PropertyDescriptor<T>, long> _textChangedRevisions = [];
     // The keys a publication was last withheld for, reported once until a publication succeeds.
     private string? _rejectedKeys;
     // Whether the route's publications are withheld because a keyed collection has invalid keys.
@@ -186,7 +190,12 @@ public partial class ViewModelBridge<T>
         var revision = NextRevision();
         _revision = revision;
         Published(changed);
-        if (!_delivery.EnqueueFrame(WriteFrame(changes, revision)))
+        var baseRevision = _publishedRevision;
+        var frame = WriteFrame(changes, baseRevision, revision, withSplices: true);
+        // A connection that does not use text-splice/1 may complete its hello before the frame is broadcast.
+        Func<byte[]>? fallback = changes.Exists(static change => change.IsSplice)
+            ? () => WriteValue(writer => WriteFrameTo(writer, changes, baseRevision, revision, withSplices: false)) : null;
+        if (!_delivery.EnqueueFrame(frame, fallback))
         {
             PublishRecoveryState();
             return;
@@ -231,6 +240,25 @@ public partial class ViewModelBridge<T>
                 texts.Add(Change.Set(name, WriteValue(writer => { if (value is null) writer.WriteNullValue(); else writer.WriteStringValue(value); }), null));
             else texts.Add(Change.Text(name, delta, value));
         }
+        var splices = BridgeDispatcher.For(_transport).TextSpliceInUse;
+        foreach (var member in _textMembers)
+        {
+            var value = member.Get(_vm) as string;
+            _textBaselines.TryGetValue(member, out var baseline);
+            var version = VersionOf(member.WireName);
+            var versionChanged = version is not null && _publishedVersions.GetValueOrDefault(member.WireName) != version;
+            if (string.Equals(value, baseline, StringComparison.Ordinal) && !versionChanged) continue;
+            BridgeTextSplice first = default, second = default;
+            var spliceCount = value is null || baseline is null || !splices || string.Equals(value, baseline, StringComparison.Ordinal)
+                ? 0 : BridgeTextSplice.Between(baseline, value, out first, out second);
+            if (spliceCount == 0)
+            {
+                texts.Add(Change.Set(member.WireName, WriteMember(member.WireName), version));
+                continue;
+            }
+            texts.Add(Change.Splice(member.WireName, baseline!.Length, first, version, value!));
+            if (spliceCount == 2) texts.Add(Change.Splice(member.WireName, baseline.Length - first.Delete, second, version, value!));
+        }
         count += memberSets.Count + texts.Count;
         // A frame carries at most 4,096 changes: the indexed changes of the collection with the most become a set.
         while (count > MaximumChanges && indexed.Count > 0)
@@ -273,6 +301,13 @@ public partial class ViewModelBridge<T>
         foreach (var (name, value) in members) _baselines![name] = value;
         foreach (var field in _checkedProperties) _publishedVersions[field.Descriptor.WireName] = field.Registry.Current.Version;
         foreach (var field in _textFields) _textBaselines[field] = field.Get(_vm) as string;
+        foreach (var member in _textMembers)
+        {
+            var value = member.Get(_vm) as string;
+            if (!_textBaselines.TryGetValue(member, out var baseline) || !string.Equals(baseline, value, StringComparison.Ordinal))
+                _textChangedRevisions[member] = revision;
+            _textBaselines[member] = value;
+        }
         _publishedRevision = revision;
         _pendingCollectionChanges.Clear();
         _collectionSets.Clear();
@@ -517,18 +552,38 @@ public partial class ViewModelBridge<T>
         throw new InvalidOperationException($"{ModelName} has no state member '{name}'.");
     }
 
-    private BridgeMessage WriteFrame(List<Change> changes, long revision) => WritePush(writer =>
+    private BridgeMessage WriteFrame(List<Change> changes, long baseRevision, long revision, bool withSplices) =>
+        WritePush(writer => WriteFrameTo(writer, changes, baseRevision, revision, withSplices));
+
+    // Without splices, each spliced text member is one set of its value after the frame.
+    private void WriteFrameTo(Utf8JsonWriter writer, List<Change> changes, long baseRevision, long revision, bool withSplices)
     {
         writer.WriteStartObject();
         writer.WriteString("kind", "frame");
         writer.WriteString("route", _name);
-        writer.WriteNumber("baseRevision", _publishedRevision);
+        writer.WriteNumber("baseRevision", baseRevision);
         writer.WriteNumber("revision", revision);
         writer.WriteStartArray("changes");
-        foreach (var change in changes) change.Write(writer);
+        string? spliced = null;
+        foreach (var change in changes)
+        {
+            if (withSplices || !change.IsSplice) change.Write(writer);
+            else if (!string.Equals(spliced, change.Field, StringComparison.Ordinal))
+            {
+                spliced = change.Field;
+                change.WriteAsSet(writer);
+            }
+        }
         writer.WriteEndArray();
         writer.WriteEndObject();
-    });
+    }
+
+    // A set request's splice names its base by a revision: the member's value in the route's state at that revision is
+    // the value last published, when no publication changed the member after the revision and the revision is not
+    // beyond the last publication. Null when the producer does not have that value or it is not text.
+    private string? PublishedText(PropertyDescriptor<T> member, long revision) =>
+        revision <= _publishedRevision && revision >= _textChangedRevisions.GetValueOrDefault(member)
+            && _textBaselines.TryGetValue(member, out var value) ? value : null;
 
     // A keyed collection's next publication is a set of the field.
     private void MarkCollectionSet(BridgeCollectionDescriptor<T> descriptor)
@@ -739,12 +794,31 @@ public partial class ViewModelBridge<T>
         private long? _version;
         private BridgeCollectionChange<T>? _indexed;
         private BridgeTextDelta? _text;
+        private BridgeTextSplice? _splice;
+        private int _length;
+        // A splice's text member value after the frame, which a frame without splices sets instead.
+        private string? _spliced;
+
+        public bool IsSplice => _splice is not null;
 
         public static Change Set(string field, byte[] value, long? version) => new(field) { _value = value, _version = version };
 
         public static Change Indexed(BridgeCollectionChange<T> change) => new(change.Descriptor.Name) { _indexed = change };
 
         public static Change Text(string field, BridgeTextDelta delta, string _) => new(field) { _text = delta };
+
+        public static Change Splice(string field, int length, BridgeTextSplice splice, long? version, string value) =>
+            new(field) { _splice = splice, _length = length, _version = version, _spliced = value };
+
+        public void WriteAsSet(Utf8JsonWriter writer)
+        {
+            writer.WriteStartObject();
+            writer.WriteString("field", Field);
+            writer.WriteString("kind", "set");
+            writer.WriteString("value", _spliced);
+            if (_version is { } version) writer.WriteNumber("version", version);
+            writer.WriteEndObject();
+        }
 
         public void Write(Utf8JsonWriter writer)
         {
@@ -761,6 +835,15 @@ public partial class ViewModelBridge<T>
                 writer.WriteStartArray("items");
                 foreach (var item in change.Items) writer.WriteRawValue(item, skipInputValidation: true);
                 writer.WriteEndArray();
+            }
+            else if (_splice is { } splice)
+            {
+                writer.WriteString("kind", "splice");
+                writer.WriteNumber("length", _length);
+                writer.WriteNumber("index", splice.Index);
+                writer.WriteNumber("delete", splice.Delete);
+                writer.WriteString("text", splice.Text);
+                if (_version is { } version) writer.WriteNumber("version", version);
             }
             else if (_text is { } text)
             {

@@ -1,0 +1,33 @@
+{
+  "format": "runic.views.scenario/1",
+  "id": "state-changes.splice-a-deletion-is-a-splice-without-text.v1",
+  "contract": {"id":"runic.views","version":4},
+  "set": "state-changes",
+  "roles": ["producer","client"],
+  "description": "Deleting a word from a long text member is a splice that deletes it and inserts nothing.",
+  "view": "log",
+  "requires": ["text-splice/1"],
+  "ids": {
+    "c1": {"kind":"connection"},
+    "hello-c1": {"kind":"request"},
+    "session": {"kind":"wire","value":"s-1"},
+    "open-log": {"kind":"call"},
+    "open-log-request": {"kind":"request"},
+    "final-read": {"kind":"request"},
+    "presentation": {"kind":"wire","value":"p-1"}
+  },
+  "arrange": {"model":{"title":"Splices keep the text a page already has and send only what changed in it, here and now."}},
+  "steps": [
+    {"connect":"c1"},
+    {"send":{"kind":"hello","protocol":4,"session":{"$id":"session"},"client":{"name":{"$any":"string","default":"conformance-client"},"version":{"$any":"string","default":"1.0.0"}},"features":["text-splice/1"]},"id":"hello-c1"},
+    {"receive":{"ok":true,"protocol":4,"implementation":{"name":{"$any":"string","default":"conformance-producer"},"version":{"$any":"string","default":"1.0.0"}},"features":{"$any":"array","default":["text-splice/1"]}},"replyTo":"hello-c1"},
+    {"call":{"id":"open-log","op":"open","route":"log"}},
+    {"send":{"kind":"open","route":"log","presentation":{"$id":"presentation"}},"id":"open-log-request"},
+    {"receive":{"ok":true,"revision":0,"state":{"log":"","title":"Splices keep the text a page already has and send only what changed in it, here and now."},"presentation":"ok"},"replyTo":"open-log-request"},
+    {"mutate":[{"op":"assign","member":"title","value":"Splices keep the text a page already has and send what changed in it, here and now."}]},
+    {"receive":{"kind":"frame","route":"log","baseRevision":0,"revision":1,"changes":[{"field":"title","kind":"splice","length":88,"index":50,"delete":5,"text":""}]}},
+    {"send":{"kind":"snapshot","route":"log"},"id":"final-read","role":"producer"},
+    {"receive":{"ok":true,"revision":1,"state":{"log":"","title":"Splices keep the text a page already has and send what changed in it, here and now."}},"replyTo":"final-read","role":"producer"},
+    {"expect":{"state":{"route":"log","value":{"log":"","title":"Splices keep the text a page already has and send what changed in it, here and now."}}}}
+  ]
+}

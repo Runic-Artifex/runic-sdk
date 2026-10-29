@@ -1,13 +1,17 @@
 // The page-wide Views runtime (specs/application, "Shared globals"): one per page and `__runicBridge`, shared by
 // every generated module and every copy of this package through `runic.views.generated-client-runtime`. It owns
-// the connection (`hello` per connection), the only `onMessage` listener, which dispatches pushes by kind and
-// route, the page's edit numbers and the reconnect of open routes.
+// the connection (`hello` per connection, its features, and the requests sent with it), the only `onMessage`
+// listener, which dispatches pushes by kind and route, the page's edit numbers and the reconnect of open routes.
 import { randomId } from "./clock.js";
 import { emitBridgeDiagnostic, suppressErrorDiagnostic } from "./diagnostics.js";
 import { BridgeError } from "./errors.js";
 import { invalidResponse, readPush, readReply, replyError, type Message, type Push, type PushReading, type Reply } from "./protocol.js";
 import { hostCallbacks, protocolMismatchError, reportBridgeError, reportProtocolMismatch, type RunicBridgeClient } from "./transport.js";
 import { bridgeProtocol, clientName, runicProducerName, viewsVersion } from "./version.js";
+import { textSpliceFeature } from "./text.js";
+
+/** The features this runtime implements and lists in `hello` (specs/application/README.md, "Features"). */
+export const clientFeatures: readonly string[] = [textSpliceFeature];
 
 /** A push handler, registered per push kind and route. */
 export type PushHandler = (push: Push) => void;
@@ -33,6 +37,11 @@ export interface SharedRuntime {
   readonly operations: Map<string, unknown>;
   /** The latest edit number per route and member (`{route}\u0000{member}`), for the life of the page. */
   readonly edits: Map<string, number>;
+  /**
+   * The features in use on the current connection: those both its `hello` and the producer's reply list. Empty until
+   * the connection's `hello` succeeded. A runtime of an earlier release does not have it.
+   */
+  readonly features?: ReadonlySet<string>;
   /** Sends a request after the connection's `hello` and resolves with its reply; rejects with a BridgeError. */
   request(message: Message, route?: string): Promise<Reply>;
   /** Registers a handler for pushes of `kind` on `route`. */
@@ -70,8 +79,10 @@ function createRuntime(bridge: RunicBridgeClient): SharedRuntime {
   let reported = false;
   let connection = 0;
   let disposed = false;
-  // The hello of the current connection.
-  let hello: { readonly connection: number; readonly promise: Promise<void> } | undefined;
+  // The hello of the current connection, and whether its reply arrived and succeeded.
+  let hello: { readonly connection: number; readonly promise: Promise<void>; done: boolean } | undefined;
+  // The features in use on the current connection.
+  let features: ReadonlySet<string> = new Set<string>();
   // A producer of another protocol: every call of the page fails from then on.
   let refused: string | undefined;
   let versionReported = false;
@@ -130,7 +141,7 @@ function createRuntime(bridge: RunicBridgeClient): SharedRuntime {
     const promise = (async () => {
       const reply = await send({
         kind: "hello", protocol: bridgeProtocol, session: randomId(),
-        client: { name: clientName, version: viewsVersion },
+        client: { name: clientName, version: viewsVersion }, features: clientFeatures,
       }, undefined);
       if (reply["protocol"] !== bridgeProtocol && (reply["protocol"] !== undefined || reply.ok)) {
         refused = reply["protocol"] === undefined ? "does not state a Views protocol" : `uses Views protocol ${String(reply["protocol"])}`;
@@ -139,6 +150,9 @@ function createRuntime(bridge: RunicBridgeClient): SharedRuntime {
         throw error;
       }
       if (!reply.ok) throw replyError(reply.error, undefined, "The Bridge refused the connection.");
+      // A feature is in use when both sides list it; a producer of 0.13 lists none.
+      const listed = Array.isArray(reply["features"]) ? reply["features"] as readonly string[] : [];
+      if (connection === current) features = new Set(clientFeatures.filter(feature => listed.includes(feature)));
       const implementation = reply["implementation"] as { readonly name: string; readonly version: string };
       if (implementation.name === runicProducerName && implementation.version !== viewsVersion && !versionReported) {
         versionReported = true;
@@ -149,9 +163,10 @@ function createRuntime(bridge: RunicBridgeClient): SharedRuntime {
         });
       }
     })();
-    hello = { connection: current, promise };
+    const entry = { connection: current, promise, done: false };
+    hello = entry;
     // A failed hello is sent again by the next request, unless the producer was refused.
-    promise.catch(() => { if (hello?.promise === promise) hello = undefined; });
+    promise.then(() => { entry.done = true; }, () => { if (hello?.promise === promise) hello = undefined; });
     return promise;
   }
 
@@ -163,17 +178,36 @@ function createRuntime(bridge: RunicBridgeClient): SharedRuntime {
     routes: new Map(),
     operations: new Map(),
     edits: new Map(),
+    get features() { return features; },
     async request(message, route) {
       if (refused !== undefined) throw refusal(route);
       if (!connected) throw new BridgeError("disconnected", "The Bridge is disconnected.", route === undefined ? {} : { route });
-      try { await greet(); }
-      catch (error) {
+      // The request goes out with the hello, without waiting for its reply: the producer holds it until the hello
+      // succeeded (specs/application/README.md, "Handshake").
+      const greeting = greet();
+      const entry = hello;
+      const settled = greeting.then(() => undefined, (error: unknown) => {
         if (refused !== undefined) throw refusal(route);
         throw error;
+      });
+      // Observed at once: it is awaited only after the request's reply, when the reply came before the hello's.
+      settled.catch(() => undefined);
+      const pipelined = entry?.promise === greeting && !entry.done;
+      let reply: Reply;
+      try { reply = await send(message, route); }
+      catch (error) {
+        if (!entry?.done) await settled;
+        throw error;
       }
-      const reply = await send(message, route);
-      // A producer that lost this connection's hello, such as after a restart behind the same transport.
-      if (!reply.ok && reply.error?.reason === "no-hello") hello = undefined;
+      // Whatever the reply, the request's outcome follows the hello: a refused producer fails every call.
+      if (!entry?.done) await settled;
+      if (!reply.ok && reply.error?.reason === "no-hello") {
+        // A producer that does not hold requests behind the hello (0.13), or one whose hold ended: nothing ran, so
+        // the request is sent once more after the hello.
+        if (pipelined && hello === entry) reply = await send(message, route);
+        // A producer that lost this connection's hello, such as after a restart behind the same transport.
+        if (!reply.ok && reply.error?.reason === "no-hello") hello = undefined;
+      }
       return reply;
     },
     onPush: (kind, route, handler) => add(pushHandlers, key(kind, route), handler),
@@ -203,6 +237,7 @@ function createRuntime(bridge: RunicBridgeClient): SharedRuntime {
     connected = next;
     if (next) connection++;
     hello = undefined;
+    features = new Set<string>();
     // Each connection starts with `hello`; a request that needs it waits for it, and a failed one is sent again.
     if (next) void greet().catch(() => undefined);
     // The first report states the connection the page starts on; routes open on it themselves.

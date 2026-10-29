@@ -1,0 +1,31 @@
+{
+  "format": "runic.views.scenario/1",
+  "id": "handshake.a-request-answered-no-hello-is-sent-again.v1",
+  "contract": {"id":"runic.views","version":4},
+  "set": "handshake",
+  "roles": ["client"],
+  "description": "A producer that does not hold requests behind the hello, such as one of 0.13, answers the open sent with the hello no-hello. Nothing ran, so the client sends it again once the hello succeeded.",
+  "view": "log",
+  "ids": {
+    "c1": {"kind":"connection"},
+    "hello-c1": {"kind":"request"},
+    "session": {"kind":"wire","value":"s-1"},
+    "open-log": {"kind":"call"},
+    "open-log-request": {"kind":"request"},
+    "open-again": {"kind":"request"},
+    "presentation": {"kind":"wire","value":"p-1"}
+  },
+  "arrange": {"model":{}},
+  "steps": [
+    {"connect":"c1"},
+    {"send":{"kind":"hello","protocol":4,"session":{"$id":"session"},"client":{"name":{"$any":"string","default":"conformance-client"},"version":{"$any":"string","default":"1.0.0"}},"features":{"$any":"array","default":["text-splice/1"]}},"id":"hello-c1"},
+    {"call":{"id":"open-log","op":"open","route":"log"}},
+    {"send":{"kind":"open","route":"log","presentation":{"$id":"presentation"}},"id":"open-log-request"},
+    {"receive":{"ok":false,"error":{"kind":"rejected","reason":"no-hello","message":{"$any":"string","default":"…"}}},"replyTo":"open-log-request"},
+    {"receive":{"ok":true,"protocol":4,"implementation":{"name":{"$any":"string","default":"conformance-producer"},"version":{"$any":"string","default":"1.0.0"}}},"replyTo":"hello-c1"},
+    {"send":{"kind":"open","route":"log","presentation":{"$id":"presentation"}},"id":"open-again"},
+    {"receive":{"ok":true,"revision":0,"state":{"log":"","title":""},"presentation":"ok"},"replyTo":"open-again"},
+    {"expect":{"call":{"id":"open-log","resolved":null}}},
+    {"expect":{"diagnostics":[]}}
+  ]
+}

@@ -112,7 +112,7 @@ const exportOperation: BridgeOperationCodec<string> = { decode: value => bridgeW
  */
 export function connectKeyedReactive(options?: BridgeConnectOptions): Promise<KeyedReactiveClient & globalThis.Disposable> { return connectKeyedReactiveAt("keyedReactive", options); }
 async function connectKeyedReactiveAt(route: string, options?: BridgeConnectOptions): Promise<KeyedReactiveClient & globalThis.Disposable> {
-  const view = await connectView<KeyedReactiveState>({ contract: bridgeContract, route, members, checkedFields: checkedFieldNames, operations: bridgeOperations, timeout: options?.timeout, signal: options?.signal });
+  const view = await connectView<KeyedReactiveState>({ contract: bridgeContract, route, members, checkedFields: checkedFieldNames, texts: ["last"], operations: bridgeOperations, timeout: options?.timeout, signal: options?.signal });
   return disposable<KeyedReactiveClient>({
     get snapshot() { return view.snapshot; },
     subscribe: view.subscribe,

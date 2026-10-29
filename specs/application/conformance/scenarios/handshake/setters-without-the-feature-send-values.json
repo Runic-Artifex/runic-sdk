@@ -1,0 +1,34 @@
+{
+  "format": "runic.views.scenario/1",
+  "id": "handshake.setters-without-the-feature-send-values.v1",
+  "contract": {"id":"runic.views","version":4},
+  "set": "handshake",
+  "roles": ["client"],
+  "description": "A producer whose hello reply lists no features does not use text-splice/1: a setter of a long text member sends its whole value.",
+  "view": "log",
+  "ids": {
+    "c1": {"kind":"connection"},
+    "hello-c1": {"kind":"request"},
+    "session": {"kind":"wire","value":"s-1"},
+    "open-log": {"kind":"call"},
+    "open-log-request": {"kind":"request"},
+    "type": {"kind":"call"},
+    "edit-1": {"kind":"request"},
+    "presentation": {"kind":"wire","value":"p-1"}
+  },
+  "arrange": {"model":{}},
+  "steps": [
+    {"connect":"c1"},
+    {"send":{"kind":"hello","protocol":4,"session":{"$id":"session"},"client":{"name":{"$any":"string","default":"conformance-client"},"version":{"$any":"string","default":"1.0.0"}},"features":["text-splice/1"]},"id":"hello-c1"},
+    {"receive":{"ok":true,"protocol":4,"implementation":{"name":{"$any":"string","default":"conformance-producer"},"version":{"$any":"string","default":"1.0.0"}}},"replyTo":"hello-c1"},
+    {"call":{"id":"open-log","op":"open","route":"log"}},
+    {"send":{"kind":"open","route":"log","presentation":{"$id":"presentation"}},"id":"open-log-request"},
+    {"receive":{"ok":true,"revision":0,"state":{"log":"","title":"Splices keep the text a page already has and send only what changed in it, here and now."},"presentation":"ok"},"replyTo":"open-log-request"},
+    {"call":{"id":"type","op":"set","route":"log","member":"title","value":"Splices keep the text a page already has and send only what changed in it, here and now.!"}},
+    {"send":{"kind":"set","route":"log","member":"title","value":"Splices keep the text a page already has and send only what changed in it, here and now.!","edit":1},"id":"edit-1"},
+    {"receive":{"kind":"frame","route":"log","baseRevision":0,"revision":1,"changes":[{"field":"title","kind":"set","value":"Splices keep the text a page already has and send only what changed in it, here and now.!"}]}},
+    {"receive":{"ok":true,"revision":1},"replyTo":"edit-1"},
+    {"expect":{"call":{"id":"type","resolved":null}}},
+    {"expect":{"state":{"route":"log","value":{"log":"","title":"Splices keep the text a page already has and send only what changed in it, here and now.!"}}}}
+  ]
+}

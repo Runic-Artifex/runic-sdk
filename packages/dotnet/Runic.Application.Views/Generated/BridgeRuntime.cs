@@ -74,6 +74,17 @@ public sealed class PropertyDescriptor<T>
     /// as a frame, or <see langword="null"/>. <see cref="Get"/> returns its <see cref="string"/> value.
     /// </summary>
     public string? AppendOnlyTextField { get; init; }
+    /// <summary>
+    /// Whether the property is a text member: a <see cref="string"/> state member that frames and <c>set</c> requests may
+    /// change with text splices on connections that use <c>text-splice/1</c>. <see cref="Get"/> returns its
+    /// <see cref="string"/> value.
+    /// </summary>
+    public bool TextMember { get; init; }
+    /// <summary>
+    /// Writes a text member from the value a <c>set</c> request's splice produces, or from a <c>set</c> request's string
+    /// value; <see langword="null"/> for a read-only property. It throws like the setter.
+    /// </summary>
+    public Action<T, string>? TextSetter { get; init; }
     /// <summary>Whether the browser may write the property.</summary>
     public bool CanWrite => _setter is not null;
     /// <summary>Reads the property value from <paramref name="vm"/>.</summary>
@@ -422,6 +433,7 @@ public partial class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBr
     private readonly HashSet<string> _generatedCollectionNames;
     // Append-only text fields, which publish their appended text.
     private readonly PropertyDescriptor<T>[] _textFields;
+    private readonly PropertyDescriptor<T>[] _textMembers;
     // The wire names of the members whose changes are published as collection or text changes, not by comparison.
     private readonly HashSet<string> _incrementalMembers = new(StringComparer.Ordinal);
     // The presentations of a Bridge without a window.
@@ -500,6 +512,9 @@ public partial class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBr
         _validationReader = validationReader;
         foreach (var descriptor in _incrementalCollections) _incrementalMembers.Add(descriptor.Name);
         foreach (var field in _textFields) _incrementalMembers.Add(field.AppendOnlyTextField!);
+        // Text members are compared as strings, not by encoding, and may change with splices.
+        _textMembers = [.. properties.Where(property => property.TextMember && property.AppendOnlyTextField is null)];
+        foreach (var member in _textMembers) _incrementalMembers.Add(member.WireName);
 
         foreach (var property in properties.Where(property => property.CanWrite))
             _settable[property.WireName] = property;

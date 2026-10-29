@@ -72,7 +72,7 @@ const saveOperation: BridgeOperationCodec<void> = { decode: value => undefined }
  */
 export function connectGeneratedReactive(options?: BridgeConnectOptions): Promise<GeneratedReactiveClient & globalThis.Disposable> { return connectGeneratedReactiveAt("generatedReactive", options); }
 async function connectGeneratedReactiveAt(route: string, options?: BridgeConnectOptions): Promise<GeneratedReactiveClient & globalThis.Disposable> {
-  const view = await connectView<GeneratedReactiveState>({ contract: bridgeContract, route, members, checkedFields: checkedFieldNames, operations: bridgeOperations, timeout: options?.timeout, signal: options?.signal });
+  const view = await connectView<GeneratedReactiveState>({ contract: bridgeContract, route, members, checkedFields: checkedFieldNames, texts: ["name", "summary"], operations: bridgeOperations, timeout: options?.timeout, signal: options?.signal });
   return disposable<GeneratedReactiveClient>({
     get snapshot() { return view.snapshot; },
     subscribe: view.subscribe,

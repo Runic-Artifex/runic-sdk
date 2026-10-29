@@ -32,7 +32,7 @@
     "requires": {
       "type": "array",
       "uniqueItems": true,
-      "items": { "enum": ["held-delivery", "virtual-clock"] }
+      "items": { "enum": ["held-delivery", "virtual-clock", "text-splice/1"] }
     },
     "options": {
       "type": "object",

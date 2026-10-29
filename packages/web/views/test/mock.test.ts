@@ -201,7 +201,8 @@ test("progress reports reach the watching client as running statuses", async () 
   const operation = await client.start("save", "request-1", undefined, text);
   const seen: unknown[] = [];
   operation.subscribe(status => seen.push(status.kind === "running" ? status.progress ?? "running" : status.kind));
-  await until(() => bridge.calls.some(call => call.kind === "watch"), "The client did not watch the operation.");
+  // The watch's reply first: a push that follows it may otherwise reach the page before the reply is handled.
+  await until(() => seen.length > 0, "The client did not watch the operation.");
   const mock = notes.operations.save[0]!;
   mock.reportProgress(0.25);
   mock.reportProgress(7);
@@ -506,8 +507,8 @@ test("latency in milliseconds delays requests, replies and pushes on real timers
   const notes = mockNotes(bridge, { state: { title: "a", count: 0n, rows: [] } });
   const started = performance.now();
   const client = await connect();
-  // hello and open: a request and a reply each.
-  assert.ok(performance.now() - started >= 55, "The connection did not wait for the latency.");
+  // hello and open go out together (README "Handshake"): one request and one reply.
+  assert.ok(performance.now() - started >= 25, "The connection did not wait for the latency.");
   notes.update({ title: "b" });
   assert.equal(client.snapshot.title, "a");
   await until(() => client.snapshot.title === "b", "The push did not arrive.");
@@ -558,13 +559,13 @@ test("latency with manual scheduling runs on the virtual clock", async () => {
   const notes = mockNotes(bridge, { state: { title: "a", count: 0n, rows: [] } });
   const connected: { client?: Awaited<ReturnType<typeof connect>> } = {};
   void connect().then(client => { connected.client = client; });
-  // hello and open each take 50 ms to the producer and 50 ms back.
-  await bridge.advance(199);
+  // hello and open go out together, and each takes 50 ms to the producer and 50 ms back.
+  await bridge.advance(99);
   assert.equal(connected.client, undefined);
   await bridge.advance(1);
   const client = connected.client!;
   assert.ok(client);
-  assert.equal(bridge.now, 200);
+  assert.equal(bridge.now, 100);
   notes.update({ title: "b" });
   await bridge.advance(49);
   assert.equal(client.snapshot.title, "a");
