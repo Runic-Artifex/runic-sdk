@@ -30,7 +30,7 @@ test("binding and generator APIs are not in the application entries; graduated A
   // Node reports ERR_PACKAGE_PATH_NOT_EXPORTED and Bun "Cannot find module"; the exports test pins the map.
   await assert.rejects(import(["@runic-artifex/views", "experimental"].join("/")));
   const bindings = await import("@runic-artifex/views/bindings");
-  assert.deepEqual(Object.keys(bindings).sort(), ["isViewClient", "viewSourceIdentity"]);
+  assert.deepEqual(Object.keys(bindings).sort(), ["checkKeepAlive", "defaultKeepAlive", "isViewClient", "viewSourceIdentity", "viewSourcePreview"]);
 
   const mock = await import("@runic-artifex/views/mock");
   for (const name of ["mockBridgeInternals", "mockFailureOf", "mockTypedView"])

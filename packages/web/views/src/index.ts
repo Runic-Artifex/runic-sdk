@@ -11,6 +11,7 @@ export {
   type BridgeErrorReason,
   type BridgeFailureDetail,
 } from "./errors.js";
+export { describeBridgeError, isBridgeError } from "./describe-error.js";
 export { onBridgeDiagnostic, type BridgeDiagnostic, type BridgeDiagnosticCode, type BridgeDiagnosticListener } from "./diagnostics.js";
 export { bridgeFailure, bridgeSuccess, isBridgeOutcome, matchCase, type BridgeOutcome } from "./outcome.js";
 export type { BridgeValidationMessage, BridgeValidationState } from "./validation.js";
@@ -19,6 +20,8 @@ export { onBridgeConnection, type BridgeConnectionOptions, type BridgeConnection
 export {
   createCommandController,
   createViewController,
+  preloadView,
+  type PreloadViewOptions,
   type BridgeOutcomeFailure,
   type CommandController,
   type CommandState,
@@ -67,6 +70,7 @@ export {
   type FieldSource,
   type FieldState,
 } from "./field-controller.js";
+export { attachField, bindField, commitFields, type BoundField, type FieldElement } from "./dom-field.js";
 export {
   createTextFieldController,
   type TextFieldController,

@@ -118,6 +118,12 @@ function createViewStore<TClient extends ViewClient>(controller: ViewController<
 export interface UseViewOptions<TClient extends ViewClient> {
   /** Releases a client this hook connected. Defaults to `client.dispose()`. */
   readonly release?: (client: TClient) => void;
+  /**
+   * Milliseconds a client this hook connected stays connected after the component unmounts or the source changes,
+   * for the next hook that follows the same reference (StrictMode, HMR, `<Activity>`, A→B→A navigation). `0`
+   * disposes it at once. Defaults to 2000. Read once, when the hook is created.
+   */
+  readonly keepAlive?: number;
 }
 
 /**
@@ -135,6 +141,7 @@ export function useView<TClient extends ViewClient>(source: ViewSource<TClient>,
   useInsertionEffect(() => { release.current = options.release; });
   const [controller] = useState(() => createViewController<TClient>({
     release: client => { if (release.current) release.current(client); else client.dispose(); },
+    ...(options.keepAlive === undefined ? {} : { keepAlive: options.keepAlive }),
   }));
   const [store] = useState(() => createViewStore(controller));
   const tracker = useRef<InlineConnectTracker>({ connect: undefined, text: "", times: [], warned: false });

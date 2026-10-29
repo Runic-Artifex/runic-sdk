@@ -20,6 +20,12 @@ export interface InjectViewOptions<TClient extends ViewClient> {
   readonly injector?: Injector;
   /** Releases a client this helper connected. Defaults to `client.dispose()`. */
   readonly release?: (client: TClient) => void;
+  /**
+   * Milliseconds a client this helper connected stays connected after the component unmounts or the source changes,
+   * for the next helper that follows the same reference (StrictMode, HMR, `<Activity>`, A→B→A navigation). `0`
+   * disposes it at once. Defaults to 2000. Read once, when the helper is created.
+   */
+  readonly keepAlive?: number;
 }
 
 /**
@@ -35,7 +41,10 @@ export function injectView<TClient extends ViewClient>(source: Signal<ViewSource
   options: InjectViewOptions<TClient> = {}): ViewHandle<TClient> {
   if (!options.injector) assertInInjectionContext(injectView);
   const injector = options.injector ?? inject(Injector);
-  const controller = createViewController<TClient>(options.release ? { release: options.release } : {});
+  const controller = createViewController<TClient>({
+    ...(options.release ? { release: options.release } : {}),
+    ...(options.keepAlive === undefined ? {} : { keepAlive: options.keepAlive }),
+  });
   const current = signal(controller.current);
   controller.subscribe(() => current.set(controller.current));
   const read = (): ViewSource<TClient> => isSignal(source) ? source() : source;

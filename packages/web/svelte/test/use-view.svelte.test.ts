@@ -47,7 +47,7 @@ const settle = async () => { await Promise.resolve(); await Promise.resolve(); f
 
 function mount(source: () => ViewSource<FakeClient>) {
   let view!: ViewHandle<FakeClient>;
-  const destroy = $effect.root(() => { view = useView(source); });
+  const destroy = $effect.root(() => { view = useView(source, { keepAlive: 0 }); });
   flushSync();
   return { view, destroy };
 }
@@ -56,7 +56,7 @@ describe("useView options", () => {
   test("release replaces dispose for a client the helper connected", async () => {
     const reference = fakeReference();
     const released: FakeClient[] = [];
-    const destroy = $effect.root(() => { useView(() => reference, { release: client => released.push(client) }); });
+    const destroy = $effect.root(() => { useView(() => reference, { release: client => released.push(client), keepAlive: 0 }); });
     flushSync();
     await settle();
     destroy();

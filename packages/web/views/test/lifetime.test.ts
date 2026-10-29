@@ -230,7 +230,7 @@ test("controllers and generated clients release themselves at the end of a using
   const fake: ViewClient<number> = { snapshot: 1, subscribe: listener => { listener(1); return () => {}; }, dispose() {} };
   let released = 0;
   {
-    using view = createViewController<ViewClient<number>>({ release: () => { released++; } });
+    using view = createViewController<ViewClient<number>>({ release: () => { released++; }, keepAlive: 0 });
     using command = createCommandController(() => 1);
     using operation = createOperationController(async () => undefined);
     using latest = createLatestOperationController();

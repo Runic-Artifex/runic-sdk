@@ -904,3 +904,13 @@ Details: 0.14.0 [Platform: dialogs, launcher and message boxes without a window]
 | Content a factory returned for a rejected initial target was disposed before `CreateRegion` threw | It is disposed asynchronously; `WhenIdleAsync` waits for it |
 
 Details: 0.14.0 [Navigation hooks on the model turn](../eng/release/notes/0.14.0.md#navigation-hooks-on-the-model-turn-a2).
+
+### Connections
+
+| 0.13 | 0.14 |
+| --- | --- |
+| A client connected by `useView`, `injectView` or `createViewController` was disposed, and its route closed, as soon as its component unmounted or its source changed | It stays connected for `keepAlive` milliseconds (2000 by default) and the next binding that follows the same connector takes it over ([Client lifetime](../packages/web/views/README.md#client-lifetime)). Tests that assert the route closes at unmount pass `{ keepAlive: 0 }` or wait for the period |
+| `String(error)` in a status line ("BridgeError: …") | `describeBridgeError(error)`; `isBridgeError(error, "released")` instead of `error instanceof BridgeError && error.kind === "released"` |
+| An app-local `bindTextInput` or `field-input.ts` for plain TypeScript pages | `bindField(element, client, EditorFields.title, options)` and `commitFields(...)` from `@runic-artifex/views` |
+
+Details: 0.14.0 [Frontend connections and DX](../eng/release/notes/0.14.0.md#frontend-connections-and-dx-f2).

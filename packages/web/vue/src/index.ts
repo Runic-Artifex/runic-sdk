@@ -36,6 +36,7 @@ import {
   type OperationState,
   type PageReference,
   type ViewClient,
+  type ViewControllerOptions,
   type ViewSource,
 } from "@runic-artifex/views";
 import { viewSourceIdentity } from "@runic-artifex/views/bindings";
@@ -68,11 +69,21 @@ export interface ViewHandle<TClient extends ViewClient> {
 export interface UseViewOptions<TClient extends ViewClient> {
   /** Releases a client this composable connected. Defaults to `client.dispose()`. */
   readonly release?: (client: TClient) => void;
+  /**
+   * Milliseconds a client this composable connected stays connected after the component unmounts or the source changes,
+   * for the next composable that follows the same reference (StrictMode, HMR, `<Activity>`, A→B→A navigation). `0`
+   * disposes it at once. Defaults to 2000. Read once, when the composable is created.
+   */
+  readonly keepAlive?: number;
+}
+
+function controllerOptions<TClient extends ViewClient>(options: UseViewOptions<TClient>): ViewControllerOptions<TClient> {
+  return { ...(options.release ? { release: options.release } : {}), ...(options.keepAlive === undefined ? {} : { keepAlive: options.keepAlive }) };
 }
 
 export function useView<TClient extends ViewClient>(source: MaybeRefOrGetter<ViewSource<TClient>>,
   options: UseViewOptions<TClient> = {}): ViewHandle<TClient> {
-  const controller = createViewController<TClient>(options.release ? { release: options.release } : {});
+  const controller = createViewController<TClient>(controllerOptions(options));
   const state = shallowRef<TClient["snapshot"] | undefined>();
   const client = shallowRef<TClient | undefined>();
   const error = shallowRef<unknown>();

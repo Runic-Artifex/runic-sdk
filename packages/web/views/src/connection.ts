@@ -624,6 +624,21 @@ class RouteEntry {
   }
 }
 
+// Each connected presentation by its `dispose` function, which a generated client exposes unchanged, so the keep-alive
+// pool can refresh a client it hands over without an API on the client.
+const presentationRefreshes = new WeakMap<object, () => void>();
+
+/**
+ * Reads the state of a kept client's route again before a binding takes it over (README, "Client lifetime"). .NET
+ * suspends a content route that no slot presents and resumes the presentations it kept when the content is presented
+ * again, without pushing its state; a client kept meanwhile would otherwise show the state from before the
+ * suspension until the route changes. A newer state is delivered to its subscribers; the same state changes nothing.
+ * A client that is not a connected presentation of this package, such as a test double, is left alone.
+ */
+export function refreshPresentation(client: ViewClient): void {
+  presentationRefreshes.get(client.dispose)?.();
+}
+
 /**
  * Connects one generated client presentation to its route: sends `open` with a new presentation id and returns the
  * connection once the state arrived. Presentations of one route share its state, revision and recovery; each has
@@ -711,6 +726,7 @@ async function connectRoute<TState>(options: ViewConnectOptions<TState>): Promis
   // The other presentations of the route receive the state this one starts with.
   flushNotifications();
   lease.current = entry.exposed;
+  presentationRefreshes.set(dispose, () => { if (live() && runtime.connected) void entry.recover(); });
 
   const ready = async () => { await lease.interactions?.ready(); };
   const current = () => lease.current as TState;

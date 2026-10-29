@@ -298,7 +298,7 @@ describe("useView options", () => {
     const client = { snapshot: { count: 1 }, subscribe: (listener: (state: { count: number }) => void) => { listener({ count: 1 }); return () => {}; },
       dispose: () => { disposed++; } };
     const scope = effectScope();
-    scope.run(() => useView({ connect: async () => client }, { release: connected => released.push(connected) }));
+    scope.run(() => useView({ connect: async () => client }, { release: connected => released.push(connected), keepAlive: 0 }));
     await settle();
     scope.stop();
     expect(released).toEqual([client]);

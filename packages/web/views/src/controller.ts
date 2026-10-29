@@ -2,6 +2,7 @@
 import type { ViewClient } from "./connection.js";
 import { disposable } from "./lifetime.js";
 import { isBridgeOutcome, type BridgeOutcome } from "./outcome.js";
+import { adoptConnection, checkKeepAlive, keepConnection, peekConnection } from "./keep-alive.js";
 
 /** Anything that connects a client: a generated page reference or `{ connect: connect<Name> }`. */
 export interface ViewConnector<TClient> {
@@ -21,7 +22,10 @@ export interface ViewControllerState<TClient extends ViewClient> {
   readonly source: ViewSource<TClient>;
   /** The connected or observed client, or undefined until it connects. */
   readonly client: TClient | undefined;
-  /** The latest state, or undefined until the client connects. */
+  /**
+   * The latest state, or undefined until the client connects. While the same source connects again, after `retry()`
+   * or once a released client's grace period ended, it stays the last state the controller showed, with `pending`.
+   */
   readonly state: TClient["snapshot"] | undefined;
   /** The connection failure, if any. */
   readonly error: unknown;
@@ -32,6 +36,14 @@ export interface ViewControllerState<TClient extends ViewClient> {
 export interface ViewControllerOptions<TClient extends ViewClient> {
   /** Releases a client this controller connected. Defaults to `client.dispose()`. */
   readonly release?: (client: TClient) => void;
+  /**
+   * Milliseconds a client this controller connected stays connected after the controller lets go of it (`release`,
+   * `dispose` or a changed source), for the next controller that follows the same connector: a binding that mounts
+   * again, such as after StrictMode's simulated unmount, Fast Refresh or HMR, `<Activity>` or A→B→A navigation,
+   * takes it over with its state instead of opening the route again. A whole number from 0 to 2147483647; `0`
+   * releases at once. Defaults to 2000. Connectors are identified by their `connect` function, as by `setSource`.
+   */
+  readonly keepAlive?: number;
 }
 
 /**
@@ -48,13 +60,25 @@ export interface ViewController<TClient extends ViewClient> {
    * so an inline `{ connect: connectWorkspace }` does not reconnect. Returns
    * whether the controller started following a different source.
    *
+   * A connector whose client another controller let go of within its `keepAlive`
+   * period takes that client over, with its state at once and without `pending`.
+   *
    * `setSource` does not notify subscribers; read `current` after calling it.
    * Later changes (the connection settling, pushed state, `retry`) notify.
    */
   setSource(source: ViewSource<TClient>): boolean;
+  /**
+   * Lets go of the client for `keepAlive` milliseconds and stops following it, but keeps `current`, so a binding
+   * that is unmounted or hidden shows its last state again at once. The next `setSource`, also with the same source,
+   * follows it again and takes the kept client back. Does not notify.
+   */
+  release(): void;
   /** Connects the current source again, for example after a failure. */
   retry(): void;
-  /** Releases the current client and stops publishing. A disposed controller ignores later sources. */
+  /**
+   * Lets go of the current client, as `release` does, and stops publishing. A disposed controller ignores later
+   * sources.
+   */
   dispose(): void;
 }
 
@@ -70,15 +94,56 @@ export function viewSourceIdentity<TClient extends ViewClient>(source: ViewSourc
 }
 
 /**
+ * What a binding shows for a source before its controller follows it, as in the render before an effect: an
+ * observed client and its state, or the client and state that a released controller kept for the connector.
+ * Undefined when the source has neither.
+ */
+export function viewSourcePreview<TClient extends ViewClient>(source: ViewSource<TClient>):
+  { readonly client: TClient; readonly state: TClient["snapshot"] } | undefined {
+  if (!source) return undefined;
+  const client = isViewClient(source) ? source : peekConnection<TClient>(source);
+  return client ? { client, state: client.snapshot } : undefined;
+}
+
+export interface PreloadViewOptions {
+  /** Milliseconds the client waits for a binding to take it over before it is released. Defaults to 2000. */
+  readonly keepAlive?: number;
+}
+
+/**
+ * Connects a connector ahead of the component that shows it, such as in a router's `load` function, and keeps the
+ * client for `keepAlive` milliseconds: the first `useView` / `injectView` that follows the connector takes it over
+ * with its state, so the component renders the View at once instead of "Connecting…". Resolves with `source`, the
+ * value to hand to the component, once the client connected; rejects with the connection's failure, so the router
+ * shows its error page. A client that no binding takes over is released after `keepAlive`.
+ *
+ * ```ts
+ * // SvelteKit, src/routes/editor/+page.ts
+ * export const ssr = false;
+ * export const load = async () => ({ editor: await preloadView({ connect: connectEditor }) });
+ * ```
+ */
+export async function preloadView<TSource extends ViewConnector<ViewClient>>(source: TSource, options: PreloadViewOptions = {}): Promise<TSource> {
+  const keepAlive = checkKeepAlive(options.keepAlive);
+  const client = await source.connect();
+  keepConnection(source, Promise.resolve(client), client, keepAlive === 0 ? 1 : keepAlive, connected => connected.dispose());
+  return source;
+}
+
+/**
  * Creates the framework-neutral controller behind `useView` and `injectView`.
  * A `using` declaration disposes it where the engine has `Symbol.dispose`.
  */
 export function createViewController<TClient extends ViewClient>(options: ViewControllerOptions<TClient> = {}): ViewController<TClient> & Disposable {
   const release = options.release ?? ((client: TClient) => client.dispose());
+  const keepAlive = checkKeepAlive(options.keepAlive);
   const listeners = new Set<() => void>();
   let current: ViewControllerState<TClient> = { source: undefined, client: undefined, state: undefined, error: undefined, pending: false };
   let identity: object | undefined;
+  // The identity `current.state` belongs to, so connecting the same source again keeps it.
+  let stateIdentity: object | undefined;
   let stop: (() => void) | undefined;
+  let released = false;
   let disposed = false;
 
   let quiet = false;
@@ -90,36 +155,51 @@ export function createViewController<TClient extends ViewClient>(options: ViewCo
   function start(): void {
     stop?.();
     stop = undefined;
+    released = false;
     const source = current.source;
     if (!source) {
+      stateIdentity = undefined;
       publish({ client: undefined, state: undefined, error: undefined, pending: false });
       return;
     }
+    const followed = identity;
     let active = true;
-    let connected: TClient | undefined;
     let unsubscribe: (() => void) | undefined;
-    stop = () => {
-      active = false;
-      unsubscribe?.();
-      if (connected) release(connected);
-    };
     const observe = (client: TClient) => {
+      stateIdentity = followed;
       publish({ client, state: client.snapshot, error: undefined, pending: false });
       unsubscribe = client.subscribe(state => { if (active && state !== current.state) publish({ state }); });
     };
     if (isViewClient(source)) {
+      stop = () => { active = false; unsubscribe?.(); };
       observe(source);
       return;
     }
-    publish({ client: undefined, state: undefined, error: undefined, pending: true });
+    const kept = adoptConnection<TClient>(source);
     let connecting: Promise<TClient>;
-    try { connecting = source.connect(); }
-    catch (cause) { connecting = Promise.reject(cause); }
+    if (kept) connecting = kept.connecting;
+    else {
+      try { connecting = source.connect(); }
+      catch (cause) { connecting = Promise.reject(cause); }
+    }
+    let connected = kept?.client;
+    let settled = connected !== undefined;
+    stop = () => {
+      active = false;
+      unsubscribe?.();
+      // Kept for the next controller that follows this connector; a failed connection has nothing to keep.
+      if (connected || !settled) keepConnection(source, connecting, connected, keepAlive, release);
+    };
+    if (connected) { observe(connected); return; }
+    // The same source connecting again keeps showing its last state.
+    publish({ client: undefined, state: stateIdentity === followed ? current.state : undefined, error: undefined, pending: true });
     connecting.then(client => {
-      if (!active) { release(client); return; }
+      settled = true;
+      if (!active) return;
       connected = client;
       observe(client);
     }, (cause: unknown) => {
+      settled = true;
       if (active) publish({ error: cause, pending: false });
     });
   }
@@ -133,18 +213,25 @@ export function createViewController<TClient extends ViewClient>(options: ViewCo
     setSource(source) {
       if (disposed) return false;
       const next = viewSourceIdentity(source);
-      if (next === identity) {
+      if (next === identity && !released) {
         // Keep the newest wrapper object so `current.source` reflects what the binding passed.
         if (source !== current.source) current = { ...current, source };
         return false;
       }
+      const changed = next !== identity;
       identity = next;
       current = { ...current, source };
       // The caller reads `current` itself. Not notifying keeps a render-driven
       // binding from rendering again for a change it is making during an update.
       quiet = true;
       try { start(); } finally { quiet = false; }
-      return true;
+      return changed;
+    },
+    release() {
+      if (disposed || released) return;
+      released = true;
+      stop?.();
+      stop = undefined;
     },
     retry() {
       if (!disposed) start();
