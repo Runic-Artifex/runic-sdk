@@ -26,7 +26,7 @@ const members: BridgeMemberDecoders<HomeState> = {
   greeting: (wire: unknown) => bridgeWire.string(wire),
   recentNotes: (wire: unknown) => bridgeWire.array(wire, item => bridgeWire.object<SavedNote>(item, value => ({ title: bridgeWire.string(value["title"]), excerpt: bridgeWire.string(value["excerpt"])}))),
 };
-const bridgeContract = "NotesWindowViews.HomeViewModel:1160496013C85294527537E950775D8901F2B81EC31DE93996835B51444AF521";
+const bridgeContract = "NotesWindowViews.HomeViewModel:B1B7B2A52CF0E906FFEA4BBB8E5F7A495EB2B92954C0DDAC0DCB80919BFD4DA9";
 
 const collectionDefinitions = defineCollections({
   recentNotes: defineCollection<SavedNote>(wire => bridgeWire.object<SavedNote>(wire, value => ({ title: bridgeWire.string(value["title"]), excerpt: bridgeWire.string(value["excerpt"])})), item => String(item.title)),
@@ -38,7 +38,7 @@ const collectionDefinitions = defineCollections({
  */
 export function connectHome(options?: BridgeConnectOptions): Promise<HomeClient & globalThis.Disposable> { return connectHomeAt("home", options); }
 async function connectHomeAt(route: string, options?: BridgeConnectOptions): Promise<HomeClient & globalThis.Disposable> {
-  const view = await connectView<HomeState>({ contract: bridgeContract, route, members, collections: collectionDefinitions, timeout: options?.timeout, signal: options?.signal });
+  const view = await connectView<HomeState>({ contract: bridgeContract, route, members, collections: collectionDefinitions, texts: ["greeting"], timeout: options?.timeout, signal: options?.signal });
   return disposable<HomeClient>({
     get snapshot() { return view.snapshot; },
     subscribe: view.subscribe,

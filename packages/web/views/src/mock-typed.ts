@@ -151,6 +151,8 @@ export interface MockTypedViewSpec {
   /** State the client always receives, such as `canSave: true`. */
   readonly defaults: MockState;
   readonly checkedFields?: readonly string[];
+  /** Text members by wire name, which frames and setters change with splices (text-splice/1). */
+  readonly texts?: readonly string[];
   /** Keyed collections by wire name: a row codec and its key. */
   readonly collections?: Readonly<Record<string, FieldCodec & { key(item: never): string }>>;
   /**
@@ -307,6 +309,7 @@ export function mockTypedView(bridge: MockBridge, spec: MockTypedViewSpec, defin
     commands,
     can,
     ...(spec.checkedFields ? { checkedFields: spec.checkedFields } : {}),
+    ...(spec.texts ? { texts: spec.texts } : {}),
     ...(spec.collections ? { collections: Object.fromEntries(Object.entries(spec.collections)
       .map(([field, codec]) => [field, (item: unknown) => codec.key(codec.decode(item) as never)])) } : {}),
     operations,

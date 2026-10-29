@@ -22,12 +22,13 @@ export interface HomeMock extends MockTypedView<HomeMockState, HomeClient, "home
 const spec: MockTypedViewSpec = {
   kind: "home",
   route: "home",
-  contract: "NotesWindowViews.HomeViewModel:1160496013C85294527537E950775D8901F2B81EC31DE93996835B51444AF521",
+  contract: "NotesWindowViews.HomeViewModel:B1B7B2A52CF0E906FFEA4BBB8E5F7A495EB2B92954C0DDAC0DCB80919BFD4DA9",
   fields: {
     greeting: { encode: (value: unknown) => { const typed = value as string; return typed; }, decode: (wire: unknown) => bridgeWire.string(wire) },
     recentNotes: { encode: (value: unknown) => { const typed = value as readonly SavedNote[]; return typed.map(item => ({ ["title"]: item["title"], ["excerpt"]: item["excerpt"] })); }, decode: (wire: unknown) => bridgeWire.array(wire, item => bridgeWire.object<SavedNote>(item, value => ({ title: bridgeWire.string(value["title"]), excerpt: bridgeWire.string(value["excerpt"])}))) },
   },
   defaults: {},
+  texts: ["greeting"],
   collections: {
     recentNotes: { encode: (value: unknown) => { const typed = value as SavedNote; return { ["title"]: typed["title"], ["excerpt"]: typed["excerpt"] }; }, decode: (wire: unknown) => bridgeWire.object<SavedNote>(wire, value => ({ title: bridgeWire.string(value["title"]), excerpt: bridgeWire.string(value["excerpt"])})), key: (item: SavedNote) => String(item.title) },
   },

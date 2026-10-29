@@ -53,7 +53,7 @@ const members: BridgeMemberDecoders<RowsState> = {
   canUpdate: (wire: unknown) => bridgeWire.boolean(wire),
   isUpdateExecuting: (wire: unknown) => bridgeWire.boolean(wire),
 };
-const bridgeContract = "DynamicDataExample.RowsViewModel:C7FD4ECAA613772482C257FF1BCC336B6314B38CB596C153DDA1C619FA674DE3";
+const bridgeContract = "DynamicDataExample.RowsViewModel:31F750053AB53B02517360E80EBA0422E4B9DEDBE0336578B3A4B1A6AC68FA57";
 const setViewportOperation: BridgeOperationCodec<void> = { decode: value => undefined };
 const updateOperation: BridgeOperationCodec<void> = { decode: value => undefined };
 

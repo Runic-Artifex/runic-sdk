@@ -59,7 +59,7 @@ const members: BridgeMemberDecoders<EditorState> = {
   canSave: (wire: unknown) => bridgeWire.boolean(wire),
   isSaveExecuting: (wire: unknown) => bridgeWire.boolean(wire),
 };
-const bridgeContract = "NotesWindowViews.EditorViewModel:1160496013C85294527537E950775D8901F2B81EC31DE93996835B51444AF521";
+const bridgeContract = "NotesWindowViews.EditorViewModel:B1B7B2A52CF0E906FFEA4BBB8E5F7A495EB2B92954C0DDAC0DCB80919BFD4DA9";
 const checkedFieldNames = ["title", "body"];
 const saveOperation: BridgeOperationCodec<void, SaveFailure> = { decode: value => undefined, decodeFailure: value => ((): SaveFailure => { const bridgeDecodedUnion0: any = bridgeWire.union(value); switch (bridgeDecodedUnion0.$case) { case "titleRequired": return { $case: "titleRequired" }; case "titleTaken": return { $case: "titleTaken", existingTitle: bridgeWire.string(bridgeDecodedUnion0["existingTitle"]) }; default: throw new RangeError("Unknown union case."); } })() };
 
@@ -70,7 +70,7 @@ const saveOperation: BridgeOperationCodec<void, SaveFailure> = { decode: value =
  */
 export function connectEditor(options?: BridgeConnectOptions): Promise<EditorClient & globalThis.Disposable> { return connectEditorAt("editor", options); }
 async function connectEditorAt(route: string, options?: BridgeConnectOptions): Promise<EditorClient & globalThis.Disposable> {
-  const view = await connectView<EditorState>({ contract: bridgeContract, route, members, checkedFields: checkedFieldNames, operations: bridgeOperations, timeout: options?.timeout, signal: options?.signal });
+  const view = await connectView<EditorState>({ contract: bridgeContract, route, members, checkedFields: checkedFieldNames, texts: ["savedMessage", "title", "body"], operations: bridgeOperations, timeout: options?.timeout, signal: options?.signal });
   return disposable<EditorClient>({
     get snapshot() { return view.snapshot; },
     subscribe: view.subscribe,

@@ -24,7 +24,7 @@ const members: BridgeMemberDecoders<HomeState> = {
   greeting: (wire: unknown) => bridgeWire.string(wire),
   lastResult: (wire: unknown) => bridgeWire.string(wire),
 };
-const bridgeContract = "NotesReactiveViews.HomeViewModel:39D98DB6603CC7808AF0204C418CC72AFA0BFDDAEECCC27B8324172982D22B56";
+const bridgeContract = "NotesReactiveViews.HomeViewModel:75C140DA503CD364D3EB3833FF036163E85A204EB47968A4ECD5E0ADDFD4F576";
 
 /**
  * Connects a Home client. It waits up to `options.timeout` milliseconds (default 5000) for the
@@ -33,7 +33,7 @@ const bridgeContract = "NotesReactiveViews.HomeViewModel:39D98DB6603CC7808AF0204
  */
 export function connectHome(options?: BridgeConnectOptions): Promise<HomeClient & globalThis.Disposable> { return connectHomeAt("home", options); }
 async function connectHomeAt(route: string, options?: BridgeConnectOptions): Promise<HomeClient & globalThis.Disposable> {
-  const view = await connectView<HomeState>({ contract: bridgeContract, route, members, timeout: options?.timeout, signal: options?.signal });
+  const view = await connectView<HomeState>({ contract: bridgeContract, route, members, texts: ["greeting", "lastResult"], timeout: options?.timeout, signal: options?.signal });
   return disposable<HomeClient>({
     get snapshot() { return view.snapshot; },
     subscribe: view.subscribe,

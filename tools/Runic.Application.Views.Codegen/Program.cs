@@ -1489,6 +1489,7 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
             IsNullableContent(entry.Key))).ToArray(),
         MockDefaults(),
         checkedProperties.Select(WireName).ToArray(),
+        textMembers.Select(WireName).ToArray(),
         properties.Where(property => property.SetMethod?.IsPublic == true && valueProperties.ContainsKey(property))
             .Select(property => new MockSetter($"set{property.Name}", WireName(property), TsPropertyType(property),
                 checkedProperties.Contains(property) ? $"write{property.Name}" : null)).ToArray(),

@@ -21,7 +21,7 @@ export function pagePinnedTask(id: string): PinnedTaskPageReference { return pag
 const members: BridgeMemberDecoders<PinnedTaskState> = {
   priority: (wire: unknown) => bridgeWire.string(wire),
 };
-const bridgeContract = "NotesReactiveViews.PinnedTaskViewModel:39D98DB6603CC7808AF0204C418CC72AFA0BFDDAEECCC27B8324172982D22B56";
+const bridgeContract = "NotesReactiveViews.PinnedTaskViewModel:75C140DA503CD364D3EB3833FF036163E85A204EB47968A4ECD5E0ADDFD4F576";
 
 /**
  * Connects a PinnedTask client. It waits up to `options.timeout` milliseconds (default 5000) for the
@@ -30,7 +30,7 @@ const bridgeContract = "NotesReactiveViews.PinnedTaskViewModel:39D98DB6603CC7808
  */
 export function connectPinnedTask(options?: BridgeConnectOptions): Promise<PinnedTaskClient & globalThis.Disposable> { return connectPinnedTaskAt("pinnedTask", options); }
 async function connectPinnedTaskAt(route: string, options?: BridgeConnectOptions): Promise<PinnedTaskClient & globalThis.Disposable> {
-  const view = await connectView<PinnedTaskState>({ contract: bridgeContract, route, members, timeout: options?.timeout, signal: options?.signal });
+  const view = await connectView<PinnedTaskState>({ contract: bridgeContract, route, members, texts: ["priority"], timeout: options?.timeout, signal: options?.signal });
   return disposable<PinnedTaskClient>({
     get snapshot() { return view.snapshot; },
     subscribe: view.subscribe,

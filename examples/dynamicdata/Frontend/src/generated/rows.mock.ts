@@ -36,7 +36,7 @@ export interface RowsMock extends MockTypedView<RowsMockState, RowsClient, "rows
 const spec: MockTypedViewSpec = {
   kind: "rows",
   route: "rows",
-  contract: "DynamicDataExample.RowsViewModel:C7FD4ECAA613772482C257FF1BCC336B6314B38CB596C153DDA1C619FA674DE3",
+  contract: "DynamicDataExample.RowsViewModel:31F750053AB53B02517360E80EBA0422E4B9DEDBE0336578B3A4B1A6AC68FA57",
   fields: {
     rows: { encode: (value: unknown) => { const typed = value as readonly Row[]; return typed.map(item => ({ ["id"]: item["id"], ["value"]: item["value"], ["label"]: item["label"] })); }, decode: (wire: unknown) => bridgeWire.array(wire, item => bridgeWire.object<Row>(item, value => ({ id: bridgeWire.integer(value["id"], -2147483648, 2147483647), value: bridgeWire.integer(value["value"], -2147483648, 2147483647), label: bridgeWire.string(value["label"])}))) },
     totalCount: { encode: (value: unknown) => { const typed = value as number; return typed; }, decode: (wire: unknown) => bridgeWire.integer(wire, -2147483648, 2147483647) },

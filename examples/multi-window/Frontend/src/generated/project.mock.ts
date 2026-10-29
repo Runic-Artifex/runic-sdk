@@ -36,13 +36,14 @@ export interface ProjectMock extends MockTypedView<ProjectMockState, ProjectClie
 const spec: MockTypedViewSpec = {
   kind: "project",
   route: "project",
-  contract: "MultiWindow.ProjectViewModel:3B227EB0A7C945F65D6A215FB60437497BC5605E898CA5EECB52555B17E3508C",
+  contract: "MultiWindow.ProjectViewModel:EDD6051735C01D057D864C23E30F030409EAC356AEF8F37FF3AE8E93DAEFC97E",
   fields: {
     title: { encode: (value: unknown) => { const typed = value as string; return typed; }, decode: (wire: unknown) => bridgeWire.string(wire) },
     theme: { encode: (value: unknown) => { const typed = value as string; return typed; }, decode: (wire: unknown) => bridgeWire.string(wire) },
     desktopScheme: { encode: (value: unknown) => { const typed = value as string; return typed; }, decode: (wire: unknown) => bridgeWire.string(wire) },
   },
   defaults: { isRenameExecuting: false, canNewWindow: true, isNewWindowExecuting: false, isChooseThemeExecuting: false },
+  texts: ["title", "theme", "desktopScheme"],
   commands: {
     rename: { member: "rename", decodeInput: (wire: unknown) => bridgeWire.string(wire) },
     newWindow: { member: "newWindow", available: "canNewWindow" },

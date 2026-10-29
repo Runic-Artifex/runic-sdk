@@ -36,7 +36,7 @@ const members: BridgeMemberDecoders<CounterState> = {
   step: (wire: unknown) => bridgeWire.integer(wire, -2147483648, 2147483647),
   canIncrement: (wire: unknown) => bridgeWire.boolean(wire),
 };
-const bridgeContract = "FirstWindow.CounterViewModel:E6A3D765729C7FC5E2DCFBC3A6994E69758471E2BC3773B6047A09D3B55C896A";
+const bridgeContract = "FirstWindow.CounterViewModel:EE069E606CEB12AB893E2F2BA03D2E9AEA82E654B2A56498191DDB2F6649D735";
 const checkedFieldNames = ["step"];
 
 /**

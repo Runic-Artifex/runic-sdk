@@ -46,6 +46,7 @@ const spec: MockTypedViewSpec = {
     last: { encode: (value: unknown) => { const typed = value as string; return typed; }, decode: (wire: unknown) => bridgeWire.string(wire) },
   },
   defaults: { isOpenExecuting: false },
+  texts: ["last"],
   commands: {
     lock: { member: "lock", decodeInput: (wire: unknown) => bridgeWire.bigint(wire, "0", "18446744073709551615") },
     open: { member: "open", decodeInput: (wire: unknown) => bridgeWire.bigint(wire, "0", "18446744073709551615") },

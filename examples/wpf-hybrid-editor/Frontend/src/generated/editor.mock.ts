@@ -33,7 +33,7 @@ export interface EditorMock extends MockTypedView<EditorMockState, EditorClient,
 const spec: MockTypedViewSpec = {
   kind: "editor",
   route: "editor",
-  contract: "HybridNotes.EditorViewModel:E9D57D74D85688A1B8FDBC4AC5A15F22AD53351D9B411759026957B8D3836953",
+  contract: "HybridNotes.EditorViewModel:3EDB76E7F7CE7BD4599A185B07F1B1E659EAA667FDEAB34B0406CB64EDEE83D3",
   fields: {
     isDirty: { encode: (value: unknown) => { const typed = value as boolean; return typed; }, decode: (wire: unknown) => bridgeWire.boolean(wire) },
     validationMessage: { encode: (value: unknown) => { const typed = value as string; return typed; }, decode: (wire: unknown) => bridgeWire.string(wire) },
@@ -44,6 +44,7 @@ const spec: MockTypedViewSpec = {
   },
   defaults: { canSave: true, isSaveExecuting: false, canSaveCancel: true },
   checkedFields: ["title", "body"],
+  texts: ["validationMessage", "error", "status", "title", "body"],
   setters: {
     setTitle: { member: "title", checked: "writeTitle" },
     setBody: { member: "body", checked: "writeBody" },

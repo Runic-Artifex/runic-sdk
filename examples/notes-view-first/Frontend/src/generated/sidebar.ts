@@ -48,7 +48,7 @@ const members: BridgeMemberDecoders<SidebarState> = {
   canOpenNotes: (wire: unknown) => bridgeWire.boolean(wire),
   isOpenNotesExecuting: (wire: unknown) => bridgeWire.boolean(wire),
 };
-const bridgeContract = "NotesWindowViews.SidebarViewModel:1160496013C85294527537E950775D8901F2B81EC31DE93996835B51444AF521";
+const bridgeContract = "NotesWindowViews.SidebarViewModel:B1B7B2A52CF0E906FFEA4BBB8E5F7A495EB2B92954C0DDAC0DCB80919BFD4DA9";
 const openHomeOperation: BridgeOperationCodec<void> = { decode: value => undefined };
 const openNotesOperation: BridgeOperationCodec<void> = { decode: value => undefined };
 
@@ -59,7 +59,7 @@ const openNotesOperation: BridgeOperationCodec<void> = { decode: value => undefi
  */
 export function connectSidebar(options?: BridgeConnectOptions): Promise<SidebarClient & globalThis.Disposable> { return connectSidebarAt("sidebar", options); }
 async function connectSidebarAt(route: string, options?: BridgeConnectOptions): Promise<SidebarClient & globalThis.Disposable> {
-  const view = await connectView<SidebarState>({ contract: bridgeContract, route, members, operations: bridgeOperations, timeout: options?.timeout, signal: options?.signal });
+  const view = await connectView<SidebarState>({ contract: bridgeContract, route, members, texts: ["selected"], operations: bridgeOperations, timeout: options?.timeout, signal: options?.signal });
   return disposable<SidebarClient>({
     get snapshot() { return view.snapshot; },
     subscribe: view.subscribe,

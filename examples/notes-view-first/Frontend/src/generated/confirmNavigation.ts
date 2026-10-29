@@ -48,7 +48,7 @@ const members: BridgeMemberDecoders<ConfirmNavigationState> = {
   canCancel: (wire: unknown) => bridgeWire.boolean(wire),
   isCancelExecuting: (wire: unknown) => bridgeWire.boolean(wire),
 };
-const bridgeContract = "NotesWindowViews.ConfirmNavigationViewModel:1160496013C85294527537E950775D8901F2B81EC31DE93996835B51444AF521";
+const bridgeContract = "NotesWindowViews.ConfirmNavigationViewModel:B1B7B2A52CF0E906FFEA4BBB8E5F7A495EB2B92954C0DDAC0DCB80919BFD4DA9";
 const confirmOperation: BridgeOperationCodec<void> = { decode: value => undefined };
 const cancelOperation: BridgeOperationCodec<void> = { decode: value => undefined };
 
@@ -59,7 +59,7 @@ const cancelOperation: BridgeOperationCodec<void> = { decode: value => undefined
  */
 export function connectConfirmNavigation(options?: BridgeConnectOptions): Promise<ConfirmNavigationClient & globalThis.Disposable> { return connectConfirmNavigationAt("confirmNavigation", options); }
 async function connectConfirmNavigationAt(route: string, options?: BridgeConnectOptions): Promise<ConfirmNavigationClient & globalThis.Disposable> {
-  const view = await connectView<ConfirmNavigationState>({ contract: bridgeContract, route, members, operations: bridgeOperations, timeout: options?.timeout, signal: options?.signal });
+  const view = await connectView<ConfirmNavigationState>({ contract: bridgeContract, route, members, texts: ["message"], operations: bridgeOperations, timeout: options?.timeout, signal: options?.signal });
   return disposable<ConfirmNavigationClient>({
     get snapshot() { return view.snapshot; },
     subscribe: view.subscribe,

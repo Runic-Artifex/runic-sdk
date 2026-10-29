@@ -63,7 +63,7 @@ const members: BridgeMemberDecoders<ProjectState> = {
   isNewWindowExecuting: (wire: unknown) => bridgeWire.boolean(wire),
   isChooseThemeExecuting: (wire: unknown) => bridgeWire.boolean(wire),
 };
-const bridgeContract = "MultiWindow.ProjectViewModel:3B227EB0A7C945F65D6A215FB60437497BC5605E898CA5EECB52555B17E3508C";
+const bridgeContract = "MultiWindow.ProjectViewModel:EDD6051735C01D057D864C23E30F030409EAC356AEF8F37FF3AE8E93DAEFC97E";
 const renameOperation: BridgeOperationCodec<void> = { decode: value => undefined };
 const newWindowOperation: BridgeOperationCodec<void> = { decode: value => undefined };
 const chooseThemeOperation: BridgeOperationCodec<void> = { decode: value => undefined };
@@ -75,7 +75,7 @@ const chooseThemeOperation: BridgeOperationCodec<void> = { decode: value => unde
  */
 export function connectProject(options?: BridgeConnectOptions): Promise<ProjectClient & globalThis.Disposable> { return connectProjectAt("project", options); }
 async function connectProjectAt(route: string, options?: BridgeConnectOptions): Promise<ProjectClient & globalThis.Disposable> {
-  const view = await connectView<ProjectState>({ contract: bridgeContract, route, members, operations: bridgeOperations, timeout: options?.timeout, signal: options?.signal });
+  const view = await connectView<ProjectState>({ contract: bridgeContract, route, members, texts: ["title", "theme", "desktopScheme"], operations: bridgeOperations, timeout: options?.timeout, signal: options?.signal });
   return disposable<ProjectClient>({
     get snapshot() { return view.snapshot; },
     subscribe: view.subscribe,
