@@ -83,6 +83,31 @@ void bootstrapApplication(ConsumerRoot, { providers: [provideZonelessChangeDetec
 `, "utf8");
   await execute("npm", ["run", "build"], { cwd: root });
   assert.match(await readFile(join(root, "dist", "browser", "index.html"), "utf8"), /consumer-root/);
+  // The forms entry needs the optional @angular/forms peer: an AOT build with strict templates over its directive and
+  // the Signal Forms helpers.
+  await execute("npm", ["install", "--ignore-scripts", "--no-audit", "--no-fund", "--package-lock=false", "@angular/forms@22.2.3"], { cwd: root });
+  await writeFile(join(root, "src/main.ts"), `import { Component, provideZonelessChangeDetection, signal } from "@angular/core";
+import { FormControl, ReactiveFormsModule } from "@angular/forms";
+import { form, FormField } from "@angular/forms/signals";
+import { bootstrapApplication } from "@angular/platform-browser";
+import { injectField } from "@runic-artifex/angular";
+import { RunicFieldDirective, runicFieldModel, validateRunicField } from "@runic-artifex/angular/forms";
+type State = { readonly title: string; readonly done: boolean };
+type Client = { readonly snapshot: State; subscribe(listener: (state: State) => void): () => void; dispose(): void };
+@Component({ selector: "consumer-root", standalone: true, imports: [RunicFieldDirective, ReactiveFormsModule, FormField],
+  template: '<input [runicField]="title"><input type="checkbox" [runicField]="done">' +
+    '<input [runicField]="title" [formControl]="control"><input [formField]="titleForm">' })
+class ConsumerRoot {
+  readonly view = { state: signal<State | undefined>(undefined), client: signal<Client | undefined>(undefined) };
+  readonly title = injectField(this.view, { kind: "text", read: (state: State) => state.title, write: async (_client: Client, _value: string) => {} });
+  readonly done = injectField(this.view, { kind: "boolean", read: (state: State) => state.done, write: async (_client: Client, _value: boolean) => {} });
+  readonly control = new FormControl("", { nonNullable: true });
+  readonly titleForm = form(runicFieldModel(this.title), path => validateRunicField(path, this.title));
+}
+void bootstrapApplication(ConsumerRoot, { providers: [provideZonelessChangeDetection()] });
+`, "utf8");
+  await execute("npm", ["run", "build"], { cwd: root });
+  assert.match(await readFile(join(root, "dist", "browser", "index.html"), "utf8"), /consumer-root/);
   console.log("Angular Views package consumer passed.");
 } finally {
   await rm(root, { recursive: true, force: true });

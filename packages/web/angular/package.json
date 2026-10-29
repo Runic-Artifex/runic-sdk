@@ -8,11 +8,22 @@
       "import": "./dist/esm/index.js",
       "default": "./dist/esm/index.js"
     },
+    "./forms": {
+      "types": "./dist/esm/forms/index.d.ts",
+      "import": "./dist/esm/forms/index.js",
+      "default": "./dist/esm/forms/index.js"
+    },
     "./package.json": "./package.json"
   },
   "peerDependencies": {
     "@angular/core": ">=22.0.0 <23",
+    "@angular/forms": ">=22.0.0 <23",
     "@runic-artifex/views": "0.13.0"
+  },
+  "peerDependenciesMeta": {
+    "@angular/forms": {
+      "optional": true
+    }
   },
   "description": "Angular outlet and signals for Runic Views",
   "license": "MIT",
@@ -50,6 +61,7 @@
     "@angular/compiler": "22.2.3",
     "@angular/compiler-cli": "22.2.3",
     "@angular/core": "22.2.3",
+    "@angular/forms": "22.2.3",
     "@angular/platform-browser": "22.2.3",
     "esbuild": "0.28.2",
     "happy-dom": "21.0.4",
