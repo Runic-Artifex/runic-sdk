@@ -77,6 +77,8 @@ internal sealed class WindowsApplicationThread : INativeWindowOwner
         HWND window = default;
         try
         {
+            // The thread is an STA (SetApartmentState); make sure COM agrees before any dialog is created on it.
+            _ = PInvoke.CoInitializeEx(null, global::Windows.Win32.System.Com.COINIT.COINIT_APARTMENTTHREADED);
             var instance = PInvoke.GetModuleHandle((PCWSTR)null);
             fixed (char* name = ClassName)
             {

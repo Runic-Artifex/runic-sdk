@@ -5,6 +5,7 @@ using Windows.Win32.Foundation;
 using Windows.Win32.System.Com;
 using Windows.Win32.UI.Shell;
 using Windows.Win32.UI.Shell.Common;
+using Windows.Win32.System.Ole;
 
 using Runic.Platform.Runtime;
 
@@ -74,7 +75,11 @@ internal sealed partial class WindowsFilePicker(INativeWindowOwner owner, bool u
                     await owner.InvokeAsync(_ =>
                     {
                         Trace?.Invoke($"close {attempt} runs, dialog {(dialog != 0 ? "open" : "gone")}");
-                        if (dialog != 0) Close(dialog);
+                        if (dialog == 0) return;
+                        Close(dialog);
+                        // Close can succeed without ending Show, as an unowned dialog in a NativeAOT process did: from the
+                        // second attempt on, also close the dialog's window, as its close button does.
+                        if (attempt > 0) Trace?.Invoke($"close {attempt} posts WM_CLOSE: {PostClose(dialog)}");
                     }, CancellationToken.None).ConfigureAwait(false);
                 }
                 catch (OwnerClosedException) { return; }
@@ -252,6 +257,22 @@ internal sealed partial class WindowsFilePicker(INativeWindowOwner owner, bool u
         if (!IsNativeWindows()) throw new NativeBackendUnavailableException();
         if (dialog != 0) Marshal.ThrowExceptionForHR(((IFileDialog*)dialog)->Close(new HRESULT(Cancelled)).Value);
     }
+    // Posts WM_CLOSE to the dialog's window (IOleWindow), which ends Show as cancelled; false without a window.
+    private static unsafe bool PostClose(nint dialog)
+    {
+        if (!IsNativeWindows()) throw new NativeBackendUnavailableException();
+        Guid iid = typeof(IOleWindow).GUID;
+        void* window = null;
+        if (((IUnknown*)dialog)->QueryInterface(&iid, &window).Value < 0 || window == null) return false;
+        try
+        {
+            HWND handle;
+            return ((IOleWindow*)window)->GetWindow(&handle).Value >= 0 && !handle.IsNull
+                && PInvoke.PostMessage(handle, PInvoke.WM_CLOSE, default, default);
+        }
+        finally { Release((nint)window); }
+    }
+
     private static unsafe string GetPath(nint dialog)
     {
         if (!IsNativeWindows()) throw new NativeBackendUnavailableException();
