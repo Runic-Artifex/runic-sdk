@@ -53,6 +53,9 @@ public interface IRunicWindow : IRunicView, IAsyncDisposable
     /// <inheritdoc cref="RunicWindow{TViewModel}.RequestCloseAsync"/>
     ValueTask<bool> RequestCloseAsync(CancellationToken cancellationToken = default);
 
+    /// <inheritdoc cref="RunicWindow{TViewModel}.Services"/>
+    IServiceProvider Services { get; }
+
     internal ValueTask OpenAsync(IRunicWindowHost host, RunicWindowOptions options, CancellationToken cancellationToken);
 
     internal RunicWindowValidationResult Validate(IRunicWindowHost host, RunicWindowOptions options);
@@ -75,6 +78,7 @@ public interface IRunicWindow : IRunicView, IAsyncDisposable
 public abstract class RunicWindow<TViewModel> : RunicView<TViewModel>, IRunicWindow where TViewModel : class
 {
     private IBridgeWindow? _host;
+    private IServiceProvider? _services;
     private int _opened;
     // The window's session and root Bridge, recorded when the host attaches it.
     private WindowContentSession? _content;
@@ -93,6 +97,21 @@ public abstract class RunicWindow<TViewModel> : RunicView<TViewModel>, IRunicWin
     /// <summary>The window's scoped root ViewModel.</summary>
     /// <exception cref="InvalidOperationException">The window has not opened.</exception>
     public TViewModel ViewModel => DataContext ?? throw NotOpen();
+
+    /// <summary>
+    /// The services of the window's dependency injection scope, which resolved <see cref="ViewModel"/>. Scoped services
+    /// resolved here are the ones the window's ViewModels received.
+    /// </summary>
+    /// <remarks>
+    /// The window's host disposes the scope when the window is released; resolving from it after that throws
+    /// <see cref="ObjectDisposedException"/>. A test reads the scoped services of a window it opened:
+    /// <code>
+    /// await using var window = await host.OpenWindowAsync&lt;MainWindow&gt;();
+    /// var documents = window.Services.GetRequiredService&lt;DocumentStore&gt;();
+    /// </code>
+    /// </remarks>
+    /// <exception cref="InvalidOperationException">The window has not started opening.</exception>
+    public IServiceProvider Services => Volatile.Read(ref _services) ?? throw NotOpen();
 
     /// <summary>
     /// Gets whether a close the user starts, with the title-bar close button, Alt+F4 or the window manager, first asks
@@ -279,6 +298,9 @@ public abstract class RunicWindow<TViewModel> : RunicView<TViewModel>, IRunicWin
 
     RunicWindowValidationResult IRunicWindow.Validate(IRunicWindowHost host, RunicWindowOptions options) =>
         RunicWindowOpening.Validate<TViewModel>(host, options);
+
+    // The window's scope, set before its ViewModel is resolved.
+    internal void UseServices(IServiceProvider services) => Volatile.Write(ref _services, services);
 
     internal void UseHostCloseRequest(Func<CancellationToken, ValueTask<bool>> requestClose) =>
         Volatile.Write(ref _hostCloseRequest, requestClose);

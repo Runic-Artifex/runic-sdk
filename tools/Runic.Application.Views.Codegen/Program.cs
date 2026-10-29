@@ -122,7 +122,9 @@ try
         }
         if (models.Length == 0)
             throw new BridgeDiagnosticException(BridgeDiagnosticCodes.View,
-                $"{assembly.GetName().Name}: no Runic Window/View classes found.");
+                $"{assembly.GetName().Name}: no Runic Window/View classes found, but Bridge generation is required here. " +
+                "Declare a Window (public sealed partial class MainWindow : RunicWindow<MainViewModel>). A project that only uses " +
+                "another project's generated Bridges, such as a test project, sets RunicApplicationFrontendGenerationEnabled=false.");
         foreach (var group in models.GroupBy(entry => entry.Name, StringComparer.OrdinalIgnoreCase).Where(group => group.Count() > 1))
             throw new BridgeDiagnosticException(BridgeDiagnosticCodes.NameCollision,
                 $"Bridge ViewModel names must be unique within an application: {string.Join(" and ", group.Select(entry => entry.Model.FullName))} both use '{group.Key}'.",

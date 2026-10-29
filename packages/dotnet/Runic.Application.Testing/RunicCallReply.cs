@@ -185,10 +185,11 @@ public sealed class RunicTestOperation
     private string Request(string kind, long? cursor = null) =>
         RequestAsync(kind, cursor).AsTask().GetAwaiter().GetResult();
 
-    private ValueTask<string> RequestAsync(string kind, long? cursor = null, CancellationToken cancellationToken = default)
+    private async ValueTask<string> RequestAsync(string kind, long? cursor = null, CancellationToken cancellationToken = default)
     {
-        _transport.EnsureHello(InMemoryBridgeTransport.DefaultConnectionKey);
-        return _transport.RequestAsync(RunicJson.Write(writer =>
+        await _transport.EnsureHelloAsync(InMemoryBridgeTransport.DefaultConnectionKey, cancellationToken: cancellationToken)
+            .ConfigureAwait(false);
+        return await _transport.RequestAsync(RunicJson.Write(writer =>
         {
             writer.WriteStartObject();
             writer.WriteString("kind", kind);
@@ -198,7 +199,7 @@ public sealed class RunicTestOperation
             writer.WriteString("contract", Contract);
             if (cursor is { } value) writer.WriteNumber("cursor", value);
             writer.WriteEndObject();
-        }), cancellationToken: cancellationToken);
+        }), cancellationToken: cancellationToken).ConfigureAwait(false);
     }
 
     // The status of a status, watch or unwatch reply.
@@ -211,8 +212,14 @@ public sealed class RunicTestOperation
             : throw new InvalidOperationException($"The operation request failed: {reply}");
     }
 
-    /// <summary>Reads the current status with a <c>status</c> request.</summary>
+    /// <summary>Reads the current status with a <c>status</c> request, blocking the calling thread until the reply.</summary>
+    /// <remarks>Prefer <see cref="GetStatusAsync"/> in suites that run tests in parallel.</remarks>
     public RunicOperationStatus GetStatus() => StatusOf(Request("status"));
+
+    /// <summary>Reads the current status with a <c>status</c> request, without blocking a thread.</summary>
+    /// <param name="cancellationToken">Stops waiting for the reply.</param>
+    public async Task<RunicOperationStatus> GetStatusAsync(CancellationToken cancellationToken = default) =>
+        StatusOf(await RequestAsync("status", cancellationToken: cancellationToken).ConfigureAwait(false));
 
     /// <summary>Waits for the terminal status: <c>watch</c>, then the operation's pushes.</summary>
     public async Task<RunicOperationStatus> WaitAsync(CancellationToken cancellationToken = default)
@@ -226,10 +233,17 @@ public sealed class RunicTestOperation
         }
     }
 
-    /// <summary>Requests cancellation with a <c>cancel</c> request and returns how .NET answered.</summary>
-    public RunicOperationCancelKind Cancel()
+    /// <summary>Requests cancellation with a <c>cancel</c> request and returns how .NET answered, blocking the calling thread.</summary>
+    /// <remarks>Prefer <see cref="CancelAsync"/> in suites that run tests in parallel.</remarks>
+    public RunicOperationCancelKind Cancel() => CancelReply(Request("cancel"));
+
+    /// <summary>Requests cancellation with a <c>cancel</c> request and returns how .NET answered, without blocking a thread.</summary>
+    /// <param name="cancellationToken">Stops waiting for the reply; the request may still reach the window.</param>
+    public async Task<RunicOperationCancelKind> CancelAsync(CancellationToken cancellationToken = default) =>
+        CancelReply(await RequestAsync("cancel", cancellationToken: cancellationToken).ConfigureAwait(false));
+
+    private static RunicOperationCancelKind CancelReply(string reply)
     {
-        var reply = Request("cancel");
         using var document = JsonDocument.Parse(reply);
         return document.RootElement.TryGetProperty("cancellation", out var cancellation)
             ? RunicOperationWire.Cancel(cancellation.GetString())
@@ -241,10 +255,28 @@ public sealed class RunicTestOperation
     /// client's <c>stream()</c> does.
     /// </summary>
     /// <exception cref="ArgumentOutOfRangeException"><paramref name="cursor"/> is negative.</exception>
+    /// <remarks>Prefer <see cref="ReadStreamAsync"/> in suites that run tests in parallel.</remarks>
     public RunicOperationStreamPage ReadStream(long cursor = 0)
     {
         ArgumentOutOfRangeException.ThrowIfNegative(cursor);
-        var reply = Request("stream", cursor);
+        return StreamPage(Request("stream", cursor), cursor);
+    }
+
+    /// <summary>
+    /// Reads the stream page that starts at <paramref name="cursor"/> with a <c>stream</c> request, as
+    /// <see cref="ReadStream"/> does, without blocking a thread.
+    /// </summary>
+    /// <param name="cursor">The cursor of the first item to read.</param>
+    /// <param name="cancellationToken">Stops waiting for the reply.</param>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="cursor"/> is negative.</exception>
+    public async Task<RunicOperationStreamPage> ReadStreamAsync(long cursor = 0, CancellationToken cancellationToken = default)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegative(cursor);
+        return StreamPage(await RequestAsync("stream", cursor, cancellationToken).ConfigureAwait(false), cursor);
+    }
+
+    private static RunicOperationStreamPage StreamPage(string reply, long cursor)
+    {
         using var document = JsonDocument.Parse(reply);
         return document.RootElement.TryGetProperty("page", out var page)
             ? new(page.GetRawText(), cursor)

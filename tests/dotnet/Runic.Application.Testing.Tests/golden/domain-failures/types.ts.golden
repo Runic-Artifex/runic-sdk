@@ -3,6 +3,33 @@ export interface AlphaTag {
   readonly name: string;
 }
 
+export interface AsyncDriverCountNote {
+  readonly count: number;
+}
+
+export interface AsyncDriverInput {
+  readonly title: string;
+  /** A C# `long` is a `bigint`: a JavaScript `number` is exact only up to 2^53. */
+  readonly big: bigint;
+  readonly priority: AsyncDriverPriority;
+  readonly counts: readonly number[];
+  readonly labels: Readonly<Record<string, string>>;
+  readonly note: AsyncDriverNote;
+  readonly price: string;
+  readonly comment?: string | null;
+  readonly "short-name": string;
+}
+
+export type AsyncDriverNote =
+  | ({ readonly $case: "count" } & AsyncDriverCountNote)
+  | ({ readonly $case: "text" } & AsyncDriverTextNote);
+
+export type AsyncDriverPriority = "Low" | "High";
+
+export interface AsyncDriverTextNote {
+  readonly text: string;
+}
+
 export interface BetaTag {
   readonly label: string;
 }

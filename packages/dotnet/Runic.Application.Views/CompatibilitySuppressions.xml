@@ -8,4 +8,11 @@
     <Right>lib/net10.0/Runic.Application.Views.dll</Right>
     <IsBaselineSuppression>true</IsBaselineSuppression>
   </Suppression>
+  <Suppression>
+    <DiagnosticId>CP0006</DiagnosticId>
+    <Target>P:Runic.Application.Views.IRunicWindow.Services</Target>
+    <Left>lib/net10.0/Runic.Application.Views.dll</Left>
+    <Right>lib/net10.0/Runic.Application.Views.dll</Right>
+    <IsBaselineSuppression>true</IsBaselineSuppression>
+  </Suppression>
 </Suppressions>

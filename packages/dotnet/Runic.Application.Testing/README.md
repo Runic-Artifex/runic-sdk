@@ -29,7 +29,28 @@ from the window's scope: the root ViewModel, its generated Bridge attachment
 `AddRunicNavigation()`) and the `ILoggerFactory`. A locator, context or logger factory
 set in the options is used instead. It names the missing registration when the
 ViewModel or its Bridge is not registered. The scope and its ViewModels stay yours;
-dispose the host before the scope.
+dispose the host before the scope. `host.Services` is the provider it resolved them
+from.
+
+The services need two registrations: the ViewModel, as the application registers it
+(for example `services.AddScoped<ShellViewModel>()`), and the generated Bridge, which the
+application's generated `AddRunicViews()` adds. Register both with the application's
+own registration method when it has one, so the test runs the same composition. A
+ViewModel the test builds by hand needs no registration: pass it to `Create`, which
+still takes the Bridge, locator, model context and logger factory from the services
+(since 0.14):
+
+```csharp
+await using var services = new ServiceCollection()
+    .AddRunicViews()     // the application's generated Bridge registrations
+    .BuildServiceProvider();
+var shell = new ShellViewModel(new InMemoryNotes());
+using var host = RunicWindowTestHost.Create(services, shell);
+```
+
+A Window opened on a real host has the same scope: `window.Services` (since 0.14) is the
+provider of the Window's dependency injection scope, which resolved its ViewModel, so a
+test can read the scoped services the ViewModel received.
 
 The constructors take the ViewModel and the attachment directly, for a window that is
 not composed with dependency injection:
@@ -50,18 +71,36 @@ or create the host with `RunicWindowTestHost.Create` instead.
 Then drive the Window by ViewModel member, as the generated TypeScript client does:
 
 ```csharp
-var sidebar = host.Root.View<SidebarViewModel>(vm => vm.Sidebar);
+var sidebar = await host.Root.ViewAsync<SidebarViewModel>(vm => vm.Sidebar);
 (await sidebar.ExecuteAsync(vm => vm.OpenNotesCommand)).ThrowIfFailed();
-var editor = host.Root.View<DocumentViewModel>(vm => vm.Main)
-    .View<EditorViewModel>(vm => vm.CurrentPane);
-editor.Set(vm => vm.Title, "Groceries").ThrowIfFailed();
+var document = await host.Root.ViewAsync<DocumentViewModel>(vm => vm.Main);
+var editor = await document.ViewAsync<EditorViewModel>(vm => vm.CurrentPane);
+(await editor.SetAsync(vm => vm.Title, "Groceries")).ThrowIfFailed();
+(await editor.ExecuteAsync(vm => vm.TagCommand, new TagInput("shopping", Pinned: true))).ThrowIfFailed();
 
-var save = editor.Start(vm => vm.SaveCommand);
-Assert.True(editor.Snapshot().IsExecuting(vm => vm.SaveCommand));
+var save = await editor.StartAsync(vm => vm.SaveCommand);
+Assert.True((await editor.SnapshotAsync()).IsExecuting(vm => vm.SaveCommand));
 clock.Advance(TimeSpan.FromMilliseconds(250));   // storage waits on the injected clock
 Assert.Equal(RunicOperationStatusKind.Succeeded, (await save.WaitAsync()).Kind);
-Assert.Equal("Saved Groceries", editor.Snapshot().Read(vm => vm.SavedMessage));
+Assert.Equal("Saved Groceries", (await editor.SnapshotAsync()).Read(vm => vm.SavedMessage));
 ```
+
+### Asynchronous and synchronous drivers
+
+Every request has an asynchronous method that never blocks a thread (since 0.14):
+`SnapshotAsync`, `SetAsync`, `SetJsonAsync`, `WriteAsync`, `ExecuteAsync`,
+`CanExecuteAsync`, `StartAsync`, `MountAsync`, `UnmountAsync`, `ViewAsync`,
+`ViewsAsync` and `TrackAsync` on a driver, `GetStatusAsync`, `CancelAsync` and
+`ReadStreamAsync` on an operation, `VerifyAsync` on a tracker and `RequestAsync` on
+the transport. Concurrent requests on one connection share its `hello`.
+
+The synchronous methods (`Snapshot`, `Set`, `Write`, `Start`, `Mount`, `Request`, ...)
+remain for short tests. They block the calling thread until the reply, while the
+window's own asynchronous work, such as a model turn or an awaited command, continues
+on thread-pool threads. A suite that runs many tests in parallel on the thread pool,
+as TUnit and xUnit do, can starve the pool this way: each blocked test holds a thread
+that the replies it waits for need, and the pool adds threads slowly. Use the
+asynchronous methods in such suites.
 
 `dotnet new runic-app --tests` creates an application with a TUnit test project
 that does this for its Window; the
@@ -171,11 +210,21 @@ already have. A `RunicViewDriver<T>` has:
   use `Get(vm => vm.Item).GetProperty("wireField")` instead.
 - `Set(vm => vm.Title, value)`, encoded as the generated client encodes it: an `int`,
   `bool` or non-nullable `string` as is, and other scalars as wire JSON (`Int64` and
-  `decimal` as strings, enums by wire name, `null` for nullable values). Use
-  `SetJson` with the wire JSON of a DTO, list or union.
+  `decimal` as strings, enums by wire name, `null` for nullable values). Since 0.14 a
+  DTO, list or union is encoded as for a typed command input (below); `SetJson` takes
+  wire JSON.
 - `ExecuteAsync(vm => vm.SaveCommand, argumentJson)`, which waits for an
   asynchronous command, and `CanExecute(command, argumentJson)` for commands with
-  an argument. A command whose `[RunicCommandKey]` resolver is asynchronous
+  an argument. `ExecuteAsync(command, argument)`, `CanExecuteAsync(command, argument)`
+  and `StartAsync(command, argument)` take the input as a .NET value instead (since
+  0.14) and encode it as the generated client does: scalars as `Set` encodes them, a
+  record or class as an object of its properties by wire name (camelCase, or its
+  `[RunicAlias]` or `[JsonPropertyName]`, without `[RunicIgnore]` and `[JsonIgnore]`
+  members), a `[RunicUnion]` case with its `$case`, lists as arrays, string-keyed
+  dictionaries as objects and a `[RunicCodec]` type by its codec. A `string` input binds
+  to the wire JSON overload unless you name the type:
+  `ExecuteAsync<string>(vm => vm.SearchCommand, "milk")`; a string that is not JSON
+  throws `ArgumentException` that says so. A command whose `[RunicCommandKey]` resolver is asynchronous
   answers only after the resolver, so use `CanExecuteAsync` and `StartAsync` for
   it (since 0.11); `CanExecute` and `Start` throw `InvalidOperationException` for
   such a command instead of blocking the test thread, which may own the fake clock
@@ -410,8 +459,11 @@ frames go to its tracker or to `TakePublications`, not both.
 pushes the window sent, such as
 `host.Transport.Request($$"""{"kind":"snapshot","route":"{{host.RootRoute}}"}""")` for
 the raw reply that `host.Root.Snapshot()` parses. Each `RunicBridgeMessage` has the
-push's `Json` and the `ConnectionKey` of a push to one connection, or `null` for a
-broadcast. `DefaultConnectionKey` (`connection-1`) and `DefaultClientKey`
+push's `Json`, the `ConnectionKey` of a push to one connection, or `null` for a
+broadcast, and, read from the JSON, its `Kind` (`state`, `frame`, `failure`,
+`operation`, ...) and `Route` (since 0.14), so
+`host.Transport.TakeMessages().Where(message => message.Route == editor.Route)` selects one
+route's pushes. `DefaultConnectionKey` (`connection-1`) and `DefaultClientKey`
 (`client-1`) are the keys of requests that name none. The verb is Take, as on the drivers,
 because the pushes are removed; Drain names `DrainAsync`, which waits for accepted
 work. A driver's `Mount` and `Unmount` (`open` and `close`) with client and

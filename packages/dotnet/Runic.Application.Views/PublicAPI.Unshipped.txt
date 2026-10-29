@@ -11,3 +11,5 @@ Runic.Application.Views.Generated.PropertyDescriptor<T>.TextMember.get -> bool
 Runic.Application.Views.Generated.PropertyDescriptor<T>.TextMember.init -> void
 Runic.Application.Views.Generated.PropertyDescriptor<T>.TextSetter.get -> System.Action<T, string!>?
 Runic.Application.Views.Generated.PropertyDescriptor<T>.TextSetter.init -> void
+Runic.Application.Views.IRunicWindow.Services.get -> System.IServiceProvider!
+Runic.Application.Views.RunicWindow<TViewModel>.Services.get -> System.IServiceProvider!

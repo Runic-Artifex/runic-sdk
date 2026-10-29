@@ -6,7 +6,21 @@ namespace Runic.Application.Testing;
 /// <summary>A push that <see cref="InMemoryBridgeTransport"/> received from its window.</summary>
 /// <param name="Json">The push, one JSON object.</param>
 /// <param name="ConnectionKey">The connection a targeted push was sent to, or <see langword="null"/> for a broadcast to every connection.</param>
-public sealed record RunicBridgeMessage(string Json, string? ConnectionKey);
+/// <remarks>
+/// <see cref="Kind"/> and <see cref="Route"/> are read from <see cref="Json"/>, so a test can select the pushes of one
+/// route: <c>host.Transport.TakeMessages().Where(message =&gt; message.Route == editor.Route)</c>.
+/// </remarks>
+public sealed record RunicBridgeMessage(string Json, string? ConnectionKey)
+{
+    /// <summary>
+    /// The push's <c>kind</c>, such as <c>state</c>, <c>frame</c>, <c>failure</c> or <c>operation</c>, or
+    /// <see langword="null"/> when it names none.
+    /// </summary>
+    public string? Kind => RunicViewPublication.HeaderOf(Json).Kind;
+
+    /// <summary>The route the push belongs to (its <c>route</c>), or <see langword="null"/> when it names none.</summary>
+    public string? Route => RunicViewPublication.HeaderOf(Json).Route;
+}
 
 /// <summary>
 /// An in-memory <see cref="IBridgeTransport"/> for headless tests: requests run the window's real request handler and
@@ -36,8 +50,8 @@ public sealed class InMemoryBridgeTransport : IBridgeConnectionTransport, IDispo
     private readonly HashSet<string> _connections = new(StringComparer.Ordinal);
     private readonly List<RunicBridgeMessage> _messages = [];
     private readonly List<(string Route, string Json)> _publications = [];
-    // Connections whose hello the drivers sent.
-    private readonly HashSet<string> _greeted = new(StringComparer.Ordinal);
+    // The hello the drivers sent on each connection, completed when it was answered.
+    private readonly Dictionary<string, Task> _greeted = new(StringComparer.Ordinal);
     private TaskCompletionSource _published = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private TaskCompletionSource _messaged = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private IBridgeRequestHandler? _handler;
@@ -77,16 +91,22 @@ public sealed class InMemoryBridgeTransport : IBridgeConnectionTransport, IDispo
         return ValueTask.FromResult(true);
     }
 
-    /// <summary>Sends one request on a connection and waits for its reply.</summary>
+    /// <summary>Sends one request on a connection and blocks the calling thread until its reply.</summary>
     /// <param name="json">The request, one JSON object.</param>
     /// <param name="connectionKey">The connection; it opens with its first request.</param>
     /// <param name="clientKey">The client of a connection's first request; by default <see cref="DefaultClientKey"/>.</param>
     /// <returns>The reply's JSON.</returns>
+    /// <remarks>
+    /// The calling thread waits while the window handles the request, and the window's own asynchronous work, such as
+    /// a model turn or an awaited command, continues on thread-pool threads. A suite that runs many tests in parallel on
+    /// thread-pool threads can starve the pool this way: each blocked test holds a thread that the replies it waits for
+    /// need. Use <see cref="RequestAsync"/> in such suites; it never blocks.
+    /// </remarks>
     /// <exception cref="InvalidOperationException">No window serves the transport.</exception>
     public string Request(string json, string connectionKey = DefaultConnectionKey, string? clientKey = null) =>
         RequestAsync(json, connectionKey, clientKey).AsTask().GetAwaiter().GetResult();
 
-    /// <summary>Sends one request on a connection and returns its reply when it arrives.</summary>
+    /// <summary>Sends one request on a connection and returns its reply when it arrives, without blocking a thread.</summary>
     /// <param name="json">The request, one JSON object.</param>
     /// <param name="connectionKey">The connection; it opens with its first request.</param>
     /// <param name="clientKey">The client of a connection's first request; by default <see cref="DefaultClientKey"/>.</param>
@@ -176,34 +196,59 @@ public sealed class InMemoryBridgeTransport : IBridgeConnectionTransport, IDispo
 
     private int _sessions;
 
-    // Sends the hello of a connection the drivers use, once. Each hello names a new session "{key}-session{n}": a
-    // reconnected connection cannot reuse the session of the one that closed.
-    internal void EnsureHello(string connectionKey, string? clientKey = null)
+    // Sends the hello of a connection the drivers use, once; concurrent requests on the connection wait for the same
+    // hello. Each hello names a new session "{key}-session{n}": a reconnected connection cannot reuse the session of the
+    // one that closed.
+    internal async ValueTask EnsureHelloAsync(string connectionKey, string? clientKey = null,
+        CancellationToken cancellationToken = default)
     {
-        int session;
+        TaskCompletionSource? hello = null;
+        Task pending;
+        int session = 0;
         lock (_gate)
         {
-            if (!_greeted.Add(connectionKey)) return;
-            session = ++_sessions;
+            if (!_greeted.TryGetValue(connectionKey, out pending!))
+            {
+                hello = new(TaskCreationOptions.RunContinuationsAsynchronously);
+                _greeted.Add(connectionKey, pending = hello.Task);
+                session = ++_sessions;
+            }
         }
-        var reply = Request(RunicJson.Write(writer =>
+        if (hello is null)
         {
-            writer.WriteStartObject();
-            writer.WriteString("kind", "hello");
-            writer.WriteNumber("protocol", 4);
-            writer.WriteString("session", $"{connectionKey}-session{session}");
-            writer.WriteStartObject("client");
-            writer.WriteString("name", "Runic.Application.Testing");
-            writer.WriteString("version", "1.0.0");
-            writer.WriteEndObject();
-            writer.WriteEndObject();
-        }), connectionKey, clientKey);
-        // A test may have sent the connection's hello itself.
-        if (!reply.StartsWith("{\"ok\":true", StringComparison.Ordinal)
-            && !reply.Contains("already completed a hello", StringComparison.Ordinal))
+            await pending.WaitAsync(cancellationToken).ConfigureAwait(false);
+            return;
+        }
+        try
         {
-            lock (_gate) _greeted.Remove(connectionKey);
-            throw new InvalidOperationException($"The window refused the test connection's hello: {reply}");
+            // Not cancelled by this caller: other requests on the connection wait for the same hello.
+            var reply = await RequestAsync(RunicJson.Write(writer =>
+            {
+                writer.WriteStartObject();
+                writer.WriteString("kind", "hello");
+                writer.WriteNumber("protocol", 4);
+                writer.WriteString("session", $"{connectionKey}-session{session}");
+                writer.WriteStartObject("client");
+                writer.WriteString("name", "Runic.Application.Testing");
+                writer.WriteString("version", "1.0.0");
+                writer.WriteEndObject();
+                writer.WriteEndObject();
+            }), connectionKey, clientKey, CancellationToken.None).ConfigureAwait(false);
+            // A test may have sent the connection's hello itself.
+            if (!reply.StartsWith("{\"ok\":true", StringComparison.Ordinal)
+                && !reply.Contains("already completed a hello", StringComparison.Ordinal))
+                throw new InvalidOperationException($"The window refused the test connection's hello: {reply}");
+            hello.SetResult();
+        }
+        catch (Exception error)
+        {
+            lock (_gate)
+                if (_greeted.TryGetValue(connectionKey, out var current) && ReferenceEquals(current, hello.Task))
+                    _greeted.Remove(connectionKey);
+            hello.SetException(error);
+            // Observed: the waiting requests rethrow it.
+            _ = hello.Task.Exception;
+            throw;
         }
     }
 
@@ -240,7 +285,7 @@ public sealed class InMemoryBridgeTransport : IBridgeConnectionTransport, IDispo
             if (_disposed) return;
             _messages.Add(message);
             // Broadcast states, frames and failures also reach the drivers' publication log.
-            if (message.ConnectionKey is null && RunicViewPublication.RouteOf(message.Json) is { } route)
+            if (message.ConnectionKey is null && RunicViewPublication.HeaderOf(message.Json) is ("state" or "frame" or "failure", { } route))
             {
                 _publications.Add((route, message.Json));
                 _published.TrySetResult();

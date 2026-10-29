@@ -90,6 +90,13 @@ public sealed class RunicWindowTestHost<TViewModel> : IDisposable where TViewMod
     public WindowContentSession Content { get; }
 
     /// <summary>
+    /// The services <see cref="RunicWindowTestHost.Create{TViewModel}(IServiceProvider, RunicWindowTestHostOptions?)"/>
+    /// resolved the window from, such as the window scope's provider, or <see langword="null"/> for a host created with a
+    /// constructor. The caller keeps ownership of them.
+    /// </summary>
+    public IServiceProvider? Services { get; internal init; }
+
+    /// <summary>
     /// The window's clock: a <see cref="FakeTimeProvider"/> unless the options supply another clock.
     /// </summary>
     public TimeProvider Time { get; }

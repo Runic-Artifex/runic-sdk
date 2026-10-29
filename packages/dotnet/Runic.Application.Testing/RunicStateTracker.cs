@@ -24,13 +24,11 @@ public sealed class RunicStateTracker<TModel> where TModel : class
     private JsonObject? _fields;
     private long _revision;
 
-    internal RunicStateTracker(RunicViewDriver<TModel> driver, RunicPublicationLog publications)
+    // The driver took the frames queued before the snapshot: they are older than it.
+    internal RunicStateTracker(RunicViewDriver<TModel> driver, RunicPublicationLog publications, RunicViewState<TModel> snapshot)
     {
         _driver = driver;
         _publications = publications;
-        // Frames queued before the snapshot are older than it.
-        _ = publications.Take(driver.Route);
-        var snapshot = driver.Snapshot();
         _state = JsonNode.Parse(snapshot.Json.GetRawText())!.AsObject();
         _fields = snapshot.Fields is { } fields ? JsonNode.Parse(fields.GetRawText())!.AsObject() : null;
         _revision = snapshot.Revision;
@@ -93,10 +91,28 @@ public sealed class RunicStateTracker<TModel> where TModel : class
     /// versions: the frames converged on the state .NET holds.
     /// </summary>
     /// <exception cref="InvalidOperationException">They differ.</exception>
+    /// <remarks>The snapshot blocks the calling thread; prefer <see cref="VerifyAsync"/> in suites that run tests in parallel.</remarks>
     public void Verify()
     {
         Apply();
-        var expected = JsonNode.Parse(_driver.Snapshot().Json.GetRawText())!.AsObject();
+        Compare(_driver.Snapshot());
+    }
+
+    /// <summary>
+    /// Checks that the tracked state equals a fresh snapshot, as <see cref="Verify"/> does, reading the snapshot without
+    /// blocking a thread.
+    /// </summary>
+    /// <param name="cancellationToken">Stops waiting for the snapshot.</param>
+    /// <exception cref="InvalidOperationException">They differ.</exception>
+    public async Task VerifyAsync(CancellationToken cancellationToken = default)
+    {
+        Apply();
+        Compare(await _driver.SnapshotAsync(cancellationToken).ConfigureAwait(false));
+    }
+
+    private void Compare(RunicViewState<TModel> snapshot)
+    {
+        var expected = JsonNode.Parse(snapshot.Json.GetRawText())!.AsObject();
         var actual = _state.DeepClone().AsObject();
         if (!JsonNode.DeepEquals(expected, actual))
             throw new InvalidOperationException(
