@@ -102,17 +102,17 @@ internal sealed partial class NavigationTests
 
         var home = new Page("home")
         {
-            Guard = async (_, _) =>
+            Guard = async (_, token) =>
             {
                 Record("guard");
-                await Task.Delay(1);
+                await Task.Delay(1, token);
                 Record("guard-resumed");
                 return true;
             },
-            Resume = async (_, _) =>
+            Resume = async (_, token) =>
             {
                 Record("resume");
-                await Task.Delay(1);
+                await Task.Delay(1, token);
                 Record("resume-resumed");
             },
         };
@@ -123,10 +123,10 @@ internal sealed partial class NavigationTests
             Record("factory");
             return detail = new ArrivingPage("detail", Record)
             {
-                Initialize = async (_, _) =>
+                Initialize = async (_, token) =>
                 {
                     Record("initialize");
-                    await Task.Delay(1);
+                    await Task.Delay(1, token);
                     Record("initialize-resumed");
                 },
                 OnDispose = () =>
