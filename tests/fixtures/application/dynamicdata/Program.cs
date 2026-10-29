@@ -102,29 +102,35 @@ using var sortLease = RunicModelContextRegistry.Shared.Bind(sortContext, sortMod
 await sortContext.InvokeAsync(() => { });
 var sortTransport = new Benchmarks.MeteredTransport();
 using var sortBridge = new SortProofBridge(sortTransport, sortModel, "sorted");
-// The comparer changes in the model turn, in order with the changesets that ObserveOn delivers there.
-// The comparer changes in the model turn, in order with the changesets that ObserveOn delivers there.
+// Each step changes the rows in the model turn (the comparer signal is not observed there) and waits for its frame, so
+// the next step is a unit of its own: a later reset would otherwise fold the moves into a set of the field.
 await ReplayAsync(sortTransport, "sorted", sortContext, async () =>
 {
-    await sortContext.InvokeAsync(() => sortModel.SortBy(SortProofViewModel.ByValueDescending));
-    sortSource.Edit(updater =>
+    async Task StepAsync(Action change)
+    {
+        var published = sortTransport.LatestRevision;
+        await sortContext.InvokeAsync(change);
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        while (sortTransport.LatestRevision == published) await Task.Delay(1, timeout.Token);
+    }
+    await StepAsync(() => sortModel.SortBy(SortProofViewModel.ByValueDescending));
+    await StepAsync(() => sortSource.Edit(updater =>
     {
         updater.AddOrUpdate(new Row(3, "Row moved", 9));
         updater.RemoveKey(10);
         updater.AddOrUpdate(new Row(40, "Row added", 2));
-    });
-    await sortContext.InvokeAsync(() => { });
-    await sortContext.InvokeAsync(() => sortModel.SortBy(SortProofViewModel.ByLabel));
-    await sortContext.InvokeAsync(() => sortModel.SortBy(SortProofViewModel.ByRank));
+    }));
+    await StepAsync(() => sortModel.SortBy(SortProofViewModel.ByLabel));
+    await StepAsync(() => sortModel.SortBy(SortProofViewModel.ByRank));
     // A refresh after a rank change moves the row, forward and back.
     foreach (var (id, rank) in new[] { (5, 100), (30, -1), (12, 50) })
-    {
-        SortProofViewModel.Ranks[id] = rank;
-        sortSource.Refresh(sortSource.Lookup(id).Value);
-        await sortContext.InvokeAsync(() => { });
-    }
-    await sortContext.InvokeAsync(() => sortModel.SortBy(SortProofViewModel.ById));
-}, minimumFrames: 3, requiredKinds: ["move", "set"]);
+        await StepAsync(() =>
+        {
+            SortProofViewModel.Ranks[id] = rank;
+            sortSource.Refresh(sortSource.Lookup(id).Value);
+        });
+    await StepAsync(() => sortModel.SortBy(SortProofViewModel.ById));
+}, minimumFrames: 8, requiredKinds: ["move", "set", "add", "remove"]);
 Console.WriteLine("DYNAMICDATA_RUNIC_OK: independent viewports, deferred batching, off-screen suppression, generated collection deltas, withheld invalid keys and frames that replay to the snapshot.");
 
 static async Task ExecuteAsync(IObservable<ReactiveUI.Primitives.RxVoid> execution)
