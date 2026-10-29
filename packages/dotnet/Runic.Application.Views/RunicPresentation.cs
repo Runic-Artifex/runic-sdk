@@ -56,7 +56,7 @@ public interface IRunicWindow : IRunicView, IAsyncDisposable
     /// <inheritdoc cref="RunicWindow{TViewModel}.Services"/>
     IServiceProvider Services { get; }
 
-    internal ValueTask OpenAsync(IRunicWindowHost host, RunicWindowOptions options, CancellationToken cancellationToken);
+    internal ValueTask OpenAsync(IRunicWindowHost host, RunicWindowOptions options, object? parameter, CancellationToken cancellationToken);
 
     internal RunicWindowValidationResult Validate(IRunicWindowHost host, RunicWindowOptions options);
 }
@@ -288,11 +288,12 @@ public abstract class RunicWindow<TViewModel> : RunicView<TViewModel>, IRunicWin
         catch (Exception) { await decision.CancelAsync().ConfigureAwait(false); }
     }
 
-    async ValueTask IRunicWindow.OpenAsync(IRunicWindowHost host, RunicWindowOptions options, CancellationToken cancellationToken)
+    async ValueTask IRunicWindow.OpenAsync(IRunicWindowHost host, RunicWindowOptions options, object? parameter,
+        CancellationToken cancellationToken)
     {
         if (Interlocked.Exchange(ref _opened, 1) != 0)
             throw new InvalidOperationException($"{GetType().Name} has already been opened; open a new instance for another window.");
-        var opened = await RunicWindowOpening.OpenAsync(host, this, options, cancellationToken).ConfigureAwait(false);
+        var opened = await RunicWindowOpening.OpenAsync(host, this, options, parameter, cancellationToken).ConfigureAwait(false);
         Volatile.Write(ref _host, opened);
     }
 

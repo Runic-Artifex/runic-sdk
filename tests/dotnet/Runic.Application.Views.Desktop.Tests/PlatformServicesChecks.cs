@@ -377,6 +377,12 @@ internal sealed class PlatformServicesChecks
             await using (await Windows(host).OpenWindowAsync<FileWindow>(options: null, activation: null)) { }
             await using (await Windows(host, hidden: true).OpenWindowAsync<FileWindow>(null, activation)) { }
             Require(presented.Count == 1, "A window without a context, or a hidden one, was presented.");
+            // Code that holds only the host-neutral IRunicWindowHost reaches the same open (0.14).
+            IRunicWindowHost neutral = Windows(host);
+            await using (await neutral.OpenWindowAsync<FileWindow>(null, activation)) { }
+            Require(presented.Count == 2 && ReferenceEquals(presented[1].Context, activation),
+                "IRunicWindowHost.OpenWindowAsync did not present the new window with the activation context.");
+            presented.RemoveAt(1);
 
             fail = true;
             await using (var refused = await Windows(host).OpenWindowAsync<FileWindow>(null, activation))
