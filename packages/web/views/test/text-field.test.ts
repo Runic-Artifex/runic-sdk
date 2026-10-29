@@ -116,7 +116,7 @@ test("a coalescing controller has at most one write in flight and writes the lat
   await settle(bridge, () => !field.current.editing);
   assert.deepEqual(written, ["a", "abcd"]);
   assert.equal(most, 1);
-  assert.deepEqual(field.current, { value: "abcd", editing: false, error: undefined });
+  assert.deepEqual(field.current, { value: "abcd", text: "abcd", editing: false, error: undefined, errors: [], conflict: undefined });
 });
 
 test("the field shows the View's normalization once the last write settled", async () => {
@@ -141,7 +141,7 @@ test("IME composition is written once it ends", async () => {
   field.input("か");
   await bridge.flush();
   assert.equal(bridge.calls.filter(call => call.kind === "set").length, 0);
-  assert.deepEqual(field.current, { value: "か", editing: true, error: undefined });
+  assert.deepEqual(field.current, { value: "か", text: "か", editing: true, error: undefined, errors: [], conflict: undefined });
   field.compositionEnd("漢");
   await settle(bridge, () => !field.current.editing);
   assert.deepEqual(bridge.calls.filter(call => call.kind === "set").map(call => call.message["value"]), ["漢"]);
@@ -166,7 +166,7 @@ test("a failed write keeps the draft with its error until reset", async () => {
   // The overlay ended with the failed edit: the View shows the producer's value.
   assert.equal(client.snapshot.title, "");
   field.reset();
-  assert.deepEqual(field.current, { value: "", editing: false, error: undefined });
+  assert.deepEqual(field.current, { value: "", text: "", editing: false, error: undefined, errors: [], conflict: undefined });
   assert.ok(notified >= 2);
 });
 
