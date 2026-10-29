@@ -1940,8 +1940,12 @@ an empty path. Aliases are preserved, so a postal-code error might have the path
 `["profile", "postal-code"]`.
 
 Return a `RunicValidationMessage` from `GetErrors` to supply a stable `Code`,
-`Severity`, or relative CLR `MemberPaths`. Ordinary strings and
-`ValidationResult` remain supported. Generated metadata resolves paths without
+`Severity`, or relative CLR `MemberPaths`. A member path names CLR properties
+separated by dots and may index lists and dictionaries: `Items[0].Name`,
+`Lookup[primary].Name` or `Groups[0][1]`; a path that names no Bridge member
+or element reports at the object. Ordinary strings and
+`ValidationResult` remain supported. An empty message is reported as
+`Invalid value.`, in `validation` and in the `…Errors` arrays. Generated metadata resolves paths without
 runtime reflection. Traversal and messages are bounded; `truncated` reports when
 validation details are incomplete. Nested `ErrorsChanged` notifications publish new validation
 state, and removed objects lose their subscriptions. This projection works
@@ -1968,6 +1972,20 @@ needed. A Bridge member's messages still come from `GetErrors(member)` and keep
 the ViewModel's formatter, as in the per-property `…Errors` arrays; the other
 messages are the validation text on one line, separated by spaces. `ReactiveValidationObject.GetErrors(null)`
 itself is unchanged.
+
+The Bridge also observes each `ValidationContext`'s `ValidationStatusChange`,
+of the ViewModel and of every object in its state graph. A
+`ReactiveValidationObject` raises `ErrorsChanged` only for the properties its
+rules named before, so a rule that names no property would otherwise change
+the page only when `HasErrors` changes. `hasErrors` of an object read through
+its `ValidationContext` follows the messages, so a disposed
+`ReactiveValidationObject`, whose `HasErrors` keeps its last value, reports no
+errors. A nested DTO that derives from `ReactiveValidationObject` keeps
+`HasErrors` and `ValidationContext` out of its contract.
+
+A checked write's receipt (`write{Property}`) carries the property's messages
+after the write as `applied.validation`, one per line, when the write left the
+property invalid.
 
 Use `[RunicIgnore]` on validation-only DTO properties such as a computed
 `HasErrors`; their values are represented by the validation projection.

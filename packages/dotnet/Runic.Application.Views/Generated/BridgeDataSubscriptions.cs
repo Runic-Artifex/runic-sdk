@@ -81,6 +81,9 @@ internal sealed class BridgeDataSubscriptions : IDisposable, IBridgeSnapshotBatc
         new(ReferenceEqualityComparer.Instance);
     private readonly Dictionary<INotifyDataErrorInfo, ErrorWatch> _errorWatches =
         new(ReferenceEqualityComparer.Instance);
+    // Validation kept outside INotifyDataErrorInfo, such as a ReactiveUI.Validation ValidationContext.
+    private readonly Func<object, Action, IDisposable?>? _observeValidation;
+    private readonly Dictionary<object, ValidationWatch> _validationWatches = new(ReferenceEqualityComparer.Instance);
     private readonly NodeKey _rootKey;
     private bool _disposed;
 
@@ -91,7 +94,8 @@ internal sealed class BridgeDataSubscriptions : IDisposable, IBridgeSnapshotBatc
         Func<INotifyCollectionChanged, NotifyCollectionChangedEventArgs, bool>? collectionChanged = null,
         Func<object, bool>? itemChanged = null,
         bool rootObservedExternally = false,
-        IReadOnlySet<string>? incrementalCollectionNames = null)
+        IReadOnlySet<string>? incrementalCollectionNames = null,
+        Func<object, Action, IDisposable?>? observeValidation = null)
     {
         ArgumentNullException.ThrowIfNull(root);
         ArgumentNullException.ThrowIfNull(members);
@@ -103,6 +107,7 @@ internal sealed class BridgeDataSubscriptions : IDisposable, IBridgeSnapshotBatc
         _itemChanged = itemChanged;
         _rootObservedExternally = rootObservedExternally;
         _incrementalCollectionNames = incrementalCollectionNames;
+        _observeValidation = observeValidation;
         _modelTurn = BridgeModelTurn.For(root);
         _rootKey = new(root, members);
         _modelTurn.Run(() =>
@@ -184,6 +189,15 @@ internal sealed class BridgeDataSubscriptions : IDisposable, IBridgeSnapshotBatc
         var changed = _modelTurn.Run(() =>
         {
             lock (_gate) return !_disposed && _errorWatches.ContainsKey(source);
+        });
+        if (changed) _changed();
+    }
+
+    private void OnValidationChanged(ValidationWatch watch)
+    {
+        var changed = _modelTurn.Run(() =>
+        {
+            lock (_gate) return !_disposed && _validationWatches.TryGetValue(watch.Owner, out var current) && current == watch;
         });
         if (changed) _changed();
     }
@@ -310,7 +324,11 @@ internal sealed class BridgeDataSubscriptions : IDisposable, IBridgeSnapshotBatc
         // ViewModelBridge already observes the root INotifyDataErrorInfo.
         // Avoid emitting a second revision for root-level errors while still
         // watching every reachable nested (including errors-only) object.
-        if (!ReferenceEquals(owner, _root)) AttachErrors(node);
+        if (!ReferenceEquals(owner, _root))
+        {
+            AttachErrors(node);
+            AttachValidation(node);
+        }
         foreach (var member in members)
         {
             var edge = new Edge(node, member);
@@ -391,6 +409,29 @@ internal sealed class BridgeDataSubscriptions : IDisposable, IBridgeSnapshotBatc
         _errorWatches.Remove(source);
     }
 
+    private void AttachValidation(Node node)
+    {
+        if (_observeValidation is null) return;
+        if (!_validationWatches.TryGetValue(node.Owner, out var watch))
+        {
+            watch = new ValidationWatch(node.Owner);
+            var subscription = _observeValidation(node.Owner, () => OnValidationChanged(watch));
+            if (subscription is null) return;
+            watch.Subscription = subscription;
+            _validationWatches.Add(node.Owner, watch);
+        }
+        watch.Nodes.Add(node);
+    }
+
+    private void DetachValidation(Node node)
+    {
+        if (!_validationWatches.TryGetValue(node.Owner, out var watch)) return;
+        watch.Nodes.Remove(node);
+        if (watch.Nodes.Count != 0) return;
+        _validationWatches.Remove(node.Owner);
+        watch.Subscription?.Dispose();
+    }
+
     private void SweepDetached()
     {
         var reachable = new HashSet<NodeKey>(NodeKeyComparer.Instance);
@@ -406,6 +447,7 @@ internal sealed class BridgeDataSubscriptions : IDisposable, IBridgeSnapshotBatc
             }
             DetachProperty(pair.Value);
             DetachErrors(pair.Value);
+            DetachValidation(pair.Value);
             _nodes.Remove(pair.Key);
         }
     }
@@ -429,6 +471,8 @@ internal sealed class BridgeDataSubscriptions : IDisposable, IBridgeSnapshotBatc
             foreach (var watch in _propertyWatches.Values) watch.Source.PropertyChanged -= watch.Handler;
             foreach (var watch in _collectionWatches.Values) watch.Source.CollectionChanged -= watch.Handler;
             foreach (var watch in _errorWatches.Values) watch.Source.ErrorsChanged -= watch.Handler;
+            foreach (var watch in _validationWatches.Values) watch.Subscription?.Dispose();
+            _validationWatches.Clear();
             _propertyWatches.Clear();
             _collectionWatches.Clear();
             _errorWatches.Clear();
@@ -487,6 +531,13 @@ internal sealed class BridgeDataSubscriptions : IDisposable, IBridgeSnapshotBatc
         }
         internal INotifyDataErrorInfo Source { get; }
         internal EventHandler<DataErrorsChangedEventArgs> Handler { get; }
+        internal HashSet<Node> Nodes { get; } = new(ReferenceEqualityComparer.Instance);
+    }
+
+    private sealed class ValidationWatch(object owner)
+    {
+        internal object Owner { get; } = owner;
+        internal IDisposable? Subscription { get; set; }
         internal HashSet<Node> Nodes { get; } = new(ReferenceEqualityComparer.Instance);
     }
 

@@ -18,7 +18,7 @@ namespace Runic.Application.Testing.Tests.Conformance;
 //
 // - CreateWindow creates the window of one scenario: a WindowContentSession on settings.Transport with
 //   settings.TimeProvider and settings.MaximumInputBytes, failure detail off (IncludeFailureDetail = false), whose root
-//   View is `view` ("list", "log" or "notes"), serving the route of that name, with the values of arrange.model
+//   View is `view` ("list", "log", "notes" or "form"), serving the route of that name, with the values of arrange.model
 //   (generators expanded; members it does not list keep their defaults). The notes View also serves the detail View in
 //   its detail slot with the content id 0123456789abcdef0123456789abcdef.
 // - IConformanceWindow.MutateAsync applies the mutations of one mutate step to the root View's model, as one
@@ -79,6 +79,8 @@ internal sealed class DotNetConformanceViews : IConformanceViews
                     (vm, content) => new LogBridge(settings.Transport, vm, content)),
                 "notes" => new Window<NotesViewModel>(session, NotesViewModel.Create(model),
                     (vm, content) => new NotesBridge(settings.Transport, vm, content)),
+                "form" => new Window<FormViewModel>(session, FormViewModel.Create(model),
+                    (vm, content) => new FormBridge(settings.Transport, vm, content)),
                 _ => throw new NotSupportedException($"The test View '{view}' is not a root View."),
             };
         }
@@ -89,7 +91,7 @@ internal sealed class DotNetConformanceViews : IConformanceViews
         }
     }
 
-    private sealed class Window<TModel> : IConformanceWindow where TModel : ConformanceModel
+    private sealed class Window<TModel> : IConformanceWindow where TModel : class, IConformanceModel
     {
         private readonly WindowContentSession _session;
         private readonly TModel _model;
@@ -136,9 +138,25 @@ internal sealed class DotNetConformanceViews : IConformanceViews
     }
 }
 
-// The base of the test Views' models: change notification and the mutations of the corpus.
-internal abstract class ConformanceModel : INotifyPropertyChanged
+// A test View's model: the mutations of the corpus and its members' wire values.
+internal interface IConformanceModel
 {
+    void Apply(JsonObject mutation, Func<IDisposable>? unit);
+
+    JsonNode? Read(string member);
+
+    JsonNode? Provide(string id);
+}
+
+// The base of the test Views' models: change notification and the mutations of the corpus.
+internal abstract class ConformanceModel : INotifyPropertyChanged, IConformanceModel
+{
+    void IConformanceModel.Apply(JsonObject mutation, Func<IDisposable>? unit) => Apply(mutation, unit);
+
+    JsonNode? IConformanceModel.Read(string member) => Read(member);
+
+    JsonNode? IConformanceModel.Provide(string id) => Provide(id);
+
     public event PropertyChangedEventHandler? PropertyChanged;
 
     protected void Raise([CallerMemberName] string? name = null) => PropertyChanged?.Invoke(this, new(name));

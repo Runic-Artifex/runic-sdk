@@ -141,6 +141,15 @@ using (var validationHost = new RunicWindowTestHost<FlavorValidationModel>(valid
     ];
     if (!actual.SequenceEqual(expected, StringComparer.Ordinal))
         throw new InvalidOperationException($"The Reactive flavor's validation summary was {errors}.");
+
+    // A rule that names no member changes neither ErrorsChanged nor HasErrors here: the change is a pushed frame.
+    _ = validationHost.Root.TakePublications();
+    await context.InvokeAsync(() => validationModel.AcceptPolicy(false));
+    var pushed = await validationHost.Root.NextPublicationAsync(TimeSpan.FromSeconds(5));
+    if (pushed.Sets.FirstOrDefault(set => set.Field == "validation") is not { } policy
+        || !policy.Value.GetProperty("errors").EnumerateArray().Any(error =>
+            error.GetProperty("message").GetString() == FlavorValidationModel.Policy && error.GetProperty("path").GetArrayLength() == 0))
+        throw new InvalidOperationException($"The Reactive flavor did not push a rule that names no member: {pushed.Json}");
 }
 
 // #284: a Cancel operation of a navigation page is cancelled when the page's entry retires, and the page is

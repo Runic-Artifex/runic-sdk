@@ -364,6 +364,9 @@ A client that exposes state to a user interface MUST apply this rule; a client w
 - Subscribers are notified whenever the exposed value changes, including when the overlay starts or ends.
 - The overlay applies to setters only. Checked writes keep their baseline semantics, and commands are not tied to a
   member.
+- The overlay covers only the member that was set. Members derived from it, such as `validation` and the member's
+  `{name}Errors` ([validation](#validation)), are never overlaid: they show the state's value, which describes the
+  producer's value of the member until the frame of the edit arrives.
 
 ## Checked writes
 
@@ -378,8 +381,9 @@ A checked field accepts writes that are checked against the value and version th
   [canonically equal](values.md#canonical-equality) to `expectedValue`.
 - `receipt` is one of:
   - `{kind:"applied", snapshot:{value, version}, validation?}`: the write was applied; `snapshot` is the field after
-    it, including any normalization by the setter, and `validation` a message when validation after the write failed
-    without undoing it;
+    it, including any normalization by the setter, and `validation` is present when the field's member is invalid
+    after the write, which validation does not undo: the member's messages ([validation](#validation)), separated by
+    line feeds (U+000A);
   - `{kind:"committed-with-error", snapshot, message}`: the setter changed the field and then failed;
   - `{kind:"conflict", incoming:{value, version}, message}`: the field's version or value differed; `incoming` is the
     current field;
@@ -388,6 +392,55 @@ A checked field accepts writes that are checked against the value and version th
   original receives the original receipt and does not apply the write again. Reusing a `requestId` for another write
   answers `conflict`. A producer retains receipts for a bounded number of request ids.
 - The reply carries `revision` like a setter's. A value that does not decode is `rejected` with `invalid-input`.
+
+## Validation
+
+A View whose model validates has the state member `validation`. It is derived: the producer writes it from the
+model's validation at each publication and compares it like any other member
+([state changes](state-changes.md#members)). A change of validation is therefore published as a `set` of
+`validation` in the frame of the unit that changed it, together with the members whose change caused it. A
+producer also publishes a change of validation that changes no other member and that the model announces only to
+its validation, such as a rule that names no member. A View whose model reports errors per member also has, for
+each value member `name`, the state member `{name}Errors`.
+
+### `validation`
+
+```json
+{"hasErrors":true,"truncated":false,"errors":[
+  {"path":[],"message":"Approval is required."},
+  {"path":["profile","postal-code"],"message":"Postal code required","code":"required","severity":"error"},
+  {"path":["items",0,"label"],"message":"Item label required"}]}
+```
+
+- **`errors`.** Each error has a `path`, a `message` and, when the model supplies them, a `code` and a `severity`.
+  `code` and `severity` are the application's strings, open sets that the protocol does not interpret.
+- **`message`.** A non-empty string. An error whose model gives no text, or an empty or blank one, has the message
+  `Invalid value.`.
+- **Paths.** A path is an array of segments that leads from the View's state to the value the error concerns: a
+  member's wire name (a string), a list index (an integer from 0) or a map key (a string). `[]` is the View's own
+  object; `["profile","postal-code"]` the member `postal-code` of the object in `profile`; `["items",0,"label"]` the
+  member `label` of the first element of `items`; `["lookup","primary","label"]` that of the map entry `primary`. A
+  list nested in a list adds only its index (`["groups",0,1,"label"]`). An error that the model reports for a member
+  path the producer cannot resolve to a member or element of its state reports at the path of its object. An object
+  that the state reaches on several paths reports its errors at each of them.
+- **Each message once.** An error that the model reports for a member appears once, at the member's path, also when
+  the model lists it among its object's errors as well. An error of the object, including one that names only
+  members that are not part of the state, reports at the object's path. Messages are not deduplicated by their
+  text: an object's error whose text equals a member's error stays.
+- **Order.** The producer visits the View's object, then each member in state order and, depth first, the objects
+  they reach, list elements in order. Each object's own errors come before those of its members.
+- **`hasErrors`.** True when the model reports an error anywhere in the View's graph, also one that `errors` leaves
+  out because of the limits below.
+- **Limits.** A producer visits at most 4,096 objects and enumeration entries, writes at most 256 errors, at most 64
+  segments per path and at most 2,048 UTF-16 code units per message, code, severity and string segment, cutting the
+  value at that length. When it leaves anything out or cuts anything, `truncated` is true. An object reached again
+  inside its own path (a cycle) is not visited again and does not set `truncated`.
+
+### `{name}Errors`
+
+An array of the messages the model reports for the member `name` of the View's own object, in the model's order, or
+`[]`. Its messages follow the `message` rule above. The member's errors also appear in `validation`, at the member's
+path.
 
 ## Commands and availability
 

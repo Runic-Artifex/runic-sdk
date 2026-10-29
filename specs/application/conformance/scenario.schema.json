@@ -28,7 +28,7 @@
       "type": "string",
       "pattern": "^specs/application/fixtures/[a-z-]+/[a-z0-9-]+\\.json#.+$"
     },
-    "view": { "enum": ["list", "log", "notes"] },
+    "view": { "enum": ["list", "log", "notes", "form"] },
     "requires": {
       "type": "array",
       "uniqueItems": true,
@@ -212,6 +212,11 @@
         {
           "properties": { "op": { "const": "progress" }, "member": { "type": "string" }, "value": { "type": "number" } },
           "required": ["op", "member", "value"],
+          "additionalProperties": false
+        },
+        {
+          "properties": { "op": { "const": "rule" }, "rule": { "type": "string" }, "holds": { "type": "boolean" } },
+          "required": ["op", "rule", "holds"],
           "additionalProperties": false
         },
         {

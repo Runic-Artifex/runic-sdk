@@ -6,6 +6,7 @@ import { test } from "node:test";
 import { BridgeError, isBridgeOutcome, onBridgeDiagnostic } from "../dist/index.js";
 import { bridgeOperations, connectView, defineCollection, defineCollections, defineInteractions, defineText, type ViewConnection } from "../dist/generated.js";
 import * as wire from "../dist/wire.js";
+import { decodeBridgeValidation } from "../dist/validation.js";
 import { clock } from "../dist/clock.js";
 import { readPush, readReply } from "../dist/protocol.js";
 import { sharedRuntimeFor } from "../dist/runtime.js";
@@ -54,6 +55,7 @@ const models: Record<string, ViewModel> = {
     operations: { slowImport: { decode: int32, decodeFailure: failure } },
   },
   detail: { members: { lastAction: wire.string, canDismiss: wire.boolean } },
+  form: { members: { name: wire.string, nameErrors: value => wire.array(value, wire.string), validation: decodeBridgeValidation } },
 };
 const modelOf = (route: string) => route.startsWith("content") ? models["detail"]! : models[route]!;
 

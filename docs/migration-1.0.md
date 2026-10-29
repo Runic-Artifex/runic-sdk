@@ -617,3 +617,13 @@ Generated typed mocks (`mock<Name>(bridge, definition)`) keep their definitions.
 Details: 0.13.0 [Breaking changes](../eng/release/notes/0.13.0.md#breaking-changes),
 [Behaviour changes](../eng/release/notes/0.13.0.md#behaviour-changes) and
 [Added](../eng/release/notes/0.13.0.md#added).
+
+## From 0.13 to 0.14
+
+### Validation and DynamicData
+
+| 0.13 | 0.14 |
+| --- | --- |
+| An empty validation message crossed as `""`. | It crosses as `Invalid value.`, in `validation` and in `…Errors`. Give the rule a message if the page shows another text. |
+| A hand-written `ViewModelBridge<T>` subclass called the constructor ending in `collections`. | The constructor has a last optional `validationReader` parameter; existing calls compile. |
+

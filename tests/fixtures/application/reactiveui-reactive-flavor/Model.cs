@@ -86,8 +86,11 @@ namespace ReactiveUiReactiveFlavorProof
         public const string TooShort = "Password must be at least 7 characters long.";
         public const string Mismatch = "The confirmation does not match the new password.";
         public const string Common = "Choose a less common password.";
+        public const string Policy = "The password policy is not accepted.";
 
         private readonly BehaviorSubject<bool> _longEnough = new(true);
+        // A rule that names no member and changes without a member: the Bridge observes the ValidationContext.
+        private readonly BehaviorSubject<bool> _policy = new(true);
         private readonly BehaviorSubject<bool> _matches = new(true);
         private readonly BehaviorSubject<bool> _uncommon = new(true);
 
@@ -96,7 +99,10 @@ namespace ReactiveUiReactiveFlavorProof
             this.ValidationRule(vm => vm.NewPassword, _longEnough, TooShort);
             this.ValidationRule(vm => vm.ConfirmPassword, _matches, Mismatch);
             this.ValidationRule(_uncommon, Common);
+            this.ValidationRule(_policy, Policy);
         }
+
+        public void AcceptPolicy(bool accepted) => _policy.OnNext(accepted);
 
         public string NewPassword
         {
