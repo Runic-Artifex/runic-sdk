@@ -216,9 +216,15 @@ public sealed class ManagedWindowTests
         var handshake = await ReceiveBinaryAsync(socket, timeout.Token);
         AssertHeader(handshake, 0, CheckToken);
         Assert.Equal(1, handshake[HeaderSize]);
-        AssertCallResult(await ReceiveBinaryAsync(socket, timeout.Token), 1, "first");
-        AssertCallResult(await ReceiveBinaryAsync(socket, timeout.Token), 2, "second");
-        Assert.Equal(["connected", "first", "second"], order);
+        // Calls run concurrently once admitted, so their replies and handlers can finish in either order; the Connected
+        // event is dispatched before either call is admitted.
+        var replies = new[] { await ReceiveBinaryAsync(socket, timeout.Token), await ReceiveBinaryAsync(socket, timeout.Token) }
+            .OrderBy(reply => BinaryPrimitives.ReadUInt16LittleEndian(reply.AsSpan(5, 2)))
+            .ToArray();
+        AssertCallResult(replies[0], 1, "first");
+        AssertCallResult(replies[1], 2, "second");
+        Assert.Equal("connected", order.First());
+        Assert.Equal(["first", "second"], order.Skip(1).Order());
     }
 
     // A call that follows a token check that failed, or that comes before any token check, is dropped: nothing runs
