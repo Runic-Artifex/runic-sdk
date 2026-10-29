@@ -35,6 +35,13 @@ internal sealed class FileDialogOptionsTests
         Throws<ArgumentException>(() => _ = new SaveFileOptions("a.txt") { InitialDirectory = folder + "\0" }, "NUL save folder");
         Throws<ArgumentException>(() => _ = new OpenDirectoryOptions { InitialDirectory = "." }, "relative directory folder");
         Throws<ArgumentException>(() => _ = new SaveFileOptions("a.txt") { Filters = [Images, null!] }, "null filter");
+        // #713: a title, null for the platform's own; NUL is rejected when it is set.
+        Check(options.Title is null && new OpenDirectoryOptions().Title is null && new SaveFileOptions("a.txt").Title is null, "no title by default");
+        Check(new OpenFileOptions { Title = "Import backup" }.Title == "Import backup" && new SaveFileOptions("a.txt") { Title = "" }.Title == "",
+            "options keep their title");
+        Throws<ArgumentException>(() => _ = new OpenFileOptions { Title = "a\0" }, "NUL open title");
+        Throws<ArgumentException>(() => _ = new OpenDirectoryOptions { Title = "a\0" }, "NUL directory title");
+        Throws<ArgumentException>(() => _ = new SaveFileOptions("a.txt") { Title = "a\0" }, "NUL save title");
         // The shipped positional shape is unchanged.
         new OpenFileOptions { Filters = [Images] }.Deconstruct(out var policy);
         Check(policy == OwnerPolicy.RequireOwner, "Deconstruct keeps the owner policy");
@@ -69,6 +76,23 @@ internal sealed class FileDialogOptionsTests
             await using (var directoryLease = (await backend.OpenDirectoryAsync(new OpenDirectoryOptions { InitialDirectory = directory })
                 as PickerResult<IDirectoryLease>.Selected)!.Value) { }
             Check(picker.DirectoryRequest == directory, "directory request");
+
+            // #713: the title reaches every kind of dialog, also a picker that implements the directory request overloads.
+            picker.Paths = [first];
+            await using ((await backend.OpenFileAsync(new OpenFileOptions { Title = "Import backup" }) as PickerResult<IReadFileLease>.Selected)!.Value) { }
+            Check(picker.Request is { Title: "Import backup" }, "open title");
+            picker.Paths = [Path.Combine(directory, "saved.txt")];
+            if (await backend.SaveFileAsync(new SaveFileOptions("saved.txt") { Title = "Export backup" }) is PickerResult<ISaveFileLease>.Selected(var titled))
+                await titled.DisposeAsync();
+            Check(picker.Request is { Title: "Export backup", Save: true }, "save title");
+            var titledPicker = new TitledDirectoryPicker();
+            var titledBackend = new NativePickerBackend(new TestOwner(), titledPicker);
+            await using (var titledDirectory = (await titledBackend.OpenDirectoryAsync(new OpenDirectoryOptions { InitialDirectory = directory, Title = "Log folder" })
+                as PickerResult<IDirectoryLease>.Selected)!.Value) { }
+            Check(titledPicker.Request is { Title: "Log folder", AllowMultiple: false } request && request.InitialDirectory == directory, "directory title");
+            if (await titledBackend.OpenDirectoriesAsync(new OpenDirectoryOptions { InitialDirectory = directory, Title = "Folders" })
+                is PickerResult<IDirectoryLeaseList>.Selected(var titledList)) await titledList.DisposeAsync();
+            Check(titledPicker.Request is { Title: "Folders", AllowMultiple: true }, "directories title");
         }
         finally { Directory.Delete(directory, recursive: true); }
     }
@@ -218,6 +242,28 @@ internal sealed class FileDialogOptionsTests
         private sealed class Access(RecordingPicker picker) : IAsyncDisposable
         {
             public ValueTask DisposeAsync() { Interlocked.Increment(ref picker.Released); return ValueTask.CompletedTask; }
+        }
+    }
+
+    // A directory picker that implements the request overloads, as Runic's own pickers do.
+    private sealed class TitledDirectoryPicker : INativeFilePicker, INativeDirectoryPicker
+    {
+        internal NativeFileDialogRequest? Request;
+        public bool SupportsMultipleDirectorySelection => true;
+        public ValueTask<IReadOnlyList<NativeFileSelection>?> SelectAsync(NativeFileDialogRequest request, CancellationToken cancellationToken) =>
+            throw new NotSupportedException();
+        public ValueTask<NativeDirectorySelection?> SelectDirectoryAsync(string? initialDirectory, CancellationToken cancellationToken) =>
+            throw new InvalidOperationException("The backend called the overload without the request.");
+        ValueTask<NativeDirectorySelection?> INativeDirectoryPicker.SelectDirectoryAsync(NativeFileDialogRequest request, CancellationToken cancellationToken)
+        {
+            Request = request;
+            return ValueTask.FromResult<NativeDirectorySelection?>(new(request.InitialDirectory!, null));
+        }
+        ValueTask<IReadOnlyList<NativeDirectorySelection>?> INativeDirectoryPicker.SelectDirectoriesAsync(NativeFileDialogRequest request,
+            CancellationToken cancellationToken)
+        {
+            Request = request;
+            return ValueTask.FromResult<IReadOnlyList<NativeDirectorySelection>?>([new(request.InitialDirectory!, null)]);
         }
     }
 

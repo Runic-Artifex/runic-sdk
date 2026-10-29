@@ -95,12 +95,15 @@ if ((await files.OpenFileAsync(new())).TryGetValue(out var lease))
 
 `OpenFileOptions` and `SaveFileOptions` take `Filters` and `InitialDirectory`,
 `OpenDirectoryOptions` takes `InitialDirectory`, and `SaveFileOptions` keeps its
-`SuggestedName`. `OpenFilesAsync` selects several files at once:
+`SuggestedName`. Each takes a `Title` that tells the user what the file is for,
+such as "Import backup"; `null` keeps the platform's own ("Open", "Save As").
+`OpenFilesAsync` selects several files at once:
 
 ```csharp
 var images = new FileDialogFilter("Images", ["png", "jpg"]);
 var options = new OpenFileOptions
 {
+    Title = "Add pictures",
     Filters = [images, new FileDialogFilter("All files", ["*"])],
     InitialDirectory = Environment.GetFolderPath(Environment.SpecialFolder.MyPictures),
 };
@@ -159,6 +162,7 @@ if (await files.SaveFileAsync(options) is PickerResult<ISaveFileLease>.Selected 
 | Multiple directories | `FOS_PICKFOLDERS` with `FOS_ALLOWMULTISELECT` | `canChooseDirectories` with `allowsMultipleSelection`, security scope per URL | FileChooser `directory` with `multiple` (version 3 and later) | `SELECT_FOLDER` with `select-multiple` |
 | Initial folder | `SetFolder`, which overrides the folder Windows remembers | `directoryURL` | FileChooser `current_folder`; ignored when opening by portals before FileChooser version 4 | `current-folder` |
 | Suggested name | `SetFileName` | `nameFieldStringValue` | FileChooser `current_name` | `current-name` |
+| Title | `SetTitle`, the title bar | `message`, shown above the files: panels have no visible title | The `title` argument of `OpenFile` and `SaveFile` | The chooser's title |
 
 On macOS a save panel with filters may add the first allowed extension, or with
 `ShowFilterChoice` the chosen filter's, to a name the user types without one.

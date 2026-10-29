@@ -1,1 +1,7 @@
 #nullable enable
+Runic.Platform.OpenDirectoryOptions.Title.get -> string?
+Runic.Platform.OpenDirectoryOptions.Title.init -> void
+Runic.Platform.OpenFileOptions.Title.get -> string?
+Runic.Platform.OpenFileOptions.Title.init -> void
+Runic.Platform.SaveFileOptions.Title.get -> string?
+Runic.Platform.SaveFileOptions.Title.init -> void

@@ -59,6 +59,22 @@ internal sealed class FileDialogOptionsTests
         Check(transport.Method == "SelectDirectory" && transport.Chooser is { CurrentFolder: "/tmp", Multiple: false } directory && directory.Filters.IsEmpty,
             "directory request folder");
         Check(new PortalFilePicker(new Owner(), transport).SupportsMultipleSelection, "the portal picker declares multiple selection");
+
+        // #713: the application's title replaces Runic's default title argument of every kind of dialog.
+        transport = new FakeTransport(new(1, []));
+        await new PortalFilePicker(new Owner(), transport).SelectAsync(new NativeFileDialogRequest(false, null) { Title = "Import backup" }, default);
+        Check(transport.Chooser is { Title: "Import backup" } && PortalChooserOptions.DialogTitle("OpenFile", transport.Chooser) == "Import backup",
+            "open title");
+        transport = new FakeTransport(new(1, []));
+        await new PortalFilePicker(new Owner(), transport).SelectAsync(new NativeFileDialogRequest(true, "backup.zip") { Title = "Export backup" }, default);
+        Check(PortalChooserOptions.DialogTitle("SaveFile", transport.Chooser) == "Export backup", "save title");
+        transport = new FakeTransport(new(1, []));
+        await ((INativeDirectoryPicker)new PortalFilePicker(new Owner(), transport))
+            .SelectDirectoryAsync(new NativeFileDialogRequest(false, null) { Title = "Log folder" }, default);
+        Check(transport.Method == "SelectDirectory" && PortalChooserOptions.DialogTitle("SelectDirectory", transport.Chooser) == "Log folder", "directory title");
+        Check(PortalChooserOptions.DialogTitle("OpenFile", null) == "Open file" && PortalChooserOptions.DialogTitle("SaveFile", null) == "Save file"
+            && PortalChooserOptions.DialogTitle("SelectDirectory", PortalChooserOptions.From([], null, true)) == "Open directories",
+            "Runic's default titles");
     }
 
     [Test, DisplayName("portal filters carry MIME types; current_filter names the chosen filter")]

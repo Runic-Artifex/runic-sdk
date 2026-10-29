@@ -78,7 +78,8 @@ internal sealed class PortalFilePicker(IPortalWindowOwner owner, IPortalTranspor
         catch (Exception) { Volatile.Write(ref _directories, DirectoriesMissing); }
     }
 
-    private async Task<PortalResponse> SelectDirectoriesCoreAsync(string? initialDirectory, bool multiple, CancellationToken cancellationToken)
+    private async Task<PortalResponse> SelectDirectoriesCoreAsync(string? initialDirectory, bool multiple, CancellationToken cancellationToken,
+        string? title = null)
     {
         if (Volatile.Read(ref _directories) == DirectoriesMissing)
         {
@@ -88,7 +89,7 @@ internal sealed class PortalFilePicker(IPortalWindowOwner owner, IPortalTranspor
         try
         {
             var result = await PortalRequest.RunAsync(owner, transport, "SelectDirectory", "", cancellationToken, diagnosticSink,
-                PortalChooserOptions.From([], initialDirectory, multiple)).ConfigureAwait(false);
+                PortalChooserOptions.From([], initialDirectory, multiple, title)).ConfigureAwait(false);
             Volatile.Write(ref _directories, DirectoriesAvailable);
             return result;
         }
@@ -99,9 +100,13 @@ internal sealed class PortalFilePicker(IPortalWindowOwner owner, IPortalTranspor
         }
     }
 
-    public async ValueTask<NativeDirectorySelection?> SelectDirectoryAsync(string? initialDirectory, CancellationToken cancellationToken)
+    public ValueTask<NativeDirectorySelection?> SelectDirectoryAsync(string? initialDirectory, CancellationToken cancellationToken) =>
+        ((INativeDirectoryPicker)this).SelectDirectoryAsync(new NativeFileDialogRequest(false, null) { InitialDirectory = initialDirectory }, cancellationToken);
+
+    async ValueTask<NativeDirectorySelection?> INativeDirectoryPicker.SelectDirectoryAsync(NativeFileDialogRequest request, CancellationToken cancellationToken)
     {
-        var result = await SelectDirectoriesCoreAsync(initialDirectory, multiple: false, cancellationToken).ConfigureAwait(false);
+        ArgumentNullException.ThrowIfNull(request);
+        var result = await SelectDirectoriesCoreAsync(request.InitialDirectory, multiple: false, cancellationToken, request.Title).ConfigureAwait(false);
         if (result.Code == 1) return null;
         if (result.Code != 0) throw new NativeBackendUnavailableException();
         if (result.Uris.Length != 1) throw new IOException("The portal did not return one local directory.");
@@ -157,9 +162,14 @@ internal sealed class PortalFilePicker(IPortalWindowOwner owner, IPortalTranspor
     // FileChooser's directory and multiple options; SelectDirectory checks for version 3, which added directory.
     public bool SupportsMultipleDirectorySelection => true;
 
-    public async ValueTask<IReadOnlyList<NativeDirectorySelection>?> SelectDirectoriesAsync(string? initialDirectory, CancellationToken cancellationToken)
+    public ValueTask<IReadOnlyList<NativeDirectorySelection>?> SelectDirectoriesAsync(string? initialDirectory, CancellationToken cancellationToken) =>
+        ((INativeDirectoryPicker)this).SelectDirectoriesAsync(new NativeFileDialogRequest(false, null) { InitialDirectory = initialDirectory }, cancellationToken);
+
+    async ValueTask<IReadOnlyList<NativeDirectorySelection>?> INativeDirectoryPicker.SelectDirectoriesAsync(NativeFileDialogRequest request,
+        CancellationToken cancellationToken)
     {
-        var result = await SelectDirectoriesCoreAsync(initialDirectory, multiple: true, cancellationToken).ConfigureAwait(false);
+        ArgumentNullException.ThrowIfNull(request);
+        var result = await SelectDirectoriesCoreAsync(request.InitialDirectory, multiple: true, cancellationToken, request.Title).ConfigureAwait(false);
         if (result.Code == 1) return null;
         if (result.Code != 0) throw new NativeBackendUnavailableException();
         if (result.Uris.Length == 0) throw new IOException("The portal did not return a local directory.");
@@ -174,7 +184,7 @@ internal sealed class PortalFilePicker(IPortalWindowOwner owner, IPortalTranspor
         ArgumentNullException.ThrowIfNull(request);
         bool save = request.Save, multiple = request.AllowMultiple && !save;
         var result = await PortalRequest.RunAsync(owner, transport, save ? "SaveFile" : "OpenFile", request.SuggestedName ?? "Untitled", cancellationToken,
-            diagnosticSink, PortalChooserOptions.From(request.Filters, request.InitialDirectory, multiple)).ConfigureAwait(false);
+            diagnosticSink, PortalChooserOptions.From(request.Filters, request.InitialDirectory, multiple, request.Title)).ConfigureAwait(false);
         if (result.Code == 1) return null;
         if (result.Code != 0) throw new NativeBackendUnavailableException();
         if (result.Uris.Length == 0 || !multiple && result.Uris.Length != 1)

@@ -22,10 +22,14 @@ internal sealed partial class LinuxFilePicker(INativeWindowOwner owner) : INativ
     // SELECT_FOLDER with select-multiple, natively and through the FileChooser portal.
     public bool SupportsMultipleDirectorySelection => true;
 
-    public async ValueTask<IReadOnlyList<NativeDirectorySelection>?> SelectDirectoriesAsync(string? initialDirectory, CancellationToken cancellationToken)
+    public ValueTask<IReadOnlyList<NativeDirectorySelection>?> SelectDirectoriesAsync(string? initialDirectory, CancellationToken cancellationToken) =>
+        ((INativeDirectoryPicker)this).SelectDirectoriesAsync(new NativeFileDialogRequest(false, null) { InitialDirectory = initialDirectory }, cancellationToken);
+
+    async ValueTask<IReadOnlyList<NativeDirectorySelection>?> INativeDirectoryPicker.SelectDirectoriesAsync(NativeFileDialogRequest request,
+        CancellationToken cancellationToken)
     {
-        var selections = await SelectCoreAsync(new NativeFileDialogRequest(false, null) { InitialDirectory = initialDirectory, AllowMultiple = true }, true,
-            cancellationToken).ConfigureAwait(false);
+        ArgumentNullException.ThrowIfNull(request);
+        var selections = await SelectCoreAsync(request with { AllowMultiple = true }, true, cancellationToken).ConfigureAwait(false);
         return selections is null ? null : [.. selections.Select(static selection => new NativeDirectorySelection(selection.Path, selection.Access))];
     }
 
@@ -44,10 +48,13 @@ internal sealed partial class LinuxFilePicker(INativeWindowOwner owner) : INativ
         return classified;
     }
 
-    public async ValueTask<NativeDirectorySelection?> SelectDirectoryAsync(string? initialDirectory, CancellationToken cancellationToken)
+    public ValueTask<NativeDirectorySelection?> SelectDirectoryAsync(string? initialDirectory, CancellationToken cancellationToken) =>
+        ((INativeDirectoryPicker)this).SelectDirectoryAsync(new NativeFileDialogRequest(false, null) { InitialDirectory = initialDirectory }, cancellationToken);
+
+    async ValueTask<NativeDirectorySelection?> INativeDirectoryPicker.SelectDirectoryAsync(NativeFileDialogRequest request, CancellationToken cancellationToken)
     {
-        var selections = await SelectCoreAsync(new NativeFileDialogRequest(false, null) { InitialDirectory = initialDirectory }, true, cancellationToken)
-            .ConfigureAwait(false);
+        ArgumentNullException.ThrowIfNull(request);
+        var selections = await SelectCoreAsync(request with { AllowMultiple = false }, true, cancellationToken).ConfigureAwait(false);
         return selections is [var selection] ? new(selection.Path, selection.Access) : null;
     }
 
@@ -74,7 +81,7 @@ internal sealed partial class LinuxFilePicker(INativeWindowOwner owner) : INativ
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 context = RefThreadDefaultContext();
-                dialog = New(directory ? "Open directory" : save ? "Save file" : "Open file", parent, directory ? 2 : save ? 1 : 0, save ? "Save" : "Open", "Cancel");
+                dialog = New(request.Title ?? (directory ? "Open directory" : save ? "Save file" : "Open file"), parent, directory ? 2 : save ? 1 : 0, save ? "Save" : "Open", "Cancel");
                 if (dialog == 0) throw new IOException("GTK could not create a file chooser.");
                 handle = GCHandle.Alloc(state);
                 responseSignal = Connect(dialog, "response", ResponsePointer, GCHandle.ToIntPtr(handle), 0, 0);

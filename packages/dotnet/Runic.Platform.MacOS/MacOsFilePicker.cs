@@ -26,17 +26,24 @@ internal sealed partial class MacOsFilePicker(INativeWindowOwner owner) : INativ
         return SelectCoreAsync(request, false, cancellationToken);
     }
 
-    public async ValueTask<NativeDirectorySelection?> SelectDirectoryAsync(string? initialDirectory, CancellationToken cancellationToken)
+    public ValueTask<NativeDirectorySelection?> SelectDirectoryAsync(string? initialDirectory, CancellationToken cancellationToken) =>
+        ((INativeDirectoryPicker)this).SelectDirectoryAsync(new NativeFileDialogRequest(false, null) { InitialDirectory = initialDirectory }, cancellationToken);
+
+    public ValueTask<IReadOnlyList<NativeDirectorySelection>?> SelectDirectoriesAsync(string? initialDirectory, CancellationToken cancellationToken) =>
+        ((INativeDirectoryPicker)this).SelectDirectoriesAsync(new NativeFileDialogRequest(false, null) { InitialDirectory = initialDirectory }, cancellationToken);
+
+    async ValueTask<NativeDirectorySelection?> INativeDirectoryPicker.SelectDirectoryAsync(NativeFileDialogRequest request, CancellationToken cancellationToken)
     {
-        var selections = await SelectCoreAsync(new NativeFileDialogRequest(false, null) { InitialDirectory = initialDirectory }, true, cancellationToken)
-            .ConfigureAwait(false);
+        ArgumentNullException.ThrowIfNull(request);
+        var selections = await SelectCoreAsync(request with { AllowMultiple = false }, true, cancellationToken).ConfigureAwait(false);
         return selections is [var selection] ? new(selection.Path, selection.Access) : null;
     }
 
-    public async ValueTask<IReadOnlyList<NativeDirectorySelection>?> SelectDirectoriesAsync(string? initialDirectory, CancellationToken cancellationToken)
+    async ValueTask<IReadOnlyList<NativeDirectorySelection>?> INativeDirectoryPicker.SelectDirectoriesAsync(NativeFileDialogRequest request,
+        CancellationToken cancellationToken)
     {
-        var selections = await SelectCoreAsync(new NativeFileDialogRequest(false, null) { InitialDirectory = initialDirectory, AllowMultiple = true }, true,
-            cancellationToken).ConfigureAwait(false);
+        ArgumentNullException.ThrowIfNull(request);
+        var selections = await SelectCoreAsync(request with { AllowMultiple = true }, true, cancellationToken).ConfigureAwait(false);
         return selections is null ? null : [.. selections.Select(static selection => new NativeDirectorySelection(selection.Path, selection.Access))];
     }
 
@@ -107,6 +114,13 @@ internal sealed partial class MacOsFilePicker(INativeWindowOwner owner) : INativ
                     SendArg(panel, Sel("setCanChooseDirectories:"), directory ? 1 : 0);
                     SendArg(panel, Sel("setCanChooseFiles:"), directory ? 0 : 1);
                     SendArg(panel, Sel("setAllowsMultipleSelection:"), multiple ? 1 : 0);
+                }
+                // Panels show no title on current macOS: the title is the message above the files.
+                if (request.Title is { } title)
+                {
+                    nint message = String(title);
+                    try { SendArg(panel, Sel("setMessage:"), message); }
+                    finally { Send(message, Sel("release")); }
                 }
                 if (showsChoice) choice = FilterChoice.Attach(panel, request.Filters, save);
                 else if (!directory && AllowedTypes(request.Filters, showsChoice: false) is { } types) SetAllowedContentTypes(panel, types);
