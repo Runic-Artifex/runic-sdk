@@ -15,8 +15,11 @@ internal sealed class TestingSurfaceTests
     [Test]
     public void TransportUsesBridgeNamesAndOnePublicationType()
     {
-        foreach (var name in new[] { "InMemoryViewTransport", "ViewTestArguments", "ViewTestPublication", "BridgeTestArguments" })
+        foreach (var name in new[] { "InMemoryViewTransport", "ViewTestArguments", "ViewTestPublication" })
             Require(Testing.GetType($"Runic.Application.Testing.{name}") is null, $"{name} must be gone.");
+        // 0.14 keeps BridgeTestArguments for one release as an error tombstone that names its replacement.
+        Require(Testing.GetType("Runic.Application.Testing.BridgeTestArguments")?.GetCustomAttribute<ObsoleteAttribute>() is { IsError: true },
+            "BridgeTestArguments must be gone or an error tombstone.");
         Require(typeof(IBridgeConnectionTransport).IsAssignableFrom(typeof(InMemoryBridgeTransport)),
             "The transport must implement the Bridge transport interfaces.");
         foreach (var name in new[] { "Call", "CallAsync", "Bind", "BindAsync", "Publish", "TakePublications", "DrainPublications" })
