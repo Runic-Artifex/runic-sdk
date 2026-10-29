@@ -58,10 +58,50 @@ internal sealed class PortalFilePicker(IPortalWindowOwner owner, IPortalTranspor
     internal ValueTask<NativeDirectorySelection?> SelectDirectoryAsync(CancellationToken cancellationToken) =>
         SelectDirectoryAsync(null, cancellationToken);
 
+    // Directory selection needs FileChooser version 3 on the session bus. ProbeDirectorySelectionAsync reads the version
+    // when the dialogs are created, so the capability reports a missing portal before the first pick; a pick checks
+    // again while it is missing, and its outcome updates the state.
+    private const int DirectoriesUnknown = 0, DirectoriesAvailable = 1, DirectoriesMissing = 2;
+    private int _directories;
+
+    public bool IsDirectorySelectionAvailable => Volatile.Read(ref _directories) != DirectoriesMissing;
+
+    internal async Task ProbeDirectorySelectionAsync(CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var version = await transport.GetFileChooserVersionAsync(cancellationToken).ConfigureAwait(false);
+            Volatile.Write(ref _directories, version >= 3 ? DirectoriesAvailable : DirectoriesMissing);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
+        // No session bus, no portal on it, or a portal without FileChooser: a pick would report BackendUnavailable.
+        catch (Exception) { Volatile.Write(ref _directories, DirectoriesMissing); }
+    }
+
+    private async Task<PortalResponse> SelectDirectoriesCoreAsync(string? initialDirectory, bool multiple, CancellationToken cancellationToken)
+    {
+        if (Volatile.Read(ref _directories) == DirectoriesMissing)
+        {
+            await ProbeDirectorySelectionAsync(cancellationToken).ConfigureAwait(false);
+            if (Volatile.Read(ref _directories) == DirectoriesMissing) throw new NativeBackendUnavailableException();
+        }
+        try
+        {
+            var result = await PortalRequest.RunAsync(owner, transport, "SelectDirectory", "", cancellationToken, diagnosticSink,
+                PortalChooserOptions.From([], initialDirectory, multiple)).ConfigureAwait(false);
+            Volatile.Write(ref _directories, DirectoriesAvailable);
+            return result;
+        }
+        catch (NativeBackendUnavailableException)
+        {
+            Volatile.Write(ref _directories, DirectoriesMissing);
+            throw;
+        }
+    }
+
     public async ValueTask<NativeDirectorySelection?> SelectDirectoryAsync(string? initialDirectory, CancellationToken cancellationToken)
     {
-        var result = await PortalRequest.RunAsync(owner, transport, "SelectDirectory", "", cancellationToken, diagnosticSink,
-            PortalChooserOptions.From([], initialDirectory, multiple: false)).ConfigureAwait(false);
+        var result = await SelectDirectoriesCoreAsync(initialDirectory, multiple: false, cancellationToken).ConfigureAwait(false);
         if (result.Code == 1) return null;
         if (result.Code != 0) throw new NativeBackendUnavailableException();
         if (result.Uris.Length != 1) throw new IOException("The portal did not return one local directory.");
@@ -119,8 +159,7 @@ internal sealed class PortalFilePicker(IPortalWindowOwner owner, IPortalTranspor
 
     public async ValueTask<IReadOnlyList<NativeDirectorySelection>?> SelectDirectoriesAsync(string? initialDirectory, CancellationToken cancellationToken)
     {
-        var result = await PortalRequest.RunAsync(owner, transport, "SelectDirectory", "", cancellationToken, diagnosticSink,
-            PortalChooserOptions.From([], initialDirectory, multiple: true)).ConfigureAwait(false);
+        var result = await SelectDirectoriesCoreAsync(initialDirectory, multiple: true, cancellationToken).ConfigureAwait(false);
         if (result.Code == 1) return null;
         if (result.Code != 0) throw new NativeBackendUnavailableException();
         if (result.Uris.Length == 0) throw new IOException("The portal did not return a local directory.");
