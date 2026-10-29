@@ -1,0 +1,41 @@
+{
+  "format": "runic.views.scenario/1",
+  "id": "edits.write-splice-retry-gets-the-original-receipt.v1",
+  "contract": {"id":"runic.views","version":4},
+  "set": "edits",
+  "roles": ["producer"],
+  "description": "A retry of a checked write with a splice, with the same requestId, expectedVersion and splice, gets the original receipt and writes nothing again; the same requestId with another splice, or with expectedValue and value, is a conflict.",
+  "view": "notes",
+  "requires": ["text-splice/1"],
+  "ids": {
+    "c1": {"kind":"connection"},
+    "hello-c1": {"kind":"request"},
+    "session": {"kind":"wire","value":"s-1"},
+    "open-notes-request": {"kind":"request"},
+    "presentation": {"kind":"wire","value":"p-1"},
+    "write-request": {"kind":"request"},
+    "retry": {"kind":"request"},
+    "other-splice": {"kind":"request"},
+    "other-form": {"kind":"request"},
+    "final-read": {"kind":"request"}
+  },
+  "arrange": {"model":{"note":"Splices keep the text a page already has and send only what changed in it, here and now."}},
+  "steps": [
+    {"connect":"c1"},
+    {"send":{"kind":"hello","protocol":4,"session":{"$id":"session"},"client":{"name":{"$any":"string","default":"conformance-client"},"version":{"$any":"string","default":"1.0.0"}},"features":["text-splice/1"]},"id":"hello-c1"},
+    {"receive":{"ok":true,"protocol":4,"implementation":{"name":{"$any":"string","default":"conformance-producer"},"version":{"$any":"string","default":"1.0.0"}},"features":{"$any":"array","default":["text-splice/1"]}},"replyTo":"hello-c1"},
+    {"send":{"kind":"open","route":"notes","presentation":{"$id":"presentation"}},"id":"open-notes-request"},
+    {"receive":{"ok":true,"revision":0,"state":{"title":"","note":"Splices keep the text a page already has and send only what changed in it, here and now.","priority":"Normal","due":null,"elapsed":"PT0S","rows":[],"count":0,"summary":"rows: 0","detail":{"kind":"detail","id":"0123456789abcdef0123456789abcdef"},"canClear":false,"canTouch":true,"canSave":true,"canConfirmClear":false,"isSlowImportExecuting":false,"isConfirmClearExecuting":false},"fields":{"note":{"version":0}},"presentation":"ok"},"replyTo":"open-notes-request"},
+    {"send":{"kind":"write","route":"notes","member":"note","requestId":"w-1","expectedVersion":0,"splice":{"length":88,"index":88,"delete":0,"text":"!"}},"id":"write-request"},
+    {"receive":{"kind":"frame","route":"notes","baseRevision":0,"revision":1,"changes":[{"field":"note","kind":"splice","length":88,"index":88,"delete":0,"text":"!","version":1}]}},
+    {"receive":{"ok":true,"revision":1,"receipt":{"kind":"applied","snapshot":{"value":"Splices keep the text a page already has and send only what changed in it, here and now.!","version":1}}},"replyTo":"write-request"},
+    {"send":{"kind":"write","route":"notes","member":"note","requestId":"w-1","expectedVersion":0,"splice":{"length":88,"index":88,"delete":0,"text":"!"}},"id":"retry"},
+    {"receive":{"ok":true,"revision":1,"receipt":{"kind":"applied","snapshot":{"value":"Splices keep the text a page already has and send only what changed in it, here and now.!","version":1}}},"replyTo":"retry"},
+    {"send":{"kind":"write","route":"notes","member":"note","requestId":"w-1","expectedVersion":0,"splice":{"length":88,"index":88,"delete":0,"text":"?"}},"id":"other-splice"},
+    {"receive":{"ok":true,"revision":1,"receipt":{"kind":"conflict","incoming":{"value":"Splices keep the text a page already has and send only what changed in it, here and now.!","version":1},"message":{"$any":"string","default":"…"}}},"replyTo":"other-splice"},
+    {"send":{"kind":"write","route":"notes","member":"note","requestId":"w-1","expectedVersion":0,"expectedValue":"Splices keep the text a page already has and send only what changed in it, here and now.","value":"Splices keep the text a page already has and send only what changed in it, here and now.!"},"id":"other-form","note":"The same write in the other form."},
+    {"receive":{"ok":true,"revision":1,"receipt":{"kind":"conflict","incoming":{"value":"Splices keep the text a page already has and send only what changed in it, here and now.!","version":1},"message":{"$any":"string","default":"…"}}},"replyTo":"other-form"},
+    {"send":{"kind":"snapshot","route":"notes"},"id":"final-read"},
+    {"receive":{"ok":true,"revision":1,"state":{"title":"","note":"Splices keep the text a page already has and send only what changed in it, here and now.!","priority":"Normal","due":null,"elapsed":"PT0S","rows":[],"count":0,"summary":"rows: 0","detail":{"kind":"detail","id":"0123456789abcdef0123456789abcdef"},"canClear":false,"canTouch":true,"canSave":true,"canConfirmClear":false,"isSlowImportExecuting":false,"isConfirmClearExecuting":false},"fields":{"note":{"version":1}}},"replyTo":"final-read"}
+  ]
+}

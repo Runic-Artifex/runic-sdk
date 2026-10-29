@@ -808,10 +808,20 @@ async function connectRoute<TState>(options: ViewConnectOptions<TState>): Promis
       return reply["value"] as boolean;
     }),
     write: <T>(member: string, write: BridgeFieldWriteRequest, decode: (value: unknown) => T) => observed(route, async (): Promise<FieldWriteReceipt<T>> => {
-      const reply = await request({
-        kind: "write", route, member, requestId: write.requestId, expectedVersion: write.expectedVersion,
-        expectedValue: write.expectedValue, value: write.value,
-      });
+      const identity = { kind: "write", route, member, requestId: write.requestId, expectedVersion: write.expectedVersion } as const;
+      const full = { ...identity, expectedValue: write.expectedValue, value: write.value };
+      // text-splice/1 (README "Text splices in write"): a checked text member's write sends a splice of expectedValue
+      // when it keeps at least 64 code units of it.
+      const { expectedValue, value } = write;
+      let splice: Readonly<Record<string, unknown>> | undefined;
+      if (typeof expectedValue === "string" && typeof value === "string" && runtime.features?.has(textSpliceFeature) === true
+        && entry.texts.has(member) && entry.checkedFields.includes(member)) {
+        const single = singleSplice(expectedValue, value);
+        if (expectedValue.length - single.delete >= minimumKept) splice = { length: expectedValue.length, ...single };
+      }
+      let reply = await request(splice === undefined ? full : { ...identity, splice });
+      // The producer's value at expectedVersion is not the splice's base, and it retained nothing: send the write in full.
+      if (splice !== undefined && !reply.ok && reply.error?.reason === "splice-base") reply = await request(full);
       if (!reply.ok) return failure(reply, "The checked write failed.");
       await settled(reply);
       try {

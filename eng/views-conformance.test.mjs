@@ -363,6 +363,10 @@ const isFeatures = value => value === undefined || (Array.isArray(value) && valu
 const isSplice = value => isObject(value) && (("baseEdit" in value) !== ("baseRevision" in value))
   && ("baseEdit" in value ? Number.isSafeInteger(value.baseEdit) && value.baseEdit > 0 : isSafe(value.baseRevision))
   && isSafe(value.length) && isSafe(value.index) && isSafe(value.delete) && typeof value.text === "string";
+// README.md, "Text splices in write": a checked write's splice has no base; it applies to the field's value at
+// expectedVersion.
+const isWriteSplice = value => isObject(value) && !("baseEdit" in value) && !("baseRevision" in value)
+  && isSafe(value.length) && isSafe(value.index) && isSafe(value.delete) && typeof value.text === "string";
 
 const requestRules = {
   hello: m => isSafe(m.protocol) && isIdentifier(m.session) && isObject(m.client) && isName(m.client.name, 128) && isName(m.client.version, 64)
@@ -372,7 +376,8 @@ const requestRules = {
   close: m => isRoute(m.route) && isIdentifier(m.presentation),
   set: m => isRoute(m.route) && isMember(m.member) && ("value" in m ? !("splice" in m) : isSplice(m.splice))
     && Number.isSafeInteger(m.edit) && m.edit > 0,
-  write: m => isRoute(m.route) && isMember(m.member) && isIdentifier(m.requestId) && isSafe(m.expectedVersion) && "expectedValue" in m && "value" in m,
+  write: m => isRoute(m.route) && isMember(m.member) && isIdentifier(m.requestId) && isSafe(m.expectedVersion)
+    && ("splice" in m ? !("value" in m) && !("expectedValue" in m) && isWriteSplice(m.splice) : "expectedValue" in m && "value" in m),
   command: m => isRoute(m.route) && isMember(m.member),
   can: m => isRoute(m.route) && isMember(m.member),
   start: identity, status: identity, watch: identity, unwatch: identity, cancel: identity,

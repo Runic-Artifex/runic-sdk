@@ -1,0 +1,39 @@
+{
+  "format": "runic.views.scenario/1",
+  "id": "edits.write-splice-applied.v1",
+  "contract": {"id":"runic.views","version":4},
+  "set": "edits",
+  "roles": ["producer","client"],
+  "description": "With text-splice/1, a checked write of a long text member sends a splice of the field's value at expectedVersion instead of expectedValue and value; the producer writes the rebuilt value, and the receipt carries it in full.",
+  "view": "notes",
+  "requires": ["text-splice/1"],
+  "ids": {
+    "c1": {"kind":"connection"},
+    "hello-c1": {"kind":"request"},
+    "session": {"kind":"wire","value":"s-1"},
+    "open-notes": {"kind":"call"},
+    "open-notes-request": {"kind":"request"},
+    "presentation": {"kind":"wire","value":"p-1"},
+    "write": {"kind":"call"},
+    "write-request": {"kind":"request"},
+    "writeRequest": {"kind":"wire","value":"w-1"},
+    "final-read": {"kind":"request"}
+  },
+  "arrange": {"model":{"note":"Splices keep the text a page already has and send only what changed in it, here and now."}},
+  "steps": [
+    {"connect":"c1"},
+    {"send":{"kind":"hello","protocol":4,"session":{"$id":"session"},"client":{"name":{"$any":"string","default":"conformance-client"},"version":{"$any":"string","default":"1.0.0"}},"features":["text-splice/1"]},"id":"hello-c1"},
+    {"receive":{"ok":true,"protocol":4,"implementation":{"name":{"$any":"string","default":"conformance-producer"},"version":{"$any":"string","default":"1.0.0"}},"features":{"$any":"array","default":["text-splice/1"]}},"replyTo":"hello-c1"},
+    {"call":{"id":"open-notes","op":"open","route":"notes"}},
+    {"send":{"kind":"open","route":"notes","presentation":{"$id":"presentation"}},"id":"open-notes-request"},
+    {"receive":{"ok":true,"revision":0,"state":{"title":"","note":"Splices keep the text a page already has and send only what changed in it, here and now.","priority":"Normal","due":null,"elapsed":"PT0S","rows":[],"count":0,"summary":"rows: 0","detail":{"kind":"detail","id":"0123456789abcdef0123456789abcdef"},"canClear":false,"canTouch":true,"canSave":true,"canConfirmClear":false,"isSlowImportExecuting":false,"isConfirmClearExecuting":false},"fields":{"note":{"version":0}},"presentation":"ok"},"replyTo":"open-notes-request"},
+    {"call":{"id":"write","op":"write","route":"notes","member":"note","requestId":"w-1","baseline":{"value":"Splices keep the text a page already has and send only what changed in it, here and now.","version":0},"value":"Splices keep the text a page already has and send only what changed in it, here and now.!"}},
+    {"send":{"kind":"write","route":"notes","member":"note","requestId":{"$id":"writeRequest"},"expectedVersion":0,"splice":{"length":88,"index":88,"delete":0,"text":"!"}},"id":"write-request"},
+    {"receive":{"kind":"frame","route":"notes","baseRevision":0,"revision":1,"changes":[{"field":"note","kind":"splice","length":88,"index":88,"delete":0,"text":"!","version":1}]}},
+    {"receive":{"ok":true,"revision":1,"receipt":{"kind":"applied","snapshot":{"value":"Splices keep the text a page already has and send only what changed in it, here and now.!","version":1}}},"replyTo":"write-request"},
+    {"expect":{"call":{"id":"write","resolved":{"kind":"applied","snapshot":{"value":"Splices keep the text a page already has and send only what changed in it, here and now.!","version":1}}}}},
+    {"send":{"kind":"snapshot","route":"notes"},"id":"final-read","role":"producer"},
+    {"receive":{"ok":true,"revision":1,"state":{"title":"","note":"Splices keep the text a page already has and send only what changed in it, here and now.!","priority":"Normal","due":null,"elapsed":"PT0S","rows":[],"count":0,"summary":"rows: 0","detail":{"kind":"detail","id":"0123456789abcdef0123456789abcdef"},"canClear":false,"canTouch":true,"canSave":true,"canConfirmClear":false,"isSlowImportExecuting":false,"isConfirmClearExecuting":false},"fields":{"note":{"version":1}}},"replyTo":"final-read","role":"producer"},
+    {"expect":{"state":{"route":"notes","value":{"title":"","note":"Splices keep the text a page already has and send only what changed in it, here and now.!","priority":"Normal","due":null,"elapsed":"PT0S","rows":[],"count":0,"summary":"rows: 0","detail":{"kind":"detail","id":"0123456789abcdef0123456789abcdef"},"canClear":false,"canTouch":true,"canSave":true,"canConfirmClear":false,"isSlowImportExecuting":false,"isConfirmClearExecuting":false}}}}
+  ]
+}

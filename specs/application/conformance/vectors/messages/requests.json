@@ -372,6 +372,49 @@
       "operation": "read-request",
       "input": {"encoding":"json","value":{"kind":"set","route":"notes","member":"title","edit":2,"splice":{"baseRevision":0,"length":5,"index":-1,"delete":0,"text":"x"}}},
       "expect": {"result":"invalid","error":{"kind":"rejected","reason":"invalid-request"}}
+    },
+    {
+      "id": "messages.requests.write-with-a-splice",
+      "description": "A checked write of a text member may carry a splice of the field's value at expectedVersion.",
+      "operation": "read-request",
+      "input": {"encoding":"json","value":{"kind":"write","route":"notes","member":"note","requestId":"w-1","expectedVersion":7,"splice":{"length":100,"index":5,"delete":0,"text":"x"}}},
+      "expect": {"result":"valid"}
+    },
+    {
+      "id": "messages.requests.write-with-a-value-and-a-splice",
+      "operation": "read-request",
+      "input": {"encoding":"json","value":{"kind":"write","route":"notes","member":"note","requestId":"w-1","expectedVersion":7,"value":"x","splice":{"length":100,"index":5,"delete":0,"text":"x"}}},
+      "expect": {"result":"invalid","error":{"kind":"rejected","reason":"invalid-request"}}
+    },
+    {
+      "id": "messages.requests.write-with-an-expected-value-and-a-splice",
+      "operation": "read-request",
+      "input": {"encoding":"json","value":{"kind":"write","route":"notes","member":"note","requestId":"w-1","expectedVersion":7,"expectedValue":"","splice":{"length":100,"index":5,"delete":0,"text":"x"}}},
+      "expect": {"result":"invalid","error":{"kind":"rejected","reason":"invalid-request"}}
+    },
+    {
+      "id": "messages.requests.write-with-a-splice-with-a-base",
+      "operation": "read-request",
+      "input": {"encoding":"json","value":{"kind":"write","route":"notes","member":"note","requestId":"w-1","expectedVersion":7,"splice":{"baseRevision":3,"length":100,"index":5,"delete":0,"text":"x"}}},
+      "expect": {"result":"invalid","error":{"kind":"rejected","reason":"invalid-request"}}
+    },
+    {
+      "id": "messages.requests.write-with-a-splice-that-is-not-an-object",
+      "operation": "read-request",
+      "input": {"encoding":"json","value":{"kind":"write","route":"notes","member":"note","requestId":"w-1","expectedVersion":7,"splice":"x"}},
+      "expect": {"result":"invalid","error":{"kind":"rejected","reason":"invalid-request"}}
+    },
+    {
+      "id": "messages.requests.write-with-a-splice-without-text",
+      "operation": "read-request",
+      "input": {"encoding":"json","value":{"kind":"write","route":"notes","member":"note","requestId":"w-1","expectedVersion":7,"splice":{"length":100,"index":5,"delete":0}}},
+      "expect": {"result":"invalid","error":{"kind":"rejected","reason":"invalid-request"}}
+    },
+    {
+      "id": "messages.requests.write-with-a-negative-splice-delete",
+      "operation": "read-request",
+      "input": {"encoding":"json","value":{"kind":"write","route":"notes","member":"note","requestId":"w-1","expectedVersion":7,"splice":{"length":100,"index":5,"delete":-1,"text":"x"}}},
+      "expect": {"result":"invalid","error":{"kind":"rejected","reason":"invalid-request"}}
     }
   ]
 }

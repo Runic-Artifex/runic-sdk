@@ -335,7 +335,8 @@ their own, and `snapshot` holds whole strings. A splice that keeps fewer than 64
 from or to `null`, and any value when the host lists no features cross whole. When .NET no longer has the value a
 splice was based on, such as after a reconnect or when another window changed the member, the setter sends the value
 again in full; the call settles once. Positions count UTF-16 code units, as JavaScript strings do, and never split a
-surrogate pair.
+surrogate pair. A checked write (`write`) of a long text member sends a splice of `expectedValue` the same way, and
+sends the write in full with the same `requestId` when .NET answers that the splice does not fit.
 
 ### Normalizing and busy state
 
