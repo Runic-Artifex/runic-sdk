@@ -232,7 +232,11 @@ public sealed class PortalApplication
     internal IPickerBackend CreateFileDialogs(IPortalWindowOwner owner)
     {
         ArgumentNullException.ThrowIfNull(owner);
-        return new NativePickerBackend(owner, new PortalFilePicker(owner, new PortalTransport(application: this), _diagnosticSink));
+        var picker = new PortalFilePicker(owner, new PortalTransport(application: this), _diagnosticSink);
+        // Learns in the background whether the FileChooser portal is there, so platform.directories.open reports a
+        // missing one before the first pick.
+        _ = picker.ProbeDirectorySelectionAsync();
+        return new NativePickerBackend(owner, picker);
     }
     /// <summary>Creates explicitly unparented file dialogs for an application without a window.</summary>
     /// <remarks>Linux only: the portal may show such a dialog without a parent. Windows in a Runic host get dialogs owned

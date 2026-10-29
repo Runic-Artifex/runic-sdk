@@ -200,6 +200,8 @@ internal interface IPortalTransport
     // FileChooser requests also carry the dialog's filters, folder and multiplicity.
     ValueTask<PortalResponse> RequestAsync(string parent, string method, string argument, PortalChooserOptions? chooser, CancellationToken cancellationToken) =>
         RequestAsync(parent, method, argument, cancellationToken);
+    // The FileChooser portal's version, read without showing anything; a missing portal throws.
+    ValueTask<uint> GetFileChooserVersionAsync(CancellationToken cancellationToken) => ValueTask.FromResult(3u);
 }
 
 // FileChooser options other than the title and the suggested name. Each is a hint the portal backend may ignore.
@@ -274,6 +276,13 @@ internal sealed class PortalTransport(string? address = null, string destination
 
     public ValueTask<PortalResponse> RequestAsync(string parent, string method, string argument, CancellationToken cancellationToken) =>
         RequestAsync(parent, method, argument, null, cancellationToken);
+
+    public async ValueTask<uint> GetFileChooserVersionAsync(CancellationToken cancellationToken)
+    {
+        var session = await PortalConnection.OpenAsync(address, destination, application, cancellationToken).ConfigureAwait(false);
+        return await new Protocol.FileChooser(session.Connection, session.Destination, Root).GetVersionAsync(cancellationToken)
+            .AsTask().WaitAsync(CallTimeout, cancellationToken).ConfigureAwait(false);
+    }
 
     public async ValueTask<PortalResponse> RequestAsync(string parent, string method, string argument, PortalChooserOptions? chooser, CancellationToken cancellationToken)
     {

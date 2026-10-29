@@ -60,6 +60,14 @@ public interface INativeDirectoryPicker
         throw new NativeBackendUnavailableException();
     /// <summary>Whether <see cref="SelectDirectoriesAsync"/> is implemented.</summary>
     bool SupportsMultipleDirectorySelection => false;
+    /// <summary>
+    /// Whether directory selection can work now. A picker that checks its backend in advance, such as an XDG desktop
+    /// portal that may be missing from the session bus, returns <see langword="false"/> once it knows the backend is
+    /// missing, so the <c>platform.directories.open</c> capability reports it before a pick. The default is
+    /// <see langword="true"/>.
+    /// </summary>
+    /// <remarks>A picker still receives selection calls while it returns <see langword="false"/>, so it can check again.</remarks>
+    bool IsDirectorySelectionAvailable => true;
 }
 /// <summary>A statically selected native picker which returns acquired access.</summary>
 public interface INativeFilePicker
@@ -89,13 +97,14 @@ public sealed class NativePickerBackend(INativeWindowOwner owner, INativeFilePic
     public bool SupportsAtomicReplace => picker.SupportsAtomicReplace;
 
     /// <inheritdoc />
-    public bool SupportsDirectorySelection => picker is INativeDirectoryPicker;
+    public bool SupportsDirectorySelection => picker is INativeDirectoryPicker { IsDirectorySelectionAvailable: true };
 
     /// <inheritdoc />
     public bool SupportsMultipleSelection => picker.SupportsMultipleSelection;
 
     /// <inheritdoc />
-    public bool SupportsMultipleDirectorySelection => picker is INativeDirectoryPicker { SupportsMultipleDirectorySelection: true };
+    public bool SupportsMultipleDirectorySelection =>
+        picker is INativeDirectoryPicker { SupportsMultipleDirectorySelection: true, IsDirectorySelectionAvailable: true };
 
     /// <inheritdoc />
     public async ValueTask<PickerResult<IDirectoryLease>> OpenDirectoryAsync(OpenDirectoryOptions options, CancellationToken cancellationToken = default)
@@ -120,7 +129,9 @@ public sealed class NativePickerBackend(INativeWindowOwner owner, INativeFilePic
         if (!Enum.IsDefined(options.OwnerPolicy)) throw new ArgumentOutOfRangeException(nameof(options));
         cancellationToken.ThrowIfCancellationRequested();
         if (!IsAvailable) return new PickerResult<IDirectoryLeaseList>.Unavailable(PlatformUnavailableReason.OwnerUnavailable);
-        if (!SupportsMultipleDirectorySelection) return new PickerResult<IDirectoryLeaseList>.Unavailable(PlatformUnavailableReason.BackendUnavailable);
+        // The picker decides when its backend is missing (IsDirectorySelectionAvailable), and may check it again.
+        if (picker is not INativeDirectoryPicker { SupportsMultipleDirectorySelection: true })
+            return new PickerResult<IDirectoryLeaseList>.Unavailable(PlatformUnavailableReason.BackendUnavailable);
         return await OpenDirectoriesCoreAsync(options, multiple: true, cancellationToken).ConfigureAwait(false) switch
         {
             PickerResult<DirectoryLeaseList>.Selected(var list) => new PickerResult<IDirectoryLeaseList>.Selected(list),

@@ -1,2 +1,3 @@
 #nullable enable
 Runic.Platform.Runtime.INativePickerOwner
+Runic.Platform.Runtime.INativeDirectoryPicker.IsDirectorySelectionAvailable.get -> bool
