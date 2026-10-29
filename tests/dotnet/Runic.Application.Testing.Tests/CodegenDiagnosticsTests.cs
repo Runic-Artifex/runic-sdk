@@ -179,6 +179,52 @@ internal sealed partial class CodegenDiagnosticsTests
         }
     }
 
+    // RUNICBRIDGE032: an observable collection of DTO rows that is not a [RunicCollection] is a located warning that
+    // names the rows' key when they have one; a keyed collection, a plain list and an observable list of strings are not.
+    [Test]
+    public async Task ObservableRowsWithoutAKeyAreReportedAsync()
+    {
+        var root = FindWorkspaceRoot();
+        var configuration = System.Reflection.CustomAttributeExtensions.GetCustomAttribute<System.Reflection.AssemblyConfigurationAttribute>(
+            typeof(CodegenDiagnosticsTests).Assembly)?.Configuration ?? "Release";
+        var generator = Path.Combine(root, "tools", "Runic.Application.Views.Codegen", "bin", configuration, "net10.0",
+            "BridgeCodegen.dll");
+        var temporaryRoot = Path.Combine(Path.GetTempPath(), $"runic-codegen-collections-{Guid.NewGuid():N}");
+        try
+        {
+            const string Source = Preamble + """
+                public sealed record Task(int Id, string Title);
+                public sealed record Note(string Text);
+                public sealed class CollectionsViewModel : FixtureModel
+                {
+                    public System.Collections.ObjectModel.ObservableCollection<Task> Tasks { get; } = [];
+                    public System.Collections.ObjectModel.ObservableCollection<Note> Notes { get; } = [];
+                    [RunicCollection(nameof(Fixture.Task.Id))]
+                    public System.Collections.ObjectModel.ObservableCollection<Task> Keyed { get; } = [];
+                    public List<Task> Plain { get; } = [];
+                    public System.Collections.ObjectModel.ObservableCollection<string> Tags { get; } = [];
+                }
+                public sealed partial class CollectionsWindow : RunicWindow<CollectionsViewModel>;
+                """;
+            var (exitCode, output, directory) = await RunGeneratorAsync(generator, temporaryRoot, "Collections", Source).ConfigureAwait(false);
+            var warnings = output.Split('\n').Where(text => text.Contains("warning RUNICBRIDGE032:", StringComparison.Ordinal)).ToArray();
+            int Line(string declaration) => Source.Split('\n').ToList().FindIndex(text => text.Contains(declaration, StringComparison.Ordinal)) + 1;
+            bool At(string declaration, string message) => warnings.Any(text =>
+                text.StartsWith($"{Path.Combine(directory, "Fixture.cs")}({Line(declaration)},", StringComparison.Ordinal)
+                && text.Contains(message, StringComparison.Ordinal));
+            Require(exitCode == 0 && warnings.Length == 2
+                    && At("ObservableCollection<Task> Tasks", "CollectionsViewModel.Tasks: an observable collection of Task rows that is not a [RunicCollection]")
+                    && At("ObservableCollection<Task> Tasks", "[RunicCollection(nameof(Task.Id))]")
+                    && At("ObservableCollection<Note> Notes", "[RunicCollection(nameof(Note.Key))] with a string, Guid or Int32 key property")
+                    && warnings.All(text => text.TrimEnd().EndsWith($" See {HelpLink("RUNICBRIDGE032")}", StringComparison.Ordinal)),
+                $"Observable rows without a key were not reported as located RUNICBRIDGE032 warnings.\n{output}");
+        }
+        finally
+        {
+            if (Directory.Exists(temporaryRoot)) Directory.Delete(temporaryRoot, recursive: true);
+        }
+    }
+
     [Test]
     public async Task GeneratorRejectsUnsupportedModelsWithLocatedDiagnosticsAsync()
     {

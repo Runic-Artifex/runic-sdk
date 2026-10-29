@@ -4,7 +4,8 @@ using Runic.Navigation;
 namespace Runic.Application.Views;
 
 // Synchronous entry points for transport routes. They follow the blocking
-// contract documented on IRunicModelContext.
+// contract documented on IRunicModelContext. A route's delivery awaits its
+// turns instead (BridgeModelTurn.RunAsync).
 internal static class RunicModelTurns
 {
     public static void Run(IRunicModelContext context, Action work)

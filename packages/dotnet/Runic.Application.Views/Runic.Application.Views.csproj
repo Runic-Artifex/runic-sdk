@@ -20,6 +20,8 @@
     <InternalsVisibleTo Include="Runic.Application.Views.Desktop" />
     <InternalsVisibleTo Include="Runic.Application.Views.CsWebUi" />
     <InternalsVisibleTo Include="Runic.Application.Views.Desktop.Tests" />
+    <!-- tests/benchmarks sets the window's minimum unit interval (BridgeDispatcher) to measure the units themselves. -->
+    <InternalsVisibleTo Include="Runic.Application.Views.Benchmarks" />
   </ItemGroup>
   <ItemGroup>
     <!-- The generated-code support API (Generated/) is used throughout the runtime. -->

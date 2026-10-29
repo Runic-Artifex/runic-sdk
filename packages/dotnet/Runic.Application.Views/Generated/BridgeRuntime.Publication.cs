@@ -12,9 +12,18 @@ namespace Runic.Application.Views.Generated;
 // revision. A unit that changes nothing publishes nothing.
 //
 // Notifications request a unit, which the delivery runs in a later model turn, so a burst of notifications publishes
-// one frame. A BridgeSnapshotBatch publishes its unit when the outermost batch ends. A request that changes state
-// publishes its unit before it replies (PublishForReply), so a change without a notification is a frame before the
-// reply. A full state is published only after the delivery queue overflowed; open and snapshot replies carry one.
+// one frame; requested units start at least the window's minimum unit interval apart (BridgeSnapshotDelivery). A
+// BridgeSnapshotBatch publishes its unit when the outermost batch ends. A request that changes state publishes its
+// unit before it replies (PublishForReply), so a change without a notification is a frame before the reply. A full
+// state is published only after the delivery queue overflowed; open and snapshot replies carry one.
+//
+// Each notification counts as a change (_changes). A unit that compared every member covers the changes counted when
+// it started (_publishedChanges): the unit a notification requested is then withdrawn or skipped instead of encoding
+// every member again, as after a set, whose reply published the change already. A unit compares each member while it
+// is written (BridgeComparingWriter) and keeps the bytes only of members that differ. Pushes are written into pooled
+// buffers that the delivery returns once the transport took them; a full state writes its members straight into the
+// message. The route's first state, captured at attach, stays as an encoded state until the next change, so an open
+// before then copies it instead of encoding every member again.
 public partial class ViewModelBridge<T>
 {
     // The encoding of each compared member as last published, or null before the route's first state
@@ -42,6 +51,18 @@ public partial class ViewModelBridge<T>
     private bool _stateDeferred;
     // The revision of the last state or frame published on the route.
     private long _publishedRevision;
+    // The notifications counted since the Bridge attached, and the count the last unit that compared every member
+    // started with.
+    private long _changes;
+    private long _publishedChanges = -1;
+    // The route's first state as captured at attach: a message holding the encoded "state" object at
+    // [_firstStateStart, _firstStateStart + _firstStateLength), current while _firstStateChanges and
+    // _firstStateRevision are the route's; released at the first change.
+    private BridgeMessage? _firstState;
+    private int _firstStateStart;
+    private int _firstStateLength;
+    private long _firstStateChanges;
+    private long _firstStateRevision;
     // The route's latest revision: the last published one, or a later one folded into a requested state or withheld.
     private long _revision;
 
@@ -89,6 +110,7 @@ public partial class ViewModelBridge<T>
         lock (_modelGate)
         {
             if (IsInactive) return;
+            _changes++;
             if (BridgeSnapshotBatch.TryDefer(_vm, this)) return;
             _delivery.RequestUnit();
         }
@@ -104,8 +126,12 @@ public partial class ViewModelBridge<T>
     {
         lock (_modelGate)
         {
+            if (IsInactive) return;
+            _dataSubscriptions?.SweepPending();
             // A batch still open publishes its unit when it ends.
-            if (IsInactive || BridgeSnapshotBatch.TryDefer(_vm, this)) return;
+            if (BridgeSnapshotBatch.TryDefer(_vm, this)) return;
+            // Nothing was notified since a unit compared every member, as the reply of a set did.
+            if (_baselines is not null && !_stateDeferred && _publishedChanges == _changes) return;
             PublishUnitCore();
         }
     }
@@ -116,11 +142,14 @@ public partial class ViewModelBridge<T>
     private void PublishUnitCore()
     {
         if (IsInactive) return;
+        _dataSubscriptions?.SweepPending();
+        var changed = _changes;
         if (_baselines is null)
         {
-            CaptureFirstState();
+            if (CaptureFirstState()) Published(changed);
             return;
         }
+        if (_firstState is not null && (_firstStateChanges != changed || _firstStateRevision != _revision)) ReleaseFirstState();
         if (_stateDeferred)
         {
             _stateDeferred = false;
@@ -132,36 +161,51 @@ public partial class ViewModelBridge<T>
             _revision = NextRevision();
             _pendingCollectionChanges.Clear();
             _collectionSets.Clear();
+            Published(changed);
             return;
         }
         List<Change> changes;
-        Dictionary<string, byte[]> members;
+        List<(string Name, byte[] Value)> members;
         try
         {
-            members = WriteMembers(includeIncremental: false);
+            members = WriteChangedMembers();
             changes = Compare(members);
         }
         catch (BridgeSnapshotDetachedException) { return; }
         catch (BridgeCollectionKeyException keys)
         {
             Withhold(keys);
+            Published(changed);
             return;
         }
-        if (changes.Count == 0) return;
+        if (changes.Count == 0)
+        {
+            Published(changed);
+            return;
+        }
         var revision = NextRevision();
         _revision = revision;
-        var frame = WriteFrame(changes, revision);
-        if (!_delivery.EnqueueFrame(frame))
+        Published(changed);
+        if (!_delivery.EnqueueFrame(WriteFrame(changes, revision)))
         {
             PublishRecoveryState();
             return;
         }
         Commit(members, revision);
+        ReleaseFirstState();
+    }
+
+    // A unit compared every member as of changed notifications: the unit a later notification requested is not
+    // needed unless one arrived meanwhile.
+    private void Published(long changed)
+    {
+        _publishedChanges = changed;
+        if (_changes == changed) _delivery.WithdrawUnit();
     }
 
     // The changes of a unit against the published baselines; throws BridgeCollectionKeyException when a keyed
     // collection that becomes a set has invalid keys.
-    private List<Change> Compare(Dictionary<string, byte[]> members)
+    private List<Change> Compare(List<(string Name, byte[] Value)> members)
     {
         var changes = new List<Change>();
         // Keyed collections: their pending changes, or a set of the field.
@@ -174,14 +218,8 @@ public partial class ViewModelBridge<T>
         }
         var sets = new List<BridgeCollectionDescriptor<T>>(_collectionSets);
         var count = indexed.Values.Sum(list => list.Count) + sets.Count;
-        var memberSets = new List<Change>();
-        foreach (var (name, value) in members)
-        {
-            var version = VersionOf(name);
-            if (_baselines!.TryGetValue(name, out var previous) && previous.AsSpan().SequenceEqual(value)
-                && (version is null || _publishedVersions.GetValueOrDefault(name) == version)) continue;
-            memberSets.Add(Change.Set(name, value, version));
-        }
+        var memberSets = new List<Change>(members.Count);
+        foreach (var (name, value) in members) memberSets.Add(Change.Set(name, value, VersionOf(name)));
         var texts = new List<Change>();
         foreach (var field in _textFields)
         {
@@ -229,8 +267,8 @@ public partial class ViewModelBridge<T>
     private long? VersionOf(string member) =>
         _checkedByMember.TryGetValue(member, out var field) ? field.Registry.Current.Version : null;
 
-    // The baselines after a published frame.
-    private void Commit(Dictionary<string, byte[]> members, long revision)
+    // The baselines after a published frame: members holds the members that changed.
+    private void Commit(List<(string Name, byte[] Value)> members, long revision)
     {
         foreach (var (name, value) in members) _baselines![name] = value;
         foreach (var field in _checkedProperties) _publishedVersions[field.Descriptor.WireName] = field.Registry.Current.Version;
@@ -269,7 +307,7 @@ public partial class ViewModelBridge<T>
             _delivery.RequestState();
             return;
         }
-        byte[]? state;
+        BridgeMessage? state;
         // This runs in a model turn of whatever changed the route. A state that cannot be captured now (for example
         // because of invalid keys) becomes a request, which the delivery captures and reports.
         try { state = WriteStatePush(); }
@@ -280,35 +318,65 @@ public partial class ViewModelBridge<T>
             _delivery.RequestState();
             return;
         }
-        if (state is not null && !IsInactive) _delivery.EnqueueState(state);
+        if (state is null) return;
+        if (IsInactive) state.Release();
+        else _delivery.EnqueueState(state);
     }
 
     // The route's first state, captured in the first unit after the Bridge attached, whether or not a page is
     // connected. Writing it presents the content of the View's content slots, which binds that content to the window's
     // model context, so what the window presents follows the model rather than when a page first reads it. Nothing is
-    // pushed: it is the baseline of the route's frames, and an open or snapshot reads the state at its revision. While a
-    // keyed collection has invalid keys there is no first state; the next unit tries again, and a read reports them.
-    private void CaptureFirstState()
+    // pushed: it is the baseline of the route's frames, and an open or snapshot reads the state at its revision; an
+    // open copies this one until the route changes. While a keyed collection has invalid keys there is no first state; the
+    // next unit tries again, and a read reports them. Returns whether it captured the state.
+    private bool CaptureFirstState()
     {
+        var message = BridgePublicationWriter.Rent();
         try
         {
-            WriteMessage(writer =>
-            {
-                writer.WriteStartObject();
-                WriteState(writer, updateBaselines: true);
-                writer.WriteEndObject();
-            });
+            message.Writer.WriteStartObject();
+            var (start, length) = WriteState(message, updateBaselines: true);
+            message.Writer.WriteEndObject();
+            ReleaseFirstState();
+            _firstState = message.Detach();
+            _firstStateStart = start;
+            _firstStateLength = length;
+            _firstStateChanges = _changes;
+            _firstStateRevision = _revision;
+            return true;
         }
-        catch (BridgeSnapshotDetachedException) { }
-        catch (BridgeCollectionKeyException) { }
+        catch (BridgeSnapshotDetachedException) { return false; }
+        catch (BridgeCollectionKeyException) { return false; }
+        finally { message.Dispose(); }
+    }
+
+    // Whether the first state is still the route's state: nothing was notified or published since it was captured.
+    private bool FirstStateIsCurrent => _firstState is not null && _firstStateChanges == _changes
+        && _firstStateRevision == _revision && !_stateDeferred && _pendingCollectionChanges.Count == 0
+        && _collectionSets.Count == 0 && !_delivery.StateRequested;
+
+    // Writes "revision", "state" and "fields" of the first state into an open object.
+    private void WriteFirstState(Utf8JsonWriter writer)
+    {
+        writer.WriteNumber("revision", _revision);
+        writer.WritePropertyName("state");
+        writer.WriteRawValue(_firstState!.Memory.Span.Slice(_firstStateStart, _firstStateLength), skipInputValidation: true);
+        WriteFieldVersions(writer);
+    }
+
+    private void ReleaseFirstState()
+    {
+        _firstState?.Release();
+        _firstState = null;
     }
 
     // Called by the delivery in a model turn after it took the request.
-    private byte[]? CaptureRequestedState()
+    private BridgeMessage? CaptureRequestedState()
     {
         lock (_modelGate)
         {
             if (IsInactive) return null;
+            _dataSubscriptions?.SweepPending();
             // Do not show the host a half-applied batch: its end requests the state again.
             if (BridgeSnapshotBatch.TryDefer(_vm, this))
             {
@@ -326,78 +394,118 @@ public partial class ViewModelBridge<T>
         }
     }
 
-    private byte[]? WriteStatePush()
+    private BridgeMessage? WriteStatePush()
     {
+        var message = BridgePublicationWriter.Rent();
         try
         {
-            return WriteMessage(writer =>
-            {
-                writer.WriteStartObject();
-                writer.WriteString("kind", "state");
-                writer.WriteString("route", _name);
-                WriteState(writer, updateBaselines: true);
-                writer.WriteEndObject();
-            });
+            var writer = message.Writer;
+            writer.WriteStartObject();
+            writer.WriteString("kind", "state");
+            writer.WriteString("route", _name);
+            WriteState(message, updateBaselines: true);
+            writer.WriteEndObject();
+            return message.Detach();
         }
         // The session detached this route meanwhile; there is nothing to publish.
         catch (BridgeSnapshotDetachedException) { return null; }
+        finally { message.Dispose(); }
     }
 
-    // Writes "revision", "state" and "fields" of the route's full state into an open object, at the route's latest
-    // revision. With updateBaselines, the state becomes the baseline of the next frame (a published state, or a reply's
-    // state, which equals the published one). Throws BridgeCollectionKeyException for invalid keys.
-    private void WriteState(Utf8JsonWriter writer, bool updateBaselines)
+    // Writes "revision", "state" and "fields" of the route's full state into an open object of message, at the route's
+    // latest revision, each member straight into the message. With updateBaselines, the state becomes the baseline of
+    // the next frame (a published state, or a reply's state, which equals the published one), and a requested unit
+    // that it covers is withdrawn. Returns where the
+    // "state" object is in the message. Throws BridgeCollectionKeyException for invalid keys.
+    private (int Start, int Length) WriteState(BridgePublicationWriter message, bool updateBaselines)
     {
-        var members = WriteMembers(includeIncremental: true, checkKeys: true, out var ordered);
-        writer.WriteNumber("revision", _revision);
-        writer.WriteStartObject("state");
-        foreach (var name in ordered)
-        {
-            writer.WritePropertyName(name);
-            writer.WriteRawValue(members[name], skipInputValidation: true);
-        }
-        writer.WriteEndObject();
-        if (_checkedProperties.Length > 0)
-        {
-            writer.WriteStartObject("fields");
-            foreach (var field in _checkedProperties)
-            {
-                writer.WriteStartObject(field.Descriptor.WireName);
-                writer.WriteNumber("version", field.Registry.Current.Version);
-                writer.WriteEndObject();
-            }
-            writer.WriteEndObject();
-        }
-        if (!updateBaselines) return;
-        _baselines ??= new(StringComparer.Ordinal);
-        foreach (var (name, value) in members)
-            if (!_incrementalMembers.Contains(name)) _baselines[name] = value;
-        foreach (var descriptor in _incrementalCollections) _collectionInstances[descriptor] = descriptor.Get(_vm);
-        Commit([], _revision);
-    }
-
-    // Writes the members; a protocol-3 writer writes them all. With checkKeys, every keyed collection's keys are
-    // checked and become the baseline for frames.
-    private Dictionary<string, byte[]> WriteMembers(bool includeIncremental) =>
-        WriteMembers(includeIncremental, checkKeys: false, out _);
-
-    private Dictionary<string, byte[]> WriteMembers(bool includeIncremental, bool checkKeys, out List<string> ordered)
-    {
-        var members = new Dictionary<string, byte[]>(StringComparer.Ordinal);
-        ordered = [];
+        var changed = _changes;
+        var writer = message.Writer;
+        List<(string Name, long Start, long End)>? compared = updateBaselines ? new(_stateMembers.Length) : null;
+        long stateStart, stateEnd;
         using (BridgeSnapshotPublication.Enter(() => IsInactive))
         {
-            if (checkKeys) CheckCollectionKeys();
+            CheckCollectionKeys();
+            writer.WriteNumber("revision", _revision);
+            writer.WritePropertyName("state");
+            stateStart = message.Position;
+            writer.WriteStartObject();
             foreach (var member in _stateMembers)
             {
-                if (!includeIncremental && _incrementalMembers.Contains(member.Name)) continue;
-                members[member.Name] = WriteValue(writer => member.Write(writer, _vm));
-                ordered.Add(member.Name);
+                writer.WritePropertyName(member.Name);
+                if (compared is null || _incrementalMembers.Contains(member.Name))
+                {
+                    member.Write(writer, _vm);
+                    continue;
+                }
+                var start = message.Position;
+                member.Write(writer, _vm);
+                compared.Add((member.Name, start, message.Position));
+            }
+            writer.WriteEndObject();
+            stateEnd = message.Position;
+        }
+        BridgeSnapshotPublication.ThrowIfInactive();
+        if (IsInactive) throw new BridgeSnapshotDetachedException();
+        WriteFieldVersions(writer);
+        var state = (checked((int)stateStart), checked((int)(stateEnd - stateStart)));
+        if (!updateBaselines) return state;
+        _baselines ??= new(StringComparer.Ordinal);
+        // An unchanged member keeps its baseline array.
+        foreach (var (name, start, end) in compared!)
+        {
+            var length = (int)(end - start);
+            if (_baselines.TryGetValue(name, out var previous) && previous.Length == length
+                && message.Buffer.SequenceEqual(start, previous)) continue;
+            _baselines[name] = message.Buffer.ToArray(start, length);
+        }
+        foreach (var descriptor in _incrementalCollections) _collectionInstances[descriptor] = descriptor.Get(_vm);
+        Commit([], _revision);
+        // The state is a unit that compared every member.
+        Published(changed);
+        return state;
+    }
+
+    private void WriteFieldVersions(Utf8JsonWriter writer)
+    {
+        if (_checkedProperties.Length == 0) return;
+        writer.WriteStartObject("fields");
+        foreach (var field in _checkedProperties)
+        {
+            writer.WriteStartObject(field.Descriptor.WireName);
+            writer.WriteNumber("version", field.Registry.Current.Version);
+            writer.WriteEndObject();
+        }
+        writer.WriteEndObject();
+    }
+
+    // The compared members (all but keyed collections and append-only text) whose encoding or checked version differs
+    // from what the route published, with their new encoding. An unchanged member is compared while it is written and
+    // allocates nothing.
+    private List<(string Name, byte[] Value)> WriteChangedMembers()
+    {
+        var changed = new List<(string Name, byte[] Value)>();
+        using (BridgeSnapshotPublication.Enter(() => IsInactive))
+        {
+            foreach (var member in _stateMembers)
+            {
+                if (_incrementalMembers.Contains(member.Name)) continue;
+                _baselines!.TryGetValue(member.Name, out var previous);
+                var comparing = BridgeComparingWriter.Rent(previous);
+                try
+                {
+                    member.Write(comparing.Writer, _vm);
+                    var matches = comparing.Matches;
+                    var version = VersionOf(member.Name);
+                    if (matches && (version is null || _publishedVersions.GetValueOrDefault(member.Name) == version)) continue;
+                    changed.Add((member.Name, matches ? previous! : comparing.ToArray()));
+                }
+                finally { comparing.Dispose(); }
             }
         }
         BridgeSnapshotPublication.ThrowIfInactive();
         if (IsInactive) throw new BridgeSnapshotDetachedException();
-        return members;
+        return changed;
     }
 
     // The encoding of one member.
@@ -409,7 +517,7 @@ public partial class ViewModelBridge<T>
         throw new InvalidOperationException($"{ModelName} has no state member '{name}'.");
     }
 
-    private byte[] WriteFrame(List<Change> changes, long revision) => WriteMessage(writer =>
+    private BridgeMessage WriteFrame(List<Change> changes, long revision) => WritePush(writer =>
     {
         writer.WriteStartObject();
         writer.WriteString("kind", "frame");
@@ -466,7 +574,7 @@ public partial class ViewModelBridge<T>
                     }
                     var keys = (kind == "add" ? args.NewItems : args.OldItems)?.Cast<object?>().Select(descriptor.Key).ToArray() ?? [];
                     var items = kind is "add" or "replace"
-                        ? args.NewItems?.Cast<object?>().Select(item => WriteText(writer => descriptor.WriteItem(writer, item))).ToArray() ?? []
+                        ? args.NewItems?.Cast<object?>().Select(item => WriteValue(writer => descriptor.WriteItem(writer, item))).ToArray() ?? []
                         : [];
                     _pendingCollectionChanges.Add(new(descriptor, kind,
                         kind == "remove" ? args.OldStartingIndex : args.NewStartingIndex,
@@ -504,7 +612,7 @@ public partial class ViewModelBridge<T>
                     // A key changed in place or made invalid becomes a set of the field.
                     if (!TrackItemKey(descriptor, rows, item, at, out var key)) MarkCollectionSet(descriptor);
                     else _pendingCollectionChanges.Add(new(descriptor, "replace", at, at,
-                        [key], [WriteText(writer => descriptor.WriteItem(writer, item))]));
+                        [key], [WriteValue(writer => descriptor.WriteItem(writer, item))]));
                 }
                 if (handled) ScheduleUnit();
                 return handled;
@@ -578,7 +686,7 @@ public partial class ViewModelBridge<T>
         _rejectedKeys = keys.Identity;
         LogRejectedKeys(keys);
         var failure = RejectedKeysReply(keys);
-        _delivery.EnqueueFailure(WriteMessage(writer =>
+        _delivery.EnqueueFailure(WritePush(writer =>
         {
             writer.WriteStartObject();
             writer.WriteString("kind", "failure");
@@ -603,17 +711,23 @@ public partial class ViewModelBridge<T>
         ViewsLog.CollectionKeysRejected(_logger, keys, ModelName, keys.Field, keys.Key ?? "", _name);
     }
 
+    // A value or a reply: an array of its exact length, which a transport may keep.
     private static byte[] WriteValue(Action<Utf8JsonWriter> write)
     {
-        using var scratch = BridgeJsonScratch.Rent();
-        write(scratch.Writer);
-        scratch.Writer.Flush();
-        return scratch.Written.ToArray();
+        using var message = BridgePublicationWriter.Rent();
+        write(message.Writer);
+        return message.ToArray();
     }
 
     private static byte[] WriteMessage(Action<Utf8JsonWriter> write) => WriteValue(write);
 
-    private static string WriteText(Action<Utf8JsonWriter> write) => System.Text.Encoding.UTF8.GetString(WriteValue(write));
+    // A push in pooled memory, which the delivery returns once the transport took it.
+    private static BridgeMessage WritePush(Action<Utf8JsonWriter> write)
+    {
+        using var message = BridgePublicationWriter.Rent();
+        write(message.Writer);
+        return message.Detach();
+    }
 
     // One change of a frame.
     private sealed class Change

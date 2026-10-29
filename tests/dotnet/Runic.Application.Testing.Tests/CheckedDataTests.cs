@@ -101,6 +101,9 @@ internal sealed class CheckedDataTests
 
         var replaced = new MutableNode();
         root.Items[0] = replaced;
+        // The replaced item references itself (retained.Next): the publication unit that the replacement requested
+        // walks the graph and releases the detached cycle.
+        subscriptions.SweepPending();
         retained.Value = 8;
         Require(notifications == 14, "A replaced collection item remained subscribed.");
         replaced.Value = 9;
@@ -215,6 +218,8 @@ internal sealed class CheckedDataTests
         old.Value = 3;
         Require(notifications == 4, "Nested collection updates did not reconcile the inner DTO graph.");
         root.Groups.Remove(inner);
+        // The removed collection's rows are released by the publication unit that the removal requested.
+        subscriptions.SweepPending();
         added.Value = 4;
         Require(notifications == 5, "Removing an inner collection retained its descendants.");
 

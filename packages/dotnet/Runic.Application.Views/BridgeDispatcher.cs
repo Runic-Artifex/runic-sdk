@@ -75,6 +75,11 @@ internal sealed class BridgeDispatcher : IBridgeRequestHandler
 
     internal ILogger Logger => _logger;
 
+    // The minimum interval between the publication units that notifications request on each route of the window
+    // (BridgeSnapshotDelivery). Measured in real time, whatever the window's TimeProvider. The conformance runner sets
+    // it to zero, because its scenarios expect one unit per step.
+    internal TimeSpan MinimumUnitInterval { get; set; } = BridgeSnapshotDelivery.DefaultMinimumUnitInterval;
+
     // Whether pushes to one connection travel through the mailbox.
     internal bool UsesMailbox => _targeted is null;
 

@@ -369,6 +369,32 @@ static void ApplyOperationRetirement(Type model, IReadOnlyList<PropertyInfo> com
             $"{model.Name}: RunicOperationRetirement on the class applies to its operations (asynchronous Bridge commands), but it has none; it has no effect here.", model);
 }
 
+// An observable collection of DTO rows (ObservableCollection<T>, ReadOnlyObservableCollection<T>) that is not a
+// [RunicCollection] is published by comparison: every change of a row encodes and sends the whole list again, so such a
+// list grows expensive as it grows (RUNICBRIDGE032). A plain list or array is a value the ViewModel replaces and is
+// not reported.
+static void WarnObservableCollectionsWithoutKeys(Type model, IReadOnlyDictionary<PropertyInfo, BridgeTypeGraph> valueProperties,
+    IReadOnlyDictionary<PropertyInfo, PropertyInfo> incrementalCollections)
+{
+    foreach (var (property, graph) in valueProperties)
+    {
+        if (incrementalCollections.ContainsKey(property)
+            || !typeof(System.Collections.Specialized.INotifyCollectionChanged).IsAssignableFrom(property.PropertyType)
+            || graph.Root.Kind is not (BridgeWireKind.Array or BridgeWireKind.List)
+            || graph.Root.Element is not { Kind: BridgeWireKind.Dto } row) continue;
+        var key = row.Members.Select(member => member.Property)
+            .FirstOrDefault(member => member.Name is "Id" or "Key"
+                && (member.PropertyType == typeof(string) || member.PropertyType == typeof(Guid) || member.PropertyType == typeof(int)));
+        Diagnostics.Warn(BridgeDiagnosticCodes.CollectionWithoutKey,
+            $"{model.Name}.{property.Name}: an observable collection of {row.NonNullableType.Name} rows that is not a [RunicCollection] "
+            + "publishes every change by encoding and sending the whole list. Declare "
+            + (key is null ? $"[RunicCollection(nameof({row.NonNullableType.Name}.Key))] with a string, Guid or Int32 key property of the rows"
+                : $"[RunicCollection(nameof({row.NonNullableType.Name}.{key.Name}))]")
+            + $" to publish row changes, or suppress {BridgeDiagnosticCodes.CollectionWithoutKey} with NoWarn for a list that stays small.",
+            property);
+    }
+}
+
 static void WarnContentWithoutView(Type model, IReadOnlyDictionary<PropertyInfo, (Type Model, string Name)[]> contentProperties,
     IReadOnlyDictionary<PropertyInfo, (Type Model, string Name)[]> contentCollections, IReadOnlySet<PropertyInfo> regionSlots,
     IReadOnlyDictionary<Type, List<Type>> viewTypes)
@@ -712,6 +738,7 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
                 $"{model.Name}.{property.Name}: the collection key '{attribute.KeyProperty}' must name a nonnullable string, Guid or Int32 row property.", property);
         incrementalCollections.Add(property, key.Property);
     }
+    WarnObservableCollectionsWithoutKeys(model, valueProperties, incrementalCollections);
     // Append-only text (#300): a read-only string state property.
     var textFields = properties.Where(property => property.GetCustomAttribute<RunicAppendOnlyTextAttribute>(true) is not null).ToArray();
     foreach (var property in textFields)
@@ -1841,6 +1868,8 @@ static class BridgeDiagnosticCodes
     internal const string FrontendDelivery = "RUNICBRIDGE030";
     /// <summary>Warning: a type implements an IValidatableViewModel the Bridge does not recognize.</summary>
     internal const string UnrecognizedValidation = "RUNICBRIDGE031";
+    /// <summary>Warning: an observable collection of DTO rows is not a RunicCollection.</summary>
+    internal const string CollectionWithoutKey = "RUNICBRIDGE032";
 
     // Every code with its severity and title, in ID order: the source of the machine-readable list
     // (--list-diagnostics, docs/runicbridge-diagnostics.json). eng/diagnostics.test.mjs checks the
@@ -1878,6 +1907,7 @@ static class BridgeDiagnosticCodes
         (PackageManager, "warning", "RunicApplicationFrontendPackageManager is not npm, pnpm or bun"),
         (FrontendDelivery, "warning", "RunicApplicationFrontendDelivery is unknown, or Embedded cannot apply"),
         (UnrecognizedValidation, "warning", "A type implements an IValidatableViewModel that is not ReactiveUI.Validation's"),
+        (CollectionWithoutKey, "warning", "An observable collection of DTO rows is not a [RunicCollection]"),
     ];
 
     // Schema version 1: { schemaVersion, diagnostics: [{ id, severity: "error" | "warning", title }] }. A later

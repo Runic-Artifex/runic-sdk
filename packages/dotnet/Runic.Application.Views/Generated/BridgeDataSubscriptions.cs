@@ -62,7 +62,23 @@ public sealed class BridgeDataSubscriptionMember
 // reachable owner/property and collection edge a small subscription. Edits
 // reconcile only the affected edge, retaining subscriptions for every other
 // branch. Nodes are reference-keyed, which preserves shared DTOs and cycles.
-internal sealed class BridgeDataSubscriptions : IDisposable, IBridgeSnapshotBatchParticipant
+//
+// Detached nodes are released at the end of the publication unit
+// (SweepPending, which the Bridge calls in every unit, including the one that
+// ends a BridgeSnapshotBatch), never while the change is handled, and an Add
+// never looks for them:
+//
+// - A node whose last reference was removed is a candidate. The unit releases
+//   each candidate that is still unreferenced, and what only it referenced.
+// - A removed reference that leaves others can leave a detached cycle, which
+//   references itself. Then the unit walks the graph from the root once and
+//   releases whatever it does not reach.
+//
+// Every change that removes a reference also requests a unit, so a detached
+// node never keeps its subscriptions past the next unit. Until then the
+// notifications of an unreferenced node are ignored; those of its descendants
+// and of a detached cycle request a unit that finds nothing to publish.
+internal sealed class BridgeDataSubscriptions : IDisposable
 {
     private readonly object _gate = new();
     private readonly object _root;
@@ -88,6 +104,10 @@ internal sealed class BridgeDataSubscriptions : IDisposable, IBridgeSnapshotBatc
     private readonly Action<string>? _collectionChangedOutsideTurn;
     private readonly NodeKey _rootKey;
     private bool _disposed;
+    // The nodes whose last reference was removed since the last sweep.
+    private List<NodeKey>? _candidates;
+    // Whether a removed reference left others since the last sweep, so a detached cycle may remain.
+    private bool _walkPending;
 
     internal BridgeDataSubscriptions(
         object root,
@@ -130,7 +150,7 @@ internal sealed class BridgeDataSubscriptions : IDisposable, IBridgeSnapshotBatc
         {
             lock (_gate)
             {
-                if (_disposed || !_propertyWatches.TryGetValue(owner, out var watch)) return false;
+                if (_disposed || !_propertyWatches.TryGetValue(owner, out var watch) || watch.Nodes.All(IsDetached)) return false;
                 itemOnly = watch.Nodes.Count == 1 && watch.Nodes.All(node =>
                     _incomingReferences.GetValueOrDefault(new(node.Owner, node.Members)) == 1);
                 var topologyMayHaveChanged = false;
@@ -150,7 +170,6 @@ internal sealed class BridgeDataSubscriptions : IDisposable, IBridgeSnapshotBatc
                 // Scalar leaf updates still publish a new snapshot, but they
                 // cannot alter reachability. Avoid walking the entire graph
                 // and allocating a reachability set on that hot path.
-                if (topologyMayHaveChanged) SweepOrDefer();
                 return true;
             }
         }, closed: false);
@@ -169,12 +188,12 @@ internal sealed class BridgeDataSubscriptions : IDisposable, IBridgeSnapshotBatc
         {
             lock (_gate)
             {
-                if (_disposed || !_collectionWatches.TryGetValue(collection, out var watch)) return false;
+                if (_disposed || !_collectionWatches.TryGetValue(collection, out var watch)
+                    || watch.Edges.All(edge => IsDetached(edge.Node))) return false;
                 if (_collectionChangedOutsideTurn is not null && watch.Edges.FirstOrDefault() is { } first) outsideTurn = first.Member.Name;
                 collectionOnly = watch.Edges.All(edge => ReferenceEquals(edge.Node.Owner, _root) &&
                     _incrementalCollectionNames?.Contains(edge.Member.Name) == true);
                 foreach (var edge in watch.Edges.ToArray()) ReconcileCollection(edge, args);
-                if (args.Action != NotifyCollectionChangedAction.Move) SweepOrDefer();
                 return true;
             }
         }, closed: false);
@@ -182,21 +201,49 @@ internal sealed class BridgeDataSubscriptions : IDisposable, IBridgeSnapshotBatc
         if (changed && (!collectionOnly || _collectionChanged?.Invoke(collection, args) != true)) _changed();
     }
 
-    private void SweepOrDefer()
+    // A node nothing references any longer, which the next sweep releases. Until then its notifications are ignored.
+    // A detached cycle still references itself; its notifications request a unit that finds nothing to publish.
+    private bool IsDetached(Node node) =>
+        !ReferenceEquals(node.Owner, _root) && !_incomingReferences.ContainsKey(new(node.Owner, node.Members));
+
+    // Releases the nodes that changes since the last sweep detached. The Bridge calls it in the model turn of each
+    // publication unit.
+    internal void SweepPending()
     {
-        if (!BridgeSnapshotBatch.TryDefer(_root, this)) SweepDetached();
+        lock (_gate)
+        {
+            if (_disposed) return;
+            if (_walkPending)
+            {
+                _walkPending = false;
+                SweepDetached();
+                _candidates = null;
+                return;
+            }
+            while (_candidates is { Count: > 0 } candidates)
+            {
+                var key = candidates[^1];
+                candidates.RemoveAt(candidates.Count - 1);
+                if (ReferenceEquals(key.Owner, _root) || _incomingReferences.ContainsKey(key)
+                    || !_nodes.TryGetValue(key, out var node)) continue;
+                Release(key, node);
+            }
+            // Releasing a node can leave a cycle below it.
+            if (_walkPending)
+            {
+                _walkPending = false;
+                SweepDetached();
+            }
+            _candidates = null;
+        }
     }
 
-    void IBridgeSnapshotBatchParticipant.FlushSnapshotBatch() => _modelTurn.TryRunNotification(() =>
-    {
-        lock (_gate) if (!_disposed) SweepDetached();
-    });
 
     private void OnErrorsChanged(INotifyDataErrorInfo source, DataErrorsChangedEventArgs args)
     {
         var changed = _modelTurn.RunNotification(() =>
         {
-            lock (_gate) return !_disposed && _errorWatches.ContainsKey(source);
+            lock (_gate) return !_disposed && _errorWatches.TryGetValue(source, out var watch) && !watch.Nodes.All(IsDetached);
         }, closed: false);
         if (changed) _changed();
     }
@@ -205,7 +252,8 @@ internal sealed class BridgeDataSubscriptions : IDisposable, IBridgeSnapshotBatc
     {
         var changed = _modelTurn.RunNotification(() =>
         {
-            lock (_gate) return !_disposed && _validationWatches.TryGetValue(watch.Owner, out var current) && current == watch;
+            lock (_gate) return !_disposed && _validationWatches.TryGetValue(watch.Owner, out var current) && current == watch
+                && !watch.Nodes.All(IsDetached);
         }, closed: false);
         if (changed) _changed();
     }
@@ -307,8 +355,12 @@ internal sealed class BridgeDataSubscriptions : IDisposable, IBridgeSnapshotBatc
     private void RemoveReference(NodeKey key, int count = 1)
     {
         var remaining = _incomingReferences.GetValueOrDefault(key) - count;
-        if (remaining > 0) _incomingReferences[key] = remaining;
-        else _incomingReferences.Remove(key);
+        if (remaining > 0)
+        {
+            _incomingReferences[key] = remaining;
+            _walkPending = true;
+        }
+        else if (_incomingReferences.Remove(key)) (_candidates ??= []).Add(key);
     }
 
     private void ClearItems(Edge edge)
@@ -440,24 +492,32 @@ internal sealed class BridgeDataSubscriptions : IDisposable, IBridgeSnapshotBatc
         watch.Subscription?.Dispose();
     }
 
+    // How often the graph was walked from the root; tests read it.
+    internal int Walks { get; private set; }
+
     private void SweepDetached()
     {
+        Walks++;
         var reachable = new HashSet<NodeKey>(NodeKeyComparer.Instance);
         MarkReachable(_rootKey, reachable);
         foreach (var pair in _nodes.ToArray())
+            if (!reachable.Contains(pair.Key)) Release(pair.Key, pair.Value);
+        _walkPending = false;
+    }
+
+    // Unsubscribes a detached node and removes its references.
+    private void Release(NodeKey key, Node node)
+    {
+        foreach (var edge in node.Edges)
         {
-            if (reachable.Contains(pair.Key)) continue;
-            foreach (var edge in pair.Value.Edges)
-            {
-                DetachCollection(edge);
-                if (edge.ValueChild is { } child) RemoveReference(child);
-                ClearItems(edge);
-            }
-            DetachProperty(pair.Value);
-            DetachErrors(pair.Value);
-            DetachValidation(pair.Value);
-            _nodes.Remove(pair.Key);
+            DetachCollection(edge);
+            if (edge.ValueChild is { } child) RemoveReference(child);
+            ClearItems(edge);
         }
+        DetachProperty(node);
+        DetachErrors(node);
+        DetachValidation(node);
+        _nodes.Remove(key);
     }
 
     private void MarkReachable(NodeKey key, HashSet<NodeKey> reachable)

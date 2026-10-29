@@ -110,7 +110,7 @@ internal sealed class SnapshotDeliveryTests
 
     // A delivery queue of a route "rows" that captures no state and runs no unit of its own.
     private static BridgeSnapshotDelivery Delivery(IBridgeTransport transport) =>
-        new(transport, "rows", BridgeModelTurn.For(new Model()), static () => null, static () => { }, nameof(Model));
+        new(transport, "rows", BridgeModelTurn.For(new Model()), static () => (byte[]?)null, static () => { }, nameof(Model));
 
     private static async Task WaitUntilAsync(Func<bool> condition)
     {
