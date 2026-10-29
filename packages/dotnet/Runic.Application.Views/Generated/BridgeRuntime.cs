@@ -620,10 +620,14 @@ public partial class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBr
 
     private void OnCollectionChanged(object? sender, NotifyCollectionChangedEventArgs e)
     {
-        if (sender is INotifyCollectionChanged changed && _collections.FirstOrDefault(entry => ReferenceEquals(entry.Value, changed)).Key is { } field)
+        if (sender is INotifyCollectionChanged changed && _modelTurn.IsOutsideContextTurn
+            && Array.Find(Volatile.Read(ref _collectionFields), entry => ReferenceEquals(entry.Collection, changed)).Field is { } field)
             WarnIfOutsideModelTurn(field);
         if (sender is not INotifyCollectionChanged collection || !TryPublishCollection(collection, e)) ScheduleUnit();
     }
+
+    // The observed collections by field, replaced whole in a model turn, so a notification outside the turn can read it.
+    private (string Field, INotifyCollectionChanged Collection)[] _collectionFields = [];
 
     // The fields whose change outside a model turn was logged (event 1024), once per Bridge and field.
     private readonly HashSet<string> _offTurnFields = new(StringComparer.Ordinal);
@@ -694,12 +698,14 @@ public partial class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBr
     private void RefreshCollectionSubscriptions()
     {
         _collectionIndexes.Clear();
+        var changed = false;
         foreach (var property in _properties)
         {
             if (_generatedCollectionNames.Contains(property.Name)) continue;
             var next = property.Get(_vm) as INotifyCollectionChanged;
             _collections.TryGetValue(property.Name, out var previous);
             if (ReferenceEquals(previous, next)) continue;
+            changed = true;
             if (previous is not null) previous.CollectionChanged -= OnCollectionChanged;
             if (next is not null)
             {
@@ -708,6 +714,7 @@ public partial class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBr
             }
             else _collections.Remove(property.Name);
         }
+        if (changed) Volatile.Write(ref _collectionFields, [.. _collections.Select(entry => (entry.Key, entry.Value))]);
     }
 
     private void RefreshObservedSubObjects()
