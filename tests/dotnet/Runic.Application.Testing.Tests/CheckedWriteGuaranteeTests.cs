@@ -119,7 +119,7 @@ internal sealed class CheckedWriteGuaranteeTests
         Require(first is { Kind: BridgeFieldWriteReceiptKind.Applied } && first.Current.Value == new string('a', 100) + "!" && applies == 1,
             "A splice write was not applied as the full write of its rebuilt value.");
         var replay = registry.ApplySplice("splice", 0, "100:100:0:!", Append);
-        Require(replay is { Kind: BridgeFieldWriteReceiptKind.Applied } && replay.Current == first.Current && applies == 1,
+        Require(replay is { Kind: BridgeFieldWriteReceiptKind.Applied } && replay.Current == first!.Current && applies == 1,
             "A splice-write retry did not replay its original receipt.");
         Require(registry.ApplySplice("splice", 0, "100:100:0:?", Append)?.Kind == BridgeFieldWriteReceiptKind.Conflict
             && registry.ApplySplice("splice", 1, "100:100:0:!", Append)?.Kind == BridgeFieldWriteReceiptKind.Conflict,
