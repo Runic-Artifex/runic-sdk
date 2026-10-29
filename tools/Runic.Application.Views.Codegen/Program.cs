@@ -882,8 +882,8 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
             cs.AppendLine($"            new global::Runic.Application.Views.Generated.PropertyDescriptor<{fullType}>({descriptorNames}, vm => {SelectionIndex(property)}, null, static vm => vm.{property.Name}),");
             continue;
         }
-        // Validation stays atomic with full states, as for collections.
-        var text = textFields.Contains(property) && !hasValidation ? $" {{ AppendOnlyTextField = \"{WireName(property)}\" }}" : "";
+        // A frame is one publication unit, so the text's change and the validation it causes arrive together.
+        var text = textFields.Contains(property) ? $" {{ AppendOnlyTextField = \"{WireName(property)}\" }}" : "";
         cs.AppendLine($"            new global::Runic.Application.Views.Generated.PropertyDescriptor<{fullType}>({descriptorNames}, vm => vm.{property.Name}, {setter}){text},");
     }
     cs.AppendLine("        ],");
@@ -912,14 +912,14 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
     cs.AppendLine("        collections: [");
     foreach (var (property, key) in incrementalCollections)
     {
-        // Validation aggregates must remain atomic with their full snapshot, so
-        // their collections only check keys and never publish frames.
+        // Protocol 4: a frame is one publication unit with the collection's indexed changes and every member that
+        // changed with them, validation included, so a ViewModel with validation publishes frames too.
         var itemType = BridgeTypeGraph.CSharpType(valueProperties[property].Root.Element!.NonNullableType);
         var keyAccess = $"(({itemType})item!).{key.Name}";
         var keyExpression = key.PropertyType == typeof(string) ? keyAccess
             : key.PropertyType == typeof(Guid) ? keyAccess + ".ToString(\"D\")"
             : keyAccess + ".ToString(global::System.Globalization.CultureInfo.InvariantCulture)";
-        cs.AppendLine($"            new global::Runic.Application.Views.Generated.BridgeCollectionDescriptor<{fullType}>(\"{WireName(property)}\", static vm => vm.{property.Name}, {property.Name}ValueCodec.WriteItem, static item => {keyExpression}{(hasValidation ? ", PublishesChanges: false" : "")}),");
+        cs.AppendLine($"            new global::Runic.Application.Views.Generated.BridgeCollectionDescriptor<{fullType}>(\"{WireName(property)}\", static vm => vm.{property.Name}, {property.Name}ValueCodec.WriteItem, static item => {keyExpression}),");
     }
     cs.AppendLine(validationContextFlavors.Length > 0 ? "        ], validationReader: ValidationReader" : "        ]");
     cs.AppendLine("        )");

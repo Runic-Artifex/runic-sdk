@@ -84,7 +84,7 @@ public partial class ViewModelBridge<T>
 
     // A change: requests a publication unit, which a batch defers to its end. Before the route's first state, the unit
     // captures that state.
-    private void ScheduleUnit() => _modelTurn.Run(() =>
+    private void ScheduleUnit() => _modelTurn.TryRunNotification(() =>
     {
         lock (_modelGate)
         {
@@ -94,7 +94,7 @@ public partial class ViewModelBridge<T>
         }
     });
 
-    void IBridgeSnapshotBatchParticipant.FlushSnapshotBatch() => _modelTurn.Run(() =>
+    void IBridgeSnapshotBatchParticipant.FlushSnapshotBatch() => _modelTurn.TryRunNotification(() =>
     {
         lock (_modelGate) PublishUnitCore();
     });
@@ -431,9 +431,10 @@ public partial class ViewModelBridge<T>
         _collectionKeys.Remove(descriptor);
     }
 
+    // A closed model context makes the change one for a released Bridge: handled, nothing published.
     private bool TryPublishCollection(INotifyCollectionChanged collection, NotifyCollectionChangedEventArgs args)
     {
-        return _modelTurn.Run(() =>
+        return _modelTurn.RunNotification(() =>
         {
             lock (_modelGate)
             {
@@ -476,12 +477,12 @@ public partial class ViewModelBridge<T>
                 ScheduleUnit();
                 return true;
             }
-        });
+        }, closed: true);
     }
 
     private bool TryPublishItem(object item)
     {
-        return _modelTurn.Run(() =>
+        return _modelTurn.RunNotification(() =>
         {
             lock (_modelGate)
             {
@@ -508,7 +509,7 @@ public partial class ViewModelBridge<T>
                 if (handled) ScheduleUnit();
                 return handled;
             }
-        });
+        }, closed: true);
     }
 
     // Checks every keyed collection's keys and makes them the baseline for frames: a state whose keyed collection has a

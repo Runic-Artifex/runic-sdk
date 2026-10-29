@@ -78,12 +78,16 @@ with an empty or duplicate key fails the initial connection (the snapshot reply
 is an invalid state) or, when pushed later, is rejected and reported, so the
 client stays at its last state.
 
-A ViewModel that implements `INotifyDataErrorInfo`, or whose state graph
-contains a type that does, never publishes frames: the generated bridge marks
-every collection descriptor `PublishesChanges: false` so validation stays atomic
-with full states. The producer still checks keys in those full states, and the
-generated client still registers `defineCollection` codecs, which then only
-validate full states.
+A ViewModel with validation (one that implements `INotifyDataErrorInfo` or
+ReactiveUI.Validation's `IValidatableViewModel`, or whose state graph contains
+such a type) publishes frames like any other since 0.14: a protocol 4 frame is
+one publication unit that carries the collection's changes together with the
+`set` of `validation` they cause, so validation stays consistent with the rows
+([state changes](state-changes.md#publication-units)). Before 0.14 the generated
+bridge marked such a ViewModel's collection descriptors
+`PublishesChanges: false`, a protocol 3 rule, and they published only full
+states. A hand-written descriptor with `PublishesChanges: false` still does:
+the producer checks its keys in every state and compares it as a member.
 
 The opt-in changes the contract fingerprint. Generated clients and runtime
 packages must come from the same build.
@@ -210,8 +214,6 @@ following applies to the pending work:
   that is also exposed as `Selected`), or a property change on an object nested
   inside a row.
 
-(ViewModels with validation never publish frames at all; see
-[Opting in](#opting-in).)
 - More than 4,096 pending changes. The full state carries the final revision of
   the batch ([fixture](fixtures/collection-deltas/overflow.json)).
 - Delivery cannot retain the frame (see [Delivery](#delivery-and-recovery-snapshots)).

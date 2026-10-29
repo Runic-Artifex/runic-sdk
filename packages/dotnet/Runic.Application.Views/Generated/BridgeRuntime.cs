@@ -512,7 +512,7 @@ public partial class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBr
             if (dataSubscriptions is { Length: > 0 })
                 bindings.Add(new BridgeDataSubscriptions(vm, dataSubscriptions, OnNestedChanged, TryPublishCollection, TryPublishItem,
                     rootObservedExternally: true, incrementalCollectionNames: _incrementalCollections.Select(descriptor => descriptor.Name).ToHashSet(StringComparer.Ordinal),
-                    observeValidation: validationReader?.Observe));
+                    observeValidation: validationReader?.Observe, collectionChangedOutsideTurn: WarnIfOutsideModelTurn));
             // Register the per-window observer before this Bridge subscribes
             // its publisher. A synchronous setter then advances the
             // field version before any published state can describe the value.
@@ -599,7 +599,7 @@ public partial class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBr
     // after the presentation was opened; returns the open reply's registration, or null for none.
     private partial string? RegisterOpenHandlers(string presentation, BridgeConnection connection, JsonElement handlers);
 
-    private void OnChanged(object? sender, PropertyChangedEventArgs e) => _modelTurn.Run(() =>
+    private void OnChanged(object? sender, PropertyChangedEventArgs e) => _modelTurn.TryRunNotification(() =>
     {
         lock (_modelGate)
         {
@@ -620,7 +620,26 @@ public partial class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBr
 
     private void OnCollectionChanged(object? sender, NotifyCollectionChangedEventArgs e)
     {
+        if (sender is INotifyCollectionChanged changed && _modelTurn.IsOutsideContextTurn
+            && Array.Find(Volatile.Read(ref _collectionFields), entry => ReferenceEquals(entry.Collection, changed)).Field is { } field)
+            WarnIfOutsideModelTurn(field);
         if (sender is not INotifyCollectionChanged collection || !TryPublishCollection(collection, e)) ScheduleUnit();
+    }
+
+    // The observed collections by field, replaced whole in a model turn, so a notification outside the turn can read it.
+    private (string Field, INotifyCollectionChanged Collection)[] _collectionFields = [];
+
+    // The fields whose change outside a model turn was logged (event 1025), once per Bridge and field.
+    private readonly HashSet<string> _offTurnFields = new(StringComparer.Ordinal);
+
+    // A collection that changes outside the model context's turn, such as a DynamicData Bind without ObserveOn the
+    // window's scheduler, makes the notifying thread wait for a turn while the collection may change under the window.
+    private void WarnIfOutsideModelTurn(string field)
+    {
+        if (!_modelTurn.IsOutsideContextTurn || IsInactive) return;
+        bool first;
+        lock (_offTurnFields) first = _offTurnFields.Add(field);
+        if (first) ViewsLog.CollectionChangedOutsideModelTurn(_logger, ModelName, field, _name);
     }
 
     private void OnErrorsChanged(object? sender, DataErrorsChangedEventArgs e) => ScheduleUnit();
@@ -644,7 +663,7 @@ public partial class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBr
 
     // An object nested in the data graph changed. A nested change inside a row cannot be located, so each keyed
     // collection becomes a set of the field.
-    private void OnNestedChanged() => _modelTurn.Run(() =>
+    private void OnNestedChanged() => _modelTurn.TryRunNotification(() =>
     {
         lock (_modelGate)
         {
@@ -679,12 +698,14 @@ public partial class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBr
     private void RefreshCollectionSubscriptions()
     {
         _collectionIndexes.Clear();
+        var changed = false;
         foreach (var property in _properties)
         {
             if (_generatedCollectionNames.Contains(property.Name)) continue;
             var next = property.Get(_vm) as INotifyCollectionChanged;
             _collections.TryGetValue(property.Name, out var previous);
             if (ReferenceEquals(previous, next)) continue;
+            changed = true;
             if (previous is not null) previous.CollectionChanged -= OnCollectionChanged;
             if (next is not null)
             {
@@ -693,6 +714,9 @@ public partial class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBr
             }
             else _collections.Remove(property.Name);
         }
+        // By wire name, as BridgeDataSubscriptions reports the collections it observes.
+        if (changed) Volatile.Write(ref _collectionFields, [.. _collections.Select(entry =>
+            (Array.Find(_properties, property => property.Name == entry.Key)?.WireName ?? entry.Key, entry.Value))]);
     }
 
     private void RefreshObservedSubObjects()

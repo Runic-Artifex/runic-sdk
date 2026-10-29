@@ -56,7 +56,14 @@ internal sealed class AotTransport : IBridgeTransport
         return new Lease(() => _handler = null);
     }
 
-    public ValueTask BroadcastAsync(ReadOnlyMemory<byte> message, CancellationToken cancellationToken = default) => ValueTask.CompletedTask;
+    // The pushes the window broadcast, as JSON.
+    public System.Collections.Concurrent.ConcurrentQueue<string> Pushes { get; } = new();
+
+    public ValueTask BroadcastAsync(ReadOnlyMemory<byte> message, CancellationToken cancellationToken = default)
+    {
+        Pushes.Enqueue(System.Text.Encoding.UTF8.GetString(message.Span));
+        return ValueTask.CompletedTask;
+    }
 
     public async ValueTask<string> RequestAsync(string json)
     {

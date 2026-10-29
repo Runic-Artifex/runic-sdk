@@ -4,6 +4,7 @@ using DynamicDataExample;
 using ReactiveUI.Primitives;
 using ReactiveUI.Primitives.Advanced;
 using Runic.Application.Views;
+using Runic.Application.Views.ReactiveUI;
 using Runic.Application.Views.Generated.Bridges;
 using Runic.Navigation;
 
@@ -76,7 +77,94 @@ keyModel.Source.Add(new Row(2, "two", 0));
 await NextFrameAsync(frame => Kind(frame) == "frame" && frame.GetProperty("changes").EnumerateArray().Any(change =>
     change.GetProperty("kind").GetString() == "add"), "a row after the correction");
 if (keyModel.Rows.Count != 2) throw new InvalidOperationException("The DynamicData binding stopped after an invalid key.");
-Console.WriteLine("DYNAMICDATA_RUNIC_OK: independent viewports, deferred batching, off-screen suppression, generated collection deltas and withheld invalid keys.");
+
+// Frame replay: the frames since a snapshot, applied as a client applies them, give the next snapshot. A viewport move
+// (SortAndVirtualize) and a SortAndBind comparer change move, add and remove rows.
+await using var replayContext = new RunicModelContext();
+using var replayModel = new RowsViewModel(store, replayContext);
+using var replayLease = RunicModelContextRegistry.Shared.Bind(replayContext, replayModel);
+await replayContext.InvokeAsync(() => { });
+var replayTransport = new Benchmarks.MeteredTransport();
+using var replayBridge = new RowsBridge(replayTransport, replayModel, "viewport");
+await ReplayAsync(replayTransport, "viewport", replayContext, async () =>
+{
+    await ExecuteAsync(replayModel.SetViewportCommand.Execute(new(5, 30)));
+    store.Update(40);
+    await ExecuteAsync(replayModel.SetViewportCommand.Execute(new(20, 10)));
+    await ExecuteAsync(replayModel.SetViewportCommand.Execute(new(0, 30)));
+}, minimumFrames: 3, requiredKinds: ["add", "remove"]);
+
+await using var sortContext = new RunicModelContext();
+using var sortSource = new SourceCache<Row, int>(row => row.Id);
+sortSource.AddOrUpdate(Enumerable.Range(0, 40).Select(id => new Row(id, $"Row {(id * 7) % 40:00}", id % 5)));
+using var sortModel = new SortProofViewModel(sortSource, ReactiveSchedulers.For(sortContext));
+using var sortLease = RunicModelContextRegistry.Shared.Bind(sortContext, sortModel);
+await sortContext.InvokeAsync(() => { });
+var sortTransport = new Benchmarks.MeteredTransport();
+using var sortBridge = new SortProofBridge(sortTransport, sortModel, "sorted");
+// Each step changes the rows in the model turn (the comparer signal is not observed there) and waits for its frame, so
+// the next step is a unit of its own: a later reset would otherwise fold the moves into a set of the field.
+await ReplayAsync(sortTransport, "sorted", sortContext, async () =>
+{
+    async Task StepAsync(Action change)
+    {
+        var published = sortTransport.LatestRevision;
+        await sortContext.InvokeAsync(change);
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        while (sortTransport.LatestRevision == published) await Task.Delay(1, timeout.Token);
+    }
+    await StepAsync(() => sortModel.SortBy(SortProofViewModel.ByValueDescending));
+    await StepAsync(() => sortSource.Edit(updater =>
+    {
+        updater.AddOrUpdate(new Row(3, "Row moved", 9));
+        updater.RemoveKey(10);
+        updater.AddOrUpdate(new Row(40, "Row added", 2));
+    }));
+    await StepAsync(() => sortModel.SortBy(SortProofViewModel.ByLabel));
+    await StepAsync(() => sortModel.SortBy(SortProofViewModel.ByRank));
+    // A refresh after a rank change moves the row, forward and back.
+    foreach (var (id, rank) in new[] { (5, 100), (30, -1), (12, 50) })
+        await StepAsync(() =>
+        {
+            SortProofViewModel.Ranks[id] = rank;
+            sortSource.Refresh(sortSource.Lookup(id).Value);
+        });
+    await StepAsync(() => sortModel.SortBy(SortProofViewModel.ById));
+}, minimumFrames: 8, requiredKinds: ["move", "set", "add", "remove"]);
+Console.WriteLine("DYNAMICDATA_RUNIC_OK: independent viewports, deferred batching, off-screen suppression, generated collection deltas, withheld invalid keys and frames that replay to the snapshot.");
+
+static async Task ExecuteAsync(IObservable<ReactiveUI.Primitives.RxVoid> execution)
+{
+    var done = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+    using var subscription = execution.Subscribe(Witness.Create<ReactiveUI.Primitives.RxVoid>(
+        _ => done.TrySetResult(), error => done.TrySetException(error), () => done.TrySetResult()));
+    await done.Task.WaitAsync(TimeSpan.FromSeconds(10));
+}
+
+// Reads a snapshot, runs the changes, reads the next snapshot and requires that the frames between them, applied to the
+// first, give the second: frames only, at least minimumFrames, with each of requiredKinds among their changes.
+static async Task ReplayAsync(Benchmarks.MeteredTransport transport, string route, RunicModelContext context, Func<Task> change,
+    int minimumFrames, string[] requiredKinds)
+{
+    using var start = JsonDocument.Parse(await transport.RequestAsync(Snapshot(route)));
+    var state = System.Text.Json.Nodes.JsonNode.Parse(start.RootElement.GetProperty("state").GetRawText())!.AsObject();
+    var revision = start.RootElement.GetProperty("revision").GetInt64();
+    await change();
+    for (var turn = 0; turn < 3; turn++) await context.InvokeAsync(() => { });
+    using var end = JsonDocument.Parse(await transport.RequestAsync(Snapshot(route)));
+    var until = end.RootElement.GetProperty("revision").GetInt64();
+    await transport.WaitForRevisionAsync(until);
+    var replayed = FrameReplay.Apply(state, revision, transport.Frames.ToArray(), route, until);
+    var expected = System.Text.Json.Nodes.JsonNode.Parse(end.RootElement.GetProperty("state").GetRawText());
+    if (replayed.Revision != until || !System.Text.Json.Nodes.JsonNode.DeepEquals(replayed.State, expected))
+        throw new InvalidOperationException($"The frames of {route} did not replay to its snapshot at {until} (reached {replayed.Revision}).\n" +
+            $"replayed: {replayed.State.ToJsonString()}\nsnapshot: {expected!.ToJsonString()}");
+    var missing = requiredKinds.Where(kind => !replayed.Kinds.ContainsKey(kind)).ToArray();
+    if (replayed.Frames < minimumFrames || missing.Length > 0)
+        throw new InvalidOperationException($"The {route} replay applied {replayed.Frames} frames with the changes " +
+            $"{string.Join(", ", replayed.Kinds.Select(pair => $"{pair.Key}×{pair.Value}"))}; it needs {minimumFrames} frames and {string.Join(", ", missing)}.");
+    Console.WriteLine($"{route}: {replayed.Frames} frames ({string.Join(", ", replayed.Kinds.Select(pair => $"{pair.Key}×{pair.Value}"))}) replay to the snapshot.");
+}
 
 static string Snapshot(string route) => $"{{\"kind\":\"snapshot\",\"route\":\"{route}\"}}";
 

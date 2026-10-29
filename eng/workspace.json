@@ -372,6 +372,7 @@
         "examples/Directory.Packages.props",
         "examples/NuGet.config",
         "tests/fixtures/application/dynamicdata",
+        "tests/fixtures/application/dynamicdata-reactive",
         "tests/fixtures/application/dev-live-assets"
       ]
     },

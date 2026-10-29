@@ -2437,6 +2437,7 @@ NativeAOT symbols and what to attach to a bug report.
 | 1022 | `BridgeRequestFailed` | Error | Handling a request outside a command, setter or operation, sending a targeted push, or reporting a closed connection or an operation's status throws. A failed request is answered `failed`. | `ErrorType` |
 | 1023 | `BridgeMailboxOverflowed` | Warning | The mailbox of a connection whose transport cannot push to one connection (CS-WebUI) exceeds 1,024 pushes or 4 MiB, so its oldest pushes are dropped. Once per connection. | `Connection`, `Dropped` |
 | 1024 | `BridgeReplyWaitExceeded` | Warning | A setter, checked write, command or operation start waited 5 s for the pushes its window had to deliver before the reply, and replied without them: the page did not take pushes, or code blocked a route's delivery. Once per window. | `Route`, `LimitSeconds`, `Pending` |
+| 1025 | `BridgeCollectionChangedOutsideModelTurn` | Warning | A collection that a Bridge observes changed outside its window's model turn, such as a DynamicData `Bind` without `ObserveOn` the window's scheduler: the change waited for a turn and can race the window. Once per Bridge and field. | `Model`, `Field`, `Route` |
 | 1033 | `ModelContextReleaseFailed` | Error | A window session's own model context fails to shut down in the background. | `ErrorType` |
 | 1040, 1041 | Retired | | Reported by `ReactiveRoutedRegion<T>`, removed in 0.9; not reused. | |
 | 1042 | `ReactiveCommandFailed` | Error | A bridged ReactiveUI command reports on `ThrownExceptions` an exception that no Bridge call received, while a generated Bridge presents it, or a command or object observed with `ObserveBridgeExceptions(logger)` reports one; declared `RunicFailureException`s and cancellations are not logged. An exception raised in a Bridge call's flow, such as by a plain `Execute` in a wrapper command, is held until the outermost Bridge call in that flow ends, and not logged if a call received it or an exception wrapping it. Still logged when hand-written code receives and handles it from a plain `Execute`; never when it ran the command with `RunAsync`. A streamed operation holds nothing. Also logged after the Bridge detached, with its logger, for an execution that a Bridge call or `RunAsync` stopped awaiting when it was cancelled, such as an operation that a retiring navigation entry cancels. | `Source` (`Model.Command` for the Bridge; the command expression or `sourceName` for `ObserveBridgeExceptions`), `ErrorType` |
@@ -2493,7 +2494,7 @@ NativeAOT symbols and what to attach to a bug report.
 as `content12`). A declared failure is an expected outcome, so it is logged at
 Debug, still with its exception; `FailureType` is the failure value's type.
 
-Events 1000-1012, 1018-1023, 1050-1053 and 1100-1102 use the category `Runic.Application.Views`
+Events 1000-1012, 1018-1025, 1050-1053 and 1100-1102 use the category `Runic.Application.Views`
 (`RunicViewsTelemetry.LogCategory`); the Hot Reload events 1100-1102 use the
 logger of the window session that owns the Bridge. Events 1110-1114 use
 `Runic.Application.Views.Wpf` and the factory of the host's `Services`. Event 1033 here is a window session's

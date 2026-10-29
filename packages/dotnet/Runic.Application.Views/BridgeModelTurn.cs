@@ -41,6 +41,45 @@ internal sealed class BridgeModelTurn : IBridgeModelTurn
         else lock (_gate) work();
     }
 
+    // Whether the calling thread is outside the model context's turn: a change
+    // raised here, such as a DynamicData Bind on a background scheduler, waits
+    // for a turn and can race the window's own work. False without a context.
+    public bool IsOutsideContextTurn => _context is { IsExecuting: false };
+
+    // A change notification's turn. A context that was closed rejects the turn
+    // before it starts with ObjectDisposedException; the notification then counts
+    // as one for a released Bridge (it returns false) instead of throwing into the
+    // code that raised it, such as a DynamicData Bind. An exception of the work
+    // itself still propagates.
+    public bool TryRunNotification(Action work)
+    {
+        ArgumentNullException.ThrowIfNull(work);
+        if (_context is null)
+        {
+            lock (_gate) work();
+            return true;
+        }
+        var started = 0;
+        try
+        {
+            RunicModelTurns.Run(_context, () =>
+            {
+                Volatile.Write(ref started, 1);
+                work();
+            });
+            return true;
+        }
+        catch (ObjectDisposedException) when (Volatile.Read(ref started) == 0) { return false; }
+    }
+
+    // TryRunNotification with a result; closed is the result for a closed context.
+    public T RunNotification<T>(Func<T> work, T closed)
+    {
+        ArgumentNullException.ThrowIfNull(work);
+        var result = closed;
+        return TryRunNotification(() => result = work()) ? result : closed;
+    }
+
     // Releases subscriptions even after an application-owned context was
     // disposed before the bridge that captured it.
     public void RunForTeardown(Action work)

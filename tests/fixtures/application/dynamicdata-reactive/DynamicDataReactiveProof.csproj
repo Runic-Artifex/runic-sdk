@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- The System.Reactive flavor of the DynamicData consumer: the fork's DynamicData.Reactive from source,
+       ReactiveUI.Reactive and Runic.Application.Views.ReactiveUI.Reactive, batched with BatchBridgeSnapshots. -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <OutputType Condition="'$(RunicApplicationFrontendBootstrap)' == 'true'">Library</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RunicApplicationFrontendGenerationEnabled>true</RunicApplicationFrontendGenerationEnabled>
+    <RunicApplicationFrontendDirectory>$(MSBuildProjectDirectory)/obj/frontend</RunicApplicationFrontendDirectory>
+    <RunicApplicationFrontendGeneratedDirectory>$(RunicApplicationFrontendDirectory)/generated</RunicApplicationFrontendGeneratedDirectory>
+    <RunicApplicationFrontendBuildCommand>dotnet --version</RunicApplicationFrontendBuildCommand>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="ReactiveUI.Reactive" />
+    <ProjectReference Include="$(DynamicDataForkRoot)/src/DynamicData.Reactive/DynamicData.Reactive.csproj" />
+    <ProjectReference Include="../../../../packages/dotnet/Runic.Application.Views/Runic.Application.Views.csproj" />
+    <ProjectReference Include="../../../../packages/dotnet/Runic.Application.Views.ReactiveUI.Reactive/Runic.Application.Views.ReactiveUI.Reactive.csproj" />
+  </ItemGroup>
+  <ItemGroup Condition="'$(RunicApplicationFrontendBootstrap)' == 'true'">
+    <Compile Remove="Program.cs" />
+  </ItemGroup>
+  <Import Project="../../../../packages/dotnet/Runic.Application.Views/build/Runic.Application.Views.targets" />
+  <Import Project="../../../../examples/dynamicdata/DynamicDataFork.targets" />
+</Project>

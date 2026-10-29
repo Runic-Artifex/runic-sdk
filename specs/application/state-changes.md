@@ -129,10 +129,11 @@ other than collections, once per publication.
 
 ### Keyed collections
 
-The producer publishes the changes of a keyed collection as the operations that changed it, in order: inserting
-consecutive rows at one index is one `add`, removing consecutive rows one `remove`, replacing consecutive rows one
-`replace`, moving consecutive rows one `move`, and a change of a row's own fields a `replace` of that row with `index`
-equal to `oldIndex`. Rows that change without the producer observing it are not published until the next `set` of the
+The producer publishes the changes of a keyed collection as the operations that changed it, in order, one change per
+notification: within one notification, inserting consecutive rows at one index is one `add`, removing consecutive rows
+one `remove`, replacing consecutive rows one `replace` and moving consecutive rows one `move`; a change of a row's own
+fields is a `replace` of that row with `index` equal to `oldIndex`. Changes from separate notifications stay separate
+changes, also when they touch consecutive rows. Rows that change without the producer observing it are not published until the next `set` of the
 field or full state, so rows must announce their changes, or be replaced.
 
 It publishes a `set` of the field instead:

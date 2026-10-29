@@ -62,10 +62,10 @@ internal sealed class TextDeltaConformanceTests
                 Require(from[result.Trim..] + result.Text == to && result.Length == from.Length, $"Between did not rebuild the value: {result}.");
     }
 
-    // Validation stays atomic: a View with validation publishes its text as a set in one frame with the members it
-    // validates, as for collections.
+    // A frame is one publication unit, so a View with validation publishes its text as a text change in the frame with
+    // the validation it causes, as for collections.
     [Test]
-    public async Task AViewModelWithValidationPublishesSetsAsync()
+    public async Task AViewModelWithValidationPublishesTextChangesAsync()
     {
         var model = new ValidatedTextViewModel();
         using var transport = new InMemoryBridgeTransport();
@@ -73,8 +73,8 @@ internal sealed class TextDeltaConformanceTests
         _ = Revision(transport);
         model.Append("a");
         var frames = await WaitForAsync(transport, 1);
-        Require(frames.Count == 1 && frames[0].Contains("""{"field":"log","kind":"set","value":"a"}""", StringComparison.Ordinal),
-            $"A ViewModel with validation published a text change: {string.Join("\n", frames)}");
+        Require(frames.Count == 1 && frames[0].Contains("""{"field":"log","kind":"text","length":0,"trim":0,"text":"a"}""", StringComparison.Ordinal),
+            $"A ViewModel with validation did not publish a text change: {string.Join("\n", frames)}");
     }
 
 
