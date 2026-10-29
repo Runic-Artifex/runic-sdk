@@ -144,12 +144,12 @@ export interface FieldController<TState, TClient, TValue> {
   compositionEnd(text: string): void;
   /**
    * The user is done with the field, such as when it loses focus: with `commit: "pause"` the draft is written now.
-   * The text typed is shown formatted again. Resolves once no write of the field is in flight or waiting, so a
-   * command that depends on the field, such as Save, can run after it: `await title.commit(); await editor.save()`.
-   * It never rejects; a failed write is `current.error`. A write that waits for `retry()` after a conflict, or for a
-   * client, does not delay it.
+   * The text typed is shown formatted again. Resolves with `current` once no write of the field is in flight or
+   * waiting, so a command that depends on the field, such as Save, can run after it and skip a failed write:
+   * `if ((await title.commit()).error === undefined) await editor.save()`. It never rejects; a failed write is the
+   * state's `error`. A write that waits for `retry()` after a conflict, or for a client, does not delay it.
    */
-  commit(): Promise<void>;
+  commit(): Promise<FieldState<TValue>>;
   /** Writes the draft again after a failed write; after a `conflict`, over the producer's value. */
   retry(): void;
   /** Drops the draft, the error and a conflict and shows the View's value. Writes in flight still complete. */
@@ -285,7 +285,7 @@ export function createFieldController<TState, TClient, TValue>(
   let baseline: FieldBaseline<TValue> | undefined;
   let disposed = false;
   // commit() calls waiting for the field's writes.
-  let idleWaiters: (() => void)[] = [];
+  let idleWaiters: ((state: FieldState<TValue>) => void)[] = [];
   const empty = (kind === "text" || kind === undefined ? "" : undefined) as TValue;
   let current: FieldState<TValue> = Object.freeze({
     value: empty, text: "", editing: false, error: undefined, errors: noMessages, conflict: undefined,
@@ -414,7 +414,7 @@ export function createFieldController<TState, TClient, TValue>(
     if (idleWaiters.length === 0 || !disposed && !idle()) return;
     const waiters = idleWaiters;
     idleWaiters = [];
-    for (const resolve of waiters) resolve();
+    for (const resolve of waiters) resolve(current);
   }
 
   function schedule(): void {
@@ -494,13 +494,13 @@ export function createFieldController<TState, TClient, TValue>(
       inputText(text);
     },
     commit() {
-      if (disposed) return Promise.resolve();
+      if (disposed) return Promise.resolve(current);
       cancelTimer();
       if (!composing && unsent && draft !== undefined) request(draft.value);
       if (!typedInvalid) typed = undefined;
       update();
-      if (idle()) return Promise.resolve();
-      return new Promise<void>(resolve => { idleWaiters.push(resolve); });
+      if (idle()) return Promise.resolve(current);
+      return new Promise<FieldState<TValue>>(resolve => { idleWaiters.push(resolve); });
     },
     retry() {
       if (disposed || draft === undefined || typedInvalid) return;

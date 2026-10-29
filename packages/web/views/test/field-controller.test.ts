@@ -371,6 +371,7 @@ test("commit() resolves once the field's writes settled, so Save can follow them
   client.calls[1]!.reject(new Error("offline"));
   await done;
   assert.equal(committed, true);
+  assert.equal(((await controller.commit()).error as Error).message, "offline", "commit resolves with the state");
   assert.equal((controller.current.error as Error).message, "offline", "commit never rejects; the error is in the state");
   // A conflict does not hold commit().
   const checkedField = setup(title, { checked: true });
