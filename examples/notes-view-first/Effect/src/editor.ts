@@ -2,8 +2,7 @@ import { createEffectAction, operation, states } from "@runic-artifex/views-effe
 import * as Effect from "effect/Effect";
 import * as Schedule from "effect/Schedule";
 import * as Stream from "effect/Stream";
-import { createFieldController } from "@runic-artifex/views";
-import { bindTextInput, commitFields } from "../../Frontend/src/field-input.js";
+import { bindField, commitFields, describeBridgeError } from "@runic-artifex/views";
 import { EditorFields, type EditorClient, type EditorState } from "../../Frontend/src/generated/editor.js";
 import { describeSaveFailure } from "../../Frontend/src/save-failure.js";
 
@@ -31,23 +30,21 @@ export function mountEditor(host: HTMLElement, editor: EditorClient): () => void
 
   // A field is written after a pause in typing or when it loses focus. A failed write shows until the field's next
   // successful one.
-  const title = createFieldController(EditorFields.title, { commit: "pause" });
-  const body = createFieldController(EditorFields.body, { commit: "pause" });
+  const title = bindField(titleInput, editor, EditorFields.title, { commit: "pause" });
+  const body = bindField(bodyInput, editor, EditorFields.body, { commit: "pause" });
   let writeError: unknown;
   const showWriteError = () => {
     const cause = title.current.error ?? body.current.error;
     if (Object.is(cause, writeError)) return;
     writeError = cause;
-    showError(cause === undefined ? undefined : { message: String(cause) });
+    showError(cause === undefined ? undefined : { message: describeBridgeError(cause) });
   };
   const stopTitle = title.subscribe(showWriteError);
   const stopBody = body.subscribe(showWriteError);
-  const unbindTitle = bindTextInput(titleInput, title, editor);
-  const unbindBody = bindTextInput(bodyInput, body, editor);
   // Save waits for the fields' writes, and does not start after one that failed.
   const fieldsWritten = Effect.tryPromise({
     try: () => commitFields(title, body),
-    catch: cause => ({ _tag: "FieldWriteFailed", message: String(cause) }) as const,
+    catch: cause => ({ _tag: "FieldWriteFailed", message: describeBridgeError(cause) }) as const,
   });
 
   // An explicit request ID makes the retry safe: a repeated start returns the
@@ -78,9 +75,7 @@ export function mountEditor(host: HTMLElement, editor: EditorClient): () => void
     following.interruptUnsafe();
     stopTitle();
     stopBody();
-    unbindTitle();
-    unbindBody();
-    // Text that waits for its pause is written before the editor is released.
+    // Unwires the inputs; text that waits for its pause is written before the editor is released.
     title.dispose();
     body.dispose();
     editor.dispose();

@@ -18,6 +18,12 @@ try {
     url = output.match(/https?:\/\/[^\s]+/)?.[0];
     return url;
   });
+  // RUNIC_SMOKE_MODE selects a page variant, such as the Angular frontend's `baseline` and `dispatch-probe` modes.
+  if (process.env.RUNIC_SMOKE_MODE) {
+    const variant = new URL(url);
+    variant.searchParams.set("mode", process.env.RUNIC_SMOKE_MODE);
+    url = variant.href;
+  }
   browser = await launchChromium(url, { profilePrefix: "runic-notes-composed-" });
   const { evaluate } = browser;
   const query = expression => evaluate(expression);
@@ -169,7 +175,8 @@ try {
     if (host.exitCode !== 0 || !output.includes("WEB_MOUNT_BROWSER_OK"))
       throw new Error(`Web mount verification failed: ${output}\n${errors}`);
   }
-  console.log("NOTES_COMPOSED_OK|sidebar|nested-pane|declared-failure|modal|discard|async-detach|reload" + (process.env.RUNIC_VERIFY_WEB_MOUNT === "1" ? "|web-mount" : ""));
+  console.log("NOTES_COMPOSED_OK|sidebar|nested-pane|declared-failure|modal|discard|async-detach|reload" + (process.env.RUNIC_VERIFY_WEB_MOUNT === "1" ? "|web-mount" : "") +
+    (process.env.RUNIC_SMOKE_MODE ? `|mode=${process.env.RUNIC_SMOKE_MODE}` : ""));
 } finally {
   try { await browser?.close(); }
   finally {

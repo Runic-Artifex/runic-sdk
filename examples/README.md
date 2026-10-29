@@ -23,7 +23,7 @@ shows how.
 
 Run the focused example checks from the repository root using the commands in
 each example README. The template acceptance suite separately packs the
-published templates and verifies React, Vue, Svelte, and Angular consumers:
+published templates and verifies React, Vue, Svelte, SvelteKit and Angular consumers:
 
 ```sh
 bun run pack
