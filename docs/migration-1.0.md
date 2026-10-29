@@ -21,6 +21,9 @@ the release notes, which give the full detail and the pull requests:
 - 0.13.0: [Upgrading](../eng/release/notes/0.13.0.md#upgrading),
   [Breaking changes](../eng/release/notes/0.13.0.md#breaking-changes),
   [Behaviour changes](../eng/release/notes/0.13.0.md#behaviour-changes)
+- 0.14.0: [Upgrading](../eng/release/notes/0.14.0.md#upgrading),
+  [Breaking changes](../eng/release/notes/0.14.0.md#breaking-changes),
+  [Behaviour changes](../eng/release/notes/0.14.0.md#behaviour-changes)
 
 ## Before you start
 
@@ -627,3 +630,21 @@ Details: 0.13.0 [Breaking changes](../eng/release/notes/0.13.0.md#breaking-chang
 | An empty validation message crossed as `""`. | It crosses as `Invalid value.`, in `validation` and in `…Errors`. Give the rule a message if the page shows another text. |
 | A hand-written `ViewModelBridge<T>` subclass called the constructor ending in `collections`. | The constructor has a last optional `validationReader` parameter; existing calls compile. |
 
+### Text splices and the handshake
+
+0.14.0 adds the Views protocol feature `text-splice/1` and lets a page send its first requests with `hello`. Views
+protocol 4 does not change: features are negotiated in `hello`, so a 0.13 page and a 0.14 host still connect and use
+whole values. Update every Runic NuGet and npm package to 0.14.0 together and rebuild so that the generated clients,
+bridges and mocks are regenerated.
+
+| 0.13 | 0.14 |
+| --- | --- |
+| A setter or frame of a long `string` member carried its whole value, about 100 KB each way per keystroke at 100,000 characters | Splices of the changed characters ([Long text: splices](../packages/web/views/README.md#long-text-splices)). Nothing to change; `snapshot` still holds whole strings and the C# setter still receives the whole value |
+| An operation started by 0.13 and recovered after the upgrade | `unknown`: every contract fingerprint changes (`runic-bridge-contract-v6`) |
+| A request before `hello` (`InMemoryBridgeTransport.Request`, the mock Bridge, a custom producer test) answered `no-hello` at once | It waits up to 5 seconds for a `hello` and is admitted after it. Send the `hello` first, or advance a fake clock (`WindowContentSessionOptions.TimeProvider`, the mock's `scheduling: "manual"`) to get `no-hello`. A `receive` still answers at once |
+| A test double for `__runicBridge` saw `open` only after it answered `hello` | `open` can arrive before the `hello` reply; answer them in the order a producer would. A double that answers a request sent with the `hello` with `no-hello` gets it again after the `hello` |
+| Tests that asserted a refused producer received no `open` | The `open` sent with the `hello` reaches it; nothing is sent after the refusal |
+| `RunicViewPublication` without splices | `Splices` (`RunicTextSplice`) on frames of connections that list `text-splice/1`; `InMemoryBridgeTransport`'s own `hello` lists no features, so driver tests keep `Sets` |
+| Event 1019 `BridgeRequestBeforeHello` for every request before `hello` | Only for a request answered `no-hello` |
+
+Details: 0.14.0 [Text splices and requests with `hello`](../eng/release/notes/0.14.0.md#text-splices-and-requests-with-hello-p1).

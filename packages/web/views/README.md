@@ -308,6 +308,23 @@ after an error. `coalesce: false` writes every value. A failed write keeps the d
 and sets `error` until `reset()` or the next input (`keepDraftOnError: false` shows
 the View's value instead). `editing` is true while a draft exists.
 
+### Long text: splices
+
+A setter of a `string` member does not send the whole value on every key when the value is long. With the
+`text-splice/1` feature, which `@runic-artifex/views` and `Runic.Application.Views` negotiate in `hello`, it sends
+only what changed: the position, the number of characters it removed and the text it inserted, against the value the
+page showed (the previous edit while it is on its way, or the View's state). .NET rebuilds the value and calls the C#
+setter with it, exactly as if the page had sent the whole value. Frames change long `string` members the same way. A
+keystroke in a 100,000-character editor sends about 130 bytes and receives about 160, instead of about 100 KB each
+way.
+
+Nothing changes in code: setters, `createTextFieldController` and the framework text field bindings send splices on
+their own, and `snapshot` holds whole strings. A splice that keeps fewer than 64 characters of the old value, a change
+from or to `null`, and any value when the host lists no features cross whole. When .NET no longer has the value a
+splice was based on, such as after a reconnect or when another window changed the member, the setter sends the value
+again in full; the call settles once. Positions count UTF-16 code units, as JavaScript strings do, and never split a
+surrogate pair.
+
 ### Normalizing and busy state
 
 - **Normalize on commit, not per key.** A setter that trims, reformats or rejects

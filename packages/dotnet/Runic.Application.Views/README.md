@@ -1918,6 +1918,18 @@ or own the model scheduler. Enter the model's execution context as usual and
 keep the batch around synchronous changes, after awaiting I/O. The translations
 editor uses this during bulk document reconciliation and command result updates.
 
+## Long text members
+
+Every `string` state property without `[RunicCodec]` is a text member. When the page's client and the host both
+implement the `text-splice/1` feature, a setter of a long text member sends only the characters that changed, and the
+Bridge publishes a change of a long text member as one splice (the characters removed at a position and the text
+inserted there), or, for a value that dropped its start and grew at its end, as two. The generated Bridge rebuilds the
+page's value from the splice and calls the property's setter with the whole string, so setters, validation and
+normalization see what they always saw. A keystroke in a 100,000-character property costs about 130 bytes up, 160 bytes
+down and 200 KB of allocation (the new string) instead of 100 KB each way and 790 KB
+(`tests/benchmarks`, `TextSpliceBenchmarks`). Short values (a splice that keeps fewer than 64 characters), changes from
+or to `null`, and windows with a page that does not list the feature use whole values. Nothing needs to be declared.
+
 ## Live logs and other growing text
 
 A read-only `string` that grows at its end, such as the output of a running
@@ -2455,7 +2467,7 @@ NativeAOT symbols and what to attach to a bug report.
 | 1016 | `PathWatchPolling` | Debug | A `RunicPathWatcher` started without a `failed` callback polls for a directory that does not exist yet, such as a state directory created on the first start. Not written to `Trace`. | `Problem` |
 | 1017 | `BridgeOperationRetired` | Debug | The navigation entry whose page started an operation declared `RunicOperationRetirement.Cancel` or `Drain` retires: a `Cancel` operation is asked to cancel, and the page is disposed after the operation ends. | `Member`, `Policy`, `Route` |
 | 1018 | `BridgeProtocolMismatch` | Warning | A page's `hello` names another Views protocol than 4, so the page is refused; use the Runic packages of one release and rebuild the frontend. Once per connection. | `ClientProtocol`, `HostProtocol`, `Connection` |
-| 1019 | `BridgeRequestBeforeHello` | Debug | A request arrives on a connection before its `hello` and is rejected (`no-hello`). Once per connection. | `Kind`, `Connection` |
+| 1019 | `BridgeRequestBeforeHello` | Debug | A request is answered `no-hello`: a `receive` before the connection's `hello`, or a request that waited for a `hello` that failed, closed or did not come within 5 seconds. Once per connection. | `Kind`, `Connection` |
 | 1020 | `ViewMountFailed` | Error | A .NET View fails to mount. | `Route`, `ErrorType` |
 | 1021 | `ViewRemountFailed` | Error | A View fails to mount again after a reconnect. | `Route`, `ErrorType` |
 | 1022 | `BridgeRequestFailed` | Error | Handling a request outside a command, setter or operation, sending a targeted push, or reporting a closed connection or an operation's status throws. A failed request is answered `failed`. | `ErrorType` |
