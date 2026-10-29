@@ -658,3 +658,10 @@ Details: 0.14.0 [Text splices and requests with `hello`](../eng/release/notes/0.
 | Parsing each `RunicBridgeMessage.Json` for its route | `message.Route` and `message.Kind`. |
 | Registering a hand-built ViewModel so `RunicWindowTestHost.Create` resolves it | `RunicWindowTestHost.Create(services, viewModel)`. |
 | `<RunicApplicationFrontendGenerationEnabled>false</…>` in a console test runner that references `Runic.Application.Testing` | Remove it, unless the project sets another property that requires generation. |
+
+### Windows
+
+| 0.13 | 0.14 |
+| --- | --- |
+| `((RunicDesktopHost)host).OpenWindowAsync<TWindow>(options, activation)`, or a separate `RunicDesktopHost` parameter, to open with a launch's activation context | `host.OpenWindowAsync<TWindow>(options, activation)` on any `IRunicWindowHost`. |
+| A singleton that hands a value to the next Window's ViewModel, guarded by a semaphore | `windows.OpenWindowAsync<TWindow, TParameter>(parameter)`, and `IRunicWindowParameter<TParameter>` in the ViewModel's constructor. |

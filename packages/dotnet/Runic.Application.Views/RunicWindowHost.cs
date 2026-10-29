@@ -2,6 +2,7 @@ using System.ComponentModel;
 using System.Text;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using Runic.Platform;
 
 namespace Runic.Application.Views;
 
@@ -31,6 +32,27 @@ public interface IRunicWindowHost
     /// <summary>Checks, without opening anything, whether the host can present a window with <paramref name="options"/>.</summary>
     [EditorBrowsable(EditorBrowsableState.Never)]
     IReadOnlyList<RunicWindowDiagnostic> Validate(RunicWindowOptions options);
+
+    /// <summary>
+    /// Opens <typeparamref name="TWindow"/> as <see cref="RunicWindowHostExtensions.OpenWindowAsync{TWindow}"/> does, and
+    /// asks the desktop to give the new window focus with <paramref name="activation"/>.
+    /// </summary>
+    /// <remarks>
+    /// Open a Window for a launch with the launch's activation context, such as <c>ApplicationLaunch.PlatformContext</c>
+    /// of a launch the running instance received: Wayland compositors such as KWin give a new window focus only with the
+    /// activation token of the launch it answers. Runic Desktop presents its native window with the context; a host
+    /// that cannot use it, such as CS-WebUI or a browser, opens the Window and ignores the context, as this default
+    /// implementation does.
+    /// </remarks>
+    /// <param name="options">The content and size; <see langword="null"/> opens <c>www/index.html</c> next to the application.</param>
+    /// <param name="activation">The desktop's short-lived activation data, or <see langword="null"/>. Use it once, promptly.</param>
+    /// <param name="cancellationToken">Cancels opening. A cancelled open releases everything it created.</param>
+    /// <returns>The open Window.</returns>
+    /// <exception cref="RunicWindowConfigurationException">A check failed before anything opened.</exception>
+    ValueTask<TWindow> OpenWindowAsync<TWindow>(RunicWindowOptions? options, DesktopActivationContext? activation,
+        CancellationToken cancellationToken = default)
+        where TWindow : class, IRunicWindow, new() =>
+        RunicWindowHostExtensions.OpenWindowAsync<TWindow>(this, options, cancellationToken);
 }
 
 /// <summary>Opens and validates Windows on any <see cref="IRunicWindowHost"/>.</summary>
@@ -55,7 +77,44 @@ public static class RunicWindowHostExtensions
     {
         ArgumentNullException.ThrowIfNull(host);
         var window = new TWindow();
-        await window.OpenAsync(host, options ?? RunicWindowOptions.Default, cancellationToken).ConfigureAwait(false);
+        await window.OpenAsync(host, options ?? RunicWindowOptions.Default, null, cancellationToken).ConfigureAwait(false);
+        return window;
+    }
+
+    /// <summary>
+    /// Opens <typeparamref name="TWindow"/> as <see cref="OpenWindowAsync{TWindow}"/> does, and hands
+    /// <paramref name="parameter"/> to its new scope: the Window's ViewModel, and every service of that scope, takes
+    /// <see cref="IRunicWindowParameter{TParameter}"/> in its constructor and reads it from there.
+    /// </summary>
+    /// <remarks>
+    /// <code>
+    /// await host.OpenWindowAsync&lt;DocumentWindow, DocumentRequest&gt;(new DocumentRequest(path));
+    ///
+    /// public sealed class DocumentViewModel(IRunicWindowParameter&lt;DocumentRequest&gt; request) { ... }
+    /// </code>
+    /// The parameter belongs to this Window only: another Window, opened at the same time, gets its own. It needs
+    /// <see cref="RunicWindowServiceCollectionExtensions.AddRunicWindowService"/> in the application's services.
+    /// </remarks>
+    /// <param name="host">The host, such as the one <c>RunicDesktopHost.Run</c> passes to the application.</param>
+    /// <param name="parameter">The value the new Window's scope receives.</param>
+    /// <param name="options">The content and size; <see langword="null"/> opens <c>www/index.html</c> next to the application.</param>
+    /// <param name="cancellationToken">Cancels opening. A cancelled open releases everything it created.</param>
+    /// <returns>The open Window.</returns>
+    /// <exception cref="RunicWindowConfigurationException">
+    /// A check failed before anything opened, for example <see cref="RunicWindowServiceCollectionExtensions.AddRunicWindowService"/>
+    /// was not called (<see cref="RunicWindowConfigurationException.WindowParameterNotRegisteredCode"/>).
+    /// </exception>
+    [System.Diagnostics.CodeAnalysis.SuppressMessage("ApiDesign", "RS0026:Do not add multiple public overloads with optional parameters",
+        Justification = "The overloads differ in their type parameters; the parameter overload requires its parameter.")]
+    public static async ValueTask<TWindow> OpenWindowAsync<TWindow, TParameter>(this IRunicWindowHost host, TParameter parameter,
+        RunicWindowOptions? options = null, CancellationToken cancellationToken = default)
+        where TWindow : class, IRunicWindow, new()
+        where TParameter : class
+    {
+        ArgumentNullException.ThrowIfNull(host);
+        ArgumentNullException.ThrowIfNull(parameter);
+        var window = new TWindow();
+        await window.OpenAsync(host, options ?? RunicWindowOptions.Default, parameter, cancellationToken).ConfigureAwait(false);
         return window;
     }
 
@@ -247,7 +306,7 @@ public sealed class RunicWindowOpening<TViewModel> where TViewModel : class
 internal static class RunicWindowOpening
 {
     public static async ValueTask<IBridgeWindow> OpenAsync<TViewModel>(IRunicWindowHost host, RunicWindow<TViewModel> window,
-        RunicWindowOptions options, CancellationToken cancellationToken)
+        RunicWindowOptions options, object? parameter, CancellationToken cancellationToken)
         where TViewModel : class
     {
         ArgumentNullException.ThrowIfNull(options);
@@ -276,6 +335,17 @@ internal static class RunicWindowOpening
             window.UseServices(scope.ServiceProvider);
             // IRunicWindowContext in this scope closes this Window, also from the ViewModel resolved below.
             (scope.ServiceProvider.GetService(typeof(RunicWindowContext)) as RunicWindowContext)?.Bind(window);
+            // IRunicWindowParameter<T> in this scope reads the parameter of this open.
+            if (parameter is not null)
+            {
+                if (scope.ServiceProvider.GetService(typeof(RunicWindowParameter)) is not RunicWindowParameter slot)
+                {
+                    var missing = new[] { WindowParameterNotRegistered(parameter.GetType()) };
+                    Log(services, missing);
+                    throw new RunicWindowConfigurationException(missing);
+                }
+                slot.Set(parameter);
+            }
             // The Bridge factories come first, so a missing Bridge constructs no ViewModel. Containers without
             // IServiceProviderIsService are checked here, before the ViewModel and native window.
             var attachWithContent = scope.ServiceProvider.GetService<
@@ -357,6 +427,11 @@ internal static class RunicWindowOpening
             "check that the project references a host package (Runic.Application.Views.Desktop or Runic.Application.Views.CsWebUi) " +
             "and that the ViewModel is a public, top-level class implementing INotifyPropertyChanged.");
 
+    private static RunicWindowDiagnostic WindowParameterNotRegistered(Type parameter) => new(
+        RunicWindowConfigurationException.WindowParameterNotRegisteredCode,
+        $"The Window was opened with a {parameter.FullName ?? parameter.Name} parameter, but IRunicWindowParameter<T> is not registered.",
+        "Call services.AddRunicWindowService() before building the service provider.");
+
     private static string Name<T>() => typeof(T).FullName ?? typeof(T).Name;
 
     private static void Log(IServiceProvider services, IReadOnlyList<RunicWindowDiagnostic> errors)
@@ -435,6 +510,12 @@ public sealed class RunicWindowConfigurationException : InvalidOperationExceptio
 
     /// <summary>The code reported when a <see cref="RunicWindowOptions"/> value is invalid.</summary>
     public const string OptionInvalidCode = "window-option-invalid";
+
+    /// <summary>
+    /// The code reported when a Window opens with a parameter but
+    /// <see cref="RunicWindowServiceCollectionExtensions.AddRunicWindowService"/> was not called.
+    /// </summary>
+    public const string WindowParameterNotRegisteredCode = "window-parameter-not-registered";
 
     /// <summary>Creates an exception that lists every failed check in its message.</summary>
     public RunicWindowConfigurationException(IReadOnlyList<RunicWindowDiagnostic> diagnostics)

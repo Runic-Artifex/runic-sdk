@@ -31,6 +31,9 @@
     <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" />
     <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
     <ProjectReference Include="../Runic.Navigation/Runic.Navigation.csproj" />
+    <!-- DesktopActivationContext of IRunicWindowHost.OpenWindowAsync: a contracts-only package that every host adapter
+         references already. -->
+    <ProjectReference Include="../Runic.Platform/Runic.Platform.csproj" />
     <None Include="README.md" Pack="true" PackagePath="/" />
     <None Update="build/Runic.Application.Views.targets" Pack="true" PackagePath="buildTransitive/Runic.Application.Views.targets" />
     <None Include="../../../tools/Runic.Application.Views.Codegen/bin/$(Configuration)/net10.0/*.dll"

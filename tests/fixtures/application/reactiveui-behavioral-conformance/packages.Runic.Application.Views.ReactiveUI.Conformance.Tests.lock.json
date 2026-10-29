@@ -148,7 +148,8 @@
         "dependencies": {
           "Microsoft.Extensions.DependencyInjection.Abstractions": "[10.0.14, )",
           "Microsoft.Extensions.Logging.Abstractions": "[10.0.14, )",
-          "Runic.Navigation": "[0.13.0, )"
+          "Runic.Navigation": "[0.13.0, )",
+          "Runic.Platform": "[0.13.0, )"
         }
       },
       "runic.application.views.reactiveui": {
@@ -178,6 +179,9 @@
           "ReactiveUI.Primitives": "[9.0.0, 10.0.0)",
           "Runic.Navigation": "[0.13.0, )"
         }
+      },
+      "runic.platform": {
+        "type": "Project"
       },
       "Microsoft.Extensions.DependencyInjection.Abstractions": {
         "type": "CentralTransitive",

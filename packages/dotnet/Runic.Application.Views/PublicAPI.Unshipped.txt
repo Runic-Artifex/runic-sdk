@@ -13,3 +13,12 @@ Runic.Application.Views.Generated.PropertyDescriptor<T>.TextSetter.get -> System
 Runic.Application.Views.Generated.PropertyDescriptor<T>.TextSetter.init -> void
 Runic.Application.Views.IRunicWindow.Services.get -> System.IServiceProvider!
 Runic.Application.Views.RunicWindow<TViewModel>.Services.get -> System.IServiceProvider!
+const Runic.Application.Views.RunicWindowConfigurationException.WindowParameterNotRegisteredCode = "window-parameter-not-registered" -> string!
+Runic.Application.Views.IRunicWindowHost.OpenWindowAsync<TWindow>(Runic.Application.Views.RunicWindowOptions? options, Runic.Platform.DesktopActivationContext? activation, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<TWindow!>
+Runic.Application.Views.IRunicWindowParameter<TParameter>
+Runic.Application.Views.IRunicWindowParameter<TParameter>.Value.get -> TParameter!
+Runic.Application.Views.IRunicWindowService.OpenWindowAsync<TWindow, TParameter>(TParameter! parameter, Runic.Application.Views.RunicWindowOptions? options = null, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<TWindow!>
+Runic.Application.Views.RunicWindowParameter<TParameter>
+Runic.Application.Views.RunicWindowParameter<TParameter>.RunicWindowParameter(TParameter! value) -> void
+Runic.Application.Views.RunicWindowParameter<TParameter>.Value.get -> TParameter!
+static Runic.Application.Views.RunicWindowHostExtensions.OpenWindowAsync<TWindow, TParameter>(this Runic.Application.Views.IRunicWindowHost! host, TParameter! parameter, Runic.Application.Views.RunicWindowOptions? options = null, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<TWindow!>

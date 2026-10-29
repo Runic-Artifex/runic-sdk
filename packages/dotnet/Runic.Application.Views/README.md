@@ -348,12 +348,31 @@ public sealed partial class ProjectViewModel(IRunicWindowService windows) : Obse
   returned Window to wait for it or to close it; disposing it earlier is safe.
   A release failure is logged as event 1051.
 - Runic has no owned or modal Windows, so there is no owner parameter. The new
-  Window's ViewModel is resolved from DI like the first one's; to give it
-  input, let it read a singleton service, as the
+  Window's ViewModel is resolved from DI like the first one's. To give it input
+  of its own, pass a parameter (since 0.14): `OpenWindowAsync<TWindow, TParameter>(parameter, options)`
+  hands it to the new Window's scope, where the ViewModel, or a scoped service
+  it uses, takes `IRunicWindowParameter<TParameter>`. Each Window gets its own,
+  also when several open at once. State that every Window shares stays in a
+  singleton service, as the
   [multi-window example](https://github.com/Runic-Artifex/runic-sdk/tree/main/examples/multi-window)
   does with its shared project.
-- The interface has one method, so a test registers a fake that records the
-  requested Window types after the application's services.
+
+  ```csharp
+  await windows.OpenWindowAsync<PartWindow, PartRequest>(new PartRequest(world, WindowedPart.Atlas));
+
+  public sealed class PartViewModel(IRunicWindowParameter<PartRequest> request) : ReactiveObject
+  {
+      public WorldViewModel World { get; } = request.Value.World;
+  }
+  ```
+
+  The host has the same overload, `host.OpenWindowAsync<TWindow, TParameter>(parameter)`.
+  A test that builds such a ViewModel by hand passes
+  `new RunicWindowParameter<PartRequest>(request)`.
+- A test registers a fake that records the requested Window types after the
+  application's services. The parameter overload has a default implementation
+  that throws `NotSupportedException`, so a fake overrides it only when the
+  application uses it.
 
 #### Windows from another service provider
 

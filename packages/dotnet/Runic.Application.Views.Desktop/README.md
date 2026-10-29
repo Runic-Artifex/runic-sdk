@@ -103,7 +103,8 @@ The same Window and `async host => ...` body run on CS-WebUI with
   };
   ```
 - `host.OpenWindowAsync<TWindow>(options, activation, cancellationToken)` on
-  `RunicDesktopHost` opens a Window for a launch or a click: it opens the Window
+  `RunicDesktopHost`, and since 0.14 on any `IRunicWindowHost` (CS-WebUI opens the
+  Window and ignores the context), opens a Window for a launch or a click: it opens the Window
   as above and presents it with the desktop's activation token or startup ID,
   such as `ApplicationLaunch.PlatformContext` of a launch the running instance
   received. Wayland compositors such as KWin give a new window focus only with
