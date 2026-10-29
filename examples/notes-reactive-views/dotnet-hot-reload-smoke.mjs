@@ -2,7 +2,7 @@ import { spawn } from "node:child_process";
 import { readFile, writeFile } from "node:fs/promises";
 import { createServer } from "node:net";
 import { fileURLToPath } from "node:url";
-import { launchChromium, pause, waitFor } from "../shared/smoke.mjs";
+import { launchChromium, pause, waitFor, viewsProbe } from "../shared/smoke.mjs";
 
 const project = fileURLToPath(new URL("./NotesReactiveViews.csproj", import.meta.url));
 const source = fileURLToPath(new URL("./ViewModels.cs", import.meta.url));
@@ -45,7 +45,7 @@ try {
   browser = await launchChromium(url, { profilePrefix: "runic-dotnet-hot-reload-", timeout: 30_000 });
   const { evaluate } = browser;
   const query = expression => evaluate(expression);
-  const snapshot = route => evaluate(`(async () => JSON.parse(await window.__runicBridge.call(${JSON.stringify(route + "Snapshot")})))()`);
+  const { snapshot } = viewsProbe(evaluate);
   await retry(async () => await query('document.querySelector("#main h1")?.textContent') === "Reactive Notes");
   let route, initial;
   if (getter) {

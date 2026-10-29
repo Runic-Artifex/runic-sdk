@@ -1,6 +1,6 @@
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
-import { launchChromium, pause, tail, waitFor } from "../shared/smoke.mjs";
+import { launchChromium, pause, tail, waitFor, viewsProbe } from "../shared/smoke.mjs";
 
 const dll = fileURLToPath(new URL("./bin/Release/net10.0/NotesViewFirst.dll", import.meta.url));
 const host = spawn("dotnet", [dll, "--serve-only", ...(process.env.RUNIC_WEB_ROOT ? ["--web-root", process.env.RUNIC_WEB_ROOT] : []), ...(process.env.RUNIC_VIEW_LOCATOR === "splat" ? ["--splat"] : []), ...(process.env.RUNIC_VERIFY_WEB_MOUNT === "1" ? ["--verify-web-mount"] : [])], { stdio: ["pipe", "pipe", "pipe"] });
@@ -23,7 +23,7 @@ try {
   const query = expression => evaluate(expression);
   const click = selector => evaluate(`document.querySelector(${JSON.stringify(selector)}).click()`);
   const change = (selector, value) => evaluate(`(() => { const field = document.querySelector(${JSON.stringify(selector)}); field.value = ${JSON.stringify(value)}; field.dispatchEvent(new Event("input", { bubbles: true })); field.dispatchEvent(new Event("change", { bubbles: true })); return true; })()`);
-  const snapshot = route => evaluate(`(async () => JSON.parse(await window.__runicBridge.call(${JSON.stringify(route + "Snapshot")})))()`);
+  const { snapshot } = viewsProbe(evaluate);
   // Clicks a button that has focus, as a keyboard or pointer activation leaves it.
   const press = selector => evaluate(`(() => { const button = document.querySelector(${JSON.stringify(selector)}); button.focus(); button.click(); return true; })()`);
   const focusReturnsTo = (selector, label) => waitFor(async () => await query(`document.activeElement === document.querySelector(${JSON.stringify(selector)})`) === true,
