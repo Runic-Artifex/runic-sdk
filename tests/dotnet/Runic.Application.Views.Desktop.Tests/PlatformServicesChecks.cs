@@ -110,9 +110,11 @@ internal sealed class PlatformServicesChecks
         Require(statuses[PlatformCapabilityIds.DialogsUnowned] is CapabilityStatus.Available
             && statuses[PlatformCapabilityIds.DialogsOwned] is CapabilityStatus.Unavailable(PlatformUnavailableReason.OwnerUnavailable)
             && statuses[PlatformCapabilityIds.FilesOpen] is CapabilityStatus.Available
-            && statuses[PlatformCapabilityIds.ClipboardReadText] is CapabilityStatus.Unavailable(PlatformUnavailableReason.OwnerUnavailable)
-            && statuses[PlatformCapabilityIds.MessageBoxes] is CapabilityStatus.Unavailable(PlatformUnavailableReason.OwnerUnavailable),
+            && statuses[PlatformCapabilityIds.ClipboardReadText] is CapabilityStatus.Unavailable(PlatformUnavailableReason.OwnerUnavailable),
             $"A window without native dispatch did not report unowned file dialogs: {string.Join(", ", statuses)}.");
+        // #724: its message boxes are the application's for PreferOwner; RequireOwner still reports the missing owner.
+        Require(await services.MessageBoxes.ShowAsync(new DesktopMessageBox("Saved.")) is PlatformResult<DesktopMessageBoxButton?>.Unavailable(PlatformUnavailableReason.OwnerUnavailable),
+            "A RequireOwner box of a window without native dispatch did not report the owner unavailable.");
         // #723: its launcher is the application's, which needs no owner.
         Require(statuses[PlatformCapabilityIds.FilesLaunch] is CapabilityStatus.Available && statuses[PlatformCapabilityIds.UrisLaunch] is CapabilityStatus.Available,
             $"A window without native dispatch did not launch through the application: {string.Join(", ", statuses)}.");
@@ -360,7 +362,7 @@ internal sealed class PlatformServicesChecks
     // #723: the application's launcher needs no window and is one instance, also from the container; it applies the
     // launcher's policy before anything native runs, so a path or a program never reaches the desktop.
     [Test]
-    public async Task ApplicationLauncherRejectsWhatTheLauncherRejects()
+    public async Task ApplicationServicesNeedNoWindow()
     {
         var application = DesktopPlatformServices.ForApplication();
         await using (var provider = CreateProvider())
@@ -382,8 +384,19 @@ internal sealed class PlatformServicesChecks
         try { _ = await application.FileLauncher.LaunchAsync("relative.txt", DesktopFileOperation.Reveal); }
         catch (ArgumentException) { relative = true; }
         Require(relative, "The application's launcher accepted a relative path.");
+        // #724: the application's message boxes show unowned boxes for PreferOwner only. Without a running GTK loop, as
+        // in this test, Linux reports the backend unavailable instead of waiting for one.
+        Require(await application.MessageBoxes.ShowAsync(new DesktopMessageBox("Started.")) is PlatformResult<DesktopMessageBoxButton?>.Unavailable(PlatformUnavailableReason.OwnerUnavailable),
+            "A RequireOwner box of the application did not report the owner unavailable.");
+        if (OperatingSystem.IsLinux())
+            Require(await application.MessageBoxes.ShowAsync(new DesktopMessageBox("Started.") { OwnerPolicy = OwnerPolicy.PreferOwner })
+                    is PlatformResult<DesktopMessageBoxButton?>.Unavailable(PlatformUnavailableReason.BackendUnavailable)
+                && application.GetSnapshot().Statuses[PlatformCapabilityIds.MessageBoxes] is CapabilityStatus.Unavailable(PlatformUnavailableReason.BackendUnavailable),
+                "The application's box without a GTK loop did not report the backend unavailable.");
         var unavailable = ApplicationPlatformServices.Unavailable(PlatformUnavailableReason.ProviderNotConfigured);
         Require(await unavailable.FileLauncher.LaunchUriAsync(new Uri("https://example.org/")) is PlatformResult<PlatformUnit>.Unavailable(PlatformUnavailableReason.ProviderNotConfigured)
+            && await unavailable.MessageBoxes.ShowAsync(new DesktopMessageBox("Started.") { OwnerPolicy = OwnerPolicy.PreferOwner })
+                is PlatformResult<DesktopMessageBoxButton?>.Unavailable(PlatformUnavailableReason.ProviderNotConfigured)
             && unavailable.GetSnapshot().Statuses.Values.All(static status => status is CapabilityStatus.Unavailable(PlatformUnavailableReason.ProviderNotConfigured)),
             "Unavailable application services did not report their reason.");
     }

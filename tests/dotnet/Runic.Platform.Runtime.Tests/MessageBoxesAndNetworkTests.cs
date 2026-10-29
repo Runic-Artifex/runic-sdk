@@ -329,6 +329,43 @@ internal sealed class MessageBoxesAndNetworkTests
     }
 
     // A provider that answers each box with the button the function picks, after waiting for cancellation if asked.
+    // #724: the application's boxes, and those of a presentation without a native owner, show unowned boxes for
+    // PreferOwner only; RequireOwner reports the missing owner without reaching the provider, and closing ends them.
+    [Test, DisplayName("Message boxes: PreferOwner shows an unowned box without an owner")]
+    public async Task UnownedBoxesAsync()
+    {
+        var calls = 0;
+        var unowned = new AnsweringBoxes(_ => { calls++; return Save; });
+        var lifetime = new PresentationLifetime(static () => false);
+        var boxes = new PresentationMessageBoxes(lifetime, backend: null, unowned);
+        Check(boxes.Status is CapabilityStatus.Available
+            && boxes.GetSnapshot().Statuses[PlatformCapabilityIds.MessageBoxes] is CapabilityStatus.Available, "the unowned boxes are available");
+        Check(await boxes.ShowAsync(Close) is PlatformResult<DesktopMessageBoxButton?>.Unavailable(PlatformUnavailableReason.OwnerUnavailable) && calls == 0,
+            "RequireOwner without an owner");
+        Check(await boxes.ShowAsync(Close with { OwnerPolicy = OwnerPolicy.PreferOwner }) is PlatformResult<DesktopMessageBoxButton?>.Success(var chosen)
+            && chosen == Save && calls == 1, "PreferOwner shows the unowned box");
+        var missing = new PresentationMessageBoxes(lifetime, backend: null, DesktopMessageBoxes.Unavailable(PlatformUnavailableReason.BackendUnavailable));
+        Check(await missing.ShowAsync(Close with { OwnerPolicy = OwnerPolicy.PreferOwner })
+                is PlatformResult<DesktopMessageBoxButton?>.Unavailable(PlatformUnavailableReason.BackendUnavailable)
+            && missing.Status is CapabilityStatus.Unavailable(PlatformUnavailableReason.BackendUnavailable), "an unavailable unowned provider");
+        await lifetime.DisposeAsync();
+        Check(await boxes.ShowAsync(Close with { OwnerPolicy = OwnerPolicy.PreferOwner })
+                is PlatformResult<DesktopMessageBoxButton?>.Unavailable(PlatformUnavailableReason.OwnerClosed) && calls == 1,
+            "a closed presentation");
+
+        // An owned presentation shows the owned box for PreferOwner and never an unowned one.
+        var ownedCalls = 0;
+        var owner = new PresentationLifetime();
+        var owned = new PresentationMessageBoxes(owner, new AnsweringBoxes(_ => { ownedCalls++; return Cancel; }), unowned);
+        Check(await owned.ShowAsync(Close with { OwnerPolicy = OwnerPolicy.PreferOwner })
+                is PlatformResult<DesktopMessageBoxButton?>.Unavailable(PlatformUnavailableReason.OwnerUnavailable) && ownedCalls == 0 && calls == 1,
+            "an owned presentation without its owner");
+        owner.AttachTestOwner();
+        Check(await owned.ShowAsync(Close with { OwnerPolicy = OwnerPolicy.PreferOwner }) is PlatformResult<DesktopMessageBoxButton?>.Success(var ownedChoice)
+            && ownedChoice == Cancel && ownedCalls == 1 && calls == 1, "PreferOwner with an owner");
+        await owner.DisposeAsync();
+    }
+
     private sealed class AnsweringBoxes(Func<CancellationToken, DesktopMessageBoxButton?> answer, bool wait = false) : IDesktopMessageBoxes
     {
         public async ValueTask<PlatformResult<DesktopMessageBoxButton?>> ShowAsync(DesktopMessageBox messageBox, CancellationToken cancellationToken = default)

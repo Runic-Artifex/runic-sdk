@@ -61,7 +61,41 @@ internal sealed partial class UnownedDialogTests
         Console.WriteLine("PASS an unowned file dialog shows and closes");
     }
 
-    private const uint GW_OWNER = 4;
+    // #724: the application's task dialogs need no window: they run on the application thread without an owner, answer
+    // with their buttons and close on cancellation.
+    [Test, Explicit, Category("NativeMessageBoxes")]
+    public async Task UnownedMessageBoxAsync()
+    {
+        var boxes = (WindowsMessageBoxes)WindowsPlatformProvider.CreateUnownedMessageBoxes();
+        var cancelButton = new DesktopMessageBoxButton("cancel", "Cancel") { Role = DesktopMessageBoxButtonRole.Cancel };
+        var box = new DesktopMessageBox("The settings cannot be read.")
+        {
+            Title = "Runic unowned box", Kind = DesktopMessageBoxKind.Error,
+            Buttons = [new DesktopMessageBoxButton("retry", "Retry") { Role = DesktopMessageBoxButtonRole.Default }, cancelButton],
+        };
+        var created = new TaskCompletionSource<nint>(TaskCreationOptions.RunContinuationsAsynchronously);
+        boxes.Created = window => created.TrySetResult(window);
+        var pending = boxes.ShowAsync(box).AsTask();
+        var dialog = await created.Task.WaitAsync(Wait);
+        Check(GetWindow(dialog, GW_OWNER) == 0, "the box has no owner window");
+        PostMessageW(dialog, WM_CLOSE, 0, 0);
+        var result = await pending.WaitAsync(Wait);
+        Check(result is PlatformResult<DesktopMessageBoxButton?>.Success(var chosen) && chosen == cancelButton, $"the close button chose Cancel: {result}");
+
+        created = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        using (var cancel = new CancellationTokenSource())
+        {
+            var cancelled = boxes.ShowAsync(box, cancel.Token).AsTask();
+            var shown = await created.Task.WaitAsync(Wait);
+            cancel.Cancel();
+            Check(await Record(() => cancelled.WaitAsync(Wait)) is OperationCanceledException, "a cancelled box throws");
+            Check(!IsWindow(shown), "cancellation closed the box");
+        }
+        Console.WriteLine("PASS an unowned task dialog answers and closes");
+    }
+
+    private const uint GW_OWNER = 4, WM_CLOSE = 0x0010;
+    [LibraryImport("user32.dll")][return: MarshalAs(UnmanagedType.Bool)] private static partial bool PostMessageW(nint window, uint message, nuint wParam, nint lParam);
     [LibraryImport("user32.dll", StringMarshalling = StringMarshalling.Utf16)] private static partial nint FindWindowW(string? className, string windowName);
     [LibraryImport("user32.dll")] private static partial nint GetWindow(nint window, uint command);
     [LibraryImport("user32.dll")][return: MarshalAs(UnmanagedType.Bool)] private static partial bool IsWindow(nint window);

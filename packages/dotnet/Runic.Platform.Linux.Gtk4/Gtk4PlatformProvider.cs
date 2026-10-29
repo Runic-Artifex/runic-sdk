@@ -25,6 +25,13 @@ internal static class Gtk4PlatformProvider
         return new Gtk4MessageBoxes(owner);
     }
 
+    // The application's GtkAlertDialogs without a parent window, on the GTK 4 thread that the owner dispatches to.
+    internal static IDesktopMessageBoxes CreateUnownedMessageBoxes(INativeWindowOwner owner)
+    {
+        ArgumentNullException.ThrowIfNull(owner);
+        return new Gtk4MessageBoxes(owner, unowned: true);
+    }
+
     /// <summary>Creates a portal owner that exports GTK 4 X11 or Wayland parents on demand.</summary>
     public static IPortalWindowOwner CreatePortalWindowOwner(INativeWindowOwner owner)
     {

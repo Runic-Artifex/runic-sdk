@@ -92,6 +92,96 @@ internal sealed partial class MessageBoxTests
         Console.WriteLine("PASS native GTK 3 message boxes");
     }
 
+    // #724: the application's boxes without a window, on the thread that runs GLib's default main context. Without a
+    // running loop they report the backend unavailable instead of waiting; with one, the box has no transient parent.
+    [Test, Explicit, Category("NativeMessageBoxes")]
+    public async Task UnownedMessageBoxesAsync()
+    {
+        var boxes = (Gtk3MessageBoxes)LinuxPlatformProvider.CreateUnownedMessageBoxes();
+        Check(!LinuxPlatformProvider.IsApplicationLoopRunning, "no GLib main loop runs yet");
+        var early = await boxes.ShowAsync(Close).AsTask().WaitAsync(Wait);
+        Check(early is PlatformResult<DesktopMessageBoxButton?>.Unavailable(PlatformUnavailableReason.BackendUnavailable), $"a box without a running loop: {early}");
+
+        using var loop = new MainLoopThread();
+        await loop.Started.WaitAsync(Wait);
+        Check(LinuxPlatformProvider.IsApplicationLoopRunning, "the loop runs the default main context");
+        var owner = LinuxPlatformProvider.ApplicationOwner;
+        var shown = new TaskCompletionSource<nint>(TaskCreationOptions.RunContinuationsAsynchronously);
+        boxes.Shown = dialog => shown.TrySetResult(dialog);
+        var pending = boxes.ShowAsync(Close).AsTask();
+        var dialog = await shown.Task.WaitAsync(Wait);
+        bool onLoop = false, transient = true;
+        await owner.InvokeAsync(_ =>
+        {
+            onLoop = Environment.CurrentManagedThreadId == loop.ThreadId;
+            transient = TransientFor(dialog) != 0;
+            Check(ActivateDefault(dialog) != 0, "a default widget activates");
+        }).AsTask().WaitAsync(Wait);
+        var result = await pending.WaitAsync(Wait);
+        Check(onLoop && !transient, $"the box runs on the loop's thread ({onLoop}) without a parent ({!transient})");
+        Check(result is PlatformResult<DesktopMessageBoxButton?>.Success(var saved) && saved == Save, $"Return chose the default button: {result}");
+
+        shown = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        boxes.Shown = shownDialog => shown.TrySetResult(shownDialog);
+        using (var cancel = new CancellationTokenSource())
+        {
+            var cancelled = boxes.ShowAsync(Close, cancel.Token).AsTask();
+            await shown.Task.WaitAsync(Wait);
+            cancel.Cancel();
+            try { await cancelled.WaitAsync(Wait); throw new InvalidOperationException("A cancelled box returned."); }
+            catch (OperationCanceledException) { }
+            int open = -1;
+            await owner.InvokeAsync(_ => open = MessageDialogs()).AsTask().WaitAsync(Wait);
+            Check(open == 0, "cancellation destroyed the unowned dialog");
+        }
+        Console.WriteLine("PASS unowned GTK 3 message boxes");
+    }
+
+    // A thread that runs GLib's default main context as gtk_main does (g_main_loop_run), until disposed.
+    private sealed partial class MainLoopThread : IDisposable
+    {
+        private readonly Thread _thread;
+        private nint _loop;
+        private readonly TaskCompletionSource _started = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public MainLoopThread()
+        {
+            _thread = new Thread(() =>
+            {
+                if (Native.Init(0, 0) == 0) { _started.SetException(new InvalidOperationException("GTK display unavailable")); return; }
+                _loop = NewLoop(0, 0);
+                ThreadId = Environment.CurrentManagedThreadId;
+                IdleStarted();
+                RunLoop(_loop);
+                UnrefLoop(_loop);
+            }) { IsBackground = true, Name = "GLib main loop" };
+            _thread.Start();
+        }
+
+        public int ThreadId { get; private set; }
+        public Task Started => _started.Task;
+
+        // Reports the start from inside the loop, once it owns the default context.
+        private void IdleStarted() => new Thread(() =>
+        {
+            for (var deadline = DateTime.UtcNow + Wait; DateTime.UtcNow < deadline; Thread.Sleep(10))
+                if (IsRunning(_loop) != 0) { Thread.Sleep(50); _started.TrySetResult(); return; }
+            _started.TrySetException(new TimeoutException("The GLib main loop did not start."));
+        }) { IsBackground = true }.Start();
+
+        public void Dispose()
+        {
+            if (_loop != 0) QuitLoop(_loop);
+            _thread.Join(Wait);
+        }
+
+        [LibraryImport("libglib-2.0.so.0", EntryPoint = "g_main_loop_new")] private static partial nint NewLoop(nint context, int running);
+        [LibraryImport("libglib-2.0.so.0", EntryPoint = "g_main_loop_run")] private static partial void RunLoop(nint loop);
+        [LibraryImport("libglib-2.0.so.0", EntryPoint = "g_main_loop_quit")] private static partial void QuitLoop(nint loop);
+        [LibraryImport("libglib-2.0.so.0", EntryPoint = "g_main_loop_is_running")] private static partial int IsRunning(nint loop);
+        [LibraryImport("libglib-2.0.so.0", EntryPoint = "g_main_loop_unref")] private static partial void UnrefLoop(nint loop);
+    }
+
     // Shows a box and answers it on the GTK thread once it is shown.
     private static async Task<PlatformResult<DesktopMessageBoxButton?>> ShowAsync(GtkOwner owner, Gtk3MessageBoxes boxes, DesktopMessageBox box, Action<nint> answer)
     {

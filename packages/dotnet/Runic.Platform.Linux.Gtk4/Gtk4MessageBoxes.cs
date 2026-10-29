@@ -9,7 +9,8 @@ namespace Runic.Platform.Linux.Gtk4;
 // Message boxes as GtkAlertDialogs (GTK 4.10 and later), modal for the GTK 4 window and answered through
 // gtk_alert_dialog_choose with a GCancellable. An alert dialog has no title, icon or destructive style; its buttons take
 // mnemonics. Older GTK 4 reports the boxes unavailable.
-internal sealed partial class Gtk4MessageBoxes(INativeWindowOwner owner) : IDesktopMessageBoxes, IDesktopServiceStatus
+// Unowned boxes (the application's) are chosen without a parent window.
+internal sealed partial class Gtk4MessageBoxes(INativeWindowOwner owner, bool unowned = false) : IDesktopMessageBoxes, IDesktopServiceStatus
 {
     private const string Gtk = "libgtk-4.so.1";
     private const int DialogErrorCancelled = 1; // GTK_DIALOG_ERROR_CANCELLED; DISMISSED (2) closes without a button
@@ -39,7 +40,7 @@ internal sealed partial class Gtk4MessageBoxes(INativeWindowOwner owner) : IDesk
             await owner.InvokeAsync(parent =>
             {
                 cancellationToken.ThrowIfCancellationRequested();
-                if (parent == 0 || !owner.IsAvailable || owner.Generation != generation) throw new OwnerClosedException();
+                if (parent == 0 && !unowned || !owner.IsAvailable || owner.Generation != generation) throw new OwnerClosedException();
                 dialog = NewDialog("");
                 if (dialog == 0) throw new NativeBackendUnavailableException("GTK could not create an alert dialog.");
                 SetMessage(dialog, messageBox.Message);

@@ -12,3 +12,4 @@ Runic.Platform.IApplicationPlatformServices
 Runic.Platform.IApplicationPlatformServices.FileLauncher.get -> Runic.Platform.IDesktopFileLauncher!
 static Runic.Platform.ApplicationPlatformServices.CapabilityIds.get -> System.Collections.Immutable.ImmutableArray<string!>
 static Runic.Platform.ApplicationPlatformServices.Unavailable(Runic.Platform.PlatformUnavailableReason reason) -> Runic.Platform.IApplicationPlatformServices!
+Runic.Platform.IApplicationPlatformServices.MessageBoxes.get -> Runic.Platform.IDesktopMessageBoxes!

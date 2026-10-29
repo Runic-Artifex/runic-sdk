@@ -888,31 +888,35 @@ public static partial class DesktopPlatformServices
     private static IPickerBackend CreateUnownedMacOSFileDialogs() => MacOSPlatformProvider.CreateUnownedFileDialogs();
 #endif
 
-    // The services of a presentation without a native owner: unowned file dialogs for OwnerPolicy.PreferOwner, the
-    // application's launcher (#723), which needs no owner, and every other service unavailable for the missing owner, as
-    // before. Closing the window ends them (OwnerClosed).
+    // The services of a presentation without a native owner: unowned file dialogs and message boxes for
+    // OwnerPolicy.PreferOwner, the application's launcher (#723), which needs no owner, and every other service
+    // unavailable for the missing owner, as before. Closing the window ends them (OwnerClosed).
     private sealed class UnownedWindowPlatformServices : IWindowPlatformServices, IAsyncDisposable
     {
         private static readonly IWindowPlatformServices NoOwner = WindowPlatformServices.Unavailable(PlatformUnavailableReason.OwnerUnavailable);
         private readonly PresentationLifetime _lifetime;
         private readonly PresentationFiles _files;
         private readonly PresentationApplicationLauncher _launcher;
+        private readonly PresentationMessageBoxes _messageBoxes;
 
         public UnownedWindowPlatformServices(Guid generation, IPickerBackend unowned)
         {
             _lifetime = new PresentationLifetime(static () => false, generation);
             _files = new PresentationFiles(_lifetime, backend: null, unowned);
             _launcher = new PresentationApplicationLauncher(_lifetime, ForApplication());
+            // #724: the application's boxes, for OwnerPolicy.PreferOwner; closing the window closes a box that is shown.
+            _messageBoxes = new PresentationMessageBoxes(_lifetime, backend: null, DesktopApplicationPlatformServices.Instance.UnownedMessageBoxes);
         }
 
         public IFileDialogs FileDialogs => _files;
         public ITextClipboard Clipboard => NoOwner.Clipboard;
         public IDesktopFileLauncher FileLauncher => _launcher;
         public IDesktopMonitors Monitors => NoOwner.Monitors;
-        public IDesktopMessageBoxes MessageBoxes => NoOwner.MessageBoxes;
+        public IDesktopMessageBoxes MessageBoxes => _messageBoxes;
 
         public CapabilitySnapshot GetSnapshot() => new(_lifetime.Generation, NoOwner.GetSnapshot().Statuses
-            .SetItems(_files.GetSnapshot().Statuses).SetItems(_launcher.GetSnapshot().Statuses));
+            .SetItems(_files.GetSnapshot().Statuses).SetItems(_launcher.GetSnapshot().Statuses)
+            .SetItems(_messageBoxes.GetSnapshot().Statuses));
 
         public ValueTask<PlatformResult<PlatformUnit>> SetBadgeAsync(DesktopBadge? badge, CancellationToken cancellationToken = default) =>
             NoOwner.SetBadgeAsync(badge, cancellationToken);
@@ -1015,24 +1019,89 @@ public static partial class DesktopPlatformServices
     private static IDesktopFileLauncher CreateMacOSApplicationFileLauncher() => MacOSPlatformProvider.CreateApplicationFileLauncher();
 #endif
 
+    // The application's message boxes without a window for the running operating system, or null where Runic has none.
+    internal static IDesktopMessageBoxes? CreateApplicationMessageBoxes()
+    {
+        if (OperatingSystem.IsWindowsVersionAtLeast(8)) return CreateWindowsApplicationMessageBoxes();
+#if RUNIC_PORTABLE_PLATFORMS
+        if (OperatingSystem.IsLinux()) return new LinuxApplicationMessageBoxes();
+        if (OperatingSystem.IsMacOS()) return CreateMacOSApplicationMessageBoxes();
+#endif
+        return null;
+    }
+
+    [SupportedOSPlatform("windows8.0")]
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static IDesktopMessageBoxes CreateWindowsApplicationMessageBoxes() => WindowsPlatformProvider.CreateUnownedMessageBoxes();
+
+#if RUNIC_PORTABLE_PLATFORMS
+    [SupportedOSPlatform("macos")]
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static IDesktopMessageBoxes CreateMacOSApplicationMessageBoxes() => MacOSPlatformProvider.CreateUnownedMessageBoxes();
+
+    // Linux boxes come from the toolkit the process runs, which a later window may still claim: each box takes the
+    // toolkit claimed when it is shown, on the thread that runs GLib's default main context.
+    [SupportedOSPlatform("linux")]
+    private sealed class LinuxApplicationMessageBoxes : IDesktopMessageBoxes, IDesktopServiceStatus
+    {
+        private static readonly IDesktopMessageBoxes NoToolkit = DesktopMessageBoxes.Unavailable(PlatformUnavailableReason.BackendUnavailable);
+        private IDesktopMessageBoxes? _gtk3, _gtk4;
+
+        public CapabilityStatus Status => Current is { } boxes && GLibRunning()
+            ? DesktopServiceStatus.Get(boxes) : new CapabilityStatus.Unavailable(PlatformUnavailableReason.BackendUnavailable);
+
+        public ValueTask<PlatformResult<DesktopMessageBoxButton?>> ShowAsync(DesktopMessageBox messageBox, CancellationToken cancellationToken = default) =>
+            (Current ?? NoToolkit).ShowAsync(messageBox, cancellationToken);
+
+        // Each toolkit's provider in a method of its own, so a GTK 4 process never loads the GTK 3 provider.
+        private IDesktopMessageBoxes? Current => CurrentProvider switch
+        {
+            DesktopPlatformProvider.LinuxGtk4 => _gtk4 ??= Gtk4(),
+            DesktopPlatformProvider.LinuxGtk3 => _gtk3 ??= Gtk3(),
+            _ => null,
+        };
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        private static IDesktopMessageBoxes Gtk4() => Gtk4PlatformProvider.CreateUnownedMessageBoxes(GLibApplicationOwner.Shared);
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        private static IDesktopMessageBoxes Gtk3() => LinuxPlatformProvider.CreateUnownedMessageBoxes();
+
+        private static bool GLibRunning() => GLibApplicationOwner.IsRunning;
+    }
+#endif
+
     // The services ForApplication returns. Providers are created on first use, so a process that never launches
-    // anything loads none of them.
+    // anything or shows no box loads none of them. The application's lifetime never ends and has no owner, so its boxes
+    // are unowned ones, for OwnerPolicy.PreferOwner.
     private sealed class DesktopApplicationPlatformServices : IApplicationPlatformServices
     {
         internal static readonly DesktopApplicationPlatformServices Instance = new();
         private static readonly IApplicationPlatformServices NotConfigured =
             ApplicationPlatformServices.Unavailable(PlatformUnavailableReason.ProviderNotConfigured);
         private readonly Lazy<IDesktopFileLauncher?> _launcher = new(CreateApplicationFileLauncher);
-        private readonly Guid _generation = Guid.NewGuid();
+        private readonly Lazy<IDesktopMessageBoxes?> _unownedBoxes = new(CreateApplicationMessageBoxes);
+        private readonly Lazy<PresentationMessageBoxes> _boxes;
+        // The application's lifetime: it lasts as long as the process, so nothing disposes it.
+        private static readonly PresentationLifetime Lifetime = new(static () => false);
+
+        private DesktopApplicationPlatformServices() =>
+            _boxes = new(() => new PresentationMessageBoxes(Lifetime, backend: null, UnownedMessageBoxes));
 
         public IDesktopFileLauncher FileLauncher => _launcher.Value ?? NotConfigured.FileLauncher;
+
+        public IDesktopMessageBoxes MessageBoxes => _boxes.Value;
+
+        // The provider's boxes without a window, also for a window without a native owner; null where Runic has none.
+        internal IDesktopMessageBoxes? UnownedMessageBoxes => _unownedBoxes.Value;
 
         public CapabilitySnapshot GetSnapshot()
         {
             CapabilityStatus launch = _launcher.Value is null
                 ? new CapabilityStatus.Unavailable(PlatformUnavailableReason.ProviderNotConfigured) : new CapabilityStatus.Available();
-            return new(_generation, ImmutableDictionary<string, CapabilityStatus>.Empty
-                .Add(PlatformCapabilityIds.FilesLaunch, launch).Add(PlatformCapabilityIds.UrisLaunch, launch));
+            return new(Lifetime.Generation, ImmutableDictionary<string, CapabilityStatus>.Empty
+                .Add(PlatformCapabilityIds.FilesLaunch, launch).Add(PlatformCapabilityIds.UrisLaunch, launch)
+                .Add(PlatformCapabilityIds.MessageBoxes, _boxes.Value.Status));
         }
     }
 

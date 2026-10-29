@@ -185,6 +185,13 @@ public static class MacOSPlatformProvider
         return new MacDesktopFileLauncher(MacApplicationOwner.Shared);
     }
 
+    // Application-modal alerts without a window, on the main thread.
+    internal static IDesktopMessageBoxes CreateUnownedMessageBoxes()
+    {
+        if (!OperatingSystem.IsMacOS()) throw new PlatformNotSupportedException("AppKit requires macOS.");
+        return new MacMessageBoxes(MacApplicationOwner.Shared, unowned: true);
+    }
+
     // AppKit file panels without a window, for a presentation without a native owner: shown as panels of their own.
     internal static IPickerBackend CreateUnownedFileDialogs()
     {
