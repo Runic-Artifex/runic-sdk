@@ -255,9 +255,11 @@ export class EditorPage {
 }
 ```
 
-`[formField]` writes through `input`, so bind `(blur)` to `commit()` for
-`commit: "pause"`, and prefer `[runicField]` where IME composition matters: Signal
-Forms writes during composition.
+Signal Forms does not tell the field when the element loses focus: always bind
+`(blur)="title.commit()"` next to `[formField]`, as above. Without it a
+`commit: "pause"` field writes only after the pause, and a value typed just before
+Save may still wait. `[formField]` also writes during IME composition; prefer
+`[runicField]` where composition matters.
 
 ## Outlet
 

@@ -3,7 +3,7 @@ import { Injector, type Signal } from "@angular/core";
 import { TestBed } from "@angular/core/testing";
 import { BrowserTestingModule, platformBrowserTesting } from "@angular/platform-browser/testing";
 import { afterEach, beforeAll, describe, expect, expectTypeOf, test, vi } from "vitest";
-import { FieldError, type FieldBaseline } from "@runic-artifex/views";
+import { FieldError, type FieldBaseline, type FieldState } from "@runic-artifex/views";
 import { injectField, type FieldHandle } from "../dist/esm/index.js";
 import { checkedTitle, FakeEditor, Fields, settle, viewOf } from "./fields.js";
 
@@ -81,7 +81,7 @@ describe("injectField", () => {
     field.inputText("ab");
     expect(editor.written).toEqual([]);
     const committed = field.commit();
-    expectTypeOf(committed).toEqualTypeOf<Promise<void>>();
+    expectTypeOf(committed).toEqualTypeOf<Promise<FieldState<string>>>();
     expect(editor.written).toEqual(["ab"]);
     await committed;
     TestBed.tick();

@@ -6,6 +6,7 @@ import {
   type FieldController,
   type FieldDefinition,
   type FieldOptions,
+  type FieldState,
   type ViewClient,
 } from "@runic-artifex/views";
 
@@ -50,9 +51,9 @@ export interface FieldHandle<TValue> {
   compositionEnd(event: Event | string): void;
   /**
    * The user is done with the field (bind it to `blur`): with `commit: "pause"` the draft is written now. Resolves
-   * once the field's writes settled, so a command that depends on the field can follow it.
+   * with the field's state once its writes settled, so a command that depends on the field can follow it.
    */
-  commit(): Promise<void>;
+  commit(): Promise<FieldState<TValue>>;
   /** Writes the draft again after a failed write; after a `conflict`, over the producer's value. */
   retry(): void;
   /** Drops the draft, the error and a conflict and shows the View's value. Writes in flight still complete. */
