@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <Import Project="../../../eng/build/application.props" />
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <!-- A TUnit test application on Microsoft.Testing.Platform: run it with dotnet run or the built executable. -->
+    <OutputType>Exe</OutputType>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <IsPackable>false</IsPackable>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+    <TUnitImplicitUsings>false</TUnitImplicitUsings>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="TUnit.Core" />
+    <PackageReference Include="TUnit.Engine" />
+    <PackageReference Include="Microsoft.Testing.Extensions.TrxReport" />
+    <PackageReference Include="Microsoft.Testing.Extensions.CodeCoverage" />
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp.Workspaces" />
+    <ProjectReference Include="../../../packages/dotnet/Runic.Platform/Runic.Platform.csproj" />
+    <ProjectReference Include="../../../packages/dotnet/Runic.Platform.Analyzers/Runic.Platform.Analyzers.csproj" />
+    <ProjectReference Include="../../../packages/dotnet/Runic.Platform.Analyzers/CodeFixes/Runic.Platform.Analyzers.CodeFixes.csproj" />
+  </ItemGroup>
+  <Import Project="../../../eng/build/application.targets" />
+</Project>

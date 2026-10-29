@@ -19,6 +19,7 @@ Each entry starts with what the ID means. **Fix** says what to change.
 - [Privileged actions (`RUNICPA`)](#privileged-actions)
 - [D-Bus source generator (`RUNICDBUS`)](#d-bus-source-generator)
 - [Privileged actions on Windows (`RUNICEL`)](#privileged-actions-on-windows)
+- [Runic.Platform analyzers (`RUNICPLAT`)](#runicplatform-analyzers)
 - [Vite plugin (`RUNICP`)](#vite-plugin)
 
 ## Bridge code generator
@@ -1563,6 +1564,26 @@ or write `DOTNET_EventPipeOutputPath`, the standalone GC would load
 
 **Fix:** remove the setting; the package turns them off and invariant
 globalization on for helpers.
+
+## Runic.Platform analyzers
+
+The `Runic.Platform` package carries Roslyn analyzers for its API, with code
+fixes in the IDE (since 0.14).
+
+### RUNICPLAT001
+
+The title and command id of `new DesktopMenuItem(title, commandId)` look
+swapped: the title is shaped like a command id (lower-case segments joined by
+dots, underscores or hyphens, such as `file.new`) and the command id is not a
+valid one (1 to 64 ASCII letters, digits, dots, underscores or hyphens) or reads
+like a title (`New Window`). Both parameters are strings, so the order is not
+checked by the compiler; the 0.11 rename from `DesktopMenuCommand(id, label)`
+reversed it. An invalid command id also throws when the menu is set.
+
+**Fix:** pass the title first, and name the arguments so the order reads in the
+source: `new DesktopMenuItem(Title: "New Window", CommandId: "file.new")`. The
+code fix does both. Suppress the warning for a title that really is shaped like
+an id.
 
 ## Vite plugin
 

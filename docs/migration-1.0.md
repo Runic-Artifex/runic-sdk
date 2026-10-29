@@ -236,6 +236,11 @@ new DesktopMenuCommand("open", "Open window")
 new DesktopMenuItem(Title: "Open window", CommandId: "open")
 ```
 
+Both arguments are strings, so a call converted without swapping them compiles.
+Name them as above. Since 0.14, `RUNICPLAT001` warns about a title that looks like
+a command id (`"file.new"`) next to a command id that looks like a title or is not
+a valid one, and its code fix swaps and names the arguments.
+
 | 0.9 | 1.0 |
 | --- | --- |
 | `DesktopMenuItem` (base), `ImmutableArray<DesktopMenuItem>` in `DesktopStatusIconState.Menu` | `DesktopMenuEntry` |

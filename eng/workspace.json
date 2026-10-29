@@ -176,7 +176,9 @@
     "platform-contracts": {
       "dependsOn": [],
       "paths": [
-        "packages/dotnet/Runic.Platform"
+        "packages/dotnet/Runic.Platform",
+        "packages/dotnet/Runic.Platform.Analyzers",
+        "tests/dotnet/Runic.Platform.Analyzers.Tests"
       ]
     },
     "linux-dbus": {

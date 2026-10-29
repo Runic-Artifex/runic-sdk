@@ -19,5 +19,14 @@
          linked copy. Runic.Desktop pins Runic.Platform to its own version (eng/build/package-dependencies.targets). -->
     <InternalsVisibleTo Include="Runic.Desktop" />
   </ItemGroup>
+  <ItemGroup>
+    <!-- RUNICPLAT analyzers and their code fixes ship in this package's analyzers/ folder (docs/diagnostics.md). -->
+    <ProjectReference Include="../Runic.Platform.Analyzers/Runic.Platform.Analyzers.csproj" ReferenceOutputAssembly="false" PrivateAssets="all"
+        UndefineProperties="RuntimeIdentifier;SelfContained;PublishAot;IlcTreatWarningsAsErrors" />
+    <ProjectReference Include="../Runic.Platform.Analyzers/CodeFixes/Runic.Platform.Analyzers.CodeFixes.csproj" ReferenceOutputAssembly="false" PrivateAssets="all"
+        UndefineProperties="RuntimeIdentifier;SelfContained;PublishAot;IlcTreatWarningsAsErrors" />
+    <None Include="../Runic.Platform.Analyzers/bin/$(Configuration)/netstandard2.0/Runic.Platform.Analyzers.dll" Pack="true" PackagePath="analyzers/dotnet/cs/" Visible="false" />
+    <None Include="../Runic.Platform.Analyzers/CodeFixes/bin/$(Configuration)/netstandard2.0/Runic.Platform.Analyzers.CodeFixes.dll" Pack="true" PackagePath="analyzers/dotnet/cs/" Visible="false" />
+  </ItemGroup>
   <Import Project="../../../eng/build/application.targets" />
 </Project>

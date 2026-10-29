@@ -1,0 +1,9 @@
+<Project>
+  <!-- An analyzer runs inside the consumer's compiler and IDE, so it builds against the Roslyn of the oldest
+       supported SDK, not the newest one the repository's tests use (as Runic.Platform.Linux.DBus.Generator does). -->
+  <Import Project="../../../Directory.Packages.props" />
+  <ItemGroup>
+    <PackageVersion Update="Microsoft.CodeAnalysis.CSharp" Version="4.14.0" />
+    <PackageVersion Update="Microsoft.CodeAnalysis.CSharp.Workspaces" Version="4.14.0" />
+  </ItemGroup>
+</Project>
