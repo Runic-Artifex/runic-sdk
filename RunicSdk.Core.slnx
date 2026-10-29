@@ -32,6 +32,8 @@
     <Project Path="packages/dotnet/Runic.Platform.Linux.Gtk4/Runic.Platform.Linux.Gtk4.csproj" />
     <Project Path="packages/dotnet/Runic.Platform.Linux.DBus/Runic.Platform.Linux.DBus.csproj" />
     <Project Path="packages/dotnet/Runic.Platform.Linux.DBus.Generator/Runic.Platform.Linux.DBus.Generator.csproj" />
+    <Project Path="packages/dotnet/Runic.Platform.Analyzers/Runic.Platform.Analyzers.csproj" />
+    <Project Path="packages/dotnet/Runic.Platform.Analyzers.CodeFixes/Runic.Platform.Analyzers.CodeFixes.csproj" />
     <Project Path="packages/dotnet/Runic.Platform.Linux.Portal/Runic.Platform.Linux.Portal.csproj" />
     <Project Path="packages/dotnet/Runic.Platform.Linux.Polkit/Runic.Platform.Linux.Polkit.csproj" />
     <Project Path="packages/dotnet/Runic.Platform.Windows.Elevation/Runic.Platform.Windows.Elevation.csproj" />
@@ -60,6 +62,7 @@
     <Project Path="tests/dotnet/Runic.Platform.Runtime.Tests/Runic.Platform.Runtime.Tests.csproj" />
     <Project Path="tests/dotnet/Runic.Platform.Linux.Tests/Runic.Platform.Linux.Tests.csproj" />
     <Project Path="tests/dotnet/Runic.Platform.Linux.DBus.Generator.Tests/Runic.Platform.Linux.DBus.Generator.Tests.csproj" />
+    <Project Path="tests/dotnet/Runic.Platform.Analyzers.Tests/Runic.Platform.Analyzers.Tests.csproj" />
     <Project Path="tests/dotnet/Runic.Platform.Linux.DBus.Tests/Runic.Platform.Linux.DBus.Tests.csproj" />
     <Project Path="tests/dotnet/Runic.Platform.Linux.Portal.Tests/Runic.Platform.Linux.Portal.Tests.csproj" />
     <Project Path="tests/dotnet/Runic.Platform.Linux.Polkit.Tests/Runic.Platform.Linux.Polkit.Tests.csproj" />

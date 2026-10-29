@@ -576,7 +576,7 @@ Status icon menus (`DesktopStatusIconState.Menu`), context menus
 | Type | Is |
 | --- | --- |
 | `DesktopMenuEntry` | The base of every entry. The set is open: a minor release may add entry kinds, so give a `switch` over entries a default arm. Code that walks a menu skips entries it does not know. |
-| `DesktopMenuItem(Title, CommandId)` | An item that runs a command, with `IsEnabled`, `IsChecked` (`null` for a plain item), `Shortcut`, `CommandParameter`, `AccessKey` and `RadioGroup` |
+| `DesktopMenuItem(Title, CommandId)` | An item that runs a command, with `IsEnabled`, `IsChecked` (`null` for a plain item), `Shortcut`, `CommandParameter`, `AccessKey` and `RadioGroup`. Both are strings: name them, `new DesktopMenuItem(Title: "Open window", CommandId: "open")`; the `RUNICPLAT001` analyzer warns about likely swapped arguments |
 | `DesktopMenuSeparator` | A line between groups of entries |
 | `DesktopMenu(Title, Items)` | A submenu, or a menu of the menu bar, with `IsEnabled`, `AccessKey` and the menu bar's `Role` |
 | `DesktopContextMenuOptions` | Where a context menu opens: `X` and `Y` in CSS pixels of the page's viewport, or at the pointer |

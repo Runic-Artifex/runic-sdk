@@ -60,7 +60,12 @@ public static class DesktopEventLoop
     /// <param name="application">The application work. Its result becomes the return value.</param>
     /// <returns>The value returned by <paramref name="application"/>.</returns>
     /// <exception cref="InvalidOperationException">A Desktop event loop is already running in this process.</exception>
-    public static int Run(DesktopHostOptions options, Func<DesktopHost, Task<int>> application)
+    public static int Run(DesktopHostOptions options, Func<DesktopHost, Task<int>> application) =>
+        Run(options, application, presentsWindows: true);
+
+    // RunicDesktopHost serves its Windows without presenting them (serve-only): an event-loop factory, such as GTK 4's,
+    // neither prepares its display nor reports that it cannot, and the plain loop runs.
+    internal static int Run(DesktopHostOptions options, Func<DesktopHost, Task<int>> application, bool presentsWindows)
     {
         ArgumentNullException.ThrowIfNull(options);
         ArgumentNullException.ThrowIfNull(application);
@@ -95,7 +100,7 @@ public static class DesktopEventLoop
             // A signal only closes windows and lets the application return; the host is disposed once, below or by
             // RunHostAsync, and each loop ends on its own thread when the application completes.
             if (options.HandleShutdownSignals) signals = ShutdownSignals.Register(host);
-            if (options.WindowHostFactory is IDesktopEventLoopWindowHostFactory loop)
+            if (presentsWindows && options.WindowHostFactory is IDesktopEventLoopWindowHostFactory loop)
             {
                 var unavailable = loop.IsSupported ? loop.PrepareEventLoop() : loop.GetAvailabilityDiagnostics();
                 if (unavailable.Count == 0 && loop.IsSupported)

@@ -71,6 +71,26 @@ public sealed class DesktopEventLoopEntryPointTests
         Assert.Throws<ObjectDisposedException>(() => started!.Validate());
     }
 
+    // A1: RunicDesktopHost in serve-only mode presents no window, so the window toolkit's loop neither prepares its
+    // display nor reports that it has none.
+    [Test]
+    public void ALoopWithoutWindowsSkipsTheWindowToolkitLoop()
+    {
+        if (OperatingSystem.IsMacOS()) return;
+        var noDisplay = new DesktopDiagnostic(DesktopErrorCategory.Unavailable, "loop-display-unavailable", "no display", false);
+        var factory = new LoopFactory { IsSupported = true, Preparation = [noDisplay] };
+        List<DesktopDiagnostic> reported = [];
+
+        int result = DesktopEventLoop.Run(
+            new DesktopHostOptions { WindowHostFactory = factory, DiagnosticSink = reported.Add },
+            _ => Task.FromResult(5), presentsWindows: false);
+
+        Assert.Equal(5, result);
+        Assert.Equal(0, factory.Prepares);
+        Assert.Equal(0, factory.Runs);
+        Assert.Empty(reported);
+    }
+
     [Test]
     public void NestedRunThrowsOnEveryPlatform()
     {

@@ -650,6 +650,26 @@ is needed. It still reports configuration errors, such as `window-option-invalid
 `browser-unsupported` or `gtk4-provider-missing`, which fail every launch that
 presents a window.
 
+An application that serves its Windows on purpose, such as a `--browser`
+command, sets `RunicDesktopHostOptions.ServeOnly = true` instead (since 0.14):
+the same mode, without an environment variable that the application's child
+processes would inherit. `RunicDesktopHost.ServeOnly` tells which mode a host
+is in. With either switch, `RunicDesktopHost.Run` starts no window toolkit loop,
+so `WithGtk4()` on a machine without a display reports no
+`gtk4-display-unavailable`. Open the served page in the user's default browser
+with `DesktopPlatformServices.OpenUriAsync`, which needs no window:
+
+```csharp
+return RunicDesktopHost.Run(provider, new DesktopHostOptions().WithGtk4(),
+    new RunicDesktopHostOptions { ServeOnly = true }, async host =>
+{
+    await using var window = await host.OpenWindowAsync<MainWindow>();
+    await DesktopPlatformServices.OpenUriAsync(RunicDesktopHost.GetSurface(window)!.Url);
+    await window.WaitForCloseAsync();
+    return 0;
+});
+```
+
 A served Window can end with its last browser tab, as a `--browser` command
 that opens the URL in the default browser would. The Window's surface counts
 its connected pages in `ConnectionCount`, and a connection event's handler

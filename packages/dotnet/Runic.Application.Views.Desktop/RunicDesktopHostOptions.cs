@@ -138,4 +138,22 @@ public sealed record RunicDesktopHostOptions
     /// </code>
     /// </remarks>
     public IAssetSource? Assets { get; init; }
+
+    /// <summary>
+    /// Whether the host's Windows are served to a browser instead of shown, as with
+    /// <c>RUNIC_APPLICATION_SERVE_ONLY=1</c>, without setting an environment variable that child processes inherit.
+    /// The default, <see langword="false"/>, follows that variable.
+    /// </summary>
+    /// <remarks>
+    /// A serve-only Window creates its surface, writes <c>RUNIC_APPLICATION_URL=&lt;url&gt;</c> to standard output and
+    /// serves until a line is read from standard input, shutdown is requested or the process ends; see
+    /// <see cref="RunicDesktopHost"/>. With <see cref="RunicDesktopHost.Run(IServiceProvider, DesktopHostOptions, RunicDesktopHostOptions, Func{RunicDesktopHost, Task{int}})"/>
+    /// the window toolkit's event loop does not start either, so a headless machine reports no
+    /// <c>gtk4-display-unavailable</c>. Open a served Window in the user's browser with
+    /// <see cref="DesktopPlatformServices.OpenUriAsync"/>:
+    /// <code>
+    /// await DesktopPlatformServices.OpenUriAsync(RunicDesktopHost.GetSurface(window)!.Url);
+    /// </code>
+    /// </remarks>
+    public bool ServeOnly { get; init; }
 }

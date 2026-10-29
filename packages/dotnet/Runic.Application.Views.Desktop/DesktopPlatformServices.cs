@@ -853,6 +853,93 @@ public static partial class DesktopPlatformServices
         return new BoundWindowPlatformServices(owner, selected);
     }
 
+    /// <summary>
+    /// Opens an absolute <c>http</c>, <c>https</c>, <c>mailto</c> or <c>ms-settings</c> URI in the user's default
+    /// handler, such as the default browser, without a window: the application-scoped form of
+    /// <see cref="IDesktopFileLauncher.LaunchUriAsync"/>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// It needs no native window, so it works for an application behind a status icon and for Windows served under
+    /// <see cref="RunicDesktopHostOptions.ServeOnly"/>, where the window services report
+    /// <see cref="PlatformUnavailableReason.OwnerUnavailable"/>. Open a served Window in the user's browser:
+    /// <code>
+    /// if (RunicDesktopHost.GetSurface(window) is { } surface) await DesktopPlatformServices.OpenUriAsync(surface.Url);
+    /// </code>
+    /// </para>
+    /// <para>
+    /// The URI policy and results are those of <see cref="IDesktopFileLauncher.LaunchUriAsync"/>. Linux asks the
+    /// desktop portal (OpenURI) without a parent window; Windows hands the URI to the shell on a thread of its own;
+    /// macOS asks NSWorkspace on the main thread, which the Desktop event loop runs. Prefer a Window's
+    /// <see cref="IDesktopFileLauncher"/> while it is shown, so the desktop can place a chooser over it.
+    /// </para>
+    /// </remarks>
+    /// <param name="uri">The URI. Relative URIs, paths and every other scheme are rejected before anything native runs.</param>
+    /// <param name="cancellationToken">Cancels before the request reaches the desktop.</param>
+    /// <exception cref="ArgumentException"><paramref name="uri"/> is relative or its scheme is not allowed.</exception>
+    public static ValueTask<PlatformResult<PlatformUnit>> OpenUriAsync(Uri uri, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(uri);
+        cancellationToken.ThrowIfCancellationRequested();
+        if (OperatingSystem.IsWindowsVersionAtLeast(8)) return OpenUriWindows(uri, cancellationToken);
+#if RUNIC_PORTABLE_PLATFORMS
+        if (OperatingSystem.IsLinux()) return OpenUriLinux(uri, cancellationToken);
+        if (OperatingSystem.IsMacOS()) return OpenUriMacOS(uri, cancellationToken);
+#endif
+        return ValueTask.FromResult<PlatformResult<PlatformUnit>>(
+            new PlatformResult<PlatformUnit>.Unavailable(PlatformUnavailableReason.ProviderNotConfigured));
+    }
+
+    [SupportedOSPlatform("windows8.0")]
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static ValueTask<PlatformResult<PlatformUnit>> OpenUriWindows(Uri uri, CancellationToken cancellationToken) =>
+        new WindowsUriLauncher(ApplicationUriOwner.StaThread).LaunchAsync(uri, cancellationToken);
+
+#if RUNIC_PORTABLE_PLATFORMS
+    [SupportedOSPlatform("linux")]
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static ValueTask<PlatformResult<PlatformUnit>> OpenUriLinux(Uri uri, CancellationToken cancellationToken) =>
+        PortalApplication.Inferred.CreateUnparentedFileLauncher().LaunchUriAsync(uri, cancellationToken);
+
+    [SupportedOSPlatform("macos")]
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static ValueTask<PlatformResult<PlatformUnit>> OpenUriMacOS(Uri uri, CancellationToken cancellationToken) =>
+        new MacUriLauncher(ApplicationUriOwner.MainQueue).LaunchAsync(uri, cancellationToken);
+#endif
+
+    // The application, not a window, owns a URI handoff: Windows runs it on an STA thread of its own, macOS on the main
+    // queue, both without a window handle.
+    private sealed class ApplicationUriOwner(Func<Action<nint>, ValueTask> invoke) : INativeWindowOwner
+    {
+        [SupportedOSPlatform("windows")]
+        internal static readonly ApplicationUriOwner StaThread = new(static action =>
+        {
+            var completion = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            var thread = new Thread(() =>
+            {
+                try { action(0); completion.SetResult(); }
+                catch (Exception error) { completion.SetException(error); }
+            })
+            { IsBackground = true, Name = "Runic URI launch" };
+            thread.SetApartmentState(ApartmentState.STA);
+            thread.Start();
+            return new(completion.Task);
+        });
+
+#if RUNIC_PORTABLE_PLATFORMS
+        [SupportedOSPlatform("macos")]
+        internal static readonly ApplicationUriOwner MainQueue = new(static action => MacOsMainQueue.InvokeAsync(() => action(0)));
+#endif
+
+        public Guid Generation { get; } = Guid.NewGuid();
+        public bool IsAvailable => true;
+        public ValueTask InvokeAsync(Action<nint> action, CancellationToken cancellationToken = default)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            return invoke(action);
+        }
+    }
+
     /// <summary>Asks the desktop to bring an open Desktop window to the front, for example for a second launch.</summary>
     /// <param name="owner">The window's native owner.</param>
     /// <param name="context">The activation token or startup ID that lets the desktop grant focus, such as
