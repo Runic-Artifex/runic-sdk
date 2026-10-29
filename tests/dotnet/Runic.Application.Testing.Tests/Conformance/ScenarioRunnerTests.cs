@@ -6,7 +6,8 @@ using TUnit.Core;
 namespace Runic.Application.Testing.Tests.Conformance;
 
 // The runner's own rules (specs/application/conformance/README.md, "Comparing messages" and "Steps"), which the P3
-// scenarios do not reach yet: revisions by order, frame changes per field, ids, generators and held delivery.
+// scenarios do not reach yet: revisions by order, frame changes per field, ids, generators, held delivery and
+// unordered groups.
 public sealed class ScenarioRunnerTests
 {
     private static readonly Dictionary<string, ScenarioId> Ids = new(StringComparer.Ordinal)
@@ -95,6 +96,73 @@ public sealed class ScenarioRunnerTests
         Require(received.SequenceEqual(["push {\"n\":1}", "push {\"n\":2}"]), $"The second connection received [{string.Join(", ", received)}].");
         transport.Disconnect(second);
         Require(!await transport.SendAsync(second.Key, "{}"u8.ToArray()), "A closed connection took a push.");
+    }
+
+    // The reply to r1 and the push of r2 form an unordered group: either order passes, a push the group does not
+    // expect fails, and a client expectation inside the group does not end it.
+    [Test]
+    [Arguments(true, false)]
+    [Arguments(false, false)]
+    [Arguments(true, true)]
+    [DisplayName("UnorderedReceivesMatchInAnyOrderAsync(replyFirst: $replyFirst, wrongPush: $wrongPush)")]
+    public async Task UnorderedReceivesMatchInAnyOrderAsync(bool replyFirst, bool wrongPush)
+    {
+        var scenario = new ConformanceScenario("runner.unordered.v1", "runner", "scripted",
+            new Dictionary<string, ScenarioId>(StringComparer.Ordinal)
+            {
+                ["c1"] = new("c1", "connection", null),
+                ["r1"] = new("r1", "request", null),
+                ["r2"] = new("r2", "request", null),
+            },
+            [], null,
+            [
+                Step("""{"connect":"c1"}"""),
+                Step("""{"send":{"n":1},"id":"r1"}"""),
+                Step("""{"send":{"n":2},"id":"r2"}"""),
+                Step("""{"receive":{"ok":true,"revision":1},"replyTo":"r1","unordered":true}"""),
+                Step("""{"expect":{"call":{"id":"x","pending":true}}}"""),
+                Step("""{"receive":{"kind":"frame","revision":2},"unordered":true}"""),
+                Step("""{"receive":{"ok":true,"revision":2},"replyTo":"r2"}"""),
+            ]);
+        var views = new ScriptedViews(replyFirst, wrongPush);
+        var failed = false;
+        try { await ProducerScenarioRunner.RunAsync(scenario, views); }
+        catch (ScenarioFailure) { failed = true; }
+        Require(failed == wrongPush, wrongPush ? "A push the group does not expect matched." : "The group did not match.");
+    }
+
+    private static JsonObject Step(string json) => JsonNode.Parse(json)!.AsObject();
+
+    // A window whose producer answers r1 and r2: the frame of r2 is broadcast before or after the reply to r1.
+    private sealed class ScriptedViews(bool replyFirst, bool wrongPush) : IConformanceViews
+    {
+        public IConformanceWindow CreateWindow(string view, JsonObject model, ConformanceWindowSettings settings) =>
+            new Window(settings.Transport.Serve(new Handler(settings.Transport, replyFirst, wrongPush)));
+
+        private sealed class Window(IDisposable serving) : IConformanceWindow
+        {
+            public Task MutateAsync(JsonArray mutations, bool eachUnit) => Task.CompletedTask;
+            public JsonNode? ReadMember(string member) => null;
+            public JsonNode? Provide(string id) => null;
+            public void Dispose() => serving.Dispose();
+        }
+
+        private sealed class Handler(IBridgeTransport transport, bool replyFirst, bool wrongPush) : IBridgeRequestHandler
+        {
+            private readonly TaskCompletionSource<ReadOnlyMemory<byte>> _first = new();
+
+            public async ValueTask<ReadOnlyMemory<byte>> HandleAsync(BridgeRequest request, CancellationToken cancellationToken)
+            {
+                if (Encoding.UTF8.GetString(request.Message.Span) == """{"n":1}""") return await _first.Task;
+                if (replyFirst) _first.SetResult("""{"ok":true,"revision":1}"""u8.ToArray());
+                await transport.BroadcastAsync(wrongPush ? """{"kind":"state","revision":2}"""u8.ToArray()
+                    : """{"kind":"frame","revision":2}"""u8.ToArray(), cancellationToken);
+                if (!replyFirst) _first.SetResult("""{"ok":true,"revision":1}"""u8.ToArray());
+                return """{"ok":true,"revision":2}"""u8.ToArray();
+            }
+
+            public void ConnectionClosed(string connectionKey) { }
+        }
     }
 
     private static List<string> Drain(ScenarioConnection connection)

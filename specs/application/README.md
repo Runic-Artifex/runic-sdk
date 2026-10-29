@@ -293,6 +293,13 @@ cannot know which routes to wait for. The wait is bounded to 5 seconds; after th
 pushes follow. Replies to `open`, `snapshot`, `close`, `can`, `status`, `watch`, `unwatch`, `cancel`, `stream`,
 `interactions` and `interaction-reply` do not wait.
 
+A reply is not ordered with the pushes of requests that the producer admitted after it, nor with their replies. When a
+client sends a request before the reply to its previous one arrived, as two keystrokes in a row do, the frame of the
+second request, and even its reply, can arrive before the reply to the first. This holds on a transport that keeps the
+order of what the producer sent too: the producer hands a reply to the transport when the reply is ready, not at a
+fixed place among the connection's pushes. A client relies on revisions only, so it handles every such order
+([client resolution](#client-resolution), [client overlay](#client-overlay)).
+
 ### Client resolution
 
 A client resolves a call whose reply carries `revision` R once the call's route has accepted a revision of R or more.
@@ -306,7 +313,8 @@ Normally that has already happened when the reply arrives.
 ## Publication
 
 The producer pushes the state of its routes to every connection that completed `hello`. A client ignores pushes for
-routes it has not opened, and pushes of a kind it does not know.
+routes it has not opened, and pushes of a kind it does not know. A route's changes are published from its first state
+on, which the producer takes when it starts serving the route, whether or not a client has read it.
 
 | Push | Members | Meaning |
 | --- | --- | --- |
@@ -351,6 +359,8 @@ A client that exposes state to a user interface MUST apply this rule; a client w
 - It exposes the state's value again once the route has reached the reply revision of the member's latest edit, or
   when the latest edit failed. A failed edit also rejects the setter's call.
 - A reply marked `superseded` does not end the overlay: the latest edit is still on its way.
+- Only the latest edit's reply ends it. The reply to an earlier edit resolves that edit's call and leaves the overlay in
+  place, whether it arrives before or after the frame of a later edit ([reply order](#reply-order)).
 - Subscribers are notified whenever the exposed value changes, including when the overlay starts or ends.
 - The overlay applies to setters only. Checked writes keep their baseline semantics, and commands are not tied to a
   member.
@@ -412,10 +422,12 @@ A View can present other Views in content slots. Each presented object and kind 
 `{kind, id}` with an `id` of 32 lowercase hexadecimal digits that stays the same for the window, including while the
 object is suspended. Its route is `content{id}`.
 
-Content is attached while it is presented. Replacing, clearing or pruning it, or its parent's release, suspends it
-when no other slot presents it. A suspended object releases its route, its Views and its checked fields, so its
-requests answer `released`; only its identity remains. The producer MAY forget the identity later, and a forgotten
-object gets a new id when it is presented again.
+Content is attached while it is presented, that is while a slot of its parent's state refers to it. That follows the
+parent's state, not a page: the content of a route's first state is attached before any client opens the route, and a
+change of a slot attaches its new content without waiting for a client. Replacing, clearing or pruning it, or its
+parent's release, suspends it when no other slot presents it. A suspended object releases its route, its Views and its
+checked fields, so its requests answer `released`; only its identity remains. The producer MAY forget the identity
+later, and a forgotten object gets a new id when it is presented again.
 
 ## Presentations
 
@@ -488,7 +500,11 @@ find again, for example after a reload.
   reply carries `revision` like any request that changes state, so the next request of any connection observes the
   first operation's effects: a second `start` of a command that is not available while the first runs is rejected
   with `unavailable`.
-- A start reply always carries `revision`, the route's last published revision when nothing changed.
+- A start reply with an `admission` always carries `revision`, the route's last published revision when nothing
+  changed.
+- A `start` whose `contract` is not the contract of the route's View comes from a generated client of another build. It
+  is answered `{"ok":false,"error":{"kind":"rejected","reason":"invalid-request",…}}`, without `admission` or
+  `revision`, and starts nothing; the other requests find no operation under that contract (`unknown`).
 
 ### Status
 

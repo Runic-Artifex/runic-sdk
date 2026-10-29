@@ -1,5 +1,5 @@
 // Focused local checks. GitHub CI owns the complete cross-platform workflow.
-import { existsSync, readFileSync, readdirSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { root, run, configuration, workspace, viewsRuntime, engineeringTestDirectories } from './run.mjs';
@@ -27,6 +27,13 @@ export function selection(scope) {
   }
   throw new Error(`Unknown test scope: ${scope}. Use --list.`);
 }
+function viewsRuntimeStale() {
+  const built = resolve(root, 'packages/web/views/dist/index.js');
+  if (!existsSync(built)) return true;
+  const sources = resolve(root, 'packages/web/views/src');
+  const builtAt = statSync(built).mtimeMs;
+  return readdirSync(sources).some(name => statSync(resolve(sources, name)).mtimeMs > builtAt);
+}
 function main() {
   const [scope, ...extra] = process.argv.slice(2);
   if (!scope || scope === '--list' || scope === '--help') {
@@ -40,8 +47,9 @@ function main() {
     run('bun', ['eng/run.mjs', 'build-web']);
     run('bun', ['run', 'test', ...extra], resolve(root, selected.paths[0]));
   } else {
-    // Generated-client checks import the built Views runtime package.
-    if (!existsSync(resolve(root, 'packages/web/views/dist/index.js'))) viewsRuntime();
+    // Generated-client checks import the built Views runtime package. A build older than its sources would run them
+    // against another runtime than the checkout's, so it is rebuilt.
+    if (viewsRuntimeStale()) viewsRuntime();
     for (const path of selected.paths) {
       const args = [...testReportArguments(path, extra), ...extra];
       run('dotnet', ['run', '--project', path, '-c', configuration, ...(args.length ? ['--', ...args] : [])]);

@@ -47,6 +47,27 @@ internal sealed class ScenarioMessages(IReadOnlyDictionary<string, ScenarioId> i
         Match(expected, actual, "$", member: null);
     }
 
+    // Match for one candidate of an unordered group: null when the messages are equal, otherwise the failure, with the
+    // bindings of provided ids and revisions as they were before.
+    internal string? TryMatch(JsonNode expected, JsonNode? actual)
+    {
+        var provided = new Dictionary<string, JsonNode?>(_provided, StringComparer.Ordinal);
+        var revisions = new SortedDictionary<double, double>(_revisions);
+        try
+        {
+            Match(expected, actual);
+            return null;
+        }
+        catch (ScenarioFailure failure)
+        {
+            _provided.Clear();
+            foreach (var (name, value) in provided) _provided.Add(name, value);
+            _revisions.Clear();
+            foreach (var (expectedRevision, actualRevision) in revisions) _revisions.Add(expectedRevision, actualRevision);
+            return failure.Message;
+        }
+    }
+
     // Requires that an actual value equals an expected one, as in a message (expect.model).
     internal void MatchValue(JsonNode? expected, JsonNode? actual, string path) => Match(expected, actual, path, member: null);
 

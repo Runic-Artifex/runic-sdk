@@ -78,7 +78,8 @@ public partial class ViewModelBridge<T>
                 lock (_modelGate)
                 {
                     if (IsInactive) return BridgeMessages.Released;
-                    PublishUnitCore();
+                    // Before the route's first state, the state this read writes is that state.
+                    if (_baselines is not null) PublishUnitCore();
                     try
                     {
                         var reply = WriteMessage(writer =>

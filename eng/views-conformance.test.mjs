@@ -552,6 +552,21 @@ function visit(value, callback) {
   else if (isObject(value)) Object.values(value).forEach(item => visit(item, callback));
 }
 
+// The groups of receive steps with unordered (README "Steps"), as step indexes: a run of such steps, separated only by
+// steps a producer runner skips (calls, client steps and client expectations).
+function unorderedGroups(steps) {
+  const groups = [];
+  let group;
+  steps.forEach((step, index) => {
+    if (step.role === "client") return;
+    if ("receive" in step && step.unordered) {
+      if (!group) groups.push(group = []);
+      group.push(index);
+    } else if (!(step.call || (step.expect && !("model" in step.expect)))) group = undefined;
+  });
+  return groups;
+}
+
 export function scenarioProblems(scenario) {
   const problems = [];
   const problem = message => problems.push(message);
@@ -638,6 +653,12 @@ export function scenarioProblems(scenario) {
     if (producerSees && !replied.has(id)) problem(`request ${id} has no reply for the producer`);
   }
   for (const id of Object.keys(declared)) if (!used.has(id)) problem(`ids lists ${id}, which no step uses`);
+  for (const group of unorderedGroups(steps)) {
+    const where = `the unordered steps ${group.map(index => index + 1).join(", ")}`;
+    if (group.length < 2) problem(`${where}: a group needs two receive steps`);
+    if (new Set(group.map(index => steps[index].connection ?? first)).size > 1) problem(`${where}: the group spans connections`);
+    if (group.some(index => steps[index].drop)) problem(`${where}: a dropped message in a group`);
+  }
   if ((scenario.requires ?? []).includes("held-delivery") && !steps.some(step => step.delivery)) problem("requires held-delivery without a delivery step");
   if ((scenario.requires ?? []).includes("virtual-clock") && !steps.some(step => step.advance)) problem("requires virtual-clock without an advance step");
   return problems;
@@ -668,4 +689,13 @@ test("the scenario check rejects references to resources that were not created",
   assert.ok(scenarioProblems({ ...base, steps: [{ connect: "c1" }, { send: { kind: "open", presentation: { $id: "p" } }, id: "r" }, { receive: { ok: true }, replyTo: "r" }] }).some(p => p.includes("p is not in ids")));
   assert.ok(scenarioProblems({ ...base, ids: { ...base.ids, unused: { kind: "call" } }, steps: [{ connect: "c1" }, { send: {}, id: "r" }, { receive: {}, replyTo: "r" }] }).some(p => p.includes("unused")));
   assert.ok(scenarioProblems({ ...base, steps: [{ connect: "c1" }, { expect: { call: { id: "nope", pending: true } } }, { send: {}, id: "r" }, { receive: {}, replyTo: "r" }] }).some(p => p.includes("was not made")));
+});
+
+test("the scenario check accepts unordered groups of two receives and rejects lone ones", () => {
+  const base = { roles: ["producer", "client"], ids: { c1: { kind: "connection" }, r: { kind: "request" } } };
+  const steps = [{ connect: "c1" }, { send: {}, id: "r" }];
+  assert.deepEqual(scenarioProblems({ ...base, steps: [...steps, { receive: {}, replyTo: "r", unordered: true }, { expect: { state: {} } }, { receive: {}, unordered: true }] }), []);
+  assert.ok(scenarioProblems({ ...base, steps: [...steps, { receive: {}, replyTo: "r", unordered: true }, { receive: {} }] }).some(p => p.includes("needs two")));
+  assert.ok(scenarioProblems({ ...base, steps: [...steps, { receive: {}, replyTo: "r", unordered: true }, { mutate: [] }, { receive: {}, unordered: true }] }).some(p => p.includes("needs two")));
+  assert.ok(scenarioProblems({ ...base, steps: [...steps, { receive: {}, replyTo: "r", unordered: true }, { receive: {}, unordered: true, drop: true }] }).some(p => p.includes("dropped")));
 });

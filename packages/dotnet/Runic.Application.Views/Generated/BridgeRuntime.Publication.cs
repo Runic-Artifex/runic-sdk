@@ -17,7 +17,8 @@ namespace Runic.Application.Views.Generated;
 // reply. A full state is published only after the delivery queue overflowed; open and snapshot replies carry one.
 public partial class ViewModelBridge<T>
 {
-    // The encoding of each compared member as last published, or null before the route's first state.
+    // The encoding of each compared member as last published, or null before the route's first state
+    // (CaptureFirstState).
     private Dictionary<string, byte[]>? _baselines;
     // The version of each checked field as last published.
     private readonly Dictionary<string, long> _publishedVersions = new(StringComparer.Ordinal);
@@ -83,12 +84,13 @@ public partial class ViewModelBridge<T>
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { }
     }
 
-    // A change: requests a publication unit, which a batch defers to its end.
+    // A change: requests a publication unit, which a batch defers to its end. Before the route's first state, the unit
+    // captures that state.
     private void ScheduleUnit() => _modelTurn.Run(() =>
     {
         lock (_modelGate)
         {
-            if (IsInactive || _baselines is null) return;
+            if (IsInactive) return;
             if (BridgeSnapshotBatch.TryDefer(_vm, this)) return;
             _delivery.RequestUnit();
         }
@@ -115,7 +117,12 @@ public partial class ViewModelBridge<T>
     // Publishes one unit; the model gate is held, in a model turn.
     private void PublishUnitCore()
     {
-        if (IsInactive || _baselines is null) return;
+        if (IsInactive) return;
+        if (_baselines is null)
+        {
+            CaptureFirstState();
+            return;
+        }
         if (_stateDeferred)
         {
             _stateDeferred = false;
@@ -276,6 +283,26 @@ public partial class ViewModelBridge<T>
             return;
         }
         if (state is not null && !IsInactive) _delivery.EnqueueState(state);
+    }
+
+    // The route's first state, captured in the first unit after the Bridge attached, whether or not a page is
+    // connected. Writing it presents the content of the View's content slots, which binds that content to the window's
+    // model context, so what the window presents follows the model rather than when a page first reads it. Nothing is
+    // pushed: it is the baseline of the route's frames, and an open or snapshot reads the state at its revision. While a
+    // keyed collection has invalid keys there is no first state; the next unit tries again, and a read reports them.
+    private void CaptureFirstState()
+    {
+        try
+        {
+            WriteMessage(writer =>
+            {
+                writer.WriteStartObject();
+                WriteState(writer, updateBaselines: true);
+                writer.WriteEndObject();
+            });
+        }
+        catch (BridgeSnapshotDetachedException) { }
+        catch (BridgeCollectionKeyException) { }
     }
 
     // Called by the delivery in a model turn after it took the request.

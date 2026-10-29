@@ -90,7 +90,14 @@ Each step has one action. `role` limits a step to one runner; `connection` names
 | `expect` | checks `model` | checks `state`, `call`, `operation`, `diagnostics` or `notifications` |
 
 A `receive` step waits until the expected message is available, up to the runner's own timeout; time in the scenario
-passes only through `advance`. When the scenario ends, each connection must have no unmatched messages left: no
+passes only through `advance`.
+
+Where the protocol leaves the order of messages open, such as a reply and the frame or reply of a request admitted
+after it ([reply order](../README.md#reply-order)), the steps mark them with `unordered: true`. The `receive` steps with
+`unordered` of one run of steps form a group; only steps that the producer runner skips (calls and client
+expectations) may separate them, and they are on one connection. A producer runner requires that its next messages
+are the group's messages in any order. A client runner delivers them in the order the steps list them, so a pair of
+scenarios covers both orders for the client. When the scenario ends, each connection must have no unmatched messages left: no
 request the client sent that no `send` step matched, and no message the producer sent that no `receive` step matched.
 
 ### Comparing messages
@@ -158,8 +165,8 @@ connection before connecting it, answers a request it did not send, expects a ca
 | [`handshake`](scenarios/handshake) | `hello`; protocol mismatch in either direction; the version diagnostic only for `Runic.Application.Views`; a request before `hello`; unknown kinds |
 | [`state-changes`](scenarios/state-changes) | The protocol-3 collection and text fixtures, converted (`source` names the case); member `set` changes together with collection changes; members that never announce a change; a `set` that resets a collection; overflow; recovery while frames arrive; invalid frames |
 | [`replies`](scenarios/replies) | Revision inclusion; a change without a notification; a call that changes nothing; a call that changes another route; a call that releases its route; a reply before its frame; the revision timeout |
-| [`edits`](scenarios/edits) | `superseded`; edit numbers per member; the client overlay and its end; a failed edit; checked writes |
-| [`operations`](scenarios/operations) | `watch` with throttled `progress` and the terminal `revision`; `start` ordering; duplicate versus `identity-conflict` by canonical equality; cancel; a declared failure; an unknown operation |
+| [`edits`](scenarios/edits) | `superseded`; edit numbers per member; the client overlay and its end, with the reply to an earlier edit before and after the frame of a later one; a failed edit; checked writes |
+| [`operations`](scenarios/operations) | `watch` with throttled `progress` and the terminal `revision`; `start` ordering; duplicate versus `identity-conflict` by canonical equality; cancel; a declared failure; an unknown operation; a `start` with another build's contract |
 | [`presentations`](scenarios/presentations) | `open` and `close`; a presentation owned by another connection; a reconnect with a new session; an unknown route |
 | [`interactions`](scenarios/interactions) | A confirmation answered, and its repeat; registration outcomes |
 | [`errors`](scenarios/errors) | The protocol-3 `error-reasons`, `domain-failures` and `released` fixtures, converted; capacity |
