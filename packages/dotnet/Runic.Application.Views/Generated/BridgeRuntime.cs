@@ -411,6 +411,7 @@ public partial class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBr
     private readonly string? _contractFingerprint;
     private readonly IDisposable[] _bindings;
     private readonly INotifyDataErrorInfo? _errors;
+    private readonly BridgeValidationReader? _validationReader;
     private readonly Dictionary<string, INotifyCollectionChanged> _collections = new();
     // Sub-objects observed through PropertyDescriptor.Observe, by property name.
     private readonly Dictionary<string, (object Source, IDisposable Subscription)> _observed = new(StringComparer.Ordinal);
@@ -440,6 +441,12 @@ public partial class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBr
     /// <param name="interactions">The View's interactions.</param>
     /// <param name="dataSubscriptions">The data graph the Bridge observes.</param>
     /// <param name="collections">The keyed collections.</param>
+    /// <param name="validationReader">
+    /// Reads and observes the validation the ViewModel and its data graph keep outside
+    /// <see cref="INotifyDataErrorInfo"/>, such as a ReactiveUI.Validation <c>ValidationContext</c>, or
+    /// <see langword="null"/>. A change it observes publishes the state; checked writes report the messages it reads for
+    /// their member in <c>applied.validation</c>.
+    /// </param>
     protected ViewModelBridge(
         IBridgeTransport transport,
         T vm,
@@ -452,7 +459,8 @@ public partial class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBr
         WindowContentSession? content = null,
         BridgeInteractionDescriptor<T>[]? interactions = null,
         BridgeDataSubscriptionMember[]? dataSubscriptions = null,
-        BridgeCollectionDescriptor<T>[]? collections = null)
+        BridgeCollectionDescriptor<T>[]? collections = null,
+        BridgeValidationReader? validationReader = null)
     {
         ArgumentNullException.ThrowIfNull(transport);
         ArgumentNullException.ThrowIfNull(state);
@@ -487,6 +495,7 @@ public partial class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBr
         _commands = commands;
         _contractFingerprint = contractFingerprint;
         _errors = vm as INotifyDataErrorInfo;
+        _validationReader = validationReader;
         foreach (var descriptor in _incrementalCollections) _incrementalMembers.Add(descriptor.Name);
         foreach (var field in _textFields) _incrementalMembers.Add(field.AppendOnlyTextField!);
 
@@ -502,7 +511,8 @@ public partial class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBr
                 foreach (var interaction in interactions) bindings.Add(interaction.Attach(content, vm, name));
             if (dataSubscriptions is { Length: > 0 })
                 bindings.Add(new BridgeDataSubscriptions(vm, dataSubscriptions, OnNestedChanged, TryPublishCollection, TryPublishItem,
-                    rootObservedExternally: true, incrementalCollectionNames: _incrementalCollections.Select(descriptor => descriptor.Name).ToHashSet(StringComparer.Ordinal)));
+                    rootObservedExternally: true, incrementalCollectionNames: _incrementalCollections.Select(descriptor => descriptor.Name).ToHashSet(StringComparer.Ordinal),
+                    observeValidation: validationReader?.Observe));
             // Register the per-window observer before this Bridge subscribes
             // its publisher. A synchronous setter then advances the
             // field version before any published state can describe the value.
@@ -526,6 +536,7 @@ public partial class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBr
                         var field = content.FieldWrites.Acquire(
                             _vm, contract, descriptor.Name,
                             () => descriptor.Get(_vm), value => descriptor.Set(_vm, value),
+                            validate: _ => CheckedFieldValidation(descriptor.Name),
                             snapshot: descriptor.Snapshot, equalityComparer: descriptor.Comparer,
                             canonicalize: value => EncodeCheckedValue(value, descriptor),
                             retainedValueByteCount: value => BridgeCanonicalJson.Length(WriteCheckedValue, (value, descriptor)));
@@ -542,6 +553,9 @@ public partial class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBr
             RefreshCollectionSubscriptions();
             RefreshObservedSubObjects();
             if (_errors is not null) _errors.ErrorsChanged += OnErrorsChanged;
+            // A rule that names no member changes neither ErrorsChanged nor a property (ReactiveValidationObject
+            // raises ErrorsChanged only for the members its rules named before), so its changes are observed here.
+            if (validationReader?.Observe(_vm, ScheduleUnit) is { } validation) bindings.Add(validation);
             foreach (var command in _commands)
             {
                 var value = command.Get(_vm);
@@ -610,6 +624,22 @@ public partial class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBr
     }
 
     private void OnErrorsChanged(object? sender, DataErrorsChangedEventArgs e) => ScheduleUnit();
+
+    // The applied receipt's validation (specs/application/README.md, "Checked writes"): the member's messages after
+    // the write, one per line, or null when it has none. It runs in the write's model turn.
+    private string? CheckedFieldValidation(string property)
+    {
+        IEnumerable<string> messages;
+        if (_errors is not null)
+            messages = (_errors.GetErrors(property) ?? Array.Empty<object>()).Cast<object?>().Select(BridgeValidation.MessageText);
+        else if (_validationReader?.ReadErrors(_vm) is { } errors)
+            messages = errors.OfType<ValidationResult>()
+                .Where(result => result.MemberNames.Contains(property, StringComparer.Ordinal))
+                .Select(result => BridgeValidation.MessageText(result.ErrorMessage));
+        else return null;
+        var text = string.Join("\n", messages.Distinct(StringComparer.Ordinal));
+        return text.Length == 0 ? null : text;
+    }
     private void OnCanExecuteChanged(object? sender, EventArgs e) => ScheduleUnit();
 
     // An object nested in the data graph changed. A nested change inside a row cannot be located, so each keyed
@@ -784,10 +814,7 @@ public static class BridgeJson
         writer.WriteStartArray();
         if (viewModel.GetErrors(propertyName) is { } errors)
         {
-            foreach (var error in errors)
-                writer.WriteStringValue(error is ValidationResult result
-                    ? result.ErrorMessage ?? "Invalid value."
-                    : error?.ToString() ?? "Invalid value.");
+            foreach (var error in errors) writer.WriteStringValue(BridgeValidation.MessageText(error));
         }
         writer.WriteEndArray();
     }

@@ -1,0 +1,292 @@
+{
+  "format": "runic.views.scenario/1",
+  "id": "state-changes.validation-of-a-rule-that-names-no-member.v1",
+  "contract": {
+    "id": "runic.views",
+    "version": 4
+  },
+  "set": "state-changes",
+  "roles": [
+    "producer",
+    "client"
+  ],
+  "description": "A validation rule that names no member fails and holds again while another rule already fails. No other member changes and the View stays invalid throughout, yet each change is a frame that sets validation, reporting the rule at the object's path.",
+  "view": "form",
+  "ids": {
+    "c1": {
+      "kind": "connection"
+    },
+    "hello-c1": {
+      "kind": "request"
+    },
+    "session": {
+      "kind": "wire",
+      "value": "s-1"
+    },
+    "open-form": {
+      "kind": "call"
+    },
+    "open-form-request": {
+      "kind": "request"
+    },
+    "presentation": {
+      "kind": "wire",
+      "value": "p-1"
+    },
+    "final-read": {
+      "kind": "request"
+    }
+  },
+  "arrange": {
+    "model": {
+      "name": "far too long"
+    }
+  },
+  "steps": [
+    {
+      "connect": "c1"
+    },
+    {
+      "send": {
+        "kind": "hello",
+        "protocol": 4,
+        "session": {
+          "$id": "session"
+        },
+        "client": {
+          "name": {
+            "$any": "string",
+            "default": "conformance-client"
+          },
+          "version": {
+            "$any": "string",
+            "default": "1.0.0"
+          }
+        }
+      },
+      "id": "hello-c1"
+    },
+    {
+      "receive": {
+        "ok": true,
+        "protocol": 4,
+        "implementation": {
+          "name": {
+            "$any": "string",
+            "default": "conformance-producer"
+          },
+          "version": {
+            "$any": "string",
+            "default": "1.0.0"
+          }
+        }
+      },
+      "replyTo": "hello-c1"
+    },
+    {
+      "call": {
+        "id": "open-form",
+        "op": "open",
+        "route": "form"
+      }
+    },
+    {
+      "send": {
+        "kind": "open",
+        "route": "form",
+        "presentation": {
+          "$id": "presentation"
+        }
+      },
+      "id": "open-form-request"
+    },
+    {
+      "receive": {
+        "ok": true,
+        "revision": 0,
+        "state": {
+          "name": "far too long",
+          "nameErrors": [
+            "Name must be at most 8 characters."
+          ],
+          "validation": {
+            "hasErrors": true,
+            "truncated": false,
+            "errors": [
+              {
+                "path": [
+                  "name"
+                ],
+                "message": "Name must be at most 8 characters."
+              }
+            ]
+          }
+        },
+        "presentation": "ok"
+      },
+      "replyTo": "open-form-request"
+    },
+    {
+      "mutate": [
+        {
+          "op": "rule",
+          "rule": "approval",
+          "holds": false
+        }
+      ]
+    },
+    {
+      "receive": {
+        "kind": "frame",
+        "route": "form",
+        "baseRevision": 0,
+        "revision": 1,
+        "changes": [
+          {
+            "field": "validation",
+            "kind": "set",
+            "value": {
+              "hasErrors": true,
+              "truncated": false,
+              "errors": [
+                {
+                  "path": [],
+                  "message": "Approval is required."
+                },
+                {
+                  "path": [
+                    "name"
+                  ],
+                  "message": "Name must be at most 8 characters."
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "expect": {
+        "state": {
+          "route": "form",
+          "value": {
+            "name": "far too long",
+            "nameErrors": [
+              "Name must be at most 8 characters."
+            ],
+            "validation": {
+              "hasErrors": true,
+              "truncated": false,
+              "errors": [
+                {
+                  "path": [],
+                  "message": "Approval is required."
+                },
+                {
+                  "path": [
+                    "name"
+                  ],
+                  "message": "Name must be at most 8 characters."
+                }
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "mutate": [
+        {
+          "op": "rule",
+          "rule": "approval",
+          "holds": true
+        }
+      ]
+    },
+    {
+      "receive": {
+        "kind": "frame",
+        "route": "form",
+        "baseRevision": 1,
+        "revision": 2,
+        "changes": [
+          {
+            "field": "validation",
+            "kind": "set",
+            "value": {
+              "hasErrors": true,
+              "truncated": false,
+              "errors": [
+                {
+                  "path": [
+                    "name"
+                  ],
+                  "message": "Name must be at most 8 characters."
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "expect": {
+        "state": {
+          "route": "form",
+          "value": {
+            "name": "far too long",
+            "nameErrors": [
+              "Name must be at most 8 characters."
+            ],
+            "validation": {
+              "hasErrors": true,
+              "truncated": false,
+              "errors": [
+                {
+                  "path": [
+                    "name"
+                  ],
+                  "message": "Name must be at most 8 characters."
+                }
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "send": {
+        "kind": "snapshot",
+        "route": "form"
+      },
+      "id": "final-read",
+      "role": "producer"
+    },
+    {
+      "receive": {
+        "ok": true,
+        "revision": 2,
+        "state": {
+          "name": "far too long",
+          "nameErrors": [
+            "Name must be at most 8 characters."
+          ],
+          "validation": {
+            "hasErrors": true,
+            "truncated": false,
+            "errors": [
+              {
+                "path": [
+                  "name"
+                ],
+                "message": "Name must be at most 8 characters."
+              }
+            ]
+          }
+        }
+      },
+      "replyTo": "final-read",
+      "role": "producer"
+    }
+  ]
+}

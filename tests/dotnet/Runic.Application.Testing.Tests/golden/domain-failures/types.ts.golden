@@ -218,6 +218,14 @@ export interface OptionalVersion {
   readonly previous?: unknown;
 }
 
+export interface ReactiveRulesAddress {
+  readonly city: string;
+}
+
+export interface ReactiveRulesLine {
+  readonly amount: number;
+}
+
 export interface ReservedNamesbridgeWire {
   readonly insulation: string;
 }

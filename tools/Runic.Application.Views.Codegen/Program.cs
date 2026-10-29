@@ -920,7 +920,7 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
             : keyAccess + ".ToString(global::System.Globalization.CultureInfo.InvariantCulture)";
         cs.AppendLine($"            new global::Runic.Application.Views.Generated.BridgeCollectionDescriptor<{fullType}>(\"{WireName(property)}\", static vm => vm.{property.Name}, {property.Name}ValueCodec.WriteItem, static item => {keyExpression}{(hasValidation ? ", PublishesChanges: false" : "")}),");
     }
-    cs.AppendLine("        ]");
+    cs.AppendLine(validationContextFlavors.Length > 0 ? "        ], validationReader: ValidationReader" : "        ]");
     cs.AppendLine("        )");
     cs.AppendLine("    {");
     if (hasContent) cs.AppendLine("        _content = content!; _owner = vm;");
@@ -1094,16 +1094,8 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
     if (hasErrors)
     {
         cs.AppendLine();
-        cs.AppendLine("    private static void WriteStateErrors(global::System.Text.Json.Utf8JsonWriter writer, global::System.ComponentModel.INotifyDataErrorInfo vm, string property)");
-        cs.AppendLine("    {");
-        cs.AppendLine("        writer.WriteStartArray();");
-        cs.AppendLine("        if (vm.GetErrors(property) is { } errors)");
-        cs.AppendLine("            foreach (var error in errors)");
-        cs.AppendLine("                writer.WriteStringValue(error is global::System.ComponentModel.DataAnnotations.ValidationResult result");
-        cs.AppendLine("                    ? result.ErrorMessage ?? \"Invalid value.\"");
-        cs.AppendLine("                    : error?.ToString() ?? \"Invalid value.\");");
-        cs.AppendLine("        writer.WriteEndArray();");
-        cs.AppendLine("    }");
+        cs.AppendLine("    private static void WriteStateErrors(global::System.Text.Json.Utf8JsonWriter writer, global::System.ComponentModel.INotifyDataErrorInfo vm, string property) =>");
+        cs.AppendLine("        global::Runic.Application.Views.Generated.BridgeValidation.WriteMessages(writer, vm.GetErrors(property));");
     }
 
     // One member per line; a member whose writer has several statements gets a block body.
@@ -1560,6 +1552,24 @@ static void AppendValidationContextReader(StringBuilder cs, IReadOnlyList<string
     }
     cs.AppendLine("        return null;");
     cs.AppendLine("    }");
+    cs.AppendLine();
+    // A rule that names no member raises neither ErrorsChanged nor PropertyChanged; the Bridge observes the context.
+    cs.AppendLine("    private static global::System.IDisposable? ObserveValidationContext(object owner, global::System.Action changed)");
+    cs.AppendLine("    {");
+    foreach (var flavor in flavors)
+    {
+        // ValidationStatusChange activates the context, which a disposed one may refuse: then there is nothing to observe.
+        cs.AppendLine($"        if (owner is global::{flavor}.Abstractions.IValidatableViewModel {{ ValidationContext: {{ }} context }})");
+        cs.AppendLine("        {");
+        cs.AppendLine("            try { return global::Runic.Application.Views.Generated.BridgeValidation.Observe(context.ValidationStatusChange, changed); }");
+        cs.AppendLine("            catch (global::System.ObjectDisposedException) { return null; }");
+        cs.AppendLine("        }");
+    }
+    cs.AppendLine("        return null;");
+    cs.AppendLine("    }");
+    cs.AppendLine();
+    cs.AppendLine("    private static readonly global::Runic.Application.Views.Generated.BridgeValidationReader ValidationReader =");
+    cs.AppendLine("        new(ReadValidationContextErrors, ObserveValidationContext);");
     cs.AppendLine();
 }
 

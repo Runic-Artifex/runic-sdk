@@ -196,6 +196,204 @@ internal sealed class ValidationTests
             $"Valid rules still reported errors: {cleared}");
     }
 
+    // A rule that names no member changes neither ErrorsChanged nor HasErrors while another rule already fails; the
+    // Bridge observes the ValidationContext and pushes a frame that sets validation, at the root and in nested objects.
+    [Test]
+    public async Task RuleOnlyChangesPushValidationFramesAsync()
+    {
+        var model = new ReactiveRulesViewModel { Name = "far too long" };
+        using var host = ReactiveRulesHost(model);
+        using (var snapshot = host.RawSnapshot())
+        {
+            var errors = snapshot.RootElement.GetProperty("state").GetProperty("validation").GetProperty("errors");
+            RequireErrors(errors, (["name"], ReactiveRulesViewModel.NameTooLong, 1));
+            Require(errors.GetArrayLength() == 1, $"The first state was not one error: {errors}");
+        }
+        _ = host.Root.TakePublications();
+        var events = 0;
+        model.ErrorsChanged += (_, _) => events++;
+        model.PropertyChanged += (_, _) => events++;
+
+        model.Approved = false;
+        Require(events == 0, "The rule that names no member raised a model event; the test no longer covers the ValidationContext.");
+        Require(await PublishedAsync(host.Root, publication => ValidationSet(publication) is { } validation
+                && HasError(validation.GetProperty("errors"), [], ReactiveRulesViewModel.ApprovalRequired)
+                && HasError(validation.GetProperty("errors"), ["name"], ReactiveRulesViewModel.NameTooLong)),
+            "A rule that names no member did not push its validation.");
+
+        model.Approved = true;
+        Require(await PublishedAsync(host.Root, publication => ValidationSet(publication) is { } validation
+                && !HasError(validation.GetProperty("errors"), [], ReactiveRulesViewModel.ApprovalRequired)),
+            "The rule's recovery did not push its validation.");
+
+        model.Address.Verified = false;
+        Require(await PublishedAsync(host.Root, publication => ValidationSet(publication) is { } validation
+                && HasError(validation.GetProperty("errors"), ["address"], ReactiveRulesAddress.Unverified)),
+            "A nested object's rule that names no member did not push its validation.");
+
+        model.Lines[0].Open = false;
+        Require(await PublishedAsync(host.Root, publication => ValidationSet(publication) is { } validation
+                && HasError(validation.GetProperty("errors"), ["lines", 0], ReactiveRulesLine.Blocked)),
+            "A collection row's rule that names no member did not push its validation.");
+
+        // A row added later is observed too, and a removed one no longer publishes.
+        var added = new ReactiveRulesLine();
+        model.Lines.Add(added);
+        _ = await PublishedAsync(host.Root, publication => publication.Sets.Any(set => set.Field == "lines"));
+        added.Open = false;
+        Require(await PublishedAsync(host.Root, publication => ValidationSet(publication) is { } validation
+                && HasError(validation.GetProperty("errors"), ["lines", 1], ReactiveRulesLine.Blocked)),
+            "An added row's rule that names no member did not push its validation.");
+        model.Lines.Remove(added);
+        _ = await PublishedAsync(host.Root, publication => publication.Sets.Any(set => set.Field == "lines"));
+        _ = host.Root.TakePublications();
+        added.Open = true;
+        Require(!await PublishedAsync(host.Root, _ => true, TimeSpan.FromMilliseconds(200)),
+            "A removed row's validation still published.");
+    }
+
+    // Nested and collection DTOs with their own ValidationContext report at their paths, property rules once.
+    [Test]
+    public void NestedAndCollectionValidationContextsReportAtTheirPaths()
+    {
+        var model = new ReactiveRulesViewModel();
+        model.Address.City = "";
+        model.Lines[0].Amount = 0;
+        model.Lines.Add(new ReactiveRulesLine { Amount = -1, Open = false });
+        using var host = ReactiveRulesHost(model);
+        using var snapshot = host.RawSnapshot();
+        var errors = snapshot.RootElement.GetProperty("state").GetProperty("validation").GetProperty("errors");
+        RequireErrors(errors,
+            (["address", "city"], ReactiveRulesAddress.CityRequired, 1),
+            (["address"], ReactiveRulesAddress.CityRequired, 0),
+            (["lines", 0, "amount"], ReactiveRulesLine.AmountPositive, 1),
+            (["lines", 1, "amount"], ReactiveRulesLine.AmountPositive, 1),
+            (["lines", 1], ReactiveRulesLine.Blocked, 1));
+        Require(errors.GetArrayLength() == 4, $"The nested summary was not four errors: {errors}");
+    }
+
+    // A checked write's applied receipt carries the member's messages after the write (applied.validation).
+    [Test]
+    public void CheckedWriteReceiptCarriesTheMembersValidation()
+    {
+        var model = new ReactiveRulesViewModel { Approved = false };
+        using var host = ReactiveRulesHost(model);
+        var invalid = host.Root.Write(vm => vm.Name, "far too long");
+        Require(invalid.Kind == RunicFieldWriteReceiptKind.Applied, $"The write was not applied: {invalid}");
+        Require(ReceiptValidation(invalid.Json) == ReactiveRulesViewModel.NameTooLong,
+            $"The applied receipt did not carry the member's validation, and only it: {invalid}");
+        var valid = host.Root.Write(vm => vm.Name, "short");
+        Require(valid.Kind == RunicFieldWriteReceiptKind.Applied && ReceiptValidation(valid.Json) is null,
+            $"A valid write's receipt carried validation: {valid}");
+    }
+
+    // A disposed ReactiveValidationObject keeps HasErrors true; the Bridge reads its ValidationContext instead.
+    [Test]
+    public void DisposedReactiveValidationObjectHasNoErrors()
+    {
+        var model = new ReactiveRulesViewModel { Name = "far too long", Approved = false };
+        Require(model.HasErrors, "The fixture's rules did not fail.");
+        using var host = ReactiveRulesHost(model);
+        model.Dispose();
+        Require(model.HasErrors, "A disposed ReactiveValidationObject no longer keeps HasErrors; the test covers nothing.");
+        using var snapshot = host.RawSnapshot();
+        var validation = snapshot.RootElement.GetProperty("state").GetProperty("validation");
+        Require(!validation.GetProperty("hasErrors").GetBoolean() && validation.GetProperty("errors").GetArrayLength() == 0,
+            $"A disposed ReactiveValidationObject reported errors: {validation}");
+    }
+
+    // A RunicValidationMessage member path may index lists and dictionaries: Items[0].Value, Lookup[slot].Value and
+    // Groups[0][0].Value. A path that names no element reports at the object.
+    [Test]
+    public void ResolvesIndexedMemberPaths()
+    {
+        var root = new ManualRoot();
+        root.SetErrors(null,
+            new RunicValidationMessage("Indexed", MemberPaths: ["Items[0].Value"]),
+            new RunicValidationMessage("Keyed", MemberPaths: ["Lookup[slot].Value"]),
+            new RunicValidationMessage("Quoted key", MemberPaths: ["Lookup['slot']"]),
+            new RunicValidationMessage("Nested", MemberPaths: ["Groups[0][0].Value"]),
+            new RunicValidationMessage("After a member", MemberPaths: ["Holder.Items[0].Value"]),
+            new RunicValidationMessage("Missing", MemberPaths: ["Items[5].Value"]),
+            new RunicValidationMessage("Malformed", MemberPaths: ["Items[0"]));
+        using var buffer = new MemoryStream();
+        using (var writer = new Utf8JsonWriter(buffer)) BridgeValidation.Write(writer, root, ManualMetadata());
+        using var document = JsonDocument.Parse(buffer.ToArray());
+        var errors = document.RootElement.GetProperty("errors");
+        Require(HasError(errors, ["wire-items", 0, "wire-value"], "Indexed"), $"A list index did not resolve: {errors}");
+        Require(HasError(errors, ["wire-lookup", "slot", "wire-value"], "Keyed"), $"A dictionary key did not resolve: {errors}");
+        Require(HasError(errors, ["wire-lookup", "slot"], "Quoted key"), $"A quoted dictionary key did not resolve: {errors}");
+        Require(HasError(errors, ["wire-groups", 0, 0, "wire-value"], "Nested"), $"A nested list index did not resolve: {errors}");
+        Require(HasError(errors, ["wire-holder", "wire-items", 0, "wire-value"], "After a member"),
+            $"An index after a plain member did not resolve: {errors}");
+        Require(HasError(errors, [], "Missing"), $"An index of no element did not report at the object: {errors}");
+        Require(HasError(errors, [], "Malformed"), $"A malformed index did not report at the object: {errors}");
+    }
+
+    // An empty message is the default text, in validation and in the member's error array.
+    [Test]
+    public void EmptyMessagesBecomeTheDefaultText()
+    {
+        var model = new ValidationViewModel();
+        model.SetErrors(null, "", new System.ComponentModel.DataAnnotations.ValidationResult(" "));
+        model.Profile.SetErrors(nameof(ValidationProfile.PostalCode), new RunicValidationMessage("",
+            MemberPaths: [nameof(ValidationProfile.PostalCode)]));
+        using var host = new RunicWindowTestHost<ValidationViewModel>(model,
+            (transport, content, vm) => new ValidationBridge(transport, vm, content: content), new RunicWindowTestHostOptions { RootRoute = "validation", ViewLocator = new TestViewLocator() });
+        using var snapshot = host.RawSnapshot();
+        var errors = snapshot.RootElement.GetProperty("state").GetProperty("validation").GetProperty("errors");
+        RequireErrors(errors, ([], "Invalid value.", 2), (["model-profile", "postal-code"], "Invalid value.", 1));
+        Require(errors.EnumerateArray().All(error => error.GetProperty("message").GetString() == "Invalid value."),
+            $"An empty message was not the default text: {errors}");
+    }
+
+    private static RunicWindowTestHost<ReactiveRulesViewModel> ReactiveRulesHost(ReactiveRulesViewModel model) =>
+        new(model, (transport, content, vm) => new ReactiveRulesBridge(transport, vm, content: content),
+            new RunicWindowTestHostOptions { RootRoute = "reactiveRules", ViewLocator = new TestViewLocator() });
+
+    private static JsonElement? ValidationSet(RunicViewPublication publication) =>
+        publication.Sets.FirstOrDefault(set => set.Field == "validation")?.Value;
+
+    private static string? ReceiptValidation(string json)
+    {
+        using var document = JsonDocument.Parse(json);
+        var receipt = document.RootElement.GetProperty("receipt");
+        return receipt.TryGetProperty("validation", out var validation) ? validation.GetString() : null;
+    }
+
+    private static BridgeDataSubscriptionMember[] ManualMetadata()
+    {
+        var childMembers = new[]
+        {
+            new BridgeDataSubscriptionMember("wire-value", static owner => ((ManualChild)owner).Value,
+                propertyName: nameof(ManualChild.Value)),
+        };
+        BridgeDataSubscriptionMember items = new("wire-items", static owner => ((ManualRoot)owner).Items, childMembers,
+            enumerateChildren: static value => (IEnumerable)value,
+            enumerateValidationChildren: static value => BridgeValidation.EnumerateIndexed((IEnumerable)value),
+            propertyName: nameof(ManualRoot.Items));
+        return
+        [
+            new("wire-holder", static owner => ((ManualRoot)owner).Holder, [items], propertyName: nameof(ManualRoot.Holder)),
+            new("wire-items", static owner => ((ManualRoot)owner).Items, childMembers,
+                enumerateChildren: static value => (IEnumerable)value,
+                enumerateValidationChildren: static value => BridgeValidation.EnumerateIndexed((IEnumerable)value),
+                propertyName: nameof(ManualRoot.Items)),
+            new("wire-lookup", static owner => ((ManualRoot)owner).Lookup, childMembers,
+                enumerateChildren: static value => ((Dictionary<string, ManualChild>)value).Values,
+                enumerateValidationChildren: static value => BridgeValidation.EnumerateDictionary((Dictionary<string, ManualChild>)value),
+                propertyName: nameof(ManualRoot.Lookup)),
+            new("wire-groups", static owner => ((ManualRoot)owner).Groups,
+                [new BridgeDataSubscriptionMember("$items", static owner => owner, childMembers,
+                    enumerateChildren: static value => (IEnumerable)value,
+                    enumerateValidationChildren: static value => BridgeValidation.EnumerateIndexed((IEnumerable)value),
+                    isPathTransparent: true, propertyName: "$items")],
+                enumerateChildren: static value => (IEnumerable)value,
+                enumerateValidationChildren: static value => BridgeValidation.EnumerateIndexed((IEnumerable)value),
+                propertyName: nameof(ManualRoot.Groups)),
+        ];
+    }
+
     private static void RequireErrors(JsonElement errors, params (object[] Path, string Message, int Count)[] expected)
     {
         foreach (var (path, message, count) in expected)
@@ -232,10 +430,11 @@ internal sealed class ValidationTests
         return true;
     });
 
-    private static async Task<bool> PublishedAsync<TModel>(RunicViewDriver<TModel> driver, Func<RunicViewPublication, bool> predicate)
+    private static async Task<bool> PublishedAsync<TModel>(RunicViewDriver<TModel> driver, Func<RunicViewPublication, bool> predicate,
+        TimeSpan? timeout = null)
         where TModel : class
     {
-        var deadline = DateTime.UtcNow.AddSeconds(5);
+        var deadline = DateTime.UtcNow + (timeout ?? TimeSpan.FromSeconds(5));
         while (DateTime.UtcNow < deadline)
         {
             if (driver.TakePublications().Any(predicate)) return true;
@@ -256,6 +455,7 @@ internal sealed class ValidationTests
         internal List<ManualChild> Items { get; } = [new()];
         internal Dictionary<string, ManualChild> Lookup { get; } = new() { ["slot"] = new() };
         internal List<List<ManualChild>> Groups { get; } = [[new()]];
+        internal ManualRoot Holder => field ??= new();
     }
 
     private sealed class ManualChild : ManualNode

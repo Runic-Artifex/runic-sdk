@@ -1,0 +1,236 @@
+{
+  "format": "runic.views.scenario/1",
+  "id": "edits.set-then-validation-frame.v1",
+  "contract": {
+    "id": "runic.views",
+    "version": 4
+  },
+  "set": "edits",
+  "roles": [
+    "producer",
+    "client"
+  ],
+  "description": "A set that makes the member invalid is one frame: the member, its error array and validation change together. While the edit's overlay is in place, the derived members validation and nameErrors keep the state's value; they are not overlaid.",
+  "view": "form",
+  "ids": {
+    "c1": {
+      "kind": "connection"
+    },
+    "hello-c1": {
+      "kind": "request"
+    },
+    "session": {
+      "kind": "wire",
+      "value": "s-1"
+    },
+    "open-form": {
+      "kind": "call"
+    },
+    "open-form-request": {
+      "kind": "request"
+    },
+    "presentation": {
+      "kind": "wire",
+      "value": "p-1"
+    },
+    "type-name": {
+      "kind": "call"
+    },
+    "edit-1": {
+      "kind": "request"
+    }
+  },
+  "arrange": {
+    "model": {}
+  },
+  "steps": [
+    {
+      "connect": "c1"
+    },
+    {
+      "send": {
+        "kind": "hello",
+        "protocol": 4,
+        "session": {
+          "$id": "session"
+        },
+        "client": {
+          "name": {
+            "$any": "string",
+            "default": "conformance-client"
+          },
+          "version": {
+            "$any": "string",
+            "default": "1.0.0"
+          }
+        }
+      },
+      "id": "hello-c1"
+    },
+    {
+      "receive": {
+        "ok": true,
+        "protocol": 4,
+        "implementation": {
+          "name": {
+            "$any": "string",
+            "default": "conformance-producer"
+          },
+          "version": {
+            "$any": "string",
+            "default": "1.0.0"
+          }
+        }
+      },
+      "replyTo": "hello-c1"
+    },
+    {
+      "call": {
+        "id": "open-form",
+        "op": "open",
+        "route": "form"
+      }
+    },
+    {
+      "send": {
+        "kind": "open",
+        "route": "form",
+        "presentation": {
+          "$id": "presentation"
+        }
+      },
+      "id": "open-form-request"
+    },
+    {
+      "receive": {
+        "ok": true,
+        "revision": 0,
+        "state": {
+          "name": "",
+          "nameErrors": [],
+          "validation": {
+            "hasErrors": false,
+            "truncated": false,
+            "errors": []
+          }
+        },
+        "presentation": "ok"
+      },
+      "replyTo": "open-form-request"
+    },
+    {
+      "call": {
+        "id": "type-name",
+        "op": "set",
+        "route": "form",
+        "member": "name",
+        "value": "far too long"
+      }
+    },
+    {
+      "send": {
+        "kind": "set",
+        "route": "form",
+        "member": "name",
+        "value": "far too long",
+        "edit": 1
+      },
+      "id": "edit-1"
+    },
+    {
+      "expect": {
+        "state": {
+          "route": "form",
+          "value": {
+            "name": "far too long",
+            "nameErrors": [],
+            "validation": {
+              "hasErrors": false,
+              "truncated": false,
+              "errors": []
+            }
+          }
+        }
+      },
+      "note": "The overlay shows the edit; validation is the state's."
+    },
+    {
+      "receive": {
+        "kind": "frame",
+        "route": "form",
+        "baseRevision": 0,
+        "revision": 1,
+        "changes": [
+          {
+            "field": "name",
+            "kind": "set",
+            "value": "far too long"
+          },
+          {
+            "field": "nameErrors",
+            "kind": "set",
+            "value": [
+              "Name must be at most 8 characters."
+            ]
+          },
+          {
+            "field": "validation",
+            "kind": "set",
+            "value": {
+              "hasErrors": true,
+              "truncated": false,
+              "errors": [
+                {
+                  "path": [
+                    "name"
+                  ],
+                  "message": "Name must be at most 8 characters."
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "receive": {
+        "ok": true,
+        "revision": 1
+      },
+      "replyTo": "edit-1"
+    },
+    {
+      "expect": {
+        "call": {
+          "id": "type-name",
+          "resolved": null
+        }
+      }
+    },
+    {
+      "expect": {
+        "state": {
+          "route": "form",
+          "value": {
+            "name": "far too long",
+            "nameErrors": [
+              "Name must be at most 8 characters."
+            ],
+            "validation": {
+              "hasErrors": true,
+              "truncated": false,
+              "errors": [
+                {
+                  "path": [
+                    "name"
+                  ],
+                  "message": "Name must be at most 8 characters."
+                }
+              ]
+            }
+          }
+        }
+      }
+    }
+  ]
+}
