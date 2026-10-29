@@ -1926,7 +1926,7 @@ Bridge publishes a change of a long text member as one splice (the characters re
 inserted there), or, for a value that dropped its start and grew at its end, as two. The generated Bridge rebuilds the
 page's value from the splice and calls the property's setter with the whole string, so setters, validation and
 normalization see what they always saw. A keystroke in a 100,000-character property costs about 130 bytes up, 160 bytes
-down and 200 KB of allocation (the new string) instead of 100 KB each way and 790 KB
+down and 200 KB of allocation (the new string) instead of 100 KB each way and 300 KB
 (`tests/benchmarks`, `TextSpliceBenchmarks`). Short values (a splice that keeps fewer than 64 characters), changes from
 or to `null`, and windows with a page that does not list the feature use whole values. Nothing needs to be declared.
 
