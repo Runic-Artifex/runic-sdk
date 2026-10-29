@@ -825,13 +825,14 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
             $"{model.FullName}: the public Bridge name '{shortName}' must be a C#/TypeScript identifier.", model);
     var prefix = LowerFirst(shortName);
     var hasErrors = typeof(INotifyDataErrorInfo).IsAssignableFrom(model);
-    var hasValidation = hasErrors || valueProperties.Values.Any(graph =>
+    Type[] validationTypes = [model, .. valueProperties.Values.SelectMany(graph => graph.Nodes.Select(node => node.Type)).Distinct()];
+    // #478, D053.3: the ReactiveUI.Validation flavors (matched by name; the generator references neither) whose
+    // ValidationContext the generated Bridge reads and observes. A ViewModel or DTO that implements
+    // IValidatableViewModel has validation without INotifyDataErrorInfo too.
+    var validationContextFlavors = ValidationContextFlavors(validationTypes);
+    WarnUnrecognizedValidatable(model, validationTypes);
+    var hasValidation = hasErrors || validationContextFlavors.Length > 0 || valueProperties.Values.Any(graph =>
         graph.Nodes.Any(node => typeof(INotifyDataErrorInfo).IsAssignableFrom(node.Type)));
-    // #478: the ReactiveUI.Validation flavors (matched by name; the generator references neither) whose
-    // ValidationContext the generated Bridge reads for object-level errors.
-    var validationContextFlavors = hasValidation
-        ? ValidationContextFlavors([model, .. valueProperties.Values.SelectMany(graph => graph.Nodes.Select(node => node.Type))])
-        : [];
     if (hasValidation && properties.FirstOrDefault(property => WireName(property) == "validation") is { } validationProperty)
         throw new BridgeDiagnosticException(BridgeDiagnosticCodes.NameCollision,
             $"{model.Name}.{validationProperty.Name}: validation is reserved for generated validation state. Alias the model property.", validationProperty);
@@ -1518,14 +1519,21 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
 // types implements: ReactiveUI.Validation (RunicArtifex.ReactiveUI.Validation) and
 // ReactiveUI.Validation.Reactive (its System.Reactive flavor).
 static string[] ValidationContextFlavors(IEnumerable<Type> types) => types
-    .SelectMany(type => type.IsInterface ? [type, .. type.GetInterfaces()] : type.GetInterfaces())
-    .Select(type => type.FullName switch
-    {
-        "ReactiveUI.Validation.Abstractions.IValidatableViewModel" => "ReactiveUI.Validation",
-        "ReactiveUI.Validation.Reactive.Abstractions.IValidatableViewModel" => "ReactiveUI.Validation.Reactive",
-        _ => null,
-    })
-    .OfType<string>().Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToArray();
+    .SelectMany(ReactiveValidationConventions.FlavorsOf)
+    .Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToArray();
+
+// RUNICBRIDGE031: a type implements an IValidatableViewModel of neither flavor, such as one of another
+// validation library or a copy in the application. The Bridge cannot read its ValidationContext, so its
+// validation reaches the page only through INotifyDataErrorInfo, if at all.
+static void WarnUnrecognizedValidatable(Type model, IEnumerable<Type> types)
+{
+    foreach (var type in types)
+        foreach (var unrecognized in ReactiveValidationConventions.Unrecognized(type))
+            Diagnostics.Warn(BridgeDiagnosticCodes.UnrecognizedValidation,
+                $"{model.Name}{(type == model ? "" : $" ({type.Name})")}: {unrecognized.FullName} is not the IValidatableViewModel of "
+                + "RunicArtifex.ReactiveUI.Validation or RunicArtifex.ReactiveUI.Validation.Reactive, so the Bridge does not read "
+                + "or observe its ValidationContext. Implement INotifyDataErrorInfo to report its errors.", type);
+}
 
 // #478 (D033): a ReactiveValidationObject's GetErrors(null) returns the text of every property
 // validation. The reader takes the ValidationContext instead: a validation with properties is a
@@ -1831,6 +1839,8 @@ static class BridgeDiagnosticCodes
     internal const string PackageManager = "RUNICBRIDGE029";
     /// <summary>Warning: RunicApplicationFrontendDelivery=Embedded cannot apply, so the build copies the frontend.</summary>
     internal const string FrontendDelivery = "RUNICBRIDGE030";
+    /// <summary>Warning: a type implements an IValidatableViewModel the Bridge does not recognize.</summary>
+    internal const string UnrecognizedValidation = "RUNICBRIDGE031";
 
     // Every code with its severity and title, in ID order: the source of the machine-readable list
     // (--list-diagnostics, docs/runicbridge-diagnostics.json). eng/diagnostics.test.mjs checks the
@@ -1867,6 +1877,7 @@ static class BridgeDiagnosticCodes
         (OperationRetirement, "warning", "A [RunicOperationRetirement] declaration reaches no operation"),
         (PackageManager, "warning", "RunicApplicationFrontendPackageManager is not npm, pnpm or bun"),
         (FrontendDelivery, "warning", "RunicApplicationFrontendDelivery is unknown, or Embedded cannot apply"),
+        (UnrecognizedValidation, "warning", "A type implements an IValidatableViewModel that is not ReactiveUI.Validation's"),
     ];
 
     // Schema version 1: { schemaVersion, diagnostics: [{ id, severity: "error" | "warning", title }] }. A later

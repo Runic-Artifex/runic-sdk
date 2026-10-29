@@ -347,6 +347,47 @@ internal sealed class ValidationTests
             $"An empty message was not the default text: {errors}");
     }
 
+    // D053.3: a ViewModel with a ValidationContext but no INotifyDataErrorInfo has the validation member, with its
+    // property rules at their paths and the others at the object's, and publishes their changes.
+    [Test]
+    public async Task ValidatableViewModelWithoutDataErrorInfoHasValidationAsync()
+    {
+        var model = new ValidatableOnlyViewModel { Name = "" };
+        model.Address.City = "";
+        using var host = new RunicWindowTestHost<ValidatableOnlyViewModel>(model,
+            (transport, content, vm) => new ValidatableOnlyBridge(transport, vm, content: content),
+            new RunicWindowTestHostOptions { RootRoute = "validatableOnly", ViewLocator = new TestViewLocator() });
+        using (var snapshot = host.RawSnapshot())
+        {
+            var state = snapshot.RootElement.GetProperty("state");
+            Require(!state.TryGetProperty("validationContext", out _) && !state.TryGetProperty("nameErrors", out _)
+                    && !state.GetProperty("address").TryGetProperty("validationContext", out _),
+                $"The state exposed a ValidationContext or per-member errors: {state}");
+            var validation = state.GetProperty("validation");
+            Require(validation.GetProperty("hasErrors").GetBoolean(), $"hasErrors was false: {validation}");
+            var errors = validation.GetProperty("errors");
+            RequireErrors(errors,
+                (["name"], ValidatableOnlyViewModel.NameRequired, 1),
+                ([], ValidatableOnlyViewModel.NameRequired, 0),
+                (["address", "city"], ValidatableOnlyAddress.CityRequired, 1));
+            Require(errors.GetArrayLength() == 2, $"The summary was not two errors: {errors}");
+        }
+
+        _ = host.Root.TakePublications();
+        model.Approved = false;
+        Require(await PublishedAsync(host.Root, publication => ValidationSet(publication) is { } validation
+                && HasError(validation.GetProperty("errors"), [], ValidatableOnlyViewModel.ApprovalRequired)),
+            "A rule that names no member did not push its validation.");
+        model.Address.City = "Wien";
+        Require(await PublishedAsync(host.Root, publication => ValidationSet(publication) is { } validation
+                && !HasError(validation.GetProperty("errors"), ["address", "city"], ValidatableOnlyAddress.CityRequired)),
+            "A nested property rule did not push its validation.");
+
+        var write = host.Root.Write(vm => vm.Name, "");
+        Require(write.Kind == RunicFieldWriteReceiptKind.Applied && ReceiptValidation(write.Json) == ValidatableOnlyViewModel.NameRequired,
+            $"The checked write did not report the property's rule: {write}");
+    }
+
     private static RunicWindowTestHost<ReactiveRulesViewModel> ReactiveRulesHost(ReactiveRulesViewModel model) =>
         new(model, (transport, content, vm) => new ReactiveRulesBridge(transport, vm, content: content),
             new RunicWindowTestHostOptions { RootRoute = "reactiveRules", ViewLocator = new TestViewLocator() });

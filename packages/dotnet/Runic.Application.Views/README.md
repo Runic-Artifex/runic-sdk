@@ -1266,8 +1266,8 @@ generator, such as a CommunityToolkit `[ObservableProperty]`, points at its
 a link to its entry in the [diagnostics catalog](https://github.com/Runic-Artifex/runic-sdk/blob/main/docs/diagnostics.md#bridge-code-generator)
 for the release you use.
 
-`RUNICBRIDGE013`, `015`, `019`, `020`, `028`, `029` and `030` are warnings; the generator's
-(`013`, `020` and `028`) repeat on builds that reuse the cached generation. Every other
+`RUNICBRIDGE013`, `015`, `019`, `020`, `028`, `029`, `030` and `031` are warnings; the generator's
+(`013`, `020`, `028` and `031`) repeat on builds that reuse the cached generation. Every other
 code fails the build. The
 [diagnostics catalog](https://github.com/Runic-Artifex/runic-sdk/blob/main/docs/diagnostics.md#bridge-code-generator)
 lists every code with its severity, what reports it, its cause and its fix.
@@ -1972,6 +1972,17 @@ needed. A Bridge member's messages still come from `GetErrors(member)` and keep
 the ViewModel's formatter, as in the per-property `…Errors` arrays; the other
 messages are the validation text on one line, separated by spaces. `ReactiveValidationObject.GetErrors(null)`
 itself is unchanged.
+
+A ViewModel or DTO that implements `IValidatableViewModel` without
+`INotifyDataErrorInfo`, such as a `ReactiveObject` with its own
+`ValidationContext`, is supported the same way: the ViewModel has the
+`validation` member, property rules report at their properties' paths and the
+other rules at the object's path, and checked writes report the property's
+rules. Its messages are the validation text on one line, and it has no
+`…Errors` arrays, which come from `INotifyDataErrorInfo`. The
+`ValidationContext` property is not part of the contract. A type that
+implements another interface named `IValidatableViewModel` is reported as
+warning `RUNICBRIDGE031`.
 
 The Bridge also observes each `ValidationContext`'s `ValidationStatusChange`,
 of the ViewModel and of every object in its state graph. A

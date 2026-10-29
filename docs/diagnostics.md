@@ -75,6 +75,7 @@ and severities are open.
 | [`RUNICBRIDGE028`](#runicbridge028) | Warning | Generator | A `[RunicOperationRetirement]` declaration reaches no operation |
 | [`RUNICBRIDGE029`](#runicbridge029) | Warning | Build targets | `RunicApplicationFrontendPackageManager` is not `npm`, `pnpm` or `bun` |
 | [`RUNICBRIDGE030`](#runicbridge030) | Warning | Build targets | `RunicApplicationFrontendDelivery` is unknown, or Embedded cannot apply |
+| [`RUNICBRIDGE031`](#runicbridge031) | Warning | Generator | A type implements an IValidatableViewModel that is not ReactiveUI.Validation's |
 
 ### RUNICBRIDGE001
 
@@ -541,6 +542,22 @@ warning. Since 0.11.
 `Embedded` with `Runic.Application.Views.Desktop`, and remove `RunicAssetsDist`
 and `RunicAssetsEmbeddedArchive` from the project: `Embedded` sets them itself.
 To serve another archive, set `RunicDesktopHostOptions.Assets`.
+
+### RUNICBRIDGE031
+
+A warning from the generator. A ViewModel, or a type in its state graph,
+implements an interface named `IValidatableViewModel` that is not the one of
+`RunicArtifex.ReactiveUI.Validation` (`ReactiveUI.Validation.Abstractions`) or
+of its System.Reactive flavor (`ReactiveUI.Validation.Reactive.Abstractions`).
+The Bridge reads and observes only those flavors' `ValidationContext`, so the
+type's validation reaches the page only through `INotifyDataErrorInfo`, and not
+at all if it does not implement it. The warning names the ViewModel, the type
+and the interface. Since 0.14.
+
+**Fix:** use `RunicArtifex.ReactiveUI.Validation` or
+`RunicArtifex.ReactiveUI.Validation.Reactive`, or implement
+`INotifyDataErrorInfo` on the type. See
+[Structured validation](../packages/dotnet/Runic.Application.Views/README.md#structured-validation).
 
 ## dotnet runic
 

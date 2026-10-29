@@ -150,6 +150,11 @@
       "id": "RUNICBRIDGE030",
       "severity": "warning",
       "title": "RunicApplicationFrontendDelivery is unknown, or Embedded cannot apply"
+    },
+    {
+      "id": "RUNICBRIDGE031",
+      "severity": "warning",
+      "title": "A type implements an IValidatableViewModel that is not ReactiveUI.Validation's"
     }
   ]
 }

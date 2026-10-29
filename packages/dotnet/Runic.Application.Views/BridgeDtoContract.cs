@@ -22,9 +22,12 @@ internal static class BridgeDtoContract
         !BridgeAttributeNames.Has(modelAssembly, RunicIncludeJsonIgnored);
 
     // [RunicIgnore] on the property or on a base property it overrides: an
-    // attribute on a property is inherited by its overrides.
+    // attribute on a property is inherited by its overrides. The ValidationContext
+    // of a ReactiveUI.Validation IValidatableViewModel is left out too: the
+    // validation projection represents it.
     internal static bool IsRunicIgnored(PropertyInfo property) =>
-        InheritanceChain(property).Any(declared => BridgeAttributeNames.Has(declared, RunicIgnore));
+        InheritanceChain(property).Any(declared => BridgeAttributeNames.Has(declared, RunicIgnore))
+        || ReactiveValidationConventions.IsContextProperty(property);
 
     // Unless the assembly opts out: an unconditional [JsonIgnore] (Condition is Always, its
     // default; the nearest declaration wins, as with GetCustomAttribute(inherit:

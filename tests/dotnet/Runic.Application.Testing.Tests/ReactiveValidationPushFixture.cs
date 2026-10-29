@@ -98,3 +98,61 @@ public sealed class ReactiveRulesLine : ReactiveValidationObject
 }
 
 public sealed partial class ReactiveRulesWindow : Runic.Application.Views.RunicWindow<ReactiveRulesViewModel>;
+
+// D053.3: a ViewModel and a nested DTO that keep their validation in a ValidationContext without implementing
+// INotifyDataErrorInfo. They have the validation member; their ValidationContext is not part of the contract.
+public sealed class ValidatableOnlyViewModel : ReactiveObject, ReactiveUI.Validation.Abstractions.IValidatableViewModel
+{
+    internal const string NameRequired = "Name is required.";
+    internal const string ApprovalRequired = "Approval is required.";
+
+    private readonly ValidationSignal _named = new(true);
+    private readonly ValidationSignal _approved = new(true);
+
+    public ValidatableOnlyViewModel()
+    {
+        this.ValidationRule(vm => vm.Name, _named, NameRequired);
+        this.ValidationRule(_approved, ApprovalRequired);
+    }
+
+    public ReactiveUI.Validation.Contexts.IValidationContext ValidationContext { get; } =
+        new ReactiveUI.Validation.Contexts.ValidationContext();
+
+    public string Name
+    {
+        get;
+        set
+        {
+            this.RaiseAndSetIfChanged(ref field, value);
+            _named.Value = value.Length > 0;
+        }
+    } = "set";
+
+    public ValidatableOnlyAddress Address { get; } = new();
+
+    internal bool Approved { set => _approved.Value = value; }
+}
+
+public sealed class ValidatableOnlyAddress : ReactiveObject, ReactiveUI.Validation.Abstractions.IValidatableViewModel
+{
+    internal const string CityRequired = "City is required.";
+
+    private readonly ValidationSignal _city = new(true);
+
+    public ValidatableOnlyAddress() => this.ValidationRule(vm => vm.City, _city, CityRequired);
+
+    public ReactiveUI.Validation.Contexts.IValidationContext ValidationContext { get; } =
+        new ReactiveUI.Validation.Contexts.ValidationContext();
+
+    public string City
+    {
+        get;
+        set
+        {
+            this.RaiseAndSetIfChanged(ref field, value);
+            _city.Value = value.Length > 0;
+        }
+    } = "Graz";
+}
+
+public sealed partial class ValidatableOnlyWindow : Runic.Application.Views.RunicWindow<ValidatableOnlyViewModel>;

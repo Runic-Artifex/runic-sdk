@@ -267,6 +267,10 @@ export interface TypedSaveResult {
   readonly contentLength: number;
 }
 
+export interface ValidatableOnlyAddress {
+  readonly city: string;
+}
+
 export interface ValidationErrorsOnly {
   readonly detail: string;
 }
