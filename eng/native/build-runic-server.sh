@@ -12,7 +12,7 @@
 set -euo pipefail
 
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-host="$(rustc -vV | sed -n 's/^host: //p')"
+host="$(cd "$root/native" && rustc -vV | sed -n 's/^host: //p')"
 
 host_rid() {
   case "$host" in
@@ -51,6 +51,8 @@ export RUSTFLAGS="${RUSTFLAGS:-} --remap-path-prefix=$root=/runic-sdk --remap-pa
 export SOURCE_DATE_EPOCH="${SOURCE_DATE_EPOCH:-$(git -C "$root" log -1 --format=%ct 2>/dev/null || echo 0)}"
 
 read -r -a build <<<"${RUNIC_CARGO_BUILD:-cargo build}"
+# rustup finds native/rust-toolchain.toml from the working directory, not from --manifest-path.
+cd "$root/native"
 if [[ "$triple" == "$host" && -z "${RUNIC_CARGO_BUILD:-}" ]]; then
   "${build[@]}" --manifest-path "$root/native/Cargo.toml" --locked --release -p runic-server
   output="$root/native/target/release"
