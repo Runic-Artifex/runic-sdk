@@ -223,6 +223,11 @@ internal readonly struct PresentationResult
     /// <returns>The result.</returns>
     public static PresentationResult FromString(string? value) => new(WebUiResult.FromString(value));
 
+    /// <summary>Creates a string result from UTF-8 bytes, which reach the caller without being decoded and encoded again.</summary>
+    /// <param name="value">The UTF-8 text returned to the caller. It must not change until the reply was sent.</param>
+    /// <returns>The result.</returns>
+    public static PresentationResult FromUtf8(ReadOnlyMemory<byte> value) => new(WebUiResult.FromUtf8(value));
+
     /// <summary>Converts a string to a result with <see cref="FromString"/>.</summary>
     /// <param name="value">The value returned to the caller.</param>
     public static implicit operator PresentationResult(string value) => FromString(value);

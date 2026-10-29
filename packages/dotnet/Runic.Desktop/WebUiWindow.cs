@@ -1689,12 +1689,12 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
     internal async ValueTask<WebUiResult> InvokeCallbackAsync(
         WebUiSession session,
         string element,
-        byte[][] arguments,
+        ReadOnlyMemory<byte>[] arguments,
         CancellationToken cancellationToken)
     {
         if (element == "__webui_core_api__")
         {
-            return arguments.Length > 0 && Encoding.UTF8.GetString(arguments[0]) == "high_contrast"
+            return arguments.Length > 0 && arguments[0].Span.SequenceEqual("high_contrast"u8)
                 ? WebUiResult.FromBoolean(_highContrast ?? WebUiSystemTheme.IsHighContrast)
                 : WebUiResult.None;
         }
@@ -1730,7 +1730,7 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
         WebUiSession session,
         WebUiEventType eventType,
         string element,
-        byte[][] arguments,
+        ReadOnlyMemory<byte>[] arguments,
         CancellationToken cancellationToken)
     {
         var eventNumber = (nuint)Interlocked.Increment(ref _nextEventNumber);
@@ -1876,7 +1876,7 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
         BindingRegistration registration,
         WebUiEventType eventType,
         string element,
-        byte[][] arguments,
+        ReadOnlyMemory<byte>[] arguments,
         nuint eventNumber,
         CancellationToken cancellationToken)
     {

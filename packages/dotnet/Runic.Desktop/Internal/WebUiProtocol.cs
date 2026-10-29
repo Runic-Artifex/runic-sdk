@@ -1,4 +1,5 @@
 using System.Buffers.Binary;
+using System.Text;
 
 namespace Runic.Desktop.Internal;
 
@@ -40,6 +41,15 @@ internal static class WebUiProtocol
         var packet = new byte[HeaderSize + data.Length + 1];
         WriteHeader(packet, id, command);
         data.CopyTo(packet.AsSpan(DataOffset));
+        return packet;
+    }
+
+    // Encodes the text as UTF-8 straight into the packet, without an intermediate array.
+    internal static byte[] CreateTextPacket(ushort id, byte command, string text)
+    {
+        var packet = new byte[HeaderSize + Encoding.UTF8.GetByteCount(text) + 1];
+        WriteHeader(packet, id, command);
+        Encoding.UTF8.GetBytes(text, packet.AsSpan(DataOffset));
         return packet;
     }
 }

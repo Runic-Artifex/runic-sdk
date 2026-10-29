@@ -428,37 +428,60 @@ internal sealed class WebUiSession : IAsyncDisposable
         _socket.Dispose();
     }
 
+    // Each message is its own array, which the dispatched call keeps: its arguments are slices of it. A message that
+    // fits the receive buffer is copied once, at its size; a longer one is received straight into its growing array.
     private async Task<ReadOnlyMemory<byte>?> ReceiveMessageAsync(byte[] buffer, CancellationToken cancellationToken)
     {
-        var message = new ArrayBufferWriter<byte>();
-        WebSocketReceiveResult result;
+        var result = await _socket.ReceiveAsync(buffer.AsMemory(), cancellationToken).ConfigureAwait(false);
+        if (!await AcceptFrameAsync(result.MessageType, 0, result.Count, cancellationToken).ConfigureAwait(false))
+        {
+            return null;
+        }
+
+        if (result.EndOfMessage)
+        {
+            return buffer.AsSpan(0, result.Count).ToArray();
+        }
+
+        var message = new ArrayBufferWriter<byte>(2 * ReceiveBufferSize);
+        message.Write(buffer.AsSpan(0, result.Count));
         do
         {
-            result = await _socket.ReceiveAsync(buffer, cancellationToken).ConfigureAwait(false);
-            if (result.MessageType == WebSocketMessageType.Close)
+            result = await _socket.ReceiveAsync(message.GetMemory(ReceiveBufferSize), cancellationToken).ConfigureAwait(false);
+            if (!await AcceptFrameAsync(result.MessageType, message.WrittenCount, result.Count, cancellationToken).ConfigureAwait(false))
             {
                 return null;
             }
 
-            if (result.MessageType != WebSocketMessageType.Binary)
-            {
-                await CloseAsync(WebSocketCloseStatus.InvalidMessageType, "Only binary WebUI packets are supported.", cancellationToken)
-                    .ConfigureAwait(false);
-                return null;
-            }
-
-            if (message.WrittenCount + result.Count > MaximumMessageSize)
-            {
-                await CloseAsync(WebSocketCloseStatus.MessageTooBig, "The WebUI packet is too large.", cancellationToken)
-                    .ConfigureAwait(false);
-                return null;
-            }
-
-            message.Write(buffer.AsSpan(0, result.Count));
+            message.Advance(result.Count);
         }
         while (!result.EndOfMessage);
 
         return message.WrittenMemory;
+    }
+
+    private async ValueTask<bool> AcceptFrameAsync(WebSocketMessageType type, int received, int count, CancellationToken cancellationToken)
+    {
+        if (type == WebSocketMessageType.Close)
+        {
+            return false;
+        }
+
+        if (type != WebSocketMessageType.Binary)
+        {
+            await CloseAsync(WebSocketCloseStatus.InvalidMessageType, "Only binary WebUI packets are supported.", cancellationToken)
+                .ConfigureAwait(false);
+            return false;
+        }
+
+        if (received + count > MaximumMessageSize)
+        {
+            await CloseAsync(WebSocketCloseStatus.MessageTooBig, "The WebUI packet is too large.", cancellationToken)
+                .ConfigureAwait(false);
+            return false;
+        }
+
+        return true;
     }
 
     private async Task DispatchAsync(ReadOnlyMemory<byte> payload, CancellationToken cancellationToken)
@@ -571,7 +594,7 @@ internal sealed class WebUiSession : IAsyncDisposable
             try
             {
                 if (!IsAuthenticated) return;
-                if (!TryDecodeCall(payload.Span[WebUiProtocol.DataOffset..], out var element, out var arguments))
+                if (!TryDecodeCall(payload[WebUiProtocol.DataOffset..], out var element, out var arguments))
                 {
                     await SendCallResultAsync(id, WebUiResult.None, cancellationToken).ConfigureAwait(false);
                     return;
@@ -612,7 +635,7 @@ internal sealed class WebUiSession : IAsyncDisposable
     private async Task DispatchEventIgnoringFailureAsync(
         WebUiEventType eventType,
         string element,
-        byte[][] arguments,
+        ReadOnlyMemory<byte>[] arguments,
         CancellationToken cancellationToken)
     {
         await Task.Yield();
@@ -631,7 +654,7 @@ internal sealed class WebUiSession : IAsyncDisposable
     private async Task DispatchEventAsync(
         WebUiEventType eventType,
         string element,
-        byte[][] arguments,
+        ReadOnlyMemory<byte>[] arguments,
         CancellationToken cancellationToken)
     {
         await _eventGate.WaitAsync(cancellationToken).ConfigureAwait(false);
@@ -695,6 +718,14 @@ internal sealed class WebUiSession : IAsyncDisposable
 
     private Task SendCallResultAsync(ushort id, WebUiResult result, CancellationToken cancellationToken)
     {
+        // UTF-8 text, such as a Views reply, is copied once, into the packet.
+        if (result.Kind == WebUiResultKind.Utf8)
+        {
+            return IsAuthenticated
+                ? SendPacketAsync(WebUiProtocol.CreatePacket(id, WebUiProtocol.CallFunction, result.Utf8Value.Span), cancellationToken)
+                : Task.CompletedTask;
+        }
+
         var response = result.Kind switch
         {
             WebUiResultKind.None => string.Empty,
@@ -716,9 +747,7 @@ internal sealed class WebUiSession : IAsyncDisposable
             return Task.CompletedTask;
         }
 
-        return SendPacketAsync(
-            WebUiProtocol.CreatePacket(id, command, Encoding.UTF8.GetBytes(text)),
-            cancellationToken);
+        return SendPacketAsync(WebUiProtocol.CreateTextPacket(id, command, text), cancellationToken);
     }
 
     private async Task SendPacketAsync(ReadOnlyMemory<byte> packet, CancellationToken cancellationToken)
@@ -818,10 +847,13 @@ internal sealed class WebUiSession : IAsyncDisposable
         return true;
     }
 
-    private static bool TryDecodeCall(ReadOnlySpan<byte> payload, out string element, out byte[][] arguments)
+    // The arguments are slices of the packet, which belongs to this call alone.
+    private static bool TryDecodeCall(ReadOnlyMemory<byte> packet, out string element, out ReadOnlyMemory<byte>[] arguments)
     {
         element = string.Empty;
         arguments = [];
+        var payload = packet.Span;
+        var offset = 0;
 
         var elementEnd = payload.IndexOf((byte)0);
         if (elementEnd < 1)
@@ -831,6 +863,7 @@ internal sealed class WebUiSession : IAsyncDisposable
 
         element = Encoding.UTF8.GetString(payload[..elementEnd]);
         payload = payload[(elementEnd + 1)..];
+        offset += elementEnd + 1;
 
         var lengthsEnd = payload.IndexOf((byte)0);
         if (lengthsEnd < 0)
@@ -840,6 +873,7 @@ internal sealed class WebUiSession : IAsyncDisposable
 
         var lengthsText = Encoding.ASCII.GetString(payload[..lengthsEnd]);
         payload = payload[(lengthsEnd + 1)..];
+        offset += lengthsEnd + 1;
         if (lengthsText.Length == 0)
         {
             return payload.IsEmpty;
@@ -851,7 +885,7 @@ internal sealed class WebUiSession : IAsyncDisposable
             return false;
         }
 
-        arguments = new byte[lengthParts.Length][];
+        arguments = new ReadOnlyMemory<byte>[lengthParts.Length];
         for (var index = 0; index < lengthParts.Length; index++)
         {
             if (!int.TryParse(lengthParts[index], NumberStyles.None, CultureInfo.InvariantCulture, out var length) ||
@@ -861,8 +895,9 @@ internal sealed class WebUiSession : IAsyncDisposable
                 return false;
             }
 
-            arguments[index] = payload[..length].ToArray();
+            arguments[index] = packet.Slice(offset, length);
             payload = payload[(length + 1)..];
+            offset += length + 1;
         }
 
         return payload.IsEmpty;

@@ -392,6 +392,43 @@ public sealed class ManagedWindowTests
         AssertCallResult(await ReceiveBinaryAsync(socket, timeout.Token), 23, "150000");
     }
 
+    // The reply of a capability that returns UTF-8 bytes (a Views reply) reaches the page as those bytes.
+    [Test]
+    public async Task SendsAUtf8ResultAsItIs()
+    {
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        await using var window = new WebUiWindow();
+        var reply = "{\"text\":\"Grüße ☃\"}"u8.ToArray();
+        window.Bind("utf8", e => WebUiResult.FromUtf8(reply));
+        var url = await window.StartServerAsync("bridge");
+        var token = await GetTokenAsync(url);
+        using var socket = await ConnectAsync(url, timeout.Token);
+        await AuthenticateAsync(socket, token, ["__webui_core_api__", "utf8"], timeout.Token);
+
+        await SendBinaryAsync(socket, CreateCallPacket(token, 3, "utf8"), timeout.Token);
+        var response = await ReceiveBinaryAsync(socket, timeout.Token);
+        AssertHeader(response, 3, CallFunction);
+        Assert.Equal([.. reply, 0], response[HeaderSize..]);
+    }
+
+    // A message longer than the receive buffer arrives in several reads; its arguments are slices of the whole message.
+    [Test]
+    public async Task ReceivesAMessageLongerThanTheReceiveBuffer()
+    {
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        await using var window = new WebUiWindow();
+        window.Bind("echo", static e => e.GetString(1) + e.GetString());
+        var url = await window.StartServerAsync("bridge");
+        var token = await GetTokenAsync(url);
+        using var socket = await ConnectAsync(url, timeout.Token);
+        await AuthenticateAsync(socket, token, ["__webui_core_api__", "echo"], timeout.Token);
+
+        var text = string.Concat(Enumerable.Range(0, 40_000).Select(static index => (char)('a' + index % 26)));
+        await SendBinaryAsync(socket, CreateCallPacket(token, 24, "echo", Encoding.UTF8.GetBytes(text), "ü"u8.ToArray()), timeout.Token);
+
+        AssertCallResult(await ReceiveBinaryAsync(socket, timeout.Token), 24, "ü" + text);
+    }
+
     [Test]
     public async Task UnauthenticatedPeerCannotOpenAMultiPacketBuffer()
     {

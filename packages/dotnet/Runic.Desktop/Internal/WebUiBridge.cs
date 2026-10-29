@@ -340,21 +340,22 @@ internal static class WebUiBridge
                 return;
               }
               case CMD_SEND_RAW: {
-                const functionName = readString(packet, HEADER_SIZE);
-                const functionBytes = encoder.encode(functionName);
-                const start = HEADER_SIZE + functionBytes.length + 1;
+                let separator = packet.indexOf(0, HEADER_SIZE);
+                if (separator < 0) separator = packet.length;
+                const functionName = decoder.decode(packet.subarray(HEADER_SIZE, separator));
+                const start = separator + 1;
                 const end = Math.max(start, packet.length - 1);
-                const data = packet.slice(start, end);
+                // The reserved functions decode the data at once, so they read it in place.
                 if (functionName === VIEWS_PUSH) {
-                  dispatchViewsMessage(data);
+                  dispatchViewsMessage(packet.subarray(start, end));
                   return;
                 }
                 if (functionName === ANNOUNCE) {
-                  announce(data);
+                  announce(packet.subarray(start, end));
                   return;
                 }
                 const handler = globalThis[functionName];
-                if (typeof handler === "function") handler(data);
+                if (typeof handler === "function") handler(packet.slice(start, end));
                 else if (logging) console.warn(`WebUI bridge: no page function ${functionName} receives raw data`);
                 return;
               }
