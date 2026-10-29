@@ -71,7 +71,7 @@ internal sealed class ForkIntegrationTests
         bridge.Dispose();
     }
 
-    // Event 1024: a collection that changes outside the model context's turn is logged once per field.
+    // Event 1025: a collection that changes outside the model context's turn is logged once per field.
     [Test]
     public async Task CollectionChangedOutsideTheModelTurnIsLoggedOnceAsync()
     {
@@ -82,10 +82,10 @@ internal sealed class ForkIntegrationTests
             (transport, content, vm) => new CollectionDeltaBridge(transport, vm, content: content),
             new RunicWindowTestHostOptions { RootRoute = "collectionDelta", ModelContext = context, LoggerFactory = logs, ViewLocator = new TestViewLocator() });
         await context.InvokeAsync(() => model.Items.Add(new CollectionRow(1, "in a turn")));
-        Require(!logs.All(1024).Any(), "A change in a model turn was logged.");
+        Require(!logs.All(1025).Any(), "A change in a model turn was logged.");
         model.Items.Add(new CollectionRow(2, "outside"));
         model.Items.Add(new CollectionRow(3, "outside again"));
-        var entries = logs.All(1024).ToArray();
+        var entries = logs.All(1025).ToArray();
         Require(entries.Length == 1 && entries[0].Level == Microsoft.Extensions.Logging.LogLevel.Warning
                 && Equals(entries[0].State["Field"], "rows") && Equals(entries[0].State["Model"], nameof(CollectionDeltaViewModel)),
             $"A change outside the model turn was not logged once for its field: {string.Join("; ", entries.Select(entry => entry.Message))}");

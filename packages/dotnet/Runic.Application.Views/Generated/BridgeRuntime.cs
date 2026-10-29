@@ -629,7 +629,7 @@ public partial class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBr
     // The observed collections by field, replaced whole in a model turn, so a notification outside the turn can read it.
     private (string Field, INotifyCollectionChanged Collection)[] _collectionFields = [];
 
-    // The fields whose change outside a model turn was logged (event 1024), once per Bridge and field.
+    // The fields whose change outside a model turn was logged (event 1025), once per Bridge and field.
     private readonly HashSet<string> _offTurnFields = new(StringComparer.Ordinal);
 
     // A collection that changes outside the model context's turn, such as a DynamicData Bind without ObserveOn the

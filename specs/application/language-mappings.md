@@ -94,7 +94,7 @@ either; it carries the names the contract defines ([values](values.md#names)).
 - DynamicData's `Bind` and `SortAndBind` raise one `CollectionChanged` per row they change. `BatchBridgeSnapshots(model)`
   on the changeset stream makes each changeset one unit. Bind on the window's model context
   (`ObserveOn(ReactiveSchedulers.For(context))`): a collection that changes outside a model turn is logged once per
-  field as event 1024 `BridgeCollectionChangedOutsideModelTurn`, because the change waits for a turn and can race the
+  field as event 1025 `BridgeCollectionChangedOutsideModelTurn`, because the change waits for a turn and can race the
   window. A change notification after the window's model context closed counts as one for a released Bridge and does
   not throw into `Bind`.
 - The delivery queue's 1 MiB bound is counted in UTF-8 bytes; .NET holds a queued push in memory as UTF-8.
