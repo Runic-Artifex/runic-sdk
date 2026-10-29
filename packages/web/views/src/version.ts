@@ -1,6 +1,6 @@
 // The release of @runic-artifex/views, compared with the Runic.Application.Views version a .NET host
 // reports (specs/application). `bun run version:bump` rewrites it with the package version.
-export const viewsVersion = "0.12.1";
+export const viewsVersion = "0.13.0";
 
 /** The Views protocol this runtime implements (specs/application/README.md). */
 export const bridgeProtocol = 4;

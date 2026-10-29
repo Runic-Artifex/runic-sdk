@@ -22,7 +22,7 @@
         "dependencies": {
           "Microsoft.Extensions.DependencyInjection.Abstractions": "[10.0.14, )",
           "Microsoft.Extensions.Logging.Abstractions": "[10.0.14, )",
-          "Runic.Navigation": "[0.12.1, )"
+          "Runic.Navigation": "[0.13.0, )"
         }
       },
       "runic.application.views.cswebui": {
@@ -30,8 +30,8 @@
         "dependencies": {
           "CsWebUi": "[2.5.0-beta.4.8, 3.0.0)",
           "Microsoft.Extensions.DependencyInjection.Abstractions": "[10.0.14, )",
-          "Runic.Application.Views": "[0.12.1, )",
-          "Runic.Platform": "[0.12.1, )"
+          "Runic.Application.Views": "[0.13.0, )",
+          "Runic.Platform": "[0.13.0, )"
         }
       },
       "runic.navigation": {
