@@ -857,6 +857,55 @@ test("runic-cswebui.js polls when the page created window.webui before the scrip
   stop();
 });
 
+// The mailbox: .NET writes each queued message into the receive reply as it
+// was queued (BridgeMessages.Receive). The script slices the texts out, so
+// the page parses each message once, and they keep their bytes.
+test("runic-cswebui.js delivers the mailbox messages as .NET wrote them, without parsing the reply", async () => {
+  const webui = fakeCsWebUi();
+  let parsed = 0;
+  let serialized = 0;
+  const counting = {
+    parse: (...args) => { parsed++; return JSON.parse(...args); },
+    stringify: (...args) => { serialized++; return JSON.stringify(...args); },
+  };
+  const context = load(csWebUi, { JSON: counting });
+  context.webui = webui;
+  const received = [];
+  context.__runicBridge.onMessage(message => received.push(message));
+  const messages = [
+    '{"kind":"interaction","route":"a","text":"Gr\\u00FC\\u00DFe \\u2028 } ] { [ \\"quoted\\" \\\\"}',
+    '{"kind":"operation","route":"a","operation":"o","status":{"kind":"running","steps":[[1,{"a":[]}],{}]}}',
+    '{"kind":"interaction","route":"b","text":"\\\\"}',
+    '{}',
+  ];
+  webui.answer(webui.open(receiveRequest)[0], `{"ok":true,"messages":[${messages.join(",")}]}`);
+  await settle();
+  expect(received).toEqual(messages);
+  expect([parsed, serialized]).toEqual([0, 0]);
+  for (const message of received) JSON.parse(message);
+
+  // Another layout of a successful reply is parsed and each message serialized, as before.
+  webui.answer(webui.open(receiveRequest)[0], '{"ok":true, "messages":[ {"kind":"operation","route":"c"} ]}');
+  await settle();
+  expect(received.at(-1)).toBe('{"kind":"operation","route":"c"}');
+  expect(webui.open(receiveRequest).length).toBe(1);
+});
+
+test("runic-cswebui.js pauses the mailbox after a reply that only looks like a receive reply", async () => {
+  for (const reply of [
+    '{"ok":true,"messages":[{"a":1},]}', '{"ok":true,"messages":[{"a":"}]}', '{"ok":true,"messages":[{"a":1}{"b":2}]}',
+    '{"ok":true,"messages":[{"a":1}]]}', '{"ok":true,"messages":[1]}x]}',
+  ]) {
+    const webui = fakeCsWebUi();
+    const received = [];
+    loadCsWebUi(webui).__runicBridge.onMessage(message => received.push(message));
+    webui.answer(webui.open(receiveRequest)[0], reply);
+    await settle();
+    expect(received, reply).toEqual([]);
+    expect(webui.receives().length, reply).toBe(1);
+  }
+});
+
 // Examples serve their own copy; each must match the package's script.
 test("example copies of runic-cswebui.js match the package script", () => {
   const expected = readFileSync(resolve(root, csWebUi), "utf8");

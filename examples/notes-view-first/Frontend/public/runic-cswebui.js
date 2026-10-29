@@ -269,6 +269,45 @@
   // loop; the next connection starts a new one when the script sees it open or
   // when a request settles on it. A receive rejected otherwise is a failure.
   const receiveRequest = '{"kind":"receive"}';
+  // .NET writes a receive reply as this prefix, the queued messages, each as
+  // the JSON text it was queued with, separated by commas, and "]}"
+  // (BridgeMessages.Receive). The listeners get each message's text, so the
+  // script slices them out instead of parsing the reply and serializing each
+  // message again, and the page parses each message once. Slicing only finds
+  // where each object ends: it skips strings and counts brackets. Any other
+  // reply, such as a failure, is parsed.
+  const receivePrefix = '{"ok":true,"messages":[';
+  function escaped(text, quote) {
+    let backslashes = 0;
+    while (text.charCodeAt(--quote) === 92) backslashes++;
+    return backslashes % 2 === 1;
+  }
+  function messageTexts(text) {
+    if (typeof text !== "string" || !text.startsWith(receivePrefix) || !text.endsWith("]}")) return undefined;
+    const end = text.length - 2;
+    const texts = [];
+    let index = receivePrefix.length;
+    while (index < end) {
+      const start = index;
+      if (text.charCodeAt(index) !== 123) return undefined;
+      let depth = 0;
+      do {
+        if (index >= end) return undefined;
+        const code = text.charCodeAt(index++);
+        if (code === 34) {
+          let quote = index - 1;
+          do quote = text.indexOf('"', quote + 1); while (quote !== -1 && escaped(text, quote));
+          if (quote === -1 || quote >= end) return undefined;
+          index = quote + 1;
+        } else if (code === 123 || code === 91) depth++;
+        else if (code === 125 || code === 93) depth--;
+      } while (depth > 0);
+      texts.push(text.slice(start, index));
+      if (index === end) break;
+      if (text.charCodeAt(index++) !== 44 || index === end) return undefined;
+    }
+    return texts;
+  }
   function receive() {
     if (messageListeners.size === 0 || !window.webui || !connected()) return;
     const loop = currentConnection();
@@ -282,12 +321,14 @@
     send(loop, "__runicViews", [receiveRequest]).then(text => {
       loop.receiving = false;
       if (loop !== connection) return;
+      const texts = messageTexts(text);
       let reply;
-      try { reply = JSON.parse(text); } catch { reply = undefined; }
-      if (reply?.ok === true && Array.isArray(reply.messages)) {
+      if (texts === undefined) try { reply = JSON.parse(text); } catch { reply = undefined; }
+      if (texts !== undefined || reply?.ok === true && Array.isArray(reply.messages)) {
         loop.received = true;
         // Messages that arrive while no listener exists are dropped.
-        for (const message of reply.messages) deliver(JSON.stringify(message));
+        if (texts !== undefined) for (const message of texts) deliver(message);
+        else for (const message of reply.messages) deliver(JSON.stringify(message));
         receive();
       } else if (reply?.ok === false && reply.error?.reason === "no-hello" && loop.received) {
         connectionLost();
