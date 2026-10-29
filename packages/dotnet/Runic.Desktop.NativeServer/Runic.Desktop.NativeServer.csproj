@@ -36,9 +36,9 @@
           Runtime="%(_RunicNativeServerRuntime.Identity)" />
       <_RunicNativeServerShared Remove="@(_RunicNativeServerShared)" Condition="!Exists('%(Identity)')" />
       <_RunicNativeServerStatic Remove="@(_RunicNativeServerStatic)" Condition="!Exists('%(Identity)')" />
-      <None Include="@(_RunicNativeServerShared)" Pack="true" PackagePath="runtimes/%(Runtime)/native/" />
+      <None Include="@(_RunicNativeServerShared)" Pack="true" PackagePath="runtimes/%(_RunicNativeServerShared.Runtime)/native/" />
       <!-- NativeAOT links the static library into the executable (buildTransitive targets, DirectPInvoke). -->
-      <None Include="@(_RunicNativeServerStatic)" Pack="true" PackagePath="build/native/%(Runtime)/" />
+      <None Include="@(_RunicNativeServerStatic)" Pack="true" PackagePath="build/native/%(_RunicNativeServerStatic.Runtime)/" />
       <_RunicNativeServerPacked Include="@(_RunicNativeServerShared->'%(Runtime)')" />
       <_RunicNativeServerMissing Include="@(_RunicNativeServerRuntime)" Exclude="@(_RunicNativeServerPacked)" />
     </ItemGroup>
