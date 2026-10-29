@@ -1,7 +1,7 @@
 import { defineConfig } from "vite";
 import { sveltekit } from "@sveltejs/kit/vite";
 import { runicAdapter } from "@runic-artifex/sveltekit";
-import { runicDevSession } from "@runic-artifex/vite-plugin-runic";
+import { runic } from "@runic-artifex/vite-plugin-runic";
 
 export default defineConfig(({ command }) => ({
   plugins: [
@@ -14,7 +14,9 @@ export default defineConfig(({ command }) => ({
     sveltekit(command === "build"
       ? { adapter: runicAdapter({ out: "dist" }), csp: { mode: "hash", directives: { "script-src": ["self"] } } }
       : { adapter: runicAdapter({ out: "dist" }) }),
-    // Lets `dotnet runic dev` confirm that the development server on its port is the one it started.
-    runicDevSession(),
+    // Runic development diagnostics for the client that src/hooks.client.ts loads, and lets `dotnet runic dev`
+    // confirm that the development server on its port is the one it started. html: false, because SvelteKit renders
+    // the page itself and warns about a transformIndexHtml hook.
+    runic({ html: false }),
   ],
 }));
