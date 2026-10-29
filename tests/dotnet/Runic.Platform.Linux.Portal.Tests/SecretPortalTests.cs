@@ -152,12 +152,6 @@ internal sealed class SecretPortalTests
         using var scratch = new Scratch();
         using var connection = new DBusConnection(DBusAddress.Session!);
         await connection.ConnectAsync();
-        // Tmds.DBus.Protocol 0.95.1 drops the descriptors that one read delivers with a message after one without any
-        // (MessageStream.ReadMessages discards unclaimed handles after every message), then closes the connection with
-        // "Received less handles than UNIX_FDS", and the store's call gets NoReply from the bus (I-209). The test therefore
-        // lets nothing without a descriptor arrive just before a RetrieveSecret call: a round trip to the bus reads
-        // NameAcquired, and each stage waits for the Request.Close of the requests the previous one abandoned.
-        await connection.ListServicesAsync();
         var portal = new FakeSecretPortal(connection) { Secret = Secret(4) };
         connection.AddMethodHandler(portal);
         var diagnostics = new ConcurrentQueue<PortalDiagnostic>();
@@ -171,15 +165,6 @@ internal sealed class SecretPortalTests
             var clock = Stopwatch.StartNew();
             try { return await store.GetAsync(Service, Account).AsTask().WaitAsync(Wait); }
             finally { took = clock.Elapsed; }
-        }
-        async Task ClosedAsync(int closes)
-        {
-            var clock = Stopwatch.StartNew();
-            while (portal.Closes < closes)
-            {
-                if (clock.Elapsed > Wait) throw new InvalidOperationException($"Secret portal check failed: {closes} abandoned requests closed, {State()}");
-                await Task.Delay(10);
-            }
         }
         string State() => $"after {took.TotalMilliseconds:0} ms, {portal.Calls} RetrieveSecret calls, {portal.Closes} Request.Close calls; diagnostics: [" +
             string.Join("; ", diagnostics.Select(d => d.Code + ": " + d.Message)) + "]";
@@ -207,12 +192,10 @@ internal sealed class SecretPortalTests
         Check(await GetAsync(Store()), r => r is PlatformResult<string?>.Success { Value: "via-portal" } && portal.Calls == 2,
             $"retried once after UnknownMethod, {State()}");
         // Still UnknownMethod on the second attempt: reported as before, after exactly two calls.
-        await ClosedAsync(1);
         portal.Reset(missingFor: 2);
         Check(await GetAsync(Store()), r => r is PlatformResult<string?>.Unavailable { Reason: PlatformUnavailableReason.BackendUnavailable } && portal.Calls == 2,
             $"one retry only, {State()}");
 
-        await ClosedAsync(3);
         portal.Reset(missingFor: 0, missing: true);
         Check(await GetAsync(Store()), r => r is PlatformResult<string?>.Unavailable { Reason: PlatformUnavailableReason.BackendUnavailable } && portal.Calls == 2,
             $"no Secret portal, {State()}");

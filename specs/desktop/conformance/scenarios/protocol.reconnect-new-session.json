@@ -5,13 +5,15 @@
   "area": "protocol",
   "requires": ["correlated-invocation", "reconnect", "session-authentication"],
   "ids": {
+    "host": "host-1",
     "surface": "surface-1",
     "sessionOld": "session-old",
     "sessionNew": "session-new",
     "invocation": "invocation-1"
   },
   "arrange": [
-    { "op": "surface.createStarted", "target": "surface-1" },
+    { "op": "host.createStarted", "target": "host-1" },
+    { "op": "surface.createStarted", "target": "surface-1", "arguments": { "host": "host-1" } },
     { "op": "session.createAuthenticated", "target": "session-old", "arguments": { "surface": "surface-1", "client": "client-1" } },
     { "op": "invocation.startPending", "target": "invocation-1", "arguments": { "session": "session-old" } }
   ],

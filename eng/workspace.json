@@ -203,6 +203,8 @@
         "eng/build/desktop.props",
         "eng/branding/desktop",
         "specs/desktop",
+        "eng/verify-desktop-contract.mjs",
+        "tests/fixtures/desktop-contract",
         "tests/fixtures/desktop/evidence",
         "tests/fixtures/desktop/samples",
         "packages/dotnet/Runic.Desktop.Gtk4"

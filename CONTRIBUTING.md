@@ -297,7 +297,9 @@ verified with only Bun and .NET on PATH.
 ## Linux embedded runtimes
 
 The locked flake includes GTK3/WebKitGTK 4.1 and GTK4/WebKitGTK 6.0, TLS/GIO
-modules, GStreamer codecs, session D-Bus tools, GTK/KDE portal backends and Xvfb.
+modules, GStreamer codecs, session D-Bus tools, GTK/KDE portal backends, Xvfb
+and Openbox, a window manager for checks that need one under Xvfb, such as the
+GTK 4 smoke's `--placement --window-manager`.
 Use `direnv exec . pkg-config --modversion gtk4 webkitgtk-6.0` to inspect the
 selected native versions. The shell does not start portal daemons or select the
 application's GTK backend; the desktop session owns portal service configuration.

@@ -2438,7 +2438,7 @@ NativeAOT symbols and what to attach to a bug report.
 | 3007 | `DesktopShutdownFailed` | Error | Closing the Desktop windows for that shutdown throws. | `ErrorType` |
 | 3008 | `BrowserProfileNotDeleted` | Warning | A generated browser profile still cannot be deleted a minute after its browser closed; it stays in the temporary folder. | |
 | 3009 | `DesktopDiagnosticSinkFailed` | Warning | `DesktopHostOptions.DiagnosticSink` throws for a diagnostic. | `Code`, `ErrorType` |
-| 3010 | `EmbeddedWindowDiagnostic` | Warning or Error | An embedded window reports an event of its own: on Linux, `web-process-terminated` when the WebKitGTK web process crashed and the page was reloaded (Warning), or was not reloaded after three reloads within a minute (Error). | `Code`, `DiagnosticMessage`, `Remediation` |
+| 3010 | `EmbeddedWindowDiagnostic` | Warning or Error | An embedded window reports an event of its own: on Linux, `web-process-terminated` when the WebKitGTK web process crashed and the page was reloaded (Warning), or was not reloaded after three reloads within a minute (Error); `spell-checking-dictionary-missing` when no spelling dictionary is installed for a language of `DesktopHostOptions.SpellCheckingLanguages` (Warning). | `Code`, `DiagnosticMessage`, `Remediation` |
 | 3011 | `WindowStateHandlerFailed` | Error | A `DesktopWindow.StateChanged` handler threw; later handlers and events still run. | `ErrorType` |
 | 3012 | `FileDropHandlerFailed` | Error | A `DesktopWindow.FilesDropped` handler threw; later handlers and drops still run. | `ErrorType` |
 | 3013 | `WindowClosedHandlerFailed` | Error | A `DesktopWindow.Closed` handler threw; later handlers still run. | `ErrorType` |

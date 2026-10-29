@@ -73,6 +73,10 @@
   # WebKitGTK with speech synthesis, which links flite. false uses a WebKitGTK built without it, about 70 MiB smaller,
   # which nixpkgs' binary cache does not have: WebKitGTK then builds from source, for hours.
   withSpeechSynthesis ? true,
+  # Hunspell dictionaries for WebKitGTK's spell checker, such as [ hunspellDicts.de_CH hunspellDicts.en_US ]: the
+  # wrapper puts their share directories on XDG_DATA_DIRS, where enchant finds share/hunspell. A desktop may have none,
+  # and then nothing is checked. Only the desktop and desktop-gtk4 hosts check spelling.
+  spellingDictionaries ? [ ],
   # Publish projectFile with NativeAOT. Only that project gets PublishAot, as if its project file set it: the projects
   # it references and testProjectFile are restored and built as their own project files say.
   nativeAot ? false,
@@ -320,6 +324,7 @@ buildDotnetModule (
     "host"
     "withMedia"
     "withSpeechSynthesis"
+    "spellingDictionaries"
     "nativeAot"
     "desktopItems"
     "icons"
@@ -444,7 +449,16 @@ buildDotnetModule (
       ${args.preConfigure or ""}
     '';
 
-    inherit makeWrapperArgs;
+    makeWrapperArgs =
+      assert lib.assertMsg (spellingDictionaries == [ ] || lib.elem host [ "desktop" "desktop-gtk4" ])
+        "buildRunicApplication: spellingDictionaries needs host = \"desktop\" or \"desktop-gtk4\", not ${if host == null then "null" else host}.";
+      makeWrapperArgs
+      ++ lib.optionals (spellingDictionaries != [ ]) [
+        "--prefix"
+        "XDG_DATA_DIRS"
+        ":"
+        (lib.makeSearchPath "share" spellingDictionaries)
+      ];
 
   }
   // lib.optionalAttrs (testRunner' == "Microsoft.Testing.Platform" && !(args ? checkPhase)) {

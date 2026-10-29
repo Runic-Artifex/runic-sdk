@@ -185,6 +185,11 @@ internal static class DesktopWindowOptionValidation
         {
             diagnostics.Add(Ignored(presentation, nameof(DesktopWindowOptions.Language), remediation));
         }
+        if (!options.SpellChecking)
+        {
+            diagnostics.Add(Ignored(presentation, nameof(DesktopWindowOptions.SpellChecking),
+                "A browser checks spelling with its own settings; set spellcheck=\"false\" in the page instead. " + remediation));
+        }
         if (!options.Resizable)
         {
             diagnostics.Add(Ignored(presentation, nameof(DesktopWindowOptions.Resizable), remediation));
@@ -296,6 +301,18 @@ internal static class DesktopWindowOptionValidation
         Option = Prefix + nameof(DesktopWindowOptions.ColorScheme),
     };
 
+    // DesktopHostOptions.SpellCheckingLanguages on Windows: WebView2 checks in its own language (DesktopWindowOptions.Language).
+    internal static DesktopDiagnostic SpellCheckingLanguagesIgnored() => new(
+        DesktopErrorCategory.CapabilityDenied,
+        OptionUnsupportedCode,
+        "The WebView2 window ignores DesktopHostOptions.SpellCheckingLanguages: WebView2 has no setting for its spelling languages.",
+        Retryable: false,
+        Remediation: "WebView2 checks spelling in its own language, which DesktopWindowOptions.Language sets. Keep the option for Linux and macOS, or remove it on Windows.")
+    {
+        Severity = DesktopDiagnosticSeverity.Warning,
+        Option = "DesktopHostOptions.SpellCheckingLanguages",
+    };
+
     internal static DesktopDiagnostic GrantWithheld(string presentation) => new(
         DesktopErrorCategory.CapabilityDenied,
         GrantWithheldCode,
@@ -338,6 +355,7 @@ internal static class DesktopWindowOptionValidation
         MonitorId = options.MonitorId,
         LayoutDirection = options.LayoutDirection,
         Language = options.Language,
+        SpellChecking = options.SpellChecking,
     };
 
     internal static DesktopDiagnostic Invalid(string message) => new(
