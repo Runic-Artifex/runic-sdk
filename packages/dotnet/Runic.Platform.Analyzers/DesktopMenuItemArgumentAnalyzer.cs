@@ -13,14 +13,14 @@ namespace Runic.Platform.Analyzers;
 public sealed class DesktopMenuItemArgumentAnalyzer : DiagnosticAnalyzer
 {
     /// <summary>The diagnostic ID.</summary>
-    public const string Id = "RUNICPLAT001";
+    public const string Code = "RUNICPLAT001";
 
     internal const string MenuItemType = "Runic.Platform.DesktopMenuItem";
     internal const string TitleParameter = "Title";
     internal const string CommandIdParameter = "CommandId";
 
     internal static readonly DiagnosticDescriptor Rule = new(
-        Id,
+        Code,
         "DesktopMenuItem title and command id look swapped",
         "The DesktopMenuItem title '{0}' looks like a command id and the command id '{1}' {2}; DesktopMenuItem takes (title, commandId)",
         "Runic.Platform",
@@ -29,7 +29,7 @@ public sealed class DesktopMenuItemArgumentAnalyzer : DiagnosticAnalyzer
         description: "DesktopMenuItem(Title, CommandId) takes the visible title first and the command id second. A command id " +
             "has 1 to 64 ASCII letters, digits, dots, underscores or hyphens. Name the arguments to make the order visible: " +
             "new DesktopMenuItem(Title: \"New Window\", CommandId: \"file.new\").",
-        helpLinkUri: RunicReleaseLinks.Diagnostic(Id));
+        helpLinkUri: RunicReleaseLinks.Diagnostic(Code));
 
     /// <inheritdoc />
     public override ImmutableArray<DiagnosticDescriptor> SupportedDiagnostics => [Rule];

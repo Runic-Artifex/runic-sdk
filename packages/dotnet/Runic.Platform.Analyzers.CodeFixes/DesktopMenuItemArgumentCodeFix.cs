@@ -17,7 +17,7 @@ namespace Runic.Platform.Analyzers;
 public sealed class DesktopMenuItemArgumentCodeFix : CodeFixProvider
 {
     /// <inheritdoc />
-    public override ImmutableArray<string> FixableDiagnosticIds => [DesktopMenuItemArgumentAnalyzer.Id];
+    public override ImmutableArray<string> FixableDiagnosticIds => [DesktopMenuItemArgumentAnalyzer.Code];
 
     /// <inheritdoc />
     public override FixAllProvider GetFixAllProvider() => WellKnownFixAllProviders.BatchFixer;
