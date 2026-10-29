@@ -68,6 +68,10 @@ internal sealed class BridgeOperationRegistry : IDisposable
 
     internal string OwnerId { get; }
 
+    // Called outside the registry's lock with an operation's registry key and status when its progress changes while
+    // it runs and when it reaches its terminal status (BridgeOperationWatches). Set once, before any admission.
+    internal Action<string, BridgeOperationStatus>? StatusChanged { get; set; }
+
     // Registration occurs before the delegate is invoked. A duplicate request
     // identity returns an observation of the original work and never invokes
     // the replacement delegate.
@@ -100,12 +104,13 @@ internal sealed class BridgeOperationRegistry : IDisposable
         BridgeOperationRequest request,
         Func<string?> refusal,
         Func<CancellationToken, Task<BridgeOperationResult>> work,
-        BridgeOperationRetirement? retirement = null)
+        BridgeOperationRetirement? retirement = null,
+        Func<long?>? terminalRevision = null)
     {
         ArgumentNullException.ThrowIfNull(refusal);
         ArgumentNullException.ThrowIfNull(work);
         return AcceptCore(request.Identity.RegistryKey, request, refusal, stream: null,
-            (_, cancellationToken) => work(cancellationToken), retirement);
+            (_, cancellationToken) => work(cancellationToken), retirement, terminalRevision);
     }
 
     // A stream belongs to the admitted entry before work starts. Reads can
@@ -127,12 +132,13 @@ internal sealed class BridgeOperationRegistry : IDisposable
         Func<string?> refusal,
         BridgeOperationStream stream,
         Func<BridgeOperationExecution, CancellationToken, Task<BridgeOperationResult>> work,
-        BridgeOperationRetirement? retirement = null)
+        BridgeOperationRetirement? retirement = null,
+        Func<long?>? terminalRevision = null)
     {
         ArgumentNullException.ThrowIfNull(refusal);
         ArgumentNullException.ThrowIfNull(stream);
         ArgumentNullException.ThrowIfNull(work);
-        return AcceptCore(request.Identity.RegistryKey, request, refusal, stream, work, retirement);
+        return AcceptCore(request.Identity.RegistryKey, request, refusal, stream, work, retirement, terminalRevision);
     }
 
     private static Func<string?> Unavailable(Func<bool> canStart) => () => canStart() ? null : "unavailable";
@@ -143,9 +149,9 @@ internal sealed class BridgeOperationRegistry : IDisposable
         Func<string?>? refusal,
         BridgeOperationStream? stream,
         Func<BridgeOperationExecution, CancellationToken, Task<BridgeOperationResult>> work,
-        BridgeOperationRetirement? retirement = null)
+        BridgeOperationRetirement? retirement = null,
+        Func<long?>? terminalRevision = null)
     {
-
         Entry accepted;
         lock (_gate)
         {
@@ -187,6 +193,7 @@ internal sealed class BridgeOperationRegistry : IDisposable
             {
                 Retirement = retirement,
                 Work = retirement is null ? null : new BridgeOperationWork(),
+                TerminalRevision = terminalRevision,
             };
             _reservedRunningStreamBytes += accepted.ReservedRunningStreamBytes;
             _operations.Add(requestId, accepted);
@@ -269,11 +276,12 @@ internal sealed class BridgeOperationRegistry : IDisposable
         string? domainFailure = null;
         BridgeOperationDeliveryFailure? failureDelivery = null;
         BridgeOperationResult result = BridgeOperationResult.None;
-        var member = entry.Request?.Member ?? "(unnamed)";
+        var member = entry.Request?.LogName ?? "(unnamed)";
         try
         {
             // The flow of this async method only: the caller keeps its own.
             BridgeOperationWork.Enter(entry.Work);
+            BridgeOperationProgress.Enter(new(fraction => ReportProgress(entry, fraction)));
             result = await work(new BridgeOperationExecution(entry.Stream), entry.Cancellation.Token).ConfigureAwait(false);
             if (entry.Stream is not null)
             {
@@ -336,8 +344,20 @@ internal sealed class BridgeOperationRegistry : IDisposable
         entry.Stream?.Complete();
         result.OperationStream?.Complete();
 
+        // The revision of the route's first state that includes the operation's effects (protocol 4, "Status"): the
+        // route reads it in a turn after the work ended. Without one (the route was released), the terminal status
+        // keeps the last revision the route had.
+        long? revision = null;
+        if (entry.TerminalRevision is { } readRevision)
+        {
+            try { revision = readRevision(); }
+            catch (Exception error) when (error is ObjectDisposedException or InvalidOperationException) { }
+        }
+
+        BridgeOperationStatus terminalStatus;
         lock (_gate)
         {
+            if (revision is not null) entry.Revision = revision;
             _reservedRunningStreamBytes -= entry.ReservedRunningStreamBytes;
             // A declared failure is retained like a value result. One that does
             // not fit keeps the domain-failed status, because the command did
@@ -411,15 +431,50 @@ internal sealed class BridgeOperationRegistry : IDisposable
             // A terminal record keeps no model reference.
             entry.Retirement = null;
             entry.Work?.Close();
+            entry.TerminalRevision = null;
             var snapshot = entry.Snapshot();
+            terminalStatus = snapshot;
             entry.Terminal.TrySetResult(snapshot);
             _terminals.Enqueue(entry);
             TrimTerminalEntries(preferCapacity: false);
         }
+        NotifyStatusChanged(entry.RequestId, terminalStatus);
         // Work has returned or thrown, so no operation code can still need the
         // linked source. Retained status records keep only their immutable
         // terminal snapshot, not an undisposed CancellationTokenSource.
         entry.DisposeCancellation();
+    }
+
+    // RunicOperationProgress.Report in the operation's flow: a changed fraction of a running operation is its new
+    // progress.
+    private void ReportProgress(Entry entry, double fraction)
+    {
+        BridgeOperationStatus status;
+        lock (_gate)
+        {
+            if (entry.Status is not BridgeOperationStatusKind.Running || entry.Progress == fraction) return;
+            entry.Progress = fraction;
+            status = entry.Snapshot();
+        }
+        NotifyStatusChanged(entry.RequestId, status);
+    }
+
+    private void NotifyStatusChanged(string requestId, BridgeOperationStatus status)
+    {
+        if (StatusChanged is not { } observer) return;
+        try { observer(requestId, status); }
+        catch (Exception error)
+        {
+            ViewsLog.RequestFailed(_logger, error, BridgeTelemetry.ErrorType(error));
+        }
+    }
+
+    // Records the revision of the route's state that an accepted start replied with, which a terminal status keeps
+    // when its route cannot report a later one.
+    internal void SetAdmissionRevision(string requestId, long revision)
+    {
+        lock (_gate)
+            if (_operations.TryGetValue(requestId, out var entry) && entry.Revision is null) entry.Revision = revision;
     }
 
     // The navigation entry whose content is owner retires (RunicOperationRetirement): requests cancellation of the
@@ -440,7 +495,7 @@ internal sealed class BridgeOperationRegistry : IDisposable
         if (retiring.Count == 0) return Task.CompletedTask;
         foreach (var (entry, retirement) in retiring)
         {
-            ViewsLog.OperationRetired(_logger, entry.Request?.Member ?? "(unnamed)", retirement.Policy, retirement.Route);
+            ViewsLog.OperationRetired(_logger, entry.Request?.LogName ?? "(unnamed)", retirement.Policy, retirement.Route);
             if (retirement.Policy is not RunicOperationRetirement.Cancel) continue;
             try { entry.Cancellation.Cancel(); }
             // The operation ended and released its source after the selection above.
@@ -665,9 +720,21 @@ internal sealed class BridgeOperationRegistry : IDisposable
         // The work of an operation declared Cancel or Drain; null otherwise.
         public BridgeOperationWork? Work { get; init; }
         public TaskCompletionSource<BridgeOperationStatus> Terminal { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        // The last progress the running operation reported (RunicOperationProgress); null until its first report.
+        public double? Progress { get; set; }
+        // The revision of the route's state that includes the operation's effects, once it is terminal; until then
+        // the revision its start replied with.
+        public long? Revision { get; set; }
+        // Reads the route's revision once the work ended; null after the terminal.
+        public Func<long?>? TerminalRevision { get; set; }
         public bool Matches(BridgeOperationRequest? request) => BridgeOperationRegistry.Matches(Request, request);
         public bool MatchesMember(string? member) => BridgeOperationRegistry.MatchesMember(Request, member);
-        public BridgeOperationStatus Snapshot() => new(RequestId, Status, Failure, Result, FailureDetail, DomainFailure, FailureDelivery);
+        public BridgeOperationStatus Snapshot() => new(RequestId, Status, Failure, Result, FailureDetail, DomainFailure, FailureDelivery)
+        {
+            Progress = Status is BridgeOperationStatusKind.Running ? Progress : null,
+            Revision = Status is BridgeOperationStatusKind.Running ? null : Revision,
+            Member = Request?.Member,
+        };
         public void DisposeCancellation()
         {
             if (Interlocked.Exchange(ref _cancellationDisposed, 1) == 0)
@@ -717,6 +784,13 @@ internal sealed record BridgeOperationStatus(
     string? DomainFailure = null,
     BridgeOperationDeliveryFailure? FailureDelivery = null)
 {
+    // A running operation's last reported progress, from 0 to 1.
+    public double? Progress { get; init; }
+    // A terminal status's revision: the route's first state that includes the operation's effects.
+    public long? Revision { get; init; }
+    // The command member the operation was started for, when the registry knows it.
+    public string? Member { get; init; }
+
     public static BridgeOperationStatus Unknown(string requestId) => new(requestId, BridgeOperationStatusKind.Unknown, null);
     public static BridgeOperationStatus Expired(string requestId) => new(requestId, BridgeOperationStatusKind.Expired, null);
 }

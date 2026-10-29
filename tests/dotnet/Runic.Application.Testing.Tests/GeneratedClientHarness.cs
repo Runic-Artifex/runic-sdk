@@ -34,7 +34,6 @@ internal sealed class GeneratedClientHarness
 
     // GeneratedOperationClientHarness.ts: operations and interactions.
     [Test]
-    [Skip("P5: needs the operation requests (start, status, watch) and interactions served")]
     public Task GeneratedOperationClientsTalkToTheirGeneratedBridgesAsync() => RunLiveAsync("GeneratedOperationClientHarness.ts");
 
     // Runs a live harness script against these windows.

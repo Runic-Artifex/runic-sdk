@@ -1747,6 +1747,26 @@ A method that returns `Task`, a synchronous command and a plain `ICommand` have
 no result: their operation is a `BridgeOperation<void>`. The awaited `measure()`
 call resolves to the state after the command either way.
 
+A command started as an operation can report how far it got with
+`RunicOperationProgress.Report(fraction)`, a number from 0 to 1. The call is
+ambient: it reaches the operation whose command runs on the current
+asynchronous flow, so the command keeps its signature, and it does nothing
+outside an operation (an awaited `measure()` call, a unit test). Pages that
+watch the operation receive the latest value as `progress` on its running
+status, at most every 100 ms; values outside 0 to 1 are clamped.
+
+```csharp
+[RelayCommand(IncludeCancelCommand = true)]
+private async Task ImportAsync(ImportSource source, CancellationToken token)
+{
+    for (var index = 0; index < source.Files.Count; index++)
+    {
+        await importer.ImportAsync(source.Files[index], token);
+        RunicOperationProgress.Report((index + 1) / (double)source.Files.Count);
+    }
+}
+```
+
 A result that other parts of the page show, or that must survive a reload, is
 better published as state. Publish it in a read-only property, together with the input it
 answers. The page can then tell whether the result still matches its current

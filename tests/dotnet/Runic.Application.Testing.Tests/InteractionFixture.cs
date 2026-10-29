@@ -11,7 +11,6 @@ namespace Runic.Application.Testing.Tests;
 internal sealed class InteractionFixture
 {
     [Test]
-    [Skip("P5: needs interactions, interaction-reply and the interaction pushes served")]
     public async Task InteractionsReachMountedBrowsersAndFallBackAsync()
     {
         using var transport = new InMemoryBridgeTransport();
@@ -76,7 +75,7 @@ internal sealed class InteractionFixture
             "A matching duplicate interaction response was not recognized.");
         Require(Result(transport.Send(ReplyJson(route, "present-a", root, "true"), "connection-a", "client-a")) == "stale",
             "A conflicting duplicate interaction response was accepted as a retry.");
-        Require(Result(transport.Send(reply, "connection-b", "client-b")) == "stale",
+        Require(Result(transport.Send(reply, "connection-x", "client-x")) == "stale",
             "A response from another connection was accepted.");
 
         Require(Reason(transport.Send("""{"kind":"interaction-reply"}""", "connection-a", "client-a")) == "invalid-request",

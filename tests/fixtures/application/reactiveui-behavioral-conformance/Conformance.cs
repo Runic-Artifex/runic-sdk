@@ -91,7 +91,6 @@ internal sealed class ConformanceTests
     }
 
     [Test, NotInParallel(Order = 2)]
-    [Skip("P5: needs the interaction pushes and interaction-reply served")]
     public async Task InteractionSemanticsAsync()
     {
         using var transport = new InMemoryBridgeTransport();
@@ -127,12 +126,12 @@ internal sealed class ConformanceTests
     // A leave confirmation asked through a bridged interaction: the browser answers it, and a superseded departure
     // aborts the browser handler's signal (W250-035).
     [Test, NotInParallel(Order = 3)]
-    [Skip("P5: needs the interaction pushes and interaction-reply served")]
     public async Task NavigationInteractionSemanticsAsync()
     {
         using var transport = new InMemoryBridgeTransport();
-        using var session = new WindowContentSession(transport);
         await using var context = new RunicModelContext();
+        // The bridge of the editor takes the model context the navigator bound it to.
+        using var session = new WindowContentSession(transport, new WindowContentSessionOptions { ModelContext = context });
         await using var navigator = new RunicNavigator(new RunicNavigatorOptions { ModelContext = context });
         var region = navigator.CreateRegion<object>(new object(), NavigationTarget.Borrow<object>(new object()));
         var editor = new ConformanceEditorModel();

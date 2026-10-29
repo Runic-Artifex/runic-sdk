@@ -165,7 +165,6 @@ internal sealed class TestingSurfaceTests
 
     // D37 / Views-06: the token stops the caller's wait only.
     [Test]
-    [Skip("P5: needs the start, status, cancel and watch requests of operations served")]
     public async Task DrainTokenStopsTheWaitAsync()
     {
         var model = new ToolkitTypedViewModel();

@@ -219,7 +219,6 @@ public sealed class ModelContextTests
     }
 
     [Test]
-    [Skip("P5: needs interaction handlers registered by open, interaction pushes and interaction-reply served")]
     public async Task ScheduledInteractionsRetainTheirOwnAmbientInvocation()
     {
         await using var context = new RunicModelContext();
@@ -233,11 +232,12 @@ public sealed class ModelContextTests
             name, contract, value => value.Confirm,
             static value => JsonSerializer.Serialize(value), static value => value.GetBoolean()).Attach(session, model, route);
         using var rootMount = session.AttachRootInteractionPresentation(route);
+        using var server = new RouteServerBridge(transport, route, session);
         // Each presentation registers its handlers with its open (generation 0); requests arrive as interaction pushes.
         var handlers = JsonSerializer.Serialize(new[] { new { name, contract } });
         Require(transport.Open(route, "present", "connection-a", "client-a", handlers).Contains("\"registration\":\"ok\"", StringComparison.Ordinal),
             "The first scheduled interaction presentation did not register its handler.");
-        Require(transport.Open(route, "present", "connection-b", "client-b", handlers).Contains("\"registration\":\"ok\"", StringComparison.Ordinal),
+        Require(transport.Open(route, "present-b", "connection-b", "client-b", handlers).Contains("\"registration\":\"ok\"", StringComparison.Ordinal),
             "The second scheduled interaction presentation did not register its handler.");
 
         var scheduler = ReactiveSchedulers.For(context);

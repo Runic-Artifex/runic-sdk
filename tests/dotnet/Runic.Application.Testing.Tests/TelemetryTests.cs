@@ -76,7 +76,6 @@ internal sealed class TelemetryTests
     }
 
     [Test]
-    [Skip("P5: needs the start and status requests of operations")]
     public async Task FailingOperationIsLoggedAndTracedAsync()
     {
         using var telemetry = new TelemetryCapture();
@@ -114,7 +113,7 @@ internal sealed class TelemetryTests
 
         var entry = logs.Entries.SingleOrDefault(entry => entry.EventId.Id == 1004)
             ?? throw new InvalidOperationException("No BridgeOperationFailed entry was logged.");
-        Require(entry.State["Member"] as string == "failAsync" && entry.Exception is InvalidOperationException,
+        Require(entry.State["Member"] as string == "FailAsync" && entry.Exception is InvalidOperationException,
             $"The operation entry was wrong: {string.Join(", ", entry.State)}");
         Require(telemetry.Activities.Any(activity => activity.OperationName == "runic.bridge.operation.start"
             && activity.GetTagItem("runic.bridge.outcome") as string == "ok"),

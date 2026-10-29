@@ -206,6 +206,17 @@ internal sealed class ConformanceRows : ObservableCollection<ConformanceRow>
         OnCollectionChanged(new NotifyCollectionChangedEventArgs(NotifyCollectionChangedAction.Reset));
     }
 
+    // Appends rows as one change, as slowImport's finish does.
+    internal void AddRange(IReadOnlyList<ConformanceRow> rows)
+    {
+        if (rows.Count == 0) return;
+        var index = Count;
+        foreach (var row in rows) Items.Add(row);
+        OnPropertyChanged(new PropertyChangedEventArgs("Count"));
+        OnPropertyChanged(new PropertyChangedEventArgs("Item[]"));
+        OnCollectionChanged(new NotifyCollectionChangedEventArgs(NotifyCollectionChangedAction.Add, rows.ToList(), index));
+    }
+
     // The row mutations: insert, removeAt, replaceAt, move, reset and appendRows.
     internal bool Apply(JsonObject mutation, Func<IDisposable>? unit)
     {
@@ -724,7 +735,12 @@ internal sealed class NotesBridge(IBridgeTransport transport, NotesViewModel vm,
         },
         new("ConfirmClear", model => model.ConfirmClearCommand)
         {
-            ExecuteAsync = (model, token, _) => model.ConfirmClearCommand.ExecuteAsync(null, token),
+            // confirmClear ends inside its publication unit (ConformanceOperations.cs); the reply follows it.
+            ExecuteAsync = async (model, token, _) =>
+            {
+                await model.ConfirmClearCommand.ExecuteAsync(null, token).ConfigureAwait(false);
+                await Task.Yield();
+            },
             Subscribe = (model, changed) => Changed(model.ConfirmClearCommand, changed),
         },
     ];

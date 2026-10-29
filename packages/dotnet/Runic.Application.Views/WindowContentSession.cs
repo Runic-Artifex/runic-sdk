@@ -1502,6 +1502,9 @@ public sealed class WindowContentSession : IDisposable
         {
             public ValueTask<ReadOnlyMemory<byte>> HandleAsync(BridgeRouteRequest request, CancellationToken cancellationToken)
             {
+                // The operations of a suspended route stay observable: they belong to the window.
+                if (BridgeRequestEnvelope.IsOperationObservation(request.Kind))
+                    return new(owner._session._operations.HandleReleased(request) ?? BridgeMessages.Released);
                 if (request.Kind != "close") return new(BridgeMessages.Released);
                 var presentation = request.Root.GetProperty("presentation").GetString()!;
                 return new(BridgeMessages.Presentation(owner.Close(presentation, request.Connection)));

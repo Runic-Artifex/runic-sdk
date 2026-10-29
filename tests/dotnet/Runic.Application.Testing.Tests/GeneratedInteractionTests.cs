@@ -30,7 +30,6 @@ internal sealed class GeneratedInteractionTests
     }
 
     [Test]
-    [Skip("P5: needs the interaction pushes and interaction-reply served")]
     public async Task GeneratedInteractionDeliversTypedBrowserAnswersAsync()
     {
         using var model = new GeneratedInteractionViewModel();

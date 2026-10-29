@@ -163,35 +163,23 @@ internal sealed class OperationResultTests
 
     // A status request finds an operation by its key and member: an operation started for another member is unknown.
     [Test]
-    [Skip("P5: needs status served by the operation router")]
-    public void RecoveryIsBoundToTheMember()
+    public async Task RecoveryIsBoundToTheMemberAsync()
     {
         using var transport = new InMemoryBridgeTransport();
         using var router = new BridgeOperationRouter(transport, "member-bound-router");
-        var request = new BridgeOperationRequest("same-result-contract", "Save", "same-result-id", "same-result-input");
-        var admitted = router.Accept(request, () => true,
+        var identity = BridgeOperationIdentity.Create("Same.Result:contract", "route", "same-result-id");
+        var request = BridgeOperationRequest.Create(identity, "save", "same-result-input");
+        var admitted = router.AcceptUnlessRefused(request, () => null,
             _ => Task.FromResult(BridgeOperationResult.Succeeded("7")));
         Require(admitted.Kind is BridgeOperationAdmissionKind.Accepted,
-            "The member-bound recovery fixture did not admit its Save operation.");
-
-        using var wrong = JsonDocument.Parse(transport.Send(Status(request, "delete")));
-        Require(wrong.RootElement.GetProperty("status").GetProperty("kind").GetString() == "unknown",
-            "A recovery request for Delete read Save's same-shaped numeric result.");
-        using var right = JsonDocument.Parse(transport.Send(Status(request, "save")));
-        Require(right.RootElement.GetProperty("status").GetProperty("kind").GetString() == "succeeded"
-            && right.RootElement.GetProperty("status").GetProperty("result").GetInt32() == 7,
+            "The member-bound recovery fixture did not admit its save operation.");
+        await Task.Yield();
+        Require(router.Lookup(identity, "delete").Kind is BridgeOperationStatusKind.Unknown,
+            "A recovery request for delete read save's same-shaped numeric result.");
+        var right = router.Lookup(identity, "save");
+        Require(right.Kind is BridgeOperationStatusKind.Succeeded && right.Result?.EncodedJson == "7",
             "The member's own status request did not recover its result.");
-        // Protocol 4 has no recovery request without a member, so the protocol-3 memberless case is gone.
     }
-
-    private static string Status(BridgeOperationRequest request, string member) => BridgeRequests.Json(writer =>
-    {
-        writer.WriteString("kind", "status");
-        writer.WriteString("route", "member-bound-router");
-        writer.WriteString("member", member);
-        writer.WriteString("operation", request.Identity.RequestId);
-        writer.WriteString("contract", request.Identity.Contract);
-    });
 
     private static void Require(bool condition, string message)
     {

@@ -26,7 +26,6 @@ internal sealed class ReactiveCommandFailureLoggingTests
     [Arguments(true)]
     public async Task BridgedCommandLogsAnUnexpectedExceptionOnceWithoutASubscriptionAsync(bool operations)
     {
-        if (operations) Skip.Test("P5: needs start and watch served");
         await using var context = new RunicModelContext();
         var model = new CommandLoggingViewModel(context);
         using var lease = RunicModelContextRegistry.Shared.Bind(context, model);

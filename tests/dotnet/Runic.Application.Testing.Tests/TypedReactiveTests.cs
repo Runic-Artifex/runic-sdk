@@ -12,7 +12,6 @@ namespace Runic.Application.Testing.Tests;
 internal sealed class TypedReactiveTests
 {
     [Test]
-    [Skip("P5: needs start, watch, cancel and stream served")]
     public async Task TypedReactiveCommandsAdmitRecoverAndCompleteAsync()
     {
         await using var context = new RunicModelContext();

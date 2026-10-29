@@ -110,7 +110,6 @@ internal sealed class HostDriverTests
     }
 
     [Test]
-    [Skip("P5: needs the start, status and cancel requests of operations served")]
     public async Task OperationsAndCommandsAsync()
     {
         var model = new ToolkitTypedViewModel();
@@ -166,7 +165,6 @@ internal sealed class HostDriverTests
     }
 
     [Test]
-    [Skip("P5: needs the start and status requests of operations served")]
     public async Task ClockDrivesCloseTimeoutsAsync()
     {
         var model = new ToolkitTypedViewModel();

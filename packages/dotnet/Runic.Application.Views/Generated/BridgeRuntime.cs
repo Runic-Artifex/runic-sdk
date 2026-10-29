@@ -201,14 +201,6 @@ public sealed class CommandDescriptor<T>(string name, Func<T, object> get)
     /// </summary>
     public Func<JsonElement, object?>? ReadInput { get; init; }
 
-    // The protocol-3 argument reader of the operation start code in BridgeRuntime.Operations.cs, which the protocol-4
-    // operations replace: the arguments' string is the input's JSON text.
-    internal Func<IBridgeArguments, object?>? ReadArgument => ReadInput is not { } read ? null : arguments =>
-    {
-        using var document = JsonDocument.Parse(arguments.GetString());
-        return read(document.RootElement);
-    };
-
     // Whether the command takes an input.
     internal bool HasInput => ReadInput is not null;
 

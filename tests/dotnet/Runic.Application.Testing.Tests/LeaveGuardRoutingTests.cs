@@ -27,7 +27,6 @@ internal sealed class LeaveGuardRoutingTests
     // The shell's Back, started in the browser, asks the editor's mounted View: No keeps the editor and its draft,
     // Yes leaves and discards it. The ViewModel's earlier fallback handler is not asked while the View answers.
     [Test]
-    [Skip("P5: needs interactions, the interaction pushes, interaction-reply and operations served")]
     public async Task ShellBackAsksTheDepartingWebViewAsync()
     {
         await using var shell = await GuardedShell.OpenAsync();
@@ -58,7 +57,6 @@ internal sealed class LeaveGuardRoutingTests
     // browser; the browser answers before a fallback registered in the ViewModel's constructor; the fallback answers
     // when no View is mounted.
     [Test]
-    [Skip("P5: needs interactions, the interaction pushes, interaction-reply and operations served")]
     public async Task NetHandlersKeepReactiveUiPrecedenceAsync()
     {
         await using var shell = await GuardedShell.OpenAsync();
@@ -96,7 +94,6 @@ internal sealed class LeaveGuardRoutingTests
     // A guarded close asks the editor's mounted View, whether the user's close button or RequestCloseAsync started it:
     // No keeps the window open with the editor and its draft, Yes discards the draft and closes the window.
     [Test]
-    [Skip("P5: needs interactions, the interaction pushes, interaction-reply and operations served")]
     public async Task GuardedCloseAsksTheDepartingWebViewAsync()
     {
         await using var shell = await GuardedShell.OpenAsync();
@@ -119,7 +116,6 @@ internal sealed class LeaveGuardRoutingTests
     // The ReactiveUI RequestCloseAsync sample of the Runic.Application.Views README and the Runic.Navigation.ReactiveUI
     // walkthrough: a ReactiveCommand asks the guarded window to close, and reports when the page's web View keeps it open.
     [Test]
-    [Skip("P5: needs interactions, the interaction pushes, interaction-reply and operations served")]
     public async Task AReactiveCommandRequestsTheGuardedCloseAsync()
     {
         await using var shell = await GuardedShell.OpenAsync();
@@ -143,7 +139,6 @@ internal sealed class LeaveGuardRoutingTests
     // The shell's Back from another browser connection does not reach the editor's View, and fails closed without a
     // .NET handler. A close asks no View when two connections have mounted a handler, and fails closed too.
     [Test]
-    [Skip("P5: needs interactions, the interaction pushes, interaction-reply and operations served")]
     public async Task InteractionsStayWithTheirConnectionAsync()
     {
         await using var shell = await GuardedShell.OpenAsync();
@@ -164,7 +159,6 @@ internal sealed class LeaveGuardRoutingTests
     // A ViewModel presented in two windows: a scope of one window never reaches the other's presentation, even with the
     // same client and connection keys. The window's own close scope reaches its own presentation.
     [Test]
-    [Skip("P5: needs interactions, the interaction pushes, interaction-reply and operations served")]
     public async Task InteractionsStayInTheirWindowAsync()
     {
         using var transportA = new InMemoryBridgeTransport();
@@ -185,6 +179,8 @@ internal sealed class LeaveGuardRoutingTests
         using var attachedB = descriptor.Attach(windowB, model, route);
         using var mountsA = windowA.AttachRootInteractionPresentation(route);
         using var mountsB = windowB.AttachRootInteractionPresentation(route);
+        using var serverA = new RouteServerBridge(transportA, route, windowA);
+        using var serverB = new RouteServerBridge(transportB, route, windowB);
         using (var opened = JsonDocument.Parse(transportA.Open(route, "a-present", Connection, Client,
             """[{"name":"confirm","contract":"testing.confirm.v1"}]""")))
             Require(opened.RootElement.GetProperty("presentation").GetString() == "ok"
@@ -213,7 +209,6 @@ internal sealed class LeaveGuardRoutingTests
     // A View that unmounts while it asks fails the departure closed, for Back and for a close; closing the window
     // without asking ends a pending close decision at once.
     [Test]
-    [Skip("P5: needs interactions, the interaction pushes, interaction-reply and operations served")]
     public async Task APromptWhoseViewOrWindowGoesAwayFailsClosedAsync()
     {
         await using (var shell = await GuardedShell.OpenAsync())

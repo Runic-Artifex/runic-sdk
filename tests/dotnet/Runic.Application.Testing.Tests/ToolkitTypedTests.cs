@@ -22,7 +22,6 @@ internal sealed class ToolkitTypedTests
 
     // The asynchronous commands started as operations, and the cancellation of a running one.
     [Test]
-    [Skip("P5: needs start, watch and cancel served")]
     public async Task ToolkitTypedOperationsStartAndCancelAsync()
     {
         var model = new ToolkitTypedViewModel();
@@ -115,6 +114,8 @@ internal sealed class ToolkitTypedTests
     private static async Task AssertCancellationAsync(RunicWindowTestHost<ToolkitTypedViewModel> host,
         ToolkitTypedViewModel model)
     {
+        // Frames follow the state the page read: the route is open.
+        _ = host.Root.Mount();
         _ = host.Root.TakePublications();
         var operation = await host.Root.StartAsync(vm => vm.CancelCommand, Encode("wait"), "toolkit-cancel");
         Require(operation.Admission == RunicOperationAdmissionKind.Accepted,

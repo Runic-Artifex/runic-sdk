@@ -1,26 +1,5 @@
 namespace Runic.Application.Views;
 
-// The Bridge needs only callable handlers, change delivery, and typed input.
-// Window ownership, native dialogs, and close policy stay with a host adapter.
-/// <summary>Positional arguments of one browser call, read in declaration order.</summary>
-/// <remarks>
-/// Generated Bridge descriptors of Views protocol 3 read setter values and command inputs through this interface. The
-/// Views protocol 4 producer replaces it with the request's JSON values; it remains until the generated code does.
-/// </remarks>
-public interface IBridgeArguments
-{
-    /// <summary>Reads the next argument as a 64-bit integer.</summary>
-    long GetInt64();
-    /// <summary>Reads the next argument as a Boolean.</summary>
-    bool GetBoolean();
-    /// <summary>Reads the next argument as a string.</summary>
-    string GetString();
-    /// <summary>The host-verified browser client identity, if the host provides one.</summary>
-    string? ClientKey => null;
-    /// <summary>The host-verified transport connection identity, if the host provides one.</summary>
-    string? ConnectionKey => null;
-}
-
 /// <summary>
 /// Carries the Views protocol between one window and the pages connected to it: the requests of each connection with
 /// their replies, and pushes to every connection.

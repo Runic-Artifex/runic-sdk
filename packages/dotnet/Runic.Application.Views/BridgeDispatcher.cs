@@ -39,6 +39,8 @@ internal sealed class BridgeDispatcher : IBridgeRequestHandler
     private readonly Queue<string> _closedSessionOrder = new();
     private readonly Dictionary<string, IBridgeRouteHandler> _routes = new(StringComparer.Ordinal);
     private readonly List<Action<string>> _closedObservers = [];
+    // Answers status, watch, unwatch, cancel and stream of a route nothing serves, for an operation the window knows.
+    private Func<BridgeRouteRequest, ReadOnlyMemory<byte>?>? _releasedOperations;
     private int _maximumInputBytes = WindowContentSessionOptions.DefaultMaximumInputBytes;
     private ILogger _logger = TraceFallbackLogger.Instance;
     private TimeProvider _timeProvider = TimeProvider.System;
@@ -67,12 +69,11 @@ internal sealed class BridgeDispatcher : IBridgeRequestHandler
         }
     }
 
-    // The protocol-3 routes the operation and interaction routers still bind (P5 removes them).
-    internal BridgeLegacyRoutes Legacy { get; } = new();
-
     internal IBridgeTransport Transport => _transport;
 
     internal TimeProvider TimeProvider => _timeProvider;
+
+    internal ILogger Logger => _logger;
 
     // Whether pushes to one connection travel through the mailbox.
     internal bool UsesMailbox => _targeted is null;
@@ -105,6 +106,24 @@ internal sealed class BridgeDispatcher : IBridgeRequestHandler
     internal bool Serves(string route)
     {
         lock (_gate) return _routes.ContainsKey(route);
+    }
+
+    // Answers the operation requests (status, watch, unwatch, cancel, stream) of routes nothing serves: answer returns
+    // the reply for an operation the window knows, or null, which answers released. One per window, until disposed.
+    internal IDisposable ServeReleasedOperations(Func<BridgeRouteRequest, ReadOnlyMemory<byte>?> answer)
+    {
+        ArgumentNullException.ThrowIfNull(answer);
+        lock (_gate) _releasedOperations = answer;
+        return new ReleasedOperationsLease(this, answer);
+    }
+
+    private sealed class ReleasedOperationsLease(BridgeDispatcher owner, Func<BridgeRouteRequest, ReadOnlyMemory<byte>?> answer) : IDisposable
+    {
+        public void Dispose()
+        {
+            lock (owner._gate)
+                if (ReferenceEquals(owner._releasedOperations, answer)) owner._releasedOperations = null;
+        }
     }
 
     // Calls observer with the key of each connection that closes, until the lease is disposed.
@@ -177,7 +196,15 @@ internal sealed class BridgeDispatcher : IBridgeRequestHandler
                     return Reply(BridgeMessages.Rejected("invalid-request", $"'{envelope.Kind}' is not a request kind of this producer."));
                 IBridgeRouteHandler? handler;
                 lock (_gate) _routes.TryGetValue(route, out handler);
-                if (handler is null) return new(BridgeMessages.Released);
+                if (handler is null)
+                {
+                    // Operations belong to the window: one whose route was released stays observable.
+                    Func<BridgeRouteRequest, ReadOnlyMemory<byte>?>? operations;
+                    lock (_gate) operations = _releasedOperations;
+                    return new(BridgeRequestEnvelope.IsOperationObservation(envelope.Kind)
+                        && operations?.Invoke(new BridgeRouteRequest(envelope, connection, this)) is { } known
+                        ? known : BridgeMessages.Released);
+                }
                 var routed = handler.HandleAsync(new BridgeRouteRequest(envelope, connection, this), cancellationToken);
                 if (routed.IsCompletedSuccessfully) return new(routed.Result);
                 disposeEnvelope = false;
@@ -447,22 +474,4 @@ internal sealed class BridgeRouteRequest(BridgeRequestEnvelope envelope, BridgeC
 internal interface IBridgeRouteHandler
 {
     ValueTask<ReadOnlyMemory<byte>> HandleAsync(BridgeRouteRequest request, CancellationToken cancellationToken);
-}
-
-// What is left of the protocol-3 named routes: the operation and interaction routers of P5 still bind theirs, which
-// nothing calls any more. P5 removes those callers; then this class goes.
-internal sealed class BridgeLegacyRoutes
-{
-#pragma warning disable CA1822 // Instance members keep the callers of P5 compiling until they are removed.
-    internal IDisposable Bind(string name, Func<IBridgeArguments, string> handler) => Nothing.Instance;
-
-    internal IDisposable BindAsync(string name, Func<IBridgeArguments, CancellationToken, ValueTask<string>> handler) =>
-        Nothing.Instance;
-#pragma warning restore CA1822
-
-    private sealed class Nothing : IDisposable
-    {
-        internal static readonly Nothing Instance = new();
-        public void Dispose() { }
-    }
 }
