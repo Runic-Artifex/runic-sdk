@@ -1,0 +1,7 @@
+# The Rust toolchain of the experimental native Desktop server (X1). CI runners install it with rustup; the Nix
+# development shell provides the same version from nixpkgs and fails evaluation when they differ
+# (nix/toolchain/default.nix).
+[toolchain]
+channel = "1.98.1"
+profile = "minimal"
+components = ["clippy", "rustfmt"]
