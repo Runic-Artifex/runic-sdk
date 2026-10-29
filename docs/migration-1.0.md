@@ -151,7 +151,15 @@ The SDK tools made the same change in 0.9.0:
 | `tool --output json` | `tool --format json`. `OutputSelector("--format", "--output")` on the catalog keeps `--output` as a hidden alias; `OutputSelector("--output")` keeps the old spelling. A command option named `--format` is `RCLI0026` |
 | Exit codes 3 validation, 4 cancelled, 5 unavailable, 10 command failure, 70 host failure | 0 success; 1 expected failure, including unavailable and command failure; 2 usage and validation errors; 3 unexpected (host) failure; 130 cancelled. A repeated termination signal still exits with 128 plus the signal number. Scripts that test the old numbers test the new ones, or read the JSON fault code where they must tell categories apart |
 
-<!-- TODO(L1): Command Line 0.11.0 may keep --output as a hidden alias and make the global option name configurable; update when it ships -->
+Command Line 0.11.0 does not accept `--output` by default either, but a catalog
+without it answers `--output json` with `Did you mean '--format'?`. An
+application whose commands have their own `--format` (an export format, say)
+moves the selector with `[assembly: OutputSelector("--output-format")]`. It
+also states which category a handler returns: `Validation` (exit 2) for input
+of the wrong shape, `CommandFailure` or `Unavailable` (exit 1) for a domain
+failure on well-formed input; a handler that returned `Validation` for a
+refused operation returns `CommandFailure`
+([0.11.0 notes](https://github.com/Runic-Artifex/runic-cli-sdk/blob/main/eng/release/notes/0.11.0.md)).
 
 Notification activations need a check since 0.11.0 (SEC-09): see
 [Linux portal and D-Bus](#linux-portal-and-d-bus).
