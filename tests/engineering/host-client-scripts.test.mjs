@@ -466,6 +466,29 @@ test("runic-cswebui.js pauses the mailbox until a request settles after no-hello
   expect(received).toEqual(['{"kind":"operation","route":"a"}']);
 });
 
+// Views protocol 4 lets a page send its first requests with the hello (specs/application/README.md, "Handshake"): the
+// script sends them at once, and the producer holds the open until the hello completed, even when WebUI's threads
+// deliver the open first.
+test("runic-cswebui.js sends an open with its hello and resumes the mailbox when the first of them settles", async () => {
+  const webui = fakeCsWebUi();
+  const bridge = loadCsWebUi(webui).__runicBridge;
+  bridge.onMessage(() => {});
+  webui.answer(webui.open(receiveRequest)[0], noHello);
+  await settle();
+  const hello = bridge.request('{"kind":"hello"}');
+  const open = bridge.request('{"kind":"open","route":"a"}');
+  expect(webui.calls.map(call => call.message).slice(-2)).toEqual(['{"kind":"hello"}', '{"kind":"open","route":"a"}']);
+  expect(webui.receives().length).toBe(1);
+  webui.answer(webui.open('{"kind":"hello"}')[0], '{"ok":true,"protocol":4}');
+  await hello;
+  await settle();
+  expect(webui.receives().length).toBe(2);
+  webui.answer(webui.open('{"kind":"open","route":"a"}')[0], '{"ok":true}');
+  expect(await open).toBe('{"ok":true}');
+  await settle();
+  expect(webui.open(receiveRequest).length).toBe(1);
+});
+
 test("runic-cswebui.js resumes the mailbox at once when the hello settled before its no-hello arrived", async () => {
   const webui = fakeCsWebUi();
   const bridge = loadCsWebUi(webui).__runicBridge;
