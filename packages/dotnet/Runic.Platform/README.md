@@ -517,7 +517,7 @@ either.
 
 | Service | Desktop window with a native owner | Desktop window without one, or outside a window scope | CS-WebUI |
 | --- | --- | --- | --- |
-| `IWindowPlatformServices`, `IFileDialogs`, `ITextClipboard`, `IDesktopClipboard`, `IDesktopFileLauncher` | Native provider; `OwnerClosed` after the window closes | `Unavailable(OwnerUnavailable)` | `Unavailable(OwnerUnavailable)` |
+| `IWindowPlatformServices`, `IFileDialogs`, `ITextClipboard`, `IDesktopClipboard`, `IDesktopFileLauncher` | Native provider; `OwnerClosed` after the window closes | `Unavailable(OwnerUnavailable)`; an installed browser after a fallback shows unowned file dialogs for `OwnerPolicy.PreferOwner` (below) | `Unavailable(OwnerUnavailable)` |
 | Badges and progress, `IWindowPlatformServices.SetBadgeAsync` and `SetProgressAsync` | The taskbar button (Windows, also a WPF window's), the Dock tile (macOS) or the Unity launcher entry (GTK 3 and GTK 4, with an application ID) | `Unavailable(OwnerUnavailable)` | `Unavailable(OwnerUnavailable)` |
 | `IDesktopMessageBoxes`, `IWindowPlatformServices.MessageBoxes` | Task dialogs (Windows, also a WPF window's), sheets (macOS), GTK 3 message dialogs and GTK 4 alert dialogs | `Unavailable(OwnerUnavailable)` | `Unavailable(OwnerUnavailable)` |
 | `IDesktopMonitors`, `IWindowPlatformServices.Monitors` | The host's monitors (Windows, macOS, GTK 3 and GTK 4; a WPF window's on Windows) | `Unavailable(OwnerUnavailable)` | `Unavailable(OwnerUnavailable)` |
@@ -528,6 +528,25 @@ either.
 | Menu bar commands, `IRunicMenuCommandSource` | The native menu bar (macOS; the GTK 3 and GTK 4 windows' own bar), while the window is key, and `DesktopWindow.TryExecuteMenuItemAsync` | None | None |
 | Context menus, `IWindowPlatformServices.ShowContextMenuAsync` | The window's native menu where it has `DesktopWindowCapabilities.ContextMenu` (macOS, GTK 3, GTK 4); `BackendUnavailable` elsewhere | `Unavailable(OwnerUnavailable)` | `Unavailable(OwnerUnavailable)` |
 | `IDesktopSettings`, `IDesktopNotifications`, `IDesktopStatusIcon`, `IDesktopLoginStartup`, `IDesktopInhibition`, `IDesktopSecretStore`, `IDesktopTrash`, `IDesktopFileTransfers`, `IDesktopVolumes`, `IDesktopNetworkStatus`, `IDesktopApplications`, `IDesktopThumbnails` | Operating system provider | Operating system provider, the same instance | `Unavailable(ProviderNotConfigured)` |
+
+A window shown in an installed browser after an embedded-window fallback still
+runs on the user's desktop, so its file dialogs can work without an owner. Ask for
+them with `OwnerPolicy.PreferOwner`: an owned window shows its owned dialog as
+before, and the browser presentation shows an unowned one (Windows on a thread of
+the application's own, the xdg-desktop-portal without a parent window, macOS a
+panel of its own), until the window closes. `OwnerPolicy.RequireOwner`, the
+default, still reports `OwnerUnavailable` there. The capabilities tell the two
+apart: `platform.dialogs.owned` is available for owned dialogs and
+`platform.dialogs.unowned` while `PreferOwner` shows unowned ones, and the other
+file capabilities then describe the unowned dialogs. An unowned dialog is not
+modal: disable what must wait for it. A Window served under serve-only mode or on
+CS-WebUI has no unowned dialogs, as its browser may run on another computer.
+
+```csharp
+var options = new OpenFileOptions(OwnerPolicy.PreferOwner) { Title = "Import backup", Filters = [backups] };
+if (await files.OpenFileAsync(options) is PickerResult<IReadFileLease>.Selected(var backup))
+    await using (backup) { /* restore */ }
+```
 
 On Runic Desktop the application services behave the same with or without a
 native owner. The macOS settings, notifications and status icon need the AppKit

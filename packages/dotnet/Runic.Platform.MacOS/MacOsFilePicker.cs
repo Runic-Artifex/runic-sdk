@@ -170,7 +170,16 @@ internal sealed partial class MacOsFilePicker(INativeWindowOwner owner) : INativ
                     catch (Exception error) { result.TrySetException(error); }
                     finally { foreach (var access in acquired) access.DisposeAsync().AsTask().GetAwaiter().GetResult(); }
                 });
-                try { BeginSheet(panel, Sel("beginSheetModalForWindow:completionHandler:"), window, block); }
+                try
+                {
+                    if (window != 0) BeginSheet(panel, Sel("beginSheetModalForWindow:completionHandler:"), window, block);
+                    else
+                    {
+                        // Without a window (MacApplicationOwner): a panel of its own, in front of the application's windows.
+                        SendArg(Send(GetClass("NSApplication"), Sel("sharedApplication")), Sel("activateIgnoringOtherApps:"), 1);
+                        SendArg(panel, Sel("beginWithCompletionHandler:"), block);
+                    }
+                }
                 finally { CompletionBlock.Release(block); }
                 Shown.TrySetResult();
             }, cancellationToken).ConfigureAwait(false);

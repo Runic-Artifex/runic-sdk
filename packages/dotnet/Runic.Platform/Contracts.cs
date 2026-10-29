@@ -53,12 +53,31 @@ public enum PlatformFailureCode
     Other = 10
 }
 
-/// <summary>Ownership requirements for native dialogs. Runic supports owned dialogs only; other values may be added.</summary>
-/// <remarks>This set is open: a minor release may add policies.</remarks>
+/// <summary>Ownership requirements for native dialogs and message boxes.</summary>
+/// <remarks>
+/// <para>
+/// A dialog owned by its window is modal to it, stays above it and closes with it. A presentation without a native
+/// owner, such as an installed browser after an embedded-window fallback, can still show an unowned dialog on the user's
+/// desktop with <see cref="PreferOwner"/>. Its capabilities tell the two apart: <c>platform.dialogs.owned</c> is
+/// available while dialogs are owned, and <c>platform.dialogs.unowned</c> while <see cref="PreferOwner"/> shows unowned
+/// ones (<see cref="PlatformCapabilityIds.DialogsOwned"/>, <see cref="PlatformCapabilityIds.DialogsUnowned"/>).
+/// </para>
+/// <para>This set is open: a minor release may add policies.</para>
+/// </remarks>
 public enum OwnerPolicy
 {
-    /// <summary>Require the verified owner of this presentation.</summary>
-    RequireOwner
+    /// <summary>Require the verified owner of this presentation: without one, the dialog reports
+    /// <see cref="PlatformUnavailableReason.OwnerUnavailable"/>.</summary>
+    RequireOwner,
+    /// <summary>Use the verified owner of this presentation; a presentation that has no native owner shows an unowned
+    /// dialog instead, where its host can.</summary>
+    /// <remarks>
+    /// An owned presentation whose window is closing still reports <see cref="PlatformUnavailableReason.OwnerClosed"/>,
+    /// and a host without unowned dialogs, such as CS-WebUI or a Window served to a browser, reports
+    /// <see cref="PlatformUnavailableReason.OwnerUnavailable"/> as with <see cref="RequireOwner"/>. An unowned dialog is
+    /// not modal to any window: the page stays usable while it is shown, so disable what must wait for it.
+    /// </remarks>
+    PreferOwner,
 }
 
 /// <summary>Required durability behavior for a save transaction.</summary>
@@ -382,7 +401,8 @@ public sealed record FileDialogFilter(string Name, ImmutableArray<string> Extens
 }
 
 /// <summary>Options for selecting existing files.</summary>
-/// <param name="OwnerPolicy">The required dialog ownership.</param>
+/// <param name="OwnerPolicy">The required dialog ownership; <see cref="OwnerPolicy.PreferOwner"/> shows an unowned dialog for
+/// a presentation without a native owner.</param>
 public sealed record OpenFileOptions(OwnerPolicy OwnerPolicy = OwnerPolicy.RequireOwner)
 {
     private readonly ImmutableArray<FileDialogFilter> _filters = [];
@@ -420,7 +440,8 @@ public sealed record OpenFileOptions(OwnerPolicy OwnerPolicy = OwnerPolicy.Requi
 }
 
 /// <summary>Options for selecting existing local directories.</summary>
-/// <param name="OwnerPolicy">The required dialog ownership.</param>
+/// <param name="OwnerPolicy">The required dialog ownership; <see cref="OwnerPolicy.PreferOwner"/> shows an unowned dialog for
+/// a presentation without a native owner.</param>
 public sealed record OpenDirectoryOptions(OwnerPolicy OwnerPolicy = OwnerPolicy.RequireOwner)
 {
     private readonly string? _initialDirectory;
@@ -444,7 +465,8 @@ public sealed record OpenDirectoryOptions(OwnerPolicy OwnerPolicy = OwnerPolicy.
 
 /// <summary>Options for selecting one save destination.</summary>
 /// <param name="SuggestedName">A filename without path separators.</param>
-/// <param name="OwnerPolicy">The required dialog ownership.</param>
+/// <param name="OwnerPolicy">The required dialog ownership; <see cref="OwnerPolicy.PreferOwner"/> shows an unowned dialog for
+/// a presentation without a native owner.</param>
 public sealed record SaveFileOptions(string SuggestedName, OwnerPolicy OwnerPolicy = OwnerPolicy.RequireOwner)
 {
     private readonly ImmutableArray<FileDialogFilter> _filters = [];

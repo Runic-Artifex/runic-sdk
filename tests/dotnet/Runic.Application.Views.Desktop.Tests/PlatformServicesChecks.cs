@@ -105,6 +105,19 @@ internal sealed class PlatformServicesChecks
             && await services.FileDialogs.SaveDocumentAsync(new("notes.txt")) is PickerResult<IDocumentFileLease>.Unavailable(PlatformUnavailableReason.OwnerUnavailable)
             && await services.FileLauncher.LaunchAsync(Path.Combine(Path.GetTempPath(), "notes.txt")) is PlatformResult<PlatformUnit>.Unavailable(PlatformUnavailableReason.OwnerUnavailable),
             "A window without native dispatch did not report the owner unavailable.");
+        // #712: it still runs on the user's desktop, so OwnerPolicy.PreferOwner shows unowned file dialogs; the capabilities
+        // tell them from owned ones, and every other service still reports the missing owner.
+        var statuses = services.GetSnapshot().Statuses;
+        Require(statuses[PlatformCapabilityIds.DialogsUnowned] is CapabilityStatus.Available
+            && statuses[PlatformCapabilityIds.DialogsOwned] is CapabilityStatus.Unavailable(PlatformUnavailableReason.OwnerUnavailable)
+            && statuses[PlatformCapabilityIds.FilesOpen] is CapabilityStatus.Available
+            && statuses[PlatformCapabilityIds.ClipboardReadText] is CapabilityStatus.Unavailable(PlatformUnavailableReason.OwnerUnavailable)
+            && statuses[PlatformCapabilityIds.MessageBoxes] is CapabilityStatus.Unavailable(PlatformUnavailableReason.OwnerUnavailable),
+            $"A window without native dispatch did not report unowned file dialogs: {string.Join(", ", statuses)}.");
+        await window.DisposeAsync();
+        Require(await services.FileDialogs.OpenFileAsync(new(OwnerPolicy.PreferOwner)) is PickerResult<IReadFileLease>.Unavailable(PlatformUnavailableReason.OwnerClosed)
+            && services.GetSnapshot().Statuses[PlatformCapabilityIds.DialogsUnowned] is CapabilityStatus.Unavailable(PlatformUnavailableReason.OwnerClosed),
+            "The unowned dialogs of a closed window did not report the owner closed.");
     }
 
     [Test, NotInParallel(Order = 16)]

@@ -42,7 +42,8 @@ public sealed record DesktopMessageBox(string Message)
     /// </remarks>
     public ImmutableArray<DesktopMessageBoxButton> Buttons { get; init; } = [];
 
-    /// <summary>The required ownership; message boxes are always owned by their window.</summary>
+    /// <summary>The required ownership: <see cref="OwnerPolicy.RequireOwner"/>, the default, shows the box only modal to its
+    /// window; <see cref="OwnerPolicy.PreferOwner"/> also shows it without one where the services can.</summary>
     public OwnerPolicy OwnerPolicy { get; init; } = OwnerPolicy.RequireOwner;
 }
 

@@ -67,8 +67,10 @@ public static partial class DesktopPlatformServices
     /// <returns>Services the caller disposes before the window's event loop stops; disposal releases acquired file access.</returns>
     /// <remarks>
     /// A window without native dispatch, such as an installed browser after an embedded-window fallback, gets services
-    /// that report <see cref="PlatformUnavailableReason.OwnerUnavailable"/>; a native window whose toolkit has no
-    /// provider reports <see cref="PlatformUnavailableReason.ProviderNotConfigured"/>.
+    /// that report <see cref="PlatformUnavailableReason.OwnerUnavailable"/>, except for file dialogs with
+    /// <see cref="OwnerPolicy.PreferOwner"/>, which it shows without an owner
+    /// (<see cref="PlatformCapabilityIds.DialogsUnowned"/>); a native window whose toolkit has no provider reports
+    /// <see cref="PlatformUnavailableReason.ProviderNotConfigured"/>.
     /// </remarks>
     public static DesktopWindowPlatformServices ForWindow(DesktopNativeOwner owner)
     {
@@ -837,7 +839,14 @@ public static partial class DesktopPlatformServices
     internal static IWindowPlatformServices Create(DesktopNativeOwner owner, out DesktopPlatformProvider provider, string? applicationId = null)
     {
         provider = DesktopPlatformProvider.None;
-        if (!owner.IsAvailable) return WindowPlatformServices.Unavailable(PlatformUnavailableReason.OwnerUnavailable);
+        if (!owner.IsAvailable)
+        {
+            // A presentation without native dispatch, such as an installed browser after an embedded-window fallback, has no
+            // owner for dialogs. It runs on the user's desktop, so OwnerPolicy.PreferOwner shows unowned ones (#712).
+            return owner.Window.IsOpen && CreateUnownedFileDialogs() is { } unowned
+                ? new UnownedWindowPlatformServices(owner.Generation, unowned)
+                : WindowPlatformServices.Unavailable(PlatformUnavailableReason.OwnerUnavailable);
+        }
         provider = CurrentProvider;
         // Each provider is created in its own method, so the JIT loads only the selected provider's assembly:
         // a GTK 4 process does not even load the GTK 3 provider. The -windows assembly references only the
@@ -851,6 +860,64 @@ public static partial class DesktopPlatformServices
 #endif
         if (native is not { } selected) return WindowPlatformServices.Unavailable(PlatformUnavailableReason.ProviderNotConfigured);
         return new BoundWindowPlatformServices(owner, selected);
+    }
+
+    // File dialogs without a parent window: the Windows application UI thread, the portal without a parent (which needs
+    // no toolkit, so it serves GTK 3 and GTK 4 processes alike), and AppKit panels of their own. Null elsewhere.
+    internal static IPickerBackend? CreateUnownedFileDialogs()
+    {
+        if (OperatingSystem.IsWindowsVersionAtLeast(8)) return CreateUnownedWindowsFileDialogs();
+#if RUNIC_PORTABLE_PLATFORMS
+        if (OperatingSystem.IsLinux()) return CreateUnownedPortalFileDialogs();
+        if (OperatingSystem.IsMacOS()) return CreateUnownedMacOSFileDialogs();
+#endif
+        return null;
+    }
+
+    [SupportedOSPlatform("windows8.0")]
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static IPickerBackend CreateUnownedWindowsFileDialogs() => WindowsPlatformProvider.CreateUnownedFileDialogs();
+
+#if RUNIC_PORTABLE_PLATFORMS
+    [SupportedOSPlatform("linux")]
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static IPickerBackend CreateUnownedPortalFileDialogs() => PortalApplication.Inferred.CreateUnparentedFileDialogs();
+
+    [SupportedOSPlatform("macos")]
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static IPickerBackend CreateUnownedMacOSFileDialogs() => MacOSPlatformProvider.CreateUnownedFileDialogs();
+#endif
+
+    // The services of a presentation without a native owner: unowned file dialogs for OwnerPolicy.PreferOwner, and every
+    // other service unavailable for the missing owner, as before. Closing the window ends them (OwnerClosed).
+    private sealed class UnownedWindowPlatformServices : IWindowPlatformServices, IAsyncDisposable
+    {
+        private static readonly IWindowPlatformServices NoOwner = WindowPlatformServices.Unavailable(PlatformUnavailableReason.OwnerUnavailable);
+        private readonly PresentationLifetime _lifetime;
+        private readonly PresentationFiles _files;
+
+        public UnownedWindowPlatformServices(Guid generation, IPickerBackend unowned)
+        {
+            _lifetime = new PresentationLifetime(static () => false, generation);
+            _files = new PresentationFiles(_lifetime, backend: null, unowned);
+        }
+
+        public IFileDialogs FileDialogs => _files;
+        public ITextClipboard Clipboard => NoOwner.Clipboard;
+        public IDesktopFileLauncher FileLauncher => NoOwner.FileLauncher;
+        public IDesktopMonitors Monitors => NoOwner.Monitors;
+        public IDesktopMessageBoxes MessageBoxes => NoOwner.MessageBoxes;
+
+        public CapabilitySnapshot GetSnapshot() => new(_lifetime.Generation, NoOwner.GetSnapshot().Statuses.SetItems(_files.GetSnapshot().Statuses));
+
+        public ValueTask<PlatformResult<PlatformUnit>> SetBadgeAsync(DesktopBadge? badge, CancellationToken cancellationToken = default) =>
+            NoOwner.SetBadgeAsync(badge, cancellationToken);
+
+        public ValueTask<PlatformResult<PlatformUnit>> SetProgressAsync(DesktopProgress? progress, CancellationToken cancellationToken = default) =>
+            NoOwner.SetProgressAsync(progress, cancellationToken);
+
+        // Closes a dialog that is shown and releases the files it gave.
+        public ValueTask DisposeAsync() => _lifetime.DisposeAsync();
     }
 
     /// <summary>
@@ -1687,7 +1754,8 @@ public static class DesktopPlatformServiceCollectionExtensions
     /// <see cref="DesktopPlatformServices.CurrentProvider"/>, and stop when the window closes. A window without a native owner,
     /// such as an installed browser after an embedded-window fallback or a window served under
     /// <c>RUNIC_APPLICATION_SERVE_ONLY=1</c>, and any scope other than a window's, get window services that report
-    /// <see cref="PlatformUnavailableReason.OwnerUnavailable"/>.
+    /// <see cref="PlatformUnavailableReason.OwnerUnavailable"/>. The installed browser's still show file dialogs that ask
+    /// for <see cref="OwnerPolicy.PreferOwner"/>, without an owner.
     /// The application services need no window, so they work the same with or without a native owner: they are
     /// singletons created by <see cref="DesktopPlatformServices.CreateSettings"/>,
     /// <see cref="DesktopPlatformServices.CreateNotifications(string?)"/>, <see cref="DesktopPlatformServices.CreateStatusIcon(string?)"/>,

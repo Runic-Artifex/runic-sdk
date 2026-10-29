@@ -213,8 +213,21 @@ public static class PlatformCapabilityIds
     public const string FilesSave = "platform.files.save";
     /// <summary>Selecting a directory through <see cref="IFileDialogs.OpenDirectoryAsync"/>.</summary>
     public const string DirectoriesOpen = "platform.directories.open";
-    /// <summary>File dialogs owned by the window.</summary>
+    /// <summary>File dialogs owned by the window: available while <see cref="OwnerPolicy.RequireOwner"/> shows a dialog.</summary>
     public const string DialogsOwned = "platform.dialogs.owned";
+    /// <summary>
+    /// File dialogs without an owner: available while the window has no native owner and
+    /// <see cref="OwnerPolicy.PreferOwner"/> shows an unowned dialog, such as for an installed browser after an
+    /// embedded-window fallback.
+    /// </summary>
+    /// <remarks>
+    /// While it is available, <see cref="FilesOpen"/>, <see cref="FilesSave"/>, <see cref="DirectoriesOpen"/> and the other
+    /// file capabilities describe those unowned dialogs, and <see cref="DialogsOwned"/> reports
+    /// <see cref="PlatformUnavailableReason.OwnerUnavailable"/>, as a <see cref="OwnerPolicy.RequireOwner"/> call does. Services
+    /// with an owner, or without unowned dialogs, report it <see cref="PlatformUnavailableReason.ProviderNotConfigured"/>
+    /// or the reason their dialogs are unavailable.
+    /// </remarks>
+    public const string DialogsUnowned = "platform.dialogs.unowned";
     /// <summary>Reading text through <see cref="ITextClipboard.ReadTextAsync"/>.</summary>
     public const string ClipboardReadText = "platform.clipboard.readText";
     /// <summary>Writing text through <see cref="ITextClipboard.WriteTextAsync"/>.</summary>
@@ -271,7 +284,7 @@ public static class WindowPlatformServices
         PlatformCapabilityIds.DirectoriesOpenMultiple, PlatformCapabilityIds.Monitors, PlatformCapabilityIds.MessageBoxes,
         PlatformCapabilityIds.ClipboardReadData, PlatformCapabilityIds.ClipboardWriteData, PlatformCapabilityIds.ClipboardWatch,
         PlatformCapabilityIds.TaskbarBadge, PlatformCapabilityIds.TaskbarProgress, PlatformCapabilityIds.DragOut,
-        PlatformCapabilityIds.FilesOpenDocument,
+        PlatformCapabilityIds.FilesOpenDocument, PlatformCapabilityIds.DialogsUnowned,
     ];
 
     /// <summary>Creates services that report every operation and capability unavailable for <paramref name="reason"/>.</summary>

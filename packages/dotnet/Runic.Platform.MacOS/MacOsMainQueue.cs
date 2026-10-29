@@ -3,8 +3,8 @@ using System.Runtime.InteropServices;
 
 namespace Runic.Platform.MacOS;
 
-// Cleanup only: owned panels/URLs must drain even after presentation replacement.
-// This does not provide a way to start operations without a verified owner.
+// The main queue: cleanup of owned panels and URLs, which must drain even after presentation replacement, and the
+// application's own work without a window (MacApplicationOwner).
 internal static partial class MacOsMainQueue
 {
     internal static unsafe ValueTask InvokeAsync(Action action)

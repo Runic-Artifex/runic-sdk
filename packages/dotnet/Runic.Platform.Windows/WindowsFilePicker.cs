@@ -10,8 +10,9 @@ using Runic.Platform.Runtime;
 
 namespace Runic.Platform.Windows;
 
-// Generated unmanaged Common Item Dialog bindings preserve NativeAOT support.
-internal sealed partial class WindowsFilePicker(INativeWindowOwner owner) : INativeFilePicker, INativeDirectoryPicker
+// Generated unmanaged Common Item Dialog bindings preserve NativeAOT support. An unowned picker shows its dialogs
+// without a parent window, on the application's UI thread (WindowsApplicationThread).
+internal sealed partial class WindowsFilePicker(INativeWindowOwner owner, bool unowned = false) : INativeFilePicker, INativeDirectoryPicker
 {
     private const int Cancelled = unchecked((int)0x800704C7);
     internal TaskCompletionSource Shown { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -69,7 +70,7 @@ internal sealed partial class WindowsFilePicker(INativeWindowOwner owner) : INat
             await owner.InvokeAsync(handle =>
             {
                 cancellationToken.ThrowIfCancellationRequested();
-                if (handle == 0 || !owner.IsAvailable || owner.Generation != generation) throw new OwnerClosedException();
+                if (handle == 0 && !unowned || !owner.IsAvailable || owner.Generation != generation) throw new OwnerClosedException();
                 dialog = Create(save);
                 try
                 {
