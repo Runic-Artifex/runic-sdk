@@ -459,11 +459,12 @@ export type FieldHandle<TValue> = FieldState<TValue> & {
   /** The user changed the value, such as from a custom control. */
   input(value: TValue): void;
   /**
-   * The user is done with the field (`onBlur` calls it): with `commit: "pause"` the draft is written now. Resolves once
-   * the field's writes settled, so a command that depends on the field can run after it:
-   * `await title.commit(); await editor.save()`. Never rejects; a failure is `error`.
+   * The user is done with the field (`onBlur` calls it): with `commit: "pause"` the draft is written now. Resolves with
+   * the field's state once its writes settled, so a command that depends on the field can run after it and skip a
+   * failed write: `if ((await title.commit()).error === undefined) await editor.save()`. The handle is the state of
+   * the render that created it, so read the error from the resolved state. Never rejects.
    */
-  commit(): Promise<void>;
+  commit(): Promise<FieldState<TValue>>;
   /** Writes the draft again after a failed write; after a `conflict`, over the producer's value. */
   retry(): void;
   /** Drops the draft, the error and a conflict and shows the View's value. Writes in flight still complete. */

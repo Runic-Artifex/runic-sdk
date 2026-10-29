@@ -429,7 +429,7 @@ export function useField<TClient extends ViewClient, TValue>(
     errors: computed(() => current.value.errors),
     conflict: computed(() => current.value.conflict),
     input: (value: TValue) => controller.input(value),
-    commit: () => controller.commit(),
+    commit: async () => { await controller.commit(); },
     retry: () => controller.retry(),
     reset: () => controller.reset(),
   }) as FieldHandle<TValue>;

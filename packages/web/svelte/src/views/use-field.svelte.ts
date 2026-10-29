@@ -7,6 +7,7 @@ import {
   type FieldDefinition,
   type FieldOptions,
   type ViewClient,
+  type FieldState,
 } from "@runic-artifex/views";
 import type { TextFieldView } from "./use-text-field.svelte.js";
 
@@ -40,10 +41,10 @@ export interface FieldHandle<TValue> {
   input(value: TValue): void;
   /**
    * The user is done with the field (`attach` calls it on blur): with `commit: "pause"` the draft is written now.
-   * Resolves once the field's writes settled, so a command that depends on the field can run after it:
-   * `await title.commit(); await editor.save()`. Never rejects; a failure is `error`.
+   * Resolves with the field's state once its writes settled, so a command that depends on the field can run after
+   * it: `await title.commit(); await editor.save()`. Never rejects; a failure is `error`.
    */
-  commit(): Promise<void>;
+  commit(): Promise<FieldState<TValue>>;
   /** Writes the draft again after a failed write; after a `conflict`, over the producer's value. */
   retry(): void;
   /** Drops the draft, the error and a conflict and shows the View's value. Writes in flight still complete. */

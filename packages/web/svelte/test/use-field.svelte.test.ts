@@ -2,7 +2,7 @@
 
 import { flushSync, mount, unmount } from "svelte";
 import { describe, expect, expectTypeOf, test, vi } from "vitest";
-import type { FieldWriteOptions, FieldWriteReceipt } from "@runic-artifex/views";
+import type { FieldState, FieldWriteOptions, FieldWriteReceipt } from "@runic-artifex/views";
 import { FieldError, useField, type BridgeField, type FieldHandle } from "../src/views/index.js";
 import FieldOwner from "./fixtures/FieldOwner.svelte";
 
@@ -75,7 +75,7 @@ describe("useField", () => {
   test("the attachment writes a text field's input, writes nothing during composition and commits on blur in pause mode", async () => {
     const client = fakeClient({ title: "saved" });
     const { title, element, destroy } = form(client, { commit: "pause", delay: 60_000 });
-    expectTypeOf(title.commit).returns.toEqualTypeOf<Promise<void>>();
+    expectTypeOf(title.commit).returns.toEqualTypeOf<Promise<FieldState<string>>>();
     const input = element("title");
     expect(input.value).toBe("saved");
     expect(input.getAttribute("aria-invalid")).toBe("false");

@@ -2,7 +2,7 @@ import * as React from "react";
 import { createElement, StrictMode, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, expectTypeOf, test } from "vitest";
-import type { FieldWriteOptions, FieldWriteReceipt } from "@runic-artifex/views";
+import type { FieldState, FieldWriteOptions, FieldWriteReceipt } from "@runic-artifex/views";
 import {
   FieldError,
   useField,
@@ -97,7 +97,7 @@ describe("useField", () => {
     // StrictMode's second mount creates the field again; from then on the handlers are the same on every render.
     handlers.length = 0;
     expectTypeOf(field!.inputProps).toEqualTypeOf<FieldTextProps>();
-    expectTypeOf(field!.commit).returns.toEqualTypeOf<Promise<void>>();
+    expectTypeOf(field!.commit).returns.toEqualTypeOf<Promise<FieldState<string>>>();
     const input = document.querySelector<HTMLInputElement>("#title")!;
     expect(field!).toMatchObject({ value: "saved", text: "saved", editing: false, error: undefined, errors: [] });
     expect(input.value).toBe("saved");
