@@ -912,5 +912,8 @@ Details: 0.14.0 [Navigation hooks on the model turn](../eng/release/notes/0.14.0
 | A client connected by `useView`, `injectView` or `createViewController` was disposed, and its route closed, as soon as its component unmounted or its source changed | It stays connected for `keepAlive` milliseconds (2000 by default) and the next binding that follows the same connector takes it over ([Client lifetime](../packages/web/views/README.md#client-lifetime)). Tests that assert the route closes at unmount pass `{ keepAlive: 0 }` or wait for the period |
 | `String(error)` in a status line ("BridgeError: …") | `describeBridgeError(error)`; `isBridgeError(error, "released")` instead of `error instanceof BridgeError && error.kind === "released"` |
 | An app-local `bindTextInput` or `field-input.ts` for plain TypeScript pages | `bindField(element, client, EditorFields.title, options)` and `commitFields(...)` from `@runic-artifex/views` |
+| SvelteKit: `runicDevSession()` in `vite.config.ts` | `runic({ html: false })`, and `import "@runic-artifex/vite-plugin-runic/client";` in `src/hooks.client.ts`, for the timeline and the stale-input warning |
+| Angular: `runicDevSessionProxy()` only confirmed the dev session | It also receives the development client's reports; load it from `main.ts` with `if (typeof ngDevMode === "undefined" \|\| ngDevMode) await import("@runic-artifex/vite-plugin-runic/client");` |
+| A tool that read `/__runic/state` from the Angular proxy expected 204 | 200 with the state JSON |
 
 Details: 0.14.0 [Frontend connections and DX](../eng/release/notes/0.14.0.md#frontend-connections-and-dx-f2).
