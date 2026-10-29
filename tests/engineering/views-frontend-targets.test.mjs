@@ -863,6 +863,45 @@ test("the default composition type is the sanitized RootNamespace's RunicViewsCo
   assert.equal(defaultComposition("Library", "Contoso.Library", false), "", "A project without a host adapter gets no composition.");
 });
 
+// A1: a test project that uses an application's generated Bridges keeps generation off, so it gets no RUNICBRIDGE006
+// for declaring no Window: IsTestProject (Microsoft.NET.Test.Sdk, TUnit), or a direct Runic.Application.Testing
+// reference, as in a console test runner that a host adapter reaches through the application's reference.
+function testProjectGeneration(name, items, properties = "") {
+  const project = join(directory, `test-project-${name}`);
+  mkdirSync(project, { recursive: true });
+  writeFileSync(join(project, "Checks.cs"), "public static class Checks { }\n");
+  const projectFile = join(project, "Checks.proj");
+  writeFileSync(projectFile, `<Project>
+  <PropertyGroup>
+    <_RunicApplicationHostAdapter>true</_RunicApplicationHostAdapter>
+    <RunicApplicationFrontendCompositionType>Checks.RunicViewsComposition</RunicApplicationFrontendCompositionType>
+${properties}
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="Checks.cs" />
+${items}
+  </ItemGroup>
+  <Import Project="${targets}" />
+</Project>
+`);
+  const result = spawnSync("dotnet", ["msbuild", projectFile, "-t:RunicViewsDetectBridgeUse",
+    "-getProperty:RunicApplicationFrontendGenerationEnabled", "-nologo", "-noAutoResponse", "-nodeReuse:false"],
+    { cwd: project, encoding: "utf8" });
+  assert.equal(result.status, 0, result.stdout + result.stderr);
+  return result.stdout.trim();
+}
+
+test("a test project that declares no Window keeps Bridge generation off", () => {
+  assert.equal(testProjectGeneration("console", ""), "true", "Another project with a host adapter generates.");
+  assert.equal(testProjectGeneration("is-test-project", "", "<IsTestProject>true</IsTestProject>"), "false");
+  assert.equal(testProjectGeneration("package", '<PackageReference Include="Runic.Application.Testing" Version="0.14.0" />'), "false");
+  assert.equal(testProjectGeneration("project",
+    '<ProjectReference Include="../../packages/dotnet/Runic.Application.Testing/Runic.Application.Testing.csproj" />'), "false");
+  assert.equal(testProjectGeneration("explicit", '<PackageReference Include="Runic.Application.Testing" Version="0.14.0" />',
+    "<RunicApplicationFrontendGenerationEnabled>true</RunicApplicationFrontendGenerationEnabled>"), "true",
+    "A test project that asks for generation keeps it.");
+});
+
 // I-027: RunicApplicationFrontendDelivery=Embedded stages the www/ tree in obj/ and lets Runic.Assets pack it; the
 // build output gets no www/. RUNICBRIDGE030 reports what cannot embed, and the build continues as Files.
 const assetsBuild = resolve(root, "packages/dotnet/Runic.Assets/buildTransitive");

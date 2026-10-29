@@ -164,7 +164,14 @@ one is not public, top-level, concrete and closed, or a View contract is
 invalid, duplicated or missing.
 
 **Fix:** make the class public and top-level. Give each `[RunicViewContract]` a
-unique letters-and-digits name.
+unique letters-and-digits name. When the assembly has no Window or View, declare
+one, or, in a project that only uses another project's generated Bridges, turn
+generation off with `<RunicApplicationFrontendGenerationEnabled>false</RunicApplicationFrontendGenerationEnabled>`.
+A test project does not need this unless it sets one of the properties that
+require generation: generation stays off in a project with `IsTestProject`
+(Microsoft.NET.Test.Sdk and TUnit set it) and, since 0.14, in one that
+references `Runic.Application.Testing` directly, such as a console test runner,
+when it declares no Window or View of its own.
 
 ### RUNICBRIDGE007
 

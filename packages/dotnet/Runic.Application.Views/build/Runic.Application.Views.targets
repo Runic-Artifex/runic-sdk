@@ -396,14 +396,22 @@
       <_RunicBridgeDirectPackage Include="@(PackageReference)"
         Condition="'%(PackageReference.Identity)' == 'Runic.Application.Views'" />
     </ItemGroup>
-    <!-- A test project (IsTestProject, which Microsoft.NET.Test.Sdk and TUnit
-         set) that references a Runic application uses that application's
-         generated Bridges. Unless it declares a Window or View itself or
-         visibly expects output, generation stays off there, without
-         RUNICBRIDGE006 or RUNICBRIDGE015 and without a bootstrap build. Other
-         projects keep the diagnostics. -->
+    <!-- A test project that references a Runic application uses that
+         application's generated Bridges. A test project is one with
+         IsTestProject (which Microsoft.NET.Test.Sdk and TUnit set), or one that
+         references Runic.Application.Testing directly, such as a console
+         test runner. Unless it declares a Window or View itself or visibly
+         expects output, generation stays off there, without RUNICBRIDGE006 or
+         RUNICBRIDGE015 and without a bootstrap build. Other projects keep the
+         diagnostics. -->
+    <ItemGroup>
+      <_RunicBridgeTestingReference Include="@(PackageReference)"
+        Condition="'%(PackageReference.Identity)' == 'Runic.Application.Testing'" />
+      <_RunicBridgeTestingReference Include="@(ProjectReference)"
+        Condition="'%(ProjectReference.Filename)' == 'Runic.Application.Testing'" />
+    </ItemGroup>
     <PropertyGroup>
-      <_RunicBridgeTestProject Condition="'$(IsTestProject)' == 'true' and '$(RunicApplicationFrontendGenerationEnabled)' == '' and '$(RunicApplicationFrontendModelAssembly)' == '' and '@(RunicApplicationFrontendInput)' == '' and !Exists('$(RunicApplicationFrontendDirectory)/package.json')">true</_RunicBridgeTestProject>
+      <_RunicBridgeTestProject Condition="('$(IsTestProject)' == 'true' or '@(_RunicBridgeTestingReference)' != '') and '$(RunicApplicationFrontendGenerationEnabled)' == '' and '$(RunicApplicationFrontendModelAssembly)' == '' and '@(RunicApplicationFrontendInput)' == '' and !Exists('$(RunicApplicationFrontendDirectory)/package.json')">true</_RunicBridgeTestProject>
     </PropertyGroup>
     <ItemGroup Condition="'$(_RunicBridgeTestProject)' == 'true'">
       <_RunicBridgeTestViewSource Include="@(Compile)"

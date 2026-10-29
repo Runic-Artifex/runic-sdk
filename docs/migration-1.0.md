@@ -647,3 +647,14 @@ bridges and mocks are regenerated.
 | Event 1019 `BridgeRequestBeforeHello` for every request before `hello` | Only for a request answered `no-hello` |
 
 Details: 0.14.0 [Text splices and requests with `hello`](../eng/release/notes/0.14.0.md#text-splices-and-requests-with-hello-p1).
+
+### Testing
+
+| 0.13 | 0.14 |
+| --- | --- |
+| `driver.Snapshot()`, `Set`, `Write`, `Start`, `Mount`, `View`, `Track` and `transport.Request` in a suite that runs tests in parallel | `await driver.SnapshotAsync()`, `SetAsync`, `WriteAsync`, `StartAsync`, `MountAsync`, `ViewAsync`, `TrackAsync` and `RequestAsync`. The synchronous methods still work, but block a thread-pool thread per test while the window's asynchronous work needs the pool. |
+| `ExecuteAsync(vm => vm.RenameCommand, """{"title":"Groceries"}""")` | `ExecuteAsync(vm => vm.RenameCommand, new RenameInput("Groceries"))`; for a string input name the type: `ExecuteAsync<string>(vm => vm.SearchCommand, "milk")`. |
+| `SetJson(vm => vm.Filter, json)` for a DTO, list or union | `SetAsync(vm => vm.Filter, filter)`. |
+| Parsing each `RunicBridgeMessage.Json` for its route | `message.Route` and `message.Kind`. |
+| Registering a hand-built ViewModel so `RunicWindowTestHost.Create` resolves it | `RunicWindowTestHost.Create(services, viewModel)`. |
+| `<RunicApplicationFrontendGenerationEnabled>false</…>` in a console test runner that references `Runic.Application.Testing` | Remove it, unless the project sets another property that requires generation. |

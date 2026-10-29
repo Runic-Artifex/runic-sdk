@@ -139,13 +139,18 @@ public sealed class RunicViewPublication
         }
     }
 
-    // The route of a state, frame or failure push, or null for another message.
-    internal static string? RouteOf(string json)
+    // The kind and route a push names, if any.
+    internal static (string? Kind, string? Route) HeaderOf(string json)
     {
-        using var document = JsonDocument.Parse(json);
-        var root = document.RootElement;
-        return root.TryGetProperty("kind", out var kind) && kind.GetString() is "state" or "frame" or "failure"
-            && root.TryGetProperty("route", out var route) ? route.GetString() : null;
+        try
+        {
+            using var document = JsonDocument.Parse(json);
+            var root = document.RootElement;
+            if (root.ValueKind != JsonValueKind.Object) return (null, null);
+            return (root.TryGetProperty("kind", out var kind) && kind.ValueKind == JsonValueKind.String ? kind.GetString() : null,
+                root.TryGetProperty("route", out var route) && route.ValueKind == JsonValueKind.String ? route.GetString() : null);
+        }
+        catch (JsonException) { return (null, null); }
     }
 
     /// <summary>The route.</summary>
