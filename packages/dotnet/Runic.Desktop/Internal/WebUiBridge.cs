@@ -55,6 +55,8 @@ internal static class WebUiBridge
           let nextCallId = 0;
           let socket;
           let tokenAccepted = false;
+          // The socket is open and its token check is queued: a pipelined call can follow it (requestAfterToken).
+          let tokenSent = false;
           let allEvents = false;
           let allowNavigation = true;
           let reconnect = true;
@@ -93,15 +95,23 @@ internal static class WebUiBridge
             }
           }
 
-          function resolveConnectionWaiters() {
-            for (const waiter of connectionWaiters) waiter.resolve();
-            connectionWaiters.clear();
+          function isReady(pipelined) {
+            return (pipelined ? tokenSent : tokenAccepted) && socket?.readyState === WebSocket.OPEN;
           }
 
-          function waitForConnection() {
-            if (tokenAccepted && socket?.readyState === WebSocket.OPEN) return Promise.resolve();
+          function resolveConnectionWaiters() {
+            for (const waiter of connectionWaiters) {
+              if (!isReady(waiter.pipelined)) continue;
+              connectionWaiters.delete(waiter);
+              waiter.resolve();
+            }
+          }
+
+          // A pipelined waiter needs only the token check to be sent, not its reply.
+          function waitForConnection(pipelined = false) {
+            if (isReady(pipelined)) return Promise.resolve();
             return new Promise((resolve, reject) => {
-              const waiter = { resolve, reject };
+              const waiter = { resolve, reject, pipelined };
               connectionWaiters.add(waiter);
               setTimeout(() => {
                 if (connectionWaiters.delete(waiter)) {
@@ -194,6 +204,19 @@ internal static class WebUiBridge
             return sendCall(name, args);
           }
 
+          // A call sent right after the token check on the same socket, without waiting for its reply: the server reads
+          // a socket's packets in order and authenticates it before it reads the next one, and drops every call of a
+          // socket whose token did not match. Until the reply lists the bindings, the server alone checks the name.
+          async function requestAfterToken(name, ...args) {
+            if (!name) throw new SyntaxError("No binding name is provided");
+            await waitForConnection(true);
+            name = String(name);
+            if (tokenAccepted && !allEvents && !bindings.has(name)) {
+              throw new ReferenceError(`No binding was found for "${name}"`);
+            }
+            return sendCall(name, args);
+          }
+
           function callCore(name, ...args) {
             return call("__webui_core_api__", name, ...args);
           }
@@ -241,8 +264,9 @@ internal static class WebUiBridge
             }
           }
 
-          // Reports whether the Bridge connection is open and its token accepted. Each true after false is a new
-          // connection: a new WebSocket, which .NET knows by a new connection id.
+          // Reports whether the Bridge connection is open and its token check sent, so that a Views request can follow
+          // it (requestAfterToken). Each true after false is a new connection: a new WebSocket, which .NET knows by a
+          // new connection id.
           function reportViewsConnection(connected) {
             if (connected === viewsConnected) return;
             viewsConnected = connected;
@@ -383,6 +407,7 @@ internal static class WebUiBridge
           function connect() {
             clearTimeout(reconnectTimer);
             tokenAccepted = false;
+            tokenSent = false;
             const endpoint = new URL(`${BASE_PATH}/_webui_ws_connect`, window.location.href);
             endpoint.protocol = endpoint.protocol === "https:" ? "wss:" : "ws:";
             endpoint.port = String(PORT);
@@ -390,12 +415,19 @@ internal static class WebUiBridge
               ? new WebSocket(endpoint)
               : new WebSocket(endpoint, `runic-desktop.${SESSION_CREDENTIAL}`);
             socket.binaryType = "arraybuffer";
-            socket.addEventListener("open", () => checkToken().catch(() => {}));
+            socket.addEventListener("open", () => {
+              checkToken().catch(() => {});
+              // Views requests go out right behind the token check; the Views connection is open from here.
+              tokenSent = true;
+              resolveConnectionWaiters();
+              reportViewsConnection(true);
+            });
             socket.addEventListener("message", event => receivePacket(event).catch(error => {
               if (logging) console.error("WebUI bridge receive failure", error);
             }));
             socket.addEventListener("close", () => {
               tokenAccepted = false;
+              tokenSent = false;
               const error = new Error("The WebUI connection was closed.");
               for (const operation of pendingCalls.values()) operation.reject(error);
               pendingCalls.clear();
@@ -488,7 +520,10 @@ internal static class WebUiBridge
                 viewsConnectionListeners.add(entry);
                 return () => { viewsConnectionListeners.delete(entry); };
               },
-              isConnected: () => viewsConnected
+              isConnected: () => viewsConnected,
+              // Calls a binding right behind the token check (requestAfterToken), so a page's first Views requests
+              // do not wait for the token reply.
+              request: (name, ...args) => requestAfterToken(name, ...args)
             })
           });
           document.addEventListener("click", handleDocumentClick);

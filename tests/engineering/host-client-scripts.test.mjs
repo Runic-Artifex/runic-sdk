@@ -127,6 +127,23 @@ test("runic-desktop-views.js sends a request on __runicViews and resolves with t
   expect(calls).toEqual([["__runicViews", message, true]]);
 });
 
+// 0.14 T2: webui.js's `request` sends the call right behind the token check; the
+// script prefers it to webui.call, which waits for the token reply.
+test("runic-desktop-views.js sends a request through webui.js's request when it has one", async () => {
+  const requests = [];
+  const views = fakeDesktop();
+  views.request = async (name, ...args) => { requests.push([name, ...args]); return '{"ok":true}'; };
+  let allowed = false;
+  const context = loadDesktop(views, {
+    isConnected: () => false,
+    allowNavigation: status => { allowed = status; },
+    call: async () => { throw new Error("webui.call"); },
+  });
+  expect(await context.__runicBridge.request('{"kind":"hello"}')).toBe('{"ok":true}');
+  expect(requests).toEqual([["__runicViews", '{"kind":"hello"}']]);
+  expect(allowed).toBe(true);
+});
+
 test("runic-desktop-views.js passes a failed request through", async () => {
   const context = loadDesktop(fakeDesktop(), { isConnected: () => true, call: async () => { throw new Error("closed"); } });
   await expect(context.__runicBridge.request("{}")).rejects.toThrow("closed");

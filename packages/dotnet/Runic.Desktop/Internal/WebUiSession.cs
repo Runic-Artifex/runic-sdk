@@ -523,7 +523,12 @@ internal sealed class WebUiSession : IAsyncDisposable
 
             if (IsAuthenticated)
             {
-                _ = DispatchEventIgnoringFailureAsync(WebUiEventType.Connected, string.Empty, [], cancellationToken);
+                // Queued here on the receive path, as a call's admission is: a call that the page sent right behind its
+                // token check (webui.js requestAfterToken) is admitted after the Connected event.
+                Task admission;
+                try { admission = _eventGate.WaitAsync(cancellationToken); }
+                catch (Exception error) { admission = Task.FromException(error); }
+                _ = DispatchConnectedIgnoringFailureAsync(admission, cancellationToken);
             }
 
             return;
@@ -629,6 +634,34 @@ internal sealed class WebUiSession : IAsyncDisposable
         {
             lock (_admissionGate) _pendingCalls.Remove(completion);
             completion.TrySetResult();
+        }
+    }
+
+    private async Task DispatchConnectedIgnoringFailureAsync(Task admission, CancellationToken cancellationToken)
+    {
+        await Task.Yield();
+        try
+        {
+            await admission.ConfigureAwait(false);
+        }
+        catch (Exception)
+        {
+            return;
+        }
+
+        try
+        {
+            if (IsAuthenticated)
+            {
+                await _window.DispatchEventAsync(this, WebUiEventType.Connected, string.Empty, [], cancellationToken).ConfigureAwait(false);
+            }
+        }
+        catch (Exception)
+        {
+        }
+        finally
+        {
+            _eventGate.Release();
         }
     }
 
