@@ -58,12 +58,20 @@ internal sealed partial class WindowsFilePicker(INativeWindowOwner owner, bool u
         // Close runs through the same STA queue serviced by Show's modal loop.
         // Never return until Show unwinds and releases both COM interfaces.
         Task cancellation = Task.CompletedTask;
+        var shown = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         using var registration = cancellationToken.Register(() => cancellation = CloseAsync());
+        // A dialog that is still initializing, whose shell pumps messages before the modal loop starts, ignores Close: ask
+        // again until Show returns, for at most five seconds.
         async Task CloseAsync()
         {
-            try { await owner.InvokeAsync(_ => Close(dialog), CancellationToken.None).ConfigureAwait(false); }
-            catch (OwnerClosedException) { }
-            catch (ObjectDisposedException) { }
+            for (int attempt = 0; attempt < 50 && !shown.Task.IsCompleted; attempt++)
+            {
+                try { await owner.InvokeAsync(_ => { if (dialog != 0) Close(dialog); }, CancellationToken.None).ConfigureAwait(false); }
+                catch (OwnerClosedException) { return; }
+                catch (ObjectDisposedException) { return; }
+                catch (Exception) { /* Close failed (HRESULT): the dialog is not closable yet. */ }
+                await Task.WhenAny(shown.Task, Task.Delay(100, CancellationToken.None)).ConfigureAwait(false);
+            }
         }
         try
         {
@@ -85,7 +93,12 @@ internal sealed partial class WindowsFilePicker(INativeWindowOwner owner, bool u
                         paths[0] = paths[0] with { SelectedFilter = chosen };
                     selection = paths;
                 }
-                finally { Release(dialog); dialog = 0; }
+                finally
+                {
+                    Release(dialog);
+                    dialog = 0;
+                    shown.TrySetResult();
+                }
             }, cancellationToken).ConfigureAwait(false);
         }
         catch (COMException error) when (error.HResult == unchecked((int)0x80070005))
@@ -94,6 +107,7 @@ internal sealed partial class WindowsFilePicker(INativeWindowOwner owner, bool u
         { throw new IOException("The Windows file dialog failed.", error); }
         finally
         {
+            shown.TrySetResult();
             await registration.DisposeAsync().ConfigureAwait(false);
             await cancellation.ConfigureAwait(false);
         }
