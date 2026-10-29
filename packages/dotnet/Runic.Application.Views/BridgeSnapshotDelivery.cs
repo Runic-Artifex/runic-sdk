@@ -140,8 +140,9 @@ internal sealed class BridgeSnapshotDelivery : IDisposable
     }
 
     // Completes when every request and push handed to the delivery so far was delivered, failed, found nothing to
-    // deliver, or the delivery was disposed. Null when nothing is outstanding. The task completes synchronously on the
-    // drain, so a reply waiting for it is handed to its transport before the drain delivers the next push.
+    // deliver, or the delivery was disposed. Null when nothing is outstanding. The drain does not wait for the reply
+    // that waits for this task: the next push, which a later request can have caused, may reach the transport before
+    // that reply does (specs/application/README.md, "Reply order").
     internal Task? WhenSettled()
     {
         lock (_gate)

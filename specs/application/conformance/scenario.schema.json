@@ -131,6 +131,10 @@
             "receive": { "$ref": "#/$defs/message" },
             "replyTo": { "$ref": "#/$defs/name" },
             "drop": { "const": true },
+            "unordered": {
+              "description": "The message belongs to a group whose messages the producer may send in any order: the receive steps with unordered of one run of steps, which only steps a producer runner skips may separate.",
+              "const": true
+            },
             "connection": { "$ref": "#/$defs/name" }
           },
           "additionalProperties": false,

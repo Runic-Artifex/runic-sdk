@@ -558,6 +558,8 @@ public partial class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBr
             // Last: requests can arrive as soon as the route is served.
             _routeLease = BridgeDispatcher.For(transport).RegisterRoute(name, new RouteHandler(this));
             RunicViewsHotReload.Track(this);
+            // The first unit captures the route's first state in a later model turn (CaptureFirstState).
+            _delivery.RequestUnit();
         }
         catch
         {

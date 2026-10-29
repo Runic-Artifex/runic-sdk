@@ -4,7 +4,7 @@
   "contract": {"id":"runic.views","version":4},
   "set": "edits",
   "roles": ["producer","client"],
-  "description": "While an edit is in flight the client shows the latest edit value; an echo of an older edit does not replace it. The overlay ends when the route reaches the latest edit's reply revision.",
+  "description": "While an edit is in flight the client shows the latest edit value; an echo of an older edit does not replace it. The overlay ends when the route reaches the latest edit's reply revision. After the frame of edit 1, the reply to edit 1, the frame of edit 2 and the reply to edit 2 arrive in any order that keeps each reply after its own frame; this client run delivers the reply to edit 1 first, overlay-with-a-later-frame-first the frame of edit 2.",
   "view": "notes",
   "ids": {
     "c1": {"kind":"connection"},
@@ -103,7 +103,7 @@
         "changes": [{"field":"title","kind":"set","value":"a"}]
       }
     },
-    {"receive":{"ok":true,"revision":1},"replyTo":"edit-1"},
+    {"receive":{"ok":true,"revision":1},"replyTo":"edit-1","unordered":true},
     {"expect":{"call":{"id":"type-a","resolved":null}}},
     {
       "expect": {
@@ -136,9 +136,10 @@
         "baseRevision": 1,
         "revision": 2,
         "changes": [{"field":"title","kind":"set","value":"ab"}]
-      }
+      },
+      "unordered": true
     },
-    {"receive":{"ok":true,"revision":2},"replyTo":"edit-2"},
+    {"receive":{"ok":true,"revision":2},"replyTo":"edit-2","unordered":true},
     {"expect":{"call":{"id":"type-ab","resolved":null}}},
     {
       "expect": {

@@ -1,0 +1,65 @@
+{
+  "format": "runic.views.scenario/1",
+  "id": "operations.start-with-another-contract.v1",
+  "contract": {"id":"runic.views","version":4},
+  "set": "operations",
+  "roles": ["producer"],
+  "description": "A start whose contract is not the route's comes from a generated client of another build: it is rejected with invalid-request and starts nothing, so the operation stays unknown.",
+  "view": "notes",
+  "ids": {
+    "c1": {"kind":"connection"},
+    "hello-c1": {"kind":"request"},
+    "session": {"kind":"wire","value":"s-1"},
+    "start-request": {"kind":"request"},
+    "status-request": {"kind":"request"},
+    "operation": {"kind":"wire","value":"op-1"},
+    "other-contract": {"kind":"wire","value":"Other.NotesViewModel:another-build"}
+  },
+  "arrange": {"model":{}},
+  "steps": [
+    {"connect":"c1"},
+    {
+      "send": {
+        "kind": "hello",
+        "protocol": 4,
+        "session": {"$id":"session"},
+        "client": {"name":{"$any":"string","default":"conformance-client"},"version":{"$any":"string","default":"1.0.0"}}
+      },
+      "id": "hello-c1"
+    },
+    {
+      "receive": {
+        "ok": true,
+        "protocol": 4,
+        "implementation": {"name":{"$any":"string","default":"conformance-producer"},"version":{"$any":"string","default":"1.0.0"}}
+      },
+      "replyTo": "hello-c1"
+    },
+    {
+      "send": {
+        "kind": "start",
+        "route": "notes",
+        "member": "slowImport",
+        "operation": {"$id":"operation"},
+        "contract": {"$id":"other-contract"},
+        "input": {"source":"a","limit":2}
+      },
+      "id": "start-request"
+    },
+    {
+      "receive": {"ok":false,"error":{"kind":"rejected","reason":"invalid-request","message":{"$any":"string","default":"…"}}},
+      "replyTo": "start-request"
+    },
+    {
+      "send": {
+        "kind": "status",
+        "route": "notes",
+        "member": "slowImport",
+        "operation": {"$id":"operation"},
+        "contract": {"$id":"other-contract"}
+      },
+      "id": "status-request"
+    },
+    {"receive":{"ok":true,"status":{"kind":"unknown"}},"replyTo":"status-request"}
+  ]
+}

@@ -1,3 +1,5 @@
+using System.Buffers;
+
 namespace Runic.Application.Views;
 
 /// <summary>
@@ -7,8 +9,10 @@ namespace Runic.Application.Views;
 /// </summary>
 internal readonly record struct BridgeTextDelta(int Length, int Trim, string Text)
 {
-    // A log with repeated lines can offer several places where the kept text
-    // ends; past these, only the shorter kept texts are compared.
+    // A log that drops its start usually keeps its text where the baseline's
+    // last characters last occur in the value. Repeated lines offer more such
+    // places, one per appended line; past these candidates the exact search
+    // (LongestKept) finds the kept text.
     private const int MaximumCandidates = 8;
     private const int ProbeLength = 64;
 
@@ -32,12 +36,13 @@ internal readonly record struct BridgeTextDelta(int Length, int Trim, string Tex
             var tail = span[^ProbeLength..];
             // Something is dropped, so at most all but one character is kept.
             var region = text[..Math.Min(text.Length, span.Length - 1)];
-            for (var candidates = 0; candidates < MaximumCandidates; candidates++)
+            for (var candidates = 0; ; candidates++)
             {
                 var found = region.LastIndexOf(tail, StringComparison.Ordinal);
                 if (found < 0) break;
                 var kept = found + ProbeLength;
                 if (text.StartsWith(span[^kept..], StringComparison.Ordinal)) return Create(baseline, span.Length - kept, value);
+                if (candidates == MaximumCandidates) return Create(baseline, span.Length - LongestKept(span, text), value);
                 region = region[..(kept - 1)];
             }
         }
@@ -46,6 +51,37 @@ internal readonly record struct BridgeTextDelta(int Length, int Trim, string Tex
             if (text.StartsWith(span[^kept..], StringComparison.Ordinal)) return Create(baseline, span.Length - kept, value);
         // Nothing is kept: the value replaces the text.
         return Create(baseline, span.Length, value);
+    }
+
+    // The length of the longest suffix of baseline, shorter than baseline, that value starts with: the Knuth-Morris-
+    // Pratt automaton of the value's start, run over the baseline's end. Linear in their lengths.
+    private static int LongestKept(ReadOnlySpan<char> baseline, ReadOnlySpan<char> value)
+    {
+        var pattern = value[..Math.Min(value.Length, baseline.Length - 1)];
+        if (pattern.IsEmpty) return 0;
+        var rented = ArrayPool<int>.Shared.Rent(pattern.Length);
+        try
+        {
+            // failure[i]: the length of the longest proper prefix of pattern[..(i + 1)] that is also its suffix.
+            var failure = rented.AsSpan(0, pattern.Length);
+            failure[0] = 0;
+            for (int i = 1, length = 0; i < pattern.Length; i++)
+            {
+                while (length > 0 && pattern[i] != pattern[length]) length = failure[length - 1];
+                if (pattern[i] == pattern[length]) length++;
+                failure[i] = length;
+            }
+            // A kept text ends where the baseline ends, so it starts within its last pattern.Length characters.
+            var matched = 0;
+            foreach (var character in baseline[^pattern.Length..])
+            {
+                if (matched == pattern.Length) matched = failure[matched - 1];
+                while (matched > 0 && character != pattern[matched]) matched = failure[matched - 1];
+                if (character == pattern[matched]) matched++;
+            }
+            return matched;
+        }
+        finally { ArrayPool<int>.Shared.Return(rented); }
     }
 
     private static BridgeTextDelta? Create(string baseline, int trim, string value)
