@@ -1,8 +1,13 @@
 import { spawn } from "node:child_process";
+import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { launchChromium, pause, tail, waitFor } from "../shared/smoke.mjs";
+import { launchChromium, pause, tail, viewsProbe, waitFor } from "../shared/smoke.mjs";
 
 const dll = fileURLToPath(new URL("./bin/Release/net10.0/NotesReactiveViews.dll", import.meta.url));
+// The Editor's operation contract, `{view}:{fingerprint}`, as its generated client sends it.
+const editorContract = readFileSync(new URL("./Frontend/src/generated/editor.ts", import.meta.url), "utf8")
+  .match(/const bridgeContract = "([^"]+)";/)?.[1];
+if (!editorContract) throw new Error("The generated Editor client has no operation contract.");
 const webRoot = process.env.RUNIC_WEB_ROOT;
 const verifyClientDisconnect = process.env.RUNIC_VERIFY_CLIENT_DISCONNECT === "1";
 const verifyPendingMount = process.env.RUNIC_VERIFY_PENDING_MOUNT === "1";
@@ -39,7 +44,7 @@ try {
     }
   };
   const change = (selector, value) => evaluate(`(() => { const field = document.querySelector(${JSON.stringify(selector)}); field.value = ${JSON.stringify(value)}; field.dispatchEvent(new Event("change", { bubbles: true })); return true; })()`);
-  const snapshot = route => evaluate(`(async () => JSON.parse(await window.__runicBridge.call(${JSON.stringify(route + "Snapshot")})))()`);
+  const { request, snapshot, command: runCommand } = viewsProbe(evaluate);
   // WebUI sends a click event for each element with an id it has not marked.
   // Runic does not use them, so runic-cswebui.js marks the elements first.
   const expectClickEventsSuppressed = async moment => {
@@ -52,7 +57,7 @@ try {
     if (await query('document.querySelector("#main h1")?.textContent') === "Reactive Notes") return true;
     const status = await query('document.querySelector("#status")?.textContent');
     if (status && status !== "Connecting…") {
-      const raw = await query('(async () => await window.__runicBridge.call("shellSnapshot"))()');
+      const raw = await query('(async () => await window.__runicBridge.request(\'{"kind":"snapshot","route":"shell"}\'))()');
       throw new Error(`Browser status: ${status}; raw: ${raw}; host: ${errors}`);
     }
     return false;
@@ -64,12 +69,13 @@ try {
     // sends every call at once, so a burst this size would lose some there.
     const count = 2000;
     // I-205: a lost connection rejects the unsettled calls; the result says
-    // how many and when, and the failure carries the WebSocket's close.
+    // how many and when, and the failure carries the WebSocket's close. Every
+    // other request is invalid, which the producer answers with a rejection.
     const burst = await evaluate(`(async () => {
       const started = performance.now();
       let settled = 0, rejected = 0, firstRejection;
-      const calls = Array.from({ length: ${count} }, (_, index) => window.__runicBridge.call(
-        index % 2 ? "shellSnapshot" : "__runicOperationStatus", "invalid-json").then(() => settled++, error => {
+      const calls = Array.from({ length: ${count} }, (_, index) => window.__runicBridge.request(
+        index % 2 ? '{"kind":"snapshot","route":"shell"}' : "invalid-json").then(() => settled++, error => {
           if (rejected++ === 0) firstRejection = { after: Math.round(performance.now() - started), settled, message: String(error?.message ?? error) };
         }));
       await Promise.race([Promise.all(calls), new Promise(resolve => setTimeout(resolve, 150_000))]);
@@ -98,23 +104,25 @@ try {
       throw new Error(`Client disconnect verification failed: exit: ${host.exitCode}; signal: ${host.signalCode}; ${output}\n${errors}`);
     console.log("REACTIVE_NOTES_CLIENT_DISCONNECT_OK");
   } else if (verifyPendingMount) {
+    // Holds the first open of a content route, the mount of the Document View.
     await evaluate(`(() => {
       const bridge = window.__runicBridge;
-      const original = bridge.call;
+      const original = bridge.request;
       const invoke = original.bind(bridge);
       let held = false;
-      bridge.call = (name, ...args) => {
-        if (!held && name.startsWith("content") && name.endsWith("Mount")) {
+      bridge.request = message => {
+        const request = JSON.parse(message);
+        if (!held && request.kind === "open" && request.route.startsWith("content")) {
           held = true;
           return new Promise((resolve, reject) => {
             window.__releaseMount = () => {
-              bridge.call = original;
-              invoke(name, ...args).then(resolve, reject);
+              bridge.request = original;
+              invoke(message).then(resolve, reject);
               return true;
             };
           });
         }
-        return invoke(name, ...args);
+        return invoke(message);
       };
       return true;
     })()`);
@@ -152,21 +160,21 @@ try {
     await retry(async () => await query('document.querySelector("#pinned [data-pin=pinnedTask]")?.textContent?.includes("High")') === true);
     await click("[data-pinned-action=swap]");
   } else {
-    await evaluate('(async () => window.__runicBridge.call("shellSwapPinned"))()');
+    await runCommand("shell", "swapPinned");
   }
   await retry(async () => (await snapshot("shell")).state.pinned[0]?.kind === "pinnedTask");
   const reorderedPins = (await snapshot("shell")).state.pinned;
   if (reorderedPins[0].id !== originalPins[1].id || reorderedPins[1].id !== originalPins[0].id)
     throw new Error("Reordering the View collection changed routed identities.");
   if (webRoot) await click("[data-pinned-action=remove]");
-  else await evaluate('(async () => window.__runicBridge.call("shellRemovePinned"))()');
+  else await runCommand("shell", "removePinned");
   await retry(async () => (await snapshot("shell")).state.pinned.length === 1);
   if ((await snapshot(`content${originalPins[0].id}`)).error?.kind !== "released")
     throw new Error("Removing a View collection item kept its route connected.");
   if (!(await snapshot(`content${originalPins[1].id}`)).state)
     throw new Error("Removing a sibling View disconnected the surviving item.");
   if (webRoot) await click("[data-pinned-action=restore]");
-  else await evaluate('(async () => window.__runicBridge.call("shellRestorePinned"))()');
+  else await runCommand("shell", "restorePinned");
   await retry(async () => (await snapshot("shell")).state.pinned.length === 2);
   const restoredPins = (await snapshot("shell")).state.pinned;
   if (restoredPins[0].id !== originalPins[0].id || restoredPins[1].id !== originalPins[1].id)
@@ -275,11 +283,11 @@ try {
   const corruptReplies = await evaluate(`(async () => {
     const corrupt = [];
     for (let index = 0; index < 300; index++) {
-      const raw = await window.__runicBridge.call(${JSON.stringify(editorRoute + "Snapshot")});
+      const raw = await window.__runicBridge.request(${JSON.stringify(JSON.stringify({ kind: "snapshot", route: editorRoute }))});
       let title;
       try { title = JSON.parse(raw).state?.title; } catch {}
       if (title !== ${JSON.stringify(unicodeTitle)}) corrupt.push(String(raw).slice(-40));
-      await window.__runicBridge.call("shellSnapshot");
+      await window.__runicBridge.request('{"kind":"snapshot","route":"shell"}');
     }
     return corrupt;
   })()`, { timeout: 60_000 });
@@ -287,29 +295,45 @@ try {
     throw new Error(`${corruptReplies.length} large Bridge replies were corrupted; endings: ${JSON.stringify(corruptReplies.slice(0, 3))}`);
   await change("#document-pane [data-title]", "Operation roundtrip");
   await retry(async () => (await snapshot(editorRoute)).state?.canSave === true);
-  const requestId = "browser-operation-roundtrip";
-  const admission = await evaluate(`(async () => JSON.parse(await window.__runicBridge.call(${JSON.stringify(editorRoute + "StartSave")}, ${JSON.stringify(requestId)})))()`);
-  if (admission.kind !== "accepted" || admission.requestId !== requestId || typeof admission.contract !== "string")
-    throw new Error(`Advanced Save admission lost its wire identity: ${JSON.stringify(admission)}`);
-  const identity = JSON.stringify({ contract: admission.contract, requestId });
-  const terminal = await evaluate(`(async () => JSON.parse(await window.__runicBridge.call("__runicOperationWait", ${JSON.stringify(identity)})))()`);
-  if (terminal.kind !== "succeeded" || terminal.contract !== admission.contract || terminal.requestId !== requestId)
-    throw new Error(`Advanced Save did not finish through its window route: ${JSON.stringify(terminal)}`);
-  const cancel = await evaluate(`(async () => JSON.parse(await window.__runicBridge.call("__runicOperationCancel", ${JSON.stringify(identity)})))()`);
-  if (cancel.kind !== "not-running") throw new Error(`Terminal operation accepted cancellation: ${JSON.stringify(cancel)}`);
-  const invalid = await evaluate('(async () => JSON.parse(await window.__runicBridge.call("__runicOperationStatus", "invalid-json")))()');
-  if (invalid.kind !== "invalid-request") throw new Error(`Malformed operation identity was accepted: ${JSON.stringify(invalid)}`);
+  // The operation requests on the wire (specs/application/README.md, "Operations"): start, status, watch, cancel.
+  const identity = { route: editorRoute, member: "save", operation: "browser-operation-roundtrip", contract: editorContract };
+  const admission = await request({ kind: "start", ...identity });
+  if (admission.ok !== true || admission.admission !== "accepted" || !Number.isSafeInteger(admission.revision))
+    throw new Error(`Save was not admitted as an operation: ${JSON.stringify(admission)}`);
+  const duplicate = await request({ kind: "start", ...identity });
+  if (duplicate.ok !== true || duplicate.admission !== "duplicate")
+    throw new Error(`A repeated start was not a duplicate: ${JSON.stringify(duplicate)}`);
+  let terminal;
+  await retry(async () => {
+    terminal = (await request({ kind: "status", ...identity })).status;
+    return terminal?.kind !== "running";
+  });
+  if (terminal.kind !== "succeeded" || !Number.isSafeInteger(terminal.revision))
+    throw new Error(`Save did not finish as an operation: ${JSON.stringify(terminal)}`);
+  const watched = await request({ kind: "watch", ...identity });
+  if (watched.ok !== true || watched.status?.kind !== "succeeded")
+    throw new Error(`Watching the finished operation did not answer its status: ${JSON.stringify(watched)}`);
+  const cancel = await request({ kind: "cancel", ...identity });
+  if (cancel.ok !== true || cancel.cancellation !== "not-running")
+    throw new Error(`Terminal operation accepted cancellation: ${JSON.stringify(cancel)}`);
+  const conflict = await request({ kind: "start", ...identity, member: "discard" });
+  if (conflict.ok !== true || conflict.admission !== "rejected" || conflict.reason !== "identity-conflict")
+    throw new Error(`Reusing an operation id for another command was admitted: ${JSON.stringify(conflict)}`);
+  const invalid = await request({ kind: "status", route: editorRoute, member: "save", operation: identity.operation });
+  if (invalid.ok !== false || invalid.error?.kind !== "rejected" || invalid.error?.reason !== "invalid-request")
+    throw new Error(`An operation request without its contract was accepted: ${JSON.stringify(invalid)}`);
 
   // WebUI never settles calls in flight when its WebSocket closes, so the
   // client rejects them when it observes the loss.
   await evaluate(`(() => {
     const webui = window.webui;
     const call = webui.call;
+    const probe = '{"kind":"snapshot","route":"__runicLostProbe"}';
     webui.call = function (name, ...args) {
-      if (name === "__runicLostProbe") return new Promise(() => {});
+      if (args[0] === probe) return new Promise(() => {});
       return call.call(this, name, ...args);
     };
-    window.__runicLostProbe = window.__runicBridge.call("__runicLostProbe").then(() => "resolved", error => error.message);
+    window.__runicLostProbe = window.__runicBridge.request(probe).then(() => "resolved", error => error.message);
     return true;
   })()`);
   const { result: prototype } = await command("Runtime.evaluate", { expression: "WebSocket.prototype" });

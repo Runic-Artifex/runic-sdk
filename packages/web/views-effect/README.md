@@ -240,13 +240,16 @@ import { installMockBridge } from "@runic-artifex/views/mock";
 import { TestClock } from "effect/testing";
 
 const bridge = installMockBridge();
-// Register views and the __runicOperationWait/__runicOperationCancel routes, then:
+// Serve the View with its state; "manual" keeps its Save operations running until the test ends them.
+bridge.view("editor", { state: editorState, operations: { save: "manual" } });
+const client = await connectEditor();
 const exit = await Effect.runPromise(Effect.gen(function* () {
   const fiber = yield* Effect.forkChild(operation(() => client.startSave()).pipe(Effect.timeout("5 seconds")));
   yield* TestClock.adjust("5 seconds");
   return yield* Fiber.await(fiber);
 }).pipe(Effect.provide(TestClock.layer())));
-// bridge.calls now contains __runicOperationCancel.
+// The timeout cancelled the operation: bridge.calls now contains its `cancel` request.
+bridge.calls.some(call => call.kind === "cancel" && call.member === "save"); // true
 ```
 
 ## Bundle cost

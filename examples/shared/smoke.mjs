@@ -293,3 +293,24 @@ async function startChromium(url, profilePrefix, webSocketEvents) {
   const silent = () => !exited(child) && !answered;
   return { browser, connect, silent };
 }
+
+/**
+ * Views protocol 4 probes that a smoke runs in a page beside the page's own runtime
+ * (specs/application/README.md, "Host bridge" and "Shared globals"). `request` sends one request on the page's
+ * `__runicBridge` connection and resolves with the parsed reply. The page's runtime sends the connection's
+ * `hello`, so probe only after a View rendered; until then a request answers `no-hello`.
+ */
+export function viewsProbe(evaluate) {
+  const request = (message, options) => evaluate(
+    `(async () => JSON.parse(await window.__runicBridge.request(${JSON.stringify(JSON.stringify(message))})))()`, options);
+  return {
+    request,
+    /** The route's full state: `{ ok: true, revision, state }`, or `{ ok: false, error }` for a released route. */
+    snapshot: route => request({ kind: "snapshot", route }),
+    /** Runs a command without an input: `{ ok: true, revision }` once it completed. */
+    command: (route, member) => request({ kind: "command", route, member }),
+    /** Whether the page's runtime has `route` open: a View of the page shows it. */
+    isOpen: route => evaluate(
+      `globalThis[Symbol.for("runic.views.generated-client-runtime")]?.routes.has(${JSON.stringify(route)}) === true`),
+  };
+}
