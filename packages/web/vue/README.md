@@ -40,9 +40,15 @@ connected:
 
 - A generated page reference, or `{ connect: connect<Name> }` for a root
   ViewModel, is connected while the current effect scope (normally the
-  component) is active. Disposing the scope or changing the reference disposes
-  the client. A reference is identified by its `connect` function, so a getter
-  that returns a new `{ connect: connectWorkspace }` object does not reconnect.
+  component) is active. A reference is identified by its `connect` function, so
+  a getter that returns a new `{ connect: connectWorkspace }` object does not
+  reconnect.
+- Disposing the scope or changing the reference keeps the client connected for
+  `options.keepAlive` milliseconds (2000 by default), and the next `useView` of
+  the same reference takes it over with its state in `setup()`, so a `v-if`
+  that toggles, HMR and A→B→A navigation show the View at once instead of
+  "Connecting…" and do not open the route again. `keepAlive: 0` disposes at
+  once.
 - An already connected client is observed and left to its owner.
 - The source can be a value, a ref or a getter such as `() => props.page`.
 - `pending` is true while a reference connects. `error` holds a failed
@@ -54,6 +60,55 @@ disposed. Call them in a component's `setup()` (or `<script setup>`) or inside
 effect scope, for example from a plain module or an event handler, nothing ever
 releases them: `useView` keeps its client connected. Development builds warn
 in the console when that happens.
+
+### Async setup: `useSuspenseView(source, options?)`
+
+`await useSuspenseView(page)` in an async `setup()` (a top-level `await` in
+`<script setup>`) connects like `useView` and resolves once the View
+connected, with `state` (a ref that is never `undefined`) and `client`.
+`<Suspense>` shows its `#fallback` meanwhile:
+
+```vue
+<!-- CounterPage.vue -->
+<script setup lang="ts">
+import { useSuspenseView } from "@runic-artifex/vue";
+import type { CounterPageReference } from "../generated/counter.js";
+
+const props = defineProps<{ page: CounterPageReference }>();
+const { state, client } = await useSuspenseView(props.page);
+</script>
+
+<template><button @click="client.increment()">{{ state.count }}</button></template>
+```
+
+```vue
+<Suspense>
+  <CounterPage :page="page" :key="page.kind" />
+  <template #fallback><p>Connecting…</p></template>
+</Suspense>
+```
+
+A failed connection rejects, so the error reaches `onErrorCaptured` of a
+parent; render the component again, for example with a new `key`, to connect
+again. Call `useSuspenseView` before any other `await` in `setup()`. The
+source is read once: key the component by its reference to follow another one.
+
+### Selecting state: `computed`
+
+`useView` exposes the whole state as one shallow ref, which changes with every
+change of the View. A `computed` that selects a member triggers its dependents
+only when its value changed (Vue 3.4+), so a template part or a `watch` that
+reads `title` does not run again when another member changes:
+
+```ts
+const editor = useView(page);
+const title = computed(() => editor.state.value?.title);
+```
+
+Members the View did not change keep their identity, so selecting a member,
+also an object or a list, is enough. A computed that builds a new value, such
+as `items.filter(…)`, changes every time; compare it yourself
+(`computed(previous => …)` returns `previous` when equal).
 
 ### Read-only state and `v-model`
 
@@ -417,13 +472,16 @@ const { state: menuBar, invoke } = useMenuBar({
 
 The `error` of `useView` and of a command or operation handle is typed
 `unknown`: it holds whatever the connection or the call rejected with. A Bridge
-failure is a `BridgeError` from `@runic-artifex/views`; narrow it with
-`instanceof` before reading `kind`, `route` or `detail`:
+failure is a `BridgeError` from `@runic-artifex/views`. Show it with
+`describeBridgeError(error)`, one English sentence, instead of `String(error)`,
+and narrow it with `isBridgeError` (or `instanceof`) before reading `kind`,
+`route` or `detail`:
 
 ```ts
-import { BridgeError } from "@runic-artifex/views";
+import { describeBridgeError, isBridgeError } from "@runic-artifex/views";
 
-const offline = error.value instanceof BridgeError && error.value.kind === "disconnected";
+const offline = computed(() => isBridgeError(error.value, "disconnected"));
+const message = computed(() => describeBridgeError(error.value));
 ```
 
 `instanceof` holds for errors from every copy of the package on the page.

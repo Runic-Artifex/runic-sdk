@@ -1,6 +1,7 @@
 export { default as ViewOutlet } from "./ViewOutlet.svelte";
 export type { ViewRegistry } from "./view-registry.js";
-export { useView, type UseViewOptions, type ViewHandle } from "./use-view.svelte.js";
+export { useSuspenseView, useView, type SuspenseViewHandle, type UseViewOptions, type ViewHandle } from "./use-view.svelte.js";
+export { preloadView, type PreloadViewOptions } from "@runic-artifex/views";
 export { useCommand, type CommandHandle } from "./use-command.svelte.js";
 export { useOperation, type OperationHandle } from "./use-operation.svelte.js";
 export { useTextField, type TextFieldHandle, type TextFieldView, type UseTextFieldOptions } from "./use-text-field.svelte.js";

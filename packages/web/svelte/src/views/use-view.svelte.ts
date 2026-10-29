@@ -1,6 +1,6 @@
 import { untrack } from "svelte";
-import { createViewController, type ViewClient, type ViewSource } from "@runic-artifex/views";
-import { isViewClient, viewSourceIdentity } from "@runic-artifex/views/bindings";
+import { createViewController, type ViewClient, type ViewConnector, type ViewSource } from "@runic-artifex/views";
+import { isViewClient, viewSourceIdentity, viewSourcePreview } from "@runic-artifex/views/bindings";
 
 export interface ViewHandle<TClient extends ViewClient> {
   /** The latest state, or undefined until the client connects. */
@@ -19,7 +19,11 @@ export interface ViewHandle<TClient extends ViewClient> {
  * Connects a generated View reference while the calling component is mounted
  * and exposes its state as reactive properties. Call it during component
  * initialization with a getter, such as `useView(() => page)`, so a changed
- * prop disposes the previous client and connects the new one.
+ * prop releases the previous client and connects the new one.
+ *
+ * A released client stays connected for `keepAlive` milliseconds (2000 by
+ * default), and the next `useView` of the same reference takes it over: an
+ * `{#if}` that toggles, HMR and A→B→A navigation show the View at once.
  *
  * A reference is identified by its `connect` function, so a getter returning a
  * new `{ connect: connectShell }` object does not reconnect.
@@ -55,25 +59,66 @@ export function useView<TClient extends ViewClient>(source: () => ViewSource<TCl
     });
   });
 
-  // A connected client is readable before the effect observes it, and a
-  // changed reference does not show the previous one until the effect follows it.
-  const observed = () => {
+  // A connected client is readable before the effect observes it, and a changed reference does not show the
+  // previous one until the effect follows it, but a client kept for it (keep-alive) instead.
+  const preview = () => {
     const value = source();
-    return value && isViewClient(value) ? value : undefined;
+    if (value && isViewClient(value)) return value === current.client ? undefined : viewSourcePreview(value);
+    return fresh() ? undefined : viewSourcePreview(value);
   };
   const fresh = () => viewSourceIdentity(current.source) === identity;
   return {
-    get state() {
-      const value = observed();
-      if (value && value !== current.client) return value.snapshot;
-      return fresh() ? current.state : undefined;
-    },
-    get client() { return observed() ?? (fresh() ? current.client : undefined); },
+    get state() { return preview()?.state ?? (fresh() ? current.state : undefined); },
+    get client() { return preview()?.client ?? (fresh() ? current.client : undefined); },
     get error() { return fresh() ? current.error : undefined; },
     get pending() {
-      if (observed()) return false;
+      if (preview()) return false;
       return fresh() ? current.pending : identity !== undefined;
     },
     retry() { controller.retry(); },
   };
+}
+
+export interface SuspenseViewHandle<TClient extends ViewClient> {
+  /** The latest state. */
+  readonly state: TClient["snapshot"];
+  /** The connected client. */
+  readonly client: TClient;
+}
+
+/**
+ * Connects a generated View reference while the calling component is mounted, like {@link useView}, and returns a
+ * promise that resolves once it connected, with reactive `state` and `client` that are never `undefined`, or
+ * rejects with the connection failure. Call it during component initialization and await it in the markup:
+ *
+ * ```svelte
+ * <script lang="ts">
+ *   let { page }: { page: CounterPageReference } = $props();
+ *   const counter = useSuspenseView(page);
+ * </script>
+ *
+ * {#await counter}
+ *   <p>Connecting…</p>
+ * {:then view}
+ *   <button onclick={() => view.client.increment()}>{view.state.count}</button>
+ * {:catch error}
+ *   <p role="alert">{describeBridgeError(error)}</p>
+ * {/await}
+ * ```
+ *
+ * The source is read once; key the component (`{#key page}`) to follow another reference. A reference whose client
+ * another component let go of within its `keepAlive` period resolves at once.
+ */
+export function useSuspenseView<TClient extends ViewClient>(source: ViewConnector<TClient> | TClient,
+  options: UseViewOptions<TClient> = {}): Promise<SuspenseViewHandle<TClient>> {
+  const view = useView<TClient>(() => source, options);
+  let settle!: () => void;
+  const settled = new Promise<void>(resolve => { settle = resolve; });
+  // Reads the handle in an effect, so the promise settles once the effect followed the source.
+  $effect.pre(() => { if (!view.pending) settle(); });
+  return settled.then(() => {
+    if (view.error !== undefined || view.client === undefined) throw view.error;
+    const client = view.client;
+    return { get state() { return view.state as TClient["snapshot"]; }, client };
+  });
 }
