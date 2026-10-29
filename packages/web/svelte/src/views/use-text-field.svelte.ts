@@ -59,7 +59,9 @@ function textOf(event: Event | string): string {
  * <input bind:value={name.value} oncompositionstart={name.compositionStart} oncompositionend={name.compositionEnd}>
  * ```
  *
- * `write` may be a generated setter, a command or a checked write. Its failure sets `error` and keeps the draft.
+ * `write` may be a generated setter, a command or a checked write. Its failure, and a checked write's `rejected` or
+ * `conflict` receipt, keep the draft and set `error` (a receipt's is a `FieldError`). For a generated member, prefer
+ * `useField` with its `{View}Fields` descriptor.
  */
 export function useTextField<TClient extends ViewClient>(
   view: () => TextFieldView<TClient>,
