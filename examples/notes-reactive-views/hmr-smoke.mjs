@@ -103,7 +103,7 @@ try {
   const editorRoute = `content${editorId}`;
   const compactId = (await snapshot(`content${documentId}`)).state.compactNote.id;
   const compactRoute = `content${compactId}`;
-  await query('(() => { const field = document.querySelector("#document-pane [data-title]"); field.value = "Draft"; field.dispatchEvent(new Event("change", { bubbles: true })); return true; })()');
+  await query('(() => { const field = document.querySelector("#document-pane [data-title]"); Object.getOwnPropertyDescriptor(Object.getPrototypeOf(field), "value").set.call(field, "Draft"); field.dispatchEvent(new Event("input", { bubbles: true })); field.dispatchEvent(new Event("change", { bubbles: true })); return true; })()');
   await retry(async () => await query('document.querySelector("#compact-pane [data-title]")?.textContent') === "Draft");
   await click("[data-save]");
   await retry(async () => await query('document.querySelector("#document-pane [data-message]")?.textContent') === "Saved Draft");
@@ -124,7 +124,7 @@ try {
   if (afterHmr.activationCount - afterHmr.deactivationCount !== 1)
     throw new Error(`HMR left an unbalanced Editor activation: ${JSON.stringify(afterHmr)}`);
 
-  await query('(() => { const field = document.querySelector("#document-pane [data-title]"); field.value = "After HMR"; field.dispatchEvent(new Event("change", { bubbles: true })); return true; })()');
+  await query('(() => { const field = document.querySelector("#document-pane [data-title]"); Object.getOwnPropertyDescriptor(Object.getPrototypeOf(field), "value").set.call(field, "After HMR"); field.dispatchEvent(new Event("input", { bubbles: true })); field.dispatchEvent(new Event("change", { bubbles: true })); return true; })()');
   await retry(async () => await query('document.querySelector("#compact-pane [data-title]")?.textContent') === "After HMR");
   await click("[data-save]");
   await retry(async () => await query('document.querySelector("#document-pane [data-message]")?.textContent') === "Saved After HMR");

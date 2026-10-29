@@ -43,7 +43,7 @@ try {
       throw new Error(`The Reactive Notes control did not become clickable: ${selector}\n${cause.message}`, { cause });
     }
   };
-  const change = (selector, value) => evaluate(`(() => { const field = document.querySelector(${JSON.stringify(selector)}); field.value = ${JSON.stringify(value)}; field.dispatchEvent(new Event("change", { bubbles: true })); return true; })()`);
+  const change = (selector, value) => evaluate(`(() => { const field = document.querySelector(${JSON.stringify(selector)}); Object.getOwnPropertyDescriptor(Object.getPrototypeOf(field), "value").set.call(field, ${JSON.stringify(value)}); field.dispatchEvent(new Event("input", { bubbles: true })); field.dispatchEvent(new Event("change", { bubbles: true })); return true; })()`);
   const { request, snapshot, command: runCommand } = viewsProbe(evaluate);
   // WebUI sends a click event for each element with an id it has not marked.
   // Runic does not use them, so runic-cswebui.js marks the elements first.
@@ -294,7 +294,11 @@ try {
   if (corruptReplies.length)
     throw new Error(`${corruptReplies.length} large Bridge replies were corrupted; endings: ${JSON.stringify(corruptReplies.slice(0, 3))}`);
   await change("#document-pane [data-title]", "Operation roundtrip");
-  await retry(async () => (await snapshot(editorRoute)).state?.canSave === true);
+  // The field writes after its pause.
+  await retry(async () => {
+    const state = (await snapshot(editorRoute)).state;
+    return state?.title === "Operation roundtrip" && state.canSave === true;
+  });
   // The operation requests on the wire (specs/application/README.md, "Operations"): start, status, watch, cancel.
   const identity = { route: editorRoute, member: "save", operation: "browser-operation-roundtrip", contract: editorContract };
   const admission = await request({ kind: "start", ...identity });

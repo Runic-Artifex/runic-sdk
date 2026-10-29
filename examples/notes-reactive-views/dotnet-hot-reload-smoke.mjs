@@ -58,7 +58,7 @@ try {
     const documentId = (await snapshot("shell")).state.main.id;
     const editorId = (await snapshot(`content${documentId}`)).state.currentPane.id;
     route = `content${editorId}`;
-    await query('(() => { const field = document.querySelector("#document-pane [data-title]"); field.value = "Persistent draft"; field.dispatchEvent(new Event("change", { bubbles: true })); return true; })()');
+    await query('(() => { const field = document.querySelector("#document-pane [data-title]"); Object.getOwnPropertyDescriptor(Object.getPrototypeOf(field), "value").set.call(field, "Persistent draft"); field.dispatchEvent(new Event("input", { bubbles: true })); field.dispatchEvent(new Event("change", { bubbles: true })); return true; })()');
     await retry(async () => (await snapshot(route)).state?.title === "Persistent draft");
     initial = (await snapshot(route)).state;
   }

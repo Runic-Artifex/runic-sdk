@@ -98,7 +98,7 @@ try {
   const afterFirstExit = (await second.snapshot(editorRoute)).state;
   if (afterFirstExit.activationCount - afterFirstExit.deactivationCount !== 1)
     throw new Error(`The surviving browser lost its activation: ${JSON.stringify(afterFirstExit)}`);
-  await second.evaluate('(() => { const field = document.querySelector("#document-pane [data-title]"); field.value = "Surviving client"; field.dispatchEvent(new Event("change", { bubbles: true })); return true; })()');
+  await second.evaluate('(() => { const field = document.querySelector("#document-pane [data-title]"); Object.getOwnPropertyDescriptor(Object.getPrototypeOf(field), "value").set.call(field, "Surviving client"); field.dispatchEvent(new Event("input", { bubbles: true })); field.dispatchEvent(new Event("change", { bubbles: true })); return true; })()');
   await retry(async () => await second.evaluate('document.querySelector("#compact-pane [data-title]")?.textContent') === "Surviving client");
   second.kill();
   host.stdin.end("\n");
