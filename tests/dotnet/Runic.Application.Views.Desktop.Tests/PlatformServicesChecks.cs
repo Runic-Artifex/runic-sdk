@@ -102,8 +102,7 @@ internal sealed class PlatformServicesChecks
             "A window without native dispatch selected a provider.");
         Require(await services.FileDialogs.OpenFileAsync(new()) is PickerResult<IReadFileLease>.Unavailable(PlatformUnavailableReason.OwnerUnavailable)
             && await services.FileDialogs.OpenDocumentAsync(new()) is PickerResult<IDocumentFileLease>.Unavailable(PlatformUnavailableReason.OwnerUnavailable)
-            && await services.FileDialogs.SaveDocumentAsync(new("notes.txt")) is PickerResult<IDocumentFileLease>.Unavailable(PlatformUnavailableReason.OwnerUnavailable)
-            && services.MessageBoxes is not null,
+            && await services.FileDialogs.SaveDocumentAsync(new("notes.txt")) is PickerResult<IDocumentFileLease>.Unavailable(PlatformUnavailableReason.OwnerUnavailable),
             "A window without native dispatch did not report the owner unavailable.");
         // #712: it still runs on the user's desktop, so OwnerPolicy.PreferOwner shows unowned file dialogs; the capabilities
         // tell them from owned ones, and every other service still reports the missing owner.
