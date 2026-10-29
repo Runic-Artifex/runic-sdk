@@ -354,3 +354,30 @@ test("a checked field against the mock bridge: applied, then a conflict with ano
   controller.dispose();
   view.dispose();
 });
+
+test("commit() resolves once the field's writes settled, so Save can follow them", async () => {
+  const { client, controller } = setup(title, { commit: "pause", delay: 100 });
+  let committed = false;
+  await controller.commit();
+  controller.inputText("A");
+  advance(100);
+  controller.inputText("AB");
+  const done = controller.commit().then(() => { committed = true; });
+  assert.deepEqual(client.calls.map(call => call.value), ["A"], "AB waits behind the write in flight");
+  client.calls[0]!.resolve();
+  await flush();
+  assert.equal(committed, false);
+  assert.deepEqual(client.calls.map(call => call.value), ["A", "AB"]);
+  client.calls[1]!.reject(new Error("offline"));
+  await done;
+  assert.equal(committed, true);
+  assert.equal((controller.current.error as Error).message, "offline", "commit never rejects; the error is in the state");
+  // A conflict does not hold commit().
+  const checkedField = setup(title, { checked: true });
+  checkedField.controller.inputText("Mine");
+  const pending = checkedField.controller.commit();
+  checkedField.client.calls[0]!.resolve({ kind: "conflict", incoming: { value: "Theirs", version: 4 }, message: "Changed." });
+  await pending;
+  checkedField.controller.inputText("Mine 2");
+  await checkedField.controller.commit();
+});

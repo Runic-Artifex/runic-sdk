@@ -344,6 +344,8 @@ Options:
   their edit numbers). `commit: "pause"` writes the draft after `delay` milliseconds without input (700 by default)
   and at once on `commit()`, which the framework bindings call when the element loses focus; text that was not
   written yet is written when the field is disposed. Use it where each write is an undo step or starts work in .NET.
+  `commit()` resolves once the field's writes settled, so a command that depends on the field can follow them:
+  `await title.commit(); await editor.save()`.
 - `checked: true` writes with the member's checked write instead of its setter. The write is checked against the
   value and version the field showed when the draft started and then against each receipt, so a change by another
   writer meanwhile is a conflict instead of being overwritten. Checked writes are one at a time.

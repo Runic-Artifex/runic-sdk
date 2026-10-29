@@ -144,9 +144,12 @@ export interface FieldController<TState, TClient, TValue> {
   compositionEnd(text: string): void;
   /**
    * The user is done with the field, such as when it loses focus: with `commit: "pause"` the draft is written now.
-   * The text typed is shown formatted again.
+   * The text typed is shown formatted again. Resolves once no write of the field is in flight or waiting, so a
+   * command that depends on the field, such as Save, can run after it: `await title.commit(); await editor.save()`.
+   * It never rejects; a failed write is `current.error`. A write that waits for `retry()` after a conflict, or for a
+   * client, does not delay it.
    */
-  commit(): void;
+  commit(): Promise<void>;
   /** Writes the draft again after a failed write; after a `conflict`, over the producer's value. */
   retry(): void;
   /** Drops the draft, the error and a conflict and shows the View's value. Writes in flight still complete. */
@@ -281,6 +284,8 @@ export function createFieldController<TState, TClient, TValue>(
   // checked: the field's value and version that the next write is checked against.
   let baseline: FieldBaseline<TValue> | undefined;
   let disposed = false;
+  // commit() calls waiting for the field's writes.
+  let idleWaiters: (() => void)[] = [];
   const empty = (kind === "text" || kind === undefined ? "" : undefined) as TValue;
   let current: FieldState<TValue> = Object.freeze({
     value: empty, text: "", editing: false, error: undefined, errors: noMessages, conflict: undefined,
@@ -386,6 +391,7 @@ export function createFieldController<TState, TClient, TValue>(
     if (queued !== undefined && source !== undefined && !composing && conflict === undefined) {
       pump();
       update();
+      resolveIdle();
       return;
     }
     if (inFlight === 0 && !composing && queued === undefined && !unsent && timer === undefined && !typedInvalid
@@ -397,6 +403,18 @@ export function createFieldController<TState, TClient, TValue>(
       if (latest !== undefined && source !== undefined) source = { state: latest.state, client: source.client };
     }
     update();
+    resolveIdle();
+  }
+
+  // Nothing is in flight, and nothing waits that will be written without the user (a conflict) or a client.
+  function idle(): boolean {
+    return inFlight === 0 && (queued === undefined || conflict !== undefined || source === undefined);
+  }
+  function resolveIdle(): void {
+    if (idleWaiters.length === 0 || !disposed && !idle()) return;
+    const waiters = idleWaiters;
+    idleWaiters = [];
+    for (const resolve of waiters) resolve();
   }
 
   function schedule(): void {
@@ -476,11 +494,13 @@ export function createFieldController<TState, TClient, TValue>(
       inputText(text);
     },
     commit() {
-      if (disposed) return;
+      if (disposed) return Promise.resolve();
       cancelTimer();
       if (!composing && unsent && draft !== undefined) request(draft.value);
       if (!typedInvalid) typed = undefined;
       update();
+      if (idle()) return Promise.resolve();
+      return new Promise<void>(resolve => { idleWaiters.push(resolve); });
     },
     retry() {
       if (disposed || draft === undefined || typedInvalid) return;
@@ -504,12 +524,14 @@ export function createFieldController<TState, TClient, TValue>(
       unsent = false;
       baseline = undefined;
       update();
+      resolveIdle();
     },
     dispose() {
       if (disposed) return;
       disposed = true;
       listeners.clear();
       cancelTimer();
+      resolveIdle();
       // The last value the user typed is not lost with the field.
       const last = queued ?? (unsent && !typedInvalid ? draft : undefined);
       queued = undefined;
