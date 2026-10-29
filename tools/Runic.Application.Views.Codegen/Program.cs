@@ -1558,8 +1558,12 @@ static void AppendValidationContextReader(StringBuilder cs, IReadOnlyList<string
     cs.AppendLine("    {");
     foreach (var flavor in flavors)
     {
+        // ValidationStatusChange activates the context, which a disposed one may refuse: then there is nothing to observe.
         cs.AppendLine($"        if (owner is global::{flavor}.Abstractions.IValidatableViewModel {{ ValidationContext: {{ }} context }})");
-        cs.AppendLine("            return global::Runic.Application.Views.Generated.BridgeValidation.Observe(context.ValidationStatusChange, changed);");
+        cs.AppendLine("        {");
+        cs.AppendLine("            try { return global::Runic.Application.Views.Generated.BridgeValidation.Observe(context.ValidationStatusChange, changed); }");
+        cs.AppendLine("            catch (global::System.ObjectDisposedException) { return null; }");
+        cs.AppendLine("        }");
     }
     cs.AppendLine("        return null;");
     cs.AppendLine("    }");

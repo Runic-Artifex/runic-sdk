@@ -372,13 +372,9 @@ public static class BridgeValidation
                 if (resolved.Count >= MaximumPathSegments) { _truncated = true; return null; }
                 resolved.Add(member.Name);
                 current = member.Children;
-                if (indexers.Count == 0)
-                {
-                    // Only an index needs the value; a member path alone resolves through the metadata.
-                    value = null;
-                    continue;
-                }
+                // An index needs the value of the collection it indexes, also after plain segments ("Profile.Items[0]").
                 value = value is null ? null : member.Read(value);
+                if (indexers.Count == 0) continue;
                 var collection = member;
                 for (var index = 0; index < indexers.Count; index++)
                 {

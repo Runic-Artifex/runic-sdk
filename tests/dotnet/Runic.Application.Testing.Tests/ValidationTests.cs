@@ -313,6 +313,7 @@ internal sealed class ValidationTests
             new RunicValidationMessage("Keyed", MemberPaths: ["Lookup[slot].Value"]),
             new RunicValidationMessage("Quoted key", MemberPaths: ["Lookup['slot']"]),
             new RunicValidationMessage("Nested", MemberPaths: ["Groups[0][0].Value"]),
+            new RunicValidationMessage("After a member", MemberPaths: ["Holder.Items[0].Value"]),
             new RunicValidationMessage("Missing", MemberPaths: ["Items[5].Value"]),
             new RunicValidationMessage("Malformed", MemberPaths: ["Items[0"]));
         using var buffer = new MemoryStream();
@@ -323,6 +324,8 @@ internal sealed class ValidationTests
         Require(HasError(errors, ["wire-lookup", "slot", "wire-value"], "Keyed"), $"A dictionary key did not resolve: {errors}");
         Require(HasError(errors, ["wire-lookup", "slot"], "Quoted key"), $"A quoted dictionary key did not resolve: {errors}");
         Require(HasError(errors, ["wire-groups", 0, 0, "wire-value"], "Nested"), $"A nested list index did not resolve: {errors}");
+        Require(HasError(errors, ["wire-holder", "wire-items", 0, "wire-value"], "After a member"),
+            $"An index after a plain member did not resolve: {errors}");
         Require(HasError(errors, [], "Missing"), $"An index of no element did not report at the object: {errors}");
         Require(HasError(errors, [], "Malformed"), $"A malformed index did not report at the object: {errors}");
     }
@@ -365,8 +368,13 @@ internal sealed class ValidationTests
             new BridgeDataSubscriptionMember("wire-value", static owner => ((ManualChild)owner).Value,
                 propertyName: nameof(ManualChild.Value)),
         };
+        BridgeDataSubscriptionMember items = new("wire-items", static owner => ((ManualRoot)owner).Items, childMembers,
+            enumerateChildren: static value => (IEnumerable)value,
+            enumerateValidationChildren: static value => BridgeValidation.EnumerateIndexed((IEnumerable)value),
+            propertyName: nameof(ManualRoot.Items));
         return
         [
+            new("wire-holder", static owner => ((ManualRoot)owner).Holder, [items], propertyName: nameof(ManualRoot.Holder)),
             new("wire-items", static owner => ((ManualRoot)owner).Items, childMembers,
                 enumerateChildren: static value => (IEnumerable)value,
                 enumerateValidationChildren: static value => BridgeValidation.EnumerateIndexed((IEnumerable)value),
@@ -447,6 +455,7 @@ internal sealed class ValidationTests
         internal List<ManualChild> Items { get; } = [new()];
         internal Dictionary<string, ManualChild> Lookup { get; } = new() { ["slot"] = new() };
         internal List<List<ManualChild>> Groups { get; } = [[new()]];
+        internal ManualRoot Holder => field ??= new();
     }
 
     private sealed class ManualChild : ManualNode
