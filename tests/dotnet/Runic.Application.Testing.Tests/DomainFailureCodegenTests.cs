@@ -44,7 +44,6 @@ internal sealed class DomainFailureCodegenTests
 
     // The AsyncRelayCommand as an operation.
     [Test]
-    [Skip("P5: needs start and watch served")]
     public async Task ToolkitOperationsAsync()
     {
         var model = new FailureToolkitViewModel();
@@ -76,7 +75,6 @@ internal sealed class DomainFailureCodegenTests
     }
 
     [Test]
-    [Skip("P5: needs start, watch and stream served")]
     public async Task ReactiveOperationsAsync()
     {
         await using var context = new RunicModelContext();

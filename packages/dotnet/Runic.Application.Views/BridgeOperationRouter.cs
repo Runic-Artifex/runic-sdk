@@ -16,6 +16,7 @@ internal sealed class BridgeOperationRouter : IDisposable
     private readonly BridgeOperationRegistry _operations;
     private readonly BridgeOperationWatches _watches;
     private readonly IDisposable _connectionObserver;
+    private readonly IDisposable _releasedRoutes;
     private bool _disposed;
 
     internal BridgeOperationRouter(
@@ -37,6 +38,23 @@ internal sealed class BridgeOperationRouter : IDisposable
         _operations.StatusChanged = _watches.OnStatusChanged;
         // A connection's watches end when it closes; its operations do not, they belong to the window.
         _connectionObserver = BridgeDispatcher.For(transport).OnConnectionClosed(_watches.ReleaseConnection);
+        _releasedRoutes = BridgeDispatcher.For(transport).ServeReleasedOperations(HandleReleased);
+    }
+
+    // An operation request of a route that was released: operations belong to the window, so one it still knows
+    // under (contract, route, operation) and member is answered; any other is released.
+    internal ReadOnlyMemory<byte>? HandleReleased(BridgeRouteRequest request)
+    {
+        var root = request.Root;
+        BridgeOperationIdentity identity;
+        try
+        {
+            identity = BridgeOperationIdentity.Create(root.GetProperty("contract").GetString()!, request.Route,
+                root.GetProperty("operation").GetString()!);
+        }
+        catch (ArgumentException) { return null; }
+        return _operations.Lookup(identity.RegistryKey, request.Member).Kind is BridgeOperationStatusKind.Unknown
+            ? null : Handle(request);
     }
 
     // The registry's status of a protocol-4 operation for a member.
@@ -314,6 +332,7 @@ internal sealed class BridgeOperationRouter : IDisposable
     {
         if (_disposed) return;
         _disposed = true;
+        _releasedRoutes.Dispose();
         _connectionObserver.Dispose();
         _watches.Dispose();
         _operations.Dispose();
@@ -361,6 +380,11 @@ internal readonly record struct BridgeOperationRequest(
 {
     internal const int MaximumMemberLength = 256;
     internal const int MaximumDigestLength = 128;
+
+    // The command's name in logs (the .NET member name, as other Bridge log events name it); Member when unset.
+    internal string? Name { get; init; }
+
+    internal string LogName => Name ?? Member;
 
     internal BridgeOperationRequest(string contract, string member, string requestId, string inputDigest)
         : this(BridgeOperationIdentity.Create(contract, requestId), ValidateMember(member), ValidateInputDigest(inputDigest))

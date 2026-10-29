@@ -468,6 +468,9 @@ find again, for example after a reload.
 - Operations belong to the window, not to a connection or client. Any connection of the window that knows the
   identity can observe and cancel an operation. A page whose operations other clients must not reach needs its own
   window.
+- An operation outlives its route: `status`, `watch`, `unwatch`, `cancel` and `stream` of an operation the window still
+  knows are answered even after its route was released, such as when a command navigated away from the page that
+  started it. For any other operation such a request answers `released`.
 
 ### Start
 

@@ -57,11 +57,12 @@ internal sealed class ToolkitCancelTests
 
     // The same cancellation of commands started as operations.
     [Test]
-    [Skip("P5: needs start and watch served")]
     public async Task GeneratedCancelCommandsCancelToolkitOperationsAsync()
     {
         var model = new ToolkitCancelViewModel();
         using var host = CreateHost(model);
+        // Frames follow the state the page read.
+        host.RawSnapshot().Dispose();
         await CancelOperationAsync(host, model, vm => vm.SaveCommand, "save", null, "bridge-cancel", nativeCancel: false);
         await CancelOperationAsync(host, model, vm => vm.ExportCommand, "export", JsonSerializer.Serialize("document"), "typed-native-cancel", nativeCancel: true);
         Require(model.ExportInput == "document", "The paired async command lost its typed input.");

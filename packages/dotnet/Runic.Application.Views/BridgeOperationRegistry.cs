@@ -276,7 +276,7 @@ internal sealed class BridgeOperationRegistry : IDisposable
         string? domainFailure = null;
         BridgeOperationDeliveryFailure? failureDelivery = null;
         BridgeOperationResult result = BridgeOperationResult.None;
-        var member = entry.Request?.Member ?? "(unnamed)";
+        var member = entry.Request?.LogName ?? "(unnamed)";
         try
         {
             // The flow of this async method only: the caller keeps its own.
@@ -495,7 +495,7 @@ internal sealed class BridgeOperationRegistry : IDisposable
         if (retiring.Count == 0) return Task.CompletedTask;
         foreach (var (entry, retirement) in retiring)
         {
-            ViewsLog.OperationRetired(_logger, entry.Request?.Member ?? "(unnamed)", retirement.Policy, retirement.Route);
+            ViewsLog.OperationRetired(_logger, entry.Request?.LogName ?? "(unnamed)", retirement.Policy, retirement.Route);
             if (retirement.Policy is not RunicOperationRetirement.Cancel) continue;
             try { entry.Cancellation.Cancel(); }
             // The operation ended and released its source after the selection above.

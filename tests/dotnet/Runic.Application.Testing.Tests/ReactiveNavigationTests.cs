@@ -16,7 +16,6 @@ internal sealed class ReactiveNavigationTests
     // W250-034/035: the editor's bridged Close command asks its ReactiveLeaveConfirmation through the generated
     // interaction; the web View answers no, then yes. Save and Cancel complete and dismiss the request.
     [Test]
-    [Skip("P5: needs operations (start, status) and interactions (handlers, interaction pushes, interaction-reply) served")]
     public async Task WebViewAnswersLeaveConfirmationAsync()
     {
         Require(ReactiveSchedulers.InstallMainThreadScheduler(),
@@ -131,7 +130,6 @@ internal sealed class ReactiveNavigationTests
     // receives as a typed result (W250-014). It reports a failed arrival hook of the page it went back to by its
     // state only, without the exception (#385).
     [Test]
-    [Skip("P5: needs the start and watch requests of operations served")]
     public async Task BridgedBackCommandReturnsOutcomeAsync()
     {
         Require(ReactiveSchedulers.InstallMainThreadScheduler(),
@@ -184,7 +182,6 @@ internal sealed class ReactiveNavigationTests
     [DisplayName("FrameworkCommandPreservesNavigationAsync(web: $web, outcome: $outcome)")]
     public async Task FrameworkCommandPreservesNavigationAsync(bool web, string outcome)
     {
-        if (web) Skip.Test("P5: needs the start, cancel and watch requests of operations served");
         await using var context = new RunicModelContext();
         await using var navigator = new RunicNavigator(new RunicNavigatorOptions { ModelContext = context });
         var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);

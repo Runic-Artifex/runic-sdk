@@ -152,7 +152,6 @@ internal sealed class CodegenShapeTests
     }
 
     [Test]
-    [Skip("P5: needs start and watch served")]
     public async Task NullableReactiveOperationsAcceptNullAsync()
     {
         using var model = new NullableReactiveViewModel();

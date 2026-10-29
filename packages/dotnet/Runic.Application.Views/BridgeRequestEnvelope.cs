@@ -50,6 +50,10 @@ internal sealed class BridgeRequestEnvelope : IDisposable
         _ => false,
     };
 
+    // The requests that observe or cancel an operation by its identity.
+    internal static bool IsOperationObservation(string kind) =>
+        kind is "status" or "watch" or "unwatch" or "cancel" or "stream";
+
     // Reads one request. A message that is not one JSON object of the profile, or has no string kind, fails with
     // invalid-request; so does a known kind whose members do not match the catalogue. An unknown kind is returned as
     // read: the dispatcher answers it after the handshake check.

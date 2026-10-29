@@ -53,7 +53,6 @@ internal sealed partial class DomainFailureTests
     [Arguments(false)]
     [Arguments(true)]
     [DisplayName("OperationsEndDomainFailedAsync(development: $development)")]
-    [Skip("P5: needs start, status, watch and cancel served")]
     public async Task OperationsEndDomainFailedAsync(bool development)
     {
         using var host = Host(new EditorModel(), out var logs, development);
@@ -70,8 +69,9 @@ internal sealed partial class DomainFailureTests
         Require(operation.GetStatus().Json == status.Json, "GetStatus() differed from the waited terminal status.");
         var repeated = host.Root.Start(vm => vm.SubmitCommand, requestId: "submit-1");
         using (var admission = JsonDocument.Parse(repeated.AdmissionJson))
-            Require(repeated.Admission == RunicOperationAdmissionKind.Duplicate && admission.RootElement.GetProperty("status").GetString() == "domain-failed"
-                && admission.RootElement.GetProperty("terminal").GetProperty("failure").GetProperty("$case").GetString() == "titleTaken",
+            Require(repeated.Admission == RunicOperationAdmissionKind.Duplicate
+                && admission.RootElement.GetProperty("status").GetProperty("kind").GetString() == "domain-failed"
+                && admission.RootElement.GetProperty("status").GetProperty("failure").GetProperty("$case").GetString() == "titleTaken",
                 $"A repeated start did not return the domain-failed terminal: {repeated.AdmissionJson}");
         Require(operation.Cancel() == RunicOperationCancelKind.NotRunning, "A domain-failed operation was still cancellable.");
         var entry = logs.Entries.SingleOrDefault(item => item.EventId.Id == 1007)
@@ -121,7 +121,6 @@ internal sealed partial class DomainFailureTests
     }
 
     [Test]
-    [Skip("P5: needs start and watch served")]
     public async Task OperationAggregatesAreUnwrappedOnlyWithOneInnerAsync()
     {
         using var host = Host(new EditorModel(), out _);
@@ -167,7 +166,6 @@ internal sealed partial class DomainFailureTests
     }
 
     [Test]
-    [Skip("P5: needs start and watch served")]
     public async Task UndeclaredOperationFailuresStayFailedAsync()
     {
         using var host = Host(new EditorModel(), out var logs);
@@ -200,7 +198,6 @@ internal sealed partial class DomainFailureTests
     }
 
     [Test]
-    [Skip("P5: needs start, cancel and watch served")]
     public async Task CancellationRaceIsDomainFailedAsync()
     {
         using var host = Host(new EditorModel(), out _);
@@ -212,7 +209,6 @@ internal sealed partial class DomainFailureTests
     }
 
     [Test]
-    [Skip("P5: needs start, watch and stream served")]
     public async Task StreamsKeepTheirItemsAsync()
     {
         using var host = Host(new EditorModel(), out _);
@@ -292,7 +288,6 @@ internal sealed partial class DomainFailureTests
     }
 
     [Test]
-    [Skip("P5: needs start and watch served")]
     public async Task OperationTelemetryTreatsDomainFailuresAsExpectedAsync()
     {
         using var telemetry = new TelemetryCapture();
@@ -423,7 +418,6 @@ internal sealed partial class DomainFailureTests
 
     // The operation scenarios of the same fixtures.
     [Test]
-    [Skip("P5: needs start and watch served")]
     public async Task PortableOperationFixturesMatchAsync()
     {
         foreach (var file in FixtureFiles())
@@ -454,7 +448,7 @@ internal sealed partial class DomainFailureTests
     private static async Task<JsonNode> DroppedWireAsync()
     {
         using var registry = new BridgeOperationRegistry("fixture", maximumRetainedResultBytes: 16);
-        return TerminalJson(await FailAsync(registry, "save-1", """{"$case":"titleTaken","existingTitle":"Todo"}"""));
+        return Protocol3Status(TerminalJson(await FailAsync(registry, "save-1", """{"$case":"titleTaken","existingTitle":"Todo"}""")).AsObject(), "save-1");
     }
 
     private static async Task<JsonNode> CommandWireAsync(object failure)
@@ -473,9 +467,17 @@ internal sealed partial class DomainFailureTests
     {
         using var host = Host(new EditorModel { NextFailure = () => new RunicFailureException(new TitleTaken("Todo")) }, out _);
         var status = await host.Root.Start(command, requestId: requestId).WaitAsync();
-        var node = JsonNode.Parse(status.Json)!.AsObject();
-        node["contract"] = "Tests.Editor:fixture:editor";
-        return node;
+        return Protocol3Status(JsonNode.Parse(status.Json)!.AsObject(), requestId);
+    }
+
+    // The fixtures predate protocol 4: a status there carries the operation's contract and request id, which a
+    // protocol-4 status leaves to the message around it, and no revision.
+    private static JsonObject Protocol3Status(JsonObject status, string requestId)
+    {
+        status.Remove("revision");
+        status["contract"] = "Tests.Editor:fixture:editor";
+        status["requestId"] = requestId;
+        return status;
     }
 
     private static async Task<BridgeOperationStatus> FailAsync(BridgeOperationRegistry registry, string requestId, string failure)

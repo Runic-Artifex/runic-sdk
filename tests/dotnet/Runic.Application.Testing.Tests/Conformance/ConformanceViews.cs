@@ -735,7 +735,12 @@ internal sealed class NotesBridge(IBridgeTransport transport, NotesViewModel vm,
         },
         new("ConfirmClear", model => model.ConfirmClearCommand)
         {
-            ExecuteAsync = (model, token, _) => model.ConfirmClearCommand.ExecuteAsync(null, token),
+            // confirmClear ends inside its publication unit (ConformanceOperations.cs); the reply follows it.
+            ExecuteAsync = async (model, token, _) =>
+            {
+                await model.ConfirmClearCommand.ExecuteAsync(null, token).ConfigureAwait(false);
+                await Task.Yield();
+            },
             Subscribe = (model, changed) => Changed(model.ConfirmClearCommand, changed),
         },
     ];

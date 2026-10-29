@@ -102,7 +102,6 @@ internal sealed class FailureDetailTests
     }
 
     [Test]
-    [Skip("P5: needs start and status served")]
     public async Task ProductionOperationKeepsTheBoundedMessageAsync()
     {
         using var failed = await FailOperationAsync("production-failure", includeFailureDetail: false);
@@ -112,7 +111,6 @@ internal sealed class FailureDetailTests
     }
 
     [Test]
-    [Skip("P5: needs start and status served")]
     public async Task DevelopmentOperationAddsTheExceptionDetailAsync()
     {
         using var failed = await FailOperationAsync("development-failure", includeFailureDetail: true);

@@ -79,7 +79,7 @@ public partial class ViewModelBridge<T>
             return await ReplyToStartAsync(content, BridgeOperationRouter.Rejection(identity, BridgeFailure.InvalidInput),
                 cancellationToken).ConfigureAwait(false);
         }
-        var operation = BridgeOperationRequest.Create(identity, descriptor.Member, digest);
+        var operation = BridgeOperationRequest.Create(identity, descriptor.Member, digest) with { Name = descriptor.Name };
         var call = BridgeCall.Start(BridgeCallKind.OperationStart, ModelName, _name, descriptor.Name);
         try
         {

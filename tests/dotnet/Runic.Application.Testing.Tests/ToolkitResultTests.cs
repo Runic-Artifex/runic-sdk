@@ -8,7 +8,6 @@ namespace Runic.Application.Testing.Tests;
 internal sealed class ToolkitResultTests
 {
     [Test]
-    [Skip("P5: needs start and watch served")]
     public async Task AToolkitTaskResultIsTheOperationResultAsync()
     {
         var model = new ToolkitResultViewModel();

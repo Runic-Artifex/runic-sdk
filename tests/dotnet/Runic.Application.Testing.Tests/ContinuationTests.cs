@@ -18,7 +18,6 @@ internal sealed class ContinuationTests
     [Arguments(true)]
     public async Task ToolkitCommandResumesOnTheModelContext(bool operation)
     {
-        if (operation) SkipUntilOperationsAreServed();
         var probe = new ContinuationProbe();
         var model = new ToolkitContinuationViewModel(probe);
         using var host = new RunicWindowTestHost<ToolkitContinuationViewModel>(model,
@@ -34,7 +33,6 @@ internal sealed class ContinuationTests
     [Arguments(true)]
     public async Task ReactiveCommandResumesOnTheModelContext(bool operation)
     {
-        if (operation) SkipUntilOperationsAreServed();
         await using var context = new RunicModelContext();
         var probe = new ContinuationProbe { Context = context };
         var model = new ReactiveContinuationViewModel(context, probe);
@@ -113,9 +111,6 @@ internal sealed class ContinuationTests
         Require(outside.Length == 0,
             $"{flavour} writes after await ran outside the model context: {string.Join(", ", outside)}");
     }
-
-    private static void SkipUntilOperationsAreServed() =>
-        Skip.Test("P5: needs start and status served");
 
     // The operation's terminal status, read with status requests.
     private static async Task<JsonDocument> TerminalAsync(InMemoryBridgeTransport transport, string route, string contract)

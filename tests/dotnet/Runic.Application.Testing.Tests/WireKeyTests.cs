@@ -134,7 +134,6 @@ internal sealed class WireKeyTests
     }
 
     [Test]
-    [Skip("P5: needs operations (start, status, stream) of keyed commands")]
     public async Task OperationStartsResolveTheirKeyAsync()
     {
         await using var context = new RunicModelContext();
@@ -226,7 +225,6 @@ internal sealed class WireKeyTests
     }
 
     [Test]
-    [Skip("P5: needs the start request of operations")]
     public async Task AnUnresolvedToolkitStartIsRejectedAsync()
     {
         using var host = new RunicWindowTestHost<KeyedToolkitViewModel>(new KeyedToolkitViewModel(),
