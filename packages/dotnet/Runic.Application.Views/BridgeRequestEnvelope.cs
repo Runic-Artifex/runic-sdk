@@ -125,7 +125,7 @@ internal sealed class BridgeRequestEnvelope : IDisposable
                 return Identifier(root, "presentation");
             case "set":
                 return ReadMember(root)
-                    ?? Present(root, "value")
+                    ?? SetValue(root)
                     ?? Integer(root, "edit", minimum: 1);
             case "write":
                 return ReadMember(root)
@@ -178,6 +178,22 @@ internal sealed class BridgeRequestEnvelope : IDisposable
             "cancelled" or "failed" => null,
             _ => "The interaction reply's outcome is not answered, cancelled or failed.",
         };
+    }
+
+    // A set carries its value, or a text splice (text-splice/1): exactly one of them.
+    private static string? SetValue(JsonElement root)
+    {
+        var hasValue = root.TryGetProperty("value", out _);
+        if (!root.TryGetProperty("splice", out var splice)) return hasValue ? null : "The request has no value.";
+        if (hasValue) return "The request has both a value and a splice.";
+        if (splice.ValueKind != JsonValueKind.Object) return "The request's splice is not an object.";
+        var bases = (splice.TryGetProperty("baseEdit", out _) ? 1 : 0) + (splice.TryGetProperty("baseRevision", out _) ? 1 : 0);
+        if (bases != 1) return "The request's splice does not have exactly one of baseEdit and baseRevision.";
+        return (splice.TryGetProperty("baseEdit", out _) ? Integer(splice, "baseEdit", minimum: 1) : Integer(splice, "baseRevision", minimum: 0))
+            ?? Integer(splice, "length", minimum: 0)
+            ?? Integer(splice, "index", minimum: 0)
+            ?? Integer(splice, "delete", minimum: 0)
+            ?? String(splice, "text");
     }
 
     private static string? Handlers(JsonElement handlers)

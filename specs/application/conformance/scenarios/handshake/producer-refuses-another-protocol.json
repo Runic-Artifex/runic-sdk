@@ -4,8 +4,9 @@
   "contract": {"id":"runic.views","version":4},
   "set": "handshake",
   "roles": ["producer"],
-  "description": "A hello with another protocol fails with protocol-mismatch and names protocol 4; the connection then answers every request no-hello.",
+  "description": "A hello with another protocol fails with protocol-mismatch and names protocol 4; a later request of the connection waits for a hello that succeeds, and after 5 seconds without one answers no-hello.",
   "view": "notes",
+  "requires": ["virtual-clock"],
   "ids": {
     "c1": {"kind":"connection"},
     "hello-c1": {"kind":"request"},
@@ -29,6 +30,7 @@
       "replyTo": "hello-c1"
     },
     {"send":{"kind":"snapshot","route":"notes"},"id":"read"},
+    {"advance":5000},
     {
       "receive": {"ok":false,"error":{"kind":"rejected","reason":"no-hello","message":{"$any":"string","default":"…"}}},
       "replyTo": "read"

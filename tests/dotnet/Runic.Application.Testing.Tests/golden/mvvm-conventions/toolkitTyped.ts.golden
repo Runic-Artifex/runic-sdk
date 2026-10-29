@@ -122,7 +122,7 @@ const cancelOperation: BridgeOperationCodec<void> = { decode: value => undefined
  */
 export function connectToolkitTyped(options?: BridgeConnectOptions): Promise<ToolkitTypedClient & globalThis.Disposable> { return connectToolkitTypedAt("toolkitTyped", options); }
 async function connectToolkitTypedAt(route: string, options?: BridgeConnectOptions): Promise<ToolkitTypedClient & globalThis.Disposable> {
-  const view = await connectView<ToolkitTypedState>({ contract: bridgeContract, route, members, operations: bridgeOperations, timeout: options?.timeout, signal: options?.signal });
+  const view = await connectView<ToolkitTypedState>({ contract: bridgeContract, route, members, texts: ["label", "optionalDocumentId", "asyncDocumentId", "asyncLabel", "asyncOptionalDocumentId"], operations: bridgeOperations, timeout: options?.timeout, signal: options?.signal });
   return disposable<ToolkitTypedClient>({
     get snapshot() { return view.snapshot; },
     subscribe: view.subscribe,

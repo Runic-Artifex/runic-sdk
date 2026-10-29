@@ -41,6 +41,7 @@ const spec: MockTypedViewSpec = {
   },
   defaults: { canSave: true, isSaveExecuting: false, canImport: true, isImportExecuting: false },
   checkedFields: ["title"],
+  texts: ["title"],
   setters: {
     setTitle: { member: "title", checked: "writeTitle" },
   },

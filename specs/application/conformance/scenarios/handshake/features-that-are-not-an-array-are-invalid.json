@@ -1,0 +1,20 @@
+{
+  "format": "runic.views.scenario/1",
+  "id": "handshake.features-that-are-not-an-array-are-invalid.v1",
+  "contract": {"id":"runic.views","version":4},
+  "set": "handshake",
+  "roles": ["producer"],
+  "description": "A hello whose features are not an array of strings is rejected with invalid-request.",
+  "view": "notes",
+  "ids": {
+    "c1": {"kind":"connection"},
+    "hello-c1": {"kind":"request"},
+    "session": {"kind":"wire","value":"s-1"}
+  },
+  "arrange": {"model":{}},
+  "steps": [
+    {"connect":"c1"},
+    {"send":{"kind":"hello","protocol":4,"session":{"$id":"session"},"client":{"name":{"$any":"string","default":"conformance-client"},"version":{"$any":"string","default":"1.0.0"}},"features":"text-splice/1"},"id":"hello-c1"},
+    {"receive":{"ok":false,"protocol":4,"implementation":{"name":{"$any":"string"},"version":{"$any":"string"}},"error":{"kind":"rejected","reason":"invalid-request","message":{"$any":"string","default":"…"}}},"replyTo":"hello-c1"}
+  ]
+}

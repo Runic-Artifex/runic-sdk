@@ -745,6 +745,10 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
         if (property.PropertyType != typeof(string) || property.SetMethod?.IsPublic == true || !valueProperties.ContainsKey(property))
             throw new BridgeDiagnosticException(BridgeDiagnosticCodes.State,
                 $"{model.Name}.{property.Name}: RunicAppendOnlyText requires a read-only string state property.", property);
+    // Text members (text-splice/1): string state properties without a custom codec, other than append-only text
+    // fields. Frames and setters may change them with text splices.
+    var textMembers = properties.Where(property => !textFields.Contains(property) && !selectionSlots.Contains(property)
+        && valueProperties.TryGetValue(property, out var graph) && graph.Root.Kind == BridgeWireKind.String).ToArray();
     var hasContent = contentProperties.Count > 0 || contentCollections.Count > 0;
     if (viewTypes is not null) WarnContentWithoutView(model, contentProperties, contentCollections, regionSlots, viewTypes);
     // A region slot presents its Current, whose nullability (always nullable)
@@ -910,7 +914,11 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
             continue;
         }
         // A frame is one publication unit, so the text's change and the validation it causes arrive together.
-        var text = textFields.Contains(property) ? $" {{ AppendOnlyTextField = \"{WireName(property)}\" }}" : "";
+        var text = textFields.Contains(property) ? $" {{ AppendOnlyTextField = \"{WireName(property)}\" }}"
+            : textMembers.Contains(property) ? property.SetMethod?.IsPublic == true
+                ? $" {{ TextMember = true, TextSetter = static (vm, value) => vm.{property.Name} = value }}"
+                : " { TextMember = true }"
+            : "";
         cs.AppendLine($"            new global::Runic.Application.Views.Generated.PropertyDescriptor<{fullType}>({descriptorNames}, vm => vm.{property.Name}, {setter}){text},");
     }
     cs.AppendLine("        ],");
@@ -1362,6 +1370,7 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
     var connectOptions = $"contract: {Ref("bridgeContract")}, route, {Shorthand("members")}"
         + (hasDeltaFields ? $", collections: {Ref("collectionDefinitions")}" : "")
         + (needsCheckedWriter ? $", checkedFields: {Ref("checkedFieldNames")}" : "")
+        + (textMembers.Length > 0 ? $", texts: [{string.Join(", ", textMembers.Select(property => JsonSerializer.Serialize(WireName(property))))}]" : "")
         + (interactions.Length > 0 ? $", interactions: {Ref("interactionDefinitions")}, handlers: options?.handlers" : "")
         + (operationPlans.Length > 0 ? $", operations: {Ref("bridgeOperations")}" : "");
     // A View with interactions takes their handlers when it connects, so the producer can ask them from the first
@@ -1480,6 +1489,7 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
             IsNullableContent(entry.Key))).ToArray(),
         MockDefaults(),
         checkedProperties.Select(WireName).ToArray(),
+        textMembers.Select(WireName).ToArray(),
         properties.Where(property => property.SetMethod?.IsPublic == true && valueProperties.ContainsKey(property))
             .Select(property => new MockSetter($"set{property.Name}", WireName(property), TsPropertyType(property),
                 checkedProperties.Contains(property) ? $"write{property.Name}" : null)).ToArray(),

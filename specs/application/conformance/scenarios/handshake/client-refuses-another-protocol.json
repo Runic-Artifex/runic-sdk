@@ -20,7 +20,8 @@
         "kind": "hello",
         "protocol": 4,
         "session": {"$id":"session"},
-        "client": {"name":{"$any":"string"},"version":{"$any":"string"}}
+        "client": {"name":{"$any":"string"},"version":{"$any":"string"}},
+        "features": {"$any":"array","default":["text-splice/1"]}
       },
       "id": "hello-c1"
     },

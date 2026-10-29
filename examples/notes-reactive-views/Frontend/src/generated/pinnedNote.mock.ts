@@ -18,11 +18,12 @@ export interface PinnedNoteMock extends MockTypedView<PinnedNoteMockState, Pinne
 const spec: MockTypedViewSpec = {
   kind: "pinnedNote",
   route: "pinnedNote",
-  contract: "NotesReactiveViews.PinnedNoteViewModel:39D98DB6603CC7808AF0204C418CC72AFA0BFDDAEECCC27B8324172982D22B56",
+  contract: "NotesReactiveViews.PinnedNoteViewModel:75C140DA503CD364D3EB3833FF036163E85A204EB47968A4ECD5E0ADDFD4F576",
   fields: {
     label: { encode: (value: unknown) => { const typed = value as string; return typed; }, decode: (wire: unknown) => bridgeWire.string(wire) },
   },
   defaults: {},
+  texts: ["label"],
 };
 
 /**

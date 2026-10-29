@@ -62,6 +62,12 @@
             "$any": "string",
             "default": "1.0.0"
           }
+        },
+        "features": {
+          "$any": "array",
+          "default": [
+            "text-splice/1"
+          ]
         }
       },
       "id": "hello-c1"
@@ -79,6 +85,12 @@
             "$any": "string",
             "default": "1.0.0"
           }
+        },
+        "features": {
+          "$any": "array",
+          "default": [
+            "text-splice/1"
+          ]
         }
       },
       "replyTo": "hello-c1"

@@ -357,13 +357,21 @@ const isContract = value => typeof value === "string" && value.lastIndexOf(":") 
 const isName = (value, maximum) => typeof value === "string" && value.length >= 1 && value.length <= maximum;
 const isHandlers = value => Array.isArray(value) && value.every(item => isObject(item) && isMember(item.name) && typeof item.contract === "string");
 const identity = message => isRoute(message.route) && isMember(message.member) && isIdentifier(message.operation) && isContract(message.contract);
+// README.md, "Features": absent, or at most 64 strings of at most 64 characters; unknown names are ignored.
+const isFeatures = value => value === undefined || (Array.isArray(value) && value.length <= 64 && value.every(item => typeof item === "string" && item.length <= 64));
+// README.md, "Edits": a set carries its value, or a text splice against an edit or a revision (text-splice/1).
+const isSplice = value => isObject(value) && (("baseEdit" in value) !== ("baseRevision" in value))
+  && ("baseEdit" in value ? Number.isSafeInteger(value.baseEdit) && value.baseEdit > 0 : isSafe(value.baseRevision))
+  && isSafe(value.length) && isSafe(value.index) && isSafe(value.delete) && typeof value.text === "string";
 
 const requestRules = {
-  hello: m => isSafe(m.protocol) && isIdentifier(m.session) && isObject(m.client) && isName(m.client.name, 128) && isName(m.client.version, 64),
+  hello: m => isSafe(m.protocol) && isIdentifier(m.session) && isObject(m.client) && isName(m.client.name, 128) && isName(m.client.version, 64)
+    && isFeatures(m.features),
   open: m => isRoute(m.route) && isIdentifier(m.presentation) && (m.handlers === undefined || isHandlers(m.handlers)),
   snapshot: m => isRoute(m.route),
   close: m => isRoute(m.route) && isIdentifier(m.presentation),
-  set: m => isRoute(m.route) && isMember(m.member) && "value" in m && Number.isSafeInteger(m.edit) && m.edit > 0,
+  set: m => isRoute(m.route) && isMember(m.member) && ("value" in m ? !("splice" in m) : isSplice(m.splice))
+    && Number.isSafeInteger(m.edit) && m.edit > 0,
   write: m => isRoute(m.route) && isMember(m.member) && isIdentifier(m.requestId) && isSafe(m.expectedVersion) && "expectedValue" in m && "value" in m,
   command: m => isRoute(m.route) && isMember(m.member),
   can: m => isRoute(m.route) && isMember(m.member),
@@ -399,6 +407,8 @@ function validChange(change) {
       return isSafe(oldIndex) && items.length === 0;
     }
     case "text": return isSafe(change.length) && isSafe(change.trim) && change.trim <= change.length && typeof change.text === "string";
+    case "splice": return isSafe(change.length) && isSafe(change.index) && isSafe(change.delete) && change.index <= change.length
+      && change.delete <= change.length - change.index && typeof change.text === "string" && (change.version === undefined || isSafe(change.version));
     default: return false;
   }
 }
@@ -440,7 +450,8 @@ export function readPush(text) {
 
 const withRevision = m => m.released === true || isSafe(m.revision);
 const replyRules = {
-  hello: m => isSafe(m.protocol) && isObject(m.implementation) && isName(m.implementation.name, 128) && isName(m.implementation.version, 64),
+  hello: m => isSafe(m.protocol) && isObject(m.implementation) && isName(m.implementation.name, 128) && isName(m.implementation.version, 64)
+    && (m.features === undefined || (Array.isArray(m.features) && m.features.every(item => typeof item === "string"))),
   open: m => isSafe(m.revision) && isObject(m.state) && validFields(m.fields) && ["ok", "ignored"].includes(m.presentation),
   snapshot: m => isSafe(m.revision) && isObject(m.state) && validFields(m.fields),
   close: m => ["ok", "ignored"].includes(m.presentation),

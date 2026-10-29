@@ -7,3 +7,7 @@ Runic.Application.Views.Generated.BridgeValidationReader.BridgeValidationReader(
 Runic.Application.Views.Generated.BridgeValidationReader.ReadErrors.get -> System.Func<object!, System.Collections.IEnumerable?>!
 Runic.Application.Views.Generated.BridgeValidationReader.Observe.get -> System.Func<object!, System.Action!, System.IDisposable?>!
 static Runic.Application.Views.Generated.BridgeValidation.WriteMessages(System.Text.Json.Utf8JsonWriter! writer, System.Collections.IEnumerable? errors) -> void
+Runic.Application.Views.Generated.PropertyDescriptor<T>.TextMember.get -> bool
+Runic.Application.Views.Generated.PropertyDescriptor<T>.TextMember.init -> void
+Runic.Application.Views.Generated.PropertyDescriptor<T>.TextSetter.get -> System.Action<T, string!>?
+Runic.Application.Views.Generated.PropertyDescriptor<T>.TextSetter.init -> void

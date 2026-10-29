@@ -234,7 +234,7 @@ internal sealed class CodegenShapeTests
                 "  /** A C# `long` is a `bigint`: a JavaScript `number` is exact only up to 2^53. */\n  readonly \"exact-id\": bigint;"),
             // The connect timeout is an option of the generated connect function (default 5000 ms).
             ("documented.ts", documented, "export function connectDocumented(options?: BridgeConnectOptions): Promise<DocumentedClient & globalThis.Disposable> {"),
-            ("documented.ts", documented, "members, checkedFields: checkedFieldNames, timeout: options?.timeout, signal: options?.signal });"),
+            ("documented.ts", documented, "members, checkedFields: checkedFieldNames, texts: [\"note\"], timeout: options?.timeout, signal: options?.signal });"),
             ("documented.ts", documented, " * Generated TypeScript names its enum and DTO types after the C# types,"),
             ("documented.ts", documented, "layout: (wire: unknown) => bridgeWire.enumName<DocumentedLayout>(wire, [\"List\", \"Grid\"]),"),
             ("collectionDelta.ts", collection, "rows: defineCollection<CollectionRow>(wire => bridgeWire.object<CollectionRow>(wire,"),

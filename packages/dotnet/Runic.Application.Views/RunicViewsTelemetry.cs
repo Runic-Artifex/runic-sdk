@@ -301,7 +301,7 @@ internal static partial class ViewsLog
     internal static partial void ProtocolMismatch(ILogger logger, long clientProtocol, int hostProtocol, string connection);
 
     [LoggerMessage(EventId = 1019, EventName = "BridgeRequestBeforeHello", Level = LogLevel.Debug,
-        Message = "A {Kind} request on connection {Connection} arrived before the connection's hello and was rejected.")]
+        Message = "A {Kind} request on connection {Connection} was answered no-hello: the connection had not completed a hello.")]
     internal static partial void RequestBeforeHello(ILogger logger, string kind, string connection);
 
     [LoggerMessage(EventId = 1022, EventName = "BridgeRequestFailed", Level = LogLevel.Error,

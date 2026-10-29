@@ -23,7 +23,7 @@ const members: BridgeMemberDecoders<PreviewState> = {
   heading: (wire: unknown) => bridgeWire.string(wire),
   excerpt: (wire: unknown) => bridgeWire.string(wire),
 };
-const bridgeContract = "NotesWindowViews.PreviewViewModel:1160496013C85294527537E950775D8901F2B81EC31DE93996835B51444AF521";
+const bridgeContract = "NotesWindowViews.PreviewViewModel:B1B7B2A52CF0E906FFEA4BBB8E5F7A495EB2B92954C0DDAC0DCB80919BFD4DA9";
 
 /**
  * Connects a Preview client. It waits up to `options.timeout` milliseconds (default 5000) for the
@@ -32,7 +32,7 @@ const bridgeContract = "NotesWindowViews.PreviewViewModel:1160496013C85294527537
  */
 export function connectPreview(options?: BridgeConnectOptions): Promise<PreviewClient & globalThis.Disposable> { return connectPreviewAt("preview", options); }
 async function connectPreviewAt(route: string, options?: BridgeConnectOptions): Promise<PreviewClient & globalThis.Disposable> {
-  const view = await connectView<PreviewState>({ contract: bridgeContract, route, members, timeout: options?.timeout, signal: options?.signal });
+  const view = await connectView<PreviewState>({ contract: bridgeContract, route, members, texts: ["heading", "excerpt"], timeout: options?.timeout, signal: options?.signal });
   return disposable<PreviewClient>({
     get snapshot() { return view.snapshot; },
     subscribe: view.subscribe,

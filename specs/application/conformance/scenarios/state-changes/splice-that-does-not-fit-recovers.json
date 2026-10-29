@@ -1,0 +1,32 @@
+{
+  "format": "runic.views.scenario/1",
+  "id": "state-changes.splice-that-does-not-fit-recovers.v1",
+  "contract": {"id":"runic.views","version":4},
+  "set": "state-changes",
+  "roles": ["client"],
+  "description": "A splice whose length is not the length of the client's value, or whose range ends inside a surrogate pair, is an invalid change: the client keeps its state and reads it again with snapshot.",
+  "view": "log",
+  "requires": ["text-splice/1"],
+  "ids": {
+    "c1": {"kind":"connection"},
+    "hello-c1": {"kind":"request"},
+    "session": {"kind":"wire","value":"s-1"},
+    "open-log": {"kind":"call"},
+    "open-log-request": {"kind":"request"},
+    "recovery": {"kind":"request"},
+    "presentation": {"kind":"wire","value":"p-1"}
+  },
+  "arrange": {"model":{}},
+  "steps": [
+    {"connect":"c1"},
+    {"send":{"kind":"hello","protocol":4,"session":{"$id":"session"},"client":{"name":{"$any":"string","default":"conformance-client"},"version":{"$any":"string","default":"1.0.0"}},"features":["text-splice/1"]},"id":"hello-c1"},
+    {"receive":{"ok":true,"protocol":4,"implementation":{"name":{"$any":"string","default":"conformance-producer"},"version":{"$any":"string","default":"1.0.0"}},"features":{"$any":"array","default":["text-splice/1"]}},"replyTo":"hello-c1"},
+    {"call":{"id":"open-log","op":"open","route":"log"}},
+    {"send":{"kind":"open","route":"log","presentation":{"$id":"presentation"}},"id":"open-log-request"},
+    {"receive":{"ok":true,"revision":0,"state":{"log":"","title":"Splices keep the text a page already has and send only what changed in it, here and now."},"presentation":"ok"},"replyTo":"open-log-request"},
+    {"receive":{"kind":"frame","route":"log","baseRevision":0,"revision":1,"changes":[{"field":"title","kind":"splice","length":89,"index":0,"delete":0,"text":"x"}]}},
+    {"send":{"kind":"snapshot","route":"log"},"id":"recovery"},
+    {"receive":{"ok":true,"revision":1,"state":{"log":"","title":"xSplices keep the text a page already has and send only what changed in it, here and now."}},"replyTo":"recovery"},
+    {"expect":{"state":{"route":"log","value":{"log":"","title":"xSplices keep the text a page already has and send only what changed in it, here and now."}}}}
+  ]
+}

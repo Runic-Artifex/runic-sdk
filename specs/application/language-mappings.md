@@ -20,7 +20,11 @@ coroutines, result types and its own serialization. Runic does not ship or suppo
 | Admission order | Runic Desktop admits the requests of one connection in arrival order. CS-WebUI runs each call on its own native thread, so it does not keep the order; edits carry their numbers. |
 | Trusted identities | The transport's `ClientKey` and `ConnectionKey`. CS-WebUI uses the WebUI client id and `clientId:connectionId`; Runic Desktop uses its connection id for both, so a reconnect has new keys. |
 | Mailbox (`receive`) | CS-WebUI, because WebUI cannot send to one client outside an event. A connection's mailbox keeps at most 1,024 pushes and 4 MiB; beyond that it drops its oldest pushes and logs event 1023 `BridgeMailboxOverflowed` once per connection. A pending `receive` holds one native WebUI thread, and WebUI runs every call on its own thread, so it does not hold up the connection's other requests. |
-| Handshake log events | Event 1018 `BridgeProtocolMismatch` (warning, once per connection) for a `hello` of another protocol; event 1019 `BridgeRequestBeforeHello` (debug, once per connection) for a request before the `hello`. |
+| Handshake log events | Event 1018 `BridgeProtocolMismatch` (warning, once per connection) for a `hello` of another protocol; event 1019 `BridgeRequestBeforeHello` (debug, once per connection) for a request answered `no-hello`. |
+| Features | The producer lists `text-splice/1`. A connection uses it when its `hello` lists it. |
+| Requests before the `hello` | The dispatcher holds them on the window's `TimeProvider` (`WindowContentSessionOptions.TimeProvider`), so tests advance a fake clock past the 5 seconds. Runic Desktop admits a connection's requests in order and handles `hello` at once, so its requests are never held in practice; CS-WebUI can deliver an `open` before the `hello` it followed. |
+| Text members | Generated `PropertyDescriptor`s set `TextMember` for `string` state properties without `[RunicCodec]` other than `[RunicAppendOnlyText]` fields, and `TextSetter` for settable ones. Text members are compared as strings at publication, not by their encoding. A `set` with a splice, or a `set` whose value is a string, calls `TextSetter`. |
+| Splices in broadcast frames | Every connection receives one encoding of a frame, so the producer computes splices while every connection that completed its `hello` uses `text-splice/1`. A frame with splices keeps a fallback writer; when a connection without the feature completed its `hello` before the frame is handed to the transport, the frame goes out with a `set` of each spliced member instead. |
 | Route names | A root route is the root ViewModel's short type name, camel-cased (`counter`). A content route is `content` and the content's page-reference id. |
 | Member wire names | The C# property, command or field name, camel-cased, or its `[RunicAlias]`. `[RunicIgnore]` leaves a member out. |
 | Failed publications | A state writer that throws (including `ObjectDisposedException` from a getter of a disposed object) does not throw to the code that raised the change. The failure is traced, nothing is published, and the next change tries again. A push on its way when the window disposes its transport is dropped. |
@@ -77,6 +81,7 @@ either; it carries the names the contract defines ([values](values.md#names)).
 | object, union | records and classes; `[RunicUnion]` hierarchies |
 | keyed collection | `[RunicCollection(keyProperty)]` on a read-only collection of rows, such as `ReadOnlyObservableCollection<Row>`; the key property is a nonnullable `string`, `Guid` or `int` |
 | text field | `[RunicAppendOnlyText]` on a read-only `string` property |
+| text member | any other `string` state property without `[RunicCodec]` |
 
 ### Publication units and change detection
 
@@ -119,7 +124,10 @@ handed to the transport. Teardown runs inline when an application-owned context 
 | Diagnostics | `onBridgeDiagnostic`, codes `protocol`, `version`, `revision-timeout` and the error kinds. |
 | Values | Decoders in `@runic-artifex/views/generated/wire`: `int64String`, `bigint`, `decimal` and `duration` keep strings or bigints; `uuid`, `localDate`, `localTime`, `dateTime`, `offsetDateTime` keep strings in their normal form; `json` keeps the value. |
 | Canonical form | Not needed in the client. Where the mock bridge compares values, it writes each scalar and member name with `JSON.stringify` and sorts the members of each object, which is the canonical form in JavaScript. Sorting the keys of a plain object and calling `JSON.stringify` on it is not: JavaScript enumerates integer-like keys (`"1"`, `"10"`) first. |
-| Edits | Generated setters send `set` with the next edit number of the member and apply the [overlay](README.md#client-overlay) to `snapshot`. |
+| Edits | Generated setters send `set` with the next edit number of the member and apply the [overlay](README.md#client-overlay) to `snapshot`. A setter of a text member (`connectView`'s `texts`) sends a splice when the [client rule](README.md#text-splices-in-set) allows one, and sends the value again on `splice-base`. `createTextFieldController` and the framework text field bindings write through the setter, so text fields send splices. |
+| Features | The runtime lists `text-splice/1` in `hello`. `SharedRuntime.features` holds the features in use on the current connection. |
+| Requests with the `hello` | `request()` sends a request right after the connection's `hello` without waiting for its reply, and sends it again once if it is answered `no-hello` while that `hello` succeeds. |
+| Mock bridge | `createMockBridge` implements features, held requests and `text-splice/1`; a View's text members are `MockViewDefinition.texts`, which generated typed mocks fill in. |
 | Operations | `BridgeOperation` with `status()`, `wait()`, `outcome()`, `cancel()`, `subscribe()` and, for streams, `stream()`. `wait({ timeout, signal })` is client-only. |
 | Interactions | Handlers registered through generated `on{Name}` functions, sent with `open` and `interactions`. |
 

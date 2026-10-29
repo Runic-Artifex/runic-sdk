@@ -1,0 +1,29 @@
+{
+  "format": "runic.views.scenario/1",
+  "id": "handshake.the-client-opens-with-the-hello.v1",
+  "contract": {"id":"runic.views","version":4},
+  "set": "handshake",
+  "roles": ["producer","client"],
+  "description": "The client sends its first open right after the hello, without waiting for the hello's reply; the producer answers both.",
+  "view": "log",
+  "ids": {
+    "c1": {"kind":"connection"},
+    "hello-c1": {"kind":"request"},
+    "session": {"kind":"wire","value":"s-1"},
+    "open-log": {"kind":"call"},
+    "open-log-request": {"kind":"request"},
+    "presentation": {"kind":"wire","value":"p-1"}
+  },
+  "arrange": {"model":{}},
+  "steps": [
+    {"connect":"c1"},
+    {"send":{"kind":"hello","protocol":4,"session":{"$id":"session"},"client":{"name":{"$any":"string","default":"conformance-client"},"version":{"$any":"string","default":"1.0.0"}},"features":{"$any":"array","default":["text-splice/1"]}},"id":"hello-c1"},
+    {"call":{"id":"open-log","op":"open","route":"log"}},
+    {"send":{"kind":"open","route":"log","presentation":{"$id":"presentation"}},"id":"open-log-request"},
+    {"receive":{"ok":true,"protocol":4,"implementation":{"name":{"$any":"string","default":"conformance-producer"},"version":{"$any":"string","default":"1.0.0"}},"features":{"$any":"array","default":["text-splice/1"]}},"replyTo":"hello-c1"},
+    {"receive":{"ok":true,"revision":0,"state":{"log":"","title":""},"presentation":"ok"},"replyTo":"open-log-request"},
+    {"expect":{"call":{"id":"open-log","resolved":null}}},
+    {"expect":{"state":{"route":"log","value":{"log":"","title":""}}}},
+    {"expect":{"diagnostics":[]}}
+  ]
+}

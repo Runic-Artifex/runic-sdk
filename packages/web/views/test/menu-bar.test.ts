@@ -254,6 +254,8 @@ test("shortcuts: \"app\" takes the lease, handleKeyDown invokes, and dispose or 
   assert.equal(bar.handleKeyDown(event), true);
   assert.equal(prevented, 1);
   await until(() => host.invocations.length === 1, "handleKeyDown did not invoke New.");
+  // The invocation's reply is on its way: let it arrive before the connection is lost below.
+  await host.bridge.flush();
   assert.equal(bar.handleKeyDown({ ...event, defaultPrevented: true }), false);
   assert.equal(bar.handleKeyDown({ ...event, key: "q", code: "KeyQ" }), false);
 

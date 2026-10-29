@@ -8,7 +8,7 @@ internal sealed class KeyedToolkitBridge : global::Runic.Application.Views.Gener
         transport, vm, routePrefix ?? "keyedToolkit",
         State,
         [
-            new global::Runic.Application.Views.Generated.PropertyDescriptor<global::Runic.Application.Testing.Tests.KeyedToolkitViewModel>("Last", "last", vm => vm.Last, null),
+            new global::Runic.Application.Views.Generated.PropertyDescriptor<global::Runic.Application.Testing.Tests.KeyedToolkitViewModel>("Last", "last", vm => vm.Last, null) { TextMember = true },
         ],
         [
         ],

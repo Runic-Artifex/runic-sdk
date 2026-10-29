@@ -34,7 +34,7 @@ export interface EditorMock extends MockTypedView<EditorMockState, EditorClient,
 const spec: MockTypedViewSpec = {
   kind: "editor",
   route: "editor",
-  contract: "NotesWindowViews.EditorViewModel:1160496013C85294527537E950775D8901F2B81EC31DE93996835B51444AF521",
+  contract: "NotesWindowViews.EditorViewModel:B1B7B2A52CF0E906FFEA4BBB8E5F7A495EB2B92954C0DDAC0DCB80919BFD4DA9",
   fields: {
     isDirty: { encode: (value: unknown) => { const typed = value as boolean; return typed; }, decode: (wire: unknown) => bridgeWire.boolean(wire) },
     savedMessage: { encode: (value: unknown) => { const typed = value as string; return typed; }, decode: (wire: unknown) => bridgeWire.string(wire) },
@@ -43,6 +43,7 @@ const spec: MockTypedViewSpec = {
   },
   defaults: { canSave: true, isSaveExecuting: false },
   checkedFields: ["title", "body"],
+  texts: ["savedMessage", "title", "body"],
   setters: {
     setTitle: { member: "title", checked: "writeTitle" },
     setBody: { member: "body", checked: "writeBody" },

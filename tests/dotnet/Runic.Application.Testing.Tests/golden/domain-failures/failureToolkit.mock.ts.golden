@@ -47,6 +47,7 @@ const spec: MockTypedViewSpec = {
   },
   defaults: { canSave: true, canPublish: true, isPublishExecuting: false, canDiscard: true, isDiscardExecuting: false },
   checkedFields: ["title"],
+  texts: ["title"],
   setters: {
     setTitle: { member: "title", checked: "writeTitle" },
   },

@@ -232,7 +232,8 @@ test("a hello reply of another protocol version fails the connect with one proto
     // One cause in the console: no generic `failed` and no `version` diagnostic beside it.
     assert.deepEqual(diagnostics.map(diagnostic => [diagnostic.kind, diagnostic.code]), [["error", "protocol"]]);
     assert.match(diagnostics[0]!.message, /uses Views protocol 3, but this client implements protocol 4/);
-    assert.deepEqual(bridge.calls.filter(call => call.kind === "open"), []);
+    // The first open went out with the hello (README "Handshake"); nothing is sent after the refusal.
+    assert.equal(bridge.calls.filter(call => call.kind === "open").length, 1);
 
     // A successful hello reply without `protocol` is refused too.
     const unstated = fresh();
@@ -299,7 +300,8 @@ test("a reopen after a reconnect fails when the host now speaks another protocol
     assert.deepEqual(diagnostics.map(diagnostic => diagnostic.code), ["protocol"]);
     assert.equal(reports.reported.length, 1);
     assert.ok(reports.reported[0] instanceof BridgeError && reports.reported[0].kind === "failed" && reports.reported[0].reason === "protocol-mismatch");
-    assert.equal(bridge.calls.filter(call => call.kind === "open").length, 1, "no open is sent to the refused producer");
+    // The reopen went out with the new connection's hello; nothing is sent after the refusal.
+    assert.equal(bridge.calls.filter(call => call.kind === "open").length, 2, "no open is sent after the refusal");
     await assert.rejects(client.command("save"), (error: unknown) => error instanceof BridgeError && error.reason === "protocol-mismatch");
     assert.deepEqual(diagnostics.map(diagnostic => diagnostic.code), ["protocol"]);
   } finally {

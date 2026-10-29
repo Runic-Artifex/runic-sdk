@@ -98,9 +98,9 @@ const members: BridgeMemberDecoders<DocumentState> = {
   canClose: (wire: unknown) => bridgeWire.boolean(wire),
   isCloseExecuting: (wire: unknown) => bridgeWire.boolean(wire),
 };
-const bridgeContract = "NotesReactiveViews.DocumentViewModel:39D98DB6603CC7808AF0204C418CC72AFA0BFDDAEECCC27B8324172982D22B56";
+const bridgeContract = "NotesReactiveViews.DocumentViewModel:75C140DA503CD364D3EB3833FF036163E85A204EB47968A4ECD5E0ADDFD4F576";
 const interactionDefinitions = defineInteractions({
-  confirmLeave: { contract: "39D98DB6603CC7808AF0204C418CC72AFA0BFDDAEECCC27B8324172982D22B56:interaction:ConfirmLeave", decodeInput: (value: unknown) => bridgeWire.object<DiscardNoteRequest>(value, value => ({ title: bridgeWire.string(value["title"]), bodyLength: bridgeWire.integer(value["bodyLength"], -2147483648, 2147483647)})), encodeOutput: (value: unknown) => (value as boolean) },
+  confirmLeave: { contract: "75C140DA503CD364D3EB3833FF036163E85A204EB47968A4ECD5E0ADDFD4F576:interaction:ConfirmLeave", decodeInput: (value: unknown) => bridgeWire.object<DiscardNoteRequest>(value, value => ({ title: bridgeWire.string(value["title"]), bodyLength: bridgeWire.integer(value["bodyLength"], -2147483648, 2147483647)})), encodeOutput: (value: unknown) => (value as boolean) },
 });
 const showEditorOperation: BridgeOperationCodec<void> = { decode: value => undefined };
 const showPreviewOperation: BridgeOperationCodec<void> = { decode: value => undefined };
@@ -125,7 +125,7 @@ export interface DocumentConnectOptions extends BridgeConnectOptions {
  */
 export function connectDocument(options?: DocumentConnectOptions): Promise<DocumentClient & globalThis.Disposable> { return connectDocumentAt("document", options); }
 async function connectDocumentAt(route: string, options?: DocumentConnectOptions): Promise<DocumentClient & globalThis.Disposable> {
-  const view = await connectView<DocumentState>({ contract: bridgeContract, route, members, interactions: interactionDefinitions, handlers: options?.handlers, operations: bridgeOperations, timeout: options?.timeout, signal: options?.signal });
+  const view = await connectView<DocumentState>({ contract: bridgeContract, route, members, texts: ["status"], interactions: interactionDefinitions, handlers: options?.handlers, operations: bridgeOperations, timeout: options?.timeout, signal: options?.signal });
   return disposable<DocumentClient>({
     get snapshot() { return view.snapshot; },
     subscribe: view.subscribe,

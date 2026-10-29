@@ -76,7 +76,7 @@ const importOperation: BridgeOperationCodec<number, NoteSaveFailure> = { decode:
  */
 export function connectFailureReactive(options?: BridgeConnectOptions): Promise<FailureReactiveClient & globalThis.Disposable> { return connectFailureReactiveAt("failureReactive", options); }
 async function connectFailureReactiveAt(route: string, options?: BridgeConnectOptions): Promise<FailureReactiveClient & globalThis.Disposable> {
-  const view = await connectView<FailureReactiveState>({ contract: bridgeContract, route, members, checkedFields: checkedFieldNames, operations: bridgeOperations, timeout: options?.timeout, signal: options?.signal });
+  const view = await connectView<FailureReactiveState>({ contract: bridgeContract, route, members, checkedFields: checkedFieldNames, texts: ["title"], operations: bridgeOperations, timeout: options?.timeout, signal: options?.signal });
   return disposable<FailureReactiveClient>({
     get snapshot() { return view.snapshot; },
     subscribe: view.subscribe,

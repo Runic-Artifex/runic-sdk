@@ -92,9 +92,9 @@ const members: BridgeMemberDecoders<EditorState> = {
   canDiscard: (wire: unknown) => bridgeWire.boolean(wire),
   isDiscardExecuting: (wire: unknown) => bridgeWire.boolean(wire),
 };
-const bridgeContract = "NotesReactiveViews.EditorViewModel:39D98DB6603CC7808AF0204C418CC72AFA0BFDDAEECCC27B8324172982D22B56";
+const bridgeContract = "NotesReactiveViews.EditorViewModel:75C140DA503CD364D3EB3833FF036163E85A204EB47968A4ECD5E0ADDFD4F576";
 const interactionDefinitions = defineInteractions({
-  confirmDiscard: { contract: "39D98DB6603CC7808AF0204C418CC72AFA0BFDDAEECCC27B8324172982D22B56:interaction:ConfirmDiscard", decodeInput: (value: unknown) => bridgeWire.object<DiscardNoteRequest>(value, value => ({ title: bridgeWire.string(value["title"]), bodyLength: bridgeWire.integer(value["bodyLength"], -2147483648, 2147483647)})), encodeOutput: (value: unknown) => (value as boolean) },
+  confirmDiscard: { contract: "75C140DA503CD364D3EB3833FF036163E85A204EB47968A4ECD5E0ADDFD4F576:interaction:ConfirmDiscard", decodeInput: (value: unknown) => bridgeWire.object<DiscardNoteRequest>(value, value => ({ title: bridgeWire.string(value["title"]), bodyLength: bridgeWire.integer(value["bodyLength"], -2147483648, 2147483647)})), encodeOutput: (value: unknown) => (value as boolean) },
 });
 const checkedFieldNames = ["title", "body"];
 const saveOperation: BridgeOperationCodec<void, SaveFailure> = { decode: value => undefined, decodeFailure: value => ((): SaveFailure => { const bridgeDecodedUnion0: any = bridgeWire.union(value); switch (bridgeDecodedUnion0.$case) { case "titleRequired": return { $case: "titleRequired" }; case "titleTooLong": return { $case: "titleTooLong", maximumLength: bridgeWire.integer(bridgeDecodedUnion0["maximumLength"], -2147483648, 2147483647) }; default: throw new RangeError("Unknown union case."); } })() };
@@ -118,7 +118,7 @@ export interface EditorConnectOptions extends BridgeConnectOptions {
  */
 export function connectEditor(options?: EditorConnectOptions): Promise<EditorClient & globalThis.Disposable> { return connectEditorAt("editor", options); }
 async function connectEditorAt(route: string, options?: EditorConnectOptions): Promise<EditorClient & globalThis.Disposable> {
-  const view = await connectView<EditorState>({ contract: bridgeContract, route, members, checkedFields: checkedFieldNames, interactions: interactionDefinitions, handlers: options?.handlers, operations: bridgeOperations, timeout: options?.timeout, signal: options?.signal });
+  const view = await connectView<EditorState>({ contract: bridgeContract, route, members, checkedFields: checkedFieldNames, texts: ["title", "body", "savedMessage"], interactions: interactionDefinitions, handlers: options?.handlers, operations: bridgeOperations, timeout: options?.timeout, signal: options?.signal });
   return disposable<EditorClient>({
     get snapshot() { return view.snapshot; },
     subscribe: view.subscribe,

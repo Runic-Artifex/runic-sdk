@@ -64,7 +64,7 @@ const members: BridgeMemberDecoders<EditorState> = {
   isSaveExecuting: (wire: unknown) => bridgeWire.boolean(wire),
   canSaveCancel: (wire: unknown) => bridgeWire.boolean(wire),
 };
-const bridgeContract = "HybridNotes.EditorViewModel:E9D57D74D85688A1B8FDBC4AC5A15F22AD53351D9B411759026957B8D3836953";
+const bridgeContract = "HybridNotes.EditorViewModel:3EDB76E7F7CE7BD4599A185B07F1B1E659EAA667FDEAB34B0406CB64EDEE83D3";
 const checkedFieldNames = ["title", "body"];
 const saveOperation: BridgeOperationCodec<void> = { decode: value => undefined };
 
@@ -75,7 +75,7 @@ const saveOperation: BridgeOperationCodec<void> = { decode: value => undefined }
  */
 export function connectEditor(options?: BridgeConnectOptions): Promise<EditorClient & globalThis.Disposable> { return connectEditorAt("editor", options); }
 async function connectEditorAt(route: string, options?: BridgeConnectOptions): Promise<EditorClient & globalThis.Disposable> {
-  const view = await connectView<EditorState>({ contract: bridgeContract, route, members, checkedFields: checkedFieldNames, operations: bridgeOperations, timeout: options?.timeout, signal: options?.signal });
+  const view = await connectView<EditorState>({ contract: bridgeContract, route, members, checkedFields: checkedFieldNames, texts: ["validationMessage", "error", "status", "title", "body"], operations: bridgeOperations, timeout: options?.timeout, signal: options?.signal });
   return disposable<EditorClient>({
     get snapshot() { return view.snapshot; },
     subscribe: view.subscribe,

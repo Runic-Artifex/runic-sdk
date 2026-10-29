@@ -58,6 +58,7 @@ const spec: MockTypedViewSpec = {
   },
   defaults: { isDeleteExecuting: false, isArchiveExecuting: false, isRenameExecuting: false, isExportExecuting: false },
   checkedFields: ["enabled"],
+  texts: ["last"],
   setters: {
     setEnabled: { member: "enabled", checked: "writeEnabled" },
   },

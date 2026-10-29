@@ -7,6 +7,7 @@ import { currentRuntime, errorMessage, sharedRuntimeFor, type SharedRuntime } fr
 import { reportBridgeError, waitForBridge } from "./transport.js";
 import { publishConnectionState } from "./connection-state.js";
 import { abortable, abortReason, isAbort, throwIfAborted } from "./lifetime.js";
+import { applySplice, minimumKept, singleSplice, textSpliceFeature } from "./text.js";
 // Interactions, operations and keyed collections are injected by the generated
 // clients that use them, so this module imports only their types.
 import type { BridgeCollections } from "./collections.js";
@@ -72,6 +73,11 @@ export interface ViewConnectOptions<TState> extends BridgeConnectOptions {
   readonly members: BridgeMemberDecoders<TState>;
   /** Wire names of checked fields (`write` and `fieldBaseline`). */
   readonly checkedFields?: readonly string[];
+  /**
+   * Wire names of text members: string members other than append-only text fields. With the feature
+   * `text-splice/1`, frames change them with splices and setters send splices of long values.
+   */
+  readonly texts?: readonly string[];
   /** The client's interactions, from `defineInteractions`. */
   readonly interactions?: BridgeInteractions;
   /**
@@ -162,6 +168,8 @@ interface Lease {
 
 interface Overlay {
   readonly edit: number;
+  /** The connection the edit was sent on; only that connection's producer holds its value as a splice base. */
+  readonly connection: number;
   /** The decoded value, or absent when it did not decode (the producer rejects it). */
   readonly value?: unknown;
   /** The reply revision of the edit, once it arrived. */
@@ -206,7 +214,7 @@ class RouteEntry {
 
   constructor(readonly runtime: SharedRuntime, readonly route: string, readonly contract: string,
     readonly members: Readonly<Record<string, (wire: unknown) => unknown>>, readonly checkedFields: readonly string[],
-    readonly collections: BridgeCollections | undefined) {
+    readonly collections: BridgeCollections | undefined, readonly texts: ReadonlySet<string> = new Set()) {
     this.stops = [
       runtime.onPush("state", route, push => this.statePush(push as Extract<Push, { kind: "state" }>)),
       runtime.onPush("frame", route, push => this.frame(push)),
@@ -325,6 +333,16 @@ class RouteEntry {
         setMember(next, field, this.members[field]!(change["value"]));
         const checked = this.checkedFields.includes(field);
         if (checked !== (change["version"] !== undefined)) throw new Error(`The set of ${field} has ${checked ? "no" : "a"} version.`);
+        if (checked) versions.set(field, change["version"] as number);
+        edited.add(field);
+        continue;
+      }
+      if (change.kind === "splice") {
+        // text-splice/1: a splice of a text member, applied to the value the previous change of the frame left.
+        if (!this.texts.has(field)) throw new Error(`${field} is not a text member.`);
+        setMember(next, field, applySplice(next[field], change));
+        const checked = this.checkedFields.includes(field);
+        if (checked !== (change["version"] !== undefined)) throw new Error(`The splice of ${field} has ${checked ? "no" : "a"} version.`);
         if (checked) versions.set(field, change["version"] as number);
         edited.add(field);
         continue;
@@ -528,11 +546,40 @@ class RouteEntry {
     const key = `${this.route}\u0000${member}`;
     const edit = (this.runtime.edits.get(key) ?? 0) + 1;
     this.runtime.edits.set(key, edit);
-    let overlay: Overlay = { edit };
-    try { overlay = { edit, value: this.members[member]!(value) }; } catch { /* the producer rejects it */ }
+    const connection = this.runtime.connection;
+    let overlay: Overlay = { edit, connection };
+    try { overlay = { edit, connection, value: this.members[member]!(value) }; } catch { /* the producer rejects it */ }
     this.overlays.set(member, overlay);
     this.publish();
     return edit;
+  }
+
+  /** The member's latest edit number on this page. */
+  latestEdit(member: string): number { return this.runtime.edits.get(`${this.route}\u0000${member}`) ?? 0; }
+
+  /**
+   * The splice a setter sends instead of `value` (text-splice/1, README "Edits"): against the latest edit while its
+   * overlay is shown, otherwise against the route's state at its revision. Undefined, a full value, when the feature
+   * is not in use, the base is not known to this connection's producer, or the splice keeps fewer than 64 code units.
+   */
+  spliceFor(member: string, value: unknown): Readonly<Record<string, unknown>> | undefined {
+    if (typeof value !== "string" || !this.texts.has(member) || this.runtime.features?.has(textSpliceFeature) !== true) return undefined;
+    const overlay = this.overlays.get(member);
+    let base: unknown;
+    let reference: { readonly baseEdit: number } | { readonly baseRevision: number };
+    if (overlay !== undefined) {
+      if (overlay.connection !== this.runtime.connection || !Object.hasOwn(overlay, "value")) return undefined;
+      base = overlay.value;
+      reference = { baseEdit: overlay.edit };
+    } else {
+      if (this.state === undefined || this.revision === undefined || this.stateConnection !== this.runtime.connection) return undefined;
+      base = this.state[member];
+      reference = { baseRevision: this.revision };
+    }
+    if (typeof base !== "string") return undefined;
+    const splice = singleSplice(base, value);
+    if (base.length - splice.delete < minimumKept) return undefined;
+    return { ...reference, length: base.length, index: splice.index, delete: splice.delete, text: splice.text };
   }
 
   /** The edit's reply arrived: a latest edit that failed ends the overlay, and an applied one ends at its revision. */
@@ -577,7 +624,8 @@ async function connectRoute<TState>(options: ViewConnectOptions<TState>): Promis
   if (existing && existing.contract !== options.contract)
     throw new BridgeError("failed", "This route already has an incompatible Bridge contract.", { route });
   const entry = existing ?? new RouteEntry(runtime, route, options.contract,
-    options.members as Readonly<Record<string, (wire: unknown) => unknown>>, options.checkedFields ?? [], options.collections);
+    options.members as Readonly<Record<string, (wire: unknown) => unknown>>, options.checkedFields ?? [], options.collections,
+    new Set(options.texts ?? []));
   if (!existing) runtime.routes.set(route, entry);
   const lease: Lease = {
     id: randomId(), disposed: false, registered: false, current: undefined, listeners: new Set(), interactions: undefined,
@@ -669,9 +717,20 @@ async function connectRoute<TState>(options: ViewConnectOptions<TState>): Promis
     interactions: lease.interactions?.surface ?? {},
     set: (member, value) => observed(route, async () => {
       assertConnected();
-      const edit = entry.beginEdit(member, value);
+      // The splice is computed against what the page shows before this edit.
+      const splice = entry.spliceFor(member, value);
+      let edit = entry.beginEdit(member, value);
       let reply: Reply;
-      try { reply = await request({ kind: "set", route, member, value, edit }); }
+      try {
+        reply = await request(splice === undefined ? { kind: "set", route, member, value, edit } : { kind: "set", route, member, edit, splice });
+        if (!reply.ok && reply.error?.reason === "splice-base") {
+          // The producer no longer has the splice's base, and admitted nothing. A later edit carries a newer value;
+          // otherwise this value is sent in full as a new edit.
+          if (entry.latestEdit(member) !== edit) return current();
+          edit = entry.beginEdit(member, value);
+          reply = await request({ kind: "set", route, member, value, edit });
+        }
+      }
       catch (error) { entry.endEdit(member, edit, undefined); throw error; }
       if (!reply.ok) {
         entry.endEdit(member, edit, undefined);

@@ -10,6 +10,7 @@ model:Runic.Application.Testing.Tests.KeyedReactiveViewModel:public-name:KeyedRe
 member:Runic.Application.Testing.Tests.KeyedReactiveViewModel:Enabled:wire:enabled:state:access:write
 wire:KeyedReactiveViewModel.enabled:type:System.Boolean:nullable:False
 member:Runic.Application.Testing.Tests.KeyedReactiveViewModel:Last:wire:last:state:access:read
+text:Runic.Application.Testing.Tests.KeyedReactiveViewModel:last
 wire:KeyedReactiveViewModel.last:type:System.String:nullable:False
 member:Runic.Application.Testing.Tests.KeyedReactiveViewModel:DeleteCommand:wire:deleteCommand:command:access:read
 wire:KeyedReactiveViewModel.DeleteCommand.input:type:Runic.Application.Testing.Tests.KeyedItem:nullable:False
@@ -86,6 +87,7 @@ wire:KeyedReactiveViewModel.ExportCommand.key:type:System.UInt64:nullable:False
 validation-errors:Runic.Application.Testing.Tests.KeyedReactiveViewModel:False
 model:Runic.Application.Testing.Tests.KeyedToolkitViewModel:public-name:KeyedToolkit
 member:Runic.Application.Testing.Tests.KeyedToolkitViewModel:Last:wire:last:state:access:read
+text:Runic.Application.Testing.Tests.KeyedToolkitViewModel:last
 wire:KeyedToolkitViewModel.last:type:System.String:nullable:False
 member:Runic.Application.Testing.Tests.KeyedToolkitViewModel:LockCommand:wire:lockCommand:command:access:read
 wire:KeyedToolkitViewModel.LockCommand.input:type:Runic.Application.Testing.Tests.KeyedItem:nullable:False

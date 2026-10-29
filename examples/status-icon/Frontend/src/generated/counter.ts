@@ -35,7 +35,7 @@ const members: BridgeMemberDecoders<CounterState> = {
   canIncrement: (wire: unknown) => bridgeWire.boolean(wire),
   isIncrementExecuting: (wire: unknown) => bridgeWire.boolean(wire),
 };
-const bridgeContract = "StatusIconSample.CounterViewModel:203965DD575DD6B275E6301CD0D1A9B2F942BB22997818C2878BEE4D9B03421A";
+const bridgeContract = "StatusIconSample.CounterViewModel:94E13113B7E71AFC1789CFB0BAC9CDA9E2BEBAA621AD805BBF2A3ADEB3575981";
 const incrementOperation: BridgeOperationCodec<void> = { decode: value => undefined };
 
 /**

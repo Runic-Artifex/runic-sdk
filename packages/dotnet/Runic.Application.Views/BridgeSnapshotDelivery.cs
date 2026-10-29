@@ -150,8 +150,9 @@ internal sealed class BridgeSnapshotDelivery : IDisposable
     public void EnqueueState(byte[] state) => EnqueueState(BridgeMessage.Wrap(state));
 
     // Queues a frame; false when it does not fit, so the producer recovers with a full state. The delivery owns the
-    // frame either way.
-    public bool EnqueueFrame(BridgeMessage frame)
+    // frame either way. A frame with text splices has a fallback writer of the same frame with sets, for a window with
+    // a connection that does not use them.
+    public bool EnqueueFrame(BridgeMessage frame, Func<byte[]>? fallback = null)
     {
         lock (_gate)
         {
@@ -166,7 +167,7 @@ internal sealed class BridgeSnapshotDelivery : IDisposable
                 frame.Release();
                 return false;
             }
-            _pending.Enqueue(new(frame, "frame", ++_produced));
+            _pending.Enqueue(new(frame, "frame", ++_produced, fallback));
             BridgeTelemetry.AddQueuedFrames(1);
             _pendingBytes += frame.Length;
             Start();
@@ -395,7 +396,7 @@ internal sealed class BridgeSnapshotDelivery : IDisposable
             var timestamp = BridgeTelemetry.Timestamp();
             try
             {
-                await _dispatcher.BroadcastAsync(entry.Message.Memory).ConfigureAwait(false);
+                await _dispatcher.BroadcastAsync(entry.Message.Memory, entry.Fallback).ConfigureAwait(false);
                 BridgeTelemetry.RecordFrame(_model, entry.Kind, entry.Message.Length, timestamp);
             }
             // The bridge was released while this push was on its way, and its host disposed the transport, as a
@@ -450,5 +451,5 @@ internal sealed class BridgeSnapshotDelivery : IDisposable
             foreach (var waiter in waiters) waiter.Settled.TrySetResult();
     }
 
-    private readonly record struct Entry(BridgeMessage Message, string Kind, long Sequence);
+    private readonly record struct Entry(BridgeMessage Message, string Kind, long Sequence, Func<byte[]>? Fallback = null);
 }

@@ -86,7 +86,7 @@ const backgroundOperation: BridgeOperationCodec<void> = { decode: value => undef
  */
 export function connectToolkitCancel(options?: BridgeConnectOptions): Promise<ToolkitCancelClient & globalThis.Disposable> { return connectToolkitCancelAt("toolkitCancel", options); }
 async function connectToolkitCancelAt(route: string, options?: BridgeConnectOptions): Promise<ToolkitCancelClient & globalThis.Disposable> {
-  const view = await connectView<ToolkitCancelState>({ contract: bridgeContract, route, members, operations: bridgeOperations, timeout: options?.timeout, signal: options?.signal });
+  const view = await connectView<ToolkitCancelState>({ contract: bridgeContract, route, members, texts: ["exportInput"], operations: bridgeOperations, timeout: options?.timeout, signal: options?.signal });
   return disposable<ToolkitCancelClient>({
     get snapshot() { return view.snapshot; },
     subscribe: view.subscribe,

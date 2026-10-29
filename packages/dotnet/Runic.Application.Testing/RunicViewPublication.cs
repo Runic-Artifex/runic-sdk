@@ -64,6 +64,15 @@ public sealed record RunicMemberSet(string Field, JsonElement Value, long? Versi
 /// <param name="Text">The text appended after them.</param>
 public sealed record RunicTextChange(string Field, int Length, int Trim, string Text);
 
+/// <summary>A text member's splice in a frame (<c>text-splice/1</c>): a <c>splice</c> change.</summary>
+/// <param name="Field">The text member's wire name.</param>
+/// <param name="Length">The length, in UTF-16 code units, of the value the splice applies to.</param>
+/// <param name="Index">The UTF-16 code unit where the splice starts.</param>
+/// <param name="Delete">The number of UTF-16 code units it removes there.</param>
+/// <param name="Text">The text it inserts there.</param>
+/// <param name="Version">The checked field's version after the frame, or <see langword="null"/> for another member.</param>
+public sealed record RunicTextSplice(string Field, int Length, int Index, int Delete, string Text, long? Version);
+
 /// <summary>One push of a route's state: a full state, a frame of changes, or a failure notice.</summary>
 public sealed class RunicViewPublication
 {
@@ -90,6 +99,7 @@ public sealed class RunicViewPublication
                 List<RunicCollectionChange> changes = [];
                 List<RunicMemberSet> sets = [];
                 List<RunicTextChange> texts = [];
+                List<RunicTextSplice> splices = [];
                 foreach (var change in root.GetProperty("changes").EnumerateArray())
                 {
                     var field = change.GetProperty("field").GetString()!;
@@ -103,6 +113,11 @@ public sealed class RunicViewPublication
                             texts.Add(new(field, change.GetProperty("length").GetInt32(), change.GetProperty("trim").GetInt32(),
                                 change.GetProperty("text").GetString()!));
                             break;
+                        case "splice":
+                            splices.Add(new(field, change.GetProperty("length").GetInt32(), change.GetProperty("index").GetInt32(),
+                                change.GetProperty("delete").GetInt32(), change.GetProperty("text").GetString()!,
+                                change.TryGetProperty("version", out var spliceVersion) ? spliceVersion.GetInt64() : null));
+                            break;
                         default:
                             changes.Add(new(field, RunicCollectionChange.ParseKind(change.GetProperty("kind").GetString(), route),
                                 change.GetProperty("index").GetInt32(), change.GetProperty("oldIndex").GetInt32(),
@@ -114,6 +129,7 @@ public sealed class RunicViewPublication
                 Changes = changes;
                 Sets = sets;
                 Texts = texts;
+                Splices = splices;
                 break;
             default:
                 Kind = RunicPublicationKind.State;
@@ -152,6 +168,8 @@ public sealed class RunicViewPublication
     public IReadOnlyList<RunicMemberSet> Sets { get; } = [];
     /// <summary>A frame's text changes.</summary>
     public IReadOnlyList<RunicTextChange> Texts { get; } = [];
+    /// <summary>A frame's text member splices (<c>text-splice/1</c>), in order.</summary>
+    public IReadOnlyList<RunicTextSplice> Splices { get; } = [];
     /// <summary>A failure notice's error kind.</summary>
     public string? ErrorKind { get; }
     /// <summary>A failure notice's message.</summary>

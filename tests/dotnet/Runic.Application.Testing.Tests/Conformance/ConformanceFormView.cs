@@ -98,7 +98,8 @@ internal sealed class FormBridge(IBridgeTransport transport, FormViewModel vm, W
             new("validation", (writer, model) => BridgeValidation.Write(writer, model, FormViewModel.Metadata, FormViewModel.Reader.ReadErrors)),
         ],
         [
-            new("Name", "name", model => model.Name, (model, value) => model.Name = ConformanceWire.String(value)),
+            new("Name", "name", model => model.Name, (model, value) => model.Name = ConformanceWire.String(value))
+                { TextMember = true, TextSetter = static (model, value) => model.Name = value },
         ],
         [], [], "conformance-form", content,
         dataSubscriptions: FormViewModel.Metadata,

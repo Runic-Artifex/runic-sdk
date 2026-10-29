@@ -8,7 +8,7 @@ internal sealed class FailureToolkitBridge : global::Runic.Application.Views.Gen
         transport, vm, routePrefix ?? "failureToolkit",
         State,
         [
-            new global::Runic.Application.Views.Generated.PropertyDescriptor<global::Runic.Application.Testing.Tests.FailureToolkitViewModel>("Title", "title", vm => vm.Title, (vm, value) => vm.Title = TitleValueCodec.Read(value)),
+            new global::Runic.Application.Views.Generated.PropertyDescriptor<global::Runic.Application.Testing.Tests.FailureToolkitViewModel>("Title", "title", vm => vm.Title, (vm, value) => vm.Title = TitleValueCodec.Read(value)) { TextMember = true, TextSetter = static (vm, value) => vm.Title = value },
         ],
         [
             new global::Runic.Application.Views.Generated.CheckedPropertyDescriptor<global::Runic.Application.Testing.Tests.FailureToolkitViewModel>("Title", "title", global::Runic.Application.Views.Generated.CheckedFieldValueKind.Json, vm => vm.Title, (vm, value) => vm.Title = (global::System.String)value!, readValue: element => TitleValueCodec.Read(element), writeValue: (writer, value) => TitleValueCodec.Write(writer, (global::System.String)value!)),

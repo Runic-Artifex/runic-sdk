@@ -27,10 +27,69 @@ public sealed class BridgeDispatcherTests
     }
 
     [Test]
-    public void RequestsBeforeHelloAreRejectedAndTheConnectionReceivesNoPushes()
+    public void HelloListsTheFeaturesAndIgnoresUnknownOnes()
     {
         using var window = new Window();
-        RequireError(window.Transport.Request("""{"kind":"snapshot","route":"notes"}"""), "rejected", "no-hello");
+        var reply = Parse(window.Transport.Request(Hello.Replace("}}", """},"features":["unknown/2","text-splice/1","Not a feature"]}""", StringComparison.Ordinal)));
+        Require(reply.GetProperty("features").EnumerateArray().Select(feature => feature.GetString()).SequenceEqual(["text-splice/1"]),
+            $"The hello reply lists {reply}.");
+        foreach (var features in new[] { "\"text-splice/1\"", "[1]", "[\"" + new string('a', 65) + "\"]",
+            "[" + string.Join(",", Enumerable.Repeat("\"x\"", 65)) + "]" })
+            RequireError(window.Transport.Request(Hello.Replace("s-1", "s-x", StringComparison.Ordinal).Replace("}}", "},\"features\":" + features + "}",
+                StringComparison.Ordinal), "c-features"), "rejected", "invalid-request");
+    }
+
+    [Test]
+    public async Task RequestsBeforeHelloWaitForItInArrivalOrderAsync()
+    {
+        using var window = new Window();
+        var handler = new RecordingRoute();
+        using var lease = window.Dispatcher.RegisterRoute("notes", handler);
+        var first = window.Transport.RequestAsync("""{"kind":"set","route":"notes","member":"title","value":"a","edit":1}""").AsTask();
+        var second = window.Transport.RequestAsync("""{"kind":"command","route":"notes","member":"save"}""").AsTask();
+        await Task.Delay(20);
+        Require(!first.IsCompleted && !second.IsCompleted && handler.Requests.Count == 0, "A request ran before the hello.");
+        Require(Parse(window.Transport.Request(Hello)).GetProperty("ok").GetBoolean(), "The hello failed.");
+        Require(await first == """{"ok":true}""" && await second == """{"ok":true}""", "A held request was not answered by its route.");
+        Require(handler.Requests.SequenceEqual(["set notes title connection-1 client-1", "command notes save connection-1 client-1"]),
+            $"The held requests ran as [{string.Join(", ", handler.Requests)}].");
+    }
+
+    [Test]
+    public async Task HeldRequestsAnswerNoHelloAfterFiveSecondsAFailedHelloOrTheCloseAsync()
+    {
+        var time = new FakeTimeProvider();
+        using var window = new Window(timeProvider: time);
+        var waiting = window.Transport.RequestAsync("""{"kind":"snapshot","route":"notes"}""").AsTask();
+        time.Advance(TimeSpan.FromMilliseconds(4999));
+        await Task.Delay(20);
+        Require(!waiting.IsCompleted, "A held request did not wait 5 seconds.");
+        time.Advance(TimeSpan.FromMilliseconds(1));
+        RequireError(await waiting.WaitAsync(TimeSpan.FromSeconds(5)), "rejected", "no-hello");
+
+        var refused = window.Transport.RequestAsync("""{"kind":"snapshot","route":"notes"}""").AsTask();
+        await Task.Delay(20);
+        RequireError(window.Transport.Request("""{"kind":"hello","protocol":5,"session":"s-1","client":{"name":"c","version":"5"}}"""), "failed", "protocol-mismatch");
+        RequireError(await refused.WaitAsync(TimeSpan.FromSeconds(5)), "rejected", "no-hello");
+
+        var closed = window.Transport.RequestAsync("""{"kind":"snapshot","route":"notes"}""", "c2").AsTask();
+        await Task.Delay(20);
+        window.Transport.CloseConnection("c2");
+        RequireError(await closed.WaitAsync(TimeSpan.FromSeconds(5)), "rejected", "no-hello");
+
+        // At most 64 wait.
+        var held = Enumerable.Range(0, 64).Select(_ => window.Transport.RequestAsync("""{"kind":"snapshot","route":"notes"}""", "c3").AsTask()).ToArray();
+        await Task.Delay(20);
+        RequireError(window.Transport.Request("""{"kind":"snapshot","route":"notes"}""", "c3"), "rejected", "capacity");
+        Require(held.All(request => !request.IsCompleted), "A held request was answered.");
+        Require(Parse(window.Transport.Request(Hello.Replace("s-1", "s-3", StringComparison.Ordinal), "c3")).GetProperty("ok").GetBoolean(), "The hello failed.");
+        foreach (var request in held) RequireError(await request.WaitAsync(TimeSpan.FromSeconds(5)), "released", null);
+    }
+
+    [Test]
+    public void ReceiveBeforeHelloAnswersAtOnceAndTheConnectionReceivesNoPushes()
+    {
+        using var window = new Window();
         RequireError(window.Transport.Request("""{"kind":"receive"}"""), "rejected", "no-hello");
         Require(!window.Dispatcher.SendAsync(InMemoryBridgeTransport.DefaultConnectionKey, "{}"u8.ToArray()).AsTask().Result,
             "A connection without a hello received a targeted push.");
@@ -54,7 +113,7 @@ public sealed class BridgeDispatcherTests
         Require(message.Contains('4') && message.Contains('5'), $"The message does not name both versions: {message}");
         // A refused hello of another shape still names the mismatch rather than the shape.
         RequireError(window.Transport.Request("""{"kind":"hello","protocol":3}"""), "failed", "protocol-mismatch");
-        RequireError(window.Transport.Request("""{"kind":"snapshot","route":"notes"}"""), "rejected", "no-hello");
+        RequireError(window.Transport.Request("""{"kind":"receive"}"""), "rejected", "no-hello");
         Require(log.Count("BridgeProtocolMismatch") == 1, "The mismatch was not logged once per connection.");
     }
 
@@ -91,7 +150,7 @@ public sealed class BridgeDispatcherTests
         Require(closed.SequenceEqual([InMemoryBridgeTransport.DefaultConnectionKey]), "The closed connection was not reported.");
         RequireError(window.Transport.Request(Hello, "connection-3"), "released", null);
         // A connection key can be reused by a new connection, as CS-WebUI reuses its slots: it starts without a hello.
-        RequireError(window.Transport.Request("""{"kind":"snapshot","route":"notes"}"""), "rejected", "no-hello");
+        RequireError(window.Transport.Request("""{"kind":"receive"}"""), "rejected", "no-hello");
         Require(Parse(window.Transport.Request(Hello.Replace("s-1", "s-4", StringComparison.Ordinal))).GetProperty("ok").GetBoolean(),
             "A new session on a reused connection key failed.");
     }
@@ -256,13 +315,14 @@ public sealed class BridgeDispatcherTests
 
     private sealed class Window : IDisposable
     {
-        public Window(int? maximumInputBytes = null, LogCapture? log = null)
+        public Window(int? maximumInputBytes = null, LogCapture? log = null, TimeProvider? timeProvider = null)
         {
             Transport = new InMemoryBridgeTransport();
             Session = new WindowContentSession(Transport, new WindowContentSessionOptions
             {
                 MaximumInputBytes = maximumInputBytes,
                 LoggerFactory = log?.Factory,
+                TimeProvider = timeProvider,
             });
             Dispatcher = BridgeDispatcher.For(Transport);
         }

@@ -21,7 +21,7 @@ export function pagePinnedNote(id: string): PinnedNotePageReference { return pag
 const members: BridgeMemberDecoders<PinnedNoteState> = {
   label: (wire: unknown) => bridgeWire.string(wire),
 };
-const bridgeContract = "NotesReactiveViews.PinnedNoteViewModel:39D98DB6603CC7808AF0204C418CC72AFA0BFDDAEECCC27B8324172982D22B56";
+const bridgeContract = "NotesReactiveViews.PinnedNoteViewModel:75C140DA503CD364D3EB3833FF036163E85A204EB47968A4ECD5E0ADDFD4F576";
 
 /**
  * Connects a PinnedNote client. It waits up to `options.timeout` milliseconds (default 5000) for the
@@ -30,7 +30,7 @@ const bridgeContract = "NotesReactiveViews.PinnedNoteViewModel:39D98DB6603CC7808
  */
 export function connectPinnedNote(options?: BridgeConnectOptions): Promise<PinnedNoteClient & globalThis.Disposable> { return connectPinnedNoteAt("pinnedNote", options); }
 async function connectPinnedNoteAt(route: string, options?: BridgeConnectOptions): Promise<PinnedNoteClient & globalThis.Disposable> {
-  const view = await connectView<PinnedNoteState>({ contract: bridgeContract, route, members, timeout: options?.timeout, signal: options?.signal });
+  const view = await connectView<PinnedNoteState>({ contract: bridgeContract, route, members, texts: ["label"], timeout: options?.timeout, signal: options?.signal });
   return disposable<PinnedNoteClient>({
     get snapshot() { return view.snapshot; },
     subscribe: view.subscribe,

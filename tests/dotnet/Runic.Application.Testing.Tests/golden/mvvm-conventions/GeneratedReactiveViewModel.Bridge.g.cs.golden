@@ -8,9 +8,9 @@ internal sealed class GeneratedReactiveBridge : global::Runic.Application.Views.
         transport, vm, routePrefix ?? "generatedReactive",
         State,
         [
-            new global::Runic.Application.Views.Generated.PropertyDescriptor<global::Runic.Application.Testing.Tests.GeneratedReactiveViewModel>("Name", "name", vm => vm.Name, (vm, value) => vm.Name = NameValueCodec.Read(value)),
+            new global::Runic.Application.Views.Generated.PropertyDescriptor<global::Runic.Application.Testing.Tests.GeneratedReactiveViewModel>("Name", "name", vm => vm.Name, (vm, value) => vm.Name = NameValueCodec.Read(value)) { TextMember = true, TextSetter = static (vm, value) => vm.Name = value },
             new global::Runic.Application.Views.Generated.PropertyDescriptor<global::Runic.Application.Testing.Tests.GeneratedReactiveViewModel>("IsDirty", "isDirty", vm => vm.IsDirty, null),
-            new global::Runic.Application.Views.Generated.PropertyDescriptor<global::Runic.Application.Testing.Tests.GeneratedReactiveViewModel>("Summary", "summary", vm => vm.Summary, null),
+            new global::Runic.Application.Views.Generated.PropertyDescriptor<global::Runic.Application.Testing.Tests.GeneratedReactiveViewModel>("Summary", "summary", vm => vm.Summary, null) { TextMember = true },
             new global::Runic.Application.Views.Generated.PropertyDescriptor<global::Runic.Application.Testing.Tests.GeneratedReactiveViewModel>("SaveCount", "saveCount", vm => vm.SaveCount, null),
         ],
         [

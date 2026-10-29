@@ -317,6 +317,61 @@
       "operation": "read-request",
       "input": {"encoding":"json","value":{"kind":"receive"}},
       "expect": {"result":"valid"}
+    },
+    {
+      "id": "messages.requests.hello-with-features",
+      "description": "Features the producer does not implement are ignored.",
+      "operation": "read-request",
+      "input": {"encoding":"json","value":{"kind":"hello","protocol":4,"session":"s-1","client":{"name":"test-client","version":"1.0.0"},"features":["text-splice/1","unknown-feature/2"]}},
+      "expect": {"result":"valid"}
+    },
+    {
+      "id": "messages.requests.hello-with-features-that-are-not-an-array",
+      "operation": "read-request",
+      "input": {"encoding":"json","value":{"kind":"hello","protocol":4,"session":"s-1","client":{"name":"test-client","version":"1.0.0"},"features":"text-splice/1"}},
+      "expect": {"result":"invalid","error":{"kind":"rejected","reason":"invalid-request"}}
+    },
+    {
+      "id": "messages.requests.hello-with-a-feature-that-is-not-a-string",
+      "operation": "read-request",
+      "input": {"encoding":"json","value":{"kind":"hello","protocol":4,"session":"s-1","client":{"name":"test-client","version":"1.0.0"},"features":[1]}},
+      "expect": {"result":"invalid","error":{"kind":"rejected","reason":"invalid-request"}}
+    },
+    {
+      "id": "messages.requests.set-with-a-splice-against-an-edit",
+      "operation": "read-request",
+      "input": {"encoding":"json","value":{"kind":"set","route":"notes","member":"title","edit":8,"splice":{"baseEdit":7,"length":100,"index":5,"delete":0,"text":"x"}}},
+      "expect": {"result":"valid"}
+    },
+    {
+      "id": "messages.requests.set-with-a-splice-against-a-revision",
+      "operation": "read-request",
+      "input": {"encoding":"json","value":{"kind":"set","route":"notes","member":"title","edit":1,"splice":{"baseRevision":0,"length":100,"index":0,"delete":100,"text":""}}},
+      "expect": {"result":"valid"}
+    },
+    {
+      "id": "messages.requests.set-with-a-value-and-a-splice",
+      "operation": "read-request",
+      "input": {"encoding":"json","value":{"kind":"set","route":"notes","member":"title","value":"x","edit":1,"splice":{"baseRevision":0,"length":0,"index":0,"delete":0,"text":"x"}}},
+      "expect": {"result":"invalid","error":{"kind":"rejected","reason":"invalid-request"}}
+    },
+    {
+      "id": "messages.requests.set-with-a-splice-with-two-bases",
+      "operation": "read-request",
+      "input": {"encoding":"json","value":{"kind":"set","route":"notes","member":"title","edit":2,"splice":{"baseEdit":1,"baseRevision":0,"length":0,"index":0,"delete":0,"text":"x"}}},
+      "expect": {"result":"invalid","error":{"kind":"rejected","reason":"invalid-request"}}
+    },
+    {
+      "id": "messages.requests.set-with-a-splice-without-a-base",
+      "operation": "read-request",
+      "input": {"encoding":"json","value":{"kind":"set","route":"notes","member":"title","edit":2,"splice":{"length":0,"index":0,"delete":0,"text":"x"}}},
+      "expect": {"result":"invalid","error":{"kind":"rejected","reason":"invalid-request"}}
+    },
+    {
+      "id": "messages.requests.set-with-a-negative-splice-index",
+      "operation": "read-request",
+      "input": {"encoding":"json","value":{"kind":"set","route":"notes","member":"title","edit":2,"splice":{"baseRevision":0,"length":5,"index":-1,"delete":0,"text":"x"}}},
+      "expect": {"result":"invalid","error":{"kind":"rejected","reason":"invalid-request"}}
     }
   ]
 }

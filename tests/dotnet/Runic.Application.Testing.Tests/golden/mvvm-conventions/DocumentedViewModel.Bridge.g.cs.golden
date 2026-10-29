@@ -12,7 +12,7 @@ internal sealed class DocumentedBridge : global::Runic.Application.Views.Generat
             new global::Runic.Application.Views.Generated.PropertyDescriptor<global::Runic.Application.Testing.Tests.DocumentedViewModel>("Item", "item", vm => vm.Item, null),
             new global::Runic.Application.Views.Generated.PropertyDescriptor<global::Runic.Application.Testing.Tests.DocumentedViewModel>("IsDirty", "isDirty", vm => vm.IsDirty, null),
             new global::Runic.Application.Views.Generated.PropertyDescriptor<global::Runic.Application.Testing.Tests.DocumentedViewModel>("Corner", "corner", vm => vm.Corner, null),
-            new global::Runic.Application.Views.Generated.PropertyDescriptor<global::Runic.Application.Testing.Tests.DocumentedViewModel>("Note", "note", vm => vm.Note, (vm, value) => vm.Note = NoteValueCodec.Read(value)),
+            new global::Runic.Application.Views.Generated.PropertyDescriptor<global::Runic.Application.Testing.Tests.DocumentedViewModel>("Note", "note", vm => vm.Note, (vm, value) => vm.Note = NoteValueCodec.Read(value)) { TextMember = true, TextSetter = static (vm, value) => vm.Note = value },
         ],
         [
             new global::Runic.Application.Views.Generated.CheckedPropertyDescriptor<global::Runic.Application.Testing.Tests.DocumentedViewModel>("Note", "note", global::Runic.Application.Views.Generated.CheckedFieldValueKind.Json, vm => vm.Note, (vm, value) => vm.Note = (global::System.String)value!, readValue: element => NoteValueCodec.Read(element), writeValue: (writer, value) => NoteValueCodec.Write(writer, (global::System.String)value!)),

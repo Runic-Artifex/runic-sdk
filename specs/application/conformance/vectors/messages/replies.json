@@ -183,6 +183,20 @@
         }
       },
       "expect": {"result":"valid"}
+    },
+    {
+      "id": "messages.replies.hello-with-features",
+      "operation": "read-reply",
+      "request": "hello",
+      "input": {"encoding":"json","value":{"ok":true,"protocol":4,"implementation":{"name":"conformance-producer","version":"1.0.0"},"features":["text-splice/1"]}},
+      "expect": {"result":"valid"}
+    },
+    {
+      "id": "messages.replies.hello-with-features-that-are-not-an-array",
+      "operation": "read-reply",
+      "request": "hello",
+      "input": {"encoding":"json","value":{"ok":true,"protocol":4,"implementation":{"name":"conformance-producer","version":"1.0.0"},"features":"text-splice/1"}},
+      "expect": {"result":"invalid"}
     }
   ]
 }
