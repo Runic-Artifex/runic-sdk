@@ -23,11 +23,13 @@ function Editor({ editor }: { readonly editor: EditorClient }): ReactNode {
   // A field is written after a pause in typing or when it loses focus, not on every keystroke.
   const title = useField(view, EditorFields.title, { commit: "pause" });
   const body = useField(view, EditorFields.body, { commit: "pause" });
-  // Save waits for the fields' writes; a write that failed shows as the field's error.
-  // A declared failure is save.failure; save.error holds unexpected ones.
+  // Save waits for the fields' writes, and does not start after one that failed: that
+  // write shows as the field's error. commit() resolves with the field's state, because
+  // this render's title.error is older than the writes. A declared failure is
+  // save.failure; save.error holds unexpected ones.
   const save = useCommand(async () => {
-    await Promise.all([title.commit(), body.commit()]);
-    return editor.save();
+    const fields = await Promise.all([title.commit(), body.commit()]);
+    return fields.every(field => field.error === undefined) ? editor.save() : undefined;
   });
   if (!state) return h("p", null, "Connecting…");
   const issue = save.error ?? title.error ?? body.error;

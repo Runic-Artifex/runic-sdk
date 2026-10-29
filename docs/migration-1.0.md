@@ -876,7 +876,7 @@ write.
 | Tests that compared the whole text field state, `{ value, editing, error }` | The state also has `text`, `errors` and `conflict` |
 | A number or choice member bound through a command or a hand-made computed (`useCommand(value => client.setStep(value))`) | `useField(view, CounterFields.step)`: React `inputProps`, Vue `v-model="step.value"`, Svelte `{@attach step.attach}`, Angular `injectField` or `[runicField]` |
 | App-local form adapters (Reactive Forms bridges, Svelte function bindings) | `[runicField]` from `@runic-artifex/angular/forms` with `[formControl]`, Signal Forms' `runicFieldModel` and `validateRunicField`; Svelte `useField` |
-| Native `change` events or a hand-written debounce to write after a pause and on blur | `useField(view, field, { commit: "pause", delay })`; `await field.commit()` before a command that depends on the field, such as Save |
+| Native `change` events or a hand-written debounce to write after a pause and on blur | `useField(view, field, { commit: "pause", delay })`; `await field.commit()` before a command that depends on the field, such as Save; it resolves with the field's state, so Save can skip a failed write |
 | Showing `{name}Errors` or `validation.errors` next to an input by hand | The field's `errors` |
 
 Details: 0.14.0 [Frontend field API](../eng/release/notes/0.14.0.md#frontend-field-api-f1).
