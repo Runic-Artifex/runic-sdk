@@ -129,8 +129,9 @@ internal sealed class ConformanceTests
     public async Task NavigationInteractionSemanticsAsync()
     {
         using var transport = new InMemoryBridgeTransport();
-        using var session = new WindowContentSession(transport);
         await using var context = new RunicModelContext();
+        // The bridge of the editor takes the model context the navigator bound it to.
+        using var session = new WindowContentSession(transport, new WindowContentSessionOptions { ModelContext = context });
         await using var navigator = new RunicNavigator(new RunicNavigatorOptions { ModelContext = context });
         var region = navigator.CreateRegion<object>(new object(), NavigationTarget.Borrow<object>(new object()));
         var editor = new ConformanceEditorModel();
