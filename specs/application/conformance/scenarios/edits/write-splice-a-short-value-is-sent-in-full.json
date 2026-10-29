@@ -1,0 +1,35 @@
+{
+  "format": "runic.views.scenario/1",
+  "id": "edits.write-splice-a-short-value-is-sent-in-full.v1",
+  "contract": {"id":"runic.views","version":4},
+  "set": "edits",
+  "roles": ["producer","client"],
+  "description": "A checked write whose single splice would keep fewer than 64 code units of expectedValue sends expectedValue and value, also with text-splice/1.",
+  "view": "notes",
+  "requires": ["text-splice/1"],
+  "ids": {
+    "c1": {"kind":"connection"},
+    "hello-c1": {"kind":"request"},
+    "session": {"kind":"wire","value":"s-1"},
+    "open-notes": {"kind":"call"},
+    "open-notes-request": {"kind":"request"},
+    "presentation": {"kind":"wire","value":"p-1"},
+    "write": {"kind":"call"},
+    "write-request": {"kind":"request"},
+    "writeRequest": {"kind":"wire","value":"w-1"}
+  },
+  "arrange": {"model":{"note":"A short note."}},
+  "steps": [
+    {"connect":"c1"},
+    {"send":{"kind":"hello","protocol":4,"session":{"$id":"session"},"client":{"name":{"$any":"string","default":"conformance-client"},"version":{"$any":"string","default":"1.0.0"}},"features":["text-splice/1"]},"id":"hello-c1"},
+    {"receive":{"ok":true,"protocol":4,"implementation":{"name":{"$any":"string","default":"conformance-producer"},"version":{"$any":"string","default":"1.0.0"}},"features":{"$any":"array","default":["text-splice/1"]}},"replyTo":"hello-c1"},
+    {"call":{"id":"open-notes","op":"open","route":"notes"}},
+    {"send":{"kind":"open","route":"notes","presentation":{"$id":"presentation"}},"id":"open-notes-request"},
+    {"receive":{"ok":true,"revision":0,"state":{"title":"","note":"A short note.","priority":"Normal","due":null,"elapsed":"PT0S","rows":[],"count":0,"summary":"rows: 0","detail":{"kind":"detail","id":"0123456789abcdef0123456789abcdef"},"canClear":false,"canTouch":true,"canSave":true,"canConfirmClear":false,"isSlowImportExecuting":false,"isConfirmClearExecuting":false},"fields":{"note":{"version":0}},"presentation":"ok"},"replyTo":"open-notes-request"},
+    {"call":{"id":"write","op":"write","route":"notes","member":"note","requestId":"w-1","baseline":{"value":"A short note.","version":0},"value":"A short note.!"}},
+    {"send":{"kind":"write","route":"notes","member":"note","requestId":{"$id":"writeRequest"},"expectedVersion":0,"expectedValue":"A short note.","value":"A short note.!"},"id":"write-request"},
+    {"receive":{"kind":"frame","route":"notes","baseRevision":0,"revision":1,"changes":[{"field":"note","kind":"set","value":"A short note.!","version":1}]}},
+    {"receive":{"ok":true,"revision":1,"receipt":{"kind":"applied","snapshot":{"value":"A short note.!","version":1}}},"replyTo":"write-request"},
+    {"expect":{"call":{"id":"write","resolved":{"kind":"applied","snapshot":{"value":"A short note.!","version":1}}}}}
+  ]
+}

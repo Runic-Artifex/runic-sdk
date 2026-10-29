@@ -213,7 +213,7 @@ reply both list the same string. Features are negotiated per connection, and aga
 
 | Feature | Specification | Since |
 | --- | --- | --- |
-| `text-splice/1` | Text members change with splices: [`set` with a splice](#text-splices-in-set) and [`splice` changes](state-changes.md#text-splices) | 0.14 |
+| `text-splice/1` | Text members change with splices: [`set` with a splice](#text-splices-in-set), [`write` with a splice](#text-splices-in-write) and [`splice` changes](state-changes.md#text-splices) | 0.14 |
 
 ## Requests and replies
 
@@ -247,7 +247,7 @@ it.
 | --- | --- | --- |
 | `invalid-request` | `rejected` | The request is not a request of this protocol: an unknown `kind`, a missing member or a member of the wrong JSON type, or a `member` that the route does not have for that kind. |
 | `no-hello` | `rejected` | The connection has not completed a `hello` ([Handshake](#handshake)). |
-| `splice-base` | `rejected` | A `set` with a splice names a base the producer does not have, or the splice does not fit it ([Text splices in `set`](#text-splices-in-set)). |
+| `splice-base` | `rejected` | A `set` with a splice names a base the producer does not have, or the splice does not fit it ([Text splices in `set`](#text-splices-in-set)); a `write` with a splice does not fit the field's value at `expectedVersion`, or that value is not a string ([Text splices in `write`](#text-splices-in-write)). |
 | `protocol-mismatch` | `failed` | A `hello` named another protocol version. |
 | `invalid-input` | `rejected` | A value or input does not decode as its type ([values](values.md#wire-value-types)), the setter or command rejects it as invalid input, or the request is larger than the input limit. |
 | `unavailable` | `rejected` | A command is not available ([Commands](#commands-and-availability)). |
@@ -481,10 +481,58 @@ A checked field accepts writes that are checked against the value and version th
   - `{kind:"conflict", incoming:{value, version}, message}`: the field's version or value differed; `incoming` is the
     current field;
   - `{kind:"rejected", message}`: the setter refused the value, and the field is unchanged.
-- A retry with the same `requestId` whose `expectedVersion`, `expectedValue` and `value` are canonically equal to the
-  original receives the original receipt and does not apply the write again. Reusing a `requestId` for another write
-  answers `conflict`. A producer retains receipts for a bounded number of request ids.
+- A retry with the same `requestId` that repeats `expectedVersion` and either `expectedValue` and `value`, canonically
+  equal to the original's, or the original's `splice` receives the original receipt and does not apply the write
+  again. A retry repeats the original's form: a write with `expectedValue` and `value` does not repeat a write with a
+  splice, nor the reverse. Reusing a `requestId` for another write answers `conflict`. A producer retains receipts for
+  a bounded number of request ids.
 - The reply carries `revision` like a setter's. A value that does not decode is `rejected` with `invalid-input`.
+- On a connection that uses `text-splice/1`, a `write` of a checked field that is a
+  [text member](state-changes.md#text-members) may carry `splice` instead of `expectedValue` and `value` (below).
+
+### Text splices in `write`
+
+With the feature `text-splice/1`, a checked write of a long text member sends what changed instead of the whole value
+twice:
+
+```json
+{"kind":"write","route":"editor","member":"body","requestId":"w-9","expectedVersion":7,"splice":{"length":100000,"index":5120,"delete":0,"text":"x"}}
+{"ok":true,"revision":44,"receipt":{"kind":"applied","snapshot":{"value":"…","version":8}}}
+```
+
+| Member of `splice` | Contract |
+| --- | --- |
+| `length` | The length of the field's value at `expectedVersion`, in UTF-16 code units. |
+| `index`, `delete`, `text` | The [splice](state-changes.md#text-splices): replace `delete` code units at `index` with `text`. |
+
+A `write` carries exactly one of `value` and `splice`, and `expectedValue` only with `value`. `splice` has no
+`baseEdit` or `baseRevision`: its base is the field's value at `expectedVersion`.
+
+**Meaning.** A `write` with a splice is exactly the `write` whose `expectedValue` is the field's value at
+`expectedVersion` and whose `value` is that value with the splice applied. Its receipts are those of that write:
+`snapshot` and `incoming` carry the field's whole value.
+
+**Producer.** In this order:
+
+1. A `write` with both or neither of `value` and `splice`, with `expectedValue` and `splice`, or with a `splice` that is
+   not an object of the members above, is `rejected` with `invalid-request`.
+2. A `write` with `splice` on a connection that does not use `text-splice/1`, or for a checked field that is not a text
+   member, is `rejected` with `invalid-request`.
+3. A retained `requestId` answers as above: the original receipt for a retry of the same splice and `expectedVersion`,
+   `conflict` otherwise.
+4. When the field's version is not `expectedVersion`, the receipt is `conflict` with `incoming`, as for any `write`.
+5. The base is the field's current value. When it is not a string, or the splice does not fit it as a frame's splice
+   must ([applying a splice](state-changes.md#text-splices)), the `write` is `rejected` with the reason `splice-base`:
+   nothing is written and no receipt is retained for the `requestId`.
+6. Otherwise the producer writes the rebuilt value as the full `write` would, and retains its receipt for a retry of
+   the splice.
+
+**Client.** A client that uses `text-splice/1` sends a splice for a checked write when the member is a checked text
+member, `expectedValue` and `value` are strings and the [single splice](state-changes.md#producing-splices) from
+`expectedValue` to `value` keeps at least 64 code units of `expectedValue`; `length` is the length of `expectedValue`.
+In every other case it sends `expectedValue` and `value`. When a splice is answered `splice-base`, the client sends the
+same write with `expectedValue` and `value` and the same `requestId`, once; the write's call settles with that request.
+A retry of a write repeats the form the client sent last.
 
 ## Validation
 
@@ -793,7 +841,7 @@ Requests:
 | `snapshot` | `route` | `revision`, `state`, `fields?` |
 | `close` | `route`, `presentation` | `presentation` |
 | `set` | `route`, `member`, `value` or `splice` (`text-splice/1`), `edit` | `revision`, `superseded?` |
-| `write` | `route`, `member`, `requestId`, `expectedVersion`, `expectedValue`, `value` | `revision`, `receipt` |
+| `write` | `route`, `member`, `requestId`, `expectedVersion`, `expectedValue` and `value`, or `splice` (`text-splice/1`) | `revision`, `receipt` |
 | `command` | `route`, `member`, `input?` | `revision` |
 | `can` | `route`, `member`, `input?` | `value` |
 | `start` | `route`, `member`, `operation`, `contract`, `input?` | `revision`, `admission`, `reason?`, `status?` |
