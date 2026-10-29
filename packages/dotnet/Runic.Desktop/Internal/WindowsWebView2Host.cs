@@ -703,14 +703,16 @@ internal sealed partial class WindowsWebView2Host : IWebUiEmbeddedHost
                     try { await InvokeAsync(() => _controller?.Navigate(target), CancellationToken.None).ConfigureAwait(false); }
                     catch (InvalidOperationException) { } // The window closed meanwhile.
                 }));
-            if (options.DocumentStartScript is { } documentStartScript)
-            {
-                await _controller.AddDocumentStartScriptAsync(documentStartScript);
-            }
-            await _controller.EnableFileDropsAsync(url, drop => FilesDropped?.Invoke(this, drop));
+            // The document-start scripts are added in this order, and their registrations complete concurrently; the
+            // first navigation waits for all of them.
+            var documentStart = options.DocumentStartScript is { } documentStartScript
+                ? _controller.AddDocumentStartScriptAsync(documentStartScript)
+                : Task.CompletedTask;
+            var fileDrops = _controller.EnableFileDropsAsync(url, drop => FilesDropped?.Invoke(this, drop));
             // The declared shortcuts, in every menu bar presentation: the page sees each key first.
             _controller.RegisterAcceleratorKeys(IsMenuShortcut);
-            await _controller.EnableMenuKeysAsync(url, OnMenuKey);
+            var menuKeys = _controller.EnableMenuKeysAsync(url, OnMenuKey);
+            await Task.WhenAll(documentStart, fileDrops, menuKeys);
             _controller.Navigate(url.AbsoluteUri);
             if (!string.IsNullOrWhiteSpace(options.IconFile))
             {
