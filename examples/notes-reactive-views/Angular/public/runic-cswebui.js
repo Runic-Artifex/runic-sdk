@@ -4,16 +4,63 @@
 (() => {
   const connected = () => window.webui?.isConnected() ?? false;
   // A WebSocket reconnect keeps the page, and each new connection needs its own
-  // hello. Observe the transitions by polling so an application's own
-  // webui.setEventCallback stays in place. The poll runs while a listener
-  // exists or a call is unsettled, so a lost connection settles the call, and
-  // connection listeners learn of a dropped WebSocket within one poll, without
-  // waiting for the page's next call.
+  // hello. WebUI reports the transitions to its one event callback
+  // (webui.setEventCallback): CONNECTED once a connection's token is accepted,
+  // which is when isConnected() turns true, and DISCONNECTED when its WebSocket
+  // closes. webui.js defines the WebuiBridge class and creates its one
+  // instance, window.webui, when the document has loaded, after this script
+  // ran. So the script wraps WebuiBridge.prototype.setEventCallback before any
+  // page script can call it, and once the Bridge starts watching it installs
+  // its own callback, which observes the transition and then calls the
+  // application's callback. An application's own callback therefore stays in
+  // place and sees every event WebUI reports, before and after. Like an
+  // application's callback, the Bridge's makes WebUI leave out its own
+  // "connection lost" banner. Where WebUI cannot be observed so (this script
+  // loaded after window.webui was created, or a WebUI without the class), the
+  // script polls isConnected() every 250 ms instead, as it did before.
+  // Watching starts when a listener registers or a call is sent, so a lost
+  // connection settles the call, and connection listeners learn of a dropped
+  // WebSocket at once, without waiting for the page's next call. A poll stops
+  // once nothing listens and no call is unsettled; the callback stays.
   const connectionListeners = new Set();
   const messageListeners = new Set();
   let watchTimer;
   let wasConnected = false;
   let reported;
+  const WebuiBridge = typeof window.WebuiBridge === "function" && !("webui" in window) ? window.WebuiBridge : undefined;
+  const setEventCallback = WebuiBridge?.prototype.setEventCallback;
+  // Whether WebUI reports the transitions, and the instance that reports them to the Bridge's callback.
+  let events = typeof setEventCallback === "function";
+  let reporting;
+  let applicationCallback = null;
+  if (events) {
+    WebuiBridge.prototype.setEventCallback = function (callback) {
+      applicationCallback = callback;
+      if (this !== reporting) setEventCallback.call(this, callback);
+    };
+  }
+  function bridgeCallback(event) {
+    try {
+      // CONNECTED while the last connection was open: WebUI did not report its
+      // close to this callback, so the page has a new connection.
+      if (event === (reporting.event?.CONNECTED ?? 0) && wasConnected) connectionLost();
+      watchConnection();
+    } catch (error) {
+      console.error("Runic connection event failed", error);
+    }
+    if (typeof applicationCallback === "function") applicationCallback.call(this, event);
+  }
+  function reportEvents() {
+    const webui = window.webui;
+    if (reporting !== undefined || webui === undefined) return;
+    if (!(webui instanceof WebuiBridge)) {
+      events = false;
+      return;
+    }
+    wasConnected = connected();
+    setEventCallback.call(webui, bridgeCallback);
+    reporting = webui;
+  }
   function reportConnection(now) {
     if (now === reported || connectionListeners.size === 0) return;
     reported = now;
@@ -41,9 +88,23 @@
   }
   const idle = () => connectionListeners.size === 0 && messageListeners.size === 0 && unsettled === 0;
   function startWatching() {
+    if (events) {
+      // Before window.webui exists, nothing can connect; the document's load
+      // installs the callback once webui.js created it.
+      reportEvents();
+      if (events) return;
+    }
     if (watchTimer !== undefined) return;
     wasConnected = connected();
     watchTimer = setInterval(watchConnection, 250);
+  }
+  // webui.js registered its listener before this one, so window.webui exists here.
+  if (events && typeof document === "object" && typeof document.addEventListener === "function") {
+    document.addEventListener("DOMContentLoaded", () => {
+      if (idle()) return;
+      startWatching();
+      watchConnection();
+    });
   }
   function stopWatching() {
     if (watchTimer === undefined) return;
@@ -157,9 +218,10 @@
   const nextConnection = () => ({ calls: new Set(), settled: 0, receiving: false, paused: false, received: false });
   let connection = nextConnection();
   let unsettled = 0;
-  // The connection a call sent now joins. A throttled poll may not have seen
-  // the loss yet. Check now, so a call cannot join the old connection while
-  // WebUI sends it on the new one.
+  // The connection a call sent now joins. The script may not have seen the
+  // loss yet (a throttled poll, or a WebSocket that stopped being open before
+  // WebUI reported its close). Check now, so a call cannot join the old
+  // connection while WebUI sends it on the new one.
   function currentConnection() {
     if (wasConnected && !connected()) connectionLost();
     return connection;
@@ -200,11 +262,11 @@
   // spins. If such a request already settled when the failure arrives (a
   // receive racing the hello), the loop sends the next receive at once. A
   // no-hello after this connection's loop received a reply means that WebUI
-  // replaced the WebSocket between two polls: the page has a new connection,
-  // so its listeners see false and then true, and its unsettled calls, which
-  // WebUI will not settle, are rejected.
+  // replaced the WebSocket without the script seeing it close: the page has a
+  // new connection, so its listeners see false and then true, and its
+  // unsettled calls, which WebUI will not settle, are rejected.
   // A receive rejected because its connection was lost ends that connection's
-  // loop; the next connection starts a new one when the poll sees it open or
+  // loop; the next connection starts a new one when the script sees it open or
   // when a request settles on it. A receive rejected otherwise is a failure.
   const receiveRequest = '{"kind":"receive"}';
   function receive() {
@@ -294,7 +356,7 @@
     },
     // Reads WebUI's state directly: the Bridge's isConnected() also allows navigation.
     onConnectionChange: listener => {
-      // A later listener gets the current state, not the one the last poll saw: WebUI can have connected since.
+      // A later listener gets the current state, not the last one reported: WebUI can have connected since.
       if (connectionListeners.size === 0) reported = connected();
       else watchConnection();
       connectionListeners.add(listener);
