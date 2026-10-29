@@ -714,7 +714,9 @@ public partial class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBr
             }
             else _collections.Remove(property.Name);
         }
-        if (changed) Volatile.Write(ref _collectionFields, [.. _collections.Select(entry => (entry.Key, entry.Value))]);
+        // By wire name, as BridgeDataSubscriptions reports the collections it observes.
+        if (changed) Volatile.Write(ref _collectionFields, [.. _collections.Select(entry =>
+            (Array.Find(_properties, property => property.Name == entry.Key)?.WireName ?? entry.Key, entry.Value))]);
     }
 
     private void RefreshObservedSubObjects()
