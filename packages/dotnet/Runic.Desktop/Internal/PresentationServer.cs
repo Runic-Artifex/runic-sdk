@@ -46,6 +46,11 @@ internal sealed class KestrelPresentationServer(Action<IServiceCollection>? conf
     public IServiceProvider Services =>
         _application?.Services ?? throw new InvalidOperationException("The presentation server has not started.");
 
+    // ILLink 10.0 (dotnet/runtime#135913, fixed after 10.0.14) keeps X509Certificate2Collection's
+    // IEnumerable<X509Certificate2>, reached through Kestrel's configuration loader, but strips the
+    // interfaces and GetEnumerator of its uninstantiated base CollectionBase. A trimmed application then
+    // fails to load the type with a TypeLoadException when Kestrel binds. NativeAOT is not affected.
+    [DynamicDependency(DynamicallyAccessedMemberTypes.Interfaces, typeof(System.Collections.CollectionBase))]
     public async Task<int> StartAsync(IPAddress address, int port, RequestDelegate dispatch, CancellationToken cancellationToken)
     {
         // The server reads no files. The default content root is the working directory,
