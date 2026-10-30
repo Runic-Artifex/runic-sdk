@@ -945,3 +945,12 @@ Details: 0.14.0 [Runic Command Line 0.11.0 in the SDK tools](../eng/release/note
 | Native 1051, 1061 and 1062 (a service with running dependents, a control the service cannot accept now, a service that is not running) were `NativeFailure` | `Conflict` |
 
 Details: 0.15.0 [Windows administration](../eng/release/notes/0.15.0.md#windows-administration-w1).
+
+### Desktop presentations
+
+| 0.14 | 0.15 |
+| --- | --- |
+| A chain of presentations opened window after window, collecting the failures. | `DesktopWindowOptions.Fallbacks = [BrowserKind.ChromiumBased, BrowserKind.Firefox]`; catch `DesktopPresentationException` and read `Attempts`. |
+| A failed `EmbeddedThenBrowser` fallback threw the browser's `DesktopException`, with the browser's underlying failure as inner exception. | It throws a `DesktopPresentationException` with the same `Code` and `Category`; `InnerException` is the browser's `DesktopException`. `catch (DesktopException)` still matches; a check for the exact type does not. |
+
+Details: 0.15.0 [Runic Desktop: an ordered list of fallback presentations](../eng/release/notes/0.15.0.md#runic-desktop-an-ordered-list-of-fallback-presentations-h1).

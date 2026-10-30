@@ -418,6 +418,11 @@ public enum DesktopPresentationPolicy
     RequestedOnly,
 
     /// <summary>Prefer the embedded WebView and fall back to the selected installed browser.</summary>
+    /// <remarks>
+    /// Shorthand for <see cref="DesktopWindowOptions.Browser"/> = <see cref="BrowserKind.Embedded"/> with the selected
+    /// browser as the only entry of <see cref="DesktopWindowOptions.Fallbacks"/>. A non-empty
+    /// <see cref="DesktopWindowOptions.Fallbacks"/> replaces that one browser.
+    /// </remarks>
     EmbeddedThenBrowser,
 }
 
@@ -620,6 +625,29 @@ public sealed record DesktopWindowOptions
     /// <see cref="BrowserKind.Any"/>. The fallback opens without <see cref="AllowedPermissions"/>.
     /// </remarks>
     public DesktopPresentationPolicy PresentationPolicy { get; init; }
+
+    /// <summary>
+    /// Gets the presentations tried in order when the first one cannot open; empty by default.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The window opens the first presentation, <see cref="Browser"/> (or the embedded WebView under
+    /// <see cref="DesktopPresentationPolicy.EmbeddedThenBrowser"/>), and, when that is unavailable or fails to start,
+    /// each entry of this list in turn, for example <c>[BrowserKind.ChromiumBased, BrowserKind.Firefox]</c> after the
+    /// embedded WebView. Under <see cref="DesktopPresentationPolicy.EmbeddedThenBrowser"/> a non-empty list replaces
+    /// the single fallback browser; <see cref="Browser"/> must then be <see cref="BrowserKind.Embedded"/>.
+    /// </para>
+    /// <para>
+    /// A presentation that opened but whose page never connected (<c>connection-timeout</c>) ends the chain, because
+    /// the next one would load the same frontend. When every presentation fails, the window fails with a
+    /// <see cref="DesktopPresentationException"/> whose <see cref="DesktopPresentationException.Attempts"/> lists why
+    /// each one failed. An installed browser after the first presentation opens without
+    /// <see cref="AllowedPermissions"/> and without <see cref="ConfirmCloseAsync"/>, as the
+    /// <see cref="DesktopPresentationPolicy.EmbeddedThenBrowser"/> fallback does; an embedded WebView keeps both.
+    /// The other options apply to every presentation. An entry may not repeat the first presentation or another entry.
+    /// </para>
+    /// </remarks>
+    public IReadOnlyList<BrowserKind> Fallbacks { get; init; } = [];
 
     /// <summary>Gets the sensitive permissions granted to the presentation; none by default.</summary>
     public DesktopPermissionGrant AllowedPermissions { get; init; }

@@ -270,6 +270,32 @@ differential evidence; no public `WebUi*` identity is exported.
 WebView; installed browsers are an explicit choice or an explicit
 `EmbeddedThenBrowser` fallback.
 
+Since 0.15, `DesktopWindowOptions.Fallbacks` lists the presentations a window
+tries, in order, when the first one cannot open: for example the embedded WebView,
+then an installed Chromium-based browser, then Firefox:
+
+```csharp
+var window = await surface.OpenWindowAsync(new DesktopWindowOptions
+{
+    Browser = BrowserKind.Embedded,
+    Fallbacks = [BrowserKind.ChromiumBased, BrowserKind.Firefox],
+});
+```
+
+`EmbeddedThenBrowser` is the shorthand for `Browser = BrowserKind.Embedded` with
+the selected browser as the one fallback; a non-empty `Fallbacks` replaces that
+browser (`Browser` must then be `Embedded`). Each failed presentation is reported
+as a warning (`embedded-presentation-fallback`, or `presentation-fallback` for a
+browser) and the next one is tried. When none opens, `OpenWindowAsync` throws a
+`DesktopPresentationException`: its `Attempts` list each presentation with the
+`DesktopException` it failed with, and its `Code` is the last attempt's. A
+presentation that opened but whose page never connected ends the chain with
+`presentation-connection-timeout`. An installed browser after the first
+presentation opens without `AllowedPermissions` and `ConfirmCloseAsync`, as the
+`EmbeddedThenBrowser` fallback does. `window.IsFallback` and `window.Browser`
+tell which presentation opened, and `GetPresentationPreflight(...).Fallbacks`
+reports the availability of each fallback without opening anything.
+
 Call `DesktopHost.Validate(windowOptions)` at startup to check a window request
 before anything opens. It evaluates the requested host and only the explicit
 fallback policy without creating a browser or WebView, and returns one
@@ -316,12 +342,12 @@ as unavailable.
 | --- | --- | --- |
 | `linux-embedded-backend-not-selected`, `gtk4-provider-missing`, `gtk4-runtime-missing`, `webkitgtk6-runtime-missing`, `webkitgtk-runtime-missing`, `webview2-runtime-missing`, `browser-not-found`, … | Error | The presentation or a native prerequisite is unavailable (`DesktopPlatform.GetAvailability(options)` lists them). |
 | `browser-unsupported` | Error | `Browser` is Safari or Opera. These values are detection-only: Runic Desktop neither discovers nor launches them. |
-| `window-option-invalid` | Error | An option has an undefined value, or a size that is not a positive number of pixels. |
-| `close-confirmation-unavailable` | Error or Warning | `ConfirmCloseAsync` is set for an explicitly selected browser (Error; opening throws a `DesktopException` with this code), or an `EmbeddedThenBrowser` fallback opens without close confirmation (Warning). |
+| `window-option-invalid` | Error | An option has an undefined value, a size that is not a positive number of pixels, or `Fallbacks` repeats a presentation. |
+| `close-confirmation-unavailable` | Error or Warning | `ConfirmCloseAsync` is set for an explicitly selected browser (Error; opening throws a `DesktopException` with this code), or a browser fallback (`EmbeddedThenBrowser`, `Fallbacks`) opens without close confirmation (Warning). |
 | `window-option-unsupported` | Error or Warning | The window host rejects an option (Error, such as GTK4 placement) or the presentation ignores it (Warning, such as `Frameless` in a browser). |
 | `window-option-incomplete` | Warning | Only one of `X`/`Y` or `MinimumWidth`/`MinimumHeight` is set. |
 | `permission-grant-unsupported` | Warning | An installed browser does not apply `MediaCapture` and asks the user instead (Firefox and, since 0.11.0, Chromium-based browsers). |
-| `permission-grant-withheld` | Warning | An `EmbeddedThenBrowser` fallback opens without the grant. |
+| `permission-grant-withheld` | Warning | A browser fallback (`EmbeddedThenBrowser`, `Fallbacks`) opens without the grant. |
 
 Sensitive permissions remain denied unless the window opts into a typed grant.
 WebView2, WKWebView, WebKitGTK and GTK4 windows grant `MediaCapture` only to the

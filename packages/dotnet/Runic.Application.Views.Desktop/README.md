@@ -155,7 +155,7 @@ The same Window and `async host => ...` body run on CS-WebUI with
   asks the navigation regions' departure guards. `window.RequestCloseAsync()`
   is the same native close request and shares its decision;
   `CloseAsync`, disposal, Ctrl+C and SIGTERM do not ask. An explicitly selected
-  browser, the `EmbeddedThenBrowser` fallback, or a custom window host without
+  browser, a browser fallback (`EmbeddedThenBrowser`, `Fallbacks`), or a custom window host without
   the `CloseConfirmation` capability opens the Window unguarded for the user's
   close and logs event 1053 `WindowCloseGuardUnavailable`; `RequestCloseAsync`
   still asks `CanCloseAsync` there.

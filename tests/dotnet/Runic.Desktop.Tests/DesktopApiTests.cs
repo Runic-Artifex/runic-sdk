@@ -522,6 +522,148 @@ public sealed class DesktopApiTests
     }
 
     [Test]
+    public async Task FallbacksAreTriedInOrder()
+    {
+        if (OperatingSystem.IsWindows())
+        {
+            return;
+        }
+
+        var folder = Directory.CreateTempSubdirectory("runic-desktop-fallbacks-");
+        try
+        {
+            var executable = Path.Combine(folder.FullName, OperatingSystem.IsMacOS()
+                ? "Google Chrome.app/Contents/MacOS/Google Chrome"
+                : "google-chrome");
+            Directory.CreateDirectory(Path.GetDirectoryName(executable)!);
+            await File.WriteAllTextAsync(executable, "#!/bin/sh\nexit 0\n");
+            File.SetUnixFileMode(executable, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+            var diagnostics = new ConcurrentQueue<DesktopDiagnostic>();
+            await using var host = await DesktopHost.StartAsync(new DesktopHostOptions
+            {
+                BrowserFolder = folder.FullName,
+                WindowHostFactory = new UnavailableWindowHostFactory(),
+                DiagnosticSink = diagnostics.Enqueue,
+                WaitForConnection = false,
+            });
+            await using var surface = await host.CreateSurfaceAsync();
+            await using var window = await surface.OpenWindowAsync(new DesktopWindowOptions
+            {
+                Browser = BrowserKind.Embedded,
+                // Safari is detection only, so it fails on every platform before Chrome is tried.
+                Fallbacks = [BrowserKind.Safari, BrowserKind.Chrome],
+            });
+
+            Assert.True(window.IsFallback);
+            Assert.Equal(BrowserKind.Embedded, window.RequestedBrowser);
+            Assert.Equal(BrowserKind.Chrome, window.Browser);
+            Assert.Contains(diagnostics, static item => item.Code == "embedded-presentation-fallback");
+            Assert.Contains(diagnostics, static item => item.Code == "presentation-fallback" &&
+                item.Message.Contains("Safari", StringComparison.Ordinal));
+        }
+        finally
+        {
+            folder.Delete(recursive: true);
+        }
+    }
+
+    [Test]
+    public async Task ExhaustedFallbacksReportEveryAttempt()
+    {
+        await using var host = await DesktopHost.StartAsync(new DesktopHostOptions
+        {
+            WindowHostFactory = new UnavailableWindowHostFactory(),
+            WaitForConnection = false,
+        });
+        await using var surface = await host.CreateSurfaceAsync();
+
+        var error = await Assert.ThrowsAsync<DesktopPresentationException>(async () =>
+            await surface.OpenWindowAsync(new DesktopWindowOptions
+            {
+                Fallbacks = [BrowserKind.Safari, BrowserKind.Opera],
+            }));
+
+        Assert.Equal(
+            [BrowserKind.Embedded, BrowserKind.Safari, BrowserKind.Opera],
+            error.Attempts.Select(static attempt => attempt.Browser).ToArray());
+        Assert.Equal(
+            ["custom-window-host-unavailable", "browser-unsupported", "browser-unsupported"],
+            error.Attempts.Select(static attempt => attempt.Failure.Code).ToArray());
+        // The last attempt's failure classifies the whole failure.
+        Assert.Equal("browser-unsupported", error.Code);
+        Assert.Same(error.Attempts[^1].Failure, error.InnerException);
+        Assert.Equal(error.Attempts[^1].Failure.CorrelationId, error.CorrelationId);
+        Assert.Contains("Embedded: custom-window-host-unavailable", error.Message, StringComparison.Ordinal);
+    }
+
+    [Test]
+    public async Task PreflightListsEveryFallback()
+    {
+        await using var host = await DesktopHost.StartAsync(new DesktopHostOptions
+        {
+            WindowHostFactory = new UnavailableWindowHostFactory(),
+        });
+
+        var preflight = host.GetPresentationPreflight(new DesktopWindowOptions
+        {
+            Fallbacks = [BrowserKind.Safari, BrowserKind.Opera],
+        });
+
+        Assert.Equal(
+            [BrowserKind.Safari, BrowserKind.Opera],
+            preflight.Fallbacks.Select(static fallback => fallback.Browser).ToArray());
+        Assert.Same(preflight.Fallbacks[0], preflight.Fallback);
+        Assert.False(preflight.IsAvailable);
+        Assert.False(preflight.WouldFallBack);
+        Assert.Equal("custom-window-host-unavailable", preflight.Diagnostics[0].Code);
+        Assert.Contains(preflight.Diagnostics, static diagnostic => diagnostic.Code == "browser-unsupported");
+
+        // EmbeddedThenBrowser declares its one browser as the only fallback.
+        var policy = host.GetPresentationPreflight(new DesktopWindowOptions
+        {
+            Browser = BrowserKind.Safari,
+            PresentationPolicy = DesktopPresentationPolicy.EmbeddedThenBrowser,
+        });
+        Assert.Equal(BrowserKind.Embedded, policy.Preferred.Browser);
+        Assert.Equal(BrowserKind.Safari, Assert.Single(policy.Fallbacks).Browser);
+
+        // A non-empty list replaces it.
+        var replaced = host.GetPresentationPreflight(new DesktopWindowOptions
+        {
+            PresentationPolicy = DesktopPresentationPolicy.EmbeddedThenBrowser,
+            Fallbacks = [BrowserKind.Opera],
+        });
+        Assert.Equal(BrowserKind.Opera, Assert.Single(replaced.Fallbacks).Browser);
+    }
+
+    [Test]
+    public async Task FallbacksRejectAmbiguousChains()
+    {
+        await using var host = await DesktopHost.StartAsync();
+
+        Assert.Throws<ArgumentException>(() => host.GetPresentationPreflight(new DesktopWindowOptions
+        {
+            Fallbacks = [BrowserKind.Embedded],
+        }));
+        Assert.Throws<ArgumentException>(() => host.GetPresentationPreflight(new DesktopWindowOptions
+        {
+            Fallbacks = [BrowserKind.Chrome, BrowserKind.Chrome],
+        }));
+        Assert.Throws<ArgumentException>(() => host.GetPresentationPreflight(new DesktopWindowOptions
+        {
+            Browser = BrowserKind.Chrome,
+            PresentationPolicy = DesktopPresentationPolicy.EmbeddedThenBrowser,
+            Fallbacks = [BrowserKind.Firefox],
+        }));
+        Assert.Throws<ArgumentOutOfRangeException>(() => host.GetPresentationPreflight(new DesktopWindowOptions
+        {
+            Fallbacks = [(BrowserKind)42],
+        }));
+        var invalid = host.Validate(new DesktopWindowOptions { Fallbacks = [BrowserKind.Embedded] });
+        Assert.Contains(invalid.Errors, static diagnostic => diagnostic.Code == "window-option-invalid");
+    }
+
+    [Test]
     public async Task EmbeddedConnectionTimeoutIsReportedInsteadOfFallingBack()
     {
         var factory = new RecordingWindowHostFactory();
