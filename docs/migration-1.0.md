@@ -935,6 +935,34 @@ Details: 0.14.0 [Runic Command Line 0.11.0 in the SDK tools](../eng/release/note
 
 ## From 0.14 to 0.15
 
+### Desktop server
+
+<!-- X2: replace this line with the batch's migration entries; remove it if the batch has none. -->
+
+### Views protocol
+
+<!-- V5: replace this line with the batch's migration entries; remove it if the batch has none. -->
+
+### Navigation
+
+<!-- N1: replace this line with the batch's migration entries; remove it if the batch has none. -->
+
+### Embedded frontends
+
+<!-- H1-758: replace this line with the batch's migration entries; remove it if the batch has none. -->
+
+### Startup
+
+<!-- S1: replace this line with the batch's migration entries; remove it if the batch has none. -->
+
+### Native message path
+
+<!-- X3: replace this line with the batch's migration entries; remove it if the batch has none. -->
+
+### Cleanups
+
+<!-- C1: replace this line with the batch's migration entries; remove it if the batch has none. -->
+
 ### Windows administration
 
 | 0.14 | 0.15 |
