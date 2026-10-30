@@ -143,6 +143,10 @@
       "project": "packages/dotnet/Runic.Desktop.Gtk4/Runic.Desktop.Gtk4.csproj"
     },
     {
+      "name": "Runic.Desktop.Kestrel",
+      "project": "packages/dotnet/Runic.Desktop.Kestrel/Runic.Desktop.Kestrel.csproj"
+    },
+    {
       "name": "Runic.Platform.Linux.Portal",
       "project": "packages/dotnet/Runic.Platform.Linux.Portal/Runic.Platform.Linux.Portal.csproj"
     },
@@ -212,6 +216,7 @@
         "tests/fixtures/desktop/evidence",
         "tests/fixtures/desktop/samples",
         "packages/dotnet/Runic.Desktop.Gtk4",
+        "packages/dotnet/Runic.Desktop.Kestrel",
         "packages/dotnet/Runic.Desktop.NativeServer",
         "native",
         "eng/native",

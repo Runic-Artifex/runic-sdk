@@ -11,9 +11,10 @@ user changes.
 
 ## Generic Host with a Runic host
 
-A Runic Desktop application already has `Microsoft.Extensions.Hosting`: Runic
-Desktop references the ASP.NET Core shared framework, which contains it. A
-CS-WebUI application adds the
+A Runic Desktop application on `Runic.Desktop.Kestrel` already has
+`Microsoft.Extensions.Hosting`: Kestrel references the ASP.NET Core shared
+framework, which contains it. An application on the experimental native server
+(`Runic.Desktop.NativeServer`) or on CS-WebUI adds the
 [Microsoft.Extensions.Hosting](https://www.nuget.org/packages/Microsoft.Extensions.Hosting)
 package.
 

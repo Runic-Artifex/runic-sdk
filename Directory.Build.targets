@@ -7,7 +7,13 @@
   <!-- Package consumers receive these targets through buildTransitive; a
        ProjectReference does not. Projects that reference Runic.Desktop set
        RunicImportDesktopTargets (checked by eng/desktop-targets.test.mjs). -->
+  <!-- Every in-repository Desktop executable references Runic.Desktop.Kestrel (checked by eng/desktop-targets.test.mjs),
+       which a package consumer's props would announce, unless it is built with -p:RunicDesktopServer=Native. -->
+  <PropertyGroup Condition="'$(RunicImportDesktopTargets)' == 'true' and '$(RunicDesktopServer)' != 'Native'">
+    <RunicDesktopKestrelReferenced>true</RunicDesktopKestrelReferenced>
+  </PropertyGroup>
   <Import Project="packages/dotnet/Runic.Desktop/buildTransitive/Runic.Desktop.targets" Condition="'$(RunicImportDesktopTargets)' == 'true'" />
+  <Import Project="packages/dotnet/Runic.Desktop.Kestrel/buildTransitive/Runic.Desktop.Kestrel.targets" Condition="'$(RunicImportDesktopTargets)' == 'true' and '$(RunicDesktopServer)' != 'Native'" />
   <!-- The experimental native Desktop server (X1) for an in-repository Desktop executable built with
        -p:RunicDesktopServer=Native; package consumers get it from Runic.Desktop.NativeServer instead. -->
   <Import Project="packages/dotnet/Runic.Desktop.NativeServer/build/Runic.Desktop.NativeServer.Repository.targets" Condition="'$(RunicImportDesktopTargets)' == 'true' and '$(RunicDesktopServer)' == 'Native'" />

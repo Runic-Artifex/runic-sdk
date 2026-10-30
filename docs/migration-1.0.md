@@ -26,6 +26,7 @@ the release notes, which give the full detail and the pull requests:
   [Behaviour changes](../eng/release/notes/0.13.0.md#behaviour-changes)
 - 0.14.0: [Fork integration](../eng/release/notes/0.14.0.md#fork-integration-validation-and-dynamicdata-v1),
   [Text splices and requests with `hello`](../eng/release/notes/0.14.0.md#text-splices-and-requests-with-hello-p1)
+- 0.15.0: [Desktop presentation servers](../eng/release/notes/0.15.0.md#desktop-presentation-servers-x2)
 
 ## Before you start
 
@@ -954,3 +955,25 @@ Details: 0.15.0 [Windows administration](../eng/release/notes/0.15.0.md#windows-
 | A failed `EmbeddedThenBrowser` fallback threw the browser's `DesktopException`, with the browser's underlying failure as inner exception. | It throws a `DesktopPresentationException` with the same `Code` and `Category`; `InnerException` is the browser's `DesktopException`. `catch (DesktopException)` still matches; a check for the exact type does not. |
 
 Details: 0.15.0 [Runic Desktop: an ordered list of fallback presentations](../eng/release/notes/0.15.0.md#runic-desktop-an-ordered-list-of-fallback-presentations-h1).
+
+### Desktop presentation server
+
+`Runic.Desktop` no longer references ASP.NET Core. Kestrel, which served every Runic Desktop window, moved into its own
+package, `Runic.Desktop.Kestrel`, and an application references the server it uses: `Runic.Desktop.Kestrel`, or the
+experimental native server `Runic.Desktop.NativeServer` ([`RUNICDESK102`](experimental.md#RUNICDESK102)), which needs
+no ASP.NET Core at all. A Runic Desktop executable without either fails to build with
+[`RUNICDESK004`](diagnostics.md#RUNICDESK004).
+
+| 0.14 | 0.15 |
+| --- | --- |
+| `Runic.Application.Views.Desktop`, `Runic.Application.Views.Wpf` or `Runic.Desktop` alone served windows from Kestrel | Add `<PackageReference Include="Runic.Desktop.Kestrel" Version="0.15.0" />` to the application project for the same server, or reference `Runic.Desktop.NativeServer` and add `RUNICDESK102` to `NoWarn` for the native server. A library that only references Runic Desktop changes nothing; the executable chooses |
+| ASP.NET Core types (`IConfiguration`, `IHostEnvironment`, `Microsoft.AspNetCore.*`) compiled in an application through `Runic.Desktop`'s framework reference | They compile with `Runic.Desktop.Kestrel`, which references `Microsoft.AspNetCore.App`. Without it, reference the framework or the `Microsoft.Extensions.*` packages the application uses itself |
+| `RunicDesktopMinimalHost` was read by `Runic.Desktop` | `Runic.Desktop.Kestrel` reads it; it has no effect on the native server |
+| An executable that only uses Runic Desktop's types and never opens a window, such as a code generator | `<RunicDesktopServer>None</RunicDesktopServer>` |
+| `DesktopHostOptions.ConfigureServices` received the ASP.NET Core host's services | Unchanged with `Runic.Desktop.Kestrel`. On the native server it receives a plain `ServiceCollection` with logging, so `IConfiguration`, `IHostEnvironment` and `IHostApplicationLifetime` are not registered unless the callback adds them |
+
+A framework-dependent application with `Runic.Desktop.Kestrel` still needs the ASP.NET Core runtime on the user's
+machine; with the native server it needs only the .NET runtime, and a self-contained one carries no
+`Microsoft.AspNetCore.*` files. `dotnet new runic-app` references `Runic.Desktop.Kestrel`.
+
+Details: 0.15.0 [Desktop presentation servers](../eng/release/notes/0.15.0.md#desktop-presentation-servers-x2).

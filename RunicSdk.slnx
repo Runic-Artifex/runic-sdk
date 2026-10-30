@@ -31,6 +31,7 @@
     <Project Path="packages/dotnet/Runic.Platform.Linux.Polkit/Runic.Platform.Linux.Polkit.csproj" />
     <Project Path="packages/dotnet/Runic.Platform.Windows.Elevation/Runic.Platform.Windows.Elevation.csproj" />
     <Project Path="packages/dotnet/Runic.Desktop.Gtk4/Runic.Desktop.Gtk4.csproj" />
+    <Project Path="packages/dotnet/Runic.Desktop.Kestrel/Runic.Desktop.Kestrel.csproj" />
     <Project Path="packages/dotnet/Runic.Application.Views/Runic.Application.Views.csproj" />
     <Project Path="packages/dotnet/Runic.Navigation/Runic.Navigation.csproj" />
     <Project Path="packages/dotnet/Runic.Navigation.ReactiveUI/Runic.Navigation.ReactiveUI.csproj" />

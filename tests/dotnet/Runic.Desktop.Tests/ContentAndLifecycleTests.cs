@@ -12,7 +12,7 @@ using Runic.Desktop;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Hosting;
 using Runic.Desktop.Internal;
-using Runic.Desktop.Internal.Kestrel;
+using Runic.Desktop.Kestrel;
 
 namespace Runic.Desktop.Tests;
 

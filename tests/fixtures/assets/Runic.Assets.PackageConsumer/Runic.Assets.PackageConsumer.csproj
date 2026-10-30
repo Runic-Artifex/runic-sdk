@@ -12,6 +12,7 @@
     <PackageReference Include="Runic.Assets" Version="$(RunicAssetsPackageVersion)" />
     <PackageReference Include="Runic.Assets.AspNetCore" Version="$(RunicAssetsPackageVersion)" />
     <PackageReference Include="Runic.Assets.Desktop" Version="$(RunicAssetsPackageVersion)" />
+    <PackageReference Include="Runic.Desktop.Kestrel" Version="$(RunicAssetsPackageVersion)" />
   </ItemGroup>
 
   <ItemGroup>

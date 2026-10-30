@@ -13,6 +13,7 @@
     <RunicApplicationFrontendGenerationEnabled>false</RunicApplicationFrontendGenerationEnabled>
   </PropertyGroup>
   <ItemGroup>
+    <ProjectReference Include="../../../packages/dotnet/Runic.Desktop.Kestrel/Runic.Desktop.Kestrel.csproj" />
     <ProjectReference Include="../App/HybridNotes.Wpf.csproj" />
   </ItemGroup>
   <Import Project="../../../packages/dotnet/Runic.Application.Views.Desktop/build/Runic.Application.Views.Desktop.targets" />

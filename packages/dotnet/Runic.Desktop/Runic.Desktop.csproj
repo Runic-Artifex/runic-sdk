@@ -6,7 +6,7 @@
     <PackageId>Runic.Desktop</PackageId>
     <Title>Runic Desktop</Title>
     <Description>A managed .NET runtime for web-powered desktop applications.</Description>
-    <PackageTags>runic-artifex;dotnet;managed;kestrel;desktop;webview</PackageTags>
+    <PackageTags>runic-artifex;dotnet;managed;desktop;webview</PackageTags>
     <NoWarn>$(NoWarn);CA1720</NoWarn>
     <IsAotCompatible>true</IsAotCompatible>
     <IsTrimmable>true</IsTrimmable>
@@ -19,12 +19,22 @@
     <!-- Use the native loader with our AOT-compatible COM binding. The SDK's
          managed wrappers and build targets must not enter consumer builds. -->
     <PackageReference Include="Microsoft.Web.WebView2" IncludeAssets="native" />
-    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+    <!-- No ASP.NET Core (X2): the application references a server package, Runic.Desktop.Kestrel or the experimental
+         Runic.Desktop.NativeServer. The server-neutral code uses the dependency injection and logging abstractions. The
+         native server builds its own service provider; the container and logging implementation come with the server
+         package (ASP.NET Core's shared framework, or Runic.Desktop.NativeServer's dependencies), so an application
+         that only references Runic.Desktop chooses its own container, as with the Views host adapters. -->
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" PrivateAssets="all" />
+    <PackageReference Include="Microsoft.Extensions.Logging" PrivateAssets="all" />
     <!-- The menu model (DesktopMenu, DesktopMenuItem, DesktopShortcut) is shared with status icons (D031.2). -->
     <ProjectReference Include="../Runic.Platform/Runic.Platform.csproj" />
     <!-- The Linux global menu exports the window's bar over com.canonical.dbusmenu on the session bus (D036.11). -->
     <ProjectReference Include="../Runic.Platform.Linux.DBus/Runic.Platform.Linux.DBus.csproj" />
     <InternalsVisibleTo Include="Runic.Desktop.Tests" />
+    <!-- Runic.Desktop.Kestrel implements the internal presentation server seam; packing pins the exact version. -->
+    <InternalsVisibleTo Include="Runic.Desktop.Kestrel" />
     <!-- The Bridge of Runic Windows and Views runs over the internal presentation transport: capabilities, scripts in
          every session and the connection identity (D029.2). The exact-version package reference keeps the two in step. -->
     <InternalsVisibleTo Include="Runic.Application.Views.Desktop" />

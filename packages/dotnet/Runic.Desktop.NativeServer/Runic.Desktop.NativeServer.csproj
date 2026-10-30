@@ -14,8 +14,10 @@
     <IncludeSymbols>false</IncludeSymbols>
     <!-- NU5128: no lib/ folder by design; the native assets and buildTransitive targets are the package. -->
     <NoWarn>$(NoWarn);NU5128</NoWarn>
-    <!-- Packs buildTransitive/Runic.Desktop.NativeServer.props with the diagnostics help links (eng/build/release-links.targets). -->
+    <!-- Packs the diagnostics help links (eng/build/release-links.targets) as
+         buildTransitive/Runic.Desktop.NativeServer.HelpLinks.props, which buildTransitive/Runic.Desktop.NativeServer.props imports. -->
     <RunicPackDiagnosticsHelpLinks>true</RunicPackDiagnosticsHelpLinks>
+    <RunicDiagnosticsHelpLinksPropsName>Runic.Desktop.NativeServer.HelpLinks.props</RunicDiagnosticsHelpLinksPropsName>
     <!-- eng/native/build-runic-server.sh writes one directory per runtime identifier here. -->
     <RunicNativeServerArtifacts Condition="'$(RunicNativeServerArtifacts)' == ''">$(MSBuildThisFileDirectory)../../../artifacts/native/runic-server/</RunicNativeServerArtifacts>
     <!-- A release pack must carry every supported runtime identifier. -->
@@ -23,7 +25,10 @@
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="../Runic.Desktop/Runic.Desktop.csproj" />
-    <None Include="buildTransitive/Runic.Desktop.NativeServer.targets" Pack="true" PackagePath="buildTransitive/" />
+    <!-- The native server's service provider and logging (Runic.Desktop compiles against them privately). -->
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" />
+    <PackageReference Include="Microsoft.Extensions.Logging" />
+    <None Include="buildTransitive/Runic.Desktop.NativeServer.props;buildTransitive/Runic.Desktop.NativeServer.targets" Pack="true" PackagePath="buildTransitive/" />
     <None Include="README.md" Pack="true" PackagePath="/" />
     <None Include="../../../native/THIRD-PARTY-NOTICES.md" Pack="true" PackagePath="/" />
   </ItemGroup>

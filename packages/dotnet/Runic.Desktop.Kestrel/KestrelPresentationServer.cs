@@ -7,8 +7,9 @@ using Microsoft.AspNetCore.Hosting.Server.Features;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using Runic.Desktop.Internal;
 
-namespace Runic.Desktop.Internal.Kestrel;
+namespace Runic.Desktop.Kestrel;
 
 internal sealed class KestrelPresentationServer(Action<IServiceCollection>? configureServices) : IPresentationServer
 {
@@ -83,4 +84,11 @@ internal sealed class ProcessOwnedLifetime : IHostLifetime
     public Task WaitForStartAsync(CancellationToken cancellationToken) => Task.CompletedTask;
 
     public Task StopAsync(CancellationToken cancellationToken) => Task.CompletedTask;
+}
+
+// Runic.Desktop creates the server through this type, by name (PresentationServers.KestrelFactoryType).
+internal sealed class KestrelPresentationServerFactory : PresentationServerFactory
+{
+    internal override IPresentationServer Create(Action<IServiceCollection>? configureServices) =>
+        new KestrelPresentationServer(configureServices);
 }

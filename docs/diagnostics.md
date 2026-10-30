@@ -1075,12 +1075,14 @@ above in the build output.
 
 ## Runic Desktop build
 
-The `Runic.Desktop` build targets report these errors; `RUNICDESK003` and `RUNICDESK102` come
-from the experimental `Runic.Desktop.NativeServer` package.
+The `Runic.Desktop` build targets report these errors; `RUNICDESK001` comes from
+`Runic.Desktop.Kestrel` and `RUNICDESK102` from the experimental
+`Runic.Desktop.NativeServer` package.
 
 ### RUNICDESK001
 
-`RunicDesktopMinimalHost` has a value other than `true` or `false`.
+`RunicDesktopMinimalHost` has a value other than `true` or `false`. The
+property selects how `Runic.Desktop.Kestrel` builds its ASP.NET Core host.
 
 **Fix:** set it to `true` or `false`, or remove it for the default, `false`.
 
@@ -1095,12 +1097,26 @@ statically, but the restored `Microsoft.Web.WebView2` package has no
 
 ### RUNICDESK003
 
-`RunicDesktopServer` has a value other than `Native` or `Kestrel`. The property
-exists only with the experimental `Runic.Desktop.NativeServer` package
-([`RUNICDESK102`](experimental.md#RUNICDESK102)).
+`RunicDesktopServer` has a value other than `Native`, `Kestrel` or `None`.
 
-**Fix:** set it to `Native` for the native server, `Kestrel` for ASP.NET Core
-Kestrel, or remove it for `Native`.
+**Fix:** set it to `Native` for the experimental native server
+([`RUNICDESK102`](experimental.md#RUNICDESK102)), `Kestrel` for ASP.NET Core
+Kestrel, `None` for an executable that opens no Runic Desktop window, or remove
+it: with one server package it selects that server, and with both the native
+server.
+
+### RUNICDESK004
+
+The executable references Runic Desktop but no presentation server, or
+`RunicDesktopServer` names a server whose package it does not reference. Since
+0.15 `Runic.Desktop` carries no server of its own; without one the first window
+would fail with `presentation-server-unavailable`.
+
+**Fix:** add a `PackageReference` to `Runic.Desktop.Kestrel` (ASP.NET Core
+Kestrel, the server of 0.14 and earlier) or to the experimental
+`Runic.Desktop.NativeServer`, matching the version of `Runic.Desktop`. An
+executable that opens no Runic Desktop window sets `RunicDesktopServer` to
+`None`. See [Migrating to 1.0](migration-1.0.md#desktop-presentation-server).
 
 ### RUNICDESK102
 
@@ -1108,8 +1124,8 @@ The project references the experimental native Desktop server,
 `Runic.Desktop.NativeServer`, without accepting that it is experimental. Its
 entry in [Experimental APIs](experimental.md#RUNICDESK102) describes it.
 
-**Fix:** add `RUNICDESK102` to `NoWarn` to use it, or set `RunicDesktopServer`
-to `Kestrel`.
+**Fix:** add `RUNICDESK102` to `NoWarn` to use it, or reference
+`Runic.Desktop.Kestrel` instead.
 
 ## Navigation ReactiveUI build
 

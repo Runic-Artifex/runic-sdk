@@ -126,6 +126,8 @@
       "runic.desktop": {
         "type": "Project",
         "dependencies": {
+          "Microsoft.Extensions.DependencyInjection.Abstractions": "[10.0.14, )",
+          "Microsoft.Extensions.Logging.Abstractions": "[10.0.14, )",
           "Microsoft.Web.WebView2": "[1.0.4258.31, )",
           "Runic.Platform": "[0.14.0, )",
           "Runic.Platform.Linux.DBus": "[0.14.0, )"
@@ -137,6 +139,12 @@
           "GirCore.Gtk-4.0": "[0.8.1, )",
           "GirCore.WebKit-6.0": "[0.8.1, )",
           "Runic.Desktop": "[0.14.0, )"
+        }
+      },
+      "runic.desktop.kestrel": {
+        "type": "Project",
+        "dependencies": {
+          "Runic.Desktop": "[0.13.0, )"
         }
       },
       "runic.platform": {
@@ -195,6 +203,15 @@
         "requested": "[10.0.14, )",
         "resolved": "10.0.14",
         "contentHash": "QtpQzuSZVyTPCuHW058yCs9Nj0394uUkNyFHS813nOmK9UgUdBdaprJ5PPsBgsQIpxADTsTkbaMMonykem6qdw=="
+      },
+      "Microsoft.Extensions.Logging.Abstractions": {
+        "type": "CentralTransitive",
+        "requested": "[10.0.14, )",
+        "resolved": "10.0.14",
+        "contentHash": "SwcbEBtkECq3D2oywvHkm46fyrX9Dd2JPWphDnHUc2+cUWR1Mdo41atAjh/9iZjgQxuvbKfZKXqostT/LZfefA==",
+        "dependencies": {
+          "Microsoft.Extensions.DependencyInjection.Abstractions": "10.0.14"
+        }
       },
       "Microsoft.Web.WebView2": {
         "type": "CentralTransitive",

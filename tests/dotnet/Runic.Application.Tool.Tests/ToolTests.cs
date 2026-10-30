@@ -2177,6 +2177,8 @@ internal sealed partial class ToolTests
             "no .NET installation");
         DoesNotContain(Check(InspectTarget(desktop with { Host = RunicViewsHost.CsWebUi }, "win-x64", runtime), "target-publish").Message,
             "ASP.NET Core");
+        DoesNotContain(Check(InspectTarget(desktop with { DesktopServer = "Native" }, "win-x64", runtime), "target-publish").Message,
+            "ASP.NET Core");
         // A multi-targeted project has no single TargetFramework in its outer evaluation.
         Contains(Check(InspectTarget(desktop with { TargetFramework = string.Empty }, "win-x64", runtime), "target-publish").Message,
             "the .NET and ASP.NET Core runtimes");

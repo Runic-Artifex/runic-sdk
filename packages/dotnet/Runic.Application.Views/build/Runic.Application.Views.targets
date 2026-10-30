@@ -605,7 +605,7 @@
       <_RunicBridgeReactiveUiFlavorArgument>--reactiveui-flavor $(_RunicBridgeReactiveUiFlavor)</_RunicBridgeReactiveUiFlavorArgument>
     </PropertyGroup>
     <!-- The shared frameworks the application uses, directly or through a
-         package (Runic.Desktop references Microsoft.AspNetCore.App). The
+         package (Runic.Desktop.Kestrel references Microsoft.AspNetCore.App). The
          generator runs on Microsoft.NETCore.App and loads the application's
          assemblies from these frameworks; it never loads
          Microsoft.WindowsDesktop.App, whose types it skips on every OS. -->

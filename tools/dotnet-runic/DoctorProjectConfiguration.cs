@@ -57,6 +57,12 @@ internal sealed record DoctorProjectConfiguration(
     /// <summary>SelfContained, evaluated for the doctor target RID when one is given.</summary>
     internal bool SelfContained { get; init; }
 
+    /// <summary>
+    /// RunicDesktopServer as Runic.Desktop's targets resolved it: Kestrel (Runic.Desktop.Kestrel, which needs the ASP.NET
+    /// Core runtime), Native (the experimental Runic.Desktop.NativeServer), None, or empty without a server package.
+    /// </summary>
+    internal string DesktopServer { get; init; } = string.Empty;
+
     /// <summary>False when StripSymbols is explicitly false; Native AOT then needs no objcopy.</summary>
     internal bool StripSymbols { get; init; } = true;
 
@@ -130,6 +136,7 @@ internal sealed record DoctorProjectConfiguration(
             RuntimeIdentifiers = Value("RuntimeIdentifiers"),
             PublishAot = IsTrue(Value("PublishAot")),
             SelfContained = IsTrue(Value("SelfContained")),
+            DesktopServer = Value("RunicDesktopServer"),
             StripSymbols = !Value("StripSymbols").Equals("false", StringComparison.OrdinalIgnoreCase),
             UsesGtk4 = references.Contains(DesktopGtk4Package, StringComparer.OrdinalIgnoreCase),
             DirectReferences = references,
@@ -201,7 +208,7 @@ internal sealed record DoctorProjectConfiguration(
         List<string> arguments =
         [
             "msbuild", project, "-nologo", $"-property:Configuration={configuration}",
-            "-getProperty:TargetFramework,TargetFrameworks,RuntimeIdentifier,RuntimeIdentifiers,NETCoreSdkRuntimeIdentifier,PublishAot,SelfContained,StripSymbols,_RunicApplicationHostAdapter,ApplicationId",
+            "-getProperty:TargetFramework,TargetFrameworks,RuntimeIdentifier,RuntimeIdentifiers,NETCoreSdkRuntimeIdentifier,PublishAot,SelfContained,StripSymbols,RunicDesktopServer,_RunicApplicationHostAdapter,ApplicationId",
             "-getItem:PackageReference,ProjectReference",
         ];
         arguments.AddRange(publishProperties.Select(static property => $"-property:{property}"));

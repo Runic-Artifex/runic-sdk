@@ -13,6 +13,9 @@
     <RunicApplicationFrontendGenerationEnabled>false</RunicApplicationFrontendGenerationEnabled>
   </PropertyGroup>
   <ItemGroup>
+    <!-- The presentation server; -p:RunicDesktopServer=Native builds the application on the experimental native server
+         without ASP.NET Core. -->
+    <ProjectReference Include="../../../packages/dotnet/Runic.Desktop.Kestrel/Runic.Desktop.Kestrel.csproj" Condition="'$(RunicDesktopServer)' != 'Native'" />
     <ProjectReference Include="../Model/HybridNotes.Model.csproj" />
     <ProjectReference Include="../../../packages/dotnet/Runic.Navigation.Wpf/Runic.Navigation.Wpf.csproj" />
     <ProjectReference Include="../../../packages/dotnet/Runic.Application.Views.Wpf/Runic.Application.Views.Wpf.csproj" />
