@@ -186,14 +186,14 @@ internal sealed class ApiShapeTests
     }
 
     [Test]
-    public void DnsServerSocketAddressIsPort53()
+    public void DnsServerSocketAddressNamesNoPort()
     {
         var v4 = new byte[32];
         WindowsDnsResolverClient.WriteSocketAddress(IPAddress.Parse("192.0.2.10"), v4);
-        Check(v4.AsSpan(0, 8).SequenceEqual(new byte[] { 2, 0, 0, 53, 192, 0, 2, 10 }) && v4.AsSpan(8).IndexOfAnyExcept((byte)0) < 0, "SOCKADDR_IN changed.");
+        Check(v4.AsSpan(0, 8).SequenceEqual(new byte[] { 2, 0, 0, 0, 192, 0, 2, 10 }) && v4.AsSpan(8).IndexOfAnyExcept((byte)0) < 0, "SOCKADDR_IN changed.");
         var v6 = new byte[32];
         WindowsDnsResolverClient.WriteSocketAddress(IPAddress.Parse("2001:db8::1%7"), v6);
-        Check(v6.AsSpan(0, 8).SequenceEqual(new byte[] { 23, 0, 0, 53, 0, 0, 0, 0 }) && v6[8] == 0x20 && v6[9] == 0x01 && v6[23] == 1 && v6[24] == 7,
+        Check(v6.AsSpan(0, 8).SequenceEqual(new byte[] { 23, 0, 0, 0, 0, 0, 0, 0 }) && v6[8] == 0x20 && v6[9] == 0x01 && v6[23] == 1 && v6[24] == 7,
             "SOCKADDR_IN6 changed.");
     }
 

@@ -21,7 +21,7 @@ public sealed class WindowsDnsResolverClient
 {
     private readonly IPAddress _server;
 
-    /// <summary>Creates a client that queries <paramref name="server"/> on port 53, for example a domain controller.</summary>
+    /// <summary>Creates a client that queries <paramref name="server"/> on the DNS port (53), for example a domain controller.</summary>
     public WindowsDnsResolverClient(IPAddress server)
     {
         ArgumentNullException.ThrowIfNull(server);
@@ -96,13 +96,13 @@ public sealed class WindowsDnsResolverClient
         }
     }
 
-    /// <summary>Writes a SOCKADDR_IN or SOCKADDR_IN6 for port 53.</summary>
+    /// <summary>Writes a SOCKADDR_IN or SOCKADDR_IN6 with port 0: DnsQueryEx rejects a server address that names a port
+    /// (ERROR_INVALID_PARAMETER) and sends to port 53.</summary>
     internal static void WriteSocketAddress(IPAddress address, Span<byte> target)
     {
         target.Clear();
         var family = address.AddressFamily == AddressFamily.InterNetwork ? (ushort)2 : (ushort)23;
         System.Buffers.Binary.BinaryPrimitives.WriteUInt16LittleEndian(target, family);
-        System.Buffers.Binary.BinaryPrimitives.WriteUInt16BigEndian(target[2..], 53);
         if (family == 2) address.TryWriteBytes(target[4..8], out _);
         else
         {
