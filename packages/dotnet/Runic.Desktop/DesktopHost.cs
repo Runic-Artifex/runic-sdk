@@ -499,20 +499,20 @@ public sealed class DesktopHost : IAsyncDisposable
         }
     }
 
-    private static Func<Microsoft.AspNetCore.Http.HttpContext, string, CancellationToken, ValueTask<WebUiContent?>> Adapt(
+    private static Func<PresentationExchange, string, CancellationToken, ValueTask<WebUiContent?>> Adapt(
         ContentHandler handler) => async (context, requestPath, token) =>
         {
-            context.Items.TryGetValue(typeof(PresentationRequestCancellation), out var cancellation);
+            var headers = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var header in context.RequestHeaders)
+            {
+                headers[header.Key] = header.Value;
+            }
             var request = new ContentRequest(
                 requestPath,
-                context.Request.Method,
-                new System.Collections.ObjectModel.ReadOnlyDictionary<string, string>(
-                    context.Request.Headers.ToDictionary(
-                        static header => header.Key,
-                        static header => header.Value.ToString(),
-                        StringComparer.OrdinalIgnoreCase)),
-                context.RequestServices,
-                cancellation as PresentationRequestCancellation);
+                context.Method,
+                new System.Collections.ObjectModel.ReadOnlyDictionary<string, string>(headers),
+                context.RequestServices!,
+                context.Cancellation);
             var response = await handler(request, token).ConfigureAwait(false);
             return response?.ToCompatibilityContent();
         };
