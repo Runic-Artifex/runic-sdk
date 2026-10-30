@@ -300,3 +300,12 @@ test("the DynamicData fork pin matches the locked RunicArtifex.DynamicData versi
   assert.ok(resolved > 0, "No lock file resolves RunicArtifex.DynamicData; check the pin another way.");
 });
 
+// D053.16: the experimental native Desktop server (X1) is unpublished infrastructure until 0.15. eng/run.mjs pack and
+// the publish checks take their packages from workspace.nuget, so staying out of it keeps the package out of the
+// release artifact; .github/workflows/native-server.yml packs it on its own.
+test("the experimental native Desktop server is not in the release inventory", () => {
+  assert.ok(existsSync(resolve(root, "packages/dotnet/Runic.Desktop.NativeServer/Runic.Desktop.NativeServer.csproj")));
+  assert.ok(!workspace.nuget.some(p => p.name === "Runic.Desktop.NativeServer"));
+  const solutions = ["RunicSdk.slnx", "RunicSdk.Core.slnx"].map(file => readFileSync(resolve(root, file), "utf8"));
+  for (const solution of solutions) assert.doesNotMatch(solution, /Runic\.Desktop\.NativeServer|Runic\.Desktop\.ServerBenchmarks/);
+});

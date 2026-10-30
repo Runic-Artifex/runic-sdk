@@ -211,7 +211,11 @@
         "tests/fixtures/desktop-contract",
         "tests/fixtures/desktop/evidence",
         "tests/fixtures/desktop/samples",
-        "packages/dotnet/Runic.Desktop.Gtk4"
+        "packages/dotnet/Runic.Desktop.Gtk4",
+        "packages/dotnet/Runic.Desktop.NativeServer",
+        "native",
+        "eng/native",
+        "nix/runic-server.nix"
       ]
     },
     "assets": {
@@ -271,6 +275,8 @@
         "tests/dotnet/Runic.Application.Views.Desktop.Tests",
         "tests/benchmarks/Runic.Application.Views.Benchmarks",
         "tests/benchmarks/host-scripts",
+        "tests/benchmarks/Runic.Desktop.ServerBenchmarks",
+        "tests/benchmarks/native-server",
         "eng/branding/application",
         "specs/application",
         "packages/web/angular",

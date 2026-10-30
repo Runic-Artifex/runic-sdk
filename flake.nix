@@ -66,6 +66,8 @@
           # The create app's wrapper builds (writeShellApplication runs ShellCheck); nix/README.md describes the
           # run that creates a project, which needs nuget.org.
           create = self.packages.x86_64-linux.create;
+          # Builds the experimental native Desktop server and runs its Rust tests (X1).
+          native-server = self.packages.x86_64-linux.runic-server;
           builder-file-types = import ./nix/tests/file-types.nix {
             pkgs = import nixpkgs { system = "x86_64-linux"; };
             runic = self.lib;
@@ -126,6 +128,8 @@
         in {
           # Runic.Create with a .NET SDK from nixpkgs, for `nix run .#create`; see nix/create.nix.
           create = import ./nix/create.nix { inherit pkgs; };
+          # The experimental native Desktop server (native/, X1) from source; see nix/runic-server.nix.
+          runic-server = import ./nix/runic-server.nix { inherit pkgs; };
           # Status icon checks on Plasma and Waybar; see nixos/status-icon.
           status-icon-plasma = (import ./nixos/status-icon { inherit pkgs; }).plasma;
           status-icon-waybar = (import ./nixos/status-icon { inherit pkgs; }).waybar;
@@ -304,6 +308,12 @@
               clang
               pkg-config
               zlib
+
+              # The experimental native Desktop server (native/, X1), pinned by native/rust-toolchain.toml.
+              toolchain.rust.cargo
+              toolchain.rust.rustc
+              toolchain.rust.clippy
+              toolchain.rust.rustfmt
             ] ++ linuxRuntimePackages;
 
             DOTNET_CLI_TELEMETRY_OPTOUT = "1";

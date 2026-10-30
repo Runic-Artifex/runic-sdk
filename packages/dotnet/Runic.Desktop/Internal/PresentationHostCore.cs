@@ -1,14 +1,8 @@
 using System.Collections.Concurrent;
 using System.Net;
-using System.Diagnostics.CodeAnalysis;
-using Microsoft.AspNetCore.Builder;
-using Microsoft.AspNetCore.Hosting;
-using Microsoft.AspNetCore.Hosting.Server;
-using Microsoft.AspNetCore.Hosting.Server.Features;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
-using Microsoft.Extensions.Logging;
 
 namespace Runic.Desktop.Internal;
 
@@ -25,14 +19,12 @@ internal sealed record PresentationHostCoreOptions(
 
 internal sealed class PresentationHostCore : IAsyncDisposable
 {
-    [FeatureSwitchDefinition("Runic.Desktop.MinimalHost")]
-    private static bool MinimalHost => AppContext.TryGetSwitch("Runic.Desktop.MinimalHost", out bool enabled) && enabled;
     private readonly PresentationHostCoreOptions _options;
     private readonly ConcurrentDictionary<string, PresentationSurfaceRegistration> _surfaces =
         new(StringComparer.Ordinal);
     private readonly SemaphoreSlim _lifecycleGate = new(1, 1);
     private readonly CancellationTokenSource _shutdown = new();
-    private WebApplication? _application;
+    private IPresentationServer? _server;
     private Uri? _baseUrl;
     private int _disposed;
 
@@ -45,7 +37,7 @@ internal sealed class PresentationHostCore : IAsyncDisposable
 
     internal int Port => _baseUrl?.Port ?? _options.Port;
 
-    internal IServiceProvider? Services => _application?.Services;
+    internal IServiceProvider? Services => _server?.Services;
 
     internal bool IsPublic => _options.NetworkExposure == PresentationNetworkExposure.AllInterfaces;
 
@@ -73,7 +65,7 @@ internal sealed class PresentationHostCore : IAsyncDisposable
                 throw new InvalidOperationException("A root surface cannot share a listener with path-based surfaces.");
             }
 
-            var scope = _application!.Services.CreateScope();
+            var scope = _server!.Services.CreateScope();
             var registration = new PresentationSurfaceRegistration(
                 this,
                 normalizedPathBase,
@@ -120,16 +112,15 @@ internal sealed class PresentationHostCore : IAsyncDisposable
             }
             _surfaces.Clear();
 
-            if (_application is not null)
+            if (_server is not null)
             {
                 try
                 {
-                    await _application.StopAsync().ConfigureAwait(false);
+                    await _server.DisposeAsync().ConfigureAwait(false);
                 }
                 finally
                 {
-                    await _application.DisposeAsync().ConfigureAwait(false);
-                    _application = null;
+                    _server = null;
                     _baseUrl = null;
                 }
             }
@@ -142,55 +133,29 @@ internal sealed class PresentationHostCore : IAsyncDisposable
         }
     }
 
-    // ILLink 10.0 (dotnet/runtime#135913, fixed after 10.0.14) keeps X509Certificate2Collection's
-    // IEnumerable<X509Certificate2>, reached through Kestrel's configuration loader, but strips the
-    // interfaces and GetEnumerator of its uninstantiated base CollectionBase. A trimmed application then
-    // fails to load the type with a TypeLoadException when Kestrel binds. NativeAOT is not affected.
-    [DynamicDependency(DynamicallyAccessedMemberTypes.Interfaces, typeof(System.Collections.CollectionBase))]
     private async Task StartUnderGateAsync(CancellationToken cancellationToken)
     {
-        if (_application is not null)
+        if (_server is not null)
         {
             return;
         }
 
-        // The server reads no files. The default content root is the working directory,
-        // often the user's home, and reloading configuration from it would put a recursive
-        // file watcher (one inotify watch per directory on Linux) on that tree.
-        var hostOptions = new WebApplicationOptions
+        var address = _options.NetworkExposure == PresentationNetworkExposure.AllInterfaces
+            ? IPAddress.Any
+            : IPAddress.Loopback;
+        var server = PresentationServers.Create(_options.ConfigureServices);
+        int port;
+        try
         {
-            ContentRootPath = AppContext.BaseDirectory,
-            Args = ["--hostBuilder:reloadConfigOnChange=false"],
-        };
-        var builder = MinimalHost
-            ? WebApplication.CreateEmptyBuilder(hostOptions)
-            : WebApplication.CreateSlimBuilder(hostOptions);
-        if (MinimalHost) builder.WebHost.UseKestrelCore().UseSockets();
-        builder.Logging.ClearProviders();
-        // The default console lifetime cancels SIGINT, SIGQUIT and SIGTERM and only
-        // stops this embedded server, so the application would ignore them.
-        builder.Services.AddSingleton<IHostLifetime, ProcessOwnedLifetime>();
-        _options.ConfigureServices?.Invoke(builder.Services);
-        builder.WebHost.ConfigureKestrel(options =>
+            port = await server.StartAsync(address, _options.Port, DispatchAsync, cancellationToken).ConfigureAwait(false);
+        }
+        catch
         {
-            var address = _options.NetworkExposure == PresentationNetworkExposure.AllInterfaces
-                ? IPAddress.Any
-                : IPAddress.Loopback;
-            options.Listen(address, _options.Port);
-        });
-
-        var application = builder.Build();
-        application.UseWebSockets();
-        application.Run(DispatchAsync);
-        await application.StartAsync(cancellationToken).ConfigureAwait(false);
-
-        var addresses = application.Services.GetRequiredService<IServer>()
-            .Features.Get<IServerAddressesFeature>()?.Addresses;
-        var address = addresses?.SingleOrDefault()
-            ?? throw new InvalidOperationException("Kestrel did not publish a listening address.");
-        var boundAddress = new Uri(address, UriKind.Absolute);
-        _baseUrl = new UriBuilder(Uri.UriSchemeHttp, IPAddress.Loopback.ToString(), boundAddress.Port).Uri;
-        _application = application;
+            await server.DisposeAsync().ConfigureAwait(false);
+            throw;
+        }
+        _baseUrl = new UriBuilder(Uri.UriSchemeHttp, IPAddress.Loopback.ToString(), port).Uri;
+        _server = server;
     }
 
     private async Task DispatchAsync(HttpContext context)

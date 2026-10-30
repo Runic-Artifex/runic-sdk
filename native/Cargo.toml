@@ -1,0 +1,24 @@
+# The experimental native Desktop server (X1): an HTTP and WebSocket engine for Runic Desktop surfaces that replaces
+# ASP.NET Core Kestrel when an application opts in. See runic-server/README.md.
+[workspace]
+resolver = "3"
+members = ["runic-server"]
+
+[workspace.package]
+version = "0.14.0"
+edition = "2024"
+license = "MIT"
+rust-version = "1.98"
+repository = "https://github.com/Runic-Artifex/runic-sdk"
+publish = false
+
+# The shipped library: small, fast and without unwinding tables across the C boundary. A panic aborts the process, as
+# an unhandled .NET exception on a thread-pool thread would; every C entry point validates its input instead.
+[profile.release]
+opt-level = 3
+lto = "fat"
+codegen-units = 1
+panic = "abort"
+strip = "symbols"
+debug = false
+incremental = false
