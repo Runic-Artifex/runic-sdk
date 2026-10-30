@@ -55,6 +55,8 @@ try {
   testVersion = `${baseVersion}${baseVersion.includes("-") ? "." : "-"}packagetest${process.pid}${Date.now()}`;
 
   await run("dotnet", ["build", "examples/first-window/FirstWindow.csproj", "-c", "Release"]);
+  // Runic.Assets packs the packer tool's build output, which the example's build does not produce.
+  await run("dotnet", ["build", "tools/Runic.Assets.Packer/Runic.Assets.Packer.csproj", "-c", "Release"]);
   await mkdir(feed);
   for (const [, project] of packageProjects) {
     await run("dotnet", ["pack", `packages/dotnet/${project}/${project}.csproj`,
