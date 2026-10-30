@@ -12,18 +12,29 @@ internal sealed partial class WindowsAccessibility : AccessibilityClient
     private readonly AutomationPropertyChangedEventHandler _valueChanged;
     private readonly AutomationFocusChangedEventHandler _focusChanged;
 
-    internal WindowsAccessibility(int pid, Action listening)
+    // The fixture starts the probe before it opens its window, and the WebView2 host shows its window only once WebView2
+    // has started (WindowsWebView2Host.InitializeAsync); UI Automation lists shown top-level windows only. That usually
+    // takes a few seconds, but the first WebView2 start on a fresh runner image has taken over a minute.
+    private static readonly TimeSpan WindowTimeout = TimeSpan.FromSeconds(30);
+    private static readonly TimeSpan FindTimeout = TimeSpan.FromSeconds(10);
+
+    internal static async Task<WindowsAccessibility> CreateAsync(int pid, Action listening, CancellationToken cancellationToken)
     {
         listening();
+        var condition = new PropertyCondition(AutomationElement.ProcessIdProperty, pid);
         AutomationElement? window = null;
-        for (var attempt = 0; attempt < 300 && window is null; attempt++)
+        if (!await TestTimeouts.UntilAsync(() => (window = AutomationElement.RootElement.FindFirst(TreeScope.Children, condition)) is not null,
+                WindowTimeout, TimeSpan.FromMilliseconds(100), cancellationToken))
         {
-            window = AutomationElement.RootElement.FindFirst(TreeScope.Children,
-                new PropertyCondition(AutomationElement.ProcessIdProperty, pid));
-            if (window is null) Thread.Sleep(100);
+            throw new InvalidOperationException(string.Create(CultureInfo.InvariantCulture,
+                $"Process {pid} showed no top-level window within {TestTimeouts.Scale(WindowTimeout).TotalSeconds:0.###} s."));
         }
-        _window = window ?? throw new InvalidOperationException($"Process {pid} has no top-level window.");
+        return new WindowsAccessibility(window!);
+    }
 
+    private WindowsAccessibility(AutomationElement window)
+    {
+        _window = window;
         _valueChanged = (sender, args) => Raise(EventKind.ValueChanged, sender, Convert.ToString(args.NewValue, CultureInfo.InvariantCulture) ?? "");
         Automation.AddAutomationPropertyChangedEventHandler(_window, TreeScope.Subtree, _valueChanged,
             RangeValuePattern.ValueProperty, ValuePattern.ValueProperty);
@@ -79,15 +90,20 @@ internal sealed partial class WindowsAccessibility : AccessibilityClient
         };
         var condition = new AndCondition(new PropertyCondition(AutomationElement.NameProperty, name),
             new OrCondition([.. types.Select(type => (Condition)new PropertyCondition(AutomationElement.ControlTypeProperty, type)), Condition.FalseCondition]));
-        for (var attempt = 0; attempt < 50; attempt++)
+        // The page loads after the window shows.
+        var wait = TestTimeouts.Start(FindTimeout);
+        while (true)
         {
             var matches = _window.FindAll(TreeScope.Descendants, condition);
             if (matches.Count == 1)
+            {
+                wait.Succeeded();
                 return new Control(kind, name, matches[0].Current.ControlType.ProgrammaticName + $" ({matches[0].Current.LocalizedControlType})", matches[0]);
+            }
             if (matches.Count > 1) throw new InvalidOperationException($"{matches.Count} elements match {kind} '{name}'.");
+            if (wait.IsExpired) return null;
             await Task.Delay(200, cancellationToken);
         }
-        return null;
     }
 
     internal override Task<RangeState> ReadRangeAsync(Control control, CancellationToken cancellationToken)
