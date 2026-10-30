@@ -14,7 +14,7 @@ afterEach(() => { if (app) void unmount(app); document.body.replaceChildren(); }
 const text = () => document.body.textContent ?? "";
 const button = (name: string): HTMLButtonElement => [...document.querySelectorAll("button")].find(element => element.textContent?.trim() === name)!;
 
-test("the page connects, increments the Counter and reports a reconnect", async () => {
+test("the page connects, increments the Counter and reports a reconnect and a close", async () => {
   // Each test installs a new Bridge; generated clients then start from a new page runtime.
   const bridge = installMockBridge(createMockBridge());
   const welcome = mockWelcome(bridge, { id: "1", state: { greeting: "Your first Runic View is ready." } });
@@ -45,24 +45,6 @@ test("the page connects, increments the Counter and reports a reconnect", async 
   bridge.reconnect();
   await vi.waitFor(() => expect(text()).toContain("Connected to the .NET Window."));
   expect(text()).not.toContain("Reconnecting");
-});
-
-test("the page says that the application closed the Window", async () => {
-  // Each test installs a new Bridge; generated clients then start from a new page runtime.
-  const bridge = installMockBridge(createMockBridge());
-  const welcome = mockWelcome(bridge, { id: "1", state: { greeting: "Your first Runic View is ready." } });
-  const counter = mockCounter(bridge, {
-    id: "2",
-    state: { count: 0, step: 1, label: "Clicks" },
-    commands: { increment: state => ({ count: state.count + state.step }) },
-  });
-  mockWorkspace(bridge, {
-    state: { main: welcome.reference },
-    commands: { showWelcome: () => ({ main: welcome.reference }), showCounter: () => ({ main: counter.reference }) },
-  });
-
-  app = mount(App, { target: document.body.appendChild(document.createElement("div")) });
-  await vi.waitFor(() => expect(text()).toContain("Your first Runic View is ready."));
 
   // The application closes the Window: the page says so, also after the connection drops.
   expect(await bridge.closeWindow(1_000)).toBe(true);
