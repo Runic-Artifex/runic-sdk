@@ -232,7 +232,18 @@ one connection travel through the connection's mailbox
 ## Build output
 
 The package's build targets copy `runic-cswebui.js` into `www/` next to the
-built frontend, also as `runic-views.js`. Load `webui.js` (served by WebUI) and
+built frontend, also as `runic-views.js`. With
+`RunicApplicationFrontendDelivery=Embedded` (since 0.15) they pack the frontend
+and both scripts into the application assembly instead, and each window serves
+that archive without extracting it; see
+[Ship the frontend inside the executable](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Application.Views/README.md#ship-the-frontend-inside-the-executable).
+`RunicCsWebUiHostOptions.Assets` serves another `IAssetSource`, such as one
+folder of an archive (`archive.Subdirectory("settings")`). A window serves the
+source through `WebUiWindow.SetFileHandler`: WebUI still serves `webui.js`, a
+path the source does not declare answers 404, and a Window whose
+`RunicWindowOptions.ContentRoot` is set serves that folder instead. Since a
+file handler turns WebUI's authentication cookie off for the whole process,
+the host turns it back on after installing its handler (see [Security](#security)). Load `webui.js` (served by WebUI) and
 `runic-views.js` before the generated client in `index.html`; the same page then
 runs on Runic Desktop, whose package copies its own client as `runic-views.js`.
 A project that references both hosts sets `RunicApplicationHost` (`cswebui` or
@@ -338,6 +349,17 @@ decisions:
   `2b35db13f`, which CsWebUi 2.5.0-beta.4.8 bundles (see above). Runic cannot
   check a custom build, so the host logs event 2101 when one is configured.
 
+- **Embedded frontends and file handlers.** WebUI turns its authentication
+  cookie off for the whole process when any window installs a file handler,
+  because it cannot tell what the handler serves. The cookie binds a window to
+  the first browser that loaded its `webui.js`; without it, any local client
+  can load the window's pages and connect while the window has no client. A
+  window that serves an asset source (`Assets`, or
+  `RunicApplicationFrontendDelivery=Embedded`) turns the cookie back on after
+  installing its handler, so it admits clients as a window that serves a folder
+  does. A file handler that the application installs itself, through
+  `ConfigureWindow` or `ShowWindow`, leaves the cookie off unless the
+  application calls `WebUiApplication.SetConfiguration(WebUiConfiguration.UseCookies, true)`.
 - **Content-Security-Policy.** WebUI serves `SetRootFolder` files without
   headers of its own, so give the page a policy with
   `<meta http-equiv="Content-Security-Policy" content="…">`. A `<meta>` policy

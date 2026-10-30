@@ -206,7 +206,9 @@ for your frontend.
 to a CS-WebUI window is decided by native WebUI: its local server, the token it
 writes into `webui.js` and its single-client default. `SetPublic(true)`,
 serve-only mode (`RUNIC_APPLICATION_SERVE_ONLY=1`), multi-client configuration
-and your own WebUI build are security decisions. Runic does not review native
+and your own WebUI build are security decisions. A window that serves an
+embedded frontend through a file handler keeps WebUI's authentication cookie on,
+which WebUI otherwise turns off for the whole process. Runic does not review native
 WebUI's admission; for untrusted content or shared machines, prefer Runic Desktop
 ([CS-WebUI security](../packages/dotnet/Runic.Application.Views.CsWebUi/README.md#security)).
 

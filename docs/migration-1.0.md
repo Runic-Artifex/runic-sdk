@@ -956,7 +956,13 @@ Details: 0.15.0 [Navigation (N1)](../eng/release/notes/0.15.0.md#navigation-n1).
 
 ### Embedded frontends
 
-<!-- H1-758: replace this line with the batch's migration entries; remove it if the batch has none. -->
+| 0.14 | 0.15 |
+| --- | --- |
+| A CS-WebUI application with `RunicApplicationFrontendDelivery=Embedded` built as `Files` with `RUNICBRIDGE030`. | It embeds the frontend and serves it from the assembly; the output has no `www/`. Remove the property to keep `www/`. |
+| A CS-WebUI application embedded its frontend itself and extracted it to a temporary folder for `SetRootFolder`. | Set `RunicApplicationFrontendDelivery=Embedded`, or `RunicCsWebUiHostOptions.Assets` for an archive of its own, and remove the extraction code and any overrides of Runic's copy targets. |
+| An `IAssetSource` wrapper that filtered an archive's manifest by a folder prefix. | `archive.Subdirectory("folder")`. |
+
+Details: 0.15.0 [Embedded frontends](../eng/release/notes/0.15.0.md#embedded-frontends-h1-726-730).
 
 ### Startup
 

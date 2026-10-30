@@ -17,6 +17,9 @@
     <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" />
     <ProjectReference Include="../Runic.Application.Views/Runic.Application.Views.csproj" />
     <ProjectReference Include="../Runic.Platform/Runic.Platform.csproj" />
+    <!-- RunicCsWebUiHostOptions.Assets, and the build's embedded frontend (RunicApplicationFrontendDelivery=Embedded),
+         which Runic.Assets' build targets pack. -->
+    <ProjectReference Include="../Runic.Assets/Runic.Assets.csproj" />
     <!-- The in-page menu bar (D036.14) shares Runic Desktop's routes, command binding, planner and menu rules as source,
          without a reference to Runic.Desktop. -->
     <Compile Include="../Runic.Application.Views.Desktop/MenuBarPageRoutes.cs" Link="Shared/MenuBarPageRoutes.cs" />
@@ -24,6 +27,7 @@
     <Compile Include="../Runic.Desktop/Internal/DesktopMenuPlanner.cs" Link="Shared/DesktopMenuPlanner.cs" />
     <Compile Include="../Runic.Platform/DesktopMenuRules.cs" Link="Shared/DesktopMenuRules.cs" />
     <Compile Include="../Runic.Platform/DesktopShortcutKeys.cs" Link="Shared/DesktopShortcutKeys.cs" />
+    <Compile Include="../Runic.Application.Views.Desktop/FrontendArchive.Build.cs" Link="Shared/FrontendArchive.Build.cs" />
     <None Include="README.md" Pack="true" PackagePath="/" />
     <None Update="build/Runic.Application.Views.CsWebUi.targets" Pack="true" PackagePath="buildTransitive/Runic.Application.Views.CsWebUi.targets" />
     <None Update="build/Runic.Application.Views.CsWebUi.props" Pack="true" PackagePath="buildTransitive/Runic.Application.Views.CsWebUi.props" />

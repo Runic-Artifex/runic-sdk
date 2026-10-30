@@ -171,6 +171,65 @@ internal sealed class AssetsTests
             async () => await source.OpenAsync("missing.txt").ConfigureAwait(false)).ConfigureAwait(false);
     }
 
+    // #730: one folder of an archive with several frontends is served as a frontend of its own.
+    [Test, DisplayName("a folder of a source presents itself as its own frontend")]
+    public async Task SubdirectoryView()
+    {
+        var source = NewEmbeddedSource();
+        using var stream = new MemoryStream();
+        await AssetArchive.WriteAsync(source, stream).ConfigureAwait(false);
+        stream.Position = 0;
+        AssetArchiveSource archive = AssetArchive.Read(stream);
+
+        IAssetSource view = archive.Subdirectory("assets/", entryPoint: "app.css");
+        AssetDescriptor original = archive.Manifest.Assets.Single(static asset => asset.RelativePath == "assets/app.css");
+        AssetDescriptor entry = Assert(view.Manifest.Assets);
+        Equal("app.css", entry.RelativePath);
+        True(entry.IsEntryPoint);
+        Equal(original.Sha256, entry.Sha256);
+        Equal(original.MediaType, entry.MediaType);
+        Equal(AssetCacheMode.Immutable, entry.CacheMode);
+        True(view.Manifest.TryResolveRequestPath("/", null, out AssetDescriptor? root) && root.RelativePath == "app.css");
+        await view.ValidateAsync().ConfigureAwait(false);
+
+        await using (AssetReadSnapshot snapshot = await view.OpenAsync("app.css").ConfigureAwait(false))
+        await using (AssetReadSnapshot full = await archive.OpenAsync("assets/app.css").ConfigureAwait(false))
+        {
+            Equal(entry, snapshot.Descriptor);
+            using var expected = new MemoryStream();
+            using var actual = new MemoryStream();
+            await full.Content.CopyToAsync(expected).ConfigureAwait(false);
+            await snapshot.Content.CopyToAsync(actual).ConfigureAwait(false);
+            SequenceEqual(expected.ToArray(), actual.ToArray());
+        }
+
+        // The view serves only the folder.
+        await ThrowsAsync<FileNotFoundException>(
+            async () => await view.OpenAsync("index.html").ConfigureAwait(false)).ConfigureAwait(false);
+        await ThrowsAsync<FileNotFoundException>(
+            async () => await view.OpenAsync("assets/app.css").ConfigureAwait(false)).ConfigureAwait(false);
+        // A folder without its entry point, an empty folder and an unsafe path fail when the view is created.
+        Throws<FileNotFoundException>(() => archive.Subdirectory("assets"));
+        Throws<DirectoryNotFoundException>(() => archive.Subdirectory("missing"));
+        Throws<DirectoryNotFoundException>(() => archive.Subdirectory("index.html"));
+        Throws<ArgumentException>(() => archive.Subdirectory("../assets"));
+        Throws<ArgumentException>(() => archive.Subdirectory("assets", "../index.html"));
+    }
+
+    [Test, DisplayName("a folder view refuses content that changed after it was created")]
+    public async Task SubdirectoryViewRefusesChangedContent()
+    {
+        var manifest = new AssetManifest([
+            new AssetDescriptor("index.html", "text/html", 1, new string('0', 64), isEntryPoint: true),
+            new AssetDescriptor("settings/index.html", "text/html", 1, new string('1', 64)),
+        ]);
+        var changing = new ChangingAssetSource(manifest);
+        IAssetSource view = changing.Subdirectory("settings");
+        await ThrowsAsync<InvalidDataException>(
+            async () => await view.OpenAsync("index.html").ConfigureAwait(false)).ConfigureAwait(false);
+        True(changing.Disposed);
+    }
+
     [Test, DisplayName("portable archives round-trip deterministic metadata")]
     public async Task ArchiveRoundTrip()
     {
@@ -573,6 +632,32 @@ internal sealed class AssetsTests
         throw new InvalidOperationException($"Expected {typeof(TException).Name}.");
     }
 
+
+    private static T Assert<T>(IReadOnlyList<T> items) =>
+        items.Count == 1 ? items[0] : throw new InvalidOperationException($"Expected one item, found {items.Count}.");
+
+    // Opens every asset with other content than its manifest declares, as a live source does after a change.
+    private sealed class ChangingAssetSource(AssetManifest manifest) : IAssetSource
+    {
+        public AssetManifest Manifest { get; } = manifest;
+        public bool Disposed { get; private set; }
+
+        public ValueTask ValidateAsync(CancellationToken cancellationToken = default) => ValueTask.CompletedTask;
+
+        public ValueTask<AssetReadSnapshot> OpenAsync(string relativePath, CancellationToken cancellationToken = default) =>
+            ValueTask.FromResult(new AssetReadSnapshot(
+                new AssetDescriptor(relativePath, "text/html", 1, new string('2', 64)),
+                new TrackingStream(() => Disposed = true)));
+
+        private sealed class TrackingStream(Action disposed) : MemoryStream([0x41], writable: false)
+        {
+            protected override void Dispose(bool disposing)
+            {
+                disposed();
+                base.Dispose(disposing);
+            }
+        }
+    }
 
     private sealed class ThrowingAssetSource : IAssetSource
     {
