@@ -51,12 +51,12 @@
       },
       "RunicArtifex.ReactiveUI.Validation": {
         "type": "Direct",
-        "requested": "[9.0.0-runic.9, )",
-        "resolved": "9.0.0-runic.9",
-        "contentHash": "BagNWHaZgC5ft0UlBe+S3wCNv0AK1OCzYiUIGTJ24/Zf+VuLQWcYBcL+4ySGM023yzOGkuhcHY/0DEGpx0+xPA==",
+        "requested": "[9.0.0, )",
+        "resolved": "9.0.0",
+        "contentHash": "tu44rwc7UN4PbSmkwKkIvKtOLpb9I2WJoQk5WBsBu3W2F2wy6DiIXJtjXZ6hnLABLVtuXBLN2B8wyWAlzhjuVQ==",
         "dependencies": {
           "ReactiveUI": "26.0.1",
-          "RunicArtifex.DynamicData": "10.0.0-runic.118",
+          "RunicArtifex.DynamicData": "10.0.0",
           "Splat": "21.0.0",
           "Splat.Builder": "21.0.0"
         }
@@ -138,8 +138,8 @@
       },
       "RunicArtifex.DynamicData": {
         "type": "Transitive",
-        "resolved": "10.0.0-runic.118",
-        "contentHash": "NBI5qdndmOG43xUB2BT3C/tyjCRfzfsg4xkt852Wp1e6s7VPHYEG392G9uY/tAuv2nCNEg8d78CkAGlwfH7DUA==",
+        "resolved": "10.0.0",
+        "contentHash": "XO78EMSi/6hv+qebGzRSMzkMz5f8YllDTO82GFTXtMuKgGfFZm8J8YifYBd5q7ow3BNIe/yGShMQFSpTN97UjA==",
         "dependencies": {
           "ReactiveUI.Primitives": "9.0.0"
         }
