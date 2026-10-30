@@ -1,0 +1,30 @@
+<Project>
+  <!-- The static library of native/runic-server for one runtime identifier, which a NativeAOT publish links into the
+       executable. Each packages/dotnet/Runic.Desktop.NativeServer.Static/<rid>/*.csproj sets RunicNativeServerRuntime and imports
+       this file. Runic.Desktop.NativeServer's runtime.json makes NuGet restore the package for a runtime-specific
+       restore of <rid>; its targets take the library from here and keep it out of the output. -->
+  <PropertyGroup>
+    <PackageId>Runic.Desktop.NativeServer.Static.$(RunicNativeServerRuntime)</PackageId>
+    <Title>Runic Desktop native server, static library for $(RunicNativeServerRuntime)</Title>
+    <Description>The static library of the native Runic Desktop server for NativeAOT on $(RunicNativeServerRuntime). Referenced by Runic.Desktop.NativeServer; do not reference it directly.</Description>
+    <PackageTags>runic-artifex;desktop;rust;axum;nativeaot</PackageTags>
+    <IncludeBuildOutput>false</IncludeBuildOutput>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+    <IncludeSymbols>false</IncludeSymbols>
+    <!-- NU5128: no lib/ folder by design. NU5127: the native asset is for one runtime identifier only. -->
+    <NoWarn>$(NoWarn);NU5128;NU5127</NoWarn>
+    <RunicNativeServerArtifacts Condition="'$(RunicNativeServerArtifacts)' == ''">$(MSBuildThisFileDirectory)../../../../artifacts/native/runic-server/</RunicNativeServerArtifacts>
+    <_RunicNativeServerStaticName Condition="$(RunicNativeServerRuntime.StartsWith('win-'))">runic_server.lib</_RunicNativeServerStaticName>
+    <_RunicNativeServerStaticName Condition="'$(_RunicNativeServerStaticName)' == ''">librunic_server.a</_RunicNativeServerStaticName>
+  </PropertyGroup>
+  <ItemGroup>
+    <None Include="$(MSBuildThisFileDirectory)static/README.md" Pack="true" PackagePath="/" />
+    <None Include="$(MSBuildThisFileDirectory)../../../../native/THIRD-PARTY-NOTICES.md" Pack="true" PackagePath="/" />
+    <None Include="$(RunicNativeServerArtifacts)$(RunicNativeServerRuntime)/$(_RunicNativeServerStaticName)"
+          Pack="true" PackagePath="runtimes/$(RunicNativeServerRuntime)/native/" Condition="Exists('$(RunicNativeServerArtifacts)$(RunicNativeServerRuntime)/$(_RunicNativeServerStaticName)')" />
+  </ItemGroup>
+  <Target Name="RunicNativeServerRequireStaticLibrary" BeforeTargets="_GetPackageFiles">
+    <Error Condition="!Exists('$(RunicNativeServerArtifacts)$(RunicNativeServerRuntime)/$(_RunicNativeServerStaticName)')"
+           Text="No static native server library for $(RunicNativeServerRuntime) under $(RunicNativeServerArtifacts). Run eng/native/build-runic-server.sh $(RunicNativeServerRuntime) first." />
+  </Target>
+</Project>

@@ -36,6 +36,11 @@
     <!-- dotnet restore writes packages.lock.json with the exact version and content hash of every NuGet package.
          Commit it: a later restore that resolves a different package fails instead of using it. -->
     <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
+<!--#if (nativeServer) -->
+    <!-- The native server is experimental until Runic 1.0 and may change in a minor release (RUNICDESK102 in the
+         Runic SDK's docs/experimental.md); it is the default server from 1.0 on. -->
+    <NoWarn>$(NoWarn);RUNICDESK102</NoWarn>
+<!--#endif -->
 <!--#if (nix) -->
     <!-- dotnet restore -p:PublishAot=true writes packages.aot.lock.json, whose graph adds the NativeAOT compiler.
          flake.nix restores from both lock files in locked mode for linux-x64, so they list that runtime's packages
@@ -61,9 +66,14 @@
 <!--#endif -->
 <!--#if (desktopHost) -->
     <PackageReference Include="Runic.Application.Views.Desktop" Version="__RUNIC_NUGET_VERSION__" />
-    <!-- The presentation server: ASP.NET Core Kestrel. The experimental Runic.Desktop.NativeServer replaces it without
-         ASP.NET Core (docs/experimental.md#RUNICDESK102 in the Runic SDK). -->
+<!--#if (nativeServer) -->
+    <!-- The server Runic Desktop serves the page from: the native server, without ASP.NET Core. Runic.Desktop.Kestrel
+         replaces it for an application that uses ASP.NET Core itself. -->
+    <PackageReference Include="Runic.Desktop.NativeServer" Version="__RUNIC_NUGET_VERSION__" />
+<!--#else -->
+    <!-- The server Runic Desktop serves the page from: ASP.NET Core Kestrel. -->
     <PackageReference Include="Runic.Desktop.Kestrel" Version="__RUNIC_NUGET_VERSION__" />
+<!--#endif -->
 <!--#if (gtk4) -->
     <PackageReference Include="Runic.Desktop.Gtk4" Version="__RUNIC_NUGET_VERSION__" />
 <!--#endif -->

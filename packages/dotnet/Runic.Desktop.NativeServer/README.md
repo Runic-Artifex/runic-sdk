@@ -1,8 +1,9 @@
 # Runic.Desktop.NativeServer (experimental)
 
-**Experimental ([`RUNICDESK102`](https://github.com/Runic-Artifex/runic-sdk/blob/main/docs/experimental.md#RUNICDESK102)).**
-This package may change or be removed in a minor release and is not part of the
-SDK's release inventory yet.
+**Experimental until 1.0 ([`RUNICDESK102`](https://github.com/Runic-Artifex/runic-sdk/blob/main/docs/experimental.md#RUNICDESK102)).**
+It may change in a minor release before then. New applications
+(`dotnet new runic-app`) use it, and it becomes the default Desktop server at
+1.0, with `Runic.Desktop.Kestrel` as the opt-in.
 
 Referencing it serves your Runic Desktop windows from a native HTTP and
 WebSocket server written in Rust ([axum](https://github.com/tokio-rs/axum) on
@@ -100,8 +101,8 @@ NativeAOT application has no separate library to sign.
 Rust toolchain that `native/rust-toolchain.toml` pins (the repository's Nix
 shell provides it) and writes `artifacts/native/runic-server/<rid>/`, from which
 `dotnet pack` takes the libraries
-(`packages/dotnet/Runic.Desktop.NativeServer.Static` once per runtime
-identifier with `-p:RunicNativeServerRuntime=<rid>`). Inside this repository,
+(`packages/dotnet/Runic.Desktop.NativeServer.Static/<rid>` for each static
+package). Inside this repository,
 any Desktop executable builds against it with `-p:RunicDesktopServer=Native`.
 `nix build .#runic-server` builds the library from source, and
 `eng/native/verify-native-server-package.mjs <feed>` consumes the packed

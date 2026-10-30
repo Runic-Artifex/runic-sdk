@@ -21,6 +21,7 @@ dotnet runic dev
 | `--package-manager` | `npm`, `pnpm`, `bun` | `npm` |
 | `--host` | `desktop` (Runic Desktop), `cswebui` (CS-WebUI) | `desktop` |
 | `--linux-gtk` | `3` (GTK 3 and WebKitGTK 4.1), `4` (GTK 4 and WebKitGTK 6): the GTK version of Runic Desktop on Linux | `3` |
+| `--desktop-server` | `native` (`Runic.Desktop.NativeServer`, no ASP.NET Core), `kestrel` (`Runic.Desktop.Kestrel`, ASP.NET Core Kestrel): the server Runic Desktop serves the page from | `native` |
 | `--view-models` | `reactiveui` (ReactiveUI 26 Primitives), `toolkit` (CommunityToolkit.Mvvm) | `reactiveui` |
 | `--tests` | Adds a TUnit test project, `MyApp.Tests` | No test project |
 | `--nix` | Adds a Nix flake that builds the application with the Runic SDK's `buildRunicApplication` | No flake |
@@ -89,8 +90,16 @@ What each host opens:
 - `cswebui` opens a browser window: an installed browser in app mode (Chrome,
   Edge or another Chromium-based browser works best), with the platform WebView
   as a fallback. It is supported on a best-effort basis and has no native
-  dialogs or clipboard. `--linux-gtk` does not change a `cswebui` project:
-  CS-WebUI has no GTK choice.
+  dialogs or clipboard. `--linux-gtk` and `--desktop-server` do not change a
+  `cswebui` project: CS-WebUI has no GTK or server choice.
+
+A `desktop` project serves its page from the native server
+(`Runic.Desktop.NativeServer`): the application needs no ASP.NET Core, so a
+framework-dependent build needs only the .NET runtime and a NativeAOT build is
+about a quarter smaller. The server is experimental until Runic 1.0, so the
+project suppresses `RUNICDESK102`. `--desktop-server kestrel` uses ASP.NET Core
+Kestrel (`Runic.Desktop.Kestrel`) instead, for an application that uses ASP.NET
+Core itself.
 
 `--view-models toolkit` uses CommunityToolkit.Mvvm instead of ReactiveUI and is
 equally supported. `dotnet publish` writes the executable and a `www` folder

@@ -1,0 +1,9 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <Import Project="../../../../eng/build/desktop.props" />
+  <PropertyGroup>
+    <RunicNativeServerRuntime>linux-arm64</RunicNativeServerRuntime>
+    <IsAotCompatible>true</IsAotCompatible>
+    <IsTrimmable>true</IsTrimmable>
+  </PropertyGroup>
+  <Import Project="../../Runic.Desktop.NativeServer/build/Runic.Desktop.NativeServer.Static.props" />
+</Project>

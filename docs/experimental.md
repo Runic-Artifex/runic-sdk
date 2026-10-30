@@ -52,7 +52,10 @@ experimental API, until the project suppresses it.
 
 ## RUNICDESK102
 
-The native Desktop server, `Runic.Desktop.NativeServer` (X1). Referencing the
+The native Desktop server, `Runic.Desktop.NativeServer` (X1). New applications
+use it (`dotnet new runic-app` references it and suppresses this ID), and it
+becomes the default Desktop server at 1.0 (D053.24), when the ID graduates.
+Referencing the
 package serves Runic Desktop surfaces from a native Rust (axum) HTTP and
 WebSocket server instead of ASP.NET Core Kestrel (`Runic.Desktop.Kestrel`): the
 same Views protocol, admission, content and bootstrap code run over it, and the

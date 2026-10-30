@@ -20,7 +20,7 @@
     <!-- Every Runic Desktop window is served; an executable without a server would fail at its first window. -->
     <Error Code="RUNICDESK004" File="$(MSBuildProjectFullPath)" HelpLink="$(_RunicDiagnosticsHelpLinkBase)runicdesk004"
            Condition="'$(RunicDesktopServer)' == '' and ('$(OutputType)' == 'Exe' or '$(OutputType)' == 'WinExe') and '$(IsTestProject)' != 'true'"
-           Text="Runic Desktop has no presentation server since 0.15. Add a PackageReference to Runic.Desktop.Kestrel (ASP.NET Core Kestrel, as before) or to the experimental Runic.Desktop.NativeServer, or set RunicDesktopServer to None if the executable opens no Runic Desktop window." />
+           Text="Runic Desktop has no presentation server since 0.15. Add a PackageReference to Runic.Desktop.NativeServer (the native server, without ASP.NET Core; new applications use it) or to Runic.Desktop.Kestrel (ASP.NET Core Kestrel, the server of 0.14), or set RunicDesktopServer to None if the executable opens no Runic Desktop window." />
     <Error Code="RUNICDESK004" File="$(MSBuildProjectFullPath)" HelpLink="$(_RunicDiagnosticsHelpLinkBase)runicdesk004"
            Condition="'$(RunicDesktopServer)' == 'Kestrel' and '$(RunicDesktopKestrelReferenced)' != 'true'"
            Text="RunicDesktopServer is Kestrel, but the project does not reference Runic.Desktop.Kestrel." />

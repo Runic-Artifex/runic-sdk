@@ -1,0 +1,77 @@
+# The native Desktop server's library (native/runic-server) for every runtime identifier the SDK ships it for, as
+# artifacts runic-server-<rid>. Called by native-server.yml and by ci.yml, whose packages carry the libraries
+# (Runic.Desktop.NativeServer and Runic.Desktop.NativeServer.Static.<rid>).
+name: Native server libraries
+on:
+  workflow_call:
+permissions:
+  contents: read
+env:
+  CARGO_TERM_COLOR: never
+jobs:
+  library:
+    name: Library / ${{ matrix.rid }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # cargo-zigbuild links every Linux library on one runner, with a glibc floor for the gnu ones.
+          - { rid: linux-x64, os: ubuntu-24.04, target: x86_64-unknown-linux-gnu, zig: true }
+          - { rid: linux-arm64, os: ubuntu-24.04, target: aarch64-unknown-linux-gnu, zig: true }
+          - { rid: linux-musl-x64, os: ubuntu-24.04, target: x86_64-unknown-linux-musl, zig: true }
+          - { rid: linux-musl-arm64, os: ubuntu-24.04, target: aarch64-unknown-linux-musl, zig: true }
+          # MSVC and the Apple SDK: their own runners.
+          - { rid: win-x64, os: windows-2025, target: x86_64-pc-windows-msvc }
+          - { rid: win-arm64, os: windows-2025, target: aarch64-pc-windows-msvc }
+          - { rid: osx-arm64, os: macos-15, target: aarch64-apple-darwin }
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # The library depends only on the crate, its lock file, the toolchain pin and the build script. A cached build
+      # (saved on main only, .github/actions/dependency-cache) keeps ci.yml's packs from rebuilding unchanged libraries.
+      - uses: ./.github/actions/dependency-cache
+        with:
+          path: artifacts/native/runic-server/${{ matrix.rid }}
+          key: runic-server-${{ matrix.rid }}-${{ hashFiles('native/**', 'eng/native/build-runic-server.sh') }}
+      - name: Build
+        env:
+          RUNIC_CARGO_BUILD: ${{ matrix.zig && 'cargo zigbuild' || 'cargo build' }}
+          RUNIC_GLIBC: "2.28"
+          ZIG: ${{ matrix.zig && 'true' || 'false' }}
+          RID: ${{ matrix.rid }}
+          TARGET: ${{ matrix.target }}
+        run: |
+          if [[ -n "$(ls -A "artifacts/native/runic-server/$RID" 2>/dev/null)" ]]; then
+            echo "Restored the $RID library from the cache."
+            ls -l "artifacts/native/runic-server/$RID"
+            exit 0
+          fi
+          (cd native && rustup target add "$TARGET")
+          if [[ "$ZIG" == true ]]; then python3 -m pip install --user cargo-zigbuild==0.24.0 ziglang==0.17.0; fi
+          eng/native/build-runic-server.sh "$RID"
+      # The linker signs the dylib ad hoc. dotnet runic package macos signs every nested library again with the
+      # application's identity and the hardened runtime (MacOSBundleLayout; ci.yml's macOS packaging leg checks nested
+      # libraries); this checks that the library takes that signature. NativeAOT links the static library instead.
+      - name: Check the macOS library's signature
+        if: runner.os == 'macOS'
+        run: |
+          library=artifacts/native/runic-server/${{ matrix.rid }}/librunic_server.dylib
+          codesign --verify --strict --verbose=2 "$library"
+          codesign --display --verbose=2 "$library" 2>&1 | tee "$RUNNER_TEMP/linker-signature.txt"
+          grep -Eq 'flags=0x[0-9a-f]+\((adhoc|linker-signed)' "$RUNNER_TEMP/linker-signature.txt"
+          signed="$RUNNER_TEMP/librunic_server.dylib"
+          cp "$library" "$signed"
+          codesign --force --sign - --options runtime --timestamp=none "$signed"
+          codesign --verify --strict --verbose=2 "$signed"
+          codesign --display --verbose=2 "$signed" 2>&1 | grep -E '^CodeDirectory .*flags=0x[0-9a-f]+\(adhoc,runtime\)'
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: runic-server-${{ matrix.rid }}
+          path: artifacts/native/runic-server/${{ matrix.rid }}
+          if-no-files-found: error

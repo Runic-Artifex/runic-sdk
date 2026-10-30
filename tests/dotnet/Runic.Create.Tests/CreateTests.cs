@@ -28,20 +28,23 @@ internal sealed class CreateTests
     public void ModelMirrorsTemplate()
     {
         TemplateOptionModel model = TemplateOptionModel.Load();
-        Equal("frontend,package-manager,host,linux-gtk,view-models", string.Join(',', model.Options.Select(option => option.LongName)));
-        // Runic Desktop and ReactiveUI are the defaults and are listed first (D018.1, D018.9); GTK 3 is the Linux default.
-        Equal("react,npm,desktop,3,reactiveui", string.Join(',', model.Options.Select(option => option.Default.Value)));
+        Equal("frontend,package-manager,host,linux-gtk,desktop-server,view-models", string.Join(',', model.Options.Select(option => option.LongName)));
+        // Runic Desktop and ReactiveUI are the defaults and are listed first (D018.1, D018.9); GTK 3 is the Linux default;
+        // the native Desktop server is the default server (D053.24).
+        Equal("react,npm,desktop,3,native,reactiveui", string.Join(',', model.Options.Select(option => option.Default.Value)));
         Equal("react,vue,svelte,sveltekit,angular", string.Join(',', model.Options[0].Choices.Select(choice => choice.Value)));
         Equal("npm,pnpm,bun", string.Join(',', model.Options[1].Choices.Select(choice => choice.Value)));
         // W319-003 D19 tmpl-03: the host and the Linux GTK version are separate choices; desktop-gtk4 is gone.
         Equal("desktop,cswebui", string.Join(',', model.Options[2].Choices.Select(choice => choice.Value)));
         Equal("3,4", string.Join(',', model.Options[3].Choices.Select(choice => choice.Value)));
-        Equal("reactiveui,toolkit", string.Join(',', model.Options[4].Choices.Select(choice => choice.Value)));
+        Equal("native,kestrel", string.Join(',', model.Options[4].Choices.Select(choice => choice.Value)));
+        Equal("reactiveui,toolkit", string.Join(',', model.Options[5].Choices.Select(choice => choice.Value)));
         Equal("Runic Desktop", model.Options[2].Find("desktop")!.DisplayName);
         True(model.Options[2].Find("desktop")!.Description.StartsWith("Opens a native window", StringComparison.Ordinal), "Runic Desktop says it opens a native window");
         True(model.Options[2].Find("cswebui")!.Description.StartsWith("Opens a browser window", StringComparison.Ordinal), "CS-WebUI says it opens a browser window");
         Equal("GTK 4", model.Options[3].Find("4")!.DisplayName);
-        Equal("CommunityToolkit.Mvvm", model.Options[4].Find("toolkit")!.DisplayName);
+        Equal("Native", model.Options[4].Find("native")!.DisplayName);
+        Equal("CommunityToolkit.Mvvm", model.Options[5].Find("toolkit")!.DisplayName);
         True(model.Options.All(option => option.Choices.All(choice => choice.Description.Length > 0)), "every choice is described");
         Equal("tests,nix,packaging,restore", string.Join(',', model.Toggles.Select(toggle => toggle.LongName)));
         Equal("Test project", model.Toggles[0].DisplayName);
@@ -157,7 +160,7 @@ internal sealed class CreateTests
     {
         (int exitCode, string output, string error) = Run("MyApp", "--host", "desktop", "--linux-gtk", "4", "--yes", "--dry-run", "--format", "json");
         Equal("0", exitCode.ToString(System.Globalization.CultureInfo.InvariantCulture) + error);
-        True(ResultProperty(output, "reproduceCommand").Contains("--host desktop --linux-gtk 4 --view-models", StringComparison.Ordinal), output);
+        True(ResultProperty(output, "reproduceCommand").Contains("--host desktop --linux-gtk 4 --desktop-server native --view-models", StringComparison.Ordinal), output);
         using (JsonDocument document = JsonDocument.Parse(output))
             Equal("4", document.RootElement.GetProperty("payload").GetProperty("options").GetProperty("linux-gtk").GetString());
 
@@ -212,9 +215,9 @@ internal sealed class CreateTests
         CreatePlan plan = new("MyApp", null, "1.2.3-preview.4",
             model.Options.Select(option => new OptionSelection(option, option.Choices[^1])).ToArray(), null);
         Equal("dotnet new install Runic.Application.Templates@1.2.3-preview.4", plan.InstallCommand);
-        Equal("dotnet new runic-app --name MyApp --frontend angular --package-manager bun --host cswebui --linux-gtk 4 --view-models toolkit", plan.CreateCommand);
-        Equal("dnx Runic.Create@1.2.3-preview.4 -- MyApp --frontend angular --package-manager bun --host cswebui --linux-gtk 4 --view-models toolkit", plan.CreatorCommand);
-        Equal("Angular · Bun · CS-WebUI · GTK 4 · CommunityToolkit.Mvvm", plan.Summary);
+        Equal("dotnet new runic-app --name MyApp --frontend angular --package-manager bun --host cswebui --linux-gtk 4 --desktop-server kestrel --view-models toolkit", plan.CreateCommand);
+        Equal("dnx Runic.Create@1.2.3-preview.4 -- MyApp --frontend angular --package-manager bun --host cswebui --linux-gtk 4 --desktop-server kestrel --view-models toolkit", plan.CreatorCommand);
+        Equal("Angular · Bun · CS-WebUI · GTK 4 · Kestrel · CommunityToolkit.Mvvm", plan.Summary);
         Equal("cd MyApp|dotnet tool restore|dotnet runic dev", string.Join('|', plan.NextSteps));
     }
 
@@ -333,12 +336,12 @@ internal sealed class CreateTests
         CreateResult result = CreateApplication.ResultOf(model, plan, "/work/apps/MyApp", created: true);
         Equal(
             "{\"name\":\"MyApp\",\"directory\":\"apps/MyApp\",\"fullPath\":\"/work/apps/MyApp\",\"version\":\"1.0.0\"," +
-            "\"options\":{\"frontend\":\"react\",\"package-manager\":\"npm\",\"host\":\"desktop\",\"linux-gtk\":\"3\",\"view-models\":\"reactiveui\"}," +
+            "\"options\":{\"frontend\":\"react\",\"package-manager\":\"npm\",\"host\":\"desktop\",\"linux-gtk\":\"3\",\"desktop-server\":\"native\",\"view-models\":\"reactiveui\"}," +
             "\"toggles\":{\"tests\":true,\"nix\":false,\"packaging\":false,\"restore\":false}," +
             "\"textOptions\":{}," +
             "\"commands\":[\"dotnet new install Runic.Application.Templates@1.0.0\"," +
-            "\"dotnet new runic-app --name MyApp --output apps/MyApp --frontend react --package-manager npm --host desktop --linux-gtk 3 --view-models reactiveui --tests\"]," +
-            "\"reproduceCommand\":\"dnx Runic.Create@1.0.0 -- MyApp --output apps/MyApp --frontend react --package-manager npm --host desktop --linux-gtk 3 --view-models reactiveui --tests\"," +
+            "\"dotnet new runic-app --name MyApp --output apps/MyApp --frontend react --package-manager npm --host desktop --linux-gtk 3 --desktop-server native --view-models reactiveui --tests\"]," +
+            "\"reproduceCommand\":\"dnx Runic.Create@1.0.0 -- MyApp --output apps/MyApp --frontend react --package-manager npm --host desktop --linux-gtk 3 --desktop-server native --view-models reactiveui --tests\"," +
             "\"created\":true}",
             JsonSerializer.Serialize(result, CreateJsonContext.Default.CreateResult));
     }
@@ -348,7 +351,7 @@ internal sealed class CreateTests
     [Test, DisplayName("an interactive console asks each question on standard error")]
     public void InteractiveConsoleAsks()
     {
-        var console = new CaptureConsole { IsInteractive = true, Answers = new(["2", "", "", "", "", "y", "", "", ""]) };
+        var console = new CaptureConsole { IsInteractive = true, Answers = new(["2", "", "", "", "", "", "y", "", "", ""]) };
         int exitCode = Runic.Create.Program.CreateApp(console, _ => null).RunAsync(["MyApp", "--dry-run"]).GetAwaiter().GetResult();
         True(exitCode == 0, console.Error.ToString());
         True(console.Answers.Count == 0, "Every question was asked.");
@@ -421,8 +424,8 @@ internal sealed class CreateTests
         TemplateOptionModel model = TemplateOptionModel.Load();
         OptionSelection[] defaults = model.Options.Select(option => new OptionSelection(option, option.Default)).ToArray();
         CreatePlan plan = new("MyApp", null, "1.0.0", defaults, null, [model.Toggles[0]]);
-        Equal("dotnet new runic-app --name MyApp --frontend react --package-manager npm --host desktop --linux-gtk 3 --view-models reactiveui --tests", plan.CreateCommand);
-        Equal("dnx Runic.Create@1.0.0 -- MyApp --frontend react --package-manager npm --host desktop --linux-gtk 3 --view-models reactiveui --tests", plan.CreatorCommand);
+        Equal("dotnet new runic-app --name MyApp --frontend react --package-manager npm --host desktop --linux-gtk 3 --desktop-server native --view-models reactiveui --tests", plan.CreateCommand);
+        Equal("dnx Runic.Create@1.0.0 -- MyApp --frontend react --package-manager npm --host desktop --linux-gtk 3 --desktop-server native --view-models reactiveui --tests", plan.CreatorCommand);
         True(plan.Summary.EndsWith(" · Test project", StringComparison.Ordinal), plan.Summary);
         Equal("dotnet test --project MyApp.Tests", plan.NextSteps[^1]);
 

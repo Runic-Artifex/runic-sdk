@@ -7,6 +7,11 @@
     <IsPackable>false</IsPackable>
     <!-- dotnet restore writes packages.lock.json with the exact version and content hash of every NuGet package. -->
     <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
+<!--#if (nativeServer) -->
+    <!-- The application's native Desktop server reaches the tests through its project reference; like the
+         application, they accept that it is experimental until Runic 1.0 (RUNICDESK102). -->
+    <NoWarn>$(NoWarn);RUNICDESK102</NoWarn>
+<!--#endif -->
 <!--#if (nix) -->
     <!-- flake.nix restores the tests from it in locked mode for linux-x64 and runs them (doCheck). They run under
          the JIT, also in the NativeAOT package. -->

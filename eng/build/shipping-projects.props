@@ -27,6 +27,14 @@
     <RunicShippingProject Include="$(MSBuildThisFileDirectory)../../packages/dotnet/Runic.Platform.MacOS/Runic.Platform.MacOS.csproj" PackageId="Runic.Platform.MacOS" />
     <RunicShippingProject Include="$(MSBuildThisFileDirectory)../../packages/dotnet/Runic.Desktop.Gtk4/Runic.Desktop.Gtk4.csproj" PackageId="Runic.Desktop.Gtk4" />
     <RunicShippingProject Include="$(MSBuildThisFileDirectory)../../packages/dotnet/Runic.Desktop.Kestrel/Runic.Desktop.Kestrel.csproj" PackageId="Runic.Desktop.Kestrel" />
+    <RunicShippingProject Include="$(MSBuildThisFileDirectory)../../packages/dotnet/Runic.Desktop.NativeServer/Runic.Desktop.NativeServer.csproj" PackageId="Runic.Desktop.NativeServer" />
+    <RunicShippingProject Include="$(MSBuildThisFileDirectory)../../packages/dotnet/Runic.Desktop.NativeServer.Static/linux-x64/Runic.Desktop.NativeServer.Static.linux-x64.csproj" PackageId="Runic.Desktop.NativeServer.Static.linux-x64" />
+    <RunicShippingProject Include="$(MSBuildThisFileDirectory)../../packages/dotnet/Runic.Desktop.NativeServer.Static/linux-arm64/Runic.Desktop.NativeServer.Static.linux-arm64.csproj" PackageId="Runic.Desktop.NativeServer.Static.linux-arm64" />
+    <RunicShippingProject Include="$(MSBuildThisFileDirectory)../../packages/dotnet/Runic.Desktop.NativeServer.Static/linux-musl-x64/Runic.Desktop.NativeServer.Static.linux-musl-x64.csproj" PackageId="Runic.Desktop.NativeServer.Static.linux-musl-x64" />
+    <RunicShippingProject Include="$(MSBuildThisFileDirectory)../../packages/dotnet/Runic.Desktop.NativeServer.Static/linux-musl-arm64/Runic.Desktop.NativeServer.Static.linux-musl-arm64.csproj" PackageId="Runic.Desktop.NativeServer.Static.linux-musl-arm64" />
+    <RunicShippingProject Include="$(MSBuildThisFileDirectory)../../packages/dotnet/Runic.Desktop.NativeServer.Static/win-x64/Runic.Desktop.NativeServer.Static.win-x64.csproj" PackageId="Runic.Desktop.NativeServer.Static.win-x64" />
+    <RunicShippingProject Include="$(MSBuildThisFileDirectory)../../packages/dotnet/Runic.Desktop.NativeServer.Static/win-arm64/Runic.Desktop.NativeServer.Static.win-arm64.csproj" PackageId="Runic.Desktop.NativeServer.Static.win-arm64" />
+    <RunicShippingProject Include="$(MSBuildThisFileDirectory)../../packages/dotnet/Runic.Desktop.NativeServer.Static/osx-arm64/Runic.Desktop.NativeServer.Static.osx-arm64.csproj" PackageId="Runic.Desktop.NativeServer.Static.osx-arm64" />
     <RunicShippingProject Include="$(MSBuildThisFileDirectory)../../packages/dotnet/Runic.Platform.Linux.Portal/Runic.Platform.Linux.Portal.csproj" PackageId="Runic.Platform.Linux.Portal" />
     <RunicShippingProject Include="$(MSBuildThisFileDirectory)../../packages/dotnet/Runic.Platform.Linux.Gtk4/Runic.Platform.Linux.Gtk4.csproj" PackageId="Runic.Platform.Linux.Gtk4" />
     <RunicShippingProject Include="$(MSBuildThisFileDirectory)../../packages/dotnet/Runic.Platform.Linux.Polkit/Runic.Platform.Linux.Polkit.csproj" PackageId="Runic.Platform.Linux.Polkit" />
@@ -61,6 +69,14 @@
     <RunicIsShippingProject Condition="'$(_RunicProjectPath)' == 'packages/dotnet/Runic.Platform.MacOS/Runic.Platform.MacOS.csproj'">true</RunicIsShippingProject>
     <RunicIsShippingProject Condition="'$(_RunicProjectPath)' == 'packages/dotnet/Runic.Desktop.Gtk4/Runic.Desktop.Gtk4.csproj'">true</RunicIsShippingProject>
     <RunicIsShippingProject Condition="'$(_RunicProjectPath)' == 'packages/dotnet/Runic.Desktop.Kestrel/Runic.Desktop.Kestrel.csproj'">true</RunicIsShippingProject>
+    <RunicIsShippingProject Condition="'$(_RunicProjectPath)' == 'packages/dotnet/Runic.Desktop.NativeServer/Runic.Desktop.NativeServer.csproj'">true</RunicIsShippingProject>
+    <RunicIsShippingProject Condition="'$(_RunicProjectPath)' == 'packages/dotnet/Runic.Desktop.NativeServer.Static/linux-x64/Runic.Desktop.NativeServer.Static.linux-x64.csproj'">true</RunicIsShippingProject>
+    <RunicIsShippingProject Condition="'$(_RunicProjectPath)' == 'packages/dotnet/Runic.Desktop.NativeServer.Static/linux-arm64/Runic.Desktop.NativeServer.Static.linux-arm64.csproj'">true</RunicIsShippingProject>
+    <RunicIsShippingProject Condition="'$(_RunicProjectPath)' == 'packages/dotnet/Runic.Desktop.NativeServer.Static/linux-musl-x64/Runic.Desktop.NativeServer.Static.linux-musl-x64.csproj'">true</RunicIsShippingProject>
+    <RunicIsShippingProject Condition="'$(_RunicProjectPath)' == 'packages/dotnet/Runic.Desktop.NativeServer.Static/linux-musl-arm64/Runic.Desktop.NativeServer.Static.linux-musl-arm64.csproj'">true</RunicIsShippingProject>
+    <RunicIsShippingProject Condition="'$(_RunicProjectPath)' == 'packages/dotnet/Runic.Desktop.NativeServer.Static/win-x64/Runic.Desktop.NativeServer.Static.win-x64.csproj'">true</RunicIsShippingProject>
+    <RunicIsShippingProject Condition="'$(_RunicProjectPath)' == 'packages/dotnet/Runic.Desktop.NativeServer.Static/win-arm64/Runic.Desktop.NativeServer.Static.win-arm64.csproj'">true</RunicIsShippingProject>
+    <RunicIsShippingProject Condition="'$(_RunicProjectPath)' == 'packages/dotnet/Runic.Desktop.NativeServer.Static/osx-arm64/Runic.Desktop.NativeServer.Static.osx-arm64.csproj'">true</RunicIsShippingProject>
     <RunicIsShippingProject Condition="'$(_RunicProjectPath)' == 'packages/dotnet/Runic.Platform.Linux.Portal/Runic.Platform.Linux.Portal.csproj'">true</RunicIsShippingProject>
     <RunicIsShippingProject Condition="'$(_RunicProjectPath)' == 'packages/dotnet/Runic.Platform.Linux.Gtk4/Runic.Platform.Linux.Gtk4.csproj'">true</RunicIsShippingProject>
     <RunicIsShippingProject Condition="'$(_RunicProjectPath)' == 'packages/dotnet/Runic.Platform.Linux.Polkit/Runic.Platform.Linux.Polkit.csproj'">true</RunicIsShippingProject>

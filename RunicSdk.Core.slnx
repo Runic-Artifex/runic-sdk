@@ -39,6 +39,14 @@
     <Project Path="packages/dotnet/Runic.Platform.Windows.Elevation/Runic.Platform.Windows.Elevation.csproj" />
     <Project Path="packages/dotnet/Runic.Desktop.Gtk4/Runic.Desktop.Gtk4.csproj" />
     <Project Path="packages/dotnet/Runic.Desktop.Kestrel/Runic.Desktop.Kestrel.csproj" />
+    <Project Path="packages/dotnet/Runic.Desktop.NativeServer/Runic.Desktop.NativeServer.csproj" />
+    <Project Path="packages/dotnet/Runic.Desktop.NativeServer.Static/linux-x64/Runic.Desktop.NativeServer.Static.linux-x64.csproj" />
+    <Project Path="packages/dotnet/Runic.Desktop.NativeServer.Static/linux-arm64/Runic.Desktop.NativeServer.Static.linux-arm64.csproj" />
+    <Project Path="packages/dotnet/Runic.Desktop.NativeServer.Static/linux-musl-x64/Runic.Desktop.NativeServer.Static.linux-musl-x64.csproj" />
+    <Project Path="packages/dotnet/Runic.Desktop.NativeServer.Static/linux-musl-arm64/Runic.Desktop.NativeServer.Static.linux-musl-arm64.csproj" />
+    <Project Path="packages/dotnet/Runic.Desktop.NativeServer.Static/win-x64/Runic.Desktop.NativeServer.Static.win-x64.csproj" />
+    <Project Path="packages/dotnet/Runic.Desktop.NativeServer.Static/win-arm64/Runic.Desktop.NativeServer.Static.win-arm64.csproj" />
+    <Project Path="packages/dotnet/Runic.Desktop.NativeServer.Static/osx-arm64/Runic.Desktop.NativeServer.Static.osx-arm64.csproj" />
     <Project Path="packages/dotnet/Runic.Application.Views/Runic.Application.Views.csproj" />
     <Project Path="packages/dotnet/Runic.Navigation/Runic.Navigation.csproj" />
     <Project Path="packages/dotnet/Runic.Navigation.ReactiveUI/Runic.Navigation.ReactiveUI.csproj" />

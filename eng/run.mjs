@@ -5,7 +5,7 @@ import { packNpm } from "./release/pack-npm.mjs";
 import { authority, scan } from "./release/artifacts.mjs";
 import { stageAndPromote } from "./release/stage.mjs";
 import { packageVersion, separateVersions } from "./version.mjs";
-import { readFileSync, mkdirSync } from "node:fs";
+import { existsSync, readFileSync, mkdirSync } from "node:fs";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -104,24 +104,43 @@ export function nugetPackArguments(workspace, p, { built, nuget, npm, selectedCo
     ...(p.name.endsWith(".Templates") ? [`-p:RunicTemplateNpmDirectory=${npm}`] : []),
   ];
 }
+// The native Desktop server's static packages, one per runtime identifier, need that identifier's library, which
+// eng/native/build-runic-server.sh writes (CI: the native-libraries workflow). A local pack builds the host's and
+// leaves out the static packages it has no library for; CI (RUNIC_NATIVE_SERVER_REQUIRE_ALL_RUNTIMES) needs all.
+const nativeServerStatic = /^Runic\.Desktop\.NativeServer\.Static\.(.+)$/;
+export function nativeServerLibraryMissing(name) {
+  const rid = nativeServerStatic.exec(name)?.[1];
+  if (!rid) return false;
+  const library = rid.startsWith("win-") ? "runic_server.lib" : "librunic_server.a";
+  return !existsSync(resolve(root, "artifacts/native/runic-server", rid, library));
+}
+export const packedNuget = () => process.env.RUNIC_NATIVE_SERVER_REQUIRE_ALL_RUNTIMES === "true"
+  ? workspace.nuget
+  : workspace.nuget.filter(p => !nativeServerLibraryMissing(p.name));
 function pack(built = false) {
   run("bun", ["eng/generate-shipping-projects.mjs", "--check"]);
   if (!built) build();
+  if (!existsSync(resolve(root, "artifacts/native/runic-server")) && process.env.RUNIC_NATIVE_SERVER_REQUIRE_ALL_RUNTIMES !== "true")
+    run("bash", ["eng/native/build-runic-server.sh"]);
+  const nuget = packedNuget();
+  for (const p of workspace.nuget.filter(p => !nuget.includes(p)))
+    console.warn(`Leaving out ${p.name}: no native server library for it under artifacts/native/runic-server.`);
   const revision = execFileSync("git", ["rev-parse", "HEAD"], { cwd: root, encoding: "utf8" }).trim();
   // Build the complete candidate in a sibling directory and replace
   // artifacts/packages only after every package and check succeeds.
   stageAndPromote(packages, (staging) => {
-    const nuget = resolve(staging, "nuget");
+    const nugetDirectory = resolve(staging, "nuget");
     const npm = resolve(staging, "npm");
-    mkdirSync(nuget);
+    mkdirSync(nugetDirectory);
     mkdirSync(npm);
     // Template lock integrities must describe the final gitHead-stamped archives.
     for (const p of orderedPackages())
       packNpm(resolve(root, p.path), npm, revision);
-    for (const p of workspace.nuget)
-      run("dotnet", nugetPackArguments(workspace, p, { built, nuget, npm }));
-    run("bun", ["eng/release/verify-template-locks.mjs", nuget, npm]);
-    const count = scan(staging, authority(workspace), revision).length;
+    for (const p of packedNuget())
+      run("dotnet", nugetPackArguments(workspace, p, { built, nuget: nugetDirectory, npm }));
+    run("bun", ["eng/release/verify-template-locks.mjs", nugetDirectory, npm]);
+    const inventory = authority(workspace).filter(p => p.registry !== "nuget" || packedNuget().some(n => n.name === p.name));
+    const count = scan(staging, inventory, revision).length;
     console.log(`Staged ${count} packages; promoting to ${packages}.`);
   });
 }

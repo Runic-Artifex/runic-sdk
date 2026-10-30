@@ -281,7 +281,8 @@ test('every test job scales its condition waits by RUNIC_TEST_TIMEOUT_SCALE for 
   assert.equal(setup.runs.steps[0].uses, './.github/actions/test-timeout-scale');
   const action = yaml('.github/actions/test-timeout-scale/action.yml');
   assert.deepEqual(action.runs.steps.map(step => step.run), ['node eng/ci/test-timeout-scale.mjs']);
-  const scaled = job => job.steps.some(step => ['./.github/actions/setup-sdk', './.github/actions/test-timeout-scale'].includes(step.uses));
+  // A job that calls a reusable workflow (native-libraries) runs no tests itself.
+  const scaled = job => job.uses !== undefined || job.steps.some(step => ['./.github/actions/setup-sdk', './.github/actions/test-timeout-scale'].includes(step.uses));
   assert.deepEqual(Object.entries(workflow.jobs).filter(([, job]) => !scaled(job)).map(([name]) => name), ['verify']);
   const musl = workflow.jobs['native-musl'];
   assert.ok(musl.steps.findIndex(step => step.uses === './.github/actions/test-timeout-scale') <

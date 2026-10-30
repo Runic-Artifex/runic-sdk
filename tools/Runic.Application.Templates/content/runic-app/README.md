@@ -67,6 +67,14 @@ another presentation, call `DesktopEventLoop.Run` and create a
 [Runic.Desktop guide](https://github.com/Runic-Artifex/runic-sdk/blob/v__RUNIC_NUGET_VERSION__/packages/dotnet/Runic.Desktop/README.md)
 for native prerequisites and platform services. Create the project with
 `--linux-gtk 4` to use GTK 4 and WebKitGTK 6 on Linux.
+<!--#if (nativeServer) -->
+
+The page is served by the native Runic Desktop server
+(`Runic.Desktop.NativeServer`), so the application needs no ASP.NET Core. It is
+experimental until Runic 1.0, which is why the project file suppresses
+`RUNICDESK102`. To use ASP.NET Core Kestrel instead, replace the package with
+`Runic.Desktop.Kestrel` of the same version and remove the suppression.
+<!--#endif -->
 
 Outside the `Development` environment, `Program.cs` sends a
 Content-Security-Policy with the Window's pages

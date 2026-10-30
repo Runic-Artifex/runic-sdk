@@ -1112,9 +1112,11 @@ The executable references Runic Desktop but no presentation server, or
 0.15 `Runic.Desktop` carries no server of its own; without one the first window
 would fail with `presentation-server-unavailable`.
 
-**Fix:** add a `PackageReference` to `Runic.Desktop.Kestrel` (ASP.NET Core
-Kestrel, the server of 0.14 and earlier) or to the experimental
-`Runic.Desktop.NativeServer`, matching the version of `Runic.Desktop`. An
+**Fix:** add a `PackageReference` to `Runic.Desktop.NativeServer` (the native
+server, without ASP.NET Core, which new applications use; experimental until
+1.0, see [`RUNICDESK102`](experimental.md#RUNICDESK102)) or to
+`Runic.Desktop.Kestrel` (ASP.NET Core Kestrel, the server of 0.14 and earlier),
+matching the version of `Runic.Desktop`. An
 executable that opens no Runic Desktop window sets `RunicDesktopServer` to
 `None`. See [Migrating to 1.0](migration-1.0.md#desktop-presentation-server).
 

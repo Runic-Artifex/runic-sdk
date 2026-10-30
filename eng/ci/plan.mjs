@@ -82,13 +82,13 @@ export function nodePackages() {
     .filter(name => JSON.parse(readFileSync(resolve(root, "packages/web", name, "package.json"), "utf8")).engines?.node !== undefined);
 }
 
-// Jobs a plan can skip. `build` (which also checks generated files and packs the package candidates)
-// and `engineering` (workflow lint, contracts, Markdown links) run in every other plan; only a merge
+// Jobs a plan can skip. `build` (which also checks generated files and packs the package candidates), the
+// `native-libraries` it packs, and `engineering` (workflow lint, contracts, Markdown links) run in every other plan; only a merge
 // queue entry that reuses a passed pull request run skips them too (reusedSkip). `plan` always runs.
 // `verify` accepts a skipped job only when the plan skipped it.
 export const skippableJobs = ["managed", "web", "node-26", "views", "package-consumers", "wpf", "templates", "native", "native-musl", "packaging",
   "screen-readers"];
-export const reusedSkip = [...skippableJobs, "build", "engineering"];
+export const reusedSkip = [...skippableJobs, "native-libraries", "build", "engineering"];
 
 const owner = file => Object.entries(workspace.components)
   .find(([, component]) => component.paths.some(path => file === path || file.startsWith(`${path}/`)))?.[0];

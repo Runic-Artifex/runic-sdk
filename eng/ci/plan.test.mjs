@@ -219,16 +219,16 @@ test('the workflow gates exactly the skippable jobs on the plan and verify aggre
     assert.equal(workflow.jobs[job].if, `\${{ !contains(fromJSON(needs.plan.outputs.skip), '${job}') }}`, job);
     assert.ok([workflow.jobs[job].needs].flat().includes('plan'), job);
   }
-  // build and engineering run in every plan but a merge queue entry's reuse of a passed pull request run.
+  // native-libraries, build and engineering run in every plan but a merge queue entry's reuse of a passed pull request run.
   assert.equal(workflow.jobs.plan.if, undefined);
-  for (const job of ['build', 'engineering']) {
+  for (const job of ['native-libraries', 'build', 'engineering']) {
     assert.ok(!skippableJobs.includes(job), job);
     assert.ok(reusedSkip.includes(job), job);
     assert.equal(workflow.jobs[job].if, `\${{ !contains(fromJSON(needs.plan.outputs.skip), '${job}') }}`, job);
     assert.ok([workflow.jobs[job].needs].flat().includes('plan'), job);
   }
   assert.deepEqual(workflow.jobs.engineering.needs, ['plan', 'build']);
-  assert.deepEqual([...skippableJobs, 'plan', 'build', 'engineering', 'verify'].sort(), jobs.sort());
+  assert.deepEqual([...skippableJobs, 'plan', 'native-libraries', 'build', 'engineering', 'verify'].sort(), jobs.sort());
   assert.equal(workflow.jobs.verify.if, 'always()');
   assert.deepEqual([...workflow.jobs.verify.needs].sort(), jobs.filter(job => job !== 'verify').sort());
   const gate = workflow.jobs.verify.steps.find(step => step.run === 'bun eng/ci/gate.mjs');
@@ -250,7 +250,7 @@ test('verify accepts only planned skips and successes', () => {
     ['plan=failure', 'build=skipped', 'engineering=skipped']);
   const reused = Object.fromEntries(['plan', ...reusedSkip].map(job => [job, { result: job === 'plan' ? 'success' : 'skipped' }]));
   assert.deepEqual(incomplete(reused, reusedSkip), []);
-  assert.deepEqual(incomplete(reused, skippableJobs), ['build=skipped', 'engineering=skipped']);
+  assert.deepEqual(incomplete(reused, skippableJobs), ['native-libraries=skipped', 'build=skipped', 'engineering=skipped']);
 });
 
 const owners = file => Object.entries(workspace.components)
@@ -547,7 +547,7 @@ test('a reused plan runs nothing, build and engineering included', () => {
   const url = 'https://github.com/Runic-Artifex/runic-sdk/actions/runs/11';
   const reused = outputsOf(cli(['--reused', url]));
   assert.deepEqual(reused.skip, reusedSkip);
-  assert.deepEqual(reusedSkip, [...skippableJobs, 'build', 'engineering']);
+  assert.deepEqual(reusedSkip, [...skippableJobs, 'native-libraries', 'build', 'engineering']);
   assert.deepEqual([reused.full, reused.components, reused.managed, reused.web, reused.frameworks, reused.platforms],
     [false, [], [], [], false, []]);
   for (const name of ['native', 'wpf', 'packaging', 'screen-readers']) assert.deepEqual(reused[name], { include: [] }, name);

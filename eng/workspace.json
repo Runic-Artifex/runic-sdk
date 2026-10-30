@@ -147,6 +147,38 @@
       "project": "packages/dotnet/Runic.Desktop.Kestrel/Runic.Desktop.Kestrel.csproj"
     },
     {
+      "name": "Runic.Desktop.NativeServer",
+      "project": "packages/dotnet/Runic.Desktop.NativeServer/Runic.Desktop.NativeServer.csproj"
+    },
+    {
+      "name": "Runic.Desktop.NativeServer.Static.linux-x64",
+      "project": "packages/dotnet/Runic.Desktop.NativeServer.Static/linux-x64/Runic.Desktop.NativeServer.Static.linux-x64.csproj"
+    },
+    {
+      "name": "Runic.Desktop.NativeServer.Static.linux-arm64",
+      "project": "packages/dotnet/Runic.Desktop.NativeServer.Static/linux-arm64/Runic.Desktop.NativeServer.Static.linux-arm64.csproj"
+    },
+    {
+      "name": "Runic.Desktop.NativeServer.Static.linux-musl-x64",
+      "project": "packages/dotnet/Runic.Desktop.NativeServer.Static/linux-musl-x64/Runic.Desktop.NativeServer.Static.linux-musl-x64.csproj"
+    },
+    {
+      "name": "Runic.Desktop.NativeServer.Static.linux-musl-arm64",
+      "project": "packages/dotnet/Runic.Desktop.NativeServer.Static/linux-musl-arm64/Runic.Desktop.NativeServer.Static.linux-musl-arm64.csproj"
+    },
+    {
+      "name": "Runic.Desktop.NativeServer.Static.win-x64",
+      "project": "packages/dotnet/Runic.Desktop.NativeServer.Static/win-x64/Runic.Desktop.NativeServer.Static.win-x64.csproj"
+    },
+    {
+      "name": "Runic.Desktop.NativeServer.Static.win-arm64",
+      "project": "packages/dotnet/Runic.Desktop.NativeServer.Static/win-arm64/Runic.Desktop.NativeServer.Static.win-arm64.csproj"
+    },
+    {
+      "name": "Runic.Desktop.NativeServer.Static.osx-arm64",
+      "project": "packages/dotnet/Runic.Desktop.NativeServer.Static/osx-arm64/Runic.Desktop.NativeServer.Static.osx-arm64.csproj"
+    },
+    {
       "name": "Runic.Platform.Linux.Portal",
       "project": "packages/dotnet/Runic.Platform.Linux.Portal/Runic.Platform.Linux.Portal.csproj"
     },

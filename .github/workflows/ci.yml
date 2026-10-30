@@ -151,9 +151,17 @@ jobs:
           fi
   # build and engineering run in every plan except a merge queue entry's reuse of a passed pull
   # request run (eng/ci/plan.mjs, reusedSkip).
+  # The native Desktop server's libraries for every runtime identifier, which the packages carry
+  # (Runic.Desktop.NativeServer, Runic.Desktop.NativeServer.Static.<rid>). Cached by the crate's tree, so an unchanged
+  # server costs one cache restore per runtime identifier.
+  native-libraries:
+    name: Native server libraries
+    needs: plan
+    if: ${{ !contains(fromJSON(needs.plan.outputs.skip), 'native-libraries') }}
+    uses: ./.github/workflows/native-libraries.yml
   build:
     name: Build shared SDK inputs
-    needs: plan
+    needs: [plan, native-libraries]
     if: ${{ !contains(fromJSON(needs.plan.outputs.skip), 'build') }}
     runs-on: ubuntu-24.04
     timeout-minutes: 35
@@ -183,7 +191,18 @@ jobs:
           compression-level: 0
       # Package candidates come from the same build, after its outputs are archived, independently
       # of test results. Package consumers, templates and the WPF lane download them.
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          pattern: runic-server-*
+          path: artifacts/native/runic-server
+      - name: Lay out the native server libraries by runtime identifier
+        run: |
+          cd artifacts/native/runic-server
+          for directory in runic-server-*; do mv "$directory" "${directory#runic-server-}"; done
       - name: Pack the verified build inputs
+        env:
+          # Every runtime identifier's native server library, or the pack fails.
+          RUNIC_NATIVE_SERVER_REQUIRE_ALL_RUNTIMES: "true"
         run: bun eng/run.mjs pack-built
       # PackageDownload packages (the validation baselines, the WindowsDesktop targeting pack) are
       # outside the NuGet lock files; eng/dependencies/package-downloads.json pins their content hashes.
@@ -2027,7 +2046,7 @@ jobs:
   verify:
     name: verify
     if: always()
-    needs: [plan, build, managed, web, node-26, engineering, views, package-consumers, wpf, templates, native, native-musl, packaging, screen-readers]
+    needs: [plan, native-libraries, build, managed, web, node-26, engineering, views, package-consumers, wpf, templates, native, native-musl, packaging, screen-readers]
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:

@@ -11,7 +11,7 @@ import {
 import { tmpdir } from "node:os";
 import { execFileSync } from "node:child_process";
 import { basename, extname, resolve, join } from "node:path";
-import { root, workspace, run, configuration } from "./run.mjs";
+import { root, workspace, run, configuration, packedNuget } from "./run.mjs";
 import { nupkgFiles, nupkgDependencies, nupkgDependencyVersions, nupkgFileText } from "./nupkg.mjs";
 import { packageVersion } from "./version.mjs";
 
@@ -28,7 +28,14 @@ const nativeProviders = new Set([
 // that must be present, `dependencies` the complete nuspec dependency list, and
 // `exactDependencies` the dependencies pinned to exactly the workspace version.
 // `requires`/`forbidden` dependencies that must or must not appear in it.
+const nativeServerRuntimes = ["linux-x64", "linux-arm64", "linux-musl-x64", "linux-musl-arm64", "win-x64", "win-arm64", "osx-arm64"];
 export const packageLayouts = {
+  // One static library each, which only Runic.Desktop.NativeServer's targets use.
+  ...Object.fromEntries(nativeServerRuntimes.map(rid => [`Runic.Desktop.NativeServer.Static.${rid}`, {
+    files: [`Runic.Desktop.NativeServer.Static.${rid}.nuspec`, "README.md", "THIRD-PARTY-NOTICES.md", "icon.png",
+      `runtimes/${rid}/native/${rid.startsWith("win-") ? "runic_server.lib" : "librunic_server.a"}`],
+    dependencies: [],
+  }])),
   // Navigation is a plain library: no build targets, tools or content (W240-001 D3).
   "Runic.Navigation": {
     files: ["README.md", "Runic.Navigation.nuspec", "icon.png", "lib/net10.0/Runic.Navigation.dll", "lib/net10.0/Runic.Navigation.xml"],
@@ -101,6 +108,15 @@ export const packageLayouts = {
       "Microsoft.Web.WebView2", "Runic.Platform", "Runic.Platform.Linux.DBus", "Tmds.DBus.Protocol"],
     exactDependencies: ["Runic.Platform", "Runic.Platform.Linux.DBus"],
     includes: ["buildTransitive/Runic.Desktop.targets"],
+  },
+  // The native Desktop server (D053.24: the default of new applications): no assembly, the shared library of every
+  // runtime identifier, and a runtime.json that brings Runic.Desktop.NativeServer.Static.<rid> for a runtime-specific
+  // restore. eng/native/verify-native-server-package.mjs consumes it as an application does.
+  "Runic.Desktop.NativeServer": {
+    requires: ["Runic.Desktop", "Microsoft.Extensions.DependencyInjection", "Microsoft.Extensions.Logging"],
+    exactDependencies: ["Runic.Desktop"],
+    includes: ["runtime.json", "THIRD-PARTY-NOTICES.md", "buildTransitive/Runic.Desktop.NativeServer.props",
+      "buildTransitive/Runic.Desktop.NativeServer.HelpLinks.props", "buildTransitive/Runic.Desktop.NativeServer.targets"],
   },
   // ASP.NET Core Kestrel for Runic Desktop: its props announce it to Runic.Desktop's targets, which select it.
   "Runic.Desktop.Kestrel": {
@@ -241,7 +257,7 @@ function verifyConsumerGraph(consumer, label, { platformOnly = false, selectedPr
       `${label} unexpectedly depends on the Microsoft.Extensions.DependencyInjection container`);
   }
   // A Runic.Desktop consumer without a server package needs no ASP.NET Core; Runic.Desktop.Kestrel brings it.
-  if (label === "Runic.Desktop" || label === "Runic.Desktop.Kestrel") {
+  if (label === "Runic.Desktop" || label === "Runic.Desktop.Kestrel" || label === "Runic.Desktop.NativeServer") {
     const frameworks = Object.values(assets.project.frameworks ?? {})
       .flatMap(framework => Object.keys(framework.frameworkReferences ?? {}));
     const targets = Object.values(assets.targets ?? {}).flatMap(target => Object.values(target))
@@ -303,20 +319,21 @@ async function verifyConsumers(directory, packageName) {
   const npm = resolve(root, "artifacts/packages/npm");
   // Separate minimal consumers prevent dependencies from concealing missing
   // dependencies in standalone Application, Assets, Desktop, or Platform packages.
-  const allLibraries = workspace.nuget.filter(
-    (p) => !isToolPackage(p) && !p.name.endsWith(".Templates"),
+  // The native server's static packages carry no assembly for a consumer to load; their layout is checked.
+  const allLibraries = packedNuget().filter(
+    (p) => !isToolPackage(p) && !p.name.endsWith(".Templates") && !p.name.startsWith("Runic.Desktop.NativeServer.Static."),
   );
   const libraries = packageName
     ? allLibraries.filter(packageEntry => packageEntry.name === packageName)
     : allLibraries;
   assert.ok(!packageName || libraries.length === 1, `Unknown NuGet library consumer ${packageName}`);
-  for (const p of packageName ? libraries : workspace.nuget) {
+  for (const p of packageName ? libraries : packedNuget()) {
     assert.ok(
       readdirSync(nuget).includes(`${p.name}.${packageVersion(workspace, p.name)}.nupkg`),
       `Pack ${p.name} first`,
     );
   }
-  for (const p of packageName ? libraries : workspace.nuget)
+  for (const p of packageName ? libraries : packedNuget())
     verifyPackageLayout(join(nuget, `${p.name}.${packageVersion(workspace, p.name)}.nupkg`), p.name, workspace.version);
   const archives = (packageName ? [] : workspace.npm).map((p) => {
     const file = `${p.name.replace("@", "").replace("/", "-")}-${workspace.version}.tgz`;
@@ -338,8 +355,9 @@ async function verifyConsumers(directory, packageName) {
   for (const p of libraries) {
     const strategy = packageConsumerStrategy(p);
     const projectText = readFileSync(resolve(root, p.project), "utf8");
-    const assemblyName = projectText.match(/<AssemblyName>([^<]+)<\/AssemblyName>/)?.[1]
-      ?? basename(p.project, ".csproj");
+    // Runic.Desktop.NativeServer has no assembly; the consumer loads the Runic.Desktop it brings.
+    const assemblyName = p.name === "Runic.Desktop.NativeServer" ? "Runic.Desktop"
+      : projectText.match(/<AssemblyName>([^<]+)<\/AssemblyName>/)?.[1] ?? basename(p.project, ".csproj");
     const consumer = join(directory, p.name);
     const viewTestConsumer = p.name === "Runic.Application.Testing";
     const bridgeProperties = viewTestConsumer
