@@ -166,7 +166,8 @@ internal sealed partial class ApplicationsTests
             // macOS may ask the user before changing a default; the runner has no user to answer, so a prompt is reported
             // rather than failed.
             var change = applications.SetDefaultApplicationAsync(uti, second).AsTask();
-            if (await Task.WhenAny(change, Task.Delay(TestTimeouts.Scale(TimeSpan.FromSeconds(60)))) == change)
+            // Not scaled: on a runner the confirmation never comes, so this 60 s is a probe that runs out.
+            if (await Task.WhenAny(change, Task.Delay(TimeSpan.FromSeconds(60))) == change)
             {
                 Console.WriteLine($"SetDefault: {change.Result}");
                 Check(change.Result is PlatformResult<PlatformUnit>.Success or PlatformResult<PlatformUnit>.Failed { Code: PlatformFailureCode.UserDismissed }, "the default change completed");

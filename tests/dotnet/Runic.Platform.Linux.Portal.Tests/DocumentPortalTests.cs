@@ -32,7 +32,8 @@ internal sealed partial class DocumentPortalTests
             // but never one that would replace the desktop session's mount.
             if (Environment.GetEnvironmentVariable("XDG_RUNTIME_DIR") is { } runtime && DocumentPortalPaths.IsFuse(Path.Combine(runtime, "doc")))
             { Skip("another session's document portal owns the mount; run on that session bus"); return; }
-            try { await connection.CallMethodAsync(Bus(connection, "StartServiceByName")).WaitScaledAsync(TimeSpan.FromSeconds(10)); }
+            // Not scaled: a portal that cannot be activated in 10 s skips the test.
+            try { await connection.CallMethodAsync(Bus(connection, "StartServiceByName")).WaitAsync(TimeSpan.FromSeconds(10)); }
             catch (Exception error) when (error is DBusExceptionBase or TimeoutException) { Skip("the document portal cannot be activated: " + error.GetType().Name); return; }
         }
         string? mount = await DocumentPortalPaths.QueryMountPointAsync(default);

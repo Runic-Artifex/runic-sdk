@@ -277,7 +277,10 @@ internal static partial class WindowsFileDropSmoke
             int effect;
             try
             {
-                effect = await drag.Task.WaitScaledAsync(TimeSpan.FromSeconds(30));
+                // On Windows arm64 the drag is expected never to end (#391), so its 30 s is a probe, not a scaled wait.
+                effect = RuntimeInformation.ProcessArchitecture == Architecture.Arm64
+                    ? await drag.Task.WaitAsync(TimeSpan.FromSeconds(30))
+                    : await drag.Task.WaitScaledAsync(TimeSpan.FromSeconds(30));
             }
             catch (TimeoutException)
             {
@@ -289,7 +292,7 @@ internal static partial class WindowsFileDropSmoke
                     Console.WriteLine("File drop: unverified on Windows arm64: the OLE drag did not end within 30 seconds (#391).");
                     return;
                 }
-                throw new TimeoutException("The OLE drag did not end within 30 seconds.");
+                throw new TimeoutException($"The OLE drag did not end within {TestTimeouts.Scale(TimeSpan.FromSeconds(30)).TotalSeconds:0} seconds.");
             }
             if (effect == NoDesktopInput)
             {
@@ -357,7 +360,7 @@ internal static partial class WindowsFileDropSmoke
                 Pump(TimeSpan.FromMilliseconds(200));
                 Mouse(start.X, start.Y, MouseLeftDown);
                 var pressed = System.Diagnostics.Stopwatch.StartNew();
-                while (GetKeyState(0x01) >= 0 && pressed.Elapsed < TestTimeouts.Scale(TimeSpan.FromSeconds(3))) Pump(TimeSpan.FromMilliseconds(20)); // VK_LBUTTON
+                while (GetKeyState(0x01) >= 0 && pressed.Elapsed < TimeSpan.FromSeconds(3)) Pump(TimeSpan.FromMilliseconds(20)); // VK_LBUTTON
                 if (GetKeyState(0x01) >= 0)
                 {
                     Mouse(start.X, start.Y, MouseLeftUp);
