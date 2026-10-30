@@ -87,6 +87,46 @@ holds the member's validation messages; see the
 This package's entry is the build-time adapter, which runs in Node, so it does not
 re-export the browser bindings.
 
+## Connecting in `load`
+
+A route's `load` function can connect its View before the page renders, so
+SvelteKit keeps the previous page until the View is ready, a failure renders
+`+error.svelte`, and the page shows the View's state in its first render.
+`preloadView(reference)` from `@runic-artifex/svelte` (or
+`@runic-artifex/views`) connects the reference, keeps the client for a few
+seconds and resolves with the reference; the page's `useView` of that reference
+takes the client over. Views connect in the browser only, so the route turns
+off server rendering:
+
+```ts
+// src/routes/editor/+page.ts
+import { preloadView } from "@runic-artifex/svelte";
+import { connectEditor } from "$lib/generated/editor.js";
+
+export const ssr = false;
+export const load = async () => ({ editor: await preloadView({ connect: connectEditor }) });
+```
+
+```svelte
+<!-- src/routes/editor/+page.svelte -->
+<script lang="ts">
+  import { useView } from "@runic-artifex/svelte";
+  let { data } = $props();
+  const editor = useView(() => data.editor);
+</script>
+
+<h1>{editor.state?.title}</h1>
+```
+
+The reference is identified by its `connect` function, so keep it stable (a
+generated page reference, or `{ connect: connectEditor }` as above: a new
+object with the same function is the same reference). A client that no page
+takes over is disposed after `keepAlive` (2000 ms by default;
+`preloadView(reference, { keepAlive: 10_000 })` for a slower page). A Desktop
+SPA with the hash router sets no page options; its pages render in the browser
+anyway. Without `load`, `useSuspenseView` and `{#await}` from
+`@runic-artifex/svelte` connect inside the page.
+
 Translation routing helpers moved to
 [`@runic-artifex/translations-sveltekit`](https://www.npmjs.com/package/@runic-artifex/translations-sveltekit).
 Import them from there instead of `@runic-artifex/sveltekit`.

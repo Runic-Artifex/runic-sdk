@@ -41,10 +41,64 @@ the same floor as SvelteKit 3 and `@runic-artifex/sveltekit`.
 Call `useView` during component initialization. `options.release(client)`
 replaces `client.dispose()` for a client the helper connected. It connects a generated page
 reference, or `{ connect: connect<Name> }` for a root ViewModel, while the
-component is mounted and disposes it on destroy or when the getter returns a
-reference with a different `connect` function. An already connected client is
-observed and left to its owner. The result exposes reactive `state`, `client`,
-`error` and `pending` properties and `retry()`.
+component is mounted. An already connected client is observed and left to its
+owner. The result exposes reactive `state`, `client`, `error` and `pending`
+properties and `retry()`.
+
+When the component is destroyed or the getter returns a reference with a
+different `connect` function, the client stays connected for
+`options.keepAlive` milliseconds (2000 by default), and the next `useView` of
+the same reference takes it over with its state, before its first effect runs:
+an `{#if}` that toggles, HMR and A→B→A navigation show the View at once instead
+of "Connecting…" and do not open the route again. `keepAlive: 0` disposes at
+once.
+
+### Awaiting the connection: `useSuspenseView(source, options?)` and `{#await}`
+
+`useSuspenseView(page)` connects like `useView` during component
+initialization and returns a promise that resolves once the View connected,
+with reactive `state` and `client` that are never `undefined`, or rejects with
+the failure. Await it with `{#await}`:
+
+```svelte
+<script lang="ts">
+  import { describeBridgeError } from "@runic-artifex/views";
+  import { useSuspenseView } from "@runic-artifex/svelte";
+  import type { CounterPageReference } from "../generated/counter.js";
+
+  let { page }: { page: CounterPageReference } = $props();
+  const counter = useSuspenseView(page);
+</script>
+
+{#await counter}
+  <p>Connecting…</p>
+{:then view}
+  <button onclick={() => view.client.increment()}>{view.state.count}</button>
+{:catch error}
+  <p role="alert">{describeBridgeError(error)}</p>
+{/await}
+```
+
+The source is read once: wrap the component in `{#key page}` to follow another
+reference. Do not `{#await page.connect()}` directly: nothing would dispose
+that client. In SvelteKit, connect in a `load` function instead
+([`@runic-artifex/sveltekit`](../sveltekit/README.md#connecting-in-load)).
+
+### Selecting state: `$derived`
+
+The handle's `state` changes with every change of the View. A `$derived` that
+selects a member updates its dependents only when its value changed, so markup
+or an `$effect` that reads `title` does not run again when another member
+changes:
+
+```ts
+const editor = useView(() => page);
+const title = $derived(editor.state?.title);
+```
+
+Members the View did not change keep their identity, so selecting a member,
+also an object or a list, is enough. A derived value that builds a new object
+each time, such as `items.filter(…)`, changes every time.
 
 ### Read-only state and `bind:value`
 
@@ -415,13 +469,16 @@ The host owns `checked`: bind it one way, as
 
 The `error` of `useView` and of a command or operation helper is typed
 `unknown`: it holds whatever the connection or the call rejected with. A Bridge
-failure is a `BridgeError` from `@runic-artifex/views`; narrow it with
-`instanceof` before reading `kind`, `route` or `detail`:
+failure is a `BridgeError` from `@runic-artifex/views`. Show it with
+`describeBridgeError(error)`, one English sentence, instead of `String(error)`,
+and narrow it with `isBridgeError` (or `instanceof`) before reading `kind`,
+`route` or `detail`:
 
 ```ts
-import { BridgeError } from "@runic-artifex/views";
+import { describeBridgeError, isBridgeError } from "@runic-artifex/views";
 
-const offline = view.error instanceof BridgeError && view.error.kind === "disconnected";
+const offline = $derived(isBridgeError(view.error, "disconnected"));
+const message = $derived(describeBridgeError(view.error));
 ```
 
 `instanceof` holds for errors from every copy of the package on the page.

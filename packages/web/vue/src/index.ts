@@ -36,6 +36,7 @@ import {
   type OperationState,
   type PageReference,
   type ViewClient,
+  type ViewConnector,
   type ViewControllerOptions,
   type ViewSource,
 } from "@runic-artifex/views";
@@ -102,6 +103,42 @@ export function useView<TClient extends ViewClient>(source: MaybeRefOrGetter<Vie
   }, { immediate: true });
   releaseWithScope("useView", () => controller.dispose());
   return { state, client, error, pending, retry: () => controller.retry() };
+}
+
+export interface SuspenseViewHandle<TClient extends ViewClient> {
+  /** The latest state. */
+  readonly state: Readonly<Ref<TClient["snapshot"]>>;
+  /** The connected client. */
+  readonly client: TClient;
+}
+
+/**
+ * Connects a generated View reference for the current effect scope, like {@link useView}, and resolves once it
+ * connected, with refs that are never `undefined`. Await it in an async `setup()` (`<script setup>` with a top-level
+ * `await`) under `<Suspense>`, which shows its `#fallback` until the View connected:
+ *
+ * ```vue
+ * <script setup lang="ts">
+ * const { state, client } = await useSuspenseView(props.page);
+ * </script>
+ * <template><button @click="client.increment()">{{ state.count }}</button></template>
+ * ```
+ *
+ * A failed connection rejects, so the error reaches `onErrorCaptured` of a parent; render the component again (for
+ * example with a new `key`) to connect again. Call it before any other `await` in `setup()`, while the scope is
+ * active: it registers the scope's cleanup first, so the client is released however the component ends. A
+ * reference whose client another component let go of within its `keepAlive` period resolves at once.
+ */
+export async function useSuspenseView<TClient extends ViewClient>(source: ViewConnector<TClient> | TClient,
+  options: UseViewOptions<TClient> = {}): Promise<SuspenseViewHandle<TClient>> {
+  const view = useView<TClient>(source, options);
+  if (view.pending.value) {
+    await new Promise<void>(resolve => {
+      const stop = watch(view.pending, pending => { if (!pending) { stop(); resolve(); } }, { flush: "sync" });
+    });
+  }
+  if (view.error.value !== undefined || view.client.value === undefined) throw view.error.value;
+  return { state: view.state as Readonly<Ref<TClient["snapshot"]>>, client: view.client.value };
 }
 
 /**
