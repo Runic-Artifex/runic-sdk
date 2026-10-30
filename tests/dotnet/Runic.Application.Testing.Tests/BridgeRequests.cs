@@ -163,7 +163,7 @@ internal static class BridgeRequests
     internal static async Task<JsonDocument> WaitForOperationAsync(this InMemoryBridgeTransport transport, string route, string member,
         string operation, string contract, TimeSpan timeout, string connectionKey = InMemoryBridgeTransport.DefaultConnectionKey)
     {
-        var deadline = DateTime.UtcNow + timeout;
+        var deadline = DateTime.UtcNow + TestTimeouts.Scale(timeout);
         while (true)
         {
             using var reply = JsonDocument.Parse(transport.Operation("status", route, member, operation, contract, connectionKey));
@@ -183,7 +183,7 @@ internal static class BridgeRequests
     internal static async Task<JsonDocument> TakePushAsync(this InMemoryBridgeTransport transport, string connectionKey, string kind,
         TimeSpan timeout)
     {
-        var deadline = DateTime.UtcNow + timeout;
+        var deadline = DateTime.UtcNow + TestTimeouts.Scale(timeout);
         while (true)
         {
             foreach (var message in transport.TakeMessages())

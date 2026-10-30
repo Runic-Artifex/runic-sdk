@@ -236,7 +236,7 @@ internal sealed class ThumbnailTests
 
     private static async Task Until(Func<bool> condition)
     {
-        var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(10);
+        var deadline = DateTime.UtcNow + TestTimeouts.Scale(TimeSpan.FromSeconds(10));
         while (!condition()) { if (DateTime.UtcNow > deadline) throw new TimeoutException(); await Task.Delay(20); }
     }
 

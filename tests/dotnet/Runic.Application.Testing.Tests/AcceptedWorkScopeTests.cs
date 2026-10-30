@@ -42,10 +42,10 @@ internal sealed class AcceptedWorkScopeTests
                 "Disposal from accepted work stopped waiting for other accepted work.");
             var external = owner.DisposeAsync().AsTask();
             otherRelease.SetResult();
-            await saveAndClose.WaitAsync(Deadline);
+            await saveAndClose.WaitScaledAsync(Deadline);
             Require(resourcesReleased, "Disposal from accepted work did not complete after other work finished.");
-            await Task.WhenAll(external, other).WaitAsync(Deadline);
-            await owner.DrainAsync().WaitAsync(Deadline);
+            await Task.WhenAll(external, other).WaitScaledAsync(Deadline);
+            await owner.DrainAsync().WaitScaledAsync(Deadline);
         }
         finally
         {
@@ -70,8 +70,8 @@ internal sealed class AcceptedWorkScopeTests
             });
             return 7;
         });
-        Require(await outer.WaitAsync(Deadline) == 7, "Nested accepted work could not drain its owner.");
-        await owner.DisposeAsync().AsTask().WaitAsync(Deadline);
+        Require(await outer.WaitScaledAsync(Deadline) == 7, "Nested accepted work could not drain its owner.");
+        await owner.DisposeAsync().AsTask().WaitScaledAsync(Deadline);
 
         // Work of another scope does not exclude this scope's accepted work.
         await using var unrelated = new AcceptedWorkScope();
@@ -83,11 +83,11 @@ internal sealed class AcceptedWorkScopeTests
         {
             foreignDrain = unrelated.DrainAsync();
             return Task.CompletedTask;
-        }).WaitAsync(Deadline);
+        }).WaitScaledAsync(Deadline);
         Require(foreignDrain is { IsCompleted: false }, "Work of another scope skipped this scope's accepted work.");
         release.SetResult();
-        await Task.WhenAll(foreignDrain!, held).WaitAsync(Deadline);
-        await foreignOwner.DisposeAsync().AsTask().WaitAsync(Deadline);
+        await Task.WhenAll(foreignDrain!, held).WaitScaledAsync(Deadline);
+        await foreignOwner.DisposeAsync().AsTask().WaitScaledAsync(Deadline);
     }
 
     [Test]
@@ -108,7 +108,7 @@ internal sealed class AcceptedWorkScopeTests
         failed.SetException(failure);
         domain.SetException(declared);
         cancelled.SetCanceled();
-        await drain.WaitAsync(Deadline);
+        await drain.WaitScaledAsync(Deadline);
         Require(drain.IsCompletedSuccessfully, "A logged fault failed the drain.");
         var entries = log.Entries.ToArray();
         Require(entries.Length == 2, $"Expected two accepted-work log entries, found {entries.Length}.");
@@ -122,7 +122,7 @@ internal sealed class AcceptedWorkScopeTests
     // admission proves that the accepted work has started disposing its owner.
     private static async Task WaitUntilAdmissionClosedAsync(AcceptedWorkScope owner)
     {
-        var deadline = DateTime.UtcNow + Deadline;
+        var deadline = DateTime.UtcNow + TestTimeouts.Scale(Deadline);
         while (true)
         {
             try { _ = owner.RunAsync(() => Task.CompletedTask); }
@@ -145,13 +145,13 @@ internal sealed class AcceptedWorkScopeTests
             returned = owner.RunAsync(() =>
             {
                 factoryStarted.SetResult();
-                if (!releaseFactory.Wait(Deadline)) throw new TimeoutException("The factory was not released.");
+                if (!releaseFactory.Wait(TestTimeouts.Scale(Deadline))) throw new TimeoutException("The factory was not released.");
                 return releaseWork.Task;
             });
         });
         try
         {
-            await factoryStarted.Task.WaitAsync(Deadline);
+            await factoryStarted.Task.WaitScaledAsync(Deadline);
             var drain = owner.DrainAsync();
             Require(!drain.IsCompleted, "Drain missed an accepted factory that had not returned its task.");
             var rejectedFactoryRan = false;
@@ -163,17 +163,17 @@ internal sealed class AcceptedWorkScopeTests
             Require(!rejectedFactoryRan, "Drain allowed a rejected factory to run.");
 
             releaseFactory.Set();
-            await admission.WaitAsync(Deadline);
+            await admission.WaitScaledAsync(Deadline);
             Require(ReferenceEquals(returned, releaseWork.Task), "Ownership replaced the factory's actual task.");
             Require(!drain.IsCompleted, "Drain stopped waiting after the factory returned an unfinished task.");
             releaseWork.SetResult();
-            await drain.WaitAsync(Deadline);
+            await drain.WaitScaledAsync(Deadline);
         }
         finally
         {
             releaseFactory.Set();
             releaseWork.TrySetResult();
-            await admission.WaitAsync(Deadline);
+            await admission.WaitScaledAsync(Deadline);
         }
     }
 
@@ -203,19 +203,19 @@ internal sealed class AcceptedWorkScopeTests
         var invocation = transport.CommandAsync("recovery", "save").AsTask();
         try
         {
-            await started.Task.WaitAsync(Deadline);
+            await started.Task.WaitScaledAsync(Deadline);
             var close = await session.DrainAsync(TimeSpan.Zero);
-            using var reply = JsonDocument.Parse(await invocation.WaitAsync(Deadline));
+            using var reply = JsonDocument.Parse(await invocation.WaitScaledAsync(Deadline));
             Require(reply.RootElement.GetProperty("error").GetProperty("kind").GetString() == "cancelled",
                 "Window close did not cancel the ReactiveUI invocation wrapper.");
-            await close.Completion.WaitAsync(Deadline);
+            await close.Completion.WaitScaledAsync(Deadline);
             Require(actualWork is { IsCompleted: false } && !recoveryPublished,
                 "The test did not retain real recovery after bridge invocation completion.");
 
             var dispose = owner.DisposeAsync().AsTask();
             Require(!dispose.IsCompleted, "Application scope disposal released uncooperative recovery work.");
             releaseRecovery.SetResult();
-            await dispose.WaitAsync(Deadline);
+            await dispose.WaitScaledAsync(Deadline);
             Require(recoveryPublished && actualWork!.IsCompletedSuccessfully,
                 "Application scope disposal returned before recovery was published.");
         }
@@ -242,7 +242,7 @@ internal sealed class AcceptedWorkScopeTests
             var realDrain = owner.DrainAsync();
             Require(!realDrain.IsCompleted, "A cancelled observer abandoned ownership.");
             release.SetResult();
-            await realDrain.WaitAsync(Deadline);
+            await realDrain.WaitScaledAsync(Deadline);
         }
         finally
         {
@@ -264,7 +264,7 @@ internal sealed class AcceptedWorkScopeTests
         var drain = owner.DrainAsync();
         failed.SetException(failure);
         cancelled.SetCanceled();
-        await drain.WaitAsync(Deadline);
+        await drain.WaitScaledAsync(Deadline);
         Require(drain.IsCompletedSuccessfully, "Task failure or cancellation faulted the lifetime drain.");
         try { _ = await returnedFailure; }
         catch (InvalidOperationException error) when (ReferenceEquals(error, failure))
@@ -297,7 +297,7 @@ internal sealed class AcceptedWorkScopeTests
         }
         catch (ArgumentException error) when (ReferenceEquals(error, failure)) { originalExceptionThrown = true; }
         Require(originalExceptionThrown && drain is not null, "The factory lost its synchronous exception.");
-        await drain!.WaitAsync(Deadline);
+        await drain!.WaitScaledAsync(Deadline);
         RequireThrows<InvalidOperationException>(() => owner.RunAsync(() => Task.CompletedTask));
     }
 
@@ -314,7 +314,7 @@ internal sealed class AcceptedWorkScopeTests
             Require(!first.IsCompleted, "Disposal returned before accepted work completed.");
             RequireThrows<InvalidOperationException>(() => owner.RunAsync(() => Task.CompletedTask));
             release.SetResult();
-            await Task.WhenAll(first, second, work).WaitAsync(Deadline);
+            await Task.WhenAll(first, second, work).WaitScaledAsync(Deadline);
             await owner.DisposeAsync();
             await owner.DrainAsync();
         }
@@ -329,7 +329,7 @@ internal sealed class AcceptedWorkScopeTests
 
     private static async Task RequireCancelled(Task task)
     {
-        try { await task.WaitAsync(Deadline); }
+        try { await task.WaitScaledAsync(Deadline); }
         catch (OperationCanceledException) { return; }
         throw new InvalidOperationException("The observer or task did not retain its cancellation.");
     }

@@ -154,7 +154,7 @@ internal sealed class DevelopmentDirectoryTests
         Throws<InvalidOperationException>(() => source.StartWatching());
         directory.Write("index.html", "two");
         directory.Write("assets/app.css", "body{color:green}");
-        AssetSourceChangedEventArgs change = await observed.Task.WaitAsync(TimeSpan.FromSeconds(10)).ConfigureAwait(false);
+        AssetSourceChangedEventArgs change = await observed.Task.WaitScaledAsync(TimeSpan.FromSeconds(10)).ConfigureAwait(false);
         Equal(2, change.Current.Assets.Count);
         if (OperatingSystem.IsLinux())
         {
@@ -200,7 +200,7 @@ internal sealed class DevelopmentDirectoryTests
         File.Delete(Path.Combine(directory.Path, "index.html"));
         await Task.Delay(100).ConfigureAwait(false);
         directory.Write("index.html", "two");
-        await observed.Task.WaitAsync(TimeSpan.FromSeconds(10)).ConfigureAwait(false);
+        await observed.Task.WaitScaledAsync(TimeSpan.FromSeconds(10)).ConfigureAwait(false);
         Equal(expected, source.Manifest.EntryPoint.Sha256);
     }
 
@@ -220,7 +220,7 @@ internal sealed class DevelopmentDirectoryTests
 
         source.StartWatching(new AssetWatchOptions { DebounceDelay = TimeSpan.FromMilliseconds(25) });
         directory.Write("index.html", "two");
-        True(callbackEntered.Wait(TimeSpan.FromSeconds(10)));
+        True(callbackEntered.Wait(TestTimeouts.Scale(TimeSpan.FromSeconds(10))));
         Task first = Task.Run(source.Dispose);
         Task second = Task.Run(source.Dispose);
         await Task.Delay(100).ConfigureAwait(false);
@@ -246,9 +246,9 @@ internal sealed class DevelopmentDirectoryTests
         };
         source.StartWatching(new AssetWatchOptions { DebounceDelay = TimeSpan.FromMilliseconds(25) });
         directory.Write("index.html", "two");
-        await disposed.Task.WaitAsync(TimeSpan.FromSeconds(10)).ConfigureAwait(false);
+        await disposed.Task.WaitScaledAsync(TimeSpan.FromSeconds(10)).ConfigureAwait(false);
         // An external disposal after it returns too.
-        await Task.Run(source.Dispose).WaitAsync(TimeSpan.FromSeconds(10)).ConfigureAwait(false);
+        await Task.Run(source.Dispose).WaitScaledAsync(TimeSpan.FromSeconds(10)).ConfigureAwait(false);
     }
 
     [Test, DisplayName("development watcher follows the pinned root after path replacement")]
@@ -274,7 +274,7 @@ internal sealed class DevelopmentDirectoryTests
         Directory.CreateDirectory(root);
         await File.WriteAllTextAsync(Path.Combine(root, "index.html"), "replacement").ConfigureAwait(false);
         await File.WriteAllTextAsync(Path.Combine(moved, "index.html"), "two").ConfigureAwait(false);
-        await changed.Task.WaitAsync(TimeSpan.FromSeconds(5)).ConfigureAwait(false);
+        await changed.Task.WaitScaledAsync(TimeSpan.FromSeconds(5)).ConfigureAwait(false);
         Equal("two", await ReadTextAsync(source, "index.html").ConfigureAwait(false));
     }
 
@@ -358,7 +358,7 @@ internal sealed class DevelopmentDirectoryTests
             if (calls == 1)
             {
                 Task<AssetManifest> concurrentRefresh = Task.Run(() => source.RefreshAsync().AsTask());
-                concurrentRefreshCompleted = concurrentRefresh.Wait(TimeSpan.FromSeconds(2));
+                concurrentRefreshCompleted = concurrentRefresh.Wait(TestTimeouts.Scale(TimeSpan.FromSeconds(2)));
                 if (concurrentRefreshCompleted)
                 {
                     _ = concurrentRefresh.GetAwaiter().GetResult();
@@ -404,7 +404,7 @@ internal sealed class DevelopmentDirectoryTests
 
         directory.Write("index.html", "two");
         Task<AssetManifest> refresh = Task.Run(() => source.RefreshAsync().AsTask());
-        True(callbackEntered.Wait(TimeSpan.FromSeconds(2)));
+        True(callbackEntered.Wait(TestTimeouts.Scale(TimeSpan.FromSeconds(2))));
         Task firstDispose = Task.Run(source.Dispose);
         Task secondDispose = Task.Run(source.Dispose);
         await Task.Delay(100).ConfigureAwait(false);
@@ -566,7 +566,7 @@ internal sealed class DevelopmentDirectoryTests
 
     private static async Task WaitUntilAsync(Func<Task<bool>> condition)
     {
-        DateTime deadline = DateTime.UtcNow + TimeSpan.FromSeconds(10);
+        DateTime deadline = DateTime.UtcNow + TestTimeouts.Scale(TimeSpan.FromSeconds(10));
         while (!await condition().ConfigureAwait(false))
         {
             if (DateTime.UtcNow > deadline) throw new TimeoutException("The condition did not hold within 10 seconds.");

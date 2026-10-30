@@ -40,7 +40,7 @@ internal static partial class NotificationActivationSmoke
 
     private static async Task<int> ReceiveAsync(bool live)
     {
-        using var deadline = new CancellationTokenSource(TimeSpan.FromMinutes(5));
+        using var deadline = TestTimeouts.Cancellation(TimeSpan.FromMinutes(5));
         await using var notifications = Application().CreateNotifications();
         var activation = new TaskCompletionSource<DesktopNotificationActivation>(TaskCreationOptions.RunContinuationsAsynchronously);
         // Install the receiver before acquiring the application name: the bus

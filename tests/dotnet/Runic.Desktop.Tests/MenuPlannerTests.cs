@@ -348,7 +348,7 @@ public sealed class MenuWindowHostTests
         var changed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         window.MenuBarPlacementChanged += (sender, _) => { Assert.Same(window, sender); changed.TrySetResult(); };
         native.Place(DesktopMenuBarPlacement.Global);
-        await changed.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        await changed.Task.WaitScaledAsync(TimeSpan.FromSeconds(5));
         Assert.Equal(DesktopMenuBarPlacement.Global, window.MenuBarPlacement);
         // Each move is logged with the placement before and after it (event 3015).
         var moved = Assert.Single(loggers.Entries, static entry => entry.EventId.Id == 3015);
@@ -401,7 +401,7 @@ public sealed class MenuWindowHostTests
 
     private static async Task WaitAsync(Func<bool> condition)
     {
-        var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(5);
+        var deadline = DateTime.UtcNow + TestTimeouts.Scale(TimeSpan.FromSeconds(5));
         while (!condition())
         {
             if (DateTime.UtcNow > deadline) throw new TimeoutException("The condition was not met.");

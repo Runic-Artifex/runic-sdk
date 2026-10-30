@@ -58,7 +58,7 @@ internal static class ContentSecurityPolicySmoke
 
         internal async Task ExerciseAsync()
         {
-            using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+            using var deadline = TestTimeouts.Cancellation(TimeSpan.FromSeconds(30));
             await _ready.Task.WaitAsync(deadline.Token);
             // The push the Views transport (DesktopBridgeTransport) broadcasts through.
             await _surface.PushViewsMessageAsync("{\"value\":42,\"text\":\"Grüße \\u2028\"}"u8.ToArray(), deadline.Token);

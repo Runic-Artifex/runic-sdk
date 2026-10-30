@@ -268,7 +268,7 @@ public sealed class TextSpliceTests
             lock (_gate) _release?.TrySetResult();
         }
 
-        public Task WaitForHeldAsync() => _held.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        public Task WaitForHeldAsync() => _held.Task.WaitScaledAsync(TimeSpan.FromSeconds(5));
 
         public async ValueTask BroadcastAsync(ReadOnlyMemory<byte> message, CancellationToken cancellationToken = default)
         {

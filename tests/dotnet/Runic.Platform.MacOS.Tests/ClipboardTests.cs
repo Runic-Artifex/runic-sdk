@@ -76,10 +76,10 @@ internal sealed class ClipboardTests
         using var process = Process.Start(new ProcessStartInfo(file) { RedirectStandardInput = input is not null, RedirectStandardOutput = true })!;
         if (input is not null) { process.StandardInput.Write(input); process.StandardInput.Close(); }
         Task<string> outputTask = process.StandardOutput.ReadToEndAsync();
-        if (!process.WaitForExit(15000))
+        if (!process.WaitForExit(TestTimeouts.Scale(15000)))
         {
             process.Kill(entireProcessTree: true);
-            process.WaitForExit(5000);
+            process.WaitForExit(TestTimeouts.Scale(5000));
             throw new TimeoutException("External clipboard observer did not exit within 15 seconds.");
         }
         string output = outputTask.GetAwaiter().GetResult();

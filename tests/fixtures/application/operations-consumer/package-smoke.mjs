@@ -5,7 +5,7 @@ import { cp, lstat, mkdtemp, readFile, readdir, realpath, rm, writeFile } from "
 import { homedir, tmpdir } from "node:os";
 import { join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { launchChromium, tail, waitFor, waitForExit } from "../../../../examples/shared/smoke.mjs";
+import { launchChromium, scaled, tail, waitFor, waitForExit } from "../../../../examples/shared/smoke.mjs";
 
 const sdk = fileURLToPath(new URL("../../../../", import.meta.url));
 const fixture = fileURLToPath(new URL(".", import.meta.url));
@@ -131,7 +131,7 @@ try {
       await wait(() => stdout.includes("OPERATIONS_CONTENT_CLOSE_COMPLETED") && stdout.includes("OPERATIONS_DISPOSE_PENDING"), "scope disposal awaiting actual accepted recovery");
       host.stdin.write("release\n");
       await wait(() => stdout.includes("OPERATIONS_ACCEPTED_WORK_DRAINED"), "actual accepted recovery drain");
-      assert.ok(await waitForExit(host, 10_000), "Consumer did not stop after draining.");
+      assert.ok(await waitForExit(host, scaled(10_000)), "Consumer did not stop after draining.");
       assert.equal(host.exitCode, 0, `Consumer failed: ${stderr}`);
     }
     assert.match(stdout, /OPERATIONS_ACCEPTED_WORK_DRAINED/);
@@ -142,7 +142,7 @@ try {
   finally {
     if (host && host.exitCode === null && host.signalCode === null) {
       host.kill("SIGTERM");
-      if (!await waitForExit(host, 3_000)) host.kill("SIGKILL");
+      if (!await waitForExit(host, scaled(3_000))) host.kill("SIGKILL");
     }
     await Promise.all(candidateEntries.map(entry => rm(entry, { recursive: true, force: true })));
     if (args.includes("--keep")) console.log(`Kept ${directory}`);

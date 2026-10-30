@@ -49,7 +49,7 @@ public sealed class WindowGenerationTests
         var original = factory.Hosts[0];
         original.ReleaseMutation = new(TaskCreationOptions.RunContinuationsAsynchronously);
         var resize = first.ResizeAsync(20, 30).AsTask();
-        await original.MutationEntered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        await original.MutationEntered.Task.WaitScaledAsync(TimeSpan.FromSeconds(5));
         var queued = first.MoveAsync(40, 50).AsTask();
         var close = first.CloseAsync().AsTask();
         var replacement = surface.OpenWindowAsync(new() { Browser = BrowserKind.Embedded }).AsTask();
@@ -60,10 +60,10 @@ public sealed class WindowGenerationTests
             Assert.Single(factory.Hosts);
         }
         finally { original.ReleaseMutation.TrySetResult(); }
-        await resize.WaitAsync(TimeSpan.FromSeconds(5));
+        await resize.WaitScaledAsync(TimeSpan.FromSeconds(5));
         await Assert.ThrowsAsync<ObjectDisposedException>(() => queued);
-        await close.WaitAsync(TimeSpan.FromSeconds(5));
-        await using var second = await replacement.WaitAsync(TimeSpan.FromSeconds(5));
+        await close.WaitScaledAsync(TimeSpan.FromSeconds(5));
+        await using var second = await replacement.WaitScaledAsync(TimeSpan.FromSeconds(5));
         Assert.Equal(1, original.Mutations);
         Assert.Equal(0, factory.Hosts[1].Mutations);
     }
@@ -109,7 +109,7 @@ public sealed class WindowGenerationTests
         var native = factory.Hosts[0];
         native.ReleaseMutation = new(TaskCreationOptions.RunContinuationsAsynchronously);
         var resize = window.ResizeAsync(20, 30).AsTask();
-        await native.MutationEntered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        await native.MutationEntered.Task.WaitScaledAsync(TimeSpan.FromSeconds(5));
         var queued = window.FocusAsync().AsTask();
         var open = surface.OpenWindowAsync(new() { Browser = BrowserKind.Embedded }).AsTask();
         var dispose = surface.DisposeAsync().AsTask();
@@ -119,10 +119,10 @@ public sealed class WindowGenerationTests
             Assert.True(native.IsOpen);
         }
         finally { native.ReleaseMutation.TrySetResult(); }
-        await resize.WaitAsync(TimeSpan.FromSeconds(5));
+        await resize.WaitScaledAsync(TimeSpan.FromSeconds(5));
         await Assert.ThrowsAsync<ObjectDisposedException>(() => queued);
         await Assert.ThrowsAsync<ObjectDisposedException>(() => open);
-        await dispose.WaitAsync(TimeSpan.FromSeconds(5));
+        await dispose.WaitScaledAsync(TimeSpan.FromSeconds(5));
         Assert.False(native.IsOpen);
         Assert.Equal(1, native.Mutations);
         await Assert.ThrowsAsync<ObjectDisposedException>(() => window.MoveAsync(1, 2).AsTask());

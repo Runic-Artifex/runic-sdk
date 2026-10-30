@@ -75,7 +75,7 @@ internal static partial class MacOsDocumentsSmoke
         Pass($"Runic's Open Recent lists the noted document with its icon above Clear Menu ({Describe(menu)}).");
 
         await MacOsMainThread.InvokeAsync(() => Arg(OpenRecentMenu(), Sel("performActionForItemAtIndex:"), index), CancellationToken.None);
-        var request = await opened.Task.WaitAsync(StepTimeout);
+        var request = await opened.Task.WaitScaledAsync(StepTimeout);
         Expect(request.Items.Length == 1, $"the open request has one item: {string.Join(",", request.Items)}");
         var item = request.Items[0];
         Expect(item.IsFile && item.LocalPath.EndsWith("/" + name + ".txt", StringComparison.Ordinal), $"the open request is the document: {item}");
@@ -159,7 +159,7 @@ internal static partial class MacOsDocumentsSmoke
 
     private static async Task WaitAsync(Func<Task<bool>> check, string description, Func<string>? detail = null)
     {
-        var deadline = DateTime.UtcNow + StepTimeout;
+        var deadline = DateTime.UtcNow + TestTimeouts.Scale(StepTimeout);
         while (!await check())
         {
             if (DateTime.UtcNow > deadline) throw new TimeoutException($"Documents: expected {description}. {detail?.Invoke()}");

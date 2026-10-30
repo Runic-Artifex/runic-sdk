@@ -142,7 +142,7 @@ internal static partial class MonitorSmoke
 
     private static async Task CheckWatchAsync(DesktopHost host, ImmutableArray<DesktopMonitor> monitors)
     {
-        using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(60));
+        using var cancellation = TestTimeouts.Cancellation(TimeSpan.FromSeconds(60));
         await using var watch = host.Monitors.WatchAsync(cancellation.Token).GetAsyncEnumerator(cancellation.Token);
         Require(await watch.MoveNextAsync(), "the watch reports");
         if (watch.Current is not PlatformResult<ImmutableArray<DesktopMonitor>>.Success { Value: var first })
@@ -207,9 +207,14 @@ internal static partial class MonitorSmoke
         throw new InvalidOperationException($"Monitors: {what} did not throw {typeof(T).Name}.");
     }
 
-    private static async Task<DesktopWindowState> WaitForAsync(DesktopWindow window, Func<DesktopWindowState, bool> condition, string expected) =>
-        await TryWaitForAsync(window, condition, Deadline)
+    private static async Task<DesktopWindowState> WaitForAsync(DesktopWindow window, Func<DesktopWindowState, bool> condition, string expected)
+    {
+        var wait = TestTimeouts.Start(Deadline);
+        var state = await TryWaitForAsync(window, condition, wait.Limit)
             ?? throw new TimeoutException($"Monitors: the window did not report {expected}; last state: {window.State?.ToString() ?? "<none>"}.");
+        wait.Succeeded();
+        return state;
+    }
 
     private static async Task<DesktopWindowState?> TryWaitForAsync(DesktopWindow window, Func<DesktopWindowState, bool> condition, TimeSpan timeout)
     {

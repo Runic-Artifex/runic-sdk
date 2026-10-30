@@ -194,7 +194,7 @@ internal sealed class ProducerScenarioRunner
 
     private static async Task<ScenarioMessage> NextAsync(ScenarioConnection connection, string expected)
     {
-        using var timeout = new CancellationTokenSource(ReceiveTimeout);
+        using var timeout = TestTimeouts.Cancellation(ReceiveTimeout);
         try { return await connection.Messages.Reader.ReadAsync(timeout.Token).ConfigureAwait(false); }
         catch (OperationCanceledException)
         {

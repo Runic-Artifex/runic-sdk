@@ -49,7 +49,7 @@ internal sealed class DesktopPortalTests
         await using var settings = new PortalDesktopSettings(destination: connection.UniqueName!);
         var result = await settings.ReadAsync();
         Check(result is PlatformResult<DesktopAppearance>.Success { Value.ColorScheme: DesktopColorScheme.Dark, Value.HighContrast: true, Value.ReducedMotion: null, Value.AccentColor.Red: 0.25 }, "native preference variants and unknown optional values");
-        using (var watching = new CancellationTokenSource(TimeSpan.FromSeconds(15)))
+        using (var watching = TestTimeouts.Cancellation(TimeSpan.FromSeconds(15)))
         {
             await using var watch = settings.WatchAsync(watching.Token).GetAsyncEnumerator(watching.Token);
             Check(await watch.MoveNextAsync() && watch.Current is PlatformResult<DesktopAppearance>.Success { Value.ColorScheme: DesktopColorScheme.Dark }, "initial watched preference");
@@ -76,14 +76,14 @@ internal sealed class DesktopPortalTests
         notifications.Activated += (_, activation) => activated.TrySetResult(activation);
         Check(await notifications.RequestPermissionAsync() is PlatformResult<PlatformUnit>.Success, "notification backend capability");
         Check(await notifications.ShowAsync(new("saved", "Saved", "Body") { Actions = [new("open", "Open result")] }) is PlatformResult<PlatformUnit>.Success, "notification submission");
-        Check((await activated.Task.WaitAsync(TimeSpan.FromSeconds(3))).ActionId == "open", "action arriving before method reply is routed");
+        Check((await activated.Task.WaitScaledAsync(TimeSpan.FromSeconds(3))).ActionId == "open", "action arriving before method reply is routed");
         Check(await notifications.RemoveAsync("saved") is PlatformResult<PlatformUnit>.Success && service.Removed == "saved", "notification removal");
         for (int i = 0; i < 80; i++)
             Check(await notifications.ShowAsync(new($"bulk-{i}", "Bulk", "Body")) is PlatformResult<PlatformUnit>.Success, "unremoved notifications evict the oldest routing entry");
         var latest = new TaskCompletionSource<DesktopNotificationActivation>(TaskCreationOptions.RunContinuationsAsynchronously);
         notifications.Activated += (_, activation) => { if (activation.NotificationId == "latest") latest.TrySetResult(activation); };
         Check(await notifications.ShowAsync(new("latest", "Latest", "Body") { Actions = [new("open", "Open result")] }) is PlatformResult<PlatformUnit>.Success, "submission after eviction");
-        Check((await latest.Task.WaitAsync(TimeSpan.FromSeconds(3))).ActionId == "open", "recent notification actions still route after eviction");
+        Check((await latest.Task.WaitScaledAsync(TimeSpan.FromSeconds(3))).ActionId == "open", "recent notification actions still route after eviction");
         service.Deny = true;
         Check(await notifications.ShowAsync(new("denied", "Title", "Body")) is PlatformResult<PlatformUnit>.Failed
         {
@@ -123,7 +123,7 @@ internal sealed class DesktopPortalTests
         Check(await installed.RequestPermissionAsync() is PlatformResult<PlatformUnit>.Success, "installed application name acquired");
         Check(service.RegisteredId == appId && service.Calls is ["Register", "Get"], "host identity registered before notification capability call");
         await connection.CallMethodAsync(Activation(connection, appId));
-        var received = await cold.Task.WaitAsync(TimeSpan.FromSeconds(3));
+        var received = await cold.Task.WaitScaledAsync(TimeSpan.FromSeconds(3));
         Check(received is { NotificationId: "previous-process", ActionId: "open", PlatformContext: { ActivationToken: "test-wayland-token", StartupId: "test-x11-id" } }, "cold activation preserves platform context across worker dispatch");
         Check(!received.ToString().Contains("test-wayland-token", StringComparison.Ordinal), "activation diagnostics do not expose focus tokens");
         // SEC-09: any session-bus peer can call ActivateAction. An unknown notification is untrusted and keeps only a link
@@ -134,7 +134,7 @@ internal sealed class DesktopPortalTests
         async Task<DesktopNotificationActivation> ActivateAsync(string target)
         {
             await connection.CallMethodAsync(Activation(connection, appId, target));
-            return await activations.Reader.ReadAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(3));
+            return await activations.Reader.ReadAsync().AsTask().WaitScaledAsync(TimeSpan.FromSeconds(3));
         }
         Check(await ActivateAsync("previous-process\nopen\nhttps://example.org/news") is { IsTrusted: false, ActivationUri.AbsoluteUri: "https://example.org/news" },
             "an unmatched activation keeps an https link");
@@ -143,7 +143,7 @@ internal sealed class DesktopPortalTests
         Check(await installed.ShowAsync(new("shown", "Shown", "Body") { Actions = [new("open", "Open")], ActivationUri = new Uri("runic-test://result/2") })
             is PlatformResult<PlatformUnit>.Success, "installed notification submission");
         // The fake portal invokes the action at once, through the portal path.
-        Check(await activations.Reader.ReadAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(3)) is { IsTrusted: true, ActivationUri.AbsoluteUri: "runic-test://result/2" },
+        Check(await activations.Reader.ReadAsync().AsTask().WaitScaledAsync(TimeSpan.FromSeconds(3)) is { IsTrusted: true, ActivationUri.AbsoluteUri: "runic-test://result/2" },
             "a portal action of a shown notification is trusted");
         Check(await ActivateAsync("shown\nopen\nhttps://evil.example/") is { IsTrusted: true, NotificationId: "shown", ActivationUri.AbsoluteUri: "runic-test://result/2" },
             "a forged link for a shown notification is replaced by the application's own");

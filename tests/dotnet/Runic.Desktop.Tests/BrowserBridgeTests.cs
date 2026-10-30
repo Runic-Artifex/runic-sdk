@@ -23,7 +23,7 @@ public sealed class BrowserBridgeTests
             return;
         }
 
-        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(20));
+        using var timeout = TestTimeouts.Cancellation(TimeSpan.FromSeconds(20));
         await using var window = new WebUiWindow();
         var pageObserved = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         window.SetFileHandler(async (path, cancellationToken) =>
@@ -105,7 +105,7 @@ public sealed class BrowserBridgeTests
             finally
             {
                 await browserOutputLifetime.CancelAsync();
-                output.WriteLine(await browserErrors.WaitAsync(TimeSpan.FromSeconds(5)));
+                output.WriteLine(await browserErrors.WaitScaledAsync(TimeSpan.FromSeconds(5)));
             }
             output.WriteLine("Chromium stopped; removing its profile.");
             await BrowserTestProfile.DeleteAsync(profile.FullName, TimeSpan.FromSeconds(10));
@@ -125,7 +125,7 @@ public sealed class BrowserBridgeTests
         }
 
         const string Policy = "default-src 'self'; script-src 'self'; object-src 'none'; base-uri 'self'";
-        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(20));
+        using var timeout = TestTimeouts.Cancellation(TimeSpan.FromSeconds(20));
         await using var window = new WebUiWindow();
         window.SetFileHandler((path, _) => ValueTask.FromResult<WebUiContent?>(path switch
         {
@@ -174,7 +174,7 @@ public sealed class BrowserBridgeTests
             finally
             {
                 await browserOutputLifetime.CancelAsync();
-                output.WriteLine(await browserErrors.WaitAsync(TimeSpan.FromSeconds(5)));
+                output.WriteLine(await browserErrors.WaitScaledAsync(TimeSpan.FromSeconds(5)));
             }
             await BrowserTestProfile.DeleteAsync(profile.FullName, TimeSpan.FromSeconds(10));
         }
@@ -192,7 +192,7 @@ public sealed class BrowserBridgeTests
         }
 
         const string Policy = "default-src 'self'; script-src 'self'; object-src 'none'; base-uri 'self'";
-        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(20));
+        using var timeout = TestTimeouts.Cancellation(TimeSpan.FromSeconds(20));
         await using var window = new WebUiWindow();
         window.SetFileHandler((path, _) => ValueTask.FromResult<WebUiContent?>(path switch
         {
@@ -239,7 +239,7 @@ public sealed class BrowserBridgeTests
             finally
             {
                 await browserOutputLifetime.CancelAsync();
-                output.WriteLine(await browserErrors.WaitAsync(TimeSpan.FromSeconds(5)));
+                output.WriteLine(await browserErrors.WaitScaledAsync(TimeSpan.FromSeconds(5)));
             }
             await BrowserTestProfile.DeleteAsync(profile.FullName, TimeSpan.FromSeconds(10));
         }
@@ -259,7 +259,7 @@ public sealed class BrowserBridgeTests
         }
 
         const string Policy = "default-src 'self'; script-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'";
-        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(20));
+        using var timeout = TestTimeouts.Cancellation(TimeSpan.FromSeconds(20));
         await using var window = new WebUiWindow();
         window.SetFileHandler((path, _) => ValueTask.FromResult<WebUiContent?>(path switch
         {
@@ -327,7 +327,7 @@ public sealed class BrowserBridgeTests
             finally
             {
                 await browserOutputLifetime.CancelAsync();
-                output.WriteLine(await browserErrors.WaitAsync(TimeSpan.FromSeconds(5)));
+                output.WriteLine(await browserErrors.WaitScaledAsync(TimeSpan.FromSeconds(5)));
             }
             await BrowserTestProfile.DeleteAsync(profile.FullName, TimeSpan.FromSeconds(10));
         }
@@ -402,7 +402,7 @@ public sealed class BrowserBridgeTests
             // Ask the browser to close its own renderer/utility processes first.
             // Killing the process tree while Chromium is spawning children is
             // platform-dependent and can prevent test cleanup from returning.
-            using var shutdown = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+            using var shutdown = TestTimeouts.Cancellation(TimeSpan.FromSeconds(5));
             var lines = await File.ReadAllLinesAsync(Path.Combine(profile, "DevToolsActivePort"), shutdown.Token);
             if (lines.Length < 2) throw new IOException("Chromium has not published its browser endpoint.");
             using var socket = new ClientWebSocket();
@@ -422,7 +422,7 @@ public sealed class BrowserBridgeTests
             // Avoid synchronous process-tree enumeration on macOS. Chromium's
             // children also monitor the browser process for parent termination.
             process.Kill(entireProcessTree: !OperatingSystem.IsMacOS());
-            await process.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(5));
+            await process.WaitForExitAsync().WaitScaledAsync(TimeSpan.FromSeconds(5));
         }
     }
 

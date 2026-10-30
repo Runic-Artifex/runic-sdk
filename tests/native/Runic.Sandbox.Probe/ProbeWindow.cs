@@ -73,7 +73,7 @@ internal static class ProbeWindow
 
     internal static async Task<string> ScriptAsync(DesktopSurface surface, string script)
     {
-        using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(20));
+        using var deadline = TestTimeouts.Cancellation(TimeSpan.FromSeconds(20));
         return await surface.ExecuteJavaScriptAsync(script, deadline.Token);
     }
 

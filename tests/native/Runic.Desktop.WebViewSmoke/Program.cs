@@ -248,7 +248,7 @@ static async Task RunWindowsUiAutomationSmokeAsync()
 
     var picker = WindowsPlatformProvider.CreateFileDialogs(new WindowPickerOwner(window));
     Console.WriteLine("Windows UI Automation surface is ready.");
-    using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(180));
+    using var deadline = TestTimeouts.Cancellation(TimeSpan.FromSeconds(180));
     while (true)
     {
         string finished = await surface.ExecuteJavaScriptAsync(
@@ -557,7 +557,7 @@ static async Task ExerciseFirstWindowAsync(DesktopSurface surface, DesktopWindow
 
 static async Task ExerciseCloseGuardAsync(DesktopSurface surface, DesktopWindow window, SmokeCloseGuard guard)
 {
-    using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(20));
+    using var timeout = TestTimeouts.Cancellation(TimeSpan.FromSeconds(20));
     if (!window.Capabilities.HasFlag(DesktopWindowCapabilities.CloseConfirmation))
         throw new InvalidOperationException("The native host did not advertise close confirmation.");
     var closedEvents = 0;
@@ -747,7 +747,7 @@ internal static class SmokeSoak
             }
         }
         else await surface.NavigateAsync(original[1]);
-        using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(20));
+        using var deadline = TestTimeouts.Cancellation(TimeSpan.FromSeconds(20));
         string? lastValue = null;
         Exception? lastError = null;
         while (true)
@@ -835,14 +835,14 @@ internal static partial class GtkWidgetLifetime
                 throw new InvalidOperationException("GTK lifetime observation could not be scheduled.");
             }
         }
-        await request.Completion.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        await request.Completion.Task.WaitScaledAsync(TimeSpan.FromSeconds(5));
     }
 
     internal static async Task AssertReleasedAsync()
     {
         if (!OperatingSystem.IsLinux()) return;
         var elapsed = System.Diagnostics.Stopwatch.StartNew();
-        while (Volatile.Read(ref _finalized) != Volatile.Read(ref _observed) && elapsed.Elapsed < TimeSpan.FromSeconds(5))
+        while (Volatile.Read(ref _finalized) != Volatile.Read(ref _observed) && elapsed.Elapsed < TestTimeouts.Scale(TimeSpan.FromSeconds(5)))
             await Task.Delay(10);
         if (_observed == 0 || _observed != _finalized)
             throw new InvalidOperationException($"GTK widgets survived window disposal: observed {_observed}, finalized {_finalized}.");

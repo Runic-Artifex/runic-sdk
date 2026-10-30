@@ -119,7 +119,7 @@ public sealed class WebUiHandshakeStateTests
         await using var silent = await SilentSessionAsync(window, socket);
 
         Assert.True(silent.TryYieldSilentHandshake());
-        Assert.True(SpinWait.SpinUntil(() => socket.State == WebSocketState.CloseSent, TimeSpan.FromSeconds(10)),
+        Assert.True(SpinWait.SpinUntil(() => socket.State == WebSocketState.CloseSent, TestTimeouts.Scale(TimeSpan.FromSeconds(10))),
             $"The expired socket was not closed; it is {socket.State}.");
     }
 

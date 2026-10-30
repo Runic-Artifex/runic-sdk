@@ -44,7 +44,7 @@ internal sealed class MacAppearanceNativeTests
     private static async Task LiveDarkModeAsync(IDesktopSettings settings, CancellationToken cancellationToken)
     {
         using var watching = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        watching.CancelAfter(TimeSpan.FromSeconds(60));
+        watching.CancelAfter(TestTimeouts.Scale(TimeSpan.FromSeconds(60)));
         await using var watch = settings.WatchAsync(watching.Token).GetAsyncEnumerator(watching.Token);
         Require(await watch.MoveNextAsync() && watch.Current is PlatformResult<DesktopAppearance>.Success { Value.ColorScheme: DesktopColorScheme.Light },
             $"The watch did not start in light mode: {watch.Current}.");
@@ -56,7 +56,7 @@ internal sealed class MacAppearanceNativeTests
                 SetDarkMode(dark);
                 while (true)
                 {
-                    Require(await watch.MoveNextAsync().AsTask().WaitAsync(Step - started.Elapsed, watching.Token), "The watch ended.");
+                    Require(await watch.MoveNextAsync().AsTask().WaitScaledAsync(Step - started.Elapsed, watching.Token), "The watch ended.");
                     if (watch.Current is PlatformResult<DesktopAppearance>.Success { Value.ColorScheme: var scheme } && scheme == expected) break;
                 }
                 Console.WriteLine($"PASS macOS live appearance: dark mode {dark} reached WatchAsync as {expected} after {started.ElapsedMilliseconds} ms.");

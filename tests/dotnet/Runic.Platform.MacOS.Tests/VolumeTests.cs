@@ -171,7 +171,7 @@ internal sealed partial class VolumeTests
     {
         var source = new FakeSource { Disks = Layout };
         await using var volumes = new MacVolumes(source, TimeSpan.Zero);
-        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+        using var timeout = TestTimeouts.Cancellation(TimeSpan.FromSeconds(30));
         await using (var watch = volumes.WatchAsync(timeout.Token).GetAsyncEnumerator(timeout.Token))
         {
             Check(await Next(watch) is DesktopVolumeChange.Snapshot { Volumes.Length: 9 }, "a snapshot comes first");
@@ -204,7 +204,7 @@ internal sealed partial class VolumeTests
         await Task.Delay(100);
         Check(!waiting.IsCompleted, "and then waits");
         await unavailable.DisposeAsync();
-        try { await waiting.WaitAsync(TimeSpan.FromSeconds(10)); throw new InvalidOperationException("Volume check failed: the watch continued after disposal."); }
+        try { await waiting.WaitScaledAsync(TimeSpan.FromSeconds(10)); throw new InvalidOperationException("Volume check failed: the watch continued after disposal."); }
         catch (OperationCanceledException) { }
     }
 
@@ -221,7 +221,7 @@ internal sealed partial class VolumeTests
         Directory.CreateDirectory(root);
         var attached = new List<string>();
         var volumes = MacOSPlatformProvider.CreateVolumes();
-        using var timeout = new CancellationTokenSource(TimeSpan.FromMinutes(4));
+        using var timeout = TestTimeouts.Cancellation(TimeSpan.FromMinutes(4));
         var changes = Channel.CreateUnbounded<PlatformResult<DesktopVolumeChange>>();
         var watching = Task.Run(async () =>
         {
@@ -350,7 +350,7 @@ internal sealed partial class VolumeTests
         await Task.Delay(TimeSpan.FromSeconds(2), token);
         Console.WriteLine($"Locked {encrypted.Id}: {source.DescribeForTest(encrypted.Id)}");
         using var wait = CancellationTokenSource.CreateLinkedTokenSource(token);
-        wait.CancelAfter(TimeSpan.FromSeconds(30));
+        wait.CancelAfter(TestTimeouts.Scale(TimeSpan.FromSeconds(30)));
         DesktopVolume locked;
         try { locked = await WaitForAsync(changes, v => v.Id == encrypted.Id && v.IsLocked, wait.Token); }
         catch (OperationCanceledException) when (!token.IsCancellationRequested)
@@ -464,7 +464,7 @@ internal sealed partial class VolumeTests
     {
         var seen = new List<string>();
         using var wait = CancellationTokenSource.CreateLinkedTokenSource(token);
-        wait.CancelAfter(TimeSpan.FromMinutes(1));
+        wait.CancelAfter(TestTimeouts.Scale(TimeSpan.FromMinutes(1)));
         try
         {
             while (true)

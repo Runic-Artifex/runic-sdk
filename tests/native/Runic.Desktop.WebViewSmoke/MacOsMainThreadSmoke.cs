@@ -27,16 +27,16 @@ internal static partial class MacOsMainThreadSmoke
         DesktopEventLoop.Run(async () =>
         {
             Expect(PthreadMainNp() == 0, "the application's work runs off the main thread");
-            var onMain = await DesktopEventLoop.InvokeOnMainThreadAsync(static () => PthreadMainNp() != 0).AsTask().WaitAsync(StepTimeout);
+            var onMain = await DesktopEventLoop.InvokeOnMainThreadAsync(static () => PthreadMainNp() != 0).AsTask().WaitScaledAsync(StepTimeout);
             Expect(onMain, "the work ran on the process main thread");
             var title = await DesktopEventLoop.InvokeOnMainThreadAsync(static () =>
-                Text(Send(Send(Send(Class("NSRunningApplication"), Sel("currentApplication")), Sel("localizedName")), Sel("description")))).AsTask().WaitAsync(StepTimeout);
+                Text(Send(Send(Send(Class("NSRunningApplication"), Sel("currentApplication")), Sel("localizedName")), Sel("description")))).AsTask().WaitScaledAsync(StepTimeout);
             Pass($"without a window, the work runs on the main thread and a Func<T> returns its value ({title}).");
 
             var thrown = new InvalidOperationException("thrown on the main thread");
             try
             {
-                await DesktopEventLoop.InvokeOnMainThreadAsync(() => throw thrown).AsTask().WaitAsync(StepTimeout);
+                await DesktopEventLoop.InvokeOnMainThreadAsync(() => throw thrown).AsTask().WaitScaledAsync(StepTimeout);
                 Expect(false, "the exception reached the caller");
             }
             catch (InvalidOperationException error) when (ReferenceEquals(error, thrown)) { }
@@ -51,8 +51,8 @@ internal static partial class MacOsMainThreadSmoke
                 var busy = DesktopEventLoop.InvokeOnMainThreadAsync(static () => Thread.Sleep(1000)).AsTask();
                 using var later = new CancellationTokenSource(TimeSpan.FromMilliseconds(200));
                 await ExpectCancelledAsync(() => DesktopEventLoop.InvokeOnMainThreadAsync(() => { ran = true; }, later.Token));
-                await busy.WaitAsync(StepTimeout);
-                await DesktopEventLoop.InvokeOnMainThreadAsync(static () => { }).AsTask().WaitAsync(StepTimeout);
+                await busy.WaitScaledAsync(StepTimeout);
+                await DesktopEventLoop.InvokeOnMainThreadAsync(static () => { }).AsTask().WaitScaledAsync(StepTimeout);
                 Expect(!ran, "cancelled work did not run");
             }
             Pass("cancellation before the work starts cancels the task, and the work never runs.");
@@ -66,7 +66,7 @@ internal static partial class MacOsMainThreadSmoke
     {
         try
         {
-            await call().AsTask().WaitAsync(StepTimeout);
+            await call().AsTask().WaitScaledAsync(StepTimeout);
             Expect(false, "the cancelled call was cancelled");
         }
         catch (OperationCanceledException) { }
@@ -84,7 +84,7 @@ internal static partial class MacOsMainThreadSmoke
         using var dismiss = new CancellationTokenSource();
         ImmutableArray<DesktopMenuEntry> items = [new DesktopMenuItem("Item", "item")];
         var menu = window.ShowContextMenuAsync(items, new DesktopContextMenuOptions { X = 40, Y = 30 }, dismiss.Token).AsTask();
-        var deadline = DateTime.UtcNow + StepTimeout;
+        var deadline = DateTime.UtcNow + TestTimeouts.Scale(StepTimeout);
         while (Runic.Desktop.Internal.MacOsWkWebViewHost.TrackingContextMenu == 0)
         {
             Expect(DateTime.UtcNow < deadline, "a context menu tracks");
@@ -92,9 +92,9 @@ internal static partial class MacOsMainThreadSmoke
         }
         await Task.Delay(300);
         var (mode, tracking) = await DesktopEventLoop.InvokeOnMainThreadAsync(static () =>
-            (CurrentRunLoopMode(), Runic.Desktop.Internal.MacOsWkWebViewHost.TrackingContextMenu != 0)).AsTask().WaitAsync(StepTimeout);
+            (CurrentRunLoopMode(), Runic.Desktop.Internal.MacOsWkWebViewHost.TrackingContextMenu != 0)).AsTask().WaitScaledAsync(StepTimeout);
         dismiss.Cancel();
-        try { await menu.WaitAsync(StepTimeout); }
+        try { await menu.WaitScaledAsync(StepTimeout); }
         catch (OperationCanceledException) { }
         Expect(tracking && mode is not (null or "kCFRunLoopDefaultMode"), $"the work ran while the menu tracked, in mode {mode ?? "(none)"}");
         Pass($"work requested while a context menu tracks runs during the tracking ({mode}).");

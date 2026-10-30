@@ -6,13 +6,13 @@ import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-const configuredScale = Number(process.env.RUNIC_SMOKE_TIMEOUT_SCALE || 1);
-if (!Number.isFinite(configuredScale) || configuredScale <= 0)
-  throw new Error(`RUNIC_SMOKE_TIMEOUT_SCALE must be a positive number, got ${process.env.RUNIC_SMOKE_TIMEOUT_SCALE}.`);
+import { reportIfSlow, scaled, startWait, timeoutScale } from "../../tests/support/timeouts.mjs";
 
-/** Multiplies every smoke timeout; set RUNIC_SMOKE_TIMEOUT_SCALE on slow runners. */
-export const timeoutScale = configuredScale;
-export const scaled = milliseconds => Math.ceil(milliseconds * timeoutScale);
+/**
+ * Every smoke timeout is a condition wait scaled by RUNIC_TEST_TIMEOUT_SCALE (tests/support/timeouts.mjs; CI sets
+ * it per runner). A wait that passes only after its unscaled time is reported as a warning.
+ */
+export { reportIfSlow, scaled, startWait, timeoutScale };
 export const pause = milliseconds => new Promise(resolve => setTimeout(resolve, milliseconds));
 
 /** The last `limit` characters of process output. */
@@ -64,7 +64,7 @@ async function collectDetail(detail) {
 export async function waitFor(condition, { timeout = 12_000, attemptTimeout, interval = 50, label = "the condition", detail } = {}) {
   const limit = scaled(timeout), minimumAttempt = scaled(1_000);
   const attemptLimit = attemptTimeout === undefined ? Infinity : scaled(attemptTimeout);
-  const started = performance.now(), deadline = Date.now() + limit;
+  const started = performance.now(), deadline = Date.now() + limit, wait = startWait(timeout, label);
   let attempts = 0, unsettled = 0, lastValue, lastError;
   while (true) {
     attempts++;
@@ -72,7 +72,10 @@ export async function waitFor(condition, { timeout = 12_000, attemptTimeout, int
     try {
       const value = await within(Promise.resolve(attempt.signal).then(condition),
         Math.min(Math.max(deadline - Date.now(), minimumAttempt), attemptLimit), "attempt");
-      if (value) return value;
+      if (value) {
+        wait.succeeded();
+        return value;
+      }
       lastValue = value;
     } catch (error) {
       lastError = error;
@@ -100,7 +103,7 @@ function exited(child) {
   return child.exitCode !== null || child.signalCode !== null;
 }
 
-/** Resolves true once `child` exits, or false after `milliseconds` (not scaled). */
+/** Resolves true once `child` exits, or false after `milliseconds` (not scaled; pass `scaled(...)` for a condition wait). */
 export function waitForExit(child, milliseconds) {
   if (exited(child)) return Promise.resolve(true);
   return new Promise(resolve => {
@@ -187,7 +190,9 @@ async function startChromium(url, profilePrefix, webSocketEvents) {
       const response = new Promise((resolve, reject) => pending.set(id, { resolve, reject }));
       try {
         socket.send(JSON.stringify({ id, method, params }));
-        const message = await within(response, scaled(commandTimeout), `DevTools ${method}`);
+        const wait = startWait(commandTimeout, `DevTools ${method}`);
+        const message = await within(response, wait.limit, `DevTools ${method}`);
+        wait.succeeded();
         if (message.error || message.result?.exceptionDetails) throw new Error(JSON.stringify(message));
         return message.result;
       } finally { pending.delete(id); }
@@ -217,10 +222,10 @@ async function startChromium(url, profilePrefix, webSocketEvents) {
       closed = true;
       socket?.close();
       if (!exited(child)) {
-        const graceful = waitForExit(child, 3_000);
+        const graceful = waitForExit(child, scaled(3_000));
         child.kill("SIGTERM");
         if (!await graceful) {
-          const forced = waitForExit(child, 3_000);
+          const forced = waitForExit(child, scaled(3_000));
           killTree(child);
           if (!await forced) throw new Error(`Chromium did not exit after SIGKILL; its profile ${profile} was left for runner cleanup.`);
         }

@@ -206,7 +206,7 @@ internal sealed partial class StatusIconTests
         Post(second, WindowsStatusIcon.CallbackMessage, 0, WindowsShellInterop.NIN_SELECT | WindowsStatusIcon.IconId << 16);
         Check(await Next(activations) is { Kind: DesktopStatusIconActivationKind.Primary }, "the new window raises activations");
 
-        await icon.DisposeAsync().AsTask().WaitAsync(Wait);
+        await icon.DisposeAsync().AsTask().WaitScaledAsync(Wait);
         Check(await WaitForAsync(() => PInvoke.IsWindow((HWND)second) ? 0 : 1) == 1, "disposal destroys the window");
         Check(!added || Notify(WindowsShellInterop.NIM_MODIFY, second) == 0, "disposal removes the icon");
         Console.WriteLine($"PASS native Windows status icon ({(added ? "in the notification area" : "without a taskbar")}): "
@@ -328,11 +328,11 @@ internal sealed partial class StatusIconTests
     }
 
     private static async Task<DesktopStatusIconActivation> Next(Channel<DesktopStatusIconActivation> activations) =>
-        await activations.Reader.ReadAsync().AsTask().WaitAsync(Wait);
+        await activations.Reader.ReadAsync().AsTask().WaitScaledAsync(Wait);
 
     private static async Task<nint> WaitForAsync(Func<nint> probe)
     {
-        var deadline = DateTime.UtcNow + Wait;
+        var deadline = DateTime.UtcNow + TestTimeouts.Scale(Wait);
         while (true)
         {
             nint value = probe();

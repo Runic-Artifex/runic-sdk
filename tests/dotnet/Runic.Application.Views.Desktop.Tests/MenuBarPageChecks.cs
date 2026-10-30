@@ -69,7 +69,7 @@ internal sealed class MenuBarPageChecks
         var newCommand = new TestCommand();
         using var applicationMenu = host.UseApplicationMenu(new Dictionary<string, ICommand> { ["file.new"] = newCommand });
         var window = await host.OpenWindowAsync<MenuWindow>();
-        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(20));
+        using var timeout = TestTimeouts.Cancellation(TimeSpan.FromSeconds(20));
         var cancellation = timeout.Token;
         try
         {
@@ -161,7 +161,7 @@ internal sealed class MenuBarPageChecks
                 WindowOptions = new DesktopWindowOptions { Browser = BrowserKind.Embedded, MenuBarPresentation = presentation },
             });
             var window = await host.OpenWindowAsync<MenuWindow>();
-            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(20));
+            using var timeout = TestTimeouts.Cancellation(TimeSpan.FromSeconds(20));
             try
             {
                 using var page = await DesktopWireClient.ConnectAsync(RunicDesktopHost.GetSurface(window)!, timeout.Token);

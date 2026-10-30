@@ -562,14 +562,14 @@ internal sealed class PathWatcherTests
             failure => error.TrySetResult((failure, context.IsExecuting)),
             new RunicPathWatcherOptions { Debounce = TimeSpan.FromMilliseconds(50), PollingInterval = TimeSpan.FromMilliseconds(200) });
 
-        var (reported, errorInContext) = await error.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        var (reported, errorInContext) = await error.Task.WaitScaledAsync(TimeSpan.FromSeconds(10));
         Require(reported.Kind == RunicPathWatchErrorKind.Missing && errorInContext,
             $"Expected a Missing error in the model context, got {reported.Kind} (in context: {errorInContext}).");
 
         // The watcher polls until the directory appears.
         Directory.CreateDirectory(missing);
         File.WriteAllText(file, "x");
-        Require(await changed.Task.WaitAsync(TimeSpan.FromSeconds(10)), "The change callback did not run in the model context.");
+        Require(await changed.Task.WaitScaledAsync(TimeSpan.FromSeconds(10)), "The change callback did not run in the model context.");
     }
 
     [Test]
@@ -585,7 +585,7 @@ internal sealed class PathWatcherTests
 
         File.WriteAllText(file, "22");
         tester.Time.Advance(options.PollingInterval);
-        await changed.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        await changed.Task.WaitScaledAsync(TimeSpan.FromSeconds(10));
     }
 
     [Test]

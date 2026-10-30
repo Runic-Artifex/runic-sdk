@@ -529,7 +529,7 @@ internal sealed partial class NavigationTests
     {
         try
         {
-            await task.WaitAsync(Timeout);
+            await task.WaitScaledAsync(Timeout);
             return false;
         }
         catch (T) { return true; }

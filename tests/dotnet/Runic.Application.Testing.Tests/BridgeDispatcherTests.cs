@@ -65,17 +65,17 @@ public sealed class BridgeDispatcherTests
         await Task.Delay(20);
         Require(!waiting.IsCompleted, "A held request did not wait 5 seconds.");
         time.Advance(TimeSpan.FromMilliseconds(1));
-        RequireError(await waiting.WaitAsync(TimeSpan.FromSeconds(5)), "rejected", "no-hello");
+        RequireError(await waiting.WaitScaledAsync(TimeSpan.FromSeconds(5)), "rejected", "no-hello");
 
         var refused = window.Transport.RequestAsync("""{"kind":"snapshot","route":"notes"}""").AsTask();
         await Task.Delay(20);
         RequireError(window.Transport.Request("""{"kind":"hello","protocol":5,"session":"s-1","client":{"name":"c","version":"5"}}"""), "failed", "protocol-mismatch");
-        RequireError(await refused.WaitAsync(TimeSpan.FromSeconds(5)), "rejected", "no-hello");
+        RequireError(await refused.WaitScaledAsync(TimeSpan.FromSeconds(5)), "rejected", "no-hello");
 
         var closed = window.Transport.RequestAsync("""{"kind":"snapshot","route":"notes"}""", "c2").AsTask();
         await Task.Delay(20);
         window.Transport.CloseConnection("c2");
-        RequireError(await closed.WaitAsync(TimeSpan.FromSeconds(5)), "rejected", "no-hello");
+        RequireError(await closed.WaitScaledAsync(TimeSpan.FromSeconds(5)), "rejected", "no-hello");
 
         // At most 64 wait.
         var held = Enumerable.Range(0, 64).Select(_ => window.Transport.RequestAsync("""{"kind":"snapshot","route":"notes"}""", "c3").AsTask()).ToArray();
@@ -83,7 +83,7 @@ public sealed class BridgeDispatcherTests
         RequireError(window.Transport.Request("""{"kind":"snapshot","route":"notes"}""", "c3"), "rejected", "capacity");
         Require(held.All(request => !request.IsCompleted), "A held request was answered.");
         Require(Parse(window.Transport.Request(Hello.Replace("s-1", "s-3", StringComparison.Ordinal), "c3")).GetProperty("ok").GetBoolean(), "The hello failed.");
-        foreach (var request in held) RequireError(await request.WaitAsync(TimeSpan.FromSeconds(5)), "released", null);
+        foreach (var request in held) RequireError(await request.WaitScaledAsync(TimeSpan.FromSeconds(5)), "released", null);
     }
 
     [Test]
@@ -234,7 +234,7 @@ public sealed class BridgeDispatcherTests
         Require(await transport.RequestAsync("""{"kind":"receive"}""", "c1") == """{"ok":true,"messages":[]}""",
             "A second pending receive did not answer at once.");
         await dispatcher.SendAsync("c1", """{"n":3}"""u8.ToArray());
-        Require(await pending.WaitAsync(TimeSpan.FromSeconds(5)) == """{"ok":true,"messages":[{"n":3}]}""",
+        Require(await pending.WaitScaledAsync(TimeSpan.FromSeconds(5)) == """{"ok":true,"messages":[{"n":3}]}""",
             "The pending receive did not answer with the queued push.");
 
         // A receive answers with an empty list after 25 seconds.
@@ -243,7 +243,7 @@ public sealed class BridgeDispatcherTests
         await Task.Delay(20);
         Require(!pending.IsCompleted, "A receive answered before its bound.");
         time.Advance(TimeSpan.FromSeconds(1));
-        Require(await pending.WaitAsync(TimeSpan.FromSeconds(5)) == """{"ok":true,"messages":[]}""",
+        Require(await pending.WaitScaledAsync(TimeSpan.FromSeconds(5)) == """{"ok":true,"messages":[]}""",
             "A receive did not answer after 25 seconds.");
 
         // Another connection's pushes stay in its own mailbox; closing a connection ends its pending receive.
@@ -251,7 +251,7 @@ public sealed class BridgeDispatcherTests
         await dispatcher.SendAsync("c2", """{"n":4}"""u8.ToArray());
         pending = transport.RequestAsync("""{"kind":"receive"}""", "c1").AsTask();
         transport.Close("c1");
-        Require(await pending.WaitAsync(TimeSpan.FromSeconds(5)) == """{"ok":true,"messages":[]}""",
+        Require(await pending.WaitScaledAsync(TimeSpan.FromSeconds(5)) == """{"ok":true,"messages":[]}""",
             "Closing the connection did not end its pending receive.");
         Require(!await dispatcher.SendAsync("c1", "{}"u8.ToArray()), "A closed connection accepted a push.");
         Require(await transport.RequestAsync("""{"kind":"receive"}""", "c2") == """{"ok":true,"messages":[{"n":4}]}""",

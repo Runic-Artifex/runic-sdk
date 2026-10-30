@@ -65,7 +65,7 @@ internal sealed class HostTests
             using var pidfd = withPidfd ? LinuxPolkitHost.Instance.OpenProcess(process.Id) : ProcessHandle.None;
             Check(!withPidfd || pidfd.IsValid, "pidfd_open is available");
             Check(LinuxPolkitHost.Instance.TryStopBeforeStart(process, pidfd), $"the caller's own process can be stopped (pidfd {withPidfd})");
-            await process.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(10));
+            await process.WaitForExitAsync().WaitScaledAsync(TimeSpan.FromSeconds(10));
             Check(!LinuxPolkitHost.Instance.TryStopBeforeStart(process, pidfd), "an exited process is not stopped again");
         }
     }

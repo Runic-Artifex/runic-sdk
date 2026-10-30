@@ -58,7 +58,7 @@ public sealed class ManagedWindowTests
     [Test]
     public async Task CloseCompletesWithAnAuthenticatedBridgeConnection()
     {
-        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        using var timeout = TestTimeouts.Cancellation(TimeSpan.FromSeconds(10));
         await using var window = new WebUiWindow();
         var url = await window.StartServerAsync("bridge");
         var token = await GetTokenAsync(url);
@@ -73,7 +73,7 @@ public sealed class ManagedWindowTests
     [Test]
     public async Task UsesWebUiHandshakeAndCallFraming()
     {
-        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        using var timeout = TestTimeouts.Cancellation(TimeSpan.FromSeconds(10));
         await using var window = new WebUiWindow();
         window.Bind("multiply", static e => e.GetInt64() * e.GetInt64(1));
         window.BindAsync("inspect", static async (e, cancellationToken) =>
@@ -104,7 +104,7 @@ public sealed class ManagedWindowTests
     [Test]
     public async Task AwaitedCallbackAllowsAnotherCallbackBeforeCompletion()
     {
-        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        using var timeout = TestTimeouts.Cancellation(TimeSpan.FromSeconds(10));
         await using var window = new WebUiWindow();
         var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -144,7 +144,7 @@ public sealed class ManagedWindowTests
     {
         const int Calls = 200;
         const int Rounds = 5;
-        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(20));
+        using var timeout = TestTimeouts.Cancellation(TimeSpan.FromSeconds(20));
         await using var window = new WebUiWindow();
         var admitted = new List<int>();
         var gate = new object();
@@ -176,7 +176,7 @@ public sealed class ManagedWindowTests
     [Test]
     public async Task RejectsAnInvalidProtocolToken()
     {
-        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        using var timeout = TestTimeouts.Cancellation(TimeSpan.FromSeconds(10));
         await using var window = new WebUiWindow();
         var url = await window.StartServerAsync("bridge");
         var token = await GetTokenAsync(url);
@@ -196,7 +196,7 @@ public sealed class ManagedWindowTests
     [Test]
     public async Task AdmitsACallSentRightBehindTheTokenCheck()
     {
-        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        using var timeout = TestTimeouts.Cancellation(TimeSpan.FromSeconds(10));
         await using var window = new WebUiWindow();
         var order = new System.Collections.Concurrent.ConcurrentQueue<string>();
         window.Bind(string.Empty, e => { if (e.EventType == WebUiEventType.Connected) order.Enqueue("connected"); });
@@ -232,7 +232,7 @@ public sealed class ManagedWindowTests
     [Test]
     public async Task DropsACallSentRightBehindARejectedTokenCheck()
     {
-        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        using var timeout = TestTimeouts.Cancellation(TimeSpan.FromSeconds(10));
         await using var window = new WebUiWindow();
         var calls = 0;
         window.Bind("echo", e => { Interlocked.Increment(ref calls); return e.GetString(); });
@@ -257,7 +257,7 @@ public sealed class ManagedWindowTests
     [Test]
     public async Task DropsACallSentBeforeTheTokenCheck()
     {
-        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        using var timeout = TestTimeouts.Cancellation(TimeSpan.FromSeconds(10));
         await using var window = new WebUiWindow();
         var calls = new System.Collections.Concurrent.ConcurrentQueue<string>();
         window.Bind("echo", e => { calls.Enqueue(e.GetString()); return e.GetString(); });
@@ -276,7 +276,7 @@ public sealed class ManagedWindowTests
     [Test]
     public async Task AnnouncesBindingsAddedAfterAuthentication()
     {
-        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        using var timeout = TestTimeouts.Cancellation(TimeSpan.FromSeconds(10));
         await using var window = new WebUiWindow();
         var url = await window.StartServerAsync("bridge");
         var token = await GetTokenAsync(url);
@@ -293,7 +293,7 @@ public sealed class ManagedWindowTests
     [Test]
     public async Task EncodesTypedResultsAsWebUiResponseStrings()
     {
-        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        using var timeout = TestTimeouts.Cancellation(TimeSpan.FromSeconds(10));
         await using var window = new WebUiWindow();
         window.Bind("integer", static _ => WebUiResult.FromInt64(-42));
         window.Bind("floating", static _ => WebUiResult.FromDouble(1.25));
@@ -322,7 +322,7 @@ public sealed class ManagedWindowTests
     [Test]
     public async Task DispatchesConnectionClickNavigationAndDisconnectionEvents()
     {
-        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        using var timeout = TestTimeouts.Cancellation(TimeSpan.FromSeconds(10));
         var events = Channel.CreateUnbounded<(WebUiEventType Type, string Element, string? Value)>();
         await using var window = new WebUiWindow();
         window.Bind(string.Empty, e =>
@@ -355,7 +355,7 @@ public sealed class ManagedWindowTests
     [Test]
     public async Task SendsQuickJavaScriptRawDataAndNavigationPackets()
     {
-        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        using var timeout = TestTimeouts.Cancellation(TimeSpan.FromSeconds(10));
         await using var window = new WebUiWindow();
         var url = await window.StartServerAsync("bridge");
         var token = await GetTokenAsync(url);
@@ -389,7 +389,7 @@ public sealed class ManagedWindowTests
     [Test]
     public async Task CorrelatesJavaScriptResultsAndReportsErrors()
     {
-        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        using var timeout = TestTimeouts.Cancellation(TimeSpan.FromSeconds(10));
         await using var window = new WebUiWindow();
         var url = await window.StartServerAsync("bridge");
         var token = await GetTokenAsync(url);
@@ -435,7 +435,7 @@ public sealed class ManagedWindowTests
     [Test]
     public async Task CallbackCanSynchronouslyExecuteJavaScriptWithoutDeadlock()
     {
-        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        using var timeout = TestTimeouts.Cancellation(TimeSpan.FromSeconds(10));
         await using var window = new WebUiWindow();
         window.Bind("roundtrip", e => e.Window.ExecuteJavaScript("return 6 * 7;", TimeSpan.FromSeconds(5)));
         var url = await window.StartServerAsync("bridge");
@@ -455,7 +455,7 @@ public sealed class ManagedWindowTests
     [Test]
     public async Task ReassemblesWebUiMultiPackets()
     {
-        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        using var timeout = TestTimeouts.Cancellation(TimeSpan.FromSeconds(10));
         await using var window = new WebUiWindow();
         window.Bind("size", static e => (long)e.GetBytes().Length);
         var url = await window.StartServerAsync("bridge");
@@ -479,7 +479,7 @@ public sealed class ManagedWindowTests
     [Test]
     public async Task SendsAUtf8ResultAsItIs()
     {
-        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        using var timeout = TestTimeouts.Cancellation(TimeSpan.FromSeconds(10));
         await using var window = new WebUiWindow();
         var reply = "{\"text\":\"Grüße ☃\"}"u8.ToArray();
         window.Bind("utf8", e => WebUiResult.FromUtf8(reply));
@@ -498,7 +498,7 @@ public sealed class ManagedWindowTests
     [Test]
     public async Task ReceivesAMessageLongerThanTheReceiveBuffer()
     {
-        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        using var timeout = TestTimeouts.Cancellation(TimeSpan.FromSeconds(10));
         await using var window = new WebUiWindow();
         window.Bind("echo", static e => e.GetString(1) + e.GetString());
         var url = await window.StartServerAsync("bridge");
@@ -515,7 +515,7 @@ public sealed class ManagedWindowTests
     [Test]
     public async Task UnauthenticatedPeerCannotOpenAMultiPacketBuffer()
     {
-        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        using var timeout = TestTimeouts.Cancellation(TimeSpan.FromSeconds(10));
         await using var window = new WebUiWindow();
         var url = await window.StartServerAsync("bridge");
         var token = await GetTokenAsync(url);
@@ -529,7 +529,7 @@ public sealed class ManagedWindowTests
     [Test]
     public async Task AcceptsAReconnectedBridgeAndRaisesNewConnectionEvents()
     {
-        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        using var timeout = TestTimeouts.Cancellation(TimeSpan.FromSeconds(10));
         var events = Channel.CreateUnbounded<(WebUiEventType Type, nuint ConnectionId)>();
         await using var window = new WebUiWindow();
         window.Bind(string.Empty, e =>

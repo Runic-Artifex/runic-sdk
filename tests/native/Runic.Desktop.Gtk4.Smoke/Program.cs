@@ -436,7 +436,7 @@ static async Task ExerciseCancelledQueuedOpenAsync(Gtk4WindowHostFactory factory
         cancellation.Cancel();
         try
         {
-            await open.WaitAsync(TimeSpan.FromSeconds(5));
+            await open.WaitScaledAsync(TimeSpan.FromSeconds(5));
             throw new InvalidOperationException("A cancelled GTK 4 window creation opened a window.");
         }
         catch (OperationCanceledException)
@@ -570,9 +570,9 @@ static async Task ExerciseVisibilityAndClosedAsync(DesktopHost host)
         throw new InvalidOperationException($"The GTK 4 window answered a notification permission request with '{permission}'.");
     // Closes as the title bar's close button does, through gtk_window_close and the window's close request (#509).
     await window.InvokeNativeAsync(Gtk4Native.WindowClose);
-    await closed.Task.WaitAsync(TimeSpan.FromSeconds(15));
+    await closed.Task.WaitScaledAsync(TimeSpan.FromSeconds(15));
     // Completes once the window and its web view were released, then the surface is disposed.
-    await window.WaitForCloseAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(15));
+    await window.WaitForCloseAsync().AsTask().WaitScaledAsync(TimeSpan.FromSeconds(15));
     await Task.Delay(200);
     if (window.IsOpen || Volatile.Read(ref raised) != 1)
         throw new InvalidOperationException($"DesktopWindow.Closed was raised {raised} times for one user close.");
@@ -660,10 +660,10 @@ static async Task ExerciseWindowStateAsync(DesktopHost host, bool x11)
 
 static async Task<DesktopWindowState> WaitForStateAsync(DesktopWindow window, Func<DesktopWindowState, bool> condition, string expected)
 {
-    var elapsed = System.Diagnostics.Stopwatch.StartNew();
-    while (elapsed.Elapsed < TimeSpan.FromSeconds(15))
+    var wait = TestTimeouts.Start(TimeSpan.FromSeconds(15));
+    while (!wait.IsExpired)
     {
-        if (window.State is { } state && condition(state)) return state;
+        if (window.State is { } state && condition(state)) { wait.Succeeded(); return state; }
         await Task.Delay(20);
     }
     throw new TimeoutException($"The GTK 4 window did not report {expected}; last state: {window.State?.ToString() ?? "<none>"}.");

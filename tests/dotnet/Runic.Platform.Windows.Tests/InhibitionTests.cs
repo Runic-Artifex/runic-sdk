@@ -53,7 +53,7 @@ internal sealed class InhibitionTests
         }) ?? throw new InvalidOperationException("Cannot start powercfg.");
         var output = process.StandardOutput.ReadToEndAsync();
         var error = process.StandardError.ReadToEndAsync();
-        await process.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(10));
+        await process.WaitForExitAsync().WaitScaledAsync(TimeSpan.FromSeconds(10));
         string text = await output;
         if (process.ExitCode != 0) throw new InvalidOperationException("powercfg failed: " + text + await error);
         Console.WriteLine(text);

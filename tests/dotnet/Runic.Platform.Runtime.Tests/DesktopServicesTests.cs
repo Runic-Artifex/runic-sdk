@@ -29,7 +29,7 @@ internal sealed class DesktopServicesTests
         await source.DisposeAsync();
         await using (var changes = new ChangingSettings())
         {
-            using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+            using var cancellation = TestTimeouts.Cancellation(TimeSpan.FromSeconds(5));
             await using var watch = changes.WatchAsync(cancellation.Token).GetAsyncEnumerator();
             Check(await watch.MoveNextAsync() && watch.Current is PlatformResult<DesktopAppearance>.Success, "initial preferences");
             changes.Available = false;

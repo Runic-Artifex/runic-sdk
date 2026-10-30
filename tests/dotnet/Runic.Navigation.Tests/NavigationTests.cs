@@ -297,7 +297,7 @@ internal sealed partial class NavigationTests
         var push = Task.Run(() => region.PushAsync(NavigationTarget.Create<Page>(_ =>
         {
             entered.TrySetResult();
-            release.Wait(Timeout);
+            release.Wait(TestTimeouts.Scale(Timeout));
             // Once the navigator is closing, this throws ObjectDisposedException from the factory.
             fixture.Navigator.CreateRegion<Page>(new object());
             return new Page("created");
@@ -333,7 +333,7 @@ internal sealed partial class NavigationTests
             if (args.PropertyName != nameof(region.Current)) return;
             seen.Enqueue(region.Current);
             inTurn.TrySetResult();
-            release.Wait(Timeout);
+            release.Wait(TestTimeouts.Scale(Timeout));
         };
         var pushed = new Page("pushed");
         var push = region.PushAsync(NavigationTarget.Own(pushed)).AsTask();
@@ -478,7 +478,7 @@ internal sealed partial class NavigationTests
         fixture.Navigator.BeforeInitializeClaim = () =>
         {
             reached.TrySetResult();
-            proceed.Wait(Timeout);
+            proceed.Wait(TestTimeouts.Scale(Timeout));
         };
         var push = Task.Run(async () => await region.PushAsync(NavigationTarget.Own<Page>(page)));
         await Wait(reached.Task);
@@ -554,7 +554,7 @@ internal sealed partial class NavigationTests
             Guard = (_, _) =>
             {
                 entered.TrySetResult();
-                release.Wait(Timeout, CancellationToken.None);
+                release.Wait(TestTimeouts.Scale(Timeout), CancellationToken.None);
                 throw new InvalidOperationException("guard failed while closing");
             },
         };
@@ -2061,7 +2061,7 @@ internal sealed partial class NavigationTests
                 }
                 // A shared page that its last entry released meanwhile can't be shared any more.
                 catch (InvalidOperationException) { continue; }
-                var result = await operation.AsTask().WaitAsync(Timeout);
+                var result = await operation.AsTask().WaitScaledAsync(Timeout);
                 if (result is NavigationResult<RacePage>.Failed { Error: not RaceException } failed)
                     violations.Enqueue($"seed {seed}: unexpected failure {failed.Error}");
                 if (result is NavigationResult<RacePage>.Committed) Interlocked.Increment(ref committed);
@@ -2136,13 +2136,13 @@ internal sealed partial class NavigationTests
     private static string Names<T>(NavigationRegion<T> region) where T : Page =>
         string.Join(",", region.History.Append(region.CurrentEntry).OfType<NavigationEntry<T>>().Select(entry => entry.Content.Name));
 
-    private static async Task<T> Wait<T>(ValueTask<T> task) => await task.AsTask().WaitAsync(Timeout);
+    private static async Task<T> Wait<T>(ValueTask<T> task) => await task.AsTask().WaitScaledAsync(Timeout);
 
-    private static async Task<T> Wait<T>(Task<T> task) => await task.WaitAsync(Timeout);
+    private static async Task<T> Wait<T>(Task<T> task) => await task.WaitScaledAsync(Timeout);
 
-    private static async Task Wait(Task task) => await task.WaitAsync(Timeout);
+    private static async Task Wait(Task task) => await task.WaitScaledAsync(Timeout);
 
-    private static async Task Wait(ValueTask task) => await task.AsTask().WaitAsync(Timeout);
+    private static async Task Wait(ValueTask task) => await task.AsTask().WaitScaledAsync(Timeout);
 
     // CancelAfter whose cancellation, and the callbacks it runs, can be awaited. Zero cancels at once.
     private static async Task CancelAfterAsync(CancellationTokenSource source, int milliseconds)
@@ -2153,7 +2153,7 @@ internal sealed partial class NavigationTests
 
     private static async Task Until(Func<bool> condition, string message)
     {
-        var deadline = DateTime.UtcNow + Timeout;
+        var deadline = DateTime.UtcNow + TestTimeouts.Scale(Timeout);
         while (!condition())
         {
             if (DateTime.UtcNow > deadline) throw new InvalidOperationException(message);

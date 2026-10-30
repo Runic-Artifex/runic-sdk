@@ -86,7 +86,7 @@ internal static partial class MacOsLifecycleSmoke
             // With no window open, the quit event cancels ShutdownRequested; the application then returns, and its reply
             // follows when Run's loop ends.
             await SendAsync(QuitApplication, reason: null);
-            await Task.Delay(Timeout.Infinite, host.ShutdownRequested).ContinueWith(static _ => { }, TaskScheduler.Default).WaitAsync(StepTimeout);
+            await Task.Delay(Timeout.Infinite, host.ShutdownRequested).ContinueWith(static _ => { }, TaskScheduler.Default).WaitScaledAsync(StepTimeout);
             Expect(sources.Count == 3 && sources.Last() == DesktopQuitSource.Dock, $"the third quit asked ConfirmQuitAsync: {string.Join(",", sources)}");
             Pass("the quit event with no window open cancels ShutdownRequested.");
             return ApplicationResult;
@@ -139,7 +139,7 @@ internal static partial class MacOsLifecycleSmoke
         }, CancellationToken.None);
         Expect(titles == "Smoke Command||Unavailable", $"the Dock menu items: {titles}");
         Expect(enabled is [true, _, false], $"the items follow CanExecute: {string.Join(",", enabled)}");
-        Expect(await target.Executed.Task.WaitAsync(StepTimeout) == "smoke.dock", "the chosen item runs its command");
+        Expect(await target.Executed.Task.WaitScaledAsync(StepTimeout) == "smoke.dock", "the chosen item runs its command");
         Pass("the Dock menu shows MacOSDesktopOptions.DockMenu, enabled from CanExecute, and runs host.MenuCommands.");
     }
 
@@ -150,7 +150,7 @@ internal static partial class MacOsLifecycleSmoke
         host.ReopenRequested += (_, e) => reopened.TrySetResult(e.HasVisibleWindows);
         var replied = await SendAsync(ReopenApplication, reason: null);
         Expect(replied == 0, $"sending the reopen event, which AppKit answers at once, reports {replied}");
-        bool visible = await reopened.Task.WaitAsync(StepTimeout);
+        bool visible = await reopened.Task.WaitScaledAsync(StepTimeout);
         Pass($"the reopen event raises ReopenRequested (HasVisibleWindows={visible}).");
     }
 
@@ -192,7 +192,7 @@ internal static partial class MacOsLifecycleSmoke
 
     private static async Task WaitAsync(Func<bool> check, string description)
     {
-        var deadline = DateTime.UtcNow + StepTimeout;
+        var deadline = DateTime.UtcNow + TestTimeouts.Scale(StepTimeout);
         while (!check())
         {
             if (DateTime.UtcNow > deadline) throw new TimeoutException($"Expected {description}.");

@@ -40,7 +40,7 @@ internal sealed class RegionStartTests
             $"{flavour}: the root page was not current when OpenWindowAsync returned.");
         await Until(() => currentTitle() == "list", $"{flavour}: the shell did not observe the root page (title '{currentTitle()}').");
         var list = (StartListViewModel)main.Current!;
-        Require(await list.OpenDetailAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(10)) is NavigationResult<INavPageViewModel>.Committed
+        Require(await list.OpenDetailAsync().AsTask().WaitScaledAsync(TimeSpan.FromSeconds(10)) is NavigationResult<INavPageViewModel>.Committed
             && main.Current is NavEditorViewModel && main.CanGoBack,
             $"{flavour}: the root page could not navigate the region it was started in.");
         await Until(() => currentTitle() == "detail", $"{flavour}: the shell did not observe the detail page.");
@@ -86,7 +86,7 @@ internal sealed class RegionStartTests
 
     private static async Task Until(Func<bool> condition, string message)
     {
-        var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(10);
+        var deadline = DateTime.UtcNow + TestTimeouts.Scale(TimeSpan.FromSeconds(10));
         while (!condition())
         {
             if (DateTime.UtcNow > deadline) throw new InvalidOperationException(message);

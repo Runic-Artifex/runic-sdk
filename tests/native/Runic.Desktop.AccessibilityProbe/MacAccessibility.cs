@@ -38,7 +38,7 @@ internal sealed partial class MacAccessibility : AccessibilityClient
         var client = new MacAccessibility(pid);
         s_instance = client;
         client._loop.Start();
-        await client._observing.Task.WaitAsync(TimeSpan.FromSeconds(10), cancellationToken);
+        await client._observing.Task.WaitScaledAsync(TimeSpan.FromSeconds(10), cancellationToken);
         await Task.Run(() => client.Observe(pid, client._application), cancellationToken);
         return client;
     }
@@ -336,7 +336,7 @@ internal sealed partial class MacAccessibility : AccessibilityClient
     public override ValueTask DisposeAsync()
     {
         _disposed = true;
-        _loop.Join(TimeSpan.FromSeconds(2));
+        _loop.Join(TestTimeouts.Scale(TimeSpan.FromSeconds(2)));
         return ValueTask.CompletedTask;
     }
 

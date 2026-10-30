@@ -69,7 +69,7 @@ public static class BrowserWarmUp
             string outcome;
             try
             {
-                using var accepted = await listener.AcceptTcpClientAsync().WaitAsync(TimeSpan.FromSeconds(60));
+                using var accepted = await listener.AcceptTcpClientAsync().WaitScaledAsync(TimeSpan.FromSeconds(60));
                 outcome = "requested its page";
             }
             catch (TimeoutException)
@@ -81,7 +81,7 @@ public static class BrowserWarmUp
                 try
                 {
                     process.Kill(entireProcessTree: !OperatingSystem.IsMacOS());
-                    await process.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(10));
+                    await process.WaitForExitAsync().WaitScaledAsync(TimeSpan.FromSeconds(10));
                 }
                 catch (Exception exception) when (exception is InvalidOperationException or TimeoutException or System.ComponentModel.Win32Exception)
                 {

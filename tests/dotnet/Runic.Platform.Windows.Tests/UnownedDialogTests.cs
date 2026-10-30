@@ -19,13 +19,13 @@ internal sealed partial class UnownedDialogTests
         var thread = WindowsApplicationThread.Shared;
         Check(ReferenceEquals(thread, WindowsApplicationThread.Shared) && thread.IsAvailable, "one application thread per process");
         (int Id, ApartmentState Apartment, nint Handle) first = default, second = default;
-        await thread.InvokeAsync(handle => first = (Environment.CurrentManagedThreadId, Thread.CurrentThread.GetApartmentState(), handle)).AsTask().WaitAsync(Wait);
-        await thread.InvokeAsync(handle => second = (Environment.CurrentManagedThreadId, Thread.CurrentThread.GetApartmentState(), handle)).AsTask().WaitAsync(Wait);
+        await thread.InvokeAsync(handle => first = (Environment.CurrentManagedThreadId, Thread.CurrentThread.GetApartmentState(), handle)).AsTask().WaitScaledAsync(Wait);
+        await thread.InvokeAsync(handle => second = (Environment.CurrentManagedThreadId, Thread.CurrentThread.GetApartmentState(), handle)).AsTask().WaitScaledAsync(Wait);
         Check(first.Id != Environment.CurrentManagedThreadId && first.Id == second.Id && first.Apartment == ApartmentState.STA && first.Handle == 0,
             $"work runs on one STA thread of its own without a window: {first}, {second}");
         // Work queued from the thread itself runs at once, as a dialog's own work must.
         var nested = false;
-        await thread.InvokeAsync(_ => thread.InvokeAsync(_ => nested = true).AsTask().GetAwaiter().GetResult()).AsTask().WaitAsync(Wait);
+        await thread.InvokeAsync(_ => thread.InvokeAsync(_ => nested = true).AsTask().GetAwaiter().GetResult()).AsTask().WaitScaledAsync(Wait);
         Check(nested, "work queued from the thread runs inline");
         var failure = await Record(() => thread.InvokeAsync(_ => throw new FormatException()).AsTask());
         Check(failure is FormatException, $"an exception reaches the caller: {failure}");
@@ -46,15 +46,15 @@ internal sealed partial class UnownedDialogTests
         picker.Trace = trace.Enqueue;
         using var cancel = new CancellationTokenSource();
         var pending = picker.SelectAsync(new NativeFileDialogRequest(false, null) { Title = "Runic unowned dialog" }, cancel.Token).AsTask();
-        await picker.Shown.Task.WaitAsync(Wait);
+        await picker.Shown.Task.WaitScaledAsync(Wait);
         // The dialog is a top-level window of the application thread with the request's title and no owner.
         nint dialog = 0;
-        for (var deadline = DateTime.UtcNow + Wait; dialog == 0 && DateTime.UtcNow < deadline; await Task.Delay(100))
+        for (var deadline = DateTime.UtcNow + TestTimeouts.Scale(Wait); dialog == 0 && DateTime.UtcNow < deadline; await Task.Delay(100))
             dialog = FindWindowW(null, "Runic unowned dialog");
         Check(dialog != 0, "the unowned dialog is shown with its title");
         Check(GetWindow(dialog, GW_OWNER) == 0, "the dialog has no owner window");
         cancel.Cancel();
-        var ended = await Record(() => pending.WaitAsync(Wait));
+        var ended = await Record(() => pending.WaitScaledAsync(Wait));
         Console.WriteLine($"Unowned file dialog cancellation: {string.Join("; ", trace)}");
         Check(ended is OperationCanceledException or null, $"cancellation ends the dialog ({ended?.GetType().Name}): {string.Join("; ", trace)}");
         Check(!IsWindow(dialog), "cancellation closed the dialog");
@@ -76,19 +76,19 @@ internal sealed partial class UnownedDialogTests
         var created = new TaskCompletionSource<nint>(TaskCreationOptions.RunContinuationsAsynchronously);
         boxes.Created = window => created.TrySetResult(window);
         var pending = boxes.ShowAsync(box).AsTask();
-        var dialog = await created.Task.WaitAsync(Wait);
+        var dialog = await created.Task.WaitScaledAsync(Wait);
         Check(GetWindow(dialog, GW_OWNER) == 0, "the box has no owner window");
         PostMessageW(dialog, WM_CLOSE, 0, 0);
-        var result = await pending.WaitAsync(Wait);
+        var result = await pending.WaitScaledAsync(Wait);
         Check(result is PlatformResult<DesktopMessageBoxButton?>.Success(var chosen) && chosen == cancelButton, $"the close button chose Cancel: {result}");
 
         created = new(TaskCreationOptions.RunContinuationsAsynchronously);
         using (var cancel = new CancellationTokenSource())
         {
             var cancelled = boxes.ShowAsync(box, cancel.Token).AsTask();
-            var shown = await created.Task.WaitAsync(Wait);
+            var shown = await created.Task.WaitScaledAsync(Wait);
             cancel.Cancel();
-            Check(await Record(() => cancelled.WaitAsync(Wait)) is OperationCanceledException, "a cancelled box throws");
+            Check(await Record(() => cancelled.WaitScaledAsync(Wait)) is OperationCanceledException, "a cancelled box throws");
             Check(!IsWindow(shown), "cancellation closed the box");
         }
         Console.WriteLine("PASS an unowned task dialog answers and closes");

@@ -17,7 +17,7 @@ internal sealed partial class MacAppKitNativeTests
 
     private static async Task<ImmutableArray<DesktopGlobalShortcutBinding>> BindAsync(IDesktopGlobalShortcuts shortcuts,
         ImmutableArray<DesktopGlobalShortcut> set) =>
-        await shortcuts.BindAsync(set).AsTask().WaitAsync(Step) is PlatformResult<ImmutableArray<DesktopGlobalShortcutBinding>>.Success(var bindings)
+        await shortcuts.BindAsync(set).AsTask().WaitScaledAsync(Step) is PlatformResult<ImmutableArray<DesktopGlobalShortcutBinding>>.Success(var bindings)
             ? bindings
             : throw new InvalidOperationException("BindAsync did not succeed.");
 
@@ -47,7 +47,7 @@ internal sealed partial class MacAppKitNativeTests
             unsafe { status = RegisterEventHotKey(0x28, 0x0800 | 0x0200, 0x526E6963, 0xFFFFFF, GetApplicationEventTarget(), 0, &reference); }
             Console.WriteLine($"RegisterEventHotKey(Option+Shift+K) on macOS {Environment.OSVersion.Version}: OSStatus {status}.");
             if (status == 0) _ = UnregisterEventHotKey(reference);
-        }).AsTask().WaitAsync(Step);
+        }).AsTask().WaitScaledAsync(Step);
 
         await using (var second = MacOSPlatformProvider.CreateGlobalShortcuts())
         {

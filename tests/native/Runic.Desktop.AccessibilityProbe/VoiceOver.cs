@@ -23,7 +23,7 @@ internal sealed class VoiceOver : ScreenReader
         {
             await starter.WaitForExitAsync(cancellationToken);
         }
-        var until = DateTime.UtcNow + TimeSpan.FromSeconds(60);
+        var until = DateTime.UtcNow + TestTimeouts.Scale(TimeSpan.FromSeconds(60));
         while (true)
         {
             // VoiceOver can be slow to answer its first AppleScript call.

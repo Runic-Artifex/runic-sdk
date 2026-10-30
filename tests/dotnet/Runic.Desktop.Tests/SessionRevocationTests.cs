@@ -11,7 +11,7 @@ public sealed class SessionRevocationTests
     [Test]
     public async Task PublicSessionCloseRevokesIgnoringPeerAndFailsPendingScripts()
     {
-        using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        using var deadline = TestTimeouts.Cancellation(TimeSpan.FromSeconds(10));
         await using var window = new WebUiWindow();
         var captured = new TaskCompletionSource<PresentationSession>(TaskCreationOptions.RunContinuationsAsynchronously);
         var disconnected = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -59,7 +59,7 @@ public sealed class SessionRevocationTests
     [Test]
     public async Task CallbackCanCloseItsOwnSessionWithoutDeadlockingDisconnectedEvent()
     {
-        using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        using var deadline = TestTimeouts.Cancellation(TimeSpan.FromSeconds(10));
         await using var window = new WebUiWindow();
         var callbackClosed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var disconnected = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -88,7 +88,7 @@ public sealed class SessionRevocationTests
     [Test]
     public async Task SessionCloseDrainsOverlappingCallbacksBeforeDisconnectedEvent()
     {
-        using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        using var deadline = TestTimeouts.Cancellation(TimeSpan.FromSeconds(10));
         await using var window = new WebUiWindow();
         var entered = new TaskCompletionSource<Guid>(TaskCreationOptions.RunContinuationsAsynchronously);
         var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -142,7 +142,7 @@ public sealed class SessionRevocationTests
     [Test]
     public async Task CapabilityCanDisposeItsOwnSurfaceWithoutDeadlockingDisconnectedEvent()
     {
-        using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        using var deadline = TestTimeouts.Cancellation(TimeSpan.FromSeconds(10));
         await using var host = await DesktopHost.StartAsync();
         var surface = await host.CreateSurfaceAsync();
         var surfaceUrl = surface.Url;
@@ -176,7 +176,7 @@ public sealed class SessionRevocationTests
     [Test]
     public async Task ConnectionSubscriptionsReachEverySubscriberWithoutAnAllEventsBinding()
     {
-        using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        using var deadline = TestTimeouts.Cancellation(TimeSpan.FromSeconds(10));
         await using var host = await DesktopHost.StartAsync();
         await using var surface = await host.CreateSurfaceAsync();
         var first = new System.Collections.Concurrent.ConcurrentQueue<DesktopConnectionEventKind>();
@@ -209,7 +209,7 @@ public sealed class SessionRevocationTests
     [Test]
     public async Task ConnectionCountFollowsTheConnectionEvents()
     {
-        using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        using var deadline = TestTimeouts.Cancellation(TimeSpan.FromSeconds(10));
         await using var host = await DesktopHost.StartAsync();
         await using var surface = await host.CreateSurfaceAsync(new DesktopSurfaceOptions
         {

@@ -60,13 +60,13 @@ internal sealed class Program
         Check(ReferenceEquals(RunicModelContextRegistry.Shared.GetRequired(model), context), "The session changed the model context.");
         _ = await calls.RequestAsync("{\"kind\":\"hello\",\"protocol\":4,\"session\":\"s-1\",\"client\":{\"name\":\"tests\",\"version\":\"0\"}}");
         var save = calls.RequestAsync("{\"kind\":\"command\",\"route\":\"editor\",\"member\":\"save\"}").AsTask();
-        await model.Started.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        await model.Started.Task.WaitScaledAsync(TimeSpan.FromSeconds(5));
         var result = await view.CloseAsync(TimeSpan.Zero);
         Check(!result.Drained && result.RemainingOperations == 1 && !result.Completion.IsCompleted, "Close did not retain accepted work.");
         Check(!model.Disposed && !probe.Disposed, "Close disposed borrowed application resources.");
         model.Release.SetResult();
-        await result.Completion.WaitAsync(TimeSpan.FromSeconds(5));
-        await save.WaitAsync(TimeSpan.FromSeconds(5));
+        await result.Completion.WaitScaledAsync(TimeSpan.FromSeconds(5));
+        await save.WaitScaledAsync(TimeSpan.FromSeconds(5));
         await view.DisposeAsync();
         Check(!model.Disposed && !probe.Disposed, "Drain disposed borrowed application resources.");
         Check(ReferenceEquals(RunicModelContextRegistry.Shared.GetRequired(model), context), "Close removed the navigation-owned model lease.");
@@ -100,7 +100,7 @@ internal sealed class Program
         foreignScript.Headers.Add("Sec-Fetch-Dest", "script");
         Check((await http.SendAsync(foreignScript)).StatusCode == HttpStatusCode.Forbidden, "The child surface admitted a foreign bootstrap load.");
         await factory.Host.CloseAsync();
-        await view.DisposeAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(5));
+        await view.DisposeAsync().AsTask().WaitScaledAsync(TimeSpan.FromSeconds(5));
         Check(attachment.Disposed && !model.Disposed, "Native unload did not release the attachment or disposed the model.");
         Check((await http.GetAsync(url)).StatusCode == HttpStatusCode.NotFound, "Unloaded child assets remained available.");
     }
@@ -118,9 +118,9 @@ internal sealed class Program
         Task? nested = null;
         attachment.Disposing = () => nested = view.DisposeAsync().AsTask();
         var result = await view.CloseAsync(TimeSpan.Zero);
-        await result.Completion.WaitAsync(TimeSpan.FromSeconds(5));
+        await result.Completion.WaitScaledAsync(TimeSpan.FromSeconds(5));
         Check(nested is not null, "The attachment was not released.");
-        await nested!.WaitAsync(TimeSpan.FromSeconds(5));
+        await nested!.WaitScaledAsync(TimeSpan.FromSeconds(5));
         Check(attachment.Disposals == 1, $"Re-entrant close released the attachment {attachment.Disposals} times.");
     }
 

@@ -114,17 +114,17 @@ internal sealed class ReplyOrderTests
         var delivery = new BridgeSnapshotDelivery(transport, "shell", BridgeModelTurn.For(new ShellModel()), () =>
         {
             capturing.Set();
-            release.Wait(TimeSpan.FromSeconds(5));
+            release.Wait(TestTimeouts.Scale(TimeSpan.FromSeconds(5)));
             return """{"kind":"state","route":"shell","revision":1,"state":{"value":1}}"""u8.ToArray();
         }, static () => { }, nameof(ShellModel), log);
         transport.Hello();
         delivery.RequestState();
-        if (!capturing.Wait(TimeSpan.FromSeconds(5))) throw new TimeoutException("The drain did not capture the state.");
+        if (!capturing.Wait(TestTimeouts.Scale(TimeSpan.FromSeconds(5)))) throw new TimeoutException("The drain did not capture the state.");
         // A closing window releases its bridges, then disposes its transport, while the drain holds a state.
         delivery.Dispose();
         transport.Dispose();
         release.Set();
-        await transport.Attempted.Task.WaitAsync(TimeSpan.FromSeconds(1)).ContinueWith(static _ => { });
+        await transport.Attempted.Task.WaitScaledAsync(TimeSpan.FromSeconds(1)).ContinueWith(static _ => { });
         await Task.Delay(100);
         if (log.Errors.Count != 0)
             throw new InvalidOperationException($"A drain after the transport was disposed logged: {string.Join("; ", log.Errors)}");
@@ -299,7 +299,7 @@ internal sealed class ReplyOrderTests
     private sealed class StalledTransport : PushTestTransport
     {
         public ManualResetEventSlim Release { get; } = new();
-        protected override void OnBroadcast(string json) => Release.Wait(TimeSpan.FromSeconds(5));
+        protected override void OnBroadcast(string json) => Release.Wait(TestTimeouts.Scale(TimeSpan.FromSeconds(5)));
         public override void Dispose()
         {
             Release.Set();

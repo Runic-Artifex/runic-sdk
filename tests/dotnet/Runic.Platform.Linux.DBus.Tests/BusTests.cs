@@ -73,7 +73,7 @@ internal sealed class BusTests
             using var pipe = new System.IO.Pipes.AnonymousPipeServerStream(System.IO.Pipes.PipeDirection.In);
             Check(echo.Hand(pipe.ClientSafePipeHandle) && echo.Hand(pipe.ClientSafePipeHandle) && echo.Ping("after"), "emitting");
             pipe.DisposeLocalCopyOfClientHandle();
-            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+            using var timeout = TestTimeouts.Cancellation(TimeSpan.FromSeconds(5));
             // The connection dispatches messages in order, so both descriptors are buffered once the mark arrives.
             await using (var mark = marks.GetAsyncEnumerator(timeout.Token)) Check(await mark.MoveNextAsync(), "the mark arrived");
             if (enumerate)
@@ -84,7 +84,7 @@ internal sealed class BusTests
             }
             await handed.DisposeAsync();
             // The pipe reports end of file only when every copy of its write end is closed.
-            int read = await pipe.ReadAsync(new byte[1]).AsTask().WaitAsync(TimeSpan.FromSeconds(5));
+            int read = await pipe.ReadAsync(new byte[1]).AsTask().WaitScaledAsync(TimeSpan.FromSeconds(5));
             Check(read == 0, "the pipe closed");
         }
     }
@@ -143,7 +143,7 @@ internal sealed class BusTests
         var received = new List<DBusPropertyChanges>();
         await using (var enumerator = changes.GetAsyncEnumerator())
         {
-            using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+            using var deadline = TestTimeouts.Cancellation(TimeSpan.FromSeconds(5));
             while (received.Count < 51 && await enumerator.MoveNextAsync().AsTask().WaitAsync(deadline.Token))
                 if (DBusProxy.ReadPropertyChanges(enumerator.Current) is { } change) received.Add(change);
         }
@@ -168,7 +168,7 @@ internal sealed class BusTests
         {
             Check(echo.Ping("one") && echo.Ping("two"), "Emitting while exported.");
             var texts = new List<string>();
-            await foreach (var signal in pings.WithCancellation(new CancellationTokenSource(TimeSpan.FromSeconds(5)).Token))
+            await foreach (var signal in pings.WithCancellation(TestTimeouts.Cancellation(TimeSpan.FromSeconds(5)).Token))
             {
                 Check(signal.Sender == service.UniqueName && signal.Path == ObjectPath, "signal origin");
                 texts.Add(signal.Arguments[0].GetString());
@@ -227,7 +227,7 @@ internal sealed class BusTests
             "a later call fails with Disconnected");
         try
         {
-            await foreach (var _ in subscription.WithCancellation(new CancellationTokenSource(TimeSpan.FromSeconds(5)).Token)) { }
+            await foreach (var _ in subscription.WithCancellation(TestTimeouts.Cancellation(TimeSpan.FromSeconds(5)).Token)) { }
         }
         catch (DBusException error) when (error.ErrorName == DBusException.Disconnected) { }
         await subscription.DisposeAsync();
@@ -288,7 +288,7 @@ internal sealed class BusTests
         static DBusValue[] Args(string name, string tag, string objectPath) => [DBusValue.From(name), DBusValue.From(tag), DBusValue.From(new DBusObjectPath(objectPath))];
         Check(echo.Tag(Args("org.runic.Player", "keep", "/org/runic/a")) && echo.Tag(Args("org.runicx", "drop", "/org/other"))
             && echo.Tag(Args("org.runic", "drop", "/org/runicx")) && echo.Tag(Args("/org/runic/a/b", "keep", "/org")) && echo.Tag([DBusValue.From(5)]), "emitting");
-        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        using var timeout = TestTimeouts.Cancellation(TimeSpan.FromSeconds(5));
         // Every signal reached the unfiltered subscription; the connection dispatches in order, so the others have theirs.
         await using (var marks = all.GetAsyncEnumerator(timeout.Token))
             for (int index = 0; index < 5; index++) Check(await marks.MoveNextAsync(), $"signal {index} arrived");
@@ -356,7 +356,7 @@ internal sealed class BusTests
             && objects["/org/runic/Test/Disk1"]["org.runic.Test.Disk"]["Label"].GetString() == "data", "the objects with unwrapped properties");
         Check(manager.Add("/org/runic/Test/Disk2", "org.runic.Test.Disk", 7) && manager.Remove("/org/runic/Test/Disk1", "org.runic.Test.Disk", "org.runic.Test.Partition"),
             "emitting");
-        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        using var timeout = TestTimeouts.Cancellation(TimeSpan.FromSeconds(5));
         await using var signals = changes.GetAsyncEnumerator(timeout.Token);
         Check(await signals.MoveNextAsync() && DBusObjectManagerProxy.ReadInterfaceChanges(signals.Current) is { } added
             && added.Path.Value == "/org/runic/Test/Disk2" && added.Added["org.runic.Test.Disk"]["Size"].GetUInt64() == 7 && added.Removed.IsEmpty, "InterfacesAdded");
@@ -394,7 +394,7 @@ internal sealed class BusTests
             Check(await ErrorAsync(() => proxy.GetPropertyAsync(Interface, "Name")) is { ErrorName: DBusException.LimitsExceeded },
                 "property calls count against the limit too");
             serial.Release(1 + 64);
-            await Task.WhenAll(calls).WaitAsync(TimeSpan.FromSeconds(10));
+            await Task.WhenAll(calls).WaitScaledAsync(TimeSpan.FromSeconds(10));
             Check(serial.Started.SequenceEqual(Enumerable.Range(0, 1 + 64)), "the calls ran in arrival order");
             Check(serial.MostAtOnce == 1, $"never more than one call at once: {serial.MostAtOnce}");
             serial.Release(1);
@@ -413,7 +413,7 @@ internal sealed class BusTests
             parallel.Release(1);
             await parallel.WaitStartedAsync(17);
             parallel.Release(16);
-            await Task.WhenAll(calls).WaitAsync(TimeSpan.FromSeconds(10));
+            await Task.WhenAll(calls).WaitScaledAsync(TimeSpan.FromSeconds(10));
             Check(parallel.MostAtOnce == 16, $"at most 16 at once: {parallel.MostAtOnce}");
         }
     }
@@ -522,7 +522,7 @@ internal sealed class BusTests
 
         public async Task WaitStartedAsync(int count)
         {
-            using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+            using var deadline = TestTimeouts.Cancellation(TimeSpan.FromSeconds(10));
             while (true)
             {
                 lock (_gate) if (Started.Count >= count) return;

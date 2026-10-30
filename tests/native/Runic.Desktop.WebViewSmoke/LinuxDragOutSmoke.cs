@@ -85,9 +85,9 @@ internal static class LinuxDragOutSmoke
 
     internal static async Task RunAsync(DesktopHost host, Pointer pointer, string[] paths, Toolkit toolkit)
     {
-        await DragOutAsync(host, pointer, paths, toolkit).WaitAsync(TimeSpan.FromSeconds(45));
+        await DragOutAsync(host, pointer, paths, toolkit).WaitScaledAsync(TimeSpan.FromSeconds(45));
         Console.WriteLine($"{toolkit.Name} drag out: the window closed.");
-        await FrameDropsAsync(host, pointer, paths, toolkit).WaitAsync(TimeSpan.FromSeconds(45));
+        await FrameDropsAsync(host, pointer, paths, toolkit).WaitScaledAsync(TimeSpan.FromSeconds(45));
     }
 
     private static async Task DragOutAsync(DesktopHost host, Pointer pointer, string[] paths, Toolkit toolkit)
@@ -193,7 +193,7 @@ internal static class LinuxDragOutSmoke
         DesktopDragEffects effect;
         try
         {
-            effect = await drag.WaitAsync(TimeSpan.FromSeconds(15));
+            effect = await drag.WaitScaledAsync(TimeSpan.FromSeconds(15));
         }
         catch (TimeoutException)
         {
@@ -208,7 +208,7 @@ internal static class LinuxDragOutSmoke
                 throw new InvalidOperationException($"The {toolkit.Name} drag out onto the drop target ended with None. Stages: {Stages()}");
             try
             {
-                uris = await s_dropped.Task.WaitAsync(TimeSpan.FromSeconds(10));
+                uris = await s_dropped.Task.WaitScaledAsync(TimeSpan.FromSeconds(10));
             }
             catch (TimeoutException)
             {
@@ -252,7 +252,7 @@ internal static class LinuxDragOutSmoke
                 await Task.Delay(700);
                 Console.WriteLine($"{toolkit.Name} frame drops: dragging into the same-origin frame.");
                 await pointer.DragAsync(toolkit.SourcePoint, toolkit.SameFrame);
-                var drop = await drops.Reader.ReadAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(15));
+                var drop = await drops.Reader.ReadAsync().AsTask().WaitScaledAsync(TimeSpan.FromSeconds(15));
                 if (drop.Target != "frame-folder" || drop.Effect != DesktopDragEffects.Move || !drop.Paths.SequenceEqual(paths))
                     throw new InvalidOperationException(
                         $"The {toolkit.Name} same-origin frame's drop reported target '{drop.Target}', {drop.Effect} and [{string.Join(", ", drop.Paths)}].");

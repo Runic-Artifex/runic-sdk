@@ -59,7 +59,7 @@ internal sealed class ContinuationTests
         });
         Task<bool>? body = null;
         await context.InvokeAsync(() => body = Body());
-        Require(await body!.WaitAsync(TimeSpan.FromSeconds(5)), "The code after the awaited interaction ran outside the model context.");
+        Require(await body!.WaitScaledAsync(TimeSpan.FromSeconds(5)), "The code after the awaited interaction ran outside the model context.");
 
         async Task<bool> Body()
         {
@@ -75,7 +75,7 @@ internal sealed class ContinuationTests
         string flavour, bool operation)
     {
         var first = transport.CommandAsync(route, "run", JsonSerializer.Serialize("a")).AsTask();
-        await probe.WaitingFor("a").WaitAsync(TimeSpan.FromSeconds(5));
+        await probe.WaitingFor("a").WaitScaledAsync(TimeSpan.FromSeconds(5));
         var contract = $"{model.FullName}:{BridgeContractShape.Compute(model)}";
         Task<string>? second = null;
         if (operation)
@@ -86,14 +86,14 @@ internal sealed class ContinuationTests
                 $"The {flavour} operation was not admitted: {admission.RootElement}");
         }
         else second = transport.CommandAsync(route, "runNext", JsonSerializer.Serialize("b")).AsTask();
-        await probe.WaitingFor("b").WaitAsync(TimeSpan.FromSeconds(5));
+        await probe.WaitingFor("b").WaitScaledAsync(TimeSpan.FromSeconds(5));
         probe.ReleaseAll();
 
-        using (var reply = JsonDocument.Parse(await first.WaitAsync(TimeSpan.FromSeconds(5))))
+        using (var reply = JsonDocument.Parse(await first.WaitScaledAsync(TimeSpan.FromSeconds(5))))
             Require(reply.RootElement.GetProperty("ok").GetBoolean(), $"The {flavour} command failed: {reply.RootElement}");
         if (second is not null)
         {
-            using var reply = JsonDocument.Parse(await second.WaitAsync(TimeSpan.FromSeconds(5)));
+            using var reply = JsonDocument.Parse(await second.WaitScaledAsync(TimeSpan.FromSeconds(5)));
             Require(reply.RootElement.GetProperty("ok").GetBoolean(), $"The second {flavour} command failed: {reply.RootElement}");
         }
         else

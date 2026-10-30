@@ -33,7 +33,7 @@ internal sealed class FileDropChecks
                 native.Drop(new DesktopFileDropEventArgs([file, root.FullName], "folder-7"));
                 native.Drop(new DesktopFileDropEventArgs([file], "fail"));
                 native.Drop(new DesktopFileDropEventArgs([file]));
-                await viewModel.Third.Task.WaitAsync(TimeSpan.FromSeconds(5));
+                await viewModel.Third.Task.WaitScaledAsync(TimeSpan.FromSeconds(5));
                 Require(viewModel.Drops.Count == 3, $"Expected three drops, got {viewModel.Drops.Count}.");
                 var first = viewModel.Drops[0];
                 Require(first.Target == "folder-7" && first.Files.Count == 2
@@ -48,9 +48,9 @@ internal sealed class FileDropChecks
                 // A drop that is still running is cancelled when the Window closes.
                 viewModel.Hold = new(TaskCreationOptions.RunContinuationsAsynchronously);
                 native.Drop(new DesktopFileDropEventArgs([file], "held"));
-                await viewModel.HoldEntered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+                await viewModel.HoldEntered.Task.WaitScaledAsync(TimeSpan.FromSeconds(5));
                 await ((IBridgeWindow)window.Host).CloseAsync(TimeSpan.FromSeconds(5));
-                Require(await viewModel.HoldCancelled.Task.WaitAsync(TimeSpan.FromSeconds(5)), "Closing the Window did not cancel the drop.");
+                Require(await viewModel.HoldCancelled.Task.WaitScaledAsync(TimeSpan.FromSeconds(5)), "Closing the Window did not cancel the drop.");
             }
             finally
             {
@@ -80,7 +80,7 @@ internal sealed class FileDropChecks
             var opened = new RecordingLease("attachment.pdf");
             var unopened = new RecordingLease("../photo.jpg");
             factory.Hosts[0].Drop(new DesktopFileDropEventArgs([], [opened, unopened], "inbox") { Effect = Runic.Platform.DesktopDragEffects.Move });
-            var drop = await window.ViewModel.Received.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            var drop = await window.ViewModel.Received.Task.WaitScaledAsync(TimeSpan.FromSeconds(5));
             Require(drop.Files.Count == 0 && drop.Target == "inbox" && drop.Effect == RunicDropEffect.Move, "The drop lost its label or effect.");
             Require(drop.PromisedFiles.Select(static file => file.Name).SequenceEqual(["attachment.pdf", "photo.jpg"]), "The promised file names were not kept or sanitized.");
             Require(window.ViewModel.Content == "content", "The handler did not read the promised file.");

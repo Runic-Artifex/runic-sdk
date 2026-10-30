@@ -15,7 +15,7 @@ internal sealed class PageRemovalTests
     public async Task APushAndPopCycleReportsNoErrorDiagnostic()
     {
         await using var fixture = await GuardFixture.OpenAsync<UnguardedWindow>();
-        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(20));
+        using var timeout = TestTimeouts.Cancellation(TimeSpan.FromSeconds(20));
         var cancellation = timeout.Token;
         using var browser = await DesktopWireClient.ConnectAsync(fixture.Surface, cancellation);
         await browser.HelloAsync(cancellation);
@@ -55,7 +55,7 @@ internal sealed class PageRemovalTests
     public async Task ALateCallIntoALargeReleasedTreeIsReportedAsReleased()
     {
         await using var fixture = await GuardFixture.OpenAsync<UnguardedWindow>();
-        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(60));
+        using var timeout = TestTimeouts.Cancellation(TimeSpan.FromSeconds(60));
         var cancellation = timeout.Token;
         using var browser = await DesktopWireClient.ConnectAsync(fixture.Surface, cancellation);
         await browser.HelloAsync(cancellation);
@@ -96,7 +96,7 @@ internal sealed class PageRemovalTests
     public async Task ViewsRequestsReachTheWindowsDispatcher()
     {
         await using var fixture = await GuardFixture.OpenAsync<UnguardedWindow>();
-        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(20));
+        using var timeout = TestTimeouts.Cancellation(TimeSpan.FromSeconds(20));
         var cancellation = timeout.Token;
         const string Hello = "{\"kind\":\"hello\",\"protocol\":4,\"session\":\"session-1\",\"client\":{\"name\":\"wire\",\"version\":\"0\"}}";
         using (var browser = await DesktopWireClient.ConnectAsync(fixture.Surface, cancellation))
@@ -139,7 +139,7 @@ internal sealed class PageRemovalTests
     public async Task AnUnadmittedCapabilityIsReportedAndRepliesEmpty()
     {
         await using var fixture = await GuardFixture.OpenAsync<UnguardedWindow>();
-        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(20));
+        using var timeout = TestTimeouts.Cancellation(TimeSpan.FromSeconds(20));
         using var browser = await DesktopWireClient.ConnectAsync(fixture.Surface, timeout.Token);
         var unadmittedReply = await browser.CallAsync("contentNeverAdmittedMount", timeout.Token, "session:x");
         Require(unadmittedReply == "", $"A capability that was never admitted was answered '{unadmittedReply}'.");

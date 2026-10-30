@@ -52,7 +52,7 @@ internal sealed class ToolkitCancelTests
         lifetimeHost.Dispose();
         await RequireCancelledAsync(lifetimeExecution);
         Require(lifetimeModel.CancelledCount == 1, "View disposal no longer cancelled the actual Toolkit command.");
-        _ = await pending.WaitAsync(TimeSpan.FromSeconds(5));
+        _ = await pending.WaitScaledAsync(TimeSpan.FromSeconds(5));
     }
 
     // The same cancellation of commands started as operations.
@@ -99,7 +99,7 @@ internal sealed class ToolkitCancelTests
             using var cancellation = JsonDocument.Parse(host.Transport.Command(Route, $"{member}Cancel"));
             Require(cancellation.RootElement.GetProperty("ok").GetBoolean(), $"The generated cancel command failed through the bridge: {cancellation.RootElement}");
         }
-        using var terminal = JsonDocument.Parse(await pending.WaitAsync(TimeSpan.FromSeconds(5)));
+        using var terminal = JsonDocument.Parse(await pending.WaitScaledAsync(TimeSpan.FromSeconds(5)));
         Require(!terminal.RootElement.GetProperty("ok").GetBoolean()
             && terminal.RootElement.GetProperty("error").GetProperty("kind").GetString() == "cancelled",
             $"Toolkit cancel execution did not finish the original command request as cancelled: {terminal.RootElement}");
@@ -135,7 +135,7 @@ internal sealed class ToolkitCancelTests
 
     private static async Task RequireCancelledAsync(Task execution)
     {
-        try { await execution.WaitAsync(TimeSpan.FromSeconds(5)); }
+        try { await execution.WaitScaledAsync(TimeSpan.FromSeconds(5)); }
         catch (OperationCanceledException) { return; }
         throw new InvalidOperationException("The actual Toolkit execution was not cancelled.");
     }

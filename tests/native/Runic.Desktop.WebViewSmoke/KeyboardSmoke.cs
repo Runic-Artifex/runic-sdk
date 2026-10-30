@@ -199,7 +199,7 @@ internal static class KeyboardSmoke
 
     private static async Task ExpectValueAsync(DesktopSurface surface, string expected)
     {
-        var deadline = DateTime.UtcNow + StepTimeout;
+        var deadline = DateTime.UtcNow + TestTimeouts.Scale(StepTimeout);
         string value;
         do
         {
@@ -227,7 +227,7 @@ internal static class KeyboardSmoke
             // A negative check: give a wrong result time to appear.
             await Task.Delay(TimeSpan.FromSeconds(1.5));
         }
-        var deadline = DateTime.UtcNow + StepTimeout;
+        var deadline = DateTime.UtcNow + TestTimeouts.Scale(StepTimeout);
         PageState state;
         do
         {
@@ -263,7 +263,7 @@ internal static class KeyboardSmoke
     // The driver acknowledges each request by its number on standard input.
     private static async Task WaitForDriverAsync(int request)
     {
-        using var timeout = new CancellationTokenSource(StepTimeout);
+        using var timeout = TestTimeouts.Cancellation(StepTimeout);
         while (await Console.In.ReadLineAsync(timeout.Token) is { } line)
         {
             if (line.Trim() == request.ToString(CultureInfo.InvariantCulture))

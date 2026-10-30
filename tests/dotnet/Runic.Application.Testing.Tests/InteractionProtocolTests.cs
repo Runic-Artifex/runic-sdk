@@ -58,7 +58,7 @@ public sealed class InteractionProtocolTests
         Require(window.Reply(push, """{"outcome":"answered","output":{"accepted":true}}""", "connection-2") == "stale",
             "Another connection answered the interaction.");
         Require(window.Reply(push, """{"outcome":"answered","output":{"accepted":true}}""") == "ok", "The answer was not ok.");
-        Require(await answer.WaitAsync(TimeSpan.FromSeconds(5)), "The waiting interaction did not receive the answer.");
+        Require(await answer.WaitScaledAsync(TimeSpan.FromSeconds(5)), "The waiting interaction did not receive the answer.");
         Require(window.Reply(push, """{"outcome":"answered","output":{ "accepted" : true }}""") == "already-completed",
             "A canonically equal repeat was not already-completed.");
         Require(window.Reply(push, """{"outcome":"answered","output":{"accepted":false}}""") == "stale",
@@ -113,7 +113,7 @@ public sealed class InteractionProtocolTests
 
     private static async Task<bool> ThrowsAsync<TException>(Task task) where TException : Exception
     {
-        try { await task.WaitAsync(TimeSpan.FromSeconds(5)); }
+        try { await task.WaitScaledAsync(TimeSpan.FromSeconds(5)); }
         catch (TException) { return true; }
         return false;
     }
@@ -197,7 +197,7 @@ public sealed class InteractionProtocolTests
 
         public async Task<List<JsonObject>> PushesAsync(string connection = "connection-1")
         {
-            await BridgeTargetedPushes.For(Transport).WhenSent().WaitAsync(TimeSpan.FromSeconds(5));
+            await BridgeTargetedPushes.For(Transport).WhenSent().WaitScaledAsync(TimeSpan.FromSeconds(5));
             return [.. Transport.TakeMessages().Where(message => message.ConnectionKey == connection)
                 .Select(message => JsonNode.Parse(message.Json)!.AsObject())];
         }

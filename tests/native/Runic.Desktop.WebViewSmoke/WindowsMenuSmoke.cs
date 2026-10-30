@@ -346,7 +346,7 @@ internal static partial class WindowsMenuSmoke
         var escaped = window.ShowContextMenuAsync(items).AsTask();
         var menu = await TrackingAsync(0);
         PostMessage(menu, WmKeyDown, VkEscape, 0);
-        Require(await escaped.WaitAsync(Deadline) is null, "Escape returns null");
+        Require(await escaped.WaitScaledAsync(Deadline) is null, "Escape returns null");
 
         // A later menu dismisses the open one, which returns null; cancelling closes the later one.
         Idle.Clear();
@@ -359,7 +359,7 @@ internal static partial class WindowsMenuSmoke
         cancel.Cancel();
         try
         {
-            await second.WaitAsync(Deadline);
+            await second.WaitScaledAsync(Deadline);
             throw new InvalidOperationException("Context menu: a cancelled menu did not throw OperationCanceledException.");
         }
         catch (OperationCanceledException) { }
@@ -371,7 +371,7 @@ internal static partial class WindowsMenuSmoke
     {
         try
         {
-            return await menu.WaitAsync(Deadline);
+            return await menu.WaitScaledAsync(Deadline);
         }
         catch (TimeoutException)
         {
@@ -403,7 +403,7 @@ internal static partial class WindowsMenuSmoke
         }
         PostMessage(menu, WmKeyDown, VkDown, 0);
         PostMessage(menu, WmKeyDown, VkReturn, 0);
-        var result = await chosen.WaitAsync(Deadline);
+        var result = await chosen.WaitScaledAsync(Deadline);
         Require(ReferenceEquals(result, items[0]), $"context menu ({name}): returned {result?.Title ?? "null"}, not {((DesktopMenuItem)items[0]).Title}");
     }
 

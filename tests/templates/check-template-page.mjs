@@ -17,8 +17,10 @@ import { readFileSync } from "node:fs";
 import { createServer } from "node:http";
 import { chromium } from "playwright-core";
 import { watchCspViolations } from "./csp-violations.mjs";
+import { scaled } from "../support/timeouts.mjs";
 
-const timeout = 60_000;
+// Every wait here is for a condition (the page loads, the Bridge connects, the application stops).
+const timeout = scaled(60_000);
 
 /** The policy a generated Program.cs sends outside Development. */
 export function programPolicy(source) {
@@ -90,7 +92,7 @@ async function stopApplication(application) {
   if (application.exited) return;
   // A line on standard input ends serving.
   application.child.stdin.end("\n");
-  const stopped = await Promise.race([application.exit, new Promise(resolve => setTimeout(resolve, 30_000, null))]);
+  const stopped = await Promise.race([application.exit, new Promise(resolve => setTimeout(resolve, scaled(30_000), null))]);
   if (!stopped) {
     try { process.kill(-application.child.pid, "SIGKILL"); } catch { /* already gone */ }
     await application.exit;

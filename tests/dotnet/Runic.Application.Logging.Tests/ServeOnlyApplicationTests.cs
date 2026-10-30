@@ -126,7 +126,7 @@ internal sealed class ServeOnlyApplicationTests
                 RedirectStandardError = true,
                 UseShellExecute = false,
             }) ?? throw new InvalidOperationException("Chromium did not start.");
-            using var timeout = new CancellationTokenSource(Timeout);
+            using var timeout = TestTimeouts.Cancellation(Timeout);
             var errors = browser.StandardError.ReadToEndAsync(timeout.Token);
             string dom;
             try
@@ -154,7 +154,7 @@ internal sealed class ServeOnlyApplicationTests
     // wait covers a slow process listing.
     private static async Task<IReadOnlyList<RunicDescendantProcess>> WaitForDescendantsAsync(RunicServeOnlyApplication application)
     {
-        var deadline = DateTime.UtcNow + Timeout;
+        var deadline = DateTime.UtcNow + TestTimeouts.Scale(Timeout);
         while (true)
         {
             var descendants = application.GetDescendantProcesses();
@@ -168,7 +168,7 @@ internal sealed class ServeOnlyApplicationTests
 
     private static async Task<bool> AllExitedAsync(IReadOnlyList<RunicDescendantProcess> processes, TimeSpan? wait = null)
     {
-        var deadline = DateTime.UtcNow + (wait ?? TimeSpan.FromSeconds(10));
+        var deadline = DateTime.UtcNow + TestTimeouts.Scale(wait ?? TimeSpan.FromSeconds(10));
         while (processes.Any(process => !process.HasExited()))
         {
             if (DateTime.UtcNow > deadline) return false;

@@ -58,7 +58,7 @@ internal sealed partial class TaskbarTests
             _thread = new Thread(() => Run(title)) { IsBackground = true, Name = title };
             _thread.SetApartmentState(ApartmentState.STA);
             _thread.Start();
-            Check(_ready.Task.Wait(Wait) && _ready.Task.Result.Window != 0, "the window is shown");
+            Check(_ready.Task.Wait(TestTimeouts.Scale(Wait)) && _ready.Task.Result.Window != 0, "the window is shown");
         }
 
         public Guid Generation { get; } = Guid.NewGuid();
@@ -101,7 +101,7 @@ internal sealed partial class TaskbarTests
             if (_closed) return;
             _closed = true;
             PostThreadMessageW(_ready.Task.Result.Thread, 0x0012 /* WM_QUIT */, 0, 0);
-            _thread.Join(Wait);
+            _thread.Join(TestTimeouts.Scale(Wait));
         }
 
         [StructLayout(LayoutKind.Sequential)]

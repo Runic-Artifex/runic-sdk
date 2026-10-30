@@ -53,7 +53,7 @@ internal sealed partial class GlobalShortcutsTests
             && listed.SequenceEqual(bindings), "the bindings are listed");
 
         Press(0x78);
-        using (var timeout = new CancellationTokenSource(Wait))
+        using (var timeout = TestTimeouts.Cancellation(Wait))
             Check(await activations.Reader.ReadAsync(timeout.Token) == "show", "SendInput of Ctrl+Alt+Shift+F9 activates the action");
 
         await using (var second = WindowsPlatformProvider.CreateGlobalShortcuts())

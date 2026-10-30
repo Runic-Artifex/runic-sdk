@@ -99,7 +99,7 @@ internal sealed class AspNetCoreAdapterTests
 
             File.WriteAllText(Path.Combine(directory, "app.js"), "1");
             await source.RefreshAsync().ConfigureAwait(false);
-            await fired.Task.WaitAsync(TimeSpan.FromSeconds(10)).ConfigureAwait(false);
+            await fired.Task.WaitScaledAsync(TimeSpan.FromSeconds(10)).ConfigureAwait(false);
             True(token.HasChanged, "The token did not report the change.");
             True(provider.GetFileInfo("app.js").Exists, "The provider did not list the new file.");
         }

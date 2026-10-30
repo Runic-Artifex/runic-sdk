@@ -95,7 +95,7 @@ public sealed class GlobalMenuTests
         var menu = await window.StartAsync(Plan(Bar));
         await using (menu)
         {
-            var (sender, xid, path) = await registrar.Registrations.Reader.ReadAsync().AsTask().WaitAsync(Wait);
+            var (sender, xid, path) = await registrar.Registrations.Reader.ReadAsync().AsTask().WaitScaledAsync(Wait);
             Assert.Equal(menu.Connection!.UniqueName, sender);
             Assert.Equal(Xid, xid);
             Assert.Equal(menu.ObjectPath, path);
@@ -127,8 +127,8 @@ public sealed class GlobalMenuTests
             await EventAsync(client, menu, view[4].Id, "clicked");
             await EventAsync(client, menu, view[5].Children[0].Id, "clicked");
             await EventAsync(client, menu, file[0].Id, "clicked");
-            Assert.Equal(("view.zoom", "0.8"), await window.Executed.Reader.ReadAsync().AsTask().WaitAsync(Wait));
-            Assert.Equal(("file.save", (string?)null), await window.Executed.Reader.ReadAsync().AsTask().WaitAsync(Wait));
+            Assert.Equal(("view.zoom", "0.8"), await window.Executed.Reader.ReadAsync().AsTask().WaitScaledAsync(Wait));
+            Assert.Equal(("file.save", (string?)null), await window.Executed.Reader.ReadAsync().AsTask().WaitScaledAsync(Wait));
             await Task.Delay(200);
             Assert.False(window.Executed.Reader.TryRead(out var stray), $"nothing else ran: {stray}");
             var unknown = await CallAsync(client, menu, "EventGroup", DBusValue.Array("(isvu)",
@@ -137,7 +137,7 @@ public sealed class GlobalMenuTests
                 DBusValue.Struct(DBusValue.From(99999), DBusValue.From("clicked"), DBusValue.Variant(DBusValue.From(0)), DBusValue.From(0u)),
             ]));
             Assert.Equal([99999], unknown[0].GetItems().Select(static id => id.GetInt32()));
-            Assert.Equal(("file.saveAs", (string?)null), await window.Executed.Reader.ReadAsync().AsTask().WaitAsync(Wait));
+            Assert.Equal(("file.saveAs", (string?)null), await window.Executed.Reader.ReadAsync().AsTask().WaitScaledAsync(Wait));
 
             // CanExecute is asked again before a submenu opens; changed entries are announced.
             await using var updates = await client.SubscribeAsync(new DBusSignalFilter
@@ -150,7 +150,7 @@ public sealed class GlobalMenuTests
             Assert.True((await CallAsync(client, menu, "AboutToShow", DBusValue.From(tools.Id)))[0].GetBoolean());
             await using (var signals = updates.GetAsyncEnumerator())
             {
-                Assert.True(await signals.MoveNextAsync().AsTask().WaitAsync(Wait));
+                Assert.True(await signals.MoveNextAsync().AsTask().WaitScaledAsync(Wait));
                 var updated = signals.Current.Arguments[0].GetItems();
                 Assert.Single(updated);
                 Assert.Equal(tools.Children[0].Id, updated[0].GetFields()[0].GetInt32());
@@ -172,7 +172,7 @@ public sealed class GlobalMenuTests
             await window.InvokeAsync(() => menu.SetMenus(Plan([.. Bar.Take(1), new DesktopMenu("View", [new DesktopMenuItem("Word Wrap", "view.wrap")]) { AccessKey = 'V' }, .. Bar.Skip(2)])), default);
             await using (var signals = layouts.GetAsyncEnumerator())
             {
-                Assert.True(await signals.MoveNextAsync().AsTask().WaitAsync(Wait));
+                Assert.True(await signals.MoveNextAsync().AsTask().WaitScaledAsync(Wait));
                 Assert.True(signals.Current.Arguments[0].GetUInt32() > revision);
             }
             var replaced = await LayoutAsync(client, menu);
@@ -193,7 +193,7 @@ public sealed class GlobalMenuTests
             }))[0].GetVariant().GetString());
         }
         // Closing the window unregisters it.
-        Assert.Equal(Xid, await registrar.Unregistrations.Reader.ReadAsync().AsTask().WaitAsync(Wait));
+        Assert.Equal(Xid, await registrar.Unregistrations.Reader.ReadAsync().AsTask().WaitScaledAsync(Wait));
     }
 
     [Test, Explicit, Category("DBus")]
@@ -208,7 +208,7 @@ public sealed class GlobalMenuTests
 
         // A registrar appears: the window registers and its bar goes global.
         var registrar = await FakeRegistrar.StartAsync();
-        Assert.Equal(Xid, (await registrar.Registrations.Reader.ReadAsync().AsTask().WaitAsync(Wait)).Xid);
+        Assert.Equal(Xid, (await registrar.Registrations.Reader.ReadAsync().AsTask().WaitScaledAsync(Wait)).Xid);
         await window.WaitForAsync(global: true);
 
         // It goes away: the bar comes back into the window.
@@ -219,7 +219,7 @@ public sealed class GlobalMenuTests
         registrar = await FakeRegistrar.StartAsync();
         await using (registrar)
         {
-            Assert.Equal(menu.ObjectPath, (await registrar.Registrations.Reader.ReadAsync().AsTask().WaitAsync(Wait)).Path);
+            Assert.Equal(menu.ObjectPath, (await registrar.Registrations.Reader.ReadAsync().AsTask().WaitScaledAsync(Wait)).Path);
             await window.WaitForAsync(global: true);
             Assert.Equal([true, false, true], window.Placements);
         }
@@ -233,7 +233,7 @@ public sealed class GlobalMenuTests
         await using var registrar = await FakeRegistrar.StartAsync(refuse: true);
         var window = new FakeWindow();
         await using var menu = await window.StartAsync(Plan(Bar));
-        await registrar.Registrations.Reader.ReadAsync().AsTask().WaitAsync(Wait);
+        await registrar.Registrations.Reader.ReadAsync().AsTask().WaitScaledAsync(Wait);
         await WaitUntilAsync(() => !window.Diagnostics.IsEmpty);
         await Task.Delay(300);
         Assert.Empty(window.Placements);

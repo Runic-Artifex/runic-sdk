@@ -58,12 +58,12 @@ internal static partial class MessageBoxSmoke
         using (var cancellation = new CancellationTokenSource())
         {
             var pending = boxes.ShowAsync(close, cancellation.Token).AsTask();
-            await shown.Task.WaitAsync(Deadline);
+            await shown.Task.WaitScaledAsync(Deadline);
             cancellation.Cancel();
-            try { await pending.WaitAsync(Deadline); throw new InvalidOperationException("A cancelled box returned."); }
+            try { await pending.WaitScaledAsync(Deadline); throw new InvalidOperationException("A cancelled box returned."); }
             catch (OperationCanceledException) { }
             bool open = true;
-            for (var deadline = DateTime.UtcNow + Deadline; open && DateTime.UtcNow < deadline; await Task.Delay(50))
+            for (var deadline = DateTime.UtcNow + TestTimeouts.Scale(Deadline); open && DateTime.UtcNow < deadline; await Task.Delay(50))
                 await window.InvokeNativeAsync(parent => open = AlertWindow(parent) != 0);
             Require(!open, "cancellation closed the alert dialog");
         }
@@ -76,16 +76,16 @@ internal static partial class MessageBoxSmoke
         var shown = new TaskCompletionSource<nint>(TaskCreationOptions.RunContinuationsAsynchronously);
         ((Gtk4MessageBoxes)boxes).Shown = alert => shown.TrySetResult(alert);
         var pending = boxes.ShowAsync(box).AsTask();
-        await shown.Task.WaitAsync(Deadline);
+        await shown.Task.WaitScaledAsync(Deadline);
         // The dialog's window appears once GTK has iterated.
         nint alertWindow = 0;
-        for (var deadline = DateTime.UtcNow + Deadline; alertWindow == 0; await Task.Delay(50))
+        for (var deadline = DateTime.UtcNow + TestTimeouts.Scale(Deadline); alertWindow == 0; await Task.Delay(50))
         {
             if (DateTime.UtcNow > deadline) throw new TimeoutException("The alert dialog's window did not appear.");
             await owner.InvokeAsync(parent => alertWindow = AlertWindow(parent));
         }
         await owner.InvokeAsync(_ => answer(alertWindow));
-        return await pending.WaitAsync(Deadline);
+        return await pending.WaitScaledAsync(Deadline);
     }
 
     // The toplevel window transient for the Desktop window: the alert dialog's.

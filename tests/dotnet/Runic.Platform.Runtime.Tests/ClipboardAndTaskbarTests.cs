@@ -135,7 +135,7 @@ internal sealed class ClipboardAndTaskbarTests
             signal = changed;
             return ValueTask.FromResult<IAsyncDisposable?>(new Disposal(() => disposed = true));
         }
-        using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+        using var cancellation = TestTimeouts.Cancellation(TimeSpan.FromSeconds(30));
         await using var watch = ClipboardWatch.WatchAsync(Read, Subscribe, cancellation.Token).GetAsyncEnumerator(cancellation.Token);
         formats.Writer.TryWrite(Success(DesktopClipboardFormats.Text));
         Check(await watch.MoveNextAsync() && watch.Current is PlatformResult<DesktopClipboardFormats>.Success(DesktopClipboardFormats.Text), "Formats now.");

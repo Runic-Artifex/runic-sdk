@@ -146,17 +146,17 @@ public sealed class ContentLifecycleTests
             Require(views.Attached == 3, $"Mounting created {views.Attached} Views instead of 3.");
 
             Require(context.TryPost(() => { started.Set(); release.Wait(); }), "The model thread did not accept a turn.");
-            Require(started.Wait(TimeSpan.FromSeconds(5)), "The model thread did not start the blocking turn.");
+            Require(started.Wait(TestTimeouts.Scale(TimeSpan.FromSeconds(5))), "The model thread did not start the blocking turn.");
             var queued = context.Invocations;
             var unmount = Task.Run(() => Close(transport, pageRoute, "browser:view"));
-            Require(SpinWait.SpinUntil(() => context.Invocations == queued + 1, TimeSpan.FromSeconds(5)),
+            Require(SpinWait.SpinUntil(() => context.Invocations == queued + 1, TestTimeouts.Scale(TimeSpan.FromSeconds(5))),
                 "The browser unmount did not queue its release turn.");
             var forget = Task.Run(() => session.Forget(page));
-            Require(SpinWait.SpinUntil(() => context.Invocations == queued + 2, TimeSpan.FromSeconds(5)),
+            Require(SpinWait.SpinUntil(() => context.Invocations == queued + 2, TestTimeouts.Scale(TimeSpan.FromSeconds(5))),
                 "Forget did not reach the page bridge's teardown turn.");
             release.Set();
 
-            try { await Task.WhenAll(unmount, forget).WaitAsync(TimeSpan.FromSeconds(10)); }
+            try { await Task.WhenAll(unmount, forget).WaitScaledAsync(TimeSpan.FromSeconds(10)); }
             catch (TimeoutException)
             {
                 deadlocked = true;
@@ -209,17 +209,17 @@ public sealed class ContentLifecycleTests
                 "The page did not mount.");
 
             Require(context.TryPost(() => { started.Set(); release.Wait(); }), "The model thread did not accept a turn.");
-            Require(started.Wait(TimeSpan.FromSeconds(5)), "The model thread did not start the blocking turn.");
+            Require(started.Wait(TestTimeouts.Scale(TimeSpan.FromSeconds(5))), "The model thread did not start the blocking turn.");
             var queued = context.Invocations;
             var unmount = Task.Run(() => Close(transport, route, "browser:view"));
-            Require(SpinWait.SpinUntil(() => context.Invocations == queued + 1, TimeSpan.FromSeconds(5)),
+            Require(SpinWait.SpinUntil(() => context.Invocations == queued + 1, TestTimeouts.Scale(TimeSpan.FromSeconds(5))),
                 "The browser unmount did not queue its release turn.");
             var forget = Task.Run(() => session.Forget(page));
-            Require(SpinWait.SpinUntil(() => context.Invocations == queued + 2, TimeSpan.FromSeconds(5)),
+            Require(SpinWait.SpinUntil(() => context.Invocations == queued + 2, TestTimeouts.Scale(TimeSpan.FromSeconds(5))),
                 "Forget did not queue a turn.");
             release.Set();
 
-            await Task.WhenAll(unmount, forget).WaitAsync(TimeSpan.FromSeconds(10));
+            await Task.WhenAll(unmount, forget).WaitScaledAsync(TimeSpan.FromSeconds(10));
             Require(unmount.Result == "ok", $"The browser unmount answered {unmount.Result}.");
             Require(views.Detached == 1, $"Retiring the page released {views.Detached} Views instead of 1.");
             Require(views.DetachedOffTurn == 0, "Forget released the page's View outside a model turn.");

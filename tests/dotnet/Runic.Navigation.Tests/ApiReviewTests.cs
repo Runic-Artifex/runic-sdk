@@ -192,7 +192,7 @@ internal sealed partial class NavigationTests
         using var started = new ManualResetEventSlim();
         using var release = new ManualResetEventSlim();
         Require(context.TryPost(() => { started.Set(); release.Wait(); }), "The blocking turn was rejected.");
-        Require(started.Wait(TimeSpan.FromSeconds(5)), "The blocking turn did not start.");
+        Require(started.Wait(TestTimeouts.Scale(TimeSpan.FromSeconds(5))), "The blocking turn did not start.");
         Require(context.TryPost(() => { }), "The queued turn was rejected before shutdown.");
         var disposing = context.DisposeAsync().AsTask();
         release.Set();

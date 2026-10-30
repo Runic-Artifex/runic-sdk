@@ -61,9 +61,9 @@ internal sealed partial class MessageBoxTests
         using (var cancel = new CancellationTokenSource())
         {
             var pending = boxes.ShowAsync(Close, cancel.Token).AsTask();
-            await shown.Task.WaitAsync(Wait);
+            await shown.Task.WaitScaledAsync(Wait);
             cancel.Cancel();
-            try { await pending.WaitAsync(Wait); throw new InvalidOperationException("A cancelled box returned."); }
+            try { await pending.WaitScaledAsync(Wait); throw new InvalidOperationException("A cancelled box returned."); }
             catch (OperationCanceledException) { }
             int open = 0;
             await owner.InvokeAsync(_ => open = MessageDialogs());
@@ -85,9 +85,9 @@ internal sealed partial class MessageBoxTests
         shown = new(TaskCreationOptions.RunContinuationsAsynchronously);
         boxes.Shown = dialog => shown.TrySetResult(dialog);
         var orphan = boxes.ShowAsync(Close).AsTask();
-        await shown.Task.WaitAsync(Wait);
+        await shown.Task.WaitScaledAsync(Wait);
         await owner.CloseWindowAsync();
-        var closed = await orphan.WaitAsync(Wait);
+        var closed = await orphan.WaitScaledAsync(Wait);
         Check(closed is PlatformResult<DesktopMessageBoxButton?>.Unavailable(PlatformUnavailableReason.OwnerClosed), $"closing the window: {closed}");
         Console.WriteLine("PASS native GTK 3 message boxes");
     }
@@ -99,25 +99,25 @@ internal sealed partial class MessageBoxTests
     {
         var boxes = (Gtk3MessageBoxes)LinuxPlatformProvider.CreateUnownedMessageBoxes();
         Check(!LinuxPlatformProvider.IsApplicationLoopRunning, "no GLib main loop runs yet");
-        var early = await boxes.ShowAsync(Close).AsTask().WaitAsync(Wait);
+        var early = await boxes.ShowAsync(Close).AsTask().WaitScaledAsync(Wait);
         Check(early is PlatformResult<DesktopMessageBoxButton?>.Unavailable(PlatformUnavailableReason.BackendUnavailable), $"a box without a running loop: {early}");
 
         using var loop = new MainLoopThread();
-        await loop.Started.WaitAsync(Wait);
+        await loop.Started.WaitScaledAsync(Wait);
         Check(LinuxPlatformProvider.IsApplicationLoopRunning, "the loop runs the default main context");
         var owner = LinuxPlatformProvider.ApplicationOwner;
         var shown = new TaskCompletionSource<nint>(TaskCreationOptions.RunContinuationsAsynchronously);
         boxes.Shown = dialog => shown.TrySetResult(dialog);
         var pending = boxes.ShowAsync(Close).AsTask();
-        var dialog = await shown.Task.WaitAsync(Wait);
+        var dialog = await shown.Task.WaitScaledAsync(Wait);
         bool onLoop = false, transient = true;
         await owner.InvokeAsync(_ =>
         {
             onLoop = Environment.CurrentManagedThreadId == loop.ThreadId;
             transient = TransientFor(dialog) != 0;
             Check(ActivateDefault(dialog) != 0, "a default widget activates");
-        }).AsTask().WaitAsync(Wait);
-        var result = await pending.WaitAsync(Wait);
+        }).AsTask().WaitScaledAsync(Wait);
+        var result = await pending.WaitScaledAsync(Wait);
         Check(onLoop && !transient, $"the box runs on the loop's thread ({onLoop}) without a parent ({!transient})");
         Check(result is PlatformResult<DesktopMessageBoxButton?>.Success(var saved) && saved == Save, $"Return chose the default button: {result}");
 
@@ -126,12 +126,12 @@ internal sealed partial class MessageBoxTests
         using (var cancel = new CancellationTokenSource())
         {
             var cancelled = boxes.ShowAsync(Close, cancel.Token).AsTask();
-            await shown.Task.WaitAsync(Wait);
+            await shown.Task.WaitScaledAsync(Wait);
             cancel.Cancel();
-            try { await cancelled.WaitAsync(Wait); throw new InvalidOperationException("A cancelled box returned."); }
+            try { await cancelled.WaitScaledAsync(Wait); throw new InvalidOperationException("A cancelled box returned."); }
             catch (OperationCanceledException) { }
             int open = -1;
-            await owner.InvokeAsync(_ => open = MessageDialogs()).AsTask().WaitAsync(Wait);
+            await owner.InvokeAsync(_ => open = MessageDialogs()).AsTask().WaitScaledAsync(Wait);
             Check(open == 0, "cancellation destroyed the unowned dialog");
         }
         Console.WriteLine("PASS unowned GTK 3 message boxes");
@@ -164,7 +164,7 @@ internal sealed partial class MessageBoxTests
         // Reports the start from inside the loop, once it owns the default context.
         private void IdleStarted() => new Thread(() =>
         {
-            for (var deadline = DateTime.UtcNow + Wait; DateTime.UtcNow < deadline; Thread.Sleep(10))
+            for (var deadline = DateTime.UtcNow + TestTimeouts.Scale(Wait); DateTime.UtcNow < deadline; Thread.Sleep(10))
                 if (IsRunning(_loop) != 0) { Thread.Sleep(50); _started.TrySetResult(); return; }
             _started.TrySetException(new TimeoutException("The GLib main loop did not start."));
         }) { IsBackground = true }.Start();
@@ -172,7 +172,7 @@ internal sealed partial class MessageBoxTests
         public void Dispose()
         {
             if (_loop != 0) QuitLoop(_loop);
-            _thread.Join(Wait);
+            _thread.Join(TestTimeouts.Scale(Wait));
         }
 
         [LibraryImport("libglib-2.0.so.0", EntryPoint = "g_main_loop_new")] private static partial nint NewLoop(nint context, int running);
@@ -188,9 +188,9 @@ internal sealed partial class MessageBoxTests
         var shown = new TaskCompletionSource<nint>(TaskCreationOptions.RunContinuationsAsynchronously);
         boxes.Shown = dialog => shown.TrySetResult(dialog);
         var pending = boxes.ShowAsync(box).AsTask();
-        var dialog = await shown.Task.WaitAsync(Wait);
+        var dialog = await shown.Task.WaitScaledAsync(Wait);
         await owner.InvokeAsync(_ => answer(dialog));
-        return await pending.WaitAsync(Wait);
+        return await pending.WaitScaledAsync(Wait);
     }
 
     // The action area's buttons in order, with ! for a destructive and * for a suggested one.

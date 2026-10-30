@@ -42,7 +42,7 @@ internal sealed class WpfDispatcherExecutor : ITestExecutor
         var application = await started;
         if (!application.Dispatcher.HasShutdownStarted)
             await application.Dispatcher.InvokeAsync(application.Shutdown);
-        if (_thread is { } thread && !thread.Join(TimeSpan.FromSeconds(30)))
+        if (_thread is { } thread && !thread.Join(TestTimeouts.Scale(TimeSpan.FromSeconds(30))))
             throw new TimeoutException("The WPF dispatcher thread did not stop after Application.Shutdown.");
         if (TakeUnhandled() is { } reached) throw reached;
     }

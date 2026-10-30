@@ -69,7 +69,7 @@ internal static partial class GlobalMenuSmoke
             var placements = new ConcurrentQueue<DesktopMenuBarPlacement>();
             window.MenuBarPlacementChanged += (_, _) => placements.Enqueue(window.MenuBarPlacement);
 
-            var (sender, xid, path) = await registrar.Registrations.Reader.ReadAsync().AsTask().WaitAsync(Deadline);
+            var (sender, xid, path) = await registrar.Registrations.Reader.ReadAsync().AsTask().WaitScaledAsync(Deadline);
             var expectedXid = await ReadNativeAsync(window, handle => toolkit == "gtk3" ? Gtk3.Xid(handle) : Gtk4.Xid(handle));
             Require(xid == expectedXid && xid != 0, $"RegisterWindow with the window's X11 id {expectedXid:x}, not {xid:x}");
             Require(path.StartsWith("/org/runicartifex/MenuBar/", StringComparison.Ordinal), $"the menu path, not {path}");
@@ -106,7 +106,7 @@ internal static partial class GlobalMenuSmoke
             await WaitForAsync(() => window.MenuBarPlacement == DesktopMenuBarPlacement.Window, "placement Window after the registrar left");
             await WaitForAsync(async () => await ReadNativeAsync(window, handle => BarVisible(toolkit, handle)) == true, "the in-window bar to show");
             registrar = await FakeRegistrar.StartAsync();
-            var again = await registrar.Registrations.Reader.ReadAsync().AsTask().WaitAsync(Deadline);
+            var again = await registrar.Registrations.Reader.ReadAsync().AsTask().WaitScaledAsync(Deadline);
             Require(again == (sender, xid, path), $"the same registration again, not {again}");
             await WaitForAsync(() => window.MenuBarPlacement == DesktopMenuBarPlacement.Global, "placement Global with the new registrar");
             await WaitForAsync(() => placements.ToArray() is [.., DesktopMenuBarPlacement.Window, DesktopMenuBarPlacement.Global],
@@ -114,7 +114,7 @@ internal static partial class GlobalMenuSmoke
             Console.WriteLine($"PASS {toolkit} registrar watch: back in the window when it left, registered again with a new owner.");
 
             await window.CloseAsync();
-            Require(await registrar.Unregistrations.Reader.ReadAsync().AsTask().WaitAsync(Deadline) == xid, "UnregisterWindow when the window closes");
+            Require(await registrar.Unregistrations.Reader.ReadAsync().AsTask().WaitScaledAsync(Deadline) == xid, "UnregisterWindow when the window closes");
         }
 
         // A Page window has no native bar to export.
@@ -156,7 +156,7 @@ internal static partial class GlobalMenuSmoke
     private static async Task WaitForAsync(Func<Task<bool>> condition, Func<string> what)
     {
         var elapsed = System.Diagnostics.Stopwatch.StartNew();
-        while (!await condition().WaitAsync(Deadline))
+        while (!await condition().WaitScaledAsync(Deadline))
         {
             if (elapsed.Elapsed > Deadline) throw new TimeoutException("Global menu: timed out waiting for " + what() + ".");
             await Task.Delay(50);

@@ -124,7 +124,7 @@ public sealed class WindowStateTests
         var maximized = Opened with { X = 0, Y = 0, Width = 1920, Height = 1040, IsMaximized = true, Placement = Opened.Placement with { Maximized = true } };
         var native = factory.Hosts[0];
         native.Report(maximized);
-        await raised.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        await raised.Task.WaitScaledAsync(TimeSpan.FromSeconds(5));
         Assert.Equal(maximized, window.State);
         lock (changes)
         {
@@ -167,7 +167,7 @@ public sealed class WindowStateTests
             native.Report(Opened with { Width = width, Placement = Opened.Placement with { Width = width } });
         }
         native.Report(last);
-        await done.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        await done.Task.WaitScaledAsync(TimeSpan.FromSeconds(10));
         Assert.False(overlapped);
         lock (seen)
         {
@@ -189,7 +189,7 @@ public sealed class WindowStateTests
         window.StateChanged += (_, args) => { if (args.State.Width == 900) received.TrySetResult(args.State); };
         factory.Hosts[0].Report(Opened with { Width = 700 });
         factory.Hosts[0].Report(Opened with { Width = 900 });
-        Assert.Equal(900, (await received.Task.WaitAsync(TimeSpan.FromSeconds(5))).Width);
+        Assert.Equal(900, (await received.Task.WaitScaledAsync(TimeSpan.FromSeconds(5))).Width);
     }
 
     [Test]

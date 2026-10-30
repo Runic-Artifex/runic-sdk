@@ -65,7 +65,7 @@ internal sealed partial class MessageBoxTests
         // The box closes on the key down, and its thread can destroy it before the test posts the key up. A fast dialog
         // thread did that on CI; here the key up waits until the box is gone, so the order is certain.
         (_, result) = await ShowAsync(owner, close, dialog => Key(dialog, VK_ESCAPE,
-            afterKeyDown: () => Check(SpinWait.SpinUntil(() => !IsWindow(dialog), Wait), "Esc closed the box on its key down")));
+            afterKeyDown: () => Check(SpinWait.SpinUntil(() => !IsWindow(dialog), TestTimeouts.Scale(Wait)), "Esc closed the box on its key down")));
         Check(result is PlatformResult<DesktopMessageBoxButton?>.Success(var early) && early == Cancel, $"a box closed before the key up: {result}");
         Console.WriteLine("PASS a box that closes before the key up answers");
 
@@ -99,11 +99,11 @@ internal sealed partial class MessageBoxTests
         using (var cancel = new CancellationTokenSource())
         {
             var pending = boxes.ShowAsync(close, cancel.Token).AsTask();
-            var shown = await created.Task.WaitAsync(Wait);
+            var shown = await created.Task.WaitScaledAsync(Wait);
             cancel.Cancel();
             try
             {
-                await pending.WaitAsync(Wait);
+                await pending.WaitScaledAsync(Wait);
                 throw new InvalidOperationException("A cancelled box returned.");
             }
             catch (OperationCanceledException) { }
@@ -137,10 +137,10 @@ internal sealed partial class MessageBoxTests
         await using var status = WindowsPlatformProvider.CreateNetworkStatus();
         Console.WriteLine($"Windows {Environment.OSVersion.Version}; network status {DesktopServiceStatus.Get(status)}");
         Check(DesktopServiceStatus.Get(status) is CapabilityStatus.Available, "Windows 10 2004 and later have the connectivity hint");
-        var read = await status.ReadAsync().AsTask().WaitAsync(Wait);
+        var read = await status.ReadAsync().AsTask().WaitScaledAsync(Wait);
         Console.WriteLine($"ReadAsync: {read}");
         Check(read is PlatformResult<DesktopNetworkState>.Success, "the hint reads");
-        using var cancel = new CancellationTokenSource(Wait);
+        using var cancel = TestTimeouts.Cancellation(Wait);
         await using var watch = status.WatchAsync(cancel.Token).GetAsyncEnumerator(cancel.Token);
         Check(await watch.MoveNextAsync(), "the watch reports");
         Console.WriteLine($"WatchAsync first: {watch.Current}");
@@ -158,7 +158,7 @@ internal sealed partial class MessageBoxTests
         var created = new TaskCompletionSource<nint>(TaskCreationOptions.RunContinuationsAsynchronously);
         boxes.Created = window => created.TrySetResult(window);
         var pending = boxes.ShowAsync(box).AsTask();
-        var dialog = await created.Task.WaitAsync(Wait);
+        var dialog = await created.Task.WaitScaledAsync(Wait);
         try { drive(dialog); }
         catch
         {
@@ -168,7 +168,7 @@ internal sealed partial class MessageBoxTests
             PostMessageW(dialog, TDM_CLICK_BUTTON, 1, 0);
             throw;
         }
-        return (dialog, await pending.WaitAsync(Wait));
+        return (dialog, await pending.WaitScaledAsync(Wait));
     }
 
     // A key press as the keyboard delivers it: to the focused control, through the dialog's message loop. A key that
@@ -233,7 +233,7 @@ internal sealed partial class MessageBoxTests
             }) { IsBackground = true, Name = title };
             _thread.SetApartmentState(ApartmentState.STA);
             _thread.Start();
-            Check(_window.Task.Wait(Wait) && _window.Task.Result != 0, "the owner window is created");
+            Check(_window.Task.Wait(TestTimeouts.Scale(Wait)) && _window.Task.Result != 0, "the owner window is created");
         }
 
         public Guid Generation { get; } = Guid.NewGuid();
@@ -257,7 +257,7 @@ internal sealed partial class MessageBoxTests
             if (_closed) return;
             _closed = true;
             _work.CompleteAdding();
-            _thread.Join(Wait);
+            _thread.Join(TestTimeouts.Scale(Wait));
         }
     }
 

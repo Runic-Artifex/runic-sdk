@@ -79,9 +79,9 @@ internal sealed class SecretStoreTests
         await using var fake = await FakeSecretService.StartAsync();
         var store = new SecretServiceStore(destination: fake.Name, requireEncryption: true);
 
-        Check(await store.GetAsync(Service, Account).AsTask().WaitAsync(Wait) is PlatformResult<string?>.Success { Value: null }, "nothing stored yet");
-        Check(await store.DeleteAsync(Service, Account).AsTask().WaitAsync(Wait) is PlatformResult<bool>.Success { Value: false }, "nothing to delete");
-        Check(await store.SetAsync(Service, Account, "first-tøken").AsTask().WaitAsync(Wait) is PlatformResult<PlatformUnit>.Success, "stored");
+        Check(await store.GetAsync(Service, Account).AsTask().WaitScaledAsync(Wait) is PlatformResult<string?>.Success { Value: null }, "nothing stored yet");
+        Check(await store.DeleteAsync(Service, Account).AsTask().WaitScaledAsync(Wait) is PlatformResult<bool>.Success { Value: false }, "nothing to delete");
+        Check(await store.SetAsync(Service, Account, "first-tøken").AsTask().WaitScaledAsync(Wait) is PlatformResult<PlatformUnit>.Success, "stored");
         Check(store.LastAlgorithm == SecretServiceClient.EncryptedAlgorithm, "the session is encrypted");
         var item = fake.Service.Items.Values.Single();
         Check(Encoding.UTF8.GetString(item.Secret) == "first-tøken" && item.ContentType == "text/plain", "the service decrypted UTF-8 text");
@@ -90,14 +90,14 @@ internal sealed class SecretStoreTests
             && item.Attributes["service"] == Service && item.Attributes["account"] == Account, "libsecret generic schema attributes");
         Check(fake.Service.LastSearch is { Count: 2 } search && search["service"] == Service && search["account"] == Account,
             "searches match items stored without the schema attribute, as secret-tool stores them");
-        Check(await store.GetAsync(Service, Account).AsTask().WaitAsync(Wait) is PlatformResult<string?>.Success { Value: "first-tøken" }, "read back");
+        Check(await store.GetAsync(Service, Account).AsTask().WaitScaledAsync(Wait) is PlatformResult<string?>.Success { Value: "first-tøken" }, "read back");
 
-        Check(await store.SetAsync(Service, Account, "").AsTask().WaitAsync(Wait) is PlatformResult<PlatformUnit>.Success, "replaced with an empty secret");
+        Check(await store.SetAsync(Service, Account, "").AsTask().WaitScaledAsync(Wait) is PlatformResult<PlatformUnit>.Success, "replaced with an empty secret");
         Check(fake.Service.Items.Count == 1 && fake.Service.LastReplace, "CreateItem replaces the item");
-        Check(await store.GetAsync(Service, Account).AsTask().WaitAsync(Wait) is PlatformResult<string?>.Success { Value: "" }, "an empty secret is not missing");
-        Check(await store.GetAsync(Service, "other").AsTask().WaitAsync(Wait) is PlatformResult<string?>.Success { Value: null }, "accounts are distinct");
+        Check(await store.GetAsync(Service, Account).AsTask().WaitScaledAsync(Wait) is PlatformResult<string?>.Success { Value: "" }, "an empty secret is not missing");
+        Check(await store.GetAsync(Service, "other").AsTask().WaitScaledAsync(Wait) is PlatformResult<string?>.Success { Value: null }, "accounts are distinct");
 
-        Check(await store.DeleteAsync(Service, Account).AsTask().WaitAsync(Wait) is PlatformResult<bool>.Success { Value: true }, "deleted");
+        Check(await store.DeleteAsync(Service, Account).AsTask().WaitScaledAsync(Wait) is PlatformResult<bool>.Success { Value: true }, "deleted");
         Check(fake.Service.Items.Count == 0, "the item is gone");
         // Close is sent without waiting for a reply; let the fake service read it.
         for (int i = 0; i < 100 && fake.Service.OpenSessions != 0; i++) await Task.Delay(20);
@@ -105,7 +105,7 @@ internal sealed class SecretStoreTests
 
         fake.Service.Items["/org/freedesktop/secrets/collection/login/raw"] = new("/org/freedesktop/secrets/collection/login", "raw",
             new() { ["service"] = Service, ["account"] = Account }, [0xff, 0xfe], "application/octet-stream");
-        Check(await store.GetAsync(Service, Account).AsTask().WaitAsync(Wait) is PlatformResult<string?>.Failed { Code: PlatformFailureCode.InvalidData },
+        Check(await store.GetAsync(Service, Account).AsTask().WaitScaledAsync(Wait) is PlatformResult<string?>.Failed { Code: PlatformFailureCode.InvalidData },
             "a stored value that is not UTF-8 is invalid data");
         Console.WriteLine("PASS secret store: encrypted round trip.");
     }
@@ -117,13 +117,13 @@ internal sealed class SecretStoreTests
         fake.Service.SupportsEncryption = false;
         var diagnostics = new List<PortalDiagnostic>();
         var store = new SecretServiceStore(destination: fake.Name, application: new PortalApplication(null, diagnostics.Add));
-        Check(await store.SetAsync(Service, Account, "plain").AsTask().WaitAsync(Wait) is PlatformResult<PlatformUnit>.Success, "stored");
+        Check(await store.SetAsync(Service, Account, "plain").AsTask().WaitScaledAsync(Wait) is PlatformResult<PlatformUnit>.Success, "stored");
         Check(store.LastAlgorithm == SecretServiceClient.PlainAlgorithm && diagnostics.Any(d => d.Code == "secret-service-plain-session"), "plain, diagnosed");
-        Check(await store.GetAsync(Service, Account).AsTask().WaitAsync(Wait) is PlatformResult<string?>.Success { Value: "plain" }, "read back");
+        Check(await store.GetAsync(Service, Account).AsTask().WaitScaledAsync(Wait) is PlatformResult<string?>.Success { Value: "plain" }, "read back");
         Check(diagnostics.All(d => !(d.Message + d.Remediation).Contains(Account) && !(d.Message + d.Remediation).Contains(Service)), "diagnostics carry no names");
         diagnostics.Clear();
         var strict = new SecretServiceStore(destination: fake.Name, application: new PortalApplication(null, diagnostics.Add), requireEncryption: true);
-        Check(await strict.GetAsync(Service, Account).AsTask().WaitAsync(Wait) is PlatformResult<string?>.Failed { Code: PlatformFailureCode.Other },
+        Check(await strict.GetAsync(Service, Account).AsTask().WaitScaledAsync(Wait) is PlatformResult<string?>.Failed { Code: PlatformFailureCode.Other },
             "a store that requires encryption does not fall back");
         Check(diagnostics.Any(d => d.Code == "secret-service-encryption-required") && diagnostics.All(d => d.Code != "secret-service-plain-session"),
             "the refusal is diagnosed");
@@ -134,37 +134,37 @@ internal sealed class SecretStoreTests
     {
         await using var fake = await FakeSecretService.StartAsync();
         var store = new SecretServiceStore(destination: fake.Name);
-        Check(await store.SetAsync(Service, Account, "locked-secret").AsTask().WaitAsync(Wait) is PlatformResult<PlatformUnit>.Success, "stored");
+        Check(await store.SetAsync(Service, Account, "locked-secret").AsTask().WaitScaledAsync(Wait) is PlatformResult<PlatformUnit>.Success, "stored");
 
         fake.Service.LockAll();
         fake.Service.Prompts = PromptBehaviour.Complete;
-        Check(await store.GetAsync(Service, Account).AsTask().WaitAsync(Wait) is PlatformResult<string?>.Success { Value: "locked-secret" }, "unlocked by the prompt");
+        Check(await store.GetAsync(Service, Account).AsTask().WaitScaledAsync(Wait) is PlatformResult<string?>.Success { Value: "locked-secret" }, "unlocked by the prompt");
         Check(fake.Service.PromptsShown == 1 && fake.Service.LastWindowId == "", "one unparented prompt");
 
         fake.Service.LockAll();
         fake.Service.Prompts = PromptBehaviour.Dismiss;
-        Check(await store.GetAsync(Service, Account).AsTask().WaitAsync(Wait) is PlatformResult<string?>.Failed { Code: PlatformFailureCode.UserDismissed },
+        Check(await store.GetAsync(Service, Account).AsTask().WaitScaledAsync(Wait) is PlatformResult<string?>.Failed { Code: PlatformFailureCode.UserDismissed },
             "a dismissed unlock prompt");
-        Check(await store.SetAsync(Service, Account, "x").AsTask().WaitAsync(Wait) is PlatformResult<PlatformUnit>.Failed { Code: PlatformFailureCode.UserDismissed },
+        Check(await store.SetAsync(Service, Account, "x").AsTask().WaitScaledAsync(Wait) is PlatformResult<PlatformUnit>.Failed { Code: PlatformFailureCode.UserDismissed },
             "a locked collection is unlocked before storing");
-        Check(await store.DeleteAsync(Service, Account).AsTask().WaitAsync(Wait) is PlatformResult<bool>.Failed { Code: PlatformFailureCode.UserDismissed },
+        Check(await store.DeleteAsync(Service, Account).AsTask().WaitScaledAsync(Wait) is PlatformResult<bool>.Failed { Code: PlatformFailureCode.UserDismissed },
             "a locked item is unlocked before deleting");
 
         fake.Service.Prompts = PromptBehaviour.Fail;
-        Check(await store.GetAsync(Service, Account).AsTask().WaitAsync(Wait) is PlatformResult<string?>.Failed { Code: PlatformFailureCode.Locked, Diagnostic.Domain: "org.freedesktop.Secret.Error.NoPrompter" },
+        Check(await store.GetAsync(Service, Account).AsTask().WaitScaledAsync(Wait) is PlatformResult<string?>.Failed { Code: PlatformFailureCode.Locked, Diagnostic.Domain: "org.freedesktop.Secret.Error.NoPrompter" },
             "a service that cannot prompt leaves the store locked");
 
         fake.Service.Prompts = PromptBehaviour.None;
-        Check(await store.GetAsync(Service, Account).AsTask().WaitAsync(Wait) is PlatformResult<string?>.Failed { Code: PlatformFailureCode.Locked, Diagnostic.Domain: "org.freedesktop.Secret.Error.IsLocked" },
+        Check(await store.GetAsync(Service, Account).AsTask().WaitScaledAsync(Wait) is PlatformResult<string?>.Failed { Code: PlatformFailureCode.Locked, Diagnostic.Domain: "org.freedesktop.Secret.Error.IsLocked" },
             "a refused unlock without a prompt is locked");
 
         fake.Service.Prompts = PromptBehaviour.Hold;
         using var cancellation = new CancellationTokenSource();
         fake.Service.PromptShown = new(TaskCreationOptions.RunContinuationsAsynchronously);
         var pending = store.GetAsync(Service, Account, cancellation.Token).AsTask();
-        await fake.Service.PromptShown.Task.WaitAsync(Wait);
+        await fake.Service.PromptShown.Task.WaitScaledAsync(Wait);
         cancellation.Cancel();
-        try { await pending.WaitAsync(Wait); throw new InvalidOperationException("A cancelled prompt completed."); }
+        try { await pending.WaitScaledAsync(Wait); throw new InvalidOperationException("A cancelled prompt completed."); }
         catch (OperationCanceledException) { }
         Check(fake.Service.Dismissed == 1, "cancellation dismissed the prompt");
         Console.WriteLine("PASS secret store: locked keyring.");
@@ -177,30 +177,30 @@ internal sealed class SecretStoreTests
         var store = new SecretServiceStore(destination: fake.Name);
         byte[] secret = new byte[DesktopSecretStore.MaximumBinarySecretBytes];
         for (int i = 0; i < secret.Length; i++) secret[i] = (byte)(i * 7 + 0x80);
-        Check(await store.SetBytesAsync(Service, Account, secret).AsTask().WaitAsync(Wait) is PlatformResult<PlatformUnit>.Success, "64 KiB stored");
+        Check(await store.SetBytesAsync(Service, Account, secret).AsTask().WaitScaledAsync(Wait) is PlatformResult<PlatformUnit>.Success, "64 KiB stored");
         var item = fake.Service.Items.Values.Single();
         Check(item.ContentType == "application/octet-stream" && item.Secret.SequenceEqual(secret), $"binary content type, found {item.ContentType}");
-        Check(await store.GetBytesAsync(Service, Account).AsTask().WaitAsync(Wait) is PlatformResult<byte[]?>.Success { Value: var read } && read!.SequenceEqual(secret), "read back");
-        Check(await store.GetAsync(Service, Account).AsTask().WaitAsync(Wait) is PlatformResult<string?>.Failed { Code: PlatformFailureCode.InvalidData }, "not text");
-        Check(await store.SetBytesAsync(Service, Account, new byte[secret.Length + 1]).AsTask().WaitAsync(Wait) is PlatformResult<PlatformUnit>.Failed
+        Check(await store.GetBytesAsync(Service, Account).AsTask().WaitScaledAsync(Wait) is PlatformResult<byte[]?>.Success { Value: var read } && read!.SequenceEqual(secret), "read back");
+        Check(await store.GetAsync(Service, Account).AsTask().WaitScaledAsync(Wait) is PlatformResult<string?>.Failed { Code: PlatformFailureCode.InvalidData }, "not text");
+        Check(await store.SetBytesAsync(Service, Account, new byte[secret.Length + 1]).AsTask().WaitScaledAsync(Wait) is PlatformResult<PlatformUnit>.Failed
             { Code: PlatformFailureCode.TooLarge }, "above 64 KiB");
-        Check(await store.SetAsync(Service, Account, "tøken").AsTask().WaitAsync(Wait) is PlatformResult<PlatformUnit>.Success
+        Check(await store.SetAsync(Service, Account, "tøken").AsTask().WaitScaledAsync(Wait) is PlatformResult<PlatformUnit>.Success
             && fake.Service.Items.Values.Single().ContentType == "text/plain", "text replaces the binary item as text/plain");
-        Check(await store.GetBytesAsync(Service, Account).AsTask().WaitAsync(Wait) is PlatformResult<byte[]?>.Success { Value: var utf8 } && utf8!.SequenceEqual("tøken"u8.ToArray()),
+        Check(await store.GetBytesAsync(Service, Account).AsTask().WaitScaledAsync(Wait) is PlatformResult<byte[]?>.Success { Value: var utf8 } && utf8!.SequenceEqual("tøken"u8.ToArray()),
             "a text item reads as UTF-8 bytes");
 
         var quiet = new SecretServiceStore(destination: fake.Name, interactive: false);
         fake.Service.LockAll();
         int shown = fake.Service.PromptsShown, dismissed = fake.Service.Dismissed;
-        Check(await quiet.GetAsync(Service, Account).AsTask().WaitAsync(Wait) is PlatformResult<string?>.Failed { Code: PlatformFailureCode.Locked }, "a locked item is Locked");
-        Check(await quiet.SetBytesAsync(Service, Account, secret).AsTask().WaitAsync(Wait) is PlatformResult<PlatformUnit>.Failed { Code: PlatformFailureCode.Locked },
+        Check(await quiet.GetAsync(Service, Account).AsTask().WaitScaledAsync(Wait) is PlatformResult<string?>.Failed { Code: PlatformFailureCode.Locked }, "a locked item is Locked");
+        Check(await quiet.SetBytesAsync(Service, Account, secret).AsTask().WaitScaledAsync(Wait) is PlatformResult<PlatformUnit>.Failed { Code: PlatformFailureCode.Locked },
             "a locked collection is Locked");
         Check(fake.Service.PromptsShown == shown && fake.Service.Dismissed == dismissed + 2, "the prompts were dismissed, never shown");
-        Check(await store.GetAsync(Service, Account).AsTask().WaitAsync(Wait) is PlatformResult<string?>.Success { Value: "tøken" }, "an interactive store still unlocks");
+        Check(await store.GetAsync(Service, Account).AsTask().WaitScaledAsync(Wait) is PlatformResult<string?>.Success { Value: "tøken" }, "an interactive store still unlocks");
 
         fake.Service.DefaultCollection = "/";
         (shown, dismissed) = (fake.Service.PromptsShown, fake.Service.Dismissed);
-        Check(await quiet.SetAsync(Service, "other", "x").AsTask().WaitAsync(Wait) is PlatformResult<PlatformUnit>.Failed { Code: PlatformFailureCode.Locked }
+        Check(await quiet.SetAsync(Service, "other", "x").AsTask().WaitScaledAsync(Wait) is PlatformResult<PlatformUnit>.Failed { Code: PlatformFailureCode.Locked }
             && fake.Service.Dismissed == dismissed + 1 && fake.Service.PromptsShown == shown, "creating the default keyring is not prompted");
     }
 
@@ -210,16 +210,16 @@ internal sealed class SecretStoreTests
         await using var fake = await FakeSecretService.StartAsync();
         fake.Service.DefaultCollection = "/";
         var store = new SecretServiceStore(destination: fake.Name);
-        Check(await store.GetAsync(Service, Account).AsTask().WaitAsync(Wait) is PlatformResult<string?>.Success { Value: null }, "nothing to read");
-        Check(await store.DeleteAsync(Service, Account).AsTask().WaitAsync(Wait) is PlatformResult<bool>.Success { Value: false }, "nothing to delete");
+        Check(await store.GetAsync(Service, Account).AsTask().WaitScaledAsync(Wait) is PlatformResult<string?>.Success { Value: null }, "nothing to read");
+        Check(await store.DeleteAsync(Service, Account).AsTask().WaitScaledAsync(Wait) is PlatformResult<bool>.Success { Value: false }, "nothing to delete");
         fake.Service.Prompts = PromptBehaviour.Dismiss;
-        Check(await store.SetAsync(Service, Account, "s").AsTask().WaitAsync(Wait) is PlatformResult<PlatformUnit>.Failed { Code: PlatformFailureCode.UserDismissed },
+        Check(await store.SetAsync(Service, Account, "s").AsTask().WaitScaledAsync(Wait) is PlatformResult<PlatformUnit>.Failed { Code: PlatformFailureCode.UserDismissed },
             "the user declined to create a keyring");
         fake.Service.Prompts = PromptBehaviour.Complete;
-        Check(await store.SetAsync(Service, Account, "s").AsTask().WaitAsync(Wait) is PlatformResult<PlatformUnit>.Success, "stored in the new keyring");
+        Check(await store.SetAsync(Service, Account, "s").AsTask().WaitScaledAsync(Wait) is PlatformResult<PlatformUnit>.Success, "stored in the new keyring");
         Check(fake.Service.DefaultCollection == "/org/freedesktop/secrets/collection/created"
             && fake.Service.Items.Values.Single().Collection == fake.Service.DefaultCollection, "created under the default alias");
-        Check(await store.GetAsync(Service, Account).AsTask().WaitAsync(Wait) is PlatformResult<string?>.Success { Value: "s" }, "read back");
+        Check(await store.GetAsync(Service, Account).AsTask().WaitScaledAsync(Wait) is PlatformResult<string?>.Success { Value: "s" }, "read back");
     }
 
     [Test, Explicit, Category("DBus"), DisplayName("secret store: no Secret Service on the bus is unavailable with a diagnostic")]
@@ -227,7 +227,7 @@ internal sealed class SecretStoreTests
     {
         var diagnostics = new List<PortalDiagnostic>();
         var store = new SecretServiceStore(destination: "org.runic.NoSuchSecretService", application: new PortalApplication(null, diagnostics.Add));
-        Check(await store.GetAsync(Service, Account).AsTask().WaitAsync(Wait) is PlatformResult<string?>.Unavailable { Reason: PlatformUnavailableReason.BackendUnavailable },
+        Check(await store.GetAsync(Service, Account).AsTask().WaitScaledAsync(Wait) is PlatformResult<string?>.Unavailable { Reason: PlatformUnavailableReason.BackendUnavailable },
             "unavailable");
         Check(diagnostics.Any(d => d.Code == "secret-service-unavailable" && d.Remediation?.Contains("--talk-name=org.freedesktop.secrets") == true),
             "the diagnostic names the sandbox permission");

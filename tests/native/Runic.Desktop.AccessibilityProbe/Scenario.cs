@@ -240,7 +240,7 @@ internal sealed class EventLog : IDisposable
     internal async Task<AccessibilityEvent?> WaitAsync(int mark, Func<AccessibilityEvent, bool> predicate, TimeSpan timeout,
         CancellationToken cancellationToken)
     {
-        var until = DateTime.UtcNow + timeout;
+        var until = DateTime.UtcNow + TestTimeouts.Scale(timeout);
         while (true)
         {
             var found = Since(mark).FirstOrDefault(predicate);

@@ -331,7 +331,7 @@ public sealed class BridgeHandshakeTests
 
     private sealed class HandshakeFixture : IAsyncDisposable
     {
-        private readonly CancellationTokenSource _timeout = new(TimeSpan.FromSeconds(30));
+        private readonly CancellationTokenSource _timeout = TestTimeouts.Cancellation(TimeSpan.FromSeconds(30));
         private readonly TimeSpan _previousConnectionTimeout = WebUiApplication.ConnectionTimeout;
         private readonly TimeSpan _previousHandshakeTimeout = WebUiApplication.BridgeHandshakeTimeout;
 

@@ -67,7 +67,7 @@ internal sealed class GenericHostChecks
                     using var stopping = lifetime.ApplicationStopping.Register(() => _ = window.CloseAsync(TimeSpan.FromSeconds(5)).AsTask());
                     // A hosted service, or anything else holding IHostApplicationLifetime, asks the application to stop.
                     _ = Task.Run(lifetime.StopApplication);
-                    await window.WaitForCloseAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(10));
+                    await window.WaitForCloseAsync().AsTask().WaitScaledAsync(TimeSpan.FromSeconds(10));
                     events.Add("window closed");
                     return 3;
                 }

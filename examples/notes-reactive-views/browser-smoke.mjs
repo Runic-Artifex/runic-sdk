@@ -1,7 +1,7 @@
 import { spawn } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { launchChromium, pause, tail, viewsProbe, waitFor } from "../shared/smoke.mjs";
+import { launchChromium, pause, scaled, tail, viewsProbe, waitFor } from "../shared/smoke.mjs";
 
 const dll = fileURLToPath(new URL("./bin/Release/net10.0/NotesReactiveViews.dll", import.meta.url));
 // The Editor's operation contract, `{view}:{fingerprint}`, as its generated client sends it.
@@ -78,7 +78,7 @@ try {
         index % 2 ? '{"kind":"snapshot","route":"shell"}' : "invalid-json").then(() => settled++, error => {
           if (rejected++ === 0) firstRejection = { after: Math.round(performance.now() - started), settled, message: String(error?.message ?? error) };
         }));
-      await Promise.race([Promise.all(calls), new Promise(resolve => setTimeout(resolve, 150_000))]);
+      await Promise.race([Promise.all(calls), new Promise(resolve => setTimeout(resolve, ${scaled(150_000)}))]);
       return { settled, rejected, firstRejection, elapsed: Math.round(performance.now() - started) };
     })()`, { timeout: 160_000 });
     if (burst.settled !== count)

@@ -159,8 +159,8 @@ public sealed class BrowserHostTests
         // I-180) can still finish the handshake. Within them, a Bridge
         // WebSocket that sends no token check is closed after 10 seconds and the page
         // reconnects; that is written to the test output too.
-        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(110));
-        WebUiApplication.SetConnectionTimeout(30);
+        using var timeout = TestTimeouts.Cancellation(TimeSpan.FromSeconds(110));
+        WebUiApplication.SetConnectionTimeout((nuint)TestTimeouts.Scale(TimeSpan.FromSeconds(30)).TotalSeconds);
         WebUiApplication.SetBrowserLaunchAttempts(2);
         using var relaunches = new StalledLaunchListener(output);
         Trace.Listeners.Add(relaunches);
@@ -269,7 +269,7 @@ public sealed class BrowserHostTests
             WebUiApplication.SetBrowserFolder(folder.FullName);
             WebUiApplication.SetConnectionTimeout(1);
             WebUiApplication.SetBrowserLaunchAttempts(3);
-            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+            using var timeout = TestTimeouts.Cancellation(TimeSpan.FromSeconds(30));
 
             var exception = await Assert.ThrowsAsync<TimeoutException>(() =>
                 window.ShowInBrowserAsync(Page("stalled"), WebUiBrowser.Chrome, timeout.Token));
@@ -310,7 +310,7 @@ public sealed class BrowserHostTests
             WebUiApplication.SetBrowserFolder(folder.FullName);
             WebUiApplication.SetConnectionTimeout(2);
             WebUiApplication.SetBrowserLaunchAttempts(2);
-            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+            using var timeout = TestTimeouts.Cancellation(TimeSpan.FromSeconds(30));
 
             var show = window.ShowInBrowserAsync(Page("requested"), WebUiBrowser.Chrome, timeout.Token);
             while (!File.Exists(launches)) await Task.Delay(10, timeout.Token);
@@ -350,7 +350,7 @@ public sealed class BrowserHostTests
             WebUiApplication.SetBrowserFolder(folder.FullName);
             WebUiApplication.SetConnectionTimeout(1);
             WebUiApplication.SetBrowserLaunchAttempts(2);
-            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+            using var timeout = TestTimeouts.Cancellation(TimeSpan.FromSeconds(30));
 
             var show = window.ShowInBrowserAsync(Page("late"), WebUiBrowser.Chrome, timeout.Token);
             while (!File.Exists(launches)) await Task.Delay(10, timeout.Token);
@@ -571,7 +571,7 @@ public sealed class BrowserHostTests
             WebUiApplication.SetBrowserFolder(folder.FullName);
             WebUiApplication.SetConfiguration(WebUiConfiguration.ShowWaitConnection, false);
             window.SetBrowserArguments($"--gate=\"{folder.FullName}\"");
-            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+            using var timeout = TestTimeouts.Cancellation(TimeSpan.FromSeconds(10));
             await window.ShowInBrowserAsync(Page("helper"), WebUiBrowser.Chrome, timeout.Token);
             var profile = window.GeneratedProfilePath;
             var processId = checked((int)window.BrowserProcessId);
@@ -597,7 +597,7 @@ public sealed class BrowserHostTests
             {
                 if (File.Exists(Path.Combine(folder.FullName, "ready")))
                 {
-                    using var cleanupTimeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+                    using var cleanupTimeout = TestTimeouts.Cancellation(TimeSpan.FromSeconds(5));
                     while (!File.Exists(Path.Combine(folder.FullName, "helper-finished")))
                         await Task.Delay(10, cleanupTimeout.Token);
                 }
@@ -621,8 +621,8 @@ public sealed class BrowserHostTests
             return;
         }
 
-        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(45));
-        WebUiApplication.SetConnectionTimeout(30);
+        using var timeout = TestTimeouts.Cancellation(TimeSpan.FromSeconds(45));
+        WebUiApplication.SetConnectionTimeout((nuint)TestTimeouts.Scale(TimeSpan.FromSeconds(30)).TotalSeconds);
         var destroyed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var window = new WebUiWindow();
         window.SetHidden(true);

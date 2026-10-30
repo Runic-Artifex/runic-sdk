@@ -47,7 +47,7 @@ internal sealed class HostLifecycleTests
             started.SetResult();
             await Task.Delay(Timeout.Infinite, token);
         });
-        await started.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        await started.Task.WaitScaledAsync(TimeSpan.FromSeconds(5));
         Program.Check(lifecycle.State == RunicViewHostState.Opening, "The open did not report Opening.");
         var second = lifecycle.RequestAsync(() => true, (owner, _) =>
         {
@@ -55,7 +55,7 @@ internal sealed class HostLifecycleTests
             owner.Own(() => log.Add("second released"));
             return Task.CompletedTask;
         });
-        await second.WaitAsync(TimeSpan.FromSeconds(5));
+        await second.WaitScaledAsync(TimeSpan.FromSeconds(5));
         Program.Check(first.IsCompletedSuccessfully, "The cancelled change faulted.");
         Program.Check(log.SequenceEqual(["first released", "second opened"]), $"The swap ran as {string.Join(", ", log)}.");
         Program.Check(lifecycle.State == RunicViewHostState.Open && ReferenceEquals(lifecycle.Settled, second), "The swap did not settle as Open.");
@@ -78,7 +78,7 @@ internal sealed class HostLifecycleTests
         _ = lifecycle.RequestAsync(() => true, Open);
         var last = lifecycle.RequestAsync(() => true, Open);
         gate.SetResult();
-        await last.WaitAsync(TimeSpan.FromSeconds(5));
+        await last.WaitScaledAsync(TimeSpan.FromSeconds(5));
         Program.Check(opens == 2, $"Three requests opened {opens} times instead of twice.");
         Program.Check(lifecycle.State == RunicViewHostState.Open, "The collapsed requests did not settle as Open.");
     }
@@ -181,7 +181,7 @@ internal sealed class HostLifecycleTests
         {
             wanted = false;
             var release = lifecycle.RequestAsync(() => wanted, (_, _) => Task.CompletedTask);
-            await release.WaitAsync(TimeSpan.FromSeconds(5));
+            await release.WaitScaledAsync(TimeSpan.FromSeconds(5));
             Program.Check(release.IsCompletedSuccessfully && released && lifecycle.State == RunicViewHostState.Closed,
                 "A release after the logger factory was disposed did not complete.");
             Program.Check(trace.Text.Contains("RunicViewHost presentation cleanup failed", StringComparison.Ordinal),

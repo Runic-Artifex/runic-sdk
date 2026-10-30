@@ -39,15 +39,15 @@ internal sealed class InhibitionTests
         using var cancellation = new CancellationTokenSource();
         service.Called = new(TaskCreationOptions.RunContinuationsAsynchronously);
         var pending = provider.AcquireAsync(DesktopInhibitionEffects.SystemSleep, "Cancelled", cancellation.Token).AsTask();
-        await service.Called.Task.WaitAsync(TimeSpan.FromSeconds(3));
+        await service.Called.Task.WaitScaledAsync(TimeSpan.FromSeconds(3));
         cancellation.Cancel();
         try { await pending; throw new InvalidOperationException("Cancelled inhibition succeeded."); }
         catch (OperationCanceledException) { }
         service.Called = new(TaskCreationOptions.RunContinuationsAsynchronously);
         var replacedOwner = provider.AcquireAsync(DesktopInhibitionEffects.SystemSleep, "Replaced window").AsTask();
-        await service.Called.Task.WaitAsync(TimeSpan.FromSeconds(3));
+        await service.Called.Task.WaitScaledAsync(TimeSpan.FromSeconds(3));
         owner.Generation = Guid.NewGuid();
-        if (await replacedOwner.WaitAsync(TimeSpan.FromSeconds(3)) is not PlatformResult<IDesktopInhibitionLease>.Unavailable { Reason: PlatformUnavailableReason.OwnerClosed })
+        if (await replacedOwner.WaitScaledAsync(TimeSpan.FromSeconds(3)) is not PlatformResult<IDesktopInhibitionLease>.Unavailable { Reason: PlatformUnavailableReason.OwnerClosed })
             throw new InvalidOperationException("A replaced owner did not cancel pending inhibition.");
         owner.IsAvailable = false;
         if (await provider.AcquireAsync(DesktopInhibitionEffects.SystemSleep, "Closed") is not PlatformResult<IDesktopInhibitionLease>.Unavailable { Reason: PlatformUnavailableReason.OwnerClosed })
@@ -61,13 +61,13 @@ internal sealed class InhibitionTests
         service.Respond = false;
         service.Called = new(TaskCreationOptions.RunContinuationsAsynchronously);
         var restarting = namedProvider.AcquireAsync(DesktopInhibitionEffects.SystemSleep, "During restart").AsTask();
-        await service.Called.Task.WaitAsync(TimeSpan.FromSeconds(3));
+        await service.Called.Task.WaitScaledAsync(TimeSpan.FromSeconds(3));
         using var replacementBus = new DBusConnection(DBusAddress.Session!);
         await replacementBus.ConnectAsync();
         var replacement = new Service(replacementBus);
         replacementBus.AddMethodHandler(replacement);
         if (!await replacementBus.TryRequestNameAsync(name, RequestNameOptions.ReplaceExisting)) throw new InvalidOperationException("Cannot replace test portal.");
-        if (await restarting.WaitAsync(TimeSpan.FromSeconds(3)) is not PlatformResult<IDesktopInhibitionLease>.Unavailable { Reason: PlatformUnavailableReason.BackendUnavailable })
+        if (await restarting.WaitScaledAsync(TimeSpan.FromSeconds(3)) is not PlatformResult<IDesktopInhibitionLease>.Unavailable { Reason: PlatformUnavailableReason.BackendUnavailable })
             throw new InvalidOperationException("Portal restart did not invalidate pending acquisition.");
         await held.Value.DisposeAsync();
         if (replacement.Called.Task.IsCompleted || replacement.Closes != 0) throw new InvalidOperationException("Old inhibition was replayed or closed on a replacement portal.");

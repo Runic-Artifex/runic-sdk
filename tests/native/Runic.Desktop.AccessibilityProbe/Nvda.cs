@@ -42,7 +42,7 @@ internal sealed class Nvda(string executable, string logs) : ScreenReader
         _nvda = Process.Start(start) ?? throw new InvalidOperationException("NVDA did not start.");
 
         // The fixture waits a minute for the probe.
-        var until = DateTime.UtcNow + TimeSpan.FromSeconds(45);
+        var until = DateTime.UtcNow + TestTimeouts.Scale(TimeSpan.FromSeconds(45));
         while (!Initialized())
         {
             if (_nvda.HasExited) throw new InvalidOperationException($"NVDA exited with {_nvda.ExitCode}; see {Log}.");
@@ -73,7 +73,7 @@ internal sealed class Nvda(string executable, string logs) : ScreenReader
         try
         {
             await RunAsync(Path.GetFullPath(executable), ["-q"], CancellationToken.None, TimeSpan.FromSeconds(30));
-            using var bounded = new CancellationTokenSource(TimeSpan.FromSeconds(15));
+            using var bounded = TestTimeouts.Cancellation(TimeSpan.FromSeconds(15));
             await _nvda.WaitForExitAsync(bounded.Token);
         }
         catch (Exception error) when (error is OperationCanceledException or InvalidOperationException or System.ComponentModel.Win32Exception)

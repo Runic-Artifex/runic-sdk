@@ -58,21 +58,21 @@ internal static partial class DirectorySmoke
             using (var cancelled = new CancellationTokenSource())
             {
                 var request = files.OpenDirectoryAsync(new(), cancelled.Token).AsTask();
-                await portal.Called.Task.WaitAsync(TimeSpan.FromSeconds(5));
+                await portal.Called.Task.WaitScaledAsync(TimeSpan.FromSeconds(5));
                 cancelled.Cancel();
                 try { await request; throw new InvalidOperationException("Caller cancellation was ignored."); }
                 catch (OperationCanceledException) when (cancelled.IsCancellationRequested) { }
-                await portal.Closed.Task.WaitAsync(TimeSpan.FromSeconds(5));
+                await portal.Closed.Task.WaitScaledAsync(TimeSpan.FromSeconds(5));
             }
 
             // An actual native owner disappearing stops the request even before
             // the presentation facade begins shutdown.
             portal.Reset();
             var closingRequest = files.OpenDirectoryAsync(new()).AsTask();
-            await portal.Called.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            await portal.Called.Task.WaitScaledAsync(TimeSpan.FromSeconds(5));
             await host.CloseAsync();
-            Check(await closingRequest.WaitAsync(TimeSpan.FromSeconds(5)) is PickerResult<IDirectoryLease>.Unavailable { Reason: PlatformUnavailableReason.OwnerClosed }, "native owner closure");
-            await portal.Closed.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            Check(await closingRequest.WaitScaledAsync(TimeSpan.FromSeconds(5)) is PickerResult<IDirectoryLease>.Unavailable { Reason: PlatformUnavailableReason.OwnerClosed }, "native owner closure");
+            await portal.Closed.Task.WaitScaledAsync(TimeSpan.FromSeconds(5));
             await lifetime.DisposeAsync();
             Check(await files.OpenDirectoryAsync(new()) is PickerResult<IDirectoryLease>.Unavailable { Reason: PlatformUnavailableReason.OwnerClosed }, "directory shutdown drained");
             Console.WriteLine("PASS GTK4 directory access: production portal wire request, exact local path, dismissal, cancellation, native owner close and drain (controlled portal service).");
@@ -108,11 +108,11 @@ internal static partial class DirectorySmoke
         using (var cancelled = new CancellationTokenSource())
         {
             var request = files.SaveFileAsync(new("save-target.txt"), cancelled.Token).AsTask();
-            await portal.Called.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            await portal.Called.Task.WaitScaledAsync(TimeSpan.FromSeconds(5));
             cancelled.Cancel();
             try { await request; throw new InvalidOperationException("Save cancellation was ignored."); }
             catch (OperationCanceledException) when (cancelled.IsCancellationRequested) { }
-            await portal.Closed.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            await portal.Closed.Task.WaitScaledAsync(TimeSpan.FromSeconds(5));
         }
         portal.Hold = false;
         Console.WriteLine("PASS GTK4 save: production SaveFile request, host-path atomic replacement, dismissal and cancellation (controlled portal service).");
@@ -164,9 +164,9 @@ internal static partial class DirectorySmoke
                 return Skip("another session's document portal owns the mount; use a private XDG_RUNTIME_DIR");
             try
             {
-                await connection.CallMethodAsync(StartDocuments(connection)).WaitAsync(TimeSpan.FromSeconds(10));
+                await connection.CallMethodAsync(StartDocuments(connection)).WaitScaledAsync(TimeSpan.FromSeconds(10));
                 byte[] mount = await connection.CallMethodAsync(DocumentsMessage(connection, "GetMountPoint", null, (ref MessageWriter _) => { }),
-                    static (message, _) => message.GetBodyReader().ReadArrayOfByte()).WaitAsync(TimeSpan.FromSeconds(5));
+                    static (message, _) => message.GetBodyReader().ReadArrayOfByte()).WaitScaledAsync(TimeSpan.FromSeconds(5));
                 using var parent = new SafeFileHandle(Open(folder, 0x200000 | 0x80000), ownsHandle: true); // O_PATH | O_CLOEXEC
                 string id = await connection.CallMethodAsync(DocumentsMessage(connection, "AddNamedFull", "hayusas", (ref MessageWriter writer) =>
                 {
@@ -175,7 +175,7 @@ internal static partial class DirectorySmoke
                     writer.WriteUInt32(0); // Transient: never stored in the permission store.
                     writer.WriteString(app);
                     writer.WriteArray(ReadWrite);
-                }), static (message, _) => message.GetBodyReader().ReadString()).WaitAsync(TimeSpan.FromSeconds(5));
+                }), static (message, _) => message.GetBodyReader().ReadString()).WaitScaledAsync(TimeSpan.FromSeconds(5));
                 string root = System.Text.Encoding.UTF8.GetString(mount).TrimEnd('\0');
                 return (connection, id, Path.Combine(root, "by-app", app, id, name));
             }
@@ -195,7 +195,7 @@ internal static partial class DirectorySmoke
     private delegate void BodyWriter(ref MessageWriter writer);
 
     private static Task Documents(DBusConnection connection, string member, string signature, BodyWriter body) =>
-        connection.CallMethodAsync(DocumentsMessage(connection, member, signature, body)).WaitAsync(TimeSpan.FromSeconds(5));
+        connection.CallMethodAsync(DocumentsMessage(connection, member, signature, body)).WaitScaledAsync(TimeSpan.FromSeconds(5));
 
     private static MessageBuffer DocumentsMessage(DBusConnection connection, string member, string? signature, BodyWriter body)
     {

@@ -37,7 +37,7 @@ internal sealed class ModelContextTests
         }
 
         var body = await context.InvokeAsync(BodyAsync);
-        await body.WaitAsync(TimeSpan.FromSeconds(5));
+        await body.WaitScaledAsync(TimeSpan.FromSeconds(5));
         Require(steps.Select(step => step.Step).SequenceEqual(["start", "yield", "run", "inner", "nested", "left"]),
             $"The body did not run in order: {string.Join(", ", steps)}");
         Require(steps.Take(5).All(step => step.InTurn && step.HasContext),
@@ -62,7 +62,7 @@ internal sealed class ModelContextTests
             var observed = new TaskCompletionSource<(RunicModelContext? Flowing, RunicModelContext? Current)>(
                 TaskCreationOptions.RunContinuationsAsynchronously);
             await first.InvokeAsync(() => _ = Task.Run(() => observed.TrySetResult((RunicModelContext.Flowing, RunicModelContext.Current))));
-            Require(await observed.Task.WaitAsync(TimeSpan.FromSeconds(5)) == (first, null),
+            Require(await observed.Task.WaitScaledAsync(TimeSpan.FromSeconds(5)) == (first, null),
                 "Work that a turn started with Task.Run did not carry the turn's context.");
 
             var continued = new TaskCompletionSource<RunicModelContext?>(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -72,18 +72,18 @@ internal sealed class ModelContextTests
                 continued.TrySetResult(RunicModelContext.Flowing);
             }
             await first.InvokeAsync(() => _ = LeaveAsync());
-            Require(await continued.Task.WaitAsync(TimeSpan.FromSeconds(5)) == first,
+            Require(await continued.Task.WaitScaledAsync(TimeSpan.FromSeconds(5)) == first,
                 "Code after ConfigureAwait(false) in a turn did not carry the turn's context.");
 
             var posted = new TaskCompletionSource<RunicModelContext?>(TaskCreationOptions.RunContinuationsAsynchronously);
             await first.InvokeAsync(() => second.TryPost(() => posted.TrySetResult(RunicModelContext.Flowing)));
-            Require(await posted.Task.WaitAsync(TimeSpan.FromSeconds(5)) == second,
+            Require(await posted.Task.WaitScaledAsync(TimeSpan.FromSeconds(5)) == second,
                 "A turn of another context, posted from a turn's flow, kept the posting context.");
 
             var suppressed = new TaskCompletionSource<RunicModelContext?>(TaskCreationOptions.RunContinuationsAsynchronously);
             using (ExecutionContext.SuppressFlow())
                 first.TryPost(() => suppressed.TrySetResult(RunicModelContext.Flowing));
-            Require(await suppressed.Task.WaitAsync(TimeSpan.FromSeconds(5)) is null, "A turn posted with suppressed flow marked its flow.");
+            Require(await suppressed.Task.WaitScaledAsync(TimeSpan.FromSeconds(5)) is null, "A turn posted with suppressed flow marked its flow.");
 
             await first.InvokeAsync(() => { });
             Require(RunicModelContext.Flowing is null, "A turn's flow reached the code that awaited the turn.");
@@ -91,7 +91,7 @@ internal sealed class ModelContextTests
             RunicModelContext.FlowTurns = false;
             var off = new TaskCompletionSource<RunicModelContext?>(TaskCreationOptions.RunContinuationsAsynchronously);
             await first.InvokeAsync(() => off.TrySetResult(RunicModelContext.Flowing));
-            Require(await off.Task.WaitAsync(TimeSpan.FromSeconds(5)) is null, "A turn marked its flow while turn flows were off.");
+            Require(await off.Task.WaitScaledAsync(TimeSpan.FromSeconds(5)) is null, "A turn marked its flow while turn flows were off.");
         }
         finally
         {
@@ -120,7 +120,7 @@ internal sealed class ModelContextTests
         // Released in a turn, so all three continuations are queued before the first runs. Released from another
         // thread, they are posted one at a time, and a's turn could run and queue a:3 before b and c were ready (#187).
         await context.InvokeAsync(gate.SetResult);
-        await Task.WhenAll(bodies).WaitAsync(TimeSpan.FromSeconds(5));
+        await Task.WhenAll(bodies).WaitScaledAsync(TimeSpan.FromSeconds(5));
         Require(writes.SequenceEqual(["a:1", "a:2", "b:1", "b:2", "c:1", "c:2", "a:3", "b:3", "c:3"]),
             $"Writes after await were not applied in ready order: {string.Join(", ", writes)}");
     }
@@ -151,18 +151,18 @@ internal sealed class ModelContextTests
         using var running = new ManualResetEventSlim();
         using var release = new ManualResetEventSlim();
         Require(context.TryPost(() => { running.Set(); release.Wait(); }), "The blocking turn was rejected.");
-        Require(running.Wait(TimeSpan.FromSeconds(5)), "The blocking turn did not start.");
+        Require(running.Wait(TestTimeouts.Scale(TimeSpan.FromSeconds(5))), "The blocking turn did not start.");
         Task disposal;
         try
         {
             queuedGate.SetResult(); // queued behind the blocking turn
             disposal = context.DisposeAsync().AsTask();
-            await queued.WaitAsync(TimeSpan.FromSeconds(5));
+            await queued.WaitScaledAsync(TimeSpan.FromSeconds(5));
         }
         finally { release.Set(); }
-        await disposal.WaitAsync(TimeSpan.FromSeconds(5));
+        await disposal.WaitScaledAsync(TimeSpan.FromSeconds(5));
         lateGate.SetResult(); // posted after the context closed
-        await late.WaitAsync(TimeSpan.FromSeconds(5));
+        await late.WaitScaledAsync(TimeSpan.FromSeconds(5));
         Require(queuedResumed == (false, false) && lateResumed == (false, false),
             $"A continuation after close did not run on the pool: {queuedResumed}, {lateResumed}");
         Require(dropped.Count == 0, $"A continuation after close was reported: {string.Join(", ", dropped)}");
@@ -184,7 +184,7 @@ internal sealed class ModelContextTests
         }
 #pragma warning restore VSTHRD100
         await context.InvokeAsync(FailLater);
-        var error = await reported.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        var error = await reported.Task.WaitScaledAsync(TimeSpan.FromSeconds(5));
         Require(error is InvalidOperationException { Message: "async void" }, $"The wrong failure was reported: {error}");
         Require(await context.InvokeAsync(() => true), "The context stopped running turns after the failure.");
     }
@@ -210,7 +210,7 @@ internal sealed class ModelContextTests
         using var running = new ManualResetEventSlim();
         using var release = new ManualResetEventSlim();
         Require(context.TryPost(() => { running.Set(); release.Wait(); }), "The blocking turn was rejected.");
-        Require(running.Wait(TimeSpan.FromSeconds(5)), "The blocking turn did not start.");
+        Require(running.Wait(TestTimeouts.Scale(TimeSpan.FromSeconds(5))), "The blocking turn did not start.");
         try
         {
             var closed = ((IRunicModelContextLifetime)context).Closed;
@@ -226,7 +226,7 @@ internal sealed class ModelContextTests
             Require(!disposal.IsCompleted, "Disposal did not wait for the running turn.");
             await ThrowsAsync<ObjectDisposedException>(queued);
             release.Set();
-            await disposal.WaitAsync(TimeSpan.FromSeconds(5));
+            await disposal.WaitScaledAsync(TimeSpan.FromSeconds(5));
             var lateCalls = 0;
             using var late = context.Closed.Register(() => lateCalls++);
             Require(lateCalls == 1 && context.Closed == closed, "A late observer could not use the closed token.");
@@ -257,11 +257,11 @@ internal sealed class ModelContextTests
         var first = Task.Run(async () => await context.DisposeAsync());
         try
         {
-            Require(entered.Wait(TimeSpan.FromSeconds(5)), "The close callback did not start.");
+            Require(entered.Wait(TestTimeouts.Scale(TimeSpan.FromSeconds(5))), "The close callback did not start.");
             var second = context.DisposeAsync().AsTask();
             Require(!second.IsCompleted, "Concurrent disposal completed before close notification finished.");
             release.Set();
-            await Task.WhenAll(first, second).WaitAsync(TimeSpan.FromSeconds(5));
+            await Task.WhenAll(first, second).WaitScaledAsync(TimeSpan.FromSeconds(5));
         }
         finally { release.Set(); }
     }
@@ -276,7 +276,7 @@ internal sealed class ModelContextTests
         var ran = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         Require(context.TryPost(() => throw new InvalidOperationException("turn")) && context.TryPost(ran.SetResult),
             "The turns were rejected.");
-        await ran.Task.WaitAsync(TimeSpan.FromSeconds(10)); // turns run in order, so the failing one has run
+        await ran.Task.WaitScaledAsync(TimeSpan.FromSeconds(10)); // turns run in order, so the failing one has run
         await context.DisposeAsync();
         var entry = logs.Entries.SingleOrDefault(entry => entry.Id == 1030);
         Require(entry is { Category: "Runic.Navigation.RunicModelContext" } && entry.Error is InvalidOperationException,
@@ -376,7 +376,7 @@ internal sealed class ModelContextTests
         var reported = new List<Exception>();
         context.UnhandledTurnException += (_, args) => { lock (reported) reported.Add(args.Exception); };
         Require(context.TryPost(() => { started.Set(); release.Wait(); }), "The blocking turn was rejected.");
-        Require(started.Wait(TimeSpan.FromSeconds(5)), "The blocking turn did not start.");
+        Require(started.Wait(TestTimeouts.Scale(TimeSpan.FromSeconds(5))), "The blocking turn did not start.");
         var ran = false;
         Require(context.TryPost(() => ran = true), "The queued turn was rejected before shutdown.");
         var disposing = context.DisposeAsync().AsTask();
@@ -486,7 +486,7 @@ internal sealed class ModelContextTests
             started.Set();
             release.Wait();
         }), "The initial turn was rejected.");
-        Require(started.Wait(TimeSpan.FromSeconds(5)), "The initial model turn did not start.");
+        Require(started.Wait(TestTimeouts.Scale(TimeSpan.FromSeconds(5))), "The initial model turn did not start.");
 
         var queued = context.InvokeAsync(() => throw new InvalidOperationException("Queued work ran during shutdown.")).AsTask();
         var disposing = context.DisposeAsync().AsTask();

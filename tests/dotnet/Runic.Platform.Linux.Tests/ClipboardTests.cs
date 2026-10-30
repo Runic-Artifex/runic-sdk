@@ -93,7 +93,7 @@ internal sealed class ClipboardTests
         bool observerCompleted = false;
         try
         {
-            await Task.WhenAll(observerOutput, observerError, observer.WaitForExitAsync()).WaitAsync(TimeSpan.FromSeconds(20));
+            await Task.WhenAll(observerOutput, observerError, observer.WaitForExitAsync()).WaitScaledAsync(TimeSpan.FromSeconds(20));
             observerCompleted = true;
         }
         finally
@@ -141,9 +141,9 @@ internal sealed class ClipboardTests
         using (var cancellation = new CancellationTokenSource())
         {
             var selection = directories.OpenDirectoryAsync(new(), cancellation.Token).AsTask();
-            await shown.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            await shown.Task.WaitScaledAsync(TimeSpan.FromSeconds(5));
             cancellation.Cancel();
-            try { await selection.WaitAsync(TimeSpan.FromSeconds(5)); throw new InvalidOperationException("Directory cancellation ignored."); }
+            try { await selection.WaitScaledAsync(TimeSpan.FromSeconds(5)); throw new InvalidOperationException("Directory cancellation ignored."); }
             catch (OperationCanceledException) when (cancellation.IsCancellationRequested) { }
         }
         // Filters, the initial folder and multiple selection reach the chooser. Without a portal, GTK shows its own
@@ -159,12 +159,12 @@ internal sealed class ClipboardTests
             {
                 Filters = [new("Images", ["png", "jpg"]), new("All files", ["*"])], InitialDirectory = folder,
             }, cancellation.Token).AsTask();
-            await shown.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            await shown.Task.WaitScaledAsync(TimeSpan.FromSeconds(5));
             // The dialog applies the folder once its main loop has run; read it from later dispatches.
             for (var deadline = DateTime.UtcNow.AddSeconds(5); state?.Folder is null && DateTime.UtcNow < deadline; await Task.Delay(50))
                 await owner.InvokeAsync(_ => state = ChooserState.Read());
             cancellation.Cancel();
-            try { await files.WaitAsync(TimeSpan.FromSeconds(5)); throw new InvalidOperationException("Multiple selection cancellation ignored."); }
+            try { await files.WaitScaledAsync(TimeSpan.FromSeconds(5)); throw new InvalidOperationException("Multiple selection cancellation ignored."); }
             catch (OperationCanceledException) when (cancellation.IsCancellationRequested) { }
             Check(state is { Multiple: true, Current: "Images", Folder: var shownFolder } && state.Filters.SequenceEqual(["Images", "All files"]) && shownFolder == folder,
                 $"GTK chooser options: {state}");
@@ -175,11 +175,11 @@ internal sealed class ClipboardTests
             owner.AfterDispatch = () => shown.TrySetResult();
             using var typed = new CancellationTokenSource();
             var pictures = directories.OpenFileAsync(new OpenFileOptions { Filters = [new("Pictures", ["png"]) { MimeTypes = ["image/*"] }] }, typed.Token).AsTask();
-            await shown.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            await shown.Task.WaitScaledAsync(TimeSpan.FromSeconds(5));
             for (var deadline = DateTime.UtcNow.AddSeconds(5); state is null && DateTime.UtcNow < deadline; await Task.Delay(50))
                 await owner.InvokeAsync(_ => state = ChooserState.Read());
             typed.Cancel();
-            try { await pictures.WaitAsync(TimeSpan.FromSeconds(5)); throw new InvalidOperationException("MIME filter cancellation ignored."); }
+            try { await pictures.WaitScaledAsync(TimeSpan.FromSeconds(5)); throw new InvalidOperationException("MIME filter cancellation ignored."); }
             catch (OperationCanceledException) when (typed.IsCancellationRequested) { }
             Check(state is { Rules: [var rules] } && rules.Contains("(1, 'image/*')", StringComparison.Ordinal) && rules.Contains("*.[pP][nN][gG]", StringComparison.Ordinal),
                 $"GTK MIME filter: {state}");
@@ -190,11 +190,11 @@ internal sealed class ClipboardTests
             owner.AfterDispatch = () => shown.TrySetResult();
             using var folders = new CancellationTokenSource();
             var several = directories.OpenDirectoriesAsync(new OpenDirectoryOptions { InitialDirectory = folder }, folders.Token).AsTask();
-            await shown.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            await shown.Task.WaitScaledAsync(TimeSpan.FromSeconds(5));
             for (var deadline = DateTime.UtcNow.AddSeconds(5); state is null && DateTime.UtcNow < deadline; await Task.Delay(50))
                 await owner.InvokeAsync(_ => state = ChooserState.Read());
             folders.Cancel();
-            try { await several.WaitAsync(TimeSpan.FromSeconds(5)); throw new InvalidOperationException("Directories cancellation ignored."); }
+            try { await several.WaitScaledAsync(TimeSpan.FromSeconds(5)); throw new InvalidOperationException("Directories cancellation ignored."); }
             catch (OperationCanceledException) when (folders.IsCancellationRequested) { }
             Check(state is { Multiple: true, Action: 2 }, $"GTK folder multi-select: {state}");
 
@@ -204,12 +204,12 @@ internal sealed class ClipboardTests
             owner.AfterDispatch = () => shown.TrySetResult();
             var text = new FileDialogFilter("Text", ["txt"]);
             var save = directories.SaveFileAsync(new SaveFileOptions("chosen.txt") { Filters = [new("Images", ["png"]), text], InitialDirectory = folder }).AsTask();
-            await shown.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            await shown.Task.WaitScaledAsync(TimeSpan.FromSeconds(5));
             for (var deadline = DateTime.UtcNow.AddSeconds(5); state?.Folder != folder && DateTime.UtcNow < deadline; await Task.Delay(50))
                 await owner.InvokeAsync(_ => state = ChooserState.Read());
             bool accepted = false;
             await owner.InvokeAsync(_ => accepted = ChooserState.Accept(1));
-            var saved = await save.WaitAsync(TimeSpan.FromSeconds(5));
+            var saved = await save.WaitScaledAsync(TimeSpan.FromSeconds(5));
             Check(accepted && saved is PickerResult<ISaveFileLease>.Selected { SelectedFilter: var chosen, Value.DisplayName: "chosen.txt" } && chosen == text,
                 $"GTK chosen filter: {saved}");
             if (saved is PickerResult<ISaveFileLease>.Selected(var lease)) await lease.DisposeAsync();
@@ -218,9 +218,9 @@ internal sealed class ClipboardTests
         shown = new(TaskCreationOptions.RunContinuationsAsynchronously);
         owner.AfterDispatch = () => shown.TrySetResult();
         var pendingDirectory = directories.OpenDirectoryAsync(new()).AsTask();
-        await shown.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        await shown.Task.WaitScaledAsync(TimeSpan.FromSeconds(5));
         await owner.CloseWindowAsync();
-        Check(await pendingDirectory.WaitAsync(TimeSpan.FromSeconds(5)) is PickerResult<IDirectoryLease>.Unavailable { Reason: PlatformUnavailableReason.OwnerClosed }, "GTK native directory owner destruction");
+        Check(await pendingDirectory.WaitScaledAsync(TimeSpan.FromSeconds(5)) is PickerResult<IDirectoryLease>.Unavailable { Reason: PlatformUnavailableReason.OwnerClosed }, "GTK native directory owner destruction");
         Console.WriteLine("PASS GTK3 native directory chooser cancellation, retry and destroyed-owner cleanup.");
     }
 
@@ -238,10 +238,10 @@ internal sealed class ClipboardTests
         var shown = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         owner.AfterDispatch = () => shown.TrySetResult();
         var pending = files.OpenDirectoryAsync(new()).AsTask();
-        await shown.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        await shown.Task.WaitScaledAsync(TimeSpan.FromSeconds(5));
         await owner.StopLoopAsync(destroyWindow: false);
-        await presentation.DisposeAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(10));
-        Check(await pending.WaitAsync(TimeSpan.FromSeconds(1)) is PickerResult<IDirectoryLease>.Unavailable { Reason: PlatformUnavailableReason.OwnerClosed }, "stopped GTK loop chooser shutdown");
+        await presentation.DisposeAsync().AsTask().WaitScaledAsync(TimeSpan.FromSeconds(10));
+        Check(await pending.WaitScaledAsync(TimeSpan.FromSeconds(1)) is PickerResult<IDirectoryLease>.Unavailable { Reason: PlatformUnavailableReason.OwnerClosed }, "stopped GTK loop chooser shutdown");
         Console.WriteLine("PASS GTK3 native directory chooser completes and presentation shutdown drains after the GTK loop stopped.");
     }
 
@@ -282,7 +282,7 @@ internal sealed class ClipboardTests
             Console.WriteLine("PASS GTK 3 HTML, RTF, PNG and files in one ownership, read by Runic and by an independent GTK process");
 
             // The watch reports the formats now, then the change when another process takes the clipboard.
-            using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+            using var cancellation = TestTimeouts.Cancellation(TimeSpan.FromSeconds(30));
             await using var watch = clipboard.WatchAsync(cancellation.Token).GetAsyncEnumerator(cancellation.Token);
             Check(await watch.MoveNextAsync() && watch.Current is PlatformResult<DesktopClipboardFormats>.Success { Value: var now } && now.HasFlag(DesktopClipboardFormats.Files),
                 "the watch's first formats: " + watch.Current);
@@ -326,7 +326,7 @@ internal sealed class ClipboardTests
         using var peer = Process.Start(start)!;
         var output = peer.StandardOutput.ReadToEndAsync();
         var error = peer.StandardError.ReadToEndAsync();
-        try { await Task.WhenAll(output, error, peer.WaitForExitAsync()).WaitAsync(TimeSpan.FromSeconds(20)); }
+        try { await Task.WhenAll(output, error, peer.WaitForExitAsync()).WaitScaledAsync(TimeSpan.FromSeconds(20)); }
         finally { if (!peer.HasExited) peer.Kill(entireProcessTree: true); }
         Check(peer.ExitCode == 0, $"the peer {arguments[0]} failed: {await error}");
         return await output;

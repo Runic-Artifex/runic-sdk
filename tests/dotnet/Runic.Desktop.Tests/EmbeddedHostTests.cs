@@ -19,14 +19,14 @@ public sealed class EmbeddedHostTests
             host = Assert.IsType<RecordingHost>(factory.Host);
             host.ReleaseDisposal = new(TaskCreationOptions.RunContinuationsAsynchronously);
             host.CloseFromPlatform();
-            await host.DisposalEntered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            await host.DisposalEntered.Task.WaitScaledAsync(TimeSpan.FromSeconds(5));
 
             // Native destruction has cleared the handle, but release still needs the UI loop.
             var close = window.ClosePresentationAsync();
             Assert.False(close.IsCompleted);
             host.ReleaseDisposal.SetResult();
-            await close.WaitAsync(TimeSpan.FromSeconds(5));
-            await WebUiApplication.WaitAsync().WaitAsync(TimeSpan.FromSeconds(5));
+            await close.WaitScaledAsync(TimeSpan.FromSeconds(5));
+            await WebUiApplication.WaitAsync().WaitScaledAsync(TimeSpan.FromSeconds(5));
             Assert.Equal(1, host.DisposalCount);
         }
         finally
@@ -101,7 +101,7 @@ public sealed class EmbeddedHostTests
             Assert.Equal(1, host.BeginMoveCount);
 
             host.CloseFromPlatform();
-            await WebUiApplication.WaitAsync().WaitAsync(TimeSpan.FromSeconds(5));
+            await WebUiApplication.WaitAsync().WaitScaledAsync(TimeSpan.FromSeconds(5));
             Assert.Null(window.Url);
             Assert.Equal(WebUiBrowser.NoBrowser, window.CurrentBrowser);
         }

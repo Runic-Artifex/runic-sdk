@@ -59,7 +59,7 @@ internal sealed class PrivilegedNativeTests
                 characters += line.Text.Length;
             },
         }).AsTask();
-        Check(await first.WaitAsync(TimeSpan.FromSeconds(30)), "first line");
+        Check(await first.WaitAsync(TestTimeouts.Scale(TimeSpan.FromSeconds(30))), "first line");
         await Task.Delay(1000);
         Check(!File.Exists(marker), "1 MiB of output does not fit the pipes: the program must still be writing");
         release.Release();

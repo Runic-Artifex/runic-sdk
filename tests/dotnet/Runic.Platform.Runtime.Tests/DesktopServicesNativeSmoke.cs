@@ -55,7 +55,7 @@ internal static class DesktopServicesNativeSmoke
                     RequireSuccess(await notifications.ShowAsync(new("native-services", "Runic notification test", "Click Open result to verify live activation.")
                     { Actions = [new("open", "Open result")] }, token), "notification submission");
                     Console.WriteLine("Waiting for the actual Open result callback (120 seconds).");
-                    await activated.Task.WaitAsync(TimeSpan.FromSeconds(120), token);
+                    await activated.Task.WaitScaledAsync(TimeSpan.FromSeconds(120), token);
                     Console.WriteLine("PASS live notification activation.");
                 }
                 finally { RequireSuccess(await notifications.RemoveAsync("native-services", CancellationToken.None), "notification withdrawal"); }
@@ -128,7 +128,7 @@ internal static class NativePlatformSmoke
             "<!doctype html><meta charset=\"utf-8\"><title>Runic platform smoke</title><p>Runic platform smoke</p>");
         try
         {
-            using var deadline = new CancellationTokenSource(TimeSpan.FromMinutes(5));
+            using var deadline = TestTimeouts.Cancellation(TimeSpan.FromMinutes(5));
             var options = new DesktopHostOptions
             {
                 WaitForConnection = false,

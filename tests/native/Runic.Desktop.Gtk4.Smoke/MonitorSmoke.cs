@@ -43,7 +43,7 @@ internal static class MonitorSmoke
         Require(monitors.Select(static monitor => monitor.Id).Distinct().Count() == monitors.Length, "distinct monitor identifiers");
         Require(monitors.All(static monitor => monitor.Scale >= 1 && monitor.Bounds.Width > 0 && monitor.WorkArea.Width > 0), "sizes and scales");
 
-        using (var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(30)))
+        using (var cancellation = TestTimeouts.Cancellation(TimeSpan.FromSeconds(30)))
         {
             await using var watch = host.Monitors.WatchAsync(cancellation.Token).GetAsyncEnumerator(cancellation.Token);
             Require(await watch.MoveNextAsync() && watch.Current is PlatformResult<ImmutableArray<DesktopMonitor>>.Success { Value: var first }
@@ -110,9 +110,14 @@ internal static class MonitorSmoke
         if (!condition) throw new InvalidOperationException("Monitors: expected " + what + ".");
     }
 
-    private static async Task<DesktopWindowState> WaitForAsync(DesktopWindow window, Func<DesktopWindowState, bool> condition, string expected) =>
-        await TryWaitForAsync(window, condition, Deadline)
+    private static async Task<DesktopWindowState> WaitForAsync(DesktopWindow window, Func<DesktopWindowState, bool> condition, string expected)
+    {
+        var wait = TestTimeouts.Start(Deadline);
+        var state = await TryWaitForAsync(window, condition, wait.Limit)
             ?? throw new TimeoutException($"Monitors: the window did not report {expected}; last state: {window.State?.ToString() ?? "<none>"}.");
+        wait.Succeeded();
+        return state;
+    }
 
     private static async Task<DesktopWindowState?> TryWaitForAsync(DesktopWindow window, Func<DesktopWindowState, bool> condition, TimeSpan timeout)
     {

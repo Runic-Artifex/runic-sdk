@@ -61,6 +61,52 @@ The launcher currently supports Linux with an amd64 runner image. Windows x64 an
 macOS Apple Silicon jobs remain native GitHub checks. A passing local Linux run
 is not evidence that the other operating systems passed. Intel macOS is not supported.
 
+## Test timeouts
+
+Hosted runners are slower and less even than a developer machine: a cold Chromium or WebView2 start, a GC pause or
+a busy neighbour can stall one wait for seconds. `RUNIC_TEST_TIMEOUT_SCALE`, a positive number that defaults to 1,
+multiplies the waits of the tests and smokes for a condition, so a slow runner gets more room and a real hang still
+fails:
+
+- **Scale only waits for a condition**: until the window connects, a file appears, a frame arrives, a process exits.
+  A passing test still ends as soon as the condition holds, so the scale costs nothing when the test passes.
+- **Never scale product timing**: a deadline that fires after X, relaunch timing, debounce or interval behaviour.
+  Such a test belongs on a fake clock (`TimeProvider`, a virtual clock); one that uses real time is fixed there, not
+  given more time. A wait that must *not* end (nothing happens within X) is not scaled either.
+- **Never scale performance budgets or benchmarks.**
+
+The helpers are `tests/support/TestTimeouts.cs` (a project opts in with `<RunicTestTimeouts>true</RunicTestTimeouts>`,
+`eng/build/test-timeouts.targets`; it compiles into the test project, not into any package) and
+`tests/support/timeouts.mjs` for Bun and Node, which `examples/shared/smoke.mjs` re-exports. In .NET use
+`task.WaitScaledAsync(limit)`, `process.WaitForExitScaled(limit)`, `TestTimeouts.UntilAsync(condition, limit)` or
+`TestTimeouts.Start(limit)` for a polling loop; `TestTimeouts.Scale` and `TestTimeouts.Cancellation` scale a limit
+that is handed to an API. In JavaScript use `scaled(ms)`, `startWait(ms, label)` or `withinScaled(promise, ms, label)`;
+the smoke helpers' `waitFor` and DevTools commands already scale. The limit stays the unscaled value in the source.
+
+A scaled wait that succeeds only after its unscaled limit reports it: in GitHub Actions as a `::warning::`
+annotation titled "Slow test wait" at the waiting line, with the elapsed and the unscaled time, elsewhere as a
+`warning:` line. The slowness stays visible on a passing run; a recurring annotation is worth an issue.
+
+CI sets the variable for every job that runs tests: `.github/actions/test-timeout-scale`, which `setup-sdk` runs
+first, writes the runner's value from `testTimeoutScales` in `eng/ci/platforms.mjs` unless the job sets its own, and
+`native-musl` and the real-portal container receive it with `docker run -e`. The values are 4 on Linux x64 and arm64, 5 on
+Windows x64 and 6 on Windows arm64 and macOS. In recent `main` runs the same managed desktop suite took 62–75 s on
+linux-x64, 60–61 s on linux-arm64, 58–83 s on win-x64, 68–75 s on win-arm64 and 73–98 s on osx-arm64, so whole
+suites vary by up to 1.4×. A single wait varies far more: the win-x64 WPF checks failed at a 20 s WebView connect
+whose controller creation alone took 3.8 s against 0.7 s in a passing run, and cold Chromium on Windows never answers
+DevTools in some launches (#70).
+
+To reproduce a CI-like run locally, set the CI value and run the focused suite:
+
+```sh
+RUNIC_TEST_TIMEOUT_SCALE=4 bun run test tests/dotnet/Runic.Desktop.Tests/Runic.Desktop.Tests.csproj
+RUNIC_TEST_TIMEOUT_SCALE=4 node examples/first-window/browser-smoke.mjs
+```
+
+A failure that goes away with a larger scale is runner slowness, and its passing run prints the "Slow test wait"
+warning. A failure at any scale is a real bug or a product-timing test on real time. `bun run ci` (act) sets the
+Linux x64 value itself.
+
 ## Native jobs per runtime identifier
 
 The `native` matrix (`nativeLegs` in `eng/ci/platforms.mjs`) runs on `linux-x64`,

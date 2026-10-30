@@ -332,15 +332,15 @@ public sealed partial class MacOsFileDropTests
         var source = MacOsWkWebViewHost.NewPendingDragSource(DesktopDragEffects.Copy | DesktopDragEffects.Move, out var moved);
         // Once the session ended, the source offers nothing.
         Assert.Equal((1UL | 4 | 16, 0UL), End(source, 16));
-        Assert.Equal(DesktopDragEffects.Move, await moved.WaitAsync(TimeSpan.FromSeconds(10)));
+        Assert.Equal(DesktopDragEffects.Move, await moved.WaitScaledAsync(TimeSpan.FromSeconds(10)));
 
         source = MacOsWkWebViewHost.NewPendingDragSource(DesktopDragEffects.Copy, out var refused);
         Assert.Equal((1UL, 0UL), End(source, 2));
-        Assert.Equal(DesktopDragEffects.None, await refused.WaitAsync(TimeSpan.FromSeconds(10)));
+        Assert.Equal(DesktopDragEffects.None, await refused.WaitScaledAsync(TimeSpan.FromSeconds(10)));
 
         source = MacOsWkWebViewHost.NewPendingDragSource(DesktopDragEffects.Copy | DesktopDragEffects.Link, out var cancelled);
         Assert.Equal((3UL, 0UL), End(source, 0));
-        Assert.Equal(DesktopDragEffects.None, await cancelled.WaitAsync(TimeSpan.FromSeconds(10)));
+        Assert.Equal(DesktopDragEffects.None, await cancelled.WaitScaledAsync(TimeSpan.FromSeconds(10)));
 
         // The mask before and after draggingSession:endedAtPoint:operation:, within one pool on this thread: the source
         // autoreleases itself when its session ends.

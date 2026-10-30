@@ -80,7 +80,7 @@ internal sealed class SpeechScenario(AccessibilityClient client, Report report, 
         if (!client.ActsWithKeys) return;
         for (var attempt = 0; attempt < 2; attempt++)
         {
-            var until = DateTime.UtcNow + TimeSpan.FromSeconds(5);
+            var until = DateTime.UtcNow + TestTimeouts.Scale(TimeSpan.FromSeconds(5));
             while (DateTime.UtcNow < until)
             {
                 bool settled;
@@ -143,7 +143,7 @@ internal sealed class SpeechScenario(AccessibilityClient client, Report report, 
     // The first phrase from the mark on that matches, or null after the timeout.
     private async Task<string?> HeardAsync(int mark, Expected expected, TimeSpan timeout, CancellationToken cancellationToken)
     {
-        var until = DateTime.UtcNow + timeout;
+        var until = DateTime.UtcNow + TestTimeouts.Scale(timeout);
         string? spoken = null;
         while (spoken is null && DateTime.UtcNow < until)
         {
@@ -222,7 +222,7 @@ internal sealed class SpeechScenario(AccessibilityClient client, Report report, 
     // Until the screen reader has said nothing for 1.5 s, at most 8 s.
     private async Task QuietAsync(CancellationToken cancellationToken)
     {
-        var until = DateTime.UtcNow + TimeSpan.FromSeconds(8);
+        var until = DateTime.UtcNow + TestTimeouts.Scale(TimeSpan.FromSeconds(8));
         while (DateTime.UtcNow < until)
         {
             lock (_lock) if (DateTime.UtcNow - _lastPhrase > TimeSpan.FromMilliseconds(1500)) return;

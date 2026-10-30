@@ -8,6 +8,7 @@ import test from "node:test";
 import { DevTools } from "@vitejs/devtools";
 import { build, createServer } from "vite";
 import { runic, runicDevSession, runicDevSessionProxy } from "../dist/index.js";
+import { scaled } from "../../../../tests/support/timeouts.mjs";
 
 const execFile = promisify(execFileCallback);
 
@@ -494,7 +495,7 @@ async function withProxyServer(options, run) {
   } finally { await server.close(); }
 }
 
-test("official DevTools registers a live Runic dock under Bun", { timeout: 30_000 }, async () => {
+test("official DevTools registers a live Runic dock under Bun", { timeout: scaled(30_000) }, async () => {
   const root = await fixtureRoot();
   const plugin = runic({ devtools: true, contract: { identity: "bun-dock" } });
   let context;

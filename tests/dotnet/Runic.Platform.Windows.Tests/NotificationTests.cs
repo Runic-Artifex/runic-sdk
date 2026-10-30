@@ -64,7 +64,7 @@ internal sealed class NotificationTests
                 Console.Out.Flush();
                 if (mode == "live")
                 {
-                    var activation = await activated.Task.WaitAsync(TimeSpan.FromSeconds(120));
+                    var activation = await activated.Task.WaitScaledAsync(TimeSpan.FromSeconds(120));
                     var expected = Environment.GetEnvironmentVariable("RUNIC_TEST_EXPECT_ACTION") ?? "open";
                     if (activation.NotificationId != NotificationId || activation.ActionId != expected)
                         throw new InvalidOperationException($"Unexpected activation: {activation}");

@@ -182,7 +182,7 @@ public sealed partial class BrowserLaunchBindingTests
         await Assert.ThrowsAsync<WebSocketException>(() => attacker.ConnectAsync(fixture.Surface.Url, credential));
         await Assert.ThrowsAsync<WebSocketException>(() => browser.ConnectAsync(fixture.Surface.Url, credential));
         // The server closes the hijacked session.
-        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        using var timeout = TestTimeouts.Cancellation(TimeSpan.FromSeconds(10));
         var buffer = new byte[4096];
         while (hijacked.State == WebSocketState.Open)
         {
@@ -228,7 +228,7 @@ public sealed partial class BrowserLaunchBindingTests
             await using var host = await DesktopHost.StartAsync(new DesktopHostOptions
             {
                 BrowserFolder = folder.FullName,
-                ConnectionTimeout = TimeSpan.FromSeconds(30),
+                ConnectionTimeout = TestTimeouts.Scale(TimeSpan.FromSeconds(30)),
                 DiagnosticSink = diagnostics.Enqueue,
             });
             await using var surface = await host.CreateSurfaceAsync(new DesktopSurfaceOptions
@@ -245,7 +245,7 @@ public sealed partial class BrowserLaunchBindingTests
             });
 
             // Opening waits for authentication; the connection is counted when its event is dispatched.
-            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+            using var timeout = TestTimeouts.Cancellation(TimeSpan.FromSeconds(10));
             while (surface.ConnectionCount == 0) await Task.Delay(20, timeout.Token);
             Assert.Equal(1, surface.ConnectionCount);
             Assert.DoesNotContain(diagnostics, static diagnostic =>
@@ -314,7 +314,7 @@ public sealed partial class BrowserLaunchBindingTests
                 });
                 var surface = await host.CreateSurfaceAsync(new DesktopSurfaceOptions { Content = new DesktopContent.Html(LaunchedPage) });
                 var window = await surface.OpenWindowAsync(new DesktopWindowOptions { Browser = BrowserKind.Chrome });
-                using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+                using var timeout = TestTimeouts.Cancellation(TimeSpan.FromSeconds(10));
                 while (!File.Exists(arguments))
                 {
                     await Task.Delay(20, timeout.Token);
@@ -373,7 +373,7 @@ public sealed partial class BrowserLaunchBindingTests
             try
             {
                 var endpoint = new UriBuilder(new Uri(surfaceUrl, "_webui_ws_connect")) { Scheme = "ws" }.Uri;
-                using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+                using var timeout = TestTimeouts.Cancellation(TimeSpan.FromSeconds(10));
                 await socket.ConnectAsync(endpoint, timeout.Token);
                 return socket;
             }

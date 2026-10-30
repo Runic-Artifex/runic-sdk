@@ -39,7 +39,7 @@ internal sealed class ReactiveNavigationTests
         {
             var request = model.Main.PushForResult<string>(
                 NavigationTarget.Create<INavPageViewModel>((_, entry) => new ReactiveNavEditorViewModel(entry)));
-            Require(await request.Transition.AsTask().WaitAsync(Timeout) is NavigationResult<INavPageViewModel>.Committed,
+            Require(await request.Transition.AsTask().WaitScaledAsync(Timeout) is NavigationResult<INavPageViewModel>.Committed,
                 "The editor was not pushed.");
             await Until(() => host.Root.Snapshot().Reference(vm => vm.Main)?.Kind == "reactiveNavEditor");
             var view = host.Root.View<ReactiveNavEditorViewModel>(vm => vm.Main);
@@ -105,24 +105,24 @@ internal sealed class ReactiveNavigationTests
             $"A web no gave {kept}; the editor and its request must stay.");
         var left = await CloseAnsweringAsync(editorView, mount, answer: true);
         Require(left == "committed" && model.Main.Current == home && editor.Draft == ""
-            && await closing.Completion.WaitAsync(Timeout) is NavigationCompletion<string>.Dismissed,
+            && await closing.Completion.WaitScaledAsync(Timeout) is NavigationCompletion<string>.Dismissed,
             $"A web yes gave {left}; the editor must leave, discard and dismiss its request.");
 
         // Save completes the request with the draft, without asking.
         var (saving, saveView, _) = await OpenAsync();
         saveView.Set(vm => vm.Draft, "saved draft");
-        var saveStatus = await saveView.Start(vm => vm.SaveCommand).WaitAsync().WaitAsync(Timeout);
+        var saveStatus = await saveView.Start(vm => vm.SaveCommand).WaitAsync().WaitScaledAsync(Timeout);
         var saved = StatusOutcome(saveStatus);
         Require(saved == "committed" && model.Main.Current == home
-            && await saving.Completion.WaitAsync(Timeout) is NavigationCompletion<string>.Completed { Value: "saved draft" },
+            && await saving.Completion.WaitScaledAsync(Timeout) is NavigationCompletion<string>.Completed { Value: "saved draft" },
             $"The web Save command gave {saved}, not a completed request.");
 
         // Cancel dismisses a clean editor's request.
         var (cancelling, cancelView, _) = await OpenAsync();
-        var cancelStatus = await cancelView.Start(vm => vm.CancelCommand).WaitAsync().WaitAsync(Timeout);
+        var cancelStatus = await cancelView.Start(vm => vm.CancelCommand).WaitAsync().WaitScaledAsync(Timeout);
         var cancelled = StatusOutcome(cancelStatus);
         Require(cancelled == "committed" && model.Main.Current == home
-            && await cancelling.Completion.WaitAsync(Timeout) is NavigationCompletion<string>.Dismissed,
+            && await cancelling.Completion.WaitScaledAsync(Timeout) is NavigationCompletion<string>.Dismissed,
             $"The web Cancel command gave {cancelled}, not a dismissed request.");
     }
 
@@ -150,7 +150,7 @@ internal sealed class ReactiveNavigationTests
         using var observed = model.BackCommand.IsExecuting.Subscribe(new Observer<bool>(_ => { lock (executing) executing.Add(RunicModelContext.Current); }));
         var operation = host.Root.Start(vm => vm.BackCommand, requestId: "back");
         Require(operation.Admission == RunicOperationAdmissionKind.Accepted, $"The web back command was not admitted: {operation.AdmissionJson}");
-        var status = await operation.WaitAsync().WaitAsync(Timeout);
+        var status = await operation.WaitAsync().WaitScaledAsync(Timeout);
         var result = status.Result;
         Require(status.Kind == RunicOperationStatusKind.Succeeded && result is { } outcome
             && outcome.GetProperty("kind").GetString() is "committed" or "Committed"
@@ -206,7 +206,7 @@ internal sealed class ReactiveNavigationTests
             Require(operation.Admission == RunicOperationAdmissionKind.Accepted, "The web navigation command was not admitted.");
         }
         else native = ReactiveCommandExecution.Execute(model.OpenCommand, RxVoid.Default, cancellation.Token);
-        await entered.Task.WaitAsync(Timeout);
+        await entered.Task.WaitScaledAsync(Timeout);
         try
         {
             await Until(() => host.Root.Snapshot().Read(vm => vm.Busy)
@@ -228,13 +228,13 @@ internal sealed class ReactiveNavigationTests
 
             if (web)
             {
-                var completion = await operation!.WaitAsync().WaitAsync(Timeout);
+                var completion = await operation!.WaitAsync().WaitScaledAsync(Timeout);
                 Require(completion.Kind == (outcome == "cancelled" ? RunicOperationStatusKind.Cancelled : RunicOperationStatusKind.Succeeded),
                     "The bridge command ended with the wrong operation terminal.");
             }
             else
             {
-                try { await native!.WaitAsync(Timeout); }
+                try { await native!.WaitScaledAsync(Timeout); }
                 catch (OperationCanceledException) when (outcome == "cancelled") { }
             }
             await Until(() => host.Root.Snapshot().Read(vm => vm.Outcome) == outcome
@@ -250,7 +250,7 @@ internal sealed class ReactiveNavigationTests
 
     private static async Task Until(Func<bool> condition)
     {
-        var deadline = DateTime.UtcNow + Timeout;
+        var deadline = DateTime.UtcNow + TestTimeouts.Scale(Timeout);
         while (!condition())
         {
             if (DateTime.UtcNow > deadline) throw new TimeoutException("Navigation command state did not settle.");

@@ -6,6 +6,7 @@ import { join } from "node:path";
 import { promisify } from "node:util";
 import test from "node:test";
 import { nodeCompatibility } from "../../../../eng/node-compatibility.mjs";
+import { scaled } from "../../../../tests/support/timeouts.mjs";
 
 const execute = promisify(execFileCallback);
 const execFile = (command, args, options) => {
@@ -17,7 +18,7 @@ const execFile = (command, args, options) => {
   return execute(command, args, options);
 };
 
-test("packed package is source-free and works from an isolated consumer", { timeout: 120000 }, async () => {
+test("packed package is source-free and works from an isolated consumer", { timeout: scaled(120000) }, async () => {
   const root = await mkdtemp(join(tmpdir(), "runic-vite-package-"));
   try {
     const packed = await execFile("npm", ["pack", "--json", "--pack-destination", root], { cwd: process.cwd() });
@@ -99,8 +100,8 @@ test("packed package is source-free and works from an isolated consumer", { time
     await execFile(process.execPath, ["build.mjs"], { cwd: root });
     // Exercise the installed dock under both supported development runtimes.
     await writeFile(join(root, "devtools.mjs"), "import assert from \"node:assert/strict\";\nimport { createServer } from \"vite\";\nimport { DevTools } from \"@vitejs/devtools\";\nimport { runic } from \"@runic-artifex/vite-plugin-runic\";\nconst server = await createServer({ configFile: false, logLevel: \"silent\",\n  plugins: [DevTools({ embeddedVisibility: \"passive\" }), runic({ devtools: true,\n    contract: { identity: \"sample\", version: \"1\", fingerprint: \"abc\" } })],\n  server: { host: \"127.0.0.1\", port: 0, strictPort: false } });\ntry {\n  await server.listen();\n  const address = server.httpServer.address();\n  const response = await fetch(`http://127.0.0.1:${address.port}/__runic/state`);\n  assert.equal(response.status, 200);\n  assert.equal((await response.json()).contract.identity, \"sample\");\n} finally { await server.close(); }\n");
-    await execFile(process.execPath, ["devtools.mjs"], { cwd: root, timeout: 30_000 });
-    await execFile("node", ["devtools.mjs"], { cwd: root, timeout: 30_000 });
+    await execFile(process.execPath, ["devtools.mjs"], { cwd: root, timeout: scaled(30_000) });
+    await execFile("node", ["devtools.mjs"], { cwd: root, timeout: scaled(30_000) });
     const manifest = JSON.parse(await readFile(join(root, "node_modules", "@runic-artifex", "vite-plugin-runic", "package.json"), "utf8"));
     // VITE-08: the manifest is an export, and every entry has a default condition.
     await execFile("node", ["--input-type=module", "--eval",

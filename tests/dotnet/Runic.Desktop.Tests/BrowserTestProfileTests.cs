@@ -37,7 +37,7 @@ public sealed class BrowserTestProfileTests
                 Assert.False(cleanup.IsCompleted);
                 Assert.True(Directory.Exists(profile.FullName));
             }
-            await cleanup.WaitAsync(TimeSpan.FromSeconds(10));
+            await cleanup.WaitScaledAsync(TimeSpan.FromSeconds(10));
             Assert.False(Directory.Exists(profile.FullName));
         }
         finally
@@ -56,7 +56,7 @@ public sealed class BrowserTestProfileTests
                 FileMode.CreateNew, FileAccess.ReadWrite, FileShare.None);
             await Assert.ThrowsAsync<IOException>(() => BrowserTestProfile
                 .DeleteAsync(profile.FullName, TimeSpan.FromMilliseconds(100))
-                .WaitAsync(TimeSpan.FromSeconds(5)));
+                .WaitScaledAsync(TimeSpan.FromSeconds(5)));
             Assert.True(Directory.Exists(profile.FullName));
         }
         finally

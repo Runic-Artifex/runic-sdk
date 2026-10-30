@@ -10,7 +10,8 @@ import { snapshot } from './snapshot.mjs';
 import { buildPaths, validateBuild } from './build-artifact.mjs';
 import { managedGroups, managedTests, jobSuites, webTests, plan, applicationFixtures, applicationFixtureCommands } from './plan.mjs';
 import { actArguments } from './local.mjs';
-import { nativeLegs, wpfLegs } from './platforms.mjs';
+import { nativeLegs, testTimeoutScales, wpfLegs } from './platforms.mjs';
+import { testTimeoutScale } from './test-timeout-scale.mjs';
 
 const yaml = path => Bun.YAML.parse(readFileSync(resolve(root, path), 'utf8'));
 const workflow = yaml('.github/workflows/ci.yml');
@@ -273,11 +274,44 @@ test('local checks are focused and Linux workflow selection leaves native OS cov
   assert.match(musl.env.ALPINE_IMAGE, /^docker\.io\/library\/alpine:3\.22@sha256:[0-9a-f]{64}$/);
 });
 
-test('the Windows native job scales the example smoke timeouts (#70)', () => {
-  const { env } = workflow.jobs.native;
-  assert.equal(env.RUNIC_SMOKE_TIMEOUT_SCALE, "${{ matrix.smoke-timeout-scale || '1' }}");
-  const scales = Object.fromEntries(nativeLegs.map(item => [item.rid, item['smoke-timeout-scale']]));
-  assert.deepEqual(scales, { 'linux-x64': undefined, 'linux-arm64': undefined, 'win-x64': '2', 'win-arm64': '2', 'osx-arm64': undefined });
+test('every test job scales its condition waits by RUNIC_TEST_TIMEOUT_SCALE for its runner', () => {
+  // setup-sdk sets the scale first; the jobs that do not set up the SDK run no tests, except native-musl, which sets it
+  // itself and passes it into its container.
+  const setup = yaml('.github/actions/setup-sdk/action.yml');
+  assert.equal(setup.runs.steps[0].uses, './.github/actions/test-timeout-scale');
+  const action = yaml('.github/actions/test-timeout-scale/action.yml');
+  assert.deepEqual(action.runs.steps.map(step => step.run), ['node eng/ci/test-timeout-scale.mjs']);
+  const scaled = job => job.steps.some(step => ['./.github/actions/setup-sdk', './.github/actions/test-timeout-scale'].includes(step.uses));
+  assert.deepEqual(Object.entries(workflow.jobs).filter(([, job]) => !scaled(job)).map(([name]) => name), ['verify']);
+  const musl = workflow.jobs['native-musl'];
+  assert.ok(musl.steps.findIndex(step => step.uses === './.github/actions/test-timeout-scale') <
+    musl.steps.findIndex(step => step.run?.includes('eng/ci/native-musl.sh')));
+  assert.match(musl.steps.find(step => step.run?.includes('eng/ci/native-musl.sh')).run, /-e RUNIC_TEST_TIMEOUT_SCALE /);
+  assert.match(workflow.jobs.native.steps.find(step => step.run?.includes('bash eng/ci/real-portal.sh')).run, /-e RUNIC_TEST_TIMEOUT_SCALE /);
+  // The variable replaced RUNIC_SMOKE_TIMEOUT_SCALE and the native legs' smoke-timeout-scale.
+  assert.doesNotMatch(readFileSync(resolve(root, '.github/workflows/ci.yml'), 'utf8'), /RUNIC_SMOKE_TIMEOUT_SCALE|smoke-timeout-scale/);
+  assert.ok(nativeLegs.every(leg => !('smoke-timeout-scale' in leg)));
+  assert.deepEqual(testTimeoutScales, { 'Linux-X64': '4', 'Linux-ARM64': '4', 'Windows-X64': '5', 'Windows-ARM64': '6', 'macOS-ARM64': '6' });
+  // Every runner a matrix names has a scale (GitHub's RUNNER_OS and RUNNER_ARCH).
+  const runner = os => `${os.startsWith('ubuntu') ? 'Linux' : os.startsWith('windows') ? 'Windows' : 'macOS'}-${/arm|macos/.test(os) ? 'ARM64' : 'X64'}`;
+  for (const os of [...nativeLegs, ...wpfLegs].map(leg => leg.os)) assert.ok(testTimeoutScales[runner(os)], os);
+});
+
+test('test-timeout-scale picks the runner value unless the job sets a positive one', () => {
+  assert.equal(testTimeoutScale('Windows', 'X64', undefined), '5');
+  assert.equal(testTimeoutScale('Linux', 'ARM64', ''), '4');
+  assert.equal(testTimeoutScale('macOS', 'ARM64', '1.5'), '1.5');
+  assert.throws(() => testTimeoutScale('Linux', 'X64', '0'), /must be a positive number, got 0/);
+  assert.throws(() => testTimeoutScale('Linux', 'X64', 'fast'), /must be a positive number/);
+  assert.throws(() => testTimeoutScale('FreeBSD', 'X64', undefined), /no value for the FreeBSD X64 runner/);
+  const directory = mkdtempSync(resolve(tmpdir(), 'runic-ci-scale-'));
+  try {
+    const environment = resolve(directory, 'env');
+    writeFileSync(environment, '');
+    execFileSync(process.execPath, [resolve(root, 'eng/ci/test-timeout-scale.mjs')], {
+      env: { ...process.env, RUNNER_OS: 'Windows', RUNNER_ARCH: 'ARM64', GITHUB_ENV: environment, RUNIC_TEST_TIMEOUT_SCALE: '' }, stdio: 'pipe' });
+    assert.equal(readFileSync(environment, 'utf8'), 'RUNIC_TEST_TIMEOUT_SCALE=6\n');
+  } finally { rmSync(directory, { recursive: true, force: true }); }
 });
 
 test('template lanes cover every framework once and run the creator check in one lane', () => {

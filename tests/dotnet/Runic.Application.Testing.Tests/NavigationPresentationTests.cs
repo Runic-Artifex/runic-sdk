@@ -68,7 +68,7 @@ internal sealed class NavigationPresentationTests
             return true;
         };
         var pending = window.Shell.Main.PushAsync(NavigationTarget.Own<INavPageViewModel>(new NavEditorViewModel("pending"))).AsTask();
-        await entered.Task.WaitAsync(Timeout);
+        await entered.Task.WaitScaledAsync(Timeout);
         try
         {
             await window.Context.DisposeAsync();
@@ -79,7 +79,7 @@ internal sealed class NavigationPresentationTests
             await Until(() => guardToken.IsCancellationRequested, "The in-flight web guard was not cancelled on close.");
         }
         finally { release.TrySetResult(); }
-        Require(await pending.WaitAsync(Timeout) is NavigationResult<INavPageViewModel>.Rejected { Reason: NavigationRejection.Closed },
+        Require(await pending.WaitScaledAsync(Timeout) is NavigationResult<INavPageViewModel>.Rejected { Reason: NavigationRejection.Closed },
             "The pending web navigation did not end Closed.");
         window.Host.Dispose();
         await window.Navigator.DisposeAsync();
@@ -167,13 +167,13 @@ internal sealed class NavigationPresentationTests
 
         session.Present(owner, "Main", "item", first, Attach);
         var replace = Task.Run(() => session.Present(owner, "Main", "item", second, Attach));
-        await entered.Task.WaitAsync(Timeout);
+        await entered.Task.WaitScaledAsync(Timeout);
         var forget = Task.Run(() => session.Forget(first));
         await Task.Delay(200);
         Require(!forget.IsCompleted, "Forget returned while the content was still detaching.");
         release.Set();
-        await forget.WaitAsync(Timeout);
-        await replace.WaitAsync(Timeout);
+        await forget.WaitScaledAsync(Timeout);
+        await replace.WaitScaledAsync(Timeout);
     }
 
     private sealed class BlockingDisposable(TaskCompletionSource? entered, ManualResetEventSlim? release) : IDisposable
@@ -181,7 +181,7 @@ internal sealed class NavigationPresentationTests
         public void Dispose()
         {
             entered?.TrySetResult();
-            release?.Wait(TimeSpan.FromSeconds(20));
+            release?.Wait(TestTimeouts.Scale(TimeSpan.FromSeconds(20)));
         }
     }
 
@@ -441,7 +441,7 @@ internal sealed class NavigationPresentationTests
 
         // A frontend selects through a command that returns the request's outcome.
         // Protocol 4: the reply carries the revision; the state at it includes the selection.
-        var reply = await host.Root.ExecuteAsync(vm => vm.SelectTabCommand, "0").WaitAsync(Timeout);
+        var reply = await host.Root.ExecuteAsync(vm => vm.SelectTabCommand, "0").WaitScaledAsync(Timeout);
         Require(reply.Succeeded && reply.State?.Get(vm => vm.Tabs).GetInt32() == 0 && tabs.Tabs.SelectedIndex == 0,
             $"The select command did not select the first tab: {reply}");
     }
@@ -493,11 +493,11 @@ internal sealed class NavigationPresentationTests
         return titles;
     }
 
-    private static async Task<T> Wait<T>(ValueTask<T> task) => await task.AsTask().WaitAsync(Timeout);
+    private static async Task<T> Wait<T>(ValueTask<T> task) => await task.AsTask().WaitScaledAsync(Timeout);
 
     private static async Task Until(Func<bool> condition, string message)
     {
-        var deadline = DateTime.UtcNow + Timeout;
+        var deadline = DateTime.UtcNow + TestTimeouts.Scale(Timeout);
         while (!condition())
         {
             if (DateTime.UtcNow > deadline) throw new InvalidOperationException(message);

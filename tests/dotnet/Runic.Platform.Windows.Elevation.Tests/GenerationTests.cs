@@ -178,7 +178,7 @@ internal sealed class GenerationTests
             using var process = Process.Start(start)!;
             var stdout = process.StandardOutput.ReadToEndAsync();
             var stderr = process.StandardError.ReadToEndAsync();
-            await process.WaitForExitAsync().WaitAsync(TimeSpan.FromMinutes(3));
+            await process.WaitForExitAsync().WaitScaledAsync(TimeSpan.FromMinutes(3));
             return (process.ExitCode, await stdout + await stderr);
         }
 

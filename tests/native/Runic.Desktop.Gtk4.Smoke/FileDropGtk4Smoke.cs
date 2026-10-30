@@ -49,7 +49,7 @@ internal static partial class FileDropGtk4Smoke
             {
                 await Task.Delay(700);
                 await pointer.DragAsync((60, 60), (400, 300));
-                var drop = await dropped.Task.WaitAsync(TimeSpan.FromSeconds(15));
+                var drop = await dropped.Task.WaitScaledAsync(TimeSpan.FromSeconds(15));
                 if (!drop.Paths.SequenceEqual([file, folder]) || drop.Target != "folder-7")
                     throw new InvalidOperationException($"The GTK 4 drop reported [{string.Join(", ", drop.Paths)}] with target '{drop.Target}'.");
                 await Task.Delay(300);

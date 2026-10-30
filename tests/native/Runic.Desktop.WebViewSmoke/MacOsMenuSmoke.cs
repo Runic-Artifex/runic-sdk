@@ -217,13 +217,13 @@ internal static partial class MacOsMenuSmoke
         var menu = await TrackingAsync(0);
         // Main-thread work queued while the menu tracks runs in the tracking run loop mode, not after the menu closes.
         string? mode = null;
-        await window.InvokeNativeAsync(_ => mode = CurrentRunLoopMode()).AsTask().WaitAsync(TimeSpan.FromSeconds(5));
+        await window.InvokeNativeAsync(_ => mode = CurrentRunLoopMode()).AsTask().WaitScaledAsync(TimeSpan.FromSeconds(5));
         if (mode is null or "kCFRunLoopDefaultMode" || Runic.Desktop.Internal.MacOsWkWebViewHost.TrackingContextMenu != menu)
             throw new InvalidOperationException($"Context menu: work queued while the menu tracks ran in mode {mode ?? "(none)"}, not during tracking.");
         Console.WriteLine($"PASS Main-thread work runs while a context menu tracks ({mode}).");
         PerformInTrackingMode(menu, "performActionForItemAtIndex:", 0);
         PerformInTrackingMode(menu, "cancelTracking", 0);
-        var result = await chosen.WaitAsync(TimeSpan.FromSeconds(10));
+        var result = await chosen.WaitScaledAsync(TimeSpan.FromSeconds(10));
         if (!ReferenceEquals(result, items[0])) throw new InvalidOperationException($"Context menu: returned {result?.Title ?? "null"}, not Rename.");
         // The chosen item's action completes the request while the menu still tracks; it closes right after.
         await NotTrackingAsync();
@@ -233,13 +233,13 @@ internal static partial class MacOsMenuSmoke
         var firstMenu = await TrackingAsync(0);
         using var cancel = new CancellationTokenSource();
         var second = window.ShowContextMenuAsync(items, cancellationToken: cancel.Token).AsTask();
-        if (await first.WaitAsync(TimeSpan.FromSeconds(10)) is not null)
+        if (await first.WaitScaledAsync(TimeSpan.FromSeconds(10)) is not null)
             throw new InvalidOperationException("Context menu: a menu replaced by a later one did not return null.");
         await TrackingAsync(firstMenu);
         cancel.Cancel();
         try
         {
-            await second.WaitAsync(TimeSpan.FromSeconds(10));
+            await second.WaitScaledAsync(TimeSpan.FromSeconds(10));
             throw new InvalidOperationException("Context menu: a cancelled menu did not throw OperationCanceledException.");
         }
         catch (OperationCanceledException) { }

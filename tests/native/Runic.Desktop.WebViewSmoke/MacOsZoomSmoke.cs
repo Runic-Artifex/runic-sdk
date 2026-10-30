@@ -43,7 +43,7 @@ internal static partial class MacOsZoomSmoke
     private static async Task ExerciseAsync(DesktopSurface surface, DesktopWindow window)
     {
         await window.FocusAsync();
-        var deadline = DateTime.UtcNow + StepTimeout;
+        var deadline = DateTime.UtcNow + TestTimeouts.Scale(StepTimeout);
         var state = await ReadNativeAsync(window);
         while (!state.Key && DateTime.UtcNow < deadline)
         {
@@ -116,14 +116,14 @@ internal static partial class MacOsZoomSmoke
         if (host.ShutdownRequested.IsCancellationRequested) throw new InvalidOperationException("A refused Command and Q cancelled ShutdownRequested.");
         Pass("Command and Q asks the window's close guard, which can keep it open.");
         await SendAsync(window, KeyQ, Command);
-        await window.WaitForCloseAsync().AsTask().WaitAsync(StepTimeout);
-        await Task.Delay(Timeout.Infinite, host.ShutdownRequested).ContinueWith(static _ => { }, TaskScheduler.Default).WaitAsync(StepTimeout);
+        await window.WaitForCloseAsync().AsTask().WaitScaledAsync(StepTimeout);
+        await Task.Delay(Timeout.Infinite, host.ShutdownRequested).ContinueWith(static _ => { }, TaskScheduler.Default).WaitScaledAsync(StepTimeout);
         Pass("Command and Q closes the window once its guard allows it, and cancels ShutdownRequested.");
     }
 
     private static async Task WaitForPageAsync(DesktopSurface surface, string script, string expected, string description)
     {
-        var deadline = DateTime.UtcNow + StepTimeout;
+        var deadline = DateTime.UtcNow + TestTimeouts.Scale(StepTimeout);
         string value;
         do
         {
@@ -137,7 +137,7 @@ internal static partial class MacOsZoomSmoke
 
     private static async Task WaitAsync(Func<bool> check, string description)
     {
-        var deadline = DateTime.UtcNow + StepTimeout;
+        var deadline = DateTime.UtcNow + TestTimeouts.Scale(StepTimeout);
         while (!check())
         {
             if (DateTime.UtcNow > deadline) throw new TimeoutException($"Expected {description}.");
@@ -149,7 +149,7 @@ internal static partial class MacOsZoomSmoke
     {
         await SendAsync(window, key, flags);
         if (settle) await Task.Delay(TimeSpan.FromSeconds(1.5));
-        var deadline = DateTime.UtcNow + StepTimeout;
+        var deadline = DateTime.UtcNow + TestTimeouts.Scale(StepTimeout);
         NativeState state;
         do
         {

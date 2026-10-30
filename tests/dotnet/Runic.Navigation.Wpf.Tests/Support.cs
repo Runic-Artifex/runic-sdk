@@ -34,7 +34,7 @@ internal sealed class NavFixture : IDisposable
     public void Dispose()
     {
         if (!Context.Dispatcher.HasShutdownStarted) Pump(Navigator.DisposeAsync().AsTask(), "navigator disposal");
-        else Require(Navigator.DisposeAsync().AsTask().Wait(WaitLimit), "Navigator disposal timed out.");
+        else Require(Navigator.DisposeAsync().AsTask().Wait(TestTimeouts.Scale(WaitLimit)), "Navigator disposal timed out.");
         Context.Dispose();
         Services.Dispose();
     }

@@ -203,7 +203,7 @@ public sealed class OperationProtocolTests
         Require(duplicate["admission"]!.GetValue<string>() == "rejected" && duplicate["reason"]!.GetValue<string>() == "owner-closing",
             $"A closing window answered a known start other than owner-closing: {duplicate}");
         await window.Model.FinishAsync(1);
-        var result = await close.WaitAsync(TimeSpan.FromSeconds(5));
+        var result = await close.WaitScaledAsync(TimeSpan.FromSeconds(5));
         Require(result.Drained && result.RemainingOperations == 0, "Close did not report the drained operation.");
         var pushes = await window.PushesUntilTerminalAsync();
         Require(pushes[^1]["status"]!["kind"]!.GetValue<string>() == "succeeded", "The drained operation's terminal was not pushed.");
@@ -218,9 +218,9 @@ public sealed class OperationProtocolTests
         var close = window.Session.DrainAsync(TimeSpan.FromSeconds(10)).AsTask();
         await Task.Delay(50);
         window.Clock.Advance(TimeSpan.FromSeconds(10));
-        var result = await close.WaitAsync(TimeSpan.FromSeconds(5));
+        var result = await close.WaitScaledAsync(TimeSpan.FromSeconds(5));
         Require(!result.Drained && result.RemainingOperations == 1, "Close did not count the running operation at its timeout.");
-        await result.Completion.WaitAsync(TimeSpan.FromSeconds(5));
+        await result.Completion.WaitScaledAsync(TimeSpan.FromSeconds(5));
         var pushes = await window.PushesUntilTerminalAsync();
         Require(pushes[^1]["status"]!["kind"]!.GetValue<string>() == "cancelled",
             $"The close timeout did not cancel the operation: {Show(pushes)}");
@@ -302,7 +302,7 @@ public sealed class OperationProtocolTests
         // The targeted pushes sent to a connection since the last call, once every queued push was sent.
         public async Task<List<JsonObject>> PushesAsync(string connection = InMemoryBridgeTransport.DefaultConnectionKey)
         {
-            await BridgeTargetedPushes.For(Transport).WhenSent().WaitAsync(TimeSpan.FromSeconds(5));
+            await BridgeTargetedPushes.For(Transport).WhenSent().WaitScaledAsync(TimeSpan.FromSeconds(5));
             return [.. Transport.TakeMessages().Where(message => message.ConnectionKey == connection)
                 .Select(message => JsonNode.Parse(message.Json)!.AsObject())];
         }
@@ -343,7 +343,7 @@ public sealed class OperationProtocolTests
         public async Task StepAsync(double? progress)
         {
             await _steps.Writer.WriteAsync(progress);
-            await _processed.Reader.ReadAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(5));
+            await _processed.Reader.ReadAsync().AsTask().WaitScaledAsync(TimeSpan.FromSeconds(5));
         }
 
         public Task FinishAsync(int result)

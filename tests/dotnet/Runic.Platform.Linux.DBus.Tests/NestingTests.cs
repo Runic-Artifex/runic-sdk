@@ -142,10 +142,10 @@ internal sealed class NestingTests
             {
                 listener.Bind(new UnixDomainSocketEndPoint(socketPath));
                 listener.Listen(1);
-                using var timeout = new CancellationTokenSource(Timeout);
+                using var timeout = TestTimeouts.Cancellation(Timeout);
                 var accept = bus.AcceptAsync(timeout.Token);
                 var connect = DBusConnection.ConnectToAddressAsync($"unix:path={socketPath}", timeout.Token).AsTask();
-                await Task.WhenAll(accept, connect).WaitAsync(Timeout);
+                await Task.WhenAll(accept, connect).WaitScaledAsync(Timeout);
                 bus._connection = connect.Result is PlatformResult<DBusConnection>.Success(var connection) ? connection
                     : throw new InvalidOperationException($"The connection failed: {connect.Result}");
                 Check(connection.UniqueName == ":1.1", $"the connection took the name from Hello: \"{connection.UniqueName}\"");
@@ -183,7 +183,7 @@ internal sealed class NestingTests
         // Sends a call to the exported object and returns its reply, answering the client's calls to the bus meanwhile.
         internal async Task<Message> CallAsync(string path, string interfaceName, string member, string signature, byte[] body)
         {
-            using var timeout = new CancellationTokenSource(Timeout);
+            using var timeout = TestTimeouts.Cancellation(Timeout);
             uint serial = ++_serial;
             await WriteAsync(Encode(Call, serial, [(1, "o", path), (2, "s", interfaceName), (3, "s", member), (6, "s", ":1.1"), (7, "s", ":1.0"), (8, "g", signature)],
                 body), timeout.Token);

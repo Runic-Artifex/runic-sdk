@@ -16,11 +16,15 @@ export const nativeLegs = [
   // window probes (eng/support.json).
   { os: "ubuntu-24.04", rid: "linux-x64", provider: "Linux", extension: "", cswebui: true },
   { os: "ubuntu-24.04-arm", rid: "linux-arm64", provider: "Linux", extension: "", cswebui: true },
-  // Cold Chromium and Node timers stall on Windows runners (#70).
-  { os: "windows-latest", rid: "win-x64", provider: "Windows", extension: ".exe", cswebui: true, "smoke-timeout-scale": "2", platform: "win-x64" },
-  { os: "windows-11-arm", rid: "win-arm64", provider: "Windows", extension: ".exe", cswebui: false, "smoke-timeout-scale": "2", platform: "win-arm64" },
+  { os: "windows-latest", rid: "win-x64", provider: "Windows", extension: ".exe", cswebui: true, platform: "win-x64" },
+  { os: "windows-11-arm", rid: "win-arm64", provider: "Windows", extension: ".exe", cswebui: false, platform: "win-arm64" },
   { os: "macos-26", rid: "osx-arm64", provider: "MacOS", extension: "", cswebui: true, platform: "osx-arm64" },
 ];
+// RUNIC_TEST_TIMEOUT_SCALE per runner, as `${RUNNER_OS}-${RUNNER_ARCH}`: how much longer than on a developer machine the
+// test and smoke condition waits may take (eng/ci/README.md, "Test timeouts"). .github/actions/test-timeout-scale sets
+// it in every job that runs tests. Larger where waits stall most: cold Chromium and WebView2 starts on Windows (#70),
+// the Windows Arm and macOS runners.
+export const testTimeoutScales = { "Linux-X64": "4", "Linux-ARM64": "4", "Windows-X64": "5", "Windows-ARM64": "6", "macOS-ARM64": "6" };
 export const wpfLegs = [
   { os: "windows-2025", rid: "win-x64", platform: "win-x64" },
   { os: "windows-11-arm", rid: "win-arm64", platform: "win-arm64" },

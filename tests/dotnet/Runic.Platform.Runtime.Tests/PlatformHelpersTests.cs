@@ -181,13 +181,13 @@ internal sealed class PlatformHelpersTests
 
         var second = await ApplicationInstance.ClaimAsync(applicationId, ["--open", "report"]);
         Check(second is PlatformResult<ApplicationInstanceClaim>.Success { Value: ApplicationInstanceClaim.Forwarded }, "The second claim is forwarded: " + second);
-        var received = await launches.Reader.ReadAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(5));
+        var received = await launches.Reader.ReadAsync().AsTask().WaitScaledAsync(TimeSpan.FromSeconds(5));
         Check(received.Arguments.SequenceEqual(["--open", "report"]) && received.WorkingDirectory == Environment.CurrentDirectory,
             "The arguments and the current directory arrive.");
 
         var forwardOnly = await ApplicationInstance.ClaimAsync(applicationId, ["--again"], new ApplicationInstanceOptions { ForwardOnly = true });
         Check(forwardOnly is PlatformResult<ApplicationInstanceClaim>.Success { Value: ApplicationInstanceClaim.Forwarded }, "The options overload forwards: " + forwardOnly);
-        await launches.Reader.ReadAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(5));
+        await launches.Reader.ReadAsync().AsTask().WaitScaledAsync(TimeSpan.FromSeconds(5));
 
         // The overloads check their arguments before returning a task.
         Throws<ArgumentNullException>(() => ApplicationInstance.ClaimAsync(applicationId, (string[])null!).AsTask());

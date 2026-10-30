@@ -163,14 +163,14 @@ internal sealed class SecretPortalTests
         async Task<PlatformResult<string?>> GetAsync(SecretPortalStore store)
         {
             var clock = Stopwatch.StartNew();
-            try { return await store.GetAsync(Service, Account).AsTask().WaitAsync(Wait); }
+            try { return await store.GetAsync(Service, Account).AsTask().WaitScaledAsync(Wait); }
             finally { took = clock.Elapsed; }
         }
         string State() => $"after {took.TotalMilliseconds:0} ms, {portal.Calls} RetrieveSecret calls, {portal.Closes} Request.Close calls; diagnostics: [" +
             string.Join("; ", diagnostics.Select(d => d.Code + ": " + d.Message)) + "]";
 
         var store = Store();
-        Check(await store.SetAsync(Service, Account, "via-portal").AsTask().WaitAsync(Wait), r => r is PlatformResult<PlatformUnit>.Success, $"stored, {State()}");
+        Check(await store.SetAsync(Service, Account, "via-portal").AsTask().WaitScaledAsync(Wait), r => r is PlatformResult<PlatformUnit>.Success, $"stored, {State()}");
         Check(await GetAsync(store), r => r is PlatformResult<string?>.Success { Value: "via-portal" }, $"read back, {State()}");
         Check(portal.Calls == 1 && portal.HandleToken?.StartsWith("runic_", StringComparison.Ordinal) == true, $"the secret is retrieved once per store: {State()}");
         Check(await scratch.Store(Secret(4)).GetAsync(Service, Account), r => r is PlatformResult<string?>.Success { Value: "via-portal" }, "the portal's secret is the password");
@@ -217,7 +217,7 @@ internal sealed class SecretPortalTests
         using var scratch = new Scratch();
         var diagnostics = new List<PortalDiagnostic>();
         var store = new SecretPortalStore(application: new PortalApplication(null, diagnostics.Add), path: scratch.Keyring);
-        using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(60));
+        using var deadline = TestTimeouts.Cancellation(TimeSpan.FromSeconds(60));
         var stored = await store.SetAsync(Service, Account, "from-the-real-portal", deadline.Token);
         Console.WriteLine($"Stored through the real Secret portal: {stored}; diagnostics: {string.Join(", ", diagnostics.Select(d => d.Code + " " + d.Message))}");
         Check(stored, r => r is PlatformResult<PlatformUnit>.Success, "stored");
