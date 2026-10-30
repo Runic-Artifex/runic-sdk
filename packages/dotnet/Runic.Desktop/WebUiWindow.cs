@@ -2588,8 +2588,9 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
         }
         else
         {
-            Trace.TraceWarning(string.Create(System.Globalization.CultureInfo.InvariantCulture,
-                $"{ConnectionDeadlineExtendedCode}: the embedded WebView had requested nothing after {deadline.Timeout.TotalSeconds:0.###} seconds but was still making progress ({extended.Progress}); waiting up to {deadline.Cap.TotalSeconds:0.###} seconds."));
+            var message = string.Create(System.Globalization.CultureInfo.InvariantCulture,
+                $"the embedded WebView had requested nothing after {deadline.Timeout.TotalSeconds:0.###} seconds but was still making progress ({extended.Progress}); waiting up to {deadline.Cap.TotalSeconds:0.###} seconds.");
+            Trace.TraceWarning($"{ConnectionDeadlineExtendedCode}: {message}");
         }
     }
 
