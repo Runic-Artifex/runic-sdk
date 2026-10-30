@@ -3,12 +3,11 @@
 // ViewModel member breaks these tests at compile time (`bun run typecheck:test`).
 import assert from "node:assert/strict";
 import { beforeEach, test } from "node:test";
-import { BridgeError, createFieldController } from "@runic-artifex/views";
+import { BridgeError, commitFields, createFieldController } from "@runic-artifex/views";
 import { createMockBridge, installMockBridge, mockFailure, type MockBridge, type MockCall } from "@runic-artifex/views/mock";
 import type { SaveFailure } from "../src/generated/editor.js";
 import { describeSaveFailure } from "../src/save-failure.js";
 import { mountContent } from "../src/content.js";
-import { commitFields } from "../src/field-input.js";
 import { connectEditor, EditorFields } from "../src/generated/editor.js";
 import { mockEditor, type EditorMockState } from "../src/generated/editor.mock.js";
 import { pageHome } from "../src/generated/home.js";

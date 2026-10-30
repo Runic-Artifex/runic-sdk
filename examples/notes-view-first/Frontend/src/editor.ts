@@ -1,6 +1,5 @@
-import { createFieldController } from "@runic-artifex/views";
+import { bindField, commitFields, describeBridgeError } from "@runic-artifex/views";
 import { EditorFields, type EditorClient } from "./generated/editor.js";
-import { bindTextInput, commitFields } from "./field-input.js";
 import { describeSaveFailure } from "./save-failure.js";
 
 export function mountEditor(host: HTMLElement, editor: EditorClient): () => void {
@@ -17,25 +16,24 @@ export function mountEditor(host: HTMLElement, editor: EditorClient): () => void
       const failure = await action();
       if (active) { error.textContent = failure ?? ""; error.hidden = failure === undefined; }
     } catch (cause) {
-      if (active) { error.textContent = String(cause); error.hidden = false; }
+      if (active) { error.textContent = describeBridgeError(cause); error.hidden = false; }
     }
   };
-  // A field is written after a pause in typing or when it loses focus, not on every keystroke.
-  const title = createFieldController(EditorFields.title, { commit: "pause" });
-  const body = createFieldController(EditorFields.body, { commit: "pause" });
+  // A field is written after a pause in typing or when it loses focus, not on every keystroke. bindField wires the
+  // input: the View's state, what the user types, IME composition and commit on blur.
+  const title = bindField(titleInput, editor, EditorFields.title, { commit: "pause" });
+  const body = bindField(bodyInput, editor, EditorFields.body, { commit: "pause" });
   // A field's failed write shows until the field's next successful write.
   let writeError: unknown;
   const showWriteError = () => {
     const cause = title.current.error ?? body.current.error;
     if (!active || Object.is(cause, writeError)) return;
     writeError = cause;
-    error.textContent = cause === undefined ? "" : String(cause);
+    error.textContent = describeBridgeError(cause);
     error.hidden = cause === undefined;
   };
   const stopTitle = title.subscribe(showWriteError);
   const stopBody = body.subscribe(showWriteError);
-  const unbindTitle = bindTextInput(titleInput, title, editor);
-  const unbindBody = bindTextInput(bodyInput, body, editor);
   const unsubscribe = editor.subscribe(state => {
     save.disabled = !state.canSave;
     message.textContent = `${state.isDirty ? "Unsaved changes. " : ""}${state.savedMessage}`;
@@ -55,9 +53,7 @@ export function mountEditor(host: HTMLElement, editor: EditorClient): () => void
     unsubscribe();
     stopTitle();
     stopBody();
-    unbindTitle();
-    unbindBody();
-    // Text that waits for its pause is written before the editor is released.
+    // Unwires the inputs; text that waits for its pause is written before the editor is released.
     title.dispose();
     body.dispose();
     editor.dispose();

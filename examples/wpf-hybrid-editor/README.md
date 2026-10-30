@@ -57,7 +57,10 @@ to the page's `DataContext` and passes the application services and the
 dispatcher model context. The host opens the embedded presentation once it is
 loaded, and owns its bridge, content session and desktop surface while
 borrowing those application objects. The frontend connects with generated
-`connectEditor()`. Its field writes run before Save; Cancel runs immediately so
+`connectEditor()` and binds Title and Body with `bindField` from
+`@runic-artifex/views` and the generated `EditorFields`, so typing never loses
+characters while writes are on their way. Save waits for the fields' writes
+(`commitFields`) and is skipped after a failed one; Cancel runs immediately so
 it can interrupt a pending Save.
 
 The host serializes presentation changes, closes the binding before its Desktop

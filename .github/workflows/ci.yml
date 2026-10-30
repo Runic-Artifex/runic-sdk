@@ -491,6 +491,9 @@ jobs:
           npm --prefix examples/notes-view-first/Angular ci
           npm --prefix examples/notes-view-first/Angular run build
           RUNIC_WEB_ROOT="$PWD/examples/notes-view-first/Angular/dist/angular-composed/browser" node examples/notes-view-first/browser-smoke.mjs
+          # The Angular Notes variants: fields bound in the template without forms, and Save ordered by dispatch.
+          RUNIC_SMOKE_MODE=baseline RUNIC_WEB_ROOT="$PWD/examples/notes-view-first/Angular/dist/angular-composed/browser" node examples/notes-view-first/browser-smoke.mjs
+          RUNIC_SMOKE_MODE=dispatch-probe RUNIC_WEB_ROOT="$PWD/examples/notes-view-first/Angular/dist/angular-composed/browser" node examples/notes-view-first/browser-smoke.mjs
           RUNIC_WEB_ROOT="$PWD/examples/notes-view-first/Angular/dist/angular-composed/browser" node examples/notes-view-first/menu-bar-smoke.mjs
           RUNIC_MENU_BAR_HOST=cswebui RUNIC_WEB_ROOT="$PWD/examples/notes-view-first/Angular/dist/angular-composed/browser" node examples/notes-view-first/menu-bar-smoke.mjs
           (cd examples/notes-reactive-views/Svelte && bun install --frozen-lockfile && bun run build)

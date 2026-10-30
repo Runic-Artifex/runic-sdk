@@ -1,6 +1,5 @@
-import { createFieldController } from "@runic-artifex/views";
+import { bindField, commitFields, describeBridgeError } from "@runic-artifex/views";
 import { EditorFields, type EditorClient } from "./generated/editor.js";
-import { bindTextInput, commitFields } from "./field-input.js";
 import { describeSaveFailure } from "./save-failure.js";
 
 export function mountEditor(host: HTMLElement, view: EditorClient): () => void {
@@ -13,10 +12,11 @@ export function mountEditor(host: HTMLElement, view: EditorClient): () => void {
   const activation = host.querySelector<HTMLElement>("[data-activation]")!;
   const failure = host.querySelector<HTMLElement>("[data-failure]")!;
   const showFailure = (text: string | undefined) => { failure.textContent = text ?? ""; failure.hidden = text === undefined; };
-  const report = (error: unknown) => { message.textContent = String(error); message.classList.add("error"); };
-  // A field is written after a pause in typing or when it loses focus, not on every keystroke.
-  const title = createFieldController(EditorFields.title, { commit: "pause" });
-  const body = createFieldController(EditorFields.body, { commit: "pause" });
+  const report = (error: unknown) => { message.textContent = describeBridgeError(error); message.classList.add("error"); };
+  // A field is written after a pause in typing or when it loses focus, not on every keystroke. bindField wires the
+  // input: the View's state, what the user types, IME composition and commit on blur.
+  const title = bindField(titleInput, view, EditorFields.title, { commit: "pause" });
+  const body = bindField(bodyInput, view, EditorFields.body, { commit: "pause" });
   const reportWriteError = (field: typeof title) => {
     let reported: unknown;
     return field.subscribe(() => {
@@ -27,8 +27,6 @@ export function mountEditor(host: HTMLElement, view: EditorClient): () => void {
   };
   const stopTitle = reportWriteError(title);
   const stopBody = reportWriteError(body);
-  const unbindTitle = bindTextInput(titleInput, title, view);
-  const unbindBody = bindTextInput(bodyInput, body, view);
   const removeDiscardHandler = view.interactions.confirmDiscard.handle(async (request, { signal }) => {
     if (signal.aborted) throw signal.reason;
     return window.confirm(`Discard the ${request.bodyLength} unsaved characters in “${request.title}”?`);
@@ -54,8 +52,8 @@ export function mountEditor(host: HTMLElement, view: EditorClient): () => void {
   save.addEventListener("click", saveClicked);
   discard.addEventListener("click", discardClicked);
   return () => {
-    stopTitle(); stopBody(); unbindTitle(); unbindBody();
-    // Text that waits for its pause is written before the editor is released.
+    stopTitle(); stopBody();
+    // Unwires the inputs; text that waits for its pause is written before the editor is released.
     title.dispose(); body.dispose();
     save.removeEventListener("click", saveClicked); discard.removeEventListener("click", discardClicked);
     removeDiscardHandler(); unsubscribe(); view.dispose(); host.replaceChildren();
