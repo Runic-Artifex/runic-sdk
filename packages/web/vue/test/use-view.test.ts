@@ -47,7 +47,7 @@ describe("useView", () => {
   test("connects a reference into refs and disposes it with the scope", async () => {
     const reference = fakeReference();
     const scope = effectScope();
-    const view = scope.run(() => useView(reference))!;
+    const view = scope.run(() => useView(reference, { keepAlive: 0 }))!;
     expect(view.state.value).toBeUndefined();
     await settle();
     expect(view.state.value).toEqual({ count: 1 });
@@ -62,7 +62,7 @@ describe("useView", () => {
   test("disposes a connection that resolves after the scope stopped", async () => {
     const reference = fakeReference();
     const scope = effectScope();
-    scope.run(() => useView(reference));
+    scope.run(() => useView(reference, { keepAlive: 0 }));
     scope.stop();
     await settle();
     expect(reference.clients).toHaveLength(1);
@@ -74,7 +74,7 @@ describe("useView", () => {
     const second = fakeReference(20);
     const selected = shallowRef<ViewSource<FakeClient>>({ connect: first.connect });
     const scope = effectScope();
-    const view = scope.run(() => useView(() => selected.value))!;
+    const view = scope.run(() => useView(() => selected.value, { keepAlive: 0 }))!;
     await settle();
     selected.value = { connect: first.connect };
     await settle();
@@ -106,7 +106,7 @@ describe("useView", () => {
     const reference = fakeReference(7);
     reference.failNext();
     const scope = effectScope();
-    const view = scope.run(() => useView(reference))!;
+    const view = scope.run(() => useView(reference, { keepAlive: 0 }))!;
     await settle();
     expect((view.error.value as Error).message).toBe("offline");
     view.retry();

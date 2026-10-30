@@ -54,7 +54,7 @@ afterEach(() => TestBed.resetTestingModule());
 describe("injectView", () => {
   test("connects a reference into signals and disposes it with its injector", async () => {
     const reference = fakeReference();
-    const view = TestBed.runInInjectionContext(() => injectView(reference));
+    const view = TestBed.runInInjectionContext(() => injectView(reference, { keepAlive: 0 }));
     TestBed.tick();
     expect(view.state()).toBeUndefined();
     await settle();
@@ -71,7 +71,7 @@ describe("injectView", () => {
     const first = fakeReference(10);
     const second = fakeReference(20);
     const selected = signal<ViewSource<FakeClient>>({ connect: first.connect });
-    const view = TestBed.runInInjectionContext(() => injectView(selected));
+    const view = TestBed.runInInjectionContext(() => injectView(selected, { keepAlive: 0 }));
     TestBed.tick();
     await settle();
     selected.set({ connect: first.connect });
@@ -100,7 +100,7 @@ describe("injectView", () => {
   test("releases a connected client through the release option", async () => {
     const reference = fakeReference();
     const released: FakeClient[] = [];
-    TestBed.runInInjectionContext(() => injectView(reference, { release: client => released.push(client) }));
+    TestBed.runInInjectionContext(() => injectView(reference, { release: client => released.push(client), keepAlive: 0 }));
     TestBed.tick();
     await settle();
     TestBed.resetTestingModule();
@@ -111,7 +111,7 @@ describe("injectView", () => {
   test("reports a failed connection and retries it", async () => {
     const reference = fakeReference(7);
     reference.failNext();
-    const view = TestBed.runInInjectionContext(() => injectView(reference));
+    const view = TestBed.runInInjectionContext(() => injectView(reference, { keepAlive: 0 }));
     TestBed.tick();
     await settle();
     expect((view.error() as Error).message).toBe("offline");

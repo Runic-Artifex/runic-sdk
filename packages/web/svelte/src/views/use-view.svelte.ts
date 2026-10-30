@@ -27,10 +27,19 @@ export interface ViewHandle<TClient extends ViewClient> {
 export interface UseViewOptions<TClient extends ViewClient> {
   /** Releases a client this helper connected. Defaults to `client.dispose()`. */
   readonly release?: (client: TClient) => void;
+  /**
+   * Milliseconds a client this helper connected stays connected after the component unmounts or the source changes,
+   * for the next helper that follows the same reference (StrictMode, HMR, `<Activity>`, A→B→A navigation). `0`
+   * disposes it at once. Defaults to 2000. Read once, when the helper is created.
+   */
+  readonly keepAlive?: number;
 }
 
 export function useView<TClient extends ViewClient>(source: () => ViewSource<TClient>, options: UseViewOptions<TClient> = {}): ViewHandle<TClient> {
-  const controller = createViewController<TClient>(options.release ? { release: options.release } : {});
+  const controller = createViewController<TClient>({
+    ...(options.release ? { release: options.release } : {}),
+    ...(options.keepAlive === undefined ? {} : { keepAlive: options.keepAlive }),
+  });
   let current = $state.raw(controller.current);
   const unsubscribe = controller.subscribe(() => { current = controller.current; });
   // A pre effect runs when it is created, so the teardown exists even if the

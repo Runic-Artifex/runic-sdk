@@ -62,7 +62,7 @@ function record<TClient extends FakeClient>(controller: { readonly current: View
 
 test("a view controller connects a connector, follows its state and releases it on dispose", async () => {
   const connector = fakeConnector();
-  const controller = createViewController<FakeClient>();
+  const controller = createViewController<FakeClient>({ keepAlive: 0 });
   const states = record(controller);
   assert.equal(controller.setSource(connector), true);
   assert.equal(states.length, 0, "setSource does not notify");
@@ -85,7 +85,7 @@ test("a view controller connects a connector, follows its state and releases it 
 
 test("a view controller ignores a source with the same identity and releases a replaced one", async () => {
   const first = fakeConnector(10);
-  const controller = createViewController<FakeClient>();
+  const controller = createViewController<FakeClient>({ keepAlive: 0 });
   controller.setSource({ connect: first.connect });
   first.resolveAll();
   await settle();
@@ -106,7 +106,7 @@ test("a view controller ignores a source with the same identity and releases a r
 
 test("a view controller releases a connection that resolves after its source changed", async () => {
   const connector = fakeConnector();
-  const controller = createViewController<FakeClient>();
+  const controller = createViewController<FakeClient>({ keepAlive: 0 });
   controller.setSource(connector);
   controller.setSource(undefined);
   connector.resolveAll();
@@ -156,7 +156,7 @@ test("a view controller reports a connector that throws synchronously", async ()
 test("a view controller releases through the release option", async () => {
   const connector = fakeConnector();
   const released: FakeClient[] = [];
-  const controller = createViewController<FakeClient>({ release: client => released.push(client) });
+  const controller = createViewController<FakeClient>({ release: client => released.push(client), keepAlive: 0 });
   controller.setSource(connector);
   connector.resolveAll();
   await settle();

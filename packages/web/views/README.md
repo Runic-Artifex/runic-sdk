@@ -240,15 +240,17 @@ bindings; a binding for another framework can use the controllers directly.
 Each controller has a `current` value, replaced by a new object on every
 change, and `subscribe(listener)`, which returns an unsubscribe function.
 
-- `createViewController<TClient>({ release? })` follows a `ViewSource`: a
+- `createViewController<TClient>({ release?, keepAlive? })` follows a `ViewSource`: a
   connector (`{ connect() }`, such as a generated page reference) that it
   connects and releases, or a connected client that it only observes.
   `setSource(source)` ignores a source with the same client or `connect`
   function and does not notify; read `current` after calling it. `current` has
   `source`, `client`, `state`, `error` and `pending`. `retry()` connects
-  again and `dispose()` releases the client. `isViewClient` and
-  `viewSourceIdentity` from `@runic-artifex/views/bindings` tell clients from
-  connectors and compare sources.
+  again, `release()` lets go of the client but keeps `current` (a binding's
+  unmount or hidden phase), and `dispose()` lets go of it for good. `isViewClient`,
+  `viewSourceIdentity` and `viewSourcePreview` from `@runic-artifex/views/bindings`
+  tell clients from connectors, compare sources and read what a source shows
+  before a controller follows it (see [Client lifetime](#client-lifetime)).
 - `createCommandController(command)` has `run(...args)`, which never rejects
   and resolves to `undefined` after a failure, and `current` with `pending`,
   `error` and `failure`. For a command that resolves a `BridgeOutcome`,
@@ -270,6 +272,39 @@ change, and `subscribe(listener)`, which returns an unsubscribe function.
 - `createLatestOperationController<TResult, TFailure>()` serializes superseding read
   intent. React, Vue and Svelte `useLatestOperation` and Angular `injectLatestOperation`
   wrap it. See [Operation feedback and latest selection](#operation-feedback-and-latest-selection).
+
+## Client lifetime
+
+A connected client is a presentation of its route in .NET: connecting opens the route, and disposing the last
+client of a route closes it. Components unmount and mount again more often than a user navigates: StrictMode's
+simulated unmount, Fast Refresh and HMR, React's `<Activity>`, an `{#if}` or `v-if` that toggles, and A→B→A
+navigation. So a binding does not dispose its client at once: the view controller keeps it connected for a grace
+period, `keepAlive` (2000 ms by default), keyed by the connector's `connect` function, and the next binding that
+follows the same connector takes it over with its state. The component shows its View again at once, without
+"Connecting…", and the route is not opened again. A client that nothing takes over is disposed when the period ends.
+
+- Kept clients are handed over, not shared: two components that show the same reference at the same time still
+  have a client each.
+- `keepAlive: 0` (`useView(page, { keepAlive: 0 })`, `injectView(page, { keepAlive: 0 })`) disposes at once, as
+  before 0.14, for a test that checks that a route closes on unmount, or a View whose presentation must end with
+  its component.
+- While the same source connects again (after `retry()`, or once its grace period ended while a component was
+  hidden), `state` stays the last state the controller showed, with `pending: true`; a different source shows
+  nothing of the previous one.
+- An observed client (`useView(client)`) is never kept or disposed by a binding; its owner disposes it.
+
+`preloadView(source, { keepAlive? })` connects ahead of the component, as in a router's `load` function: it resolves
+with `source` once the client connected (and rejects with the failure, so the router shows its error page), and the
+first binding that follows `source` takes the client over:
+
+```ts
+// SvelteKit, src/routes/editor/+page.ts
+import { preloadView } from "@runic-artifex/views";
+import { connectEditor } from "$lib/generated/editor.js";
+
+export const ssr = false;
+export const load = async () => ({ editor: await preloadView({ connect: connectEditor }) });
+```
 
 ## Text inputs
 
@@ -322,6 +357,19 @@ input.addEventListener("input", () => title.inputText(input.value));
 input.addEventListener("compositionstart", () => title.compositionStart());
 input.addEventListener("compositionend", () => title.compositionEnd(input.value));
 input.addEventListener("blur", () => title.commit());
+```
+
+Without a framework, `bindField(element, client, field, options?)` does that wiring for an `<input>`, `<textarea>` or
+`<select>` (a checkbox for a boolean field): it creates the controller, follows the client's state, writes on `input`
+(`change` for a `<select>` or checkbox), nothing during IME composition, commits on blur and sets `aria-invalid`. It
+returns the controller; `dispose()` unwires it. `attachField(element, controller)` wires an element to a controller
+that the page feeds itself, and `commitFields(...fields)` commits fields and rejects with the first failed field's
+error, so Save can follow:
+
+```ts
+const title = bindField(document.querySelector("#title")!, editor, EditorFields.title, { commit: "pause" });
+const body = bindField(document.querySelector("#body")!, editor, EditorFields.body, { commit: "pause" });
+save.onclick = async () => { await commitFields(title, body); await editor.save(); };
 ```
 
 `current` has:
@@ -859,6 +907,17 @@ tests, a mock handler throws `mockFailure(failure)`, and a generated mock's
 take the method's typed failure.
 
 ## Errors and diagnostics
+
+`describeBridgeError(error)` turns anything a binding reports as `error` into one English sentence for a status line
+or an alert, instead of `String(error)` ("BridgeError: …"): a `rejected` or `failed` error shows the producer's
+message, such as a setter's validation text; `disconnected`, `released`, `timeout` and `unavailable` name the
+condition; a `FieldError` shows its message. Development `detail` is never included. `isBridgeError(error, kind?)`
+tells a `BridgeError`, of one kind or a list of kinds, and narrows `error.kind`:
+
+```tsx
+{error !== undefined && <p role="alert">{describeBridgeError(error)}</p>}
+if (isBridgeError(error, "released")) return <p>This note was closed.</p>;
+```
 
 A `BridgeError` names what failed and why:
 

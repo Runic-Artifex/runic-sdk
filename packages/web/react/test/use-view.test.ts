@@ -69,7 +69,7 @@ let root: Root | undefined;
 let latest: ViewHandle<FakeClient> | undefined;
 
 function Probe({ source }: { readonly source: ViewSource<FakeClient> }): ReactNode {
-  latest = useView(source);
+  latest = useView(source, { keepAlive: 0 });
   return createElement("output", null, latest.state?.count ?? "connecting");
 }
 
@@ -206,7 +206,7 @@ describe("useView options", () => {
     const reference = fakeReference();
     const released: unknown[] = [];
     function Releasing(): ReactNode {
-      useView(reference, { release: client => released.push(client) });
+      useView(reference, { release: client => released.push(client), keepAlive: 0 });
       return null;
     }
     await act(async () => {
