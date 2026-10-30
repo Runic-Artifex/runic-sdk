@@ -27,6 +27,20 @@ public enum NavigationAdmission
     /// with <see cref="NavigationRejection.Busy"/>. A Back that can join a pending Back still joins it.
     /// </summary>
     RejectWhileBusy,
+
+    /// <summary>
+    /// A request waits until the earlier requests of the region have ended, in admission order, and supersedes none of
+    /// them. A second <see cref="NavigationRegion{TContent}.PushForResult{TResult}"/> into a dialog region then pushes its
+    /// entry above the first once the first has committed, and returning from it resumes the first. A Back that can join a
+    /// pending Back still joins it.
+    /// </summary>
+    /// <remarks>
+    /// <see cref="NavigationRequestOptions.ExpectedCurrent"/> and the history a Back needs are checked when a queued request
+    /// starts, against the state its predecessors left, and again when it commits. The request's token cancels it while it
+    /// waits (<see cref="NavigationRejection.Cancelled"/>); the requests queued behind it continue. A later request admitted
+    /// with <see cref="Supersede"/> still supersedes queued requests.
+    /// </remarks>
+    Queue,
 }
 
 /// <summary>What a child region does while the entry that owns it is retained.</summary>

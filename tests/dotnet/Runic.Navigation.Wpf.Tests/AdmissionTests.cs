@@ -105,6 +105,35 @@ internal sealed class AdmissionTests
         PumpUntil(() => scene.Region.CurrentEntry is null && !IsOpen(window), "the dismissed dialog to close");
     }
 
+    // #741: in a region that queues, Esc waits behind a push over the dialog instead of superseding it. The push stacks a
+    // second dialog; the dismissal of the covered dialog is then NotCurrent, and both dialogs stay.
+    [Test, DisplayName("dialog dismissal in a queued region"), NotInParallel("WpfSuite", Order = 51)]
+    public void DialogDismissalInAQueuedRegion()
+    {
+        using var scene = new DialogScene(options: new NavigationRegionOptions { Admission = NavigationAdmission.Queue });
+        var pushGuard = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var allow = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var dialog = new DeparturePage("queued", async (departure, _) =>
+        {
+            if (departure.Kind == NavigationDepartureKind.Retire) return true;
+            pushGuard.TrySetResult();
+            return await allow.Task;
+        });
+        Pump(scene.Region.PushAsync(NavigationTarget.Own<object>(dialog)));
+        var window = scene.WaitForWindows(1);
+        var push = scene.Region.PushAsync(NavigationTarget.Own<object>(new PlainDialog())).AsTask();
+        Pump(pushGuard.Task, "the push's guard");
+        PressEscape(window);
+        // Runs the posted dismissal, which queues behind the push.
+        Drain();
+        allow.SetResult(true);
+        Require(Pump(push) is NavigationResult<object>.Committed, "The dismissal superseded the push in a queued region.");
+        Pump(scene.Region.WhenIdleAsync().AsTask());
+        scene.WaitForWindows(2);
+        Require(scene.Region.History.Count == 1 && ReferenceEquals(scene.Region.History[0].Content, dialog),
+            "The covered dialog left the region.");
+    }
+
     // Owned content whose disposal waits for the test.
     internal sealed class SlowDisposePage(Task release) : Page("slow"), IAsyncDisposable
     {

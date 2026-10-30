@@ -327,8 +327,10 @@ public class NavigationDialogHost : FrameworkElement
         {
             if (_ownerClosed || _attached is not { } region || region.CurrentEntry?.Id != id) return;
             // A plain Back from a single entry is NoHistory, so the bottom dialog clears. A user closing the dialog wins over
-            // the dialog's own work, also in a region that rejects requests while busy.
-            var options = new NavigationRequestOptions(id) { Admission = NavigationAdmission.Supersede };
+            // the dialog's own work, also in a region that rejects requests while busy. In a region that queues, it waits
+            // instead, so it never drops a dialog pushed meanwhile.
+            var admission = region.Admission == NavigationAdmission.Queue ? NavigationAdmission.Queue : NavigationAdmission.Supersede;
+            var options = new NavigationRequestOptions(id) { Admission = admission };
             if (region.CanGoBack) _ = region.BackAsync(options).AsTask();
             else _ = region.ClearAsync(options).AsTask();
         });

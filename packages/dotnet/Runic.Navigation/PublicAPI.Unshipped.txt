@@ -1,1 +1,2 @@
 #nullable enable
+Runic.Navigation.NavigationAdmission.Queue = 2 -> Runic.Navigation.NavigationAdmission
