@@ -31,8 +31,10 @@ server packages, for comparing them from one project: `Native` (the default) or
 
 Measured with `examples/first-window-desktop`
 (`tests/benchmarks/native-server/measure.mjs`; serve-only, medians of 15 runs;
-the Windows and macOS numbers come from the `native-server.yml` workflow's
-platform jobs):
+`tests/benchmarks/native-server/results/` has the win-x64 and osx-arm64 tables
+from the `native-server.yml` workflow's platform jobs, with the same pattern:
+on Windows the NativeAOT executable is 9.19 instead of 13.31 MiB and serves its
+page after 18.7 instead of 33.6 ms, on macOS 8.65 instead of 11.83 MiB):
 
 | linux-x64 | Kestrel | Native server |
 | --- | ---: | ---: |
