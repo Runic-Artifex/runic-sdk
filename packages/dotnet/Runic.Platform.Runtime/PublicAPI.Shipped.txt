@@ -121,3 +121,9 @@ Runic.Platform.Runtime.IPickerBackend.SupportsDocumentAccess.get -> bool
 Runic.Platform.Runtime.NativePickerBackend.OpenDocumentAsync(Runic.Platform.OpenFileOptions! options, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Platform.PickerResult<Runic.Platform.IDocumentFileLease!>!>
 Runic.Platform.Runtime.NativePickerBackend.SaveDocumentAsync(Runic.Platform.SaveFileOptions! options, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Platform.PickerResult<Runic.Platform.IDocumentFileLease!>!>
 Runic.Platform.Runtime.NativePickerBackend.SupportsDocumentAccess.get -> bool
+Runic.Platform.Runtime.INativePickerOwner
+Runic.Platform.Runtime.INativeDirectoryPicker.IsDirectorySelectionAvailable.get -> bool
+Runic.Platform.Runtime.INativeDirectoryPicker.SelectDirectoriesAsync(Runic.Platform.Runtime.NativeFileDialogRequest! request, System.Threading.CancellationToken cancellationToken) -> System.Threading.Tasks.ValueTask<System.Collections.Generic.IReadOnlyList<Runic.Platform.Runtime.NativeDirectorySelection!>?>
+Runic.Platform.Runtime.INativeDirectoryPicker.SelectDirectoryAsync(Runic.Platform.Runtime.NativeFileDialogRequest! request, System.Threading.CancellationToken cancellationToken) -> System.Threading.Tasks.ValueTask<Runic.Platform.Runtime.NativeDirectorySelection?>
+Runic.Platform.Runtime.NativeFileDialogRequest.Title.get -> string?
+Runic.Platform.Runtime.NativeFileDialogRequest.Title.init -> void

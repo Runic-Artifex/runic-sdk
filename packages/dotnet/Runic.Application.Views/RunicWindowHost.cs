@@ -104,8 +104,6 @@ public static class RunicWindowHostExtensions
     /// A check failed before anything opened, for example <see cref="RunicWindowServiceCollectionExtensions.AddRunicWindowService"/>
     /// was not called (<see cref="RunicWindowConfigurationException.WindowParameterNotRegisteredCode"/>).
     /// </exception>
-    [System.Diagnostics.CodeAnalysis.SuppressMessage("ApiDesign", "RS0026:Do not add multiple public overloads with optional parameters",
-        Justification = "The overloads differ in their type parameters; the parameter overload requires its parameter.")]
     public static async ValueTask<TWindow> OpenWindowAsync<TWindow, TParameter>(this IRunicWindowHost host, TParameter parameter,
         RunicWindowOptions? options = null, CancellationToken cancellationToken = default)
         where TWindow : class, IRunicWindow, new()

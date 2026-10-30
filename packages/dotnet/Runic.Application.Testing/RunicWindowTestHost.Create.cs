@@ -75,8 +75,6 @@ public static class RunicWindowTestHost
     /// <param name="viewModel">The root ViewModel; the caller keeps ownership.</param>
     /// <param name="options">The root route, clock and id source, as for the other overload.</param>
     /// <exception cref="InvalidOperationException">No generated Bridge is registered for <typeparamref name="TViewModel"/>.</exception>
-    [System.Diagnostics.CodeAnalysis.SuppressMessage("ApiDesign", "RS0026:Do not add multiple public overloads with optional parameters",
-        Justification = "The overloads differ in their required second parameter, the ViewModel.")]
     public static RunicWindowTestHost<TViewModel> Create<TViewModel>(IServiceProvider services, TViewModel viewModel,
         RunicWindowTestHostOptions? options = null) where TViewModel : class
     {

@@ -55,8 +55,6 @@ public interface IRunicWindowService
     /// <returns>The open Window, released by the service once it closes.</returns>
     /// <exception cref="InvalidOperationException">No host has opened a Window with these services yet.</exception>
     /// <exception cref="RunicWindowConfigurationException">A check failed before anything opened.</exception>
-    [System.Diagnostics.CodeAnalysis.SuppressMessage("ApiDesign", "RS0026:Do not add multiple public overloads with optional parameters",
-        Justification = "The overloads differ in their type parameters; the parameter overload requires its parameter.")]
     ValueTask<TWindow> OpenWindowAsync<TWindow, TParameter>(TParameter parameter, RunicWindowOptions? options = null,
         CancellationToken cancellationToken = default)
         where TWindow : class, IRunicWindow, new()
