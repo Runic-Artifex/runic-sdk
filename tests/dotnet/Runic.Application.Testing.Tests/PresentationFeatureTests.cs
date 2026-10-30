@@ -319,7 +319,7 @@ public sealed class PresentationFeatureTests
     // A window whose root View is the conformance corpus's wizard.
     private sealed class Wizard : IDisposable
     {
-        private readonly IDisposable _bridge;
+        private readonly WizardBridge _bridge;
 
         public Wizard(TimeProvider? clock = null, WizardViewModel? model = null)
         {
@@ -396,6 +396,7 @@ internal sealed class ChecksViewModel : INotifyPropertyChanged
 
     public ConformanceCommand PickCommand => new(_ => true, _ => Interlocked.Increment(ref _runs));
     public ConformanceCommand LockedCommand => new(_ => false, _ => Interlocked.Increment(ref _runs));
+    [System.Diagnostics.CodeAnalysis.SuppressMessage("Performance", "CA1822:Mark members as static", Justification = "A Bridge command property.")]
     public ConformanceCommand SlowCommand => new(_ => true, _ => { });
 
     internal async Task SlowAsync()

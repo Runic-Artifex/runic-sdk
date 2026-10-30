@@ -29,6 +29,7 @@ public sealed partial class ScopedWizardViewModel : ObservableObject
     public IRelayCommand BackCommand { get; }
 
     [RelayCommand]
+    [System.Diagnostics.CodeAnalysis.SuppressMessage("Performance", "CA1822:Mark members as static", Justification = "A [RelayCommand] source method.")]
     private void Ping() { }
 }
 
