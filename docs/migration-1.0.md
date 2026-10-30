@@ -890,5 +890,7 @@ Details: 0.14.0 [Frontend field API](../eng/release/notes/0.14.0.md#frontend-fie
 | Code that treated `(OwnerPolicy)1` as undefined | It is `OwnerPolicy.PreferOwner` |
 | `Process.Start(new ProcessStartInfo(url) { UseShellExecute = true })`, `xdg-open` or a window's launcher borrowed from some window, to open a URI or reveal a file without a window | `IApplicationPlatformServices.FileLauncher` from the container, or `DesktopPlatformServices.ForApplication().FileLauncher`, with the launcher's URI policy and `PlatformResult` |
 | A browser-fallback window's `IDesktopFileLauncher` reported `OwnerUnavailable` | It launches through the application's launcher until the window closes |
+| `MessageBoxW` (or the platform's equivalent) P/Invoked for an error before any window exists | `ForApplication().MessageBoxes.ShowAsync(new DesktopMessageBox(text) { OwnerPolicy = OwnerPolicy.PreferOwner })`, or `IApplicationPlatformServices` from the container |
+| A browser-fallback window's `platform.messageBoxes` was `OwnerUnavailable` | It describes the unowned boxes of `PreferOwner`; `RequireOwner` boxes still report `OwnerUnavailable` |
 
 Details: 0.14.0 [Platform: dialogs, launcher and message boxes without a window](../eng/release/notes/0.14.0.md#platform-dialogs-launcher-and-message-boxes-without-a-window-a2).

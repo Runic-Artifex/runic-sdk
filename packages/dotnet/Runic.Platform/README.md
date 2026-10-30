@@ -319,6 +319,27 @@ implementation that does not override the member reports `OwnerUnavailable`.
 A message box has no "Don't ask again" check box: keep that choice in the
 application's settings and skip the box when it is set.
 
+A box without a window, such as for a fatal error before the first window
+opens, comes from `IApplicationPlatformServices.MessageBoxes`. It asks for
+`OwnerPolicy.PreferOwner`; with the default `RequireOwner` it reports
+`OwnerUnavailable`, as the application has no window to own it. Runic Desktop
+shows a task dialog on an STA thread of the application's own on Windows
+(captioned with the executable's name when `Title` is `null`), an
+application-modal alert on macOS, which needs the main thread (the Desktop
+event loop, or a call on the main thread), and on Linux a dialog of the GTK
+toolkit the process runs once its loop runs: from the start of the GTK 4 event
+loop, with GTK 3 once a window opened. Without a running toolkit Linux reports
+`BackendUnavailable` rather than waiting. A window shown in an installed
+browser after a fallback shows the same unowned boxes for `PreferOwner`.
+
+```csharp
+var platform = DesktopPlatformServices.ForApplication();   // or IApplicationPlatformServices from the container
+await platform.MessageBoxes.ShowAsync(new DesktopMessageBox("The settings cannot be read.")
+{
+    Detail = error.Message, Kind = DesktopMessageBoxKind.Error, OwnerPolicy = OwnerPolicy.PreferOwner,
+});
+```
+
 ### Clipboard
 
 `Clipboard` reads and writes bounded Unicode text (`ITextClipboard`). The

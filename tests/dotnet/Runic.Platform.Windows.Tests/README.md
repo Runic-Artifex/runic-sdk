@@ -80,7 +80,7 @@ window send: Return chooses the default button, Esc and `WM_CLOSE` the cancel bu
 without a cancel button stays open until a button is clicked, a box without buttons answers
 null, cancellation closes the dialog and a right-to-left owner gets a mirrored dialog.
 The same run checks native UI without a window: the application's own STA thread, and an
-unowned file dialog on it that shows its title and closes on cancellation. It
+unowned file dialog and task dialog on it, which answer and close on cancellation. It
 prints which Common Controls 6 activation sources work (shell32.dll's manifest resource,
 `WindowsShell.Manifest`) and the dialog's buttons where they are Win32 windows. CI runs it
 with JIT and NativeAOT.

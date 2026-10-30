@@ -37,6 +37,15 @@ internal static class LinuxPlatformProvider
         return new Gtk3MessageBoxes(owner);
     }
 
+    // The application's GtkMessageDialogs without a parent window, on the GTK 3 thread (GLibApplicationOwner).
+    internal static IDesktopMessageBoxes CreateUnownedMessageBoxes() => new Gtk3MessageBoxes(GLibApplicationOwner.Shared, unowned: true);
+
+    // The thread that runs GLib's default main context, for the application's GTK work without a window.
+    internal static INativeWindowOwner ApplicationOwner => GLibApplicationOwner.Shared;
+
+    // Whether a thread runs GLib's default main context, so the application's GTK work can run.
+    internal static bool IsApplicationLoopRunning => GLibApplicationOwner.IsRunning;
+
     // The GTK clipboard; it is IAsyncDisposable and must be disposed before the owner's dispatcher stops.
     internal static LinuxTextClipboard CreateTextClipboard(INativeWindowOwner owner)
     {

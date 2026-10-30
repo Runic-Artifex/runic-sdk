@@ -252,9 +252,9 @@ The same Window and `async host => ...` body run on CS-WebUI with
   Until the window opens, every operation returns
   `Unavailable(OwnerUnavailable)`. It returns the same result when the window
   has no native owner, for example an installed browser after an
-  embedded-window fallback, except for file dialogs that ask for
-  `OwnerPolicy.PreferOwner`, which show without an owner, and the file launcher,
-  which is the application's. After the window closes, every operation returns
+  embedded-window fallback, except for file dialogs and message boxes that ask
+  for `OwnerPolicy.PreferOwner`, which show without an owner, and the file
+  launcher, which is the application's. After the window closes, every operation returns
   `Unavailable(OwnerClosed)`. A Linux process without a GTK backend returns
   `Unavailable(ProviderNotConfigured)`. `GetSnapshot()` reports the same states
   per capability. The package references every provider package, but loads
@@ -467,7 +467,8 @@ The same Window and `async host => ...` body run on CS-WebUI with
   one instance of `DesktopPlatformServices.ForApplication()`: the application's
   `FileLauncher` opens URIs and files and reveals files without a window, also
   before the first window opens, behind a status icon and for Windows served
-  under serve-only mode. Windows hands them to the shell on an STA thread of the
+  under serve-only mode, and its `MessageBoxes` show boxes that ask for
+  `OwnerPolicy.PreferOwner` without a window, such as a fatal start-up error. Windows hands them to the shell on an STA thread of the
   application's own, Linux asks the desktop portal without a parent window
   (either toolkit or none) and macOS asks NSWorkspace on the main thread. A
   window shown in an installed browser after a fallback uses it as its own

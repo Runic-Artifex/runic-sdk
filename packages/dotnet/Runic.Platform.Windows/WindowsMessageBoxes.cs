@@ -12,9 +12,10 @@ using Runic.Platform.Runtime;
 namespace Runic.Platform.Windows;
 
 // Message boxes as task dialogs (TaskDialogIndirect) owned by the window, on its thread. The dialog runs its own modal
-// loop inside the owner's dispatch, as the file dialog's Show does.
+// loop inside the owner's dispatch, as the file dialog's Show does. Unowned boxes (the application's, on
+// WindowsApplicationThread) have no parent window and the executable's name as their default caption.
 [SupportedOSPlatform("windows8.0")]
-internal sealed class WindowsMessageBoxes(INativeWindowOwner owner, WindowsCommonControls controls) : IDesktopMessageBoxes
+internal sealed class WindowsMessageBoxes(INativeWindowOwner owner, WindowsCommonControls controls, bool unowned = false) : IDesktopMessageBoxes
 {
     private const int FirstButtonId = 100;
     private const int IdOk = 1, IdCancel = 2;
@@ -39,7 +40,7 @@ internal sealed class WindowsMessageBoxes(INativeWindowOwner owner, WindowsCommo
             await owner.InvokeAsync(handle =>
             {
                 cancellationToken.ThrowIfCancellationRequested();
-                if (handle == 0 || !owner.IsAvailable || owner.Generation != generation) throw new OwnerClosedException();
+                if (handle == 0 && !unowned || !owner.IsAvailable || owner.Generation != generation) throw new OwnerClosedException();
                 failure = Show(handle, messageBox, ordered, dialog, out chosen);
             }, cancellationToken).ConfigureAwait(false);
         }

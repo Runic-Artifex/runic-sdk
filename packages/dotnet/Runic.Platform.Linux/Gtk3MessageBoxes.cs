@@ -8,7 +8,8 @@ namespace Runic.Platform.Linux;
 // Message boxes as GtkMessageDialogs, modal and transient for the GTK 3 window and destroyed with it. The dialog answers
 // through its response signal, never gtk_dialog_run, so the window's loop keeps running. GTK runs in the application's
 // process, also inside Flatpak: no portal shows message dialogs.
-internal sealed partial class Gtk3MessageBoxes(INativeWindowOwner owner) : IDesktopMessageBoxes
+// Unowned boxes (the application's, on GLibApplicationOwner) have no transient parent.
+internal sealed partial class Gtk3MessageBoxes(INativeWindowOwner owner, bool unowned = false) : IDesktopMessageBoxes
 {
     private const int ResponseDeleteEvent = -4, ResponseOk = -5, ResponseCancel = -6;
     private const int Modal = 1, DestroyWithParent = 2; // GtkDialogFlags
@@ -32,15 +33,15 @@ internal sealed partial class Gtk3MessageBoxes(INativeWindowOwner owner) : IDesk
             await owner.InvokeAsync(parent =>
             {
                 cancellationToken.ThrowIfCancellationRequested();
-                if (parent == 0 || !owner.IsAvailable || owner.Generation != generation) throw new OwnerClosedException();
-                nint dialog = NewDialog(parent, Modal | DestroyWithParent, MessageType(messageBox.Kind), ordered.IsEmpty ? ButtonsOk : ButtonsNone, 0);
+                if (parent == 0 && !unowned || !owner.IsAvailable || owner.Generation != generation) throw new OwnerClosedException();
+                nint dialog = NewDialog(parent, parent == 0 ? 0 : Modal | DestroyWithParent, MessageType(messageBox.Kind), ordered.IsEmpty ? ButtonsOk : ButtonsNone, 0);
                 if (dialog == 0) throw new NativeBackendUnavailableException("GTK could not create a message dialog.");
                 state.Dialog = dialog;
                 SetString(dialog, "text", messageBox.Message);
                 if (messageBox.Detail is { } detail) SetString(dialog, "secondary-text", detail);
                 if (messageBox.Title is { } title) SetTitle(dialog, title);
                 // The window's direction, such as a right-to-left Runic Desktop window, also for the dialog.
-                SetDirection(dialog, GetDirection(parent));
+                if (parent != 0) SetDirection(dialog, GetDirection(parent));
                 foreach (var button in ordered)
                 {
                     int response = Response(messageBox.Buttons, button);
