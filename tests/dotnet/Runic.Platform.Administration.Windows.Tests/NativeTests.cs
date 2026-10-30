@@ -140,6 +140,43 @@ internal sealed class NativeTests
         Check(await client.FindAsync("RunicMissing-" + Guid.NewGuid().ToString("N")) is null, "Missing firewall rule must return null.");
         Console.WriteLine("PASS Native firewall profile and rule enumeration; missing rule lookup.");
     }
+    // sdk#740: DeleteAllAsync removes every rule of a name, as netsh does. The rules are disabled outbound blocks for
+    // programs that do not exist; netsh adds the duplicates, which CreateAsync refuses.
+    [Test]
+    public async Task CheckFirewallDeleteAllAsync()
+    {
+        if (!Environment.IsPrivilegedProcess) Skip.Test("Creating firewall rules requires an elevated process.");
+        var name = "RunicTest-" + Guid.NewGuid().ToString("N");
+        var client = new WindowsFirewallClient(new FirewallClientOptions { WriteWhenLocalPolicyOverridden = true });
+        var state = await client.GetLocalPolicyStateAsync();
+        Check(Enum.IsDefined(state), "Unexpected local policy state: " + state);
+        var program = Path.Combine(Path.GetTempPath(), name);
+        try
+        {
+            await client.CreateAsync(new(name, FirewallDirection.Outbound, FirewallAction.Block) { Enabled = false, ApplicationPath = program + "-a.exe" });
+            foreach (var suffix in new[] { "b", "c" })
+                Netsh($"advfirewall firewall add rule name=\"{name}\" dir=out action=block enable=no program=\"{program}-{suffix}.exe\"");
+            Check((await client.EnumerateAsync()).Count(rule => rule.Identity.Name == name) == 3, "Expected three rules of one name.");
+            try { _ = await client.FindAsync(name); throw new InvalidOperationException("An ambiguous name was resolved."); }
+            catch (WindowsAdministrationException error) { Check(error.Category == AdministrationErrorCategory.Conflict, "An ambiguous name must be a conflict."); }
+            Check(await client.DeleteAllAsync(name.ToUpperInvariant()) == 3, "DeleteAllAsync did not delete the three rules.");
+            Check(await client.DeleteAllAsync(name) == 0, "A second DeleteAllAsync found rules.");
+            Check(!(await client.EnumerateAsync()).Any(rule => rule.Configuration.ApplicationPath.StartsWith(program, StringComparison.OrdinalIgnoreCase)),
+                "A deleted rule remained under another name.");
+        }
+        finally { Netsh($"advfirewall firewall delete rule name=\"{name}\"", ignoreExitCode: true); }
+        Console.WriteLine($"PASS Firewall rules of one name deleted together; local policy state {state}.");
+    }
+
+    private static void Netsh(string arguments, bool ignoreExitCode = false)
+    {
+        using var process = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("netsh", arguments)
+        { UseShellExecute = false, RedirectStandardOutput = true }) ?? throw new InvalidOperationException("netsh did not start.");
+        var output = process.StandardOutput.ReadToEnd();
+        process.WaitForExit();
+        Check(ignoreExitCode || process.ExitCode == 0, $"netsh {arguments} failed ({process.ExitCode}): {output}");
+    }
+
     [Test]
     public void CheckLdapTransport()
     {

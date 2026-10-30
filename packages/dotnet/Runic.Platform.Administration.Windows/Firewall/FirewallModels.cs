@@ -135,3 +135,29 @@ public sealed record FirewallRuleSnapshot(FirewallRuleIdentity Identity, Firewal
 public sealed record FirewallProfileSnapshot(FirewallProfiles Profile, bool Active, bool Enabled,
     bool BlockAllInboundTraffic, FirewallAction DefaultInboundAction, FirewallAction DefaultOutboundAction,
     int NativeLocalPolicyModifyState);
+
+/// <summary>Whether rules in the local policy store take effect (the native <c>NET_FW_MODIFY_STATE</c>).</summary>
+/// <remarks>This set is open: values without a name here are passed through unchanged.</remarks>
+public enum FirewallLocalPolicyState
+{
+    /// <summary>Local rules take effect (<c>NET_FW_MODIFY_STATE_OK</c>).</summary>
+    Effective = 0,
+    /// <summary>Group Policy overrides local rules (<c>NET_FW_MODIFY_STATE_GP_OVERRIDE</c>): they are stored but do not
+    /// apply until the policy allows local rules again.</summary>
+    GroupPolicyOverride = 1,
+    /// <summary>Inbound traffic is blocked for a current profile (<c>NET_FW_MODIFY_STATE_INBOUND_BLOCKED</c>): local
+    /// inbound allow rules do not apply.</summary>
+    InboundBlocked = 2
+}
+
+/// <summary>Write behavior of a <see cref="WindowsFirewallClient"/>.</summary>
+public sealed record FirewallClientOptions
+{
+    /// <summary>Whether create, update and delete write the local policy store when
+    /// <see cref="WindowsFirewallClient.GetLocalPolicyStateAsync"/> is not <see cref="FirewallLocalPolicyState.Effective"/>.</summary>
+    /// <remarks>False (the default) refuses such writes with an <see cref="AdministrationErrorCategory.AccessDenied"/>
+    /// failure, because they would not take effect. True writes the local store anyway, as <c>netsh advfirewall</c>
+    /// does; the rules apply again once the policy allows local rules. Read
+    /// <see cref="WindowsFirewallClient.GetLocalPolicyStateAsync"/> to report the state to the user.</remarks>
+    public bool WriteWhenLocalPolicyOverridden { get; init; }
+}

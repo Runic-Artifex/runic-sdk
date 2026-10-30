@@ -231,6 +231,15 @@ internal sealed class ApiShapeTests
         }
     }
 
+    // sdk#740: local-store writes under an overriding policy are an explicit opt-in; the state keeps the native numbers.
+    [Test]
+    public void FirewallLocalPolicyStateIsNative()
+    {
+        Check(!new FirewallClientOptions().WriteWhenLocalPolicyOverridden, "Writes under an overriding policy must be opt-in.");
+        Check((int)FirewallLocalPolicyState.Effective == 0 && (int)FirewallLocalPolicyState.GroupPolicyOverride == 1
+            && (int)FirewallLocalPolicyState.InboundBlocked == 2, "NET_FW_MODIFY_STATE values changed.");
+    }
+
     // SEC-14: an update must not produce an inbound allow rule that create would refuse.
     [Test]
     public void FirewallUpdateCannotCreateAnUnscopedInboundAllow()

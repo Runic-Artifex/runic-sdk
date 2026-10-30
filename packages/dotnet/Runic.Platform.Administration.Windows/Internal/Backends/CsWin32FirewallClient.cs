@@ -16,8 +16,14 @@ namespace Runic.Platform.Administration.Windows.Internal.Backends;
 [System.Runtime.Versioning.SupportedOSPlatform("windows6.1")]
 internal sealed unsafe class CsWin32FirewallClient : IFirewallClient
 {
+    private readonly bool _writeWhenOverridden;
+
     /// <summary>Creates a local firewall client.</summary>
-    internal CsWin32FirewallClient() => Automation.RequireX64();
+    internal CsWin32FirewallClient(FirewallClientOptions options)
+    {
+        Automation.RequireX64();
+        _writeWhenOverridden = options.WriteWhenLocalPolicyOverridden;
+    }
 
     /// <summary>Enumerates rules without treating duplicate native names as distinct persistent IDs.</summary>
     public Task<ImmutableArray<FirewallRuleSnapshot>> EnumerateAsync(CancellationToken cancellationToken = default) =>
@@ -59,6 +65,17 @@ internal sealed unsafe class CsWin32FirewallClient : IFirewallClient
         return Execute((policy, rules) => Delete(policy, rules, identity), cancellationToken);
     }
 
+    /// <summary>Deletes every rule of a native name; returns the number deleted.</summary>
+    public Task<int> DeleteAllAsync(string name, CancellationToken cancellationToken = default)
+    {
+        NativeError.Text(name, nameof(name));
+        return Execute((policy, rules) => DeleteAll(policy, rules, name), cancellationToken);
+    }
+
+    /// <summary>Reads the local policy modification state.</summary>
+    public Task<FirewallLocalPolicyState> GetLocalPolicyStateAsync(CancellationToken cancellationToken = default) =>
+        Execute((policy, _) => (FirewallLocalPolicyState)ModificationState(policy), cancellationToken);
+
     private static Task<T> Execute<T>(Func<GeneratedCom, GeneratedCom, T> action, CancellationToken cancellationToken) =>
         ComApartment.RunAsync(() =>
         {
@@ -71,11 +88,39 @@ internal sealed unsafe class CsWin32FirewallClient : IFirewallClient
 
     private static ImmutableArray<FirewallRuleSnapshot> Enumerate(GeneratedCom rules)
     {
+        var result = ImmutableArray.CreateBuilder<FirewallRuleSnapshot>();
+        Visit(rules, rule => { using (rule) result.Add(Snapshot(rule)); });
+        return result.ToImmutable();
+    }
+
+    // The rule objects of every rule with this native name (case-insensitive, as INetFwRules.Item compares). The caller
+    // disposes them.
+    private static List<GeneratedCom> Matching(GeneratedCom rules, string name)
+    {
+        var result = new List<GeneratedCom>();
+        try
+        {
+            Visit(rules, rule =>
+            {
+                if (string.Equals(Text(rule, Field.Name), name, StringComparison.OrdinalIgnoreCase)) result.Add(rule);
+                else rule.Dispose();
+            });
+        }
+        catch
+        {
+            foreach (var rule in result) rule.Dispose();
+            throw;
+        }
+        return result;
+    }
+
+    // Passes each rule object to visit, which owns it.
+    private static void Visit(GeneratedCom rules, Action<GeneratedCom> visit)
+    {
         IUnknown* pointer = null;
         var enumerationStatus = ((INetFwRules*)rules.Pointer)->get__NewEnum(&pointer).Value;
         using var unknown = GeneratedCom.FromResult(enumerationStatus, (nint)pointer, "Enumerate firewall rules");
         using var iterator = unknown.Query(new("00020404-0000-0000-c000-000000000046"));
-        var result = ImmutableArray.CreateBuilder<FirewallRuleSnapshot>();
         while (true)
         {
             VARIANT item = default; uint count = 0;
@@ -88,12 +133,10 @@ internal sealed unsafe class CsWin32FirewallClient : IFirewallClient
                 // QueryInterface acquires its own reference; VariantClear releases the enumeration reference.
                 void* queried = null; var iid = new Guid("af230d27-baba-4e42-aced-f524f22cfce2");
                 var queryStatus = item.punkVal->QueryInterface(&iid, &queried).Value;
-                using var rule = GeneratedCom.FromResult(queryStatus, (nint)queried, "Query firewall rule");
-                result.Add(Snapshot(rule));
+                visit(GeneratedCom.FromResult(queryStatus, (nint)queried, "Query firewall rule"));
             }
             finally { _ = PInvoke.VariantClear(&item); }
         }
-        return result.ToImmutable();
     }
 
     private static FirewallRuleSnapshot? Unique(GeneratedCom rules, string name)
@@ -231,14 +274,14 @@ internal sealed unsafe class CsWin32FirewallClient : IFirewallClient
         return (int)state;
     }
 
-    private static void Writable(GeneratedCom policy)
+    private void Writable(GeneratedCom policy)
     {
-        if (ModificationState(policy) != 0)
+        if (!_writeWhenOverridden && ModificationState(policy) != 0)
             throw new WindowsAdministrationException("Modify firewall policy", AdministrationErrorCategory.AccessDenied,
                 NativeErrorDomain.Win32, 5, "Current firewall policy restricts local policy modifications.");
     }
 
-    private static unsafe void Create(GeneratedCom policy, GeneratedCom rules, FirewallRuleSpecification specification)
+    private unsafe void Create(GeneratedCom policy, GeneratedCom rules, FirewallRuleSpecification specification)
     {
         Writable(policy);
         if (Unique(rules, specification.Name) is not null) throw NativeError.Win32("Create firewall rule", 183);
@@ -275,7 +318,7 @@ internal sealed unsafe class CsWin32FirewallClient : IFirewallClient
         }
     }
 
-    private static void Update(GeneratedCom policy, GeneratedCom rules, FirewallRuleIdentity identity, FirewallRuleUpdate update)
+    private void Update(GeneratedCom policy, GeneratedCom rules, FirewallRuleIdentity identity, FirewallRuleUpdate update)
     {
         Writable(policy);
         var existing = Unique(rules, identity.Name) ?? throw NativeError.Win32("Update firewall rule", 2);
@@ -344,16 +387,31 @@ internal sealed unsafe class CsWin32FirewallClient : IFirewallClient
         if (update.Action is { } action) SetInt(rule, Field.Action, (int)action);
     }
 
-    private static unsafe bool Delete(GeneratedCom policy, GeneratedCom rules, FirewallRuleIdentity identity)
+    private unsafe bool Delete(GeneratedCom policy, GeneratedCom rules, FirewallRuleIdentity identity)
     {
         Writable(policy);
         var existing = Unique(rules, identity.Name);
         if (existing is null) return false;
         VerifyIdentity(identity, existing.Identity);
-        // INetFwRules.Remove accepts only a name, and another rule could take that name after the check. Give the
-        // checked rule object a fresh name and remove that name, so only the rule that was checked is removed.
         using var rule = Item(rules, identity.Name);
         VerifyIdentity(identity, Snapshot(rule).Identity);
+        return Remove(rules, rule, identity.Name);
+    }
+
+    private int DeleteAll(GeneratedCom policy, GeneratedCom rules, string name)
+    {
+        Writable(policy);
+        var deleted = 0;
+        foreach (var rule in Matching(rules, name))
+            using (rule)
+                if (Remove(rules, rule, name)) deleted++;
+        return deleted;
+    }
+
+    // INetFwRules.Remove accepts only a name, and another rule could take that name after the check. Give the
+    // checked rule object a fresh name and remove that name, so only the rule that was checked is removed.
+    private static unsafe bool Remove(GeneratedCom rules, GeneratedCom rule, string originalName)
+    {
         var removalName = "Runic-Delete-" + Guid.NewGuid().ToString("N");
         SetText(rule, Field.Name, removalName);
         using var name = new BString(removalName);
@@ -363,7 +421,7 @@ internal sealed unsafe class CsWin32FirewallClient : IFirewallClient
         if (status < 0)
         {
             // Restore the checked rule's name; the removal failure is the error that is reported.
-            try { SetText(rule, Field.Name, identity.Name); } catch (WindowsAdministrationException) { }
+            try { SetText(rule, Field.Name, originalName); } catch (WindowsAdministrationException) { }
             NativeError.Check(status, "Delete firewall rule");
         }
         return true;

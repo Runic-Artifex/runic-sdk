@@ -12,6 +12,8 @@ internal interface IFirewallClient
     Task CreateAsync(FirewallRuleSpecification specification, CancellationToken cancellationToken);
     Task UpdateAsync(FirewallRuleIdentity identity, FirewallRuleUpdate update, CancellationToken cancellationToken);
     Task<bool> DeleteAsync(FirewallRuleIdentity identity, CancellationToken cancellationToken);
+    Task<int> DeleteAllAsync(string name, CancellationToken cancellationToken);
+    Task<FirewallLocalPolicyState> GetLocalPolicyStateAsync(CancellationToken cancellationToken);
 }
 
 internal interface IShareClient
@@ -25,11 +27,11 @@ internal interface IShareClient
 
 internal static class GeneratedAdministrationClients
 {
-    internal static IFirewallClient Firewall()
+    internal static IFirewallClient Firewall(FirewallClientOptions options)
     {
         if (!OperatingSystem.IsWindowsVersionAtLeast(6, 1))
             throw new PlatformNotSupportedException("Windows 7 or later is required.");
-        return new CsWin32FirewallClient();
+        return new CsWin32FirewallClient(options);
     }
 
     internal static IShareClient Shares(string? machineName)
