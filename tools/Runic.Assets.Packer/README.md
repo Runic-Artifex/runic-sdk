@@ -129,8 +129,8 @@ a directory another user can write.
 | Exit code | Meaning |
 | --- | --- |
 | `0` | The archive was written. |
-| `1` | The archive could not be packed: the entry point does not exist or was excluded (`RAS1002`), packing failed (`RAS1003`), for example because of an invalid asset path, a symbolic link or an I/O error, or the pinned mode is unavailable on this OS (`RAS1004`). |
-| `2` | Usage or validation error: an invalid command line, such as a missing argument, or a source directory that does not exist (`RAS1001`). |
+| `1` | The archive could not be packed: the source directory does not exist (`RAS1001`), the entry point does not exist or was excluded (`RAS1002`), packing failed (`RAS1003`), for example because of an invalid asset path, a symbolic link or an I/O error, or the pinned mode is unavailable on this OS (`RAS1004`). |
+| `2` | Usage or validation error: an invalid command line, such as a missing argument. |
 | `3` | Internal failure. |
 | `130` | Cancelled. |
 

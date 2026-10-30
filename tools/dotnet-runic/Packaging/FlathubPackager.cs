@@ -7,6 +7,7 @@ using System.Text;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
+using Runic.CommandLine;
 
 namespace Runic.Application.Tool.Packaging;
 
@@ -44,7 +45,7 @@ internal static class FlathubPackager
             context.Warn(PackageCodes.NoGitCheckout, "The project is not in a git checkout; the manifest assumes that the repository's root is the project directory.");
         string Relative(string path) => Path.GetRelativePath(root, path).Replace(Path.DirectorySeparatorChar, '/');
         if (Relative(icon).StartsWith("../", StringComparison.Ordinal))
-            throw new DevUsageException(PackageCodes.FlathubSourcesUnavailable, "RunicPackageIcon is outside the git repository, which the Flathub build checks out.");
+            throw new DevDevelopmentException(PackageCodes.FlathubSourcesUnavailable, "RunicPackageIcon is outside the git repository, which the Flathub build checks out.", category: CommandExitCategory.Unavailable);
 
         // The NativeAOT lock file and the frontend's package-lock.json are the inputs.
         AotEvaluation aot = await EvaluateAotAsync(context, cancellationToken).ConfigureAwait(false);
@@ -134,8 +135,8 @@ internal static class FlathubPackager
         string[] missing = [.. FlathubSources.Runtimes.Where(runtime => !identity.RuntimeIdentifiers.Contains(runtime, StringComparer.Ordinal))];
         if (missing.Length > 0)
         {
-            throw new DevUsageException(PackageCodes.FlathubSourcesUnavailable,
-                $"RuntimeIdentifiers must list {string.Join(" and ", FlathubSources.Runtimes)} for a Flathub build; it does not list {string.Join(" and ", missing)}.");
+            throw new DevDevelopmentException(PackageCodes.FlathubSourcesUnavailable,
+                $"RuntimeIdentifiers must list {string.Join(" and ", FlathubSources.Runtimes)} for a Flathub build; it does not list {string.Join(" and ", missing)}.", category: CommandExitCategory.Unavailable);
         }
         CommandResult result = await CommandRunner.RunAsync(context.DotNet, identity.ProjectDirectory,
             ["msbuild", identity.ProjectPath, "-nologo", $"-p:Configuration={context.Options.Configuration}", "-p:PublishAot=true",
@@ -147,25 +148,25 @@ internal static class FlathubPackager
         string lockFile = Path.GetFullPath(Get("NuGetLockFilePath") is { Length: > 0 } path ? path : "packages.lock.json", identity.ProjectDirectory);
         if (!File.Exists(lockFile))
         {
-            throw new DevUsageException(PackageCodes.FlathubSourcesUnavailable,
+            throw new DevDevelopmentException(PackageCodes.FlathubSourcesUnavailable,
                 $"The NativeAOT NuGet lock file {Path.GetFileName(lockFile)} does not exist. Set RestorePackagesWithLockFile, restore with dotnet restore -p:PublishAot=true and commit the lock file.",
-                $"Lock file: {lockFile}\n");
+                $"Lock file: {lockFile}\n", category: CommandExitCategory.Unavailable);
         }
         IReadOnlyList<(FlathubNuGetPackage Package, string ContentHash)> locked = FlathubSources.ReadNuGetLock(await File.ReadAllTextAsync(lockFile, cancellationToken).ConfigureAwait(false));
         string? compiler = locked.Where(entry => string.Equals(entry.Package.Id, "Microsoft.DotNet.ILCompiler", StringComparison.OrdinalIgnoreCase))
             .Select(entry => entry.Package.Version).FirstOrDefault();
         if (compiler is null)
         {
-            throw new DevUsageException(PackageCodes.FlathubSourcesUnavailable,
-                $"The lock file {Path.GetFileName(lockFile)} has no NativeAOT compiler (Microsoft.DotNet.ILCompiler). Give the NativeAOT restore its own lock file, <NuGetLockFilePath Condition=\"'$(PublishAot)' == 'true'\">packages.aot.lock.json</NuGetLockFilePath>, restore with -p:PublishAot=true and commit it.");
+            throw new DevDevelopmentException(PackageCodes.FlathubSourcesUnavailable,
+                $"The lock file {Path.GetFileName(lockFile)} has no NativeAOT compiler (Microsoft.DotNet.ILCompiler). Give the NativeAOT restore its own lock file, <NuGetLockFilePath Condition=\"'$(PublishAot)' == 'true'\">packages.aot.lock.json</NuGetLockFilePath>, restore with -p:PublishAot=true and commit it.", category: CommandExitCategory.Unavailable);
         }
         string lockText = await File.ReadAllTextAsync(lockFile, cancellationToken).ConfigureAwait(false);
         foreach (string runtime in FlathubSources.Runtimes)
         {
             if (!lockText.Contains($"/{runtime}\"", StringComparison.Ordinal))
             {
-                throw new DevUsageException(PackageCodes.FlathubSourcesUnavailable,
-                    $"The lock file {Path.GetFileName(lockFile)} has no {runtime} section; restore it again with RuntimeIdentifiers listing {runtime}.");
+                throw new DevDevelopmentException(PackageCodes.FlathubSourcesUnavailable,
+                    $"The lock file {Path.GetFileName(lockFile)} has no {runtime} section; restore it again with RuntimeIdentifiers listing {runtime}.", category: CommandExitCategory.Unavailable);
             }
         }
         return new AotEvaluation(lockFile, compiler, Get("RunicApplicationFrontendDirectory"), locked);
@@ -194,9 +195,9 @@ internal static class FlathubPackager
                 }
                 catch (DevDevelopmentException exception) when (exception.Code == PackageCodes.FlathubSourcesUnavailable)
                 {
-                    throw new DevUsageException(PackageCodes.FlathubSourcesUnavailable,
+                    throw new DevDevelopmentException(PackageCodes.FlathubSourcesUnavailable,
                         $"The locked NativeAOT restore for {runtime} failed: the lock file does not match the project. Restore it again with -p:PublishAot=true and commit it.",
-                        exception.LocalDetail);
+                        exception.LocalDetail, category: CommandExitCategory.Unavailable);
                 }
                 // Every pack the SDK would download, also those this machine's SDK has in its own packs folder, which the
                 // Flathub SDK extension may not have in this version.
@@ -251,8 +252,8 @@ internal static class FlathubPackager
             }
             if (!string.Equals(cached, contentHash, StringComparison.Ordinal))
             {
-                throw new DevUsageException(PackageCodes.FlathubSourcesUnavailable,
-                    $"The NuGet cache's {package.Id} {package.Version} does not have the lock file's content hash; clear it from the cache and run the command again.");
+                throw new DevDevelopmentException(PackageCodes.FlathubSourcesUnavailable,
+                    $"The NuGet cache's {package.Id} {package.Version} does not have the lock file's content hash; clear it from the cache and run the command again.", category: CommandExitCategory.Unavailable);
             }
         }
         return (merged, packageRoot);
@@ -286,8 +287,8 @@ internal static class FlathubPackager
         string path = CachePath(packageRoot, package, ".nupkg.sha512");
         if (!File.Exists(path))
         {
-            throw new DevUsageException(PackageCodes.FlathubSourcesUnavailable,
-                $"{package.Id} {package.Version} is not in the NuGet cache after the restore, so its hash is unknown.", $"Expected: {path}\n");
+            throw new DevDevelopmentException(PackageCodes.FlathubSourcesUnavailable,
+                $"{package.Id} {package.Version} is not in the NuGet cache after the restore, so its hash is unknown.", $"Expected: {path}\n", category: CommandExitCategory.Unavailable);
         }
         return FlathubSources.HexFromBase64(File.ReadAllText(path));
     }
@@ -299,8 +300,8 @@ internal static class FlathubPackager
         if (!File.Exists(Path.Combine(directory, "package.json"))) return null;
         if (!File.Exists(Path.Combine(directory, "package-lock.json")))
         {
-            throw new DevUsageException(PackageCodes.FlathubSourcesUnavailable,
-                "The frontend has no package-lock.json. The Flathub build installs it with npm ci offline; use npm, or generate the sources with flatpak-builder-tools (docs/packaging.md#flathub).");
+            throw new DevDevelopmentException(PackageCodes.FlathubSourcesUnavailable,
+                "The frontend has no package-lock.json. The Flathub build installs it with npm ci offline; use npm, or generate the sources with flatpak-builder-tools (docs/packaging.md#flathub).", category: CommandExitCategory.Unavailable);
         }
         return directory;
     }

@@ -131,8 +131,8 @@ in `fault.code`. The output of `dotnet new` goes to standard error.
 | Exit code | Meaning |
 | --- | --- |
 | `0` | The project was created, or `--dry-run` printed its commands. |
-| `1` | The project could not be created: `dotnet new install` or `dotnet new runic-app` failed (`RCREATE004`, `RCREATE005`). |
-| `2` | Usage or validation error, such as an unknown option value, an invalid name or a non-empty destination without `--force` (`RCREATE001` to `RCREATE003`). |
+| `1` | The project could not be created: the destination is not empty and `--force` is not given (`RCREATE003`), or `dotnet new install` or `dotnet new runic-app` failed (`RCREATE004`, `RCREATE005`). |
+| `2` | Usage or validation error, such as an unknown option value or an invalid name (`RCREATE001`, `RCREATE002`). |
 | `3` | Internal failure. |
 | `130` | Cancelled, for example with Ctrl+C. |
 

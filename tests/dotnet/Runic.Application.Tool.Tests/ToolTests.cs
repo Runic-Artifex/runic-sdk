@@ -31,7 +31,8 @@ internal sealed partial class ToolTests
         using var workspace = new TestWorkspace();
         workspace.Write("One.csproj", "<Project />");
         workspace.Write("Two.csproj", "<Project />");
-        Throws<DevUsageException>(() => ProjectDiscovery.Find(workspace.Root, null));
+        Equal(Runic.CommandLine.CommandExitCategory.Unavailable,
+            Throws<DevDevelopmentException>(() => ProjectDiscovery.Find(workspace.Root, null)).Category);
     }
 
     [Test, DisplayName("commands keep arguments shell-free")]
@@ -119,9 +120,10 @@ internal sealed partial class ToolTests
             </Project>
             """);
         workspace.Write("Former/Client/package.json", """{"packageManager":"npm@10.0.0"}""");
-        var rejected = Throws<DevUsageException>(() => DevProjectConfiguration.EvaluateAsync(
+        var rejected = Throws<DevDevelopmentException>(() => DevProjectConfiguration.EvaluateAsync(
             "dotnet", former, "Debug", CancellationToken.None).GetAwaiter().GetResult());
         Equal("RAPPDEV1005", rejected.Code);
+        Equal(Runic.CommandLine.CommandExitCategory.CommandFailure, rejected.Category);
         string arguments = string.Join(" ", DevProjectConfiguration.CreateEvaluationArguments(former, "Debug"));
         foreach (string removed in new[] { "RunicViewsWindowProject", "RunicBridgeFrontendDir", "RunicAssetsFrontendDirectory", "RunicAssetsDist",
             "RunicApplicationFrontendPackageDirectory", "RunicApplicationFrontendViteDevServerEnabled", ",RunicApplicationFrontendCompiler" })
@@ -587,7 +589,7 @@ internal sealed partial class ToolTests
         Contains(generated, "<script src=\"runic-desktop-views.js\">");
         Contains(generated, "<script src=\"runic-desktop.js\">");
         Contains(generated, "<script src=\"runic-views.js\">");
-        Throws<DevUsageException>(() => FrontendDevelopmentDocument.Write(configuration,
+        Throws<DevDevelopmentException>(() => FrontendDevelopmentDocument.Write(configuration,
             new Uri("http://127.0.0.1:5173/"), "../escape.html", html));
 
         // A nested page loads the host scripts from the web root and its own
@@ -636,7 +638,7 @@ internal sealed partial class ToolTests
             ViteBuildInputs.SelectDocuments(root, [Path.Combine(workspace.Root, "outside.html")], null);
             throw new InvalidOperationException("An input outside the Vite root was accepted.");
         }
-        catch (DevUsageException error)
+        catch (DevDevelopmentException error)
         {
             Equal("RAPPDEV1005", error.Code);
             DoesNotContain(error.Message, workspace.Root);
@@ -661,7 +663,7 @@ internal sealed partial class ToolTests
         string kitRoot = Path.Combine(workspace.Root, "Kit");
         Directory.CreateDirectory(kitRoot);
         SequenceEqual(["index.html"], ViteBuildInputs.SelectDocuments(kitRoot, [Path.Combine(kitRoot, "index.html")], null, routed: true));
-        Throws<DevUsageException>(() => ViteBuildInputs.SelectDocuments(kitRoot, [], ["settings.html"], routed: true));
+        Throws<DevDevelopmentException>(() => ViteBuildInputs.SelectDocuments(kitRoot, [], ["settings.html"], routed: true));
         try
         {
             ViteBuildInputs.Parse("no marker");
@@ -687,7 +689,7 @@ internal sealed partial class ToolTests
                     [Path.Combine(root, "index.html"), Path.Combine(root, "pages", "settings.html")], explicitDocuments);
                 throw new InvalidOperationException("A missing window entry was accepted.");
             }
-            catch (DevUsageException error)
+            catch (DevDevelopmentException error)
             {
                 Equal("RAPPDEV1009", error.Code);
                 Contains(error.Message, "Window entry not found: 'pages/settings.html'");
@@ -724,7 +726,7 @@ internal sealed partial class ToolTests
             await ViteBuildInputs.ApplyAsync(configuration, CancellationToken.None);
             throw new InvalidOperationException("A missing second page was accepted.");
         }
-        catch (DevUsageException error)
+        catch (DevDevelopmentException error)
         {
             Equal("RAPPDEV1009", error.Code);
             Contains(error.Message, "'pages/settings.html'");
@@ -1023,14 +1025,15 @@ internal sealed partial class ToolTests
         string missing = Path.Combine(Path.GetTempPath(), "runic-missing-" + Guid.NewGuid().ToString("N"), "App.csproj");
         foreach (string[] selector in new[] { new[] { "--format", "json" }, ["--format=json"], ["--output", "json"], ["--output=json"] })
         {
+            // A missing project is unavailable, exit code 1, whichever spelling selected JSON.
             (int exitCode, string output) = RunCli(["doctor", .. selector, "--project", missing]);
-            Equal(2, exitCode);
+            Equal(1, exitCode);
             using JsonDocument document = JsonDocument.Parse(output);
             Equal("RAPPDEV1002", document.RootElement.GetProperty("fault").GetProperty("code").GetString());
         }
         // The selector may also precede the command.
         (int leadingExit, string leadingOutput) = RunCli("--output", "json", "doctor", "--project", missing);
-        Equal(2, leadingExit);
+        Equal(1, leadingExit);
         using (JsonDocument document = JsonDocument.Parse(leadingOutput))
         {
             Equal("RAPPDEV1002", document.RootElement.GetProperty("fault").GetProperty("code").GetString());
@@ -1193,9 +1196,10 @@ internal sealed partial class ToolTests
             CommandRunner.RunAsync("/nonexistent/runic-tool", "/tmp", ["build"], CancellationToken.None).GetAwaiter().GetResult();
             throw new InvalidOperationException("A missing executable started.");
         }
-        catch (DevUsageException error)
+        catch (DevDevelopmentException error)
         {
             Equal("RAPPDEV1004", error.Code);
+            Equal(Runic.CommandLine.CommandExitCategory.Unavailable, error.Category);
             DoesNotContain(error.Message, "/");
             Contains(error.LocalDetail ?? string.Empty, "/nonexistent/runic-tool");
         }
@@ -1327,7 +1331,7 @@ internal sealed partial class ToolTests
     {
         string missing = Path.Combine(Path.GetTempPath(), "runic-missing-" + Guid.NewGuid().ToString("N"), "App.csproj");
         (int exitCode, string output) = RunCli("doctor", "--format", "json", "--project", missing);
-        Equal(2, exitCode);
+        Equal(1, exitCode);
         using (JsonDocument document = JsonDocument.Parse(output))
         {
             string helpUri = document.RootElement.GetProperty("fault").GetProperty("helpUri").GetString()!;
@@ -1466,7 +1470,7 @@ internal sealed partial class ToolTests
             DevApplication.RequireInstalledFrontendPackages(configuration);
             throw new InvalidOperationException("A missing node_modules was accepted with --no-restore.");
         }
-        catch (DevUsageException error)
+        catch (DevDevelopmentException error)
         {
             Equal("RAPPDEV1008", error.Code);
             Contains(error.Message, "npm install");
@@ -1490,7 +1494,7 @@ internal sealed partial class ToolTests
         foreach (string project in new[] { "/run/user/1000/runic-missing/App.csproj", @"C:\Users\someone\App\App.csproj" })
         {
             (int exitCode, string output) = RunCli("doctor", "--format", "json", "--project", project);
-            Equal(2, exitCode);
+            Equal(1, exitCode);
             using JsonDocument document = JsonDocument.Parse(output);
             JsonElement fault = document.RootElement.GetProperty("fault");
             Equal("RAPPDEV1002", fault.GetProperty("code").GetString());
@@ -1504,8 +1508,9 @@ internal sealed partial class ToolTests
 
         using var workspace = new TestWorkspace();
         string broken = workspace.Write("Broken.csproj", "<Project>not xml");
+        // A project MSBuild cannot evaluate is a command failure, exit code 1.
         (int brokenExit, string brokenOutput) = RunCli("doctor", "--format", "json", "--project", broken);
-        Equal(2, brokenExit);
+        Equal(1, brokenExit);
         using JsonDocument brokenDocument = JsonDocument.Parse(brokenOutput);
         JsonElement brokenFault = brokenDocument.RootElement.GetProperty("fault");
         Equal("RAPPDEV1003", brokenFault.GetProperty("code").GetString());
@@ -1527,7 +1532,7 @@ internal sealed partial class ToolTests
         {
             True(Runic.Application.Tool.Program.ContainsRootedPath(message), $"'{message}' contains a rooted path.");
             var outcome = Runic.Application.Tool.Program.Failure<DevCommandResult>(
-                Runic.CommandLine.CommandExitCategory.Usage, "RAPPDEV1002", message);
+                Runic.CommandLine.CommandExitCategory.Unavailable, "RAPPDEV1002", message);
             Equal("The command could not be completed. See the local detail above.", outcome.Fault!.Message);
             Contains(outcome.HumanOutput ?? string.Empty, message);
             // The fault links the code's catalog entry at the release tag: fault.helpUri in JSON, a "Help for" line
@@ -1611,7 +1616,7 @@ internal sealed partial class ToolTests
 
         foreach ((string[] arguments, int exitCode, string code) in new[]
         {
-            (new[] { Path.Combine(workspace.Root, "missing"), archive }, 2, "RAS1001"),
+            (new[] { Path.Combine(workspace.Root, "missing"), archive }, 1, "RAS1001"),
             ([site, archive, "--entry-point", ".env"], 1, "RAS1002"),
             ([site, archive, "--entry-point", "missing.html", "--no-default-excludes"], 1, "RAS1002"),
         })
@@ -1684,8 +1689,9 @@ internal sealed partial class ToolTests
             ["doctor", "--runtime", "linux-x64", "--no-self-contained"],
         })
         {
+            // The options parse and bind alike; the missing project then fails the command with exit code 1.
             (int exitCode, string output) = RunCli([.. arguments, "--project", missing, "--format", "json"]);
-            Equal(2, exitCode);
+            Equal(1, exitCode);
             using JsonDocument document = JsonDocument.Parse(output);
             Equal("RAPPDEV1002", document.RootElement.GetProperty("fault").GetProperty("code").GetString());
         }
@@ -2757,7 +2763,8 @@ internal sealed partial class ToolTests
             True(tool.WaitForExit(TimeSpan.FromSeconds(30)), "doctor did not exit after SIGTERM.");
             string text = output.Result + error.Result;
             Equal(Runic.Application.Tool.Program.Cancelled, tool.ExitCode);
-            Contains(text, "RCLI4000");
+            // Human output writes the fault's message without its code (RCLI4000) since Command Line 0.10.
+            Contains(text, "The command was cancelled.");
         }
         finally
         {

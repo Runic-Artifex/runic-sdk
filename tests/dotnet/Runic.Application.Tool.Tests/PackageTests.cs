@@ -43,11 +43,11 @@ internal sealed partial class ToolTests
         foreach (string id in new[] { "org.example.Notes", "com.example.App2048Game", "a.b" })
             Equal(id, PackageIdentity.CheckApplicationId(id));
         foreach (string id in new[] { "", "Notes", "org.example.my-notes", "org.example.2048", "org..example", "org.example.Notes_App", $"org.example.{new string('a', 40)}" })
-            Equal(PackageCodes.IdentityInvalid, Throws<DevUsageException>(() => PackageIdentity.CheckApplicationId(id)).Code);
+            Equal(PackageCodes.IdentityInvalid, Throws<DevDevelopmentException>(() => PackageIdentity.CheckApplicationId(id)).Code);
         SequenceEqual(["org.example.notes", "notes+x"], PackageIdentity.ParseUrlSchemes(" Org.Example.Notes; notes+x ,"));
         SequenceEqual([], PackageIdentity.ParseUrlSchemes(""));
         foreach (string scheme in new[] { "https", "file", "1notes", "no_tes" })
-            Equal(PackageCodes.IdentityInvalid, Throws<DevUsageException>(() => PackageIdentity.ParseUrlSchemes(scheme)).Code);
+            Equal(PackageCodes.IdentityInvalid, Throws<DevDevelopmentException>(() => PackageIdentity.ParseUrlSchemes(scheme)).Code);
     }
 
     [Test, DisplayName("package accepts file types and web link hosts every platform declares")]
@@ -58,12 +58,12 @@ internal sealed partial class ToolTests
             PackageIdentity.ParseFileTypes(" .Notes=Application/X-Example-Notes; .tar.gz ,.c+x"));
         SequenceEqual([], PackageIdentity.ParseFileTypes(""));
         foreach (string entry in new[] { "notes", ".", "..notes", ".notes.", ".no*tes", ".notes=text", ".notes=a/b=c", ".notes;.NOTES" })
-            Equal(PackageCodes.IdentityInvalid, Throws<DevUsageException>(() => PackageIdentity.ParseFileTypes(entry)).Code);
+            Equal(PackageCodes.IdentityInvalid, Throws<DevDevelopmentException>(() => PackageIdentity.ParseFileTypes(entry)).Code);
         Equal("org.example.Notes.c-x", PackageIdentity.TypeIdentifier("org.example.Notes", ".c+x"));
         Equal("application/x-notes-tar.gz", PackageIdentity.LinuxMimeType("org.example.Notes", new PackageFileType(".tar.gz", null)));
         SequenceEqual(["notes.example.org", "links.example.com"], PackageIdentity.ParseWebLinkHosts("Notes.Example.org; links.example.com"));
         foreach (string host in new[] { "example", "*.example.org", "example.org:443", "https://example.org", "-a.example.org", "a_b.example.org" })
-            Equal(PackageCodes.IdentityInvalid, Throws<DevUsageException>(() => PackageIdentity.ParseWebLinkHosts(host)).Code);
+            Equal(PackageCodes.IdentityInvalid, Throws<DevDevelopmentException>(() => PackageIdentity.ParseWebLinkHosts(host)).Code);
     }
 
     [Test, DisplayName("package makes numeric and Linux package versions")]
@@ -111,10 +111,10 @@ internal sealed partial class ToolTests
         Equal("example-notes", identity.PackageName);
         Equal("CN=Override", identity.Publisher);
         False(identity.Gtk4, "Without Runic.Desktop.Gtk4 the backend is GTK 3.");
-        Equal(PackageCodes.IdentityInvalid, Throws<DevUsageException>(() => PackageIdentity.CheckPackageName("Example_Notes")).Code);
+        Equal(PackageCodes.IdentityInvalid, Throws<DevDevelopmentException>(() => PackageIdentity.CheckPackageName("Example_Notes")).Code);
 
         properties["ApplicationId"] = "Notes";
-        Equal(PackageCodes.IdentityInvalid, Throws<DevUsageException>(() => PackageIdentity.Create(project, properties, [], null)).Code);
+        Equal(PackageCodes.IdentityInvalid, Throws<DevDevelopmentException>(() => PackageIdentity.Create(project, properties, [], null)).Code);
     }
 
     [Test, DisplayName("package fills every field of its manifests, escaped, with and without activation")]
@@ -274,7 +274,7 @@ internal sealed partial class ToolTests
         Equal(null, PackageIdentity.CheckApplicationCategory(" "));
         Equal("public.app-category.productivity", PackageIdentity.CheckApplicationCategory(" Public.App-Category.Productivity "));
         foreach (string category in new[] { "productivity", "public.app-category.", "public.app-category.a_b", "public.app-category.games.puzzle", "com.example.category" })
-            Equal(PackageCodes.IdentityInvalid, Throws<DevUsageException>(() => PackageIdentity.CheckApplicationCategory(category)).Code);
+            Equal(PackageCodes.IdentityInvalid, Throws<DevDevelopmentException>(() => PackageIdentity.CheckApplicationCategory(category)).Code);
 
         string project = Path.Combine(Path.GetTempPath(), "Notes", "Notes.csproj");
         var properties = new Dictionary<string, string>(StringComparer.Ordinal) { ["ApplicationId"] = "org.example.Notes" };
@@ -456,9 +456,9 @@ internal sealed partial class ToolTests
         SequenceEqual(["net.daringfireball.markdown", "com.example.log"], Declared("UTImportedTypeDeclarations"));
 
         Equal("Alternate", PackageIdentity.CheckHandlerRank(""));
-        Equal(PackageCodes.IdentityInvalid, Throws<DevUsageException>(() => PackageIdentity.CheckHandlerRank("Owner")).Code);
+        Equal(PackageCodes.IdentityInvalid, Throws<DevDevelopmentException>(() => PackageIdentity.CheckHandlerRank("Owner")).Code);
         foreach (string entry in new[] { ".logx", ".logx=log", ".other=com.example.other", ".logx=com.example.a;.logx=com.example.b", ".logx=com.example_a" })
-            Equal(PackageCodes.IdentityInvalid, Throws<DevUsageException>(() => PackageIdentity.ParseFileTypeIdentifiers(entry, types)).Code);
+            Equal(PackageCodes.IdentityInvalid, Throws<DevDevelopmentException>(() => PackageIdentity.ParseFileTypeIdentifiers(entry, types)).Code);
         True(PackageIdentity.Properties.Contains("RunicMacFileTypeIdentifiers") && PackageIdentity.Properties.Contains("RunicMacFileTypeHandlerRank"),
             "package evaluates both properties.");
     }
@@ -617,7 +617,7 @@ internal sealed partial class ToolTests
         Contains(DebPackager.Control(identity with { Gtk4 = true, Publisher = "CN=Example" }, "arm64", 1),
             "Depends: libc6, libgtk-4-1, libwebkitgtk-6.0-4\n");
         Contains(DebPackager.Control(identity with { Publisher = "CN=Example" }, "arm64", 1), "Maintainer: Notes & Co\n");
-        Equal(PackageCodes.IdentityInvalid, Throws<DevUsageException>(() => DebPackager.Control(identity with { PackageName = "Notes_App" }, "amd64", 1)).Code);
+        Equal(PackageCodes.IdentityInvalid, Throws<DevDevelopmentException>(() => DebPackager.Control(identity with { PackageName = "Notes_App" }, "amd64", 1)).Code);
 
         string spec = RpmPackager.Spec(identity with { License = "MIT" }, "x86_64", "/tmp/stage dir/STAGED",
             ["/usr/lib/org.example.Notes", "/usr/bin/Notes", "/usr/share/applications/org.example.Notes.desktop"]);
@@ -696,9 +696,9 @@ internal sealed partial class ToolTests
             """, nuget);
         // The cache's .nupkg.sha512 holds the hash of the signed file in base64.
         Equal("d27a15fb", FlathubSources.HexFromBase64("0noV+w==\n"));
-        Equal(PackageCodes.FlathubSourcesUnavailable, Throws<DevUsageException>(() => FlathubSources.ReadNuGetLock(
+        Equal(PackageCodes.FlathubSourcesUnavailable, Throws<DevDevelopmentException>(() => FlathubSources.ReadNuGetLock(
             """{"version":1,"dependencies":{"net10.0":{"A":{"type":"Direct","resolved":"1.0.0"}}}}""")).Code);
-        Equal(PackageCodes.FlathubSourcesUnavailable, Throws<DevUsageException>(() => FlathubSources.ReadNuGetLock(
+        Equal(PackageCodes.FlathubSourcesUnavailable, Throws<DevDevelopmentException>(() => FlathubSources.ReadNuGetLock(
             """{"version":1,"dependencies":{"net10.0":{"A":{"resolved":"1.0.0","contentHash":"x"}},"net10.0/linux-x64":{"A":{"resolved":"1.0.0","contentHash":"y"}}}}""")).Code);
 
         using JsonDocument npm = JsonDocument.Parse(FlathubSources.NpmSources(File.ReadAllText(Path.Combine(fixture, "Frontend", "package-lock.json"))));
@@ -724,9 +724,9 @@ internal sealed partial class ToolTests
             + "|" + (source.TryGetProperty("sha256", out _) ? "sha256" : "sha512"))];
         SequenceEqual(["esbuild-linux-x64-0.25.0-000000.tgz|x86_64|sha512", "esbuild-linux-arm64-0.25.0-000001.tgz|aarch64|sha512",
             "sha256-only-1.0.0-000005.tgz|all|sha256"], described);
-        Equal(PackageCodes.FlathubSourcesUnavailable, Throws<DevUsageException>(() => FlathubSources.NpmSources(
+        Equal(PackageCodes.FlathubSourcesUnavailable, Throws<DevDevelopmentException>(() => FlathubSources.NpmSources(
             """{"lockfileVersion":3,"packages":{"node_modules/a":{"version":"1.0.0","resolved":"https://registry.npmjs.org/a.tgz","integrity":"sha1-AAAA"}}}""")).Code);
-        Equal(PackageCodes.FlathubSourcesUnavailable, Throws<DevUsageException>(() => FlathubSources.NpmSources(
+        Equal(PackageCodes.FlathubSourcesUnavailable, Throws<DevDevelopmentException>(() => FlathubSources.NpmSources(
             """{"lockfileVersion":3,"packages":{"node_modules/a":{"version":"1.0.0","resolved":"git+ssh://git@github.com/a/a.git#abc"}}}""")).Code);
     }
 

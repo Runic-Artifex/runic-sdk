@@ -609,8 +609,11 @@ can, suppress the warning with `<NoWarn>$(NoWarn);RUNICBRIDGE033</NoWarn>`.
 `dotnet runic` reports these codes as the fault of a failed command, except
 `RCLI8101` and `RCLI8102`, which mark individual doctor checks. Human
 output prints the link to the entry after the fault line; JSON output carries
-the code in `fault.code` and, since 0.11, the link in `fault.helpUri`. Usage errors exit with code 2, other failures with
-code 1, and a cancelled command reports `RCLI4000` and exits with code 130. An
+the code in `fault.code` and, since 0.11, the link in `fault.helpUri`. Input
+of the wrong shape (a usage or validation error, the same whatever the project)
+exits with code 2; a failure on what the command found, such as a missing
+project, an invalid project setting or a failed step, exits with code 1. A
+cancelled command reports `RCLI4000` and exits with code 130. An
 unexpected internal failure reports `RCLI5000`, exits with code 3 and prints the
 exception to standard error; include it when you report the problem. See
 [Output and exit codes](../tools/dotnet-runic/README.md#output-and-exit-codes).
@@ -677,20 +680,20 @@ preview|collect|remove`. See
 ### RAPPDEV1002
 
 The project cannot be selected: the given project does not exist or is not a
-`.csproj`, or the directory has no `.csproj` or several.
+`.csproj`, or the directory has no `.csproj` or several. Exit code 1.
 
 **Fix:** pass the project with `--project`.
 
 ### RAPPDEV1003
 
-MSBuild could not evaluate the project.
+MSBuild could not evaluate the project. Exit code 1.
 
 **Fix:** run `dotnet build` on the project and fix the error it reports.
 
 ### RAPPDEV1004
 
 A required program could not be started, for example `dotnet`, Node.js, Bun or
-the package manager.
+the package manager. Exit code 1.
 
 **Fix:** install the program and make sure it is on `PATH`.
 `dotnet runic doctor` lists the runtime and package manager the project needs.
@@ -701,7 +704,7 @@ The project is not a Runic Views Window project that `dev` can run, or its
 frontend configuration is invalid. Examples: the project does not set
 `RunicApplicationFrontendWindowProject=true`, has no `RunicApplicationFrontendDirectory` with a
 `package.json`, names an unsupported package manager or development server, or
-a Vite input or development document lies outside the web root.
+a Vite input or development document lies outside the web root. Exit code 1.
 
 **Fix:** set the property or fix the configuration that the message names.
 `dev` runs CS-WebUI and Runic Desktop Window projects only.
@@ -745,7 +748,8 @@ up to three times, and fails with this diagnostic only if every port was taken.
 
 ### RAPPDEV1008
 
-`--no-restore` was given but the frontend packages are not installed.
+`--no-restore` was given but the frontend packages are not installed. Exit
+code 1.
 
 **Fix:** install them with the frontend's package manager, or omit
 `--no-restore`.
@@ -753,7 +757,7 @@ up to three times, and fails with this diagnostic only if every port was taken.
 ### RAPPDEV1009
 
 A Window entry page does not exist: a Vite build input or the configured
-development document names a file that is missing.
+development document names a file that is missing. Exit code 1.
 
 **Fix:** create the page or remove it from `build.rolldownOptions.input`. See
 [A Window with its own page](../packages/dotnet/Runic.Application.Views/README.md#a-window-with-its-own-page).
@@ -790,7 +794,7 @@ letter and at most 50 characters, `RunicApplicationUrlSchemes`,
 platform registers, `RunicPackageName` is not a deb or rpm package name,
 `RunicMacApplicationCategory` is not a `public.app-category.*` identifier, or the
 `RunicPackageIcon` file does not exist. The message names the value. Exit code
-2. Since 0.11.
+1. Since 0.11.
 
 **Fix:** correct the property in the project file. See
 [Package the application](../tools/dotnet-runic/README.md#package-the-application).
@@ -852,7 +856,9 @@ macOS provisioning profile for the application's `ApplicationId`.
 The Flathub manifest or its offline sources cannot be generated: no git commit
 or tag was given, a lock file (`packages.lock.json`, the AOT lock files or
 `package-lock.json`) is missing, an entry has no hash, or `RuntimeIdentifiers`
-does not list both `linux-x64` and `linux-arm64`. Exit code 2. Since 0.11.
+does not list both `linux-x64` and `linux-arm64`. Exit code 1, or 2 when the
+command line gives neither or both of `--git-commit` and `--git-tag`.
+Since 0.11.
 
 **Fix:** pass `--git-commit` or `--git-tag`, restore with lock files
 (`RestorePackagesWithLockFile`) and list both Linux runtime identifiers.
@@ -927,7 +933,7 @@ was `RTKSIZE1001`.
 ### RAPPSIZE1003
 
 The `--report` file already exists; `size` never replaces earlier reports. Exit
-code 2. Before 0.9 this was `RTKSIZE1001`.
+code 1. Before 0.9 this was `RTKSIZE1001`.
 
 **Fix:** choose a new report path, or omit `--report` for a new
 `runic-size-<runtime>-<UTC time>.json`.
@@ -990,7 +996,7 @@ The `Runic.Assets` build targets report the `RAS2xxx` codes.
 
 ### RAS1001
 
-The source directory does not exist. Exit code 2.
+The source directory does not exist. Exit code 1.
 
 **Fix:** build the frontend first, or point the archive at its output folder,
 such as Vite's `dist`.
@@ -1132,8 +1138,9 @@ A reference that arrives through another project or package is changed there.
 
 `dnx Runic.Create` reports these codes as the fault of a failed run. Human
 output prints the link to the entry above the fault line; JSON output carries
-the code in `fault.code`. Usage and validation errors exit with code 2, other
-failures with code 1, and a cancelled run with code 130. See the
+the code in `fault.code`. Usage and validation errors (`RCREATE001`,
+`RCREATE002`) exit with code 2, other failures with code 1, and a cancelled run
+with code 130. See the
 [Runic.Create guide](../tools/Runic.Create/README.md#exit-codes).
 
 ### RCREATE001
@@ -1152,7 +1159,7 @@ than letters, digits, `.`, `_` and `-`.
 
 ### RCREATE003
 
-The destination directory exists and is not empty.
+The destination directory exists and is not empty. Exit code 1.
 
 **Fix:** choose another name or `--output`, or pass `--force` (since 0.11) to
 create the project there anyway, as `dotnet new --force` does; files the

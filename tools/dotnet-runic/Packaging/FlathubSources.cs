@@ -5,6 +5,7 @@ using System.Linq;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using Runic.CommandLine;
 
 namespace Runic.Application.Tool.Packaging;
 
@@ -38,14 +39,14 @@ internal static class FlathubSources
             string? hash = entry.Value.TryGetProperty("contentHash", out JsonElement content) ? content.GetString() : null;
             if (string.IsNullOrEmpty(version) || string.IsNullOrEmpty(hash))
             {
-                throw new DevUsageException(PackageCodes.FlathubSourcesUnavailable,
-                    $"The NuGet lock file entry {entry.Name} has no resolved version or content hash; restore the lock file again.");
+                throw new DevDevelopmentException(PackageCodes.FlathubSourcesUnavailable,
+                    $"The NuGet lock file entry {entry.Name} has no resolved version or content hash; restore the lock file again.", category: CommandExitCategory.Unavailable);
             }
             string key = entry.Name + "/" + version;
             if (packages.TryGetValue(key, out var known) && !string.Equals(known.Hash, hash, StringComparison.Ordinal))
             {
-                throw new DevUsageException(PackageCodes.FlathubSourcesUnavailable,
-                    $"The NuGet lock file records two content hashes for {entry.Name} {version}; restore the lock file again.");
+                throw new DevDevelopmentException(PackageCodes.FlathubSourcesUnavailable,
+                    $"The NuGet lock file records two content hashes for {entry.Name} {version}; restore the lock file again.", category: CommandExitCategory.Unavailable);
             }
             packages[key] = (new FlathubNuGetPackage(entry.Name, version), hash);
         }
@@ -91,8 +92,8 @@ internal static class FlathubSources
         using JsonDocument document = JsonDocument.Parse(packageLock);
         if (!document.RootElement.TryGetProperty("packages", out JsonElement packages))
         {
-            throw new DevUsageException(PackageCodes.FlathubSourcesUnavailable,
-                "The frontend's package-lock.json has no packages section; recreate it with npm 7 or later.");
+            throw new DevDevelopmentException(PackageCodes.FlathubSourcesUnavailable,
+                "The frontend's package-lock.json has no packages section; recreate it with npm 7 or later.", category: CommandExitCategory.Unavailable);
         }
         var seen = new HashSet<string>(StringComparer.Ordinal);
         var sources = new JsonArray();
@@ -108,8 +109,8 @@ internal static class FlathubSources
             string name = entry.Name[(entry.Name.LastIndexOf("node_modules/", StringComparison.Ordinal) + "node_modules/".Length)..];
             if (resolved is null || !resolved.StartsWith("https://", StringComparison.Ordinal) || integrity is null)
             {
-                throw new DevUsageException(PackageCodes.FlathubSourcesUnavailable,
-                    $"The frontend's package-lock.json entry {name} has no registry URL and integrity, which an offline build needs (git and local dependencies are not supported).");
+                throw new DevDevelopmentException(PackageCodes.FlathubSourcesUnavailable,
+                    $"The frontend's package-lock.json entry {name} has no registry URL and integrity, which an offline build needs (git and local dependencies are not supported).", category: CommandExitCategory.Unavailable);
             }
             (string algorithm, string digest) = Digest(integrity, name);
             if (!seen.Add(digest)) continue;
@@ -172,8 +173,8 @@ internal static class FlathubSources
             {
             }
         }
-        throw new DevUsageException(PackageCodes.FlathubSourcesUnavailable,
-            $"The frontend's package-lock.json entry {name} has no sha512 or sha256 integrity; recreate the lock file with a current npm.");
+        throw new DevDevelopmentException(PackageCodes.FlathubSourcesUnavailable,
+            $"The frontend's package-lock.json entry {name} has no sha512 or sha256 integrity; recreate the lock file with a current npm.", category: CommandExitCategory.Unavailable);
     }
 
     /// <summary>The hexadecimal SHA-512 in a NuGet <c>.nupkg.sha512</c> file, which holds it in base64.</summary>

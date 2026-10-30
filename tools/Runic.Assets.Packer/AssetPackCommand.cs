@@ -59,8 +59,9 @@ internal static class AssetPackCommand
         string fullDestination = Path.GetFullPath(destination);
         if (!Directory.Exists(fullSourceDirectory))
         {
+            // A missing source directory is a missing resource, not input of the wrong shape: exit code 1.
             return Failure(
-                CommandExitCategory.Validation,
+                CommandExitCategory.Unavailable,
                 "RAS1001",
                 "The source directory does not exist.",
                 new Dictionary<string, string>(StringComparer.Ordinal)

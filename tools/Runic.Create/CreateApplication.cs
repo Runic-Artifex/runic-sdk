@@ -40,12 +40,12 @@ internal static partial class CreateApplication
         TemplateOptionModel model = TemplateOptionModel.Load();
 
         if (!TryResolveExplicit(model, request.Options, out Dictionary<string, TemplateChoice> explicitChoices, out string? usage))
-            return Failure(CommandExitCategory.Usage, "RCREATE001", usage!);
+            return Failure(CommandExitCategory.Validation, "RCREATE001", usage!);
 
         string name = request.Name ?? (interactive ? await AskNameAsync(prompts, cancellationToken).ConfigureAwait(false) : DefaultName);
         if (!IsValidName(name))
         {
-            return Failure(CommandExitCategory.Usage, "RCREATE002",
+            return Failure(CommandExitCategory.Validation, "RCREATE002",
                 $"'{name}' is not a valid project name. Start with a letter and use letters, digits, '.', '_' or '-'.");
         }
 
@@ -92,7 +92,7 @@ internal static partial class CreateApplication
         string directory = Path.GetFullPath(plan.Directory);
         if (!plan.Force && Directory.Exists(directory) && Directory.EnumerateFileSystemEntries(directory).Any())
         {
-            return Failure(CommandExitCategory.Usage, "RCREATE003",
+            return Failure(CommandExitCategory.CommandFailure, "RCREATE003",
                 $"The directory '{plan.Directory}' already exists and is not empty. Choose another name or --output, or pass --force to create the project there anyway.");
         }
 

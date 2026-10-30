@@ -60,8 +60,8 @@ internal sealed class PackerContractTests
 
         // Usage: the destination argument is missing.
         Equal("2", await ExitCodeAsync(site).ConfigureAwait(false));
-        // Validation: the source directory does not exist (RAS1001).
-        Equal("2", await ExitCodeAsync(Path.Combine(directory.Path, "missing"), archive, "--format", "json").ConfigureAwait(false));
+        // Unavailable: the source directory does not exist (RAS1001).
+        Equal("1", await ExitCodeAsync(Path.Combine(directory.Path, "missing"), archive, "--format", "json").ConfigureAwait(false));
         // Unavailable: the entry point does not exist (RAS1002).
         Equal("1", await ExitCodeAsync(site, archive, "--entry-point", "missing.html", "--trusted-generated-output").ConfigureAwait(false));
 
@@ -111,7 +111,7 @@ internal sealed class PackerContractTests
             interactive = new Runic.CommandLine.CommandPrompts(presentation.Context).IsInteractive;
             return Runic.Assets.Packer.AssetPackCommand.PresentAsync(presentation, cancellationToken);
         }).RunAsync([Path.Combine(directory.Path, "missing"), Path.Combine(directory.Path, "out.runic-assets")]).ConfigureAwait(false);
-        Equal("2", exitCode.ToString(System.Globalization.CultureInfo.InvariantCulture));
+        Equal("1", exitCode.ToString(System.Globalization.CultureInfo.InvariantCulture));
         True(console.Error.Contains("RAS1001", StringComparison.Ordinal), console.Error);
         True(interactive.HasValue, "The packer's outcome presenter did not run.");
         return (interactive!.Value, console.Error);

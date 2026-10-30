@@ -5,6 +5,7 @@ using System.IO;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using Runic.CommandLine;
 
 namespace Runic.Application.Tool;
 
@@ -36,10 +37,10 @@ internal static class CommandRunner
             exception is System.ComponentModel.Win32Exception
                 or InvalidOperationException)
         {
-            throw new DevUsageException(
+            throw new DevDevelopmentException(
                 "RAPPDEV1004",
                 $"Could not start '{DescribeProgram(executable, arguments)}'. Ensure it is installed and available on PATH.",
-                $"Executable: {executable}\nWorking directory: {workingDirectory}\n");
+                $"Executable: {executable}\nWorking directory: {workingDirectory}\n", category: CommandExitCategory.Unavailable);
         }
 
         // Captured commands are non-interactive: a prompt (npx install, git credentials) must see

@@ -10,6 +10,11 @@ using System.Threading.Tasks;
 using Runic.CommandLine;
 using Runic.CommandLine.Spectre;
 using Runic.CommandLine.Generated;
+
+// --format selects the output; --output, its former spelling, stays a hidden alias until 2.0. The generated catalog
+// declares the selector from this attribute (Command Line 0.11).
+[assembly: OutputSelector(Runic.Application.Tool.Program.FormatOptionName, Runic.Application.Tool.Program.FormerFormatOptionName)]
+
 namespace Runic.Application.Tool;
 
 internal static partial class Program
@@ -65,7 +70,6 @@ internal static partial class Program
     /// </summary>
     internal static CommandCatalog CreateCatalog() =>
         GeneratedCommandCatalog.Create(builder => builder
-            .OutputSelector(FormatOptionName, FormerFormatOptionName)
             .PresentOutcome<Runic.Assets.Packer.PackerResult>(
                 Runic.Assets.Packer.AssetPackCommand.CommandPath, Runic.Assets.Packer.AssetPackCommand.PresentAsync));
 
@@ -253,11 +257,11 @@ internal static partial class Program
         }
         catch (DevUsageException exception)
         {
-            return Failure<T>(CommandExitCategory.Usage, exception.Code, exception.Message, WithDetail(BoundedHumanOutput(output), exception.LocalDetail));
+            return Failure<T>(CommandExitCategory.Validation, exception.Code, exception.Message, WithDetail(BoundedHumanOutput(output), exception.LocalDetail));
         }
         catch (DevDevelopmentException exception)
         {
-            return Failure<T>(CommandExitCategory.CommandFailure, exception.Code, exception.Message, WithDetail(BoundedHumanOutput(output), exception.LocalDetail));
+            return Failure<T>(exception.Category, exception.Code, exception.Message, WithDetail(BoundedHumanOutput(output), exception.LocalDetail));
         }
         catch (System.Text.Json.JsonException)
         {

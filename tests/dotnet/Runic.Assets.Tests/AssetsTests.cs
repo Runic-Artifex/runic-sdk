@@ -704,16 +704,16 @@ internal sealed class AssetsTests
         string archive = Path.Combine(directory.Path, "out.runic-assets");
         string missing = Path.Combine(directory.Path, "missing");
 
-        // The Runic tool exit codes: 2 usage or validation, 1 a failed command.
+        // The Runic tool exit codes: 2 usage or validation, 1 a failed command or a missing resource.
         (int exitCode, JsonElement fault) = await PackJsonAsync(missing, archive).ConfigureAwait(false);
-        Equal(2, exitCode);
+        Equal(1, exitCode);
         Equal("RAS1001", fault.GetProperty("code").GetString());
         Equal("The source directory does not exist.", fault.GetProperty("message").GetString());
         Equal(
             SanitizerRedacts(missing) ? "[redacted]" : missing,
             fault.GetProperty("details").GetProperty("sourceDirectory").GetString());
         (int humanExitCode, string _, string error) = await RunPackerAsync(missing, archive).ConfigureAwait(false);
-        Equal(2, humanExitCode);
+        Equal(1, humanExitCode);
         string[] errorLines = error.Trim().Split(Environment.NewLine);
         Equal($"Source directory '{missing}' does not exist.", errorLines[0]);
         // The message links to the code's catalog entry at the release tag.

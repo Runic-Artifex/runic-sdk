@@ -96,7 +96,7 @@ internal static partial class FrontendDevelopmentDocument
         if (relative == ".." ||
             relative.StartsWith($"..{Path.DirectorySeparatorChar}", StringComparison.Ordinal))
         {
-            throw new DevUsageException(
+            throw new DevDevelopmentException(
                 "RAPPDEV1005",
                 "The frontend development document escapes the runtime web root.");
         }

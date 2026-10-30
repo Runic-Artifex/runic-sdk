@@ -103,8 +103,9 @@ internal sealed class CreateTests
         File.WriteAllText(Path.Combine(destination, "notes.txt"), "kept");
         try
         {
+            // A directory that is not empty is a conflict with existing data: a command failure, exit code 1.
             (int exitCode, string output, _) = Run("MyApp", "-o", destination, "--yes", "--dry-run", "--format", "json");
-            Equal("2", exitCode.ToString(System.Globalization.CultureInfo.InvariantCulture));
+            Equal("1", exitCode.ToString(System.Globalization.CultureInfo.InvariantCulture));
             True(output.Contains("RCREATE003", StringComparison.Ordinal), output);
 
             (exitCode, output, string error) = Run("MyApp", "-o", destination, "--force", "--yes", "--dry-run", "--format", "json");
