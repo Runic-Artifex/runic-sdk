@@ -1,11 +1,12 @@
-// Startup and memory of a published Runic Desktop application in serve-only mode (X1, Linux): the time from process
-// start until the surface printed RUNIC_APPLICATION_URL, until its page, bootstrap script and Views client were served,
-// and the resident memory then (VmRSS) and at its peak (VmHWM).
+// Startup and memory of a published Runic Desktop application in serve-only mode (X1; Linux, macOS and Windows since
+// X2): the time from process start until the surface printed RUNIC_APPLICATION_URL, until its page, bootstrap script
+// and Views client were served, and the resident memory then and at its peak (Linux: VmRSS and VmHWM; macOS: ps's
+// RSS, no peak; Windows: the working set and its peak).
 //
 //   node tests/benchmarks/native-server/startup.mjs <executable> [runs]
 //
 // Prints one JSON object with the medians. The application exits on a line on standard input, as serve-only does.
-import { spawn } from "node:child_process";
+import { execFileSync, spawn } from "node:child_process";
 import { readFileSync } from "node:fs";
 
 const [executable, runsArgument = "15"] = process.argv.slice(2);
@@ -16,6 +17,21 @@ if (!executable) {
 const runs = Number(runsArgument);
 const kib = (status, field) => Number(status.match(new RegExp(`^${field}:\\s+(\\d+) kB`, "m"))?.[1] ?? NaN);
 const median = values => [...values].sort((a, b) => a - b)[Math.floor(values.length / 2)];
+
+// Resident memory in KiB, now and at its peak where the platform reports it.
+function memory(pid) {
+  if (process.platform === "linux") {
+    const status = readFileSync(`/proc/${pid}/status`, "utf8");
+    return { rssKiB: kib(status, "VmRSS"), peakKiB: kib(status, "VmHWM") };
+  }
+  if (process.platform === "darwin") {
+    const rss = Number(execFileSync("ps", ["-o", "rss=", "-p", String(pid)], { encoding: "utf8" }).trim());
+    return { rssKiB: rss, peakKiB: NaN };
+  }
+  const [workingSet, peak] = execFileSync("powershell", ["-NoProfile", "-Command",
+    `$p = Get-Process -Id ${pid}; "$($p.WorkingSet64) $($p.PeakWorkingSet64)"`], { encoding: "utf8" }).trim().split(/\s+/).map(Number);
+  return { rssKiB: workingSet / 1024, peakKiB: peak / 1024 };
+}
 
 async function once() {
   const started = process.hrtime.bigint();
@@ -46,8 +62,7 @@ async function once() {
     await response.arrayBuffer();
   }
   const served = Number(process.hrtime.bigint() - started) / 1e6;
-  const status = readFileSync(`/proc/${child.pid}/status`, "utf8");
-  const result = { listening, served, rssKiB: kib(status, "VmRSS"), peakKiB: kib(status, "VmHWM") };
+  const result = { listening, served, ...memory(child.pid) };
   const exited = new Promise(resolve => child.on("exit", resolve));
   child.stdin.end("\n");
   const timer = setTimeout(() => child.kill("SIGKILL"), 10_000);
@@ -65,5 +80,5 @@ console.log(JSON.stringify({
   listeningMs: Math.round(median(results.map(result => result.listening)) * 10) / 10,
   servedMs: Math.round(median(results.map(result => result.served)) * 10) / 10,
   rssMiB: Math.round(median(results.map(result => result.rssKiB)) / 102.4) / 10,
-  peakMiB: Math.round(median(results.map(result => result.peakKiB)) / 102.4) / 10,
+  peakMiB: Number.isNaN(results[0].peakKiB) ? null : Math.round(median(results.map(result => result.peakKiB)) / 102.4) / 10,
 }));

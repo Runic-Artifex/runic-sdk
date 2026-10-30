@@ -42,6 +42,9 @@
         {
           example-status-icon = examples.status-icon;
           example-status-icon-aot = examples.status-icon-aot;
+          # The same example on the experimental native Desktop server, its library built from source (X2).
+          example-status-icon-native-server = examples.status-icon-native-server;
+          example-status-icon-native-server-aot = examples.status-icon-native-server-aot;
           example-privileged-smoke = examples.privileged-smoke;
           builder-test-runner = import ./nix/tests/test-runner.nix {
             pkgs = import nixpkgs { system = "x86_64-linux"; };
