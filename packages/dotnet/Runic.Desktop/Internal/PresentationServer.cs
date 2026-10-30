@@ -39,9 +39,13 @@ internal static class PresentationServers
             ? new NativePresentationServer(configureServices)
             : CreateKestrel(configureServices);
 
-    [DynamicDependency(DynamicallyAccessedMemberTypes.NonPublicConstructors, "Runic.Desktop.Kestrel.KestrelPresentationServerFactory", "Runic.Desktop.Kestrel")]
+    // The factory's implicit constructor is public (its class is internal).
+    [DynamicDependency(DynamicallyAccessedMemberTypes.PublicParameterlessConstructor, "Runic.Desktop.Kestrel.KestrelPresentationServerFactory", "Runic.Desktop.Kestrel")]
     [UnconditionalSuppressMessage("Trimming", "IL2026", Justification = "The factory's constructor is kept by the DynamicDependency above.")]
     [UnconditionalSuppressMessage("Trimming", "IL2072", Justification = "The factory's constructor is kept by the DynamicDependency above.")]
+    // An application without Runic.Desktop.Kestrel (RunicDesktopServer=None) has no assembly to resolve; the lookup then
+    // reports presentation-server-unavailable.
+    [UnconditionalSuppressMessage("Trimming", "IL2035", Justification = "Runic.Desktop.Kestrel is optional.")]
     private static IPresentationServer CreateKestrel(Action<IServiceCollection>? configureServices)
     {
         Type? type;
@@ -53,7 +57,7 @@ internal static class PresentationServers
         {
             type = null;
         }
-        if (type is null || Activator.CreateInstance(type, nonPublic: true) is not PresentationServerFactory factory)
+        if (type is null || Activator.CreateInstance(type) is not PresentationServerFactory factory)
         {
             throw new DesktopException(
                 DesktopErrorCategory.Unavailable,

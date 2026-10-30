@@ -28,6 +28,8 @@ const projects = [
   ["Runic.Assets", "Runic.Assets"],
   ["Runic.Assets.Desktop", "Runic.Assets.Desktop"],
   ["Runic.Application.Views.Desktop", "Runic.Application.Views.Desktop"],
+  // The presentation server (since 0.15).
+  ["Runic.Desktop.Kestrel", "Runic.Desktop.Kestrel"],
 ];
 const version = JSON.parse(await readFile(join(root, "eng/workspace.json"), "utf8")).version;
 // A unique package version keeps restore from resolving the published release of the
@@ -89,6 +91,7 @@ try {
   <ItemGroup>
     <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="${dependencyInjection}" />
     <PackageReference Include="Runic.Application.Views.Desktop" Version="${testVersion}" />
+    <PackageReference Include="Runic.Desktop.Kestrel" Version="${testVersion}" />
     <PackageReference Include="Runic.Application.Views.ReactiveUI" Version="${testVersion}" />
   </ItemGroup>
   <ItemGroup Condition="'$(RunicApplicationFrontendBootstrap)' == 'true'"><Compile Remove="Program.cs" /></ItemGroup>

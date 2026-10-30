@@ -137,6 +137,11 @@
     },
     {
       "ecosystem": "nuget",
+      "identity": "Runic.Desktop.Kestrel",
+      "version": "0.14.0"
+    },
+    {
+      "ecosystem": "nuget",
       "identity": "Runic.Platform.Linux.Portal",
       "version": "0.14.0"
     },

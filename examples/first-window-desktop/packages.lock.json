@@ -118,7 +118,7 @@
       "runic.desktop.kestrel": {
         "type": "Project",
         "dependencies": {
-          "Runic.Desktop": "[0.13.0, )"
+          "Runic.Desktop": "[0.14.0, )"
         }
       },
       "runic.navigation": {

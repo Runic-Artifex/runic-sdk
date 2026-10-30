@@ -16,6 +16,8 @@
   <ItemGroup>
     <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="$(RunicContainerVersion)" />
     <PackageReference Include="Runic.Application.Views.Wpf" Version="$(RunicPackageVersion)" />
+    <!-- The presentation server (since 0.15). -->
+    <PackageReference Include="Runic.Desktop.Kestrel" Version="$(RunicPackageVersion)" />
     <ProjectReference Include="../Model/SplitModel.csproj" />
   </ItemGroup>
 </Project>
