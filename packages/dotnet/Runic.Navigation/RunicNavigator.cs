@@ -218,7 +218,10 @@ public sealed class RunicNavigator : IAsyncDisposable, IDisposable
                 throw new InvalidOperationException(
                     $"This {owner.GetType().Name} is shared between navigation entries (NavigationTarget.Share), so it can't own a navigation region. Own the region from content that is not shared.");
             region = new NavigationRegionCore(this, ++_nextRegionId, typeof(TContent).Name, owner,
-                options?.WhileParentRetained ?? NavigationChildRetention.Keep, options?.Admission ?? NavigationAdmission.Supersede);
+                options?.WhileParentRetained ?? NavigationChildRetention.Keep, options?.Admission ?? NavigationAdmission.Supersede)
+            {
+                AskOnParentRetain = options?.AskOnParentRetain ?? false,
+            };
             if (target is not null)
             {
                 region.Started = true;
@@ -922,7 +925,8 @@ public sealed class RunicNavigator : IAsyncDisposable, IDisposable
         NavigationTargetCore? target, NavigationEntryId? backTo, NavigationEntryId? expected,
         CancellationToken cancellationToken, NavigationReturn? @return = null, NavigationResultRequestCore? request = null,
         bool runDetached = false, NavigationAdmission? admission = null, NavigationEntryId? requester = null,
-        bool? retainView = null, NavigationRegionCore? member = null)
+        bool? retainView = null, NavigationRegionCore? member = null,
+        NavigationDepartureKind confirmKind = NavigationDepartureKind.Retire, Action? confirmed = null)
     {
         // The outcome of a request that ends at admission: a rejection, or a Select that changes nothing.
         TransitionOutcome? settled = null;
@@ -1006,7 +1010,8 @@ public sealed class RunicNavigator : IAsyncDisposable, IDisposable
                 // The provisional plan: the child regions this request would
                 // reset or close. Their transitions are superseded the same way.
                 // A queued request does this when it starts (AdmitQueuedAsync).
-                var plan = ComputePlanLocked(region, operation, pending: null, backTo, expected, @return is not null, member);
+                var plan = ComputePlanLocked(region, operation, pending: null, backTo, expected, @return is not null, member,
+                    confirmKind);
                 // Only a Back without a result return can be joined; no other transition keeps its plan.
                 var joinable = operation == NavigationOperation.Back && @return is null;
                 if (!queued) SupersedeChildrenLocked(region, plan, settlement, superseded, waitFor);
@@ -1021,6 +1026,8 @@ public sealed class RunicNavigator : IAsyncDisposable, IDisposable
                     Requester = requester,
                     Member = member,
                     Queued = queued,
+                    ConfirmKind = confirmKind,
+                    Confirmed = confirmed,
                 };
                 if (joinable) backCaller = transition.AddBackCallerLocked(cancellationToken);
                 if (pending is not null) pending.Transition = transition;
@@ -1087,7 +1094,7 @@ public sealed class RunicNavigator : IAsyncDisposable, IDisposable
                 || transition.CancellationRequested)
                 return false;
             var plan = ComputePlanLocked(region, transition.Operation, pending: null, transition.BackTo, transition.Expected,
-                transition.Return is not null, transition.Member);
+                transition.Return is not null, transition.Member, transition.ConfirmKind);
             if (plan.Rejection is null) SupersedeChildrenLocked(region, plan, transition.Settlement, superseded, waitFor);
         }
         foreach (var earlier in superseded) StartOverrunTimer(earlier);
@@ -1431,7 +1438,7 @@ public sealed class RunicNavigator : IAsyncDisposable, IDisposable
                 || transition.CancellationRequested)
                 return (CancelledOutcome(transition), null);
             plan = ComputePlanLocked(region, transition.Operation, transition.Pending, transition.BackTo, transition.Expected,
-                transition.Return is not null, transition.Member);
+                transition.Return is not null, transition.Member, transition.ConfirmKind);
             regionGuards = RegionGuardsLocked(transition, plan);
         }
         if (plan.Rejection is { } rejection) return (TransitionOutcome.Reject(rejection), null);
@@ -1728,7 +1735,9 @@ public sealed class RunicNavigator : IAsyncDisposable, IDisposable
                 commit.Retire.AddRange(plan.Removed);
                 foreach (var closing in plan.Closing)
                     MarkClosedLocked(closing, commit.Cancel);
-                foreach (var affected in plan.Regions) affected.Version++;
+                // A Confirm changes no region, so it supersedes no plan that includes one.
+                if (transition.Operation != NavigationOperation.Confirm)
+                    foreach (var affected in plan.Regions) affected.Version++;
                 var selectionChanges = region.SelectionUnit is { } selection
                     ? ApplySelectionLocked(selection, transition)
                     : NavigationRegionChanges.None;
@@ -1773,10 +1782,24 @@ public sealed class RunicNavigator : IAsyncDisposable, IDisposable
                     OperationName(transition.Operation), entryType, NavigationTelemetry.ErrorType(error));
             }
         }
+        // A Confirm's caller does the agreed work last in the turn (ConfirmDepartureAsync). It is the caller's code, so its
+        // exception fails the request rather than being only logged.
+        Exception? confirmFailed = null;
+        if (commit is not null && transition.Confirmed is { } confirmed)
+        {
+            try { confirmed(); }
+            catch (Exception error)
+            {
+                confirmFailed = error;
+                NavigationLog.NavigationCommitFailed(Logger, error, region.ContentTypeName, region.Id,
+                    OperationName(transition.Operation), NavigationTelemetry.ErrorType(error));
+            }
+        }
         // Then the entries' StateChanged and INavigationAware calls, before the regions' notifications.
         RaiseEntryChanges(entryChanges, transition.Operation);
         foreach (var (affected, changes) in changed) affected.RaiseChanges(changes);
         if (!changed.Any(item => ReferenceEquals(item.Region, region))) region.RaiseChanges(NavigationRegionChanges.None);
+        if (confirmFailed is not null) return new NavigationCommitResult(TransitionOutcome.Fail(confirmFailed, NavigationPhase.Committing), null);
         return new NavigationCommitResult(stopped ?? TransitionOutcome.Commit(commit!.Current, []), commit);
     }
 
@@ -2050,7 +2073,7 @@ public sealed class RunicNavigator : IAsyncDisposable, IDisposable
 
     private NavigationPlan ComputePlanLocked(NavigationRegionCore region, NavigationOperation operation,
         NavigationEntryCore? pending, NavigationEntryId? backTo, NavigationEntryId? expected, bool popToEmpty = false,
-        NavigationRegionCore? member = null)
+        NavigationRegionCore? member = null, NavigationDepartureKind confirmKind = NavigationDepartureKind.Retire)
     {
         if (region.SelectionUnit is { } selection) return ComputeSelectionPlanLocked(selection, operation, member!, expected);
         var plan = new NavigationPlan();
@@ -2087,8 +2110,17 @@ public sealed class RunicNavigator : IAsyncDisposable, IDisposable
                             foreach (var entry in removed) AddRetiring(plan, entry);
                         }
                     }
+                    // NavigationRegionOptions.AskOnParentRetain: the child regions that keep their entries under the
+                    // retained entry and opted in are asked as a tab switch asks the tab it leaves.
+                    if (current.Content is { } covered && _regionsByOwner.TryGetValue(covered, out var coveredRegions))
+                        AddKept(plan, AskedOnParentRetain(coveredRegions, current.Owned));
                     plan.Guards.Add((current, NavigationDepartureKind.Retain));
                 }
+                break;
+            case NavigationOperation.Confirm:
+                // Asks what the departure would ask, and changes nothing (ConfirmDepartureAsync).
+                plan.NewStack = stack;
+                if (current is not null) AddConfirmed(plan, current, confirmKind);
                 break;
             case NavigationOperation.Back:
                 // A return from a result entry may leave the region empty.
@@ -2215,6 +2247,42 @@ public sealed class RunicNavigator : IAsyncDisposable, IDisposable
             else AddKept(plan, children);
         }
         plan.Guards.Add((entry, NavigationDepartureKind.Retire));
+    }
+
+    // The regions of a retained entry's content that a push over it asks (NavigationRegionOptions.AskOnParentRetain): those
+    // that keep their entries under it and opted in. A selection's unit goes with its selected region's setting, so the
+    // push's basis includes the selection and AddKept follows only the selected region.
+    private static IEnumerable<NavigationRegionCore> AskedOnParentRetain(List<NavigationRegionCore> regions, bool owned)
+    {
+        foreach (var region in regions)
+        {
+            if (region.Closed) continue;
+            var decides = region.SelectionUnit is { } unit ? unit.Selected : region;
+            if (decides is { AskOnParentRetain: true }
+                && (!owned || decides.WhileParentRetained == NavigationChildRetention.Keep))
+                yield return region;
+        }
+    }
+
+    // A ConfirmDepartureAsync plan: the guards a departure of the entry as `kind` would ask, deepest first, with the regions
+    // below it in the basis only (Kept): nothing is superseded, closed or changed. A retirement of owned content asks every
+    // entry of the regions it owns as retired; otherwise their current entries are asked as retained (AddKept).
+    private void AddConfirmed(NavigationPlan plan, NavigationEntryCore entry, NavigationDepartureKind kind)
+    {
+        if (entry.Content is { } content && _regionsByOwner.TryGetValue(content, out var children))
+        {
+            if (kind == NavigationDepartureKind.Retire && entry.Owned)
+            {
+                foreach (var child in children)
+                {
+                    if (child.Closed || plan.Kept.Contains(child)) continue;
+                    plan.Kept.Add(child);
+                    foreach (var descendant in TopDown(child.Stack, 0)) AddConfirmed(plan, descendant, kind);
+                }
+            }
+            else AddKept(plan, children);
+        }
+        plan.Guards.Add((entry, kind));
     }
 
     // Adds the current entry of each region that keeps its entries while the content owning it departs, and of the
@@ -3207,6 +3275,7 @@ public sealed class RunicNavigator : IAsyncDisposable, IDisposable
         NavigationOperation.Reset => "Reset",
         NavigationOperation.ClearHistory => "ClearHistory",
         NavigationOperation.Select => "Select",
+        NavigationOperation.Confirm => "Confirm",
         _ => "Clear",
     };
 }
@@ -3262,6 +3331,9 @@ internal sealed class NavigationTransition : IDisposable
     // Admitted with NavigationAdmission.Queue behind earlier requests of its region: it superseded none of them, and is
     // admitted for its plan when it starts (AdmitQueuedAsync).
     public bool Queued { get; init; }
+    // A Confirm's departure kind, and the caller's action for its commit turn (ConfirmDepartureAsync).
+    public NavigationDepartureKind ConfirmKind { get; init; }
+    public Action? Confirmed { get; init; }
     // Read under the navigator's gate, including at commit: token callbacks can be delayed by that gate.
     public bool CancellationRequested => _backCallers is { } callers
         ? callers.All(static caller => caller.Token.IsCancellationRequested)

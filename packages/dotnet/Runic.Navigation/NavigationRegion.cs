@@ -157,6 +157,50 @@ public abstract class NavigationRegion : INotifyPropertyChanged
         NavigationResults.MapAsync<object>(Core.Start(NavigationOperation.Clear, null, null, options, cancellationToken));
 
     /// <summary>
+    /// Asks the departure guards of the current entry, and of the entries below it, whether it may depart as
+    /// <paramref name="kind"/>, without navigating: a transition of this region whose commit changes no stack and no
+    /// entry's state, and runs the guards' <see cref="NavigationDeparture.OnCommitted"/> actions and then
+    /// <paramref name="onConfirmed"/> in its commit turn. For work outside navigation that would end what the entry
+    /// shows, such as switching the account while a page with unsaved tabs sits in history.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// It asks what that departure would ask, with <see cref="NavigationOperation.Confirm"/>: for
+    /// <see cref="NavigationDepartureKind.Retire"/>, every entry of the regions the current entry's owned content owns,
+    /// deepest first, as <see cref="NavigationDepartureKind.Retire"/>, and the current entries of the regions borrowed
+    /// content owns as <see cref="NavigationDepartureKind.Retain"/>; for <see cref="NavigationDepartureKind.Retain"/>, the
+    /// current entry of each region below it, as a tab switch does. Of a selection's regions, a retained departure follows
+    /// only the selected one. The current entry is asked last, then the region and navigator guards by their options.
+    /// </para>
+    /// <para>
+    /// It is admitted like a request of the region (its <see cref="Admission"/>, or
+    /// <see cref="NavigationRequestOptions.Admission"/>): by default it supersedes the region's pending requests, with
+    /// <see cref="NavigationAdmission.Queue"/> it waits for them. A commit in an asked region while the guards run
+    /// supersedes it. Its result is <see cref="NavigationResult{TContent}.Committed"/> with the current entry when every
+    /// guard agreed and <paramref name="onConfirmed"/> ran; otherwise a rejection (<see cref="NavigationRejection.Guard"/>
+    /// with the vetoing entry, <see cref="NavigationRejection.Cancelled"/>, <see cref="NavigationRejection.Busy"/>, ...),
+    /// <see cref="NavigationResult{TContent}.Superseded"/> or <see cref="NavigationResult{TContent}.Failed"/>. An empty
+    /// region asks nothing and commits. The answer holds for the commit turn: do the agreed work in
+    /// <paramref name="onConfirmed"/>, which must not pump or await navigation. When it throws, the result is
+    /// <see cref="NavigationResult{TContent}.Failed"/> in <see cref="NavigationPhase.Committing"/> (event 1062), after the
+    /// guards' actions ran.
+    /// </para>
+    /// </remarks>
+    /// <param name="kind">How the current entry would depart: retired, so its work is lost, or retained.</param>
+    /// <param name="onConfirmed">Runs in the commit turn when every guard agreed, after their actions; or <see langword="null"/>.</param>
+    /// <param name="options">The request's expected current entry, admission and requester.</param>
+    /// <param name="cancellationToken">Cancels the request before its commit.</param>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="kind"/> is not a defined value.</exception>
+    public ValueTask<NavigationResult<object>> ConfirmDepartureAsync(NavigationDepartureKind kind, Action? onConfirmed = null,
+        NavigationRequestOptions? options = null, CancellationToken cancellationToken = default)
+    {
+        if (kind is not (NavigationDepartureKind.Retain or NavigationDepartureKind.Retire))
+            throw new ArgumentOutOfRangeException(nameof(kind), kind, "The departure kind is not defined.");
+        return NavigationResults.MapAsync<object>(Core.Start(NavigationOperation.Confirm, null, null, options, cancellationToken,
+            confirmKind: kind, confirmed: onConfirmed));
+    }
+
+    /// <summary>
     /// Replaces the current entry with borrowed <paramref name="content"/>. For presentation adapters that select
     /// existing models without knowing the region's content type, such as Runic.Navigation.Wpf's
     /// <c>NavigationSelector</c>; application code calls <see cref="NavigationRegion{TContent}.ReplaceAsync(INavigationTarget{TContent}, NavigationRequestOptions?, CancellationToken)"/>.
@@ -472,6 +516,8 @@ internal sealed class NavigationRegionCore(RunicNavigator navigator, int id, str
     public object Owner { get; } = owner;
     public NavigationChildRetention WhileParentRetained { get; } = whileParentRetained;
     public NavigationAdmission Admission { get; } = admission;
+    // NavigationRegionOptions.AskOnParentRetain: a push that retains the owning entry asks this region's current entry.
+    public bool AskOnParentRetain { get; init; }
 
     // Bottom to top; the top entry is current.
     private volatile NavigationEntryCore[] _stack = [];
@@ -540,9 +586,11 @@ internal sealed class NavigationRegionCore(RunicNavigator navigator, int id, str
 
     public Task<TransitionOutcome> Start(NavigationOperation operation, NavigationTargetCore? target,
         NavigationEntryId? backTo, NavigationRequestOptions? options, CancellationToken cancellationToken,
-        NavigationReturn? @return = null) =>
+        NavigationReturn? @return = null, NavigationDepartureKind confirmKind = NavigationDepartureKind.Retire,
+        Action? confirmed = null) =>
         Navigator.Start(this, operation, target, backTo, options?.ExpectedCurrent, cancellationToken, @return,
-            admission: options?.Admission, requester: options?.Requester, retainView: options?.RetainView);
+            admission: options?.Admission, requester: options?.Requester, retainView: options?.RetainView,
+            confirmKind: confirmKind, confirmed: confirmed);
 
     // Runs inside a model turn. IsTransitioning and IsBusy are raised only when their
     // value differs from the last value raised, so admission and release on
