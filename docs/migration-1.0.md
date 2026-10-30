@@ -26,7 +26,6 @@ the release notes, which give the full detail and the pull requests:
   [Behaviour changes](../eng/release/notes/0.13.0.md#behaviour-changes)
 - 0.14.0: [Fork integration](../eng/release/notes/0.14.0.md#fork-integration-validation-and-dynamicdata-v1),
   [Text splices and requests with `hello`](../eng/release/notes/0.14.0.md#text-splices-and-requests-with-hello-p1)
-- 0.15.0: [Views protocol](../eng/release/notes/0.15.0.md#views-protocol-v5)
 
 ## Before you start
 
