@@ -8,3 +8,21 @@ Runic.Platform.Administration.Windows.DirectoryServices.DomainMembership.DnsDoma
 Runic.Platform.Administration.Windows.DirectoryServices.DomainMembership.ForestName.get -> string?
 Runic.Platform.Administration.Windows.DirectoryServices.DomainMembership.ForestName.init -> void
 Runic.Platform.Administration.Windows.DirectoryServices.WindowsDomainClient.DiscoverControllerAsync(string? domainName, bool requirePrimary, bool requireWritable, Runic.Platform.Administration.Windows.DirectoryServices.DomainControllerNameFormat nameFormat, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<Runic.Platform.Administration.Windows.DirectoryServices.DomainControllerInfo!>!
+Runic.Platform.Administration.Windows.Firewall.FirewallClientOptions
+Runic.Platform.Administration.Windows.Firewall.FirewallClientOptions.FirewallClientOptions() -> void
+Runic.Platform.Administration.Windows.Firewall.FirewallClientOptions.WriteWhenLocalPolicyOverridden.get -> bool
+Runic.Platform.Administration.Windows.Firewall.FirewallClientOptions.WriteWhenLocalPolicyOverridden.init -> void
+Runic.Platform.Administration.Windows.Firewall.FirewallLocalPolicyState
+Runic.Platform.Administration.Windows.Firewall.FirewallLocalPolicyState.Effective = 0 -> Runic.Platform.Administration.Windows.Firewall.FirewallLocalPolicyState
+Runic.Platform.Administration.Windows.Firewall.FirewallLocalPolicyState.GroupPolicyOverride = 1 -> Runic.Platform.Administration.Windows.Firewall.FirewallLocalPolicyState
+Runic.Platform.Administration.Windows.Firewall.FirewallLocalPolicyState.InboundBlocked = 2 -> Runic.Platform.Administration.Windows.Firewall.FirewallLocalPolicyState
+Runic.Platform.Administration.Windows.Firewall.WindowsFirewallClient.DeleteAllAsync(string! name, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<int>!
+Runic.Platform.Administration.Windows.Firewall.WindowsFirewallClient.GetLocalPolicyStateAsync(System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<Runic.Platform.Administration.Windows.Firewall.FirewallLocalPolicyState>!
+Runic.Platform.Administration.Windows.Firewall.WindowsFirewallClient.WindowsFirewallClient(Runic.Platform.Administration.Windows.Firewall.FirewallClientOptions! options) -> void
+override Runic.Platform.Administration.Windows.Firewall.FirewallClientOptions.Equals(object? obj) -> bool
+override Runic.Platform.Administration.Windows.Firewall.FirewallClientOptions.GetHashCode() -> int
+override Runic.Platform.Administration.Windows.Firewall.FirewallClientOptions.ToString() -> string!
+Runic.Platform.Administration.Windows.Firewall.FirewallClientOptions.<Clone>$() -> Runic.Platform.Administration.Windows.Firewall.FirewallClientOptions!
+Runic.Platform.Administration.Windows.Firewall.FirewallClientOptions.Equals(Runic.Platform.Administration.Windows.Firewall.FirewallClientOptions? other) -> bool
+static Runic.Platform.Administration.Windows.Firewall.FirewallClientOptions.operator !=(Runic.Platform.Administration.Windows.Firewall.FirewallClientOptions? left, Runic.Platform.Administration.Windows.Firewall.FirewallClientOptions? right) -> bool
+static Runic.Platform.Administration.Windows.Firewall.FirewallClientOptions.operator ==(Runic.Platform.Administration.Windows.Firewall.FirewallClientOptions? left, Runic.Platform.Administration.Windows.Firewall.FirewallClientOptions? right) -> bool

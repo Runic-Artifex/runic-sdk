@@ -33,7 +33,7 @@ domain controllers and non-DC DNS servers.
 | Services / WindowsServiceClient | Enumeration, configuration/status/PID; create/update/delete; lifecycle, waits; description, delayed start, failure actions | Local or explicit SCM machine, caller identity; operation-specific SCM/service rights. Reboot failure actions need the appropriate privilege. |
 | Processes / WindowsProcessClient | PID/parent snapshots, lookup and children | Local read-only Toolhelp snapshot; no launch or termination API. A service snapshot supplies its process ID. |
 | Tasks / WindowsTaskSchedulerClient | Folders/tasks; typed definitions, XML import/export, selected updates, validation, enable/run/stop/delete; ten trigger families | Local or explicit machine, caller identity; Task Scheduler service and task/folder permissions. Registration password supplied separately. |
-| Firewall / WindowsFirewallClient | Rules, identity checks, selected updates/deletion and effective profile inspection | Local Windows Firewall service; writes need policy access. Ambiguous native names are rejected. No global disable API. |
+| Firewall / WindowsFirewallClient | Rules, identity checks, selected updates/deletion, deletion of every rule of a name, local policy state and effective profile inspection | Local Windows Firewall service; writes need policy access. Ambiguous native names are rejected for single-rule operations. No global disable API. |
 | DirectoryServices / WindowsDomainClient | Domain membership/role with the domain's flat, DNS and forest names; controller discovery with DNS or flat names | Local or explicit computer, native NetAPI access. Membership is read without contacting a controller. |
 | DirectoryServices / WindowsDirectoryClient | RootDSE, paged searches, ranged values, typed attributes, create/modify/delete/rename/move | Explicit LDAP endpoint, caller or explicit credentials; delegated directory rights. Signed/sealed Negotiate, LDAPS or StartTLS. |
 | DirectoryServices / ActiveDirectoryClient | User/computer/group/OU creation; memberships, account enablement, password operations and SPNs | Explicit directory client; appropriate AD rights. Newly created user/computer accounts are disabled. No installation/domain naming policy. |
@@ -148,7 +148,15 @@ membership.
   ICMP protocol (`ArgumentException`); an existing rule of that kind can still be
   updated, for example disabled. Delete renames the rule it checked to a unique
   temporary name and removes that name, so a rule that takes the name concurrently
-  is not removed.
+  is not removed. `DeleteAllAsync(name)` deletes every rule of that name in the
+  same way, as `netsh advfirewall firewall delete rule name=…` does, and returns
+  the number deleted.
+- Firewall writes are refused (`AccessDenied`) while `GetLocalPolicyStateAsync()`
+  is not `FirewallLocalPolicyState.Effective`, that is, while Group Policy
+  overrides local rules or inbound traffic is blocked. An installer that maintains
+  the local store anyway opts in with
+  `new WindowsFirewallClient(new FirewallClientOptions { WriteWhenLocalPolicyOverridden = true })`
+  and reports the state; the rules apply again once the policy allows local rules.
 - DNS keys include full record data, not just owner name. A and AAAA addresses are
   `IPAddress` values; TTLs are `TimeSpan` values in whole seconds, and a
   specification's `TimeToLive = null` lets the server choose the TTL. Updating one record does

@@ -86,6 +86,12 @@ var firewall = new WindowsFirewallClient();
 foreach (var profile in await firewall.GetProfilesAsync()) Console.WriteLine(profile);
 var existing = await firewall.FindAsync("A fixture-owned unique rule name");
 if (existing is not null) Console.WriteLine(existing.Configuration);
+
+// An installer that created a rule several times over the years, under a Group Policy that may override local rules:
+var installer = new WindowsFirewallClient(new FirewallClientOptions { WriteWhenLocalPolicyOverridden = true });
+var deleted = await installer.DeleteAllAsync("Contoso Agent");
+var state = await installer.GetLocalPolicyStateAsync();
+if (state != FirewallLocalPolicyState.Effective) Console.WriteLine($"Local firewall rules do not apply now ({state}).");
 ~~~
 
 Fixture writes use FirewallRuleSpecification and FirewallRuleUpdate, and the
@@ -94,7 +100,8 @@ identity from the returned snapshot. `Protocol` is a `FirewallProtocol`: `Tcp` a
 other IANA protocol numbers are cast, for example `(FirewallProtocol)47`. An ambiguous name is a conflict. For a
 protocol change, explicitly clear incompatible ports/ICMP settings; null means
 preserve, not clear. Local Group Policy restrictions fail rather than claiming
-a rule became effective.
+a rule became effective, unless the client opts in with
+`FirewallClientOptions.WriteWhenLocalPolicyOverridden`.
 
 ## LDAP and Active Directory
 
