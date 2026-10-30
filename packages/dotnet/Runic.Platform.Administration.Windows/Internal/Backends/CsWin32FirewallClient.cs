@@ -102,8 +102,13 @@ internal sealed unsafe class CsWin32FirewallClient : IFirewallClient
         {
             Visit(rules, rule =>
             {
-                if (string.Equals(Text(rule, Field.Name), name, StringComparison.OrdinalIgnoreCase)) result.Add(rule);
-                else rule.Dispose();
+                var matches = false;
+                try { matches = string.Equals(Text(rule, Field.Name), name, StringComparison.OrdinalIgnoreCase); }
+                finally
+                {
+                    if (matches) result.Add(rule);
+                    else rule.Dispose();
+                }
             });
         }
         catch
@@ -402,9 +407,17 @@ internal sealed unsafe class CsWin32FirewallClient : IFirewallClient
     {
         Writable(policy);
         var deleted = 0;
-        foreach (var rule in Matching(rules, name))
-            using (rule)
+        var matching = Matching(rules, name);
+        try
+        {
+            foreach (var rule in matching)
                 if (Remove(rules, rule, name)) deleted++;
+        }
+        finally
+        {
+            // Every rule object is released, also those after a removal that failed.
+            foreach (var rule in matching) rule.Dispose();
+        }
         return deleted;
     }
 
