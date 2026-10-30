@@ -70,8 +70,16 @@ public interface IRunicModelContext : IAsyncDisposable
 /// the calling thread once the context is closed. An exception that escapes a posted callback, such as one thrown
 /// by an <c>async void</c> method, is reported through <see cref="UnhandledTurnException"/>.
 /// </para>
+/// <para>
+/// As an <see cref="IRunicModelHookScheduler"/>, it runs a navigator's hooks (target factories, departure guards,
+/// initialize, resume and arrival hooks, and the disposal of owned content) in its turns: each hook starts in a turn of
+/// its own, never inline in the caller, and its awaits resume in later turns like any code started in a turn. A hook
+/// therefore sets the state of its page directly, on every host, as it would on a UI dispatcher. No turn is held across
+/// the hook's awaits, so the navigator's commits and other turns run between them. A hook must not block its turn, for
+/// example with <c>Wait()</c> on work that needs another turn of this context.
+/// </para>
 /// </remarks>
-public sealed class RunicModelContext : IRunicModelContext, IRunicModelContextLifetime
+public sealed class RunicModelContext : IRunicModelContext, IRunicModelHookScheduler, IRunicModelContextLifetime
 {
     [ThreadStatic]
     private static RunicModelContext? Executing;
@@ -201,6 +209,19 @@ public sealed class RunicModelContext : IRunicModelContext, IRunicModelContextLi
         if (!Enqueue(item))
             return ValueTask.FromException<T>(new ObjectDisposedException(nameof(RunicModelContext)));
         return new(item.Completion);
+    }
+
+    // The navigator's hook scheduler, implemented explicitly like DispatcherModelContext's: applications run work in
+    // the context with InvokeAsync. The hook starts in a turn of its own and its continuations are later turns (#714).
+    Task<T> IRunicModelHookScheduler.RunHookAsync<T>(Func<Task<T>> hook, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(hook);
+        if (Volatile.Read(ref _disposed)) return Task.FromException<T>(new ObjectDisposedException(nameof(RunicModelContext)));
+        if (cancellationToken.IsCancellationRequested) return Task.FromCanceled<T>(cancellationToken);
+        // Always queued, also from a turn of this context: a hook never runs inline in the caller.
+        var item = new HookWorkItem<T>(hook, cancellationToken);
+        if (!Enqueue(item)) item.RejectDisposed();
+        return item.Completion;
     }
 
     /// <summary>
@@ -474,6 +495,76 @@ public sealed class RunicModelContext : IRunicModelContext, IRunicModelContextLi
         {
             if (Interlocked.CompareExchange(ref _state, 1, 0) != 0) return;
             _completion.TrySetCanceled();
+        }
+    }
+
+    // A navigator hook: its synchronous part runs as this turn, under the turn's SynchronizationContext, so its awaits
+    // resume in later turns. Exactly one of Execute (once started), cancellation and rejection decides the outcome; after
+    // the hook started, the task ends only with the hook's own outcome.
+    private sealed class HookWorkItem<T> : IWorkItem
+    {
+        private readonly Func<Task<T>> _hook;
+        private readonly CancellationToken _cancellationToken;
+        private readonly CancellationTokenRegistration _cancellationRegistration;
+        private readonly TaskCompletionSource<T> _completion = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private int _state;
+
+        public HookWorkItem(Func<Task<T>> hook, CancellationToken cancellationToken)
+        {
+            _hook = hook;
+            _cancellationToken = cancellationToken;
+            _cancellationRegistration = cancellationToken.CanBeCanceled
+                ? cancellationToken.Register(static state => ((HookWorkItem<T>)state!).Cancel(), this)
+                : default;
+        }
+
+        public Task<T> Completion => _completion.Task;
+
+        public void Execute(ExecutionContext? baselineExecutionContext)
+        {
+            _cancellationRegistration.Dispose();
+            if (Interlocked.CompareExchange(ref _state, 1, 0) != 0) return;
+            Task<T> task;
+            try { task = _hook(); }
+            catch (Exception error)
+            {
+                _completion.TrySetException(error);
+                return;
+            }
+            if (task is null)
+            {
+                _completion.TrySetException(new InvalidOperationException("The hook returned a null task."));
+                return;
+            }
+            if (task.IsCompleted) Complete(task, _completion);
+            else
+                task.ContinueWith(static (completed, state) => Complete(completed, (TaskCompletionSource<T>)state!), _completion,
+                    CancellationToken.None, TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
+        }
+
+        public void RejectDisposed()
+        {
+            _cancellationRegistration.Dispose();
+            if (Interlocked.CompareExchange(ref _state, 1, 0) == 0)
+                _completion.TrySetException(new ObjectDisposedException(nameof(RunicModelContext)));
+        }
+
+        private void Cancel()
+        {
+            if (Interlocked.CompareExchange(ref _state, 1, 0) != 0) return;
+            _completion.TrySetCanceled(_cancellationToken);
+        }
+
+        private static void Complete(Task<T> task, TaskCompletionSource<T> completion)
+        {
+            if (task.IsCompletedSuccessfully) completion.TrySetResult(task.Result);
+            else if (task.IsFaulted) completion.TrySetException(task.Exception!.InnerExceptions);
+            else
+            {
+                try { task.GetAwaiter().GetResult(); }
+                catch (OperationCanceledException canceled) { completion.TrySetCanceled(canceled.CancellationToken); }
+                catch (Exception error) { completion.TrySetException(error); }
+            }
         }
     }
 

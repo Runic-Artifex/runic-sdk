@@ -35,7 +35,7 @@ public sealed class LeaveConfirmation
     /// <summary>Creates a leave confirmation.</summary>
     /// <param name="hasUnsavedChanges">Returns whether leaving would lose changes. It is called inside a model turn.</param>
     /// <param name="confirm">
-    /// Asks the user and returns whether to leave. It runs in the guard, outside model turns, with the guard's token,
+    /// Asks the user and returns whether to leave. It runs in the guard, outside commit turns, with the guard's token,
     /// which is cancelled when the departure is superseded, cancelled or the navigator closes.
     /// </param>
     /// <param name="discard">Discards the changes. It runs in the commit turn of a confirmed departure, at most once per yes.</param>
@@ -107,7 +107,7 @@ public sealed class LeaveConfirmation
             return true;
         }
 
-        // 3. Read the state in a model turn: guards run outside turns.
+        // 3. Read the state in a model turn: inline under a context that schedules hooks, otherwise a turn of its own.
         if (!await departure.ModelContext.InvokeAsync(_hasUnsavedChanges, cancellationToken)) return true;
 
         // 4. Ask.

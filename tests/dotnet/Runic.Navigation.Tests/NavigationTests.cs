@@ -37,8 +37,9 @@ internal sealed partial class NavigationTests
         var back = await Wait(region.BackAsync());
         Require(back is NavigationResult<Page>.Committed { Current.Content: var current, Retired: [{ Value: 2 }] } && current == home,
             $"Back did not commit: {back}");
-        Require(detail.Disposed == 1 && !detail.DisposedInTurn && home.Resumed == 1 && region.History.Count == 0,
-            "Back did not retire the owned entry and resume the retained one.");
+        // RunicModelContext schedules hooks (#714): owned content is disposed in a turn of its own, on the model turn.
+        Require(detail.Disposed == 1 && detail.DisposedInTurn && home.Resumed == 1 && region.History.Count == 0,
+            "Back did not retire the owned entry in a turn of its own and resume the retained one.");
         Require(fixture.Navigator.UnretiredEntryCount == 1, $"{fixture.Navigator.UnretiredEntryCount} entries are tracked after Back.");
         Require(!RunicModelContextRegistry.Shared.TryGet(detail, out _), "The retired entry's model-context lease was not released.");
     }
@@ -792,26 +793,31 @@ internal sealed partial class NavigationTests
         var context = fixture.Context;
         var home = new Page("home");
         var region = fixture.Navigator.CreateRegion<Page>(fixture.Root, NavigationTarget.Borrow(home));
-        var hookInTurn = false;
+        // Hooks run in turns of their own (#714), never in the turn that admitted the request.
+        var admitting = false;
+        var hooks = new List<(bool InTurn, bool InAdmittingTurn)>();
         home.Guard = (_, _) =>
         {
-            hookInTurn |= context.IsExecuting;
+            hooks.Add((context.IsExecuting, admitting));
             return ValueTask.FromResult(true);
         };
-        var next = new InitPage("next") { Initialize = (_, _) => { hookInTurn |= context.IsExecuting; return ValueTask.CompletedTask; } };
+        var next = new InitPage("next") { Initialize = (_, _) => { hooks.Add((context.IsExecuting, admitting)); return ValueTask.CompletedTask; } };
         Task<NavigationResult<Page>>? pending = null;
         var completedInTurn = true;
         await context.InvokeAsync(() =>
         {
+            admitting = true;
             pending = region.PushAsync(NavigationTarget.Own<Page>(next)).AsTask();
             completedInTurn = pending.IsCompleted;
+            admitting = false;
         });
         var continuationInTurn = true;
         var observed = pending!.ContinueWith(_ => continuationInTurn = context.IsExecuting, TaskContinuationOptions.ExecuteSynchronously);
         var result = await Wait(pending);
         await Wait(observed);
-        Require(result is NavigationResult<Page>.Committed && !completedInTurn && !hookInTurn && !context.IsExecuting && !continuationInTurn,
-            "Admission inside a turn ran a hook or a continuation in a turn.");
+        Require(result is NavigationResult<Page>.Committed && !completedInTurn && hooks is [(true, false), (true, false)]
+                && !context.IsExecuting && !continuationInTurn,
+            $"Admission inside a turn ran a hook in that turn or outside a turn of its own, or a continuation in a turn: {string.Join(", ", hooks)}.");
     }
 
     [Test]
@@ -1072,9 +1078,11 @@ internal sealed partial class NavigationTests
                 NavigationTarget.Create<InputPage, string>(_ => new InputPage(), "input"))),
             "A Create target with input was accepted as an initial target.");
         var created = new InputPage();
-        Require(Throws<ArgumentException>(() => fixture.Navigator.CreateRegion<object>(new object(), NavigationTarget.Create<object>(_ => created)))
-            && created.Disposed == 1,
-            "An initializable factory initial target was accepted or not disposed.");
+        Require(Throws<ArgumentException>(() => fixture.Navigator.CreateRegion<object>(new object(), NavigationTarget.Create<object>(_ => created))),
+            "An initializable factory initial target was accepted.");
+        // Its disposal is a scheduled operation of the model context (#714).
+        await Wait(fixture.Navigator.WhenIdleAsync());
+        Require(created.Disposed == 1, "A rejected initializable factory initial target was not disposed.");
     }
 
     [Test]
@@ -1115,8 +1123,8 @@ internal sealed partial class NavigationTests
         Require(result is NavigationResult<Page>.Rejected { Reason: NavigationRejection.Closed } && pendingPage.Disposed == 1
             && committed.Disposed == 1 && region.Current is null,
             $"Disposal mid-transition gave {result}.");
-        Require(fixture.Navigator.UnretiredEntryCount == 0 && committed.Disposed == 1 && !committed.DisposedInTurn,
-            "Disposal left entries unretired.");
+        Require(fixture.Navigator.UnretiredEntryCount == 0 && committed.Disposed == 1 && committed.DisposedInTurn,
+            "Disposal left entries unretired or disposed content outside a turn of its own.");
         var closed = await Wait(region.PushAsync(NavigationTarget.Own(new Page("late"))));
         Require(closed is NavigationResult<Page>.Rejected { Reason: NavigationRejection.Closed }, "A disposed navigator admitted a request.");
         Require(Throws<ObjectDisposedException>(() => fixture.Navigator.CreateRegion<Page>(new object())), "A disposed navigator created a region.");

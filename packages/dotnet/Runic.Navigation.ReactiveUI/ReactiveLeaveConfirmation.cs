@@ -40,8 +40,8 @@ public static class ReactiveLeaveConfirmation
     /// it the same way. The entry stays current.
     /// </para>
     /// <para>
-    /// The question is asked in the guard, outside model turns, on the thread the guard runs on: the dispatcher for a WPF
-    /// navigator, the thread pool otherwise.
+    /// The question is asked in the guard, outside commit turns, where the guard runs: on the dispatcher for a WPF
+    /// navigator, in a turn of its own under <see cref="RunicModelContext"/>, which schedules hooks too.
     /// </para>
     /// <para>
     /// A Runic web View's handler answers a departure that its own window starts: a bridged command of any View in that

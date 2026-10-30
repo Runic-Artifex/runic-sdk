@@ -1,9 +1,9 @@
 namespace Runic.Navigation;
 
 /// <summary>
-/// Optionally implemented by an <see cref="IRunicModelContext"/> whose model has thread affinity, such as a UI
-/// dispatcher context. A navigator whose <see cref="RunicNavigator.ModelContext"/> implements this interface runs
-/// its hooks through it, each as a separate operation on the model's thread.
+/// Optionally implemented by an <see cref="IRunicModelContext"/> that runs the navigator's hooks in its context, such as
+/// <see cref="RunicModelContext"/> and a UI dispatcher context. A navigator whose <see cref="RunicNavigator.ModelContext"/>
+/// implements this interface runs its hooks through it, each as a separate operation on the model's thread.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -12,8 +12,10 @@ namespace Runic.Navigation;
 /// as operations separate from any hook. Disposal that can't be scheduled because the context is closed runs on the thread pool.
 /// </para>
 /// <para>
-/// Hook operations are not turns: they don't count toward a context's turn nesting, they hold no turn across their
-/// awaits, and a hook may pump (for example, show a modal dialog), during which commits of other transitions can run.
+/// Hook operations are not commit turns: they don't count toward a context's turn nesting, they hold no turn across their
+/// awaits, and on a UI dispatcher a hook may pump (for example, show a modal dialog), during which commits of other
+/// transitions can run. <see cref="RunicModelContext"/> runs each synchronous part of a hook as a turn of its own, so its
+/// code sees <see cref="IRunicModelContext.IsExecuting"/>; it has no message pump, so a hook there must not block.
 /// </para>
 /// <para>
 /// The navigator detects the scheduler with a type test on the context object it was given. A decorator that wraps

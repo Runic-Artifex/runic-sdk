@@ -33,6 +33,8 @@ internal sealed class NavigationSourceScanTests
             "Observe: only reads the exception of a task that nobody awaits any more"),
         ("RunicNavigator.cs", "return new(task.AsTask().ContinueWith(static completed =>", 1,
             "Completion: adapts a hook's ValueTask to ValueTask<bool>; the engine awaits that through the helper"),
+        ("RunicModelContext.cs", "task.ContinueWith(static (completed, state) => Complete(completed, (TaskCompletionSource<T>)state!), _completion,", 1,
+            "the hook scheduler: completes its own source, created with RunContinuationsAsynchronously, from the hook's task; no engine work continues there"),
         // LeaveConfirmation is a guard: user code the engine calls, not engine code. It keeps the
         // caller's context so that a confirm delegate started on the UI thread stays on it.
         ("LeaveConfirmation.cs", "await dialogs.PushForResult<bool>(dialog(), cancellationToken: cancellationToken).Completion", 1,

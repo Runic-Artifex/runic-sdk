@@ -225,8 +225,10 @@ public sealed class NavigationDeparture
     public NavigationOperation Operation => _transition.Operation;
 
     /// <summary>
-    /// Gets the model context whose turns commit the navigator's state. Guards run outside model turns, so
-    /// they read and change shared model state through <see cref="IRunicModelContext.InvokeAsync{T}(Func{T}, CancellationToken)"/>.
+    /// Gets the model context whose turns commit the navigator's state. Guards run outside commit turns. Under a context
+    /// that schedules hooks (<see cref="IRunicModelHookScheduler"/>) a guard runs in that context, and
+    /// <see cref="IRunicModelContext.InvokeAsync{T}(Func{T}, CancellationToken)"/> runs inline; otherwise a guard reads and
+    /// changes shared model state through it.
     /// </summary>
     public IRunicModelContext ModelContext => _transition.Region.Navigator.ModelContext;
 
@@ -628,9 +630,9 @@ public enum NavigationArrivalState
 /// <see cref="NavigationRegion.WhenIdleAsync"/>, which wait for it.
 /// </para>
 /// <para>
-/// The content is already presented, so without a hook scheduler (for example <see cref="RunicModelContext"/>) the hook
-/// changes presented state through <see cref="NavigationEntryContext.ModelContext"/>. With
-/// <see cref="IRunicModelHookScheduler"/> it runs as its own operation on the model's thread and may set state directly.
+/// The content is already presented. With an <see cref="IRunicModelHookScheduler"/>, such as <see cref="RunicModelContext"/>,
+/// the hook runs as its own operation in the model context and sets state directly, also after its awaits. With a
+/// context that doesn't schedule hooks, it changes presented state through <see cref="NavigationEntryContext.ModelContext"/>.
 /// An initial target's hook starts after <see cref="RunicNavigator.CreateRegion{TContent}"/> or
 /// <see cref="NavigationRegion{TContent}.Start"/> returned; the region is busy until it ends.
 /// </para>

@@ -894,3 +894,13 @@ Details: 0.14.0 [Frontend field API](../eng/release/notes/0.14.0.md#frontend-fie
 | A browser-fallback window's `platform.messageBoxes` was `OwnerUnavailable` | It describes the unowned boxes of `PreferOwner`; `RequireOwner` boxes still report `OwnerUnavailable` |
 
 Details: 0.14.0 [Platform: dialogs, launcher and message boxes without a window](../eng/release/notes/0.14.0.md#platform-dialogs-launcher-and-message-boxes-without-a-window-a2).
+
+### Navigation hooks under RunicModelContext
+
+| 0.13 | 0.14 |
+| --- | --- |
+| With `RunicModelContext`, factories, guards, initialize, resume and arrival hooks and owned `Dispose` ran on the thread pool, outside turns | They run in the model context, each starting in a turn of its own, as with WPF's `DispatcherModelContext`. Set page state directly in the hook; `ModelContext.InvokeAsync` still works and runs inline. Don't block in a hook (`Wait()`, `Thread.Sleep`, synchronous I/O); await |
+| A wrapper around `RunicModelContext` that implemented `IRunicModelHookScheduler` by posting the hook as a turn | Remove it; `RunicModelContext` does this itself |
+| Content a factory returned for a rejected initial target was disposed before `CreateRegion` threw | It is disposed asynchronously; `WhenIdleAsync` waits for it |
+
+Details: 0.14.0 [Navigation hooks on the model turn](../eng/release/notes/0.14.0.md#navigation-hooks-on-the-model-turn-a2).
