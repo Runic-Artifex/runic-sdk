@@ -9,6 +9,8 @@
     <GenerateDocumentationFile>false</GenerateDocumentationFile>
     <IsAotCompatible>true</IsAotCompatible>
     <TUnitImplicitUsings>false</TUnitImplicitUsings>
+    <!-- ApiShapeTests builds native DNS records to check their conversion on every operating system. -->
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
   <ItemGroup>
     <TrimmerRootAssembly Include="Runic.Platform.Administration.Windows" />

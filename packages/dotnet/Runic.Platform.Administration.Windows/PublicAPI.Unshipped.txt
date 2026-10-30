@@ -97,3 +97,56 @@ static Runic.Platform.Administration.Windows.Accounts.LocalGroupMember.operator 
 virtual Runic.Platform.Administration.Windows.Accounts.AccountReference.EqualityContract.get -> System.Type!
 virtual Runic.Platform.Administration.Windows.Accounts.AccountReference.Equals(Runic.Platform.Administration.Windows.Accounts.AccountReference? other) -> bool
 virtual Runic.Platform.Administration.Windows.Accounts.AccountReference.PrintMembers(System.Text.StringBuilder! builder) -> bool
+override Runic.Platform.Administration.Windows.Dns.DnsAnswer.Equals(object? obj) -> bool
+override Runic.Platform.Administration.Windows.Dns.DnsAnswer.GetHashCode() -> int
+override Runic.Platform.Administration.Windows.Dns.DnsAnswer.ToString() -> string!
+override Runic.Platform.Administration.Windows.Dns.DnsResolution.Equals(object? obj) -> bool
+override Runic.Platform.Administration.Windows.Dns.DnsResolution.GetHashCode() -> int
+override Runic.Platform.Administration.Windows.Dns.DnsResolution.ToString() -> string!
+Runic.Platform.Administration.Windows.Dns.DnsAnswer
+Runic.Platform.Administration.Windows.Dns.DnsAnswer.<Clone>$() -> Runic.Platform.Administration.Windows.Dns.DnsAnswer!
+Runic.Platform.Administration.Windows.Dns.DnsAnswer.Data.get -> Runic.Platform.Administration.Windows.Dns.DnsRecordData!
+Runic.Platform.Administration.Windows.Dns.DnsAnswer.Data.init -> void
+Runic.Platform.Administration.Windows.Dns.DnsAnswer.Deconstruct(out string! Name, out Runic.Platform.Administration.Windows.Dns.DnsRecordType Type, out System.TimeSpan TimeToLive, out Runic.Platform.Administration.Windows.Dns.DnsRecordData! Data) -> void
+Runic.Platform.Administration.Windows.Dns.DnsAnswer.DnsAnswer(string! Name, Runic.Platform.Administration.Windows.Dns.DnsRecordType Type, System.TimeSpan TimeToLive, Runic.Platform.Administration.Windows.Dns.DnsRecordData! Data) -> void
+Runic.Platform.Administration.Windows.Dns.DnsAnswer.Equals(Runic.Platform.Administration.Windows.Dns.DnsAnswer? other) -> bool
+Runic.Platform.Administration.Windows.Dns.DnsAnswer.Name.get -> string!
+Runic.Platform.Administration.Windows.Dns.DnsAnswer.Name.init -> void
+Runic.Platform.Administration.Windows.Dns.DnsAnswer.TimeToLive.get -> System.TimeSpan
+Runic.Platform.Administration.Windows.Dns.DnsAnswer.TimeToLive.init -> void
+Runic.Platform.Administration.Windows.Dns.DnsAnswer.Type.get -> Runic.Platform.Administration.Windows.Dns.DnsRecordType
+Runic.Platform.Administration.Windows.Dns.DnsAnswer.Type.init -> void
+Runic.Platform.Administration.Windows.Dns.DnsRecordType
+Runic.Platform.Administration.Windows.Dns.DnsRecordType.A = 1 -> Runic.Platform.Administration.Windows.Dns.DnsRecordType
+Runic.Platform.Administration.Windows.Dns.DnsRecordType.Aaaa = 28 -> Runic.Platform.Administration.Windows.Dns.DnsRecordType
+Runic.Platform.Administration.Windows.Dns.DnsRecordType.CName = 5 -> Runic.Platform.Administration.Windows.Dns.DnsRecordType
+Runic.Platform.Administration.Windows.Dns.DnsRecordType.Mx = 15 -> Runic.Platform.Administration.Windows.Dns.DnsRecordType
+Runic.Platform.Administration.Windows.Dns.DnsRecordType.Ns = 2 -> Runic.Platform.Administration.Windows.Dns.DnsRecordType
+Runic.Platform.Administration.Windows.Dns.DnsRecordType.Ptr = 12 -> Runic.Platform.Administration.Windows.Dns.DnsRecordType
+Runic.Platform.Administration.Windows.Dns.DnsRecordType.Srv = 33 -> Runic.Platform.Administration.Windows.Dns.DnsRecordType
+Runic.Platform.Administration.Windows.Dns.DnsRecordType.Txt = 16 -> Runic.Platform.Administration.Windows.Dns.DnsRecordType
+Runic.Platform.Administration.Windows.Dns.DnsResolution
+Runic.Platform.Administration.Windows.Dns.DnsResolution.Answers.get -> System.Collections.Immutable.ImmutableArray<Runic.Platform.Administration.Windows.Dns.DnsAnswer!>
+Runic.Platform.Administration.Windows.Dns.DnsResolution.Answers.init -> void
+Runic.Platform.Administration.Windows.Dns.DnsResolution.<Clone>$() -> Runic.Platform.Administration.Windows.Dns.DnsResolution!
+Runic.Platform.Administration.Windows.Dns.DnsResolution.Deconstruct(out Runic.Platform.Administration.Windows.Dns.DnsResponseCode ResponseCode, out System.Collections.Immutable.ImmutableArray<Runic.Platform.Administration.Windows.Dns.DnsAnswer!> Answers) -> void
+Runic.Platform.Administration.Windows.Dns.DnsResolution.DnsResolution(Runic.Platform.Administration.Windows.Dns.DnsResponseCode ResponseCode, System.Collections.Immutable.ImmutableArray<Runic.Platform.Administration.Windows.Dns.DnsAnswer!> Answers) -> void
+Runic.Platform.Administration.Windows.Dns.DnsResolution.Equals(Runic.Platform.Administration.Windows.Dns.DnsResolution? other) -> bool
+Runic.Platform.Administration.Windows.Dns.DnsResolution.ResponseCode.get -> Runic.Platform.Administration.Windows.Dns.DnsResponseCode
+Runic.Platform.Administration.Windows.Dns.DnsResolution.ResponseCode.init -> void
+Runic.Platform.Administration.Windows.Dns.DnsResponseCode
+Runic.Platform.Administration.Windows.Dns.DnsResponseCode.FormatError = 1 -> Runic.Platform.Administration.Windows.Dns.DnsResponseCode
+Runic.Platform.Administration.Windows.Dns.DnsResponseCode.NameError = 3 -> Runic.Platform.Administration.Windows.Dns.DnsResponseCode
+Runic.Platform.Administration.Windows.Dns.DnsResponseCode.NoError = 0 -> Runic.Platform.Administration.Windows.Dns.DnsResponseCode
+Runic.Platform.Administration.Windows.Dns.DnsResponseCode.NotImplemented = 4 -> Runic.Platform.Administration.Windows.Dns.DnsResponseCode
+Runic.Platform.Administration.Windows.Dns.DnsResponseCode.Refused = 5 -> Runic.Platform.Administration.Windows.Dns.DnsResponseCode
+Runic.Platform.Administration.Windows.Dns.DnsResponseCode.ServerFailure = 2 -> Runic.Platform.Administration.Windows.Dns.DnsResponseCode
+Runic.Platform.Administration.Windows.Dns.WindowsDnsResolverClient
+Runic.Platform.Administration.Windows.Dns.WindowsDnsResolverClient.QueryAsync(string! name, Runic.Platform.Administration.Windows.Dns.DnsRecordType type, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<Runic.Platform.Administration.Windows.Dns.DnsResolution!>!
+Runic.Platform.Administration.Windows.Dns.WindowsDnsResolverClient.ReverseLookupAsync(System.Net.IPAddress! address, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<Runic.Platform.Administration.Windows.Dns.DnsResolution!>!
+Runic.Platform.Administration.Windows.Dns.WindowsDnsResolverClient.WindowsDnsResolverClient(System.Net.IPAddress! server) -> void
+static Runic.Platform.Administration.Windows.Dns.DnsAnswer.operator !=(Runic.Platform.Administration.Windows.Dns.DnsAnswer? left, Runic.Platform.Administration.Windows.Dns.DnsAnswer? right) -> bool
+static Runic.Platform.Administration.Windows.Dns.DnsAnswer.operator ==(Runic.Platform.Administration.Windows.Dns.DnsAnswer? left, Runic.Platform.Administration.Windows.Dns.DnsAnswer? right) -> bool
+static Runic.Platform.Administration.Windows.Dns.DnsResolution.operator !=(Runic.Platform.Administration.Windows.Dns.DnsResolution? left, Runic.Platform.Administration.Windows.Dns.DnsResolution? right) -> bool
+static Runic.Platform.Administration.Windows.Dns.DnsResolution.operator ==(Runic.Platform.Administration.Windows.Dns.DnsResolution? left, Runic.Platform.Administration.Windows.Dns.DnsResolution? right) -> bool
+static Runic.Platform.Administration.Windows.Dns.WindowsDnsResolverClient.ReverseLookupName(System.Net.IPAddress! address) -> string!
