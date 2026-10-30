@@ -549,42 +549,58 @@ internal sealed class WindowsWebView2Controller : IDisposable
 
     // What the WebView did before its page connected, for the connection timeout's description (I-176): the controller's
     // creation with the runtime's version, the first navigation's start and end, and a process that failed. A page that never reaches the server is otherwise
-    // reported with "nothing recorded".
-    internal void RegisterStartupProgress(Action<string> record)
+    // reported with "nothing recorded". The same steps go to signal, whose deadline the first navigation holds while it
+    // is in progress.
+    internal void RegisterStartupProgress(Action<string> record, Action<WebViewStartupSignal>? signal)
     {
+        void Step(string description, WebViewStartupSignal kind)
+        {
+            record(description);
+            signal?.Invoke(kind);
+        }
+
         // The runtime's version, to tell a runtime update from a change of the application.
         string? version;
         try { version = GetString(_environment, WindowsWebView2Interop.EnvironmentBrowserVersionSlot); }
         catch (Exception exception) when (exception is COMException or ArgumentException) { version = null; }
-        record(string.IsNullOrEmpty(version) ? "WebView2 controller created" : $"WebView2 controller created (runtime {version})");
+        Step(string.IsNullOrEmpty(version) ? "WebView2 controller created" : $"WebView2 controller created (runtime {version})",
+            WebViewStartupSignal.Step);
         var started = false;
         var completed = false;
-        var endTrace = TraceFirstDocumentRequest(record);
+        var endTrace = TraceFirstDocumentRequest(record, () => signal?.Invoke(WebViewStartupSignal.Step));
         AddEvent<IWebViewNavigationStarting>(WindowsWebView2Interop.NavigationStartingSlot, new WebViewEvent(_ =>
         {
             if (started) return;
             started = true;
-            record("WebView2 navigation started");
+            Step("WebView2 navigation started", WebViewStartupSignal.NavigationStarted);
         }));
         AddEvent<IWebViewNavigationCompleted>(WindowsWebView2Interop.NavigationCompletedSlot, new WebViewEvent(args =>
         {
             if (completed) return;
             completed = true;
             endTrace();
-            record(WindowsWebView2Interop.GetInteger(args, WindowsWebView2Interop.NavigationCompletedIsSuccessSlot) != 0
-                ? "WebView2 navigation completed"
-                : "WebView2 navigation failed: " + WebErrorStatus(
-                    WindowsWebView2Interop.GetInteger(args, WindowsWebView2Interop.NavigationCompletedWebErrorStatusSlot)));
+            if (WindowsWebView2Interop.GetInteger(args, WindowsWebView2Interop.NavigationCompletedIsSuccessSlot) != 0)
+                Step("WebView2 navigation completed", WebViewStartupSignal.NavigationCompleted);
+            else
+                Step("WebView2 navigation failed: " + WebErrorStatus(
+                    WindowsWebView2Interop.GetInteger(args, WindowsWebView2Interop.NavigationCompletedWebErrorStatusSlot)),
+                    WebViewStartupSignal.Failed);
         }));
         AddEvent<IWebViewProcessFailed>(WindowsWebView2Interop.ProcessFailedSlot, new WebViewEvent(args =>
-            record("WebView2 " + ProcessFailure(WindowsWebView2Interop.GetInteger(args, WindowsWebView2Interop.ProcessFailedKindSlot)))));
+        {
+            var kind = WindowsWebView2Interop.GetInteger(args, WindowsWebView2Interop.ProcessFailedKindSlot);
+            record("WebView2 " + ProcessFailure(kind));
+            // The browser process, or the page's render process: the page does not load. A helper process that exits,
+            // such as the GPU process, is restarted.
+            if (kind is 0 or 1 or 2) signal?.Invoke(WebViewStartupSignal.Failed);
+        }));
     }
 
     // The first document request as WebView2's network stack reports it through the DevTools protocol (I-176): when
     // the request started and how it ended. A stall between "navigation started" and "document request started" is
     // spent before WebView2 issues the request; one after it, inside WebView2's network stack. The Network domain is
     // on from before the navigation until that request or the first navigation ends; the returned action ends it.
-    private Action TraceFirstDocumentRequest(Action<string> record)
+    private Action TraceFirstDocumentRequest(Action<string> record, Action requestStarted)
     {
         string? requestId = null;
         var ended = false;
@@ -605,6 +621,7 @@ internal sealed class WindowsWebView2Controller : IDisposable
                 if (ended || requestId is not null || !parameters.TryGetProperty("type", out var type) || !type.ValueEquals("Document")) return;
                 requestId = parameters.GetProperty("requestId").GetString();
                 record("WebView2 document request started");
+                requestStarted();
             });
             AddDevToolsEvent("Network.responseReceived", parameters =>
             {

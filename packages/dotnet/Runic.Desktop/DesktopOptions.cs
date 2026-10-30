@@ -88,9 +88,23 @@ public sealed record DesktopHostOptions
 
     /// <summary>Gets the bridge authentication deadline.</summary>
     /// <remarks>
+    /// <para>
     /// The deadline counts from the launch while the page has requested nothing, and from its first request once it
     /// has, so a slow browser start that reaches the server just before the deadline still gets the whole timeout to
-    /// finish authentication. A presentation therefore waits at most twice this timeout for each launch.
+    /// finish authentication.
+    /// </para>
+    /// <para>
+    /// An embedded WebView that has requested nothing yet but is still loading the page extends the deadline: it does
+    /// not run out while the WebView's first navigation is in progress, and not within a whole timeout of the last
+    /// startup step the WebView reported, up to four times this timeout from the launch (60 seconds with the default).
+    /// A fresh WebView2 profile can take many seconds to start while Windows services the disk. The Windows WebView2
+    /// windows report this progress; the other embedded windows and browsers keep the plain deadline. An extension logs
+    /// event 3021, and a timeout at the limit says how long the WebView was still loading.
+    /// </para>
+    /// <para>
+    /// A launch therefore waits at most twice this timeout, and an embedded WebView that requests its page just before
+    /// the extended limit at most five times it.
+    /// </para>
     /// </remarks>
     public TimeSpan ConnectionTimeout { get; init; } = TimeSpan.FromSeconds(15);
 

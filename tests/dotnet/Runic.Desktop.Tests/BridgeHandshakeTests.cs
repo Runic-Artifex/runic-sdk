@@ -3,7 +3,9 @@ using System.Buffers.Binary;
 using System.Diagnostics;
 using System.Globalization;
 using System.Net.WebSockets;
+using Microsoft.Extensions.Logging;
 using Runic.Desktop;
+using Runic.Desktop.Internal;
 
 namespace Runic.Desktop.Tests;
 
@@ -158,6 +160,71 @@ public sealed class BridgeHandshakeTests
     }
 
     [Test]
+    public async Task AWebViewStillLoadingThePageKeepsTheDeadlineGoingUntilItConnects()
+    {
+        // I-176: during Windows servicing a fresh WebView2 profile took 5-25 s between "navigation started" and its
+        // first request, past the 15 s default. A WebView whose first navigation is still in progress extends the
+        // timeout. The window's clock is the test's, so the wait runs past its 2 s timeout without sleeping.
+        var time = new ManualTime();
+        var logger = new CapturingLogger();
+        await using var fixture = await HandshakeFixture.StartAsync(
+            connectionTimeoutSeconds: 2, handshakeTimeout: TimeSpan.FromSeconds(10), time, logger,
+            shown: options => options.StartupSignal!(WebViewStartupSignal.NavigationStarted));
+
+        // The wait sleeps until its 2 s timeout, which it reports as extended, then until the 8 s limit.
+        await time.WaitForTimerAsync(fixture.Timeout);
+        time.Advance(TimeSpan.FromSeconds(2));
+        await time.WaitForTimerAsync(fixture.Timeout);
+        var extended = Assert.Single(logger.Entries);
+        Assert.Equal(3021, extended.EventId.Id);
+        Assert.Equal(LogLevel.Warning, extended.Level);
+        Assert.Equal(
+            "The embedded WebView had requested nothing after 2 seconds but was still making progress (its first " +
+            "navigation started 2 seconds earlier and had not ended); waiting up to 8 seconds for it.",
+            extended.Message);
+
+        time.Advance(TimeSpan.FromSeconds(3));
+        Assert.False(fixture.Showing.IsCompleted, "The presentation gave up on a WebView that was still loading.");
+        using (var client = new HttpClient { BaseAddress = fixture.Url })
+        {
+            await client.GetStringAsync("/", fixture.Timeout);
+        }
+        using var socket = await ConnectAsync(fixture.Url, fixture.Timeout);
+        await SendCheckTokenAsync(socket, fixture.Token, fixture.Timeout);
+        await fixture.Showing.WaitAsync(fixture.Timeout);
+    }
+
+    [Test]
+    public async Task AWebViewThatNeverRequestsItsPageTimesOutAtTheLimit()
+    {
+        var time = new ManualTime();
+        await using var fixture = await HandshakeFixture.StartAsync(
+            connectionTimeoutSeconds: 2, handshakeTimeout: TimeSpan.FromSeconds(10), time, new CapturingLogger(),
+            shown: options =>
+            {
+                options.StartupProgress!("WebView2 navigation started");
+                options.StartupSignal!(WebViewStartupSignal.NavigationStarted);
+            });
+
+        await time.WaitForTimerAsync(fixture.Timeout);
+        time.Advance(TimeSpan.FromSeconds(2));
+        await time.WaitForTimerAsync(fixture.Timeout);
+        time.Advance(TimeSpan.FromSeconds(6));
+
+        var timeout = await Assert.ThrowsAsync<TimeoutException>(() => fixture.Showing);
+        output.WriteLine(timeout.Message);
+        Assert.Contains(
+            "The embedded WebView did not connect within 8 seconds: no request reached the server, although the WebView " +
+            "was still making progress (its first navigation started 8 seconds earlier and had not ended); the 2-second " +
+            "connection timeout was extended to its limit of 4 times the timeout.",
+            timeout.Message);
+        Assert.Matches(
+            @"Bridge handshake: \+\d+\.\d{3}s WebView2 navigation started; \+\d+\.\d{3}s timeout extended: its first navigation " +
+            @"started 2 seconds earlier and had not ended; ",
+            timeout.Message);
+    }
+
+    [Test]
     public async Task AWrongTokenIsReportedAndItsSocketClosed()
     {
         await using var fixture = await HandshakeFixture.StartAsync(connectionTimeoutSeconds: 2, handshakeTimeout: TimeSpan.FromMilliseconds(200));
@@ -268,23 +335,36 @@ public sealed class BridgeHandshakeTests
         private readonly TimeSpan _previousConnectionTimeout = WebUiApplication.ConnectionTimeout;
         private readonly TimeSpan _previousHandshakeTimeout = WebUiApplication.BridgeHandshakeTimeout;
 
-        private HandshakeFixture()
+        private HandshakeFixture(WebUiWindow window, EmbeddedHostTests.RecordingHostFactory factory)
         {
+            Window = window;
+            Factory = factory;
         }
 
-        public WebUiWindow Window { get; } = new();
-        public EmbeddedHostTests.RecordingHostFactory Factory { get; } = new();
+        public WebUiWindow Window { get; }
+        public EmbeddedHostTests.RecordingHostFactory Factory { get; }
         public Uri Url { get; private set; } = null!;
         public uint Token { get; private set; }
         public Task Showing { get; private set; } = Task.CompletedTask;
         public CancellationToken Timeout => _timeout.Token;
 
-        public static async Task<HandshakeFixture> StartAsync(nuint connectionTimeoutSeconds, TimeSpan handshakeTimeout)
+        // With a clock, the window runs on a host's runtime options with that clock and logger, as DesktopHost's do.
+        public static async Task<HandshakeFixture> StartAsync(
+            nuint connectionTimeoutSeconds,
+            TimeSpan handshakeTimeout,
+            TimeProvider? time = null,
+            ILogger? logger = null,
+            Action<WebUiEmbeddedHostOptions>? shown = null)
         {
-            var fixture = new HandshakeFixture();
+            var factory = new EmbeddedHostTests.RecordingHostFactory { Shown = shown };
+            var window = time is null
+                ? new WebUiWindow()
+                : new WebUiWindow(host: null, pathBase: string.Empty, runtimeOptions: new PresentationSurfaceRuntimeOptions(
+                    null, null, factory, WaitForConnection: true, TimeSpan.FromSeconds(connectionTimeoutSeconds),
+                    DiagnosticSink: null, logger) { TimeProvider = time });
+            var fixture = new HandshakeFixture(window, factory);
             try
             {
-                var factory = fixture.Factory;
                 WebUiApplication.SetEmbeddedHostFactory(factory);
                 WebUiApplication.SetConnectionTimeout(connectionTimeoutSeconds);
                 WebUiApplication.BridgeHandshakeTimeout = handshakeTimeout;

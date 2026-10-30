@@ -466,6 +466,9 @@ public sealed record DesktopWindowHostOptions
 
     // The Bridge handshake log of the presentation (WebUiEmbeddedHostOptions.StartupProgress), for Runic's own hosts.
     internal Action<string>? StartupProgress { get; init; }
+
+    // The connection deadline's startup signals (WebUiEmbeddedHostOptions.StartupSignal), for Runic's own hosts.
+    internal Action<Internal.WebViewStartupSignal>? StartupSignal { get; init; }
 }
 
 internal sealed class DesktopWindowHostFactoryAdapter(IDesktopWindowHostFactory factory) : IWebUiEmbeddedHostFactory
@@ -603,6 +606,7 @@ internal sealed class DesktopWindowHostAdapter : IWebUiEmbeddedHost
             DocumentStartScript = options.DocumentStartScript,
             DiagnosticSink = options.ReportDiagnostic,
             StartupProgress = options.StartupProgress,
+            StartupSignal = options.StartupSignal,
             MenuBarPresentation = options.MenuBarPresentation,
             ColorScheme = options.ColorScheme,
             GlobalMenu = options.GlobalMenu,

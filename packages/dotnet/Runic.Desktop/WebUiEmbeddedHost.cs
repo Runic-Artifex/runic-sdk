@@ -193,6 +193,12 @@ internal sealed record WebUiEmbeddedHostOptions
     /// </summary>
     public Action<string>? StartupProgress { get; init; }
 
+    /// <summary>
+    /// Reports the first navigation's start and end and other startup steps, which extend the connection deadline
+    /// while no request has reached the server (I-176). A host that reports nothing keeps the plain deadline.
+    /// </summary>
+    public Action<Internal.WebViewStartupSignal>? StartupSignal { get; init; }
+
     /// <summary>Where the window shows the menu bar (DesktopWindowOptions.MenuBarPresentation).</summary>
     public DesktopMenuBarPresentation MenuBarPresentation { get; init; }
 

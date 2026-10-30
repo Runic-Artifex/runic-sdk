@@ -373,6 +373,14 @@ page never connects: that fails with `presentation-connection-timeout`, and the 
 the server, and from that request once it has: a browser or WebView that starts
 slowly and requests its page just before the deadline still gets the whole timeout
 to finish the Bridge handshake, so one launch waits at most twice the timeout.
+An embedded WebView that has requested nothing yet but is still loading the page
+extends the timeout: it does not run out while the WebView's first navigation is in
+progress, nor within a whole timeout of the last startup step the WebView reported,
+up to four times `ConnectionTimeout` (60 seconds with the default). A fresh WebView2
+profile can take many seconds to start while Windows services the disk, and the
+Windows WebView2 windows report this progress; the other embedded windows and
+browsers keep the plain timeout. Each extension logs event 3021, and a timeout at the
+limit says how long the WebView was still loading.
 A browser that is still running but has requested nothing after `ConnectionTimeout`
 is stopped and launched again, with a fresh profile unless the window sets one.
 Each relaunch reports `browser-launch-stalled` as a warning and logs event 3004.

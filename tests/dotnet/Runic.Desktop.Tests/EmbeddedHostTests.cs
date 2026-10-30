@@ -144,7 +144,10 @@ public sealed class EmbeddedHostTests
 
         public bool IsSupported => true;
 
-        public IWebUiEmbeddedHost Create() => Host = new RecordingHost();
+        // Runs when a host is shown, as a WebView reporting its startup would.
+        internal Action<WebUiEmbeddedHostOptions>? Shown { get; init; }
+
+        public IWebUiEmbeddedHost Create() => Host = new RecordingHost { Shown = Shown };
     }
 
     internal sealed class RecordingHost : IWebUiEmbeddedHost
@@ -178,12 +181,15 @@ public sealed class EmbeddedHostTests
 
         internal bool? Visible { get; private set; }
 
+        internal Action<WebUiEmbeddedHostOptions>? Shown { get; init; }
+
         public ValueTask ShowAsync(Uri url, WebUiEmbeddedHostOptions options, CancellationToken cancellationToken = default)
         {
             cancellationToken.ThrowIfCancellationRequested();
             Url = url;
             Options = options;
             IsOpen = true;
+            Shown?.Invoke(options);
             return ValueTask.CompletedTask;
         }
 
