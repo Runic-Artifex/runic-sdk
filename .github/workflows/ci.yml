@@ -576,6 +576,17 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      # I-176: each embedded window creates a fresh WebView2 profile under TEMP, and its first request waits for the
+      # profile's cookie database. On hosted windows-2025 x64, Windows servicing about 10 min after boot pushes C:'s
+      # write latency to seconds, and that wait to 5-25 s. RUNNER_TEMP is on the runner's local disk (D:); a soak with
+      # TEMP there had 1 window over 5 s in 5,240 against 19 in 1,560 with TEMP on C:. windows-11-arm has neither the
+      # separate disk nor these episodes.
+      - name: Temporary files on the runner's local disk
+        if: matrix.rid == 'win-x64'
+        shell: pwsh
+        run: |
+          "TEMP=$env:RUNNER_TEMP" >> $env:GITHUB_ENV
+          "TMP=$env:RUNNER_TEMP" >> $env:GITHUB_ENV
       - uses: ./.github/actions/setup-sdk
         with:
           nuget: wpf
