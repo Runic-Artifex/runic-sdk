@@ -2,13 +2,15 @@ import { clock, delay, randomId } from "./clock.js";
 import { emitBridgeDiagnostic, emitErrorDiagnostic } from "./diagnostics.js";
 import { BridgeError } from "./errors.js";
 import { bridgeFailure, bridgeSuccess, type BridgeOutcome } from "./outcome.js";
-import { isObject, replyError, type Change, type Message, type Push, type Reply } from "./protocol.js";
+import {
+  epochOf, isObject, presentationEpochFeature, presentedFeature, replyError, type Change, type Message, type Push, type Reply,
+} from "./protocol.js";
 import { currentRuntime, errorMessage, sharedRuntimeFor, type SharedRuntime } from "./runtime.js";
 import { reportBridgeError, waitForBridge } from "./transport.js";
 import { publishConnectionState } from "./connection-state.js";
 import { abortable, abortReason, isAbort, throwIfAborted } from "./lifetime.js";
 import { applySplice, minimumKept, singleSplice, textSpliceFeature } from "./text.js";
-import { deferNotification, flushNotifications } from "./notifications.js";
+import { deferNotification, flushNotifications, nextFrame } from "./notifications.js";
 // Interactions, operations and keyed collections are injected by the generated
 // clients that use them, so this module imports only their types.
 import type { BridgeCollections } from "./collections.js";
@@ -84,6 +86,12 @@ export interface ViewConnectOptions<TState> extends BridgeConnectOptions {
    * `text-splice/1`, frames change them with splices and setters send splices of long values.
    */
   readonly texts?: readonly string[];
+  /**
+   * Wire names of commands scoped to the presentation they were issued for (`[RunicPresentationScoped]`). With the
+   * feature `presentation-epoch/1`, `command` sends them with the epoch of the state the presentation last delivered,
+   * and a call the producer answers `superseded` (the route's epoch changed meanwhile) resolves like one that ran.
+   */
+  readonly scopedCommands?: readonly string[];
   /** The client's interactions, from `defineInteractions`. */
   readonly interactions?: BridgeInteractions;
   /**
@@ -168,6 +176,8 @@ interface Lease {
   /** The producer registered this presentation on the current connection. */
   registered: boolean;
   current: unknown;
+  /** The epoch of `current` (presentation-epoch/1): what a scoped command of this presentation was issued for. */
+  epoch: number | undefined;
   readonly listeners: Set<(state: unknown) => void>;
   interactions: InteractionSession | undefined;
 }
@@ -202,6 +212,10 @@ class RouteEntry {
   /** The producer's state, decoded. */
   state: State | undefined;
   revision: number | undefined;
+  /** The epoch of `state`, on a connection that uses presentation-epoch/1. */
+  epoch: number | undefined;
+  /** The epoch of `exposed`. */
+  exposedEpoch: number | undefined;
   /** The connection the state was read on; the first state of a new connection is its baseline. */
   stateConnection = -1;
   readonly fields = new Map<string, number>();
@@ -216,6 +230,11 @@ class RouteEntry {
   /** A frame kept during the recovery that is ending needs another one. */
   private recoverAgain = false;
   private backoff: { cancel(): void } | undefined;
+  /** presented/1: the highest revision a `present` asked for that is not reported yet, and whether a report runs. */
+  private presentWanted: number | undefined;
+  private presenting = false;
+  /** Resolves the wait of a report for a presentation with a subscriber. */
+  private subscribed: (() => void) | undefined;
   private readonly stops: (() => void)[];
   /** Delivers the exposed state to the presentations; queued once per animation frame by `publish`. */
   private readonly deliver = () => this.notify();
@@ -226,6 +245,7 @@ class RouteEntry {
     this.stops = [
       runtime.onPush("state", route, push => this.statePush(push as Extract<Push, { kind: "state" }>)),
       runtime.onPush("frame", route, push => this.frame(push)),
+      runtime.onPush("present", route, push => this.present(push["revision"] as number)),
       runtime.onPush("failure", route, push => {
         const failure = push as Extract<Push, { kind: "failure" }>;
         // The producer withholds the route until its keys are valid; the client keeps its last state.
@@ -252,6 +272,7 @@ class RouteEntry {
     for (const waiter of this.waiters) { clock.clear(waiter.timer); waiter.resolve(); }
     this.waiters.clear();
     this.buffered = [];
+    this.endPresent();
   }
 
   /* ------------------------------------------------------------ states */
@@ -276,13 +297,15 @@ class RouteEntry {
    * Accepts a full state when its revision is greater than the current one, or when it is the first state of a new
    * connection. Throws for an invalid state, which leaves the current one.
    */
-  accept(revision: number, wire: Message, fields: unknown): boolean {
+  accept(revision: number, wire: Message, fields: unknown, epoch: number | undefined): boolean {
     const baseline = this.stateConnection !== this.runtime.connection;
     if (!baseline && this.revision !== undefined && revision <= this.revision) return false;
     const { state, versions } = this.decode(wire, fields);
     const reconnected = baseline && this.state !== undefined;
     this.state = state;
     this.revision = revision;
+    // presentation-epoch/1: a client that does not use it ignores the member.
+    this.epoch = this.runtime.features?.has(presentationEpochFeature) === true ? epoch : undefined;
     this.stateConnection = this.runtime.connection;
     this.fields.clear();
     for (const [field, version] of versions) this.fields.set(field, version);
@@ -296,7 +319,7 @@ class RouteEntry {
 
   private statePush(push: Extract<Push, { kind: "state" }>): void {
     if (!this.live()) return;
-    try { this.accept(push.revision, push.state, push.fields); }
+    try { this.accept(push.revision, push.state, push.fields, epochOf(push)); }
     catch (cause) {
       reportBridgeError(new BridgeError("failed", `The Bridge pushed an invalid state for ${this.route}: ${errorMessage(cause)}`,
         { cause, route: this.route }), this.route);
@@ -413,7 +436,7 @@ class RouteEntry {
         const reply = await this.runtime.request({ kind: "snapshot", route: this.route }, this.route);
         if (!this.live()) return false;
         if (!reply.ok) throw replyError(reply.error, this.route, "The state could not be read.");
-        try { this.accept(reply["revision"] as number, reply["state"] as Message, reply["fields"]); }
+        try { this.accept(reply["revision"] as number, reply["state"] as Message, reply["fields"], epochOf(reply)); }
         catch (cause) { throw new BridgeError("failed", `The Bridge returned an invalid state: ${errorMessage(cause)}`, { cause, route: this.route }); }
         return true;
       } catch (error) {
@@ -453,7 +476,7 @@ class RouteEntry {
           return false;
         }
         if (!reply.ok || !this.live()) return false;
-        try { this.accept(reply["revision"] as number, reply["state"] as Message, reply["fields"]); }
+        try { this.accept(reply["revision"] as number, reply["state"] as Message, reply["fields"], epochOf(reply)); }
         catch (cause) { throw new BridgeError("failed", `The Bridge returned an invalid state: ${errorMessage(cause)}`, { cause, route: this.route }); }
         return true;
       }), signal);
@@ -483,6 +506,8 @@ class RouteEntry {
   }
 
   private connectionLost(): void {
+    // A `present` belongs to its connection; the producer asks a new one again.
+    this.endPresent();
     for (const lease of this.presentations) {
       lease.registered = false;
       lease.interactions?.paused();
@@ -551,9 +576,14 @@ class RouteEntry {
         for (const [member, overlay] of this.overlays) if (Object.hasOwn(overlay, "value")) setMember(next, member, overlay.value);
       }
       const previous = this.exposed;
+      this.exposedEpoch = this.epoch;
       if (previous === undefined || !Object.keys(this.members).every(member => Object.is(previous[member], next[member]))) {
         this.exposed = next;
         deferNotification(this.deliver);
+      } else {
+        // A state that changed no member, such as a renewal (presentation-epoch/1): the presentations that already show
+        // it take its epoch without a notification. The others take it with the delivery that is still due.
+        for (const lease of this.presentations) if (lease.current === previous) lease.epoch = this.exposedEpoch;
       }
     }
     if (immediate) flushNotifications();
@@ -564,12 +594,63 @@ class RouteEntry {
     const exposed = this.exposed;
     if (exposed === undefined) return;
     for (const lease of this.presentations) {
-      if (lease.disposed || lease.current === exposed) continue;
+      if (lease.disposed) continue;
+      lease.epoch = this.exposedEpoch;
+      if (lease.current === exposed) continue;
       lease.current = exposed;
       for (const listener of [...lease.listeners]) {
         try { listener(exposed); } catch (error) { reportBridgeError(error, this.route); }
       }
     }
+  }
+
+  /* ------------------------------------------------------------ presented/1 */
+
+  /**
+   * A `present` push (specs/application/README.md, "Painted states"): reports `presented` once the route reached `revision`, the state
+   * was delivered to subscribers and one animation frame passed. A route without a subscriber is not on screen, so
+   * the report waits for one. One report runs at a time; it reports the highest revision asked for meanwhile.
+   */
+  private present(revision: number): void {
+    if (!this.live() || this.runtime.features?.has(presentedFeature) !== true) return;
+    if (this.presentWanted === undefined || revision > this.presentWanted) this.presentWanted = revision;
+    if (this.presenting) return;
+    this.presenting = true;
+    void this.reportPresented().finally(() => { this.presenting = false; });
+  }
+
+  private async reportPresented(): Promise<void> {
+    const connection = this.runtime.connection;
+    const current = () => this.live() && this.runtime.connection === connection && this.presentWanted !== undefined;
+    while (current()) {
+      const revision = this.presentWanted!;
+      if (![...this.presentations].some(lease => !lease.disposed && lease.listeners.size > 0))
+        await new Promise<void>(resolve => { this.subscribed = resolve; });
+      if (!current()) return;
+      await this.waitForRevision(revision);
+      flushNotifications();
+      await nextFrame();
+      if (!current()) return;
+      // A higher revision was asked for meanwhile: wait for it too, and report it once.
+      if (this.presentWanted !== revision) continue;
+      this.presentWanted = undefined;
+      // The revision painted, at least the one asked for (after a revision timeout the route may still be behind it).
+      const painted = Math.max(this.revision ?? revision, revision);
+      // A failed report changes nothing on the page; the producer's wait ends at its timeout.
+      await this.runtime.request({ kind: "presented", route: this.route, revision: painted }, this.route).catch(() => undefined);
+    }
+  }
+
+  /** A presentation of the route got a subscriber. */
+  subscriberAdded(): void {
+    const resume = this.subscribed;
+    this.subscribed = undefined;
+    resume?.();
+  }
+
+  private endPresent(): void {
+    this.presentWanted = undefined;
+    this.subscriberAdded();
   }
 
   /** Starts an edit of `member`: its number, and the overlay of its value. */
@@ -675,7 +756,7 @@ async function connectRoute<TState>(options: ViewConnectOptions<TState>): Promis
     new Set(options.texts ?? []));
   if (!existing) runtime.routes.set(route, entry);
   const lease: Lease = {
-    id: randomId(), disposed: false, registered: false, current: undefined, listeners: new Set(), interactions: undefined,
+    id: randomId(), disposed: false, registered: false, current: undefined, epoch: undefined, listeners: new Set(), interactions: undefined,
   };
   entry.presentations.add(lease);
 
@@ -726,6 +807,7 @@ async function connectRoute<TState>(options: ViewConnectOptions<TState>): Promis
   // The other presentations of the route receive the state this one starts with.
   flushNotifications();
   lease.current = entry.exposed;
+  lease.epoch = entry.exposedEpoch;
   presentationRefreshes.set(dispose, () => { if (live() && runtime.connected) void entry.recover(); });
 
   const ready = async () => { await lease.interactions?.ready(); };
@@ -747,10 +829,15 @@ async function connectRoute<TState>(options: ViewConnectOptions<TState>): Promis
     if (!options.operations) throw new BridgeError("failed", "This View was connected without operation support.", { route });
     return options.operations;
   };
+  const scoped = new Set(options.scopedCommands ?? []);
+  // A superseded command (presentation-epoch/1) ran nothing and resolves like one that ran: after the route reached the
+  // reply's revision, with the exposed state (specs/application/README.md, "Presentation epochs").
   async function command(member: string, input: unknown): Promise<Reply> {
     assertConnected();
+    // The epoch of the state this presentation's subscribers last received, which the call was made on.
+    const epoch = scoped.has(member) && runtime.features?.has(presentationEpochFeature) === true ? lease.epoch : undefined;
     await ready();
-    return request({ kind: "command", route, member, ...(input === undefined ? {} : { input }) });
+    return request({ kind: "command", route, member, ...(input === undefined ? {} : { input }), ...(epoch === undefined ? {} : { epoch }) });
   }
 
   return {
@@ -763,6 +850,7 @@ async function connectRoute<TState>(options: ViewConnectOptions<TState>): Promis
       // The caller sees a failing initial delivery and gets no unsubscribe, so do not retain it.
       try { typed(lease.current); }
       catch (error) { lease.listeners.delete(typed); throw error; }
+      entry.subscriberAdded();
       return () => { lease.listeners.delete(typed); };
     },
     dispose,

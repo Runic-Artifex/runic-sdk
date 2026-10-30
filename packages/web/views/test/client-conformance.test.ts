@@ -3,7 +3,7 @@
 import assert from "node:assert/strict";
 import { readdirSync, readFileSync } from "node:fs";
 import { test } from "node:test";
-import { BridgeError, isBridgeOutcome, onBridgeDiagnostic } from "../dist/index.js";
+import { BridgeError, isBridgeOutcome, onBridgeConnection, onBridgeDiagnostic, type BridgeConnectionState } from "../dist/index.js";
 import { bridgeOperations, connectView, defineCollection, defineCollections, defineInteractions, defineText, type ViewConnection } from "../dist/generated.js";
 import * as wire from "../dist/wire.js";
 import { decodeBridgeValidation } from "../dist/validation.js";
@@ -36,6 +36,8 @@ interface ViewModel {
   /** Commands that declare a failure. */
   readonly declared?: Readonly<Record<string, (value: unknown) => unknown>>;
   readonly operations?: Readonly<Record<string, { decode: (value: unknown) => unknown; decodeFailure?: (value: unknown) => unknown }>>;
+  /** Scoped commands (presentation-epoch/1). */
+  readonly scopedCommands?: readonly string[];
 }
 
 const models: Record<string, ViewModel> = {
@@ -60,6 +62,7 @@ const models: Record<string, ViewModel> = {
   },
   detail: { members: { lastAction: wire.string, canDismiss: wire.boolean }, texts: ["lastAction"] },
   form: { members: { name: wire.string, nameErrors: value => wire.array(value, wire.string), validation: decodeBridgeValidation }, texts: ["name"] },
+  wizard: { members: { page: int32, canNext: wire.boolean, canBack: wire.boolean, canPing: wire.boolean }, scopedCommands: ["next", "back"] },
 };
 const modelOf = (route: string) => route.startsWith("content") ? models["detail"]! : models[route]!;
 
@@ -247,6 +250,9 @@ async function run(scenario: Scenario): Promise<void> {
   const clients = new Map<string, ViewConnection<Record<string, unknown>>>();
   const handlers = new Map<string, Record<string, (input: never) => unknown>>();
   const notifications = new Map<string, number>();
+  // The connection state the client reports (presented/1: `closed` after the producer closed the window).
+  let connectionState: BridgeConnectionState | undefined;
+  const stopConnection = onBridgeConnection(state => { connectionState = state; }, { lostAfter: 2_147_483_647 });
   const operations = new Map<string, { handle?: BridgeOperationRuntimeHandle<unknown, unknown>; status?: unknown; route: string; member: string }>();
   const kindOf = (value: unknown) => value instanceof BridgeError ? { kind: value.kind, ...(value.reason === undefined ? {} : { reason: value.reason }) } : { kind: "thrown" };
   const publicStatus = (status: unknown) => {
@@ -279,7 +285,8 @@ async function run(scenario: Scenario): Promise<void> {
         continue;
       }
       if ("disconnect" in step) { host.disconnect(); await idle(); continue; }
-      if ("mutate" in step || "delivery" in step) continue;
+      // The producer's mutations (including presented/1's `renew` and `waitPresented`), its transport and its close.
+      if ("mutate" in step || "delivery" in step || "closeWindow" in step) continue;
       if ("advance" in step) { await advance(step["advance"]); continue; }
       if ("call" in step) {
         const call = step["call"];
@@ -300,6 +307,7 @@ async function run(scenario: Scenario): Promise<void> {
                 contract: route === "notes" ? "Tests.Notes:fp-1" : `Tests.${route}:fp-1`, route, members: model.members,
                 ...(model.checkedFields ? { checkedFields: model.checkedFields } : {}),
                 ...(model.texts ? { texts: model.texts } : {}),
+                ...(model.scopedCommands ? { scopedCommands: model.scopedCommands } : {}),
                 ...(model.collections ? { collections: model.collections } : {}),
                 ...(model.interactions ? { interactions: model.interactions } : {}),
                 ...(handlers.has(route) ? { handlers: handlers.get(route)! } : {}),
@@ -403,6 +411,7 @@ async function run(scenario: Scenario): Promise<void> {
         if (expect["diagnostics"]) assert.deepEqual(diagnostics, expect["diagnostics"], `${scenario.id} ${at}: diagnostics`);
         if (expect["notifications"])
           assert.equal(notifications.get(expect["notifications"].route) ?? 0, expect["notifications"].count, `${scenario.id} ${at}: notifications`);
+        if (expect["connection"] !== undefined) assert.equal(connectionState, expect["connection"], `${scenario.id} ${at}: connection`);
         continue;
       }
       throw new Error(`${scenario.id} ${at}: unknown step ${JSON.stringify(step)}`);
@@ -412,6 +421,7 @@ async function run(scenario: Scenario): Promise<void> {
     assert.deepEqual(unmatched, [], `${scenario.id}: the client sent requests no step expected`);
   } finally {
     stopDiagnostics();
+    stopConnection();
     for (const view of clients.values()) view.dispose();
     host.disconnect();
     delete (globalThis as { __runicBridge?: unknown }).__runicBridge;

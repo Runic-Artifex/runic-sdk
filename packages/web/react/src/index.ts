@@ -636,8 +636,8 @@ function currentBridgeConnection(options: BridgeConnectionOptions): BridgeConnec
 }
 
 /**
- * Renders the page's connection to its .NET host (`connecting`, `connected`, `reconnecting`
- * or `lost`) while the component is mounted, through `onBridgeConnection`. A changed
+ * Renders the page's connection to its .NET host (`connecting`, `connected`, `reconnecting`,
+ * `lost` or `closed`) while the component is mounted, through `onBridgeConnection`. A changed
  * `lostAfter` subscribes again. The server snapshot is `connecting`.
  *
  * ```tsx

@@ -219,6 +219,22 @@ describe("connectionStates", () => {
     expect(seen.at(-1)).toBe("connected");
     expect(seen).toEqual(["connected", "reconnecting", "lost", "connected"]);
   });
+
+  test("streams closed after the application closed the window, also after the drop that follows", async () => {
+    const client = await connectCounter();
+    const seen: string[] = [];
+    const fiber = Effect.runFork(Stream.runForEach(connectionStates({ lostAfter: 20 }), state => Effect.sync(() => { seen.push(state); })));
+    await until(() => seen.at(-1) === "connected");
+    expect(await bridge.closeWindow(1_000)).toBe(true);
+    await until(() => seen.at(-1) === "closed");
+    bridge.disconnect();
+    await new Promise(resolve => setTimeout(resolve, 30));
+    bridge.reconnect();
+    await until(() => seen.at(-1) === "connected");
+    await Effect.runPromise(Fiber.interrupt(fiber));
+    expect(seen).toEqual(["connected", "closed", "connected"]);
+    client.dispose();
+  });
 });
 
 describe("operation", () => {

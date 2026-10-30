@@ -4,6 +4,14 @@ import { BridgeError, decodeFailureDetail, type BridgeErrorKind, type BridgeErro
 
 export type Message = Readonly<Record<string, unknown>>;
 
+/**
+ * `presentation-epoch/1` (specs/application/README.md, "Presentation epochs"): `open` and `snapshot` replies and `state` pushes carry the
+ * route's epoch, and a `command` may carry the epoch it was issued for; a stale one is `superseded`.
+ */
+export const presentationEpochFeature = "presentation-epoch/1";
+/** `presented/1` (specs/application/README.md, "Presented states and window close"): `present` asks the page to report a painted revision; `closing` a close. */
+export const presentedFeature = "presented/1";
+
 /** A reply as the runtime reads it. Members beyond `ok`, `error`, `revision` and `released` depend on the request. */
 export type Reply = Message & {
   readonly ok: boolean;
@@ -24,7 +32,9 @@ export interface ReplyError {
 export type Change = Message & { readonly field: string; readonly kind: string };
 
 export type Push =
-  | Message & { readonly kind: "state"; readonly route: string; readonly revision: number; readonly state: Message; readonly fields?: Message }
+  | Message & { readonly kind: "state"; readonly route: string; readonly revision: number; readonly state: Message; readonly fields?: Message;
+    /** presentation-epoch/1; a client without the feature ignores it. */
+    readonly epoch?: unknown }
   | Message & { readonly kind: "frame"; readonly route: string; readonly baseRevision: number; readonly revision: number; readonly changes: readonly Change[] }
   | Message & { readonly kind: "failure"; readonly route: string; readonly revision: number; readonly error: ReplyError }
   | Message & { readonly kind: "operation"; readonly route: string; readonly member: string; readonly operation: string; readonly contract: string; readonly status: Message }
@@ -32,7 +42,11 @@ export type Push =
     readonly name: string; readonly contract: string; readonly expiresAt: string; readonly input: unknown }
   | Message & { readonly kind: "interaction-cancelled"; readonly route: string; readonly presentation: string; readonly requestId: string;
     readonly ownerEpoch: number; readonly message?: string }
-  | Message & { readonly kind: "menu-bar"; readonly route: string; readonly state: Message };
+  | Message & { readonly kind: "menu-bar"; readonly route: string; readonly state: Message }
+  /** presented/1: report `presented` once the page painted `route` at `revision` or later. */
+  | Message & { readonly kind: "present"; readonly route: string; readonly revision: number }
+  /** presented/1: the application closes the window; the only push without a route, for window-level handlers. */
+  | Message & { readonly kind: "closing"; readonly route?: undefined };
 
 /** The kinds of {@link Push}; a client ignores other kinds. */
 export type PushKind = Push["kind"];
@@ -88,7 +102,7 @@ const replyMembers: Readonly<Record<string, (reply: Message) => boolean>> = {
   close: () => true,
   set: reply => isSafe(reply["revision"]) && (reply["superseded"] === undefined || typeof reply["superseded"] === "boolean"),
   write: reply => isSafe(reply["revision"]) && isObject(reply["receipt"]),
-  command: reply => isSafe(reply["revision"]),
+  command: reply => isSafe(reply["revision"]) && (reply["superseded"] === undefined || typeof reply["superseded"] === "boolean"),
   can: reply => typeof reply["value"] === "boolean",
   start: reply => isSafe(reply["revision"]) && isString(reply["admission"])
     && (reply["admission"] !== "accepted" && reply["admission"] !== "duplicate" || validStatus(reply["status"]))
@@ -105,6 +119,8 @@ const replyMembers: Readonly<Record<string, (reply: Message) => boolean>> = {
   "menu-bar-shortcuts": reply => isObject(reply["state"]),
   "menu-bar-invoke": reply => isString(reply["result"]),
   "menu-bar-unwatch": () => true,
+  presented: () => true,
+  "closing-reply": () => true,
 };
 
 /**
@@ -166,6 +182,14 @@ function invalidChanges(changes: unknown): string | undefined {
   return undefined;
 }
 
+const pushKinds = new Set(["state", "frame", "failure", "operation", "interaction", "interaction-cancelled", "menu-bar", "present", "closing"]);
+
+/** The epoch of a reply or `state` push, when it carries one that is a safe integer (presentation-epoch/1). */
+export function epochOf(message: Message): number | undefined {
+  const epoch = message["epoch"];
+  return isSafe(epoch) ? epoch : undefined;
+}
+
 const offsetDateTime = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,7})?(?:Z|[+-]\d{2}:\d{2})$/;
 
 /** Reads one push (specs/application, "Publication", "Operations", "Interactions"). */
@@ -175,7 +199,9 @@ export function readPush(text: unknown): PushReading {
   const kind = push["kind"];
   const route = isString(push["route"]) ? push["route"] : undefined;
   const invalid = (reason: string): PushReading => ({ result: "invalid", kind, ...(route === undefined ? {} : { route }), reason });
-  if (!["state", "frame", "failure", "operation", "interaction", "interaction-cancelled", "menu-bar"].includes(kind)) return { result: "ignored" };
+  if (!pushKinds.has(kind)) return { result: "ignored" };
+  // `closing` is about the window: a route it names is ignored, like any member a client does not need.
+  if (kind === "closing") return { result: "valid", push: push as Push };
   if (route === undefined) return invalid("The push has no route.");
   switch (kind) {
     case "state":
@@ -205,6 +231,9 @@ export function readPush(text: unknown): PushReading {
       break;
     case "menu-bar":
       if (!isObject(push["state"])) return invalid("The menu bar push is invalid.");
+      break;
+    case "present":
+      if (!isSafe(push["revision"])) return invalid("The present push has no revision.");
       break;
   }
   return { result: "valid", push: push as Push };

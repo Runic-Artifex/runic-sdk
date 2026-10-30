@@ -49,3 +49,28 @@ test("the page connects, increments the Counter and reports a reconnect", async 
   await rendered(() => expect(text()).toContain("Connected to the .NET Window."));
   expect(text()).not.toContain("Reconnecting");
 });
+
+test("the page says that the application closed the Window", async () => {
+  // Each test installs a new Bridge; generated clients then start from a new page runtime.
+  const bridge = installMockBridge(createMockBridge());
+  const welcome = mockWelcome(bridge, { id: "1", state: { greeting: "Your first Runic View is ready." } });
+  const counter = mockCounter(bridge, {
+    id: "2",
+    state: { count: 0, step: 1, label: "Clicks" },
+    commands: { increment: state => ({ count: state.count + state.step }) },
+  });
+  mockWorkspace(bridge, {
+    state: { main: welcome.reference },
+    commands: { showWelcome: () => ({ main: welcome.reference }), showCounter: () => ({ main: counter.reference }) },
+  });
+
+  fixture = TestBed.createComponent(AppComponent);
+  await rendered(() => expect(text()).toContain("Your first Runic View is ready."));
+
+  // The application closes the Window: the page says so, also after the connection drops.
+  expect(await bridge.closeWindow(1_000)).toBe(true);
+  await rendered(() => expect(text()).toContain("The application closed this window."));
+  bridge.disconnect();
+  await rendered(() => expect(text()).toContain("The application closed this window."));
+  expect(text()).not.toContain("Reconnecting");
+});

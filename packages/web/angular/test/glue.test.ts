@@ -13,7 +13,8 @@ import {
   BridgeError, bridgeFailure, bridgeSuccess, type BridgeConnectionState, type BridgeOperation, type BridgeOperationStatus, type BridgeOutcome,
   type MenuBarMenu, type MenuBarRequest, type MenuBarState, type RunicBridgeClient,
 } from "@runic-artifex/views";
-import { installMockMenuBar } from "@runic-artifex/views/mock";
+import { connectView } from "@runic-artifex/views/generated";
+import { createMockBridge, installMockBridge, installMockMenuBar } from "@runic-artifex/views/mock";
 
 // Hoisted above the imports, so it sees the warnings Angular logs while the package's
 // partially compiled components are defined (NG0912 for two components with one ID, #643).
@@ -470,6 +471,23 @@ describe("injectBridgeConnection", () => {
     expect(fake.listeners).toBe(0);
     fake.set(false);
     expect(connection.state()).toBe("connected");
+  });
+
+  test("is closed after the application closed the window, also after the drop that follows", async () => {
+    const bridge = installMockBridge(createMockBridge());
+    bridge.view("counter", { state: { count: 0 } });
+    const view = await connectView<{ readonly count: number }>({ contract: "Tests.Counter:fp", route: "counter", members: { count: Number } });
+    const injector = createEnvironmentInjector([], TestBed.inject(EnvironmentInjector));
+    const connection = injectBridgeConnection({ injector });
+    expect(connection.state()).toBe("connected");
+    expect(await bridge.closeWindow(1_000)).toBe(true);
+    expect(connection.state()).toBe("closed");
+    bridge.disconnect();
+    expect(connection.state()).toBe("closed");
+    bridge.reconnect();
+    expect(connection.state()).toBe("connected");
+    injector.destroy();
+    view.dispose();
   });
 
   test("a component's connection ends with the component; lostAfter is forwarded", () => {

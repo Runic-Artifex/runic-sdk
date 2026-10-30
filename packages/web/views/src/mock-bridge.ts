@@ -4,6 +4,7 @@ import { viewsVersion } from "./version.js";
 import { applySplice, producerSplices, textSpliceFeature } from "./text.js";
 import { insertRows } from "./collections.js";
 import { flushNotifications } from "./notifications.js";
+import { presentationEpochFeature, presentedFeature } from "./protocol.js";
 
 /** A View's wire state: one member per state member, by wire name, encoded as on the wire. */
 export type MockState = Record<string, unknown>;
@@ -284,6 +285,26 @@ export interface MockView {
   readonly interactionHandlers: readonly string[];
   /** Pushes an interaction request to the presentation that handles it, as a producer does. */
   interact(name: string, input: unknown, options?: MockInteractionOptions): Promise<MockInteractionReply>;
+  /**
+   * The route's presentation epoch (presentation-epoch/1): the revision of its first state, then of each renewal. On a
+   * connection that uses the feature, `open` and `snapshot` replies and `state` pushes carry it, and a `command` that
+   * carries another epoch answers `superseded` without running.
+   */
+  readonly epoch: number;
+  /**
+   * Begins a new epoch, as `RunicPresentation.Renew(viewModel)` does: the next publication is a `state` push at a new
+   * revision with the new epoch, also when no member changed. Called from a command handler, it is published with the
+   * command's changes; inside `batch`, when the batch ends; otherwise at once.
+   */
+  renew(): void;
+  /**
+   * Asks the page to report that it painted this route (presented/1), as `RunicPresentation.WaitForPresentedAsync`
+   * does: pushes `present` with the route's revision to a connection that uses the feature and has an open
+   * presentation of the route (or opens one while the wait is pending), and resolves `true` when the page reports
+   * `presented` at that revision or later, `false` after `timeout` milliseconds (default 5000; virtual time with
+   * `manual` scheduling).
+   */
+  waitPresented(timeout?: number): Promise<boolean>;
 }
 
 /** One request the client sent, in order. */
@@ -327,6 +348,14 @@ export interface MockBridge extends RunicBridgeClient {
   disconnect(): void;
   /** Reports a new connection to `onConnectionChange` listeners, as a host transport does after a reconnect. */
   reconnect(): void;
+  /**
+   * Closes the window as the application does (presented/1): pushes `closing` to the connection when it uses the
+   * feature and resolves with whether the page answered `closing-reply` within `timeout` milliseconds (default 5000;
+   * virtual time with `manual` scheduling). `false` also when the connection closes first; `true` at once when the
+   * connection does not use the feature, as `RunicWindowCloseResult.PagesAcknowledged`. A second call on the same
+   * connection returns the first result. The connection stays open: call `disconnect()` to end it as a host does.
+   */
+  closeWindow(timeout?: number): Promise<boolean>;
   /** Resolves after `milliseconds` of virtual time, for handlers that model latency. */
   sleep(milliseconds: number): Promise<void>;
   /**
@@ -348,6 +377,7 @@ const realSetTimeout = globalThis.setTimeout.bind(globalThis);
 const yieldToEventLoop = () => new Promise<void>(resolve => { realSetTimeout(resolve, 0); });
 const maximumRounds = 10_000;
 const mockImplementation = { name: "@runic-artifex/views/mock", version: viewsVersion };
+const mockFeatures: readonly string[] = [textSpliceFeature, presentationEpochFeature, presentedFeature];
 
 const upperFirst = (value: string) => value.charAt(0).toUpperCase() + value.slice(1);
 const isRecord = (value: unknown): value is Record<string, unknown> => value !== null && typeof value === "object" && !Array.isArray(value);
@@ -451,7 +481,21 @@ interface MockRegisteredView {
   revision: number;
   /** The revision of the last publication that changed each text member. */
   readonly textChanged: Map<string, number>;
+  /** presentation-epoch/1: the current epoch, and whether a renewal waits for its publication. */
+  epoch: number;
+  renewing: boolean;
+  /** Command handlers that run now: a renewal they request is published with their changes. */
+  running: number;
+  /** presented/1: the pending waits of `waitPresented`. */
+  readonly presentWaits: Set<PresentWait>;
   handle: MockView;
+}
+
+interface PresentWait {
+  readonly revision: number;
+  /** Connections it was pushed to. */
+  readonly pushed: Set<number>;
+  finish(presented: boolean): void;
 }
 
 interface Connection {
@@ -466,6 +510,8 @@ interface Connection {
   /** Requests that wait for the connection's hello, in arrival order: each resolves with whether it succeeded. */
   readonly held: ((succeeded: boolean) => void)[];
   readonly pending: Set<(error: Error) => void>;
+  /** presented/1: the window's close on this connection, and how it ends. */
+  closing?: { readonly result: Promise<boolean>; finish(acknowledged: boolean): void };
 }
 
 interface Task { readonly due: number; readonly sequence: number; readonly run: () => void }
@@ -494,6 +540,8 @@ export function createMockBridge(options: MockBridgeOptions = {}): MockBridge {
   const messageListeners = new Set<(message: string) => void>();
   const closedSessions = new Set<string>();
   const calls: MockCall[] = [];
+  // Pushes that follow a request's reply, such as the `present` of a wait to a presentation that just opened.
+  const afterReply = new WeakMap<MockCall, () => void>();
   const tasks: Task[] = [];
   let connected = true;
   let connectionCount = 1;
@@ -612,11 +660,92 @@ export function createMockBridge(options: MockBridgeOptions = {}): MockBridge {
       indexed.length = 0;
     }
     view.published = view.state;
+    if (view.renewing) {
+      // presentation-epoch/1: a renewal is published as a full state at a new revision, also when nothing changed.
+      view.renewing = false;
+      view.revision = ++revision;
+      view.epoch = view.revision;
+      for (const field of texts) view.textChanged.set(field, view.revision);
+      pushMessage({ kind: "state", route: view.route, revision: view.revision, ...epochOf(view), state: view.state, ...fieldsOf(view) });
+      return;
+    }
     if (changes.length + indexed.length === 0) return;
     const base = view.revision;
     view.revision = ++revision;
     for (const field of texts) view.textChanged.set(field, view.revision);
     pushMessage({ kind: "frame", route: view.route, baseRevision: base, revision: view.revision, changes: [...indexed, ...changes] });
+  }
+
+  /** The `epoch` member of a reply or state on a connection that uses presentation-epoch/1. */
+  const epochOf = (view: MockRegisteredView) => connection.features.has(presentationEpochFeature) ? { epoch: view.epoch } : {};
+
+  /** Publishes a renewal that waits, unless a batch or a command handler still runs. */
+  function publishRenewal(view: MockRegisteredView): void {
+    if (view.renewing && !view.batching && view.running === 0) publish(view);
+  }
+
+  /* --------------------------------------------------------------- presented/1 */
+
+  /** Pushes `present` of each pending wait to the connection, once, when it can report it. */
+  function offerPresent(view: MockRegisteredView): void {
+    if (!connected || connection.session === undefined || !connection.features.has(presentedFeature)) return;
+    if (![...view.presentations.values()].some(item => item.connection === connection.id)) return;
+    for (const wait of view.presentWaits) {
+      if (wait.pushed.has(connection.id)) continue;
+      wait.pushed.add(connection.id);
+      pushMessage({ kind: "present", route: view.route, revision: wait.revision });
+    }
+  }
+
+  /** Ends after `timeout` milliseconds of virtual time with `manual` scheduling, of real time otherwise. */
+  function timeoutAfter(timeout: number, expire: () => void): () => void {
+    if (!Number.isFinite(timeout) || timeout < 0) throw new RangeError("The timeout must be a non-negative number of milliseconds.");
+    if (manual) {
+      const task = schedule(now + timeout, expire);
+      return () => { const at = tasks.indexOf(task); if (at >= 0) tasks.splice(at, 1); };
+    }
+    const timer = realSetTimeout(expire, timeout);
+    return () => clearTimeout(timer);
+  }
+
+  function waitPresented(view: MockRegisteredView, timeout: number): Promise<boolean> {
+    // The wait is for what the application changed before it, as a producer publishes before it takes the revision.
+    publishRenewal(view);
+    return new Promise<boolean>(resolve => {
+      let stop = () => {};
+      const wait: PresentWait = {
+        revision: view.revision, pushed: new Set(),
+        finish(presented) {
+          if (!view.presentWaits.delete(wait)) return;
+          stop();
+          resolve(presented);
+        },
+      };
+      view.presentWaits.add(wait);
+      stop = timeoutAfter(timeout, () => wait.finish(false));
+      offerPresent(view);
+    });
+  }
+
+  function closeWindow(timeout: number): Promise<boolean> {
+    const owner = connection;
+    if (owner.closing) return owner.closing.result;
+    if (!connected || owner.session === undefined || !owner.features.has(presentedFeature)) return Promise.resolve(true);
+    let finish!: (acknowledged: boolean) => void;
+    const result = new Promise<boolean>(resolve => {
+      let stop = () => {};
+      let done = false;
+      finish = acknowledged => {
+        if (done) return;
+        done = true;
+        stop();
+        resolve(acknowledged);
+      };
+      stop = timeoutAfter(timeout, () => finish(false));
+    });
+    owner.closing = { result, finish };
+    pushMessage({ kind: "closing" });
+    return result;
   }
 
   function commit(view: MockRegisteredView, next: MockState): void {
@@ -1028,13 +1157,23 @@ export function createMockBridge(options: MockBridgeOptions = {}): MockBridge {
         return refuseHeld({ ...invalidRequest("The hello's features are not an array of at most 64 strings."), ...identity });
       if (closedSessions.has(message["session"])) return refuseHeld({ ...released(), ...identity });
       connection.session = message["session"];
-      connection.features = new Set((listed as string[] | undefined ?? []).filter(feature => feature === textSpliceFeature));
+      connection.features = new Set((listed as string[] | undefined ?? []).filter(feature => mockFeatures.includes(feature)));
       // Requests that waited for the hello are admitted in the order they arrived.
       for (const resume of connection.held.splice(0)) resume(true);
-      return ok({ ...identity, features: [textSpliceFeature] });
+      return ok({ ...identity, features: mockFeatures });
     }
     if (connection.session === undefined) return noHello();
     if (kind === "receive") return ok({ messages: [] });
+    if (kind === "closing-reply") {
+      if (!connection.features.has(presentedFeature)) return invalidRequest("closing-reply needs the feature presented/1.");
+      // Without a pending close it changes nothing.
+      connection.closing?.finish(true);
+      return ok();
+    }
+    if (kind === "presented" && (!connection.features.has(presentedFeature) || !isSafe(message["revision"])))
+      return invalidRequest("presented needs the feature presented/1 and a revision.");
+    if (kind === "command" && connection.features.has(presentationEpochFeature) && Object.hasOwn(message, "epoch") && !isSafe(message["epoch"]))
+      return invalidRequest("The command's epoch is not a non-negative safe integer.");
     const route = message["route"];
     if (typeof route !== "string") return invalidRequest("The request has no route.");
     const view = views.get(route);
@@ -1043,7 +1182,7 @@ export function createMockBridge(options: MockBridgeOptions = {}): MockBridge {
     const failureIndex = failures.findIndex(item => item.match.route === route && item.match.kind === kind
       && (item.match.member === undefined || item.match.member === member));
     if (failureIndex >= 0) return injected(view, kind, message, failures.splice(failureIndex, 1)[0]!.failure);
-    const state = () => ({ revision: view.revision, state: view.state, ...fieldsOf(view) });
+    const state = () => ({ revision: view.revision, ...epochOf(view), state: view.state, ...fieldsOf(view) });
     switch (kind) {
       case "open": case "close": {
         const id = message["presentation"];
@@ -1057,6 +1196,8 @@ export function createMockBridge(options: MockBridgeOptions = {}): MockBridge {
         if (existing && existing.connection !== connection.id) return ok({ ...state(), presentation: "ignored" });
         const handlers = Array.isArray(message["handlers"]) ? message["handlers"] as Presentation["handlers"] : undefined;
         view.presentations.set(id, existing ?? { id, connection: connection.id, handlers: handlers ?? [], generation: 0 });
+        // presented/1: a wait that is pending reaches a presentation that opens, after the open reply.
+        if (view.presentWaits.size !== 0) afterReply.set(call, () => offerPresent(view));
         return ok({ ...state(), presentation: "ok", ...(handlers === undefined ? {} : { registration: "ok" }) });
       }
       case "snapshot": return ok(state());
@@ -1096,14 +1237,33 @@ export function createMockBridge(options: MockBridgeOptions = {}): MockBridge {
         const handler = view.definition.commands?.[member];
         if (!handler && !view.definition.can?.[member]) return invalidRequest(`${route} has no command ${member}.`);
         const input = message["input"];
+        // presentation-epoch/1: a command issued for an earlier epoch, or across a renewal that is still to be
+        // published, runs nothing.
+        if (kind === "command" && connection.features.has(presentationEpochFeature) && isSafe(message["epoch"])
+          && (message["epoch"] !== view.epoch || view.renewing)) {
+          publishRenewal(view);
+          return ok({ revision: view.revision, superseded: true });
+        }
         const refusal = unavailable(view, member, input);
         if (kind === "can") return ok({ value: refusal === undefined });
         if (refusal) return failed("rejected", refusal.message, { reason: refusal.reason });
+        view.running++;
         try {
           const patch = await handler?.(view.state, input);
+          view.running--;
           if (isRecord(patch)) commit(view, { ...view.state, ...patch });
-        } catch (error) { return errorReply(view, error, true); }
+          else publishRenewal(view);
+        } catch (error) {
+          view.running--;
+          publishRenewal(view);
+          return errorReply(view, error, true);
+        }
         return ok({ revision: view.revision });
+      }
+      case "presented": {
+        const reported = message["revision"] as number;
+        for (const wait of [...view.presentWaits]) if (reported >= wait.revision) wait.finish(true);
+        return ok();
       }
       case "start":
         if (member === undefined || typeof message["operation"] !== "string") return invalidRequest("The start request is invalid.");
@@ -1193,7 +1353,7 @@ export function createMockBridge(options: MockBridgeOptions = {}): MockBridge {
         toProducer(() => {
           if (connection !== owner) return;
           const run = () => admitted(call.kind, () => answer(message, call)).then(
-            reply => settle(() => resolve(JSON.stringify(reply))),
+            reply => { settle(() => resolve(JSON.stringify(reply))); afterReply.get(call)?.(); },
             error => settle(() => reject(error)));
           // A request that arrives before the hello waits for it, up to 5 seconds, and is then admitted in arrival
           // order; a receive never waits.
@@ -1221,6 +1381,8 @@ export function createMockBridge(options: MockBridgeOptions = {}): MockBridge {
       const view: MockRegisteredView = {
         route, definition, contract: definition.contract ?? `mock.${route}:mock`, fieldVersions: new Map(), presentations: new Map(),
         requests: new Map(), writes: new Map(), batching: false, pending: [], state, published: state, revision, textChanged: new Map(),
+        // The first state begins the route's first epoch.
+        epoch: revision, renewing: false, running: 0, presentWaits: new Set(),
         handle: undefined as unknown as MockView,
       };
       view.handle = {
@@ -1251,6 +1413,12 @@ export function createMockBridge(options: MockBridgeOptions = {}): MockBridge {
             .flatMap(item => item.handlers.map(handler => handler.name)))];
         },
         interact: (name, input, options) => interact(view, name, input, options),
+        get epoch() { return view.epoch; },
+        renew() {
+          view.renewing = true;
+          publishRenewal(view);
+        },
+        waitPresented: (timeout = 5_000) => waitPresented(view, timeout),
       };
       views.set(route, view);
       return view.handle;
@@ -1273,6 +1441,7 @@ export function createMockBridge(options: MockBridgeOptions = {}): MockBridge {
         for (const presentation of [...view.presentations.values()]) if (presentation.connection === closed.id) endPresentation(view, presentation);
       for (const record of operations.values()) record.watchers.delete(closed.id);
       for (const drop of [...closed.pending]) drop(new Error("The mock Bridge is disconnected."));
+      closed.closing?.finish(false);
       connection = newConnection(++connectionCount);
       notifyConnection(false);
     },
@@ -1285,6 +1454,7 @@ export function createMockBridge(options: MockBridgeOptions = {}): MockBridge {
       if (!Number.isFinite(milliseconds) || milliseconds < 0) throw new RangeError("The delay must be a non-negative number of milliseconds.");
       return new Promise<void>(resolve => { schedule(now + milliseconds, resolve); });
     },
+    closeWindow: (timeout = 5_000) => closeWindow(timeout),
     flush,
     async flushUntil<T>(promise: Promise<T>): Promise<T> {
       let settled = false;

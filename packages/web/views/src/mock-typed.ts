@@ -137,6 +137,13 @@ export interface MockTypedView<TState, TClient, TKind extends string = string> {
   pushFailure(failure: { readonly kind?: BridgeErrorKind; readonly message: string; readonly detail?: BridgeFailureDetail }): void;
   /** Publishes the collection edits and updates made by `edit` as one frame. */
   batch(edit: () => void): void;
+  /**
+   * Begins a new presentation epoch (presentation-epoch/1), as `RunicPresentation.Renew` does: scoped commands the
+   * page issued for the earlier one answer `superseded`. See `MockView.renew`.
+   */
+  renew(): void;
+  /** Asks the page to report that it painted this View (presented/1). See `MockView.waitPresented`. */
+  waitPresented(timeout?: number): Promise<boolean>;
 }
 
 interface FieldCodec { encode(value: unknown): unknown; decode(wire: unknown): unknown }
@@ -167,6 +174,11 @@ export interface MockTypedViewSpec {
    */
   readonly commands?: Readonly<Record<string, { readonly member: string; readonly decodeInput?: (wire: unknown) => unknown;
     readonly available?: string; readonly encodeFailure?: (value: unknown) => unknown }>>;
+  /**
+   * Wire names of scoped commands (`[RunicPresentationScoped]`). The mock, like a producer, checks the epoch of every
+   * `command` that carries one, so it needs no list; generated mocks may state it.
+   */
+  readonly scopedCommands?: readonly string[];
   /** Operations by client command method (`start{Method}`). `encodeFailure` encodes a declared failure. */
   readonly operations?: Readonly<Record<string, { readonly member: string; readonly decodeInput?: (wire: unknown) => unknown;
     readonly encodeResult?: (value: unknown) => unknown; readonly stream?: boolean;
@@ -380,6 +392,8 @@ export function mockTypedView(bridge: MockBridge, spec: MockTypedViewSpec, defin
     },
     pushFailure: failure => raw.pushFailure(failure),
     batch: edit => raw.batch(edit),
+    renew: () => raw.renew(),
+    waitPresented: timeout => raw.waitPresented(timeout),
     collections,
     operations: operationLog,
     interactions,

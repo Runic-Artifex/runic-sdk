@@ -67,6 +67,43 @@ call that resolves, such as `await counter.increment()` or a checked write,
 first delivers every state that arrived before its reply. The mock Bridge
 delivers each push at once (see [Testing](#testing)).
 
+### Scoped commands
+
+A command marked `[RunicPresentationScoped]` in .NET (a command property or a
+CommunityToolkit `[RelayCommand]` method) runs only for the presentation it was
+issued for: a wizard's **Next** clicked twice before the next page rendered
+advances once. The generated client lists such commands in `scopedCommands`,
+and with a .NET host of 0.15 or later (the `hello` feature
+`presentation-epoch/1`) each call sends the epoch of the state its client's
+subscribers last received, which is the page on screen, not a newer state that
+waits for the next animation frame. When the application renewed the
+presentation meanwhile (`RunicPresentation.Renew`, or content presented again),
+.NET runs nothing and answers `superseded`. Such a call resolves like one that
+ran: once the route reached the reply's revision, with the current state
+(`commandOutcome` resolves `bridgeSuccess(state)`). It reports no diagnostic,
+and `useCommand`, `injectCommand` and `createCommandController` show no error.
+A caller that must know compares the state it got. Other commands, setters,
+operation starts and interactions are not scoped. With an earlier host, scoped
+commands run as plain commands.
+
+### Presented states and window close
+
+With a .NET host of 0.15 or later (the `hello` feature `presented/1`), .NET can
+wait until the page shows a state: `RunicPresentation.WaitForPresentedAsync`
+asks each page that presents the ViewModel's route, and the client answers once
+the route reached the asked revision, the state was delivered to its
+subscribers and one animation frame passed, so the browser rendered it. A route
+whose clients have no subscriber, such as a kept client in its grace period or
+a `preloadView`, is not on screen: it answers once a binding subscribes. A
+hidden page answers after the timer that delivers its states. Applications do
+nothing for this.
+
+When the application closes the window, .NET tells each page first. The client
+delivers its pending states, lets one frame render them, acknowledges, and
+reports the connection state `closed` ([Connection state](#connection-state)),
+so a page, such as a CS-WebUI browser tab that outlives the application, can
+say "The application closed this window." instead of showing a lost connection.
+
 ### Cancellation and `using`
 
 `connect<Name>({ signal })`, `waitForBridge({ signal })` and an operation's
@@ -760,7 +797,7 @@ A definition takes:
   and a start with the id begins a new operation.
 
 The returned mock has `state`, `update(changes)` (pushes a full state like a
-.NET publication), `calls`, `failNext(method, { kind, message, detail, reason })` or
+.NET publication), `renew()` and `waitPresented(timeout?)` (below), `calls`, `failNext(method, { kind, message, detail, reason })` or
 `failNext(method, { kind: "domain-failed", failure })` for a method's declared failure,
 `pushFailure({ message })` (a failure notice: the client keeps its last state
 and reports the error), `collections.<field>` with `add`, `remove`, `replace`
@@ -781,6 +818,23 @@ request itself, like a dropped connection, and `disconnect()`/`reconnect()` exer
 path. `failNext` takes no `disconnected` kind, because .NET never sends it: use
 `disconnect()` for a lost connection.
 
+Presentation epochs and window close have test counterparts of their .NET API:
+
+- `mock.renew()` (on a typed mock, or `raw.renew()`) renews the route as
+  `RunicPresentation.Renew` does: the next publication is a full state with a
+  new epoch, also when nothing changed, and a scoped command the page sent for
+  the earlier epoch answers `superseded`. A command handler that calls it
+  publishes the renewal with its own changes; `mock.raw.epoch` is the current
+  epoch.
+- `mock.waitPresented(timeout?)` asks the page to report that it painted the
+  route, as `RunicPresentation.WaitForPresentedAsync` does, and resolves `true`
+  once it did, or `false` after `timeout` milliseconds (default 5000, virtual
+  time with `scheduling: "manual"`).
+- `bridge.closeWindow(timeout?)` closes the window as the application does:
+  the page acknowledges and reports `closed`. It resolves with whether the page
+  acknowledged within `timeout` (default 5000), and keeps the connection open:
+  `disconnect()` then ends it as a host does.
+
 The mock follows the .NET producer where a client can observe it, and its
 replies and pushes are checked against the
 [conformance corpus](https://github.com/Runic-Artifex/runic-sdk/tree/main/specs/application/conformance):
@@ -800,6 +854,10 @@ replies and pushes are checked against the
   the call. Inputs and request ids are compared in the RFC 8785 canonical form.
 - Requests that change state (`set`, `write`, `command`, `start`) run one at a time,
   as a window's turns do.
+- With `presentation-epoch/1`, `open` and `snapshot` replies and `state` pushes
+  carry the route's epoch, and every `command` that carries an epoch is checked,
+  whatever the contract marks scoped; a stale one answers `superseded` before
+  availability is checked.
 - `disconnect()` closes the connection's presentations and watches, and a later
   `hello` with its session answers `released`. After `reconnect()` the client sends
   a new `hello` and opens its Views again. Both are reported to
@@ -1043,6 +1101,7 @@ const stop = onBridgeConnection(state => {
 | `connected` | The Bridge is connected. After a reconnect, generated clients send a new `hello` and open their Views again. |
 | `reconnecting` | The connection dropped; the host transport is restoring it. |
 | `lost` | No connection for `lostAfter` milliseconds (default 5000; `0` makes a drop `lost` at once), or none since the page loaded. Not terminal: it becomes `connected` when the host comes back. |
+| `closed` | The application closed this window ([Presented states and window close](#presented-states-and-window-close); a .NET host of 0.15 or later). The connection drop that follows keeps it `closed`, not `reconnecting` or `lost`; a new connection reports `connected` again. Added in 0.15: an exhaustive `switch` or `Record<BridgeConnectionState, …>` needs the new case. |
 
 Runic Desktop and CS-WebUI report a dropped WebSocket within about 250 ms, for
 example when the host process ends or is killed. Neither sends a heartbeat, so a

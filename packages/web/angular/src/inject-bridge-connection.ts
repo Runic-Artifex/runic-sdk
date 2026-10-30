@@ -12,8 +12,8 @@ export interface InjectBridgeConnectionOptions extends BridgeConnectionOptions {
 }
 
 /**
- * Follows the page's connection to its .NET host (`connecting`, `connected`, `reconnecting` or
- * `lost`) as a signal through `onBridgeConnection`, for the lifetime of the injection context.
+ * Follows the page's connection to its .NET host (`connecting`, `connected`, `reconnecting`,
+ * `lost` or `closed`) as a signal through `onBridgeConnection`, for the lifetime of the injection context.
  * Destruction unsubscribes. Under server rendering (`PLATFORM_ID` `"server"`) it does not
  * observe and stays `connecting`.
  *

@@ -3,6 +3,8 @@
 import { flushSync, mount, unmount } from "svelte";
 import { afterEach, describe, expect, expectTypeOf, test } from "vitest";
 import type { BridgeConnectionState, RunicBridgeClient } from "@runic-artifex/views";
+import { connectView } from "@runic-artifex/views/generated";
+import { createMockBridge, installMockBridge } from "@runic-artifex/views/mock";
 import { useBridgeConnection, type BridgeConnectionHandle, type ViewRegistry } from "../src/views/index.js";
 import * as root from "../src/index.js";
 import ConnectionOwner from "./fixtures/ConnectionOwner.svelte";
@@ -70,6 +72,26 @@ describe("useBridgeConnection", () => {
     destroy();
     expect(fake.listeners).toBe(0);
     expect(() => $effect.root(() => { useBridgeConnection({ lostAfter: -1 }); })).toThrow(RangeError);
+  });
+
+  test("is closed after the application closed the window, also after the drop that follows", async () => {
+    const bridge = installMockBridge(createMockBridge());
+    bridge.view("counter", { state: { count: 0 } });
+    const view = await connectView<{ readonly count: number }>({ contract: "Tests.Counter:fp", route: "counter", members: { count: Number } });
+    let connection!: BridgeConnectionHandle;
+    const destroy = $effect.root(() => { connection = useBridgeConnection(); });
+    expect(connection.state).toBe("connected");
+    expect(await bridge.closeWindow(1_000)).toBe(true);
+    flushSync();
+    expect(connection.state).toBe("closed");
+    bridge.disconnect();
+    flushSync();
+    expect(connection.state).toBe("closed");
+    bridge.reconnect();
+    flushSync();
+    expect(connection.state).toBe("connected");
+    destroy();
+    view.dispose();
   });
 
   test("a component renders the state and stops observing when unmounted", async () => {

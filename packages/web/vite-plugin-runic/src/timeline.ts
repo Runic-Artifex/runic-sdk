@@ -27,7 +27,7 @@ export interface RunicDevelopmentState {
    * (`BridgeConnectionState`), or `unknown` until a View connects.
    */
   readonly connection: Readonly<{
-    state: "connecting" | "connected" | "reconnecting" | "lost" | "unknown";
+    state: "connecting" | "connected" | "reconnecting" | "lost" | "closed" | "unknown";
   }>;
   readonly timeline: readonly RunicTimelineEntry[];
 }
@@ -112,7 +112,7 @@ export function timelineLimit(value: number | undefined): number {
 }
 
 function connectionState(value: unknown): RunicDevelopmentState["connection"]["state"] {
-  return value === "connecting" || value === "connected" || value === "reconnecting" || value === "lost"
+  return value === "connecting" || value === "connected" || value === "reconnecting" || value === "lost" || value === "closed"
     ? value
     : "unknown";
 }

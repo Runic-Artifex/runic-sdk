@@ -85,7 +85,7 @@ export function states<S>(client: ViewClient<S>, options: StatesOptions = {}): S
 
 /**
  * The page's connection to its .NET host: the current `BridgeConnectionState` (`connecting`, `connected`,
- * `reconnecting` or `lost`), then each change, as `onBridgeConnection` from `@runic-artifex/views` reports it. A slow
+ * `reconnecting`, `lost` or `closed`), then each change, as `onBridgeConnection` from `@runic-artifex/views` reports it. A slow
  * consumer skips to the latest state. It never ends on its own; interrupting it unsubscribes.
  *
  * ```ts

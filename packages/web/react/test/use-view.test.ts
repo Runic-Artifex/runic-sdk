@@ -8,7 +8,8 @@ import {
   BridgeError, bridgeFailure, bridgeSuccess, type BridgeConnectionState, type BridgeOperation, type BridgeOperationStatus, type BridgeOutcome,
   type MenuBarMenu, type MenuBarRequest, type MenuBarState, type RunicBridgeClient,
 } from "@runic-artifex/views";
-import { installMockMenuBar } from "@runic-artifex/views/mock";
+import { connectView } from "@runic-artifex/views/generated";
+import { createMockBridge, installMockBridge, installMockMenuBar } from "@runic-artifex/views/mock";
 import {
   retrySuspenseView, useBridgeConnection, useCollectionViewport, useCommand, useLatestOperation, useMenuBar, useOperation, useSuspenseView,
   useView, ViewOutlet, type BridgeConnectionHandle, type MenuBarHandle, type UseMenuBarOptions, type CollectionViewportHandle, type CommandHandle, type LatestOperationHandle, type OperationHandle, type SuspenseViewOptions,
@@ -933,6 +934,25 @@ describe("useBridgeConnection", () => {
     expect(text()).toBe("connected");
     await act(async () => fake.set(false));
     expect(text()).toBe("reconnecting");
+  });
+
+  test("is closed after the application closed the window, also after the drop that follows", async () => {
+    const bridge = installMockBridge(createMockBridge());
+    bridge.view("counter", { state: { count: 0 } });
+    const view = await connectView<{ readonly count: number }>({ contract: "Tests.Counter:fp", route: "counter", members: { count: Number } });
+    function Status(): ReactNode { return createElement("output", null, useBridgeConnection().state); }
+    await act(async () => {
+      root ??= createRoot(document.body.appendChild(document.createElement("div")));
+      root.render(createElement(Status));
+    });
+    expect(text()).toBe("connected");
+    await act(async () => { expect(await bridge.closeWindow(1_000)).toBe(true); });
+    expect(text()).toBe("closed");
+    await act(async () => bridge.disconnect());
+    expect(text()).toBe("closed");
+    await act(async () => bridge.reconnect());
+    expect(text()).toBe("connected");
+    view.dispose();
   });
 });
 

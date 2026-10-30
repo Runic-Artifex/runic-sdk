@@ -12,7 +12,8 @@ import {
   BridgeError, bridgeFailure, bridgeSuccess, type BridgeConnectionState, type BridgeOperation, type BridgeOperationStatus, type BridgeOutcome,
   type MenuBarMenu, type MenuBarRequest, type MenuBarState, type RunicBridgeClient,
 } from "@runic-artifex/views";
-import { installMockMenuBar } from "@runic-artifex/views/mock";
+import { connectView } from "@runic-artifex/views/generated";
+import { createMockBridge, installMockBridge, installMockMenuBar } from "@runic-artifex/views/mock";
 import { renderToString } from "vue/server-renderer";
 
 type State = { readonly count: number };
@@ -479,6 +480,27 @@ describe("useBridgeConnection", () => {
     expect(seen).toEqual(["connected", "reconnecting", "connected"]);
     app.unmount();
     expect(fake.listeners).toBe(0);
+  });
+
+  test("is closed after the application closed the window, also after the drop that follows", async () => {
+    const bridge = installMockBridge(createMockBridge());
+    bridge.view("counter", { state: { count: 0 } });
+    const view = await connectView<{ readonly count: number }>({ contract: "Tests.Counter:fp", route: "counter", members: { count: Number } });
+    const element = document.createElement("div");
+    const app = createApp(defineComponent({ setup() { const { state } = useBridgeConnection(); return () => h("output", state.value); } }));
+    app.mount(element);
+    expect(element.textContent).toBe("connected");
+    expect(await bridge.closeWindow(1_000)).toBe(true);
+    await nextTick();
+    expect(element.textContent).toBe("closed");
+    bridge.disconnect();
+    await nextTick();
+    expect(element.textContent).toBe("closed");
+    bridge.reconnect();
+    await nextTick();
+    expect(element.textContent).toBe("connected");
+    app.unmount();
+    view.dispose();
   });
 
   test("stopping the effect scope stops observing, and lostAfter is forwarded", () => {
