@@ -150,3 +150,51 @@ static Runic.Platform.Administration.Windows.Dns.DnsAnswer.operator ==(Runic.Pla
 static Runic.Platform.Administration.Windows.Dns.DnsResolution.operator !=(Runic.Platform.Administration.Windows.Dns.DnsResolution? left, Runic.Platform.Administration.Windows.Dns.DnsResolution? right) -> bool
 static Runic.Platform.Administration.Windows.Dns.DnsResolution.operator ==(Runic.Platform.Administration.Windows.Dns.DnsResolution? left, Runic.Platform.Administration.Windows.Dns.DnsResolution? right) -> bool
 static Runic.Platform.Administration.Windows.Dns.WindowsDnsResolverClient.ReverseLookupName(System.Net.IPAddress! address) -> string!
+override Runic.Platform.Administration.Windows.Processes.ProcessStartSpecification.Equals(object? obj) -> bool
+override Runic.Platform.Administration.Windows.Processes.ProcessStartSpecification.GetHashCode() -> int
+override Runic.Platform.Administration.Windows.Processes.ProcessStartSpecification.ToString() -> string!
+Runic.Platform.Administration.Windows.Processes.ProcessCloseOutcome
+Runic.Platform.Administration.Windows.Processes.ProcessCloseOutcome.Closed = 2 -> Runic.Platform.Administration.Windows.Processes.ProcessCloseOutcome
+Runic.Platform.Administration.Windows.Processes.ProcessCloseOutcome.Killed = 3 -> Runic.Platform.Administration.Windows.Processes.ProcessCloseOutcome
+Runic.Platform.Administration.Windows.Processes.ProcessCloseOutcome.NotRunning = 1 -> Runic.Platform.Administration.Windows.Processes.ProcessCloseOutcome
+Runic.Platform.Administration.Windows.Processes.ProcessSnapshot.ImagePath.get -> string?
+Runic.Platform.Administration.Windows.Processes.ProcessSnapshot.ImagePath.init -> void
+Runic.Platform.Administration.Windows.Processes.ProcessStartSpecification
+Runic.Platform.Administration.Windows.Processes.ProcessStartSpecification.Arguments.get -> string!
+Runic.Platform.Administration.Windows.Processes.ProcessStartSpecification.Arguments.init -> void
+Runic.Platform.Administration.Windows.Processes.ProcessStartSpecification.<Clone>$() -> Runic.Platform.Administration.Windows.Processes.ProcessStartSpecification!
+Runic.Platform.Administration.Windows.Processes.ProcessStartSpecification.Deconstruct(out string! FileName) -> void
+Runic.Platform.Administration.Windows.Processes.ProcessStartSpecification.Elevated.get -> bool
+Runic.Platform.Administration.Windows.Processes.ProcessStartSpecification.Elevated.init -> void
+Runic.Platform.Administration.Windows.Processes.ProcessStartSpecification.Equals(Runic.Platform.Administration.Windows.Processes.ProcessStartSpecification? other) -> bool
+Runic.Platform.Administration.Windows.Processes.ProcessStartSpecification.FileName.get -> string!
+Runic.Platform.Administration.Windows.Processes.ProcessStartSpecification.FileName.init -> void
+Runic.Platform.Administration.Windows.Processes.ProcessStartSpecification.ProcessStartSpecification(string! FileName) -> void
+Runic.Platform.Administration.Windows.Processes.ProcessStartSpecification.WorkingDirectory.get -> string?
+Runic.Platform.Administration.Windows.Processes.ProcessStartSpecification.WorkingDirectory.init -> void
+Runic.Platform.Administration.Windows.Processes.WindowsProcessClient.CloseOrKillAsync(int processId, System.TimeSpan timeout, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<Runic.Platform.Administration.Windows.Processes.ProcessCloseOutcome>!
+Runic.Platform.Administration.Windows.Processes.WindowsProcessClient.FindByImagePath(string! imagePath) -> System.Collections.Immutable.ImmutableArray<Runic.Platform.Administration.Windows.Processes.ProcessSnapshot!>
+Runic.Platform.Administration.Windows.Processes.WindowsProcessClient.StartAndWaitAsync(Runic.Platform.Administration.Windows.Processes.ProcessStartSpecification! specification, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<int>!
+Runic.Platform.Administration.Windows.Processes.WindowsProcessClient.TerminateAsync(int processId, int exitCode = 1, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<bool>!
+static Runic.Platform.Administration.Windows.Processes.ProcessStartSpecification.operator !=(Runic.Platform.Administration.Windows.Processes.ProcessStartSpecification? left, Runic.Platform.Administration.Windows.Processes.ProcessStartSpecification? right) -> bool
+static Runic.Platform.Administration.Windows.Processes.ProcessStartSpecification.operator ==(Runic.Platform.Administration.Windows.Processes.ProcessStartSpecification? left, Runic.Platform.Administration.Windows.Processes.ProcessStartSpecification? right) -> bool
+override Runic.Platform.Administration.Windows.SystemInformation.ConsoleUser.Equals(object? obj) -> bool
+override Runic.Platform.Administration.Windows.SystemInformation.ConsoleUser.GetHashCode() -> int
+override Runic.Platform.Administration.Windows.SystemInformation.ConsoleUser.ToString() -> string!
+Runic.Platform.Administration.Windows.SystemInformation.ConsoleUser
+Runic.Platform.Administration.Windows.SystemInformation.ConsoleUser.<Clone>$() -> Runic.Platform.Administration.Windows.SystemInformation.ConsoleUser!
+Runic.Platform.Administration.Windows.SystemInformation.ConsoleUser.ConsoleUser(int SessionId, string! UserName, string! DomainName) -> void
+Runic.Platform.Administration.Windows.SystemInformation.ConsoleUser.Deconstruct(out int SessionId, out string! UserName, out string! DomainName) -> void
+Runic.Platform.Administration.Windows.SystemInformation.ConsoleUser.DomainName.get -> string!
+Runic.Platform.Administration.Windows.SystemInformation.ConsoleUser.DomainName.init -> void
+Runic.Platform.Administration.Windows.SystemInformation.ConsoleUser.Equals(Runic.Platform.Administration.Windows.SystemInformation.ConsoleUser? other) -> bool
+Runic.Platform.Administration.Windows.SystemInformation.ConsoleUser.SessionId.get -> int
+Runic.Platform.Administration.Windows.SystemInformation.ConsoleUser.SessionId.init -> void
+Runic.Platform.Administration.Windows.SystemInformation.ConsoleUser.UserName.get -> string!
+Runic.Platform.Administration.Windows.SystemInformation.ConsoleUser.UserName.init -> void
+Runic.Platform.Administration.Windows.SystemInformation.WindowsSystemInformationClient.GetActiveConsoleUser() -> Runic.Platform.Administration.Windows.SystemInformation.ConsoleUser?
+static Runic.Platform.Administration.Windows.SystemInformation.ConsoleUser.operator !=(Runic.Platform.Administration.Windows.SystemInformation.ConsoleUser? left, Runic.Platform.Administration.Windows.SystemInformation.ConsoleUser? right) -> bool
+static Runic.Platform.Administration.Windows.SystemInformation.ConsoleUser.operator ==(Runic.Platform.Administration.Windows.SystemInformation.ConsoleUser? left, Runic.Platform.Administration.Windows.SystemInformation.ConsoleUser? right) -> bool
+Runic.Platform.Administration.Windows.Services.ServiceSnapshot.ExecutablePath.get -> string!
+Runic.Platform.Administration.Windows.Services.ServiceSnapshot.ExecutablePath.init -> void
+Runic.Platform.Administration.Windows.Services.WindowsServiceClient.StopWithDependentsAsync(string! name, System.TimeSpan timeout, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<System.Collections.Immutable.ImmutableArray<string!>>!

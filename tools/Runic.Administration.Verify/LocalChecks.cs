@@ -111,6 +111,9 @@ internal sealed class LocalChecks(RunReport report, Options options, Cancellatio
         var client = new WindowsServiceClient();
         var name = report.Prefix;
         var created = false;
+        // sdk#739: a second fixture service that depends on the first.
+        var dependent = "RunicVerify-" + Guid.NewGuid().ToString("N");
+        var dependentCreated = false;
         report.Resource("Service: " + name);
         try
         {
@@ -119,6 +122,7 @@ internal sealed class LocalChecks(RunReport report, Options options, Cancellatio
             created = true;
             var service = await client.FindAsync(name, token) ?? throw new InvalidOperationException("Created service missing.");
             Require(service.Status.State == ServiceState.Stopped && service.BinaryCommandLine == command, "New service state/configuration mismatch.");
+            Require(string.Equals(service.ExecutablePath, Executable, StringComparison.OrdinalIgnoreCase), "Service executable path mismatch: " + service.ExecutablePath);
             await Conflict(() => client.CreateAsync(new(name, command, "LocalSystem"), cancellationToken: token));
             await client.UpdateAsync(name, new() { Description = "updated", FailurePolicy = new(TimeSpan.FromDays(1), [new(ServiceFailureActionKind.None, TimeSpan.Zero)]) }, cancellationToken: token);
             Require((await client.FindAsync(name, token))?.Description == "updated", "Service description update missing.");
@@ -127,10 +131,34 @@ internal sealed class LocalChecks(RunReport report, Options options, Cancellatio
             Require(running.ProcessId != 0 && new WindowsProcessClient().Find(running.ProcessId) is not null, "Service process ID missing.");
             await client.PauseAsync(name, token); await client.WaitForStateAsync(name, ServiceState.Paused, TimeSpan.FromSeconds(10), token);
             await client.ContinueAsync(name, token); await client.WaitForStateAsync(name, ServiceState.Running, TimeSpan.FromSeconds(10), token);
-            await client.StopAsync(name, token); await client.WaitForStateAsync(name, ServiceState.Stopped, TimeSpan.FromSeconds(30), token);
+            report.Resource("Dependent service: " + dependent);
+            await client.CreateAsync(new(dependent, "\"" + Executable + "\" --service " + dependent, "LocalSystem")
+            { Dependencies = [name], Description = "Runic disposable verification service (dependent)" }, cancellationToken: token);
+            dependentCreated = true;
+            await client.StartAsync(dependent, token);
+            await client.WaitForStateAsync(dependent, ServiceState.Running, TimeSpan.FromSeconds(30), token);
+            try { await client.StopAsync(name, token); throw new InvalidOperationException("A service with a running dependent accepted a stop."); }
+            catch (WindowsAdministrationException error) when (error.NativeErrorCode == 1051)
+            {
+                Require(error.Category == AdministrationErrorCategory.Conflict, "A running dependent must be a conflict.");
+            }
+            var stopped = await client.StopWithDependentsAsync(name, TimeSpan.FromSeconds(30), token);
+            Require(stopped.SequenceEqual([dependent], StringComparer.OrdinalIgnoreCase), "Stopped dependents: " + string.Join(", ", stopped));
+            Require((await client.FindStatusAsync(dependent, token))?.State == ServiceState.Stopped, "The dependent is not stopped.");
+            await client.WaitForStateAsync(name, ServiceState.Stopped, TimeSpan.FromSeconds(30), token);
         }
         finally
         {
+            if (dependentCreated) await report.Check("cleanup.dependent-service", async () =>
+            {
+                if (await client.FindStatusAsync(dependent) is { State: not ServiceState.Stopped } state)
+                {
+                    if (state.State != ServiceState.StopPending) await client.StopAsync(dependent);
+                    await client.WaitForStateAsync(dependent, ServiceState.Stopped, TimeSpan.FromSeconds(30));
+                }
+                Require(await client.DeleteAsync(dependent), "Created dependent service unexpectedly absent before cleanup.");
+                await Until(async () => await client.FindStatusAsync(dependent) is null, TimeSpan.FromSeconds(30), default);
+            });
             if (created) await report.Check("cleanup.service", async () =>
             {
                 Exception? stopFailure = null;

@@ -65,6 +65,37 @@ public sealed partial class WindowsServiceClient
     public Task StopAsync(string name, CancellationToken cancellationToken = default) =>
         NativeWork.RunAsync(() => Control(name, 1, 0x20), cancellationToken);
 
+    /// <summary>Stops the active services that depend on a service, in dependency order, waiting for each to stop, and
+    /// then requests the service's own stop, as <c>ServiceController.Stop()</c> does. Returns the dependents it stopped,
+    /// in the order they were stopped.</summary>
+    /// <remarks>Without this, <see cref="StopAsync"/> fails with native 1051 (<c>ERROR_DEPENDENT_SERVICES_RUNNING</c>,
+    /// <see cref="AdministrationErrorCategory.Conflict"/>) while a dependent runs. <paramref name="timeout"/> bounds the
+    /// wait for all dependents together and throws <see cref="TimeoutException"/>; use WaitForStateAsync to observe the
+    /// service's own stop. Restart the returned dependents in reverse order to restore them. A dependent that starts
+    /// again meanwhile makes the final stop fail with 1051. Not transactional: dependents stopped before a failure stay
+    /// stopped.</remarks>
+    public Task<ImmutableArray<string>> StopWithDependentsAsync(string name, TimeSpan timeout, CancellationToken cancellationToken = default)
+    {
+        NativeError.Text(name, nameof(name));
+        if (timeout <= TimeSpan.Zero || timeout > TimeSpan.FromDays(1)) throw new ArgumentOutOfRangeException(nameof(timeout));
+        return StopWithDependents(name, timeout, cancellationToken);
+    }
+
+    private async Task<ImmutableArray<string>> StopWithDependents(string name, TimeSpan timeout, CancellationToken cancellationToken)
+    {
+        var clock = Stopwatch.StartNew();
+        var dependents = await NativeWork.RunAsync(() => ActiveDependents(name), cancellationToken).ConfigureAwait(false);
+        foreach (var dependent in dependents)
+        {
+            await NativeWork.RunAsync(() => RequestStop(dependent), cancellationToken).ConfigureAwait(false);
+            var remaining = timeout - clock.Elapsed;
+            if (remaining <= TimeSpan.Zero) throw new TimeoutException($"The dependent service {dependent} did not stop before the timeout.");
+            await WaitForStateAsync(dependent, ServiceState.Stopped, remaining, cancellationToken).ConfigureAwait(false);
+        }
+        await StopAsync(name, cancellationToken).ConfigureAwait(false);
+        return dependents;
+    }
+
     /// <summary>Requests a pause; use WaitForStateAsync to observe completion.</summary>
     public Task PauseAsync(string name, CancellationToken cancellationToken = default) =>
         NativeWork.RunAsync(() => Control(name, 2, 0x40), cancellationToken);
@@ -145,7 +176,10 @@ public sealed partial class WindowsServiceClient
             policy = new(failure->dwResetPeriod == uint.MaxValue ? null : TimeSpan.FromSeconds(failure->dwResetPeriod),
                 actions.ToImmutable(), ServiceNative.Text(failure->lpRebootMsg), ServiceNative.Text(failure->lpCommand), nonCrash);
         }
-        return new(name, display, binary, account, dependencies, (ServiceStartMode)start, type, error, group, description, delayed, policy, ReadStatus(service));
+        return new(name, display, binary, account, dependencies, (ServiceStartMode)start, type, error, group, description, delayed, policy, ReadStatus(service))
+        {
+            ExecutablePath = ServiceCommandLine.ExecutablePath(binary, _machineName is null ? File.Exists : null)
+        };
     }
 
     private static unsafe ImmutableArray<string> ReadMultiString(char* pointer)
@@ -205,6 +239,45 @@ public sealed partial class WindowsServiceClient
         if (!OperatingSystem.IsWindowsVersionAtLeast(6, 1)) throw new PlatformNotSupportedException();
         using var service = Open(name, access)!;
         NativeError.CheckWin32(PInvoke.ControlService(service, control, out _).Value, "Control service");
+    }
+
+    // EnumDependentServices lists direct and indirect dependents in reverse start order, the order to stop them in.
+    private unsafe ImmutableArray<string> ActiveDependents(string name)
+    {
+        if (!OperatingSystem.IsWindowsVersionAtLeast(6, 1)) throw new PlatformNotSupportedException();
+        using var service = Open(name, 0x8)!; // SERVICE_ENUMERATE_DEPENDENTS
+        var buffer = Array.Empty<byte>();
+        for (var attempt = 0; attempt < 4; attempt++)
+        {
+            fixed (byte* data = buffer)
+            {
+                if (PInvoke.EnumDependentServices(service, ENUM_SERVICE_STATE.SERVICE_ACTIVE, buffer, out var needed, out var count))
+                {
+                    var rows = (ENUM_SERVICE_STATUSW*)data;
+                    var names = ImmutableArray.CreateBuilder<string>((int)count);
+                    for (var i = 0u; i < count; i++) names.Add(ServiceNative.Text(rows[i].lpServiceName));
+                    return names.MoveToImmutable();
+                }
+                var error = Marshal.GetLastPInvokeError();
+                if (error != 234) throw NativeError.Win32("Enumerate dependent services", error);
+                if (needed == 0 || needed > 1024 * 1024) throw NativeError.Win32("Enumerate dependent services", 13);
+                // The rows point into the buffer, so it stays pinned while they are read.
+                buffer = GC.AllocateArray<byte>((int)needed, pinned: true);
+            }
+        }
+        throw NativeError.Win32("Enumerate changing dependent services", 183);
+    }
+
+    // A dependent that stopped meanwhile (ERROR_SERVICE_NOT_ACTIVE) or is already stopping needs no stop control.
+    private unsafe void RequestStop(string name)
+    {
+        if (!OperatingSystem.IsWindowsVersionAtLeast(6, 1)) throw new PlatformNotSupportedException();
+        using var service = Open(name, 0x20 | 4)!;
+        if (ReadStatus(service).State is ServiceState.Stopped or ServiceState.StopPending) return;
+        if (PInvoke.ControlService(service, 1, out _)) return;
+        var error = Marshal.GetLastPInvokeError();
+        if (error == 1062) return;
+        throw NativeError.Win32("Stop dependent service", error);
     }
 
     private bool Delete(string name)

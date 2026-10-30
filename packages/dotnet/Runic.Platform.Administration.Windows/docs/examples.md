@@ -39,15 +39,26 @@ var service = await services.FindAsync("EventLog");
 if (service is not null)
 {
     Console.WriteLine(service.BinaryCommandLine);
+    Console.WriteLine(service.ExecutablePath); // without quotes and arguments
     Console.WriteLine(service.Status);
     if (service.Status.ProcessId != 0)
         Console.WriteLine(new WindowsProcessClient().Find(service.Status.ProcessId));
 }
+
+// An installer replacing a program: close its running instances, then run the setup and wait for it.
+var processes = new WindowsProcessClient();
+foreach (var running in processes.FindByImagePath(@"C:\Program Files\Contoso\agent.exe"))
+    Console.WriteLine(await processes.CloseOrKillAsync(running.ProcessId, TimeSpan.FromSeconds(10)));
+// var exitCode = await processes.StartAndWaitAsync(new(@"C:\Setup\setup.exe") { Arguments = "/quiet", Elevated = true });
+
+// From a service or task running as SYSTEM: who is at the console?
+Console.WriteLine(new Runic.Platform.Administration.Windows.SystemInformation.WindowsSystemInformationClient().GetActiveConsoleUser());
 ~~~
 
 CreateAsync accepts ServiceSpecification, UpdateAsync accepts ServiceUpdate. On a disposable
 fixture, provide a real disposable Windows service executable, then exercise
-StartAsync/StopAsync/PauseAsync/ContinueAsync only if that service supports them. WaitForStateAsync
+StartAsync/StopAsync/PauseAsync/ContinueAsync only if that service supports them. StopWithDependentsAsync
+stops the running services that depend on it first and returns their names, so they can be restarted in reverse order. WaitForStateAsync
 uses an explicit timeout. A missing service is reported as `AdministrationErrorCategory.NotFound`. A normal console executable is not a valid service
 fixture. Deletion may mark a service for later removal while handles remain open.
 

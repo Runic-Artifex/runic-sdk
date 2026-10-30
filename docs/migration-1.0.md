@@ -942,5 +942,6 @@ Details: 0.14.0 [Runic Command Line 0.11.0 in the SDK tools](../eng/release/note
 | A missing GPMC (`0x80040154`) or WMI provider namespace or class (`0x8004100E`, `0x80041010`) was `AdministrationErrorCategory.Unavailable` | `AdministrationErrorCategory.NotInstalled`; `Unavailable` means an installed machine, endpoint or service cannot be reached. Code that matched `Unavailable` (or the raw HRESULT) to report a missing component matches `NotInstalled` |
 | Native 1332, 1376, 1387, 2220 and 2221 (an account, local group or user that does not exist) were `NativeFailure`; 1388 was `NativeFailure` | `NotFound`; 1388 (an account that cannot join a local group) is `InvalidData` |
 | Native 1460 (`ERROR_TIMEOUT`) was `NativeFailure` | `Unavailable` |
+| Native 1051, 1061 and 1062 (a service with running dependents, a control the service cannot accept now, a service that is not running) were `NativeFailure` | `Conflict` |
 
 Details: 0.15.0 [Windows administration](../eng/release/notes/0.15.0.md#windows-administration-w1).

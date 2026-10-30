@@ -21,7 +21,9 @@ internal static class NativeError
         // ERROR_TIMEOUT (1460): for example a DNS server that does not answer.
         53 or 64 or 67 or 1460 or 1722 or 1726 => AdministrationErrorCategory.Unavailable,
         // NERR_DuplicateShare (lmerr.h): an existing SMB share name.
-        80 or 183 or 1056 or 1072 or 1073 or 2118 => AdministrationErrorCategory.Conflict,
+        // Services: dependents running (1051), already running (1056), not accepting the control in its state (1061),
+        // not running (1062), marked for deletion (1072), already existing (1073).
+        80 or 183 or 1051 or 1056 or 1061 or 1062 or 1072 or 1073 or 2118 => AdministrationErrorCategory.Conflict,
         // ERROR_INVALID_MEMBER: an account of a kind that cannot join a local group.
         13 or 24 or 87 or 1388 or unchecked((int)0x80041318) or unchecked((int)0x8004131D) => AdministrationErrorCategory.InvalidData,
         // REGDB_E_CLASSNOTREG (for example GPMC), WBEM_E_INVALID_NAMESPACE and WBEM_E_INVALID_CLASS (a WMI provider
