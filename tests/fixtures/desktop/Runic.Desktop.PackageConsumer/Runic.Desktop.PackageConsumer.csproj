@@ -10,5 +10,7 @@
 
   <ItemGroup>
     <PackageReference Include="Runic.Desktop" Version="$(RunicDesktopPackageVersion)" />
+    <!-- The presentation server (since 0.15). -->
+    <PackageReference Include="Runic.Desktop.Kestrel" Version="$(RunicDesktopPackageVersion)" />
   </ItemGroup>
 </Project>

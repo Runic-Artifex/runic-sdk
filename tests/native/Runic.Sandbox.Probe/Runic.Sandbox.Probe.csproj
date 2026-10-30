@@ -21,6 +21,7 @@
     <RunicPackageIcon>../../../tools/Runic.Application.Templates/content/runic-app/icons/icon.png</RunicPackageIcon>
   </PropertyGroup>
   <ItemGroup>
+    <ProjectReference Include="../../../packages/dotnet/Runic.Desktop.Kestrel/Runic.Desktop.Kestrel.csproj" />
     <ProjectReference Include="../../../packages/dotnet/Runic.Application.Views.Desktop/Runic.Application.Views.Desktop.csproj" />
   </ItemGroup>
 </Project>

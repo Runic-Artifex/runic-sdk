@@ -1,25 +1,17 @@
 <Project>
   <!-- Experimental (X1): docs/experimental.md#RUNICDESK102. -->
+  <!-- Runic.Desktop's targets choose the server (RunicDesktopServer, Native by default with this package) and write the
+       Runic.Desktop.NativeServer runtime switch. -->
   <PropertyGroup>
-    <!-- Referencing the package selects the native server; Kestrel keeps the same project buildable for comparison. -->
-    <RunicDesktopServer Condition="'$(RunicDesktopServer)' == ''">Native</RunicDesktopServer>
-    <_RunicDesktopNativeServer Condition="'$(RunicDesktopServer)' == 'Native'">true</_RunicDesktopNativeServer>
     <_RunicDesktopNativeServerNoWarn>;$([System.String]::Copy('$(NoWarn)').Replace(',', ';').Replace(' ', ';'));</_RunicDesktopNativeServerNoWarn>
     <!-- The package's static libraries; the repository's own consumers point this at artifacts/native/runic-server. -->
     <RunicDesktopNativeServerStaticRoot Condition="'$(RunicDesktopNativeServerStaticRoot)' == ''">$(MSBuildThisFileDirectory)../build/native/</RunicDesktopNativeServerStaticRoot>
   </PropertyGroup>
-  <ItemGroup Condition="'$(_RunicDesktopNativeServer)' == 'true'">
-    <!-- A trimming feature switch: a trimmed or NativeAOT application keeps the native server and drops Kestrel. -->
-    <RuntimeHostConfigurationOption Include="Runic.Desktop.NativeServer" Value="true" Trim="true" />
-  </ItemGroup>
   <Target Name="RunicDesktopValidateNativeServer" BeforeTargets="PrepareForBuild">
-    <Error Code="RUNICDESK003" File="$(MSBuildProjectFullPath)" HelpLink="$(_RunicDiagnosticsHelpLinkBase)runicdesk003"
-           Condition="'$(RunicDesktopServer)' != 'Native' and '$(RunicDesktopServer)' != 'Kestrel'"
-           Text="RunicDesktopServer is '$(RunicDesktopServer)'; it must be Native or Kestrel." />
     <!-- Like an [Experimental] API, the experimental server is an error until the project suppresses its ID. -->
     <Error Code="RUNICDESK102" File="$(MSBuildProjectFullPath)" HelpLink="$(_RunicDiagnosticsHelpLinkBase)runicdesk102"
            Condition="'$(_RunicDesktopNativeServer)' == 'true' and !$(_RunicDesktopNativeServerNoWarn.Contains(';RUNICDESK102;'))"
-           Text="The native Desktop server (Runic.Desktop.NativeServer) is experimental and may change or be removed in a minor release. Add RUNICDESK102 to NoWarn to use it, or set RunicDesktopServer to Kestrel." />
+           Text="The native Desktop server (Runic.Desktop.NativeServer) is experimental and may change or be removed in a minor release. Add RUNICDESK102 to NoWarn to use it, or reference Runic.Desktop.Kestrel instead." />
   </Target>
   <!-- NativeAOT links the static library: one executable, no librunic_server next to it. -->
   <Target Name="RunicDesktopLinkNativeServer" AfterTargets="ResolvePackageAssets"

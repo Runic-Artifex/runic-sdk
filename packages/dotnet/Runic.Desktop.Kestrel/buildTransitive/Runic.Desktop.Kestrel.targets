@@ -1,0 +1,17 @@
+<Project>
+  <PropertyGroup>
+    <RunicDesktopMinimalHost Condition="'$(RunicDesktopMinimalHost)' == ''">false</RunicDesktopMinimalHost>
+  </PropertyGroup>
+  <ItemGroup Condition="'$(RunicDesktopServer)' == 'Kestrel'">
+    <!-- A linker feature switch removes the unused builder path in NativeAOT. It is written also for the default,
+         false, so the trimmed application keeps only the default builder. -->
+    <RuntimeHostConfigurationOption Include="Runic.Desktop.MinimalHost" Value="$(RunicDesktopMinimalHost)" Trim="true" />
+  </ItemGroup>
+  <Target Name="RunicDesktopValidateHostProfile" BeforeTargets="PrepareForBuild">
+    <!-- The prefix keeps MSBuild from comparing as Booleans, where yes, on, no and off equal true or false; the
+         runtime switch accepts only true and false. -->
+    <Error Code="RUNICDESK001" File="$(MSBuildProjectFullPath)" HelpLink="$(_RunicDiagnosticsHelpLinkBase)runicdesk001"
+           Condition="'$(RunicDesktopMinimalHost)' != '' and 'value:$(RunicDesktopMinimalHost)' != 'value:true' and 'value:$(RunicDesktopMinimalHost)' != 'value:false'"
+           Text="RunicDesktopMinimalHost is '$(RunicDesktopMinimalHost)'; it must be true or false." />
+  </Target>
+</Project>

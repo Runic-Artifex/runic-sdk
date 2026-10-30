@@ -61,6 +61,7 @@ test("the cswebui host references the preview package's separately stamped versi
   assert.deepEqual(references, [
     ["Runic.Application.Views.ReactiveUI", "__RUNIC_NUGET_VERSION__"],
     ["Runic.Application.Views.Desktop", "__RUNIC_NUGET_VERSION__"],
+    ["Runic.Desktop.Kestrel", "__RUNIC_NUGET_VERSION__"],
     ["Runic.Desktop.Gtk4", "__RUNIC_NUGET_VERSION__"],
     ["Runic.Application.Views.CsWebUi", "__RUNIC_CSWEBUI_NUGET_VERSION__"],
   ]);
@@ -171,7 +172,8 @@ test("--linux-gtk 4 selects GTK 4 for Runic Desktop and leaves CS-WebUI unchange
     const gtk3 = create("gtk3");
     assert.deepEqual(create("gtk3-explicit", "--host", "desktop", "--linux-gtk", "3"), gtk3);
     assert.deepEqual(references(gtk3.project),
-      [`Runic.Application.Views.ReactiveUI@${versions.nuget}`, `Runic.Application.Views.Desktop@${versions.nuget}`]);
+      [`Runic.Application.Views.ReactiveUI@${versions.nuget}`, `Runic.Application.Views.Desktop@${versions.nuget}`,
+        `Runic.Desktop.Kestrel@${versions.nuget}`]);
     assert.match(gtk3.project, /<ApplicationId>com\.example\.Hosts<\/ApplicationId>/);
     assert.match(gtk3.project, /<ApplicationTitle>Hosts<\/ApplicationTitle>/);
     assert.match(gtk3.program, /EmbeddedBackend = LinuxEmbeddedBackend\.Gtk3WebKit41/);
@@ -180,7 +182,8 @@ test("--linux-gtk 4 selects GTK 4 for Runic Desktop and leaves CS-WebUI unchange
 
     const gtk4 = create("gtk4", "--host", "desktop", "--linux-gtk", "4");
     assert.deepEqual(references(gtk4.project), [`Runic.Application.Views.ReactiveUI@${versions.nuget}`,
-      `Runic.Application.Views.Desktop@${versions.nuget}`, `Runic.Desktop.Gtk4@${versions.nuget}`]);
+      `Runic.Application.Views.Desktop@${versions.nuget}`, `Runic.Desktop.Kestrel@${versions.nuget}`,
+      `Runic.Desktop.Gtk4@${versions.nuget}`]);
     assert.match(gtk4.program, /using Runic\.Desktop\.Gtk4;/);
     assert.match(gtk4.program, /\.WithGtk4\(ApplicationIdentity\.Id\);/);
     assert.match(gtk4.flake, /host = "desktop-gtk4";/);

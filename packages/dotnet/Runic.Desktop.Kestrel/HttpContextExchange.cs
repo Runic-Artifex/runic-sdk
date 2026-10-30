@@ -1,8 +1,9 @@
 using System.Net;
 using System.Net.WebSockets;
 using Microsoft.AspNetCore.Http;
+using Runic.Desktop.Internal;
 
-namespace Runic.Desktop.Internal.Kestrel;
+namespace Runic.Desktop.Kestrel;
 
 // A Kestrel request as a PresentationExchange: every member reads or writes the HttpContext.
 internal sealed class HttpContextExchange(HttpContext context)

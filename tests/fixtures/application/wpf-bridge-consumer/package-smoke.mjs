@@ -35,7 +35,7 @@ const feed = resolve(args.find(arg => !arg.startsWith("--")) ?? join(root, "arti
 const { version } = JSON.parse(readFileSync(join(root, "eng/workspace.json"), "utf8"));
 const container = /<PackageVersion Include="Microsoft.Extensions.DependencyInjection" Version="([^"]+)"/.exec(readFileSync(join(root, "Directory.Packages.props"), "utf8"))?.[1];
 assert.ok(container, "Directory.Packages.props has no Microsoft.Extensions.DependencyInjection version.");
-for (const id of ["Runic.Application.Views", "Runic.Application.Views.Desktop", "Runic.Application.Views.Wpf"])
+for (const id of ["Runic.Application.Views", "Runic.Application.Views.Desktop", "Runic.Application.Views.Wpf", "Runic.Desktop.Kestrel"])
   assert.ok(existsSync(join(feed, `${id}.${version}.nupkg`)), `Pack ${id} ${version} into ${feed} first.`);
 
 const directory = mkdtempSync(join(tmpdir(), "runic-wpf-bridge-"));
@@ -70,7 +70,7 @@ try {
 
   // 1. Single project: generation is on through the adapter, without duplicate members.
   const single = build("Single/WpfSingle.csproj");
-  // The BackgroundService loads from Microsoft.AspNetCore.App, which the build passes
+  // The BackgroundService loads from Microsoft.AspNetCore.App (through Runic.Desktop.Kestrel), which the build passes
   // to the generator with --framework; without it the type is skipped (RUNICBRIDGE020).
   assert.equal(count(single, /RUNICBRIDGE020|Microsoft\.Extensions\.Hosting\.Abstractions/), 0,
     "The generator did not load the BackgroundService from Microsoft.AspNetCore.App.");

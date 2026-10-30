@@ -15,6 +15,7 @@
     <Compile Include="../Runic.Desktop.WebViewSmoke/WebContentSmoke.cs" Link="WebContentSmoke.cs" />
     <!-- The clipboard format checks encode and decode small PNG files with the platform tests' helper. -->
     <Compile Include="../../dotnet/Runic.Platform.Windows.Tests/ThumbnailImages.cs" Link="ThumbnailImages.cs" />
+    <ProjectReference Include="../../../packages/dotnet/Runic.Desktop.Kestrel/Runic.Desktop.Kestrel.csproj" />
     <ProjectReference Include="../../../packages/dotnet/Runic.Desktop.Gtk4/Runic.Desktop.Gtk4.csproj" />
     <ProjectReference Include="../../../packages/dotnet/Runic.Platform.Linux.Gtk4/Runic.Platform.Linux.Gtk4.csproj" />
     <ProjectReference Include="../../../packages/dotnet/Runic.Platform.Linux.Portal/Runic.Platform.Linux.Portal.csproj" />

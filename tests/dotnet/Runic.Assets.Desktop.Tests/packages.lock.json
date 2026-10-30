@@ -102,6 +102,12 @@
           "Runic.Platform.Linux.DBus": "[0.14.0, )"
         }
       },
+      "runic.desktop.kestrel": {
+        "type": "Project",
+        "dependencies": {
+          "Runic.Desktop": "[0.14.0, )"
+        }
+      },
       "runic.platform": {
         "type": "Project"
       },

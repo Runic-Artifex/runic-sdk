@@ -7,6 +7,7 @@
     <RunicDesktopNativeServerStaticRoot>$(_RunicDesktopNativeServerArtifacts)</RunicDesktopNativeServerStaticRoot>
     <_RunicDesktopNativeServerRuntime>$(RuntimeIdentifier)</_RunicDesktopNativeServerRuntime>
     <_RunicDesktopNativeServerRuntime Condition="'$(_RunicDesktopNativeServerRuntime)' == ''">$(NETCoreSdkRuntimeIdentifier)</_RunicDesktopNativeServerRuntime>
+    <RunicDesktopNativeServerReferenced>true</RunicDesktopNativeServerReferenced>
     <!-- Passing the property is this repository's opt-in. -->
     <NoWarn>$(NoWarn);RUNICDESK102</NoWarn>
   </PropertyGroup>
@@ -17,6 +18,11 @@
     <_RunicDesktopNativeServerLibrary Condition="Exists('$(_RunicDesktopNativeServerDirectory)librunic_server.dylib')">$(_RunicDesktopNativeServerDirectory)librunic_server.dylib</_RunicDesktopNativeServerLibrary>
     <_RunicDesktopNativeServerLibrary Condition="Exists('$(_RunicDesktopNativeServerDirectory)runic_server.dll')">$(_RunicDesktopNativeServerDirectory)runic_server.dll</_RunicDesktopNativeServerLibrary>
   </PropertyGroup>
+  <ItemGroup>
+    <!-- The package's dependencies: the native server's service provider and logging. -->
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" Condition="'@(PackageReference->WithMetadataValue('Identity', 'Microsoft.Extensions.DependencyInjection'))' == ''" />
+    <PackageReference Include="Microsoft.Extensions.Logging" Condition="'@(PackageReference->WithMetadataValue('Identity', 'Microsoft.Extensions.Logging'))' == ''" />
+  </ItemGroup>
   <ItemGroup Condition="'$(_RunicDesktopNativeServerLibrary)' != ''">
     <None Include="$(_RunicDesktopNativeServerLibrary)" Link="%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" Visible="false" />
   </ItemGroup>

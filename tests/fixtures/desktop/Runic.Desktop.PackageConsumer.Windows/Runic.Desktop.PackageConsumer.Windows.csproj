@@ -13,5 +13,7 @@
          the Runic.Desktop package carries the native loader (JIT DLL or AOT
          static library) without exposing the WebView2 API. -->
     <PackageReference Include="Runic.Desktop" Version="$(RunicDesktopPackageVersion)" />
+    <!-- The presentation server (since 0.15). -->
+    <PackageReference Include="Runic.Desktop.Kestrel" Version="$(RunicDesktopPackageVersion)" />
   </ItemGroup>
 </Project>

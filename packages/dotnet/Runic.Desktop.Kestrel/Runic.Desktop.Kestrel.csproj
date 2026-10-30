@@ -1,0 +1,32 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <Import Project="../../../eng/build/desktop.props" />
+  <!-- ASP.NET Core Kestrel as Runic Desktop's presentation server (X2). Runic.Desktop has no ASP.NET Core reference and
+       creates this server by name (PresentationServers.KestrelFactoryType) when the application references this package
+       and not the experimental Runic.Desktop.NativeServer. The package has no public API. -->
+  <PropertyGroup>
+    <AssemblyName>Runic.Desktop.Kestrel</AssemblyName>
+    <RootNamespace>Runic.Desktop.Kestrel</RootNamespace>
+    <PackageId>Runic.Desktop.Kestrel</PackageId>
+    <Title>Runic Desktop Kestrel server</Title>
+    <Description>Serves Runic Desktop surfaces from ASP.NET Core Kestrel.</Description>
+    <PackageTags>runic-artifex;dotnet;desktop;webview;kestrel;aspnetcore</PackageTags>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <IsAotCompatible>true</IsAotCompatible>
+    <IsTrimmable>true</IsTrimmable>
+    <!-- New in 0.15.0: no published baseline until then. -->
+    <RunicPackageValidationBaselineMissing>true</RunicPackageValidationBaselineMissing>
+    <RunicPackageFirstReleaseVersion>0.15.0</RunicPackageFirstReleaseVersion>
+    <!-- Packs the diagnostics help links (eng/build/release-links.targets) as
+         buildTransitive/Runic.Desktop.Kestrel.HelpLinks.props, which buildTransitive/Runic.Desktop.Kestrel.props imports. -->
+    <RunicPackDiagnosticsHelpLinks>true</RunicPackDiagnosticsHelpLinks>
+    <RunicDiagnosticsHelpLinksPropsName>Runic.Desktop.Kestrel.HelpLinks.props</RunicDiagnosticsHelpLinksPropsName>
+  </PropertyGroup>
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+    <!-- The internal presentation server seam (InternalsVisibleTo); packing pins the exact version (eng/build/README.md). -->
+    <ProjectReference Include="../Runic.Desktop/Runic.Desktop.csproj" />
+    <InternalsVisibleTo Include="Runic.Desktop.Tests" />
+    <None Include="README.md" Pack="true" PackagePath="/" />
+    <None Include="buildTransitive/Runic.Desktop.Kestrel.props;buildTransitive/Runic.Desktop.Kestrel.targets" Pack="true" PackagePath="buildTransitive/" />
+  </ItemGroup>
+</Project>

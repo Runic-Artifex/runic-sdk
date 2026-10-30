@@ -93,9 +93,21 @@ export const packageLayouts = {
   // Runic.Platform, whose internal menu rules it uses (D031.2). Runic.Platform itself has no dependencies. The Linux
   // global menu exports the bar over D-Bus through Runic.Platform.Linux.DBus (D036.11), whose wire library NuGet lists
   // as a direct dependency, as for Runic.Platform.Linux.Portal.
+  // Since 0.15 (X2) it has no ASP.NET Core reference: the presentation server is Runic.Desktop.Kestrel or the
+  // experimental Runic.Desktop.NativeServer, which bring the container, and the server-neutral code needs the
+  // dependency injection and logging abstractions.
   "Runic.Desktop": {
-    dependencies: ["Microsoft.Web.WebView2", "Runic.Platform", "Runic.Platform.Linux.DBus", "Tmds.DBus.Protocol"],
+    dependencies: ["Microsoft.Extensions.DependencyInjection.Abstractions", "Microsoft.Extensions.Logging.Abstractions",
+      "Microsoft.Web.WebView2", "Runic.Platform", "Runic.Platform.Linux.DBus", "Tmds.DBus.Protocol"],
     exactDependencies: ["Runic.Platform", "Runic.Platform.Linux.DBus"],
+    includes: ["buildTransitive/Runic.Desktop.targets"],
+  },
+  // ASP.NET Core Kestrel for Runic Desktop: its props announce it to Runic.Desktop's targets, which select it.
+  "Runic.Desktop.Kestrel": {
+    requires: ["Runic.Desktop"],
+    exactDependencies: ["Runic.Desktop"],
+    includes: ["lib/net10.0/Runic.Desktop.Kestrel.dll", "buildTransitive/Runic.Desktop.Kestrel.props",
+      "buildTransitive/Runic.Desktop.Kestrel.HelpLinks.props", "buildTransitive/Runic.Desktop.Kestrel.targets"],
   },
   // The privileged-action targets validate RunicPrivilegedAction items and generate their declarations; the props
   // carry their help links (W300-004).
@@ -228,6 +240,15 @@ function verifyConsumerGraph(consumer, label, { platformOnly = false, selectedPr
     assert.ok(!libraries.some(library => library.split("/")[0].toLowerCase() === "microsoft.extensions.dependencyinjection"),
       `${label} unexpectedly depends on the Microsoft.Extensions.DependencyInjection container`);
   }
+  // A Runic.Desktop consumer without a server package needs no ASP.NET Core; Runic.Desktop.Kestrel brings it.
+  if (label === "Runic.Desktop" || label === "Runic.Desktop.Kestrel") {
+    const frameworks = Object.values(assets.project.frameworks ?? {})
+      .flatMap(framework => Object.keys(framework.frameworkReferences ?? {}));
+    const targets = Object.values(assets.targets ?? {}).flatMap(target => Object.values(target))
+      .flatMap(library => library.frameworkReferences ?? []);
+    assert.equal([...frameworks, ...targets].includes("Microsoft.AspNetCore.App"), label === "Runic.Desktop.Kestrel",
+      `${label} ${label === "Runic.Desktop" ? "unexpectedly restores" : "does not restore"} the ASP.NET Core shared framework`);
+  }
   const isolated = platformOnly;
   if (!isolated) return;
 
@@ -328,7 +349,7 @@ async function verifyConsumers(directory, packageName) {
     mkdirSync(consumer);
     writeFileSync(
       join(consumer, "Consumer.csproj"),
-      `<Project Sdk="Microsoft.NET.Sdk"><PropertyGroup><TargetFramework>${strategy.targetFramework}</TargetFramework><OutputType>Exe</OutputType><ImplicitUsings>enable</ImplicitUsings><TreatWarningsAsErrors>true</TreatWarningsAsErrors>${bridgeProperties}${strategy.enableWindowsTargeting ? "<EnableWindowsTargeting>true</EnableWindowsTargeting>" : ""}${strategy.useWpf ? "<UseWPF>true</UseWPF>" : ""}</PropertyGroup><ItemGroup><PackageReference Include="${p.name}" Version="${packageVersion(workspace, p.name)}"/>${viewTestConsumer ? `<PackageReference Include="Runic.Application.Views" Version="${workspace.version}"/>` : ""}</ItemGroup>${viewTestConsumer ? `<ItemGroup Condition="'$(RunicApplicationFrontendBootstrap)' == 'true'"><Compile Remove="Program.cs"/></ItemGroup>` : ""}</Project>`,
+      `<Project Sdk="Microsoft.NET.Sdk"><PropertyGroup><TargetFramework>${strategy.targetFramework}</TargetFramework><OutputType>Exe</OutputType><RunicDesktopServer Condition="'${p.name}' != 'Runic.Desktop.Kestrel'">None</RunicDesktopServer><ImplicitUsings>enable</ImplicitUsings><TreatWarningsAsErrors>true</TreatWarningsAsErrors>${bridgeProperties}${strategy.enableWindowsTargeting ? "<EnableWindowsTargeting>true</EnableWindowsTargeting>" : ""}${strategy.useWpf ? "<UseWPF>true</UseWPF>" : ""}</PropertyGroup><ItemGroup><PackageReference Include="${p.name}" Version="${packageVersion(workspace, p.name)}"/>${viewTestConsumer ? `<PackageReference Include="Runic.Application.Views" Version="${workspace.version}"/>` : ""}</ItemGroup>${viewTestConsumer ? `<ItemGroup Condition="'$(RunicApplicationFrontendBootstrap)' == 'true'"><Compile Remove="Program.cs"/></ItemGroup>` : ""}</Project>`,
     );
     writeFileSync(
       join(consumer, "Program.cs"),

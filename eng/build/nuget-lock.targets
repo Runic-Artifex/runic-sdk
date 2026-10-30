@@ -4,10 +4,12 @@
        `bun run lock:nuget` regenerates them. A publish command's RuntimeIdentifier
        and PublishAot flow into every referenced project and change its package
        graph, so those restores read a lock path that never exists and stay
-       unlocked; Directory.Packages.props still pins their direct versions.
+       unlocked; Directory.Packages.props still pins their direct versions. So do
+       builds with -p:RunicDesktopServer=Native, whose executables leave out
+       their Runic.Desktop.Kestrel reference.
        CI (CI=true) restores in locked mode. -->
   <PropertyGroup>
-    <_RunicLockable Condition="'$(RuntimeIdentifier)' == '' and '$(PublishAot)' != 'true'">true</_RunicLockable>
+    <_RunicLockable Condition="'$(RuntimeIdentifier)' == '' and '$(PublishAot)' != 'true' and '$(RunicDesktopServer)' != 'Native'">true</_RunicLockable>
     <_RunicLockFile>$(NuGetLockFilePath)</_RunicLockFile>
     <_RunicLockFile Condition="'$(_RunicLockFile)' == ''">packages.lock.json</_RunicLockFile>
     <RestorePackagesWithLockFile Condition="'$(_RunicLockable)' == 'true' and ('$(RunicUpdateLockFiles)' == 'true' or Exists('$(MSBuildProjectDirectory)/$(_RunicLockFile)'))">true</RestorePackagesWithLockFile>

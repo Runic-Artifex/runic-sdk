@@ -54,10 +54,11 @@ experimental API, until the project suppresses it.
 
 The native Desktop server, `Runic.Desktop.NativeServer` (X1). Referencing the
 package serves Runic Desktop surfaces from a native Rust (axum) HTTP and
-WebSocket server instead of ASP.NET Core Kestrel: the same Views protocol,
-admission, content and bootstrap code run over it, and a trimmed or NativeAOT
-application no longer contains Kestrel. Set `RunicDesktopServer` to `Kestrel`
-to build the same project on Kestrel; any other value fails with
+WebSocket server instead of ASP.NET Core Kestrel (`Runic.Desktop.Kestrel`): the
+same Views protocol, admission, content and bootstrap code run over it, and the
+application needs no ASP.NET Core. With both server packages referenced, set
+`RunicDesktopServer` to `Kestrel` to build the same project on Kestrel; any
+other value than `Native`, `Kestrel` or `None` fails with
 [`RUNICDESK003`](diagnostics.md#runicdesk003). See the
 [package README](../packages/dotnet/Runic.Desktop.NativeServer/README.md) for
 the supported runtime identifiers and what differs from Kestrel.

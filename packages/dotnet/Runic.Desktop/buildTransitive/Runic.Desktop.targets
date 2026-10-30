@@ -1,18 +1,32 @@
 <Project>
+  <!-- The presentation server (X2): Runic.Desktop has none of its own. The project references Runic.Desktop.Kestrel
+       (ASP.NET Core Kestrel) or the experimental Runic.Desktop.NativeServer, whose props set the Referenced properties.
+       With both, the native server serves unless RunicDesktopServer is Kestrel. None declares an executable that opens
+       no Runic Desktop window, such as a tool that only uses Runic Desktop's types. -->
   <PropertyGroup>
-    <RunicDesktopMinimalHost Condition="'$(RunicDesktopMinimalHost)' == ''">false</RunicDesktopMinimalHost>
+    <RunicDesktopServer Condition="'$(RunicDesktopServer)' == '' and '$(RunicDesktopNativeServerReferenced)' == 'true'">Native</RunicDesktopServer>
+    <RunicDesktopServer Condition="'$(RunicDesktopServer)' == '' and '$(RunicDesktopKestrelReferenced)' == 'true'">Kestrel</RunicDesktopServer>
+    <_RunicDesktopNativeServer Condition="'$(RunicDesktopServer)' == 'Native'">true</_RunicDesktopNativeServer>
   </PropertyGroup>
   <ItemGroup>
-    <!-- A linker feature switch removes the unused builder path in NativeAOT. It is written also for the default,
-         false, so the trimmed application keeps only the default builder. -->
-    <RuntimeHostConfigurationOption Include="Runic.Desktop.MinimalHost" Value="$(RunicDesktopMinimalHost)" Trim="true" />
+    <!-- A trimming feature switch: a trimmed or NativeAOT application keeps one server and drops the other. -->
+    <RuntimeHostConfigurationOption Include="Runic.Desktop.NativeServer" Value="true" Trim="true" Condition="'$(RunicDesktopServer)' == 'Native'" />
+    <RuntimeHostConfigurationOption Include="Runic.Desktop.NativeServer" Value="false" Trim="true" Condition="'$(RunicDesktopServer)' == 'Kestrel'" />
   </ItemGroup>
-  <Target Name="RunicDesktopValidateHostProfile" BeforeTargets="PrepareForBuild">
-    <!-- The prefix keeps MSBuild from comparing as Booleans, where yes, on, no and off equal true or false; the
-         runtime switch accepts only true and false. -->
-    <Error Code="RUNICDESK001" File="$(MSBuildProjectFullPath)" HelpLink="$(_RunicDiagnosticsHelpLinkBase)runicdesk001"
-           Condition="'$(RunicDesktopMinimalHost)' != '' and 'value:$(RunicDesktopMinimalHost)' != 'value:true' and 'value:$(RunicDesktopMinimalHost)' != 'value:false'"
-           Text="RunicDesktopMinimalHost is '$(RunicDesktopMinimalHost)'; it must be true or false." />
+  <Target Name="RunicDesktopValidateServer" BeforeTargets="PrepareForBuild">
+    <Error Code="RUNICDESK003" File="$(MSBuildProjectFullPath)" HelpLink="$(_RunicDiagnosticsHelpLinkBase)runicdesk003"
+           Condition="'$(RunicDesktopServer)' != '' and '$(RunicDesktopServer)' != 'Native' and '$(RunicDesktopServer)' != 'Kestrel' and '$(RunicDesktopServer)' != 'None'"
+           Text="RunicDesktopServer is '$(RunicDesktopServer)'; it must be Native, Kestrel or None." />
+    <!-- Every Runic Desktop window is served; an executable without a server would fail at its first window. -->
+    <Error Code="RUNICDESK004" File="$(MSBuildProjectFullPath)" HelpLink="$(_RunicDiagnosticsHelpLinkBase)runicdesk004"
+           Condition="'$(RunicDesktopServer)' == '' and ('$(OutputType)' == 'Exe' or '$(OutputType)' == 'WinExe') and '$(IsTestProject)' != 'true'"
+           Text="Runic Desktop has no presentation server since 0.15. Add a PackageReference to Runic.Desktop.Kestrel (ASP.NET Core Kestrel, as before) or to the experimental Runic.Desktop.NativeServer, or set RunicDesktopServer to None if the executable opens no Runic Desktop window." />
+    <Error Code="RUNICDESK004" File="$(MSBuildProjectFullPath)" HelpLink="$(_RunicDiagnosticsHelpLinkBase)runicdesk004"
+           Condition="'$(RunicDesktopServer)' == 'Kestrel' and '$(RunicDesktopKestrelReferenced)' != 'true'"
+           Text="RunicDesktopServer is Kestrel, but the project does not reference Runic.Desktop.Kestrel." />
+    <Error Code="RUNICDESK004" File="$(MSBuildProjectFullPath)" HelpLink="$(_RunicDiagnosticsHelpLinkBase)runicdesk004"
+           Condition="'$(RunicDesktopServer)' == 'Native' and '$(RunicDesktopNativeServerReferenced)' != 'true'"
+           Text="RunicDesktopServer is Native, but the project does not reference Runic.Desktop.NativeServer." />
   </Target>
   <Target Name="RunicDesktopLinkWebView2Loader" AfterTargets="ResolvePackageAssets"
           Condition="'$(PublishAot)' == 'true' and ('$(RuntimeIdentifier)' == 'win-x64' or '$(RuntimeIdentifier)' == 'win-arm64')">

@@ -169,7 +169,9 @@ internal static class DoctorTargetChecks
             string version = TargetFrameworkMajor(project.TargetFramework) is { Length: > 0 } major ? $" {major}" : string.Empty;
             checks.Add(Pass(id, project.SelfContained
                 ? $"The project publishes a self-contained {target.Value} application without Native AOT; target machines need no .NET installation."
-                : project.Host is RunicViewsHost.Desktop or RunicViewsHost.Wpf
+                // The native Desktop server needs no ASP.NET Core (Runic.Desktop.NativeServer).
+                : project.Host is RunicViewsHost.Desktop or RunicViewsHost.Wpf &&
+                  !project.DesktopServer.Equals("Native", StringComparison.OrdinalIgnoreCase)
                     ? $"The project publishes framework-dependent for {target.Value}; target machines need the .NET{version} and ASP.NET Core{version} runtimes."
                     : $"The project publishes framework-dependent for {target.Value}; target machines need the .NET{version} runtime."));
             return;

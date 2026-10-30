@@ -1,7 +1,7 @@
 # Runic Desktop
 
 Runic Desktop is a managed .NET runtime for web-powered desktop applications.
-It serves application content with ASP.NET Core, carries the connection between
+It serves application content from a loopback server, carries the connection between
 the page and .NET, and opens the interface in an installed browser or an
 embedded platform WebView. For calls between JavaScript and .NET, use
 [Runic Windows and Views](https://github.com/Runic-Artifex/runic-sdk/tree/main/packages/dotnet/Runic.Application.Views.Desktop)
@@ -12,7 +12,7 @@ embedded platform WebView. For calls between JavaScript and .NET, use
 - Embedded HTML, files, folders, external URLs, and fixed or streaming virtual content
 - Authenticated page connections, connection events and a connected-page count
 - Managed-to-JavaScript script execution with a size-checked result
-- Shared or isolated Kestrel listeners with explicit host and surface ownership
+- Shared or isolated loopback listeners with explicit host and surface ownership
 - Request-scoped dependency injection, streaming backpressure, and cancellation causes
 - Same-origin admission and 256-bit surface-scoped session credentials by default
 - Installed-browser discovery, isolated profiles, kiosk mode, and process ownership
@@ -22,6 +22,21 @@ embedded platform WebView. For calls between JavaScript and .NET, use
 - Window geometry, framing, transparency, visibility, focus, and native handles
 - [Asynchronous native close confirmation](https://docs.runic-artifex.eu/guides/desktop/window-close-lifecycle/) for unsaved work
 - Trimming and NativeAOT-compatible managed core
+
+## Presentation server
+
+`Runic.Desktop` has no ASP.NET Core reference. The application references the
+server that serves its windows:
+
+```xml
+<PackageReference Include="Runic.Desktop.Kestrel" Version="..." />
+```
+
+for ASP.NET Core Kestrel, or the experimental native server,
+`Runic.Desktop.NativeServer`, which needs no ASP.NET Core
+([`RUNICDESK102`](https://github.com/Runic-Artifex/runic-sdk/blob/main/docs/experimental.md#RUNICDESK102)).
+An executable without either fails to build with
+[`RUNICDESK004`](https://github.com/Runic-Artifex/runic-sdk/blob/main/docs/diagnostics.md#runicdesk004).
 
 ## Example
 
@@ -179,7 +194,7 @@ recorded in `NOTICE`.
 
 ### Minimal hosting profile
 
-Set `RunicDesktopMinimalHost=true` to use the opt-in empty ASP.NET Core builder
+With `Runic.Desktop.Kestrel`, set `RunicDesktopMinimalHost=true` to use the opt-in empty ASP.NET Core builder
 with explicit Kestrel core and socket transport. A NativeAOT linker feature switch
 removes the default slim-builder path. Runic's surface, transport and admission
 behavior is retained; default configuration providers are omitted. Test any custom

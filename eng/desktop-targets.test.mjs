@@ -43,3 +43,27 @@ test("Desktop build targets are imported exactly where Runic.Desktop is referenc
   }
   assert.ok(consumers.length > 0);
 });
+
+// Runic.Desktop has no presentation server since 0.15 (X2): every Desktop executable in this repository references
+// Runic.Desktop.Kestrel, directly or through a project, as a package consumer references the package. A build with
+// -p:RunicDesktopServer=Native selects the native server instead (Directory.Build.targets).
+const kestrel = "packages/dotnet/Runic.Desktop.Kestrel/Runic.Desktop.Kestrel.csproj";
+
+test("Desktop executables reference a presentation server", () => {
+  const graph = projectGraph();
+  const reaches = (target, file, seen = new Set()) => {
+    if (file === target) return true;
+    if (seen.has(file)) return false;
+    seen.add(file);
+    return (graph.get(file)?.references ?? []).some(reference => reaches(target, reference, seen));
+  };
+  const executables = [];
+  for (const [file, { text }] of graph) {
+    if (!/<RunicImportDesktopTargets>true<\/RunicImportDesktopTargets>/.test(text)) continue;
+    if (!/<OutputType>(Win)?Exe<\/OutputType>/.test(text)) continue;
+    executables.push(file);
+    assert.ok(reaches(kestrel, file), `${file}: reference ${kestrel}`);
+  }
+  assert.ok(executables.length > 0);
+  assert.ok(!reaches(kestrel, desktop), "Runic.Desktop must not reference Runic.Desktop.Kestrel");
+});

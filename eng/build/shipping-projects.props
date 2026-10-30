@@ -26,6 +26,7 @@
     <RunicShippingProject Include="$(MSBuildThisFileDirectory)../../packages/dotnet/Runic.Platform.Linux/Runic.Platform.Linux.csproj" PackageId="Runic.Platform.Linux" />
     <RunicShippingProject Include="$(MSBuildThisFileDirectory)../../packages/dotnet/Runic.Platform.MacOS/Runic.Platform.MacOS.csproj" PackageId="Runic.Platform.MacOS" />
     <RunicShippingProject Include="$(MSBuildThisFileDirectory)../../packages/dotnet/Runic.Desktop.Gtk4/Runic.Desktop.Gtk4.csproj" PackageId="Runic.Desktop.Gtk4" />
+    <RunicShippingProject Include="$(MSBuildThisFileDirectory)../../packages/dotnet/Runic.Desktop.Kestrel/Runic.Desktop.Kestrel.csproj" PackageId="Runic.Desktop.Kestrel" />
     <RunicShippingProject Include="$(MSBuildThisFileDirectory)../../packages/dotnet/Runic.Platform.Linux.Portal/Runic.Platform.Linux.Portal.csproj" PackageId="Runic.Platform.Linux.Portal" />
     <RunicShippingProject Include="$(MSBuildThisFileDirectory)../../packages/dotnet/Runic.Platform.Linux.Gtk4/Runic.Platform.Linux.Gtk4.csproj" PackageId="Runic.Platform.Linux.Gtk4" />
     <RunicShippingProject Include="$(MSBuildThisFileDirectory)../../packages/dotnet/Runic.Platform.Linux.Polkit/Runic.Platform.Linux.Polkit.csproj" PackageId="Runic.Platform.Linux.Polkit" />
@@ -59,6 +60,7 @@
     <RunicIsShippingProject Condition="'$(_RunicProjectPath)' == 'packages/dotnet/Runic.Platform.Linux/Runic.Platform.Linux.csproj'">true</RunicIsShippingProject>
     <RunicIsShippingProject Condition="'$(_RunicProjectPath)' == 'packages/dotnet/Runic.Platform.MacOS/Runic.Platform.MacOS.csproj'">true</RunicIsShippingProject>
     <RunicIsShippingProject Condition="'$(_RunicProjectPath)' == 'packages/dotnet/Runic.Desktop.Gtk4/Runic.Desktop.Gtk4.csproj'">true</RunicIsShippingProject>
+    <RunicIsShippingProject Condition="'$(_RunicProjectPath)' == 'packages/dotnet/Runic.Desktop.Kestrel/Runic.Desktop.Kestrel.csproj'">true</RunicIsShippingProject>
     <RunicIsShippingProject Condition="'$(_RunicProjectPath)' == 'packages/dotnet/Runic.Platform.Linux.Portal/Runic.Platform.Linux.Portal.csproj'">true</RunicIsShippingProject>
     <RunicIsShippingProject Condition="'$(_RunicProjectPath)' == 'packages/dotnet/Runic.Platform.Linux.Gtk4/Runic.Platform.Linux.Gtk4.csproj'">true</RunicIsShippingProject>
     <RunicIsShippingProject Condition="'$(_RunicProjectPath)' == 'packages/dotnet/Runic.Platform.Linux.Polkit/Runic.Platform.Linux.Polkit.csproj'">true</RunicIsShippingProject>

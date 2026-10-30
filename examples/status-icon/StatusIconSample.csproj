@@ -14,6 +14,9 @@
   <ItemGroup>
     <PackageReference Include="Microsoft.Extensions.DependencyInjection" />
     <PackageReference Include="ReactiveUI" />
+    <!-- The presentation server; -p:RunicDesktopServer=Native builds the application on the experimental native server
+         without ASP.NET Core. -->
+    <ProjectReference Include="../../packages/dotnet/Runic.Desktop.Kestrel/Runic.Desktop.Kestrel.csproj" Condition="'$(RunicDesktopServer)' != 'Native'" />
     <ProjectReference Include="../../packages/dotnet/Runic.Application.Views.Desktop/Runic.Application.Views.Desktop.csproj" />
     <ProjectReference Include="../../packages/dotnet/Runic.Application.Views.ReactiveUI/Runic.Application.Views.ReactiveUI.csproj" />
   </ItemGroup>

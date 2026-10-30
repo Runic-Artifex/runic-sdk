@@ -6,11 +6,11 @@ not.
 
 | Contract behavior | .NET mapping | TypeScript+Effect mapping |
 | --- | --- | --- |
-| Host/surface ownership and shared-listener isolation | Immutable host options, explicit surface handles, keyed ASP.NET routing, and `IAsyncDisposable` ownership | A host `Layer` plus child `Scope`s; surface services are keyed by opaque identity rather than globals |
+| Host/surface ownership and shared-listener isolation | Immutable host options, explicit surface handles, path-based dispatch over a server-neutral exchange (Kestrel or the native server), and `IAsyncDisposable` ownership | A host `Layer` plus child `Scope`s; surface services are keyed by opaque identity rather than globals |
 | Start idempotence and configuration conflict | Async start returns the existing running handle only for equivalent immutable options; otherwise a typed `conflict` failure | Scoped start effect memoized for equivalent configuration; a tagged `Conflict` for changed immutable configuration |
 | Close ordering and callback deadlock avoidance | Async close signals linked tokens, awaits leaf resources, and avoids awaiting the initiating callback | Scope finalizers and fiber interruption run leaf-first; a callback fiber never joins itself |
 | Window lifetime and platform capabilities | Async handle owned by a surface; unsupported operations return typed capability results | Scoped window service with tagged `Unavailable` results rather than browser globals |
-| Request scope, `HEAD`, and response commitment | ASP.NET request scope maps abort and method metadata; response status/headers lock before the first write | Scoped request service; metadata is frozen before a fixed body or `Stream` is run; `HEAD` suppresses the body |
+| Request scope, `HEAD`, and response commitment | A DI request scope per request maps abort and method metadata; response status/headers lock before the first write | Scoped request service; metadata is frozen before a fixed body or `Stream` is run; `HEAD` suppresses the body |
 | Streaming and backpressure | Awaited `Stream`, `PipeReader`, or `IAsyncEnumerable<ReadOnlyMemory<byte>>` adapter with bounded writes | `Stream<Uint8Array, DesktopError, Requirements>` with scoped acquisition and bounded demand |
 | Request/session cancellation and cause precedence | Linked `CancellationToken` sources record the first contract cause before cancellation | Competing interruption signals resolve through one scoped deferred cause; `AbortSignal` exists only at browser/fetch boundaries |
 | Session authentication, origin, and capability admission | Immutable policy records validate canonical origins and credentials before dispatch | Policy service in a `Layer`; tagged denials occur before a handler effect is constructed |

@@ -6,11 +6,12 @@ SDK's release inventory yet.
 
 Referencing it serves your Runic Desktop windows from a native HTTP and
 WebSocket server written in Rust ([axum](https://github.com/tokio-rs/axum) on
-Tokio and hyper) instead of ASP.NET Core Kestrel. Nothing else changes: the
-same Views protocol, bootstrap scripts, origin and credential admission, client
-cookie, content handlers and asset archives run over it, in the same
-`Runic.Desktop` code. Applications that do not reference the package keep
-Kestrel.
+Tokio and hyper) instead of ASP.NET Core Kestrel (`Runic.Desktop.Kestrel`).
+Nothing else changes: the same Views protocol, bootstrap scripts, origin and
+credential admission, client cookie, content handlers and asset archives run
+over it, in the same `Runic.Desktop` code. An application references one of the
+two server packages in place of the other; with this one it has no ASP.NET Core
+in its dependencies.
 
 ```xml
 <ItemGroup>
@@ -22,9 +23,9 @@ Kestrel.
 </PropertyGroup>
 ```
 
-`RunicDesktopServer` selects the server of a project that references the
-package: `Native` (the default with the package) or `Kestrel`, for comparing
-the two from one project. Any other value fails with `RUNICDESK003`.
+`RunicDesktopServer` selects the server of a project that references both
+server packages, for comparing them from one project: `Native` (the default) or
+`Kestrel`. Any other value than these and `None` fails with `RUNICDESK003`.
 
 ## What you get
 
@@ -57,10 +58,10 @@ table):
 - Only `GET` and `HEAD` reach the surface, as with Kestrel; request bodies are
   not read.
 - HTTP/1.1 only, with hyper's default header limits.
-- The application still references the ASP.NET Core shared framework, because
-  `Runic.Desktop` uses its HTTP abstractions: a framework-dependent application
-  needs the ASP.NET Core runtime, and an untrimmed self-contained one carries
-  it. Removing that is the next step (design note).
+- No ASP.NET Core: a framework-dependent application needs only the .NET
+  runtime, and a self-contained one carries no `Microsoft.AspNetCore.*` files.
+  An application that resolved `IConfiguration` or `IHostEnvironment` from
+  `ConfigureServices` registers its own.
 
 ## Supported runtime identifiers
 
