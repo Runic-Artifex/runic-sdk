@@ -690,7 +690,33 @@ Runic.Application.Views.Generated.CommandDescriptor<T>.WireName.init -> void
 Runic.Application.Views.Generated.PropertyDescriptor<T>.PropertyDescriptor(string! name, string! wireName, System.Func<T, object?>! getter, System.Action<T, System.Text.Json.JsonElement>? setter, System.Func<T, object?>! observe) -> void
 Runic.Application.Views.Generated.PropertyDescriptor<T>.PropertyDescriptor(string! name, string! wireName, System.Func<T, object?>! getter, System.Action<T, System.Text.Json.JsonElement>? setter) -> void
 Runic.Application.Views.Generated.PropertyDescriptor<T>.WireName.get -> string!
-Runic.Application.Views.Generated.ViewModelBridge<T>.ViewModelBridge(Runic.Application.Views.IBridgeTransport! transport, T vm, string! name, Runic.Application.Views.Generated.BridgeStateMember<T>![]! state, Runic.Application.Views.Generated.PropertyDescriptor<T>![]! properties, Runic.Application.Views.Generated.CheckedPropertyDescriptor<T>![]! checkedProperties, Runic.Application.Views.Generated.CommandDescriptor<T>![]! commands, string? contractFingerprint = null, Runic.Application.Views.WindowContentSession? content = null, Runic.Application.Views.Generated.BridgeInteractionDescriptor<T>![]? interactions = null, Runic.Application.Views.Generated.BridgeDataSubscriptionMember![]? dataSubscriptions = null, Runic.Application.Views.Generated.BridgeCollectionDescriptor<T>![]? collections = null) -> void
 const Runic.Application.Views.Generated.BridgeProtocol.Version = 4 -> int
 Runic.Application.Views.RunicOperationProgress
 static Runic.Application.Views.RunicOperationProgress.Report(double fraction) -> void
+Runic.Application.Views.Generated.ViewModelBridge<T>.ViewModelBridge(Runic.Application.Views.IBridgeTransport! transport, T vm, string! name, Runic.Application.Views.Generated.BridgeStateMember<T>![]! state, Runic.Application.Views.Generated.PropertyDescriptor<T>![]! properties, Runic.Application.Views.Generated.CheckedPropertyDescriptor<T>![]! checkedProperties, Runic.Application.Views.Generated.CommandDescriptor<T>![]! commands, string? contractFingerprint = null, Runic.Application.Views.WindowContentSession? content = null, Runic.Application.Views.Generated.BridgeInteractionDescriptor<T>![]? interactions = null, Runic.Application.Views.Generated.BridgeDataSubscriptionMember![]? dataSubscriptions = null, Runic.Application.Views.Generated.BridgeCollectionDescriptor<T>![]? collections = null, Runic.Application.Views.Generated.BridgeValidationReader? validationReader = null) -> void
+static Runic.Application.Views.Generated.BridgeValidation.Observe<T>(System.IObservable<T>! source, System.Action! changed) -> System.IDisposable?
+Runic.Application.Views.Generated.BridgeValidationReader
+Runic.Application.Views.Generated.BridgeValidationReader.BridgeValidationReader(System.Func<object!, System.Collections.IEnumerable?>! readErrors, System.Func<object!, System.Action!, System.IDisposable?>! observe) -> void
+Runic.Application.Views.Generated.BridgeValidationReader.ReadErrors.get -> System.Func<object!, System.Collections.IEnumerable?>!
+Runic.Application.Views.Generated.BridgeValidationReader.Observe.get -> System.Func<object!, System.Action!, System.IDisposable?>!
+static Runic.Application.Views.Generated.BridgeValidation.WriteMessages(System.Text.Json.Utf8JsonWriter! writer, System.Collections.IEnumerable? errors) -> void
+Runic.Application.Views.Generated.PropertyDescriptor<T>.TextMember.get -> bool
+Runic.Application.Views.Generated.PropertyDescriptor<T>.TextMember.init -> void
+Runic.Application.Views.Generated.PropertyDescriptor<T>.TextSetter.get -> System.Action<T, string!>?
+Runic.Application.Views.Generated.PropertyDescriptor<T>.TextSetter.init -> void
+Runic.Application.Views.IRunicWindow.Services.get -> System.IServiceProvider!
+Runic.Application.Views.RunicWindow<TViewModel>.Services.get -> System.IServiceProvider!
+const Runic.Application.Views.RunicWindowConfigurationException.WindowParameterNotRegisteredCode = "window-parameter-not-registered" -> string!
+Runic.Application.Views.IRunicWindowHost.OpenWindowAsync<TWindow>(Runic.Application.Views.RunicWindowOptions? options, Runic.Platform.DesktopActivationContext? activation, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<TWindow!>
+Runic.Application.Views.IRunicWindowParameter<TParameter>
+Runic.Application.Views.IRunicWindowParameter<TParameter>.Value.get -> TParameter!
+Runic.Application.Views.IRunicWindowService.OpenWindowAsync<TWindow, TParameter>(TParameter! parameter, Runic.Application.Views.RunicWindowOptions? options = null, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<TWindow!>
+Runic.Application.Views.RunicWindowParameter<TParameter>
+Runic.Application.Views.RunicWindowParameter<TParameter>.RunicWindowParameter(TParameter! value) -> void
+Runic.Application.Views.RunicWindowParameter<TParameter>.Value.get -> TParameter!
+static Runic.Application.Views.RunicWindowHostExtensions.OpenWindowAsync<TWindow, TParameter>(this Runic.Application.Views.IRunicWindowHost! host, TParameter! parameter, Runic.Application.Views.RunicWindowOptions? options = null, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<TWindow!>
+Runic.Application.Views.IAsyncBridgeTransport
+Runic.Application.Views.IBridgeArguments
+Runic.Application.Views.IBridgeUtf8Transport
+Runic.Application.Views.RunicBridgeJsonIgnoreAttribute
+Runic.Application.Views.RunicBridgeJsonIgnoreAttribute.RunicBridgeJsonIgnoreAttribute() -> void

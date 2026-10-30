@@ -244,8 +244,6 @@ public sealed class RunicViewDriver<TModel> where TModel : class
     /// <param name="command">The command property, such as <c>vm => vm.RenameCommand</c>.</param>
     /// <param name="argument">The command input.</param>
     /// <param name="cancellationToken">Cancels an awaited command, as a closed client connection does.</param>
-    [System.Diagnostics.CodeAnalysis.SuppressMessage("ApiDesign", "RS0026:Do not add multiple public overloads with optional parameters",
-        Justification = "The typed input overload requires its input, so a call without one keeps binding to the wire JSON overload.")]
     public async Task<RunicCallReply<TModel>> ExecuteAsync<TArgument>(Expression<Func<TModel, object?>> command, TArgument argument,
         CancellationToken cancellationToken = default)
     {
@@ -302,8 +300,6 @@ public sealed class RunicViewDriver<TModel> where TModel : class
     /// <param name="argument">The command input or key.</param>
     /// <param name="cancellationToken">Cancels the resolution, as a closed client connection does.</param>
     /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> was cancelled.</exception>
-    [System.Diagnostics.CodeAnalysis.SuppressMessage("ApiDesign", "RS0026:Do not add multiple public overloads with optional parameters",
-        Justification = "The typed input overload requires its input, so a call without one keeps binding to the wire JSON overload.")]
     public Task<bool> CanExecuteAsync<TArgument>(Expression<Func<TModel, object?>> command, TArgument argument,
         CancellationToken cancellationToken = default) =>
         CanExecuteCoreAsync(command, Input(argument), cancellationToken);
@@ -354,8 +350,6 @@ public sealed class RunicViewDriver<TModel> where TModel : class
     /// <param name="argument">The command input or key.</param>
     /// <param name="requestId">The operation id; the host issues <c>request{n}</c> when omitted.</param>
     /// <param name="cancellationToken">Cancels the resolution, as a closed client connection does.</param>
-    [System.Diagnostics.CodeAnalysis.SuppressMessage("ApiDesign", "RS0026:Do not add multiple public overloads with optional parameters",
-        Justification = "The typed input overload requires its input, so a call without one keeps binding to the wire JSON overload.")]
     public Task<RunicTestOperation> StartAsync<TArgument>(Expression<Func<TModel, object?>> command, TArgument argument,
         string? requestId = null, CancellationToken cancellationToken = default) =>
         StartCoreAsync(command, Input(argument), requestId, cancellationToken);

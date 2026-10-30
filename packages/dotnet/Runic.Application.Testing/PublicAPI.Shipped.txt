@@ -312,3 +312,47 @@ static Runic.Application.Testing.RunicMemberSet.operator !=(Runic.Application.Te
 static Runic.Application.Testing.RunicMemberSet.operator ==(Runic.Application.Testing.RunicMemberSet? left, Runic.Application.Testing.RunicMemberSet? right) -> bool
 static Runic.Application.Testing.RunicTextChange.operator !=(Runic.Application.Testing.RunicTextChange? left, Runic.Application.Testing.RunicTextChange? right) -> bool
 static Runic.Application.Testing.RunicTextChange.operator ==(Runic.Application.Testing.RunicTextChange? left, Runic.Application.Testing.RunicTextChange? right) -> bool
+Runic.Application.Testing.RunicTextSplice
+Runic.Application.Testing.RunicTextSplice.<Clone>$() -> Runic.Application.Testing.RunicTextSplice!
+Runic.Application.Testing.RunicTextSplice.Deconstruct(out string! Field, out int Length, out int Index, out int Delete, out string! Text, out long? Version) -> void
+Runic.Application.Testing.RunicTextSplice.Delete.get -> int
+Runic.Application.Testing.RunicTextSplice.Delete.init -> void
+Runic.Application.Testing.RunicTextSplice.Equals(Runic.Application.Testing.RunicTextSplice? other) -> bool
+Runic.Application.Testing.RunicTextSplice.Field.get -> string!
+Runic.Application.Testing.RunicTextSplice.Field.init -> void
+Runic.Application.Testing.RunicTextSplice.Index.get -> int
+Runic.Application.Testing.RunicTextSplice.Index.init -> void
+Runic.Application.Testing.RunicTextSplice.Length.get -> int
+Runic.Application.Testing.RunicTextSplice.Length.init -> void
+Runic.Application.Testing.RunicTextSplice.RunicTextSplice(string! Field, int Length, int Index, int Delete, string! Text, long? Version) -> void
+Runic.Application.Testing.RunicTextSplice.Text.get -> string!
+Runic.Application.Testing.RunicTextSplice.Text.init -> void
+Runic.Application.Testing.RunicTextSplice.Version.get -> long?
+Runic.Application.Testing.RunicTextSplice.Version.init -> void
+Runic.Application.Testing.RunicViewPublication.Splices.get -> System.Collections.Generic.IReadOnlyList<Runic.Application.Testing.RunicTextSplice!>!
+override Runic.Application.Testing.RunicTextSplice.Equals(object? obj) -> bool
+override Runic.Application.Testing.RunicTextSplice.GetHashCode() -> int
+override Runic.Application.Testing.RunicTextSplice.ToString() -> string!
+static Runic.Application.Testing.RunicTextSplice.operator !=(Runic.Application.Testing.RunicTextSplice? left, Runic.Application.Testing.RunicTextSplice? right) -> bool
+static Runic.Application.Testing.RunicTextSplice.operator ==(Runic.Application.Testing.RunicTextSplice? left, Runic.Application.Testing.RunicTextSplice? right) -> bool
+Runic.Application.Testing.RunicBridgeMessage.Kind.get -> string?
+Runic.Application.Testing.RunicBridgeMessage.Route.get -> string?
+Runic.Application.Testing.RunicStateTracker<TModel>.VerifyAsync(System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task!
+Runic.Application.Testing.RunicTestOperation.CancelAsync(System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<Runic.Application.Testing.RunicOperationCancelKind>!
+Runic.Application.Testing.RunicTestOperation.GetStatusAsync(System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<Runic.Application.Testing.RunicOperationStatus!>!
+Runic.Application.Testing.RunicTestOperation.ReadStreamAsync(long cursor = 0, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<Runic.Application.Testing.RunicOperationStreamPage!>!
+Runic.Application.Testing.RunicViewDriver<TModel>.CanExecuteAsync<TArgument>(System.Linq.Expressions.Expression<System.Func<TModel!, object?>!>! command, TArgument argument, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<bool>!
+Runic.Application.Testing.RunicViewDriver<TModel>.ExecuteAsync<TArgument>(System.Linq.Expressions.Expression<System.Func<TModel!, object?>!>! command, TArgument argument, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<Runic.Application.Testing.RunicCallReply<TModel!>!>!
+Runic.Application.Testing.RunicViewDriver<TModel>.MountAsync(string? presentation = null, string? clientKey = null, string? connectionKey = null, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<string!>!
+Runic.Application.Testing.RunicViewDriver<TModel>.SetAsync<TValue>(System.Linq.Expressions.Expression<System.Func<TModel!, TValue>!>! property, TValue value, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<Runic.Application.Testing.RunicCallReply<TModel!>!>!
+Runic.Application.Testing.RunicViewDriver<TModel>.SetJsonAsync<TValue>(System.Linq.Expressions.Expression<System.Func<TModel!, TValue>!>! property, string! wireJson, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<Runic.Application.Testing.RunicCallReply<TModel!>!>!
+Runic.Application.Testing.RunicViewDriver<TModel>.SnapshotAsync(System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<Runic.Application.Testing.RunicViewState<TModel!>!>!
+Runic.Application.Testing.RunicViewDriver<TModel>.StartAsync<TArgument>(System.Linq.Expressions.Expression<System.Func<TModel!, object?>!>! command, TArgument argument, string? requestId = null, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<Runic.Application.Testing.RunicTestOperation!>!
+Runic.Application.Testing.RunicViewDriver<TModel>.TrackAsync(System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<Runic.Application.Testing.RunicStateTracker<TModel!>!>!
+Runic.Application.Testing.RunicViewDriver<TModel>.UnmountAsync(string! presentation, string? clientKey = null, string? connectionKey = null, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task!
+Runic.Application.Testing.RunicViewDriver<TModel>.ViewAsync<TContent>(System.Linq.Expressions.Expression<System.Func<TModel!, object?>!>! property, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<Runic.Application.Testing.RunicViewDriver<TContent!>!>!
+Runic.Application.Testing.RunicViewDriver<TModel>.ViewsAsync<TContent>(System.Linq.Expressions.Expression<System.Func<TModel!, object?>!>! property, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<System.Collections.Generic.IReadOnlyList<Runic.Application.Testing.RunicViewDriver<TContent!>!>!>!
+Runic.Application.Testing.RunicViewDriver<TModel>.WriteAsync<TValue>(System.Linq.Expressions.Expression<System.Func<TModel!, TValue>!>! property, TValue value, long? expectedVersion = null, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<Runic.Application.Testing.RunicFieldWriteReceipt<TModel!>!>!
+Runic.Application.Testing.RunicWindowTestHost<TViewModel>.Services.get -> System.IServiceProvider?
+static Runic.Application.Testing.RunicWindowTestHost.Create<TViewModel>(System.IServiceProvider! services, TViewModel! viewModel, Runic.Application.Testing.RunicWindowTestHostOptions? options = null) -> Runic.Application.Testing.RunicWindowTestHost<TViewModel!>!
+Runic.Application.Testing.BridgeTestArguments

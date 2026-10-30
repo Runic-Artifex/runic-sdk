@@ -1,5 +1,1 @@
 #nullable enable
-Runic.Application.Views.Desktop.RunicDesktopHostOptions.ServeOnly.get -> bool
-Runic.Application.Views.Desktop.RunicDesktopHostOptions.ServeOnly.init -> void
-Runic.Application.Views.Desktop.RunicDesktopHost.ServeOnly.get -> bool
-static Runic.Application.Views.Desktop.DesktopPlatformServices.ForApplication() -> Runic.Platform.IApplicationPlatformServices!
