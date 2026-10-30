@@ -1,6 +1,6 @@
 {
   "name": "@runic-artifex/svelte",
-  "version": "0.13.0",
+  "version": "0.14.0",
   "description": "Svelte 5 Application Views helpers for Runic",
   "homepage": "https://github.com/Runic-Artifex/runic-sdk/tree/main/packages/web/svelte#readme",
   "bugs": {
@@ -40,7 +40,7 @@
   },
   "peerDependencies": {
     "svelte": ">=5.57.1 <6",
-    "@runic-artifex/views": "0.13.0"
+    "@runic-artifex/views": "0.14.0"
   },
   "publishConfig": {
     "access": "public",
