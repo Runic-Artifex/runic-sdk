@@ -91,6 +91,61 @@ public class DesktopException : Exception
     public string CorrelationId { get; }
 }
 
+/// <summary>Reports that every presentation of a window's fallback chain failed to open.</summary>
+/// <remarks>
+/// <see cref="DesktopSurface.OpenWindowAsync"/> throws it when <see cref="DesktopWindowOptions.Fallbacks"/> or
+/// <see cref="DesktopPresentationPolicy.EmbeddedThenBrowser"/> names more than one presentation and none opened.
+/// <see cref="DesktopException.Category"/>, <see cref="DesktopException.Code"/> and
+/// <see cref="DesktopException.Retryable"/> are those of the last attempt, which is also the inner exception, so a
+/// handler of the single-presentation failure codes keeps working. A window that opened without connecting
+/// (<c>connection-timeout</c>) ends the chain with that failure instead.
+/// </remarks>
+public sealed class DesktopPresentationException : DesktopException
+{
+    /// <summary>Creates the failure from the attempts, in the order they were made.</summary>
+    /// <param name="attempts">The failed attempts; at least one.</param>
+    /// <exception cref="ArgumentException"><paramref name="attempts"/> is empty or contains <see langword="null"/>.</exception>
+    public DesktopPresentationException(IReadOnlyList<DesktopPresentationAttempt> attempts)
+        : this(Validate(attempts))
+    {
+    }
+
+    private DesktopPresentationException(DesktopPresentationAttempt[] attempts)
+        : base(
+            attempts[^1].Failure.Category,
+            attempts[^1].Failure.Code,
+            "No presentation could be opened: " +
+            string.Join("; ", attempts.Select(static attempt => $"{attempt.Browser}: {attempt.Failure.Code}")) + ".",
+            attempts[^1].Failure.Retryable,
+            attempts[^1].Failure,
+            attempts[^1].Failure.CorrelationId)
+    {
+        Attempts = Array.AsReadOnly(attempts);
+    }
+
+    /// <summary>Gets every presentation that was tried and why it failed, in the order they were tried.</summary>
+    public IReadOnlyList<DesktopPresentationAttempt> Attempts { get; }
+
+    private static DesktopPresentationAttempt[] Validate(IReadOnlyList<DesktopPresentationAttempt> attempts)
+    {
+        ArgumentNullException.ThrowIfNull(attempts);
+        DesktopPresentationAttempt[] copy = [.. attempts];
+        if (copy.Length == 0) throw new ArgumentException("At least one attempt is required.", nameof(attempts));
+        if (Array.IndexOf(copy, null) >= 0) throw new ArgumentException("Attempts cannot contain null.", nameof(attempts));
+        return copy;
+    }
+}
+
+/// <summary>One presentation a window tried to open, and why it failed.</summary>
+/// <param name="Browser">The presentation as requested, such as <see cref="BrowserKind.Embedded"/> or
+/// <see cref="BrowserKind.ChromiumBased"/>.</param>
+/// <param name="Failure">The failure, with its stable category and code, such as <c>browser-not-found</c>.</param>
+public sealed record DesktopPresentationAttempt(BrowserKind Browser, DesktopException Failure)
+{
+    /// <summary>Gets the failure, with its stable category and code, such as <c>browser-not-found</c>.</summary>
+    public DesktopException Failure { get; init; } = Failure ?? throw new ArgumentNullException(nameof(Failure));
+}
+
 /// <summary>Describes one redacted presentation diagnostic.</summary>
 public sealed record DesktopDiagnostic(
     DesktopErrorCategory Category,

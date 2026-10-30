@@ -59,28 +59,51 @@ public sealed record DesktopPresentationAvailability(
 }
 
 /// <summary>Describes whether a requested presentation can be opened without changing its declared fallback policy.</summary>
+/// <param name="RequestedBrowser">The requested <see cref="DesktopWindowOptions.Browser"/>.</param>
+/// <param name="PresentationPolicy">The requested <see cref="DesktopWindowOptions.PresentationPolicy"/>.</param>
+/// <param name="Preferred">The first presentation the window tries.</param>
+/// <param name="Fallback">The first fallback, or <see langword="null"/> when the request declares none.</param>
 public sealed record DesktopPresentationPreflight(
     BrowserKind RequestedBrowser,
     DesktopPresentationPolicy PresentationPolicy,
     DesktopPresentationAvailability Preferred,
     DesktopPresentationAvailability? Fallback)
 {
+    private readonly DesktopPresentationAvailability[]? _fallbacks;
+
+    /// <summary>
+    /// Gets every declared fallback in the order the window tries them (<see cref="DesktopWindowOptions.Fallbacks"/>,
+    /// or the one browser of <see cref="DesktopPresentationPolicy.EmbeddedThenBrowser"/>); by default
+    /// <see cref="Fallback"/> alone, or empty.
+    /// </summary>
+    public IReadOnlyList<DesktopPresentationAvailability> Fallbacks
+    {
+        get => _fallbacks is { } fallbacks ? Array.AsReadOnly(fallbacks) : Fallback is { } fallback ? [fallback] : [];
+        init
+        {
+            ArgumentNullException.ThrowIfNull(value);
+            DesktopPresentationAvailability[] copy = [.. value];
+            if (Array.IndexOf(copy, null) >= 0) throw new ArgumentException("Fallbacks cannot contain null.", nameof(value));
+            _fallbacks = copy;
+        }
+    }
+
     /// <summary>Gets whether the preferred presentation is available without fallback.</summary>
     public bool IsPreferredAvailable => Preferred.IsAvailable;
 
     /// <summary>Gets whether the declared policy has an available presentation path.</summary>
-    public bool IsAvailable => Preferred.IsAvailable || Fallback?.IsAvailable == true;
+    public bool IsAvailable => Preferred.IsAvailable || Fallbacks.Any(static fallback => fallback.IsAvailable);
 
-    /// <summary>Gets whether opening the request would use its declared fallback.</summary>
-    public bool WouldFallBack => !Preferred.IsAvailable && Fallback?.IsAvailable == true;
+    /// <summary>Gets whether opening the request would use one of its declared fallbacks.</summary>
+    public bool WouldFallBack => !Preferred.IsAvailable && Fallbacks.Any(static fallback => fallback.IsAvailable);
 
     /// <summary>
-    /// Gets every missing prerequisite of the preferred presentation and its declared fallback when no declared
+    /// Gets every missing prerequisite of the preferred presentation and its declared fallbacks when no declared
     /// presentation path is available, the preferred presentation's first; empty when one is available.
     /// </summary>
     public IReadOnlyList<DesktopDiagnostic> Diagnostics => IsAvailable
         ? []
-        : Preferred.Diagnostics.Concat(Fallback?.Diagnostics ?? []).Distinct().ToArray();
+        : Preferred.Diagnostics.Concat(Fallbacks.SelectMany(static fallback => fallback.Diagnostics)).Distinct().ToArray();
 
     /// <summary>
     /// Gets one diagnostic per requested window option or permission grant that the preferred presentation, or its

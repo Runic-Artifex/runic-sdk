@@ -298,7 +298,7 @@ public sealed class DesktopHost : IAsyncDisposable
     /// <summary>Gets the bound port, or the configured port before the first surface starts.</summary>
     public int Port => _core.Port;
 
-    /// <summary>Evaluates one requested presentation and its explicit fallback policy without starting a browser or WebView.</summary>
+    /// <summary>Evaluates one requested presentation and its explicit fallbacks without starting a browser or WebView.</summary>
     /// <remarks>
     /// The presentations come from <see cref="DesktopPlatform.GetAvailability"/> for this host's options, through
     /// <see cref="DesktopAvailabilityResult.GetPresentation"/>.
@@ -311,19 +311,15 @@ public sealed class DesktopHost : IAsyncDisposable
         var configured = (options ?? new DesktopWindowOptions()).WithPlacementApplied();
         DesktopSurface.ValidateWindowOptions(configured);
         var availability = DesktopPlatform.GetAvailability(_options);
-        var preferredBrowser = configured.PresentationPolicy == DesktopPresentationPolicy.EmbeddedThenBrowser
-            ? BrowserKind.Embedded
-            : configured.Browser;
+        var chain = DesktopSurface.PresentationChain(configured);
+        var preferredBrowser = chain[0];
         var preferred = availability.GetPresentation(preferredBrowser);
         var optionDiagnostics = new List<DesktopDiagnostic>();
         DesktopWindowOptionValidation.AddPairChecks(configured, optionDiagnostics);
+        var embeddedChecked = false;
         if (preferredBrowser == BrowserKind.Embedded)
         {
-            DesktopWindowOptionValidation.AddEmbeddedChecks(
-                configured, _options.WindowHostFactory, _options.Linux.EmbeddedBackend, optionDiagnostics);
-            // WebView2 has no setting for its spelling languages.
-            if (OperatingSystem.IsWindows() && _options.WindowHostFactory is null && _options.SpellCheckingLanguages.Count > 0)
-                optionDiagnostics.Add(DesktopWindowOptionValidation.SpellCheckingLanguagesIgnored());
+            AddEmbeddedChecks();
         }
         else if (DesktopWindowOptionValidation.IsLaunchable(preferredBrowser))
         {
@@ -331,12 +327,16 @@ public sealed class DesktopHost : IAsyncDisposable
                 configured, ConcreteBrowser(preferredBrowser, preferred), isFallback: false, optionDiagnostics);
         }
 
-        DesktopPresentationAvailability? fallback = null;
-        if (configured.PresentationPolicy == DesktopPresentationPolicy.EmbeddedThenBrowser)
+        List<DesktopPresentationAvailability> fallbacks = [];
+        foreach (var fallbackBrowser in chain.Skip(1))
         {
-            var fallbackBrowser = configured.Browser == BrowserKind.Embedded ? BrowserKind.Any : configured.Browser;
-            fallback = availability.GetPresentation(fallbackBrowser);
-            if (DesktopWindowOptionValidation.IsLaunchable(fallbackBrowser))
+            var fallback = availability.GetPresentation(fallbackBrowser);
+            fallbacks.Add(fallback);
+            if (fallbackBrowser == BrowserKind.Embedded)
+            {
+                AddEmbeddedChecks();
+            }
+            else if (DesktopWindowOptionValidation.IsLaunchable(fallbackBrowser))
             {
                 DesktopWindowOptionValidation.AddBrowserChecks(
                     configured, ConcreteBrowser(fallbackBrowser, fallback), isFallback: true, optionDiagnostics);
@@ -347,10 +347,22 @@ public sealed class DesktopHost : IAsyncDisposable
             configured.Browser,
             configured.PresentationPolicy,
             preferred,
-            fallback)
+            fallbacks.FirstOrDefault())
         {
+            Fallbacks = fallbacks,
             OptionDiagnostics = optionDiagnostics,
         };
+
+        void AddEmbeddedChecks()
+        {
+            if (embeddedChecked) return;
+            embeddedChecked = true;
+            DesktopWindowOptionValidation.AddEmbeddedChecks(
+                configured, _options.WindowHostFactory, _options.Linux.EmbeddedBackend, optionDiagnostics);
+            // WebView2 has no setting for its spelling languages.
+            if (OperatingSystem.IsWindows() && _options.WindowHostFactory is null && _options.SpellCheckingLanguages.Count > 0)
+                optionDiagnostics.Add(DesktopWindowOptionValidation.SpellCheckingLanguagesIgnored());
+        }
     }
 
     /// <summary>

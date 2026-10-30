@@ -129,44 +129,56 @@ public sealed class DesktopSurface : IAsyncDisposable
             RequireCloseConfirmationSupport(configured);
             ApplyWindowOptions(configured);
             var requestedBrowser = configured.Browser;
-            var actualBrowser = requestedBrowser;
+            var chain = PresentationChain(configured);
+            var actualBrowser = chain[0];
             var fellBack = false;
-            if (configured.PresentationPolicy == DesktopPresentationPolicy.EmbeddedThenBrowser)
+            List<DesktopPresentationAttempt>? attempts = chain.Count > 1 ? [] : null;
+            var withheld = false;
+            for (var index = 0; ; index++)
             {
+                var candidate = chain[index];
                 try
                 {
-                    await OpenCheckedAsync(BrowserKind.Embedded, cancellationToken).ConfigureAwait(false);
-                    actualBrowser = BrowserKind.Embedded;
+                    if (index > 0)
+                    {
+                        // An installed browser cannot honour the grants or close confirmation of the preferred
+                        // presentation; an embedded fallback can.
+                        var browserFallback = candidate != BrowserKind.Embedded;
+                        _engine.SetAllowedPermissions(browserFallback ? DesktopPermissionGrant.None : configured.AllowedPermissions);
+                        _engine.SetCloseConfirmation(browserFallback ? null : configured.ConfirmCloseAsync);
+                        if (browserFallback && !withheld)
+                        {
+                            withheld = true;
+                            var correlationId = attempts![^1].Failure.CorrelationId;
+                            WithholdGrantsFromFallback(configured, correlationId);
+                            WithholdCloseConfirmationFromFallback(configured, correlationId);
+                        }
+                    }
+                    await OpenCheckedAsync(candidate, cancellationToken).ConfigureAwait(false);
+                    actualBrowser = candidate;
+                    fellBack = index > 0;
+                    break;
                 }
-                // An embedded presentation that opened but never connected is not
-                // unavailable: the browser would load the same frontend, so report it.
-                catch (Exception exception) when (
-                    exception is not OperationCanceledException
-                    and not DesktopException { Code: ConnectionTimeoutCode })
+                // A presentation that opened but never connected is not
+                // unavailable: the next one would load the same frontend, so report it.
+                catch (DesktopException exception) when (
+                    attempts is not null && exception.Code != ConnectionTimeoutCode)
                 {
-                    fellBack = true;
-                    var correlationId = exception is DesktopException desktopException
-                        ? desktopException.CorrelationId
-                        : Guid.NewGuid().ToString("N");
+                    attempts.Add(new DesktopPresentationAttempt(candidate, exception));
+                    if (index == chain.Count - 1) throw new DesktopPresentationException(attempts);
                     _host.Report(new DesktopDiagnostic(
                         DesktopErrorCategory.Unavailable,
-                        "embedded-presentation-fallback",
-                        "The embedded presentation was unavailable; the explicit browser fallback will be used.",
+                        candidate == BrowserKind.Embedded ? "embedded-presentation-fallback" : "presentation-fallback",
+                        candidate == BrowserKind.Embedded
+                            ? "The embedded presentation was unavailable; the explicit fallback will be used."
+                            : $"The {candidate} presentation was unavailable; the next fallback will be used.",
                         Retryable: true,
-                        correlationId,
-                        FallbackRemediation(exception))
+                        exception.CorrelationId,
+                        FallbackRemediation(candidate, exception))
                     {
                         Severity = DesktopDiagnosticSeverity.Warning,
                     });
-                    actualBrowser = requestedBrowser == BrowserKind.Embedded ? BrowserKind.Any : requestedBrowser;
-                    WithholdGrantsFromFallback(configured, correlationId);
-                    WithholdCloseConfirmationFromFallback(configured, correlationId);
-                    await OpenCheckedAsync(actualBrowser, cancellationToken).ConfigureAwait(false);
                 }
-            }
-            else
-            {
-                await OpenCheckedAsync(requestedBrowser, cancellationToken).ConfigureAwait(false);
             }
 
             // A concrete installed browser was selected successfully once its
@@ -462,6 +474,21 @@ public sealed class DesktopSurface : IAsyncDisposable
         _engine.SetSpellChecking(options.SpellChecking);
     }
 
+    // The presentations a window tries in order: the preferred one, then its fallbacks.
+    internal static IReadOnlyList<BrowserKind> PresentationChain(DesktopWindowOptions options)
+    {
+        var embeddedFirst = options.PresentationPolicy == DesktopPresentationPolicy.EmbeddedThenBrowser;
+        List<BrowserKind> chain = [embeddedFirst ? BrowserKind.Embedded : options.Browser];
+        if (options.Fallbacks.Count > 0) chain.AddRange(options.Fallbacks);
+        else if (embeddedFirst) chain.Add(options.Browser == BrowserKind.Embedded ? BrowserKind.Any : options.Browser);
+        return chain;
+    }
+
+    private static string FallbackRemediation(BrowserKind browser, DesktopException exception) =>
+        browser != BrowserKind.Embedded
+            ? $"Install {browser} to restore this presentation, or remove it from DesktopWindowOptions.Fallbacks."
+            : FallbackRemediation(exception);
+
     private static string FallbackRemediation(Exception exception) => exception is DesktopException { Code: var code }
         ? code switch
         {
@@ -602,6 +629,26 @@ public sealed class DesktopSurface : IAsyncDisposable
         if (!Enum.IsDefined(options.PresentationPolicy))
         {
             throw new ArgumentOutOfRangeException(nameof(options), "PresentationPolicy contains an unsupported value.");
+        }
+        if (options.Fallbacks is null)
+        {
+            throw new ArgumentNullException(nameof(options), "Fallbacks must not be null.");
+        }
+        if (options.Fallbacks.Any(static browser => !Enum.IsDefined(browser)))
+        {
+            throw new ArgumentOutOfRangeException(nameof(options), "Fallbacks contains an unsupported value.");
+        }
+        if (options.Fallbacks.Count > 0 && options.PresentationPolicy == DesktopPresentationPolicy.EmbeddedThenBrowser &&
+            options.Browser != BrowserKind.Embedded)
+        {
+            throw new ArgumentException(
+                "Fallbacks replaces the EmbeddedThenBrowser fallback browser: set Browser to BrowserKind.Embedded, or list the browser in Fallbacks.",
+                nameof(options));
+        }
+        var chain = PresentationChain(options);
+        if (chain.Distinct().Count() != chain.Count)
+        {
+            throw new ArgumentException("Fallbacks must not repeat the first presentation or another entry.", nameof(options));
         }
         if (!Enum.IsDefined(options.MenuBarPresentation))
         {
@@ -1111,7 +1158,11 @@ public sealed class DesktopWindow : IAsyncDisposable
     /// </remarks>
     public BrowserKind Browser { get; }
 
-    /// <summary>Gets whether the embedded WebView was unavailable and the browser fallback opened instead.</summary>
+    /// <summary>
+    /// Gets whether the first presentation, such as the embedded WebView, could not open and one of its fallbacks
+    /// (<see cref="DesktopWindowOptions.Fallbacks"/>, <see cref="DesktopPresentationPolicy.EmbeddedThenBrowser"/>) opened
+    /// instead; <see cref="Browser"/> names it.
+    /// </summary>
     public bool IsFallback { get; }
 
     /// <summary>Gets whether this is the surface's current window and its browser process or embedded window is still open.</summary>

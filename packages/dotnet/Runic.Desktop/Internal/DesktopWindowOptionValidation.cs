@@ -151,7 +151,7 @@ internal static class DesktopWindowOptionValidation
             ? browser is { } fallbackBrowser ? $"The {fallbackBrowser} browser fallback" : "The browser fallback"
             : browser is { } selected ? $"The {selected} browser" : "An installed browser";
         var remediation = isFallback
-            ? "Remove the option, or use DesktopPresentationPolicy.RequestedOnly."
+            ? "Remove the option, or remove the browser fallback (DesktopPresentationPolicy.RequestedOnly, no Fallbacks)."
             : "Remove the option, or select BrowserKind.Embedded.";
         if (options.MinimumWidth is not null && options.MinimumHeight is not null)
         {
@@ -272,7 +272,7 @@ internal static class DesktopWindowOptionValidation
     }
 
     // A browser cannot veto a user close, so ConfirmCloseAsync is never asked there. An explicit browser fails;
-    // an EmbeddedThenBrowser fallback opens without confirmation, because the preferred window honours it.
+    // a browser fallback opens without confirmation, because the preferred window honours it.
     internal static DesktopDiagnostic CloseConfirmationUnavailable(string presentation, bool isFallback) => new(
         DesktopErrorCategory.CapabilityDenied,
         CloseConfirmationUnavailableCode,
@@ -281,7 +281,7 @@ internal static class DesktopWindowOptionValidation
             : $"{presentation} cannot confirm a user close request: a browser cannot keep its window open.",
         Retryable: false,
         Remediation: isFallback
-            ? "Use DesktopPresentationPolicy.RequestedOnly to require the embedded window, or remove ConfirmCloseAsync."
+            ? "Require the embedded window (DesktopPresentationPolicy.RequestedOnly, no browser in Fallbacks), or remove ConfirmCloseAsync."
             : "Select BrowserKind.Embedded, or remove ConfirmCloseAsync.")
     {
         Severity = isFallback ? DesktopDiagnosticSeverity.Warning : DesktopDiagnosticSeverity.Error,
@@ -318,7 +318,7 @@ internal static class DesktopWindowOptionValidation
         GrantWithheldCode,
         $"{presentation} opens without the MediaCapture grant: Chromium browsers deny camera and microphone, and Firefox asks the user.",
         Retryable: false,
-        Remediation: "Use DesktopPresentationPolicy.RequestedOnly to require the embedded window, or remove the grant.")
+        Remediation: "Require the embedded window (DesktopPresentationPolicy.RequestedOnly, no browser in Fallbacks), or remove the grant.")
     {
         Severity = DesktopDiagnosticSeverity.Warning,
         Option = Prefix + nameof(DesktopWindowOptions.AllowedPermissions),

@@ -333,8 +333,8 @@ public sealed class RunicDesktopHost : IRunicWindowHost
             // A browser fallback that is missing only from this machine stands in for an installed one: with it, the
             // preferred presentation's findings, such as linux-embedded-backend-not-selected, would not be reported
             // either, and serve-only needs no browser.
-            var presentation = preflight.Fallback is { } fallback &&
-                fallback.Diagnostics.All(static diagnostic => PresentationEnvironmentCodes.Contains(diagnostic.Code))
+            var presentation = preflight.Fallbacks.Any(static fallback =>
+                fallback.Diagnostics.All(static diagnostic => PresentationEnvironmentCodes.Contains(diagnostic.Code)))
                 ? []
                 : preflight.Diagnostics;
             return [.. presentation.Concat(preflight.OptionDiagnostics)
@@ -447,7 +447,7 @@ public sealed class RunicDesktopHost : IRunicWindowHost
             if (Placement is { } choosePlacement && choosePlacement(opening.Window) is { } placement)
                 windowOptions = windowOptions with { Placement = placement };
             var presentation = await surface.OpenWindowAsync(windowOptions, cancellationToken).ConfigureAwait(false);
-            // An EmbeddedThenBrowser fallback opens without close confirmation; Runic Desktop reports
+            // A browser fallback opens without close confirmation; Runic Desktop reports
             // close-confirmation-unavailable for the options, and this names the Window.
             var confirmsClose = windowOptions.ConfirmCloseAsync is not null &&
                 presentation.Capabilities.HasFlag(DesktopWindowCapabilities.CloseConfirmation);
