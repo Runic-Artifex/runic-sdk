@@ -935,6 +935,10 @@ public sealed class RunicNavigator : IAsyncDisposable, IDisposable
         {
             region.Requested = true;
             var related = RelatedRunningLocked(region);
+            // A queued request waits for the region's earlier requests: what it expects of the region is checked when it
+            // starts, against the state they left, and it supersedes nothing.
+            var effective = admission ?? region.Admission;
+            var queued = effective == NavigationAdmission.Queue && region.InFlight.Count > 0;
             // A selection's request also names its member region: the one to select or remove, which a removal closed.
             if (_closing || region.Closed || member is { Closed: true }) settled = TransitionOutcome.Reject(NavigationRejection.Closed);
             else if (cancellationToken.IsCancellationRequested)
@@ -945,7 +949,8 @@ public sealed class RunicNavigator : IAsyncDisposable, IDisposable
                 // A hook never waits on a transition that waits on it. This also rejects requests to
                 // ancestor and descendant regions of the hook's region (deviation 15): conservative.
                 settled = TransitionOutcome.Reject(NavigationRejection.Reentrant);
-            else if (expected is { } expectedId && DepartingRegionLocked(region, operation, member)?.CurrentEntry?.Id != expectedId)
+            else if (!queued && expected is { } expectedId
+                && DepartingRegionLocked(region, operation, member)?.CurrentEntry?.Id != expectedId)
                 settled = TransitionOutcome.Reject(NavigationRejection.NotCurrent);
             else if (requester is { } requesterId && !IsRequesterCurrentLocked(requesterId))
                 settled = TransitionOutcome.Reject(NavigationRejection.NotCurrent, requesterId);
@@ -953,7 +958,7 @@ public sealed class RunicNavigator : IAsyncDisposable, IDisposable
                 && ReferenceEquals(region.SelectionUnit?.Selected, member))
                 // Selecting the selected region with nothing pending changes nothing, so it commits at once.
                 settled = TransitionOutcome.Commit(member!.CurrentEntry, []);
-            else if (operation == NavigationOperation.Back && region.Stack.Length < (@return is null ? 2 : 1))
+            else if (!queued && operation == NavigationOperation.Back && region.Stack.Length < (@return is null ? 2 : 1))
                 settled = TransitionOutcome.Reject(NavigationRejection.NoHistory);
             else if (operation == NavigationOperation.Back && @return is null
                 && JoinableBackLocked(region) is { } pendingBack)
@@ -963,7 +968,7 @@ public sealed class RunicNavigator : IAsyncDisposable, IDisposable
                 joined = pendingBack;
                 backCaller = pendingBack.AddBackCallerLocked(cancellationToken);
             }
-            else if ((admission ?? region.Admission) == NavigationAdmission.RejectWhileBusy && region.IsBusyLocked
+            else if (effective == NavigationAdmission.RejectWhileBusy && region.IsBusyLocked
                 && !IsActivationOfLocked(region))
                 // After the Back join: a double click joins the pending Back rather than being refused.
                 settled = TransitionOutcome.Reject(NavigationRejection.Busy);
@@ -995,23 +1000,16 @@ public sealed class RunicNavigator : IAsyncDisposable, IDisposable
                 List<Task> waitFor = [];
                 foreach (var earlier in region.InFlight)
                 {
-                    if (earlier.TrySupersede(settlement)) superseded.Add(earlier);
+                    if (!queued && earlier.TrySupersede(settlement)) superseded.Add(earlier);
                     waitFor.Add(earlier.Terminated.Task);
                 }
                 // The provisional plan: the child regions this request would
                 // reset or close. Their transitions are superseded the same way.
+                // A queued request does this when it starts (AdmitQueuedAsync).
                 var plan = ComputePlanLocked(region, operation, pending: null, backTo, expected, @return is not null, member);
                 // Only a Back without a result return can be joined; no other transition keeps its plan.
                 var joinable = operation == NavigationOperation.Back && @return is null;
-                foreach (var child in plan.Regions)
-                {
-                    if (ReferenceEquals(child, region)) continue;
-                    foreach (var earlier in child.InFlight)
-                    {
-                        if (earlier.TrySupersede(settlement)) superseded.Add(earlier);
-                        waitFor.Add(earlier.Terminated.Task);
-                    }
-                }
+                if (!queued) SupersedeChildrenLocked(region, plan, settlement, superseded, waitFor);
                 // Related transitions of ancestor and descendant regions are not waited
                 // on here: their guard sets are only known when they start guarding.
                 // Each guard hook checks for overlap under the gate (EnterGuardHookAsync).
@@ -1022,6 +1020,7 @@ public sealed class RunicNavigator : IAsyncDisposable, IDisposable
                     AdmittedPlan = joinable ? plan : null,
                     Requester = requester,
                     Member = member,
+                    Queued = queued,
                 };
                 if (joinable) backCaller = transition.AddBackCallerLocked(cancellationToken);
                 if (pending is not null) pending.Transition = transition;
@@ -1056,6 +1055,47 @@ public sealed class RunicNavigator : IAsyncDisposable, IDisposable
         else if (ModelContext.IsExecuting) _ = Task.Run(() => RunAsync(transition!), CancellationToken.None);
         else _ = RunAsync(transition!);
         return result;
+    }
+
+    // Supersedes the pending requests of the child regions a plan resets or closes, and collects their ends to wait for.
+    // Call under the gate.
+    private static void SupersedeChildrenLocked(NavigationRegionCore region, NavigationPlan plan, NavigationSettlementSource settlement,
+        List<NavigationTransition> superseded, List<Task> waitFor)
+    {
+        foreach (var child in plan.Regions)
+        {
+            if (ReferenceEquals(child, region)) continue;
+            foreach (var earlier in child.InFlight)
+            {
+                if (earlier.TrySupersede(settlement)) superseded.Add(earlier);
+                waitFor.Add(earlier.Terminated.Task);
+            }
+        }
+    }
+
+    // A queued request (NavigationAdmission.Queue) is admitted for its plan once the region's earlier requests ended: it
+    // supersedes the pending requests of the child regions its plan resets or closes, as a request does at admission,
+    // and waits for them. Returns false when it was cancelled, superseded or closed meanwhile.
+    private async Task<bool> AdmitQueuedAsync(NavigationTransition transition)
+    {
+        var region = transition.Region;
+        List<NavigationTransition> superseded = [];
+        List<Task> waitFor = [];
+        lock (Gate)
+        {
+            if (transition.CancelReason != NavigationCancelReason.None || _closing || region.Closed
+                || transition.CancellationRequested)
+                return false;
+            var plan = ComputePlanLocked(region, transition.Operation, pending: null, transition.BackTo, transition.Expected,
+                transition.Return is not null, transition.Member);
+            if (plan.Rejection is null) SupersedeChildrenLocked(region, plan, transition.Settlement, superseded, waitFor);
+        }
+        foreach (var earlier in superseded) StartOverrunTimer(earlier);
+        Cancel(superseded);
+        if (waitFor.Count == 0) return true;
+        try { await this.AfterUserCode(Task.WhenAll(waitFor).WaitAsync(transition.Token)); }
+        catch (OperationCanceledException) when (transition.Token.IsCancellationRequested) { return false; }
+        return true;
     }
 
     // The region's latest admitted transition when it is a Back without a result return, still live, and nothing its plan
@@ -1380,6 +1420,7 @@ public sealed class RunicNavigator : IAsyncDisposable, IDisposable
                 return (CancelledOutcome(transition), null);
             }
         }
+        if (transition.Queued && !await this.AfterUserCode(AdmitQueuedAsync(transition))) return (CancelledOutcome(transition), null);
 
         // Guarding.
         NavigationPlan plan;
@@ -2053,8 +2094,14 @@ public sealed class RunicNavigator : IAsyncDisposable, IDisposable
                 // A return from a result entry may leave the region empty.
                 if (stack.Length < (popToEmpty ? 1 : 2)) return plan.Reject(NavigationRejection.NoHistory);
                 plan.Removed.Add(current!);
-                plan.Resume = stack.Length > 1 ? stack[^2] : null;
-                plan.NewStack = stack[..^1];
+                // A retained result entry whose request already ended (its caller cancelled, or it dismissed itself while
+                // covered) is on its way out too: the Back retires it rather than resuming an answered question. A plain
+                // Back keeps the bottom entry; a return may leave the region empty.
+                var resume = stack.Length - 2;
+                while (resume >= (popToEmpty ? 0 : 1) && stack[resume].ResultRequest is { State: NavigationResultState.Dismissed })
+                    plan.Removed.Add(stack[resume--]);
+                plan.Resume = resume >= 0 ? stack[resume] : null;
+                plan.NewStack = stack[..(resume + 1)];
                 break;
             case NavigationOperation.BackTo:
                 var index = Array.FindIndex(stack, entry => entry.Id == backTo);
@@ -3212,6 +3259,9 @@ internal sealed class NavigationTransition : IDisposable
     public NavigationEntryId? Requester { get; init; }
     // The region a selection's request selects or removes; null for a region's request.
     public NavigationRegionCore? Member { get; init; }
+    // Admitted with NavigationAdmission.Queue behind earlier requests of its region: it superseded none of them, and is
+    // admitted for its plan when it starts (AdmitQueuedAsync).
+    public bool Queued { get; init; }
     // Read under the navigator's gate, including at commit: token callbacks can be delayed by that gate.
     public bool CancellationRequested => _backCallers is { } callers
         ? callers.All(static caller => caller.Token.IsCancellationRequested)

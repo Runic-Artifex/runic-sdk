@@ -946,7 +946,12 @@ Details: 0.14.0 [Runic Command Line 0.11.0 in the SDK tools](../eng/release/note
 
 ### Navigation
 
-<!-- N1: replace this line with the batch's migration entries; remove it if the batch has none. -->
+| 0.14 | 0.15 |
+| --- | --- |
+| A retained result entry whose caller cancelled, or that called `DismissAsync` while covered, was resumed by the Back of the entry above it, showing its answered question again | That Back retires it too and resumes the entry below it; a return from a result entry may leave the region empty. Code that waited for the dismissed dialog to reappear and then called its `CompleteAsync`/`DismissAsync` to leave it can drop that step |
+| An application kept its own prompt stack beside a dialog region, because `Supersede` dropped the first prompt and `RejectWhileBusy` the second | `new NavigationRegionOptions { Admission = NavigationAdmission.Queue }`: prompts stack above each other in order ([Queueing requests](../packages/dotnet/Runic.Navigation/README.md#queueing-requests)) |
+
+Details: 0.15.0 [Navigation (N1)](../eng/release/notes/0.15.0.md#navigation-n1).
 
 ### Embedded frontends
 

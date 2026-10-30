@@ -367,10 +367,9 @@ internal sealed partial class NavigationTests
             && await Wait(retainedRequest.Completion) is NavigationCompletion<int>.Dismissed && Names(region) == "home,retained,top",
             $"Dismissing a retained entry gave {notCurrent} and {Names(region)}.");
 
-        // Current again with its request already dismissed: back.
-        await Wait(region.BackAsync());
-        Require(await Wait(retained.Entry.DismissAsync()) is NavigationResult<object>.Committed && Names(region) == "home",
-            "Dismissing an entry whose request had ended did not go back.");
+        // Its request ended, so the Back of the entry above retires it too rather than resuming it (#741).
+        Require(await Wait(region.BackAsync()) is NavigationResult<Page>.Committed { Current.Content: var resumed } && resumed == home
+            && Names(region) == "home", $"The Back over a dismissed entry resumed it: {Names(region)}.");
 
         // Retired: nothing.
         Require(await Wait(retained.Entry.DismissAsync()) is NavigationResult<object>.Rejected { Reason: NavigationRejection.NotCurrent },
