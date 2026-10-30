@@ -62,6 +62,13 @@ internal sealed partial class MessageBoxTests
         Check(result is PlatformResult<DesktopMessageBoxButton?>.Success(var closed) && closed == Cancel, $"the close button chose the cancel button: {result}");
         Console.WriteLine("PASS Esc and the close button choose the cancel button");
 
+        // The box closes on the key down, and its thread can destroy it before the test posts the key up. A fast dialog
+        // thread did that on CI; here the key up waits until the box is gone, so the order is certain.
+        (_, result) = await ShowAsync(owner, close, dialog => Key(dialog, VK_ESCAPE,
+            afterKeyDown: () => Check(SpinWait.SpinUntil(() => !IsWindow(dialog), Wait), "Esc closed the box on its key down")));
+        Check(result is PlatformResult<DesktopMessageBoxButton?>.Success(var early) && early == Cancel, $"a box closed before the key up: {result}");
+        Console.WriteLine("PASS a box that closes before the key up answers");
+
         // Without a cancel button Esc and WM_CLOSE leave the box open; only its buttons answer it.
         var yes = new DesktopMessageBoxButton("yes", "Yes") { Role = DesktopMessageBoxButtonRole.Default };
         var no = new DesktopMessageBoxButton("no", "No");
@@ -155,20 +162,26 @@ internal sealed partial class MessageBoxTests
         try { drive(dialog); }
         catch
         {
-            Post(dialog, TDM_CLICK_BUTTON, 2, 0);
-            Post(dialog, TDM_CLICK_BUTTON, 1, 0);
+            // Closes a box that drive left open. The box may be gone already, so these posts are not checked: drive's
+            // own failure is the one to report.
+            PostMessageW(dialog, TDM_CLICK_BUTTON, 2, 0);
+            PostMessageW(dialog, TDM_CLICK_BUTTON, 1, 0);
             throw;
         }
         return (dialog, await pending.WaitAsync(Wait));
     }
 
-    // A key press as the keyboard delivers it: to the focused control, through the dialog's message loop.
-    private static void Key(nint dialog, nuint key)
+    // A key press as the keyboard delivers it: to the focused control, through the dialog's message loop. A key that
+    // answers the box closes it on the key down, and the dialog's thread can destroy the box before the key up is
+    // posted, so the key up only has to reach a control that still exists. afterKeyDown runs between the two.
+    private static void Key(nint dialog, nuint key, Action? afterKeyDown = null)
     {
         var info = new GuiThreadInfo { Size = Marshal.SizeOf<GuiThreadInfo>() };
         var target = GetGUIThreadInfo(GetWindowThreadProcessId(dialog, 0), ref info) && info.Focus != 0 ? info.Focus : dialog;
         Post(target, WM_KEYDOWN, key, 1);
-        Post(target, WM_KEYUP, key, unchecked((nint)0xC0000001));
+        afterKeyDown?.Invoke();
+        Check(PostMessageW(target, WM_KEYUP, key, unchecked((nint)0xC0000001)) || !IsWindow(target),
+            $"message 0x{WM_KEYUP:X} posted to a control that still exists");
     }
 
     private static void Post(nint window, uint message, nuint wParam, nint lParam) =>
