@@ -721,8 +721,8 @@
        referenced projects, this project's frontend output and the host's Views client) in
        $(IntermediateOutputPath)runic-www/ and lets Runic.Assets pack it into the assembly as RunicAssetsDist, with
        the Runic.Application.FrontendArchive runtime option naming the resource; the build and publish output get
-       no www/. It needs the Runic Desktop host. RUNICBRIDGE030 reports an unknown value, the CS-WebUI host (which
-       serves a folder) or no single Desktop host, and a project that sets RunicAssetsDist or
+       no www/. It needs one Runic host that serves the archive: Runic Desktop or, since 0.15, CS-WebUI (#726).
+       RUNICBRIDGE030 reports an unknown value, no single such host, and a project that sets RunicAssetsDist or
        RunicAssetsEmbeddedArchive itself; the build then continues as Files. A build that does not copy the
        frontend (RunicApplicationFrontendCopyEnabled=false, as dotnet runic dev's development server sets it) is
        Files too. -->
@@ -732,14 +732,13 @@
       <_RunicApplicationFrontendDeliveryValue>$(RunicApplicationFrontendDelivery.Trim())</_RunicApplicationFrontendDeliveryValue>
       <_RunicApplicationFrontendEmbeddedRequested Condition="'$(_RunicApplicationFrontendDeliveryValue)' == 'Embedded' and '$(OutputType)' != 'Library'">true</_RunicApplicationFrontendEmbeddedRequested>
       <_RunicApplicationFrontendDeliveryProblem Condition="'$(_RunicApplicationFrontendDeliveryValue)' != 'Files' and '$(_RunicApplicationFrontendDeliveryValue)' != 'Embedded'">RunicApplicationFrontendDelivery is '$(RunicApplicationFrontendDelivery)', which is not Files or Embedded</_RunicApplicationFrontendDeliveryProblem>
-      <_RunicApplicationFrontendDeliveryProblem Condition="'$(_RunicApplicationFrontendEmbeddedRequested)' == 'true' and '$(RunicApplicationHost)' == 'cswebui'">RunicApplicationFrontendDelivery is Embedded, but the CS-WebUI host serves the frontend from a folder</_RunicApplicationFrontendDeliveryProblem>
-      <_RunicApplicationFrontendDeliveryProblem Condition="'$(_RunicApplicationFrontendEmbeddedRequested)' == 'true' and '$(_RunicApplicationFrontendDeliveryProblem)' == '' and '$(RunicApplicationHost)' != 'desktop'">RunicApplicationFrontendDelivery is Embedded, but $(AssemblyName) does not run on the Runic Desktop host (Runic.Application.Views.Desktop; set RunicApplicationHost to desktop when it references several hosts)</_RunicApplicationFrontendDeliveryProblem>
+      <_RunicApplicationFrontendDeliveryProblem Condition="'$(_RunicApplicationFrontendEmbeddedRequested)' == 'true' and '$(_RunicApplicationFrontendDeliveryProblem)' == '' and '$(RunicApplicationHost)' != 'desktop' and '$(RunicApplicationHost)' != 'cswebui'">RunicApplicationFrontendDelivery is Embedded, but $(AssemblyName) runs on neither the Runic Desktop host (Runic.Application.Views.Desktop) nor the CS-WebUI host (Runic.Application.Views.CsWebUi); set RunicApplicationHost to desktop or cswebui when it references several hosts</_RunicApplicationFrontendDeliveryProblem>
       <_RunicApplicationFrontendDeliveryProblem Condition="'$(_RunicApplicationFrontendEmbeddedRequested)' == 'true' and '$(_RunicApplicationFrontendDeliveryProblem)' == '' and ('$(RunicAssetsDist)' != '' or '$(RunicAssetsEmbeddedArchive)' != '')">RunicApplicationFrontendDelivery is Embedded, but $(MSBuildProjectFile) sets RunicAssetsDist or RunicAssetsEmbeddedArchive itself</_RunicApplicationFrontendDeliveryProblem>
       <_RunicApplicationFrontendEmbedded Condition="'$(_RunicApplicationFrontendEmbeddedRequested)' == 'true' and '$(_RunicApplicationFrontendDeliveryProblem)' == '' and '$(RunicApplicationFrontendCopyEnabled)' != 'false'">true</_RunicApplicationFrontendEmbedded>
     </PropertyGroup>
     <Warning Code="RUNICBRIDGE030" File="$(MSBuildProjectFullPath)" HelpLink="$(_RunicDiagnosticsHelpLinkBase)runicbridge030"
              Condition="'$(_RunicApplicationFrontendDeliveryProblem)' != ''"
-             Text="$(_RunicApplicationFrontendDeliveryProblem), so the build copies the frontend to $(_RunicApplicationFrontendWebRoot)/ (Files). Use Embedded only with the Runic Desktop host and without RunicAssetsDist or RunicAssetsEmbeddedArchive in the project." />
+             Text="$(_RunicApplicationFrontendDeliveryProblem), so the build copies the frontend to $(_RunicApplicationFrontendWebRoot)/ (Files). Use Embedded only with the Runic Desktop or CS-WebUI host and without RunicAssetsDist or RunicAssetsEmbeddedArchive in the project." />
     <PropertyGroup Condition="'$(_RunicApplicationFrontendEmbedded)' == 'true'">
       <_RunicApplicationFrontendEmbeddedRoot>$([MSBuild]::NormalizeDirectory('$(MSBuildProjectDirectory)', '$(IntermediateOutputPath)', 'runic-www'))</_RunicApplicationFrontendEmbeddedRoot>
       <RunicAssetsDist>$(_RunicApplicationFrontendEmbeddedRoot)</RunicAssetsDist>

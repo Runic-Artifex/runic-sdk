@@ -83,4 +83,31 @@ public sealed record RunicCsWebUiHostOptions
     /// </para>
     /// </remarks>
     public IReadOnlyList<DesktopMenu> MenuBar { get; init; } = [];
+
+    /// <summary>
+    /// The frontend every Window serves in place of its web root, or <see langword="null"/>, the default, for the
+    /// archive that the build embedded with <c>RunicApplicationFrontendDelivery=Embedded</c>, if any.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A Window serves this source, or the build's archive, unless its <see cref="RunicWindowOptions.ContentRoot"/> is
+    /// set; nothing is extracted to disk. The window's <see cref="WebUiWindow.SetFileHandler"/> answers each request,
+    /// and WebUI still serves <c>webui.js</c>. The source must declare <see cref="RunicWindowOptions.StartPage"/>, or
+    /// opening the Window throws <see cref="FileNotFoundException"/>, and must hold everything the build puts in
+    /// <c>www/</c>, including the host's <c>runic-views.js</c>. Paths resolve as <see cref="Runic.Assets.AssetRoutingOptions"/>
+    /// defaults do, and a path the source does not declare is answered with 404, never from a folder. The build's
+    /// archive is the entry assembly's manifest resource that the <c>Runic.Application.FrontendArchive</c> runtime
+    /// option names, read once per process.
+    /// </para>
+    /// <para>
+    /// WebUI turns its authentication cookie off for the whole process when a window installs a file handler; the host
+    /// turns it back on after installing its own, so a window stays bound to the first browser that loaded its
+    /// <c>webui.js</c>, as with a folder. An application that installs a file handler of its own through
+    /// <see cref="ConfigureWindow"/> or <see cref="ShowWindow"/> replaces the host's.
+    /// </para>
+    /// <code>
+    /// Assets = AssetArchive.ReadEmbedded(typeof(Program).Assembly, "Frontend.runic-assets").Subdirectory("settings")
+    /// </code>
+    /// </remarks>
+    public Runic.Assets.IAssetSource? Assets { get; init; }
 }

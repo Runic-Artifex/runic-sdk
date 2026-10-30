@@ -980,7 +980,7 @@ function buildDelivery(project, extra = []) {
   const packer = join(project, "packer-arguments.json");
   const packed = existsSync(packer) ? JSON.parse(readFileSync(packer, "utf8")) : undefined;
   rmSync(packer, { force: true });
-  return { status: result.status, output, packed,
+  return { project, status: result.status, output, packed,
     www: existsSync(join(project, "bin/www")) ? files(join(project, "bin/www")) : undefined,
     staged: existsSync(join(project, "obj/runic-www")) ? files(join(project, "obj/runic-www")) : undefined,
     warnings: [...new Set(output.split("\n").filter(line => / warning RUNICBRIDGE030:/.test(line)).map(line => line.trim()))] };
@@ -1012,12 +1012,27 @@ test("RunicApplicationFrontendDelivery=Embedded stages www/ for Runic.Assets and
   assert.doesNotMatch(result.output, /FrontendArchive/);
 });
 
-test("RUNICBRIDGE030: an unknown value, CS-WebUI and an own RunicAssetsDist build as Files", () => {
+// #726: CS-WebUI serves the archive through its file handler, as Runic Desktop does.
+test("RunicApplicationFrontendDelivery=Embedded stages the CS-WebUI client", () => {
+  for (const [name, hosts, extra] of [["cswebui", ["CsWebUi"], []], ["both-cswebui", ["Desktop", "CsWebUi"], ["-p:RunicApplicationHost=cswebui"]]]) {
+    const result = buildDelivery(deliveryProject(`embedded-${name}`, hosts,
+      "<RunicApplicationFrontendDelivery>Embedded</RunicApplicationFrontendDelivery>"), extra);
+    assert.equal(result.status, 0, result.output);
+    assert.deepEqual(result.warnings, [], name);
+    assert.equal(result.www, undefined, `${name}: ${result.output}`);
+    assert.deepEqual(result.staged, hosts.length === 1
+      ? ["assets/app.js", "index.html", "runic-cswebui.js", "runic-views.js"]
+      : ["assets/app.js", "index.html", "runic-cswebui.js", "runic-desktop-views.js", "runic-views.js"], name);
+    assert.equal(readFileSync(join(result.project, "obj/runic-www/runic-views.js"), "utf8"), hostClient("CsWebUi"), name);
+    assert.ok(result.packed, result.output);
+    assert.match(result.output, /RUNTIME_OPTION=Runic\.Application\.FrontendArchive=Runic\.Assets\.StaticFiles/, name);
+  }
+});
+
+test("RUNICBRIDGE030: an unknown value, no single host and an own RunicAssetsDist build as Files", () => {
   const cases = [
     ["unknown", ["Desktop"], "<RunicApplicationFrontendDelivery>Inline</RunicApplicationFrontendDelivery>", [], /RunicApplicationFrontendDelivery is 'Inline', which is not Files or Embedded/],
-    ["cswebui", ["CsWebUi"], "<RunicApplicationFrontendDelivery>Embedded</RunicApplicationFrontendDelivery>", [], /the CS-WebUI host serves the frontend from a folder/],
-    ["both-cswebui", ["Desktop", "CsWebUi"], "<RunicApplicationFrontendDelivery>Embedded</RunicApplicationFrontendDelivery>", ["-p:RunicApplicationHost=cswebui"], /the CS-WebUI host serves the frontend from a folder/],
-    ["both-unchosen", ["Desktop", "CsWebUi"], "<RunicApplicationFrontendDelivery>Embedded</RunicApplicationFrontendDelivery>", [], /does not run on the Runic Desktop host/],
+    ["both-unchosen", ["Desktop", "CsWebUi"], "<RunicApplicationFrontendDelivery>Embedded</RunicApplicationFrontendDelivery>", [], /runs on neither the Runic Desktop host .* nor the CS-WebUI host/],
     ["own-dist", ["Desktop"], "<RunicApplicationFrontendDelivery>Embedded</RunicApplicationFrontendDelivery><RunicAssetsDist>$(MSBuildProjectDirectory)/frontend/dist</RunicAssetsDist>", [], /sets RunicAssetsDist or RunicAssetsEmbeddedArchive itself/],
   ];
   for (const [name, hosts, properties, extra, message] of cases) {

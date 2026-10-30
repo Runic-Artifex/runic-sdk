@@ -73,6 +73,7 @@ public sealed class RunicCsWebUiHost : IRunicWindowHost
             throw new ArgumentOutOfRangeException(nameof(options), options.MaximumInputBytes,
                 "MaximumInputBytes must be between 1 024 and 67 108 864 bytes.");
         _maximumInputBytes = options.MaximumInputBytes;
+        _assets = options.Assets;
         _menuBar = new CsWebUiMenuBar(options.MenuBar ?? throw new ArgumentNullException(nameof(options), "MenuBar is null."));
     }
 
@@ -97,6 +98,7 @@ public sealed class RunicCsWebUiHost : IRunicWindowHost
     public void SetMenuBar(IReadOnlyList<DesktopMenu> menus) => _menuBar.Set(menus);
 
     private readonly bool? _includeFailureDetail;
+    private readonly Runic.Assets.IAssetSource? _assets;
     private readonly int? _maximumInputBytes;
 
     private static readonly RunicCsWebUiHostOptions DefaultOptions = new();
@@ -216,6 +218,9 @@ public sealed class RunicCsWebUiHost : IRunicWindowHost
         try
         {
             cancellationToken.ThrowIfCancellationRequested();
+            // RunicCsWebUiHostOptions.Assets or the build's embedded frontend, unless the Window names a content root.
+            var assets = opening.Options.ContentRoot is null ? _assets ?? Runic.Application.Views.Desktop.FrontendArchive.FromBuild : null;
+            if (assets is not null) CsWebUiAssets.RequireStartPage(assets, opening.Options.StartPage);
             var viewModel = opening.ViewModel;
             CsWebUiLog.WarnIfNativeLibraryUnchecked(scope.ServiceProvider);
             window = new WebUiWindow();
@@ -260,7 +265,8 @@ public sealed class RunicCsWebUiHost : IRunicWindowHost
             var shown = host;
             void Show()
             {
-                native.SetRootFolder(options.ResolveContentRoot());
+                if (assets is not null) CsWebUiAssets.Serve(native, assets);
+                else native.SetRootFolder(options.ResolveContentRoot());
                 if (options.Width is { } width && options.Height is { } height) native.SetSize((uint)width, (uint)height);
                 ConfigureWindow?.Invoke(native);
                 // A browser that cannot be found, started or connected fails the open with its reason, logged as

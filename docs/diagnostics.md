@@ -537,10 +537,10 @@ A warning from the `Runic.Application.Views` build targets.
 frontend to the web root (`www/`), as `Files` does. It is reported when:
 
 - the value is neither `Files` nor `Embedded`, compared without case;
-- the value is `Embedded`, but the application runs on the CS-WebUI host,
-  which serves the frontend from a folder, or on no single Runic Desktop host
-  (a project that references several hosts sets `RunicApplicationHost` to
-  `desktop`);
+- the value is `Embedded`, but the application runs on no single Runic Desktop
+  or CS-WebUI host (a project that references several hosts sets
+  `RunicApplicationHost` to `desktop` or `cswebui`); before 0.15 the CS-WebUI
+  host was reported too;
 - the value is `Embedded`, but the project sets `RunicAssetsDist` or
   `RunicAssetsEmbeddedArchive` itself.
 
@@ -549,9 +549,11 @@ as `dotnet runic dev` sets it for a development server) uses `Files` without a
 warning. Since 0.11.
 
 **Fix:** set `RunicApplicationFrontendDelivery` to `Files` or `Embedded`. Use
-`Embedded` with `Runic.Application.Views.Desktop`, and remove `RunicAssetsDist`
-and `RunicAssetsEmbeddedArchive` from the project: `Embedded` sets them itself.
-To serve another archive, set `RunicDesktopHostOptions.Assets`.
+`Embedded` with `Runic.Application.Views.Desktop` or
+`Runic.Application.Views.CsWebUi`, and remove `RunicAssetsDist` and
+`RunicAssetsEmbeddedArchive` from the project: `Embedded` sets them itself.
+To serve another archive, set `RunicDesktopHostOptions.Assets` or
+`RunicCsWebUiHostOptions.Assets`.
 
 ### RUNICBRIDGE031
 

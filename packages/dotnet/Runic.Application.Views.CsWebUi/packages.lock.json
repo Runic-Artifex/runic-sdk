@@ -38,6 +38,9 @@
           "Runic.Platform": "[0.14.0, )"
         }
       },
+      "runic.assets": {
+        "type": "Project"
+      },
       "runic.navigation": {
         "type": "Project",
         "dependencies": {

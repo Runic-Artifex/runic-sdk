@@ -192,6 +192,22 @@ bytes delivered; dispose the snapshot to close the stream. A custom source
 implements these three members. `OpenAsync` throws `FileNotFoundException` for a
 path the manifest does not declare.
 
+`source.Subdirectory("settings")` (since 0.15) presents one folder of a source
+as a frontend of its own, for an archive that holds several frontends, each
+built into its own folder with its own `index.html`. Its paths are relative to
+the folder, its entry point is the folder's `index.html` (or the `entryPoint`
+argument), and every descriptor keeps its digest, media type and cache mode.
+Creating the view throws `DirectoryNotFoundException` for a folder without
+assets and `FileNotFoundException` for one without the entry point. The view
+lists the folder as the source's manifest had it when the view was created;
+create a new view after a live source changes.
+
+```csharp
+AssetArchiveSource archive = AssetArchive.ReadEmbedded(typeof(Program).Assembly, "Frontends.runic-assets");
+IAssetSource main = archive.Subdirectory("main");
+IAssetSource settings = archive.Subdirectory("settings");
+```
+
 ## Guarantees and limits
 
 `AssetPath` rejects rooted, traversal, encoded, ambiguous, and

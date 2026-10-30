@@ -10,9 +10,18 @@
          it deletes a copy that no host makes any more. -->
     <_RunicApplicationHostCopyTargets>$(_RunicApplicationHostCopyTargets);RunicViewsCopyCsWebUiClient</_RunicApplicationHostCopyTargets>
     <_RunicApplicationHostPublishCopyTargets>$(_RunicApplicationHostPublishCopyTargets);RunicViewsCopyCsWebUiClientForPublish</_RunicApplicationHostPublishCopyTargets>
+    <!-- RunicApplicationFrontendDelivery=Embedded stages the client with the frontend instead of copying it. -->
+    <_RunicApplicationHostStageTargets>$(_RunicApplicationHostStageTargets);RunicViewsStageCsWebUiClient</_RunicApplicationHostStageTargets>
   </PropertyGroup>
+  <Target Name="RunicViewsStageCsWebUiClient" Condition="'$(RunicApplicationFrontendBootstrap)' != 'true'">
+    <ItemGroup>
+      <_RunicViewsEmbeddedHostFile Include="$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)../www/runic-cswebui.js'))" RunicFrontendPath="runic-cswebui.js" />
+      <_RunicViewsEmbeddedHostFile Include="$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)../www/runic-cswebui.js'))" RunicFrontendPath="runic-views.js"
+          Condition="'$(RunicApplicationHost)' == 'cswebui'" />
+    </ItemGroup>
+  </Target>
   <Target Name="RunicViewsCopyCsWebUiClient" AfterTargets="Build"
-          Condition="'$(RunicApplicationFrontendBootstrap)' != 'true'">
+          Condition="'$(RunicApplicationFrontendBootstrap)' != 'true' and '$(_RunicApplicationFrontendEmbedded)' != 'true'">
     <!-- The web root of Runic.Application.Views (RunicApplicationFrontendWebRoot, normalized), final when the target runs. -->
     <PropertyGroup>
       <_RunicViewsHostWebRoot>$([MSBuild]::ValueOrDefault('$(_RunicApplicationFrontendWebRoot)', 'www'))</_RunicViewsHostWebRoot>
@@ -29,7 +38,7 @@
     </ItemGroup>
   </Target>
   <Target Name="RunicViewsCopyCsWebUiClientForPublish" AfterTargets="Publish"
-          Condition="'$(RunicApplicationFrontendBootstrap)' != 'true'">
+          Condition="'$(RunicApplicationFrontendBootstrap)' != 'true' and '$(_RunicApplicationFrontendEmbedded)' != 'true'">
     <!-- The web root of Runic.Application.Views (RunicApplicationFrontendWebRoot, normalized), final when the target runs. -->
     <PropertyGroup>
       <_RunicViewsHostWebRoot>$([MSBuild]::ValueOrDefault('$(_RunicApplicationFrontendWebRoot)', 'www'))</_RunicViewsHostWebRoot>

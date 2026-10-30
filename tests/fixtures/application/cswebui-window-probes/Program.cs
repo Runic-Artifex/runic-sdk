@@ -31,8 +31,11 @@ switch (args.SingleOrDefault())
         break;
     case "--probe-menu-bar":
         return ProbeMenuBar();
+    case "--probe-embedded-assets":
+        await ProbeEmbeddedAssetsAsync();
+        break;
     default:
-        Console.Error.WriteLine("Usage: CsWebUiWindowProbes --probe-factory-failure | --probe-window-close | --probe-close-guard | --probe-missing-bridge | --probe-show-failure | --probe-platform-services | --probe-menu-bar");
+        Console.Error.WriteLine("Usage: CsWebUiWindowProbes --probe-factory-failure | --probe-window-close | --probe-close-guard | --probe-missing-bridge | --probe-show-failure | --probe-platform-services | --probe-menu-bar | --probe-embedded-assets");
         return 2;
 }
 WebUiApplication.Clean();
@@ -307,6 +310,71 @@ static int ProbeMenuBar()
     }
 }
 
+// #726 and #730: a Window serves an asset source through its file handler, without a folder. One folder of an
+// archive is served as a frontend of its own; a path the source does not declare answers 404 instead of a file of the
+// working directory, WebUI's default root; and WebUI's authentication cookie, which a file handler turns off, still
+// binds the window to the first client that loaded webui.js.
+static async Task ProbeEmbeddedAssetsAsync()
+{
+    var work = Directory.CreateTempSubdirectory("runic-cswebui-assets-");
+    var previousDirectory = Environment.CurrentDirectory;
+    try
+    {
+        File.WriteAllText(Path.Combine(work.FullName, "outside.txt"), "outside");
+        Environment.CurrentDirectory = work.FullName;
+        using var archive = new MemoryStream();
+        await Runic.Assets.AssetArchive.WriteAsync(new MemoryAssetSource(new Dictionary<string, string>
+        {
+            ["index.html"] = "<!doctype html><html><body>main</body></html>",
+            ["settings/index.html"] = "<!doctype html><html><head><script src=\"/webui.js\"></script></head><body>settings</body></html>",
+            ["settings/app.css"] = "body { color: black; }",
+        }), archive);
+        archive.Position = 0;
+        var settings = Runic.Assets.AssetSourceExtensions.Subdirectory(Runic.Assets.AssetArchive.Read(archive), "settings");
+
+        var services = new ServiceCollection();
+        services.AddScoped<ProbeViewModel>();
+        services.AddRunicViews();
+        using var provider = services.BuildServiceProvider(new ServiceProviderOptions { ValidateScopes = true });
+        var host = new RunicCsWebUiHost(provider, new RunicCsWebUiHostOptions { Assets = settings });
+        await using (var window = await host.OpenWindowAsync<ProbeWindow>())
+        {
+            var url = CsWebUiPlatformServices.GetWebUiWindow(window)?.Url
+                ?? throw new InvalidOperationException("The serve-only window has no URL.");
+            // WebUI listens on the loopback address, whatever this machine resolves localhost to.
+            var root = new UriBuilder(url) { Host = "127.0.0.1", Path = "/" }.Uri;
+            using var first = new HttpClient(new HttpClientHandler { UseCookies = true, CookieContainer = new System.Net.CookieContainer() }) { BaseAddress = root };
+            using var page = await first.GetAsync("index.html");
+            var html = await page.Content.ReadAsStringAsync();
+            if (page.StatusCode != System.Net.HttpStatusCode.OK || !html.Contains("settings", StringComparison.Ordinal) ||
+                page.Content.Headers.ContentType?.ToString() != "text/html; charset=utf-8" || page.Headers.ETag is null)
+                throw new InvalidOperationException($"The start page answered {(int)page.StatusCode} {page.Content.Headers.ContentType}: {html}");
+            using var style = await first.GetAsync("app.css");
+            if (style.StatusCode != System.Net.HttpStatusCode.OK || await style.Content.ReadAsStringAsync() != "body { color: black; }")
+                throw new InvalidOperationException($"app.css answered {(int)style.StatusCode}.");
+            using var outside = await first.GetAsync("outside.txt");
+            if (outside.StatusCode != System.Net.HttpStatusCode.NotFound)
+                throw new InvalidOperationException($"A path outside the source answered {(int)outside.StatusCode} instead of 404.");
+            using var script = await first.GetAsync("webui.js");
+            if (script.StatusCode != System.Net.HttpStatusCode.OK || !script.Headers.Contains("Set-Cookie"))
+                throw new InvalidOperationException($"webui.js answered {(int)script.StatusCode} without WebUI's authentication cookie.");
+            using var second = new HttpClient(new HttpClientHandler { UseCookies = false }) { BaseAddress = root };
+            using var other = await second.GetAsync("index.html");
+            if (other.StatusCode != System.Net.HttpStatusCode.Forbidden)
+                throw new InvalidOperationException($"A second client without the cookie answered {(int)other.StatusCode} instead of 403.");
+            using var again = await first.GetAsync("index.html");
+            if (again.StatusCode != System.Net.HttpStatusCode.OK)
+                throw new InvalidOperationException($"The first client answered {(int)again.StatusCode} after loading webui.js.");
+        }
+        Console.WriteLine("CSWEBUI_EMBEDDED_ASSETS_OK");
+    }
+    finally
+    {
+        Environment.CurrentDirectory = previousDirectory;
+        work.Delete(recursive: true);
+    }
+}
+
 // The WebUI library CsWebUi.Native bundles: beside the executable when published, under runtimes/<rid>/native otherwise.
 static string BundledNativeLibrary()
 {
@@ -510,6 +578,29 @@ namespace CsWebUiWindowProbes
                 lock (owner.Entries) owner.Entries.Add(new LogEntry(category, eventId, logLevel, formatter(state, exception)));
             }
         }
+    }
+
+    // An in-memory asset source for AssetArchive.WriteAsync, which needs no directory handles on any platform.
+    internal sealed class MemoryAssetSource : Runic.Assets.IAssetSource
+    {
+        private readonly Dictionary<string, byte[]> _content;
+
+        public MemoryAssetSource(IReadOnlyDictionary<string, string> files)
+        {
+            _content = files.ToDictionary(static file => file.Key, static file => System.Text.Encoding.UTF8.GetBytes(file.Value), StringComparer.Ordinal);
+            Manifest = new Runic.Assets.AssetManifest(_content.Select(static file => new Runic.Assets.AssetDescriptor(
+                file.Key, file.Key.EndsWith(".css", StringComparison.Ordinal) ? "text/css" : "text/html", file.Value.Length,
+                Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(file.Value)), isEntryPoint: file.Key == "index.html")));
+        }
+
+        public Runic.Assets.AssetManifest Manifest { get; }
+
+        public ValueTask ValidateAsync(CancellationToken cancellationToken = default) => ValueTask.CompletedTask;
+
+        public ValueTask<Runic.Assets.AssetReadSnapshot> OpenAsync(string relativePath, CancellationToken cancellationToken = default) =>
+            Manifest.TryGetAsset(relativePath, out var descriptor)
+                ? ValueTask.FromResult(new Runic.Assets.AssetReadSnapshot(descriptor, new MemoryStream(_content[descriptor.RelativePath], writable: false)))
+                : throw new FileNotFoundException("The asset is not declared.", relativePath);
     }
 
     internal sealed class ScopeProbe(Action onDispose) : IDisposable
