@@ -54,8 +54,7 @@ string? Argument(string name)
 static async Task<AccessibilityClient> CreateClientAsync(int pid, CancellationToken cancellationToken)
 {
 #if WINDOWS
-    await Task.CompletedTask;
-    return new WindowsAccessibility(pid, Listening);
+    return await WindowsAccessibility.CreateAsync(pid, Listening, cancellationToken);
 #else
     if (OperatingSystem.IsMacOS()) return await MacAccessibility.CreateAsync(pid, Listening, cancellationToken);
     if (OperatingSystem.IsLinux()) return await LinuxAccessibility.CreateAsync(pid, Listening, cancellationToken);
