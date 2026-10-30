@@ -220,6 +220,13 @@ internal static class BridgeCommandSources
         return declarations;
     }
 
+    // Whether a command is scoped to its presentation (RunicPresentationScopedAttribute): on the property or on its
+    // source method.
+    [RequiresUnreferencedCode("Reflects over the non-public methods of a ViewModel; used only by code generation and Hot Reload.")]
+    internal static bool IsPresentationScoped(Type model, PropertyInfo command) =>
+        command.GetCustomAttribute<RunicPresentationScopedAttribute>(true) is not null
+        || SourceMethod(model, command)?.GetCustomAttribute<RunicPresentationScopedAttribute>(true) is not null;
+
     // The methods named name that the ViewModel declares or inherits, most derived first, without the base
     // definitions of overrides.
     [RequiresUnreferencedCode("Reflects over the non-public methods of a ViewModel; used only by code generation and Hot Reload.")]

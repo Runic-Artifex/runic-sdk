@@ -415,6 +415,51 @@
       "operation": "read-request",
       "input": {"encoding":"json","value":{"kind":"write","route":"notes","member":"note","requestId":"w-1","expectedVersion":7,"splice":{"length":100,"index":5,"delete":-1,"text":"x"}}},
       "expect": {"result":"invalid","error":{"kind":"rejected","reason":"invalid-request"}}
+    },
+    {
+      "id": "messages.requests.command-with-an-epoch",
+      "description": "presentation-epoch/1: a scoped command carries the epoch of the state it was issued on.",
+      "operation": "read-request",
+      "input": {"encoding":"json","value":{"kind":"command","route":"wizard","member":"next","epoch":40}},
+      "expect": {"result":"valid"}
+    },
+    {
+      "id": "messages.requests.command-with-a-negative-epoch",
+      "operation": "read-request",
+      "input": {"encoding":"json","value":{"kind":"command","route":"wizard","member":"next","epoch":-1}},
+      "expect": {"result":"invalid","error":{"kind":"rejected","reason":"invalid-request"}}
+    },
+    {
+      "id": "messages.requests.command-with-an-epoch-that-is-not-a-number",
+      "operation": "read-request",
+      "input": {"encoding":"json","value":{"kind":"command","route":"wizard","member":"next","epoch":"40"}},
+      "expect": {"result":"invalid","error":{"kind":"rejected","reason":"invalid-request"}}
+    },
+    {
+      "id": "messages.requests.presented",
+      "description": "presented/1: the page painted the route at the revision.",
+      "operation": "read-request",
+      "input": {"encoding":"json","value":{"kind":"presented","route":"result","revision":57}},
+      "expect": {"result":"valid"}
+    },
+    {
+      "id": "messages.requests.presented-with-a-negative-revision",
+      "operation": "read-request",
+      "input": {"encoding":"json","value":{"kind":"presented","route":"result","revision":-1}},
+      "expect": {"result":"invalid","error":{"kind":"rejected","reason":"invalid-request"}}
+    },
+    {
+      "id": "messages.requests.presented-without-a-route",
+      "operation": "read-request",
+      "input": {"encoding":"json","value":{"kind":"presented","revision":57}},
+      "expect": {"result":"invalid","error":{"kind":"rejected","reason":"invalid-request"}}
+    },
+    {
+      "id": "messages.requests.closing-reply",
+      "description": "presented/1: the page acknowledges a window close.",
+      "operation": "read-request",
+      "input": {"encoding":"json","value":{"kind":"closing-reply"}},
+      "expect": {"result":"valid"}
     }
   ]
 }

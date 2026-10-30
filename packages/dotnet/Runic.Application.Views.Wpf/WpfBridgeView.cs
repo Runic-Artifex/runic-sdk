@@ -185,7 +185,7 @@ public sealed class WpfBridgeView<TViewModel> : IBridgeWindow, IWpfBridgeView wh
         if (_presentation is { } presentation)
             try { await presentation.CloseAsync(CancellationToken.None).ConfigureAwait(false); } catch (Exception error) { errors.Add(error); }
         var completion = CompleteAsync(result.Completion);
-        return new(result.Drained, result.RemainingOperations, completion);
+        return new(result.Drained, result.RemainingOperations, completion) { PagesAcknowledged = result.PagesAcknowledged };
 
         void Capture(Action action)
         {

@@ -179,6 +179,55 @@ internal sealed partial class CodegenDiagnosticsTests
         }
     }
 
+    // RUNICBRIDGE034: RunicPresentationScoped on a member that is not a Bridge command is a located warning, and the
+    // generated client scopes exactly the declared commands.
+    [Test]
+    public async Task PresentationScopedOutsideACommandIsReportedAsync()
+    {
+        var root = FindWorkspaceRoot();
+        var configuration = System.Reflection.CustomAttributeExtensions.GetCustomAttribute<System.Reflection.AssemblyConfigurationAttribute>(
+            typeof(CodegenDiagnosticsTests).Assembly)?.Configuration ?? "Release";
+        var generator = Path.Combine(root, "tools", "Runic.Application.Views.Codegen", "bin", configuration, "net10.0",
+            "BridgeCodegen.dll");
+        var temporaryRoot = Path.Combine(Path.GetTempPath(), $"runic-codegen-scoped-{Guid.NewGuid():N}");
+        try
+        {
+            const string Source = Preamble + """
+                public sealed class ScopedViewModel : FixtureModel
+                {
+                    [RunicPresentationScoped]
+                    public IRelayCommand NextCommand { get; } = new RelayCommand(() => { });
+                    public IRelayCommand PingCommand { get; } = new RelayCommand(() => { });
+                    [RunicPresentationScoped]
+                    public string Title { get; set; } = "";
+                    [RunicPresentationScoped]
+                    public void Helper() { }
+                }
+                public sealed partial class ScopedWindow : RunicWindow<ScopedViewModel>;
+                """;
+            var (exitCode, output, directory) = await RunGeneratorAsync(generator, temporaryRoot, "Scoped", Source).ConfigureAwait(false);
+            var warnings = output.Split('\n').Where(text => text.Contains("warning RUNICBRIDGE034:", StringComparison.Ordinal)).ToArray();
+            int Line(string declaration) => Source.Split('\n').ToList().FindIndex(text => text.Contains(declaration, StringComparison.Ordinal)) + 1;
+            bool At(string declaration, string message) => warnings.Any(text =>
+                text.StartsWith($"{Path.Combine(directory, "Fixture.cs")}({Line(declaration)},", StringComparison.Ordinal)
+                && text.Contains(message, StringComparison.Ordinal));
+            Require(exitCode == 0 && warnings.Length == 2
+                    && At("public string Title", "ScopedViewModel.Title: RunicPresentationScoped applies only to a Bridge command property")
+                    && At("public void Helper", "ScopedViewModel.Helper: RunicPresentationScoped applies only to a Bridge command property")
+                    && warnings.All(text => text.TrimEnd().EndsWith($" See {HelpLink("RUNICBRIDGE034")}", StringComparison.Ordinal)),
+                $"RunicPresentationScoped outside a command was not reported as located RUNICBRIDGE034 warnings.\n{output}");
+            var client = Directory.GetFiles(directory, "*.ts", SearchOption.AllDirectories)
+                .Where(path => !path.EndsWith(".mock.ts", StringComparison.Ordinal))
+                .Select(File.ReadAllText).Single(text => text.Contains("connectView<", StringComparison.Ordinal));
+            Require(client.Contains("scopedCommands: [\"next\"]", StringComparison.Ordinal),
+                $"The generated client does not scope exactly the declared command.\n{client}");
+        }
+        finally
+        {
+            if (Directory.Exists(temporaryRoot)) Directory.Delete(temporaryRoot, recursive: true);
+        }
+    }
+
     // RUNICBRIDGE032: an observable collection of DTO rows that is not a [RunicCollection] is a located warning that
     // names the rows' key when they have one; a keyed collection, a plain list and an observable list of strings are not.
     [Test]

@@ -31,7 +31,7 @@ public sealed class BridgeDispatcherTests
     {
         using var window = new Window();
         var reply = Parse(window.Transport.Request(Hello.Replace("}}", """},"features":["unknown/2","text-splice/1","Not a feature"]}""", StringComparison.Ordinal)));
-        Require(reply.GetProperty("features").EnumerateArray().Select(feature => feature.GetString()).SequenceEqual(["text-splice/1"]),
+        Require(reply.GetProperty("features").EnumerateArray().Select(feature => feature.GetString()).SequenceEqual(["text-splice/1", "presentation-epoch/1", "presented/1"]),
             $"The hello reply lists {reply}.");
         foreach (var features in new[] { "\"text-splice/1\"", "[1]", "[\"" + new string('a', 65) + "\"]",
             "[" + string.Join(",", Enumerable.Repeat("\"x\"", 65)) + "]" })

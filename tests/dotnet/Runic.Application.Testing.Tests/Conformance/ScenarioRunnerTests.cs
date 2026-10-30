@@ -144,6 +144,8 @@ public sealed class ScenarioRunnerTests
             public Task MutateAsync(JsonArray mutations, bool eachUnit) => Task.CompletedTask;
             public JsonNode? ReadMember(string member) => null;
             public JsonNode? Provide(string id) => null;
+            public Task<bool> Wait(string id) => throw new NotSupportedException();
+            public Task<RunicWindowCloseResult> CloseAsync(TimeSpan timeout) => throw new NotSupportedException();
             public void Dispose() => serving.Dispose();
         }
 

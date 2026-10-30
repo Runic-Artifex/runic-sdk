@@ -7,7 +7,17 @@ namespace Runic.Application.Views;
 /// Completes when the remaining operations have finished and the closer has released
 /// what it owns. A Window host faults it with any release failures.
 /// </param>
-public sealed record RunicWindowCloseResult(bool Drained, int RemainingOperations, Task Completion);
+public sealed record RunicWindowCloseResult(bool Drained, int RemainingOperations, Task Completion)
+{
+    /// <summary>
+    /// Whether every page of the window that understands it acknowledged the close within the close's timeout, at most
+    /// 5 seconds: it rendered its last state and shows that the application closed the window. <see langword="true"/>
+    /// when no page could acknowledge it, such as a page of an older client. A close without a timeout, such as
+    /// <see cref="IAsyncDisposable.DisposeAsync"/>, tells the pages but does not wait, so it is <see langword="false"/>
+    /// while such a page is connected.
+    /// </summary>
+    public bool PagesAcknowledged { get; init; } = true;
+}
 
 /// <summary>
 /// The lifetime contract shared by every Window host adapter, such as

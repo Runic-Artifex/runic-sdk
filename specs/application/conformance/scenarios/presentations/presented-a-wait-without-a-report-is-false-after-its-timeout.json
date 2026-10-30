@@ -1,0 +1,32 @@
+{
+  "format": "runic.views.scenario/1",
+  "id": "presentations.presented-a-wait-without-a-report-is-false-after-its-timeout.v1",
+  "contract": {"id":"runic.views","version":4},
+  "set": "presentations",
+  "roles": ["producer"],
+  "description": "A wait that no page answers completes false when its timeout passes.",
+  "view": "wizard",
+  "requires": ["presented/1","virtual-clock"],
+  "ids": {
+    "c1": {"kind":"connection"},
+    "hello-c1": {"kind":"request"},
+    "session": {"kind":"wire","value":"s-1"},
+    "open-wizard-request": {"kind":"request"},
+    "presentation": {"kind":"wire","value":"p-1"},
+    "wait": {"kind":"wait"}
+  },
+  "arrange": {"model":{}},
+  "steps": [
+    {"connect":"c1"},
+    {"send":{"kind":"hello","protocol":4,"session":{"$id":"session"},"client":{"name":{"$any":"string","default":"conformance-client"},"version":{"$any":"string","default":"1.0.0"}},"features":{"$any":"array","default":["text-splice/1","presented/1"]}},"id":"hello-c1"},
+    {"receive":{"ok":true,"protocol":4,"implementation":{"name":{"$any":"string","default":"conformance-producer"},"version":{"$any":"string","default":"1.0.0"}},"features":{"$any":"array","default":["text-splice/1","presented/1"]}},"replyTo":"hello-c1"},
+    {"send":{"kind":"open","route":"wizard","presentation":{"$id":"presentation"}},"id":"open-wizard-request"},
+    {"receive":{"ok":true,"revision":0,"state":{"page":1,"canNext":true,"canBack":false,"canPing":true},"presentation":"ok"},"replyTo":"open-wizard-request"},
+    {"mutate":[{"op":"waitPresented","id":"wait","timeout":1000}]},
+    {"receive":{"kind":"present","route":"wizard","revision":0}},
+    {"advance":999},
+    {"expect":{"presented":{"id":"wait","result":"pending"}}},
+    {"advance":1},
+    {"expect":{"presented":{"id":"wait","result":false}}}
+  ]
+}

@@ -1,1 +1,8 @@
 #nullable enable
+Runic.Application.Views.RunicPresentation
+static Runic.Application.Views.RunicPresentation.Renew(object! viewModel) -> void
+static Runic.Application.Views.RunicPresentation.WaitForPresentedAsync(object! viewModel, System.TimeSpan timeout, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<bool>
+Runic.Application.Views.RunicPresentationScopedAttribute
+Runic.Application.Views.RunicPresentationScopedAttribute.RunicPresentationScopedAttribute() -> void
+Runic.Application.Views.RunicWindowCloseResult.PagesAcknowledged.get -> bool
+Runic.Application.Views.RunicWindowCloseResult.PagesAcknowledged.init -> void

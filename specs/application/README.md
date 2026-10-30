@@ -12,7 +12,7 @@ protocol to .NET and TypeScript is in the [language mappings](language-mappings.
 
 | Document | Content |
 | --- | --- |
-| This document | Conventions, transport, host bridge, handshake and features, requests and replies, state and revisions, publication, edits, checked writes, commands, presentations, operations, interactions, versions |
+| This document | Conventions, transport, host bridge, handshake and features, requests and replies, state and revisions, publication, edits, checked writes, commands and presentation epochs, presentations, presented states and window close, operations, interactions, versions |
 | [state-changes.md](state-changes.md) | Frames and their changes (`set`, keyed collections, text, text splices), producing and applying them, delivery bounds and recovery |
 | [values.md](values.md) | The JSON profile, wire value types and the canonical form (RFC 8785) |
 | [language-mappings.md](language-mappings.md) | The .NET producer and the TypeScript client |
@@ -129,7 +129,7 @@ Another client implementation for the web SHOULD use the same keys.
 | --- | --- | --- |
 | `runic.views.generated-client-runtime` | `globalThis` | The page's runtime of generated clients for the current `__runicBridge`: its connection, routes, presentations and operations. It is the only `onMessage` listener and dispatches pushes by `route`. |
 | `runic.views.diagnostics` | `globalThis` | A `Set` of listener functions. Each is called with a `BridgeDiagnostic`: `kind` (`error` or `operation`), `code`, `message`, and optionally `route`, `detail`, `member`, `requestId` and, for local observers only, `error`. `code` is an open set; a listener ignores codes and fields it does not know. |
-| `runic.views.connection` | `globalThis` | `{ listeners, state, requested, start }`: a `Set` of listener functions called with the page's `BridgeConnectionState` on each change, and the latest state. The first View that connects starts it. A copy of `@runic-artifex/views` sets `start`, a function that starts it, when it loads; a reader that wants the state before a View connects (the Vite development client) sets `requested` to `true`, which a copy that loads later honours, and calls `start` if it is set. |
+| `runic.views.connection` | `globalThis` | `{ listeners, state, requested, start, closed, closedListeners }`: a `Set` of listener functions called with the page's `BridgeConnectionState` on each change, and the latest state. `closed` is `true` from a [`closing`](#window-close) push until the next connection, and `closedListeners` is a `Set` of functions called with each change of it, through which every copy reports the state `closed`. The first View that connects starts it. A copy of `@runic-artifex/views` sets `start`, a function that starts it, when it loads; a reader that wants the state before a View connects (the Vite development client) sets `requested` to `true`, which a copy that loads later honours, and calls `start` if it is set. |
 | `runic.views.diagnosticReported` | An error | `true` once a diagnostic reported the error, so each error is reported once. |
 | `runic.views.unavailableReported` | `globalThis` | `true` once the page reported that it has no `__runicBridge`. |
 | `runic.views.BridgeError`, `runic.views.BridgeOperationUncertainError` | An error | `true` on errors of that class, so `instanceof` holds across copies. |
@@ -141,8 +141,8 @@ Another client implementation for the web SHOULD use the same keys.
 The first request on each connection is `hello`:
 
 ```json
-{"kind":"hello","protocol":4,"session":"6f1c2a9e-0d4b-4c51-9a83-5d2f7e1b0c44","client":{"name":"@runic-artifex/views","version":"0.14.0"},"features":["text-splice/1"]}
-{"ok":true,"protocol":4,"implementation":{"name":"Runic.Application.Views","version":"0.14.0"},"features":["text-splice/1"]}
+{"kind":"hello","protocol":4,"session":"6f1c2a9e-0d4b-4c51-9a83-5d2f7e1b0c44","client":{"name":"@runic-artifex/views","version":"0.15.0"},"features":["text-splice/1","presentation-epoch/1","presented/1"]}
+{"ok":true,"protocol":4,"implementation":{"name":"Runic.Application.Views","version":"0.15.0"},"features":["text-splice/1","presentation-epoch/1","presented/1"]}
 ```
 
 | Member | Contract |
@@ -204,16 +204,22 @@ reply both list the same string. Features are negotiated per connection, and aga
   positive integer without leading zeros, such as `text-splice/1`. `text-splice/1` and `text-splice/2` are different
   features; a feature's specification says which version is used when both sides list several.
 - **Unknown features.** A side ignores a string it does not implement, including one that is not a feature name.
-- **Messages.** A side sends the members, change kinds and request members of a feature only on a connection that uses
-  it. A side that receives them on another connection applies the base rules: unknown members are ignored, a client
-  recovers from an unknown change kind, and a request that misses the members the base protocol requires is
-  `invalid-request`.
+- **Messages.** A side sends the members, change kinds, request members and message kinds of a feature only on a
+  connection that uses it. A side that receives them on another connection applies the base rules: unknown members are
+  ignored, a client recovers from an unknown change kind and ignores an unknown push kind, and a request of a kind the
+  connection's features do not define, or that misses the members the base protocol requires, is `invalid-request`.
+- **Members of broadcasts.** One exception: a member that a feature adds to a push sent to every connection, and that
+  a receiver without the feature ignores as an unknown member, is sent while at least one connection of the window
+  that completed its `hello` uses the feature. It is then sent to every connection, since a broadcast has one
+  encoding. `epoch` in `state` ([presentation epochs](#presentation-epochs)) is the only such member.
 - A feature never changes the meaning of a message of the base protocol, so a client and a producer of one protocol
   version always connect, whatever features they implement.
 
 | Feature | Specification | Since |
 | --- | --- | --- |
 | `text-splice/1` | Text members change with splices: [`set` with a splice](#text-splices-in-set), [`write` with a splice](#text-splices-in-write) and [`splice` changes](state-changes.md#text-splices) | 0.14 |
+| `presentation-epoch/1` | A command runs only on the presentation it was issued for: [presentation epochs](#presentation-epochs) | 0.15 |
+| `presented/1` | The page reports that it painted a state, and acknowledges a window close: [presented states and window close](#presented-states-and-window-close) | 0.15 |
 
 ## Requests and replies
 
@@ -245,7 +251,7 @@ it.
 
 | `reason` | `kind` | Sent when |
 | --- | --- | --- |
-| `invalid-request` | `rejected` | The request is not a request of this protocol: an unknown `kind`, a missing member or a member of the wrong JSON type, or a `member` that the route does not have for that kind. |
+| `invalid-request` | `rejected` | The request is not a request of this protocol: an unknown `kind`, including the kind of a feature the connection does not use, a missing member or a member of the wrong JSON type, or a `member` that the route does not have for that kind. |
 | `no-hello` | `rejected` | The connection has not completed a `hello` ([Handshake](#handshake)). |
 | `splice-base` | `rejected` | A `set` with a splice names a base the producer does not have, or the splice does not fit it ([Text splices in `set`](#text-splices-in-set)); a `write` with a splice does not fit the field's value at `expectedVersion`, or that value is not a string ([Text splices in `write`](#text-splices-in-write)). |
 | `protocol-mismatch` | `failed` | A `hello` named another protocol version. |
@@ -331,7 +337,7 @@ The reply to a request that changes state is sent after every push that the prod
 was ready, on any route of the window. A command often changes another route as well, such as its shell, so a client
 cannot know which routes to wait for. The wait is bounded to 5 seconds; after that the producer sends the reply, and the
 pushes follow. Replies to `open`, `snapshot`, `close`, `can`, `status`, `watch`, `unwatch`, `cancel`, `stream`,
-`interactions` and `interaction-reply` do not wait.
+`interactions`, `interaction-reply`, `presented` and `closing-reply` do not wait.
 
 A reply is not ordered with the pushes of requests that the producer admitted after it, nor with their replies. When a
 client sends a request before the reply to its previous one arrived, as two keystrokes in a row do, the frame of the
@@ -358,7 +364,7 @@ on, which the producer takes when it starts serving the route, whether or not a 
 
 | Push | Members | Meaning |
 | --- | --- | --- |
-| `state` | `route`, `revision`, `state`, `fields?` | A full state. |
+| `state` | `route`, `revision`, `state`, `fields?`, `epoch?` | A full state. `epoch`: [presentation epochs](#presentation-epochs). |
 | `frame` | `route`, `baseRevision`, `revision`, `changes` | Changes on top of the state at `baseRevision`. See [state changes](state-changes.md). |
 | `failure` | `route`, `revision`, `error` | A publication was withheld because a keyed collection has invalid keys ([state changes](state-changes.md#invalid-keys)). `revision` is the producer's current revision; it does not change the client's. |
 
@@ -368,8 +374,9 @@ operation follows the state or frame at its `revision`, and an interaction reque
 command executing. A transport with a [mailbox](#receive) does not order the two channels relative to each other.
 
 A full state is sent only when a route needs one: as the first state of a route on a connection (the `open` and
-`snapshot` replies), after the delivery queue overflowed, or when the producer chooses one, which is always allowed.
-Every other change is a frame. The delivery bounds and the recovery rules are in
+`snapshot` replies), after the delivery queue overflowed, for a [renewal](#presentation-epochs), for content whose
+presentations [resume](#presentations), or when the producer chooses one, which is always allowed. Every other change
+is a frame. The delivery bounds and the recovery rules are in
 [state changes](state-changes.md#delivery-and-recovery).
 
 ## Edits
@@ -587,7 +594,7 @@ path.
 
 | Request | Members | Reply |
 | --- | --- | --- |
-| `command` | `route`, `member`, `input?` | `{ok:true, revision}` after the command completed |
+| `command` | `route`, `member`, `input?`, `epoch?` | `{ok:true, revision, superseded?}` after the command completed |
 | `can` | `route`, `member`, `input?` | `{ok:true, value}` with `value` a boolean |
 
 - `input` is present exactly when the command takes an input, encoded as the command's input type. A missing or
@@ -610,6 +617,89 @@ boolean member of that name that is the command's availability source, that memb
 appears once. These members change like any other member, so clients render availability from state rather than by
 asking `can`.
 
+### Presentation epochs
+
+With the feature `presentation-epoch/1`, a command can be scoped to the presentation it was issued on. A wizard's Next,
+clicked twice on page 1, then moves to page 2 once: the second click was made on page 1, which the first one ended.
+
+```json
+{"kind":"open","route":"wizard","presentation":"p-1"}
+{"ok":true,"revision":40,"epoch":40,"state":{"page":1,…},"presentation":"ok"}
+
+{"kind":"command","route":"wizard","member":"next","epoch":40}
+{"kind":"state","route":"wizard","revision":41,"epoch":41,"state":{"page":2,…}}
+{"ok":true,"revision":41}
+
+{"kind":"command","route":"wizard","member":"next","epoch":40}
+{"ok":true,"revision":41,"superseded":true}
+```
+
+**Epochs.** Each route has a current **epoch**, a non-negative safe integer that the producer assigns. Each epoch of a
+route differs from every earlier epoch of that route in the window, including those of earlier attachments of the same
+content route. A client treats epochs as opaque and compares them only for equality.
+
+**When an epoch begins.** A new epoch begins with:
+
+- the first state of a route ([Publication](#publication)): each attachment of a root View or of content, so content
+  that is presented again after it was suspended has a new epoch;
+- a **renewal** that the application requests for a route, as a wizard does when it shows its next page.
+
+Nothing else begins one. A change of a content slot does not renew the epoch of the slot's route.
+
+**Where it travels.**
+
+- On a connection that uses the feature, the `open` and `snapshot` replies carry the route's current epoch as `epoch`,
+  beside `revision`.
+- A `state` push carries `epoch` while at least one connection of the window uses the feature, on every connection
+  ([members of broadcasts](#features)). A client without the feature ignores it.
+- Frames never carry an epoch and never change it. The epoch of a route's state is that of the last full state the
+  client accepted for the route: a `state` push, or an `open` or `snapshot` reply.
+
+**Renewals are full states.** A renewal publishes the route: its next publication is a `state` push at a new revision,
+with the new epoch and the changes pending with it, also when no member changed and whether or not a connection uses
+the feature. A client therefore receives the epoch in order with the state it belongs to. Frames that follow build on
+that state.
+
+**Scoped commands.** On a connection that uses the feature, a `command` MAY carry `epoch`, the epoch of the state the
+command was issued on. The producer runs such a command only when `epoch` is the route's current epoch. A renewal that
+was requested but not yet published counts as a new epoch: the producer checks the epoch in the command's
+[turn](#window-turns), so a command that crosses a renewal requested by another request, a timer or a completed
+operation is caught before the renewal's `state` push. Otherwise the command is **superseded**:
+
+- Nothing runs: the input is not decoded, the key is not resolved and availability is not checked.
+- The reply is `{"ok":true,"revision":R,"superseded":true}`, as for a superseded `set`, with R the route's last
+  published revision after the producer published what was pending ([revisions](#revisions)). It is not an error.
+
+A `command` without `epoch` is a base command, and the producer checks every `command` that carries `epoch`, whichever
+commands the contract scopes. On a connection without the feature, `epoch` is an unknown member and is ignored.
+
+**Order of checks.** A producer checks a `command` in this order, and answers the first that fails:
+
+1. the envelope: `invalid-request`, including an `epoch` that is not a non-negative safe integer on a connection that
+   uses the feature;
+2. the route: `released` when the producer does not serve it;
+3. the epoch: superseded;
+4. the input: `invalid-input`;
+5. the key: `unresolved-key`;
+6. availability: `unavailable`;
+7. the window's command capacity: `capacity`.
+
+**Scope.** `presentation-epoch/1` scopes `command` only. `start`, `can`, `set`, `write` and interaction replies carry
+no epoch: operations have their own identity and duplicate detection, and setters are last-writer-wins by design.
+
+**Client.** A client that uses the feature:
+
+- keeps, for each route, the epoch of the last full state it accepted, taking `epoch` only when it is a non-negative
+  safe integer; a state without one leaves the route without an epoch;
+- sends `epoch` with each call of a command that the route's contract marks **scoped**, and with no other command. The
+  epoch is that of the state the presentation's subscribers last received, not of the latest state the client applied:
+  a client that delivers states to its subscribers later than it applies them
+  ([state changes](state-changes.md#applying-frames)) sends the epoch of the state still on screen. Each presentation
+  therefore records the epoch of the state it was delivered; a renewal that changed no member updates that epoch
+  without notifying subscribers. Without an epoch it sends none;
+- resolves a superseded call like a successful one: once the route reached R ([client resolution](#client-resolution)),
+  with the state it exposes then, and without a diagnostic.
+
 ## Content
 
 A View can present other Views in content slots. Each presented object and kind has a **content reference**
@@ -629,9 +719,9 @@ A client registers each route it shows with `open`, and ends the registration wi
 
 | Request | Members | Reply |
 | --- | --- | --- |
-| `open` | `route`, `presentation`, `handlers?` | `{ok:true, revision, state, fields?, presentation, registration?}` |
+| `open` | `route`, `presentation`, `handlers?` | `{ok:true, revision, epoch?, state, fields?, presentation, registration?}` |
 | `close` | `route`, `presentation` | `{ok:true, presentation}` |
-| `snapshot` | `route` | `{ok:true, revision, state, fields?}` |
+| `snapshot` | `route` | `{ok:true, revision, epoch?, state, fields?}` |
 
 - `presentation` in the request is the presentation's id, unique within the page. `presentation` in the reply is
   `ok`, or `ignored` when another connection or client owns that id on the route; the reply still carries the state.
@@ -646,14 +736,102 @@ A client registers each route it shows with `open`, and ends the registration wi
 - `close` answers `ok`, also for a presentation that is not open, or `ignored` when another connection owns it. Closing
   a connection closes its presentations.
 - `snapshot` reads the full state without registering anything. Clients use it for recovery.
+- On a connection that uses `presentation-epoch/1`, the `open` and `snapshot` replies carry the route's current
+  `epoch` ([presentation epochs](#presentation-epochs)), also the `open` of a reconnect.
 - A suspended route whose presentations are still open keeps them. When its object is presented again before the
   page closed them, as when one command sets `Main = b; Main = a;` and the page never saw `b`, the open presentations
-  resume on the new View in a later turn of the window.
+  resume on the new View in a later turn of the window. The producer then pushes the new View's first state as a
+  `state` push, whether or not a connection uses a feature, so a page that kept its presentations receives the new
+  attachment's state and, with `presentation-epoch/1`, its new epoch.
 
 **Reconnects.** After a new connection, a client sends `hello` with a new session and then `open` for each route it
 shows, with the same presentation ids. While the closed connection's presentations are not yet released, the reply
 can be `ignored`; the client retries `open` until it answers `ok`. Interaction handlers resume with the new
 registration.
+
+## Presented states and window close
+
+With the feature `presented/1`, a page reports that it painted a state, and acknowledges that the application closes
+its window:
+
+```json
+{"kind":"present","route":"result","revision":57}
+{"kind":"presented","route":"result","revision":57}
+{"ok":true}
+
+{"kind":"closing"}
+{"kind":"closing-reply"}
+{"ok":true}
+```
+
+| Message | Members | Meaning |
+| --- | --- | --- |
+| push `present` | `route`, `revision` | To one connection: report when the page has painted `route` at `revision` or later. |
+| request `presented` | `route`, `revision` | The page painted `route` at `revision`. The reply is `{ok:true}`. |
+| push `closing` | none | To each connection that uses the feature: the application closes the window. The first push without a `route`. |
+| request `closing-reply` | none | The page has shown the window's last state. The reply is `{ok:true}`. |
+
+A producer sends `present` and `closing` only to connections that use the feature. A client without it would ignore
+them as unknown push kinds.
+
+### Painted states
+
+**Waits.** The application can wait until a page painted what an object of the application presents, such as the page
+a wizard has just shown. A wait names the object and a timeout:
+
+- The producer publishes what is pending on every route that presents the object, as before a reply
+  ([revisions](#revisions)), and takes each route's last published revision.
+- The wait succeeds once a page reported `presented` for one of those routes at that revision or later, from any
+  connection: the first report completes it. It fails when its timeout passes first.
+- An object that no route presents yet counts with the first state of the first route that presents it within the
+  timeout, as when the application sets a content slot to the object and waits before the slot's route is attached.
+
+**`present`.** The producer pushes `present` only while a wait is pending, so an idle or typing page sends nothing
+extra. It pushes it to each connection that uses the feature and has an open presentation of the route, at most once
+per wait, route and connection, also to a connection that opens the route while the wait is pending, after the `open`
+reply. `revision` is the revision the wait took for the route.
+
+**`presented`.** The reply is `{ok:true}`. A report that no wait needs has no effect. `presented` on a connection that
+does not use the feature, or whose `revision` is not a non-negative safe integer, is `rejected` with
+`invalid-request`; a route the producer does not serve answers `released`.
+
+**Client.** A client that uses the feature answers `present` for a route it shows with `presented` once the page has
+painted the route at `revision` or later:
+
+1. the route reached `revision` under the client's revision rules, including the revision timeout and recovery
+   ([client resolution](#client-resolution));
+2. the route's state was delivered to the subscribers of its presentations;
+3. one animation frame of the page passed after that delivery, so the page rendered the state. A page without
+   animation frames, such as a hidden page or a test runner, uses the timer or the end of the task with which it
+   delivers notifications instead.
+
+- `revision` in the report is the route's revision that was painted, which is at least the requested one. A client
+  keeps at most one `presented` per route in flight and reports the highest revision requested.
+- A route whose presentations have no subscriber, such as a presentation kept open while nothing shows it, is not on
+  screen: the client reports once a subscriber is added and the steps above passed.
+- A hidden page is not special: it reports once its notifications were delivered. A wait for a minimized window would
+  otherwise last until its timeout.
+
+### Window close
+
+**`closing`.** Every close of a window that the application or its host makes pushes `closing` to each connection of
+the window that uses the feature: a close the application requests, once its [close decision](#interactions) allowed
+it, the window's disposal and the host's shutdown. The push happens once per window.
+
+**The close waits.** A close with a timeout also waits until each connection it pushed `closing` to replied with
+`closing-reply` or closed. It waits concurrently with the work the close already waits for
+([limits and window close](#limits-and-window-close)), within the same timeout, and for at most 5 seconds. The close
+reports whether every such connection acknowledged it; a close that pushed `closing` to no connection is
+acknowledged. A close without a timeout pushes `closing` and does not wait. A later close of the same window does not
+push or wait again, and reports the first close's result.
+
+**`closing-reply`.** The reply is `{ok:true}`, also without a pending `closing`: the request is idempotent. On a
+connection that does not use the feature it is `rejected` with `invalid-request`.
+
+**Client.** On `closing`, a client that uses the feature delivers its pending notifications, waits one animation frame
+(or the fallback of step 3 above), sends `closing-reply`, and reports that the producer closed the window. When the
+connection then drops, it keeps reporting that the producer closed the window, not a reconnecting or lost connection.
+A new connection reports a connected client again.
 
 ## Operations
 
@@ -758,8 +936,9 @@ values that are not numbers. `progress` stays absent until the first report.
   failures and stream replay. Running streams reserve their bound against a 256 KiB window budget; the default stream
   bound is 128 items and 64 KiB. An overflowing stream is terminal and reports `stream-overflow`.
 - Closing a window stops admission: `start` answers `owner-closing`, and an asynchronous `command` answers `released`.
-  The window waits up to its close timeout for running operations and asynchronous commands, then requests the
-  cancellation of what remains, and keeps its resources until that work ends.
+  The window waits up to its close timeout for running operations and asynchronous commands, and, with `presented/1`,
+  for the pages to acknowledge the close ([window close](#window-close)), then requests the cancellation of what
+  remains, and keeps its resources until that work ends.
 
 ### Client-only behaviour
 
@@ -837,12 +1016,12 @@ Requests:
 | `kind` | Members | Success reply |
 | --- | --- | --- |
 | `hello` | `protocol`, `session`, `client {name, version}`, `features?` | `protocol`, `implementation {name, version}`, `features?` |
-| `open` | `route`, `presentation`, `handlers?` | `revision`, `state`, `fields?`, `presentation`, `registration?` |
-| `snapshot` | `route` | `revision`, `state`, `fields?` |
+| `open` | `route`, `presentation`, `handlers?` | `revision`, `epoch?` (`presentation-epoch/1`), `state`, `fields?`, `presentation`, `registration?` |
+| `snapshot` | `route` | `revision`, `epoch?` (`presentation-epoch/1`), `state`, `fields?` |
 | `close` | `route`, `presentation` | `presentation` |
 | `set` | `route`, `member`, `value` or `splice` (`text-splice/1`), `edit` | `revision`, `superseded?` |
 | `write` | `route`, `member`, `requestId`, `expectedVersion`, `expectedValue` and `value`, or `splice` (`text-splice/1`) | `revision`, `receipt` |
-| `command` | `route`, `member`, `input?` | `revision` |
+| `command` | `route`, `member`, `input?`, `epoch?` (`presentation-epoch/1`) | `revision`, `superseded?` |
 | `can` | `route`, `member`, `input?` | `value` |
 | `start` | `route`, `member`, `operation`, `contract`, `input?` | `revision`, `admission`, `reason?`, `status?` |
 | `status`, `watch`, `unwatch` | `route`, `member`, `operation`, `contract` | `status` |
@@ -850,6 +1029,8 @@ Requests:
 | `stream` | `route`, `member`, `operation`, `contract`, `cursor` | `page` |
 | `interactions` | `route`, `presentation`, `generation`, `handlers` | `registration` |
 | `interaction-reply` | `route`, `presentation`, `requestId`, `ownerEpoch`, `name`, `contract`, `outcome`, `output?` | `result` |
+| `presented` (`presented/1`) | `route`, `revision` | none |
+| `closing-reply` (`presented/1`) | none | none |
 | `receive` | none | `messages` |
 
 Every failure reply is `{ok:false, error, revision?, released?}`, and a `hello` reply also carries `protocol` and
@@ -859,12 +1040,14 @@ Pushes:
 
 | `kind` | Members | Sent to |
 | --- | --- | --- |
-| `state` | `route`, `revision`, `state`, `fields?` | every connection |
+| `state` | `route`, `revision`, `state`, `fields?`, `epoch?` (`presentation-epoch/1`) | every connection |
 | `frame` | `route`, `baseRevision`, `revision`, `changes` | every connection |
 | `failure` | `route`, `revision`, `error` | every connection |
 | `operation` | `route`, `member`, `operation`, `contract`, `status` | each watching connection |
 | `interaction` | `route`, `presentation`, `requestId`, `ownerEpoch`, `name`, `contract`, `expiresAt`, `input` | the presentation's connection |
 | `interaction-cancelled` | `route`, `presentation`, `requestId`, `ownerEpoch`, `message` | the presentation's connection |
+| `present` (`presented/1`) | `route`, `revision` | while a wait is pending, each connection that uses `presented/1` and has an open presentation of the route |
+| `closing` (`presented/1`) | none | each connection that uses `presented/1` |
 
 ## Versions and compatibility
 
@@ -886,4 +1069,4 @@ sides must implement are [features](#features), listed in `hello`.
 | 1 | 0.6 | Named routes with a snapshot and a state callback per route; collection delta frames were added in 0.7 without a version change. |
 | 2 | 0.9 | The `domain-failed` error and operation status kind. |
 | 3 | 0.10 | A released View answers `released` instead of `disconnected`; the reply error `reason`; a strict version check ([protocol 3](https://github.com/Runic-Artifex/runic-sdk/blob/v0.12.1/specs/application/README.md)). |
-| 4 | 0.13 | One message channel with `hello`; `set` changes in frames; replies by revision; edit numbers; `open`/`close`; operation `watch` and `progress`; RFC 8785 canonical form; value types named by value; ISO 8601 durations; a language-neutral specification and conformance corpus. 0.14 added, without a version change, `hello` `features` with the first feature `text-splice/1`, and requests held behind the `hello`. |
+| 4 | 0.13 | One message channel with `hello`; `set` changes in frames; replies by revision; edit numbers; `open`/`close`; operation `watch` and `progress`; RFC 8785 canonical form; value types named by value; ISO 8601 durations; a language-neutral specification and conformance corpus. 0.14 added, without a version change, `hello` `features` with the first feature `text-splice/1`, and requests held behind the `hello`. 0.15 added, without a version change, the features `presentation-epoch/1` and `presented/1`. |

@@ -838,6 +838,20 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
         command.Name == baseProperty.Name && command.GetMethod is { } getter && baseProperty.GetMethod is { } baseGetter
         && getter.GetBaseDefinition() == baseGetter.GetBaseDefinition() && getter != baseGetter);
     ApplyOperationRetirement(model, commands, commandPlans);
+    // Commands scoped to their presentation (presentation-epoch/1), by wire member: the client sends them with the
+    // epoch of the state its presentation received.
+    // RUNICBRIDGE034: like RunicCommandKey, RunicPresentationScoped belongs to a bridged command or its [RelayCommand]
+    // method; anywhere else it would silently leave the command unscoped.
+    for (var owner = model; owner is not null && owner != typeof(object); owner = owner.BaseType)
+        foreach (var member in owner.GetProperties(AllDeclared).Concat<MemberInfo>(owner.GetMethods(AllDeclared)).OrderBy(member => member.MetadataToken))
+            if (BridgeAttributeNames.Has(member, "Runic.Application.Views.RunicPresentationScopedAttribute") && !failureOwners.Contains(member)
+                && !OverriddenByCommand(member))
+                Diagnostics.Warn(BridgeDiagnosticCodes.PresentationScoped,
+                    $"{model.Name}.{member.Name}: RunicPresentationScoped applies only to a Bridge command property or its CommunityToolkit [RelayCommand] method"
+                    + (owner == model ? "" : $"; {owner.Name} declares it on a member the Bridge does not expose")
+                    + "; it has no effect here.", member);
+    var scopedCommands = commands.Where(command => BridgeCommandSources.IsPresentationScoped(model, command))
+        .Select(command => LowerFirst(command.Name[..^"Command".Length])).ToArray();
     var operationPlans = commands.Where(command => commandPlans[command].IsAsync).Select(command =>
     {
         var plan = commandPlans[command];
@@ -1373,6 +1387,7 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
         + (hasDeltaFields ? $", collections: {Ref("collectionDefinitions")}" : "")
         + (needsCheckedWriter ? $", checkedFields: {Ref("checkedFieldNames")}" : "")
         + (textMembers.Length > 0 ? $", texts: [{string.Join(", ", textMembers.Select(property => JsonSerializer.Serialize(WireName(property))))}]" : "")
+        + (scopedCommands.Length > 0 ? $", scopedCommands: [{string.Join(", ", scopedCommands.Select(member => JsonSerializer.Serialize(member)))}]" : "")
         + (interactions.Length > 0 ? $", interactions: {Ref("interactionDefinitions")}, handlers: options?.handlers" : "")
         + (operationPlans.Length > 0 ? $", operations: {Ref("bridgeOperations")}" : "");
     // A View with interactions takes their handlers when it connects, so the producer can ask them from the first
@@ -1493,6 +1508,7 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
         MockDefaults(),
         checkedProperties.Select(WireName).ToArray(),
         textMembers.Select(WireName).ToArray(),
+        scopedCommands,
         properties.Where(property => property.SetMethod?.IsPublic == true && valueProperties.ContainsKey(property))
             .Select(property => new MockSetter($"set{property.Name}", WireName(property), TsPropertyType(property),
                 checkedProperties.Contains(property) ? $"write{property.Name}" : null)).ToArray(),
@@ -1936,6 +1952,8 @@ static class BridgeDiagnosticCodes
     internal const string CollectionWithoutKey = "RUNICBRIDGE032";
     /// <summary>Warning: the .NET SDK or Bun is older than the Runic release supports.</summary>
     internal const string Toolchain = "RUNICBRIDGE033";
+    /// <summary>Warning: a RunicPresentationScoped declaration reaches no Bridge command.</summary>
+    internal const string PresentationScoped = "RUNICBRIDGE034";
 
     // Every code with its severity and title, in ID order: the source of the machine-readable list
     // (--list-diagnostics, docs/runicbridge-diagnostics.json). eng/diagnostics.test.mjs checks the
@@ -1975,6 +1993,7 @@ static class BridgeDiagnosticCodes
         (UnrecognizedValidation, "warning", "A type implements an IValidatableViewModel that is not ReactiveUI.Validation's"),
         (CollectionWithoutKey, "warning", "An observable collection of DTO rows is not a [RunicCollection]"),
         (Toolchain, "warning", "The .NET SDK or Bun is older than this release supports"),
+        (PresentationScoped, "warning", "A [RunicPresentationScoped] declaration reaches no Bridge command"),
     ];
 
     // Schema version 1: { schemaVersion, diagnostics: [{ id, severity: "error" | "warning", title }] }. A later

@@ -316,6 +316,33 @@
       "operation": "read-push",
       "input": {"encoding":"json","value":{"kind":"frame","route":"notes","baseRevision":1,"revision":2,"changes":[{"field":"title","kind":"set","value":"x"},{"field":"title","kind":"splice","length":1,"index":0,"delete":0,"text":"y"}]}},
       "expect": {"result":"invalid"}
+    },
+    {
+      "id": "messages.pushes.state-with-an-epoch",
+      "description": "presentation-epoch/1: a state carries the route's epoch.",
+      "operation": "read-push",
+      "input": {"encoding":"json","value":{"kind":"state","route":"wizard","revision":41,"epoch":41,"state":{"page":2,"canNext":true,"canBack":true,"canPing":true}}},
+      "expect": {"result":"valid"}
+    },
+    {
+      "id": "messages.pushes.present",
+      "description": "presented/1: report when the route is painted at the revision or later.",
+      "operation": "read-push",
+      "input": {"encoding":"json","value":{"kind":"present","route":"result","revision":57}},
+      "expect": {"result":"valid"}
+    },
+    {
+      "id": "messages.pushes.present-without-a-revision",
+      "operation": "read-push",
+      "input": {"encoding":"json","value":{"kind":"present","route":"result"}},
+      "expect": {"result":"invalid"}
+    },
+    {
+      "id": "messages.pushes.closing",
+      "description": "presented/1: the application closes the window. The push has no route.",
+      "operation": "read-push",
+      "input": {"encoding":"json","value":{"kind":"closing"}},
+      "expect": {"result":"valid"}
     }
   ]
 }

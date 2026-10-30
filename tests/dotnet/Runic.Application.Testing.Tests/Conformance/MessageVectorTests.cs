@@ -13,7 +13,8 @@ namespace Runic.Application.Testing.Tests.Conformance;
 // envelope; a route nothing serves answers released, which is fine here because scenarios check routes and members.
 public sealed class MessageVectorTests
 {
-    private const string Hello = """{"kind":"hello","protocol":4,"session":"s-vector","client":{"name":"conformance-client","version":"1.0.0"}}""";
+    // The requests are read as on a connection that uses every feature (README "Messages").
+    private const string Hello = """{"kind":"hello","protocol":4,"session":"s-vector","client":{"name":"conformance-client","version":"1.0.0"},"features":["text-splice/1","presentation-epoch/1","presented/1"]}""";
     private static readonly string[] EnvelopeReasons = ["invalid-request", "invalid-input", "no-hello"];
     private static readonly JsonSerializerOptions WriteOptions = new() { Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping };
 

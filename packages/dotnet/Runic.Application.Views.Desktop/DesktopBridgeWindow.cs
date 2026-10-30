@@ -220,7 +220,7 @@ public sealed class DesktopBridgeWindow<TViewModel> : IBridgeWindow, IDesktopNat
         if (result.Drained)
         {
             await FinalizeAsync(errors).ConfigureAwait(false);
-            return new(true, 0, CompletionFor(errors));
+            return new(true, 0, CompletionFor(errors)) { PagesAcknowledged = result.PagesAcknowledged };
         }
 
         // A visible closed window must not leave command routes active. The
@@ -235,7 +235,7 @@ public sealed class DesktopBridgeWindow<TViewModel> : IBridgeWindow, IDesktopNat
             await CaptureAsync(() => presentation.CloseAsync(), errors).ConfigureAwait(false);
         Task completion;
         lock (_closeGate) completion = _completion ??= DrainThenFinalizeAsync(errors);
-        return new(false, result.RemainingOperations, completion);
+        return new(false, result.RemainingOperations, completion) { PagesAcknowledged = result.PagesAcknowledged };
     }
 
     private async Task DrainThenFinalizeAsync(List<Exception> errors)

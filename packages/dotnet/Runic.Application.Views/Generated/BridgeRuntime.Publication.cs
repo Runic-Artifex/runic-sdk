@@ -134,8 +134,8 @@ public partial class ViewModelBridge<T>
             _dataSubscriptions?.SweepPending();
             // A batch still open publishes its unit when it ends.
             if (BridgeSnapshotBatch.TryDefer(_vm, this)) return;
-            // Nothing was notified since a unit compared every member, as the reply of a set did.
-            if (_baselines is not null && !_stateDeferred && _publishedChanges == _changes) return;
+            // Nothing was notified since a unit compared every member, as the reply of a set did, and no renewal waits.
+            if (_baselines is not null && !_stateDeferred && _publishedChanges == _changes && !RenewalPending) return;
             PublishUnitCore();
         }
     }
@@ -154,6 +154,12 @@ public partial class ViewModelBridge<T>
             return;
         }
         if (_firstState is not null && (_firstStateChanges != changed || _firstStateRevision != _revision)) ReleaseFirstState();
+        // A renewal (presentation-epoch/1) is a full state at a new revision, also when nothing changed.
+        if (RenewalPending)
+        {
+            PublishRenewal(changed);
+            return;
+        }
         if (_stateDeferred)
         {
             _stateDeferred = false;
@@ -378,6 +384,8 @@ public partial class ViewModelBridge<T>
             _firstStateLength = length;
             _firstStateChanges = _changes;
             _firstStateRevision = _revision;
+            // The first state begins the route's first epoch: a renewal requested before it has nothing to renew.
+            Volatile.Write(ref _renewal, 0);
             return true;
         }
         catch (BridgeSnapshotDetachedException) { return false; }
@@ -388,12 +396,13 @@ public partial class ViewModelBridge<T>
     // Whether the first state is still the route's state: nothing was notified or published since it was captured.
     private bool FirstStateIsCurrent => _firstState is not null && _firstStateChanges == _changes
         && _firstStateRevision == _revision && !_stateDeferred && _pendingCollectionChanges.Count == 0
-        && _collectionSets.Count == 0 && !_delivery.StateRequested;
+        && _collectionSets.Count == 0 && !_delivery.StateRequested && !RenewalPending;
 
-    // Writes "revision", "state" and "fields" of the first state into an open object.
-    private void WriteFirstState(Utf8JsonWriter writer)
+    // Writes "revision", "epoch" (when asked), "state" and "fields" of the first state into an open object.
+    private void WriteFirstState(Utf8JsonWriter writer, bool epoch)
     {
         writer.WriteNumber("revision", _revision);
+        if (epoch) writer.WriteNumber("epoch", _epoch);
         writer.WritePropertyName("state");
         writer.WriteRawValue(_firstState!.Memory.Span.Slice(_firstStateStart, _firstStateLength), skipInputValidation: true);
         WriteFieldVersions(writer);
@@ -438,7 +447,8 @@ public partial class ViewModelBridge<T>
             writer.WriteStartObject();
             writer.WriteString("kind", "state");
             writer.WriteString("route", _name);
-            WriteState(message, updateBaselines: true);
+            // A broadcast: it carries epoch while a connection uses presentation-epoch/1, and others ignore it.
+            WriteState(message, updateBaselines: true, epoch: BridgeDispatcher.For(_transport).PresentationEpochInUse);
             writer.WriteEndObject();
             return message.Detach();
         }
@@ -447,12 +457,12 @@ public partial class ViewModelBridge<T>
         finally { message.Dispose(); }
     }
 
-    // Writes "revision", "state" and "fields" of the route's full state into an open object of message, at the route's
-    // latest revision, each member straight into the message. With updateBaselines, the state becomes the baseline of
+    // Writes "revision", "epoch" (when asked), "state" and "fields" of the route's full state into an open object of
+    // message, at the route's latest revision, each member straight into the message. With updateBaselines, the state becomes the baseline of
     // the next frame (a published state, or a reply's state, which equals the published one), and a requested unit
     // that it covers is withdrawn. Returns where the
     // "state" object is in the message. Throws BridgeCollectionKeyException for invalid keys.
-    private (int Start, int Length) WriteState(BridgePublicationWriter message, bool updateBaselines)
+    private (int Start, int Length) WriteState(BridgePublicationWriter message, bool updateBaselines, bool epoch = false)
     {
         var changed = _changes;
         var writer = message.Writer;
@@ -462,6 +472,7 @@ public partial class ViewModelBridge<T>
         {
             CheckCollectionKeys();
             writer.WriteNumber("revision", _revision);
+            if (epoch) writer.WriteNumber("epoch", _epoch);
             writer.WritePropertyName("state");
             stateStart = message.Position;
             writer.WriteStartObject();

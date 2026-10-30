@@ -8,7 +8,7 @@ namespace Runic.Application.Testing.Tests.Conformance;
 
 // Writes the messages a producer runner sends and compares the messages it receives, under the rules of
 // specs/application/conformance/README.md, "Comparing messages" and "Identifiers". One instance serves one scenario:
-// it keeps the bindings of provided ids and the mapping of expected to actual revisions.
+// it keeps the bindings of provided ids and the mappings of expected to actual revisions and, per route, epochs.
 internal sealed class ScenarioMessages(IReadOnlyDictionary<string, ScenarioId> ids)
 {
     private static readonly JsonWriterOptions WriterOptions = new() { Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping };
@@ -16,6 +16,8 @@ internal sealed class ScenarioMessages(IReadOnlyDictionary<string, ScenarioId> i
     private readonly Dictionary<string, JsonNode?> _provided = new(StringComparer.Ordinal);
     // Expected revision -> actual revision, consistent and strictly increasing.
     private readonly SortedDictionary<double, double> _revisions = [];
+    // Per route: expected epoch -> actual epoch, consistent and one-to-one (README "Comparing messages").
+    private readonly Dictionary<string, Dictionary<double, double>> _epochs = new(StringComparer.Ordinal);
 
     // Supplies a provided id that the runner writes before a message carried it (IConformanceWindow.Provide).
     internal Func<string, JsonNode?>? Provider { get; set; }
@@ -34,28 +36,36 @@ internal sealed class ScenarioMessages(IReadOnlyDictionary<string, ScenarioId> i
     {
         if (message is JsonValue text && text.GetValueKind() == JsonValueKind.String)
             return System.Text.Encoding.UTF8.GetBytes(text.GetValue<string>());
+        _route = (message as JsonObject)?["route"] is JsonValue route && route.GetValueKind() == JsonValueKind.String
+            ? route.GetValue<string>() : null;
         var buffer = new ArrayBufferWriter<byte>(256);
         using (var writer = new Utf8JsonWriter(buffer, WriterOptions)) Write(writer, message);
         return buffer.WrittenSpan.ToArray();
     }
 
-    // Requires that the actual message equals the expected one. A string message is the expected message's text.
-    internal void Match(JsonNode expected, JsonNode? actual)
+    // Requires that the actual message equals the expected one. A string message is the expected message's text. route
+    // is the route of a reply's request, whose epochs the reply carries; a push names its route.
+    internal void Match(JsonNode expected, JsonNode? actual, string? route = null)
     {
         if (expected is JsonValue text && text.GetValueKind() == JsonValueKind.String)
             expected = JsonNode.Parse(text.GetValue<string>())!;
+        _route = route;
         Match(expected, actual, "$", member: null);
     }
 
+    // The route of the message being matched or written, for its epochs.
+    private string? _route;
+
     // Match for one candidate of an unordered group: null when the messages are equal, otherwise the failure, with the
     // bindings of provided ids and revisions as they were before.
-    internal string? TryMatch(JsonNode expected, JsonNode? actual)
+    internal string? TryMatch(JsonNode expected, JsonNode? actual, string? route = null)
     {
         var provided = new Dictionary<string, JsonNode?>(_provided, StringComparer.Ordinal);
         var revisions = new SortedDictionary<double, double>(_revisions);
+        var epochs = _epochs.ToDictionary(pair => pair.Key, pair => new Dictionary<double, double>(pair.Value), StringComparer.Ordinal);
         try
         {
-            Match(expected, actual);
+            Match(expected, actual, route);
             return null;
         }
         catch (ScenarioFailure failure)
@@ -64,6 +74,8 @@ internal sealed class ScenarioMessages(IReadOnlyDictionary<string, ScenarioId> i
             foreach (var (name, value) in provided) _provided.Add(name, value);
             _revisions.Clear();
             foreach (var (expectedRevision, actualRevision) in revisions) _revisions.Add(expectedRevision, actualRevision);
+            _epochs.Clear();
+            foreach (var (epochRoute, map) in epochs) _epochs.Add(epochRoute, map);
             return failure.Message;
         }
     }
@@ -99,7 +111,11 @@ internal sealed class ScenarioMessages(IReadOnlyDictionary<string, ScenarioId> i
                 foreach (var (key, child) in value)
                 {
                     writer.WritePropertyName(key);
-                    Write(writer, child);
+                    // A request's epoch is the mapped actual epoch of the scenario's one (README "Comparing messages").
+                    if (key == "epoch" && child is JsonValue epoch && epoch.GetValueKind() == JsonValueKind.Number
+                        && EpochsOf(_route).TryGetValue(Number(epoch), out var mapped))
+                        writer.WriteNumberValue(mapped);
+                    else Write(writer, child);
                 }
                 writer.WriteEndObject();
                 break;
@@ -139,6 +155,9 @@ internal sealed class ScenarioMessages(IReadOnlyDictionary<string, ScenarioId> i
                     throw new ScenarioFailure($"{path}: members differ (missing [{string.Join(", ", missing)}], unexpected [{string.Join(", ", extra)}]).\n" +
                         $"expected: {Abbreviate(value)}\nactual:   {Abbreviate(actual)}");
                 var frame = value["kind"] is JsonValue kind && kind.GetValueKind() == JsonValueKind.String && kind.GetValue<string>() == "frame";
+                // A push names the route its epochs belong to.
+                if (path == "$" && value["route"] is JsonValue pushRoute && pushRoute.GetValueKind() == JsonValueKind.String)
+                    _route = pushRoute.GetValue<string>();
                 foreach (var (key, child) in value)
                 {
                     if (frame && key == "changes" && child is JsonArray changes) MatchChanges(changes, actualObject[key], $"{path}.changes");
@@ -158,6 +177,12 @@ internal sealed class ScenarioMessages(IReadOnlyDictionary<string, ScenarioId> i
                 {
                     if (TypeOf(actual) != "number") Fail(path, expected, actual);
                     MatchRevision(Number(expected), Number(actual!), path);
+                    return;
+                }
+                if (expectedType == "number" && member is "epoch")
+                {
+                    if (TypeOf(actual) != "number") Fail(path, expected, actual);
+                    MatchEpoch(Number(expected), Number(actual!), path);
                     return;
                 }
                 if (expectedType != TypeOf(actual)) { Fail(path, expected, actual); return; }
@@ -234,6 +259,30 @@ internal sealed class ScenarioMessages(IReadOnlyDictionary<string, ScenarioId> i
                 throw new ScenarioFailure($"{path}: expected revision {expected} maps to {actual}, out of order with " +
                     $"expected revision {otherExpected}, which was {otherActual}.");
         _revisions.Add(expected, actual);
+    }
+
+    // Epochs are compared by identity per route: each distinct expected epoch maps to the actual one it first meets, and
+    // no two expected epochs of a route map to the same actual one.
+    private void MatchEpoch(double expected, double actual, string path)
+    {
+        var epochs = EpochsOf(_route);
+        if (epochs.TryGetValue(expected, out var mapped))
+        {
+            if (mapped != actual)
+                throw new ScenarioFailure($"{path}: expected epoch {expected} was epoch {mapped} before, now {actual}.");
+            return;
+        }
+        foreach (var (otherExpected, otherActual) in epochs)
+            if (otherActual == actual)
+                throw new ScenarioFailure($"{path}: expected epoch {expected} is epoch {actual}, which expected epoch {otherExpected} already was.");
+        epochs.Add(expected, actual);
+    }
+
+    private Dictionary<double, double> EpochsOf(string? route)
+    {
+        route ??= "";
+        if (!_epochs.TryGetValue(route, out var epochs)) _epochs.Add(route, epochs = []);
+        return epochs;
     }
 
     private static string TypeOf(JsonNode? node) => node switch

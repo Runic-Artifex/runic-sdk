@@ -15,6 +15,8 @@ namespace Runic.Application.Views;
 //   was never registered or was released, answers released; reserved routes (runic.*) belong to host services;
 // - pushes: broadcasts, targeted pushes and, for a transport without targeted pushes, the per-connection mailbox that
 //   the host script drains with receive;
+// - the connection-level requests of presented/1: presented, which goes to the route's handler for its waits, and
+//   closing-reply, which acknowledges the closing push of a closing window (BeginClosing);
 // - the connection lifecycle: the transport reports closed connections, and the dispatcher releases their sessions and
 //   tells the window's observers (OnConnectionClosed).
 //
@@ -32,6 +34,8 @@ internal sealed class BridgeDispatcher : IBridgeRequestHandler
     private const int RetainedClosedSessions = 4_096;
     // The features of this producer (specs/application/README.md, "Features").
     internal const string TextSpliceFeature = "text-splice/1";
+    internal const string PresentationEpochFeature = "presentation-epoch/1";
+    internal const string PresentedFeature = "presented/1";
     internal const int MaximumFeatures = 64;
     internal const int MaximumFeatureLength = 64;
     // A request that arrives before its connection's hello waits this long for it, and at most this many wait.
@@ -52,6 +56,11 @@ internal sealed class BridgeDispatcher : IBridgeRequestHandler
     private Func<BridgeRouteRequest, ReadOnlyMemory<byte>?>? _releasedOperations;
     // Connections that completed their hello without text-splice/1: while there is one, frames carry no splices.
     private int _connectionsWithoutTextSplice;
+    // Connections that completed their hello with presentation-epoch/1: while there is one, state pushes carry epoch.
+    private int _connectionsWithPresentationEpoch;
+    // The window's close (BeginClosing): the connections whose closing-reply is outstanding, and its completion.
+    private int _closingPending;
+    private TaskCompletionSource? _closing;
     private int _maximumInputBytes = WindowContentSessionOptions.DefaultMaximumInputBytes;
     private ILogger _logger = TraceFallbackLogger.Instance;
     private TimeProvider _timeProvider = TimeProvider.System;
@@ -159,6 +168,52 @@ internal sealed class BridgeDispatcher : IBridgeRequestHandler
 
     // Whether every connection that completed its hello uses text-splice/1, so a frame may carry splices.
     internal bool TextSpliceInUse => Volatile.Read(ref _connectionsWithoutTextSplice) == 0;
+
+    // Whether a connection that completed its hello uses presentation-epoch/1, so a state push carries epoch: a
+    // broadcast member that base receivers ignore (specs/application/README.md, "Presentation epochs").
+    internal bool PresentationEpochInUse => Volatile.Read(ref _connectionsWithPresentationEpoch) > 0;
+
+    // Pushes closing to every connection that uses presented/1 and returns a task that completes when each of them
+    // answered closing-reply or closed. The first call pushes; later calls return the same task. A connection that
+    // completes its hello with presented/1 afterwards gets closing too, but is not waited for.
+    internal Task BeginClosing()
+    {
+        List<string> targets = [];
+        Task closing;
+        lock (_gate)
+        {
+            if (_closing is { } started) return started.Task;
+            var completion = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            _closing = completion;
+            closing = completion.Task;
+            foreach (var connection in _connections.Values)
+            {
+                if (!connection.HelloCompleted || !connection.UsesPresented || !connection.IsOpen) continue;
+                connection.ClosingPending = true;
+                _closingPending++;
+                targets.Add(connection.Key);
+            }
+            if (_closingPending == 0) completion.TrySetResult();
+        }
+        foreach (var target in targets) BridgeTargetedPushes.For(_transport).Send(target, ClosingPush());
+        return closing;
+    }
+
+    // The connections whose closing-reply is still outstanding.
+    internal int UnacknowledgedClosings
+    {
+        get { lock (_gate) return _closingPending; }
+    }
+
+    private static byte[] ClosingPush() => """{"kind":"closing"}"""u8.ToArray();
+
+    // A connection that acknowledged the window's close or closed; the gate is held.
+    private void ClosingSettled(BridgeConnection connection)
+    {
+        if (!connection.ClosingPending) return;
+        connection.ClosingPending = false;
+        if (--_closingPending == 0) _closing?.TrySetResult();
+    }
 
     // Sends a push to every connection. Nothing is sent while no connection completed its hello. A frame with splices
     // has a fallback, the same frame with sets, which is sent instead while a connection does not use text-splice/1:
@@ -334,6 +389,13 @@ internal sealed class BridgeDispatcher : IBridgeRequestHandler
             try
             {
                 if (envelope.Kind == "receive") return Receive(connection, cancellationToken);
+                if (envelope.Kind == "closing-reply") return Reply(ClosingReply(connection));
+                if (envelope.Kind == "presented") return Presented(connection, envelope);
+                // presentation-epoch/1: on a connection that uses it, a command's epoch is a non-negative safe integer;
+                // elsewhere the member is ignored.
+                if (envelope.Kind == "command" && envelope.HasEpoch && envelope.Epoch is null && connection.UsesPresentationEpoch
+                    && !envelope.IsServiceRoute)
+                    return Reply(BridgeMessages.Rejected("invalid-request", "The request's epoch is not an integer from 0 to 2^53-1."));
                 if (envelope.Route is not { } route || !(envelope.IsServiceRoute || BridgeRequestEnvelope.IsViewKind(envelope.Kind)))
                     return Reply(BridgeMessages.Rejected("invalid-request", $"'{envelope.Kind}' is not a request kind of this producer."));
                 IBridgeRouteHandler? handler;
@@ -364,6 +426,28 @@ internal sealed class BridgeDispatcher : IBridgeRequestHandler
         }
     }
 
+    // closing-reply (presented/1): acknowledges the window's closing push; without one pending it answers ok as well.
+    private byte[] ClosingReply(BridgeConnection connection)
+    {
+        if (!connection.UsesPresented)
+            return BridgeMessages.Rejected("invalid-request", "The connection does not use presented/1.");
+        lock (_gate) ClosingSettled(connection);
+        return BridgeMessages.Ok.ToArray();
+    }
+
+    // presented (presented/1): the page painted the route at the revision. The route's handler completes its waits.
+    private ValueTask<ReadOnlyMemory<byte>> Presented(BridgeConnection connection, BridgeRequestEnvelope envelope)
+    {
+        if (!connection.UsesPresented)
+            return Reply(BridgeMessages.Rejected("invalid-request", "The connection does not use presented/1."));
+        IBridgeRouteHandler? handler;
+        lock (_gate) _routes.TryGetValue(envelope.Route!, out handler);
+        if (handler is not IBridgePresentedHandler presented) return new(BridgeMessages.Released);
+        BridgeRequestEnvelope.TryReadInteger(envelope.Root.GetProperty("revision"), out var revision);
+        presented.Presented(connection, revision);
+        return new(BridgeMessages.Ok);
+    }
+
     /// <inheritdoc />
     public void ConnectionClosed(string connectionKey)
     {
@@ -375,6 +459,9 @@ internal sealed class BridgeDispatcher : IBridgeRequestHandler
             if (!_connections.Remove(connectionKey, out var connection)) return;
             connection.IsOpen = false;
             if (connection.HelloCompleted && !connection.UsesTextSplice) _connectionsWithoutTextSplice--;
+            if (connection.HelloCompleted && connection.UsesPresentationEpoch) _connectionsWithPresentationEpoch--;
+            // A closed connection counts as one that acknowledged the window's close.
+            ClosingSettled(connection);
             refusedHeld = connection;
             if (connection.Session is { } session) RetainClosedSession(session);
             connection.Mailbox.Clear();
@@ -443,10 +530,11 @@ internal sealed class BridgeDispatcher : IBridgeRequestHandler
         if (!root.TryGetProperty("client", out var client) || client.ValueKind != JsonValueKind.Object
             || !TryReadName(client, "name", 128, out var clientName) || !TryReadName(client, "version", 64, out var clientVersion))
             return BridgeMessages.Rejected("invalid-request", "The hello's client is not {name, version}.", hello: true);
-        if (!TryReadFeatures(root, out var usesTextSplice))
+        if (!TryReadFeatures(root, out var usesTextSplice, out var usesPresentationEpoch, out var usesPresented))
             return BridgeMessages.Rejected("invalid-request",
                 $"The hello's features are not an array of at most {MaximumFeatures} strings of at most {MaximumFeatureLength} characters.", hello: true);
         var session = sessionElement.GetString()!;
+        bool closing;
         lock (_gate)
         {
             if (connection.HelloCompleted)
@@ -459,17 +547,24 @@ internal sealed class BridgeDispatcher : IBridgeRequestHandler
             connection.ClientName = clientName;
             connection.ClientVersion = clientVersion;
             connection.UsesTextSplice = usesTextSplice;
+            connection.UsesPresentationEpoch = usesPresentationEpoch;
+            connection.UsesPresented = usesPresented;
             connection.HelloCompleted = true;
             if (!usesTextSplice) _connectionsWithoutTextSplice++;
+            if (usesPresentationEpoch) _connectionsWithPresentationEpoch++;
             if (connection.Held.Count > 0) drain = connection.Draining = true;
+            closing = usesPresented && _closing is not null;
         }
+        // A page that connects to a closing window is told so, after its hello reply.
+        if (closing) BridgeTargetedPushes.For(_transport).Send(connection.Key, ClosingPush());
         return BridgeMessages.Hello();
     }
 
     // The client's features: absent, or an array of strings. A feature this producer does not implement is ignored.
-    private static bool TryReadFeatures(JsonElement root, out bool usesTextSplice)
+    private static bool TryReadFeatures(JsonElement root, out bool usesTextSplice, out bool usesPresentationEpoch,
+        out bool usesPresented)
     {
-        usesTextSplice = false;
+        usesTextSplice = usesPresentationEpoch = usesPresented = false;
         if (!root.TryGetProperty("features", out var features)) return true;
         if (features.ValueKind != JsonValueKind.Array || features.GetArrayLength() > MaximumFeatures) return false;
         foreach (var feature in features.EnumerateArray())
@@ -478,6 +573,8 @@ internal sealed class BridgeDispatcher : IBridgeRequestHandler
             var name = feature.GetString()!;
             if (name.Length > MaximumFeatureLength) return false;
             if (name == TextSpliceFeature) usesTextSplice = true;
+            else if (name == PresentationEpochFeature) usesPresentationEpoch = true;
+            else if (name == PresentedFeature) usesPresented = true;
         }
         return true;
     }
@@ -613,6 +710,11 @@ internal sealed class BridgeConnection(string key, string clientKey)
     internal bool HelloCompleted { get; set; }
     // Whether the connection uses text-splice/1: both its hello and the producer list it.
     internal bool UsesTextSplice { get; set; }
+    // Whether the connection uses presentation-epoch/1 and presented/1.
+    internal bool UsesPresentationEpoch { get; set; }
+    internal bool UsesPresented { get; set; }
+    // Whether the window's closing push waits for this connection's closing-reply; the dispatcher's gate guards it.
+    internal bool ClosingPending { get; set; }
     // Requests that wait for the hello, in arrival order, and whether the dispatcher is admitting them.
     internal List<BridgeHeldRequest> Held { get; } = [];
     internal bool Draining { get; set; }
@@ -701,6 +803,13 @@ internal sealed class BridgeRouteRequest(BridgeRequestEnvelope envelope, BridgeC
     internal string Route => Envelope.Route!;
     internal string? Member => Envelope.Member;
     internal JsonElement Root => Envelope.Root;
+}
+
+// A route handler that receives the presented requests (presented/1) of its route: the page painted the route at
+// revision or later. It does not wait.
+internal interface IBridgePresentedHandler
+{
+    void Presented(BridgeConnection connection, long revision);
 }
 
 // Handles the requests of one route (RegisterRoute). It admits a request before its returned task first yields, so
