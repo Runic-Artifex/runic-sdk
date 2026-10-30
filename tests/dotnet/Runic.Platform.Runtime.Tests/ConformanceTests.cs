@@ -343,7 +343,7 @@ internal sealed class ConformanceTests
         var before = files.GetSnapshot();
         Check(before.Statuses["platform.files.open"] is CapabilityStatus.Unavailable { Reason: PlatformUnavailableReason.OwnerUnavailable });
         Check(await files.OpenFileAsync(new()) is PickerResult<IReadFileLease>.Unavailable { Reason: PlatformUnavailableReason.OwnerUnavailable });
-        await Throws<ArgumentOutOfRangeException>(() => files.OpenFileAsync(new((OwnerPolicy)1)).AsTask());
+        await Throws<ArgumentOutOfRangeException>(() => files.OpenFileAsync(new((OwnerPolicy)2)).AsTask());
         Check(files.GetSnapshot().Statuses["platform.dialogs.owned"] is CapabilityStatus.Unavailable);
         lifetime.AttachTestOwner();
         Check(files.GetSnapshot().Statuses["platform.files.open"] is CapabilityStatus.Available);
@@ -465,10 +465,58 @@ internal sealed class ConformanceTests
     private static PresentationLifetime Owned() { var owner = new PresentationLifetime(); owner.AttachTestOwner(); return owner; }
     private static TaskCompletionSource Signal() => new(TaskCreationOptions.RunContinuationsAsynchronously);
     private static void Check(bool condition) { if (!condition) throw new InvalidOperationException("Conformance assertion failed."); }
+    private static void Check(bool condition, string message) { if (!condition) throw new InvalidOperationException("Conformance assertion failed: " + message); }
     private static async Task Throws<T>(Func<Task> action) where T : Exception
     {
         try { await action(); } catch (T) { return; }
         throw new InvalidOperationException($"Expected {typeof(T).Name}.");
+    }
+
+    // #712: a presentation without a native owner shows unowned dialogs for PreferOwner only, and tells them apart from
+    // owned ones; an owned presentation keeps showing owned dialogs for either policy.
+    [Test, DisplayName("CAP-05: PreferOwner shows unowned dialogs without an owner; the capabilities tell owned from unowned")]
+    public async Task UnownedDialogs()
+    {
+        await using (var lifetime = new PresentationLifetime(static () => false))
+        {
+            var unowned = new ControlledBackend();
+            var files = new PresentationFiles(lifetime, backend: null, unowned);
+            var snapshot = files.GetSnapshot().Statuses;
+            Check(snapshot[PlatformCapabilityIds.DialogsUnowned] is CapabilityStatus.Available
+                && snapshot[PlatformCapabilityIds.DialogsOwned] is CapabilityStatus.Unavailable { Reason: PlatformUnavailableReason.OwnerUnavailable }
+                && snapshot[PlatformCapabilityIds.FilesOpen] is CapabilityStatus.Available
+                && snapshot[PlatformCapabilityIds.DirectoriesOpen] is CapabilityStatus.Unavailable { Reason: PlatformUnavailableReason.BackendUnavailable },
+                "the snapshot of unowned dialogs");
+            Check(await files.OpenFileAsync(new()) is PickerResult<IReadFileLease>.Unavailable { Reason: PlatformUnavailableReason.OwnerUnavailable }
+                && await files.SaveFileAsync(new("a.txt")) is PickerResult<ISaveFileLease>.Unavailable { Reason: PlatformUnavailableReason.OwnerUnavailable }
+                && unowned.OpenCalls == 0 && unowned.SaveCalls == 0, "RequireOwner without an owner");
+            unowned.OpenResult.SetResult(new PickerResult<IReadFileLease>.Dismissed());
+            Check(await files.OpenFileAsync(new(OwnerPolicy.PreferOwner)) is PickerResult<IReadFileLease>.Dismissed && unowned.OpenCalls == 1,
+                "PreferOwner shows the unowned dialog");
+            unowned.IsAvailable = false;
+            Check(await files.OpenFileAsync(new(OwnerPolicy.PreferOwner)) is PickerResult<IReadFileLease>.Unavailable { Reason: PlatformUnavailableReason.BackendUnavailable }
+                && files.GetSnapshot().Statuses[PlatformCapabilityIds.DialogsUnowned] is CapabilityStatus.Unavailable { Reason: PlatformUnavailableReason.BackendUnavailable },
+                "an unavailable unowned backend");
+            unowned.IsAvailable = true;
+            await lifetime.DisposeAsync();
+            Check(await files.OpenFileAsync(new(OwnerPolicy.PreferOwner)) is PickerResult<IReadFileLease>.Unavailable { Reason: PlatformUnavailableReason.OwnerClosed }
+                && files.GetSnapshot().Statuses.Values.All(static status => status is CapabilityStatus.Unavailable { Reason: PlatformUnavailableReason.OwnerClosed }),
+                "a closed presentation reports OwnerClosed for both policies");
+        }
+
+        await using (var lifetime = new PresentationLifetime())
+        {
+            var owned = new ControlledBackend();
+            var files = new PresentationFiles(lifetime, owned);
+            Check(await files.OpenFileAsync(new(OwnerPolicy.PreferOwner)) is PickerResult<IReadFileLease>.Unavailable { Reason: PlatformUnavailableReason.OwnerUnavailable }
+                && files.GetSnapshot().Statuses[PlatformCapabilityIds.DialogsUnowned] is CapabilityStatus.Unavailable { Reason: PlatformUnavailableReason.ProviderNotConfigured },
+                "an owned presentation without its owner shows no unowned dialog");
+            lifetime.AttachTestOwner();
+            owned.OpenResult.SetResult(new PickerResult<IReadFileLease>.Dismissed());
+            Check(await files.OpenFileAsync(new(OwnerPolicy.PreferOwner)) is PickerResult<IReadFileLease>.Dismissed && owned.OpenCalls == 1
+                && files.GetSnapshot().Statuses[PlatformCapabilityIds.DialogsOwned] is CapabilityStatus.Available,
+                "PreferOwner with an owner shows the owned dialog");
+        }
     }
 
     private sealed class ControlledBackend : IPickerBackend

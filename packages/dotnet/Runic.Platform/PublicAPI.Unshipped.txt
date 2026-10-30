@@ -5,3 +5,5 @@ Runic.Platform.OpenFileOptions.Title.get -> string?
 Runic.Platform.OpenFileOptions.Title.init -> void
 Runic.Platform.SaveFileOptions.Title.get -> string?
 Runic.Platform.SaveFileOptions.Title.init -> void
+Runic.Platform.OwnerPolicy.PreferOwner = 1 -> Runic.Platform.OwnerPolicy
+const Runic.Platform.PlatformCapabilityIds.DialogsUnowned = "platform.dialogs.unowned" -> string!

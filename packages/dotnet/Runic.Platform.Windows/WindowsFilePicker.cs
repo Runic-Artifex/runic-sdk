@@ -5,16 +5,20 @@ using Windows.Win32.Foundation;
 using Windows.Win32.System.Com;
 using Windows.Win32.UI.Shell;
 using Windows.Win32.UI.Shell.Common;
+using Windows.Win32.System.Ole;
 
 using Runic.Platform.Runtime;
 
 namespace Runic.Platform.Windows;
 
-// Generated unmanaged Common Item Dialog bindings preserve NativeAOT support.
-internal sealed partial class WindowsFilePicker(INativeWindowOwner owner) : INativeFilePicker, INativeDirectoryPicker
+// Generated unmanaged Common Item Dialog bindings preserve NativeAOT support. An unowned picker shows its dialogs
+// without a parent window, on the application's UI thread (WindowsApplicationThread).
+internal sealed partial class WindowsFilePicker(INativeWindowOwner owner, bool unowned = false) : INativeFilePicker, INativeDirectoryPicker
 {
     private const int Cancelled = unchecked((int)0x800704C7);
     internal TaskCompletionSource Shown { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    // Tests follow cancellation: each close attempt and its outcome, and Show's HRESULT.
+    internal Action<string>? Trace { get; set; }
 
     public bool SupportsMultipleSelection => true;
 
@@ -57,25 +61,46 @@ internal sealed partial class WindowsFilePicker(INativeWindowOwner owner) : INat
         // Close runs through the same STA queue serviced by Show's modal loop.
         // Never return until Show unwinds and releases both COM interfaces.
         Task cancellation = Task.CompletedTask;
+        var shown = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         using var registration = cancellationToken.Register(() => cancellation = CloseAsync());
+        // A dialog that is still initializing, whose shell pumps messages before the modal loop starts, ignores Close: ask
+        // again until Show returns, for at most five seconds.
         async Task CloseAsync()
         {
-            try { await owner.InvokeAsync(_ => Close(dialog), CancellationToken.None).ConfigureAwait(false); }
-            catch (OwnerClosedException) { }
-            catch (ObjectDisposedException) { }
+            for (int attempt = 0; attempt < 50 && !shown.Task.IsCompleted; attempt++)
+            {
+                Trace?.Invoke($"close {attempt}");
+                try
+                {
+                    await owner.InvokeAsync(_ =>
+                    {
+                        Trace?.Invoke($"close {attempt} runs, dialog {(dialog != 0 ? "open" : "gone")}");
+                        if (dialog == 0) return;
+                        Close(dialog);
+                        // Close can succeed without ending Show, as an unowned dialog in a NativeAOT process did: from the
+                        // second attempt on, also close the dialog's window, as its close button does.
+                        if (attempt > 0) Trace?.Invoke($"close {attempt} posts WM_CLOSE: {PostClose(dialog)}");
+                    }, CancellationToken.None).ConfigureAwait(false);
+                }
+                catch (OwnerClosedException) { return; }
+                catch (ObjectDisposedException) { return; }
+                catch (Exception error) { Trace?.Invoke($"close {attempt} failed: {error.GetType().Name} 0x{error.HResult:X8}"); }
+                await Task.WhenAny(shown.Task, Task.Delay(100, CancellationToken.None)).ConfigureAwait(false);
+            }
         }
         try
         {
             await owner.InvokeAsync(handle =>
             {
                 cancellationToken.ThrowIfCancellationRequested();
-                if (handle == 0 || !owner.IsAvailable || owner.Generation != generation) throw new OwnerClosedException();
+                if (handle == 0 && !unowned || !owner.IsAvailable || owner.Generation != generation) throw new OwnerClosedException();
                 dialog = Create(save);
                 try
                 {
                     Configure(dialog, save, directory, multiple, request);
                     Shown.TrySetResult();
                     int result = Show(dialog, handle);
+                    Trace?.Invoke($"show returned 0x{result:X8}");
                     if (result == Cancelled) return;
                     Marshal.ThrowExceptionForHR(result);
                     List<NativeFileSelection> paths = multiple ? GetPaths(dialog) : [new(GetPath(dialog), null, true)];
@@ -84,7 +109,12 @@ internal sealed partial class WindowsFilePicker(INativeWindowOwner owner) : INat
                         paths[0] = paths[0] with { SelectedFilter = chosen };
                     selection = paths;
                 }
-                finally { Release(dialog); dialog = 0; }
+                finally
+                {
+                    Release(dialog);
+                    dialog = 0;
+                    shown.TrySetResult();
+                }
             }, cancellationToken).ConfigureAwait(false);
         }
         catch (COMException error) when (error.HResult == unchecked((int)0x80070005))
@@ -93,6 +123,7 @@ internal sealed partial class WindowsFilePicker(INativeWindowOwner owner) : INat
         { throw new IOException("The Windows file dialog failed.", error); }
         finally
         {
+            shown.TrySetResult();
             await registration.DisposeAsync().ConfigureAwait(false);
             await cancellation.ConfigureAwait(false);
         }
@@ -226,6 +257,22 @@ internal sealed partial class WindowsFilePicker(INativeWindowOwner owner) : INat
         if (!IsNativeWindows()) throw new NativeBackendUnavailableException();
         if (dialog != 0) Marshal.ThrowExceptionForHR(((IFileDialog*)dialog)->Close(new HRESULT(Cancelled)).Value);
     }
+    // Posts WM_CLOSE to the dialog's window (IOleWindow), which ends Show as cancelled; false without a window.
+    private static unsafe bool PostClose(nint dialog)
+    {
+        if (!IsNativeWindows()) throw new NativeBackendUnavailableException();
+        Guid iid = typeof(IOleWindow).GUID;
+        void* window = null;
+        if (((IUnknown*)dialog)->QueryInterface(&iid, &window).Value < 0 || window == null) return false;
+        try
+        {
+            HWND handle;
+            return ((IOleWindow*)window)->GetWindow(&handle).Value >= 0 && !handle.IsNull
+                && PInvoke.PostMessage(handle, PInvoke.WM_CLOSE, default, default);
+        }
+        finally { Release((nint)window); }
+    }
+
     private static unsafe string GetPath(nint dialog)
     {
         if (!IsNativeWindows()) throw new NativeBackendUnavailableException();

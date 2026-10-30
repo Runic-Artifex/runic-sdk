@@ -198,6 +198,14 @@ public static class WindowsPlatformProvider
         return new NativePickerBackend(owner, new WindowsFilePicker(owner));
     }
 
+    // File dialogs without a parent window, on the application's UI thread, for a presentation without a native owner.
+    [SupportedOSPlatform("windows8.0")]
+    internal static IPickerBackend CreateUnownedFileDialogs()
+    {
+        var owner = WindowsApplicationThread.Shared;
+        return new NativePickerBackend(owner, new WindowsFilePicker(owner, unowned: true));
+    }
+
     /// <summary>Creates the computer's network status from the Network List Manager's connectivity hint.</summary>
     /// <remarks>
     /// <para>

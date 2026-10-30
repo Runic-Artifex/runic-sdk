@@ -880,3 +880,13 @@ write.
 | Showing `{name}Errors` or `validation.errors` next to an input by hand | The field's `errors` |
 
 Details: 0.14.0 [Frontend field API](../eng/release/notes/0.14.0.md#frontend-field-api-f1).
+
+### Dialogs, launcher and message boxes without a window
+
+| 0.13 | 0.14 |
+| --- | --- |
+| Importing or exporting a file was impossible after the embedded window fell back to the installed browser (`OwnerUnavailable`) | `new OpenFileOptions(OwnerPolicy.PreferOwner)` (and `SaveFileOptions`, `OpenDirectoryOptions`) shows an unowned dialog there; owned windows are unchanged |
+| A fallback window's `platform.files.open` and the other file capabilities were `OwnerUnavailable` | They describe the unowned dialogs of `PreferOwner` and can be `Available`; check `platform.dialogs.owned` for `RequireOwner` calls, or `platform.dialogs.unowned` |
+| Code that treated `(OwnerPolicy)1` as undefined | It is `OwnerPolicy.PreferOwner` |
+
+Details: 0.14.0 [Platform: dialogs, launcher and message boxes without a window](../eng/release/notes/0.14.0.md#platform-dialogs-launcher-and-message-boxes-without-a-window-a2).
