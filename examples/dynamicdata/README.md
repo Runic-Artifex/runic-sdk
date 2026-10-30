@@ -79,8 +79,10 @@ pull requests it skips.
 
 The fork reviews upstream DynamicData monthly
 ([procedure](https://github.com/Runic-Artifex/DynamicData/blob/main/docs/maintenance.md#monthly-upstream-review))
-and publishes tested commits as `v10.0.0-runic.N` releases, pushed to nuget.org as
-`RunicArtifex.DynamicData` and `RunicArtifex.DynamicData.Reactive` `10.0.0-runic.N`.
+and publishes tested commits as `v{version}` releases, pushed to nuget.org as
+`RunicArtifex.DynamicData` and `RunicArtifex.DynamicData.Reactive`. Runic pins the
+stable [`10.0.0`](https://github.com/Runic-Artifex/DynamicData/releases/tag/v10.0.0);
+the fork's `main` publishes `10.1.0-runic.N` prereleases after it.
 Its [fork differences](https://github.com/Runic-Artifex/DynamicData/blob/main/docs/fork-differences.md)
 list the behaviour changes to review. To adopt a new revision:
 
