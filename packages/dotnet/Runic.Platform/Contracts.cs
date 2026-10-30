@@ -387,6 +387,16 @@ public sealed record OpenFileOptions(OwnerPolicy OwnerPolicy = OwnerPolicy.Requi
 {
     private readonly ImmutableArray<FileDialogFilter> _filters = [];
     private readonly string? _initialDirectory;
+    private readonly string? _title;
+
+    /// <summary>The dialog's title, such as "Import backup", or <see langword="null"/> for the platform's own, such as
+    /// "Open".</summary>
+    /// <remarks>
+    /// Windows shows it in the dialog's title bar and the xdg-desktop-portal FileChooser and GTK 3 in the dialog's
+    /// header. A macOS panel has no visible title, so it shows the text as the panel's message above the files.
+    /// </remarks>
+    /// <exception cref="ArgumentException">The title contains NUL.</exception>
+    public string? Title { get => _title; init => _title = FileDialogOptions.ValidTitle(value); }
 
     /// <summary>The file types the dialog offers, the first selected initially; empty offers every file.</summary>
     /// <remarks>Filters are hints that Runic does not enforce on the selection; see <see cref="FileDialogFilter"/>.</remarks>
@@ -414,6 +424,16 @@ public sealed record OpenFileOptions(OwnerPolicy OwnerPolicy = OwnerPolicy.Requi
 public sealed record OpenDirectoryOptions(OwnerPolicy OwnerPolicy = OwnerPolicy.RequireOwner)
 {
     private readonly string? _initialDirectory;
+    private readonly string? _title;
+
+    /// <summary>The dialog's title, such as "Import backup", or <see langword="null"/> for the platform's own, such as
+    /// "Open".</summary>
+    /// <remarks>
+    /// Windows shows it in the dialog's title bar and the xdg-desktop-portal FileChooser and GTK 3 in the dialog's
+    /// header. A macOS panel has no visible title, so it shows the text as the panel's message above the files.
+    /// </remarks>
+    /// <exception cref="ArgumentException">The title contains NUL.</exception>
+    public string? Title { get => _title; init => _title = FileDialogOptions.ValidTitle(value); }
 
     /// <summary>The fully qualified directory the dialog opens in, or <see langword="null"/> for the platform's choice.</summary>
     /// <remarks>A directory that does not exist is ignored by the platform. The xdg-desktop-portal FileChooser before
@@ -429,6 +449,16 @@ public sealed record SaveFileOptions(string SuggestedName, OwnerPolicy OwnerPoli
 {
     private readonly ImmutableArray<FileDialogFilter> _filters = [];
     private readonly string? _initialDirectory;
+    private readonly string? _title;
+
+    /// <summary>The dialog's title, such as "Import backup", or <see langword="null"/> for the platform's own, such as
+    /// "Open".</summary>
+    /// <remarks>
+    /// Windows shows it in the dialog's title bar and the xdg-desktop-portal FileChooser and GTK 3 in the dialog's
+    /// header. A macOS panel has no visible title, so it shows the text as the panel's message above the files.
+    /// </remarks>
+    /// <exception cref="ArgumentException">The title contains NUL.</exception>
+    public string? Title { get => _title; init => _title = FileDialogOptions.ValidTitle(value); }
 
     /// <summary>The file types the dialog offers, the first selected initially; empty offers every file.</summary>
     /// <remarks>Filters are hints: Runic does not add an extension to the chosen name or reject a name that matches no
@@ -468,6 +498,12 @@ internal static class FileDialogOptions
         ArgumentException.ThrowIfNullOrWhiteSpace(options.SuggestedName);
         if (options.SuggestedName.IndexOfAny(['/', '\\', '\0']) >= 0 || options.SuggestedName is "." or "..")
             throw new ArgumentException("The suggestion must be a filename, not a path.", nameof(options));
+    }
+
+    internal static string? ValidTitle(string? title)
+    {
+        if (title is not null && title.Contains('\0')) throw new ArgumentException("A dialog title cannot contain NUL.", nameof(title));
+        return title;
     }
 
     internal static string? ValidDirectory(string? directory)

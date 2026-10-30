@@ -45,6 +45,8 @@ public sealed record NativeFileDialogRequest(bool Save, string? SuggestedName)
     /// <summary>Whether the dialog should offer a choice between <see cref="Filters"/> where it does not by itself, as
     /// <see cref="OpenFileOptions.ShowFilterChoice"/> asks.</summary>
     public bool ShowFilterChoice { get; init; }
+    /// <summary>The dialog's title, or null for the platform's own, as <see cref="OpenFileOptions.Title"/> asks.</summary>
+    public string? Title { get; init; }
 }
 /// <summary>Optional directory-selection support for a native file picker.</summary>
 public interface INativeDirectoryPicker
@@ -58,7 +60,25 @@ public interface INativeDirectoryPicker
     /// returns <see langword="true"/> from <see cref="SupportsMultipleDirectorySelection"/>.</remarks>
     ValueTask<IReadOnlyList<NativeDirectorySelection>?> SelectDirectoriesAsync(string? initialDirectory, CancellationToken cancellationToken) =>
         throw new NativeBackendUnavailableException();
-    /// <summary>Whether <see cref="SelectDirectoriesAsync"/> is implemented.</summary>
+    /// <summary>Shows one owned directory dialog for <paramref name="request"/>: its <see cref="NativeFileDialogRequest.InitialDirectory"/>
+    /// and <see cref="NativeFileDialogRequest.Title"/>; null means dismissal.</summary>
+    /// <remarks>The <see cref="NativePickerBackend"/> calls this overload. The default ignores the title and calls
+    /// <see cref="SelectDirectoryAsync(string, CancellationToken)"/>.</remarks>
+    ValueTask<NativeDirectorySelection?> SelectDirectoryAsync(NativeFileDialogRequest request, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        return SelectDirectoryAsync(request.InitialDirectory, cancellationToken);
+    }
+    /// <summary>Shows one owned directory dialog for <paramref name="request"/> that lets the user select several
+    /// directories; null or an empty list means dismissal.</summary>
+    /// <remarks>The <see cref="NativePickerBackend"/> calls this overload. The default ignores the title and calls
+    /// <see cref="SelectDirectoriesAsync(string, CancellationToken)"/>.</remarks>
+    ValueTask<IReadOnlyList<NativeDirectorySelection>?> SelectDirectoriesAsync(NativeFileDialogRequest request, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        return SelectDirectoriesAsync(request.InitialDirectory, cancellationToken);
+    }
+    /// <summary>Whether <see cref="SelectDirectoriesAsync(string, CancellationToken)"/> is implemented.</summary>
     bool SupportsMultipleDirectorySelection => false;
     /// <summary>
     /// Whether directory selection can work now. A picker that checks its backend in advance, such as an XDG desktop
@@ -152,9 +172,13 @@ public sealed class NativePickerBackend(INativeWindowOwner owner, INativeFilePic
         bool transferred = false;
         try
         {
+            var request = new NativeFileDialogRequest(false, null)
+            {
+                InitialDirectory = options.InitialDirectory, AllowMultiple = multiple, Title = options.Title,
+            };
             selections = multiple
-                ? await directories.SelectDirectoriesAsync(options.InitialDirectory, cancellationToken).ConfigureAwait(false)
-                : await directories.SelectDirectoryAsync(options.InitialDirectory, cancellationToken).ConfigureAwait(false) is { } one ? [one] : null;
+                ? await directories.SelectDirectoriesAsync(request, cancellationToken).ConfigureAwait(false)
+                : await directories.SelectDirectoryAsync(request, cancellationToken).ConfigureAwait(false) is { } one ? [one] : null;
             cancellationToken.ThrowIfCancellationRequested();
             if (!IsAvailable) return new PickerResult<DirectoryLeaseList>.Unavailable(PlatformUnavailableReason.OwnerClosed);
             if (selections is null || selections.Count == 0) return new PickerResult<DirectoryLeaseList>.Dismissed();
@@ -233,7 +257,7 @@ public sealed class NativePickerBackend(INativeWindowOwner owner, INativeFilePic
             selections = await picker.SelectAsync(new NativeFileDialogRequest(false, null)
             {
                 Filters = options.Filters, InitialDirectory = options.InitialDirectory, AllowMultiple = multiple,
-                ShowFilterChoice = options.ShowFilterChoice,
+                ShowFilterChoice = options.ShowFilterChoice, Title = options.Title,
             }, cancellationToken).ConfigureAwait(false);
             cancellationToken.ThrowIfCancellationRequested();
             if (!IsAvailable) return new PickerResult<ReadFileLeaseList>.Unavailable(PlatformUnavailableReason.OwnerClosed);
@@ -301,6 +325,7 @@ public sealed class NativePickerBackend(INativeWindowOwner owner, INativeFilePic
             selections = await picker.SelectAsync(new NativeFileDialogRequest(false, null)
             {
                 Filters = options.Filters, InitialDirectory = options.InitialDirectory, ShowFilterChoice = options.ShowFilterChoice,
+                Title = options.Title,
             }, cancellationToken).ConfigureAwait(false);
             cancellationToken.ThrowIfCancellationRequested();
             if (!IsAvailable) return new PickerResult<IDocumentFileLease>.Unavailable(PlatformUnavailableReason.OwnerClosed);
@@ -345,6 +370,7 @@ public sealed class NativePickerBackend(INativeWindowOwner owner, INativeFilePic
             var selections = await picker.SelectAsync(new NativeFileDialogRequest(true, options.SuggestedName)
             {
                 Filters = options.Filters, InitialDirectory = options.InitialDirectory, ShowFilterChoice = options.ShowFilterChoice,
+                Title = options.Title,
             }, cancellationToken).ConfigureAwait(false);
             if (selections is { Count: > 1 })
             {

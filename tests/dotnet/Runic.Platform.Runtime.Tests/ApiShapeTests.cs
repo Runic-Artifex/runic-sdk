@@ -186,8 +186,11 @@ internal sealed class ApiShapeTests
         var file = typeof(INativeFilePicker).GetMethods().Where(m => m.Name == nameof(INativeFilePicker.SelectAsync)).ToArray();
         Check(file.Length == 1 && file[0].IsAbstract && file[0].GetParameters()[0].ParameterType == typeof(NativeFileDialogRequest),
             "INativeFilePicker.SelectAsync(NativeFileDialogRequest, CancellationToken) is the only, abstract, member.");
+        // The request overload (#713, the title) has a default that calls the abstract one, so existing pickers compile.
         var directory = typeof(INativeDirectoryPicker).GetMethods().Where(m => m.Name == nameof(INativeDirectoryPicker.SelectDirectoryAsync)).ToArray();
-        Check(directory.Length == 1 && directory[0].IsAbstract && directory[0].GetParameters().Length == 2,
-            "INativeDirectoryPicker.SelectDirectoryAsync(string?, CancellationToken) is the only, abstract, member.");
+        Check(directory.Length == 2
+                && directory.Single(m => m.GetParameters()[0].ParameterType == typeof(string)).IsAbstract
+                && directory.Single(m => m.GetParameters()[0].ParameterType == typeof(NativeFileDialogRequest)) is { IsAbstract: false },
+            "INativeDirectoryPicker.SelectDirectoryAsync(string?, CancellationToken) is abstract and its request overload has a default.");
     }
 }

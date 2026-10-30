@@ -204,11 +204,15 @@ internal interface IPortalTransport
     ValueTask<uint> GetFileChooserVersionAsync(CancellationToken cancellationToken) => ValueTask.FromResult(3u);
 }
 
-// FileChooser options other than the title and the suggested name. Each is a hint the portal backend may ignore.
+// FileChooser options other than the suggested name, and the dialog's title. Each is a hint the portal backend may ignore.
 internal sealed record PortalChooserOptions(ImmutableArray<FileDialogFilter> Filters, string? CurrentFolder, bool Multiple)
 {
-    internal static PortalChooserOptions? From(ImmutableArray<FileDialogFilter> filters, string? currentFolder, bool multiple) =>
-        filters.IsDefaultOrEmpty && currentFolder is null && !multiple ? null : new(filters.IsDefault ? [] : filters, currentFolder, multiple);
+    // The application's title for the dialog; null takes Runic's default ("Open file", "Save file", ...).
+    internal string? Title { get; init; }
+
+    internal static PortalChooserOptions? From(ImmutableArray<FileDialogFilter> filters, string? currentFolder, bool multiple, string? title = null) =>
+        filters.IsDefaultOrEmpty && currentFolder is null && !multiple && title is null
+            ? null : new(filters.IsDefault ? [] : filters, currentFolder, multiple) { Title = title };
 
     // FileChooser filters are (name, [(0 = glob, pattern) or (1 = MIME type, type)]). Globs match case-sensitively in GTK
     // backends.
@@ -230,6 +234,14 @@ internal sealed record PortalChooserOptions(ImmutableArray<FileDialogFilter> Fil
         var named = filters.Where(filter => filter.Name == name).ToArray();
         return named.FirstOrDefault(filter => Patterns(filter).SequenceEqual(patterns)) ?? (named.Length == 1 ? named[0] : null);
     }
+
+    // The title argument of OpenFile and SaveFile: the application's, or Runic's default for the kind of dialog.
+    internal static string DialogTitle(string method, PortalChooserOptions? chooser) => chooser?.Title ?? method switch
+    {
+        "SelectDirectory" => chooser?.Multiple == true ? "Open directories" : "Open directory",
+        "SaveFile" => "Save file",
+        _ => chooser?.Multiple == true ? "Open files" : "Open file",
+    };
 
     internal void AddTo(PortalOptions options)
     {
@@ -372,18 +384,13 @@ internal sealed class PortalTransport(string? address = null, string destination
         options["modal"] = DBusValue.From(true);
         chooser?.AddTo(options);
         var fileChooser = new Protocol.FileChooser(connection, peer, Root);
-        string title;
-        if (method == "SelectDirectory")
-        {
-            options["directory"] = DBusValue.From(true);
-            title = chooser?.Multiple == true ? "Open directories" : "Open directory";
-        }
-        else if (method != "SaveFile") title = chooser?.Multiple == true ? "Open files" : "Open file";
-        else
+        string title = PortalChooserOptions.DialogTitle(method, chooser);
+        if (method == "SelectDirectory") options["directory"] = DBusValue.From(true);
+        else if (method == "SaveFile")
         {
             options["current_name"] = DBusValue.From(argument);
             return PortalOptions.RequestAsync(fileChooser, Protocol.FileChooser.InterfaceName, "SaveFile",
-                [DBusValue.From(parent), DBusValue.From("Save file"), options.ToValue()]);
+                [DBusValue.From(parent), DBusValue.From(title), options.ToValue()]);
         }
         return PortalOptions.RequestAsync(fileChooser, Protocol.FileChooser.InterfaceName, "OpenFile", [DBusValue.From(parent), DBusValue.From(title), options.ToValue()]);
     }
