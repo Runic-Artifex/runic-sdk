@@ -934,3 +934,11 @@ that the command line is wrong; a failure on what the command found exits 1.
 Details: 0.14.0 [Runic Command Line 0.11.0 in the SDK tools](../eng/release/notes/0.14.0.md#runic-command-line-0110-in-the-sdk-tools-l1).
 
 ## From 0.14 to 0.15
+
+### Windows administration
+
+| 0.14 | 0.15 |
+| --- | --- |
+| A missing GPMC (`0x80040154`) or WMI provider namespace or class (`0x8004100E`, `0x80041010`) was `AdministrationErrorCategory.Unavailable` | `AdministrationErrorCategory.NotInstalled`; `Unavailable` means an installed machine, endpoint or service cannot be reached. Code that matched `Unavailable` (or the raw HRESULT) to report a missing component matches `NotInstalled` |
+
+Details: 0.15.0 [Windows administration](../eng/release/notes/0.15.0.md#windows-administration-w1).

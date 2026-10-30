@@ -31,8 +31,9 @@ internal sealed class ApiShapeTests
     {
         Check(default(AdministrationErrorCategory) == AdministrationErrorCategory.Unknown, "The default category must be Unknown.");
         int[] values = [.. Enum.GetValues<AdministrationErrorCategory>().Select(value => (int)value)];
-        Check(values.SequenceEqual([0, 1, 2, 3, 4, 5, 6]), "The category numbering changed: " + string.Join(",", values));
-        Check((int)AdministrationErrorCategory.NotFound == 2 && (int)AdministrationErrorCategory.NativeFailure == 6, "Unexpected category values.");
+        Check(values.SequenceEqual([0, 1, 2, 3, 4, 5, 6, 7]), "The category numbering changed: " + string.Join(",", values));
+        Check((int)AdministrationErrorCategory.NotFound == 2 && (int)AdministrationErrorCategory.NativeFailure == 6
+            && (int)AdministrationErrorCategory.NotInstalled == 7, "Unexpected category values.");
     }
 
     [Test]
@@ -50,15 +51,27 @@ internal sealed class ApiShapeTests
     }
 
     [Test]
-    public void UnreachableEndpointsAndComponentsStayUnavailable()
+    public void UnreachableEndpointsStayUnavailable()
     {
-        // Network path, RPC server, class not registered (GPMC missing), WMI invalid namespace and class.
-        foreach (var code in new[] { 53, 64, 67, 1722, 1726, unchecked((int)0x80040154), unchecked((int)0x8004100E), unchecked((int)0x80041010) })
+        // Network path, RPC server and the Task Scheduler service not running.
+        foreach (var code in new[] { 53, 64, 67, 1722, 1726, unchecked((int)0x80041315) })
             Check(NativeError.Categorize(code) == AdministrationErrorCategory.Unavailable, $"0x{code:X8} must be Unavailable.");
         Check(WindowsDirectoryClient.Categorize(52) == AdministrationErrorCategory.Unavailable, "LDAP unavailable must stay Unavailable.");
         Check(NativeError.Categorize(5) == AdministrationErrorCategory.AccessDenied, "ERROR_ACCESS_DENIED must be AccessDenied.");
         Check(NativeError.Categorize(31) == AdministrationErrorCategory.NativeFailure, "An unclassified code must be NativeFailure.");
         Check(WindowsDirectoryClient.Categorize(80) == AdministrationErrorCategory.NativeFailure, "An unclassified LDAP code must be NativeFailure.");
+    }
+
+    // sdk#744: a component that is not installed is reported apart from one that cannot be reached.
+    [Test]
+    public void MissingComponentsAreNotInstalled()
+    {
+        // Class not registered (GPMC missing), WMI invalid namespace and invalid class (a provider such as MicrosoftDNS).
+        foreach (var code in new[] { unchecked((int)0x80040154), unchecked((int)0x8004100E), unchecked((int)0x80041010) })
+            Check(NativeError.Categorize(code) == AdministrationErrorCategory.NotInstalled, $"0x{code:X8} must be NotInstalled.");
+        var error = NativeError.HResult("Create GPMC", unchecked((int)0x80040154));
+        Check(error.Category == AdministrationErrorCategory.NotInstalled && error.NativeErrorCode == unchecked((int)0x80040154),
+            "A class-not-registered HRESULT must be NotInstalled and keep its code.");
     }
 
     [Test]

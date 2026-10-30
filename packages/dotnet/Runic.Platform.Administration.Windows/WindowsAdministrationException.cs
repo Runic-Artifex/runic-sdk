@@ -14,14 +14,19 @@ public enum AdministrationErrorCategory
     AccessDenied = 1,
     /// <summary>The named target, such as a service, share, file, directory object, task or WMI instance, does not exist.</summary>
     NotFound = 2,
-    /// <summary>The target machine, endpoint or a required component (such as GPMC or a WMI provider) is unavailable.</summary>
+    /// <summary>The target machine, endpoint or service is unreachable or not running.</summary>
+    /// <remarks>A component that is not installed is <see cref="NotInstalled"/>.</remarks>
     Unavailable = 3,
     /// <summary>The requested operation conflicts with current state.</summary>
     Conflict = 4,
     /// <summary>Windows returned invalid or unsupported data.</summary>
     InvalidData = 5,
     /// <summary>A native operation failed for a reason no other category describes.</summary>
-    NativeFailure = 6
+    NativeFailure = 6,
+    /// <summary>A required component is not installed or registered, such as the Group Policy Management Console
+    /// (class not registered) or a WMI provider (missing namespace or class).</summary>
+    /// <remarks>Distinct from <see cref="Unavailable"/>, which means the component is installed but cannot be reached.</remarks>
+    NotInstalled = 7
 }
 
 /// <summary>The domain defining a native error number.</summary>

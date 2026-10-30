@@ -137,9 +137,12 @@ using Runic.Platform.Administration.Windows.SystemInformation;
 using Runic.Platform.Administration.Windows.Networks;
 
 var domains = new WindowsDomainClient();
-Console.WriteLine(await domains.GetMembershipAsync());
-// Explicit discovery on a domain fixture:
+var membership = await domains.GetMembershipAsync();
+// Name is the flat (NetBIOS) name; DnsDomainName and ForestName are null outside a domain.
+Console.WriteLine($"{membership.Name} {membership.DnsDomainName} {membership.ForestName}");
+// Explicit discovery on a domain fixture, with DNS names or the controller's NetBIOS name:
 // Console.WriteLine(await domains.DiscoverControllerAsync("example.test"));
+// Console.WriteLine((await domains.DiscoverControllerAsync("example.test", false, true, DomainControllerNameFormat.Flat)).Name);
 var system = new WindowsSystemInformationClient();
 Console.WriteLine(await system.GetOperatingSystemNameAsync());
 Console.WriteLine(system.GetOperatingSystem());
@@ -214,5 +217,5 @@ On the domain fixture, use GUID identities with BackupAsync, ImportAsync,
 RestoreAsync and GenerateReportAsync. Select the exact backup GUID/directory;
 the library does not choose one. Inspect the outcome's messages as well as its value.
 Link and permission methods act on explicit scopes/trustees. Inherited/custom
-permissions remain visible; removal of a trustee is explicit. Missing GPMC is an
-Unavailable prerequisite failure, not an empty domain.
+permissions remain visible; removal of a trustee is explicit. Missing GPMC is a
+NotInstalled prerequisite failure, not an empty domain.
