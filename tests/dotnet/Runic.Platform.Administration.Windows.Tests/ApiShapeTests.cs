@@ -4,6 +4,7 @@ using System.Net.Sockets;
 using System.Diagnostics.CodeAnalysis;
 using System.Reflection;
 using System.Runtime.Versioning;
+using Runic.Platform.Administration.Windows.Accounts;
 using Runic.Platform.Administration.Windows.DirectoryServices;
 using Runic.Platform.Administration.Windows.Dns;
 using Runic.Platform.Administration.Windows.Firewall;
@@ -74,9 +75,37 @@ internal sealed class ApiShapeTests
             "A class-not-registered HRESULT must be NotInstalled and keep its code.");
     }
 
+    // sdk#738: "already a member" and "not a member" are results; other statuses keep their native identity.
+    [Test]
+    public void LocalGroupMembershipStatusesAreResults()
+    {
+        Check(WindowsLocalGroupClient.MembershipResult(0, add: true) && WindowsLocalGroupClient.MembershipResult(0, add: false), "Success must be true.");
+        Check(!WindowsLocalGroupClient.MembershipResult(1378, add: true), "ERROR_MEMBER_IN_ALIAS must be a false add.");
+        Check(!WindowsLocalGroupClient.MembershipResult(1377, add: false), "ERROR_MEMBER_NOT_IN_ALIAS must be a false removal.");
+        foreach (var (status, add, category) in new[] { (1377u, true, AdministrationErrorCategory.NativeFailure), (1378u, false, AdministrationErrorCategory.NativeFailure),
+            (2220u, true, AdministrationErrorCategory.NotFound), (1376u, false, AdministrationErrorCategory.NotFound), (1387u, true, AdministrationErrorCategory.NotFound),
+            (1332u, true, AdministrationErrorCategory.NotFound), (1388u, true, AdministrationErrorCategory.InvalidData), (5u, true, AdministrationErrorCategory.AccessDenied) })
+        {
+            try { _ = WindowsLocalGroupClient.MembershipResult(status, add); throw new InvalidOperationException($"Status {status} was a result."); }
+            catch (WindowsAdministrationException error)
+            {
+                Check(error.Category == category && error.NativeErrorCode == (int)status && error.NativeErrorDomain == NativeErrorDomain.Win32,
+                    $"Status {status} must be {category}, not {error.Category}.");
+            }
+        }
+        Check(new AccountReference.Name(@"EXAMPLE\Domain Admins") == new AccountReference.Name(@"EXAMPLE\Domain Admins"), "Account names must compare by value.");
+        WindowsLocalGroupClient.Validate(new AccountReference.Name("Administrators"), "group");
+        foreach (var invalid in new AccountReference[] { new AccountReference.Name(""), new AccountReference.Name("a\0b"), new AccountReference.Sid(null!) })
+        {
+            try { WindowsLocalGroupClient.Validate(invalid, "group"); throw new InvalidOperationException("An invalid account reference was accepted: " + invalid); }
+            catch (ArgumentException) { }
+        }
+    }
+
     [Test]
     public void RemoteClientsExposeOnlyCancellableAsyncOperations()
     {
+        CheckAsyncOnly(typeof(WindowsLocalGroupClient));
         CheckAsyncOnly(typeof(WindowsServiceClient));
         CheckAsyncOnly(typeof(WindowsShareClient));
         CheckAsyncOnly(typeof(WindowsDomainClient));

@@ -1,5 +1,7 @@
 using System.Runtime.Versioning;
 using Runic.Platform.Administration.Windows.GroupPolicy;
+using Runic.Platform.Administration.Windows.Accounts;
+using System.Security.Principal;
 using System.Collections.Immutable;
 using Runic.Platform.Administration.Windows.Internal;
 using Runic.Platform.Administration.Windows.DirectoryServices;
@@ -168,13 +170,61 @@ internal sealed class NativeTests
         Console.WriteLine($"PASS Firewall rules of one name deleted together; local policy state {state}.");
     }
 
-    private static void Netsh(string arguments, bool ignoreExitCode = false)
+    private static void Netsh(string arguments, bool ignoreExitCode = false) => Run("netsh", arguments, ignoreExitCode);
+
+    private static void Run(string program, string arguments, bool ignoreExitCode = false)
     {
-        using var process = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("netsh", arguments)
-        { UseShellExecute = false, RedirectStandardOutput = true }) ?? throw new InvalidOperationException("netsh did not start.");
+        using var process = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(program, arguments)
+        { UseShellExecute = false, RedirectStandardOutput = true }) ?? throw new InvalidOperationException(program + " did not start.");
         var output = process.StandardOutput.ReadToEnd();
         process.WaitForExit();
-        Check(ignoreExitCode || process.ExitCode == 0, $"netsh {arguments} failed ({process.ExitCode}): {output}");
+        Check(ignoreExitCode || process.ExitCode == 0, $"{program} {arguments} failed ({process.ExitCode}): {output}");
+    }
+
+    // sdk#738: groups by well-known SID, independent of the UI language.
+    [Test]
+    public async Task CheckLocalGroupsAsync()
+    {
+        var client = new WindowsLocalGroupClient();
+        var administrators = new AccountReference.Sid(new SecurityIdentifier(WellKnownSidType.BuiltinAdministratorsSid, null));
+        var name = await client.GetGroupNameAsync(administrators);
+        var expected = administrators.Value.Translate(typeof(NTAccount)).Value;
+        Check(expected.EndsWith(@"\" + name, StringComparison.OrdinalIgnoreCase), $"Administrators resolved to {name}, not {expected}.");
+        var members = await client.EnumerateMembersAsync(administrators);
+        Check(members.Length > 0, "Administrators has no members.");
+        Check((await client.EnumerateMembersAsync(new AccountReference.Name(name))).SequenceEqual(members), "Name and SID address different groups.");
+        try { _ = await client.EnumerateMembersAsync(new AccountReference.Name("RunicMissing-" + Guid.NewGuid().ToString("N")[..8])); throw new InvalidOperationException("A missing group had members."); }
+        catch (WindowsAdministrationException error) { Check(error.Category == AdministrationErrorCategory.NotFound, $"A missing group must be NotFound, not {error.Category} ({error.NativeErrorCode})."); }
+        Console.WriteLine($"PASS Local group by well-known SID ({name}), {members.Length} members, missing group NotFound.");
+    }
+
+    // A temporary local group, so membership changes touch nothing else; its member is the well-known Authenticated Users.
+    [Test]
+    public async Task CheckLocalGroupMembershipChangesAsync()
+    {
+        if (!Environment.IsPrivilegedProcess) Skip.Test("Changing local groups requires an elevated process.");
+        var group = "RunicTest-" + Guid.NewGuid().ToString("N")[..8];
+        Run("net", $"localgroup {group} /add");
+        try
+        {
+            var client = new WindowsLocalGroupClient();
+            var reference = new AccountReference.Name(group);
+            var sid = new SecurityIdentifier(WellKnownSidType.AuthenticatedUserSid, null);
+            var bySid = new AccountReference.Sid(sid);
+            var byName = new AccountReference.Name(sid.Translate(typeof(NTAccount)).Value);
+            Check((await client.EnumerateMembersAsync(reference)).IsEmpty, "A new group has members.");
+            Check(await client.AddMemberAsync(reference, bySid), "The first add did not add.");
+            Check(!await client.AddMemberAsync(reference, byName), "Adding a member twice must report already a member.");
+            var members = await client.EnumerateMembersAsync(reference);
+            Check(members.Length == 1 && members[0].Sid == sid && members[0].Kind == AccountKind.WellKnownGroup
+                && string.Equals(members[0].Name, byName.Value, StringComparison.OrdinalIgnoreCase), "Unexpected members: " + string.Join(", ", members));
+            Check(await client.RemoveMemberAsync(reference, byName), "The removal did not remove.");
+            Check(!await client.RemoveMemberAsync(reference, bySid), "Removing a non-member must report not a member.");
+            try { await client.AddMemberAsync(reference, new AccountReference.Name(@"RunicMissing\nobody-" + group)); throw new InvalidOperationException("A missing account was added."); }
+            catch (WindowsAdministrationException error) { Check(error.Category == AdministrationErrorCategory.NotFound, $"A missing member must be NotFound, not {error.Category} ({error.NativeErrorCode})."); }
+        }
+        finally { Run("net", $"localgroup {group} /delete", ignoreExitCode: true); }
+        Console.WriteLine("PASS Local group membership: added, already a member, enumerated, removed, not a member.");
     }
 
     [Test]

@@ -26,3 +26,74 @@ Runic.Platform.Administration.Windows.Firewall.FirewallClientOptions.<Clone>$() 
 Runic.Platform.Administration.Windows.Firewall.FirewallClientOptions.Equals(Runic.Platform.Administration.Windows.Firewall.FirewallClientOptions? other) -> bool
 static Runic.Platform.Administration.Windows.Firewall.FirewallClientOptions.operator !=(Runic.Platform.Administration.Windows.Firewall.FirewallClientOptions? left, Runic.Platform.Administration.Windows.Firewall.FirewallClientOptions? right) -> bool
 static Runic.Platform.Administration.Windows.Firewall.FirewallClientOptions.operator ==(Runic.Platform.Administration.Windows.Firewall.FirewallClientOptions? left, Runic.Platform.Administration.Windows.Firewall.FirewallClientOptions? right) -> bool
+abstract Runic.Platform.Administration.Windows.Accounts.AccountReference.<Clone>$() -> Runic.Platform.Administration.Windows.Accounts.AccountReference!
+override Runic.Platform.Administration.Windows.Accounts.AccountReference.Equals(object? obj) -> bool
+override Runic.Platform.Administration.Windows.Accounts.AccountReference.GetHashCode() -> int
+override Runic.Platform.Administration.Windows.Accounts.AccountReference.Name.<Clone>$() -> Runic.Platform.Administration.Windows.Accounts.AccountReference.Name!
+override Runic.Platform.Administration.Windows.Accounts.AccountReference.Name.Equals(object? obj) -> bool
+override Runic.Platform.Administration.Windows.Accounts.AccountReference.Name.GetHashCode() -> int
+override Runic.Platform.Administration.Windows.Accounts.AccountReference.Name.ToString() -> string!
+override Runic.Platform.Administration.Windows.Accounts.AccountReference.Sid.<Clone>$() -> Runic.Platform.Administration.Windows.Accounts.AccountReference.Sid!
+override Runic.Platform.Administration.Windows.Accounts.AccountReference.Sid.Equals(object? obj) -> bool
+override Runic.Platform.Administration.Windows.Accounts.AccountReference.Sid.GetHashCode() -> int
+override Runic.Platform.Administration.Windows.Accounts.AccountReference.Sid.ToString() -> string!
+override Runic.Platform.Administration.Windows.Accounts.AccountReference.ToString() -> string!
+override Runic.Platform.Administration.Windows.Accounts.LocalGroupMember.Equals(object? obj) -> bool
+override Runic.Platform.Administration.Windows.Accounts.LocalGroupMember.GetHashCode() -> int
+override Runic.Platform.Administration.Windows.Accounts.LocalGroupMember.ToString() -> string!
+override sealed Runic.Platform.Administration.Windows.Accounts.AccountReference.Name.Equals(Runic.Platform.Administration.Windows.Accounts.AccountReference? other) -> bool
+override sealed Runic.Platform.Administration.Windows.Accounts.AccountReference.Sid.Equals(Runic.Platform.Administration.Windows.Accounts.AccountReference? other) -> bool
+Runic.Platform.Administration.Windows.Accounts.AccountKind
+Runic.Platform.Administration.Windows.Accounts.AccountKind.Alias = 4 -> Runic.Platform.Administration.Windows.Accounts.AccountKind
+Runic.Platform.Administration.Windows.Accounts.AccountKind.Computer = 9 -> Runic.Platform.Administration.Windows.Accounts.AccountKind
+Runic.Platform.Administration.Windows.Accounts.AccountKind.DeletedAccount = 6 -> Runic.Platform.Administration.Windows.Accounts.AccountKind
+Runic.Platform.Administration.Windows.Accounts.AccountKind.Domain = 3 -> Runic.Platform.Administration.Windows.Accounts.AccountKind
+Runic.Platform.Administration.Windows.Accounts.AccountKind.Group = 2 -> Runic.Platform.Administration.Windows.Accounts.AccountKind
+Runic.Platform.Administration.Windows.Accounts.AccountKind.Invalid = 7 -> Runic.Platform.Administration.Windows.Accounts.AccountKind
+Runic.Platform.Administration.Windows.Accounts.AccountKind.Label = 10 -> Runic.Platform.Administration.Windows.Accounts.AccountKind
+Runic.Platform.Administration.Windows.Accounts.AccountKind.LogonSession = 11 -> Runic.Platform.Administration.Windows.Accounts.AccountKind
+Runic.Platform.Administration.Windows.Accounts.AccountKind.Unknown = 8 -> Runic.Platform.Administration.Windows.Accounts.AccountKind
+Runic.Platform.Administration.Windows.Accounts.AccountKind.User = 1 -> Runic.Platform.Administration.Windows.Accounts.AccountKind
+Runic.Platform.Administration.Windows.Accounts.AccountKind.WellKnownGroup = 5 -> Runic.Platform.Administration.Windows.Accounts.AccountKind
+Runic.Platform.Administration.Windows.Accounts.AccountReference
+Runic.Platform.Administration.Windows.Accounts.AccountReference.AccountReference(Runic.Platform.Administration.Windows.Accounts.AccountReference! original) -> void
+Runic.Platform.Administration.Windows.Accounts.AccountReference.Name
+Runic.Platform.Administration.Windows.Accounts.AccountReference.Name.Deconstruct(out string! Value) -> void
+Runic.Platform.Administration.Windows.Accounts.AccountReference.Name.Equals(Runic.Platform.Administration.Windows.Accounts.AccountReference.Name? other) -> bool
+Runic.Platform.Administration.Windows.Accounts.AccountReference.Name.Name(string! Value) -> void
+Runic.Platform.Administration.Windows.Accounts.AccountReference.Name.Value.get -> string!
+Runic.Platform.Administration.Windows.Accounts.AccountReference.Name.Value.init -> void
+Runic.Platform.Administration.Windows.Accounts.AccountReference.Sid
+Runic.Platform.Administration.Windows.Accounts.AccountReference.Sid.Deconstruct(out System.Security.Principal.SecurityIdentifier! Value) -> void
+Runic.Platform.Administration.Windows.Accounts.AccountReference.Sid.Equals(Runic.Platform.Administration.Windows.Accounts.AccountReference.Sid? other) -> bool
+Runic.Platform.Administration.Windows.Accounts.AccountReference.Sid.Sid(System.Security.Principal.SecurityIdentifier! Value) -> void
+Runic.Platform.Administration.Windows.Accounts.AccountReference.Sid.Value.get -> System.Security.Principal.SecurityIdentifier!
+Runic.Platform.Administration.Windows.Accounts.AccountReference.Sid.Value.init -> void
+Runic.Platform.Administration.Windows.Accounts.LocalGroupMember
+Runic.Platform.Administration.Windows.Accounts.LocalGroupMember.<Clone>$() -> Runic.Platform.Administration.Windows.Accounts.LocalGroupMember!
+Runic.Platform.Administration.Windows.Accounts.LocalGroupMember.Deconstruct(out System.Security.Principal.SecurityIdentifier! Sid, out string! Name, out Runic.Platform.Administration.Windows.Accounts.AccountKind Kind) -> void
+Runic.Platform.Administration.Windows.Accounts.LocalGroupMember.Equals(Runic.Platform.Administration.Windows.Accounts.LocalGroupMember? other) -> bool
+Runic.Platform.Administration.Windows.Accounts.LocalGroupMember.Kind.get -> Runic.Platform.Administration.Windows.Accounts.AccountKind
+Runic.Platform.Administration.Windows.Accounts.LocalGroupMember.Kind.init -> void
+Runic.Platform.Administration.Windows.Accounts.LocalGroupMember.LocalGroupMember(System.Security.Principal.SecurityIdentifier! Sid, string! Name, Runic.Platform.Administration.Windows.Accounts.AccountKind Kind) -> void
+Runic.Platform.Administration.Windows.Accounts.LocalGroupMember.Name.get -> string!
+Runic.Platform.Administration.Windows.Accounts.LocalGroupMember.Name.init -> void
+Runic.Platform.Administration.Windows.Accounts.LocalGroupMember.Sid.get -> System.Security.Principal.SecurityIdentifier!
+Runic.Platform.Administration.Windows.Accounts.LocalGroupMember.Sid.init -> void
+Runic.Platform.Administration.Windows.Accounts.WindowsLocalGroupClient
+Runic.Platform.Administration.Windows.Accounts.WindowsLocalGroupClient.AddMemberAsync(Runic.Platform.Administration.Windows.Accounts.AccountReference! group, Runic.Platform.Administration.Windows.Accounts.AccountReference! member, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<bool>!
+Runic.Platform.Administration.Windows.Accounts.WindowsLocalGroupClient.EnumerateMembersAsync(Runic.Platform.Administration.Windows.Accounts.AccountReference! group, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<System.Collections.Immutable.ImmutableArray<Runic.Platform.Administration.Windows.Accounts.LocalGroupMember!>>!
+Runic.Platform.Administration.Windows.Accounts.WindowsLocalGroupClient.GetGroupNameAsync(Runic.Platform.Administration.Windows.Accounts.AccountReference! group, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<string!>!
+Runic.Platform.Administration.Windows.Accounts.WindowsLocalGroupClient.RemoveMemberAsync(Runic.Platform.Administration.Windows.Accounts.AccountReference! group, Runic.Platform.Administration.Windows.Accounts.AccountReference! member, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<bool>!
+Runic.Platform.Administration.Windows.Accounts.WindowsLocalGroupClient.WindowsLocalGroupClient(string? machineName = null) -> void
+static Runic.Platform.Administration.Windows.Accounts.AccountReference.Name.operator !=(Runic.Platform.Administration.Windows.Accounts.AccountReference.Name? left, Runic.Platform.Administration.Windows.Accounts.AccountReference.Name? right) -> bool
+static Runic.Platform.Administration.Windows.Accounts.AccountReference.Name.operator ==(Runic.Platform.Administration.Windows.Accounts.AccountReference.Name? left, Runic.Platform.Administration.Windows.Accounts.AccountReference.Name? right) -> bool
+static Runic.Platform.Administration.Windows.Accounts.AccountReference.operator !=(Runic.Platform.Administration.Windows.Accounts.AccountReference? left, Runic.Platform.Administration.Windows.Accounts.AccountReference? right) -> bool
+static Runic.Platform.Administration.Windows.Accounts.AccountReference.operator ==(Runic.Platform.Administration.Windows.Accounts.AccountReference? left, Runic.Platform.Administration.Windows.Accounts.AccountReference? right) -> bool
+static Runic.Platform.Administration.Windows.Accounts.AccountReference.Sid.operator !=(Runic.Platform.Administration.Windows.Accounts.AccountReference.Sid? left, Runic.Platform.Administration.Windows.Accounts.AccountReference.Sid? right) -> bool
+static Runic.Platform.Administration.Windows.Accounts.AccountReference.Sid.operator ==(Runic.Platform.Administration.Windows.Accounts.AccountReference.Sid? left, Runic.Platform.Administration.Windows.Accounts.AccountReference.Sid? right) -> bool
+static Runic.Platform.Administration.Windows.Accounts.LocalGroupMember.operator !=(Runic.Platform.Administration.Windows.Accounts.LocalGroupMember? left, Runic.Platform.Administration.Windows.Accounts.LocalGroupMember? right) -> bool
+static Runic.Platform.Administration.Windows.Accounts.LocalGroupMember.operator ==(Runic.Platform.Administration.Windows.Accounts.LocalGroupMember? left, Runic.Platform.Administration.Windows.Accounts.LocalGroupMember? right) -> bool
+virtual Runic.Platform.Administration.Windows.Accounts.AccountReference.EqualityContract.get -> System.Type!
+virtual Runic.Platform.Administration.Windows.Accounts.AccountReference.Equals(Runic.Platform.Administration.Windows.Accounts.AccountReference? other) -> bool
+virtual Runic.Platform.Administration.Windows.Accounts.AccountReference.PrintMembers(System.Text.StringBuilder! builder) -> bool
