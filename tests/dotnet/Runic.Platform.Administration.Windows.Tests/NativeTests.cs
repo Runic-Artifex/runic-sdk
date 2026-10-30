@@ -435,7 +435,7 @@ internal sealed class NativeTests
         using (var windowless = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(Path.Combine(Environment.SystemDirectory, "PING.EXE"), "-n 120 127.0.0.1")
         { UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true })!)
         {
-            Check(client.FindByImagePath(windowless.MainModule!.FileName).Any(row => row.ProcessId == windowless.Id), "FindByImagePath missed the child.");
+            Check(client.FindByImagePath(Path.Combine(Environment.SystemDirectory, "PING.EXE")).Any(row => row.ProcessId == windowless.Id), "FindByImagePath missed the child.");
             Check(await client.CloseOrKillAsync(windowless.Id, TimeSpan.FromSeconds(30)) == ProcessCloseOutcome.Killed, "A windowless process was not killed.");
             Check(windowless.HasExited && windowless.ExitCode == 1, "The killed process did not exit with 1.");
             Check(await client.CloseOrKillAsync(windowless.Id, TimeSpan.FromSeconds(1)) == ProcessCloseOutcome.NotRunning, "An exited process was running.");

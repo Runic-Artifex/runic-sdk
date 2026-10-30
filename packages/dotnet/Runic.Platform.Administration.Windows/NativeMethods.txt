@@ -120,3 +120,6 @@ WTSQuerySessionInformationW
 WTSFreeMemory
 EnumDependentServicesW
 ENUM_SERVICE_STATUSW
+IsWindowVisible
+GetWindow
+GetClassNameW

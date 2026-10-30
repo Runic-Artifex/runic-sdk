@@ -74,10 +74,15 @@ public sealed partial class WindowsServiceClient
     /// service's own stop. Restart the returned dependents in reverse order to restore them. A dependent that starts
     /// again meanwhile makes the final stop fail with 1051. Not transactional: dependents stopped before a failure stay
     /// stopped.</remarks>
-    public async Task<ImmutableArray<string>> StopWithDependentsAsync(string name, TimeSpan timeout, CancellationToken cancellationToken = default)
+    public Task<ImmutableArray<string>> StopWithDependentsAsync(string name, TimeSpan timeout, CancellationToken cancellationToken = default)
     {
         NativeError.Text(name, nameof(name));
         if (timeout <= TimeSpan.Zero || timeout > TimeSpan.FromDays(1)) throw new ArgumentOutOfRangeException(nameof(timeout));
+        return StopWithDependents(name, timeout, cancellationToken);
+    }
+
+    private async Task<ImmutableArray<string>> StopWithDependents(string name, TimeSpan timeout, CancellationToken cancellationToken)
+    {
         var clock = Stopwatch.StartNew();
         var dependents = await NativeWork.RunAsync(() => ActiveDependents(name), cancellationToken).ConfigureAwait(false);
         foreach (var dependent in dependents)

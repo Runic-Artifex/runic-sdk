@@ -150,9 +150,11 @@ membership.
   Process observations are snapshots: a process may disappear after enumeration,
   and Windows reuses process IDs. `ProcessSnapshot.ImagePath` is the full path, or
   null when Windows denies access. `CloseOrKillAsync(id, timeout)` posts `WM_CLOSE`
-  to the process's top-level windows (as `taskkill` without `/F`), waits, and
-  terminates it otherwise, reporting `ProcessCloseOutcome`; a process without
-  windows is terminated at once. `TerminateAsync` is `taskkill /F`.
+  to the process's visible, unowned top-level windows (never to a console window,
+  which would signal every process on that console), waits, and terminates it
+  otherwise, reporting `ProcessCloseOutcome`; a process without such a window is
+  terminated at once. `TerminateAsync` is `taskkill /F`; once termination is
+  requested, its result is returned even if cancellation is requested.
   `StartAndWaitAsync` returns the exit code; `Elevated` starts through the shell's
   `runas` verb. Cancellation stops waiting and never kills or closes anything.
 - `GetActiveConsoleUser()` returns the user signed in at the physical console, also

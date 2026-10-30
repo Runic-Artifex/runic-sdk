@@ -6,6 +6,7 @@ using Microsoft.Win32.SafeHandles;
 using Windows.Win32;
 using Windows.Win32.Foundation;
 using Windows.Win32.System.Threading;
+using Windows.Win32.UI.WindowsAndMessaging;
 using Runic.Platform.Administration.Windows.Internal;
 
 namespace Runic.Platform.Administration.Windows.Processes;
@@ -40,9 +41,10 @@ public sealed partial class WindowsProcessClient
     private const uint StillRunning = 258; // WAIT_TIMEOUT
     private static readonly TimeSpan TerminationWait = TimeSpan.FromSeconds(10);
 
-    /// <summary>Asks a process to close by posting <c>WM_CLOSE</c> to its top-level windows, as <c>taskkill</c> without
-    /// <c>/F</c> does, waits up to <paramref name="timeout"/> for it to exit, and terminates it otherwise.</summary>
-    /// <remarks>A process without top-level windows, such as a console program or a service, cannot be asked and is
+    /// <summary>Asks a process to close by posting <c>WM_CLOSE</c> to its visible, unowned top-level windows (the windows
+    /// a user could close), waits up to <paramref name="timeout"/> for it to exit, and terminates it otherwise.</summary>
+    /// <remarks>Hidden helper windows and console windows are not asked: closing a console window would signal every
+    /// process attached to that console. A process without such a window, such as a console program or a service, is
     /// terminated at once. Termination uses exit code 1. A process that does not exit within 10 seconds of termination
     /// throws <see cref="TimeoutException"/>. Cancellation stops waiting; it never kills the process.</remarks>
     /// <exception cref="ArgumentOutOfRangeException"><paramref name="processId"/> is negative, or
@@ -56,7 +58,8 @@ public sealed partial class WindowsProcessClient
 
     /// <summary>Terminates a process (<c>TerminateProcess</c>, as <c>taskkill /F /PID</c>) and waits for it to exit.
     /// Returns false when it was not running.</summary>
-    /// <remarks>A process that does not exit within 10 seconds throws <see cref="TimeoutException"/>.</remarks>
+    /// <remarks>A process that does not exit within 10 seconds throws <see cref="TimeoutException"/>. Once termination
+    /// has been requested, cancellation no longer applies and the result is returned.</remarks>
     /// <exception cref="ArgumentOutOfRangeException"><paramref name="processId"/> is negative.</exception>
     public Task<bool> TerminateAsync(int processId, int exitCode = 1, CancellationToken cancellationToken = default)
     {
@@ -65,7 +68,7 @@ public sealed partial class WindowsProcessClient
         {
             using var process = OpenForControl(processId);
             if (process is null || Exited(process, TimeSpan.Zero, cancellationToken)) return false;
-            Terminate(process, unchecked((uint)exitCode), cancellationToken);
+            Terminate(process, unchecked((uint)exitCode));
             return true;
         }, cancellationToken);
     }
@@ -143,17 +146,18 @@ public sealed partial class WindowsProcessClient
         }
     }
 
-    private static void Terminate(SafeFileHandle process, uint exitCode, CancellationToken cancellationToken)
+    // Once TerminateProcess is called, its outcome is returned: the wait for the exit does not observe cancellation.
+    private static void Terminate(SafeFileHandle process, uint exitCode)
     {
         if (!OperatingSystem.IsWindowsVersionAtLeast(6, 1)) throw new PlatformNotSupportedException("Windows 7 or later is required.");
         if (!PInvoke.TerminateProcess(process, exitCode))
         {
             var error = Marshal.GetLastPInvokeError();
             // A process that is already exiting refuses termination with access denied.
-            if (!Exited(process, TimeSpan.Zero, cancellationToken)) throw NativeError.Win32("Terminate process", error);
+            if (!Exited(process, TimeSpan.Zero, CancellationToken.None)) throw NativeError.Win32("Terminate process", error);
             return;
         }
-        if (!Exited(process, TerminationWait, cancellationToken)) throw new TimeoutException("The process did not exit after it was terminated.");
+        if (!Exited(process, TerminationWait, CancellationToken.None)) throw new TimeoutException("The process did not exit after it was terminated.");
     }
 
     private static ProcessCloseOutcome CloseOrKill(int processId, TimeSpan timeout, CancellationToken cancellationToken)
@@ -162,7 +166,7 @@ public sealed partial class WindowsProcessClient
         if (process is null || Exited(process, TimeSpan.Zero, cancellationToken)) return ProcessCloseOutcome.NotRunning;
         if (PostClose(processId) > 0 && Exited(process, timeout, cancellationToken)) return ProcessCloseOutcome.Closed;
         cancellationToken.ThrowIfCancellationRequested();
-        Terminate(process, 1, cancellationToken);
+        Terminate(process, 1);
         return ProcessCloseOutcome.Killed;
     }
 
@@ -172,7 +176,7 @@ public sealed partial class WindowsProcessClient
         internal int Posted;
     }
 
-    // Posts WM_CLOSE to every top-level window of the process; returns how many were asked.
+    // Posts WM_CLOSE to the visible, unowned top-level windows of the process; returns how many were asked.
     private static unsafe int PostClose(int processId)
     {
         if (!OperatingSystem.IsWindowsVersionAtLeast(6, 1)) throw new PlatformNotSupportedException("Windows 7 or later is required.");
@@ -189,8 +193,23 @@ public sealed partial class WindowsProcessClient
         var request = (CloseRequest*)context.Value;
         uint owner;
         if (OperatingSystem.IsWindowsVersionAtLeast(5) && PInvoke.GetWindowThreadProcessId(window, &owner) != 0 && owner == request->ProcessId
+            && PInvoke.IsWindowVisible(window) && PInvoke.GetWindow(window, GET_WINDOW_CMD.GW_OWNER) == HWND.Null && !IsConsoleWindow(window)
             && PInvoke.PostMessage(window, 0x0010, default, default))
             request->Posted++;
         return true;
+    }
+
+    // conhost assigns its console window to the client process; WM_CLOSE there sends CTRL_CLOSE_EVENT to every
+    // process attached to the console.
+    [System.Runtime.Versioning.SupportedOSPlatform("windows5.0")]
+    private static unsafe bool IsConsoleWindow(HWND window)
+    {
+        Span<char> name = stackalloc char[64];
+        fixed (char* text = name)
+        {
+            var length = PInvoke.GetClassName(window, new PWSTR(text), name.Length);
+            var value = name[..Math.Max(length, 0)];
+            return value.SequenceEqual("ConsoleWindowClass") || value.SequenceEqual("PseudoConsoleWindow");
+        }
     }
 }
