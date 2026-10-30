@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useReducer, useSyncExternalStore } from "react";
 import type { ViewClient, ViewConnector } from "@runic-artifex/views";
-import { isViewClient } from "@runic-artifex/views/bindings";
+import { checkKeepAlive, isViewClient } from "@runic-artifex/views/bindings";
 
 type SuspendedConnection = {
   status: "pending" | "ready" | "failed";
@@ -10,6 +10,8 @@ type SuspendedConnection = {
   users: number;
   /** The largest `releaseTimeout` of the components that rendered this entry. */
   releaseTimeout: number;
+  /** The largest `keepAlive` of the components that used this entry. */
+  keepAlive: number;
   timer?: ReturnType<typeof setTimeout> | undefined;
 };
 
@@ -49,7 +51,7 @@ function suspendedConnection(connector: ViewConnector<ViewClient>, releaseTimeou
     }
     return existing;
   }
-  const entry: SuspendedConnection = { status: "pending", promise: Promise.resolve(), users: 0, releaseTimeout };
+  const entry: SuspendedConnection = { status: "pending", promise: Promise.resolve(), users: 0, releaseTimeout, keepAlive: 0 };
   entry.promise = Promise.resolve().then(() => connector.connect()).then(client => {
     entry.status = "ready";
     entry.client = client;
@@ -87,6 +89,12 @@ export interface SuspenseViewOptions {
    * `RangeError`.
    */
   readonly releaseTimeout?: number;
+  /**
+   * Milliseconds the client stays connected after the last component that used it unmounted, so a component that
+   * mounts again (StrictMode, Fast Refresh, `<Activity>`, A→B→A navigation) renders at once instead of suspending. A
+   * whole number from 0 to 2147483647; `0` disposes at once. Defaults to 2000.
+   */
+  readonly keepAlive?: number;
 }
 
 export interface SuspenseViewHandle<TClient extends ViewClient> {
@@ -104,7 +112,8 @@ export interface SuspenseViewHandle<TClient extends ViewClient> {
  * mounted, is released after `options.releaseTimeout` (ten seconds by default).
  *
  * Components that pass a reference with the same `connect` function share one
- * client, which is disposed after the last of them unmounts. Pass a stable
+ * client, which is disposed `options.keepAlive` milliseconds (2000 by default)
+ * after the last of them unmounts. Pass a stable
  * function such as a generated page reference or `{ connect: connectWorkspace }`:
  * a function recreated on every render never resolves. An already connected
  * client is observed and left to its owner.
@@ -114,6 +123,7 @@ export function useSuspenseView<TClient extends ViewClient>(
   options: SuspenseViewOptions = {},
 ): SuspenseViewHandle<TClient> {
   const releaseTimeout = checkReleaseTimeout(options.releaseTimeout);
+  const keepAlive = checkKeepAlive(options.keepAlive, "useSuspenseView's keepAlive");
   const connector = isViewClient(source) ? undefined : source;
   const entry = connector ? suspendedConnection(connector, releaseTimeout) : undefined;
   const [, refresh] = useReducer((count: number) => count + 1, 0);
@@ -123,12 +133,13 @@ export function useSuspenseView<TClient extends ViewClient>(
     // The connection was released before this component committed: connect again.
     if (suspended.get(key) !== entry) { refresh(); return; }
     entry.users++;
+    entry.keepAlive = Math.max(entry.keepAlive, keepAlive);
     clearTimeout(entry.timer);
     return () => {
       entry.users--;
-      if (entry.users === 0) releaseLater(key, entry, 0);
+      if (entry.users === 0) releaseLater(key, entry, entry.keepAlive);
     };
-  }, [entry]);
+  }, [entry, keepAlive]);
   if (entry?.status === "pending") throw entry.promise;
   if (entry?.status === "failed") throw entry.error;
   const client = (entry ? entry.client : source) as TClient;

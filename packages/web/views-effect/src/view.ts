@@ -1,5 +1,5 @@
 import {
-  isBridgeOutcome, type BridgeOperation, type BridgeOperationStatusOf, type BridgeOutcome, type BridgeOutcomeFailure,
+  isBridgeOutcome, onBridgeConnection, type BridgeConnectionOptions, type BridgeConnectionState, type BridgeOperation, type BridgeOperationStatusOf, type BridgeOutcome, type BridgeOutcomeFailure,
   type CollectionViewport, type CollectionViewportController, type ViewClient, type ViewConnector,
 } from "@runic-artifex/views";
 import type * as Context from "effect/Context";
@@ -81,6 +81,22 @@ export function states<S>(client: ViewClient<S>, options: StatesOptions = {}): S
     Effect.sync(() => client.subscribe(state => { Queue.offerUnsafe(queue, state); })),
     unsubscribe => Effect.sync(unsubscribe),
   ), { bufferSize: options.bufferSize ?? 1, strategy: "sliding" });
+}
+
+/**
+ * The page's connection to its .NET host: the current `BridgeConnectionState` (`connecting`, `connected`,
+ * `reconnecting` or `lost`), then each change, as `onBridgeConnection` from `@runic-artifex/views` reports it. A slow
+ * consumer skips to the latest state. It never ends on its own; interrupting it unsubscribes.
+ *
+ * ```ts
+ * yield* Effect.forkScoped(Stream.runForEach(connectionStates(), state => Effect.log(`Bridge ${state}`)));
+ * ```
+ */
+export function connectionStates(options: BridgeConnectionOptions = {}): Stream.Stream<BridgeConnectionState> {
+  return Stream.callback<BridgeConnectionState>(queue => Effect.acquireRelease(
+    Effect.sync(() => onBridgeConnection(state => { Queue.offerUnsafe(queue, state); }, options)),
+    unsubscribe => Effect.sync(unsubscribe),
+  ), { bufferSize: 1, strategy: "sliding" });
 }
 
 /**

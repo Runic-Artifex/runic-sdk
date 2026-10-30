@@ -21,6 +21,7 @@ export {
   clientLayer,
   command,
   connect,
+  connectionStates,
   followViewport,
   operation,
   states,
