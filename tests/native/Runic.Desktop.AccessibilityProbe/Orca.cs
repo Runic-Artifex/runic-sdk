@@ -65,7 +65,7 @@ internal sealed class Orca(string logs) : ScreenReader
         _orca = Process.Start(start) ?? throw new InvalidOperationException("Orca did not start.");
 
         // Orca says "Screen reader on." once it listens and speaks. The fixture waits a minute for the probe.
-        var until = DateTime.UtcNow + TimeSpan.FromSeconds(45);
+        var until = DateTime.UtcNow + TestTimeouts.Scale(TimeSpan.FromSeconds(45));
         while (!File.Exists(Spoken) || new FileInfo(Spoken).Length == 0)
         {
             if (_orca.HasExited) throw new InvalidOperationException($"Orca exited with {_orca.ExitCode}; see {output}.");

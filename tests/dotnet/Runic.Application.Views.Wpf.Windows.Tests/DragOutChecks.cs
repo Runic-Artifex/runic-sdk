@@ -56,7 +56,7 @@ internal sealed partial class DragOutChecks
         target.Show();
         try
         {
-            await loaded.Task.WaitAsync(TimeSpan.FromSeconds(10));
+            await loaded.Task.WaitScaledAsync(TimeSpan.FromSeconds(10));
             Program.Check(services.GetSnapshot().Statuses[PlatformCapabilityIds.DragOut] is CapabilityStatus.Available,
                 "The open WPF window's services did not report drags.");
             Program.Check(await Task.Run(async () => await services.StartDragAsync(data)) is PlatformResult<DesktopDragEffects>.Success(DesktopDragEffects.None),
@@ -67,7 +67,7 @@ internal sealed partial class DragOutChecks
             await using var host = await DesktopHost.StartAsync(new()
             {
                 WindowHostFactory = child.CreateWindowHostFactory(),
-                ConnectionTimeout = TimeSpan.FromSeconds(20),
+                ConnectionTimeout = TestTimeouts.Scale(TimeSpan.FromSeconds(20)),
             });
             await using var view = await provider.CreateWpfViewAsync(host, new DesktopSurfaceOptions { Content = new DesktopContent.Html(Page) }, new object());
             await view.OpenAsync();
@@ -127,14 +127,14 @@ internal sealed partial class DragOutChecks
                 Mouse(to.Item1, to.Item2, MouseLeftUp);
             });
             PlatformResult<DesktopDragEffects> result;
-            try { result = await drag.WaitAsync(TimeSpan.FromSeconds(30)); }
+            try { result = await drag.WaitScaledAsync(TimeSpan.FromSeconds(30)); }
             catch (TimeoutException)
             {
                 Mouse((int)drop.X, (int)drop.Y, MouseLeftUp);
-                throw new TimeoutException("The WPF drag out did not end within 30 seconds.");
+                throw new TimeoutException($"The WPF drag out did not end within {TestTimeouts.Scale(TimeSpan.FromSeconds(30)).TotalSeconds:0} seconds.");
             }
             await mover;
-            var paths = await dropped.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            var paths = await dropped.Task.WaitScaledAsync(TimeSpan.FromSeconds(5));
             Program.Check(result is PlatformResult<DesktopDragEffects>.Success(DesktopDragEffects.Copy)
                 && paths.SequenceEqual([file], StringComparer.OrdinalIgnoreCase),
                 $"The WPF drag out ended with {result} and dropped [{string.Join(", ", paths)}].");

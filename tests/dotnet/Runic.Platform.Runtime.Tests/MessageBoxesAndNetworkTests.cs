@@ -156,7 +156,7 @@ internal sealed class MessageBoxesAndNetworkTests
         using (var cancel = new CancellationTokenSource())
         {
             var pending = boxes.ShowAsync(Close, cancel.Token).AsTask();
-            var token = await shown.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            var token = await shown.Task.WaitScaledAsync(TimeSpan.FromSeconds(5));
             cancel.Cancel();
             await Throws<OperationCanceledException>(() => pending);
             Check(token.IsCancellationRequested, "the provider saw the cancellation");
@@ -165,11 +165,11 @@ internal sealed class MessageBoxesAndNetworkTests
         // Stopping the presentation closes a shown box, which reports the owner closed.
         shown = new(TaskCreationOptions.RunContinuationsAsynchronously);
         var open = boxes.ShowAsync(Close).AsTask();
-        var closing = await shown.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        var closing = await shown.Task.WaitScaledAsync(TimeSpan.FromSeconds(5));
         var stopped = lifetime.DisposeAsync().AsTask();
-        Check(await open.WaitAsync(TimeSpan.FromSeconds(5)) is PlatformResult<DesktopMessageBoxButton?>.Unavailable(PlatformUnavailableReason.OwnerClosed)
+        Check(await open.WaitScaledAsync(TimeSpan.FromSeconds(5)) is PlatformResult<DesktopMessageBoxButton?>.Unavailable(PlatformUnavailableReason.OwnerClosed)
             && closing.IsCancellationRequested, "closing the window closes the box");
-        await stopped.WaitAsync(TimeSpan.FromSeconds(5));
+        await stopped.WaitScaledAsync(TimeSpan.FromSeconds(5));
         Check(await boxes.ShowAsync(Close) is PlatformResult<DesktopMessageBoxButton?>.Unavailable(PlatformUnavailableReason.OwnerClosed)
             && boxes.GetSnapshot().Statuses[PlatformCapabilityIds.MessageBoxes] is CapabilityStatus.Unavailable(PlatformUnavailableReason.OwnerClosed),
             "after the window closed");
@@ -227,7 +227,7 @@ internal sealed class MessageBoxesAndNetworkTests
             "no network has no connectivity");
         source.Current = Success(online);
 
-        using var cancel = new CancellationTokenSource(TimeSpan.FromSeconds(8));
+        using var cancel = TestTimeouts.Cancellation(TimeSpan.FromSeconds(8));
         await using var watch = status.WatchAsync(cancel.Token).GetAsyncEnumerator(cancel.Token);
         Check(await Next(watch) == Success(online), "the initial state");
         source.Report(Success(online));
@@ -287,7 +287,7 @@ internal sealed class MessageBoxesAndNetworkTests
 
     private static async Task<PlatformResult<DesktopNetworkState>> Next(IAsyncEnumerator<PlatformResult<DesktopNetworkState>> watch)
     {
-        Check(await watch.MoveNextAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(5)), "the watch ended");
+        Check(await watch.MoveNextAsync().AsTask().WaitScaledAsync(TimeSpan.FromSeconds(5)), "the watch ended");
         return watch.Current;
     }
 

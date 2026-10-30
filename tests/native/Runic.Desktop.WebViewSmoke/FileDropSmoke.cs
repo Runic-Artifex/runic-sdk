@@ -60,7 +60,7 @@ internal static partial class FileDropSmoke
             {
                 await Task.Delay(500);
                 await pointer.DragAsync((85, 85), (420, 170));
-                var drop = await dropped.Task.WaitAsync(TimeSpan.FromSeconds(15));
+                var drop = await dropped.Task.WaitScaledAsync(TimeSpan.FromSeconds(15));
                 if (!drop.Paths.SequenceEqual([file, folder]) || drop.Target != "folder-7")
                     throw new InvalidOperationException($"The drop reported [{string.Join(", ", drop.Paths)}] with target '{drop.Target}'.");
                 var pageDrops = await surface.ExecuteJavaScriptAsync("return String(window.__pageDrops);");
@@ -277,7 +277,10 @@ internal static partial class WindowsFileDropSmoke
             int effect;
             try
             {
-                effect = await drag.Task.WaitAsync(TimeSpan.FromSeconds(30));
+                // On Windows arm64 the drag is expected never to end (#391), so its 30 s is a probe, not a scaled wait.
+                effect = RuntimeInformation.ProcessArchitecture == Architecture.Arm64
+                    ? await drag.Task.WaitAsync(TimeSpan.FromSeconds(30))
+                    : await drag.Task.WaitScaledAsync(TimeSpan.FromSeconds(30));
             }
             catch (TimeoutException)
             {
@@ -289,7 +292,7 @@ internal static partial class WindowsFileDropSmoke
                     Console.WriteLine("File drop: unverified on Windows arm64: the OLE drag did not end within 30 seconds (#391).");
                     return;
                 }
-                throw new TimeoutException("The OLE drag did not end within 30 seconds.");
+                throw new TimeoutException($"The OLE drag did not end within {TestTimeouts.Scale(TimeSpan.FromSeconds(30)).TotalSeconds:0} seconds.");
             }
             if (effect == NoDesktopInput)
             {
@@ -297,7 +300,7 @@ internal static partial class WindowsFileDropSmoke
                 return;
             }
             Console.WriteLine($"File drop: OLE drag ended with effect {effect}.");
-            var drop = await dropped.Task.WaitAsync(TimeSpan.FromSeconds(15));
+            var drop = await dropped.Task.WaitScaledAsync(TimeSpan.FromSeconds(15));
             if (!drop.Paths.SequenceEqual([file, folder], StringComparer.OrdinalIgnoreCase) || drop.Target != "folder-7")
                 throw new InvalidOperationException($"The drop reported [{string.Join(", ", drop.Paths)}] with target '{drop.Target}'.");
             var pageDrops = await surface.ExecuteJavaScriptAsync("return String(window.__pageDrops);");

@@ -279,17 +279,17 @@ internal sealed class OperationRetirementTests
         Require((await Wait(keep.WaitAsync())).Kind is RunicOperationStatusKind.Succeeded, "The Keep operation did not succeed.");
     }
 
-    private static async Task Wait(Task task) => await task.WaitAsync(Timeout);
+    private static async Task Wait(Task task) => await task.WaitScaledAsync(Timeout);
 
-    private static async Task<T> Wait<T>(Task<T> task) => await task.WaitAsync(Timeout);
+    private static async Task<T> Wait<T>(Task<T> task) => await task.WaitScaledAsync(Timeout);
 
-    private static async Task<T> Wait<T>(ValueTask<T> task) => await task.AsTask().WaitAsync(Timeout);
+    private static async Task<T> Wait<T>(ValueTask<T> task) => await task.AsTask().WaitScaledAsync(Timeout);
 
-    private static async Task Wait(ValueTask task) => await task.AsTask().WaitAsync(Timeout);
+    private static async Task Wait(ValueTask task) => await task.AsTask().WaitScaledAsync(Timeout);
 
     private static async Task Until(Func<bool> condition, string message)
     {
-        var deadline = DateTime.UtcNow + Timeout;
+        var deadline = DateTime.UtcNow + TestTimeouts.Scale(Timeout);
         while (!condition())
         {
             if (DateTime.UtcNow > deadline) throw new InvalidOperationException(message);

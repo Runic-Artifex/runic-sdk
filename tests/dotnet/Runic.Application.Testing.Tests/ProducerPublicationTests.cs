@@ -148,9 +148,9 @@ internal sealed class ProducerPublicationTests
             {
                 foreach (var model in models) model.Counter++;
                 changed.TrySetResult();
-                release.Wait(TimeSpan.FromSeconds(10));
+                release.Wait(TestTimeouts.Scale(TimeSpan.FromSeconds(10)));
             }).AsTask());
-            await changed.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            await changed.Task.WaitScaledAsync(TimeSpan.FromSeconds(5));
             try
             {
                 await WaitUntilAsync(() => context.Invocations - invoked >= Routes,
@@ -161,7 +161,7 @@ internal sealed class ProducerPublicationTests
                 Require(added < 8, $"{Routes} drains waiting for a busy model context added {added} thread-pool threads.");
             }
             finally { release.Set(); }
-            await turn.WaitAsync(TimeSpan.FromSeconds(5));
+            await turn.WaitScaledAsync(TimeSpan.FromSeconds(5));
             await WaitUntilAsync(() => page.Frames.Count(frame => frame.Contains("\"value\":1}", StringComparison.Ordinal)) == Routes,
                 "Not every route published its change.");
         }

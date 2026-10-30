@@ -318,12 +318,12 @@ internal sealed partial class TrashTests
         var trash = new LinuxTrash(homeTrash: scratch.HomeTrash, sandboxed: true, destination: service.UniqueName!);
 
         string item = scratch.File("sandboxed.txt", "x");
-        Check(await trash.MoveToTrashAsync(item).AsTask().WaitAsync(Wait) is PlatformResult<PlatformUnit>.Success, "trashed");
+        Check(await trash.MoveToTrashAsync(item).AsTask().WaitScaledAsync(Wait) is PlatformResult<PlatformUnit>.Success, "trashed");
         Check(portal.Received == item, $"the descriptor names the item: {portal.Received}");
         Check(File.Exists(item) && !Directory.Exists(scratch.HomeTrash), "the portal, not the provider, moves the item");
 
         Directory.CreateDirectory(Path.Combine(scratch.Root, "folder"));
-        Check(await trash.MoveToTrashAsync(Path.Combine(scratch.Root, "folder")).AsTask().WaitAsync(Wait) is PlatformResult<PlatformUnit>.Success
+        Check(await trash.MoveToTrashAsync(Path.Combine(scratch.Root, "folder")).AsTask().WaitScaledAsync(Wait) is PlatformResult<PlatformUnit>.Success
             && portal.Received == Path.Combine(scratch.Root, "folder"), "a directory is passed too");
 
         // A link goes as an O_PATH | O_NOFOLLOW descriptor of the link itself; a portal that refuses it leaves the link
@@ -331,10 +331,10 @@ internal sealed partial class TrashTests
         string link = Path.Combine(scratch.Root, "link");
         File.CreateSymbolicLink(link, item);
         portal.Received = null;
-        Check(await trash.MoveToTrashAsync(link).AsTask().WaitAsync(Wait) is PlatformResult<PlatformUnit>.Success && portal.Received == link,
+        Check(await trash.MoveToTrashAsync(link).AsTask().WaitScaledAsync(Wait) is PlatformResult<PlatformUnit>.Success && portal.Received == link,
             $"the link itself is sent: {portal.Received}");
         portal.Result = 0;
-        Check(await trash.MoveToTrashAsync(link).AsTask().WaitAsync(Wait) is PlatformResult<PlatformUnit>.Unavailable { Reason: PlatformUnavailableReason.BackendUnavailable },
+        Check(await trash.MoveToTrashAsync(link).AsTask().WaitScaledAsync(Wait) is PlatformResult<PlatformUnit>.Unavailable { Reason: PlatformUnavailableReason.BackendUnavailable },
             "a portal that refuses a link");
         portal.Result = 1;
         portal.Received = null;
@@ -342,20 +342,20 @@ internal sealed partial class TrashTests
         {
             string readOnly = scratch.File("read-only.txt", "r");
             File.SetUnixFileMode(readOnly, UnixFileMode.UserRead);
-            Check(await trash.MoveToTrashAsync(readOnly).AsTask().WaitAsync(Wait) is PlatformResult<PlatformUnit>.Failed { Code: PlatformFailureCode.PermissionDenied }
+            Check(await trash.MoveToTrashAsync(readOnly).AsTask().WaitScaledAsync(Wait) is PlatformResult<PlatformUnit>.Failed { Code: PlatformFailureCode.PermissionDenied }
                 && portal.Received is null, "a file the application cannot write is not sent");
         }
 
         portal.Result = 0;
-        Check(await trash.MoveToTrashAsync(item).AsTask().WaitAsync(Wait) is PlatformResult<PlatformUnit>.Failed { Code: PlatformFailureCode.Other }, "refused");
-        Check(await trash.MoveToTrashAsync(Path.Combine(scratch.Root, "missing")).AsTask().WaitAsync(Wait) is PlatformResult<PlatformUnit>.Failed { Code: PlatformFailureCode.NotFound },
+        Check(await trash.MoveToTrashAsync(item).AsTask().WaitScaledAsync(Wait) is PlatformResult<PlatformUnit>.Failed { Code: PlatformFailureCode.Other }, "refused");
+        Check(await trash.MoveToTrashAsync(Path.Combine(scratch.Root, "missing")).AsTask().WaitScaledAsync(Wait) is PlatformResult<PlatformUnit>.Failed { Code: PlatformFailureCode.NotFound },
             "a missing item is not sent");
 
         portal.Missing = true;
-        Check(await trash.MoveToTrashAsync(item).AsTask().WaitAsync(Wait) is PlatformResult<PlatformUnit>.Unavailable { Reason: PlatformUnavailableReason.BackendUnavailable },
+        Check(await trash.MoveToTrashAsync(item).AsTask().WaitScaledAsync(Wait) is PlatformResult<PlatformUnit>.Unavailable { Reason: PlatformUnavailableReason.BackendUnavailable },
             "a portal without Trash");
         var absent = new LinuxTrash(homeTrash: scratch.HomeTrash, sandboxed: true, destination: "org.example.NoSuchPortal");
-        Check(await absent.MoveToTrashAsync(item).AsTask().WaitAsync(Wait) is PlatformResult<PlatformUnit>.Unavailable, "no portal");
+        Check(await absent.MoveToTrashAsync(item).AsTask().WaitScaledAsync(Wait) is PlatformResult<PlatformUnit>.Unavailable, "no portal");
     }
 
     // The real xdg-desktop-portal, which eng/ci/real-portal.sh runs in a container with a temporary home: the portal
@@ -381,12 +381,12 @@ internal sealed partial class TrashTests
                 .Where(info => File.ReadAllText(info).Contains("\nPath=" + LinuxTrash.Escape(original) + "\n", StringComparison.Ordinal))
                 .Select(info => Path.Combine(root, "files", Path.GetFileNameWithoutExtension(info))))
             .FirstOrDefault();
-        var result = await trash.MoveToTrashAsync(item).AsTask().WaitAsync(TimeSpan.FromSeconds(30));
+        var result = await trash.MoveToTrashAsync(item).AsTask().WaitScaledAsync(TimeSpan.FromSeconds(30));
         string? trashedFile = Trashed(item);
         Console.WriteLine($"Trash portal, file: {result}, to {trashedFile}");
         Check(result is PlatformResult<PlatformUnit>.Success && !File.Exists(item) && trashedFile is not null && File.ReadAllText(trashedFile) == "x",
             "the file is in a trash with its info");
-        result = await trash.MoveToTrashAsync(folder).AsTask().WaitAsync(TimeSpan.FromSeconds(30));
+        result = await trash.MoveToTrashAsync(folder).AsTask().WaitScaledAsync(TimeSpan.FromSeconds(30));
         string? trashedFolder = Trashed(folder);
         Console.WriteLine($"Trash portal, directory: {result}, to {trashedFolder}");
         Check(result is PlatformResult<PlatformUnit>.Success && !Directory.Exists(folder) && trashedFolder is not null
@@ -396,7 +396,7 @@ internal sealed partial class TrashTests
         string target = scratch.File("link target.txt", "target");
         string link = Path.Combine(scratch.Root, "real link");
         File.CreateSymbolicLink(link, target);
-        result = await trash.MoveToTrashAsync(link).AsTask().WaitAsync(TimeSpan.FromSeconds(30));
+        result = await trash.MoveToTrashAsync(link).AsTask().WaitScaledAsync(TimeSpan.FromSeconds(30));
         string? trashedLink = Trashed(link);
         Console.WriteLine($"Trash portal, symbolic link: {result}, to {trashedLink}; link {(File.Exists(link) || new FileInfo(link).LinkTarget is not null ? "kept" : "gone")}");
         Check(File.ReadAllText(target) == "target", "the link's target stays");

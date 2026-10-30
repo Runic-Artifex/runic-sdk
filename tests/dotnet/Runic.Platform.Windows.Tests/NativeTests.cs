@@ -74,7 +74,7 @@ internal sealed partial class NativeTests
             {
                 try
                 {
-                    string? ready = holder.StandardOutput.ReadLineAsync().WaitAsync(TimeSpan.FromSeconds(15)).GetAwaiter().GetResult();
+                    string? ready = holder.StandardOutput.ReadLineAsync().WaitScaledAsync(TimeSpan.FromSeconds(15)).GetAwaiter().GetResult();
                     Assert(ready == "ready", $"the holder is ready: {ready ?? $"exited with code {(holder.HasExited ? holder.ExitCode : null)}"}");
                     // One attempt each, without the retry: a held clipboard is busy, whatever Win32 error OpenClipboard reports.
                     AssertFailed(native.Read(window, 10), PlatformFailureCode.ResourceBusy, "a read while another process holds the clipboard");
@@ -87,7 +87,7 @@ internal sealed partial class NativeTests
                     try
                     {
                         if (!holder.HasExited) holder.StandardInput.WriteLine("release");
-                        Assert(holder.WaitForExit(15000), "the holder exits");
+                        Assert(holder.WaitForExit(TestTimeouts.Scale(15000)), "the holder exits");
                     }
                     finally { StopChild(holder); }
                 }
@@ -167,7 +167,7 @@ internal sealed partial class NativeTests
             Console.WriteLine("PASS every format in one ownership");
 
             // The watch reports the formats now and after another process's write, never the content.
-            using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+            using var cancellation = TestTimeouts.Cancellation(TimeSpan.FromSeconds(30));
             var watch = clipboard.WatchAsync(cancellation.Token).GetAsyncEnumerator(cancellation.Token);
             try
             {
@@ -262,7 +262,7 @@ internal sealed partial class NativeTests
         try
         {
             var output = child.StandardOutput.ReadToEndAsync();
-            Assert(child.WaitForExit(15000), $"the peer {arguments[0]} exits");
+            Assert(child.WaitForExit(TestTimeouts.Scale(15000)), $"the peer {arguments[0]} exits");
             Assert(child.ExitCode == 0, $"the peer {arguments[0]} succeeds: exit code {child.ExitCode}");
             return output.GetAwaiter().GetResult().Trim();
         }
@@ -273,7 +273,7 @@ internal sealed partial class NativeTests
     {
         if (process.HasExited) return;
         process.Kill(entireProcessTree: true);
-        Assert(process.WaitForExit(5000), "the stopped peer exits");
+        Assert(process.WaitForExit(TestTimeouts.Scale(5000)), "the stopped peer exits");
     }
 
     private static Process Start(params string[] arguments)

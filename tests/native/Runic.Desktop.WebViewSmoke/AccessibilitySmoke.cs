@@ -106,7 +106,7 @@ internal static class AccessibilitySmoke
             }
             listening.TrySetException(new InvalidOperationException("The probe exited before it listened for events."));
         });
-        await listening.Task.WaitAsync(TimeSpan.FromSeconds(60));
+        await listening.Task.WaitScaledAsync(TimeSpan.FromSeconds(60));
 
         await using var surface = await host.CreateSurfaceAsync(new DesktopSurfaceOptions { Content = new DesktopContent.Html(Page) });
         await using var window = await surface.OpenWindowAsync(new DesktopWindowOptions
@@ -122,7 +122,7 @@ internal static class AccessibilitySmoke
         if (await surface.ExecuteJavaScriptAsync("return document.title;", TimeSpan.FromSeconds(20)) != "Runic accessibility fixture")
             throw new InvalidOperationException("The fixture page did not load.");
         Console.WriteLine($"ACCESSIBILITY READY host={hostName}.");
-        using var deadline = new CancellationTokenSource(TimeSpan.FromMinutes(5));
+        using var deadline = TestTimeouts.Cancellation(TimeSpan.FromMinutes(5));
         var exited = process.WaitForExitAsync(deadline.Token);
         var finished = false;
         while (!exited.IsCompleted)

@@ -95,7 +95,7 @@ internal static class RightToLeftSmoke
             set.TrySetResult();
             return false;
         });
-        return set.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        return set.Task.WaitScaledAsync(TimeSpan.FromSeconds(10));
     }
 
     // The process's message locale as GTK set it with setlocale(LC_ALL, "").

@@ -29,7 +29,7 @@ internal static partial class Ui
         if (condition()) return;
         var dispatcher = Dispatcher.CurrentDispatcher;
         var frame = new DispatcherFrame();
-        var deadline = DateTime.UtcNow + (timeout ?? WaitLimit);
+        var deadline = DateTime.UtcNow + TestTimeouts.Scale(timeout ?? WaitLimit);
         var timedOut = false;
         var timer = new DispatcherTimer(DispatcherPriority.Background, dispatcher) { Interval = TimeSpan.FromMilliseconds(5) };
         timer.Tick += (_, _) =>

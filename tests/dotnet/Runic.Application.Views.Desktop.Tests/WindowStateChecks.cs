@@ -44,10 +44,10 @@ internal sealed class WindowStateChecks
             var presentation = ((DesktopBridgeWindow<FileViewModel>)window.Host).Window;
             presentation.StateChanged += (_, args) => changed.TrySetResult(args.State);
             factory.Hosts[0].Report(resized);
-            Require(await changed.Task.WaitAsync(TimeSpan.FromSeconds(5)) == resized, "StateChanged did not report the new state.");
+            Require(await changed.Task.WaitScaledAsync(TimeSpan.FromSeconds(5)) == resized, "StateChanged did not report the new state.");
 
             await presentation.CloseAsync();
-            await window.WaitForCloseAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(5));
+            await window.WaitForCloseAsync().AsTask().WaitScaledAsync(TimeSpan.FromSeconds(5));
             // The save path: after WaitForCloseAsync, before the Window is disposed.
             Require(DesktopPlatformServices.GetWindowState(window) is PlatformResult<DesktopWindowState>.Success { Value: var last } && last == resized,
                 "The last state of a closed Window was not kept.");

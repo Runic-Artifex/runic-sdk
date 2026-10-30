@@ -10,7 +10,7 @@ public sealed class BrowserDebuggerPortTests : IDisposable
     [Test]
     public async Task WaitsForTheFileToBePublished()
     {
-        using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        using var deadline = TestTimeouts.Cancellation(TimeSpan.FromSeconds(5));
         var pending = BrowserBridgeTests.ReadDebuggerPortAsync(_profile.FullName, deadline.Token);
         Assert.False(pending.IsCompleted);
         await File.WriteAllTextAsync(PortFile, "52444\n/devtools/browser/test", deadline.Token);
@@ -27,7 +27,7 @@ public sealed class BrowserDebuggerPortTests : IDisposable
     [Arguments("65536\n")]
     public async Task WaitsForACompleteValidPortRecord(string partial)
     {
-        using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        using var deadline = TestTimeouts.Cancellation(TimeSpan.FromSeconds(5));
         await File.WriteAllTextAsync(PortFile, partial, deadline.Token);
         var pending = BrowserBridgeTests.ReadDebuggerPortAsync(_profile.FullName, deadline.Token);
         await Assert.ThrowsAsync<TimeoutException>(() => pending.WaitAsync(TimeSpan.FromMilliseconds(75)));
@@ -39,7 +39,7 @@ public sealed class BrowserDebuggerPortTests : IDisposable
     [Test, WindowsFileLock]
     public async Task WaitsForChromiumToReleaseItsPublicationLock()
     {
-        using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        using var deadline = TestTimeouts.Cancellation(TimeSpan.FromSeconds(5));
         Task<int> pending;
         using (var writer = new FileStream(PortFile, FileMode.CreateNew, FileAccess.Write, FileShare.None))
         {
@@ -57,7 +57,7 @@ public sealed class BrowserDebuggerPortTests : IDisposable
         using var deadline = new CancellationTokenSource(TimeSpan.FromMilliseconds(100));
         using var writer = new FileStream(PortFile, FileMode.CreateNew, FileAccess.Write, FileShare.None);
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
-            BrowserBridgeTests.ReadDebuggerPortAsync(_profile.FullName, deadline.Token).WaitAsync(TimeSpan.FromSeconds(5)));
+            BrowserBridgeTests.ReadDebuggerPortAsync(_profile.FullName, deadline.Token).WaitScaledAsync(TimeSpan.FromSeconds(5)));
     }
 
     [Test]
@@ -69,7 +69,7 @@ public sealed class BrowserDebuggerPortTests : IDisposable
         if (incomplete) await File.WriteAllTextAsync(PortFile, "5");
         using var deadline = new CancellationTokenSource(TimeSpan.FromMilliseconds(100));
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
-            BrowserBridgeTests.ReadDebuggerPortAsync(_profile.FullName, deadline.Token).WaitAsync(TimeSpan.FromSeconds(5)));
+            BrowserBridgeTests.ReadDebuggerPortAsync(_profile.FullName, deadline.Token).WaitScaledAsync(TimeSpan.FromSeconds(5)));
     }
 
     public void Dispose() => _profile.Delete(recursive: true);

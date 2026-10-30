@@ -28,7 +28,7 @@ public sealed partial class ShutdownSignalTests
 
         Assert.True(host.RequestShutdown("test"));
         Assert.False(host.RequestShutdown("test"));
-        await window.WaitForCloseAsync().AsTask().WaitAsync(StepTimeout);
+        await window.WaitForCloseAsync().AsTask().WaitScaledAsync(StepTimeout);
 
         Assert.True(host.ShutdownRequested.IsCancellationRequested);
         Assert.False(window.IsOpen);
@@ -51,7 +51,7 @@ public sealed partial class ShutdownSignalTests
         var window = await surface.OpenWindowAsync(new DesktopWindowOptions { Browser = BrowserKind.Embedded });
 
         Assert.False(window.IsOpen);
-        await window.WaitForCloseAsync().AsTask().WaitAsync(StepTimeout);
+        await window.WaitForCloseAsync().AsTask().WaitScaledAsync(StepTimeout);
     }
 
     [Test]
@@ -231,7 +231,7 @@ public sealed partial class ShutdownSignalTests
 
         internal async Task WaitForAsync(string step)
         {
-            using var timeout = new CancellationTokenSource(StepTimeout);
+            using var timeout = TestTimeouts.Cancellation(StepTimeout);
             while (true)
             {
                 lock (_lines)
@@ -265,7 +265,7 @@ public sealed partial class ShutdownSignalTests
 
         internal async Task<int> WaitForExitAsync()
         {
-            using var timeout = new CancellationTokenSource(StepTimeout);
+            using var timeout = TestTimeouts.Cancellation(StepTimeout);
             await _process.WaitForExitAsync(timeout.Token);
             await _reader;
             return _process.ExitCode;

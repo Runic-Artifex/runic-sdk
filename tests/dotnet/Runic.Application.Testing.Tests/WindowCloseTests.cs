@@ -19,7 +19,7 @@ public sealed class WindowCloseTests
         var session = new WindowContentSession(transport, new WindowContentSessionOptions { RootModel = model });
         using var bridge = new SlowBridge(transport, model, session);
         var call = transport.CommandAsync("slow", "save").AsTask();
-        Require(await model.Started.Task.WaitAsync(TimeSpan.FromSeconds(5)), "The awaited command did not start.");
+        Require(await model.Started.Task.WaitScaledAsync(TimeSpan.FromSeconds(5)), "The awaited command did not start.");
 
         var close = session.DrainAsync(TimeSpan.FromSeconds(10)).AsTask();
         await Task.Delay(50);
@@ -47,13 +47,13 @@ public sealed class WindowCloseTests
         var session = new WindowContentSession(transport, new WindowContentSessionOptions { RootModel = model });
         using var bridge = new SlowBridge(transport, model, session);
         var call = transport.CommandAsync("slow", "save").AsTask();
-        Require(await model.Started.Task.WaitAsync(TimeSpan.FromSeconds(5)), "The awaited command did not start.");
+        Require(await model.Started.Task.WaitScaledAsync(TimeSpan.FromSeconds(5)), "The awaited command did not start.");
 
         using var stop = new CancellationTokenSource();
         var drain = session.DrainAsync(Timeout.InfiniteTimeSpan, stop.Token).AsTask();
         await stop.CancelAsync();
         var cancelled = false;
-        try { await drain.WaitAsync(TimeSpan.FromSeconds(5)); }
+        try { await drain.WaitScaledAsync(TimeSpan.FromSeconds(5)); }
         catch (OperationCanceledException) { cancelled = true; }
         Require(cancelled, "Cancelling the token did not stop the drain wait.");
         Require(!model.Cancelled, "Cancelling the wait cancelled the accepted command.");
@@ -75,15 +75,15 @@ public sealed class WindowCloseTests
         var session = new WindowContentSession(transport, new WindowContentSessionOptions { RootModel = model });
         using var bridge = new SlowBridge(transport, model, session);
         var call = transport.CommandAsync("slow", "save").AsTask();
-        Require(await model.Started.Task.WaitAsync(TimeSpan.FromSeconds(5)), "The awaited command did not start.");
+        Require(await model.Started.Task.WaitScaledAsync(TimeSpan.FromSeconds(5)), "The awaited command did not start.");
 
         var timedOut = await session.DrainAsync(TimeSpan.Zero);
         Require(!timedOut.Drained && timedOut.RemainingOperations == 1,
             "Close did not count a running awaited command.");
-        using (var reply = JsonDocument.Parse(await call.WaitAsync(TimeSpan.FromSeconds(5))))
+        using (var reply = JsonDocument.Parse(await call.WaitScaledAsync(TimeSpan.FromSeconds(5))))
             Require(reply.RootElement.GetProperty("error").GetProperty("kind").GetString() == "cancelled" && model.Cancelled,
                 "The close timeout did not cancel the remaining awaited command.");
-        await timedOut.Completion.WaitAsync(TimeSpan.FromSeconds(5));
+        await timedOut.Completion.WaitScaledAsync(TimeSpan.FromSeconds(5));
         var drained = await session.DrainAsync(Timeout.InfiniteTimeSpan);
         Require(drained.Drained, "Close did not drain after cancellation.");
         session.Dispose();

@@ -18,7 +18,7 @@ var receiptPath = Argument("--receipt");
 var survey = args.Contains("--survey", StringComparer.Ordinal);
 var screenReaderName = Argument("--screen-reader");
 
-using var deadline = new CancellationTokenSource(TimeSpan.FromMinutes(4));
+using var deadline = TestTimeouts.Cancellation(TimeSpan.FromMinutes(4));
 var report = new Report(host, survey) { ScreenReader = screenReaderName };
 ScreenReader? screenReader = null;
 try

@@ -226,7 +226,7 @@ internal sealed partial class NavigationTests
         var home = new Page("home") { Guard = (_, _) => { Interlocked.Increment(ref guardRuns); return ValueTask.FromResult(true); } };
         var region = fixture.Navigator.CreateRegion<Page>(fixture.Root, NavigationTarget.Borrow(home));
         using var gate = new ManualResetEventSlim();
-        context.Post(() => gate.Wait(Timeout));
+        context.Post(() => gate.Wait(TestTimeouts.Scale(Timeout)));
         using var cancellation = new CancellationTokenSource();
         var next = new Page("next");
         var push = region.PushAsync(NavigationTarget.Own(next), cancellationToken: cancellation.Token).AsTask();
@@ -287,7 +287,7 @@ internal sealed partial class NavigationTests
         var home = new Page("home") { Guard = (_, _) => { Interlocked.Increment(ref guardRuns); return ValueTask.FromResult(true); } };
         var region = fixture.Navigator.CreateRegion<Page>(fixture.Root, NavigationTarget.Borrow(home));
         using var gate = new ManualResetEventSlim();
-        context.Post(() => gate.Wait(Timeout));
+        context.Post(() => gate.Wait(TestTimeouts.Scale(Timeout)));
         var next = new Page("next");
         var push = region.PushAsync(NavigationTarget.Own(next)).AsTask();
         await Until(() => context.HookRequests == 1, "The guard was not scheduled.");
@@ -324,7 +324,7 @@ internal sealed partial class NavigationTests
         // The departing guard blocks the model's thread right after it returns, so the next hook queues behind it.
         region.Current!.Guard = (_, _) =>
         {
-            context.Post(() => gate.Wait(Timeout));
+            context.Post(() => gate.Wait(TestTimeouts.Scale(Timeout)));
             return ValueTask.FromResult(true);
         };
         var factoryRuns = 0;
@@ -367,7 +367,7 @@ internal sealed partial class NavigationTests
         {
             Guard = (_, _) =>
             {
-                context.Post(() => gate.Wait(Timeout));
+                context.Post(() => gate.Wait(TestTimeouts.Scale(Timeout)));
                 return ValueTask.FromResult(true);
             },
         };
@@ -486,7 +486,7 @@ internal sealed partial class NavigationTests
         var home = new Page("home") { Guard = (_, _) => { Interlocked.Increment(ref guardRuns); return ValueTask.FromResult(true); } };
         var region = fixture.Navigator.CreateRegion<Page>(fixture.Root, NavigationTarget.Borrow(home));
         using var gate = new ManualResetEventSlim();
-        context.Post(() => gate.Wait(Timeout));
+        context.Post(() => gate.Wait(TestTimeouts.Scale(Timeout)));
         var first = new Page("first");
         var second = new Page("second");
         var superseded = region.PushAsync(NavigationTarget.Own(first)).AsTask();
@@ -516,9 +516,9 @@ internal sealed partial class NavigationTests
         {
             var watch = Stopwatch.StartNew();
             // Like GetAwaiter().GetResult(), but a hang fails the test instead of blocking it forever.
-            var completed = fixture.Navigator.DisposeAsync().AsTask().Wait(TimeSpan.FromSeconds(5));
+            var completed = fixture.Navigator.DisposeAsync().AsTask().Wait(TestTimeouts.Scale(TimeSpan.FromSeconds(5)));
             return (completed, watch.Elapsed);
-        }).WaitAsync(Timeout);
+        }).WaitScaledAsync(Timeout);
         // The queued clearing turn and the abandoned disposal operation run now.
         await Wait(context.RunOnThreadAsync(() => true));
         await Wait(fixture.Navigator.DisposeAsync().AsTask());
@@ -543,10 +543,10 @@ internal sealed partial class NavigationTests
         var push = region.PushAsync(NavigationTarget.Create<ProbePage>(_ =>
         {
             entered.TrySetResult();
-            release.Wait(Timeout);
+            release.Wait(TestTimeouts.Scale(Timeout));
             // Keeps the model's thread busy until the disposal operation is queued, so the navigator
             // decides how long to wait for it while it hasn't started.
-            context.Post(() => hold.Wait(Timeout));
+            context.Post(() => hold.Wait(TestTimeouts.Scale(Timeout)));
             return late = new ProbePage("late", probe);
         })).AsTask();
         await Wait(entered.Task);
@@ -1097,9 +1097,9 @@ internal sealed partial class NavigationTests
         {
             var watch = Stopwatch.StartNew();
             // Like GetAwaiter().GetResult(), but a hang fails the test instead of blocking it forever.
-            var completed = fixture.Navigator.DisposeAsync().AsTask().Wait(TimeSpan.FromSeconds(5));
+            var completed = fixture.Navigator.DisposeAsync().AsTask().Wait(TestTimeouts.Scale(TimeSpan.FromSeconds(5)));
             return (completed, watch.Elapsed);
-        }).WaitAsync(Timeout);
+        }).WaitScaledAsync(Timeout);
         // The queued clearing turn and the abandoned disposal operations run now.
         await Wait(context.RunOnThreadAsync(() => true));
         await Wait(fixture.Navigator.DisposeAsync().AsTask());
@@ -1127,7 +1127,7 @@ internal sealed partial class NavigationTests
         {
             Guard = (_, _) =>
             {
-                context.Post(() => gate.Wait(Timeout));
+                context.Post(() => gate.Wait(TestTimeouts.Scale(Timeout)));
                 return ValueTask.FromResult(true);
             },
         };
@@ -1165,7 +1165,7 @@ internal sealed partial class NavigationTests
         {
             Guard = (_, _) =>
             {
-                context.Post(() => gate.Wait(Timeout));
+                context.Post(() => gate.Wait(TestTimeouts.Scale(Timeout)));
                 return ValueTask.FromResult(true);
             },
         };
@@ -1288,7 +1288,7 @@ internal sealed partial class NavigationTests
         {
             if (!IsOnThread) throw new InvalidOperationException("Pump on the model thread.");
             var caller = SynchronizationContext.Current;
-            var deadline = DateTime.UtcNow + Timeout;
+            var deadline = DateTime.UtcNow + TestTimeouts.Scale(Timeout);
             try
             {
                 while (!done())

@@ -24,7 +24,7 @@ internal sealed class ApplicationInstanceTests
             var launch = new ApplicationLaunch(["--open", "dashboard", "ümlaut", ""], "/home/alice") { PlatformContext = new DesktopActivationContext("token-1") };
             var second = await ApplicationInstance.ClaimAsync("org.example.App", launch, directory, default);
             Check(second is PlatformResult<ApplicationInstanceClaim>.Success { Value: ApplicationInstanceClaim.Forwarded }, "the second launch is forwarded");
-            var received = await launches.Reader.ReadAsync().AsTask().WaitAsync(Wait);
+            var received = await launches.Reader.ReadAsync().AsTask().WaitScaledAsync(Wait);
             Check(received.Arguments.SequenceEqual(launch.Arguments) && received.WorkingDirectory == "/home/alice"
                 && received.PlatformContext?.ActivationToken == "token-1" && received.PlatformContext.StartupId is null, "arguments, directory and token arrive");
 
@@ -36,7 +36,7 @@ internal sealed class ApplicationInstanceTests
                 Check(await ApplicationInstance.ClaimAsync("org.example.App", new ApplicationLaunch([i.ToString(System.Globalization.CultureInfo.InvariantCulture)], "/"), directory, default)
                     is PlatformResult<ApplicationInstanceClaim>.Success { Value: ApplicationInstanceClaim.Forwarded }, "later launches are forwarded too");
             for (int i = 0; i < 3; i++)
-                Check((await launches.Reader.ReadAsync().AsTask().WaitAsync(Wait)).Arguments.Single() == i.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                Check((await launches.Reader.ReadAsync().AsTask().WaitScaledAsync(Wait)).Arguments.Single() == i.ToString(System.Globalization.CultureInfo.InvariantCulture),
                     "launches arrive one at a time, in order");
         }
         finally { System.IO.Directory.Delete(directory, recursive: true); }
@@ -92,8 +92,8 @@ internal sealed class ApplicationInstanceTests
             Check(!second.IsCompleted, "a launch nobody received is not reported forwarded");
             var launches = Channel.CreateUnbounded<ApplicationLaunch>();
             instance.Launched += (_, launch) => launches.Writer.TryWrite(launch);
-            Check(await second.WaitAsync(Wait) is PlatformResult<ApplicationInstanceClaim>.Success { Value: ApplicationInstanceClaim.Forwarded }, "the waiting launch is forwarded");
-            Check((await launches.Reader.ReadAsync().AsTask().WaitAsync(Wait)).Arguments.Single() == "early", "the first handler receives it");
+            Check(await second.WaitScaledAsync(Wait) is PlatformResult<ApplicationInstanceClaim>.Success { Value: ApplicationInstanceClaim.Forwarded }, "the waiting launch is forwarded");
+            Check((await launches.Reader.ReadAsync().AsTask().WaitScaledAsync(Wait)).Arguments.Single() == "early", "the first handler receives it");
         }
         finally { System.IO.Directory.Delete(directory, recursive: true); }
     }
@@ -109,7 +109,7 @@ internal sealed class ApplicationInstanceTests
             EventHandler<ApplicationLaunch> handler = (_, _) => { };
             instance.Launched += handler;
             instance.Launched -= handler;
-            var second = await ApplicationInstance.ClaimAsync("org.example.App", new ApplicationLaunch([], "/"), directory, default).AsTask().WaitAsync(TimeSpan.FromSeconds(15));
+            var second = await ApplicationInstance.ClaimAsync("org.example.App", new ApplicationLaunch([], "/"), directory, default).AsTask().WaitScaledAsync(TimeSpan.FromSeconds(15));
             Check(second is PlatformResult<ApplicationInstanceClaim>.Failed { Code: PlatformFailureCode.ResourceBusy }, "the launch is busy, not lost");
         }
         finally { System.IO.Directory.Delete(directory, recursive: true); }
@@ -127,7 +127,7 @@ internal sealed class ApplicationInstanceTests
             var second = ApplicationInstance.ClaimAsync("org.example.App", new ApplicationLaunch([], "/"), directory, default).AsTask();
             await Task.Delay(300);
             await instance.DisposeAsync();
-            var next = await second.WaitAsync(Wait);
+            var next = await second.WaitScaledAsync(Wait);
             Check(next is PlatformResult<ApplicationInstanceClaim>.Success { Value: ApplicationInstanceClaim.Primary }, "the relaunch takes over");
             await ((ApplicationInstanceClaim.Primary)((PlatformResult<ApplicationInstanceClaim>.Success)next).Value).Instance.DisposeAsync();
         }
@@ -160,11 +160,11 @@ internal sealed class ApplicationInstanceTests
         ForegroundRights.Granted = (processId, allowed) => { lock (granted) granted.Add((processId, allowed)); };
         try
         {
-            Check(await primary.StandardOutput.ReadLineAsync().WaitAsync(Wait) == "ready", "the other process is the running instance");
+            Check(await primary.StandardOutput.ReadLineAsync().WaitScaledAsync(Wait) == "ready", "the other process is the running instance");
             var claim = await ApplicationInstance.ClaimAsync("org.example.Peer", new ApplicationLaunch(["--show"], "/"), directory, default);
             Check(claim is PlatformResult<ApplicationInstanceClaim>.Success { Value: ApplicationInstanceClaim.Forwarded }, "the launch is forwarded");
-            Check(await primary.StandardOutput.ReadLineAsync().WaitAsync(Wait) == "launched --show", "the running instance receives it");
-            await primary.WaitForExitAsync().WaitAsync(Wait);
+            Check(await primary.StandardOutput.ReadLineAsync().WaitScaledAsync(Wait) == "launched --show", "the running instance receives it");
+            await primary.WaitForExitAsync().WaitScaledAsync(Wait);
             if (OperatingSystem.IsWindows())
             {
                 Check(granted is [{ ProcessId: var id }] && id == primary.Id,
@@ -191,7 +191,7 @@ internal sealed class ApplicationInstanceTests
             var launched = new TaskCompletionSource<ApplicationLaunch>(TaskCreationOptions.RunContinuationsAsynchronously);
             instance.Launched += (_, launch) => launched.TrySetResult(launch);
             Console.WriteLine("ready");
-            var launch = await launched.Task.WaitAsync(TimeSpan.FromSeconds(20));
+            var launch = await launched.Task.WaitScaledAsync(TimeSpan.FromSeconds(20));
             Console.WriteLine("launched " + string.Join(' ', launch.Arguments));
         }
         return 0;
@@ -244,11 +244,11 @@ internal sealed class ApplicationInstanceTests
             });
 
             await using var reply = await ForwardAsync(directory, "world");
-            var messages = await ReadAllAsync(reply).WaitAsync(Wait);
+            var messages = await ReadAllAsync(reply).WaitScaledAsync(Wait);
             Check(messages.SequenceEqual(["hello world", "ümlaut ✓", ""]), "the messages arrive in order: " + string.Join(" | ", messages));
-            Check(await reply.WaitForExitAsync().AsTask().WaitAsync(Wait) is PlatformResult<int>.Success(3), "the exit status arrives");
+            Check(await reply.WaitForExitAsync().AsTask().WaitScaledAsync(Wait) is PlatformResult<int>.Success(3), "the exit status arrives");
             Check((await ReadAllAsync(reply)).Count == 0 && await reply.WaitForExitAsync() is PlatformResult<int>.Success(3), "the ended reply keeps its exit status");
-            Check(await misuse.Task.WaitAsync(Wait) == "refused", "nothing is sent after the exit status");
+            Check(await misuse.Task.WaitScaledAsync(Wait) == "refused", "nothing is sent after the exit status");
         }
         finally { System.IO.Directory.Delete(directory, recursive: true); }
     }
@@ -269,7 +269,7 @@ internal sealed class ApplicationInstanceTests
             foreach (int code in new[] { 0, 1, 255, -1, int.MinValue })
             {
                 await using var reply = await ForwardAsync(directory, code.ToString(System.Globalization.CultureInfo.InvariantCulture));
-                var exit = await reply.WaitForExitAsync().AsTask().WaitAsync(Wait);
+                var exit = await reply.WaitForExitAsync().AsTask().WaitScaledAsync(Wait);
                 Check(exit is PlatformResult<int>.Success(var received) && received == code, $"exit status {code}, not {exit}");
             }
         }
@@ -315,7 +315,7 @@ internal sealed class ApplicationInstanceTests
             }
             Check(index == Count + 1, $"every message arrives ({index})");
             Check(await reply.WaitForExitAsync() is PlatformResult<int>.Success(0), "the exit status follows the messages");
-            Check(await sizes.Task.WaitAsync(Wait) == "refused", "a message over 1 MiB is refused");
+            Check(await sizes.Task.WaitScaledAsync(Wait) == "refused", "a message over 1 MiB is refused");
         }
         finally { System.IO.Directory.Delete(directory, recursive: true); }
     }
@@ -452,7 +452,7 @@ internal sealed class ApplicationInstanceTests
             foreach (var options in new[] { forwardOnly, new ApplicationInstanceOptions { ForwardOnly = true } })
             {
                 var stopwatch = System.Diagnostics.Stopwatch.StartNew();
-                var none = await ApplicationInstance.ClaimAsync("org.example.App", new ApplicationLaunch(["status"], "/"), options, directory, default).AsTask().WaitAsync(Wait);
+                var none = await ApplicationInstance.ClaimAsync("org.example.App", new ApplicationLaunch(["status"], "/"), options, directory, default).AsTask().WaitScaledAsync(Wait);
                 Check(none is PlatformResult<ApplicationInstanceClaim>.Success { Value: ApplicationInstanceClaim.NotRunning }, $"without an instance it is not running, not {none}");
                 Check(stopwatch.Elapsed < TimeSpan.FromSeconds(1), $"and reported at once ({stopwatch.Elapsed})");
             }
@@ -472,7 +472,7 @@ internal sealed class ApplicationInstanceTests
                 var claim = await ApplicationInstance.ClaimAsync("org.example.App", new ApplicationLaunch(["status"], "/"), forwardOnly, directory, default);
                 Check(claim is PlatformResult<ApplicationInstanceClaim>.Success { Value: ApplicationInstanceClaim.Forwarded { Reply: { } reply } }, $"with an instance it is forwarded, not {claim}");
                 await using var forwarded = ((ApplicationInstanceClaim.Forwarded)((PlatformResult<ApplicationInstanceClaim>.Success)claim).Value).Reply!;
-                Check((await ReadAllAsync(forwarded).WaitAsync(Wait)).SequenceEqual(["from the instance"]) && await forwarded.WaitForExitAsync() is PlatformResult<int>.Success(7),
+                Check((await ReadAllAsync(forwarded).WaitScaledAsync(Wait)).SequenceEqual(["from the instance"]) && await forwarded.WaitForExitAsync() is PlatformResult<int>.Success(7),
                     "and the reply arrives");
             }
 
@@ -484,8 +484,8 @@ internal sealed class ApplicationInstanceTests
                 Check(!claim.IsCompleted, "a forward-only launch waits for a starting instance");
                 var launches = Channel.CreateUnbounded<ApplicationLaunch>();
                 starting.Launched += (_, launch) => launches.Writer.TryWrite(launch);
-                Check(await claim.WaitAsync(Wait) is PlatformResult<ApplicationInstanceClaim>.Success { Value: ApplicationInstanceClaim.Forwarded { Reply: null } }, "and is forwarded to it");
-                Check((await launches.Reader.ReadAsync().AsTask().WaitAsync(Wait)).Arguments.Single() == "early", "which receives it");
+                Check(await claim.WaitScaledAsync(Wait) is PlatformResult<ApplicationInstanceClaim>.Success { Value: ApplicationInstanceClaim.Forwarded { Reply: null } }, "and is forwarded to it");
+                Check((await launches.Reader.ReadAsync().AsTask().WaitScaledAsync(Wait)).Arguments.Single() == "early", "which receives it");
             }
 
             // An instance that ends while the launch waits: not running, rather than taking over.
@@ -493,7 +493,7 @@ internal sealed class ApplicationInstanceTests
             var late = ApplicationInstance.ClaimAsync("org.example.App", new ApplicationLaunch([], "/"), new ApplicationInstanceOptions { ForwardOnly = true }, directory, default).AsTask();
             await Task.Delay(300);
             await ending.DisposeAsync();
-            Check(await late.WaitAsync(Wait) is PlatformResult<ApplicationInstanceClaim>.Success { Value: ApplicationInstanceClaim.NotRunning }, "an instance that ended is not running");
+            Check(await late.WaitScaledAsync(Wait) is PlatformResult<ApplicationInstanceClaim>.Success { Value: ApplicationInstanceClaim.NotRunning }, "an instance that ended is not running");
             await (await ClaimPrimaryAsync(directory, new ApplicationInstanceOptions())).DisposeAsync();
         }
         finally { System.IO.Directory.Delete(directory, recursive: true); }
@@ -511,18 +511,18 @@ internal sealed class ApplicationInstanceTests
             {
                 var reply = launch.Reply!;
                 await reply.WriteAsync("one");
-                try { await Task.Delay(Timeout.Infinite, reply.Cancelled).WaitAsync(Wait); }
+                try { await Task.Delay(Timeout.Infinite, reply.Cancelled).WaitScaledAsync(Wait); }
                 catch (OperationCanceledException) when (reply.Cancelled.IsCancellationRequested) { }
                 after.TrySetResult((reply.Cancelled.IsCancellationRequested, reply.Disconnected.IsCancellationRequested, reply.CancelRequested.IsCancellationRequested,
                     await reply.WriteAsync("two")));
             });
             await using var reply = await ForwardAsync(directory);
             await using var messages = reply.ReadMessagesAsync().GetAsyncEnumerator();
-            Check(await messages.MoveNextAsync().AsTask().WaitAsync(Wait) && messages.Current == "one", "the reply starts");
+            Check(await messages.MoveNextAsync().AsTask().WaitScaledAsync(Wait) && messages.Current == "one", "the reply starts");
             await instance.DisposeAsync();
-            Check(!await messages.MoveNextAsync().AsTask().WaitAsync(Wait), "the messages end with the running instance");
-            Check(await reply.WaitForExitAsync().AsTask().WaitAsync(Wait) is PlatformResult<int>.Failed { Code: PlatformFailureCode.IOError }, "no exit status is an I/O failure");
-            Check(await after.Task.WaitAsync(Wait) == (true, true, false, false), "ending the instance cancels the reply as Disconnected");
+            Check(!await messages.MoveNextAsync().AsTask().WaitScaledAsync(Wait), "the messages end with the running instance");
+            Check(await reply.WaitForExitAsync().AsTask().WaitScaledAsync(Wait) is PlatformResult<int>.Failed { Code: PlatformFailureCode.IOError }, "no exit status is an I/O failure");
+            Check(await after.Task.WaitScaledAsync(Wait) == (true, true, false, false), "ending the instance cancels the reply as Disconnected");
         }
         finally { System.IO.Directory.Delete(directory, recursive: true); }
     }
@@ -540,15 +540,15 @@ internal sealed class ApplicationInstanceTests
         using var primary = System.Diagnostics.Process.Start(start) ?? throw new InvalidOperationException("The running instance did not start.");
         try
         {
-            Check(await primary.StandardOutput.ReadLineAsync().WaitAsync(Wait) == "ready", "the other process is the running instance");
+            Check(await primary.StandardOutput.ReadLineAsync().WaitScaledAsync(Wait) == "ready", "the other process is the running instance");
             var claim = await ApplicationInstance.ClaimAsync("org.example.Replier", new ApplicationLaunch([], "/"), Replies, directory, default);
             Check(claim is PlatformResult<ApplicationInstanceClaim>.Success { Value: ApplicationInstanceClaim.Forwarded { Reply: not null } }, "the launch is forwarded with a reply");
             await using var reply = ((ApplicationInstanceClaim.Forwarded)((PlatformResult<ApplicationInstanceClaim>.Success)claim).Value).Reply!;
             await using var messages = reply.ReadMessagesAsync().GetAsyncEnumerator();
-            Check(await messages.MoveNextAsync().AsTask().WaitAsync(Wait) && messages.Current == "running", "the reply starts");
+            Check(await messages.MoveNextAsync().AsTask().WaitScaledAsync(Wait) && messages.Current == "running", "the reply starts");
             primary.Kill();
-            Check(!await messages.MoveNextAsync().AsTask().WaitAsync(Wait), "the messages end with the crashed process");
-            Check(await reply.WaitForExitAsync().AsTask().WaitAsync(Wait) is PlatformResult<int>.Failed { Code: PlatformFailureCode.IOError }, "no exit status is an I/O failure");
+            Check(!await messages.MoveNextAsync().AsTask().WaitScaledAsync(Wait), "the messages end with the crashed process");
+            Check(await reply.WaitForExitAsync().AsTask().WaitScaledAsync(Wait) is PlatformResult<int>.Failed { Code: PlatformFailureCode.IOError }, "no exit status is an I/O failure");
         }
         finally
         {
@@ -585,7 +585,7 @@ internal sealed class ApplicationInstanceTests
                 instance.Launched += (_, launch) => launches.Writer.TryWrite(launch);
                 var claim = await ApplicationInstance.ClaimAsync("org.example.App", new ApplicationLaunch(["--show"], "/"), directory, default);
                 Check(claim is PlatformResult<ApplicationInstanceClaim>.Success { Value: ApplicationInstanceClaim.Forwarded { Reply: null } }, "a one-way launch is forwarded without a reply");
-                var received = await launches.Reader.ReadAsync().AsTask().WaitAsync(Wait);
+                var received = await launches.Reader.ReadAsync().AsTask().WaitScaledAsync(Wait);
                 Check(received.Arguments.Single() == "--show" && received.Reply is null, "the running instance receives it without a reply");
             }
 
@@ -594,7 +594,7 @@ internal sealed class ApplicationInstanceTests
             {
                 var launches = Channel.CreateUnbounded<ApplicationLaunch>();
                 instance.Launched += (_, launch) => launches.Writer.TryWrite(launch);
-                var claim = await ApplicationInstance.ClaimAsync("org.example.App", new ApplicationLaunch(["--run"], "/"), Replies, directory, default).AsTask().WaitAsync(Wait);
+                var claim = await ApplicationInstance.ClaimAsync("org.example.App", new ApplicationLaunch(["--run"], "/"), Replies, directory, default).AsTask().WaitScaledAsync(Wait);
                 Check(claim is PlatformResult<ApplicationInstanceClaim>.Failed { Code: PlatformFailureCode.ResourceBusy, Diagnostic: { Domain: "ApplicationInstance", Code: 0 } },
                     $"an instance that does not reply is busy, not {claim}");
                 Check(!launches.Reader.TryRead(out _), "the refused launch is not handled");
@@ -620,7 +620,7 @@ internal sealed class ApplicationInstanceTests
                 }
             });
             var stopwatch = System.Diagnostics.Stopwatch.StartNew();
-            var old = await ApplicationInstance.ClaimAsync("org.example.App", new ApplicationLaunch(["--run"], "/"), Replies, directory, default).AsTask().WaitAsync(Wait);
+            var old = await ApplicationInstance.ClaimAsync("org.example.App", new ApplicationLaunch(["--run"], "/"), Replies, directory, default).AsTask().WaitScaledAsync(Wait);
             Check(old is PlatformResult<ApplicationInstanceClaim>.Failed { Code: PlatformFailureCode.ResourceBusy, Diagnostic: { Domain: "ApplicationInstance", Code: 0 } },
                 $"an earlier instance is busy, not {old}");
             Check(stopwatch.Elapsed < TimeSpan.FromSeconds(3), $"and reported promptly, not after the claim deadline ({stopwatch.Elapsed})");
@@ -660,13 +660,13 @@ internal sealed class ApplicationInstanceTests
     // WaitAsync(Wait), naming the step that timed out (#352): the NativeAOT stack has no line numbers.
     private static async Task<T> Within<T>(Task<T> task, string step)
     {
-        try { return await task.WaitAsync(Wait); }
-        catch (TimeoutException error) { throw new TimeoutException($"Timed out after {Wait.TotalSeconds:0} s: {step}.", error); }
+        try { return await task.WaitScaledAsync(Wait, caller: step); }
+        catch (TimeoutException error) { throw new TimeoutException($"Timed out after {TestTimeouts.Scale(Wait).TotalSeconds:0} s: {step}.", error); }
     }
 
     private static async Task Within(Task task, string step)
     {
-        try { await task.WaitAsync(Wait); }
-        catch (TimeoutException error) { throw new TimeoutException($"Timed out after {Wait.TotalSeconds:0} s: {step}.", error); }
+        try { await task.WaitScaledAsync(Wait, caller: step); }
+        catch (TimeoutException error) { throw new TimeoutException($"Timed out after {TestTimeouts.Scale(Wait).TotalSeconds:0} s: {step}.", error); }
     }
 }

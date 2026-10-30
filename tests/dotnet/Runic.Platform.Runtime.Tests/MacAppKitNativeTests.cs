@@ -116,9 +116,9 @@ internal sealed partial class MacAppKitNativeTests
         using (var cancellation = new CancellationTokenSource())
         {
             var pending = boxes.ShowAsync(close, cancellation.Token).AsTask();
-            var alert = await shown.Task.WaitAsync(Step, cancellationToken);
+            var alert = await shown.Task.WaitScaledAsync(Step, cancellationToken);
             cancellation.Cancel();
-            try { await pending.WaitAsync(Step, cancellationToken); throw new InvalidOperationException("A cancelled sheet returned."); }
+            try { await pending.WaitScaledAsync(Step, cancellationToken); throw new InvalidOperationException("A cancelled sheet returned."); }
             catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested) { }
             await WaitAsync(() => WindowAsync(owner, static handle => Send(handle, Sel("attachedSheet")) == 0), "the cancelled sheet ends");
         }
@@ -137,13 +137,13 @@ internal sealed partial class MacAppKitNativeTests
         var shown = new TaskCompletionSource<nint>(TaskCreationOptions.RunContinuationsAsynchronously);
         boxes.Shown = alert => shown.TrySetResult(alert);
         var pending = boxes.ShowAsync(box, cancellationToken).AsTask();
-        var alert = await shown.Task.WaitAsync(Step, cancellationToken);
+        var alert = await shown.Task.WaitScaledAsync(Step, cancellationToken);
         await MacOsMainQueue.InvokeAsync(() =>
         {
             using var pool = new Pool();
             Arg(choose(alert), Sel("performClick:"), 0);
         });
-        return await pending.WaitAsync(Step, cancellationToken);
+        return await pending.WaitScaledAsync(Step, cancellationToken);
     }
 
     private static nint[] Buttons(nint alert)
@@ -162,7 +162,7 @@ internal sealed partial class MacAppKitNativeTests
             new FileDialogFilter("Text", ["txt"]),
             new FileDialogFilter("Text", ["md"]) { MimeTypes = ["text/*"] },
             new FileDialogFilter("All files", ["*"]),
-        ]).AsTask().WaitAsync(Step);
+        ]).AsTask().WaitScaledAsync(Step);
         Require(observed is [(3, "Images"), (1, "Text"), (2, "Text"), (0, "All files")],
             "Unexpected filter pop-up: " + string.Join(", ", observed.Select(static item => $"{item.Count} {item.Selected}")));
         Pass("the filter pop-up keeps filters with the same name and swaps the panel's types for the chosen filter");
@@ -183,14 +183,14 @@ internal sealed partial class MacAppKitNativeTests
             finished = Bool(Send(Class("NSRunningApplication"), Sel("currentApplication")), Sel("isFinishedLaunching")) != 0;
             policy = Send(application, Sel("activationPolicy"));
         }).AsTask();
-        if (await Task.WhenAny(ready, Task.Delay(TimeSpan.FromSeconds(20))) != ready)
+        if (await Task.WhenAny(ready, Task.Delay(TestTimeouts.Scale(TimeSpan.FromSeconds(20)))) != ready)
         {
             // Where the main thread is instead: sample(1) prints every thread's stack.
             Console.WriteLine($"main thread: no queued work ran within 20 s; sampling process {Environment.ProcessId}");
             Console.WriteLine(await SampleAsync());
             Console.WriteLine("main thread: " + EventLoopState());
         }
-        await ready.WaitAsync(TimeSpan.FromSeconds(70));
+        await ready.WaitScaledAsync(TimeSpan.FromSeconds(70));
         Console.WriteLine($"main thread: first queued work ran after {waited.ElapsedMilliseconds} ms; isRunning={running}, " +
             $"isFinishedLaunching={finished}, activationPolicy={policy}; {EventLoopState()}");
     }
@@ -211,7 +211,7 @@ internal sealed partial class MacAppKitNativeTests
             { RedirectStandardOutput = true, RedirectStandardError = true })!;
             var output = sample.StandardOutput.ReadToEndAsync();
             var error = sample.StandardError.ReadToEndAsync();
-            await sample.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(30));
+            await sample.WaitForExitAsync().WaitScaledAsync(TimeSpan.FromSeconds(30));
             return await output + await error;
         }
         catch (Exception failure) { return $"sample failed: {failure.Message}"; }
@@ -242,7 +242,7 @@ internal sealed partial class MacAppKitNativeTests
             ],
         };
         var started = System.Diagnostics.Stopwatch.StartNew();
-        var showing = await icon.ShowAsync(state).AsTask().WaitAsync(Step);
+        var showing = await icon.ShowAsync(state).AsTask().WaitScaledAsync(Step);
         Console.WriteLine($"status item: the first ShowAsync returned {showing} after {started.ElapsedMilliseconds} ms");
         Require(showing is PlatformResult<PlatformUnit>.Success,
             $"The status item was not shown: {showing} after {started.ElapsedMilliseconds} ms (MainThreadTimeout {MacStatusIcon.MainThreadTimeout}).");
@@ -268,10 +268,10 @@ internal sealed partial class MacAppKitNativeTests
         Pass("VoiceOver's show-menu action opens the menu, which the item gives back when it closes, so a press is primary again");
 
         PlatformResult<PlatformUnit>? hidden = null;
-        var whileOpen = await icon.ShowMenuAsync(async () => hidden = await icon.HideAsync().AsTask().WaitAsync(Step));
+        var whileOpen = await icon.ShowMenuAsync(async () => hidden = await icon.HideAsync().AsTask().WaitScaledAsync(Step));
         Require(whileOpen.Opened && hidden is PlatformResult<PlatformUnit>.Success, $"Hiding with the menu open: {whileOpen}, {hidden}.");
         Require(await icon.InspectAsync() is { Shown: false }, "Hiding with the menu open left the item.");
-        Require(await icon.ShowAsync(state).AsTask().WaitAsync(Step) is PlatformResult<PlatformUnit>.Success, "The item did not come back after the menu.");
+        Require(await icon.ShowAsync(state).AsTask().WaitScaledAsync(Step) is PlatformResult<PlatformUnit>.Success, "The item did not come back after the menu.");
         Pass("hiding while the menu is open closes it first, then removes the item");
 
         var menu = await icon.ChooseMenuItemAsync(0);
@@ -281,21 +281,21 @@ internal sealed partial class MacAppKitNativeTests
         await ExpectAsync(activations, DesktopStatusIconActivationKind.MenuItem, "attention");
         Pass($"the menu is built from the state and its items route to their IDs: {menu}");
 
-        Require(await icon.ShowAsync(state with { Status = DesktopStatusIconStatus.NeedsAttention, Tooltip = null }).AsTask().WaitAsync(Step)
+        Require(await icon.ShowAsync(state with { Status = DesktopStatusIconStatus.NeedsAttention, Tooltip = null }).AsTask().WaitScaledAsync(Step)
             is PlatformResult<PlatformUnit>.Success, "The attention state was not shown.");
         var attention = await icon.InspectAsync();
         Require(attention is { HasImage: true, Template: false, Representations: 1, ToolTip: "Runic status item" }, $"Unexpected attention item {attention}.");
         Pass($"the attention state shows the colour attention image: {attention}");
 
         Require(await icon.ShowAsync(new DesktopStatusIconState(new DesktopIcon { IconName = "applications-system" }, "Runic"))
-            .AsTask().WaitAsync(Step) is PlatformResult<PlatformUnit>.Success, "The text item was not shown.");
+            .AsTask().WaitScaledAsync(Step) is PlatformResult<PlatformUnit>.Success, "The text item was not shown.");
         var text = await icon.InspectAsync();
         Require(text is { HasImage: false, Title: "Runic" }, $"Unexpected text item {text}.");
         Pass("an icon without images shows the title");
 
-        Require(await icon.HideAsync().AsTask().WaitAsync(Step) is PlatformResult<PlatformUnit>.Success, "Hiding failed.");
+        Require(await icon.HideAsync().AsTask().WaitScaledAsync(Step) is PlatformResult<PlatformUnit>.Success, "Hiding failed.");
         Require(await icon.InspectAsync() is { Shown: false }, "The status item is still in the menu bar.");
-        Require(await icon.ShowAsync(state).AsTask().WaitAsync(Step) is PlatformResult<PlatformUnit>.Success
+        Require(await icon.ShowAsync(state).AsTask().WaitScaledAsync(Step) is PlatformResult<PlatformUnit>.Success
             && (await icon.InspectAsync()).Shown, "The status item did not come back.");
         Pass("hiding removes the item and showing adds it again");
     }
@@ -307,8 +307,8 @@ internal sealed partial class MacAppKitNativeTests
         var state = new DesktopStatusIconState(new DesktopIcon { Images = [Glyph(16, 0)] }, "Runic queue");
         await using (var icon = new MacStatusIcon())
         {
-            Require(await icon.ShowAsync(state).AsTask().WaitAsync(Step) is PlatformResult<PlatformUnit>.Success, "Show.");
-            Require(await icon.HideAsync().AsTask().WaitAsync(Step) is PlatformResult<PlatformUnit>.Success, "Hide.");
+            Require(await icon.ShowAsync(state).AsTask().WaitScaledAsync(Step) is PlatformResult<PlatformUnit>.Success, "Show.");
+            Require(await icon.HideAsync().AsTask().WaitScaledAsync(Step) is PlatformResult<PlatformUnit>.Success, "Hide.");
             var busy = BusyMainThreadAsync(TimeSpan.FromSeconds(2));
             using (var cancel = new CancellationTokenSource(TimeSpan.FromMilliseconds(300)))
             {
@@ -319,7 +319,7 @@ internal sealed partial class MacAppKitNativeTests
                 }
                 catch (OperationCanceledException) { }
             }
-            Require(await icon.HideAsync().AsTask().WaitAsync(Step) is PlatformResult<PlatformUnit>.Success, "Hide after a cancelled show.");
+            Require(await icon.HideAsync().AsTask().WaitScaledAsync(Step) is PlatformResult<PlatformUnit>.Success, "Hide after a cancelled show.");
             await busy;
             Require(await icon.InspectAsync() is { Shown: false }, "A cancelled show appeared after a later hide.");
             Pass("a cancelled show does not appear after a later hide");
@@ -331,9 +331,9 @@ internal sealed partial class MacAppKitNativeTests
         {
             var icon = new MacStatusIcon();
             var busy = BusyMainThreadAsync(TimeSpan.FromSeconds(2));
-            var result = await icon.ShowAsync(state).AsTask().WaitAsync(Step);
+            var result = await icon.ShowAsync(state).AsTask().WaitScaledAsync(Step);
             Require(result is PlatformResult<PlatformUnit>.Unavailable(PlatformUnavailableReason.BackendUnavailable), $"Show without a serviced main queue: {result}.");
-            await icon.DisposeAsync().AsTask().WaitAsync(Step);
+            await icon.DisposeAsync().AsTask().WaitScaledAsync(Step);
             await busy;
             Require(await icon.InspectAsync() is { Shown: false }, "The abandoned show ran later.");
             Pass("without a serviced main queue a show reports unavailable, never runs later, and disposal ends");
@@ -403,13 +403,13 @@ internal sealed partial class MacAppKitNativeTests
 
     private static async Task ExpectAsync(Channel<DesktopStatusIconActivation> activations, DesktopStatusIconActivationKind kind, string? id)
     {
-        var activation = await activations.Reader.ReadAsync().AsTask().WaitAsync(Step);
+        var activation = await activations.Reader.ReadAsync().AsTask().WaitScaledAsync(Step);
         Require(activation.Kind == kind && activation.CommandId == id && activation.PlatformContext is null, $"Expected {kind} {id}; got {activation}.");
     }
 
     private static async Task WaitAsync(Func<Task<bool>> check, string description)
     {
-        var deadline = DateTime.UtcNow + Step;
+        var deadline = DateTime.UtcNow + TestTimeouts.Scale(Step);
         while (!await check())
         {
             if (DateTime.UtcNow > deadline) throw new TimeoutException($"Expected {description}.");

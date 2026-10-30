@@ -101,8 +101,10 @@ internal static partial class PlacementSmoke
     // Waits for the state, then requires it to last, so a late placement by the window manager fails the check.
     private static async Task HoldsAsync(DesktopWindow window, Func<DesktopWindowState, bool> condition, string expected)
     {
-        var reached = await TryWaitForAsync(window, condition, Deadline)
+        var wait = TestTimeouts.Start(Deadline);
+        var reached = await TryWaitForAsync(window, condition, wait.Limit)
             ?? throw new TimeoutException($"Placement: the window did not report {expected}; last state: {window.State?.ToString() ?? "<none>"}.");
+        wait.Succeeded();
         await Task.Delay(Settle);
         Require(window.State is { } state && condition(state), $"{expected} to last; it reported {reached}, then {window.State}");
         Console.WriteLine($"Placement: {expected}: {window.State}.");
@@ -133,7 +135,7 @@ internal static partial class PlacementSmoke
         {
             var atom = XInternAtom(display, "_NET_SUPPORTING_WM_CHECK", 0);
             var elapsed = System.Diagnostics.Stopwatch.StartNew();
-            while (elapsed.Elapsed < Deadline)
+            while (elapsed.Elapsed < TestTimeouts.Scale(Deadline))
             {
                 byte* data = null;
                 if (XGetWindowProperty(display, XDefaultRootWindow(display), atom, 0, 1, 0, XaWindow,

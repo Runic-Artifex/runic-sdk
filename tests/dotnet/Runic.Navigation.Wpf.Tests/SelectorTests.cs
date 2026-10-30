@@ -189,14 +189,14 @@ internal sealed class SelectorTests
                 dispatcher.BeginInvoke(() => dispatcher.InvokeShutdown());
                 Dispatcher.Run();
                 gate.SetResult(true);
-                Require(selection.Wait(WaitLimit), "The selection did not end after dispatcher shutdown.");
+                Require(selection.Wait(TestTimeouts.Scale(WaitLimit)), "The selection did not end after dispatcher shutdown.");
                 NavigationSelector.SetRegion(tabs, null);
             }
             catch (Exception failure) { error = failure; }
         });
         thread.SetApartmentState(ApartmentState.STA);
         thread.Start();
-        try { Require(thread.Join(WaitLimit), "The secondary UI thread did not stop."); }
+        try { Require(thread.Join(TestTimeouts.Scale(WaitLimit)), "The secondary UI thread did not stop."); }
         finally { gate.TrySetResult(false); }
         if (error is not null) throw new InvalidOperationException("Detaching after shutdown failed.", error);
     }

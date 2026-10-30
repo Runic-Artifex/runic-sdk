@@ -74,7 +74,7 @@ internal sealed class DevelopmentAssetsChecks
     [Test, NotInParallel(Order = 35)]
     public async Task ADevelopmentHostServesTheDirectoryLiveAndReloadsItsWindow()
     {
-        using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+        using var cancellation = TestTimeouts.Cancellation(TimeSpan.FromSeconds(30));
         string root = Directory.CreateTempSubdirectory("runic-dev-assets-").FullName;
         try
         {
@@ -148,7 +148,7 @@ internal sealed class DevelopmentAssetsChecks
     [Test, NotInParallel(Order = 35)]
     public async Task APageThatMissedAReloadIsReloadedWhenItConnects()
     {
-        using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+        using var cancellation = TestTimeouts.Cancellation(TimeSpan.FromSeconds(30));
         string root = Directory.CreateTempSubdirectory("runic-dev-assets-").FullName;
         try
         {
@@ -231,7 +231,7 @@ internal sealed class DevelopmentAssetsChecks
     [Test, NotInParallel(Order = 35)]
     public async Task AWindowWhosePageHasNoBridgeIsReloadedByLaterChanges()
     {
-        using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+        using var cancellation = TestTimeouts.Cancellation(TimeSpan.FromSeconds(30));
         string root = Directory.CreateTempSubdirectory("runic-dev-assets-").FullName;
         try
         {

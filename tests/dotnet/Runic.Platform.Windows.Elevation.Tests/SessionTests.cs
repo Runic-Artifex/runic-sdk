@@ -117,13 +117,13 @@ internal sealed class SessionTests
         var host = new FakeHost { LaunchGate = new(TaskCreationOptions.RunContinuationsAsynchronously) };
         using var cancellation = new CancellationTokenSource();
         var run = Provider(host).RunAsync(new(PrivilegedActions.Wait, []), cancellation.Token).AsTask();
-        await host.Launched.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        await host.Launched.Task.WaitScaledAsync(TimeSpan.FromSeconds(10));
         await cancellation.CancelAsync();
-        await Throws<OperationCanceledException>(() => run.WaitAsync(TimeSpan.FromSeconds(10)), "cancellation does not wait for the prompt");
+        await Throws<OperationCanceledException>(() => run.WaitScaledAsync(TimeSpan.FromSeconds(10)), "cancellation does not wait for the prompt");
         Check(host.Pipe!.Disposed, "the pipe is closed at once");
         host.LaunchGate.SetResult();
-        Check(!await host.HelperDone.Task.WaitAsync(TimeSpan.FromSeconds(10)), "a later approval runs nothing");
-        await host.Process!.Exited.WaitAsync(TimeSpan.FromSeconds(10));
+        Check(!await host.HelperDone.Task.WaitScaledAsync(TimeSpan.FromSeconds(10)), "a later approval runs nothing");
+        await host.Process!.Exited.WaitScaledAsync(TimeSpan.FromSeconds(10));
         Check(host.Process.TerminatedWith == WindowsPrivilegedActions.TerminatedExitCode || host.Process.Exited.Result == 2, "the late helper is terminated or exits on its own");
     }
 
@@ -133,8 +133,8 @@ internal sealed class SessionTests
         using var cancellation = new CancellationTokenSource();
         var host = new FakeHost();
         host.BeforeHello = () => cancellation.Cancel();
-        await Throws<OperationCanceledException>(() => Provider(host).RunAsync(new(PrivilegedActions.Wait, []), cancellation.Token).AsTask().WaitAsync(TimeSpan.FromSeconds(10)), "cancelled");
-        Check(!await host.HelperDone.Task.WaitAsync(TimeSpan.FromSeconds(10)) && !host.ActionStarted, "the helper never got the start signal");
+        await Throws<OperationCanceledException>(() => Provider(host).RunAsync(new(PrivilegedActions.Wait, []), cancellation.Token).AsTask().WaitScaledAsync(TimeSpan.FromSeconds(10)), "cancelled");
+        Check(!await host.HelperDone.Task.WaitScaledAsync(TimeSpan.FromSeconds(10)) && !host.ActionStarted, "the helper never got the start signal");
     }
 
     [Test, DisplayName("session: cancelling a running action asks it to stop and reports how it ended")]
@@ -173,14 +173,14 @@ internal sealed class SessionTests
             Action = (channel, process) =>
             {
                 channel.Write(ElevationProtocol.StandardOutput, "ignoring\n"u8);
-                process.Exited.Wait(TimeSpan.FromSeconds(30));
+                process.Exited.Wait(TestTimeouts.Scale(TimeSpan.FromSeconds(30)));
                 return 6;
             },
         };
         using var cancellation = new CancellationTokenSource();
         var options = PrivilegedActions.WindowsElevation with { TerminateAfterCancellation = TimeSpan.FromMilliseconds(200) };
         var result = await Provider(host, options).RunAsync(new(PrivilegedActions.Ignore, []) { Output = line => { if (line.Text == "ignoring") cancellation.Cancel(); } }, cancellation.Token)
-            .AsTask().WaitAsync(TimeSpan.FromSeconds(20));
+            .AsTask().WaitScaledAsync(TimeSpan.FromSeconds(20));
         Check(result is PlatformResult<PrivilegedActionCompletion>.Success({ ExitCode: WindowsPrivilegedActions.TerminatedExitCode }), $"result {result}");
         Check(host.Process!.TerminatedWith == WindowsPrivilegedActions.TerminatedExitCode, "terminated through the handle");
     }
@@ -194,14 +194,14 @@ internal sealed class SessionTests
             Action = (channel, process) =>
             {
                 channel.Write(ElevationProtocol.StandardOutput, "ignoring\n"u8);
-                process.Exited.Wait(TimeSpan.FromSeconds(30));
+                process.Exited.Wait(TestTimeouts.Scale(TimeSpan.FromSeconds(30)));
                 return 6;
             },
         };
         using var cancellation = new CancellationTokenSource();
         var options = PrivilegedActions.WindowsElevation with { TerminateAfterCancellation = TimeSpan.FromMilliseconds(200) };
         var result = await Provider(host, options).RunAsync(new(PrivilegedActions.Ignore, []) { Output = line => { if (line.Text == "ignoring") cancellation.Cancel(); } }, cancellation.Token)
-            .AsTask().WaitAsync(TimeSpan.FromSeconds(20));
+            .AsTask().WaitScaledAsync(TimeSpan.FromSeconds(20));
         Check(result is PlatformResult<PrivilegedActionCompletion>.Failed(PlatformFailureCode.PermissionDenied, { Code: 8 }), $"result {result}");
         host.Process!.Exit(6);
     }
@@ -237,7 +237,7 @@ internal sealed class SessionTests
         var whileBlocked = Volatile.Read(ref written);
         Check(whileBlocked < Lines, $"the helper wrote {whileBlocked} of {Lines} lines while the callback blocked");
         gate.Set();
-        Check(await run.WaitAsync(TimeSpan.FromSeconds(30)) is PlatformResult<PrivilegedActionCompletion>.Success({ ExitCode: 0 }), "ran");
+        Check(await run.WaitScaledAsync(TimeSpan.FromSeconds(30)) is PlatformResult<PrivilegedActionCompletion>.Success({ ExitCode: 0 }), "ran");
         Check(received.Count == Lines && received.Select((l, i) => l.StartsWith($"line {i} ", StringComparison.Ordinal)).All(x => x), $"{received.Count} lines in order");
     }
 

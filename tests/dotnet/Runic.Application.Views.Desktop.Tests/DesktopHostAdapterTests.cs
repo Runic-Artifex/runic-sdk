@@ -53,7 +53,7 @@ internal sealed class DesktopBridgeTransportTests
         try
         {
             model.Rows.Add(1);
-            await started.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            await started.Task.WaitScaledAsync(TimeSpan.FromSeconds(5));
             model.Rows.Add(2);
             model.Rows.Add(3);
             lock (messages) Require(messages.Count == 1, "Dependent frames bypassed the in-flight delivery.");
@@ -114,7 +114,7 @@ internal sealed class DesktopBridgeTransportTests
         var first = transport.BroadcastAsync("{\"kind\":\"first\"}"u8.ToArray()).AsTask();
         Require(!first.IsCompleted, "A broadcast completed before its send did.");
         inFlight.SetResult();
-        await first.WaitAsync(TimeSpan.FromSeconds(5));
+        await first.WaitScaledAsync(TimeSpan.FromSeconds(5));
         await transport.BroadcastAsync("{\"kind\":\"second\"}"u8.ToArray());
         await transport.BroadcastAsync("{\"kind\":\"third\"}"u8.ToArray());
         lock (sent)
@@ -198,16 +198,16 @@ internal sealed class DesktopBridgeTransportTests
 
         _ = await calls.RequestAsync("{\"kind\":\"hello\",\"protocol\":4,\"session\":\"s-1\",\"client\":{\"name\":\"tests\",\"version\":\"0\"}}");
         var call = calls.RequestAsync("{\"kind\":\"command\",\"route\":\"slow\",\"member\":\"save\"}").AsTask();
-        Require(await model.Started.Task.WaitAsync(TimeSpan.FromSeconds(5)), "The awaited command did not start.");
+        Require(await model.Started.Task.WaitScaledAsync(TimeSpan.FromSeconds(5)), "The awaited command did not start.");
         var result = await window.CloseAsync(TimeSpan.Zero);
         Require(!result.Drained && result.RemainingOperations == 1, "Close did not report the running command.");
         Require(!transport.IsServing, "A timed-out close left the window's Desktop requests served.");
         Require(!probe.Disposed, "The window scope was disposed while accepted work was still running.");
 
         model.Release.SetResult();
-        await result.Completion.WaitAsync(TimeSpan.FromSeconds(5));
+        await result.Completion.WaitScaledAsync(TimeSpan.FromSeconds(5));
         Require(probe.Disposed, "The window scope was not disposed after accepted work finished.");
-        using var reply = JsonDocument.Parse(await call.WaitAsync(TimeSpan.FromSeconds(5)));
+        using var reply = JsonDocument.Parse(await call.WaitScaledAsync(TimeSpan.FromSeconds(5)));
         Require(reply.RootElement.TryGetProperty("ok", out _), "The awaited command did not reply after close.");
     }
 
@@ -287,7 +287,7 @@ internal sealed class DesktopWindowTests
         factory.Hosts[^1].HoldDispatch!.SetResult();
         try
         {
-            await queued.WaitAsync(TimeSpan.FromSeconds(5));
+            await queued.WaitScaledAsync(TimeSpan.FromSeconds(5));
             throw new InvalidOperationException("Native work queued before close ran after it.");
         }
         catch (OwnerClosedException) { }
@@ -394,7 +394,7 @@ internal sealed class DesktopWindowTests
             var closed = window.WaitForCloseAsync().AsTask();
             Require(!closed.IsCompleted, "WaitForCloseAsync completed before the window closed.");
             await factory.Hosts[^1].CloseAsync();
-            await closed.WaitAsync(TimeSpan.FromSeconds(5));
+            await closed.WaitScaledAsync(TimeSpan.FromSeconds(5));
         }
 
         await using (var window = await windows.OpenWindowAsync<ProbeWindow>())
@@ -406,7 +406,7 @@ internal sealed class DesktopWindowTests
             // the window closes.
             try { _ = await window.CloseAsync(TimeSpan.FromSeconds(5), cancelled.Token); }
             catch (OperationCanceledException) { }
-            await closed.WaitAsync(TimeSpan.FromSeconds(5));
+            await closed.WaitScaledAsync(TimeSpan.FromSeconds(5));
         }
     }
 
@@ -474,7 +474,7 @@ internal sealed class DesktopWindowTests
         {
             try
             {
-                await queued.WaitAsync(TimeSpan.FromSeconds(5));
+                await queued.WaitScaledAsync(TimeSpan.FromSeconds(5));
                 throw new InvalidOperationException($"{subject} completed.");
             }
             catch (OwnerClosedException)

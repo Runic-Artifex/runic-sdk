@@ -47,7 +47,7 @@ internal sealed class MenuCommandChecks
         var application = desktop.MenuCommands ?? throw new InvalidOperationException("The application commands were not bound.");
         Require(application.CanExecute(Item("file.new")) && !application.CanExecute(Item("file.save")), "The application's commands were not bound by id.");
         application.Execute(Item("file.new"));
-        await newCommand.Executed.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        await newCommand.Executed.Task.WaitScaledAsync(TimeSpan.FromSeconds(5));
 
         var window = await host.OpenWindowAsync<MenuWindow>();
         try
@@ -61,7 +61,7 @@ internal sealed class MenuCommandChecks
             Require(!target.CanExecute(Item("file.save")), "CanExecuteChanged did not update the item's availability.");
             viewModel.Save.Enabled = true;
             target.Execute(Item("file.save"));
-            await viewModel.Save.Executed.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            await viewModel.Save.Executed.Task.WaitScaledAsync(TimeSpan.FromSeconds(5));
 
             target.Execute(Item("tools.explode"));
             await WaitAsync(() => logs.Messages.Any(static message => message.Contains("The menu command tools.explode failed with System.InvalidOperationException", StringComparison.Ordinal)),

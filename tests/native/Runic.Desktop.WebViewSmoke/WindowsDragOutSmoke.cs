@@ -38,7 +38,7 @@ internal static partial class WindowsFileDropSmoke
         if (await window.StartDragAsync(new Runic.Platform.DesktopDragData { Text = "late" }) != Runic.Platform.DesktopDragEffects.None)
             throw new InvalidOperationException("A drag without a held button did not end at once with no effect.");
         using var target = DropTargetWindow.Start(x: 900, y: 220, size: 200);
-        await target.Ready.WaitAsync(TimeSpan.FromSeconds(10));
+        await target.Ready.WaitScaledAsync(TimeSpan.FromSeconds(10));
 
         var files = await DragOutAsync(surface, window, target, new Runic.Platform.DesktopDragData
         {
@@ -110,7 +110,7 @@ internal static partial class WindowsFileDropSmoke
                 Console.WriteLine("Frame drops: unverified on this runner: its desktop does not deliver SendInput to a window of this process.");
                 return;
             }
-            var drop = await drops.Reader.ReadAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(15));
+            var drop = await drops.Reader.ReadAsync().AsTask().WaitScaledAsync(TimeSpan.FromSeconds(15));
             if (drop.Target != "frame-folder" || drop.Effect != Runic.Platform.DesktopDragEffects.Move
                 || !drop.Paths.SequenceEqual(paths, StringComparer.OrdinalIgnoreCase))
                 throw new InvalidOperationException($"The same-origin frame's drop reported target '{drop.Target}', {drop.Effect} and [{string.Join(", ", drop.Paths)}].");
@@ -141,11 +141,11 @@ internal static partial class WindowsFileDropSmoke
         thread.SetApartmentState(ApartmentState.STA);
         thread.Start();
         int effect;
-        try { effect = await drag.Task.WaitAsync(TimeSpan.FromSeconds(30)); }
+        try { effect = await drag.Task.WaitScaledAsync(TimeSpan.FromSeconds(30)); }
         catch (TimeoutException)
         {
             Escape();
-            throw new TimeoutException("The OLE drag onto the frame did not end within 30 seconds.");
+            throw new TimeoutException($"The OLE drag onto the frame did not end within {TestTimeouts.Scale(TimeSpan.FromSeconds(30)).TotalSeconds:0} seconds.");
         }
         return effect == NoDesktopInput ? null : effect;
     }
@@ -247,7 +247,7 @@ internal static partial class WindowsFileDropSmoke
         Runic.Platform.DesktopDragEffects effect;
         try
         {
-            effect = await drag.WaitAsync(TimeSpan.FromSeconds(30));
+            effect = await drag.WaitScaledAsync(TimeSpan.FromSeconds(30));
         }
         catch (TimeoutException)
         {
@@ -342,7 +342,7 @@ internal static partial class WindowsFileDropSmoke
         public void Dispose()
         {
             if (_threadId != 0) _ = PostThreadMessage(_threadId, 0x0012, 0, 0); // WM_QUIT
-            _thread?.Join(TimeSpan.FromSeconds(5));
+            _thread?.Join(TestTimeouts.Scale(TimeSpan.FromSeconds(5)));
         }
 
         internal void OnEnter() => _entered = true;

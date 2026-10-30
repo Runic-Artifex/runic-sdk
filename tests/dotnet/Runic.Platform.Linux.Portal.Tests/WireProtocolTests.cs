@@ -47,18 +47,18 @@ internal sealed class WireProtocolTests
         using (var cancellation = new CancellationTokenSource())
         {
             var waiting = realTransport.RequestAsync("x11:1234", "OpenFile", "", cancellation.Token).AsTask();
-            await fake.Called.Task.WaitAsync(TimeSpan.FromSeconds(3));
+            await fake.Called.Task.WaitScaledAsync(TimeSpan.FromSeconds(3));
             cancellation.Cancel();
-            try { await waiting.WaitAsync(TimeSpan.FromSeconds(3)); throw new InvalidOperationException("D-Bus cancellation ignored"); } catch (OperationCanceledException) { }
-            await fake.Closed.Task.WaitAsync(TimeSpan.FromSeconds(3));
+            try { await waiting.WaitScaledAsync(TimeSpan.FromSeconds(3)); throw new InvalidOperationException("D-Bus cancellation ignored"); } catch (OperationCanceledException) { }
+            await fake.Closed.Task.WaitScaledAsync(TimeSpan.FromSeconds(3));
             Check(fake.Call == "org.freedesktop.portal.FileChooser.OpenFile(ssa{sv}) handle_token,modal" && fake.Argument == "Open file", "OpenFile wire shape");
             Check(fake.ClosedPath == fake.RequestPath && fake.ClosedCall == "org.freedesktop.portal.Request.Close()", "Request.Close targets the returned handle");
         }
         fake.Called = new(TaskCreationOptions.RunContinuationsAsynchronously);
         var disconnected = realTransport.RequestAsync("x11:1234", "OpenFile", "", default).AsTask();
-        await fake.Called.Task.WaitAsync(TimeSpan.FromSeconds(3));
+        await fake.Called.Task.WaitScaledAsync(TimeSpan.FromSeconds(3));
         service.Dispose();
-        try { await disconnected.WaitAsync(TimeSpan.FromSeconds(3)); throw new InvalidOperationException("portal disconnection ignored"); }
+        try { await disconnected.WaitScaledAsync(TimeSpan.FromSeconds(3)); throw new InvalidOperationException("portal disconnection ignored"); }
         catch (DBusExceptionBase) { }
         catch (System.Threading.Channels.ChannelClosedException) { }
         Console.WriteLine("PASS real D-Bus protocol: early response, legacy handle, save options, Request.Close.");

@@ -27,10 +27,10 @@ public sealed class NativeDispatchWorkTests
         var work = new NativeDispatchWork(() => { entered.SetResult(); release.Wait(); }, cancellation.Token);
         var waiting = work.WaitAsync();
         var running = Task.Run(work.Run);
-        await entered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        await entered.Task.WaitScaledAsync(TimeSpan.FromSeconds(5));
         try { await cancellation.CancelAsync(); Assert.False(waiting.IsCompleted); }
         finally { release.Set(); }
-        await Task.WhenAll(waiting, running).WaitAsync(TimeSpan.FromSeconds(5));
+        await Task.WhenAll(waiting, running).WaitScaledAsync(TimeSpan.FromSeconds(5));
     }
 
     [Test]

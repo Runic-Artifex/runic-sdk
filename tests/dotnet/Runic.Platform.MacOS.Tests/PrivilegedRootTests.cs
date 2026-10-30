@@ -78,18 +78,18 @@ internal sealed class PrivilegedRootTests
             var provider = new MacPrivilegedProvider(Actions, definition, host);
 
             var lines = new List<string>();
-            var result = await provider.RunAsync(new(RootId, []) { Output = l => lines.Add(l.Text) }).AsTask().WaitAsync(TimeSpan.FromMinutes(2));
+            var result = await provider.RunAsync(new(RootId, []) { Output = l => lines.Add(l.Text) }).AsTask().WaitScaledAsync(TimeSpan.FromMinutes(2));
             Check(result is PlatformResult<PrivilegedActionCompletion>.Success { Value.ExitCode: 0 } && lines.SequenceEqual(["0"]), $"root: {Describe(result)} {string.Join(",", lines)}");
             Console.WriteLine("PASS id -u as root through the system Mach service, with the right obtained by credentials and checked again by the daemon");
 
             lines.Clear();
             Environment.SetEnvironmentVariable("RUNIC_TEST_SECRET", "secret");
-            result = await provider.RunAsync(new(RootEnv, []) { Output = l => lines.Add(l.Text) }).AsTask().WaitAsync(TimeSpan.FromMinutes(2));
+            result = await provider.RunAsync(new(RootEnv, []) { Output = l => lines.Add(l.Text) }).AsTask().WaitScaledAsync(TimeSpan.FromMinutes(2));
             string[] environment = ["PATH=/usr/bin:/bin:/usr/sbin:/sbin", "HOME=/var/root", "USER=root", "LOGNAME=root", $"RUNIC_CALLER_UID={MacProcess.GetEffectiveUserId()}"];
             Check(result is PlatformResult<PrivilegedActionCompletion>.Success { Value.ExitCode: 0 } && lines.Order().SequenceEqual(environment.Order()), "environment: " + string.Join(",", lines));
 
             lines.Clear();
-            result = await provider.RunAsync(new(RootShell, ["umask; pwd; id -u; exit 4"]) { Output = l => lines.Add(l.Text) }).AsTask().WaitAsync(TimeSpan.FromMinutes(2));
+            result = await provider.RunAsync(new(RootShell, ["umask; pwd; id -u; exit 4"]) { Output = l => lines.Add(l.Text) }).AsTask().WaitScaledAsync(TimeSpan.FromMinutes(2));
             Check(result is PlatformResult<PrivilegedActionCompletion>.Success { Value.ExitCode: 4 } && lines.SequenceEqual(["0022", "/", "0"]), $"process state: {Describe(result)} {string.Join(",", lines)}");
             Console.WriteLine("PASS environment, umask 022, working directory / and exit code as root");
 
@@ -121,25 +121,25 @@ internal sealed class PrivilegedRootTests
             var modified = Modified(RootId.Id);
             for (var run = 0; run < 3; run++)
             {
-                result = await provider.RunAsync(new(RootId, [])).AsTask().WaitAsync(TimeSpan.FromMinutes(2));
+                result = await provider.RunAsync(new(RootId, [])).AsTask().WaitScaledAsync(TimeSpan.FromMinutes(2));
                 Check(result is PlatformResult<PrivilegedActionCompletion>.Success { Value.ExitCode: 0 }, $"run {run}: {Describe(result)}");
             }
             Check(Modified(RootId.Id) == modified && modified is not null, $"the right is not defined again on every run: {modified} then {Modified(RootId.Id)}");
             Console.WriteLine("PASS the daemon in a bundle with en.lproj leaves a matching right unchanged across runs");
 
             host.Mode = CredentialMode.WrongPassword;
-            result = await provider.RunAsync(new(RootId, [])).AsTask().WaitAsync(TimeSpan.FromMinutes(2));
+            result = await provider.RunAsync(new(RootId, [])).AsTask().WaitScaledAsync(TimeSpan.FromMinutes(2));
             Console.WriteLine($"wrong password: {Describe(result)} {(result as PlatformResult<PrivilegedActionCompletion>.Failed)?.Diagnostic}");
             Check(result is PlatformResult<PrivilegedActionCompletion>.Failed { Code: PlatformFailureCode.PermissionDenied, Diagnostic.Code: -60005 }, "a wrong password is denied (-60005)");
 
             host.Mode = CredentialMode.NoCredential;
-            result = await provider.RunAsync(new(RootId, [])).AsTask().WaitAsync(TimeSpan.FromMinutes(2));
+            result = await provider.RunAsync(new(RootId, [])).AsTask().WaitScaledAsync(TimeSpan.FromMinutes(2));
             Console.WriteLine($"no credential: {Describe(result)} {(result as PlatformResult<PrivilegedActionCompletion>.Failed)?.Diagnostic}");
             Check(result is PlatformResult<PrivilegedActionCompletion>.Failed { Code: PlatformFailureCode.PermissionDenied, Diagnostic.Message: not null } failed
                 && failed.Diagnostic!.Message!.Contains("daemon", StringComparison.Ordinal), "the daemon refuses an authorization without the right");
 
             host.Mode = CredentialMode.Stale;
-            result = await provider.RunAsync(new(RootId, [])).AsTask().WaitAsync(TimeSpan.FromMinutes(2));
+            result = await provider.RunAsync(new(RootId, [])).AsTask().WaitScaledAsync(TimeSpan.FromMinutes(2));
             Console.WriteLine($"stale external form: {Describe(result)} {(result as PlatformResult<PrivilegedActionCompletion>.Failed)?.Diagnostic}");
             Check(result is PlatformResult<PrivilegedActionCompletion>.Failed { Code: PlatformFailureCode.PermissionDenied, Diagnostic.Message: not null } stale
                 && stale.Diagnostic!.Message!.Contains("daemon", StringComparison.Ordinal), "the daemon refuses the form of a finished run");

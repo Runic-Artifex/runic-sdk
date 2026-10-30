@@ -37,7 +37,7 @@ internal static class ClipboardFormatsSmoke
             Require(await clipboard.ReadFilesAsync(1) is PlatformResult<ImmutableArray<string>>.Failed { Code: PlatformFailureCode.TooLarge }, "the file bound");
             Console.WriteLine("GTK4 smoke: HTML, RTF, image and files in one write, read back.");
 
-            using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+            using var cancellation = TestTimeouts.Cancellation(TimeSpan.FromSeconds(30));
             await using var watch = clipboard.WatchAsync(cancellation.Token).GetAsyncEnumerator(cancellation.Token);
             Require(await watch.MoveNextAsync() && watch.Current is PlatformResult<DesktopClipboardFormats>.Success { Value: var now } && now.HasFlag(DesktopClipboardFormats.Files),
                 $"the watch's first formats: {watch.Current}");

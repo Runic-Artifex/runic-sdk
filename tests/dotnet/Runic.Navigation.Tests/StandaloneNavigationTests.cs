@@ -598,10 +598,10 @@ internal sealed partial class NavigationTests
         {
             factoryScoped = services.GetRequiredService<Scoped>();
             inFactory.Set();
-            release.Wait(Timeout);
+            release.Wait(TestTimeouts.Scale(Timeout));
             return built = new Page("built");
         })).AsTask());
-        Require(await Wait(Task.Run(() => inFactory.Wait(Timeout))), "The factory did not start.");
+        Require(await Wait(Task.Run(() => inFactory.Wait(TestTimeouts.Scale(Timeout)))), "The factory did not start.");
         var other = region.PushAsync(NavigationTarget.Own(new Page("other"))).AsTask();
         release.Set();
         var pushed = await Wait(push);
@@ -645,12 +645,12 @@ internal sealed partial class NavigationTests
         {
             scoped = services.GetRequiredService<Scoped>();
             inFactory.Set();
-            release.Wait(Timeout);
+            release.Wait(TestTimeouts.Scale(Timeout));
             built = new Page("built");
             if (late) built.OnDispose = () => throw new InvalidOperationException("dispose");
             return built;
         })).AsTask());
-        Require(await Wait(Task.Run(() => inFactory.Wait(Timeout))), "The factory did not start.");
+        Require(await Wait(Task.Run(() => inFactory.Wait(TestTimeouts.Scale(Timeout)))), "The factory did not start.");
         var disposal = fixture.Navigator.DisposeAsync().AsTask();
         if (late) await Wait(disposal);
         else await Until(() => fixture.Navigator.IsClosed, "The navigator did not start closing.");

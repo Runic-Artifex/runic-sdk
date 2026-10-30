@@ -31,7 +31,7 @@ internal sealed class NativeAccessTests
                 using (var mkfifo = System.Diagnostics.Process.Start("mkfifo", [fifo])) await mkfifo.WaitForExitAsync();
                 access = new Access();
                 selected.Result = new(fifo, access, false);
-                Check(await backend.OpenFileAsync(new()).AsTask().WaitAsync(TimeSpan.FromSeconds(3)) is PickerResult<IReadFileLease>.Failed { Code: PlatformFailureCode.IOError },
+                Check(await backend.OpenFileAsync(new()).AsTask().WaitScaledAsync(TimeSpan.FromSeconds(3)) is PickerResult<IReadFileLease>.Failed { Code: PlatformFailureCode.IOError },
                     "A special file must be refused without blocking.");
                 Check(access.Releases == 1, "Refused special file leaked access.");
                 File.Delete(fifo);

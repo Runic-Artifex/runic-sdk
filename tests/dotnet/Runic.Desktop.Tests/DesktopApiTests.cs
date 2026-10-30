@@ -159,7 +159,7 @@ public sealed class DesktopApiTests
         var bridge = await client.GetStringAsync(new Uri(surface.Url, "webui.js"));
         var token = ExtractUnsigned(bridge, "const TOKEN = ");
         var credential = ExtractQuoted(bridge, "const SESSION_CREDENTIAL = \"");
-        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        using var timeout = TestTimeouts.Cancellation(TimeSpan.FromSeconds(10));
         using var socket = new ClientWebSocket();
         socket.Options.SetRequestHeader("Origin", $"{surface.Url.Scheme}://{surface.Url.Authority}");
         socket.Options.AddSubProtocol($"runic-desktop.{credential}");
@@ -199,7 +199,7 @@ public sealed class DesktopApiTests
         var bridge = await client.GetStringAsync(new Uri(surface.Url, "webui.js"));
         var token = ExtractUnsigned(bridge, "const TOKEN = ");
         var credential = ExtractQuoted(bridge, "const SESSION_CREDENTIAL = \"");
-        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        using var timeout = TestTimeouts.Cancellation(TimeSpan.FromSeconds(10));
         using var socket = await ConnectAuthenticatedAsync(surface.Url, credential, token, timeout.Token);
         ushort id = 0;
         async Task<string> CallAsync(string capability)
@@ -270,7 +270,7 @@ public sealed class DesktopApiTests
         var bootstrap = await client.GetStringAsync(new Uri(surface.Url, "webui.js"));
         var token = ExtractUnsigned(bootstrap, "const TOKEN = ");
         var credential = ExtractQuoted(bootstrap, "const SESSION_CREDENTIAL = \"");
-        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        using var timeout = TestTimeouts.Cancellation(TimeSpan.FromSeconds(10));
         using var first = await ConnectAuthenticatedAsync(surface.Url, credential, token, timeout.Token);
         using var second = await ConnectAuthenticatedAsync(surface.Url, credential, token, timeout.Token);
 
@@ -1084,8 +1084,8 @@ public sealed class DesktopApiTests
             Assert.Equal(0, Volatile.Read(ref raised));
 
             factory.Host!.CloseByUser();
-            Assert.True(await closed.Task.WaitAsync(TimeSpan.FromSeconds(10)));
-            await window.WaitForCloseAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(10));
+            Assert.True(await closed.Task.WaitScaledAsync(TimeSpan.FromSeconds(10)));
+            await window.WaitForCloseAsync().AsTask().WaitScaledAsync(TimeSpan.FromSeconds(10));
             await Task.Delay(200);
             Assert.Equal(1, Volatile.Read(ref raised));
         }
@@ -1096,14 +1096,14 @@ public sealed class DesktopApiTests
             var closed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
             window.Closed += (_, _) => closed.TrySetResult();
             await window.CloseAsync();
-            await closed.Task.WaitAsync(TimeSpan.FromSeconds(10));
+            await closed.Task.WaitScaledAsync(TimeSpan.FromSeconds(10));
 
             // Disposing the surface closes its window too.
             var next = await surface.OpenWindowAsync(new DesktopWindowOptions { Browser = BrowserKind.Embedded });
             var nextClosed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
             next.Closed += (_, _) => nextClosed.TrySetResult();
             await surface.DisposeAsync();
-            await nextClosed.Task.WaitAsync(TimeSpan.FromSeconds(10));
+            await nextClosed.Task.WaitScaledAsync(TimeSpan.FromSeconds(10));
         }
     }
 
@@ -1270,7 +1270,7 @@ public sealed class DesktopApiTests
         await surface.CloseAsync();
 
         Assert.Equal(RequestCancellationReason.SurfaceClosing, observedRequest?.CancellationReason);
-        await stream.Disposed.WaitAsync(TimeSpan.FromSeconds(5));
+        await stream.Disposed.WaitScaledAsync(TimeSpan.FromSeconds(5));
     }
 
     [Test]
@@ -1282,7 +1282,7 @@ public sealed class DesktopApiTests
         var bridge = await client.GetStringAsync(new Uri(surface.Url, "webui.js"));
         var token = ExtractUnsigned(bridge, "const TOKEN = ");
         var credential = ExtractQuoted(bridge, "const SESSION_CREDENTIAL = \"");
-        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        using var timeout = TestTimeouts.Cancellation(TimeSpan.FromSeconds(10));
         using var socket = await ConnectAuthenticatedAsync(surface.Url, credential, token, timeout.Token);
         async Task<ushort> ReceiveScriptAsync(string script)
         {
@@ -1455,7 +1455,7 @@ public sealed class DesktopApiTests
         Assert.True(window.Capabilities.HasFlag(DesktopWindowCapabilities.CloseConfirmation));
         Assert.NotNull(factory.Host?.Options?.CloseRequested);
         factory.Host!.Options!.CloseRequested!();
-        await entered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        await entered.Task.WaitScaledAsync(TimeSpan.FromSeconds(5));
         var request = window.RequestCloseAsync();
         decision.SetResult(false);
         Assert.False(await request);
@@ -1526,7 +1526,7 @@ public sealed class DesktopApiTests
         var bootstrap = await client.GetStringAsync(new Uri(surface.Url, "webui.js"));
         var token = ExtractUnsigned(bootstrap, "const TOKEN = ");
         var credential = ExtractQuoted(bootstrap, "const SESSION_CREDENTIAL = \"");
-        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        using var timeout = TestTimeouts.Cancellation(TimeSpan.FromSeconds(5));
         using var socket = new ClientWebSocket();
         socket.Options.SetRequestHeader("Origin", $"{surface.Url.Scheme}://{surface.Url.Authority}");
         socket.Options.AddSubProtocol($"runic-desktop.{credential}");
@@ -1560,7 +1560,7 @@ public sealed class DesktopApiTests
         var wait = window.WaitForCloseAsync().AsTask();
         Assert.False(wait.IsCompleted);
         await window.CloseAsync();
-        await wait.WaitAsync(TimeSpan.FromSeconds(5));
+        await wait.WaitScaledAsync(TimeSpan.FromSeconds(5));
         Assert.False(window.IsOpen);
         Assert.False(factory.Host!.IsOpen);
     }
@@ -1580,7 +1580,7 @@ public sealed class DesktopApiTests
         using var caller = new CancellationTokenSource();
 
         var cancelledClose = window.CloseAsync(caller.Token).AsTask();
-        await native.CloseEntered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        await native.CloseEntered.Task.WaitScaledAsync(TimeSpan.FromSeconds(5));
         var sharedClose = window.CloseAsync().AsTask();
         try
         {
@@ -1591,10 +1591,10 @@ public sealed class DesktopApiTests
         }
         finally { native.ReleaseClose.TrySetResult(); }
 
-        await sharedClose.WaitAsync(TimeSpan.FromSeconds(5));
+        await sharedClose.WaitScaledAsync(TimeSpan.FromSeconds(5));
         Assert.False(native.IsOpen);
         Assert.False(window.IsOpen);
-        await window.WaitForCloseAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(5));
+        await window.WaitForCloseAsync().AsTask().WaitScaledAsync(TimeSpan.FromSeconds(5));
     }
 
     [Test]
@@ -1636,7 +1636,7 @@ public sealed class DesktopApiTests
             ConfirmCloseAsync = _ => { entered.TrySetResult(); return new(decision.Task); },
         });
         var request = window.RequestCloseAsync();
-        await entered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        await entered.Task.WaitScaledAsync(TimeSpan.FromSeconds(5));
         await window.CloseAsync();
         Assert.False(await request);
         await using var reopened = await surface.OpenWindowAsync(new DesktopWindowOptions { Browser = BrowserKind.Embedded });

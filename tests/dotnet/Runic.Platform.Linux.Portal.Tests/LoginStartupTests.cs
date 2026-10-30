@@ -132,17 +132,17 @@ internal sealed class LoginStartupTests
         var startup = new LinuxLoginStartup(new PortalApplication(), sandboxed: true, destination: service.UniqueName!);
 
         Check(await startup.IsEnabledAsync() is PlatformResult<bool>.Unavailable, "the portal cannot report autostart");
-        Check(await startup.EnableAsync(new LoginStartupRequest(["--background"]) { Reason = "Updates" }).AsTask().WaitAsync(Wait)
+        Check(await startup.EnableAsync(new LoginStartupRequest(["--background"]) { Reason = "Updates" }).AsTask().WaitScaledAsync(Wait)
             is PlatformResult<PlatformUnit>.Success, "granted");
         Check(portal.Autostart == true && portal.Reason == "Updates" && portal.Commandline?[^1] == "--background", "autostart, reason and command line sent");
-        Check(await startup.DisableAsync().AsTask().WaitAsync(Wait) is PlatformResult<PlatformUnit>.Success && portal.Autostart == false, "disable asks without autostart");
+        Check(await startup.DisableAsync().AsTask().WaitScaledAsync(Wait) is PlatformResult<PlatformUnit>.Success && portal.Autostart == false, "disable asks without autostart");
 
         portal.Code = 1;
-        Check(await startup.EnableAsync(new LoginStartupRequest([])).AsTask().WaitAsync(Wait) is PlatformResult<PlatformUnit>.Failed { Code: PlatformFailureCode.PermissionDenied },
+        Check(await startup.EnableAsync(new LoginStartupRequest([])).AsTask().WaitScaledAsync(Wait) is PlatformResult<PlatformUnit>.Failed { Code: PlatformFailureCode.PermissionDenied },
             "a refused request is denied");
         portal.Code = 0;
         portal.GrantAutostart = false;
-        Check(await startup.EnableAsync(new LoginStartupRequest([])).AsTask().WaitAsync(Wait) is PlatformResult<PlatformUnit>.Failed { Code: PlatformFailureCode.PermissionDenied },
+        Check(await startup.EnableAsync(new LoginStartupRequest([])).AsTask().WaitScaledAsync(Wait) is PlatformResult<PlatformUnit>.Failed { Code: PlatformFailureCode.PermissionDenied },
             "background without autostart is denied");
     }
 

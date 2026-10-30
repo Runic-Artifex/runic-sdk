@@ -77,7 +77,7 @@ internal sealed class ClipboardFormatsTests
             Console.WriteLine("PASS every format in one write");
 
             // The watch reports the formats now, and the change another process makes, within a second.
-            using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+            using var cancellation = TestTimeouts.Cancellation(TimeSpan.FromSeconds(30));
             await using var watch = clipboard.WatchAsync(cancellation.Token).GetAsyncEnumerator(cancellation.Token);
             Check(await watch.MoveNextAsync() && watch.Current is PlatformResult<DesktopClipboardFormats>.Success { Value: var now } && now.HasFlag(DesktopClipboardFormats.Files),
                 $"The watch's first formats: {watch.Current}.");
@@ -111,7 +111,7 @@ internal sealed class ClipboardFormatsTests
         using var process = Process.Start(start)!;
         if (input is not null) { process.StandardInput.Write(input); process.StandardInput.Close(); }
         var output = process.StandardOutput.ReadToEndAsync();
-        if (!process.WaitForExit(15000))
+        if (!process.WaitForExit(TestTimeouts.Scale(15000)))
         {
             process.Kill(entireProcessTree: true);
             throw new TimeoutException($"{file} did not exit within 15 seconds.");

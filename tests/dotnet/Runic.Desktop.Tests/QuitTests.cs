@@ -52,7 +52,7 @@ public sealed class QuitTests
 
         Volatile.Write(ref allow, true);
         Assert.Equal(DesktopQuitOutcome.Accepted, await DesktopQuitCoordinator.QuitAsync(DesktopQuitSource.System, [host]));
-        await window.WaitForCloseAsync().AsTask().WaitAsync(StepTimeout);
+        await window.WaitForCloseAsync().AsTask().WaitScaledAsync(StepTimeout);
         await CancelledAsync(host.ShutdownRequested);
         Assert.False(window.IsOpen);
     }
@@ -66,7 +66,7 @@ public sealed class QuitTests
 
         Assert.Equal(DesktopQuitOutcome.Accepted, await DesktopQuitCoordinator.QuitAsync(DesktopQuitSource.Dock, [host]));
 
-        await window.WaitForCloseAsync().AsTask().WaitAsync(StepTimeout);
+        await window.WaitForCloseAsync().AsTask().WaitScaledAsync(StepTimeout);
         await CancelledAsync(host.ShutdownRequested);
     }
 
@@ -106,10 +106,10 @@ public sealed class QuitTests
         }, handlesShutdownWithoutWindow: true);
 
         var quit = DesktopQuitCoordinator.QuitAsync(DesktopQuitSource.Dock, [host]);
-        await entered.Task.WaitAsync(StepTimeout);
+        await entered.Task.WaitScaledAsync(StepTimeout);
         Assert.True(host.RequestShutdown("SIGTERM"));
 
-        Assert.Equal(DesktopQuitOutcome.Accepted, await quit.WaitAsync(StepTimeout));
+        Assert.Equal(DesktopQuitOutcome.Accepted, await quit.WaitScaledAsync(StepTimeout));
     }
 
     [Test]
@@ -125,7 +125,7 @@ public sealed class QuitTests
         }, handlesShutdownWithoutWindow: true);
 
         Assert.True(host.RequestShutdownForSignal("SIGINT", () => refused.TrySetResult()));
-        await refused.Task.WaitAsync(StepTimeout);
+        await refused.Task.WaitScaledAsync(StepTimeout);
         Assert.False(host.ShutdownRequested.IsCancellationRequested);
 
         Assert.True(host.RequestShutdownForSignal("SIGINT", static () => { }));
@@ -154,7 +154,7 @@ public sealed class QuitTests
 
         host.RaiseReopenRequested(hasVisibleWindows: false);
 
-        Assert.False(await seen.Task.WaitAsync(StepTimeout));
+        Assert.False(await seen.Task.WaitScaledAsync(StepTimeout));
     }
 
     [Test]
@@ -201,7 +201,7 @@ public sealed class QuitTests
     // RequestShutdown cancels ShutdownRequested on the thread pool.
     private static Task CancelledAsync(CancellationToken token) =>
         Task.Delay(Timeout.Infinite, token).ContinueWith(static _ => { }, CancellationToken.None, TaskContinuationOptions.None, TaskScheduler.Default)
-            .WaitAsync(StepTimeout, CancellationToken.None);
+            .WaitScaledAsync(StepTimeout, CancellationToken.None);
 
     private static ValueTask<DesktopHost> StartAsync(
         Func<DesktopQuitRequest, CancellationToken, ValueTask<bool>>? confirm, bool handlesShutdownWithoutWindow = false) =>

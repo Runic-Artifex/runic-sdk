@@ -40,14 +40,14 @@ internal sealed class LeaveGuardRoutingTests
         var prompt = editor.WaitForPromptAsync();
         var back = shell.BackAsync(Client, Connection);
         editor.Answer(await ExpectPromptAsync(prompt), discard: false);
-        var kept = await back.WaitAsync(Timeout);
+        var kept = await back.WaitScaledAsync(Timeout);
         Require(kept == "rejected:guard" && shell.ViewModel.Main.Current == editor.ViewModel
             && editor.ViewModel.Draft == "changed", $"Keep editing gave {kept}; the editor and its draft must stay.");
 
         prompt = editor.WaitForPromptAsync();
         back = shell.BackAsync(Client, Connection);
         editor.Answer(await ExpectPromptAsync(prompt), discard: true);
-        var left = await back.WaitAsync(Timeout);
+        var left = await back.WaitScaledAsync(Timeout);
         Require(left == "committed" && shell.ViewModel.Main.Current is NavHomeViewModel && editor.ViewModel.Draft == "",
             $"Discard gave {left}; the editor must leave and discard its draft.");
         Require(Volatile.Read(ref fallbackAsked) == 0, "The ViewModel's fallback answered although the web View did.");
@@ -75,18 +75,18 @@ internal sealed class LeaveGuardRoutingTests
             Interlocked.Increment(ref laterAsked);
             context.SetOutput(false);
         }))
-            outcome = await shell.BackAsync(Client, Connection).WaitAsync(Timeout);
+            outcome = await shell.BackAsync(Client, Connection).WaitScaledAsync(Timeout);
         Require(outcome == "rejected:guard" && laterAsked == 1 && !prompt.IsCompleted,
             $"A .NET handler registered after the View did not answer first ({outcome}, asked {laterAsked}).");
 
         var back = shell.BackAsync(Client, Connection);
         editor.Answer(await ExpectPromptAsync(prompt), discard: false);
-        outcome = await back.WaitAsync(Timeout);
+        outcome = await back.WaitScaledAsync(Timeout);
         Require(outcome == "rejected:guard" && Volatile.Read(ref fallbackAsked) == 0,
             $"The web View did not answer before the constructor's fallback ({outcome}).");
 
         editor.View.Unmount(editor.Mount, Client, Connection);
-        outcome = await shell.BackAsync(Client, Connection).WaitAsync(Timeout);
+        outcome = await shell.BackAsync(Client, Connection).WaitScaledAsync(Timeout);
         Require(outcome == "rejected:guard" && Volatile.Read(ref fallbackAsked) == 1 && editor.ViewModel.Draft == "changed",
             $"Without a mounted View the fallback did not answer ({outcome}).");
     }
@@ -102,14 +102,14 @@ internal sealed class LeaveGuardRoutingTests
         var prompt = editor.WaitForPromptAsync();
         var userClose = shell.Native.UserCloseAsync();
         editor.Answer(await ExpectPromptAsync(prompt), discard: false);
-        Require(!await userClose.WaitAsync(Timeout) && shell.Native.IsOpen
+        Require(!await userClose.WaitScaledAsync(Timeout) && shell.Native.IsOpen
             && shell.ViewModel.Main.Current == editor.ViewModel && editor.ViewModel.Draft == "changed",
             "Keep editing on the close button closed the window or lost the draft.");
 
         prompt = editor.WaitForPromptAsync();
         var request = shell.Window.RequestCloseAsync().AsTask();
         editor.Answer(await ExpectPromptAsync(prompt), discard: true);
-        Require(await request.WaitAsync(Timeout) && !shell.Native.IsOpen && editor.ViewModel.Draft == "",
+        Require(await request.WaitScaledAsync(Timeout) && !shell.Native.IsOpen && editor.ViewModel.Draft == "",
             "Discard on RequestCloseAsync did not discard the draft and close the window.");
     }
 
@@ -125,14 +125,14 @@ internal sealed class LeaveGuardRoutingTests
         var prompt = editor.WaitForPromptAsync();
         var kept = ReactiveCommandExecution.Execute(workspace.CloseEditorCommand, RxVoid.Default, CancellationToken.None);
         editor.Answer(await ExpectPromptAsync(prompt), discard: false);
-        await kept.WaitAsync(Timeout);
+        await kept.WaitScaledAsync(Timeout);
         Require(workspace.StatusText == "The editor has unsaved changes." && shell.Native.IsOpen
             && editor.ViewModel.Draft == "changed", "Keep editing did not keep the window open and report it.");
 
         prompt = editor.WaitForPromptAsync();
         var closed = ReactiveCommandExecution.Execute(workspace.CloseEditorCommand, RxVoid.Default, CancellationToken.None);
         editor.Answer(await ExpectPromptAsync(prompt), discard: true);
-        await closed.WaitAsync(Timeout);
+        await closed.WaitScaledAsync(Timeout);
         Require(!shell.Native.IsOpen && editor.ViewModel.Draft == "", "Discard did not close the window.");
     }
 
@@ -145,13 +145,13 @@ internal sealed class LeaveGuardRoutingTests
         var editor = await shell.OpenEditorAsync();
         var prompt = editor.WaitForPromptAsync();
 
-        var outcome = await shell.BackAsync("other-client", "other-connection").WaitAsync(Timeout);
+        var outcome = await shell.BackAsync("other-client", "other-connection").WaitScaledAsync(Timeout);
         Require(outcome == "failed" && !prompt.IsCompleted && shell.ViewModel.Main.Current == editor.ViewModel,
             $"Back from another connection gave {outcome} or reached this connection's View.");
 
         var second = editor.MountAgain("second-client", "second-connection");
         var secondPrompt = second.WaitForPromptAsync();
-        Require(!await shell.Native.UserCloseAsync().WaitAsync(Timeout) && shell.Native.IsOpen,
+        Require(!await shell.Native.UserCloseAsync().WaitScaledAsync(Timeout) && shell.Native.IsOpen,
             "A close with two mounted handlers closed the window.");
         Require(!prompt.IsCompleted && !secondPrompt.IsCompleted, "A close with two mounted handlers asked one of them.");
     }
@@ -188,21 +188,21 @@ internal sealed class LeaveGuardRoutingTests
         var waitA = NextPromptAsync(transportA, Connection, "a-present", []);
 
         using (RunicInteractionInvocation.Enter(windowB, route, Client, Connection))
-            Require(!await ((Task<bool>)model.Confirm.Handle("from window B's command")).WaitAsync(Timeout),
+            Require(!await ((Task<bool>)model.Confirm.Handle("from window B's command")).WaitScaledAsync(Timeout),
                 "Window B's command did not fall back to the .NET handler.");
         using (RunicInteractionInvocation.EnterWindowClose(windowB, CancellationToken.None))
-            Require(!await ((Task<bool>)model.Confirm.Handle("from window B's close")).WaitAsync(Timeout),
+            Require(!await ((Task<bool>)model.Confirm.Handle("from window B's close")).WaitScaledAsync(Timeout),
                 "Window B's close did not fall back to the .NET handler.");
         Require(fallbackAsked == 2 && !waitA.IsCompleted, "A scope of window B reached window A's presentation.");
 
         Task<bool> answer;
         using (RunicInteractionInvocation.EnterWindowClose(windowA, CancellationToken.None))
             answer = model.Confirm.Handle("from window A's close");
-        using var request = JsonDocument.Parse(await waitA.WaitAsync(Timeout));
+        using var request = JsonDocument.Parse(await waitA.WaitScaledAsync(Timeout));
         var root = request.RootElement;
         Require(root.GetProperty("input").GetString() == "from window A's close", $"Window A's close was not asked: {root}.");
         Require(Result(transportA.Send(ReplyJson(route, "a-present", root, "confirm", "testing.confirm.v1", true), Connection, Client)) == "ok"
-            && await answer.WaitAsync(Timeout),
+            && await answer.WaitScaledAsync(Timeout),
             "Window A's presentation did not answer its own close.");
     }
 
@@ -218,7 +218,7 @@ internal sealed class LeaveGuardRoutingTests
             var back = shell.BackAsync(Client, Connection);
             await ExpectPromptAsync(prompt);
             editor.View.Unmount(editor.Mount, Client, Connection);
-            var outcome = await back.WaitAsync(Timeout);
+            var outcome = await back.WaitScaledAsync(Timeout);
             Require(outcome == "failed" && shell.ViewModel.Main.Current == editor.ViewModel && editor.ViewModel.Draft == "changed",
                 $"Back whose View unmounted mid-prompt gave {outcome}; the editor and its draft must stay.");
 
@@ -227,7 +227,7 @@ internal sealed class LeaveGuardRoutingTests
             var close = shell.Native.UserCloseAsync();
             await ExpectPromptAsync(prompt);
             again.View.Unmount(again.Mount, Client, Connection);
-            Require(!await close.WaitAsync(Timeout) && shell.Native.IsOpen && shell.ViewModel.Main.Current == editor.ViewModel,
+            Require(!await close.WaitScaledAsync(Timeout) && shell.Native.IsOpen && shell.ViewModel.Main.Current == editor.ViewModel,
                 "A close whose View unmounted mid-prompt closed the window.");
         }
 
@@ -237,15 +237,15 @@ internal sealed class LeaveGuardRoutingTests
             var prompt = editor.WaitForPromptAsync();
             var request = shell.Window.RequestCloseAsync().AsTask();
             await ExpectPromptAsync(prompt);
-            await shell.Window.CloseAsync(TimeSpan.FromSeconds(5)).AsTask().WaitAsync(Timeout);
-            Require(await request.WaitAsync(Timeout) && !shell.Native.IsOpen,
+            await shell.Window.CloseAsync(TimeSpan.FromSeconds(5)).AsTask().WaitScaledAsync(Timeout);
+            Require(await request.WaitScaledAsync(Timeout) && !shell.Native.IsOpen,
                 "Closing the window without asking did not end the pending close decision.");
         }
     }
 
     private static async Task<string> ExpectPromptAsync(Task<string> wait)
     {
-        var json = await wait.WaitAsync(Timeout);
+        var json = await wait.WaitScaledAsync(Timeout);
         using var request = JsonDocument.Parse(json);
         var root = request.RootElement;
         Require(root.GetProperty("kind").GetString() == "interaction"
@@ -280,7 +280,7 @@ internal sealed class LeaveGuardRoutingTests
     private static async Task<string> NextPromptAsync(InMemoryBridgeTransport transport, string connection, string presentation,
         HashSet<string> seen)
     {
-        var deadline = DateTime.UtcNow + Timeout;
+        var deadline = DateTime.UtcNow + TestTimeouts.Scale(Timeout);
         while (true)
         {
             foreach (var message in transport.Messages)
@@ -300,7 +300,7 @@ internal sealed class LeaveGuardRoutingTests
 
     private static async Task Until(Func<bool> condition)
     {
-        var deadline = DateTime.UtcNow + Timeout;
+        var deadline = DateTime.UtcNow + TestTimeouts.Scale(Timeout);
         while (!condition())
         {
             if (DateTime.UtcNow > deadline) throw new TimeoutException("The shell did not settle.");
@@ -384,7 +384,7 @@ internal sealed class LeaveGuardRoutingTests
                 created?.Invoke(editor);
                 return editor;
             }));
-            Require(await request.Transition.AsTask().WaitAsync(Timeout) is NavigationResult<INavPageViewModel>.Committed,
+            Require(await request.Transition.AsTask().WaitScaledAsync(Timeout) is NavigationResult<INavPageViewModel>.Committed,
                 "The editor was not pushed.");
             await Until(() => Native.Host.Root.Snapshot().Reference(vm => vm.Main)?.Kind == "reactiveNavEditor"
                 && ReactiveCommandExecution.CanExecute(ViewModel.BackCommand, RxVoid.Default));
@@ -403,7 +403,7 @@ internal sealed class LeaveGuardRoutingTests
                 Require(admission.RootElement.GetProperty("ok").GetBoolean()
                     && admission.RootElement.GetProperty("admission").GetString() == "accepted",
                     $"The web Back command was not admitted: {admission.RootElement}.");
-            var deadline = DateTime.UtcNow + Timeout;
+            var deadline = DateTime.UtcNow + TestTimeouts.Scale(Timeout);
             while (true)
             {
                 using var reply = JsonDocument.Parse(Transport.Send(BackRequest("status", requestId), connection, client));

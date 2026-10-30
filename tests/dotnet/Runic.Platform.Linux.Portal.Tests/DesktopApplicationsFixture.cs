@@ -132,7 +132,7 @@ internal static class LaunchProbe
     /// <summary>Waits for <paramref name="count"/> probe runs and returns each one's working directory and arguments.</summary>
     public static async Task<List<(string Directory, ImmutableArray<string> Arguments)>> WaitAsync(string directory, int count)
     {
-        var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(30);
+        var deadline = DateTime.UtcNow + TestTimeouts.Scale(TimeSpan.FromSeconds(30));
         while (Directory.GetFiles(directory, "*.probe").Length < count && DateTime.UtcNow < deadline) await Task.Delay(25);
         await Task.Delay(200); // A process too many would show up now.
         return [.. Directory.GetFiles(directory, "*.probe").Select(static path => File.ReadAllText(path).Split('\0'))

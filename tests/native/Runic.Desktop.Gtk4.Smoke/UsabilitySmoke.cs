@@ -13,7 +13,7 @@ internal static class UsabilitySmoke
     internal static int Run() => Gtk4Application.Run(async () =>
     {
         CheckSandboxDenial();
-        using var deadline = new CancellationTokenSource(TimeSpan.FromMinutes(25));
+        using var deadline = TestTimeouts.Cancellation(TimeSpan.FromMinutes(25));
         var factory = new CaptureFactory();
         await using var host = await DesktopHost.StartAsync(new DesktopHostOptions
         {
@@ -91,7 +91,7 @@ internal static class UsabilitySmoke
                         var pending = picker.OpenFileAsync(new(), deadline.Token).AsTask();
                         await Task.Delay(750, deadline.Token);
                         await window.CloseAsync();
-                        var outcome = await pending.WaitAsync(TimeSpan.FromSeconds(5));
+                        var outcome = await pending.WaitScaledAsync(TimeSpan.FromSeconds(5));
                         Console.WriteLine("OWNER CLOSE RESULT " + outcome);
                         if (outcome is not PickerResult<IReadFileLease>.Unavailable { Reason: PlatformUnavailableReason.OwnerClosed })
                             throw new InvalidOperationException("Closing the picker owner did not invalidate the request.");

@@ -74,7 +74,7 @@ internal static partial class MacOsWindowChromeSmoke
 
     private static async Task ExpectKeyAsync(DesktopWindow window)
     {
-        var deadline = DateTime.UtcNow + StepTimeout;
+        var deadline = DateTime.UtcNow + TestTimeouts.Scale(StepTimeout);
         for (;;)
         {
             await window.FocusAsync();
@@ -133,7 +133,7 @@ internal static partial class MacOsWindowChromeSmoke
         await surface.ExecuteJavaScriptAsync("window.downs = {}; return true;", StepTimeout);
         // The page reports its regions after it lays out: retry until the first drag.
         var before = Volatile.Read(ref s_drags);
-        var deadline = DateTime.UtcNow + StepTimeout;
+        var deadline = DateTime.UtcNow + TestTimeouts.Scale(StepTimeout);
         while (Volatile.Read(ref s_drags) == before)
         {
             if (DateTime.UtcNow > deadline) throw new TimeoutException($"A mouse-down in the drag region of the {kind} did not drag the window.");
@@ -217,7 +217,7 @@ internal static partial class MacOsWindowChromeSmoke
 
     private static async Task WaitForPageAsync(DesktopSurface surface, string script, string expected, string description)
     {
-        var deadline = DateTime.UtcNow + StepTimeout;
+        var deadline = DateTime.UtcNow + TestTimeouts.Scale(StepTimeout);
         string value;
         do
         {

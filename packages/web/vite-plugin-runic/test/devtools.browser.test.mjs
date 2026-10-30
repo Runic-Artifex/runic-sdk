@@ -7,9 +7,10 @@ import { chromium } from "playwright-core";
 import { createServer } from "vite";
 import { DevTools } from "@vitejs/devtools";
 import { runic, runicDevSessionProxy } from "../dist/index.js";
+import { scaled } from "../../../../tests/support/timeouts.mjs";
 
 test("Bun renders the official dock and streams live diagnostics to Chromium", {
-  timeout: 30_000,
+  timeout: scaled(30_000),
   skip: !process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH,
 }, async () => {
   assert.ok(process.versions.bun, "The default development runtime must be exercised.");
@@ -38,14 +39,14 @@ test("Bun renders the official dock and streams live diagnostics to Chromium", {
     const errors = [];
     page.on("pageerror", error => errors.push(String(error)));
     await page.goto(`http://127.0.0.1:${server.httpServer.address().port}`);
-    await page.locator('button[aria-label="Runic"]').waitFor({ state: "attached", timeout: 10_000 });
+    await page.locator('button[aria-label="Runic"]').waitFor({ state: "attached", timeout: scaled(10_000) });
     context.docks.activate("runic:overview");
-    await page.getByText("bun-browser-canary", { exact: true }).waitFor({ timeout: 10_000 });
+    await page.getByText("bun-browser-canary", { exact: true }).waitFor({ timeout: scaled(10_000) });
     plugin.api.reportDiagnostic({ source: "assets", kind: "event", label: "Live Bun diagnostic" });
-    await page.getByText("Live Bun diagnostic", { exact: true }).waitFor({ timeout: 10_000 });
+    await page.getByText("Live Bun diagnostic", { exact: true }).waitFor({ timeout: scaled(10_000) });
 
     // The injected development client forwards a Views failure from the page.
-    await page.waitForFunction(() => (globalThis[Symbol.for("runic.views.diagnostics")]?.size ?? 0) > 0, null, { timeout: 10_000 });
+    await page.waitForFunction(() => (globalThis[Symbol.for("runic.views.diagnostics")]?.size ?? 0) > 0, null, { timeout: scaled(10_000) });
     await page.evaluate(() => {
       for (const listener of globalThis[Symbol.for("runic.views.diagnostics")]) listener({
         kind: "error", code: "failed", message: "Save failed.", route: "editorSave",
@@ -53,17 +54,17 @@ test("Bun renders the official dock and streams live diagnostics to Chromium", {
           stack: "System.InvalidOperationException: Disk full.\n   at Notes.Editor.Save() in /src/Notes/Editor.cs:line 12" },
       });
     });
-    await page.getByText("System.InvalidOperationException", { exact: true }).waitFor({ timeout: 10_000 });
-    await page.getByText(/at Notes\.Editor\.Save\(\) in \/src\/Notes\/Editor\.cs:line 12/).first().waitFor({ timeout: 10_000 });
+    await page.getByText("System.InvalidOperationException", { exact: true }).waitFor({ timeout: scaled(10_000) });
+    await page.getByText(/at Notes\.Editor\.Save\(\) in \/src\/Notes\/Editor\.cs:line 12/).first().waitFor({ timeout: scaled(10_000) });
 
     // The page's connection, as @runic-artifex/views publishes it, reaches the dock (D40 a).
-    await page.waitForFunction(() => (globalThis[Symbol.for("runic.views.connection")]?.listeners.size ?? 0) > 0, null, { timeout: 10_000 });
+    await page.waitForFunction(() => (globalThis[Symbol.for("runic.views.connection")]?.listeners.size ?? 0) > 0, null, { timeout: scaled(10_000) });
     await page.evaluate(() => {
       const channel = globalThis[Symbol.for("runic.views.connection")];
       channel.state = "reconnecting";
       for (const listener of channel.listeners) listener("reconnecting");
     });
-    await page.getByText("reconnecting", { exact: true }).waitFor({ timeout: 10_000 });
+    await page.getByText("reconnecting", { exact: true }).waitFor({ timeout: scaled(10_000) });
     assert.deepEqual(errors, []);
   } finally {
     await browser?.close();
@@ -78,7 +79,7 @@ test("Bun renders the official dock and streams live diagnostics to Chromium", {
 // SvelteKit (runic({ html: false })). The page imports the client package itself.
 for (const setup of ["proxy", "html-false"]) {
   test(`the client reports a page's failures to /__runic/state without HTML injection (${setup})`, {
-    timeout: 30_000,
+    timeout: scaled(30_000),
     skip: !process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH,
   }, async () => {
     const root = await mkdtemp(join(tmpdir(), "runic-client-browser-"));
@@ -105,8 +106,8 @@ for (const setup of ["proxy", "html-false"]) {
       const errors = [];
       page.on("pageerror", error => errors.push(String(error)));
       await page.goto(base);
-      await page.waitForFunction(() => globalThis.__mainLoaded === true, null, { timeout: 10_000 });
-      await page.waitForFunction(() => globalThis[Symbol.for("runic.vite.staleInput")] === true, null, { timeout: 10_000 });
+      await page.waitForFunction(() => globalThis.__mainLoaded === true, null, { timeout: scaled(10_000) });
+      await page.waitForFunction(() => globalThis[Symbol.for("runic.vite.staleInput")] === true, null, { timeout: scaled(10_000) });
       await page.evaluate(() => {
         for (const listener of globalThis[Symbol.for("runic.views.diagnostics")]) listener({
           kind: "error", code: "failed", message: "Save failed.", route: "editorSave",

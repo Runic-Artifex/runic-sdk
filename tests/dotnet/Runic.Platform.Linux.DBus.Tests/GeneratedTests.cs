@@ -106,7 +106,7 @@ internal sealed class GeneratedTests
         var received = new List<PlayerProperties>();
         await using (var enumerator = changes.GetAsyncEnumerator())
         {
-            using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+            using var deadline = TestTimeouts.Cancellation(TimeSpan.FromSeconds(5));
             while (received.Count < 3 && await enumerator.MoveNextAsync().AsTask().WaitAsync(deadline.Token))
                 if (DBusProxy.ReadPropertyChanges(enumerator.Current) is { } change) received.Add(PlayerProperties.Read(change.Changed, change.Invalidated));
         }
@@ -127,7 +127,7 @@ internal sealed class GeneratedTests
         await using var stopped = await player.SubscribeSignalAsync(Player.InterfaceName, "Stopped");
         await using var changed = await player.SubscribeSignalAsync(Player.InterfaceName, "TrackChanged");
         Check(implementation.Announce(), "the service emitted its signals");
-        using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        using var deadline = TestTimeouts.Cancellation(TimeSpan.FromSeconds(5));
         Check(Player.ReadSeeked((await First(seeked, deadline.Token)).Arguments) == 42, "Seeked");
         Check(Player.ReadStopped((await First(stopped, deadline.Token)).Arguments) == default(PlatformUnit), "Stopped");
         var (track, title) = Player.ReadTrackChanged((await First(changed, deadline.Token)).Arguments);

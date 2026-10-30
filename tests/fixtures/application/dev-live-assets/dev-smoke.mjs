@@ -8,7 +8,7 @@ import { existsSync } from "node:fs";
 import { readFile, rename, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { killTree, launchChromium, tail, waitFor, waitForExit } from "../../../../examples/shared/smoke.mjs";
+import { killTree, launchChromium, scaled, tail, waitFor, waitForExit } from "../../../../examples/shared/smoke.mjs";
 
 const fixture = fileURLToPath(new URL(".", import.meta.url));
 const root = join(fixture, "../../../..");
@@ -83,6 +83,6 @@ try {
   finally {
     // SIGTERM stops dev the way Ctrl+C does: it stops the watcher and the application.
     if (dev.exitCode === null) dev.kill("SIGTERM");
-    if (!await waitForExit(dev, 15_000)) killTree(dev);
+    if (!await waitForExit(dev, scaled(15_000))) killTree(dev);
   }
 }

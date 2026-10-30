@@ -70,7 +70,7 @@ internal sealed partial class NativeTests
         // process the run started.
         var host = new StandInHost("any") { ThroughCmd = true };
         var result = await new ElevatedActionRunner(PrivilegedActions.All, PrivilegedActions.WindowsElevation, AppContext.BaseDirectory, host)
-            .RunAsync(new(PrivilegedActions.Wait, [])).AsTask().WaitAsync(TimeSpan.FromSeconds(60));
+            .RunAsync(new(PrivilegedActions.Wait, [])).AsTask().WaitScaledAsync(TimeSpan.FromSeconds(60));
         Check(result is PlatformResult<PrivilegedActionCompletion>.Failed(PlatformFailureCode.Other, { Code: 7 }), $"result {result}");
     }
 
@@ -221,7 +221,7 @@ internal sealed partial class NativeTests
                     lines.Enqueue(line.Text);
                     if (line.Text == "waiting") cancellation.Cancel();
                 },
-            }, cancellation.Token).AsTask().WaitAsync(TimeSpan.FromSeconds(60));
+            }, cancellation.Token).AsTask().WaitScaledAsync(TimeSpan.FromSeconds(60));
             Check(result is PlatformResult<PrivilegedActionCompletion>.Success({ ExitCode: 5 }), $"wait: {result}");
             Check(lines.SequenceEqual(["waiting", "stopped by caller"]), string.Join(" | ", lines));
         }
@@ -229,7 +229,7 @@ internal sealed partial class NativeTests
         {
             var stopwatch = Stopwatch.StartNew();
             var result = await terminating.RunAsync(new(PrivilegedActions.Ignore, []) { Output = line => { if (line.Text == "ignoring") cancellation.Cancel(); } }, cancellation.Token)
-                .AsTask().WaitAsync(TimeSpan.FromSeconds(60));
+                .AsTask().WaitScaledAsync(TimeSpan.FromSeconds(60));
             Check(result is PlatformResult<PrivilegedActionCompletion>.Success({ ExitCode: WindowsPrivilegedActions.TerminatedExitCode }), $"ignore: {result}");
             Check(stopwatch.Elapsed < TimeSpan.FromSeconds(30), $"terminated after {stopwatch.Elapsed}");
         }

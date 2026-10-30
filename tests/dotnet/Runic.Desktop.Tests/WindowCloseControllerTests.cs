@@ -21,7 +21,7 @@ public sealed class WindowCloseControllerTests
         }, () => { Interlocked.Increment(ref closes); return ValueTask.CompletedTask; });
 
         var first = controller.RequestAsync();
-        await entered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        await entered.Task.WaitScaledAsync(TimeSpan.FromSeconds(5));
         var second = controller.RequestAsync();
         controller.RequestFromPlatform();
         decision.SetResult(false);
@@ -68,9 +68,9 @@ public sealed class WindowCloseControllerTests
             return new(decision.Task); // Deliberately ignore cancellation.
         }, () => { closes++; return ValueTask.CompletedTask; });
         var request = controller.RequestAsync();
-        var token = await entered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        var token = await entered.Task.WaitScaledAsync(TimeSpan.FromSeconds(5));
         controller.Dispose();
-        Assert.False(await request.WaitAsync(TimeSpan.FromSeconds(5)));
+        Assert.False(await request.WaitScaledAsync(TimeSpan.FromSeconds(5)));
         Assert.True(token.IsCancellationRequested);
         decision.SetResult(true);
         Assert.False(await controller.RequestAsync());

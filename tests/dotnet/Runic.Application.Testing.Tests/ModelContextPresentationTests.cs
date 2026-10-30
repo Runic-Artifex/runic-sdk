@@ -71,7 +71,7 @@ internal sealed class ModelContextPresentationTests
         _ = host.Root.Snapshot().Reference(vm => vm.Main);
         Require(BoundTo(home, context), "The window did not bind a borrowed region entry it presents.");
 
-        await ReactiveCommandExecution.Execute(shell.OpenCommand, RxVoid.Default, CancellationToken.None).WaitAsync(Timeout);
+        await ReactiveCommandExecution.Execute(shell.OpenCommand, RxVoid.Default, CancellationToken.None).WaitScaledAsync(Timeout);
         Require(shell.Main.Current is NavEditorViewModel editor && BoundTo(editor, context),
             "The navigator did not bind the region entry it owns.");
         _ = host.Root.Snapshot().Reference(vm => vm.Main);
@@ -144,7 +144,7 @@ internal sealed class ModelContextPresentationTests
         var entry = new NavEditorViewModel("foreign");
         using (Registry.Bind(other, entry))
         {
-            var result = await region.PushAsync(NavigationTarget.Own<INavPageViewModel>(entry)).AsTask().WaitAsync(Timeout);
+            var result = await region.PushAsync(NavigationTarget.Own<INavPageViewModel>(entry)).AsTask().WaitScaledAsync(Timeout);
             var failure = result as NavigationResult<INavPageViewModel>.Failed
                 ?? throw new InvalidOperationException($"Owning a ViewModel bound to another context did not fail: {result}.");
             RequireNamed<NavEditorViewModel>(failure.Error, "owned region entry");
@@ -156,7 +156,7 @@ internal sealed class ModelContextPresentationTests
 
     private static async Task RunAsync(InMemoryBridgeTransport transport, string route, string command)
     {
-        using var reply = JsonDocument.Parse(await transport.CommandAsync(route, command).AsTask().WaitAsync(Timeout));
+        using var reply = JsonDocument.Parse(await transport.CommandAsync(route, command).AsTask().WaitScaledAsync(Timeout));
         Require(reply.RootElement.GetProperty("ok").GetBoolean(), $"{route} {command} failed: {reply.RootElement}");
     }
 

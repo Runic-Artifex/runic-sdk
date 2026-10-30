@@ -112,7 +112,7 @@ internal sealed class TypedReactiveTests
         var observed = new TaskCompletionSource<Exception>(TaskCreationOptions.RunContinuationsAsynchronously);
         using var exceptions = model.FailCommand.ThrownExceptions.Subscribe(new ExceptionObserver(error => observed.TrySetResult(error)));
         var failed = await driver.Start(vm => vm.FailCommand, Input("failure"), "typed-failure").WaitAsync();
-        var observedError = await observed.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        var observedError = await observed.Task.WaitScaledAsync(TimeSpan.FromSeconds(2));
         Require(failed.Kind == RunicOperationStatusKind.Failed && failed.ErrorMessage == "The operation failed."
             && observedError is InvalidOperationException,
             "A ReactiveUI command failure was not sanitized at the operation boundary and observed through ThrownExceptions.");

@@ -52,7 +52,7 @@ public sealed class MonitorsAndFullScreenTests
     public async Task WatchReportsTheListThenEachChangeAndEndsOnFailure()
     {
         var source = new FakeMonitorSource([Laptop]);
-        using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        using var cancellation = TestTimeouts.Cancellation(TimeSpan.FromSeconds(10));
         await using var watch = source.WatchAsync(cancellation.Token).GetAsyncEnumerator(cancellation.Token);
         Assert.True(await watch.MoveNextAsync());
         Assert.Equal([Laptop], Success(watch.Current));

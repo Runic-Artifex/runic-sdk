@@ -91,9 +91,9 @@ internal sealed class WireKeyTests
         using (var cancellation = new CancellationTokenSource())
         {
             var call = host.Root.ExecuteAsync(vm => vm.ArchiveCommand, "\"3\"", cancellation.Token);
-            await model.Store.ResolutionStarted.Task.WaitAsync(TimeSpan.FromSeconds(10));
+            await model.Store.ResolutionStarted.Task.WaitScaledAsync(TimeSpan.FromSeconds(10));
             await cancellation.CancelAsync();
-            var cancelled = await call.WaitAsync(TimeSpan.FromSeconds(10));
+            var cancelled = await call.WaitScaledAsync(TimeSpan.FromSeconds(10));
             Require(cancelled.ErrorKind == "cancelled" && model.Store.ResolutionCancelled && model.Last == "archived first",
                 $"A cancelled resolution did not cancel the call: {cancelled}");
         }
@@ -104,10 +104,10 @@ internal sealed class WireKeyTests
         using (var cancellation = new CancellationTokenSource())
         {
             var can = host.Root.CanExecuteAsync(vm => vm.ArchiveCommand, "\"3\"", cancellation.Token);
-            await model.Store.ResolutionStarted.Task.WaitAsync(TimeSpan.FromSeconds(10));
+            await model.Store.ResolutionStarted.Task.WaitScaledAsync(TimeSpan.FromSeconds(10));
             await cancellation.CancelAsync();
             var cancelled = false;
-            try { await can.WaitAsync(TimeSpan.FromSeconds(10)); }
+            try { await can.WaitScaledAsync(TimeSpan.FromSeconds(10)); }
             catch (OperationCanceledException) { cancelled = true; }
             Require(cancelled && model.Store.ResolutionCancelled, "A cancelled CanExecuteAsync did not cancel the resolution.");
         }
@@ -125,10 +125,10 @@ internal sealed class WireKeyTests
         model.Store.Gate = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
         var call = host.Root.ExecuteAsync(vm => vm.ArchiveCommand, "\"1\"");
-        await model.Store.ResolutionStarted.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        await model.Store.ResolutionStarted.Task.WaitScaledAsync(TimeSpan.FromSeconds(10));
         var drain = host.DrainAsync(TimeSpan.Zero);
-        var reply = await call.WaitAsync(TimeSpan.FromSeconds(10));
-        await drain.WaitAsync(TimeSpan.FromSeconds(10));
+        var reply = await call.WaitScaledAsync(TimeSpan.FromSeconds(10));
+        await drain.WaitScaledAsync(TimeSpan.FromSeconds(10));
         Require(!reply.Succeeded && model.Store.ResolutionCancelled && model.Last.Length == 0,
             $"Closing the window did not cancel the resolution: {reply}");
     }

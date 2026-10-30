@@ -21,7 +21,7 @@ internal sealed class SnapshotDeliveryTests
         // The route publishes frames once a client read its state.
         _ = transport.Request("""{"kind":"snapshot","route":"probe"}""");
         _ = transport.Request("""{"kind":"set","route":"probe","member":"value","value":7,"edit":1}""");
-        await transport.Delivered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        await transport.Delivered.Task.WaitScaledAsync(TimeSpan.FromSeconds(5));
         if (transport.Observed != 7)
             throw new InvalidOperationException("A native delivery callback could not read the model from outside its turn.");
 
@@ -31,13 +31,13 @@ internal sealed class SnapshotDeliveryTests
         try
         {
             if (!delivery.EnqueueFrame(Bytes("first"))) throw new InvalidOperationException("The first frame was rejected.");
-            await slow.Entered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            await slow.Entered.Task.WaitScaledAsync(TimeSpan.FromSeconds(5));
             for (var index = 0; index < BridgeSnapshotDelivery.MaximumPendingEntries; index++)
                 if (!delivery.EnqueueFrame(Bytes($"frame {index}"))) throw new InvalidOperationException("The bounded queue rejected a frame early.");
             if (delivery.EnqueueFrame(Bytes("overflow"))) throw new InvalidOperationException("A slow host retained an unbounded frame queue.");
             delivery.EnqueueState(Bytes("recovery state"));
             slow.Release.Set();
-            await slow.Completed.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            await slow.Completed.Task.WaitScaledAsync(TimeSpan.FromSeconds(5));
             if (!slow.Frames.SequenceEqual(["first", "recovery state"]))
                 throw new InvalidOperationException("A recovery state did not supersede pending frames.");
         }
@@ -92,17 +92,17 @@ internal sealed class SnapshotDeliveryTests
         using var delivery = Delivery(transport);
         transport.Hello();
         if (!delivery.EnqueueFrame(Bytes("first"))) throw new InvalidOperationException("The first frame was rejected.");
-        await transport.Entered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        await transport.Entered.Task.WaitScaledAsync(TimeSpan.FromSeconds(5));
         var settled = delivery.WhenSettled() ?? throw new InvalidOperationException("A frame on its way did not keep the delivery unsettled.");
         var resumed = settled.ContinueWith(_ =>
         {
             // What a test or a custom transport does after an awaited reply: send the next request, which queues a
             // frame, and wait for it synchronously.
             if (!delivery.EnqueueFrame(Bytes("second"))) throw new InvalidOperationException("The second frame was rejected.");
-            return transport.Second.Wait(TimeSpan.FromSeconds(2));
+            return transport.Second.Wait(TestTimeouts.Scale(TimeSpan.FromSeconds(2)));
         }, CancellationToken.None, TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
         transport.Release.Set();
-        if (!await resumed.WaitAsync(TimeSpan.FromSeconds(10)))
+        if (!await resumed.WaitScaledAsync(TimeSpan.FromSeconds(10)))
             throw new InvalidOperationException("The caller resumed on the drain, which could not deliver the frame it waited for.");
     }
 
@@ -175,7 +175,7 @@ internal sealed class SnapshotDeliveryTests
         public ManualResetEventSlim Second { get; } = new();
         protected override void OnBroadcast(string json)
         {
-            if (json == "first") { Entered.TrySetResult(); Release.Wait(TimeSpan.FromSeconds(5)); }
+            if (json == "first") { Entered.TrySetResult(); Release.Wait(TestTimeouts.Scale(TimeSpan.FromSeconds(5))); }
             else if (json == "second") Second.Set();
         }
         public override void Dispose()
@@ -193,7 +193,7 @@ internal sealed class SnapshotDeliveryTests
         public List<string> Frames { get; } = [];
         protected override void OnBroadcast(string json)
         {
-            if (json == "first") { Entered.TrySetResult(); Release.Wait(TimeSpan.FromSeconds(5)); }
+            if (json == "first") { Entered.TrySetResult(); Release.Wait(TestTimeouts.Scale(TimeSpan.FromSeconds(5))); }
             Frames.Add(json);
             if (json == "recovery state") Completed.TrySetResult();
         }

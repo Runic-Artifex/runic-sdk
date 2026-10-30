@@ -166,6 +166,7 @@ internal sealed partial class ApplicationsTests
             // macOS may ask the user before changing a default; the runner has no user to answer, so a prompt is reported
             // rather than failed.
             var change = applications.SetDefaultApplicationAsync(uti, second).AsTask();
+            // Not scaled: on a runner the confirmation never comes, so this 60 s is a probe that runs out.
             if (await Task.WhenAny(change, Task.Delay(TimeSpan.FromSeconds(60))) == change)
             {
                 Console.WriteLine($"SetDefault: {change.Result}");
@@ -242,7 +243,7 @@ internal sealed partial class ApplicationsTests
         {
             using var process = Process.Start("/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister", [option, bundle]);
             if (process is null) return -1;
-            process.WaitForExit(30_000);
+            process.WaitForExit(TestTimeouts.Scale(30_000));
             return process.HasExited ? process.ExitCode : -2;
         }
         catch (Exception error) when (error is IOException or System.ComponentModel.Win32Exception) { Console.WriteLine($"lsregister {option} {bundle}: {error.Message}"); return -3; }

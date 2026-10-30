@@ -1,0 +1,8 @@
+<Project>
+  <!-- RunicTestTimeouts=true compiles the shared TestTimeouts helper (tests/support/TestTimeouts.cs) into a test
+       or smoke project: condition waits scaled by RUNIC_TEST_TIMEOUT_SCALE (eng/ci/README.md, "Test timeouts").
+       It is internal to each project and never part of a shipping package. -->
+  <ItemGroup Condition="'$(RunicTestTimeouts)' == 'true'">
+    <Compile Include="$(MSBuildThisFileDirectory)../../tests/support/TestTimeouts.cs" Link="TestSupport/TestTimeouts.cs" Visible="false" />
+  </ItemGroup>
+</Project>

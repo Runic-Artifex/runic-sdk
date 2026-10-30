@@ -136,7 +136,7 @@ internal sealed partial class MacOpenEventsNativeTests
                 opens.Opened += (_, request) => requests.Writer.TryWrite(request);
                 try
                 {
-                    var request = await requests.Reader.ReadAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(30));
+                    var request = await requests.Reader.ReadAsync().AsTask().WaitScaledAsync(TimeSpan.FromSeconds(30));
                     await File.WriteAllLinesAsync(output, request.Items.Select(static item => item.ToString()));
                     exitCode = 0;
                 }
@@ -220,7 +220,7 @@ internal sealed partial class MacOpenEventsNativeTests
     private struct AppleEventDescriptor { public uint Type; public nint Data; }
 
     private static async Task<string> NextAsync(Channel<DesktopOpenRequest> requests, CancellationToken cancellationToken) =>
-        (await requests.Reader.ReadAsync(cancellationToken).AsTask().WaitAsync(TimeSpan.FromSeconds(20), cancellationToken)).Items.Single().ToString();
+        (await requests.Reader.ReadAsync(cancellationToken).AsTask().WaitScaledAsync(TimeSpan.FromSeconds(20), cancellationToken)).Items.Single().ToString();
 
     [LibraryImport(ObjC, EntryPoint = "objc_msgSend")] private static partial byte Continue(nint target, nint selector, nint application, nint activity, nint restorationHandler);
     [LibraryImport(ObjC, EntryPoint = "objc_allocateClassPair", StringMarshalling = StringMarshalling.Utf8)] private static partial nint AllocateClass(nint parent, string name, nuint extra);

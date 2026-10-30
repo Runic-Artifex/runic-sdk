@@ -179,19 +179,19 @@ internal sealed class OpenRequestsTests
             foreach (string argument in new[] { "--quiet", "notes:second", "notes:third" })
                 Check(await ApplicationInstance.ClaimAsync("org.example.Notes", new ApplicationLaunch([argument], "/"), directory, default)
                     is PlatformResult<ApplicationInstanceClaim>.Success { Value: ApplicationInstanceClaim.Forwarded }, "forwarded");
-            for (int i = 0; i < 3; i++) await launches.Reader.ReadAsync().AsTask().WaitAsync(Wait);
+            for (int i = 0; i < 3; i++) await launches.Reader.ReadAsync().AsTask().WaitScaledAsync(Wait);
 
             // Subscribed only now: the requests waited.
             var requests = Channel.CreateUnbounded<DesktopOpenRequest>();
             opens.Opened += (_, request) => requests.Writer.TryWrite(request);
             foreach (string expected in new[] { "notes:first", "notes:second", "notes:third" })
-                Check((await requests.Reader.ReadAsync().AsTask().WaitAsync(Wait)).Items.Single().ToString() == expected, $"{expected}, in order");
+                Check((await requests.Reader.ReadAsync().AsTask().WaitScaledAsync(Wait)).Items.Single().ToString() == expected, $"{expected}, in order");
             Check(!requests.Reader.TryRead(out _), "a launch without files or URLs raises nothing");
 
             await opens.DisposeAsync();
             Check(await ApplicationInstance.ClaimAsync("org.example.Notes", new ApplicationLaunch(["notes:after"], "/"), directory, default)
                 is PlatformResult<ApplicationInstanceClaim>.Success { Value: ApplicationInstanceClaim.Forwarded }, "the instance still runs");
-            Check((await launches.Reader.ReadAsync().AsTask().WaitAsync(Wait)).Arguments.Single() == "notes:after", "the instance's own handler still receives launches");
+            Check((await launches.Reader.ReadAsync().AsTask().WaitScaledAsync(Wait)).Arguments.Single() == "notes:after", "the instance's own handler still receives launches");
             await Task.Delay(200);
             Check(!requests.Reader.TryRead(out _), "disposal stops the requests");
 
@@ -304,7 +304,7 @@ internal sealed class OpenRequestsTests
 
     private static async Task<List<string>> LogAsync(string log, Func<List<string>, bool> done)
     {
-        var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(30);
+        var deadline = DateTime.UtcNow + TestTimeouts.Scale(TimeSpan.FromSeconds(30));
         while (true)
         {
             var lines = File.Exists(log) ? (await File.ReadAllLinesAsync(log)).ToList() : [];
@@ -446,7 +446,7 @@ internal sealed class OpenRequestsTests
 
     private sealed class Probe(Process process) : IAsyncDisposable
     {
-        internal async Task<string?> LineAsync() => await process.StandardOutput.ReadLineAsync().WaitAsync(TimeSpan.FromSeconds(30));
+        internal async Task<string?> LineAsync() => await process.StandardOutput.ReadLineAsync().WaitScaledAsync(TimeSpan.FromSeconds(30));
         internal async Task<string> NextAsync() => await LineAsync() ?? throw new InvalidOperationException("The probe ended.");
 
         public async ValueTask DisposeAsync()

@@ -244,7 +244,7 @@ internal sealed partial class FileTransferTests
         string tree = scratch.Directory("source/tree");
         scratch.File("source/tree/a.txt", "a");
         Check(MakeFifo(Path.Combine(tree, "pipe"), 0x180) == 0, "mkfifo");
-        var result = await Engine().CopyAsync(new FileTransferRequest([tree], scratch.Directory("destination"))).AsTask().WaitAsync(TimeSpan.FromSeconds(10));
+        var result = await Engine().CopyAsync(new FileTransferRequest([tree], scratch.Directory("destination"))).AsTask().WaitScaledAsync(TimeSpan.FromSeconds(10));
         Check(result is PlatformResult<FileTransferSummary>.Success { Value: { Transferred: 2, Skipped: 1 } }, $"the pipe is skipped: {result}");
     }
 
@@ -270,7 +270,7 @@ internal sealed partial class FileTransferTests
             catch (Exception error) { completion.SetException(error); }
         }
         context.Post(_ => _ = StartAsync(), null);
-        Check(await completion.Task.WaitAsync(TimeSpan.FromSeconds(10)) is PlatformResult<FileTransferSummary>.Success && onContext, "asked on the context");
+        Check(await completion.Task.WaitScaledAsync(TimeSpan.FromSeconds(10)) is PlatformResult<FileTransferSummary>.Success && onContext, "asked on the context");
     }
 
     [Test, DisplayName("transfers: requests are checked, and missing paths are NotFound")]

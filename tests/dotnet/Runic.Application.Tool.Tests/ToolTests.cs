@@ -60,7 +60,7 @@ internal sealed partial class ToolTests
             "/bin/sh", Environment.CurrentDirectory,
             ["-c", "cat >/dev/null; printf 'a\\377b'; printf 'c\\377' >&2"],
             CancellationToken.None);
-        True(run.Wait(TimeSpan.FromSeconds(30)), "A command waiting on standard input did not finish.");
+        True(run.Wait(TestTimeouts.Scale(TimeSpan.FromSeconds(30))), "A command waiting on standard input did not finish.");
         Equal(0, run.Result.ExitCode);
         Equal("a�b", run.Result.StandardOutput);
         Equal("c�", run.Result.StandardError);
@@ -389,7 +389,7 @@ internal sealed partial class ToolTests
             "port-test", executable, workspace.Root,
             [.. prefix, StopTestChild.Argument, StopTestChild.PortInUseRole, workspace.Root],
             observeLine: conflict.Observe);
-        Equal(1, await lost.Completion.WaitAsync(TimeSpan.FromSeconds(30)));
+        Equal(1, await lost.Completion.WaitScaledAsync(TimeSpan.FromSeconds(30)));
         True(await conflict.ExplainsExitAsync(lost), "The reported port conflict was not detected.");
         await lost.DisposeAsync();
 
@@ -2675,7 +2675,7 @@ internal sealed partial class ToolTests
         RunningProcess running = StartStopChild(OperatingSystem.IsWindows() ? "run" : "parent", workspace.Root);
         int application = WaitForStopChild(workspace.Root);
         var clock = Stopwatch.StartNew();
-        True(running.StopGracefullyAsync(TimeSpan.FromSeconds(20)).Wait(TimeSpan.FromSeconds(40)), "The stop did not finish.");
+        True(running.StopGracefullyAsync(TimeSpan.FromSeconds(20)).Wait(TestTimeouts.Scale(TimeSpan.FromSeconds(40))), "The stop did not finish.");
         True(clock.Elapsed < TimeSpan.FromSeconds(15), $"The stop waited {clock.Elapsed} for an application that exited.");
         True(File.Exists(Path.Combine(workspace.Root, "stopped")), "The application was not asked to stop.");
         if (OperatingSystem.IsWindows()) Equal(StopTestChild.ApplicationExitCode, running.Completion.Result);
@@ -2691,7 +2691,7 @@ internal sealed partial class ToolTests
         RunningProcess running = StartStopChild(OperatingSystem.IsWindows() ? "run" : "parent", workspace.Root);
         int application = WaitForStopChild(workspace.Root);
         var clock = Stopwatch.StartNew();
-        True(running.StopGracefullyAsync(TimeSpan.FromSeconds(1)).Wait(TimeSpan.FromSeconds(30)), "The stop did not finish.");
+        True(running.StopGracefullyAsync(TimeSpan.FromSeconds(1)).Wait(TestTimeouts.Scale(TimeSpan.FromSeconds(30))), "The stop did not finish.");
         True(clock.Elapsed >= TimeSpan.FromSeconds(1), "The stop did not wait for the grace period.");
         False(File.Exists(Path.Combine(workspace.Root, "stopped")), "The stuck application reported a stop.");
         WaitForExit(application);
@@ -2708,7 +2708,7 @@ internal sealed partial class ToolTests
     {
         string ready = Path.Combine(markers, "ready");
         var deadline = Stopwatch.StartNew();
-        while (!File.Exists(ready) && deadline.Elapsed < TimeSpan.FromSeconds(30)) Thread.Sleep(50);
+        while (!File.Exists(ready) && deadline.Elapsed < TestTimeouts.Scale(TimeSpan.FromSeconds(30))) Thread.Sleep(50);
         True(File.Exists(ready), "The stand-in application did not start.");
         return int.Parse(File.ReadAllText(ready), System.Globalization.CultureInfo.InvariantCulture);
     }
@@ -2716,7 +2716,7 @@ internal sealed partial class ToolTests
     private static void WaitForExit(int pid)
     {
         var deadline = Stopwatch.StartNew();
-        while (!ProcessTreeSignal.HasExited(pid) && deadline.Elapsed < TimeSpan.FromSeconds(10)) Thread.Sleep(50);
+        while (!ProcessTreeSignal.HasExited(pid) && deadline.Elapsed < TestTimeouts.Scale(TimeSpan.FromSeconds(10))) Thread.Sleep(50);
         True(ProcessTreeSignal.HasExited(pid), $"Process {pid} is still running after the stop.");
     }
 
@@ -2754,7 +2754,7 @@ internal sealed partial class ToolTests
         try
         {
             var deadline = Stopwatch.StartNew();
-            while (!(File.Exists(started) && File.ReadAllText(started).Length > 0) && deadline.Elapsed < TimeSpan.FromSeconds(30) && !tool.HasExited) Thread.Sleep(50);
+            while (!(File.Exists(started) && File.ReadAllText(started).Length > 0) && deadline.Elapsed < TestTimeouts.Scale(TimeSpan.FromSeconds(30)) && !tool.HasExited) Thread.Sleep(50);
             True(File.Exists(started), "doctor did not start the MSBuild evaluation.");
             using (Process kill = Process.Start("kill", ["-TERM", tool.Id.ToString(System.Globalization.CultureInfo.InvariantCulture)]))
             {

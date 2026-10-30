@@ -21,6 +21,8 @@ inputs:
 runs:
   using: composite
   steps:
+    # Every job that runs tests sets up the SDK; native-musl, which does not, uses the action itself.
+    - uses: ./.github/actions/test-timeout-scale
     - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
       if: inputs.dotnet == 'true'
       with:

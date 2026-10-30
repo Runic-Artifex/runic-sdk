@@ -29,7 +29,7 @@ internal sealed class PortalRecoveryTests
         // The previous owner is still alive, so a probe can succeed against it before
         // the owner change is observed. Wait until the client registered with the new owner.
         Check(await second.TryRequestNameAsync(name, RequestNameOptions.ReplaceExisting | RequestNameOptions.AllowReplacement), "idle portal replacement");
-        using (var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(3)))
+        using (var deadline = TestTimeouts.Cancellation(TimeSpan.FromSeconds(3)))
         {
             while (await notifications.RequestPermissionAsync(deadline.Token) is not PlatformResult<PlatformUnit>.Success
                 || !idleReplacement.Calls.Contains("Register"))
@@ -42,15 +42,15 @@ internal sealed class PortalRecoveryTests
         // An in-flight request must fail rather than being sent again to its successor.
         idleReplacement.HoldNotification = true;
         var pending = notifications.ShowAsync(new("uncertain", "In flight", "Body")).AsTask();
-        await idleReplacement.NotificationHeld.Task.WaitAsync(TimeSpan.FromSeconds(3));
+        await idleReplacement.NotificationHeld.Task.WaitScaledAsync(TimeSpan.FromSeconds(3));
         Check(await third.TryRequestNameAsync(name, RequestNameOptions.ReplaceExisting | RequestNameOptions.AllowReplacement), "portal replacement");
-        Check(await pending.WaitAsync(TimeSpan.FromSeconds(3)) is PlatformResult<PlatformUnit>.Unavailable, "in-flight owner loss reported without replay");
+        Check(await pending.WaitScaledAsync(TimeSpan.FromSeconds(3)) is PlatformResult<PlatformUnit>.Unavailable, "in-flight owner loss reported without replay");
         Check(replacement.Calls.Count == 0, "uncertain submission was not replayed");
         idleReplacement.ReleaseNotification.TrySetResult();
         var recoveredAction = new TaskCompletionSource<DesktopNotificationActivation>(TaskCreationOptions.RunContinuationsAsynchronously);
         notifications.Activated += (_, activation) => { if (activation.NotificationId == "after") recoveredAction.TrySetResult(activation); };
         Check(await notifications.ShowAsync(new("after", "After restart", "Body") { Actions = [new("open", "Open result")] }) is PlatformResult<PlatformUnit>.Success, "same notification service recovers on next operation");
-        Check((await recoveredAction.Task.WaitAsync(TimeSpan.FromSeconds(3))).ActionId == "open", "replacement action subscription is live");
+        Check((await recoveredAction.Task.WaitScaledAsync(TimeSpan.FromSeconds(3))).ActionId == "open", "replacement action subscription is live");
         Check(replacement.Calls is ["Register", "AddNotification"], "replacement registered before submission");
         Check(await notifications.RemoveAsync("after") is PlatformResult<PlatformUnit>.Success, "withdraw after replacement");
         Check(replacement.Calls.Count(x => x == "Register") == 1, "unchanged owner does not register twice");
@@ -83,7 +83,7 @@ internal sealed class PortalRecoveryTests
         var settingsReplacement = new DesktopPortalService(fourth) { RequiredIdentity = appId };
         fourth.AddMethodHandler(settingsReplacement);
         Check(await fourth.TryRequestNameAsync(name, RequestNameOptions.ReplaceExisting), "settings portal replacement");
-        using (var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(3)))
+        using (var deadline = TestTimeouts.Cancellation(TimeSpan.FromSeconds(3)))
         {
             while (await settings.ReadAsync(deadline.Token) is not PlatformResult<DesktopAppearance>.Success || settingsReplacement.ReadAllSenders.Count == 0)
                 await Task.Delay(10, deadline.Token);

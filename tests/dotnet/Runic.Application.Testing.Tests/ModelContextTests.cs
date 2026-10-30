@@ -139,7 +139,7 @@ public sealed class ModelContextTests
         using var session = new WindowContentSession(transport, new WindowContentSessionOptions { RootModel = model, ModelContext = context });
         var exposure = context.InvokeAsync(() => session.Expose("item", new object(),
             static (_, _, _) => new NoopAttachment())).AsTask();
-        Require(await Task.WhenAny(exposure, Task.Delay(TimeSpan.FromSeconds(5))) == exposure,
+        Require(await Task.WhenAny(exposure, Task.Delay(TestTimeouts.Scale(TimeSpan.FromSeconds(5)))) == exposure,
             "Content exposed from inside a non-inlining application context deadlocked.");
         _ = await exposure;
     }
@@ -194,7 +194,7 @@ public sealed class ModelContextTests
             drainStarted.Set();
             releaseDrain.Wait();
         }), "The direct-post batch barrier was rejected.");
-        Require(drainStarted.Wait(TimeSpan.FromSeconds(5)), "The direct-post batch barrier did not start.");
+        Require(drainStarted.Wait(TestTimeouts.Scale(TimeSpan.FromSeconds(5))), "The direct-post batch barrier did not start.");
 
         var observed = new List<string?>();
         using (RunicInteractionInvocation.Enter(session, "direct", "client-a", "connection-a", commandName: "first"))
@@ -248,7 +248,7 @@ public sealed class ModelContextTests
             drainStarted.Set();
             releaseDrain.Wait();
         }), "The model context rejected the scheduler batch barrier.");
-        Require(drainStarted.Wait(TimeSpan.FromSeconds(5)), "The scheduler batch barrier did not start.");
+        Require(drainStarted.Wait(TestTimeouts.Scale(TimeSpan.FromSeconds(5))), "The scheduler batch barrier did not start.");
         var observedScopes = new List<string?>();
         Task<bool>? firstAnswer = null;
         Task<bool>? secondAnswer = null;
@@ -333,7 +333,7 @@ public sealed class ModelContextTests
 
     private static async Task<T> Within<T>(Task<T> task, string message)
     {
-        if (await Task.WhenAny(task, Task.Delay(TimeSpan.FromSeconds(5))) != task)
+        if (await Task.WhenAny(task, Task.Delay(TestTimeouts.Scale(TimeSpan.FromSeconds(5)))) != task)
             throw new InvalidOperationException(message);
         return await task;
     }
@@ -366,7 +366,7 @@ public sealed class ModelContextTests
         var session = new WindowContentSession(transport, new WindowContentSessionOptions { RootModel = model });
         var context = session.ModelContext ?? throw new InvalidOperationException("The root model did not receive a context.");
         var close = context.InvokeAsync(session.Dispose).AsTask();
-        Require(await Task.WhenAny(close, Task.Delay(TimeSpan.FromSeconds(5))) == close,
+        Require(await Task.WhenAny(close, Task.Delay(TestTimeouts.Scale(TimeSpan.FromSeconds(5)))) == close,
             "Closing a session from a model turn deadlocked its context shutdown.");
         await close;
         await ThrowsAsync<ObjectDisposedException>(context.InvokeAsync(() => { }).AsTask());

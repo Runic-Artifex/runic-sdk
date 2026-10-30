@@ -6,6 +6,7 @@ import test from "node:test";
 import { chromium } from "playwright-core";
 import { createServer } from "vite";
 import { runic } from "../dist/index.js";
+import { scaled } from "../../../../tests/support/timeouts.mjs";
 
 // The development client is injected into HTML as a virtual module that Vite's
 // dependency scanner cannot see. With a cold optimizer cache, the first page
@@ -15,7 +16,7 @@ import { runic } from "../dist/index.js";
 // must keep its first document without a retry, and nothing may be discovered
 // after start-up.
 test("serves the development client with a cold optimizer cache without a reload or late optimization", {
-  timeout: 60_000,
+  timeout: scaled(60_000),
   skip: !process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH,
 }, async () => {
   const root = await mkdtemp(join(tmpdir(), "runic-vite-cold-cache-"));
@@ -77,10 +78,10 @@ test("serves the development client with a cold optimizer cache without a reload
     let documents = 0;
     page.on("framenavigated", (frame) => { if (frame === page.mainFrame()) documents += 1; });
     await page.goto(`http://127.0.0.1:${port}/`);
-    await page.waitForFunction(() => globalThis.__runicMainLoaded === true, null, { timeout: 15_000 });
+    await page.waitForFunction(() => globalThis.__runicMainLoaded === true, null, { timeout: scaled(15_000) });
     // The development client registers the Views diagnostics listener.
     await page.waitForFunction(() => (globalThis[Symbol.for("runic.views.diagnostics")]?.size ?? 0) > 0,
-      null, { timeout: 15_000 });
+      null, { timeout: scaled(15_000) });
     const marker = await page.evaluate(() => (globalThis.__runicFirstDocument = crypto.randomUUID()));
     // A dependency discovered by the page is optimized after a debounce and
     // logged 200 ms later; wait well past both.

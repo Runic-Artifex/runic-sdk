@@ -182,7 +182,7 @@ internal sealed class TestingSurfaceTests
         await stop.CancelAsync();
         try
         {
-            await close.WaitAsync(TimeSpan.FromSeconds(5));
+            await close.WaitScaledAsync(TimeSpan.FromSeconds(5));
             throw new InvalidOperationException("The cancelled drain completed.");
         }
         catch (OperationCanceledException) { }
@@ -203,7 +203,7 @@ internal sealed class TestingSurfaceTests
         foreach (var wait in new Task[] { next, drain })
             try
             {
-                await wait.WaitAsync(TimeSpan.FromSeconds(5));
+                await wait.WaitScaledAsync(TimeSpan.FromSeconds(5));
                 throw new InvalidOperationException("A path watch wait ignored its token.");
             }
             catch (OperationCanceledException) { }

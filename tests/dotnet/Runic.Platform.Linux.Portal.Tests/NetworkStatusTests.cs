@@ -95,7 +95,7 @@ internal sealed class NetworkStatusTests
     private static PlatformResult<DesktopNetworkState> Success(DesktopNetworkState state) => new PlatformResult<DesktopNetworkState>.Success(state);
 
     private static async Task<PlatformResult<DesktopNetworkState>> Next(IAsyncEnumerator<PlatformResult<DesktopNetworkState>> watch) =>
-        await watch.MoveNextAsync().AsTask().WaitAsync(Wait) ? watch.Current : throw new InvalidOperationException("The watch ended.");
+        await watch.MoveNextAsync().AsTask().WaitScaledAsync(Wait) ? watch.Current : throw new InvalidOperationException("The watch ended.");
 
     private static string UniqueName(string what) => $"org.runic.test.{what}{Guid.NewGuid():N}";
 

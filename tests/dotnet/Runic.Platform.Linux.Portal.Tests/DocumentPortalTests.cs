@@ -25,19 +25,20 @@ internal sealed partial class DocumentPortalTests
         if (!File.Exists("/dev/fuse")) { Skip("/dev/fuse is absent"); return; }
         if (DBusAddress.Session is not { } address) { Skip("no session bus"); return; }
         using var connection = new DBusConnection(address);
-        await connection.ConnectAsync().AsTask().WaitAsync(Timeout);
-        if (!await connection.CallMethodAsync(Bus(connection, "NameHasOwner"), static (message, _) => message.GetBodyReader().ReadBool()).WaitAsync(Timeout))
+        await connection.ConnectAsync().AsTask().WaitScaledAsync(Timeout);
+        if (!await connection.CallMethodAsync(Bus(connection, "NameHasOwner"), static (message, _) => message.GetBodyReader().ReadBool()).WaitScaledAsync(Timeout))
         {
             // An isolated bus (dbus-run-session) may activate its own document portal,
             // but never one that would replace the desktop session's mount.
             if (Environment.GetEnvironmentVariable("XDG_RUNTIME_DIR") is { } runtime && DocumentPortalPaths.IsFuse(Path.Combine(runtime, "doc")))
             { Skip("another session's document portal owns the mount; run on that session bus"); return; }
+            // Not scaled: a portal that cannot be activated in 10 s skips the test.
             try { await connection.CallMethodAsync(Bus(connection, "StartServiceByName")).WaitAsync(TimeSpan.FromSeconds(10)); }
             catch (Exception error) when (error is DBusExceptionBase or TimeoutException) { Skip("the document portal cannot be activated: " + error.GetType().Name); return; }
         }
         string? mount = await DocumentPortalPaths.QueryMountPointAsync(default);
         if (mount is null) { Skip("org.freedesktop.portal.Documents.GetMountPoint is unavailable"); return; }
-        uint version = await connection.CallMethodAsync(GetVersion(connection), static (message, _) => message.GetBodyReader().ReadVariantValue().GetUInt32()).WaitAsync(Timeout);
+        uint version = await connection.CallMethodAsync(GetVersion(connection), static (message, _) => message.GetBodyReader().ReadVariantValue().GetUInt32()).WaitScaledAsync(Timeout);
         if (version < 4) { Skip($"Documents version {version} has no AddNamedFull"); return; }
 
         string root = Path.Combine(Path.GetTempPath(), "runic-document-portal-" + Guid.NewGuid().ToString("N"));
@@ -191,7 +192,7 @@ internal sealed partial class DocumentPortalTests
             writer.WriteUInt32(0);
             writer.WriteString(AppId);
             writer.WriteArray(ReadWrite);
-        }), static (message, _) => message.GetBodyReader().ReadString()).WaitAsync(Timeout);
+        }), static (message, _) => message.GetBodyReader().ReadString()).WaitScaledAsync(Timeout);
         documents.Add(id);
         return Path.Combine(mount, "by-app", AppId, id, name);
     }
@@ -202,7 +203,7 @@ internal sealed partial class DocumentPortalTests
     private static string Id(string documentPath) => Path.GetFileName(Path.GetDirectoryName(documentPath)!);
 
     private static Task CallAsync(DBusConnection connection, string member, BodyWriter body) =>
-        connection.CallMethodAsync(Message(connection, member, member == "Delete" ? "s" : "ssas", body)).WaitAsync(Timeout);
+        connection.CallMethodAsync(Message(connection, member, member == "Delete" ? "s" : "ssas", body)).WaitScaledAsync(Timeout);
 
     private static MessageBuffer Message(DBusConnection connection, string member, string signature, BodyWriter body)
     {

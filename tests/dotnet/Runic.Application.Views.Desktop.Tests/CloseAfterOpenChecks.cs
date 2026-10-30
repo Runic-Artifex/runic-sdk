@@ -72,7 +72,7 @@ internal sealed class CloseAfterOpenChecks
             if (!isOpen)
             {
                 // The application's own wait returns at once for a closed presentation.
-                await window.WaitForCloseAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(5));
+                await window.WaitForCloseAsync().AsTask().WaitScaledAsync(TimeSpan.FromSeconds(5));
             }
             return (isOpen, output.ToString(), error.ToString(), logger.Events);
         }

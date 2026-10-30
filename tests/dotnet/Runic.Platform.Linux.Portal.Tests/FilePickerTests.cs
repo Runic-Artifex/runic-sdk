@@ -39,7 +39,7 @@ internal sealed class FilePickerTests
         var ownerDirectoryRequest = new PortalFilePicker(directoryOwner, directoryWaiting).SelectDirectoryAsync(default).AsTask();
         await directoryWaiting.Started.Task;
         directoryOwner.Generation = Guid.NewGuid();
-        try { await ownerDirectoryRequest.WaitAsync(TimeSpan.FromSeconds(3)); throw new InvalidOperationException("directory owner replacement ignored"); }
+        try { await ownerDirectoryRequest.WaitScaledAsync(TimeSpan.FromSeconds(3)); throw new InvalidOperationException("directory owner replacement ignored"); }
         catch (OwnerClosedException) { }
         Check(directoryOwner.Released == 1 && directoryWaiting.Cancelled, "directory owner close releases parent and request");
         foreach (string uri in new[] { "https://example.com/a", "file://remote/tmp/a", "file:///tmp/a#fragment", "file:///tmp/a?query" })
@@ -60,7 +60,7 @@ internal sealed class FilePickerTests
         var request = new PortalFilePicker(replaced, pending).SelectAsync(false, null, default).AsTask();
         await pending.Started.Task;
         replaced.Generation = Guid.NewGuid();
-        try { await request.WaitAsync(TimeSpan.FromSeconds(3)); throw new InvalidOperationException("replacement ignored"); }
+        try { await request.WaitScaledAsync(TimeSpan.FromSeconds(3)); throw new InvalidOperationException("replacement ignored"); }
         catch (OwnerClosedException) { }
         Check(replaced.Released == 1 && pending.Cancelled, "replacement cancels request and releases parent");
         using (var cancelled = new CancellationTokenSource())

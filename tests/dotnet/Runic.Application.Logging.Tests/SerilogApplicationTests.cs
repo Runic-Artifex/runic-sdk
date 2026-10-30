@@ -15,7 +15,7 @@ internal sealed class SerilogApplicationTests
     [Test]
     public async Task DesktopAndViewsMessagesReachSerilogAndNotTrace()
     {
-        using var timeout = new CancellationTokenSource(Timeout);
+        using var timeout = TestTimeouts.Cancellation(Timeout);
         using var application = Start();
         try { await RunAsync(application, timeout.Token); }
         finally

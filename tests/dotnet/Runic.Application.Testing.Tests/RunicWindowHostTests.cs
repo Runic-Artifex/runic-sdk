@@ -175,10 +175,10 @@ internal sealed class RunicWindowHostTests
         using var cancel = new CancellationTokenSource();
         var host = new RecordingHost(provider) { BlockOpen = true };
         var open = host.OpenWindowAsync<HostProbeWindow>(cancellationToken: cancel.Token).AsTask();
-        await host.OpenStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        await host.OpenStarted.Task.WaitScaledAsync(TimeSpan.FromSeconds(5));
         Require(ScopeProbe.Live == 1, "The Window's scope did not exist while the host opened it.");
         await cancel.CancelAsync();
-        Require(await CatchAsync(() => open.WaitAsync(TimeSpan.FromSeconds(5))) is OperationCanceledException,
+        Require(await CatchAsync(() => open.WaitScaledAsync(TimeSpan.FromSeconds(5))) is OperationCanceledException,
             "Cancelling a host open did not cancel OpenWindowAsync.");
         Require(ScopeProbe.Live == 0, "A cancelled host open kept the Window's scope.");
     }
@@ -195,7 +195,7 @@ internal sealed class RunicWindowHostTests
         var wait = window.WaitForCloseAsync(stop.Token).AsTask();
         Require(!wait.IsCompleted, "WaitForCloseAsync completed before the window closed.");
         await stop.CancelAsync();
-        Require(await CatchAsync(() => wait.WaitAsync(TimeSpan.FromSeconds(5))) is OperationCanceledException && !bridge.CloseStarted,
+        Require(await CatchAsync(() => wait.WaitScaledAsync(TimeSpan.FromSeconds(5))) is OperationCanceledException && !bridge.CloseStarted,
             "Cancelling WaitForCloseAsync did not stop only the wait.");
 
         var closed = window.WaitForCloseAsync().AsTask();
@@ -203,7 +203,7 @@ internal sealed class RunicWindowHostTests
         var result = await window.CloseAsync(TimeSpan.FromSeconds(1), closeToken.Token);
         Require(result.Drained && bridge.CloseStarted && bridge.CloseToken == closeToken.Token,
             "CloseAsync did not pass its timeout and cancellation token to the host.");
-        await closed.WaitAsync(TimeSpan.FromSeconds(5));
+        await closed.WaitScaledAsync(TimeSpan.FromSeconds(5));
     }
 
     [Test, NotInParallel(Order = 8)]
@@ -227,7 +227,7 @@ internal sealed class RunicWindowHostTests
 
         // The user closes the second window; nothing awaits it, so the service releases it.
         host.Opened[1].Window.CloseByUser();
-        await second.ViewModel.Scope.Released.WaitAsync(TimeSpan.FromSeconds(5));
+        await second.ViewModel.Scope.Released.WaitScaledAsync(TimeSpan.FromSeconds(5));
         Require(host.Opened[1].Attached!.Disposed && !first.ViewModel.Scope.Disposed,
             "Closing a Window opened by the service did not release only that Window.");
         await second.DisposeAsync();

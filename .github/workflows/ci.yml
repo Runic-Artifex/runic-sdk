@@ -739,7 +739,6 @@ jobs:
     runs-on: ${{ matrix.os }}
     timeout-minutes: 50
     env:
-      RUNIC_SMOKE_TIMEOUT_SCALE: ${{ matrix.smoke-timeout-scale || '1' }}
       # The real GNOME portal check's container (eng/ci/real-portal.sh).
       FEDORA_IMAGE: docker.io/library/fedora:44@sha256:43b29f65a41eb9c35e1cd5323e3bdf3b655c2357a9f4f1ff2f9c2798e5045d80
     steps:
@@ -971,8 +970,8 @@ jobs:
         run: |
           dotnet publish tests/dotnet/Runic.Platform.Linux.Portal.Tests -c Release -r "$RID" --self-contained true -o artifacts/portal-jit
           eng/ci/retry.sh 2 90 docker pull -q "$FEDORA_IMAGE"
-          docker run --rm --init -v "$GITHUB_WORKSPACE:$GITHUB_WORKSPACE" -v /var/cache/runic-dnf:/var/cache/libdnf5 -w "$GITHUB_WORKSPACE" "$FEDORA_IMAGE" \
-            bash eng/ci/real-portal.sh artifacts/portal-jit/Runic.Platform.Linux.Portal.Tests artifacts/portal-aot/Runic.Platform.Linux.Portal.Tests
+          docker run --rm --init -v "$GITHUB_WORKSPACE:$GITHUB_WORKSPACE" -v /var/cache/runic-dnf:/var/cache/libdnf5 -w "$GITHUB_WORKSPACE" \
+            -e GITHUB_ACTIONS -e RUNIC_TEST_TIMEOUT_SCALE "$FEDORA_IMAGE" bash eng/ci/real-portal.sh artifacts/portal-jit/Runic.Platform.Linux.Portal.Tests artifacts/portal-aot/Runic.Platform.Linux.Portal.Tests
       - name: Verify privileged actions under NativeAOT
         if: runner.os == 'Linux'
         # The managed job runs the same cases under JIT; nixos/privileged-operations covers a real Polkit.
@@ -1504,6 +1503,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      - uses: ./.github/actions/test-timeout-scale
       - uses: ./.github/actions/dependency-cache
         with:
           path: .cache/nuget
@@ -1519,7 +1519,7 @@ jobs:
           sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
           docker run --rm --init --security-opt seccomp=unconfined --security-opt apparmor=unconfined --shm-size 1g \
             -v "$GITHUB_WORKSPACE:$GITHUB_WORKSPACE" -w "$GITHUB_WORKSPACE" \
-            -e NUGET_PACKAGES -e GITHUB_ACTIONS \
+            -e NUGET_PACKAGES -e GITHUB_ACTIONS -e RUNIC_TEST_TIMEOUT_SCALE \
             "$ALPINE_IMAGE" sh eng/ci/native-musl.sh "$RID"
         env:
           RID: ${{ matrix.rid }}

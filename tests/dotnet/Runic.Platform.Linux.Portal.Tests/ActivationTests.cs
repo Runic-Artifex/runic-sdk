@@ -167,13 +167,13 @@ internal sealed class ActivationTests
 
     private static async Task CallAsync(DBusConnection connection, string destination, DBusObjectPath path, string member, ImmutableArray<DBusValue> arguments) =>
         await connection.CallMethodAsync(new DBusMethodCall(destination, path, "org.freedesktop.Application", member) { Arguments = arguments })
-            .AsTask().WaitAsync(Wait);
+            .AsTask().WaitScaledAsync(Wait);
 
     private static async Task<DBusConnection> ConnectAsync() =>
         await DBusConnection.ConnectAsync(DBusBus.Session) is PlatformResult<DBusConnection>.Success(var connection) ? connection
             : throw new InvalidOperationException("Run the bus cases under dbus-run-session.");
 
-    private static async Task<T> NextAsync<T>(Channel<T> channel) => await channel.Reader.ReadAsync().AsTask().WaitAsync(Wait);
+    private static async Task<T> NextAsync<T>(Channel<T> channel) => await channel.Reader.ReadAsync().AsTask().WaitScaledAsync(Wait);
 
     private sealed class NoInstance : IApplicationInstance
     {

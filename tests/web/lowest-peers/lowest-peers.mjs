@@ -75,8 +75,9 @@ function trackedFiles(directory) {
   return result.stdout.split("\0").filter(Boolean);
 }
 
-// Copies the package's tracked files and makes `extends` of its tsconfig files absolute, since they point
-// into the repository (eng/typescript).
+// Copies the package's tracked files and makes `extends` of its tsconfig files and imports of the shared test
+// helpers (tests/support, such as timeouts.mjs for RUNIC_TEST_TIMEOUT_SCALE) absolute, since they point into the
+// repository.
 function copyPackage(name, target) {
   const source = join("packages/web", name);
   for (const file of trackedFiles(source)) {
@@ -86,6 +87,11 @@ function copyPackage(name, target) {
     if (/(^|\/)tsconfig[^/]*\.json$/.test(file)) {
       const text = readFileSync(destination, "utf8");
       writeFileSync(destination, text.replace(/("extends"\s*:\s*")(\.[^"]*)"/, (_, prefix, path) => `${prefix}${resolve(root, source, path)}"`));
+    } else if (/\.(?:[cm]?[jt]s|tsx)$/.test(file)) {
+      const text = readFileSync(destination, "utf8");
+      const absolute = text.replace(/(["'])((?:\.\.\/)+tests\/support\/[^"']+)\1/g,
+        (_, quote, path) => `${quote}${resolve(root, dirname(file), path).replace(/\\/g, "/")}${quote}`);
+      if (absolute !== text) writeFileSync(destination, absolute);
     }
   }
 }

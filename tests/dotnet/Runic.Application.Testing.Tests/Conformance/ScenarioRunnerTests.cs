@@ -88,8 +88,8 @@ public sealed class ScenarioRunnerTests
         transport.Send(first, "{}"u8.ToArray(), "r2");
         Require(!broadcast.IsCompleted && !targeted.IsCompleted, "A held push completed.");
         transport.Release();
-        Require(await targeted.WaitAsync(TimeSpan.FromSeconds(5)), "The held targeted push was not delivered.");
-        await broadcast.WaitAsync(TimeSpan.FromSeconds(5));
+        Require(await targeted.WaitScaledAsync(TimeSpan.FromSeconds(5)), "The held targeted push was not delivered.");
+        await broadcast.WaitScaledAsync(TimeSpan.FromSeconds(5));
         var received = Drain(first);
         Require(received.SequenceEqual(["r1 {}", "r2 {}", "push {\"n\":1}"]), $"The first connection received [{string.Join(", ", received)}].");
         received = Drain(second);

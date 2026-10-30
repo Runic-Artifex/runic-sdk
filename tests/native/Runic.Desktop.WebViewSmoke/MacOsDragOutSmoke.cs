@@ -14,7 +14,7 @@ internal static class MacOsDragOutSmoke
         {
             Text = "Runic drag out",
             Uris = [new Uri("https://example.com/runic")],
-        }).AsTask().WaitAsync(TimeSpan.FromSeconds(10));
+        }).AsTask().WaitScaledAsync(TimeSpan.FromSeconds(10));
         if (effect != DesktopDragEffects.None)
             throw new InvalidOperationException($"Drag out: without a held button the drag returned {effect}, not None.");
         Console.WriteLine("PASS drag out: FileDrag offered; a drag without a held button returns None.");

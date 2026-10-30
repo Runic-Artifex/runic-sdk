@@ -52,13 +52,13 @@ internal sealed class UriLauncherTests
             Check(!File.Exists(marker), "a refused URI started the application");
 
             // The dispatch behind an accepted URI, with the test scheme.
-            var opened = await MacUriLauncher.Open(scheme + ":open/a%20b?c=d").WaitAsync(TimeSpan.FromSeconds(60));
+            var opened = await MacUriLauncher.Open(scheme + ":open/a%20b?c=d").WaitScaledAsync(TimeSpan.FromSeconds(60));
             Console.WriteLine($"NSWorkspace openURL {scheme}: {opened}");
             Check(opened is PlatformResult<PlatformUnit>.Success, "NSWorkspace accepted the test URI");
             Check(await ApplicationsTests.StartsAsync(marker, 1), "the scheme's application started");
 
             // A scheme without an application is reported, not opened.
-            var unregistered = await MacUriLauncher.Open("runic-unregistered-" + unique + ":x").WaitAsync(TimeSpan.FromSeconds(60));
+            var unregistered = await MacUriLauncher.Open("runic-unregistered-" + unique + ":x").WaitScaledAsync(TimeSpan.FromSeconds(60));
             Console.WriteLine($"Unregistered scheme: {unregistered}");
             Check(unregistered is not PlatformResult<PlatformUnit>.Success, "a scheme without an application did not succeed");
             Console.WriteLine("PASS macOS URI launcher: refusals before dispatch, NSWorkspace through the URL handler.");

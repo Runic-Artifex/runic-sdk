@@ -59,7 +59,7 @@ internal sealed class ServeOnlyChecks
             await Task.Delay(200);
             Check(!closed.IsCompleted, "WaitForCloseAsync returned before a line was read from standard input.");
             lines.Send("\n");
-            await closed.WaitAsync(TimeSpan.FromSeconds(5));
+            await closed.WaitScaledAsync(TimeSpan.FromSeconds(5));
         }
         finally
         {
@@ -108,7 +108,7 @@ internal sealed class ServeOnlyChecks
                 Check(Environment.GetEnvironmentVariable("RUNIC_APPLICATION_SERVE_ONLY") is null,
                     "The serve-only option set the environment variable that child processes inherit.");
                 lines.Send("\n");
-                await window.WaitForCloseAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(5));
+                await window.WaitForCloseAsync().AsTask().WaitScaledAsync(TimeSpan.FromSeconds(5));
             }
 
             if (!OperatingSystem.IsMacOS())
@@ -190,7 +190,7 @@ internal sealed class ServeOnlyChecks
 
                 var closed = Task.WhenAll(first.WaitForCloseAsync().AsTask(), second.WaitForCloseAsync().AsTask());
                 lines.Send("");
-                await closed.WaitAsync(TimeSpan.FromSeconds(5));
+                await closed.WaitScaledAsync(TimeSpan.FromSeconds(5));
             }
 
             await using var reopened = await host.OpenWindowAsync<ProbeWindow>();
@@ -198,7 +198,7 @@ internal sealed class ServeOnlyChecks
             await Task.Delay(200);
             Check(!reopenedClosed.IsCompleted, "A Window opened after the stop line closed without a new line.");
             lines.Send("");
-            await reopenedClosed.WaitAsync(TimeSpan.FromSeconds(5));
+            await reopenedClosed.WaitScaledAsync(TimeSpan.FromSeconds(5));
         }
         finally
         {
@@ -371,7 +371,7 @@ internal sealed class ServeOnlyChecks
         var console = Console.Out;
         var input = Console.In;
         var lines = new LineReader();
-        using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+        using var deadline = TestTimeouts.Cancellation(TimeSpan.FromSeconds(30));
         try
         {
             Console.SetIn(lines);

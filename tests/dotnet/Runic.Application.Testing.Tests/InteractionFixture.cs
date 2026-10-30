@@ -113,7 +113,7 @@ internal sealed class InteractionFixture
             Require(Result(transport.Send(ReplyJson(route, "present-a", undecodableWire.RootElement, "false"), "connection-a", "client-a")) == "invalid-output",
                 "An undecodable interaction answer was not reported as invalid output.");
         Require(await ThrowsAsync<RunicInteractionOutputException>(
-            () => undecodable.WaitAsync(TimeSpan.FromSeconds(5))),
+            () => undecodable.WaitScaledAsync(TimeSpan.FromSeconds(5))),
             "An undecodable interaction answer left the request pending instead of failing it.");
 
         // The command's cancellation reaches a handler already processing a prompt as interaction-cancelled.

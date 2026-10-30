@@ -48,7 +48,7 @@ internal sealed partial class CodegenDiagnosticsTests
         })!;
         var output = process.StandardOutput.ReadToEndAsync();
         var error = process.StandardError.ReadToEndAsync();
-        await process.WaitForExitAsync().WaitAsync(GeneratorTimeout).ConfigureAwait(false);
+        await process.WaitForExitAsync().WaitScaledAsync(GeneratorTimeout).ConfigureAwait(false);
         var list = await output.ConfigureAwait(false);
         Require(process.ExitCode == 0, $"--list-diagnostics failed: {await error.ConfigureAwait(false)}");
         var committed = File.ReadAllText(Path.Combine(root, "docs", "runicbridge-diagnostics.json")).ReplaceLineEndings("\n");
@@ -984,7 +984,7 @@ internal sealed partial class CodegenDiagnosticsTests
         var output = process.StandardOutput.ReadToEndAsync();
         var error = process.StandardError.ReadToEndAsync();
         var elapsed = Stopwatch.StartNew();
-        using var timeout = new CancellationTokenSource(GeneratorTimeout);
+        using var timeout = TestTimeouts.Cancellation(GeneratorTimeout);
         try { await process.WaitForExitAsync(timeout.Token).ConfigureAwait(false); }
         catch (OperationCanceledException)
         {
@@ -993,7 +993,7 @@ internal sealed partial class CodegenDiagnosticsTests
             // directory and the timeout, not the cleanup, is the reported failure.
             var dump = TryWriteDump(process, Path.GetFileNameWithoutExtension(assembly));
             process.Kill(entireProcessTree: true);
-            await process.WaitForExitAsync(CancellationToken.None).WaitAsync(TimeSpan.FromSeconds(10)).ConfigureAwait(false);
+            await process.WaitForExitAsync(CancellationToken.None).WaitScaledAsync(TimeSpan.FromSeconds(10)).ConfigureAwait(false);
             var partial = await output.ConfigureAwait(false) + await error.ConfigureAwait(false);
             throw new InvalidOperationException($"{assembly}: the generator did not exit within {GeneratorTimeout.TotalSeconds} seconds"
                 + $" ({elapsed.Elapsed.TotalSeconds:F1} s). {dump}\nIts output so far:\n{partial}");

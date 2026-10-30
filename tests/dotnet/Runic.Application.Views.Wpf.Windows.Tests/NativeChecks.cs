@@ -61,7 +61,7 @@ internal sealed class NativeChecks
         window.Show();
         try
         {
-            await loaded.Task.WaitAsync(TimeSpan.FromSeconds(10));
+            await loaded.Task.WaitScaledAsync(TimeSpan.FromSeconds(10));
             var attachment = new Attachment();
             var collection = new ServiceCollection();
             collection.AddSingleton<Func<IBridgeTransport, object, IDisposable>>((_, _) => attachment);
@@ -69,7 +69,7 @@ internal sealed class NativeChecks
             await using var host = await DesktopHost.StartAsync(new()
             {
                 WindowHostFactory = child.CreateWindowHostFactory(),
-                ConnectionTimeout = TimeSpan.FromSeconds(20),
+                ConnectionTimeout = TestTimeouts.Scale(TimeSpan.FromSeconds(20)),
             });
             await using var view = await services.CreateWpfViewAsync(host, Program.HtmlOptions(), new object());
             var connectionIds = new HashSet<ulong>();
@@ -90,12 +90,12 @@ internal sealed class NativeChecks
                 }
             });
             await view.OpenAsync();
-            await Task.WhenAny(connected.Task, Task.Delay(TimeSpan.FromSeconds(20)));
+            await Task.WhenAny(connected.Task, Task.Delay(TestTimeouts.Scale(TimeSpan.FromSeconds(20))));
             Program.Check(window.IsVisible && child.Handle != 0, "The WebView did not remain inside the WPF shell.");
             lock (connectionIds)
                 Program.Check(connectionIds.Count == 1, $"The first document did not authenticate. Events: {string.Join(", ", events)}.");
             await view.Surface.RunJavaScriptAsync("location.reload();");
-            await Task.WhenAny(reconnected.Task, Task.Delay(TimeSpan.FromSeconds(20)));
+            await Task.WhenAny(reconnected.Task, Task.Delay(TestTimeouts.Scale(TimeSpan.FromSeconds(20))));
             lock (connectionIds)
                 Program.Check(reconnected.Task.IsCompleted, $"The reloaded document did not reconnect. Events: {string.Join(", ", events)}.");
             Program.Check(!attachment.Disposed, "Browser reload retired the child session.");
@@ -111,8 +111,8 @@ internal sealed class NativeChecks
             var focus = await view.Surface.ExecuteJavaScriptAsync(FocusProbe("editor"), TimeSpan.FromSeconds(15));
             Program.Check(focus.StartsWith("editor ", StringComparison.Ordinal), $"The child document could not focus its editor: {focus}.");
             window.Content = null;
-            await attachment.Released.Task.WaitAsync(TimeSpan.FromSeconds(10));
-            await view.DisposeAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(10));
+            await attachment.Released.Task.WaitScaledAsync(TimeSpan.FromSeconds(10));
+            await view.DisposeAsync().AsTask().WaitScaledAsync(TimeSpan.FromSeconds(10));
             Program.Check(attachment.Disposed && window.IsVisible, "Unloading the web child did not retire its session while preserving the shell.");
             Console.WriteLine("Runic.Application.Views.Wpf native authentication/reload/unload checks passed.");
         }
@@ -138,14 +138,14 @@ internal sealed class NativeChecks
         window.Show();
         try
         {
-            await loaded.Task.WaitAsync(TimeSpan.FromSeconds(10));
+            await loaded.Task.WaitScaledAsync(TimeSpan.FromSeconds(10));
             var collection = new ServiceCollection();
             collection.AddSingleton<Func<IBridgeTransport, object, IDisposable>>((_, _) => new Attachment());
             await using var services = collection.BuildServiceProvider();
             await using var host = await DesktopHost.StartAsync(new()
             {
                 WindowHostFactory = child.CreateWindowHostFactory(),
-                ConnectionTimeout = TimeSpan.FromSeconds(20),
+                ConnectionTimeout = TestTimeouts.Scale(TimeSpan.FromSeconds(20)),
             });
             await using var view = await services.CreateWpfViewAsync(host, new DesktopSurfaceOptions
             {
@@ -233,14 +233,14 @@ internal sealed class NativeChecks
         window.Show();
         try
         {
-            await loaded.Task.WaitAsync(TimeSpan.FromSeconds(10));
+            await loaded.Task.WaitScaledAsync(TimeSpan.FromSeconds(10));
             var collection = new ServiceCollection();
             collection.AddSingleton<Func<IBridgeTransport, object, IDisposable>>((_, _) => new Attachment());
             await using var services = collection.BuildServiceProvider();
             await using var host = await DesktopHost.StartAsync(new()
             {
                 WindowHostFactory = child.CreateWindowHostFactory(),
-                ConnectionTimeout = TimeSpan.FromSeconds(20),
+                ConnectionTimeout = TestTimeouts.Scale(TimeSpan.FromSeconds(20)),
             });
             await using var view = await services.CreateWpfViewAsync(host, new DesktopSurfaceOptions
             {
@@ -275,7 +275,7 @@ internal sealed class NativeChecks
             await view.Surface.ExecuteJavaScriptAsync("location.href = location.pathname + '?same-origin'; return true;", TimeSpan.FromSeconds(15));
             // The reloaded page reconnects; ask until it answers from the new document.
             var search = "";
-            for (var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(30); search != "?same-origin" && DateTime.UtcNow < deadline;)
+            for (var deadline = DateTime.UtcNow + TestTimeouts.Scale(TimeSpan.FromSeconds(30)); search != "?same-origin" && DateTime.UtcNow < deadline;)
             {
                 try { search = await view.Surface.ExecuteJavaScriptAsync("return location.search;", TimeSpan.FromSeconds(5)); }
                 catch (Exception error) when (error is not OutOfMemoryException) { await Task.Delay(100); }
@@ -331,7 +331,7 @@ internal sealed class NativeChecks
             Program.Check(pane.GetName() == "Web editor" && pane.GetAutomationControlType() == AutomationControlType.Pane,
                 $"The web View's automation peer is not the named pane: '{pane.GetName()}' {pane.GetAutomationControlType()}.");
             var first = host.Surface;
-            await host.ReloadAsync().WaitAsync(TimeSpan.FromSeconds(30));
+            await host.ReloadAsync().WaitScaledAsync(TimeSpan.FromSeconds(30));
             Program.Check(host.State == RunicViewHostState.Open && !ReferenceEquals(first, host.Surface) && attachments is [{ Disposed: true }, { Disposed: false }],
                 "Reload did not replace the session after releasing the first one.");
 
@@ -348,7 +348,7 @@ internal sealed class NativeChecks
                 }
                 catch (OperationCanceledException) { }
             }
-            await host.WaitForPresentationAsync().WaitAsync(TimeSpan.FromSeconds(30));
+            await host.WaitForPresentationAsync().WaitScaledAsync(TimeSpan.FromSeconds(30));
             Program.Check(host.State == RunicViewHostState.Open && !ReferenceEquals(reloaded, host.Surface)
                 && attachments.Count == 3 && attachments.Count(item => !item.Disposed) == 1,
                 "Cancelling the ReloadAsync wait stopped the reload.");
@@ -356,14 +356,14 @@ internal sealed class NativeChecks
             // Two swaps in one turn collapse: one fresh session for the latest model.
             window.DataContext = new HostedModel();
             window.DataContext = model;
-            await host.WaitForPresentationAsync().WaitAsync(TimeSpan.FromSeconds(30));
+            await host.WaitForPresentationAsync().WaitScaledAsync(TimeSpan.FromSeconds(30));
             Program.Check(host.State == RunicViewHostState.Open && attachments.Count(item => !item.Disposed) == 1,
                 $"Swaps left {attachments.Count(item => !item.Disposed)} sessions open.");
 
             window.Content = null;
             // WPF raises Unloaded after layout, not during the removal.
             await UntilAsync(() => !host.IsLoaded);
-            await host.WaitForPresentationAsync().WaitAsync(TimeSpan.FromSeconds(30));
+            await host.WaitForPresentationAsync().WaitScaledAsync(TimeSpan.FromSeconds(30));
             Program.Check(host.State == RunicViewHostState.Closed && host.Surface is null && host.Child is null && attachments.All(item => item.Disposed),
                 "Unloading the host did not release its session, Desktop host and native child.");
 
@@ -378,7 +378,7 @@ internal sealed class NativeChecks
                 && ReferenceEquals(fallback.DataContext, model), $"The host did not fall back: {failing.State} {failing.Error}");
             window.Content = null;
             await UntilAsync(() => !failing.IsLoaded);
-            await failing.WaitForPresentationAsync().WaitAsync(TimeSpan.FromSeconds(30));
+            await failing.WaitForPresentationAsync().WaitScaledAsync(TimeSpan.FromSeconds(30));
             Program.Check(failing.Child is null && fallback.Parent is null, "Unloading did not remove the fallback.");
 
             // A per-window scope disposed before the host unloads: the unload must still release, without
@@ -391,7 +391,7 @@ internal sealed class NativeChecks
             await scope.DisposeAsync();
             window.Content = null;
             await UntilAsync(() => !scoped.IsLoaded);
-            await scoped.WaitForPresentationAsync().WaitAsync(TimeSpan.FromSeconds(30));
+            await scoped.WaitForPresentationAsync().WaitScaledAsync(TimeSpan.FromSeconds(30));
             Program.Check(scoped.State == RunicViewHostState.Closed && scoped.Child is null && attachments.All(item => item.Disposed),
                 "Unloading after its services were disposed did not release the host.");
             Console.WriteLine("RunicViewHost open/reload/swap/unload/fallback/disposed-services checks passed.");
@@ -481,7 +481,7 @@ internal sealed class NativeChecks
         try
         {
             // The Desktop window: WpfBridgeView over a DesktopHost with its own WebView2 window and thread.
-            await using var desktop = await DesktopHost.StartAsync(new() { ConnectionTimeout = TimeSpan.FromSeconds(20) });
+            await using var desktop = await DesktopHost.StartAsync(new() { ConnectionTimeout = TestTimeouts.Scale(TimeSpan.FromSeconds(20)) });
             await using var desktopView = await services.CreateWpfViewAsync(desktop, Program.HtmlOptions(), desktopModel);
             await desktopView.OpenAsync();
             Program.Check(await SettledAsync(leftHost) == RunicViewHostState.Open && await SettledAsync(rightHost) == RunicViewHostState.Open,
@@ -495,7 +495,7 @@ internal sealed class NativeChecks
             await ConnectedAsync(surfaces);
 
             // Closing the Desktop window releases its session only.
-            await desktopView.DisposeAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(30));
+            await desktopView.DisposeAsync().AsTask().WaitScaledAsync(TimeSpan.FromSeconds(30));
             lock (attachments)
                 Program.Check(attachments[desktopModel].Disposed && !attachments[left].Disposed && !attachments[right].Disposed,
                     "Closing the Desktop window released another host's session.");
@@ -506,7 +506,7 @@ internal sealed class NativeChecks
             // Unloading one host leaves the other open and connected.
             panel.Children.Remove(leftHost);
             await UntilAsync(() => !leftHost.IsLoaded);
-            await leftHost.WaitForPresentationAsync().WaitAsync(TimeSpan.FromSeconds(30));
+            await leftHost.WaitForPresentationAsync().WaitScaledAsync(TimeSpan.FromSeconds(30));
             lock (attachments)
                 Program.Check(leftHost.State == RunicViewHostState.Closed && attachments[left].Disposed && !attachments[right].Disposed
                     && rightHost.State == RunicViewHostState.Open, "Unloading one host released or closed the other.");
@@ -515,7 +515,7 @@ internal sealed class NativeChecks
         }
         finally { window.Close(); }
         await UntilAsync(() => !rightHost.IsLoaded);
-        await rightHost.WaitForPresentationAsync().WaitAsync(TimeSpan.FromSeconds(30));
+        await rightHost.WaitForPresentationAsync().WaitScaledAsync(TimeSpan.FromSeconds(30));
         lock (attachments)
             Program.Check(attachments.Values.All(item => item.Disposed), "Closing the WPF window left a session open.");
 
@@ -583,14 +583,14 @@ internal sealed class NativeChecks
         window.Show();
         try
         {
-            await loaded.Task.WaitAsync(TimeSpan.FromSeconds(10));
+            await loaded.Task.WaitScaledAsync(TimeSpan.FromSeconds(10));
             var collection = new ServiceCollection();
             collection.AddSingleton<Func<IBridgeTransport, object, IDisposable>>((_, _) => new Attachment());
             await using var services = collection.BuildServiceProvider();
             await using var host = await DesktopHost.StartAsync(new()
             {
                 WindowHostFactory = child.CreateWindowHostFactory(),
-                ConnectionTimeout = TimeSpan.FromSeconds(20),
+                ConnectionTimeout = TestTimeouts.Scale(TimeSpan.FromSeconds(20)),
             });
             await using var view = await services.CreateWpfViewAsync(host, Program.HtmlOptions(), new object());
             await view.OpenAsync();
@@ -598,7 +598,7 @@ internal sealed class NativeChecks
             // Each region's lines, once both regions exist: "polite=a|b;assertive=c".
             async Task<string> RegionsAsync(string? until = null)
             {
-                var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(10);
+                var deadline = DateTime.UtcNow + TestTimeouts.Scale(TimeSpan.FromSeconds(10));
                 while (true)
                 {
                     var regions = await view.Surface.ExecuteJavaScriptAsync("""
@@ -697,13 +697,13 @@ internal sealed class NativeChecks
             Program.Check(!delete.IsEnabled && Equals(delete.Header, "Delete__all"), $"Delete shows '{delete.Header}' and is enabled: {delete.IsEnabled}.");
             rename.RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent));
             menu.IsOpen = false;
-            Program.Check(await chosen.WaitAsync(TimeSpan.FromSeconds(10)) is PlatformResult<DesktopMenuItem?>.Success { Value: var item }
+            Program.Check(await chosen.WaitScaledAsync(TimeSpan.FromSeconds(10)) is PlatformResult<DesktopMenuItem?>.Success { Value: var item }
                 && ReferenceEquals(item, items[0]), "Choosing Rename did not return it.");
 
             // Dismissed: null.
             var dismissed = services.ShowContextMenuAsync(items).AsTask();
             (await NextMenuAsync(opened)).IsOpen = false;
-            Program.Check(await dismissed.WaitAsync(TimeSpan.FromSeconds(10)) is PlatformResult<DesktopMenuItem?>.Success { Value: null },
+            Program.Check(await dismissed.WaitScaledAsync(TimeSpan.FromSeconds(10)) is PlatformResult<DesktopMenuItem?>.Success { Value: null },
                 "A dismissed menu did not return null.");
 
             // A later menu replaces the open one, which returns null; cancelling closes the later one.
@@ -712,13 +712,13 @@ internal sealed class NativeChecks
             using var cancel = new CancellationTokenSource();
             var second = services.ShowContextMenuAsync(items, new DesktopContextMenuOptions { X = 10, Y = 20 }, cancel.Token).AsTask();
             var later = await NextMenuAsync(opened);
-            Program.Check(await first.WaitAsync(TimeSpan.FromSeconds(10)) is PlatformResult<DesktopMenuItem?>.Success { Value: null },
+            Program.Check(await first.WaitScaledAsync(TimeSpan.FromSeconds(10)) is PlatformResult<DesktopMenuItem?>.Success { Value: null },
                 "A menu replaced by a later one did not return null.");
             Program.Check(later.IsOpen, "The later menu is not open.");
             cancel.Cancel();
             try
             {
-                await second.WaitAsync(TimeSpan.FromSeconds(10));
+                await second.WaitScaledAsync(TimeSpan.FromSeconds(10));
                 Program.Check(false, "A cancelled context menu did not throw OperationCanceledException.");
             }
             catch (OperationCanceledException) { }
@@ -747,11 +747,11 @@ internal sealed class NativeChecks
         window.Show();
         try
         {
-            await loaded.Task.WaitAsync(TimeSpan.FromSeconds(10));
+            await loaded.Task.WaitScaledAsync(TimeSpan.FromSeconds(10));
             await using var host = await DesktopHost.StartAsync(new()
             {
                 WindowHostFactory = child.CreateWindowHostFactory(),
-                ConnectionTimeout = TimeSpan.FromSeconds(20),
+                ConnectionTimeout = TestTimeouts.Scale(TimeSpan.FromSeconds(20)),
                 WaitForConnection = false,
             });
             await using var surface = await host.CreateSurfaceAsync(Program.HtmlOptions());
@@ -768,7 +768,7 @@ internal sealed class NativeChecks
                 $"The menu opens at {menu.Placement} {menu.HorizontalOffset},{menu.VerticalOffset}, not at the page point.");
             ((MenuItem)menu.Items[0]).RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent));
             menu.IsOpen = false;
-            Program.Check(ReferenceEquals(await chosen.WaitAsync(TimeSpan.FromSeconds(10)), items[0]), "Choosing Open did not return it.");
+            Program.Check(ReferenceEquals(await chosen.WaitScaledAsync(TimeSpan.FromSeconds(10)), items[0]), "Choosing Open did not return it.");
         }
         finally
         {
@@ -810,7 +810,7 @@ internal sealed class NativeChecks
                 $"The host's WebContent did not reach the WebView: developer tools are {controller.AreDevToolsEnabled}.");
             var first = host.Surface;
             host.WebContent = null;
-            await host.WaitForPresentationAsync().WaitAsync(TimeSpan.FromSeconds(30));
+            await host.WaitForPresentationAsync().WaitScaledAsync(TimeSpan.FromSeconds(30));
             Program.Check(host.State == RunicViewHostState.Open && !ReferenceEquals(first, host.Surface),
                 "Changing WebContent did not reopen the presentation.");
             controller = ((RunicWebView)host.Child).Controller ?? throw new InvalidOperationException("The host's WebView has no controller.");
@@ -880,10 +880,10 @@ internal sealed class NativeChecks
         try
         {
             Program.Check(await SettledAsync(host) == RunicViewHostState.Open, $"The host did not open: {host.State} {host.Error}");
-            var result = await received.Task.WaitAsync(TimeSpan.FromSeconds(30));
+            var result = await received.Task.WaitScaledAsync(TimeSpan.FromSeconds(30));
             Program.Check(result == "42:Grüße:EvalError:csp",
                 $"The page under the policy reported '{result}' instead of the published state, refused evaluation and its own title.");
-            using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(20));
+            using var deadline = TestTimeouts.Cancellation(TimeSpan.FromSeconds(20));
             var refused = false;
             try { await host.Surface!.ExecuteJavaScriptAsync("return document.title;", cancellationToken: deadline.Token); }
             catch (InvalidOperationException error) when (error.Message.StartsWith("JavaScript execution failed", StringComparison.Ordinal))
@@ -910,7 +910,7 @@ internal sealed class NativeChecks
             return attachment;
         });
         await using var services = collection.BuildServiceProvider();
-        var shared = await DesktopHost.StartAsync(new() { ConnectionTimeout = TimeSpan.FromSeconds(20) });
+        var shared = await DesktopHost.StartAsync(new() { ConnectionTimeout = TestTimeouts.Scale(TimeSpan.FromSeconds(20)) });
         HostedModel left = new(), right = new(), own = new();
         var leftHost = new RunicViewHost { SurfaceOptions = Program.HtmlOptions(), ViewModel = left, Desktop = shared, Height = 120 };
         var rightHost = new RunicViewHost { SurfaceOptions = Program.HtmlOptions(), ViewModel = right, Desktop = shared, Height = 120 };
@@ -935,7 +935,7 @@ internal sealed class NativeChecks
 
             panel.Children.Remove(leftHost);
             await UntilAsync(() => !leftHost.IsLoaded);
-            await leftHost.WaitForPresentationAsync().WaitAsync(TimeSpan.FromSeconds(30));
+            await leftHost.WaitForPresentationAsync().WaitScaledAsync(TimeSpan.FromSeconds(30));
             lock (attachments)
                 Program.Check(leftHost.State == RunicViewHostState.Closed && attachments[left].Disposed && !attachments[right].Disposed
                     && rightHost.State == RunicViewHostState.Open, "Unloading one host on the shared Desktop host released or closed the other.");
@@ -945,7 +945,7 @@ internal sealed class NativeChecks
 
             panel.Children.Remove(rightHost);
             await UntilAsync(() => !rightHost.IsLoaded);
-            await rightHost.WaitForPresentationAsync().WaitAsync(TimeSpan.FromSeconds(30));
+            await rightHost.WaitForPresentationAsync().WaitScaledAsync(TimeSpan.FromSeconds(30));
             await shared.DisposeAsync();
             var fallback = new TextBlock { Text = "Native editor" };
             var late = new RunicViewHost { SurfaceOptions = Program.HtmlOptions(), ViewModel = new HostedModel(), Desktop = shared, Fallback = fallback, Height = 120 };
@@ -991,7 +991,7 @@ internal sealed class NativeChecks
 
     private static async Task UntilAsync(Func<bool> condition)
     {
-        var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(30);
+        var deadline = DateTime.UtcNow + TestTimeouts.Scale(TimeSpan.FromSeconds(30));
         while (!condition())
         {
             if (DateTime.UtcNow > deadline) throw new TimeoutException("The RunicViewHost check timed out.");

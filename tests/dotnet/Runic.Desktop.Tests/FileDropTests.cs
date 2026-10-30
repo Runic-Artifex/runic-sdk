@@ -197,7 +197,7 @@ public sealed class FileDropPairingTests
         }, TimeSpan.FromMilliseconds(50));
         pairing.NativeDrop([File1]);
         pairing.NativeDrop([File2]);
-        await done.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        await done.Task.WaitScaledAsync(TimeSpan.FromSeconds(5));
         lock (delivered)
         {
             Assert.Equal([File1], delivered[0].Paths);
@@ -287,7 +287,7 @@ public sealed class WindowFileDropTests
             }
         };
         for (var index = 0; index < 20; index++) factory.Hosts[0].Drop(new([Dropped], index.ToString(System.Globalization.CultureInfo.InvariantCulture)));
-        await done.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        await done.Task.WaitScaledAsync(TimeSpan.FromSeconds(5));
         lock (seen)
         {
             Assert.Equal(Enumerable.Range(0, 20).Select(static index => index.ToString(System.Globalization.CultureInfo.InvariantCulture)),
@@ -311,7 +311,7 @@ public sealed class WindowFileDropTests
         second.FilesDropped += (_, _) => received.TrySetResult();
         factory.Hosts[0].Drop(new([Dropped]));
         factory.Hosts[1].Drop(new([Dropped]));
-        await received.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        await received.Task.WaitScaledAsync(TimeSpan.FromSeconds(5));
         await Task.Delay(50);
         Assert.Equal(0, Volatile.Read(ref firstDrops));
     }

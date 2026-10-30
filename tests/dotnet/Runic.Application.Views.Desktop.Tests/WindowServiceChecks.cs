@@ -35,7 +35,7 @@ internal sealed class WindowServiceChecks
 
         // The user closes the native window. Nothing awaits it, so the service releases its scope.
         await factory.Hosts[1].CloseAsync();
-        await opened.ViewModel.Scope.Released.WaitAsync(TimeSpan.FromSeconds(5));
+        await opened.ViewModel.Scope.Released.WaitScaledAsync(TimeSpan.FromSeconds(5));
         Require(!opener.ViewModel.Scope.Released.IsCompleted, "Closing the opened window released the opener's scope.");
         Require(platform.GetSnapshot().Statuses.Values.All(static status => status is CapabilityStatus.Unavailable(PlatformUnavailableReason.OwnerClosed)),
             "The released window's platform services did not stop.");
@@ -473,7 +473,7 @@ internal sealed class WindowServiceChecks
         await using var opens = DesktopPlatformServices.CreateOpenRequests(new(["org.example.notes"]), launch: new ApplicationLaunch(["--new", "org.example.notes:draft/1"], "/"));
         var opened = new TaskCompletionSource<DesktopOpenRequest>(TaskCreationOptions.RunContinuationsAsynchronously);
         opens.Opened += (_, request) => opened.TrySetResult(request);
-        var request = await opened.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        var request = await opened.Task.WaitScaledAsync(TimeSpan.FromSeconds(5));
         Require(request.Items is [{ Scheme: "org.example.notes" }], $"The launch's registered URL was not delivered: {string.Join(", ", request.Items)}");
         Require(Catch(() => DesktopPlatformServices.CreateOpenRequests(new(["not a scheme"]))) is ArgumentException, "An invalid scheme was accepted.");
     }
@@ -639,7 +639,7 @@ internal sealed class WindowServiceChecks
         await WaitUntilAsync(() => watched.Count == 1);
         Require(!watch.IsCompleted, "The watch ended without cancellation.");
         await settings.DisposeAsync();
-        Require(await CatchAsync(() => watch.WaitAsync(TimeSpan.FromSeconds(5))) is OperationCanceledException
+        Require(await CatchAsync(() => watch.WaitScaledAsync(TimeSpan.FromSeconds(5))) is OperationCanceledException
             && watched is [PlatformResult<DesktopAppearance>.Unavailable(PlatformUnavailableReason.ProviderNotConfigured)],
             "Disposal did not end the watch after its one unavailable value.");
         Require(await CatchAsync(() => settings.ReadAsync().AsTask()) is ObjectDisposedException, "A read after disposal did not fail.");
@@ -649,7 +649,7 @@ internal sealed class WindowServiceChecks
 
     private static async Task WaitUntilAsync(Func<bool> condition)
     {
-        var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(5);
+        var deadline = DateTime.UtcNow + TestTimeouts.Scale(TimeSpan.FromSeconds(5));
         while (!condition())
         {
             if (DateTime.UtcNow > deadline) throw new TimeoutException("The condition did not hold within five seconds.");

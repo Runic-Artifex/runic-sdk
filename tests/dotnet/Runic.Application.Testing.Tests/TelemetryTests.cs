@@ -162,7 +162,7 @@ internal sealed class TelemetryTests
         var done = new ManualResetEventSlim();
         context.TryPost(() => throw new InvalidOperationException("customer-secret"));
         context.TryPost(done.Set);
-        Require(done.Wait(TimeSpan.FromSeconds(5)), "The model context did not run its posted turns.");
+        Require(done.Wait(TestTimeouts.Scale(TimeSpan.FromSeconds(5))), "The model context did not run its posted turns.");
         context.DisposeAsync().AsTask().GetAwaiter().GetResult();
         var entry = logs.Entries.SingleOrDefault(entry => entry.EventId.Id == 1030)
             ?? throw new InvalidOperationException("No ModelTurnFailed entry was logged.");

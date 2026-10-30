@@ -475,7 +475,7 @@ internal sealed class ValidationTests
         TimeSpan? timeout = null)
         where TModel : class
     {
-        var deadline = DateTime.UtcNow + (timeout ?? TimeSpan.FromSeconds(5));
+        var deadline = DateTime.UtcNow + TestTimeouts.Scale(timeout ?? TimeSpan.FromSeconds(5));
         while (DateTime.UtcNow < deadline)
         {
             if (driver.TakePublications().Any(predicate)) return true;

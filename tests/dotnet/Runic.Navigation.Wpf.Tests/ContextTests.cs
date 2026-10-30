@@ -315,7 +315,7 @@ internal sealed class ContextTests
         });
         thread.SetApartmentState(ApartmentState.STA);
         thread.Start();
-        Require(thread.Join(WaitLimit), "The secondary UI thread did not stop.");
+        Require(thread.Join(TestTimeouts.Scale(WaitLimit)), "The secondary UI thread did not stop.");
         if (error is not null) throw new InvalidOperationException("The secondary UI thread failed.", error);
 
         // The context's Closed token told the navigator about the shutdown (A6), so a push while the hook still awaits

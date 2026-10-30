@@ -67,7 +67,7 @@ internal sealed class ReactiveDispatcherFailureTests
             Task? call = null;
             // On the UI thread the context runs the turn inline, as a generated Bridge's route does.
             await context.InvokeAsync(() => call = ReactiveCommandExecution.ExecuteCompletion(wrapper, 7, CancellationToken.None));
-            try { await call!.WaitAsync(TimeSpan.FromSeconds(10)); }
+            try { await call!.WaitScaledAsync(TimeSpan.FromSeconds(10)); }
             catch (InvalidOperationException) { }
             await Task.Delay(150);
             await dispatcher.InvokeAsync(() => { }, DispatcherPriority.ContextIdle);

@@ -238,7 +238,7 @@ internal static partial class MenuSmoke
             $"a shortcut hint, a disabled item and a submenu: {shown[0]}, {shown[1]}, {shown[2]}");
         if (rtl) Require(await window.ReadNativeAsync(handle => inspector.ContextMenuDirection(handle)) == 2, "a right-to-left context menu");
         await window.InvokeNativeAsync(handle => inspector.ActivateContextItem(handle, 3));
-        var result = await chosen.AsTask().WaitAsync(Deadline);
+        var result = await chosen.AsTask().WaitScaledAsync(Deadline);
         Require(ReferenceEquals(result, rename), $"the chosen Rename item, not {result}");
         Console.WriteLine($"PASS {name} context menu at the pointer: items, hints, disabled entries{(rtl ? ", right to left" : "")}, the chosen item.");
 
@@ -247,19 +247,19 @@ internal static partial class MenuSmoke
         await WaitForContextMenuAsync(window, inspector);
         await Task.Delay(300);
         await input.KeyAsync(XTest.Escape);
-        Require(await dismissed.AsTask().WaitAsync(Deadline) is null, "Escape returns null");
+        Require(await dismissed.AsTask().WaitScaledAsync(Deadline) is null, "Escape returns null");
 
         // A later menu replaces the open one, which returns null; cancelling closes the later one.
         var first = window.ShowContextMenuAsync(items).AsTask();
         await WaitForContextMenuAsync(window, inspector);
         using var cancellation = new CancellationTokenSource();
         var second = window.ShowContextMenuAsync(items, cancellationToken: cancellation.Token).AsTask();
-        Require(await first.WaitAsync(Deadline) is null, "a replaced context menu returns null");
+        Require(await first.WaitScaledAsync(Deadline) is null, "a replaced context menu returns null");
         await WaitForContextMenuAsync(window, inspector);
         await cancellation.CancelAsync();
         try
         {
-            await second.WaitAsync(Deadline);
+            await second.WaitScaledAsync(Deadline);
             throw new InvalidOperationException("Menus: a cancelled context menu did not throw.");
         }
         catch (OperationCanceledException)
@@ -308,7 +308,7 @@ internal static partial class MenuSmoke
     private static async Task WaitForAsync(Func<Task<bool>> condition, string what)
     {
         var elapsed = System.Diagnostics.Stopwatch.StartNew();
-        while (!await condition().WaitAsync(Deadline))
+        while (!await condition().WaitScaledAsync(Deadline))
         {
             if (elapsed.Elapsed > Deadline) throw new TimeoutException("Menus: timed out waiting for " + what + ".");
             await Task.Delay(50);

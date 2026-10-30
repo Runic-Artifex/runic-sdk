@@ -105,7 +105,7 @@ internal sealed class DialogTests
                 signalling!.Arm();
                 clear = scene.Region.ClearAsync().AsTask();
                 // Blocks the UI thread only until the clear, which has no hooks, requests its commit turn from the pool.
-                Require(signalling.OffThreadTurn.Wait(TimeSpan.FromSeconds(5)), "The clear never requested its commit turn.");
+                Require(signalling.OffThreadTurn.Wait(TestTimeouts.Scale(TimeSpan.FromSeconds(5))), "The clear never requested its commit turn.");
             });
         };
         var pushed = Pump(scene.Region.PushAsync(NavigationTarget.Own<object>(dialog)));
@@ -396,7 +396,7 @@ internal sealed class DialogTests
         Require(!IsOpen(scene.Owner) && !IsOpen(upper), "Application.Shutdown left windows open.");
         if (!dispatcher.HasShutdownStarted)
             PumpUntil(() => scene.Region.CurrentEntry is null || scene.Fixture.Context.Dispatcher.HasShutdownStarted, "the owner-close clear");
-        if (dispatcher.HasShutdownStarted) Require(scene.Fixture.Navigator.DisposeAsync().AsTask().Wait(WaitLimit), "Navigator disposal timed out.");
+        if (dispatcher.HasShutdownStarted) Require(scene.Fixture.Navigator.DisposeAsync().AsTask().Wait(TestTimeouts.Scale(WaitLimit)), "Navigator disposal timed out.");
         else Pump(scene.Fixture.Navigator.DisposeAsync().AsTask(), "navigator disposal");
         Require(scene.Fixture.Navigator.UnretiredEntryCount == 0, $"{scene.Fixture.Navigator.UnretiredEntryCount} entries were not retired.");
         scene.Fixture.Context.Dispose();

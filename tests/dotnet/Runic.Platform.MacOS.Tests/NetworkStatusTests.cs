@@ -14,11 +14,11 @@ internal sealed class NetworkStatusTests
         if (!OperatingSystem.IsMacOS()) throw new PlatformNotSupportedException("Network.framework requires macOS.");
         await using var status = MacOSPlatformProvider.CreateNetworkStatus();
         Check(DesktopServiceStatus.Get(status) is CapabilityStatus.Available, "the path monitor is available");
-        var read = await status.ReadAsync().AsTask().WaitAsync(Wait);
+        var read = await status.ReadAsync().AsTask().WaitScaledAsync(Wait);
         Console.WriteLine($"ReadAsync: {read}");
         Check(read is PlatformResult<DesktopNetworkState>.Success { Value.Connectivity: DesktopNetworkConnectivity.Unknown or DesktopNetworkConnectivity.None },
             "the path reads, with unknown connectivity while available");
-        using var cancel = new CancellationTokenSource(Wait);
+        using var cancel = TestTimeouts.Cancellation(Wait);
         await using var watch = status.WatchAsync(cancel.Token).GetAsyncEnumerator(cancel.Token);
         Check(await watch.MoveNextAsync(), "the watch reports");
         Console.WriteLine($"WatchAsync first: {watch.Current}");
@@ -28,7 +28,7 @@ internal sealed class NetworkStatusTests
         catch (OperationCanceledException) { }
         // Several monitors start and stop in turn.
         for (int index = 0; index < 5; index++)
-            Check(await status.ReadAsync().AsTask().WaitAsync(Wait) is PlatformResult<DesktopNetworkState>.Success, "a repeated read");
+            Check(await status.ReadAsync().AsTask().WaitScaledAsync(Wait) is PlatformResult<DesktopNetworkState>.Success, "a repeated read");
         Console.WriteLine("PASS native macOS network status: read, watched and cancelled");
     }
 

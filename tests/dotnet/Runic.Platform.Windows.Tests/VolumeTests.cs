@@ -76,7 +76,7 @@ internal sealed class VolumeTests
     {
         var source = new FakeSource { Volumes = [Volume("\\\\?\\Volume{a}\\"), Volume("\\\\?\\Volume{b}\\")] };
         await using var volumes = new WindowsVolumes(source, Never, TimeSpan.Zero);
-        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+        using var timeout = TestTimeouts.Cancellation(TimeSpan.FromSeconds(30));
         await using var watch = volumes.WatchAsync(timeout.Token).GetAsyncEnumerator(timeout.Token);
 
         Check(await Next(watch) is DesktopVolumeChange.Snapshot { Volumes: [{ Id: "\\\\?\\Volume{a}\\" }, { Id: "\\\\?\\Volume{b}\\" }] }, "a snapshot comes first");
@@ -111,7 +111,7 @@ internal sealed class VolumeTests
     {
         var source = new FakeSource { Volumes = [Volume("\\\\?\\Volume{a}\\")], CanSubscribe = false };
         var volumes = new WindowsVolumes(source, TimeSpan.FromMilliseconds(50), TimeSpan.FromMilliseconds(10));
-        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+        using var timeout = TestTimeouts.Cancellation(TimeSpan.FromSeconds(30));
         var watch = volumes.WatchAsync(timeout.Token).GetAsyncEnumerator(timeout.Token);
         Check(await Next(watch) is DesktopVolumeChange.Snapshot { Volumes.Length: 1 }, "a snapshot");
         source.Volumes = [Volume("\\\\?\\Volume{a}\\") with { DisplayName = "Renamed" }];
@@ -225,7 +225,7 @@ internal sealed class VolumeTests
         Directory.CreateDirectory(root);
         string image = Path.Combine(root, label + ".vhd");
         var volumes = WindowsPlatformProvider.CreateVolumes();
-        using var timeout = new CancellationTokenSource(TimeSpan.FromMinutes(4));
+        using var timeout = TestTimeouts.Cancellation(TimeSpan.FromMinutes(4));
         var changes = Channel.CreateUnbounded<PlatformResult<DesktopVolumeChange>>();
         var watching = Task.Run(async () =>
         {
@@ -394,7 +394,7 @@ internal sealed class VolumeTests
 
     private static async Task<bool> Ends(Task<bool> pending)
     {
-        try { return !await pending.WaitAsync(TimeSpan.FromSeconds(10)); }
+        try { return !await pending.WaitScaledAsync(TimeSpan.FromSeconds(10)); }
         catch (OperationCanceledException) { return true; }
     }
 

@@ -111,7 +111,7 @@ public sealed class ContentAndLifecycleTests
         using var client = new HttpClient();
         var firstCredential = ExtractSessionCredential(await client.GetStringAsync(new Uri(firstUrl, "webui.js")));
         var secondCredential = ExtractSessionCredential(await client.GetStringAsync(new Uri(secondUrl, "webui.js")));
-        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        using var timeout = TestTimeouts.Cancellation(TimeSpan.FromSeconds(10));
 
         using (var missingCredential = CreateAdmittedSocket(firstUrl, credential: null))
         {
@@ -318,7 +318,7 @@ public sealed class ContentAndLifecycleTests
             Assert.Equal(0, Volatile.Read(ref factoryCalls));
         }
 
-        using var requestCancellation = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        using var requestCancellation = TestTimeouts.Cancellation(TimeSpan.FromSeconds(10));
         using var response = await client.GetAsync(
             "/stream",
             HttpCompletionOption.ResponseHeadersRead,
@@ -332,7 +332,7 @@ public sealed class ContentAndLifecycleTests
         requestCancellation.Cancel();
         response.Dispose();
 
-        using var observationTimeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        using var observationTimeout = TestTimeouts.Cancellation(TimeSpan.FromSeconds(5));
         await stream.WaitForCancellationAsync(observationTimeout.Token);
         await stream.WaitForDisposalAsync(observationTimeout.Token);
         Assert.Equal(1, Volatile.Read(ref factoryCalls));
@@ -354,7 +354,7 @@ public sealed class ContentAndLifecycleTests
         await using var responseBody = await response.Content.ReadAsStreamAsync();
         var buffer = new byte[5];
         Assert.Equal(5, await responseBody.ReadAsync(buffer));
-        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        using var timeout = TestTimeouts.Cancellation(TimeSpan.FromSeconds(10));
         await stream.WaitForBlockedReadAsync(timeout.Token);
 
         await window.CloseAsync(timeout.Token);
@@ -469,7 +469,7 @@ public sealed class ContentAndLifecycleTests
         await first.CloseAsync();
         Assert.False(wait.IsCompleted);
         await WebUiApplication.ExitAsync();
-        await wait.WaitAsync(TimeSpan.FromSeconds(5));
+        await wait.WaitScaledAsync(TimeSpan.FromSeconds(5));
 
         Assert.False(WebUiApplication.IsRunning);
         Assert.Null(second.Url);
@@ -478,7 +478,7 @@ public sealed class ContentAndLifecycleTests
     [Test]
     public async Task SingleClientRejectsConcurrentSocketAndMultiClientOwnsStableClientIds()
     {
-        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        using var timeout = TestTimeouts.Cancellation(TimeSpan.FromSeconds(10));
         WebUiApplication.SetConfiguration(WebUiConfiguration.MultiClient, false);
         try
         {
@@ -525,7 +525,7 @@ public sealed class ContentAndLifecycleTests
     [Test]
     public async Task BridgeSessionsRemainOwnedByTheirWindow()
     {
-        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        using var timeout = TestTimeouts.Cancellation(TimeSpan.FromSeconds(10));
         var firstEvents = Channel.CreateUnbounded<WebUiEventType>();
         var secondEvents = Channel.CreateUnbounded<WebUiEventType>();
         await using var first = new WebUiWindow();
@@ -614,7 +614,7 @@ public sealed class ContentAndLifecycleTests
         }));
 
         Assert.False(WebUiApplication.IsRunning);
-        await WebUiApplication.WaitAsync().WaitAsync(TimeSpan.FromSeconds(2));
+        await WebUiApplication.WaitAsync().WaitScaledAsync(TimeSpan.FromSeconds(2));
     }
 
     private sealed class CancellationAwareStream(byte[] firstChunk) : Stream

@@ -240,7 +240,7 @@ internal sealed class SnapshotBatchTests
         Read(transport, "burst", counter);
 
         model.Value = 1;
-        await transport.Entered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        await transport.Entered.Task.WaitScaledAsync(TimeSpan.FromSeconds(5));
         for (var value = 2; value <= 100; value++) model.Value = value;
         Require(counter.Count == 1, "Changes behind a busy host captured states the host could not take.");
         transport.Release.Set();
@@ -261,7 +261,7 @@ internal sealed class SnapshotBatchTests
         Read(transport, "held", counter);
 
         model.Value = 1;
-        await transport.Entered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        await transport.Entered.Task.WaitScaledAsync(TimeSpan.FromSeconds(5));
         model.Value = 2;
         using (BridgeSnapshotBatch.Begin(model))
         {
@@ -312,7 +312,7 @@ internal sealed class SnapshotBatchTests
         };
         // The route's first unit, requested when the Bridge attached, may still be on its way and capture after this
         // read; the captures are counted after it settled.
-        BridgeReplyOrder.For(transport).WhenPublished()?.Wait(TimeSpan.FromSeconds(5));
+        BridgeReplyOrder.For(transport).WhenPublished()?.Wait(TestTimeouts.Scale(TimeSpan.FromSeconds(5)));
         counter.Count = 0;
         using var document = JsonDocument.Parse(reply);
         return document.RootElement.GetProperty("revision").GetInt64();
@@ -378,7 +378,7 @@ internal sealed class SnapshotBatchTests
             using (var push = JsonDocument.Parse(json))
                 if (Push.Parse(push.RootElement).Value is { } value) lock (_values) _values.Add(value);
             Entered.TrySetResult();
-            Release.Wait(TimeSpan.FromSeconds(10));
+            Release.Wait(TestTimeouts.Scale(TimeSpan.FromSeconds(10)));
         }
 
         public override void Dispose()

@@ -25,9 +25,9 @@ internal sealed class CloseGuardTests
         fixture.Script.Decide = static _ => ValueTask.FromResult(false);
 
         fixture.Native.UserClose();
-        await fixture.Script.Asked.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        await fixture.Script.Asked.Task.WaitScaledAsync(TimeSpan.FromSeconds(5));
         // A second request joins the decision the native close started.
-        Require(!await fixture.Presentation.RequestCloseAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(5)),
+        Require(!await fixture.Presentation.RequestCloseAsync().AsTask().WaitScaledAsync(TimeSpan.FromSeconds(5)),
             "A close request completed as allowed although the leave guard rejected it.");
         Require(fixture.Presentation.IsOpen && fixture.Native.IsOpen, "A rejected leave guard did not keep the window open.");
         Require(fixture.Script.AskCount == 1, $"The leave guard was asked {fixture.Script.AskCount} times for one decision.");
@@ -42,7 +42,7 @@ internal sealed class CloseGuardTests
         var closed = fixture.Window.WaitForCloseAsync().AsTask();
 
         fixture.Native.UserClose();
-        await closed.WaitAsync(TimeSpan.FromSeconds(5));
+        await closed.WaitScaledAsync(TimeSpan.FromSeconds(5));
         Require(fixture.Script.AskCount == 1, "The window closed without asking the leave guard once.");
         Require(!fixture.Native.IsOpen, "The native window stayed open after the guard allowed the close.");
     }
@@ -64,8 +64,8 @@ internal sealed class CloseGuardTests
             new NavigationRegionGuardOptions { Order = NavigationRegionGuardOrder.BeforeEntries, AskOnRetain = true });
 
         fixture.Native.UserClose();
-        await operation.Asked.Task.WaitAsync(TimeSpan.FromSeconds(5));
-        Require(!await fixture.Presentation.RequestCloseAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(5)),
+        await operation.Asked.Task.WaitScaledAsync(TimeSpan.FromSeconds(5));
+        Require(!await fixture.Presentation.RequestCloseAsync().AsTask().WaitScaledAsync(TimeSpan.FromSeconds(5)),
             "A close request completed as allowed although the operation guard vetoed it.");
         Require(fixture.Presentation.IsOpen && fixture.Native.IsOpen && fixture.ViewModel.Main.Current is GuardedPage,
             "A vetoing operation guard did not keep the window open with its entry.");
@@ -77,7 +77,7 @@ internal sealed class CloseGuardTests
         asked.Clear();
         var closed = fixture.Window.WaitForCloseAsync().AsTask();
         fixture.Native.UserClose();
-        await closed.WaitAsync(TimeSpan.FromSeconds(5));
+        await closed.WaitScaledAsync(TimeSpan.FromSeconds(5));
         Require(string.Join(",", asked) == "operation,page", $"The close asked {string.Join(",", asked)}.");
     }
 
@@ -88,7 +88,7 @@ internal sealed class CloseGuardTests
         await using (var fixture = await GuardFixture.OpenAsync<GuardedWindow>())
         {
             fixture.Script.Decide = static _ => throw new InvalidOperationException("The draft store is unavailable.");
-            Require(!await fixture.Presentation.RequestCloseAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(5)),
+            Require(!await fixture.Presentation.RequestCloseAsync().AsTask().WaitScaledAsync(TimeSpan.FromSeconds(5)),
                 "A failing leave guard allowed the close.");
             Require(fixture.Presentation.IsOpen && fixture.ViewModel.Main.Current is GuardedPage,
                 "A failing leave guard did not keep the window open with its entry.");
@@ -99,7 +99,7 @@ internal sealed class CloseGuardTests
         {
             fixture.Native.UserClose();
             await fixture.Logs.WaitForAsync(1052);
-            Require(!await fixture.Presentation.RequestCloseAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(5)),
+            Require(!await fixture.Presentation.RequestCloseAsync().AsTask().WaitScaledAsync(TimeSpan.FromSeconds(5)),
                 "A throwing CanCloseAsync allowed the close.");
             Require(fixture.Presentation.IsOpen, "A throwing CanCloseAsync did not keep the window open.");
             var entry = fixture.Logs.Entries.First(static entry => entry.EventId == 1052);
@@ -133,7 +133,7 @@ internal sealed class CloseGuardTests
             fixture.Native.UserClose();
             callback.Stop();
             Require(callback.Elapsed < TimeSpan.FromSeconds(1), $"The platform close callback blocked for {callback.Elapsed}.");
-            var token = await guardToken.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            var token = await guardToken.Task.WaitScaledAsync(TimeSpan.FromSeconds(5));
             var pending = fixture.Presentation.RequestCloseAsync().AsTask();
             using (var stop = new CancellationTokenSource(TimeSpan.FromMilliseconds(100)))
             {
@@ -148,12 +148,12 @@ internal sealed class CloseGuardTests
                 "Close requests did not share the pending guard decision.");
 
             var closing = Stopwatch.StartNew();
-            var result = await fixture.Window.CloseAsync(TimeSpan.FromSeconds(5)).AsTask().WaitAsync(TimeSpan.FromSeconds(10));
+            var result = await fixture.Window.CloseAsync(TimeSpan.FromSeconds(5)).AsTask().WaitScaledAsync(TimeSpan.FromSeconds(10));
             closing.Stop();
             Require(result.Drained && closing.Elapsed < TimeSpan.FromSeconds(5),
                 $"Closing the window waited for a guard that never answered ({closing.Elapsed}).");
             Require(token.IsCancellationRequested, "Closing the window did not cancel the pending guard.");
-            Require(!await pending.WaitAsync(TimeSpan.FromSeconds(5)), "An abandoned guard decision reported the close as allowed.");
+            Require(!await pending.WaitScaledAsync(TimeSpan.FromSeconds(5)), "An abandoned guard decision reported the close as allowed.");
             Require(!fixture.Native.IsOpen, "The native window stayed open.");
         }
     }
@@ -174,15 +174,15 @@ internal sealed class CloseGuardTests
             return true;
         };
         var push = fixture.ViewModel.Main.PushAsync(NavigationTarget.Own(new GuardedPage(fixture.Script))).AsTask();
-        var token = await pushGuard.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        var token = await pushGuard.Task.WaitScaledAsync(TimeSpan.FromSeconds(5));
         Require(fixture.ViewModel.Main.IsBusy && fixture.ViewModel.Main.Admission == NavigationAdmission.RejectWhileBusy,
             "The Main region was not busy with the push.");
 
         var closed = fixture.Window.WaitForCloseAsync().AsTask();
-        Require(await fixture.Presentation.RequestCloseAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(5)),
+        Require(await fixture.Presentation.RequestCloseAsync().AsTask().WaitScaledAsync(TimeSpan.FromSeconds(5)),
             "A close of a busy RejectWhileBusy region did not close the window.");
-        await closed.WaitAsync(TimeSpan.FromSeconds(5));
-        Require(await push.WaitAsync(TimeSpan.FromSeconds(5)) is NavigationResult<GuardedPage>.Superseded && token.IsCancellationRequested
+        await closed.WaitScaledAsync(TimeSpan.FromSeconds(5));
+        Require(await push.WaitScaledAsync(TimeSpan.FromSeconds(5)) is NavigationResult<GuardedPage>.Superseded && token.IsCancellationRequested
             && fixture.Script.AskCount == 2, "The close did not supersede the busy region's request and ask the guard again.");
     }
 
@@ -194,7 +194,7 @@ internal sealed class CloseGuardTests
         Require(!fixture.Native.ConfirmsClose, "An unguarded Window configured close confirmation.");
         var closed = fixture.Window.WaitForCloseAsync().AsTask();
         fixture.Native.UserClose();
-        await closed.WaitAsync(TimeSpan.FromSeconds(5));
+        await closed.WaitScaledAsync(TimeSpan.FromSeconds(5));
         Require(fixture.Script.AskCount == 0, "An unguarded Window asked its leave guard.");
     }
 
@@ -213,12 +213,12 @@ internal sealed class CloseGuardTests
         }))
         {
             fixture.Script.Decide = _ => { lock (order) order.Add("guard"); return ValueTask.FromResult(false); };
-            Require(!await fixture.Presentation.RequestCloseAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(5)),
+            Require(!await fixture.Presentation.RequestCloseAsync().AsTask().WaitScaledAsync(TimeSpan.FromSeconds(5)),
                 "A rejecting guard allowed the close.");
             Require(confirmed == 0, "The host's ConfirmCloseAsync ran after the Window's guard rejected the close.");
 
             fixture.Script.Decide = _ => { lock (order) order.Add("guard"); return ValueTask.FromResult(true); };
-            Require(!await fixture.Presentation.RequestCloseAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(5)),
+            Require(!await fixture.Presentation.RequestCloseAsync().AsTask().WaitScaledAsync(TimeSpan.FromSeconds(5)),
                 "The close ignored the host's ConfirmCloseAsync.");
             lock (order)
                 Require(order.SequenceEqual(["guard", "guard", "host"]), $"The close decisions ran as {string.Join(", ", order)}.");
@@ -247,20 +247,20 @@ internal sealed class CloseGuardTests
         fixture.Script.Decide = _ => new(answer.Task);
 
         fixture.Native.UserClose();
-        await fixture.Script.Asked.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        await fixture.Script.Asked.Task.WaitScaledAsync(TimeSpan.FromSeconds(5));
         var request = fixture.Opened.RequestCloseAsync().AsTask();
         answer.SetResult(false);
-        Require(!await request.WaitAsync(TimeSpan.FromSeconds(5)), "RequestCloseAsync closed a window whose guard rejected.");
+        Require(!await request.WaitScaledAsync(TimeSpan.FromSeconds(5)), "RequestCloseAsync closed a window whose guard rejected.");
         Require(fixture.Script.AskCount == 1 && fixture.Presentation.IsOpen,
             "RequestCloseAsync did not join the user close's decision, or the window closed.");
 
         fixture.Script.Decide = static _ => ValueTask.FromResult(true);
         var closed = fixture.Opened.WaitForCloseAsync().AsTask();
-        Require(await fixture.Opened.RequestCloseAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(5)),
+        Require(await fixture.Opened.RequestCloseAsync().AsTask().WaitScaledAsync(TimeSpan.FromSeconds(5)),
             "RequestCloseAsync did not report the allowed close.");
-        await closed.WaitAsync(TimeSpan.FromSeconds(5));
+        await closed.WaitScaledAsync(TimeSpan.FromSeconds(5));
         Require(fixture.Script.AskCount == 2 && !fixture.Native.IsOpen, "The allowed request did not close the native window.");
-        Require(await fixture.Opened.RequestCloseAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(5)) && fixture.Script.AskCount == 2,
+        Require(await fixture.Opened.RequestCloseAsync().AsTask().WaitScaledAsync(TimeSpan.FromSeconds(5)) && fixture.Script.AskCount == 2,
             "A request on a closed window asked again or reported it open.");
     }
 
@@ -271,9 +271,9 @@ internal sealed class CloseGuardTests
     {
         await using (var fixture = await GuardFixture.OpenAsync<UnguardedWindow>())
         {
-            Require(await fixture.Opened.RequestCloseAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(5)),
+            Require(await fixture.Opened.RequestCloseAsync().AsTask().WaitScaledAsync(TimeSpan.FromSeconds(5)),
                 "RequestCloseAsync kept an unguarded Window open.");
-            await fixture.Opened.WaitForCloseAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(5));
+            await fixture.Opened.WaitForCloseAsync().AsTask().WaitScaledAsync(TimeSpan.FromSeconds(5));
             Require(fixture.Script.AskCount == 0, "An unguarded Window asked its leave guard.");
         }
 
@@ -282,25 +282,25 @@ internal sealed class CloseGuardTests
             var answer = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
             fixture.Script.Decide = _ => new(answer.Task);
             var first = fixture.Opened.RequestCloseAsync().AsTask();
-            await fixture.Script.Asked.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            await fixture.Script.Asked.Task.WaitScaledAsync(TimeSpan.FromSeconds(5));
             var second = fixture.Opened.RequestCloseAsync().AsTask();
             answer.SetResult(false);
-            Require(!await first.WaitAsync(TimeSpan.FromSeconds(5)) && !await second.WaitAsync(TimeSpan.FromSeconds(5)),
+            Require(!await first.WaitScaledAsync(TimeSpan.FromSeconds(5)) && !await second.WaitScaledAsync(TimeSpan.FromSeconds(5)),
                 "A rejected request closed a window whose host cannot confirm closes.");
             Require(fixture.Script.AskCount == 1 && fixture.Presentation.IsOpen,
                 "Concurrent requests did not share one decision, or the window closed.");
 
             fixture.Script.Decide = static _ => ValueTask.FromResult(true);
             var closed = fixture.Opened.WaitForCloseAsync().AsTask();
-            Require(await fixture.Opened.RequestCloseAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(5)),
+            Require(await fixture.Opened.RequestCloseAsync().AsTask().WaitScaledAsync(TimeSpan.FromSeconds(5)),
                 "An allowed request did not report the close.");
-            await closed.WaitAsync(TimeSpan.FromSeconds(5));
+            await closed.WaitScaledAsync(TimeSpan.FromSeconds(5));
             Require(!fixture.Native.IsOpen, "An allowed request left the native window open.");
         }
 
         await using (var fixture = await GuardFixture.OpenAsync<GuardedWindow>(confirmsClose: false))
         {
-            var result = await fixture.Opened.CloseAsync(TimeSpan.FromSeconds(5)).AsTask().WaitAsync(TimeSpan.FromSeconds(10));
+            var result = await fixture.Opened.CloseAsync(TimeSpan.FromSeconds(5)).AsTask().WaitScaledAsync(TimeSpan.FromSeconds(10));
             Require(result.Drained && fixture.Script.AskCount == 0 && !fixture.Native.IsOpen, "CloseAsync asked the guard.");
         }
     }
@@ -319,7 +319,7 @@ internal sealed class CloseGuardTests
             return true;
         };
         var request = fixture.Opened.RequestCloseAsync().AsTask();
-        var token = await guardToken.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        var token = await guardToken.Task.WaitScaledAsync(TimeSpan.FromSeconds(5));
         using (var stop = new CancellationTokenSource(TimeSpan.FromMilliseconds(100)))
         {
             try
@@ -331,8 +331,8 @@ internal sealed class CloseGuardTests
         }
         Require(!request.IsCompleted && !token.IsCancellationRequested, "Cancelling one caller's wait ended the shared decision.");
 
-        _ = await fixture.Opened.CloseAsync(TimeSpan.FromSeconds(5)).AsTask().WaitAsync(TimeSpan.FromSeconds(10));
-        Require(await request.WaitAsync(TimeSpan.FromSeconds(5)), "A request ended by CloseAsync did not report the window closed.");
+        _ = await fixture.Opened.CloseAsync(TimeSpan.FromSeconds(5)).AsTask().WaitScaledAsync(TimeSpan.FromSeconds(10));
+        Require(await request.WaitScaledAsync(TimeSpan.FromSeconds(5)), "A request ended by CloseAsync did not report the window closed.");
         Require(token.IsCancellationRequested && fixture.Script.AskCount == 1, "CloseAsync did not cancel the pending guard.");
     }
 
@@ -346,16 +346,16 @@ internal sealed class CloseGuardTests
     {
         await using var fixture = await GuardFixture.OpenAsync<GuardedWindow>(confirmsClose: confirmsClose);
         fixture.Script.Decide = static _ => ValueTask.FromResult(false);
-        Require(!await fixture.ViewModel.QuitAsync().WaitAsync(TimeSpan.FromSeconds(5)),
+        Require(!await fixture.ViewModel.QuitAsync().WaitScaledAsync(TimeSpan.FromSeconds(5)),
             "The ViewModel's close request reported the window closed although the guard kept it.");
         Require(fixture.Native.IsOpen && fixture.ViewModel.Main.Current is GuardedPage && fixture.Script.AskCount == 1,
             "A kept close request did not leave the window open with its entry after asking the guard once.");
 
         fixture.Script.Decide = static _ => ValueTask.FromResult(true);
         var closed = fixture.Window.WaitForCloseAsync().AsTask();
-        Require(await fixture.ViewModel.QuitAsync().WaitAsync(TimeSpan.FromSeconds(5)),
+        Require(await fixture.ViewModel.QuitAsync().WaitScaledAsync(TimeSpan.FromSeconds(5)),
             "The ViewModel's close request reported the window open although the guard allowed it.");
-        await closed.WaitAsync(TimeSpan.FromSeconds(5));
+        await closed.WaitScaledAsync(TimeSpan.FromSeconds(5));
         Require(!fixture.Native.IsOpen && fixture.Script.AskCount == 2, "An allowed close request did not close the native window.");
     }
 

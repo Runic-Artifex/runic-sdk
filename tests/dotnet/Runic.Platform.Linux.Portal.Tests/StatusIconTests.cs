@@ -65,7 +65,7 @@ internal sealed class StatusIconTests
         // No status area yet: unavailable, then registered once a watcher starts.
         Check(await icon.ShowAsync(State()) is PlatformResult<PlatformUnit>.Unavailable { Reason: PlatformUnavailableReason.BackendUnavailable }, "no watcher is unavailable");
         var watcher = await FakeWatcher.StartAsync(watcherName);
-        string item = await watcher.Registered.Task.WaitAsync(Wait);
+        string item = await watcher.Registered.Task.WaitScaledAsync(Wait);
         Check(item.StartsWith("org.kde.StatusNotifierItem-", StringComparison.Ordinal), "registers its well-known name");
         Check(await icon.ShowAsync(State()) is PlatformResult<PlatformUnit>.Success, "registered with a host is success");
         Check(watcher.Registrations == 1, "an update does not register the item twice");
@@ -96,7 +96,7 @@ internal sealed class StatusIconTests
 
         await Call(host, item, "/MenuBar", "com.canonical.dbusmenu", "Event", "isvu", (ref MessageWriter writer) =>
         { writer.WriteInt32(root.Children[0].Id); writer.WriteString("clicked"); writer.WriteVariantInt32(0); writer.WriteUInt32(0); });
-        var chosen = await activations.Reader.ReadAsync().AsTask().WaitAsync(Wait);
+        var chosen = await activations.Reader.ReadAsync().AsTask().WaitScaledAsync(Wait);
         Check(chosen is { Kind: DesktopStatusIconActivationKind.MenuItem, CommandId: "open" }, "menu click routes the command ID");
         await Call(host, item, "/MenuBar", "com.canonical.dbusmenu", "Event", "isvu", (ref MessageWriter writer) =>
         { writer.WriteInt32(root.Children[3].Children[0].Id); writer.WriteString("clicked"); writer.WriteVariantInt32(0); writer.WriteUInt32(0); });
@@ -120,19 +120,19 @@ internal sealed class StatusIconTests
             writer.WriteArrayEnd(events);
         }, static (message, _) => message.GetBodyReader().ReadArrayOfInt32());
         Check(unknown.SequenceEqual([9999]), "EventGroup reports unknown IDs");
-        Check(await activations.Reader.ReadAsync().AsTask().WaitAsync(Wait) is { CommandId: "open" }, "EventGroup clicks route the command ID");
+        Check(await activations.Reader.ReadAsync().AsTask().WaitScaledAsync(Wait) is { CommandId: "open" }, "EventGroup clicks route the command ID");
 
         // libdbusmenu-glib (Waybar) asks before opening; it waits for these replies.
         await Call(host, item, "/MenuBar", "com.canonical.dbusmenu", "AboutToShowGroup", "ai", (ref MessageWriter writer) => writer.WriteArray(RootMenu))
-            .WaitAsync(Wait);
-        await Call(host, item, "/MenuBar", "com.canonical.dbusmenu", "AboutToShow", "i", (ref MessageWriter writer) => writer.WriteInt32(0)).WaitAsync(Wait);
+            .WaitScaledAsync(Wait);
+        await Call(host, item, "/MenuBar", "com.canonical.dbusmenu", "AboutToShow", "i", (ref MessageWriter writer) => writer.WriteInt32(0)).WaitScaledAsync(Wait);
         await Call(host, item, "/StatusNotifierItem", "org.kde.StatusNotifierItem", "ProvideXdgActivationToken", "s", (ref MessageWriter writer) => writer.WriteString("token-1"));
         await Call(host, item, "/StatusNotifierItem", "org.kde.StatusNotifierItem", "Activate", "ii", (ref MessageWriter writer) => { writer.WriteInt32(0); writer.WriteInt32(0); });
-        var primary = await activations.Reader.ReadAsync().AsTask().WaitAsync(Wait);
+        var primary = await activations.Reader.ReadAsync().AsTask().WaitScaledAsync(Wait);
         Check(primary.Kind == DesktopStatusIconActivationKind.Primary && primary.PlatformContext?.ActivationToken == "token-1",
             "a disabled entry does not activate; primary activation carries the activation token");
         await Call(host, item, "/StatusNotifierItem", "org.kde.StatusNotifierItem", "SecondaryActivate", "ii", (ref MessageWriter writer) => { writer.WriteInt32(0); writer.WriteInt32(0); });
-        var secondary = await activations.Reader.ReadAsync().AsTask().WaitAsync(Wait);
+        var secondary = await activations.Reader.ReadAsync().AsTask().WaitScaledAsync(Wait);
         Check(secondary.Kind == DesktopStatusIconActivationKind.Secondary && secondary.PlatformContext is null, "the token is used once");
 
         // Updates announce what changed.
@@ -148,8 +148,8 @@ internal sealed class StatusIconTests
         { Menu = [new DesktopMenuItem("Quit", "quit"), new DesktopMenuItem("Check daily", "check") { IsChecked = false },
             new DesktopMenuItem("a.txt", "recent") { CommandParameter = "a.txt" }, new DesktopMenuItem("b.txt", "recent") { CommandParameter = "b.txt" }] })
             is PlatformResult<PlatformUnit>.Success, "update");
-        Check(await status.Task.WaitAsync(Wait) == "NeedsAttention", "NewStatus carries the status");
-        Check(await layout.Task.WaitAsync(Wait) > revision, "LayoutUpdated carries a newer revision");
+        Check(await status.Task.WaitScaledAsync(Wait) == "NeedsAttention", "NewStatus carries the status");
+        Check(await layout.Task.WaitScaledAsync(Wait) > revision, "LayoutUpdated carries a newer revision");
         var (_, updated) = await Layout(host, item);
         Check(updated.Children.Count == 4 && updated.Children[0].Props["label"] == "Quit", "new menu served");
         Check(updated.Children[1].Id == root.Children[2].Id && updated.Children[0].Id != root.Children[0].Id, "entries keep their IDs; new ones get new IDs");
@@ -157,7 +157,7 @@ internal sealed class StatusIconTests
         Check(updated.Children[2].Id != updated.Children[3].Id, "items with one id and different parameters are separate entries");
         await Call(host, item, "/MenuBar", "com.canonical.dbusmenu", "Event", "isvu", (ref MessageWriter writer) =>
         { writer.WriteInt32(updated.Children[3].Id); writer.WriteString("clicked"); writer.WriteVariantInt32(0); writer.WriteUInt32(0); });
-        Check(await activations.Reader.ReadAsync().AsTask().WaitAsync(Wait) is { Kind: DesktopStatusIconActivationKind.MenuItem, CommandId: "recent", CommandParameter: "b.txt" },
+        Check(await activations.Reader.ReadAsync().AsTask().WaitScaledAsync(Wait) is { Kind: DesktopStatusIconActivationKind.MenuItem, CommandId: "recent", CommandParameter: "b.txt" },
             "a click reports the item's command id and parameter");
         try
         {
@@ -170,7 +170,7 @@ internal sealed class StatusIconTests
         // A restarted watcher forgets items; the icon registers again.
         await watcher.DisposeAsync();
         watcher = await FakeWatcher.StartAsync(watcherName);
-        Check(await watcher.Registered.Task.WaitAsync(Wait) == item, "registers again after a watcher restart");
+        Check(await watcher.Registered.Task.WaitScaledAsync(Wait) == item, "registers again after a watcher restart");
 
         // A watcher without a status area accepts the item but cannot show it.
         watcher.HostRegistered = false;
@@ -196,7 +196,7 @@ internal sealed class StatusIconTests
         // The handler blocks until released, as a slow application handler would.
         icon.Activated += (_, activation) => { activations.Writer.TryWrite(activation); handling.TrySetResult(); release.Wait(); };
         Check(await icon.ShowAsync(State()) is PlatformResult<PlatformUnit>.Success, "shown");
-        string item = await watcher.Registered.Task.WaitAsync(Wait);
+        string item = await watcher.Registered.Task.WaitScaledAsync(Wait);
         using var host = new DBusConnection(DBusAddress.Session!);
         await host.ConnectAsync();
         var (_, root) = await Layout(host, item);
@@ -243,7 +243,7 @@ internal sealed class StatusIconTests
             (ref MessageWriter writer) => Events(ref writer, [open, open, 9999, 9999]), static (message, _) => message.GetBodyReader().ReadArrayOfInt32());
         Check(unknown.SequenceEqual([9999]), "an unknown id is reported once");
         // The handler now blocks on the one click of the group: a refused group chose nothing, a repeated click is chosen once.
-        await handling.Task.WaitAsync(Wait);
+        await handling.Task.WaitScaledAsync(Wait);
 
         // While the handler blocks, a flood of activations fills the queue and the rest are dropped, diagnosed once.
         for (int index = 0; index < StatusNotifierIcon.ActivationQueueLimit + 20; index++)
@@ -252,7 +252,7 @@ internal sealed class StatusIconTests
         release.Release(StatusNotifierIcon.ActivationQueueLimit + 100);
         var received = new List<DesktopStatusIconActivation>();
         while (received.Count < 1 + StatusNotifierIcon.ActivationQueueLimit)
-            received.Add(await activations.Reader.ReadAsync().AsTask().WaitAsync(Wait));
+            received.Add(await activations.Reader.ReadAsync().AsTask().WaitScaledAsync(Wait));
         await Task.Delay(200);
         Check(!activations.Reader.TryRead(out _), "nothing beyond the queue arrived");
         Check(received[0] is { Kind: DesktopStatusIconActivationKind.MenuItem, CommandId: "open" }
@@ -261,7 +261,7 @@ internal sealed class StatusIconTests
 
     private static async Task RefusedAsync(Task call, string errorName, string what)
     {
-        try { await call.WaitAsync(Wait); }
+        try { await call.WaitScaledAsync(Wait); }
         catch (DBusErrorReplyException error) when (error.ErrorName == errorName) { return; }
         catch (DBusErrorReplyException error) { throw new InvalidOperationException($"{what}: {error.ErrorName} instead of {errorName}"); }
         throw new InvalidOperationException($"{what} was accepted");

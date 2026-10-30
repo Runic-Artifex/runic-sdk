@@ -49,7 +49,7 @@ internal sealed class LauncherEntryTests
         string? sender = null;
         async Task<ImmutableDictionary<string, DBusValue>> NextAsync()
         {
-            Check(await signals.MoveNextAsync().AsTask().WaitAsync(Wait), "an Update signal");
+            Check(await signals.MoveNextAsync().AsTask().WaitScaledAsync(Wait), "an Update signal");
             var signal = signals.Current;
             sender = signal.Sender;
             Check(signal.Arguments is [{ Signature.Value: "s" } uri, { Signature.Value: "a{sv}" }] && uri.GetString() == $"application://{id}.desktop",
@@ -69,7 +69,7 @@ internal sealed class LauncherEntryTests
 
         // A dock that starts later asks the entry.
         var reply = await dock.CallMethodAsync(new DBusMethodCall(sender!, new DBusObjectPath(PortalLauncherEntry.ObjectPath(id)),
-            "com.canonical.Unity.LauncherEntry", "Query")).AsTask().WaitAsync(Wait);
+            "com.canonical.Unity.LauncherEntry", "Query")).AsTask().WaitScaledAsync(Wait);
         Check(reply is [{ Signature.Value: "s" } queried, { Signature.Value: "a{sv}" } properties] && queried.GetString() == $"application://{id}.desktop"
             && properties.GetVariantDictionary()["count"].GetInt64() == 3, "Query answers the current state");
 

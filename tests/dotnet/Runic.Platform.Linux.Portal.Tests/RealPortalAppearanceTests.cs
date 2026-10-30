@@ -26,7 +26,7 @@ internal sealed class RealPortalAppearanceTests
         Check(baseline is { HighContrast: false, ReducedMotion: false } && Near(baseline.AccentColor, 0.208, 0.518, 0.894),
             $"baseline: {baseline}");
 
-        using var watching = new CancellationTokenSource(TimeSpan.FromSeconds(90));
+        using var watching = TestTimeouts.Cancellation(TimeSpan.FromSeconds(90));
         await using var watch = settings.WatchAsync(watching.Token).GetAsyncEnumerator(watching.Token);
         Check(await watch.MoveNextAsync() && watch.Current is PlatformResult<DesktopAppearance>.Success { Value.ColorScheme: DesktopColorScheme.Light },
             $"initial watched value: {watch.Current}");
@@ -54,7 +54,7 @@ internal sealed class RealPortalAppearanceTests
         while (true)
         {
             var next = watch.MoveNextAsync().AsTask();
-            Check(await next.WaitAsync(Wait - deadline.Elapsed) && watch.Current is PlatformResult<DesktopAppearance>.Success,
+            Check(await next.WaitScaledAsync(Wait - deadline.Elapsed) && watch.Current is PlatformResult<DesktopAppearance>.Success,
                 $"{description}: the watch ended or failed: {watch.Current}");
             if (watch.Current is PlatformResult<DesktopAppearance>.Success { Value: var watched } && expected(watched)) break;
         }
@@ -73,7 +73,7 @@ internal sealed class RealPortalAppearanceTests
             last = await settings.ReadAsync();
             if (last is PlatformResult<DesktopAppearance>.Success { Value: var appearance } && expected(appearance)) return appearance;
             await Task.Delay(200);
-        } while (deadline.Elapsed < Wait);
+        } while (deadline.Elapsed < TestTimeouts.Scale(Wait));
         throw new InvalidOperationException($"{description}: last read {last}");
     }
 

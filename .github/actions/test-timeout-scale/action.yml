@@ -1,0 +1,10 @@
+name: Scale test timeouts
+description: >-
+  Sets RUNIC_TEST_TIMEOUT_SCALE for the rest of the job from the runner's OS and architecture
+  (testTimeoutScales in eng/ci/platforms.mjs), unless the job already sets it. Runs with the runner's Node.
+runs:
+  using: composite
+  steps:
+    - name: Scale test timeouts for this runner
+      shell: bash
+      run: node eng/ci/test-timeout-scale.mjs

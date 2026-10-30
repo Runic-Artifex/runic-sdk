@@ -104,7 +104,7 @@ internal static partial class MacOsWebContentSmoke
 
         // A navigation within the application's origin loads.
         await surface.ExecuteJavaScriptAsync("location.href = location.pathname + '?same-origin'; return true;", StepTimeout);
-        var deadline = DateTime.UtcNow + StepTimeout * 2;
+        var deadline = DateTime.UtcNow + TestTimeouts.Scale(StepTimeout) * 2;
         string? state = null;
         while (DateTime.UtcNow < deadline)
         {
@@ -231,7 +231,7 @@ internal static partial class MacOsWebContentSmoke
     private static async Task WaitForFileAsync(DirectoryInfo directory, string name, byte[] content)
     {
         var path = Path.Combine(directory.FullName, name);
-        var deadline = DateTime.UtcNow + StepTimeout;
+        var deadline = DateTime.UtcNow + TestTimeouts.Scale(StepTimeout);
         while (DateTime.UtcNow < deadline)
         {
             try

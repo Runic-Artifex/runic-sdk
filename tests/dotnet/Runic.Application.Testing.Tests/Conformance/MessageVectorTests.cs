@@ -43,7 +43,7 @@ public sealed class MessageVectorTests
         var reply = await BridgeDispatcher.For(transport)
             .HandleAsync(new BridgeRequest(input, InMemoryBridgeTransport.DefaultClientKey, InMemoryBridgeTransport.DefaultConnectionKey),
                 CancellationToken.None)
-            .AsTask().WaitAsync(TimeSpan.FromSeconds(5));
+            .AsTask().WaitScaledAsync(TimeSpan.FromSeconds(5));
         var replyJson = Encoding.UTF8.GetString(reply.Span);
         var answer = JsonNode.Parse(replyJson)!.AsObject();
         var error = answer["ok"]!.GetValue<bool>() ? null : answer["error"]!.AsObject();

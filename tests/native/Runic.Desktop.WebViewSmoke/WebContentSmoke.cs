@@ -279,7 +279,7 @@ internal static partial class WebContentSmoke
 
     private static async Task WaitAsync(Func<Task<bool>> condition, string what)
     {
-        var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(15);
+        var deadline = DateTime.UtcNow + TestTimeouts.Scale(TimeSpan.FromSeconds(15));
         while (!await condition())
         {
             if (DateTime.UtcNow > deadline)

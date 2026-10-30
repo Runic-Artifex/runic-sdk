@@ -86,7 +86,7 @@ internal sealed class GlobalShortcutsTests
         service.Signal("Activated", "/org/freedesktop/portal/desktop/session/other/x", "show", null);
         service.Signal("Activated", first, "unknown", null);
         service.Signal("Activated", first, "show", "token-1");
-        var activation = await activations.Reader.ReadAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(3));
+        var activation = await activations.Reader.ReadAsync().AsTask().WaitScaledAsync(TimeSpan.FromSeconds(3));
         Check(activation is { Id: "show", PlatformContext.ActivationToken: "token-1" }, $"activation: {activation}");
         await Task.Delay(100);
         Check(!activations.Reader.TryRead(out _), "a release, another session or an unknown id was reported");
@@ -94,7 +94,7 @@ internal sealed class GlobalShortcutsTests
         // The user changes a key in the desktop's settings.
         service.Assigned["record"] = "Ctrl+Shift+T";
         service.Changed(first, "record");
-        var change = await changes.Reader.ReadAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(3));
+        var change = await changes.Reader.ReadAsync().AsTask().WaitScaledAsync(TimeSpan.FromSeconds(3));
         Check(change.Bindings is [{ Id: "show", Status: DesktopGlobalShortcutStatus.Bound }, { Id: "record", TriggerDescription: "Ctrl+Shift+T" }, { Id: "plain", Status: DesktopGlobalShortcutStatus.Unbound }]
             && change.Bindings[1].Shortcut == DesktopShortcut.Parse("Primary+Shift+T"), "ShortcutsChanged updates only the listed action");
         service.Assigned.TryRemove("show", out _);
@@ -126,11 +126,11 @@ internal sealed class GlobalShortcutsTests
         replacementBus.AddMethodHandler(replacement);
         replacement.Assigned["show"] = "Ctrl+Alt+Q";
         Check(await replacementBus.TryRequestNameAsync(name, RequestNameOptions.ReplaceExisting), "replace the portal");
-        var restarted = await changes.Reader.ReadAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(5));
+        var restarted = await changes.Reader.ReadAsync().AsTask().WaitScaledAsync(TimeSpan.FromSeconds(5));
         Check(restarted.Bindings is [{ Id: "show", TriggerDescription: "Ctrl+Alt+Q" }], $"the rebind is reported: {string.Join("; ", restarted.Bindings)}");
         Check(replacement.Bound is [("show", "Show the window", "CTRL+ALT+w")] && replacement.Sessions.Contains(shortcuts.SessionHandle!), "rebound on the replacement");
         replacement.Signal("Activated", shortcuts.SessionHandle!, "show", null);
-        Check((await activations.Reader.ReadAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(3))) is { Id: "show", PlatformContext: null }, "activation after the restart");
+        Check((await activations.Reader.ReadAsync().AsTask().WaitScaledAsync(TimeSpan.FromSeconds(3))) is { Id: "show", PlatformContext: null }, "activation after the restart");
 
         // An empty set closes the session; disposal closes the current one.
         string third = shortcuts.SessionHandle!;

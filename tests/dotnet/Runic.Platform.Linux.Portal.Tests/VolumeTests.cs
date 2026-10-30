@@ -145,7 +145,7 @@ internal sealed class VolumeTests
     {
         await using var fake = await FakeUDisks.StartAsync();
         await using var volumes = FakeUDisks.Volumes();
-        using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        using var deadline = TestTimeouts.Cancellation(TimeSpan.FromSeconds(10));
         await using var watch = volumes.WatchAsync(deadline.Token).GetAsyncEnumerator();
         Check(await Next(watch) is PlatformResult<DesktopVolumeChange>.Success(DesktopVolumeChange.Snapshot snapshot) && snapshot.Volumes.Length == 5, "the snapshot first");
 

@@ -177,7 +177,7 @@ internal sealed class PkexecTests
                 lines.Enqueue(line.Text);
                 if (line.Text == "waiting") cancellation.Cancel();
             },
-        }, cancellation.Token).AsTask().WaitAsync(TimeSpan.FromSeconds(30));
+        }, cancellation.Token).AsTask().WaitScaledAsync(TimeSpan.FromSeconds(30));
         Check(result is PlatformResult<PrivilegedActionCompletion>.Success { Value.ExitCode: 5 }, $"result {result}");
         Check(lines.Contains("stopped by caller"), "the program saw its input close");
     }

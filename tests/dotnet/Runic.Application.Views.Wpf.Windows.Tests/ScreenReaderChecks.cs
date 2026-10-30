@@ -30,11 +30,11 @@ internal sealed class ScreenReaderChecks
         window.Show();
         try
         {
-            await loaded.Task.WaitAsync(TimeSpan.FromSeconds(10));
+            await loaded.Task.WaitScaledAsync(TimeSpan.FromSeconds(10));
             await using var host = await DesktopHost.StartAsync(new()
             {
                 WindowHostFactory = child.CreateWindowHostFactory(),
-                ConnectionTimeout = TimeSpan.FromSeconds(20),
+                ConnectionTimeout = TestTimeouts.Scale(TimeSpan.FromSeconds(20)),
             });
             var exitCode = await AccessibilitySmoke.RunAsync(host, "wpf", command, async (message, priority, cancellationToken) =>
             {

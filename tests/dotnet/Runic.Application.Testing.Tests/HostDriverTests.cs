@@ -176,9 +176,9 @@ internal sealed class HostDriverTests
         var close = host.DrainAsync(TimeSpan.FromSeconds(10));
         Require(!close.IsCompleted, "The close finished before its timeout.");
         clock.Advance(TimeSpan.FromSeconds(10));
-        var result = await close.WaitAsync(TimeSpan.FromSeconds(5));
+        var result = await close.WaitScaledAsync(TimeSpan.FromSeconds(5));
         Require(!result.Drained && result.RemainingOperations == 1, "The close did not time out on the fake clock.");
-        await result.Completion.WaitAsync(TimeSpan.FromSeconds(5));
+        await result.Completion.WaitScaledAsync(TimeSpan.FromSeconds(5));
         Require((await waiting.WaitAsync()).Kind == RunicOperationStatusKind.Cancelled, "The timed-out operation was not cancelled.");
     }
 

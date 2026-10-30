@@ -117,9 +117,14 @@ internal static class WindowStateSmoke
     // Device-independent sizes can round by a pixel at fractional scales.
     private static bool Near(int actual, int expected) => Math.Abs((long)actual - expected) <= 2;
 
-    private static async Task<DesktopWindowState> WaitForAsync(DesktopWindow window, Func<DesktopWindowState, bool> condition, string expected) =>
-        await TryWaitForAsync(window, condition, Deadline)
+    private static async Task<DesktopWindowState> WaitForAsync(DesktopWindow window, Func<DesktopWindowState, bool> condition, string expected)
+    {
+        var wait = TestTimeouts.Start(Deadline);
+        var state = await TryWaitForAsync(window, condition, wait.Limit)
             ?? throw new TimeoutException($"The window did not report {expected}; last state: {window.State?.ToString() ?? "<none>"}.");
+        wait.Succeeded();
+        return state;
+    }
 
     private static async Task<DesktopWindowState?> TryWaitForAsync(DesktopWindow window, Func<DesktopWindowState, bool> condition, TimeSpan timeout)
     {
