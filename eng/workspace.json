@@ -218,6 +218,7 @@
         "packages/dotnet/Runic.Desktop.Gtk4",
         "packages/dotnet/Runic.Desktop.Kestrel",
         "packages/dotnet/Runic.Desktop.NativeServer",
+        "packages/dotnet/Runic.Desktop.NativeServer.Static",
         "native",
         "eng/native",
         "nix/runic-server.nix"

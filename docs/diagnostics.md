@@ -1076,8 +1076,8 @@ above in the build output.
 ## Runic Desktop build
 
 The `Runic.Desktop` build targets report these errors; `RUNICDESK001` comes from
-`Runic.Desktop.Kestrel` and `RUNICDESK102` from the experimental
-`Runic.Desktop.NativeServer` package.
+`Runic.Desktop.Kestrel`, and `RUNICDESK005` and `RUNICDESK102` from the
+experimental `Runic.Desktop.NativeServer` package.
 
 ### RUNICDESK001
 
@@ -1117,6 +1117,19 @@ Kestrel, the server of 0.14 and earlier) or to the experimental
 `Runic.Desktop.NativeServer`, matching the version of `Runic.Desktop`. An
 executable that opens no Runic Desktop window sets `RunicDesktopServer` to
 `None`. See [Migrating to 1.0](migration-1.0.md#desktop-presentation-server).
+
+### RUNICDESK005
+
+The native Desktop server has no library for the build: a NativeAOT publish
+found no static library (`Runic.Desktop.NativeServer.Static.<rid>`, which NuGet
+restores through `Runic.Desktop.NativeServer`'s `runtime.json` for a
+runtime-specific restore), or `RunicDesktopNativeServerLibraryDirectory` names a
+directory without `librunic_server` or `runic_server`.
+
+**Fix:** publish with the runtime identifier (`dotnet publish -r <rid>`
+restores for it), use a runtime identifier the package supports (its README
+lists them), or point `RunicDesktopNativeServerLibraryDirectory` at a directory
+with the library, as `buildRunicApplication` does with its source build.
 
 ### RUNICDESK102
 

@@ -20,6 +20,8 @@
     <RunicDiagnosticsHelpLinksPropsName>Runic.Desktop.NativeServer.HelpLinks.props</RunicDiagnosticsHelpLinksPropsName>
     <!-- eng/native/build-runic-server.sh writes one directory per runtime identifier here. -->
     <RunicNativeServerArtifacts Condition="'$(RunicNativeServerArtifacts)' == ''">$(MSBuildThisFileDirectory)../../../artifacts/native/runic-server/</RunicNativeServerArtifacts>
+    <!-- The supported runtime identifiers: one shared library each here, and one static package each. -->
+    <RunicNativeServerRuntimes>linux-x64;linux-arm64;linux-musl-x64;linux-musl-arm64;win-x64;win-arm64;osx-arm64</RunicNativeServerRuntimes>
     <!-- A release pack must carry every supported runtime identifier. -->
     <RunicNativeServerRequireAllRuntimes Condition="'$(RunicNativeServerRequireAllRuntimes)' == ''">false</RunicNativeServerRequireAllRuntimes>
   </PropertyGroup>
@@ -32,25 +34,37 @@
     <None Include="README.md" Pack="true" PackagePath="/" />
     <None Include="../../../native/THIRD-PARTY-NOTICES.md" Pack="true" PackagePath="/" />
   </ItemGroup>
+  <!-- The shared libraries of every runtime identifier; the static libraries, ≈19 MiB each, are in one
+       Runic.Desktop.NativeServer.Static.<rid> package per runtime identifier, which runtime.json makes NuGet restore
+       only for a runtime-specific restore of that identifier (NativeAOT always is one). -->
   <Target Name="RunicNativeServerPackNativeAssets" BeforeTargets="_GetPackageFiles">
     <ItemGroup>
-      <_RunicNativeServerRuntime Include="linux-x64;linux-arm64;linux-musl-x64;linux-musl-arm64;win-x64;win-arm64;osx-arm64" />
+      <_RunicNativeServerRuntime Include="$(RunicNativeServerRuntimes)" />
       <_RunicNativeServerShared Include="$(RunicNativeServerArtifacts)%(_RunicNativeServerRuntime.Identity)/librunic_server.so;$(RunicNativeServerArtifacts)%(_RunicNativeServerRuntime.Identity)/librunic_server.dylib;$(RunicNativeServerArtifacts)%(_RunicNativeServerRuntime.Identity)/runic_server.dll"
           Runtime="%(_RunicNativeServerRuntime.Identity)" />
-      <_RunicNativeServerStatic Include="$(RunicNativeServerArtifacts)%(_RunicNativeServerRuntime.Identity)/librunic_server.a;$(RunicNativeServerArtifacts)%(_RunicNativeServerRuntime.Identity)/runic_server.lib"
-          Runtime="%(_RunicNativeServerRuntime.Identity)" />
       <_RunicNativeServerShared Remove="@(_RunicNativeServerShared)" Condition="!Exists('%(Identity)')" />
-      <_RunicNativeServerStatic Remove="@(_RunicNativeServerStatic)" Condition="!Exists('%(Identity)')" />
       <None Include="@(_RunicNativeServerShared)" Pack="true" PackagePath="runtimes/%(_RunicNativeServerShared.Runtime)/native/" />
-      <!-- NativeAOT links the static library into the executable (buildTransitive targets, DirectPInvoke). -->
-      <None Include="@(_RunicNativeServerStatic)" Pack="true" PackagePath="build/native/%(_RunicNativeServerStatic.Runtime)/" />
       <_RunicNativeServerPacked Include="@(_RunicNativeServerShared->'%(Runtime)')" />
       <_RunicNativeServerMissing Include="@(_RunicNativeServerRuntime)" Exclude="@(_RunicNativeServerPacked)" />
     </ItemGroup>
+    <PropertyGroup>
+      <_RunicNativeServerRuntimeGraph>$(IntermediateOutputPath)runic-native-server/runtime.json</_RunicNativeServerRuntimeGraph>
+      <_RunicNativeServerRuntimeGraphText>{
+  "runtimes": {
+@(_RunicNativeServerRuntime->'    "%(Identity)": { "$(PackageId)": { "$(PackageId).Static.%(Identity)": "$(PackageVersion)" } }', ',%0A')
+  }
+}</_RunicNativeServerRuntimeGraphText>
+    </PropertyGroup>
     <Error Condition="'@(_RunicNativeServerShared)' == ''"
            Text="No native server library was built under $(RunicNativeServerArtifacts). Run eng/native/build-runic-server.sh first." />
     <Error Condition="'$(RunicNativeServerRequireAllRuntimes)' == 'true' and '@(_RunicNativeServerMissing)' != ''"
            Text="The native server library is missing for @(_RunicNativeServerMissing)." />
+    <MakeDir Directories="$(IntermediateOutputPath)runic-native-server" />
+    <WriteLinesToFile File="$(_RunicNativeServerRuntimeGraph)" Lines="$(_RunicNativeServerRuntimeGraphText)" Overwrite="true" WriteOnlyWhenDifferent="true" />
+    <ItemGroup>
+      <None Include="$(_RunicNativeServerRuntimeGraph)" Pack="true" PackagePath="" />
+      <FileWrites Include="$(_RunicNativeServerRuntimeGraph)" />
+    </ItemGroup>
     <Message Importance="high" Text="Runic.Desktop.NativeServer packs the native server for @(_RunicNativeServerPacked->Distinct())." />
   </Target>
 </Project>

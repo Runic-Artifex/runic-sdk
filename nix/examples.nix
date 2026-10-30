@@ -78,10 +78,13 @@ let
   };
 
   statusIcon =
-    { nativeAot }:
+    {
+      nativeAot,
+      nativeServer ? false,
+    }:
     runic.buildRunicApplication pkgs (
       {
-        pname = "runic-status-icon${lib.optionalString nativeAot "-aot"}";
+        pname = "runic-status-icon${lib.optionalString nativeServer "-native-server"}${lib.optionalString nativeAot "-aot"}";
         version = "0.0.0";
         src = sdkSource [ ../examples/status-icon ];
         projectFile = "examples/status-icon/StatusIconSample.csproj";
@@ -91,7 +94,12 @@ let
         # The SDK's lock files are restored without a runtime identifier; CI restores them in locked mode.
         nugetLockedMode = false;
         # Package validation would download each project's last published package.
-        dotnetFlags = [ "-p:EnablePackageValidation=false" ];
+        dotnetFlags = [
+          "-p:EnablePackageValidation=false"
+        ]
+        # The experimental native Desktop server, from source (nix/runic-server.nix): no ASP.NET Core.
+        ++ lib.optional nativeServer "-p:RunicDesktopServer=Native";
+        inherit nativeServer;
         frontend = {
           packageManager = "bun";
           nodeModules = views;
@@ -137,5 +145,13 @@ in
 {
   status-icon = statusIcon { nativeAot = false; };
   status-icon-aot = statusIcon { nativeAot = true; };
+  status-icon-native-server = statusIcon {
+    nativeAot = false;
+    nativeServer = true;
+  };
+  status-icon-native-server-aot = statusIcon {
+    nativeAot = true;
+    nativeServer = true;
+  };
   privileged-smoke = privilegedSmoke;
 }

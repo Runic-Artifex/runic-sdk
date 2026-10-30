@@ -6,11 +6,14 @@
     <Nullable>enable</Nullable>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <RunicDesktopPackageVersion Condition="'$(RunicDesktopPackageVersion)' == ''">$(RunicSdkVersion)</RunicDesktopPackageVersion>
+    <NoWarn Condition="'$(RunicPackageConsumerServer)' == 'Native'">$(NoWarn);RUNICDESK102</NoWarn>
   </PropertyGroup>
 
   <ItemGroup>
     <PackageReference Include="Runic.Desktop" Version="$(RunicDesktopPackageVersion)" />
-    <!-- The presentation server (since 0.15). -->
-    <PackageReference Include="Runic.Desktop.Kestrel" Version="$(RunicDesktopPackageVersion)" />
+    <!-- The presentation server (since 0.15): Kestrel, or with -p:RunicPackageConsumerServer=Native the experimental
+         native server (eng/native/verify-native-server-package.mjs). -->
+    <PackageReference Include="Runic.Desktop.Kestrel" Version="$(RunicDesktopPackageVersion)" Condition="'$(RunicPackageConsumerServer)' != 'Native'" />
+    <PackageReference Include="Runic.Desktop.NativeServer" Version="$(RunicDesktopPackageVersion)" Condition="'$(RunicPackageConsumerServer)' == 'Native'" />
   </ItemGroup>
 </Project>

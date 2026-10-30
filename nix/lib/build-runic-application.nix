@@ -81,6 +81,13 @@
   # it references and testProjectFile are restored and built as their own project files say.
   nativeAot ? false,
   selfContainedBuild ? nativeAot,
+  # The experimental native Desktop server (Runic.Desktop.NativeServer, docs/experimental.md#RUNICDESK102): build its
+  # library from source (nix/runic-server.nix) instead of using the package's prebuilt one, for JIT and NativeAOT.
+  # null decides from the lock files: true when one of them lists Runic.Desktop.NativeServer. A project that
+  # references the SDK's projects sets it, with -p:RunicDesktopServer=Native in dotnetFlags.
+  nativeServer ? null,
+  # The native server library to use; null builds nix/runic-server.nix with this pkgs.
+  runicServer ? null,
   # How doCheck runs testProjectFile, named as in global.json's test.runner:
   #   VSTest                      nixpkgs' `dotnet test`, with testFilters and disabledTests
   #   Microsoft.Testing.Platform  each test project's built test application (TUnit; MSTest or xUnit.net v3 with
@@ -93,8 +100,9 @@
   icons ? { },
   iconName ? pname,
   dotnet-sdk ? dotnetCorePackages.sdk_10_0,
-  # Runic's hosts serve the page with ASP.NET Core.
-  dotnet-runtime ? dotnet-sdk.aspnetcore,
+  # The runtime of a framework-dependent application. null: the ASP.NET Core runtime, which Runic.Desktop.Kestrel
+  # serves the page with, or the .NET runtime alone with the native Desktop server (nativeServer).
+  dotnet-runtime ? null,
   nodejs ? nodejs_24,
   runtimeDeps ? [ ],
   nativeBuildInputs ? [ ],
@@ -144,6 +152,20 @@ let
       buildRunicApplication: ${toString lockWithOtherRuntimes} has sections for ${lib.concatStringsSep ", " (lockRuntimes lockWithOtherRuntimes)}, but a locked restore for ${runtimeId} restores that runtime alone and fails (NU1004).
       Keep one lock file per runtime identifier, and pass them as nugetLockFiles = { ${runtimeId} = [ ... ]; ... }; see nix/README.md.'';
     lockFiles;
+  usesNativeServerPackage = lib.any (
+    file: lib.any (dependencies: dependencies ? "Runic.Desktop.NativeServer") (
+      lib.attrValues ((lib.importJSON file).dependencies or { })
+    )
+  ) lockFiles;
+  nativeServer' = if nativeServer == null then usesNativeServerPackage else nativeServer;
+  runicServer' = if runicServer != null then runicServer else callPackage ../runic-server.nix { };
+  dotnet-runtime' =
+    if dotnet-runtime != null then
+      dotnet-runtime
+    else if nativeServer' then
+      dotnet-sdk.runtime
+    else
+      dotnet-sdk.aspnetcore;
   extraNugetDeps =
     if nugetDeps == null then
       [ ]
@@ -377,6 +399,8 @@ let
 in
 buildDotnetModule (
   removeAttrs args [
+    "nativeServer"
+    "runicServer"
     "nugetLockFiles"
     "nugetLockedMode"
     "frontend"
@@ -394,13 +418,13 @@ buildDotnetModule (
     "dotnetTools"
   ]
   // {
+    dotnet-runtime = dotnet-runtime';
     inherit
       pname
       version
       src
       projectFile
       dotnet-sdk
-      dotnet-runtime
       selfContainedBuild
       desktopItems
       ;
@@ -477,6 +501,8 @@ buildDotnetModule (
     dotnetFlags =
       dotnetFlags
       ++ lib.optional nativeAot "-p:CustomAfterDirectoryBuildProps=${nativeAotProps}"
+      # The package's targets link lib/librunic_server.a (NativeAOT) or copy lib/librunic_server.so instead of theirs.
+      ++ lib.optional nativeServer' "-p:RunicDesktopNativeServerLibraryDirectory=${runicServer'}/lib"
       ++ lib.optionals (frontend' != null && frontend'.nodeModules != null) [
         "-p:RunicApplicationFrontendNodeModulesDirectory=${frontend'.nodeModules}/node_modules"
         # Runic.Application.Views before 0.8.0-preview.1 knows only this property; the link below serves it.

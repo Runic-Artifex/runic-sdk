@@ -116,12 +116,15 @@ Arguments that `buildDotnetModule` also takes (`dotnetFlags`, `runtimeDeps`,
 | `spellingDictionaries` | `[ ]` | Hunspell dictionaries for WebKitGTK's spell checker, such as `[ hunspellDicts.de_CH hunspellDicts.en_US ]`, on the wrapper's `XDG_DATA_DIRS`; see [Spell checking](#spell-checking). Only with `desktop` and `desktop-gtk4`. |
 | `nativeAot` | `false` | Publish `projectFile` with NativeAOT; see [NativeAOT](#nativeaot). Self-contained either way when set. |
 | `selfContainedBuild` | `nativeAot` | A self-contained JIT build. |
+| `nativeServer` | from the lock files | The experimental native Desktop server (`Runic.Desktop.NativeServer`, [`RUNICDESK102`](../docs/experimental.md#RUNICDESK102)) with its library built from source (`nix/runic-server.nix`, the crates `native/Cargo.lock` pins) instead of the package's prebuilt one: NativeAOT links its static library, JIT copies its shared library. `true` when a lock file lists `Runic.Desktop.NativeServer`; a project that references the SDK's projects sets it together with `-p:RunicDesktopServer=Native` in `dotnetFlags`. |
+| `runicServer` | `nix/runic-server.nix` | The native server library `nativeServer` uses, such as a patched build. |
 | `testRunner` | `"VSTest"` | How `doCheck` runs `testProjectFile`: `"VSTest"` with nixpkgs' `dotnet test`, or `"Microsoft.Testing.Platform"`; see [Tests](#tests). |
 | `completions` | `null` | Shell completions the program prints, installed for bash, zsh and fish: `program` (default `meta.mainProgram`), `command` (default `[ "completion" ]`) and `shells`. See [Shell completions](#shell-completions). |
 | `desktopItems` | `[ ]` | `makeDesktopItem` results, installed in `$out/share/applications`. The project's file types and URL schemes are added to the entry named after `ApplicationId`; see [File types and URL schemes](#file-types-and-url-schemes). |
 | `icons` | `{ }` | `{ scalable = ./app.svg; "256x256" = ./app.png; }`, installed as `$out/share/icons/hicolor/<size>/apps/<iconName>.<svg or png>`. |
 | `iconName` | `pname` | The icon's name, which the desktop entry's `icon` refers to. |
-| `dotnet-sdk` | .NET 10 SDK | The SDK; the runtime is its ASP.NET Core runtime, which Runic's hosts serve the page with. |
+| `dotnet-sdk` | .NET 10 SDK | The SDK. |
+| `dotnet-runtime` | from `dotnet-sdk` | The runtime of a framework-dependent build: the SDK's ASP.NET Core runtime, which `Runic.Desktop.Kestrel` serves the page with, or its .NET runtime alone with `nativeServer`. |
 | `nodejs` | Node 24 | Node for the frontend's install and build. |
 
 The package has `passthru.frontendNodeModules`, the frontend's installed

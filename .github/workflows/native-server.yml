@@ -9,7 +9,10 @@ on:
       - 'native/**'
       - 'eng/native/build-runic-server.sh'
       - 'eng/native/crates.mjs'
+      - 'eng/native/verify-native-server-package.mjs'
       - 'packages/dotnet/Runic.Desktop.NativeServer/**'
+      - 'packages/dotnet/Runic.Desktop.NativeServer.Static/**'
+      - 'tests/fixtures/desktop/Runic.Desktop.PackageConsumer/**'
       - 'packages/dotnet/Runic.Desktop/Internal/NativeServer/**'
       - 'packages/dotnet/Runic.Desktop/Internal/Presentation*.cs'
       - 'packages/dotnet/Runic.Desktop.Kestrel/**'
@@ -25,7 +28,10 @@ on:
       - 'native/**'
       - 'eng/native/build-runic-server.sh'
       - 'eng/native/crates.mjs'
+      - 'eng/native/verify-native-server-package.mjs'
       - 'packages/dotnet/Runic.Desktop.NativeServer/**'
+      - 'packages/dotnet/Runic.Desktop.NativeServer.Static/**'
+      - 'tests/fixtures/desktop/Runic.Desktop.PackageConsumer/**'
       - 'packages/dotnet/Runic.Desktop/Internal/NativeServer/**'
       - 'packages/dotnet/Runic.Desktop/Internal/Presentation*.cs'
       - 'packages/dotnet/Runic.Desktop.Kestrel/**'
@@ -100,6 +106,21 @@ jobs:
           RUNIC_CARGO_BUILD: ${{ matrix.zig && 'cargo zigbuild' || 'cargo build' }}
           RUNIC_GLIBC: "2.28"
         run: eng/native/build-runic-server.sh ${{ matrix.rid }}
+      # The linker signs the dylib ad hoc. dotnet runic package macos signs every nested library again with the
+      # application's identity and the hardened runtime (MacOSBundleLayout; ci.yml's macOS packaging leg checks nested
+      # libraries); this checks that the library takes that signature. NativeAOT links the static library instead.
+      - name: Check the macOS library's signature
+        if: runner.os == 'macOS'
+        run: |
+          library=artifacts/native/runic-server/${{ matrix.rid }}/librunic_server.dylib
+          codesign --verify --strict --verbose=2 "$library"
+          codesign --display --verbose=2 "$library" 2>&1 | tee "$RUNNER_TEMP/linker-signature.txt"
+          grep -Eq 'flags=0x[0-9a-f]+\((adhoc|linker-signed)' "$RUNNER_TEMP/linker-signature.txt"
+          signed="$RUNNER_TEMP/librunic_server.dylib"
+          cp "$library" "$signed"
+          codesign --force --sign - --options runtime --timestamp=none "$signed"
+          codesign --verify --strict --verbose=2 "$signed"
+          codesign --display --verbose=2 "$signed" 2>&1 | grep -E '^CodeDirectory .*flags=0x[0-9a-f]+\(adhoc,runtime\)'
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: runic-server-${{ matrix.rid }}
@@ -175,23 +196,110 @@ jobs:
           cd artifacts/native/runic-server
           for directory in runic-server-*; do mv "$directory" "${directory#runic-server-}"; done
           ls -R
+      # The main package carries the shared libraries of every runtime identifier and a runtime.json; each static
+      # library, which NativeAOT links, is a package of its own that NuGet restores only for its runtime identifier.
       - name: Pack with every runtime identifier
-        run: dotnet pack packages/dotnet/Runic.Desktop.NativeServer -c Release -p:RunicNativeServerRequireAllRuntimes=true -o artifacts/native-server-package
+        run: |
+          dotnet pack packages/dotnet/Runic.Desktop.NativeServer -c Release -p:RunicNativeServerRequireAllRuntimes=true -o artifacts/native-server-package
+          for rid in linux-x64 linux-arm64 linux-musl-x64 linux-musl-arm64 win-x64 win-arm64 osx-arm64; do
+            dotnet pack packages/dotnet/Runic.Desktop.NativeServer.Static -c Release -p:RunicNativeServerRuntime=$rid -o artifacts/native-server-package
+          done
       - name: Check the package layout
         run: |
-          package=$(ls artifacts/native-server-package/Runic.Desktop.NativeServer.*.nupkg)
-          unzip -l "$package" | tee artifacts/native-server-package/contents.txt
+          cd artifacts/native-server-package
+          package=$(ls Runic.Desktop.NativeServer.[0-9]*.nupkg)
+          unzip -l "$package" | tee contents.txt
           for rid in linux-x64 linux-arm64 linux-musl-x64 linux-musl-arm64 osx-arm64; do
-            grep -q "runtimes/$rid/native/librunic_server" artifacts/native-server-package/contents.txt
-            grep -q "build/native/$rid/librunic_server.a" artifacts/native-server-package/contents.txt
+            grep -q "runtimes/$rid/native/librunic_server" contents.txt
+            unzip -l Runic.Desktop.NativeServer.Static.$rid.*.nupkg | grep -q "runtimes/$rid/native/librunic_server.a"
           done
           for rid in win-x64 win-arm64; do
-            grep -q "runtimes/$rid/native/runic_server.dll" artifacts/native-server-package/contents.txt
-            grep -q "build/native/$rid/runic_server.lib" artifacts/native-server-package/contents.txt
+            grep -q "runtimes/$rid/native/runic_server.dll" contents.txt
+            unzip -l Runic.Desktop.NativeServer.Static.$rid.*.nupkg | grep -q "runtimes/$rid/native/runic_server.lib"
           done
-          grep -q "buildTransitive/Runic.Desktop.NativeServer.targets" artifacts/native-server-package/contents.txt
-          grep -q "THIRD-PARTY-NOTICES.md" artifacts/native-server-package/contents.txt
+          if grep -Eq 'librunic_server\.a|runic_server\.lib' contents.txt; then echo "the main package carries a static library"; exit 1; fi
+          grep -q "buildTransitive/Runic.Desktop.NativeServer.targets" contents.txt
+          grep -q "THIRD-PARTY-NOTICES.md" contents.txt
+          unzip -p "$package" runtime.json | node -e '
+            const graph = JSON.parse(require("node:fs").readFileSync(0, "utf8"));
+            const rids = Object.keys(graph.runtimes).sort().join(",");
+            if (rids !== "linux-arm64,linux-musl-arm64,linux-musl-x64,linux-x64,osx-arm64,win-arm64,win-x64") throw new Error(rids);'
+          du -b -- ./*.nupkg | tee sizes.txt
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: runic-desktop-native-server-package-${{ github.run_id }}
           path: artifacts/native-server-package
+
+  # The Desktop suite on the native server on Windows and macOS (Linux: the desktop job above), the package-consumer
+  # test against the packed feed (JIT, self-contained and NativeAOT through runtime.json) and the size and startup
+  # measurements for the 1.0 default-server decision (D053.16), on each platform.
+  platforms:
+    name: Platform / ${{ matrix.rid }}
+    needs: package
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { rid: linux-x64, os: ubuntu-24.04 }
+          - { rid: win-x64, os: windows-latest, smoke-timeout-scale: "2" }
+          - { rid: osx-arm64, os: macos-26 }
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 75
+    env:
+      RUNIC_SMOKE_TIMEOUT_SCALE: ${{ matrix.smoke-timeout-scale || '1' }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-sdk
+        with:
+          nuget: native
+          node: "true"
+          package-managers: "false"
+      - uses: ./.github/actions/install-browser
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: runic-server-${{ matrix.rid }}
+          path: artifacts/native/runic-server/${{ matrix.rid }}
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: runic-desktop-native-server-package-${{ github.run_id }}
+          path: artifacts/native-server-package
+      - name: Build the shared Views runtime
+        working-directory: packages/web/views
+        run: bun run --bun build
+      - name: Build managed desktop contracts on the native server
+        if: runner.os != 'Linux'
+        run: dotnet build tests/dotnet/Runic.Desktop.Tests -c Release -p:RunicDesktopServer=Native
+      - name: Test managed desktop contracts on the native server
+        if: runner.os != 'Linux'
+        timeout-minutes: 12
+        run: >-
+          dotnet run --project tests/dotnet/Runic.Desktop.Tests -c Release --no-build --
+          --timeout 10m --output detailed
+          --results-directory "${{ github.workspace }}/artifacts/native-server-tests" --report-trx --report-trx-filename desktop-${{ matrix.rid }}.trx
+      - name: Consume the packages from the feed
+        timeout-minutes: 20
+        run: node eng/native/verify-native-server-package.mjs artifacts/native-server-package --rid ${{ matrix.rid }}
+      - name: Measure size and startup on Kestrel and on the native server
+        timeout-minutes: 30
+        env:
+          RUNIC_MEASURE_RUNS: "9"
+        run: |
+          node tests/benchmarks/native-server/measure.mjs artifacts/native-server-measure/${{ matrix.rid }}
+          cat artifacts/native-server-measure/${{ matrix.rid }}/results.md >> "$GITHUB_STEP_SUMMARY"
+      - name: Retain measurements and diagnostics
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: native-server-${{ matrix.rid }}-${{ github.run_id }}
+          path: |
+            artifacts/native-server-measure/${{ matrix.rid }}/*.json
+            artifacts/native-server-measure/${{ matrix.rid }}/*.md
+            artifacts/native-server-measure/${{ matrix.rid }}/*.log
+            artifacts/native-server-tests
+            artifacts/native-server-consumer.json
+          if-no-files-found: ignore
