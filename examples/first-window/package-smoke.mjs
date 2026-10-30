@@ -15,6 +15,8 @@ const packageProjects = [
   ["Runic.Application.Views", "Runic.Application.Views"],
   // Runic.Application.Views.CsWebUi depends on Runic.Platform for its window platform services.
   ["Runic.Platform", "Runic.Platform"],
+  // and on Runic.Assets for embedded frontends (RunicCsWebUiHostOptions.Assets).
+  ["Runic.Assets", "Runic.Assets"],
   ["Runic.Application.Views.CsWebUi", "Runic.Application.Views.CsWebUi"]
 ];
 let testVersion;
