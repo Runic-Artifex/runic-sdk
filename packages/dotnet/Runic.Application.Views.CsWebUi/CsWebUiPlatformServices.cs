@@ -34,7 +34,8 @@ public static class CsWebUiPlatformServiceCollectionExtensions
     /// <summary>
     /// Registers every Runic platform service that Runic Desktop's <c>AddRunicPlatformServices</c> registers:
     /// <see cref="IWindowPlatformServices"/>, <see cref="IFileDialogs"/>, <see cref="ITextClipboard"/>, <see cref="IDesktopClipboard"/>,
-    /// <see cref="IDesktopFileLauncher"/> and <see cref="IDesktopMessageBoxes"/> per window scope, and one <see cref="IDesktopSettings"/>,
+    /// <see cref="IDesktopFileLauncher"/> and <see cref="IDesktopMessageBoxes"/> per window scope, and one
+    /// <see cref="IApplicationPlatformServices"/>, <see cref="IDesktopSettings"/>,
     /// <see cref="IDesktopNotifications"/>, <see cref="IDesktopStatusIcon"/>, <see cref="IDesktopGlobalShortcuts"/>, <see cref="IDesktopLoginStartup"/>,
     /// <see cref="IDesktopInhibition"/>, <see cref="IDesktopSecretStore"/>, <see cref="IDesktopTrash"/>,
     /// <see cref="IDesktopFileTransfers"/>, <see cref="IDesktopVolumes"/>, <see cref="IDesktopNetworkStatus"/>, <see cref="IDesktopApplications"/> and <see cref="IDesktopThumbnails"/> for the application. CS-WebUI windows have no native owner, so every window
@@ -56,6 +57,7 @@ public static class CsWebUiPlatformServiceCollectionExtensions
     public static IServiceCollection AddRunicPlatformServices(this IServiceCollection services)
     {
         ArgumentNullException.ThrowIfNull(services);
+        services.TryAddSingleton(static _ => ApplicationPlatformServices.Unavailable(PlatformUnavailableReason.ProviderNotConfigured));
         services.TryAddSingleton(static _ => DesktopSettings.Unavailable(PlatformUnavailableReason.ProviderNotConfigured));
         services.TryAddSingleton(static _ => DesktopNotifications.Unavailable(PlatformUnavailableReason.ProviderNotConfigured));
         services.TryAddSingleton(static _ => DesktopStatusIcon.Unavailable(PlatformUnavailableReason.ProviderNotConfigured));

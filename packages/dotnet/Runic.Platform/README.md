@@ -442,6 +442,21 @@ files from untrusted sources, such as downloads or names a page supplies: use
 
 Success means the desktop accepted the URI, not that an application showed it.
 
+The launcher of a window is `IWindowPlatformServices.FileLauncher`. Code without a
+window, such as a help link handler, a menu command several windows share or a
+background download, takes `IApplicationPlatformServices` instead: its
+`FileLauncher` has the same rules and results and needs no window, also before
+the first window opens. Runic Desktop registers it (`DesktopPlatformServices.ForApplication()`);
+CS-WebUI registers one that reports `ProviderNotConfigured`.
+
+```csharp
+public sealed class Downloads(IApplicationPlatformServices platform)
+{
+    public ValueTask<PlatformResult<PlatformUnit>> ShowAsync(string file) =>
+        platform.FileLauncher.LaunchAsync(file, DesktopFileOperation.Reveal);
+}
+```
+
 `ms-settings:` URIs, such as `ms-settings:display` or `ms-settings:defaultapps`,
 open the Windows Settings app through the same shell call. The URI must be
 exactly `ms-settings:<page>`, where the page is 1 to 64 letters, digits or

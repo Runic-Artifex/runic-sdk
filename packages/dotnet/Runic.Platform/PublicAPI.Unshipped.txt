@@ -7,3 +7,8 @@ Runic.Platform.SaveFileOptions.Title.get -> string?
 Runic.Platform.SaveFileOptions.Title.init -> void
 Runic.Platform.OwnerPolicy.PreferOwner = 1 -> Runic.Platform.OwnerPolicy
 const Runic.Platform.PlatformCapabilityIds.DialogsUnowned = "platform.dialogs.unowned" -> string!
+Runic.Platform.ApplicationPlatformServices
+Runic.Platform.IApplicationPlatformServices
+Runic.Platform.IApplicationPlatformServices.FileLauncher.get -> Runic.Platform.IDesktopFileLauncher!
+static Runic.Platform.ApplicationPlatformServices.CapabilityIds.get -> System.Collections.Immutable.ImmutableArray<string!>
+static Runic.Platform.ApplicationPlatformServices.Unavailable(Runic.Platform.PlatformUnavailableReason reason) -> Runic.Platform.IApplicationPlatformServices!

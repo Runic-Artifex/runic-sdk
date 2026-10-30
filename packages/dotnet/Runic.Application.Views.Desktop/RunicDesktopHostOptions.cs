@@ -149,10 +149,10 @@ public sealed record RunicDesktopHostOptions
     /// serves until a line is read from standard input, shutdown is requested or the process ends; see
     /// <see cref="RunicDesktopHost"/>. With <see cref="RunicDesktopHost.Run(IServiceProvider, DesktopHostOptions, RunicDesktopHostOptions, Func{RunicDesktopHost, Task{int}})"/>
     /// the window toolkit's event loop does not start either, so a headless machine reports no
-    /// <c>gtk4-display-unavailable</c>. Open a served Window in the user's browser with
-    /// <see cref="DesktopPlatformServices.OpenUriAsync"/>:
+    /// <c>gtk4-display-unavailable</c>. Open a served Window in the user's browser with the application's launcher,
+    /// <see cref="DesktopPlatformServices.ForApplication"/>, which needs no window:
     /// <code>
-    /// await DesktopPlatformServices.OpenUriAsync(RunicDesktopHost.GetSurface(window)!.Url);
+    /// await DesktopPlatformServices.ForApplication().FileLauncher.LaunchUriAsync(RunicDesktopHost.GetSurface(window)!.Url);
     /// </code>
     /// </remarks>
     public bool ServeOnly { get; init; }
