@@ -932,3 +932,5 @@ that the command line is wrong; a failure on what the command found exits 1.
 | Human standard error read `RAPPDEV1002: The selected project does not exist.` | It reads `The selected project does not exist.`, then the `Help for RAPPDEV1002` line; a usage error adds the usage line and the help command. Compare the message, or `fault.code` in JSON output |
 
 Details: 0.14.0 [Runic Command Line 0.11.0 in the SDK tools](../eng/release/notes/0.14.0.md#runic-command-line-0110-in-the-sdk-tools-l1).
+
+## From 0.14 to 0.15
