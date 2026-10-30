@@ -84,22 +84,22 @@
       "runic.assets.aspnetcore": {
         "type": "Project",
         "dependencies": {
-          "Runic.Assets": "[0.13.0, )"
+          "Runic.Assets": "[0.14.0, )"
         }
       },
       "runic.assets.desktop": {
         "type": "Project",
         "dependencies": {
-          "Runic.Assets": "[0.13.0, )",
-          "Runic.Desktop": "[0.13.0, )"
+          "Runic.Assets": "[0.14.0, )",
+          "Runic.Desktop": "[0.14.0, )"
         }
       },
       "runic.desktop": {
         "type": "Project",
         "dependencies": {
           "Microsoft.Web.WebView2": "[1.0.4258.31, )",
-          "Runic.Platform": "[0.13.0, )",
-          "Runic.Platform.Linux.DBus": "[0.13.0, )"
+          "Runic.Platform": "[0.14.0, )",
+          "Runic.Platform.Linux.DBus": "[0.14.0, )"
         }
       },
       "runic.platform": {
@@ -108,7 +108,7 @@
       "runic.platform.linux.dbus": {
         "type": "Project",
         "dependencies": {
-          "Runic.Platform": "[0.13.0, )",
+          "Runic.Platform": "[0.14.0, )",
           "Tmds.DBus.Protocol": "[0.95.2, )"
         }
       },

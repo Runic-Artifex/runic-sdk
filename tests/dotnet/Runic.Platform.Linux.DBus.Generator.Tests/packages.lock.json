@@ -108,7 +108,7 @@
         "type": "Project",
         "dependencies": {
           "Microsoft.Extensions.DependencyInjection.Abstractions": "[10.0.14, )",
-          "Runic.Platform": "[0.13.0, )",
+          "Runic.Platform": "[0.14.0, )",
           "Tmds.DBus.Protocol": "[0.95.2, )"
         }
       },

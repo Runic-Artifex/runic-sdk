@@ -26,7 +26,7 @@
       "runic.platform.linux.dbus": {
         "type": "Project",
         "dependencies": {
-          "Runic.Platform": "[0.13.0, )",
+          "Runic.Platform": "[0.14.0, )",
           "Tmds.DBus.Protocol": "[0.95.2, )"
         }
       },
