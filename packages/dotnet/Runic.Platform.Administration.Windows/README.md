@@ -34,7 +34,7 @@ domain controllers and non-DC DNS servers.
 | Processes / WindowsProcessClient | PID/parent snapshots, lookup and children | Local read-only Toolhelp snapshot; no launch or termination API. A service snapshot supplies its process ID. |
 | Tasks / WindowsTaskSchedulerClient | Folders/tasks; typed definitions, XML import/export, selected updates, validation, enable/run/stop/delete; ten trigger families | Local or explicit machine, caller identity; Task Scheduler service and task/folder permissions. Registration password supplied separately. |
 | Firewall / WindowsFirewallClient | Rules, identity checks, selected updates/deletion and effective profile inspection | Local Windows Firewall service; writes need policy access. Ambiguous native names are rejected. No global disable API. |
-| DirectoryServices / WindowsDomainClient | Domain membership/role and controller discovery | Local or explicit computer, native NetAPI access. |
+| DirectoryServices / WindowsDomainClient | Domain membership/role with the domain's flat, DNS and forest names; controller discovery with DNS or flat names | Local or explicit computer, native NetAPI access. Membership is read without contacting a controller. |
 | DirectoryServices / WindowsDirectoryClient | RootDSE, paged searches, ranged values, typed attributes, create/modify/delete/rename/move | Explicit LDAP endpoint, caller or explicit credentials; delegated directory rights. Signed/sealed Negotiate, LDAPS or StartTLS. |
 | DirectoryServices / ActiveDirectoryClient | User/computer/group/OU creation; memberships, account enablement, password operations and SPNs | Explicit directory client; appropriate AD rights. Newly created user/computer accounts are disabled. No installation/domain naming policy. |
 | SystemInformation / WindowsSystemInformationClient | OS version/product/language and BIOS | Local, normally read-only access; registry, version and SMBIOS APIs. Domain membership and role are on WindowsDomainClient. |
@@ -89,13 +89,15 @@ membership.
   | --- | --- | --- |
   | AccessDenied | Windows denied access. | Win32 5, 1314, 1326; WMI access denied; LDAP 49, 50. |
   | NotFound | The named target does not exist. | Win32 2, 3; a missing service (1060) or share (2310); a missing directory object (8240, LDAP 32); a missing WMI instance. |
-  | Unavailable | The machine, endpoint or a required component is unavailable. | Network path or RPC server unavailable (53, 64, 67, 1722, 1726); GPMC not installed; missing WMI namespace or class; LDAP server down. |
+  | Unavailable | The machine, endpoint or service is unreachable or not running. | Network path or RPC server unavailable (53, 64, 67, 1722, 1726); Task Scheduler service not running; LDAP server down. |
+  | NotInstalled | A required component is not installed or registered. | GPMC not installed (class not registered, 0x80040154); missing WMI namespace or class, such as the MicrosoftDNS provider on a computer without the DNS role. |
   | Conflict | The operation conflicts with current state. | An existing object or share name; a running service; a changed LDAP assertion. |
   | InvalidData | Windows returned, or rejected, invalid data. | Win32 13, 24, 87; invalid task XML; LDAP schema violations. |
   | NativeFailure | Any other native error. | Codes no other category describes. |
 - Argument exceptions describe caller mistakes; PlatformNotSupportedException
   describes unsupported platforms. GPMC missing registration and missing WMI
-  namespaces/classes are identifiable Unavailable failures.
+  namespaces/classes are identifiable NotInstalled failures, distinct from an
+  unreachable controller or server (Unavailable).
 - Creation fails on collisions except explicit replacement options. Deletion
   returns whether the resource existed. GPO display names are labels, not unique
   identities; creating a GPO allocates a new GUID.

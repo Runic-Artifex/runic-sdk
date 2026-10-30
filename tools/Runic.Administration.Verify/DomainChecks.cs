@@ -323,6 +323,13 @@ internal sealed class DomainChecks(RunReport report, Options options, Cancellati
         Require(controller.Name.StartsWith(@"\\", StringComparison.Ordinal) && controller.Address.StartsWith(@"\\", StringComparison.Ordinal), "Controller name or address lacks the native UNC prefix.");
         Require((controller.NativeFlags & 0x20000000u) != 0, "DS_DNS_CONTROLLER_FLAG missing although a DNS name was requested.");
         Require((controller.NativeFlags & 0x100u) != 0, "Writable controller requested, but DS_WRITABLE_FLAG is missing.");
+        // sdk#744: the membership carries the DNS and forest names, and flat discovery the controller's NetBIOS name.
+        Require(string.Equals(membership.DnsDomainName?.TrimEnd('.'), options.Domain!.TrimEnd('.'), StringComparison.OrdinalIgnoreCase)
+            && !string.IsNullOrEmpty(membership.ForestName), "The membership lacks the domain's DNS or forest name: " + membership + ".");
+        var flat = await client.DiscoverControllerAsync(options.Domain, false, true, DomainControllerNameFormat.Flat, token);
+        report.Resource("Discovered controller (flat): " + flat.Name + "; domain " + flat.DomainName);
+        Require(flat.Name.StartsWith(@"\\", StringComparison.Ordinal) && !flat.Name.Contains('.', StringComparison.Ordinal)
+            && string.Equals(flat.DomainName, membership.Name, StringComparison.OrdinalIgnoreCase), "Flat discovery returned DNS names or another domain.");
     }
 
     // A TLS connection to the controller's IP address presents a certificate issued to its

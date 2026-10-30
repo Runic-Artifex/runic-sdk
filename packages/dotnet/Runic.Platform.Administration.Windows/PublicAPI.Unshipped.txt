@@ -1,1 +1,10 @@
 #nullable enable
+Runic.Platform.Administration.Windows.AdministrationErrorCategory.NotInstalled = 7 -> Runic.Platform.Administration.Windows.AdministrationErrorCategory
+Runic.Platform.Administration.Windows.DirectoryServices.DomainControllerNameFormat
+Runic.Platform.Administration.Windows.DirectoryServices.DomainControllerNameFormat.Dns = 0 -> Runic.Platform.Administration.Windows.DirectoryServices.DomainControllerNameFormat
+Runic.Platform.Administration.Windows.DirectoryServices.DomainControllerNameFormat.Flat = 1 -> Runic.Platform.Administration.Windows.DirectoryServices.DomainControllerNameFormat
+Runic.Platform.Administration.Windows.DirectoryServices.DomainMembership.DnsDomainName.get -> string?
+Runic.Platform.Administration.Windows.DirectoryServices.DomainMembership.DnsDomainName.init -> void
+Runic.Platform.Administration.Windows.DirectoryServices.DomainMembership.ForestName.get -> string?
+Runic.Platform.Administration.Windows.DirectoryServices.DomainMembership.ForestName.init -> void
+Runic.Platform.Administration.Windows.DirectoryServices.WindowsDomainClient.DiscoverControllerAsync(string? domainName, bool requirePrimary, bool requireWritable, Runic.Platform.Administration.Windows.DirectoryServices.DomainControllerNameFormat nameFormat, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<Runic.Platform.Administration.Windows.DirectoryServices.DomainControllerInfo!>!

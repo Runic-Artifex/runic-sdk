@@ -20,7 +20,11 @@ internal static class NativeError
         // NERR_DuplicateShare (lmerr.h): an existing SMB share name.
         80 or 183 or 1056 or 1072 or 1073 or 2118 => AdministrationErrorCategory.Conflict,
         13 or 24 or 87 or unchecked((int)0x80041318) or unchecked((int)0x8004131D) => AdministrationErrorCategory.InvalidData,
-        unchecked((int)0x80040154) or unchecked((int)0x80041315) or unchecked((int)0x8004100E) or unchecked((int)0x80041010) => AdministrationErrorCategory.Unavailable,
+        // REGDB_E_CLASSNOTREG (for example GPMC), WBEM_E_INVALID_NAMESPACE and WBEM_E_INVALID_CLASS (a WMI provider
+        // such as MicrosoftDNS): the component is not installed, as opposed to installed but unreachable.
+        unchecked((int)0x80040154) or unchecked((int)0x8004100E) or unchecked((int)0x80041010) => AdministrationErrorCategory.NotInstalled,
+        // SCHED_E_SERVICE_NOT_RUNNING.
+        unchecked((int)0x80041315) => AdministrationErrorCategory.Unavailable,
         _ => AdministrationErrorCategory.NativeFailure
     };
 

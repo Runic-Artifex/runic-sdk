@@ -198,7 +198,11 @@ internal sealed class NativeTests
         var nativeVersion = system.GetOperatingSystem().Version; var managedVersion = Environment.OSVersion.Version;
         Check(nativeVersion.Major == managedVersion.Major && nativeVersion.Minor == managedVersion.Minor && nativeVersion.Build == managedVersion.Build, $"Native OS version mismatch: {nativeVersion} / {managedVersion}.");
         Check(system.GetBiosInformation().Length > 0, "BIOS unavailable on fixture.");
-        _ = await new WindowsDomainClient().GetMembershipAsync();
+        var membership = await new WindowsDomainClient().GetMembershipAsync();
+        // sdk#744: the DNS and forest names come from the local membership, and only a domain member has them.
+        Check(membership.State == DomainJoinState.Domain || (membership.DnsDomainName is null && membership.ForestName is null),
+            $"A {membership.State} computer reported a DNS domain name: {membership}.");
+        Check(membership.DnsDomainName is not null || membership.ForestName is null, "A forest name without a DNS domain name.");
         _ = await new WindowsNetworkClient().EnumerateAsync();
         var shares = new WindowsShareClient();
         _ = await shares.EnumerateAsync();
@@ -263,8 +267,8 @@ internal sealed class NativeTests
             }
             catch (WindowsAdministrationException error) when (error.NativeErrorCode == unchecked((int)0x80040154))
             {
-                Check(error.Category == AdministrationErrorCategory.Unavailable, "Missing GPMC was not classified as a prerequisite failure.");
-                Console.WriteLine("PASS Missing GPMC is an identifiable Unavailable prerequisite; domain operations not executed.");
+                Check(error.Category == AdministrationErrorCategory.NotInstalled, "Missing GPMC was not classified as NotInstalled.");
+                Console.WriteLine("PASS Missing GPMC is an identifiable NotInstalled prerequisite; domain operations not executed.");
             }
             return true;
         }, default);
@@ -292,7 +296,7 @@ internal sealed class NativeTests
             }
             catch (WindowsAdministrationException error) when (error.NativeErrorCode == unchecked((int)0x80040154))
             {
-                Check(error.Category == AdministrationErrorCategory.Unavailable, "Missing GPMC must remain a prerequisite failure.");
+                Check(error.Category == AdministrationErrorCategory.NotInstalled, "Missing GPMC must be NotInstalled.");
                 Console.WriteLine("PASS Backup enumeration prerequisite and cancellation; native backup fixture unavailable.");
             }
         }
@@ -374,7 +378,10 @@ internal sealed class NativeTests
             () => shares.DeleteAsync(missing, cancellation.Token),
             () => domain.GetMembershipAsync(cancellation.Token),
             () => domain.DiscoverControllerAsync(cancellationToken: cancellation.Token),
+            () => domain.DiscoverControllerAsync(null, false, true, DomainControllerNameFormat.Flat, cancellation.Token),
         ];
+        try { _ = domain.DiscoverControllerAsync(null, false, true, (DomainControllerNameFormat)2); throw new InvalidOperationException("An undefined name format was accepted."); }
+        catch (ArgumentOutOfRangeException) { }
         foreach (var call in calls)
         {
             try { await call(); throw new InvalidOperationException("A canceled native call ran."); }
