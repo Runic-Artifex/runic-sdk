@@ -71,7 +71,7 @@ server as ready only when its `/__runic/state` answers with that value, so
 | Frontend | What answers `/__runic/state` | When `dev` requires the answer |
 | --- | --- | --- |
 | React, Vue, Svelte | `runic()` in `vite.config.ts` | The resolved Vite configuration has `runic()` or `runicDevSession()` |
-| SvelteKit | `runicDevSession()` in `vite.config.ts`, next to `sveltekit()` (SvelteKit warns about `runic()`, whose `transformIndexHtml` hook it does not support) | The same |
+| SvelteKit | `runic({ html: false })` in `vite.config.ts`, next to `sveltekit()` (without `html: false`, SvelteKit warns about `runic()`'s `transformIndexHtml` hook); `runicDevSession()` also still answers | The same |
 | Angular | `runicDevSessionProxy()` in `proxy.conf.mjs`, the serve target's `proxyConfig` in `angular.json` (the Angular CLI loads no Vite plugins) | `package.json` declares `@runic-artifex/vite-plugin-runic` |
 
 A Vite project with the external frontend compiler, where `dev` does not

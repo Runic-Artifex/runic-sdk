@@ -204,14 +204,17 @@ test("is turned off by the registered symbol and by the plugin option", () => {
   input.value = "a";
   assert.equal(diagnostics.length, 0, "turned off at runtime");
 
-  const plugin = runic({ devtools: false, staleInputWarning: false });
+  const plugin = runic({ staleInputWarning: false });
   const client = plugin.load("\0virtual:runic/client");
-  assert.equal(client, 'import "virtual:runic/stale-input-off";\nimport "@runic-artifex/vite-plugin-runic/client";');
-  assert.equal(plugin.resolveId("virtual:runic/stale-input-off"), "\0virtual:runic/stale-input-off");
+  assert.equal(client, 'import "virtual:runic/client-options";\nimport "@runic-artifex/vite-plugin-runic/client";');
+  assert.equal(plugin.resolveId("virtual:runic/client-options"), "\0virtual:runic/client-options");
   const flag = {};
-  new Function("globalThis", plugin.load("\0virtual:runic/stale-input-off"))(flag);
+  new Function("globalThis", plugin.load("\0virtual:runic/client-options"))(flag);
   assert.equal(flag[warningKey], false);
-  assert.equal(runic().load("\0virtual:runic/client"), 'import "@runic-artifex/vite-plugin-runic/client";');
+  assert.deepEqual(flag[Symbol.for("runic.vite.client")], { channel: "hot" });
+  const defaults = {};
+  new Function("globalThis", runic().load("\0virtual:runic/client-options"))(defaults);
+  assert.equal(warningKey in defaults, false, "the warning stays on by default");
   assert.throws(() => runic({ staleInputWarning: "no" }), /staleInputWarning must be true or false/u);
 });
 
@@ -231,6 +234,7 @@ const hot = { data: {}, send(event, data) { sent.push({ event, data }); }, on() 
 const context = createContext({ setTimeout, clearTimeout, Promise });
 const dom = createFakeDom(context);
 context.__runicBridge = createBridge();
+context[Symbol.for("runic.vite.client")] = { channel: "hot" };
 async function evaluateClient(generation) {
   const modules = new Map();
   const load = async (path, identifier, meta) => {
@@ -242,6 +246,7 @@ async function evaluateClient(generation) {
   };
   await load("dist/diagnostics.js", "diagnostics");
   await load("dist/stale-input.js", "stale-input");
+  await load("dist/channel.js", "channel");
   const client = await load("dist/client.js", "client", (meta) => { meta.hot = hot; });
   await client.link((specifier) => modules.get(specifier.replace("./", "").replace(".js", "")));
   await client.evaluate();
@@ -276,4 +281,84 @@ process.stdout.write(JSON.stringify({
   assert.equal(entry.detail.code, "stale-input");
   assert.equal(entry.failure.type, "StaleInputWarning");
   assert.match(entry.failure.message, /^A script set the focused <input id="title">/u);
+});
+
+// Evaluates the built client as a page would load it without runic(): no client options, and an HMR context only
+// when `withHot` (the Angular CLI's development server gives one to prebundled packages).
+async function evaluateHttpClient({ status, withHot }) {
+  const harness = String.raw`
+import { readFile } from "node:fs/promises";
+import { createContext, SourceTextModule } from "node:vm";
+
+const createFakeDom = ${createFakeDom.toString()};
+const posted = [];
+const hotSent = [];
+const hot = { data: {}, send(event, data) { hotSent.push(event); }, on() {}, prune() {} };
+const context = createContext({ setTimeout, clearTimeout, Promise, TextEncoder });
+createFakeDom(context);
+context.fetch = async (url, init) => {
+  posted.push({ url, method: init.method, type: init.headers["Content-Type"], message: JSON.parse(init.body) });
+  // A server answers later than the module evaluates.
+  await new Promise((resolve) => setTimeout(resolve, 2));
+  return { status: ${status} };
+};
+const modules = new Map();
+const load = async (path, identifier, meta) => {
+  const module = new SourceTextModule(await readFile(path, "utf8"), {
+    context, identifier, ...(meta ? { initializeImportMeta: meta } : {}),
+  });
+  modules.set(identifier, module);
+  return module;
+};
+await load("dist/diagnostics.js", "diagnostics");
+await load("dist/stale-input.js", "stale-input");
+await load("dist/channel.js", "channel");
+const client = await load("dist/client.js", "client", (meta) => { if (${withHot}) meta.hot = hot; });
+await client.link((specifier) => modules.get(specifier.replace("./", "").replace(".js", "")));
+await client.evaluate();
+const installedAtLoad = context[Symbol.for("runic.vite.staleInput")] === true;
+const listeners = context[Symbol.for("runic.views.diagnostics")];
+for (const listener of [...listeners]) {
+  listener({ kind: "error", code: "failed", message: "Save failed.", route: "editorSave" });
+}
+const connection = context[Symbol.for("runic.views.connection")];
+connection.state = "connected";
+for (const listener of [...connection.listeners]) listener("connected");
+await new Promise((resolve) => setTimeout(resolve, 50));
+process.stdout.write(JSON.stringify({
+  posted, hotSent, installedAtLoad,
+  installed: context[Symbol.for("runic.vite.staleInput")] === true,
+  listeners: listeners.size, connectionListeners: connection.listeners.size,
+}));
+`;
+  const { stdout } = await execFile(process.execPath, [
+    "--experimental-vm-modules", "--input-type=module", "--eval", harness,
+  ], { cwd: process.cwd() });
+  return JSON.parse(stdout);
+}
+
+test("without runic() the client posts to /__runic/diagnostics in order", async () => {
+  for (const withHot of [true, false]) {
+    const result = await evaluateHttpClient({ status: 204, withHot });
+    assert.deepEqual(result.hotSent, [], "no plugin listens on the HMR channel");
+    assert.deepEqual(result.posted.map(({ url, method, type }) => [url, method, type]),
+      Array(3).fill(["/__runic/diagnostics", "POST", "application/json"]));
+    assert.deepEqual(result.posted.map(({ message }) => message.event),
+      ["runic:connection", "runic:diagnostic", "runic:connection"]);
+    assert.deepEqual(result.posted[0].message.data, { state: "unknown" }, "the first message opens the channel");
+    assert.equal(result.posted[1].message.data.label, "editorSave failed");
+    assert.equal(result.posted[1].message.data.failure.type, "BridgeError");
+    assert.deepEqual(result.posted[2].message.data, { state: "connected" });
+    // With an HMR context the warning installs at once, otherwise once the development server answered.
+    assert.equal(result.installedAtLoad, withHot);
+    assert.equal(result.installed, true);
+  }
+});
+
+test("the client stops when nothing answers /__runic/diagnostics", async () => {
+  const result = await evaluateHttpClient({ status: 404, withHot: false });
+  assert.equal(result.posted.length, 1, "one probe, then nothing");
+  assert.equal(result.installed, false, "a page without a development server gets no warning");
+  assert.equal(result.listeners, 0);
+  assert.equal(result.connectionListeners, 0);
 });

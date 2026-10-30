@@ -122,7 +122,7 @@ internal static class ViteBuildInputs
     }
 
     /// <summary>
-    /// Whether the resolved configuration has <c>runic()</c> or <c>runicDevSession()</c> from
+    /// Whether the resolved configuration has <c>runic()</c> (SvelteKit: <c>runic({ html: false })</c>) or <c>runicDevSession()</c> from
     /// <c>@runic-artifex/vite-plugin-runic</c>, whose <c>/__runic/state</c> confirms the dev session; null when the
     /// probe did not say.
     /// </summary>

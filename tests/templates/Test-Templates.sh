@@ -406,6 +406,19 @@ verify_template() {
     grep -Fq 'runicAdapter({ out: "dist" })' "$output/Frontend/vite.config.ts"
     grep -Fq "\"@runic-artifex/sveltekit\": \"$views_npm_version\"" "$output/Frontend/package.json"
   fi
+  # Every starter loads the Runic development client while serving: runic() injects it, SvelteKit's client hooks
+  # import it for runic({ html: false }), and Angular's main.ts imports it outside production builds.
+  case "$framework" in
+    sveltekit)
+      grep -Fq 'runic({ html: false })' "$output/Frontend/vite.config.ts"
+      grep -Fq 'import "@runic-artifex/vite-plugin-runic/client";' "$output/Frontend/src/hooks.client.ts"
+      ;;
+    angular)
+      grep -Fq '...runicDevSessionProxy(),' "$output/Frontend/proxy.conf.mjs"
+      grep -Fq 'if (typeof ngDevMode === "undefined" || ngDevMode) await import("@runic-artifex/vite-plugin-runic/client");' \
+        "$output/Frontend/src/main.ts"
+      ;;
+  esac
   if [[ "$framework" != angular ]]; then
     [[ "$framework" == sveltekit ]] || grep -Fq 'runic()' "$output/Frontend/vite.config.ts"
     if grep -n 'desktop' "$output/Frontend/vite.config.ts"; then
@@ -526,7 +539,7 @@ verify_template() {
   if [[ "$manager" == npm && "$host" == cswebui ]]; then
     serve_and_fetch "$output" "$output/dotnet-runic-dev.log" "$output/dev-document.html" true \
       dotnet runic dev
-    # Every starter's development server confirms the dev session (runic(), runicDevSession() for SvelteKit,
+    # Every starter's development server confirms the dev session (runic(), runic({ html: false }) for SvelteKit,
     # runicDevSessionProxy() in the Angular proxyConfig), so dev never takes another process on its port for it.
     if ! grep -Fq 'development server confirmed this dev session.' "$output/dotnet-runic-dev.log"; then
       echo "The $framework development server did not confirm the dev session." >&2

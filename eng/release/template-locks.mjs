@@ -9,8 +9,8 @@ export const templateRunicPackages = Object.freeze({
   react: ['@runic-artifex/react', '@runic-artifex/views', '@runic-artifex/vite-plugin-runic'],
   vue: ['@runic-artifex/vue', '@runic-artifex/views', '@runic-artifex/vite-plugin-runic'],
   svelte: ['@runic-artifex/svelte', '@runic-artifex/views', '@runic-artifex/vite-plugin-runic'],
-  // SvelteKit builds through its own Vite plugin and the Runic SvelteKit adapter; vite-plugin-runic only
-  // confirms the dotnet runic dev session there (runicDevSession()), as it does for Angular (runicDevSessionProxy()).
+  // SvelteKit builds through its own Vite plugin and the Runic SvelteKit adapter; vite-plugin-runic adds the
+  // development client there (runic({ html: false })), as it does for Angular (runicDevSessionProxy()).
   sveltekit: ['@runic-artifex/svelte', '@runic-artifex/sveltekit', '@runic-artifex/views', '@runic-artifex/vite-plugin-runic'],
   angular: ['@runic-artifex/angular', '@runic-artifex/views', '@runic-artifex/vite-plugin-runic'],
 });

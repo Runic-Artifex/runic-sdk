@@ -47,7 +47,11 @@ dock shows the most recent one. A failure keeps file paths, so that a stack is
 useful, but is bounded and has credential values redacted. Failures stay in
 the dock: `/__runic/state` and the copied diagnostic state leave them out, and
 the other timeline fields stay path-free. An application without a Vite-served `index.html` imports
-`virtual:runic/client` itself. `devtools: false` disables the injection.
+the client itself, with `import "@runic-artifex/vite-plugin-runic/client"` (or
+`virtual:runic/client`): `runic()` resolves that import to the same module it
+injects while serving, and to an empty module in the build and on the server,
+so nothing reaches production output. `devtools: false` turns the client off:
+no injection, and an import of it is empty.
 The plugin adds `@runic-artifex/vite-plugin-runic/client` to
 `optimizeDeps.include`, because the dependency scanner cannot see the injected
 client: with a cold `node_modules/.vite` cache, the first page would otherwise
@@ -66,6 +70,88 @@ fields with the text-field binding of your framework package
 `runic({ staleInputWarning: false })`, or from the page by setting
 `globalThis[Symbol.for("runic.vite.staleInputWarning")] = false`.
 
+## SvelteKit and Angular
+
+SvelteKit renders its pages itself and warns about every plugin with a
+`transformIndexHtml` hook. Use `runic({ html: false })`: the plugin then has no
+such hook, injects nothing into HTML and leaves host scripts alone, and keeps
+everything else: the timeline, the dock, `/__runic/state` and the dev session.
+The page loads the client from its client hooks:
+
+```ts
+// vite.config.ts
+plugins: [sveltekit({ adapter: runicAdapter() }), runic({ html: false })],
+```
+
+```ts
+// src/hooks.client.ts
+import "@runic-artifex/vite-plugin-runic/client";
+```
+
+`html: false` cannot be combined with `desktop`, whose bootstrap is a script
+tag in the HTML: `runic({ html: false, desktop: true })` throws.
+
+The Angular CLI's development server loads no Vite plugins, only a proxy
+configuration. `runicDevSessionProxy()` returns Vite proxy entries that answer
+locally and never proxy. Spread it into the file that the serve target's
+`proxyConfig` in `angular.json` names:
+
+```js
+// proxy.conf.mjs
+import { runicDevSessionProxy } from "@runic-artifex/vite-plugin-runic";
+
+export default { ...runicDevSessionProxy() };
+```
+
+and load the client from `main.ts` in development only:
+
+```ts
+// src/main.ts, before bootstrapApplication
+if (typeof ngDevMode === "undefined" || ngDevMode) await import("@runic-artifex/vite-plugin-runic/client");
+```
+
+A production build (`optimization` on, the default `production`
+configuration) defines `ngDevMode` as `false`, so the import and the client's
+chunk are left out. `isDevMode()` would keep the chunk in the output, because
+the build cannot evaluate a function call.
+
+The entries keep the development state in the `ng serve` process and answer:
+
+- `/__runic/state` with that state, as `runic()` does: the connection, the
+  timeline without failures, and under `dotnet runic dev` the session header
+  ([Dev session](#dev-session-and-host-scripts)). The answer is `200` with JSON; without `dotnet runic dev` the
+  entry answers too, without the header.
+- `/__runic/diagnostics`, which the client posts its reports to. Each Views
+  failure is printed to the `ng serve` terminal with its exception type,
+  message and stack:
+
+  ```text
+  [runic] views editorSave failed
+    System.InvalidOperationException: Disk full.
+      at Notes.Editor.Save() in /src/Notes/Editor.cs:line 12
+  ```
+
+`runicDevSessionProxy({ maxTimelineEntries, printFailures })` takes the same
+timeline limit as `runic()` and `printFailures: false` to keep the terminal
+quiet. The `stale-input` warning works the same as with `runic()`; turn it off
+from the page with the registered symbol above.
+
+### The client's channel
+
+Loaded by `runic()`, the client reports over Vite's HMR connection. Loaded
+otherwise, it posts each report as `{ "event", "data" }` JSON to
+`/__runic/diagnostics` on its own origin, one at a time and in order, and keeps
+at most 100 waiting. `runic()` answers that endpoint too. The endpoint accepts
+only a `POST` with `Content-Type: application/json` and an `Origin` of the
+server itself (a cross-site page would need a CORS preflight, which it never
+grants), rejects a `Sec-Fetch-Site` other than `same-origin` and a body over
+64 KiB, and sanitizes every entry like any other timeline entry. If the first
+report gets no `204` answer, the page has no Runic development server, and the
+client stops and removes its listeners. Without Vite's HMR context the client
+installs the `stale-input` warning only after that first answer.
+
+## Dev session and host scripts
+
 Under `dotnet runic dev`, the Vite process gets a random value for the session
 in `RUNIC_APPLICATION_DEV_SESSION`, and `/__runic/state` answers with it in the
 `X-Runic-Dev-Session` header. Since 0.11, `dev` treats the server as ready
@@ -75,29 +161,12 @@ Pages and other responses do not carry the header. Use the plugin from the same
 release as `dotnet-runic`, because an older plugin does not answer and `dev`
 times out with `RAPPDEV1007`.
 
-Two exports answer only the session, for development servers that cannot use
-`runic()`. Without `dotnet runic dev` neither changes anything.
-
-- `runicDevSession()` is a Vite plugin without `runic()`'s HTML hooks, for
-  SvelteKit, which warns about plugins with a `transformIndexHtml` hook:
-
-  ```ts
-  plugins: [sveltekit({ adapter: runicAdapter() }), runicDevSession()],
-  ```
-
-- `runicDevSessionProxy()` returns Vite proxy entries, for the Angular CLI,
-  which takes a proxy configuration but no Vite plugins. Spread it into the
-  file that the serve target's `proxyConfig` in `angular.json` names:
-
-  ```js
-  // proxy.conf.mjs
-  import { runicDevSessionProxy } from "@runic-artifex/vite-plugin-runic";
-
-  export default { ...runicDevSessionProxy() };
-  ```
-
-  `dotnet runic dev` expects the answer from an Angular frontend whose
-  `package.json` declares this package.
+`runicDevSessionProxy()` answers the session for the Angular CLI (above).
+`dotnet runic dev` expects the answer from an Angular frontend whose
+`package.json` declares this package. `runicDevSession()` is a Vite plugin
+that answers only the session, without the development client; SvelteKit
+configurations from before 0.14 use it. It is deprecated in 0.14 and removed
+in 0.15: use `runic({ html: false })` instead.
 
 The `runic-app` template's SvelteKit and Angular frontends are set up this way.
 
