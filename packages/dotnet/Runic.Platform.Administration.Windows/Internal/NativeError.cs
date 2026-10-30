@@ -14,12 +14,15 @@ internal static class NativeError
     internal static AdministrationErrorCategory Categorize(int normalized) => normalized switch
     {
         5 or 1314 or 1326 or unchecked((int)0x80041003) => AdministrationErrorCategory.AccessDenied,
-        // File, path, service, share (NERR_NetNameNotFound), directory object and WMI instance absence.
-        2 or 3 or 1060 or 2310 or 8240 or unchecked((int)0x80041002) => AdministrationErrorCategory.NotFound,
+        // File, path, service, share (NERR_NetNameNotFound), directory object and WMI instance absence; an account name
+        // or SID without a mapping (1332), a missing local group (ERROR_NO_SUCH_ALIAS, NERR_GroupNotFound) or member
+        // account (ERROR_NO_SUCH_MEMBER), and NERR_UserNotFound.
+        2 or 3 or 1060 or 2310 or 8240 or unchecked((int)0x80041002) or 1332 or 1376 or 1387 or 2220 or 2221 => AdministrationErrorCategory.NotFound,
         53 or 64 or 67 or 1722 or 1726 => AdministrationErrorCategory.Unavailable,
         // NERR_DuplicateShare (lmerr.h): an existing SMB share name.
         80 or 183 or 1056 or 1072 or 1073 or 2118 => AdministrationErrorCategory.Conflict,
-        13 or 24 or 87 or unchecked((int)0x80041318) or unchecked((int)0x8004131D) => AdministrationErrorCategory.InvalidData,
+        // ERROR_INVALID_MEMBER: an account of a kind that cannot join a local group.
+        13 or 24 or 87 or 1388 or unchecked((int)0x80041318) or unchecked((int)0x8004131D) => AdministrationErrorCategory.InvalidData,
         // REGDB_E_CLASSNOTREG (for example GPMC), WBEM_E_INVALID_NAMESPACE and WBEM_E_INVALID_CLASS (a WMI provider
         // such as MicrosoftDNS): the component is not installed, as opposed to installed but unreachable.
         unchecked((int)0x80040154) or unchecked((int)0x8004100E) or unchecked((int)0x80041010) => AdministrationErrorCategory.NotInstalled,

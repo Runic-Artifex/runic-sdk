@@ -34,6 +34,7 @@ domain controllers and non-DC DNS servers.
 | Processes / WindowsProcessClient | PID/parent snapshots, lookup and children | Local read-only Toolhelp snapshot; no launch or termination API. A service snapshot supplies its process ID. |
 | Tasks / WindowsTaskSchedulerClient | Folders/tasks; typed definitions, XML import/export, selected updates, validation, enable/run/stop/delete; ten trigger families | Local or explicit machine, caller identity; Task Scheduler service and task/folder permissions. Registration password supplied separately. |
 | Firewall / WindowsFirewallClient | Rules, identity checks, selected updates/deletion, deletion of every rule of a name, local policy state and effective profile inspection | Local Windows Firewall service; writes need policy access. Ambiguous native names are rejected for single-rule operations. No global disable API. |
+| Accounts / WindowsLocalGroupClient | Local group membership: add, remove and enumerate members; groups and members by name or SID; group names on the target computer | Local or explicit computer, caller identity; administrative rights to change membership. "Already a member" and "not a member" are results, not failures. |
 | DirectoryServices / WindowsDomainClient | Domain membership/role with the domain's flat, DNS and forest names; controller discovery with DNS or flat names | Local or explicit computer, native NetAPI access. Membership is read without contacting a controller. |
 | DirectoryServices / WindowsDirectoryClient | RootDSE, paged searches, ranged values, typed attributes, create/modify/delete/rename/move | Explicit LDAP endpoint, caller or explicit credentials; delegated directory rights. Signed/sealed Negotiate, LDAPS or StartTLS. |
 | DirectoryServices / ActiveDirectoryClient | User/computer/group/OU creation; memberships, account enablement, password operations and SPNs | Explicit directory client; appropriate AD rights. Newly created user/computer accounts are disabled. No installation/domain naming policy. |
@@ -141,6 +142,14 @@ membership.
 - Task snapshots retain complete native XML; selected updates preserve untouched
   XML subtrees. Replacing actions/triggers intentionally replaces those subtrees.
   Registration, scheduler state and last execution outcome are separate values.
+- Local groups are addressed by `AccountReference.Sid` or `AccountReference.Name`.
+  Use the SID of a well-known group, for example
+  `new SecurityIdentifier(WellKnownSidType.BuiltinAdministratorsSid, null)`
+  (`S-1-5-32-544`), because group names are localized ("Administratoren");
+  `GetGroupNameAsync` returns the name on the target computer. `AddMemberAsync`
+  returns false when the account already is a member and `RemoveMemberAsync` when
+  it is not; a missing group or account is `NotFound`. Members are returned with
+  SID, `DOMAIN\name` (empty when the SID cannot be resolved) and `AccountKind`.
 - Firewall names can be ambiguous and have no public persistent GUID in this API.
   Use the returned identity for writes; changed/ambiguous identity fails. Updates
   retain unrelated native settings by editing the existing rule. Neither create nor

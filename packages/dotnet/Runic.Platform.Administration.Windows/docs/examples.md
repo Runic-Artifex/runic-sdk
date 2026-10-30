@@ -158,6 +158,22 @@ foreach (var network in await new WindowsNetworkClient().EnumerateAsync())
     Console.WriteLine(network);
 ~~~
 
+## Local groups
+
+~~~csharp
+using System.Security.Principal;
+using Runic.Platform.Administration.Windows.Accounts;
+
+var groups = new WindowsLocalGroupClient();
+// S-1-5-32-544 is the Administrators group in every UI language.
+var administrators = new AccountReference.Sid(new SecurityIdentifier(WellKnownSidType.BuiltinAdministratorsSid, null));
+Console.WriteLine(await groups.GetGroupNameAsync(administrators));
+foreach (var member in await groups.EnumerateMembersAsync(administrators)) Console.WriteLine(member);
+// On a fixture: false means it already was a member, or was not one.
+// await groups.AddMemberAsync(administrators, new AccountReference.Name(@"EXAMPLE\Workstation Admins"));
+// await groups.RemoveMemberAsync(administrators, new AccountReference.Name(@"PC1\setup"));
+~~~
+
 ## SMB shares
 
 ~~~csharp
