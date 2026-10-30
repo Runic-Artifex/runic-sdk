@@ -45,8 +45,9 @@ Compatible versions: CsWebUi 2.5.0-beta.4.8 or later, Vite `>=8.3.3 <9`,
 TypeScript 5.2 or later, Node `^24.18.0 || ^26.0.0` (Node 24 is the certified
 version). The SDK tools (`dotnet-runic`, `Runic.Create` and the asset packer
 that `Runic.Assets` runs during the build) are built with Runic Command Line
-0.9.1 and carry their own copy; no SDK library references Command Line, so an
-application may use any Command Line version itself (0.10.0 is current).
+0.11.0 (since 0.14; 0.9.1 before) and carry their own copy; no SDK library
+references Command Line, so an application may use any Command Line version
+itself (0.11.0 is current).
 
 The toolchain floor is .NET SDK 10.0.403 or later (runtime 10.0.14) and, for a
 Bun frontend, Bun 1.4.4 or later, each within its major version (0.12.1); for
@@ -917,3 +918,17 @@ Details: 0.14.0 [Navigation hooks on the model turn](../eng/release/notes/0.14.0
 | A tool that read `/__runic/state` from the Angular proxy expected 204 | 200 with the state JSON |
 
 Details: 0.14.0 [Frontend connections and DX](../eng/release/notes/0.14.0.md#frontend-connections-and-dx-f2).
+
+### CLI tools
+
+The SDK tools are built with Runic Command Line 0.11.0. Exit code 2 now means
+that the command line is wrong; a failure on what the command found exits 1.
+
+| 0.13 | 0.14 |
+| --- | --- |
+| A missing or ambiguous project (`RAPPDEV1002`), a project MSBuild cannot evaluate (`RAPPDEV1003`), a missing program (`RAPPDEV1004`), an invalid Views Window project (`RAPPDEV1005`), a failed Window rebuild in `dev` (`RAPPDEV1006`), `--no-restore` without packages (`RAPPDEV1008`) or a missing Window entry (`RAPPDEV1009`) exited 2 | They exit 1. Test 1, or read `fault.code` from `--format json` |
+| An existing `size --report` (`RAPPSIZE1003`), an invalid package identity (`RAPPPKG1001`) or missing Flathub sources (`RAPPPKG1007`) exited 2 | They exit 1; `package flathub` with neither or both of `--git-commit` and `--git-tag` still exits 2 |
+| The packer's missing source directory (`RAS1001`) and a non-empty `runic-create` destination (`RCREATE003`) exited 2 | They exit 1 |
+| Human standard error read `RAPPDEV1002: The selected project does not exist.` | It reads `The selected project does not exist.`, then the `Help for RAPPDEV1002` line; a usage error adds the usage line and the help command. Compare the message, or `fault.code` in JSON output |
+
+Details: 0.14.0 [Runic Command Line 0.11.0 in the SDK tools](../eng/release/notes/0.14.0.md#runic-command-line-0110-in-the-sdk-tools-l1).

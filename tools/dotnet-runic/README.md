@@ -363,8 +363,8 @@ asset packer) uses the same exit codes:
 | Code | Meaning |
 | --- | --- |
 | 0 | Success. |
-| 1 | The command failed, or something it needs is unavailable, for example a failed build, a failing doctor check or a missing tool. |
-| 2 | Usage or validation: an unknown option, a missing project or an invalid value. |
+| 1 | The command failed on what it found, or something it needs is unavailable, for example a missing or invalid project, a failed build, a failing doctor check or a missing tool. |
+| 2 | Usage or validation: the command line itself is wrong, for example an unknown option, an invalid value or two options that exclude each other. |
 | 3 | An internal or host failure. Report it with the output. |
 | 130 | Cancelled, for example with Ctrl+C. Stopping `dev` with Ctrl+C also exits 130, after the Window and the frontend server have stopped. |
 
@@ -581,9 +581,10 @@ evaluated MSBuild properties, empty when unspecified, including each
 and `archive`, and kept `installedRuntimes` as one string.
 
 A missing `--runtime` (`RAPPSIZE1001`), `--verify-argument` without `--verify`
-(`RAPPSIZE1002`), an existing `--report` (`RAPPSIZE1003`) or an invalid
-`--property` (`RAPPSIZE1005`, `RAPPSIZE1006`) is a usage error, exit code 2. A project whose publish settings MSBuild cannot evaluate
-(`RAPPSIZE1004`), a failed publish or a failed verification exits 1.
+(`RAPPSIZE1002`) or an invalid `--property` (`RAPPSIZE1005`, `RAPPSIZE1006`) is
+a usage error, exit code 2. An existing `--report` (`RAPPSIZE1003`), a project
+whose publish settings MSBuild cannot evaluate (`RAPPSIZE1004`), a failed
+publish or a failed verification exits 1.
 
 ## Package the application
 
@@ -771,10 +772,11 @@ CI) or `identity` (your certificate or Developer ID):
 Warnings, such as an unsigned package, do not fail the command: human output
 prints `warning RAPPPKG2001: …` lines and the payload lists them with their
 codes ([`RAPPPKG2001`–`2006`](https://github.com/Runic-Artifex/runic-sdk/blob/main/docs/diagnostics.md#rapppkg2001)).
-An invalid identity (`RAPPPKG1001`) or a target or runtime of another
-operating system (`RAPPPKG1004`) is a usage error, exit code 2. A missing
-packaging tool (`RAPPPKG1002`), a failed publish (`RAPPPKG1003`), a failing
-packaging tool (`RAPPPKG1005`) or a failed validation (`RAPPPKG1006`) exits 1.
+A target or runtime of another operating system (`RAPPPKG1004`) is a usage
+error, exit code 2. An invalid identity in the project (`RAPPPKG1001`), a
+missing packaging tool (`RAPPPKG1002`), a failed publish (`RAPPPKG1003`), a
+failing packaging tool (`RAPPPKG1005`), a failed validation (`RAPPPKG1006`) or
+Flathub sources that cannot be generated (`RAPPPKG1007`) exits 1.
 
 ## Support envelopes
 

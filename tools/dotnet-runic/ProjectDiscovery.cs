@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using Runic.CommandLine;
 
 namespace Runic.Application.Tool;
 
@@ -21,18 +22,18 @@ internal static class ProjectDiscovery
 
             if (!File.Exists(selected))
             {
-                throw new DevUsageException(
+                throw new DevDevelopmentException(
                     "RAPPDEV1002",
                     "The selected project does not exist.",
-                    $"Project: {selected}\n");
+                    $"Project: {selected}\n", category: CommandExitCategory.Unavailable);
             }
 
             if (!StringComparer.OrdinalIgnoreCase.Equals(Path.GetExtension(selected), ".csproj"))
             {
-                throw new DevUsageException(
+                throw new DevDevelopmentException(
                     "RAPPDEV1002",
                     "The selected project must be a .csproj file.",
-                    $"Project: {selected}\n");
+                    $"Project: {selected}\n", category: CommandExitCategory.Unavailable);
             }
 
             return selected;
@@ -50,14 +51,14 @@ internal static class ProjectDiscovery
         return projects.Length switch
         {
             1 => projects[0],
-            0 => throw new DevUsageException(
+            0 => throw new DevDevelopmentException(
                 "RAPPDEV1002",
                 "No .csproj was found in the directory. Use --project.",
-                $"Directory: {directory}\n"),
-            _ => throw new DevUsageException(
+                $"Directory: {directory}\n", category: CommandExitCategory.Unavailable),
+            _ => throw new DevDevelopmentException(
                 "RAPPDEV1002",
                 "Multiple .csproj files were found in the directory. Use --project.",
-                $"Directory: {directory}\n"),
+                $"Directory: {directory}\n", category: CommandExitCategory.Unavailable),
         };
     }
 }

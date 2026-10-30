@@ -285,10 +285,10 @@ internal static class DevApplication
         JavaScriptPackageManager packageManager = JavaScriptPackageManager.Resolve(
             configuration.WorkspaceRoot,
             configuration.FrontendPackageDirectory);
-        throw new DevUsageException(
+        throw new DevDevelopmentException(
             "RAPPDEV1008",
             $"--no-restore needs installed frontend packages; run '{packageManager.Name} install' in the frontend directory or omit --no-restore.",
-            $"Frontend directory: {configuration.FrontendPackageDirectory}\n");
+            $"Frontend directory: {configuration.FrontendPackageDirectory}\n", category: CommandExitCategory.Unavailable);
     }
 
     /// <summary>

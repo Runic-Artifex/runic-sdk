@@ -70,7 +70,7 @@ internal static class SizeApplication
             ? DefaultReportPath(Environment.CurrentDirectory, options.Runtime, DateTimeOffset.UtcNow)
             : Path.GetFullPath(options.Report);
         if (File.Exists(reportPath))
-            throw new DevUsageException("RAPPSIZE1003", "The report already exists. Select a new --report path to preserve prior evidence.");
+            throw new DevDevelopmentException("RAPPSIZE1003", "The report already exists. Select a new --report path to preserve prior evidence.");
         string dotnet = DevApplication.ResolveDotNetHost();
         IReadOnlyList<string> settings = CreateSettings(options);
         string[] evaluated = [.. Properties, .. options.Properties.Select(static property => property.Key)

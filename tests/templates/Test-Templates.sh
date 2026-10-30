@@ -556,7 +556,8 @@ verify_template() {
       echo "dotnet runic dev accepted a missing window entry." >&2
       exit 1
     fi
-    if ! grep -Fq "RAPPDEV1009: Window entry not found: 'settings.html'" "$output/dotnet-runic-dev-missing.log"; then
+    if ! grep -Fq "Window entry not found: 'settings.html'" "$output/dotnet-runic-dev-missing.log" ||
+      ! grep -Fq "Help for RAPPDEV1009:" "$output/dotnet-runic-dev-missing.log"; then
       tail -n 80 "$output/dotnet-runic-dev-missing.log" >&2
       exit 1
     fi

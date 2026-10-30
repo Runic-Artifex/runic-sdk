@@ -47,7 +47,8 @@ test("size preserves failed verification, publish failures and existing evidence
     assert.equal(measured.totalBytes, measured.files.reduce((sum, file) => sum + file.bytes, 0));
     assert.ok(measured.compressedBytes > 0);
     assert.ok(measured.buildOperatingSystem);
-    assert.equal(invoke(report).status, 2, "Existing reports must be rejected");
+    // An existing report is a conflict with earlier evidence: a command failure, exit code 1.
+    assert.equal(invoke(report).status, 1, "Existing reports must be rejected");
     // A failed verification still reports its runic.application.tool.size/1 payload, in fault.data.
     const jsonReport = join(directory, "json-report.json");
     const json = invoke(jsonReport, ["--format", "json"]);

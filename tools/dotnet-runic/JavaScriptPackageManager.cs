@@ -28,7 +28,7 @@ internal sealed record JavaScriptPackageManager(
             "npm" => new("npm", "npm", "package-lock.json"),
             "pnpm" => new("pnpm", "pnpm", "pnpm-lock.yaml"),
             "bun" => new("bun", "bun", "bun.lock"),
-            _ => throw new DevUsageException(
+            _ => throw new DevDevelopmentException(
                 "RAPPDEV1005",
                 $"Unsupported JavaScript package manager '{name}'. Use npm, pnpm, or Bun."),
         };

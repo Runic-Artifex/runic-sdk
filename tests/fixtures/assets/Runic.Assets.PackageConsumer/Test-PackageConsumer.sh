@@ -68,7 +68,9 @@ cp "$tool_archive" "$test_root/packaged-tool-first.runic-assets"
 dotnet "$packer_path" "$tool_fixture" "$tool_archive" --trusted-generated-output
 cmp "$test_root/packaged-tool-first.runic-assets" "$tool_archive"
 
-usage="RCLI1005: A required command argument is missing. (source-directory)"
+# Human output writes the message first; a usage error then adds the usage line and the help command, a fault its
+# "Help for" link (Command Line 0.10 and later).
+usage="The source-directory argument is missing."
 check_failure() {
   local expected_exit="$1"
   shift
@@ -86,20 +88,20 @@ check_failure() {
 }
 
 check_failure 2 dotnet "$packer_path"
-if [[ "$(<"$test_root/packer.stderr")" != "$usage" ]]; then
+if [[ "$(head -n 1 "$test_root/packer.stderr")" != "$usage" ]]; then
   echo "Packer usage diagnostics changed." >&2
   exit 1
 fi
 
 missing_source="$test_root/missing-source"
-check_failure 2 dotnet "$packer_path" "$missing_source" "$tool_fixture/missing.runic-assets" --trusted-generated-output
-if [[ "$(<"$test_root/packer.stderr")" != "Source directory '$missing_source' does not exist." ]]; then
+check_failure 1 dotnet "$packer_path" "$missing_source" "$tool_fixture/missing.runic-assets" --trusted-generated-output
+if [[ "$(head -n 1 "$test_root/packer.stderr")" != "Source directory '$missing_source' does not exist." ]]; then
   echo "Packer missing-source diagnostic changed." >&2
   exit 1
 fi
 
 check_failure 1 dotnet "$packer_path" "$tool_fixture" "$tool_fixture/missing-entry.runic-assets" --entry-point missing.html --trusted-generated-output
-if [[ "$(<"$test_root/packer.stderr")" != "Entry point 'missing.html' does not exist below '$tool_fixture' or was excluded." ]]; then
+if [[ "$(head -n 1 "$test_root/packer.stderr")" != "Entry point 'missing.html' does not exist below '$tool_fixture' or was excluded." ]]; then
   echo "Packer missing-entry diagnostic changed." >&2
   exit 1
 fi

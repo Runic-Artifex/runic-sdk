@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using Runic.CommandLine;
 
 namespace Runic.Application.Tool;
 
@@ -117,7 +118,11 @@ internal static class ToolOptionValues
     }
 }
 
-/// <summary>A usage failure.</summary>
+/// <summary>
+/// Input of the wrong shape that the parser and binder do not check, such as <c>-e</c> without <c>=</c> or two options
+/// that need each other: <see cref="CommandExitCategory.Validation"/>, exit code 2. The same command line fails the same
+/// way whatever the project, files or tools it finds.
+/// </summary>
 /// <remarks>
 /// The message reaches the JSON fault and must not contain absolute paths.
 /// <see cref="LocalDetail"/> carries paths and hints for human output only.
@@ -128,9 +133,18 @@ internal sealed class DevUsageException(string code, string message, string? loc
     internal string? LocalDetail { get; } = localDetail;
 }
 
-/// <summary>A development failure; see <see cref="DevUsageException"/> for the message rules.</summary>
-internal sealed class DevDevelopmentException(string code, string message, string? localDetail = null) : Exception(message)
+/// <summary>
+/// A failure on a well-formed command line, exit code 1: <see cref="CommandExitCategory.CommandFailure"/> for a project
+/// or step that failed, <see cref="CommandExitCategory.Unavailable"/> for a project, file or program that is missing. See
+/// <see cref="DevUsageException"/> for the message rules.
+/// </summary>
+internal sealed class DevDevelopmentException(
+    string code,
+    string message,
+    string? localDetail = null,
+    CommandExitCategory category = CommandExitCategory.CommandFailure) : Exception(message)
 {
     internal string Code { get; } = code;
     internal string? LocalDetail { get; } = localDetail;
+    internal CommandExitCategory Category { get; } = category;
 }

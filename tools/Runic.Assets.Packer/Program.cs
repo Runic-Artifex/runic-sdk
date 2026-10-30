@@ -3,16 +3,14 @@ using Runic.Assets.Packer;
 using Runic.CommandLine;
 using Runic.CommandLine.Generated;
 
+// --format selects human or JSON output, as for every Runic tool; --output, its former spelling, stays a hidden alias
+// until 2.0. The generated catalog declares the selector from this attribute (Command Line 0.11).
+[assembly: OutputSelector("--format", "--output")]
+
 return await PackerApplication.RunAsync(args).ConfigureAwait(false);
 
 internal static class PackerApplication
 {
-    /// <summary>Selects human or JSON output, as for every Runic tool.</summary>
-    private const string FormatOptionName = "--format";
-
-    /// <summary>The selector's former spelling, a hidden alias until 2.0.</summary>
-    private const string FormerFormatOptionName = "--output";
-
     public static Task<int> RunAsync(string[] args) => CreateApp(new Runic.CommandLine.Spectre.SpectreCommandConsole()).RunAsync(args);
 
     // No ParseSettings: CommandApp's defaults read RUNIC_COMMANDLINE_OUTPUT, RUNIC_COMMANDLINE_NO_INPUT and option
@@ -31,6 +29,5 @@ internal static class PackerApplication
     // The pack command is AssetPackCommand.PackAsync, which dotnet runic assets pack shares.
     internal static CommandCatalog CreateCatalog(CommandOutcomePresenter<PackerResult>? presenter = null) =>
         GeneratedCommandCatalog.Create(builder => builder
-            .OutputSelector(FormatOptionName, FormerFormatOptionName)
             .PresentOutcome(AssetPackCommand.CommandPath, presenter ?? AssetPackCommand.PresentAsync));
 }

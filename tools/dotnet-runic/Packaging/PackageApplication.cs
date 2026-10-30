@@ -53,7 +53,7 @@ internal sealed class PackageContext(PackageOptions options, PackageIdentity ide
     /// <summary>The PNG icon, <c>RunicPackageIcon</c>; a missing icon is an identity error.</summary>
     internal string RequireIcon() => File.Exists(Identity.Icon)
         ? Identity.Icon
-        : throw new DevUsageException(PackageCodes.IdentityInvalid,
+        : throw new DevDevelopmentException(PackageCodes.IdentityInvalid,
             "The package icon does not exist. Add a 512 px icons/icon.png or set RunicPackageIcon.", $"Icon: {Identity.Icon}\n");
 }
 

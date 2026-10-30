@@ -5,6 +5,7 @@ using System.IO;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using Runic.CommandLine;
 
 namespace Runic.Application.Tool;
 
@@ -111,10 +112,10 @@ internal sealed class RunningProcess : IAsyncDisposable
                 or InvalidOperationException)
         {
             process.Dispose();
-            throw new DevUsageException(
+            throw new DevDevelopmentException(
                 "RAPPDEV1004",
                 $"Could not start '{CommandRunner.DescribeProgram(executable, arguments)}'. Ensure it is installed and available on PATH.",
-                $"Executable: {executable}\n" + CommandRunner.LocalDetail(workingDirectory, "Run 'dotnet runic doctor' to check prerequisites."));
+                $"Executable: {executable}\n" + CommandRunner.LocalDetail(workingDirectory, "Run 'dotnet runic doctor' to check prerequisites."), category: CommandExitCategory.Unavailable);
         }
     }
 

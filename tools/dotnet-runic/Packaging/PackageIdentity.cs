@@ -184,7 +184,7 @@ internal sealed partial record PackageIdentity
     {
         if (id.Length > 50 || !ApplicationIdSyntax().IsMatch(id))
         {
-            throw new DevUsageException(PackageCodes.IdentityInvalid,
+            throw new DevDevelopmentException(PackageCodes.IdentityInvalid,
                 $"ApplicationId '{id}' must be a reverse-DNS name of ASCII letters and digits, each part starting with a letter, at most 50 characters (org.example.Notes).");
         }
         return id;
@@ -200,7 +200,7 @@ internal sealed partial record PackageIdentity
         string value = category.Trim().ToLowerInvariant();
         if (!ApplicationCategorySyntax().IsMatch(value))
         {
-            throw new DevUsageException(PackageCodes.IdentityInvalid,
+            throw new DevDevelopmentException(PackageCodes.IdentityInvalid,
                 $"RunicMacApplicationCategory '{category}' must be an Apple application category such as public.app-category.productivity.");
         }
         return value;
@@ -219,16 +219,16 @@ internal sealed partial record PackageIdentity
             string extension = parts[0].ToLowerInvariant();
             if (parts.Length != 2 || !TypeIdentifierSyntax().IsMatch(parts[1]))
             {
-                throw new DevUsageException(PackageCodes.IdentityInvalid,
+                throw new DevDevelopmentException(PackageCodes.IdentityInvalid,
                     $"RunicMacFileTypeIdentifiers has '{entry}', which is not an extension and a uniform type identifier, such as .md=net.daringfireball.markdown.");
             }
             if (!fileTypes.Any(type => type.Extension == extension))
             {
-                throw new DevUsageException(PackageCodes.IdentityInvalid,
+                throw new DevDevelopmentException(PackageCodes.IdentityInvalid,
                     $"RunicMacFileTypeIdentifiers has {extension}, which is not in RunicApplicationFileTypes.");
             }
             if (!identifiers.TryAdd(extension, parts[1]))
-                throw new DevUsageException(PackageCodes.IdentityInvalid, $"RunicMacFileTypeIdentifiers has {extension} twice.");
+                throw new DevDevelopmentException(PackageCodes.IdentityInvalid, $"RunicMacFileTypeIdentifiers has {extension} twice.");
         }
         return identifiers;
     }
@@ -239,7 +239,7 @@ internal sealed partial record PackageIdentity
         if (string.IsNullOrWhiteSpace(rank)) return "Alternate";
         foreach (string allowed in new[] { "Alternate", "Default" })
             if (string.Equals(rank.Trim(), allowed, StringComparison.OrdinalIgnoreCase)) return allowed;
-        throw new DevUsageException(PackageCodes.IdentityInvalid,
+        throw new DevDevelopmentException(PackageCodes.IdentityInvalid,
             $"RunicMacFileTypeHandlerRank '{rank}' must be Alternate or Default: an application owns only its own file types.");
     }
 
@@ -251,7 +251,7 @@ internal sealed partial record PackageIdentity
     {
         if (name.Length < 2 || !PackageNameSyntax().IsMatch(name))
         {
-            throw new DevUsageException(PackageCodes.IdentityInvalid,
+            throw new DevDevelopmentException(PackageCodes.IdentityInvalid,
                 $"RunicPackageName '{name}' must be a package name of lower-case letters, digits, '+', '-' and '.', starting with a letter or digit.");
         }
         return name;
@@ -265,7 +265,7 @@ internal sealed partial record PackageIdentity
         {
             if (!UrlSchemeSyntax().IsMatch(scheme) || scheme is "http" or "https" or "file")
             {
-                throw new DevUsageException(PackageCodes.IdentityInvalid,
+                throw new DevDevelopmentException(PackageCodes.IdentityInvalid,
                     $"RunicApplicationUrlSchemes has '{scheme}', which is not a URL scheme an application can register.");
             }
         }
@@ -285,17 +285,17 @@ internal sealed partial record PackageIdentity
             string extension = parts[0].ToLowerInvariant();
             if (parts.Length > 2 || extension.Length > 64 || !ExtensionSyntax().IsMatch(extension))
             {
-                throw new DevUsageException(PackageCodes.IdentityInvalid,
+                throw new DevDevelopmentException(PackageCodes.IdentityInvalid,
                     $"RunicApplicationFileTypes has '{entry}', which is not an extension with its dot, such as .notes or .notes=application/x-example-notes.");
             }
             string? mimeType = parts.Length == 2 ? parts[1] : null;
             if (mimeType is not null && !MimeTypeSyntax().IsMatch(mimeType))
             {
-                throw new DevUsageException(PackageCodes.IdentityInvalid,
+                throw new DevDevelopmentException(PackageCodes.IdentityInvalid,
                     $"RunicApplicationFileTypes has '{entry}', whose MIME type is not type/subtype.");
             }
             if (types.Any(type => type.Extension == extension))
-                throw new DevUsageException(PackageCodes.IdentityInvalid, $"RunicApplicationFileTypes has {extension} twice.");
+                throw new DevDevelopmentException(PackageCodes.IdentityInvalid, $"RunicApplicationFileTypes has {extension} twice.");
             types.Add(new PackageFileType(extension, mimeType?.ToLowerInvariant()));
         }
         return types;
@@ -309,7 +309,7 @@ internal sealed partial record PackageIdentity
         {
             if (host.Length > 253 || !HostSyntax().IsMatch(host))
             {
-                throw new DevUsageException(PackageCodes.IdentityInvalid,
+                throw new DevDevelopmentException(PackageCodes.IdentityInvalid,
                     $"RunicApplicationWebLinkHosts has '{host}', which is not a host name such as notes.example.org.");
             }
         }

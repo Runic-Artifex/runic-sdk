@@ -9,6 +9,10 @@ using Runic.CommandLine;
 using Runic.CommandLine.Generated;
 using Runic.CommandLine.Spectre;
 
+// --format selects the output; --output is the creator's own destination option, as for dotnet new, so the selector
+// has no --output alias.
+[assembly: OutputSelector(Runic.Create.Program.FormatOptionName)]
+
 namespace Runic.Create;
 
 internal static class Program
@@ -37,7 +41,6 @@ internal static class Program
         TemplateOptionModel model = TemplateOptionModel.Load();
         return new(GeneratedCommandCatalog.Create(builder =>
         {
-            builder.OutputSelector(FormatOptionName);
             // The template's text parameters, such as --application-id, are options generated from its model, so a
             // new text parameter needs no change here. The handler reads their values from TemplateTextValues.
             foreach (TemplateText text in model.Texts)

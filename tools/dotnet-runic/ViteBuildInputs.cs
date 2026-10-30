@@ -5,6 +5,7 @@ using System.Linq;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
+using Runic.CommandLine;
 
 namespace Runic.Application.Tool;
 
@@ -98,14 +99,14 @@ internal static class ViteBuildInputs
         {
             if (!File.Exists(Path.Combine(root, document.Replace('/', Path.DirectorySeparatorChar))))
             {
-                throw new DevUsageException(
+                throw new DevDevelopmentException(
                     EntryNotFoundCode,
                     derived
                         ? $"Window entry not found: '{document}' is a Vite build input, but the file does not exist. " +
                           "Create the page or remove it from the build input in the Vite configuration."
                         : $"Window entry not found: '{document}' is listed in RunicApplicationFrontendDevServerDocument, " +
                           "but the file does not exist below the Vite root.",
-                    $"Vite root: {root}\n");
+                    $"Vite root: {root}\n", category: CommandExitCategory.Unavailable);
             }
         }
         return documents;
@@ -188,7 +189,7 @@ internal static class ViteBuildInputs
         if (Path.IsPathRooted(relative) || relative == ".." ||
             relative.StartsWith($"..{Path.DirectorySeparatorChar}", StringComparison.Ordinal))
         {
-            throw new DevUsageException(
+            throw new DevDevelopmentException(
                 "RAPPDEV1005",
                 $"The Vite build input '{Path.GetFileName(input)}' is outside the Vite root.",
                 $"Input: {input}\nVite root: {root}\n");

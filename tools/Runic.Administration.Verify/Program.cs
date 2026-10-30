@@ -10,6 +10,8 @@ using Runic.CommandLine.Spectre;
 using Runic.Platform.Administration.Windows;
 
 [assembly: SupportedOSPlatform("windows")]
+// --format selects human or JSON output; --output, the former spelling, stays a hidden alias.
+[assembly: OutputSelector("--format", "--output")]
 
 // Fixture entry points started by the Service Control Manager and Task Scheduler.
 // They are process contracts of the write suite, not part of the command surface.
@@ -30,11 +32,9 @@ internal static class VerifierApplication
     // so a repeated Ctrl+C cannot skip the cleanup of created resources.
     internal static Task<int> RunAsync(string[] args) => CreateApplication().RunAsync(args);
 
-    // --format selects human or JSON output; --output, the former spelling, stays a hidden alias. Human output: the
-    // progress, summary and report path are already written, so the presenter only reports a fault. JSON output keeps
-    // the standard versioned envelope.
+    // Human output: the progress, summary and report path are already written, so the presenter only reports a fault.
+    // JSON output keeps the standard versioned envelope.
     private static CommandApp CreateApplication() => new(GeneratedCommandCatalog.Create(builder => builder
-        .OutputSelector("--format", "--output")
         .PresentOutcome<VerificationSummary>("local", PresentAsync)
         .PresentOutcome<VerificationSummary>("domain", PresentAsync)))
     {

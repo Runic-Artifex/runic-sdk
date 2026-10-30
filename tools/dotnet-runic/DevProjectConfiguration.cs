@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text.Json;
+using Runic.CommandLine;
 
 namespace Runic.Application.Tool;
 
@@ -110,7 +111,7 @@ internal sealed record DevProjectConfiguration(
         System.Threading.CancellationToken cancellationToken)
     {
         string projectDirectory = Path.GetDirectoryName(project)
-            ?? throw new DevUsageException("RAPPDEV1002", "The project has no parent directory.");
+            ?? throw new DevDevelopmentException("RAPPDEV1002", "The project has no parent directory.", category: CommandExitCategory.Unavailable);
         CommandResult result = await CommandRunner.RunAsync(
             dotnetHost,
             projectDirectory,
@@ -118,7 +119,7 @@ internal sealed record DevProjectConfiguration(
             cancellationToken).ConfigureAwait(false);
         if (result.ExitCode != 0)
         {
-            throw new DevUsageException(
+            throw new DevDevelopmentException(
                 "RAPPDEV1003",
                 "MSBuild could not evaluate the project.",
                 $"Project: {project}\n{Compact(result.CombinedOutput)}\n");
@@ -136,7 +137,7 @@ internal sealed record DevProjectConfiguration(
         bool viewsWindow = Flag("RunicApplicationFrontendWindowProject");
         if (!viewsWindow)
         {
-            throw new DevUsageException(
+            throw new DevDevelopmentException(
                 "RAPPDEV1005",
                 "The selected project must opt into the Runic Views Window model with RunicApplicationFrontendWindowProject=true.");
         }
@@ -149,7 +150,7 @@ internal sealed record DevProjectConfiguration(
         }
         if (frontend.Length == 0 || !File.Exists(Path.Combine(frontend, "package.json")))
         {
-            throw new DevUsageException(
+            throw new DevDevelopmentException(
                 "RAPPDEV1005",
                 "The Runic Views Window project must define RunicApplicationFrontendDirectory with a package.json frontend.");
         }
@@ -165,7 +166,7 @@ internal sealed record DevProjectConfiguration(
         string targetDirectory = NormalizeOptional(Value("TargetDir"), evaluatedDirectory);
         if (targetDirectory.Length == 0)
         {
-            throw new DevUsageException("RAPPDEV1005", "MSBuild did not evaluate TargetDir for the selected project.");
+            throw new DevDevelopmentException("RAPPDEV1005", "MSBuild did not evaluate TargetDir for the selected project.");
         }
 
         (string serverKind, bool viteEnabled, string viteEntry, string viteConfiguration) = InferDevelopmentServer(
@@ -223,37 +224,37 @@ internal sealed record DevProjectConfiguration(
     {
         if (!NodeEnabled && !HasFrontendCompiler)
         {
-            throw new DevUsageException("RAPPDEV1005", "The Views Window project requires a JavaScript frontend or an external compiler.");
+            throw new DevDevelopmentException("RAPPDEV1005", "The Views Window project requires a JavaScript frontend or an external compiler.");
         }
         if (DevelopmentServerKind.Length != 0 && DevelopmentServerKind is not ("vite" or "angular"))
         {
-            throw new DevUsageException("RAPPDEV1005", "The frontend development server must be 'vite', 'angular', or empty.");
+            throw new DevDevelopmentException("RAPPDEV1005", "The frontend development server must be 'vite', 'angular', or empty.");
         }
         if (HasDevelopmentServer && (!HasNodeWorkspace || !NodeEnabled))
         {
-            throw new DevUsageException("RAPPDEV1005", "Frontend development-server mode requires a configured package directory.");
+            throw new DevDevelopmentException("RAPPDEV1005", "Frontend development-server mode requires a configured package directory.");
         }
         if (HasDevelopmentServer && (DevelopmentServerDocuments.Count == 0 ||
             Array.Exists([.. DevelopmentServerDocuments], document => Path.IsPathRooted(document) ||
                 Array.Exists(document.Split(['/', '\\'], StringSplitOptions.RemoveEmptyEntries), segment => segment is "." or ".."))))
         {
-            throw new DevUsageException("RAPPDEV1005", "The development document must contain safe relative paths separated by semicolons.");
+            throw new DevDevelopmentException("RAPPDEV1005", "The development document must contain safe relative paths separated by semicolons.");
         }
         if (ViteDevServerEnabled && (!HasNodeWorkspace || string.IsNullOrWhiteSpace(ViteDevServerEntry)))
         {
-            throw new DevUsageException("RAPPDEV1005", "Vite development-server mode requires a frontend workspace and entry module.");
+            throw new DevDevelopmentException("RAPPDEV1005", "Vite development-server mode requires a frontend workspace and entry module.");
         }
         if (ViteDevServerEnabled && ViteDevServerEntry[0] != '/')
         {
-            throw new DevUsageException("RAPPDEV1005", "The Vite entry module must be a root-relative path.");
+            throw new DevDevelopmentException("RAPPDEV1005", "The Vite entry module must be a root-relative path.");
         }
         if (ViteDevServerEnabled && ViteConfigurationPath.Length != 0 && !File.Exists(ViteConfigurationPath))
         {
-            throw new DevUsageException("RAPPDEV1005", "The configured Vite file does not exist.");
+            throw new DevDevelopmentException("RAPPDEV1005", "The configured Vite file does not exist.");
         }
         if (string.IsNullOrWhiteSpace(FrontendOutputDirectory))
         {
-            throw new DevUsageException("RAPPDEV1005", "The frontend output directory is required for the Views Window project.");
+            throw new DevDevelopmentException("RAPPDEV1005", "The frontend output directory is required for the Views Window project.");
         }
     }
 
