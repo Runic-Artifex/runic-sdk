@@ -1,71 +1,41 @@
-using System.IO.Pipelines;
+using System.Globalization;
 using System.Net;
 using System.Net.WebSockets;
 using System.Text;
 using System.Threading.Tasks.Sources;
-using Microsoft.AspNetCore.Http;
-using Microsoft.AspNetCore.Http.Features;
 using static Runic.Desktop.Internal.NativeServer.NativeServerInterop;
 
 namespace Runic.Desktop.Internal.NativeServer;
 
-// One request from the native server, presented to the host core as the features of a DefaultHttpContext. The
-// response starts with the first body write, a file, or completion; a streamed body is written in order with at most
-// one write in flight, whose completion the library reports when its queue was full (backpressure).
-internal sealed class NativeExchange :
-    IDisposable,
-    IThreadPoolWorkItem,
-    IHttpRequestFeature,
-    IHttpResponseFeature,
-    IHttpResponseBodyFeature,
-    IHttpWebSocketFeature,
-    IHttpConnectionFeature,
-    IHttpRequestLifetimeFeature,
-    IHttpRequestIdentifierFeature,
-    IValueTaskSource<bool>
+// One request from the native server as a PresentationExchange. The response starts with the first body write, a file,
+// or completion; a streamed body is written in order with at most one write in flight, whose completion the library
+// reports when its queue was full (backpressure).
+internal sealed class NativeExchange : PresentationExchange, IDisposable, IThreadPoolWorkItem, IValueTaskSource<bool>
 {
     private readonly NativePresentationServer _server;
-    private readonly FeatureCollection _features = new(9);
-    private readonly HeaderDictionary _requestHeaders;
-    private readonly HeaderDictionary _responseHeaders = new();
+    private readonly Dictionary<string, string> _requestHeaders;
+    private readonly List<KeyValuePair<string, string>> _responseHeaders = [];
     private readonly CancellationTokenSource _aborted = new();
     private readonly bool _isWebSocketRequest;
     private ManualResetValueTaskSourceCore<bool> _write = new() { RunContinuationsAsynchronously = true };
-    private List<(Func<object, Task> Callback, object State)>? _onStarting;
-    private List<(Func<object, Task> Callback, object State)>? _onCompleted;
     private ResponseStream? _stream;
-    private PipeWriter? _writer;
     private int _state; // 0 not started, 1 streaming, 2 complete (empty or file), 3 WebSocket
-    private int _statusCode = StatusCodes.Status200OK;
+    private int _statusCode = PresentationStatus.Ok;
 
     private NativeExchange(NativePresentationServer server, ulong id, string method, string path, string query,
-        string rawTarget, HeaderDictionary headers, bool webSocket, IPAddress? remote, int remotePort, IPAddress? local,
+        Dictionary<string, string> headers, bool webSocket, IPAddress? remote, int remotePort, IPAddress? local,
         int localPort)
+        : base(method, path, query)
     {
         _server = server;
         Id = id;
-        Method = method;
-        Path = path;
-        QueryString = query;
-        RawTarget = rawTarget;
         _requestHeaders = headers;
         _isWebSocketRequest = webSocket;
         RemoteIpAddress = remote;
         RemotePort = remotePort;
         LocalIpAddress = local;
         LocalPort = localPort;
-        ConnectionId = TraceIdentifier = id.ToString(System.Globalization.CultureInfo.InvariantCulture);
         RequestAborted = _aborted.Token;
-        _features.Set<IHttpRequestFeature>(this);
-        _features.Set<IHttpResponseFeature>(this);
-        _features.Set<IHttpResponseBodyFeature>(this);
-        _features.Set<IHttpConnectionFeature>(this);
-        _features.Set<IHttpRequestLifetimeFeature>(this);
-        _features.Set<IHttpRequestIdentifierFeature>(this);
-        if (webSocket)
-        {
-            _features.Set<IHttpWebSocketFeature>(this);
-        }
     }
 
     internal ulong Id { get; }
@@ -78,16 +48,19 @@ internal sealed class NativeExchange :
         {
             return null;
         }
-        var headers = new HeaderDictionary((int)request->HeaderCount);
+        var headers = new Dictionary<string, string>((int)request->HeaderCount, StringComparer.OrdinalIgnoreCase);
         for (nuint index = 0; index < request->HeaderCount; index++)
         {
             var header = request->Headers[index];
-            // Latin-1 keeps every byte; HTTP header values are ASCII in practice.
-            headers.Append(Encoding.ASCII.GetString(header.Name.Span), Encoding.Latin1.GetString(header.Value.Span));
+            // Latin-1 keeps every byte; HTTP header values are ASCII in practice. A repeated header reads as its values
+            // joined with commas, as ASP.NET Core presents it.
+            var name = Encoding.ASCII.GetString(header.Name.Span);
+            var value = Encoding.Latin1.GetString(header.Value.Span);
+            headers[name] = headers.TryGetValue(name, out var previous) ? $"{previous},{value}" : value;
         }
         var remote = IPAddress.TryParse(Encoding.ASCII.GetString(request->RemoteAddress.Span), out var remoteAddress) ? remoteAddress : null;
         var local = IPAddress.TryParse(Encoding.ASCII.GetString(request->LocalAddress.Span), out var localAddress) ? localAddress : null;
-        return new NativeExchange(server, request->Id, Encoding.ASCII.GetString(request->Method.Span), path, query, target,
+        return new NativeExchange(server, request->Id, Encoding.ASCII.GetString(request->Method.Span), path, query,
             headers, (request->Flags & RequestWebSocket) != 0, remote, request->RemotePort, local, request->LocalPort);
     }
 
@@ -95,10 +68,9 @@ internal sealed class NativeExchange :
 
     private async Task RunAsync()
     {
-        var context = new DefaultHttpContext(_features);
         try
         {
-            await _server.Dispatch(context).ConfigureAwait(false);
+            await _server.Dispatch(this).ConfigureAwait(false);
             if (_state != 3)
             {
                 await CompleteCoreAsync().ConfigureAwait(false);
@@ -108,9 +80,9 @@ internal sealed class NativeExchange :
         {
             if (_state == 0 && !_aborted.IsCancellationRequested)
             {
-                _statusCode = StatusCodes.Status500InternalServerError;
+                _statusCode = PresentationStatus.InternalServerError;
                 _responseHeaders.Clear();
-                _responseHeaders.ContentLength = 0;
+                ContentLength = 0;
                 TryRespond(BodyEmpty, null);
             }
             else if (_state == 1)
@@ -124,14 +96,6 @@ internal sealed class NativeExchange :
         }
         finally
         {
-            if (_onCompleted is { } completed)
-            {
-                for (var index = completed.Count - 1; index >= 0; index--)
-                {
-                    try { await completed[index].Callback(completed[index].State).ConfigureAwait(false); }
-                    catch (Exception exception) { System.Diagnostics.Debug.WriteLine($"Runic Desktop native server: an OnCompleted callback failed: {exception}"); }
-                }
-            }
             _server.Forget(this);
             Dispose();
         }
@@ -156,33 +120,24 @@ internal sealed class NativeExchange :
         }
     }
 
-    // IHttpRequestFeature
+    internal override IPAddress? RemoteIpAddress { get; }
 
-    public string Protocol { get; set; } = "HTTP/1.1";
-    public string Scheme { get; set; } = "http";
-    public string Method { get; set; }
-    public string PathBase { get; set; } = string.Empty;
-    public string Path { get; set; }
-    public string QueryString { get; set; }
-    public string RawTarget { get; set; }
-    IHeaderDictionary IHttpRequestFeature.Headers { get => _requestHeaders; set => throw new NotSupportedException(); }
-    // Runic Desktop answers GET and HEAD only; the library does not forward request bodies.
-    Stream IHttpRequestFeature.Body { get; set; } = Stream.Null;
+    internal override int RemotePort { get; }
 
-    // IHttpConnectionFeature
+    internal override IPAddress? LocalIpAddress { get; }
 
-    public string ConnectionId { get; set; }
-    public IPAddress? RemoteIpAddress { get; set; }
-    public IPAddress? LocalIpAddress { get; set; }
-    public int RemotePort { get; set; }
-    public int LocalPort { get; set; }
+    internal override int LocalPort { get; }
 
-    // IHttpRequestLifetimeFeature and IHttpRequestIdentifierFeature
+    internal override CancellationToken RequestAborted { get; set; }
 
-    public CancellationToken RequestAborted { get; set; }
-    public string TraceIdentifier { get; set; }
+    internal override bool IsWebSocketRequest => _isWebSocketRequest;
 
-    public void Abort()
+    internal override string GetRequestHeader(string name) =>
+        _requestHeaders.TryGetValue(name, out var value) ? value : string.Empty;
+
+    internal override IEnumerable<KeyValuePair<string, string>> RequestHeaders => _requestHeaders;
+
+    internal void Abort()
     {
         CancelAborted();
         try
@@ -194,9 +149,7 @@ internal sealed class NativeExchange :
         }
     }
 
-    // IHttpResponseFeature
-
-    public int StatusCode
+    internal override int StatusCode
     {
         get => _statusCode;
         set
@@ -206,42 +159,62 @@ internal sealed class NativeExchange :
         }
     }
 
-    public string? ReasonPhrase { get; set; }
-    IHeaderDictionary IHttpResponseFeature.Headers { get => _responseHeaders; set => throw new NotSupportedException(); }
-    Stream IHttpResponseFeature.Body { get => Stream; set => throw new NotSupportedException(); }
-    public bool HasStarted => _state != 0;
-
-    public void OnStarting(Func<object, Task> callback, object state)
+    internal override string? ContentType
     {
-        ThrowIfStarted();
-        (_onStarting ??= []).Add((callback, state));
+        get => GetResponseHeader("Content-Type") is [var value, ..] ? value : null;
+        set => SetOrRemove("Content-Type", value);
     }
 
-    public void OnCompleted(Func<object, Task> callback, object state) => (_onCompleted ??= []).Add((callback, state));
+    internal override long? ContentLength
+    {
+        get => GetResponseHeader("Content-Length") is [var value, ..] &&
+            long.TryParse(value, NumberStyles.None, CultureInfo.InvariantCulture, out var length) ? length : null;
+        set => SetOrRemove("Content-Length", value?.ToString(CultureInfo.InvariantCulture));
+    }
+
+    internal override void SetResponseHeader(string name, string value) => SetOrRemove(name, value);
+
+    internal override void AppendResponseHeader(string name, string value)
+    {
+        ThrowIfStarted();
+        _responseHeaders.Add(new(name, value));
+    }
+
+    internal override IReadOnlyList<string> GetResponseHeader(string name)
+    {
+        List<string>? values = null;
+        foreach (var header in _responseHeaders)
+        {
+            if (string.Equals(header.Key, name, StringComparison.OrdinalIgnoreCase))
+            {
+                (values ??= []).Add(header.Value);
+            }
+        }
+        return values ?? (IReadOnlyList<string>)[];
+    }
+
+    private void SetOrRemove(string name, string? value)
+    {
+        ThrowIfStarted();
+        _responseHeaders.RemoveAll(header => string.Equals(header.Key, name, StringComparison.OrdinalIgnoreCase));
+        if (value is not null)
+        {
+            _responseHeaders.Add(new(name, value));
+        }
+    }
 
     private void ThrowIfStarted()
     {
         if (_state != 0) throw new InvalidOperationException("The response has already started.");
     }
 
-    // IHttpResponseBodyFeature
+    internal override Stream ResponseBody => _stream ??= new ResponseStream(this);
 
-    public Stream Stream => _stream ??= new ResponseStream(this);
-
-    public PipeWriter Writer => _writer ??= PipeWriter.Create(Stream, new StreamPipeWriterOptions(leaveOpen: true));
-
-    public void DisableBuffering()
-    {
-    }
-
-    public Task StartAsync(CancellationToken cancellationToken = default) => StartStreamAsync().AsTask();
-
-    public async Task SendFileAsync(string path, long offset, long? count, CancellationToken cancellationToken = default)
+    internal override async Task SendFileAsync(string path, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        if (_state == 0 && offset == 0 && count is null)
+        if (_state == 0)
         {
-            await RunOnStartingAsync().ConfigureAwait(false);
             // The library streams the file and answers a byte range of a 200 response.
             _state = 2;
             ThrowOnFailure(TryRespond(BodyFile, System.IO.Path.GetFullPath(path)));
@@ -249,8 +222,7 @@ internal sealed class NativeExchange :
         }
         await using var file = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete,
             bufferSize: 1, useAsync: true);
-        file.Seek(offset, SeekOrigin.Begin);
-        var remaining = count ?? file.Length - offset;
+        var remaining = file.Length;
         var buffer = System.Buffers.ArrayPool<byte>.Shared.Rent(64 * 1024);
         try
         {
@@ -269,18 +241,11 @@ internal sealed class NativeExchange :
         }
     }
 
-    public Task CompleteAsync() => CompleteCoreAsync().AsTask();
-
-    private async ValueTask CompleteCoreAsync()
+    private ValueTask CompleteCoreAsync()
     {
-        if (_writer is not null)
-        {
-            await _writer.FlushAsync().ConfigureAwait(false);
-        }
         switch (_state)
         {
             case 0:
-                await RunOnStartingAsync().ConfigureAwait(false);
                 _state = 2;
                 TryRespond(BodyEmpty, null);
                 break;
@@ -295,24 +260,14 @@ internal sealed class NativeExchange :
                 }
                 break;
         }
+        return ValueTask.CompletedTask;
     }
 
-    private async ValueTask StartStreamAsync()
+    private void StartStream()
     {
         if (_state != 0) return;
-        await RunOnStartingAsync().ConfigureAwait(false);
         _state = 1;
         ThrowOnFailure(TryRespond(BodyStream, null));
-    }
-
-    private async ValueTask RunOnStartingAsync()
-    {
-        if (_onStarting is not { } starting) return;
-        _onStarting = null;
-        for (var index = starting.Count - 1; index >= 0; index--)
-        {
-            await starting[index].Callback(starting[index].State).ConfigureAwait(false);
-        }
     }
 
     private int TryRespond(uint body, string? filePath)
@@ -339,7 +294,7 @@ internal sealed class NativeExchange :
     internal async ValueTask WriteAsync(ReadOnlyMemory<byte> data, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        if (_state == 0) await StartStreamAsync().ConfigureAwait(false);
+        if (_state == 0) StartStream();
         if (_state != 1) throw new InvalidOperationException("The response body is complete.");
         if (data.IsEmpty) return;
         _write.Reset();
@@ -380,17 +335,12 @@ internal sealed class NativeExchange :
     void IValueTaskSource<bool>.OnCompleted(Action<object?> continuation, object? state, short token, ValueTaskSourceOnCompletedFlags flags) =>
         _write.OnCompleted(continuation, state, token, flags);
 
-    // IHttpWebSocketFeature
-
-    public bool IsWebSocketRequest => _isWebSocketRequest;
-
-    public Task<WebSocket> AcceptAsync(WebSocketAcceptContext context)
+    internal override Task<WebSocket> AcceptWebSocketAsync(string? protocol)
     {
         if (!_isWebSocketRequest || _state != 0)
         {
             throw new InvalidOperationException("Not a WebSocket request, or the response has started.");
         }
-        var protocol = context.SubProtocol;
         var socket = new NativeWebSocket(_server, Id, protocol);
         _server.Register(socket);
         int result;
@@ -424,8 +374,11 @@ internal sealed class NativeExchange :
         {
         }
 
-        public override Task FlushAsync(CancellationToken cancellationToken) =>
-            exchange._state == 0 ? exchange.StartStreamAsync().AsTask() : Task.CompletedTask;
+        public override Task FlushAsync(CancellationToken cancellationToken)
+        {
+            exchange.StartStream();
+            return Task.CompletedTask;
+        }
 
         public override int Read(byte[] buffer, int offset, int count) => throw new NotSupportedException();
         public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();

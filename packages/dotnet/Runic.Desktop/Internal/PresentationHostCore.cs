@@ -1,8 +1,6 @@
 using System.Collections.Concurrent;
 using System.Net;
-using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Hosting;
 
 namespace Runic.Desktop.Internal;
 
@@ -45,7 +43,7 @@ internal sealed class PresentationHostCore : IAsyncDisposable
 
     internal async ValueTask<PresentationSurfaceRegistration> AttachSurfaceAsync(
         string pathBase,
-        Func<HttpContext, Task> handler,
+        Func<PresentationExchange, Task> handler,
         Func<ValueTask> hostClosing,
         CancellationToken cancellationToken)
     {
@@ -158,41 +156,41 @@ internal sealed class PresentationHostCore : IAsyncDisposable
         _server = server;
     }
 
-    private async Task DispatchAsync(HttpContext context)
+    private async Task DispatchAsync(PresentationExchange exchange)
     {
-        if (!AcceptsHost(context.Request.Host))
+        if (!AcceptsHost(exchange.GetHost()))
         {
-            context.Response.StatusCode = StatusCodes.Status421MisdirectedRequest;
+            exchange.StatusCode = PresentationStatus.MisdirectedRequest;
             return;
         }
 
-        var registration = FindSurface(context.Request.Path, out var remainingPath);
+        var registration = FindSurface(exchange.Path, out var remainingPath);
         if (registration is null)
         {
-            context.Response.StatusCode = StatusCodes.Status404NotFound;
+            exchange.StatusCode = PresentationStatus.NotFound;
             return;
         }
 
         if (registration.PathBase.Length != 0)
         {
-            context.Request.PathBase = context.Request.PathBase.Add(registration.PathBase);
-            context.Request.Path = remainingPath.HasValue ? remainingPath : new PathString("/");
+            exchange.PathBase += registration.PathBase;
+            exchange.Path = remainingPath.Length != 0 ? remainingPath : "/";
         }
 
         using var requestCancellation = new PresentationRequestCancellation(
-            context.RequestAborted,
+            exchange.RequestAborted,
             registration.ClosingToken,
             _shutdown.Token);
-        context.Items[typeof(PresentationRequestCancellation)] = requestCancellation;
-        context.RequestAborted = requestCancellation.Token;
-        await registration.HandleAsync(context).ConfigureAwait(false);
+        exchange.Cancellation = requestCancellation;
+        exchange.RequestAborted = requestCancellation.Token;
+        await registration.HandleAsync(exchange).ConfigureAwait(false);
     }
 
     // A DNS-rebinding page reaches the loopback listener under its own host name
     // and would otherwise read credential-bearing bootstrap scripts same-origin.
     // A non-loopback listener is reachable by any network peer and is protected
     // only by its explicit origin and credential policy.
-    private bool AcceptsHost(HostString host)
+    private bool AcceptsHost((string Host, int? Port) host)
     {
         if (IsPublic)
         {
@@ -209,7 +207,7 @@ internal sealed class PresentationHostCore : IAsyncDisposable
             (IPAddress.TryParse(name, out var address) && IPAddress.IsLoopback(address));
     }
 
-    private PresentationSurfaceRegistration? FindSurface(PathString requestPath, out PathString remainingPath)
+    private PresentationSurfaceRegistration? FindSurface(string requestPath, out string remainingPath)
     {
         if (_surfaces.TryGetValue(string.Empty, out var root))
         {
@@ -219,13 +217,13 @@ internal sealed class PresentationHostCore : IAsyncDisposable
 
         foreach (var registration in _surfaces.Values)
         {
-            if (requestPath.StartsWithSegments(registration.PathBase, out remainingPath))
+            if (PresentationExchange.StartsWithSegments(requestPath, registration.PathBase, out remainingPath))
             {
                 return registration;
             }
         }
 
-        remainingPath = default;
+        remainingPath = string.Empty;
         return null;
     }
 
@@ -256,7 +254,7 @@ internal sealed class PresentationHostCore : IAsyncDisposable
 internal sealed class PresentationSurfaceRegistration : IAsyncDisposable
 {
     private readonly PresentationHostCore _host;
-    private readonly Func<HttpContext, Task> _handler;
+    private readonly Func<PresentationExchange, Task> _handler;
     private readonly Func<ValueTask> _hostClosing;
     private readonly IServiceScope _scope;
     private readonly CancellationTokenSource _closing = new();
@@ -270,7 +268,7 @@ internal sealed class PresentationSurfaceRegistration : IAsyncDisposable
         PresentationHostCore host,
         string pathBase,
         Uri url,
-        Func<HttpContext, Task> handler,
+        Func<PresentationExchange, Task> handler,
         Func<ValueTask> hostClosing,
         IServiceScope scope)
     {
@@ -289,14 +287,14 @@ internal sealed class PresentationSurfaceRegistration : IAsyncDisposable
 
     internal CancellationToken ClosingToken => _closingToken;
 
-    internal async Task HandleAsync(HttpContext context)
+    internal async Task HandleAsync(PresentationExchange exchange)
     {
         TaskCompletionSource drained;
         lock (_requestGate)
         {
             if (Volatile.Read(ref _disposed) != 0)
             {
-                context.Response.StatusCode = StatusCodes.Status404NotFound;
+                exchange.StatusCode = PresentationStatus.NotFound;
                 return;
             }
 
@@ -310,8 +308,8 @@ internal sealed class PresentationSurfaceRegistration : IAsyncDisposable
         try
         {
             using var requestScope = _scope.ServiceProvider.CreateScope();
-            context.RequestServices = requestScope.ServiceProvider;
-            await _handler(context).ConfigureAwait(false);
+            exchange.RequestServices = requestScope.ServiceProvider;
+            await _handler(exchange).ConfigureAwait(false);
         }
         finally
         {
@@ -361,12 +359,4 @@ internal sealed class PresentationSurfaceRegistration : IAsyncDisposable
         source.SetResult();
         return source;
     }
-}
-
-// The application, not its embedded presentation server, owns process signals.
-internal sealed class ProcessOwnedLifetime : IHostLifetime
-{
-    public Task WaitForStartAsync(CancellationToken cancellationToken) => Task.CompletedTask;
-
-    public Task StopAsync(CancellationToken cancellationToken) => Task.CompletedTask;
 }

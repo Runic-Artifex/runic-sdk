@@ -3,7 +3,6 @@ using System.Diagnostics;
 using System.Net;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
-using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
 using static Runic.Desktop.Internal.NativeServer.NativeServerInterop;
 
@@ -11,8 +10,8 @@ namespace Runic.Desktop.Internal.NativeServer;
 
 // The experimental native listener (X1): native/runic-server does HTTP/1.1, WebSocket framing, the loopback Host check
 // and file streaming; every request still runs the host core's dispatch and the surfaces' own handlers, so admission,
-// content, bootstrap scripts and the Views protocol are the same code as under Kestrel. Requests reach .NET as an
-// HttpContext over the features of NativeExchange; accepted WebSockets are NativeWebSocket.
+// content, bootstrap scripts and the Views protocol are the same code as under Kestrel. Requests reach .NET as a
+// PresentationExchange (NativeExchange); accepted WebSockets are NativeWebSocket.
 //
 // Threading: the library calls back on its own threads (one by default). The callbacks copy what they need, queue the
 // work to the thread pool and return; they never run application code and never call back into the library, whose
@@ -28,7 +27,7 @@ internal sealed class NativePresentationServer(Action<IServiceCollection>? confi
     private ServiceProvider? _services;
     private NativeServerHandle? _handle;
     private GCHandle _self;
-    private RequestDelegate? _dispatch;
+    private Func<PresentationExchange, Task>? _dispatch;
     private int _disposed;
 
     public IServiceProvider Services =>
@@ -37,7 +36,7 @@ internal sealed class NativePresentationServer(Action<IServiceCollection>? confi
     internal NativeServerHandle Handle =>
         _handle ?? throw new InvalidOperationException("The presentation server has not started.");
 
-    public unsafe Task<int> StartAsync(IPAddress address, int port, RequestDelegate dispatch, CancellationToken cancellationToken)
+    public unsafe Task<int> StartAsync(IPAddress address, int port, Func<PresentationExchange, Task> dispatch, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
         if (!address.Equals(IPAddress.Loopback) && !address.Equals(IPAddress.Any))
@@ -106,7 +105,7 @@ internal sealed class NativePresentationServer(Action<IServiceCollection>? confi
         }
     }
 
-    internal RequestDelegate Dispatch =>
+    internal Func<PresentationExchange, Task> Dispatch =>
         _dispatch ?? throw new InvalidOperationException("The presentation server has not started.");
 
     internal void Forget(NativeExchange exchange) => _exchanges.TryRemove(exchange.Id, out _);
@@ -254,7 +253,7 @@ internal sealed class NativePresentationServer(Action<IServiceCollection>? confi
     {
         try
         {
-            Respond(id, StatusCodes.Status400BadRequest, [], BodyEmpty, null);
+            Respond(id, PresentationStatus.BadRequest, [], BodyEmpty, null);
         }
         catch (Exception exception) when (exception is ObjectDisposedException or IOException)
         {
@@ -273,7 +272,7 @@ internal sealed class NativePresentationServer(Action<IServiceCollection>? confi
     }
 
     // Sends the status and headers of request id. Header names and values are written as UTF-8.
-    internal unsafe int Respond(ulong id, int status, IEnumerable<KeyValuePair<string, Microsoft.Extensions.Primitives.StringValues>> headers,
+    internal unsafe int Respond(ulong id, int status, IEnumerable<KeyValuePair<string, string>> headers,
         uint body, string? filePath)
     {
         using var encoded = new EncodedHeaders(headers, filePath);
@@ -287,7 +286,7 @@ internal sealed class NativePresentationServer(Action<IServiceCollection>? confi
     }
 
     internal unsafe int AcceptWebSocket(ulong id, string? protocol,
-        IEnumerable<KeyValuePair<string, Microsoft.Extensions.Primitives.StringValues>> headers)
+        IEnumerable<KeyValuePair<string, string>> headers)
     {
         using var encoded = new EncodedHeaders(headers, protocol);
         fixed (byte* bytes = encoded.Bytes)
@@ -308,19 +307,15 @@ internal readonly struct EncodedHeaders : IDisposable
     private readonly int _extra;
     private readonly int _extraLength;
 
-    internal EncodedHeaders(IEnumerable<KeyValuePair<string, Microsoft.Extensions.Primitives.StringValues>> headers, string? extra)
+    internal EncodedHeaders(IEnumerable<KeyValuePair<string, string>> headers, string? extra)
     {
         var utf8 = System.Text.Encoding.UTF8;
         var pairs = new List<(string Name, string Value)>();
         var size = extra is null ? 0 : utf8.GetByteCount(extra);
-        foreach (var header in headers)
+        foreach (var (name, value) in headers)
         {
-            foreach (var value in header.Value)
-            {
-                if (value is null) continue;
-                pairs.Add((header.Key, value));
-                size += utf8.GetByteCount(header.Key) + utf8.GetByteCount(value);
-            }
+            pairs.Add((name, value));
+            size += utf8.GetByteCount(name) + utf8.GetByteCount(value);
         }
         _bytes = System.Buffers.ArrayPool<byte>.Shared.Rent(Math.Max(size, 1));
         _headers = System.Buffers.ArrayPool<NativeServerInterop.RunicHeader>.Shared.Rent(Math.Max(pairs.Count, 1));

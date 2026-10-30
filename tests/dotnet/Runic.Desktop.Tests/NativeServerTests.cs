@@ -44,6 +44,6 @@ public sealed class NativeServerTests
         var expected = AppContext.TryGetSwitch("Runic.Desktop.NativeServer", out var enabled) && enabled;
         Assert.Equal(expected, PresentationServers.UseNativeServer);
         await using var server = PresentationServers.Create(configureServices: null);
-        Assert.IsType(expected ? typeof(NativePresentationServer) : typeof(KestrelPresentationServer), server);
+        Assert.IsType(expected ? typeof(NativePresentationServer) : typeof(Runic.Desktop.Internal.Kestrel.KestrelPresentationServer), server);
     }
 }

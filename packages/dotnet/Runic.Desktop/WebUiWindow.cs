@@ -8,8 +8,6 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Encodings.Web;
 using Runic.Desktop.Internal;
-using Microsoft.AspNetCore.Http;
-using Microsoft.AspNetCore.StaticFiles;
 using Microsoft.Extensions.Logging;
 
 namespace Runic.Desktop;
@@ -28,6 +26,7 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
     internal const string ReleasedCapabilityReply =
         "{\"ok\":false,\"state\":null,\"error\":{\"kind\":\"released\",\"message\":\"This View was released.\"}}";
     private const string WebSocketPath = "/_webui_ws_connect";
+    private const string ContentSecurityPolicyHeader = "Content-Security-Policy";
     private const string AuthCookieName = "webui_auth";
     private const string DocumentBootstrapProperty = "globalThis[Symbol.for(\"runic-desktop.bootstrap\")]";
     private const string NoCache = "no-cache, no-store, must-revalidate, private, max-age=0";
@@ -35,7 +34,6 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
     private const string LaunchRefused = "<html><head><title>Access Denied</title></head><body><h2>&#9888; Access Denied</h2><p>This window's launch link is not valid or was already used by another client. Close this window and open it again from the application.</p></body></html>";
     private const string ResourceUnavailable = "<html><head><title>Resource Not Available</title><script src=\"/webui.js\"></script></head><body><h2>&#9888; Resource Not Available</h2><p>The requested resource is not available.</p></body></html>";
     private const string DefaultIcon = "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"500\" viewBox=\"0 0 375 375\" height=\"500\"><path fill=\"#2a6699\" d=\"M22 22h330v330H22z\"/></svg>";
-    private static readonly FileExtensionContentTypeProvider ContentTypes = new();
     private static readonly AsyncLocal<WebUiWindow?> CallbackWindow = new();
 
     private readonly ConcurrentDictionary<string, BindingRegistration> _bindings = new(StringComparer.Ordinal);
@@ -99,9 +97,9 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
     private string? _entryFile;
     private Uri? _externalUrl;
     private WebUiFileHandler? _fileHandler;
-    private Func<HttpContext, string, CancellationToken, ValueTask<WebUiContent?>>? _requestHandler;
+    private Func<PresentationExchange, string, CancellationToken, ValueTask<WebUiContent?>>? _requestHandler;
     // DesktopSurfaceOptions.Resources: asked for what the content does not serve, before 404 (#313).
-    private Func<HttpContext, string, CancellationToken, ValueTask<WebUiContent?>>? _resourceHandler;
+    private Func<PresentationExchange, string, CancellationToken, ValueTask<WebUiContent?>>? _resourceHandler;
     private bool _allowIndexFallback;
     private bool _isPublic;
     private bool _profileConfigured;
@@ -901,11 +899,11 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
     }
 
     internal void SetRequestHandler(
-        Func<HttpContext, string, CancellationToken, ValueTask<WebUiContent?>>? handler) =>
+        Func<PresentationExchange, string, CancellationToken, ValueTask<WebUiContent?>>? handler) =>
         Volatile.Write(ref _requestHandler, handler);
 
     internal void SetResourceHandler(
-        Func<HttpContext, string, CancellationToken, ValueTask<WebUiContent?>>? handler) =>
+        Func<PresentationExchange, string, CancellationToken, ValueTask<WebUiContent?>>? handler) =>
         Volatile.Write(ref _resourceHandler, handler);
 
     /// <summary>Sets the browser profile name and storage path used for this window.</summary>
@@ -2686,48 +2684,48 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
         return $"{presentation} did not connect within {timeout.TotalSeconds:0.###} seconds{since}{attemptText}: {progress}{process}. {HandshakeLog.Describe()}";
     }
 
-    private Task HandleRequestAsync(HttpContext context) => PrepareResponseAsync(context, DispatchRequestAsync);
+    private Task HandleRequestAsync(PresentationExchange context) => PrepareResponseAsync(context, DispatchRequestAsync);
 
-    private Task DispatchRequestAsync(HttpContext context)
+    private Task DispatchRequestAsync(PresentationExchange context)
     {
-        var path = context.Request.Path;
-        if (path == BridgePath && (HttpMethods.IsGet(context.Request.Method) || HttpMethods.IsHead(context.Request.Method)))
+        var path = context.Path;
+        if (IsPath(path, BridgePath) && (context.IsGet || context.IsHead))
         {
             HandshakeLog.Record($"{BridgePath} requested");
             ReportConnectionProgress(ConnectionProgress.BridgeRequested);
             return ServeBridgeAsync(context);
         }
-        if (path == DesktopBootstrapPath && (HttpMethods.IsGet(context.Request.Method) || HttpMethods.IsHead(context.Request.Method)))
+        if (IsPath(path, DesktopBootstrapPath) && (context.IsGet || context.IsHead))
         {
             HandshakeLog.Record($"{DesktopBootstrapPath} requested");
             ReportConnectionProgress(ConnectionProgress.BridgeRequested);
             return ServeDesktopBootstrapAsync(context);
         }
-        if (path == WebSocketPath && HttpMethods.IsGet(context.Request.Method))
+        if (IsPath(path, WebSocketPath) && context.IsGet)
         {
             return AcceptWebSocketAsync(context);
         }
-        if (HttpMethods.IsGet(context.Request.Method) || HttpMethods.IsHead(context.Request.Method))
+        if (context.IsGet || context.IsHead)
         {
-            if (context.Request.Path == "/" || Volatile.Read(ref _connectionProgress) < (int)ConnectionProgress.DocumentRequested)
+            if (path == "/" || Volatile.Read(ref _connectionProgress) < (int)ConnectionProgress.DocumentRequested)
             {
-                HandshakeLog.Record($"{context.Request.Method} {context.Request.Path} requested");
+                HandshakeLog.Record($"{context.Method} {context.Path} requested");
             }
             ReportConnectionProgress(ConnectionProgress.DocumentRequested);
             return ServeContentAsync(context);
         }
 
-        context.Response.StatusCode = StatusCodes.Status405MethodNotAllowed;
+        context.StatusCode = PresentationStatus.MethodNotAllowed;
         return Task.CompletedTask;
     }
 
-    private async Task ServeContentAsync(HttpContext context)
+    private async Task ServeContentAsync(PresentationExchange context)
     {
         using var requestCancellation = CancellationTokenSource.CreateLinkedTokenSource(
             context.RequestAborted,
             _shutdown.Token);
         var cancellationToken = requestCancellation.Token;
-        var path = GetDecodedPath(context.Request.Path);
+        var path = GetDecodedPath(context.Path);
         var requestHandler = Volatile.Read(ref _requestHandler);
         if (requestHandler is not null)
         {
@@ -2760,7 +2758,7 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
         {
             if (_embeddedHtml is not null)
             {
-                AddContentSecurityPolicy(context.Response.Headers, ContentSecurityPolicy);
+                AddContentSecurityPolicy(context, ContentSecurityPolicy);
                 await SendTextAsync(context, _embeddedHtml, "text/html; charset=utf-8").ConfigureAwait(false);
                 return;
             }
@@ -2825,16 +2823,15 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
     // grant to run. Fetch metadata identifies a cross-site embedding. Clients that
     // send none are not browser subresource loads and still need the WebSocket
     // origin and credential checks to open a session.
-    private bool AdmitsBootstrapRequest(HttpContext context)
+    private bool AdmitsBootstrapRequest(PresentationExchange context)
     {
-        var headers = context.Request.Headers;
-        var destination = headers["Sec-Fetch-Dest"].ToString();
-        var site = headers["Sec-Fetch-Site"].ToString();
+        var destination = context.GetRequestHeader("Sec-Fetch-Dest");
+        var site = context.GetRequestHeader("Sec-Fetch-Site");
         var admitted = destination.Length == 0 || destination.Equals("script", StringComparison.OrdinalIgnoreCase);
         admitted &= site.Length == 0 ||
             site.Equals("same-origin", StringComparison.OrdinalIgnoreCase) ||
             site.Equals("none", StringComparison.OrdinalIgnoreCase) ||
-            _securityPolicy?.AllowsAdditionalOrigin(headers.Referer.ToString()) == true;
+            _securityPolicy?.AllowsAdditionalOrigin(context.GetRequestHeader("Referer")) == true;
         if (!admitted)
         {
             _runtimeOptions?.DiagnosticSink?.Invoke(new DesktopDiagnostic(
@@ -2842,7 +2839,7 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
                 "bootstrap-origin-not-allowed",
                 "The bootstrap script was requested by a document whose origin is not allowed.",
                 Retryable: false));
-            context.Response.StatusCode = StatusCodes.Status403Forbidden;
+            context.StatusCode = PresentationStatus.Forbidden;
             return false;
         }
         // In an installed browser the bootstrap carries the session credential: only the launched browser gets it.
@@ -2858,7 +2855,7 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
     // presentations and served from its UTF-8 bytes. The response keeps PrepareResponseAsync's no-store: in an installed
     // browser the script carries the token and the session credential, which must not outlive the session in a disk
     // cache, and in an embedded window it names the port of this run, which a WebView profile would keep.
-    private Task ServeBridgeAsync(HttpContext context)
+    private Task ServeBridgeAsync(PresentationExchange context)
     {
         if (!AdmitsBootstrapRequest(context))
         {
@@ -2879,7 +2876,7 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
             .Replace("__CUSTOM_WINDOW_DRAG__", inputs.CustomWindowDrag ? "true" : "false", StringComparison.Ordinal);
     }
 
-    private Task ServeDesktopBootstrapAsync(HttpContext context)
+    private Task ServeDesktopBootstrapAsync(PresentationExchange context)
     {
         if (!AdmitsBootstrapRequest(context))
         {
@@ -2914,13 +2911,13 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
             """;
     }
 
-    private static Task SendScriptAsync(HttpContext context, byte[] script)
+    private static Task SendScriptAsync(PresentationExchange context, byte[] script)
     {
-        context.Response.ContentType = "text/javascript; charset=utf-8";
-        context.Response.ContentLength = script.Length;
-        return HttpMethods.IsHead(context.Request.Method)
+        context.ContentType = "text/javascript; charset=utf-8";
+        context.ContentLength = script.Length;
+        return context.IsHead
             ? Task.CompletedTask
-            : context.Response.Body.WriteAsync(script, context.RequestAborted).AsTask();
+            : context.ResponseBody.WriteAsync(script, context.RequestAborted).AsTask();
     }
 
     // The inputs of a bootstrap script that can change between presentations of one window: the server's port and path,
@@ -3002,13 +2999,13 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
             """;
     }
 
-    private async Task AcceptWebSocketAsync(HttpContext context)
+    private async Task AcceptWebSocketAsync(PresentationExchange context)
     {
-        if (!context.WebSockets.IsWebSocketRequest)
+        if (!context.IsWebSocketRequest)
         {
             ReportConnectionProgress(ConnectionProgress.WebSocketRejected);
             HandshakeLog.RecordRejection("not a WebSocket upgrade");
-            context.Response.StatusCode = StatusCodes.Status426UpgradeRequired;
+            context.StatusCode = PresentationStatus.UpgradeRequired;
             return;
         }
 
@@ -3016,7 +3013,7 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
         if (acceptedSubprotocol is null)
         {
             ReportConnectionProgress(ConnectionProgress.WebSocketRejected);
-            HandshakeLog.RecordRejection(context.Response.StatusCode == StatusCodes.Status401Unauthorized
+            HandshakeLog.RecordRejection(context.StatusCode == PresentationStatus.Unauthorized
                 ? "the session credential was missing"
                 : "the origin is not allowed");
             return;
@@ -3044,14 +3041,14 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
         {
             ReportConnectionProgress(ConnectionProgress.WebSocketRejected);
             HandshakeLog.RecordRejection("another WebSocket holds the only connection");
-            context.Response.StatusCode = StatusCodes.Status403Forbidden;
+            context.StatusCode = PresentationStatus.Forbidden;
             return;
         }
 
         try
         {
             var clientId = GetOrCreateClient(context);
-            using var socket = await context.WebSockets.AcceptWebSocketAsync(
+            using var socket = await context.AcceptWebSocketAsync(
                 acceptedSubprotocol.Length == 0 ? null : acceptedSubprotocol).ConfigureAwait(false);
             ReportConnectionProgress(ConnectionProgress.WebSocketOpened);
             var connectionId = checked((nuint)Interlocked.Increment(ref _nextConnectionId));
@@ -3061,7 +3058,7 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
                 socket,
                 clientId == 0 ? connectionId : clientId,
                 connectionId,
-                context.Request.Headers.Cookie.ToString(),
+                context.GetRequestHeader("Cookie"),
                 WebUiApplication.BridgeHandshakeTimeout);
             if (!_sessions.TryAdd(session.Id, session))
             {
@@ -3135,34 +3132,34 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
         return holding <= 0;
     }
 
-    private async Task PrepareResponseAsync(HttpContext context, RequestDelegate next)
+    private async Task PrepareResponseAsync(PresentationExchange context, Func<PresentationExchange, Task> next)
     {
-        context.Response.Headers.CacheControl = NoCache;
-        context.Response.Headers.XContentTypeOptions = "nosniff";
+        context.SetResponseHeader("Cache-Control", NoCache);
+        context.SetResponseHeader("X-Content-Type-Options", "nosniff");
         // SEC-05: only the surface's own documents and its additional origins may frame its pages. Browsers that apply
         // frame-ancestors ignore X-Frame-Options; it covers those that do not.
-        context.Response.Headers.ContentSecurityPolicy = FrameAncestorsPolicy;
-        context.Response.Headers.XFrameOptions = "SAMEORIGIN";
+        context.SetResponseHeader(ContentSecurityPolicyHeader, FrameAncestorsPolicy);
+        context.SetResponseHeader("X-Frame-Options", "SAMEORIGIN");
         if ((_allowedPermissions & DesktopPermissionGrant.MediaCapture) == 0)
         {
-            context.Response.Headers["Permissions-Policy"] = "camera=(), microphone=()";
+            context.SetResponseHeader("Permissions-Policy", "camera=(), microphone=()");
         }
-        if (!context.WebSockets.IsWebSocketRequest)
+        if (!context.IsWebSocketRequest)
         {
             var clientId = GetOrCreateClient(context);
-            context.Items[typeof(BrowserLaunchBinding)] = clientId;
+            context.ClientId = clientId;
             // Before the single-client check: the launched browser must reach its conflict check even when another
             // client already holds the connection.
-            if (context.Request.Path.StartsWithSegments(BrowserLaunchBinding.PathSegment, out var code))
+            if (PresentationExchange.StartsWithSegments(context.Path, BrowserLaunchBinding.PathSegment, out var code))
             {
-                await ServeBrowserLaunchAsync(context, clientId, code.Value?.TrimStart('/') ?? string.Empty).ConfigureAwait(false);
+                await ServeBrowserLaunchAsync(context, clientId, code.TrimStart('/')).ConfigureAwait(false);
                 return;
             }
             if (UseClientCookies &&
                 !AllowMultipleClients &&
                 _sessions.Values.Any(session => session.ClientId != clientId))
             {
-                context.Response.StatusCode = StatusCodes.Status403Forbidden;
+                context.StatusCode = PresentationStatus.Forbidden;
                 await SendTextAsync(context, AccessDenied, "text/html; charset=utf-8").ConfigureAwait(false);
                 return;
             }
@@ -3173,18 +3170,18 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
 
     // The installed browser was launched with a one-time code: bind its client, or detect that another client
     // used the code first (SEC-01).
-    private async Task ServeBrowserLaunchAsync(HttpContext context, nuint clientId, string code)
+    private async Task ServeBrowserLaunchAsync(PresentationExchange context, nuint clientId, string code)
     {
         HandshakeLog.Record($"{BrowserLaunchBinding.PathSegment} requested");
-        if (!HttpMethods.IsGet(context.Request.Method))
+        if (!context.IsGet)
         {
-            context.Response.StatusCode = StatusCodes.Status405MethodNotAllowed;
+            context.StatusCode = PresentationStatus.MethodNotAllowed;
             return;
         }
         if (OperatingSystem.IsLinux() &&
-            context.Connection.RemoteIpAddress is { } remoteAddress &&
-            context.Connection.LocalIpAddress is { } localAddress &&
-            LoopbackPeerOwner.Find(remoteAddress, context.Connection.RemotePort, localAddress, context.Connection.LocalPort) is { } owner &&
+            context.RemoteIpAddress is { } remoteAddress &&
+            context.LocalIpAddress is { } localAddress &&
+            LoopbackPeerOwner.Find(remoteAddress, context.RemotePort, localAddress, context.LocalPort) is { } owner &&
             owner != LoopbackPeerOwner.CurrentUser)
         {
             HandshakeLog.RecordRejection("another user opened the launch code");
@@ -3193,7 +3190,7 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
                 "browser-launch-foreign-user",
                 "Another user's process opened the browser launch address and was refused.",
                 Retryable: false));
-            context.Response.StatusCode = StatusCodes.Status403Forbidden;
+            context.StatusCode = PresentationStatus.Forbidden;
             await SendTextAsync(context, LaunchRefused, "text/html; charset=utf-8").ConfigureAwait(false);
             return;
         }
@@ -3202,8 +3199,8 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
         {
             case BrowserLaunchBinding.Outcome.Bound or BrowserLaunchBinding.Outcome.AlreadyBound:
                 ReportConnectionProgress(ConnectionProgress.DocumentRequested);
-                context.Response.StatusCode = StatusCodes.Status303SeeOther;
-                context.Response.Headers.Location = target!.AbsoluteUri;
+                context.StatusCode = PresentationStatus.SeeOther;
+                context.SetResponseHeader("Location", target!.AbsoluteUri);
                 return;
             case BrowserLaunchBinding.Outcome.Conflict:
                 HandshakeLog.RecordRejection("another client used the launch code first");
@@ -3213,7 +3210,7 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
                 HandshakeLog.RecordRejection("the launch code is not valid");
                 break;
         }
-        context.Response.StatusCode = StatusCodes.Status403Forbidden;
+        context.StatusCode = PresentationStatus.Forbidden;
         await SendTextAsync(context, LaunchRefused, "text/html; charset=utf-8").ConfigureAwait(false);
     }
 
@@ -3238,14 +3235,14 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
         }
     }
 
-    private void RejectUnboundClient(HttpContext context, string request)
+    private void RejectUnboundClient(PresentationExchange context, string request)
     {
         _runtimeOptions?.DiagnosticSink?.Invoke(new DesktopDiagnostic(
             DesktopErrorCategory.AuthenticationDenied,
             "client-not-bound",
             $"A {request} request came from a client other than the browser this window launched.",
             Retryable: false));
-        context.Response.StatusCode = StatusCodes.Status403Forbidden;
+        context.StatusCode = PresentationStatus.Forbidden;
     }
 
     // Launch binding needs the client cookie, a credential to protect and a single client.
@@ -3257,23 +3254,22 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
     private bool ChecksLaunchBinding => _embeddedHost is null && _launchBinding.IsActive;
 
     // The client of a request that PrepareResponseAsync identified.
-    private static nuint RequestClient(HttpContext context) =>
-        context.Items.TryGetValue(typeof(BrowserLaunchBinding), out var client) && client is nuint id ? id : 0;
+    private static nuint RequestClient(PresentationExchange context) => context.ClientId;
 
     // The client a WebSocket upgrade's cookie names, without creating one.
-    private nuint FindClient(HttpContext context) =>
-        context.Request.Cookies.TryGetValue(AuthCookieName, out var cookie) && _clients.TryGetValue(cookie, out var clientId)
+    private nuint FindClient(PresentationExchange context) =>
+        context.GetRequestCookie(AuthCookieName) is { } cookie && _clients.TryGetValue(cookie, out var clientId)
             ? clientId
             : 0;
 
-    private nuint GetOrCreateClient(HttpContext context)
+    private nuint GetOrCreateClient(PresentationExchange context)
     {
         if (!UseClientCookies)
         {
             return 0;
         }
 
-        if (context.Request.Cookies.TryGetValue(AuthCookieName, out var existing) &&
+        if (context.GetRequestCookie(AuthCookieName) is { } existing &&
             _clients.TryGetValue(existing, out var clientId))
         {
             return clientId;
@@ -3282,30 +3278,25 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
         var cookie = Convert.ToHexString(RandomNumberGenerator.GetBytes(16)).ToLowerInvariant();
         clientId = checked((nuint)Interlocked.Increment(ref _nextClientId));
         _clients[cookie] = clientId;
-        context.Response.Cookies.Append(AuthCookieName, cookie, new CookieOptions
-        {
-            HttpOnly = true,
-            SameSite = SameSiteMode.Strict,
-            Path = $"{_surface?.PathBase}/",
-        });
+        context.AppendResponseHeader("Set-Cookie", PresentationCookies.StrictHttpOnly(AuthCookieName, cookie, $"{_surface?.PathBase}/"));
         return clientId;
     }
 
-    private string? ValidateWebSocketAdmission(HttpContext context)
+    private string? ValidateWebSocketAdmission(PresentationExchange context)
     {
         if (_securityPolicy is null)
         {
             return string.Empty;
         }
 
-        if (!_securityPolicy.AllowsOrigin(Url!, context.Request.Headers.Origin.ToString()))
+        if (!_securityPolicy.AllowsOrigin(Url!, context.GetRequestHeader("Origin")))
         {
             _runtimeOptions?.DiagnosticSink?.Invoke(new DesktopDiagnostic(
                 DesktopErrorCategory.OriginDenied,
                 "origin-not-allowed",
                 "The browser origin is not allowed.",
                 Retryable: false));
-            context.Response.StatusCode = StatusCodes.Status403Forbidden;
+            context.StatusCode = PresentationStatus.Forbidden;
             return null;
         }
 
@@ -3315,7 +3306,7 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
         }
 
         var expected = $"runic-desktop.{_sessionCredential}";
-        var offered = context.WebSockets.WebSocketRequestedProtocols;
+        var offered = context.WebSocketRequestedProtocols;
         if (!OffersCredential(offered, expected))
         {
             _runtimeOptions?.DiagnosticSink?.Invoke(new DesktopDiagnostic(
@@ -3323,7 +3314,7 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
                 "credential-required",
                 "A valid session credential is required.",
                 Retryable: false));
-            context.Response.StatusCode = StatusCodes.Status401Unauthorized;
+            context.StatusCode = PresentationStatus.Unauthorized;
             return null;
         }
 
@@ -3611,9 +3602,11 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
         return candidate;
     }
 
-    private static string GetDecodedPath(PathString path)
+    private static bool IsPath(string path, string expected) => string.Equals(path, expected, StringComparison.OrdinalIgnoreCase);
+
+    private static string GetDecodedPath(string path)
     {
-        var value = path.Value ?? "/";
+        var value = path.Length == 0 ? "/" : path;
         try
         {
             return Uri.UnescapeDataString(value);
@@ -3673,61 +3666,61 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
 
     // The redirect keeps the request's query, such as a route a served page reads from location.search (#313). The
     // fragment never reaches the server; a browser keeps it across a redirect whose location has none.
-    private void Redirect(HttpContext context, string location)
+    private void Redirect(PresentationExchange context, string location)
     {
-        context.Response.StatusCode = StatusCodes.Status302Found;
+        context.StatusCode = PresentationStatus.Found;
         var pathBase = _surface?.PathBase;
         var target = pathBase is { Length: > 0 } && location.StartsWith('/')
             ? pathBase + location
             : location;
-        context.Response.Headers.Location = target + context.Request.QueryString.ToUriComponent();
+        context.SetResponseHeader("Location", target + context.QueryString);
     }
 
     private static async Task SendVirtualContentAsync(
-        HttpContext context,
+        PresentationExchange context,
         string path,
         WebUiContent content,
         string? contentSecurityPolicy,
         CancellationToken cancellationToken)
     {
-        context.Response.StatusCode = content.StatusCode;
-        context.Response.ContentType = content.ContentType ?? GetContentType(path);
+        context.StatusCode = content.StatusCode;
+        context.ContentType = content.ContentType ?? GetContentType(path);
         if (content.Headers is not null)
         {
             foreach (var header in content.Headers)
             {
                 // A handler's policy is sent beside the surface's framing policy instead of replacing it.
-                if (string.Equals(header.Key, Microsoft.Net.Http.Headers.HeaderNames.ContentSecurityPolicy, StringComparison.OrdinalIgnoreCase))
+                if (string.Equals(header.Key, ContentSecurityPolicyHeader, StringComparison.OrdinalIgnoreCase))
                 {
-                    AddContentSecurityPolicy(context.Response.Headers, header.Value);
+                    AddContentSecurityPolicy(context, header.Value);
                     continue;
                 }
-                context.Response.Headers[header.Key] = header.Value;
+                context.SetResponseHeader(header.Key, header.Value);
             }
         }
-        if (IsHtml(context.Response.ContentType))
+        if (IsHtml(context.ContentType))
         {
-            AddContentSecurityPolicy(context.Response.Headers, contentSecurityPolicy);
+            AddContentSecurityPolicy(context, contentSecurityPolicy);
         }
-        context.Response.ContentLength = content.ContentLength;
-        if (!HttpMethods.IsHead(context.Request.Method))
+        context.ContentLength = content.ContentLength;
+        if (!context.IsHead)
         {
-            await content.WriteBodyAsync(context.Response.Body, cancellationToken).ConfigureAwait(false);
+            await content.WriteBodyAsync(context.ResponseBody, cancellationToken).ConfigureAwait(false);
         }
     }
 
-    private static async Task SendFileAsync(HttpContext context, string filePath, string requestPath, string? contentSecurityPolicy)
+    private static async Task SendFileAsync(PresentationExchange context, string filePath, string requestPath, string? contentSecurityPolicy)
     {
         var file = new FileInfo(filePath);
-        context.Response.ContentType = GetContentType(requestPath);
-        if (IsHtml(context.Response.ContentType))
+        context.ContentType = GetContentType(requestPath);
+        if (IsHtml(context.ContentType))
         {
-            AddContentSecurityPolicy(context.Response.Headers, contentSecurityPolicy);
+            AddContentSecurityPolicy(context, contentSecurityPolicy);
         }
-        context.Response.ContentLength = file.Length;
-        if (!HttpMethods.IsHead(context.Request.Method))
+        context.ContentLength = file.Length;
+        if (!context.IsHead)
         {
-            await context.Response.SendFileAsync(file.FullName, context.RequestAborted).ConfigureAwait(false);
+            await context.SendFileAsync(file.FullName, context.RequestAborted).ConfigureAwait(false);
         }
     }
 
@@ -3736,21 +3729,20 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
     // drops frame-ancestors. A policy already sent is not repeated.
     private string? ContentSecurityPolicy => _runtimeOptions?.ContentSecurityPolicy;
 
-    internal static void AddContentSecurityPolicy(IHeaderDictionary headers, string? policy)
+    internal static void AddContentSecurityPolicy(PresentationExchange context, string? policy)
     {
         if (string.IsNullOrEmpty(policy))
         {
             return;
         }
-        var current = headers.ContentSecurityPolicy;
-        foreach (var value in current)
+        foreach (var value in context.GetResponseHeader(ContentSecurityPolicyHeader))
         {
             if (string.Equals(value, policy, StringComparison.Ordinal))
             {
                 return;
             }
         }
-        headers.ContentSecurityPolicy = Microsoft.Extensions.Primitives.StringValues.Concat(current, policy);
+        context.AppendResponseHeader(ContentSecurityPolicyHeader, policy);
     }
 
     private static bool IsHtml(string? contentType) =>
@@ -3758,24 +3750,24 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
         contentType.StartsWith("text/html", StringComparison.OrdinalIgnoreCase) &&
         (contentType.Length == "text/html".Length || contentType["text/html".Length] is ';' or ' ');
 
-    private static Task SendTextAsync(HttpContext context, string content, string contentType)
+    private static Task SendTextAsync(PresentationExchange context, string content, string contentType)
     {
         var bytes = Encoding.UTF8.GetBytes(content);
-        context.Response.ContentType = contentType;
-        context.Response.ContentLength = bytes.Length;
-        return HttpMethods.IsHead(context.Request.Method)
+        context.ContentType = contentType;
+        context.ContentLength = bytes.Length;
+        return context.IsHead
             ? Task.CompletedTask
-            : context.Response.Body.WriteAsync(bytes, context.RequestAborted).AsTask();
+            : context.ResponseBody.WriteAsync(bytes, context.RequestAborted).AsTask();
     }
 
-    private static Task SendNotFoundAsync(HttpContext context)
+    private static Task SendNotFoundAsync(PresentationExchange context)
     {
-        context.Response.StatusCode = StatusCodes.Status404NotFound;
+        context.StatusCode = PresentationStatus.NotFound;
         return SendTextAsync(context, ResourceUnavailable, "text/html; charset=utf-8");
     }
 
     private static string GetContentType(string path) =>
-        ContentTypes.TryGetContentType(path, out var contentType)
+        PresentationContentTypes.TryGetContentType(path, out var contentType)
             ? contentType
             : "application/octet-stream";
 
