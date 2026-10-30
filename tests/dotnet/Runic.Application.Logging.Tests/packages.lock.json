@@ -35,9 +35,9 @@
       },
       "Runic.CommandLine": {
         "type": "Direct",
-        "requested": "[0.9.1, )",
-        "resolved": "0.9.1",
-        "contentHash": "r794Nk1n2mYzwEtP7llW45wGqgsdtu4JJq937QR+ZkiiAeFQNLdKepPhDPBURTTRNnSsSg2fzkROC0S8EuXCmg=="
+        "requested": "[0.11.0, )",
+        "resolved": "0.11.0",
+        "contentHash": "CZz1FZh5NC9CwsqyGsBZN5KMlgpynopvU3xMPPqxqUhQ0JalD4H84Ry0qBj560S/KUJco/dGFYFgwU0aIXaCAQ=="
       },
       "Serilog": {
         "type": "Direct",
