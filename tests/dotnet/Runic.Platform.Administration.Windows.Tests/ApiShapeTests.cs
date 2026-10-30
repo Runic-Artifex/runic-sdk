@@ -391,6 +391,48 @@ internal sealed class ApiShapeTests
         Check(typeof(IDisposable).IsAssignableFrom(typeof(WindowsDirectoryClient)), "WindowsDirectoryClient must be disposable.");
     }
 
+    // sdk#739: the executable of a service command line, parsed as the SCM (CreateProcess) does.
+    [Test]
+    public void ServiceExecutablePathFollowsTheServiceControlManager()
+    {
+        foreach (var (commandLine, expected) in new[]
+        {
+            (@"""C:\Program Files\App\svc.exe"" -k ""a b""", @"C:\Program Files\App\svc.exe"),
+            (@"  ""C:\Program Files\App\svc.exe""--flag", @"C:\Program Files\App\svc.exe"),
+            (@"""C:\Unterminated\svc.exe", @"C:\Unterminated\svc.exe"),
+            (@"C:\Windows\system32\svchost.exe -k netsvcs -p", @"C:\Windows\system32\svchost.exe"),
+            (@"C:\Program Files\App\svc.exe -k", @"C:\Program Files\App\svc.exe"),
+            (@"C:\Program Files\App Dir\svc.EXE", @"C:\Program Files\App Dir\svc.EXE"),
+            ("C:\\Tools\\agent\t--run", @"C:\Tools\agent"),
+            (@"%SystemRoot%\System32\svchost.exe -k LocalService", @"%SystemRoot%\System32\svchost.exe"),
+            (@"\??\C:\Windows\system32\drivers\x.sys", @"C:\Windows\system32\drivers\x.sys"),
+            ("", ""), ("   ", "")
+        })
+        {
+            var actual = ServiceCommandLine.ExecutablePath(commandLine, null);
+            Check(actual == expected, $"{commandLine} parsed as {actual}, not {expected}.");
+        }
+        // With a file system, the first existing prefix wins, as when the SCM starts the service.
+        var files = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { @"C:\Program.exe", @"C:\Program Files\App Dir\svc.exe", @"C:\Tools\agent.exe" };
+        Check(ServiceCommandLine.ExecutablePath(@"C:\Program Files\App\svc.exe -k", files.Contains) == @"C:\Program.exe", "An existing shorter prefix must win.");
+        files.Remove(@"C:\Program.exe");
+        Check(ServiceCommandLine.ExecutablePath(@"C:\Program Files\App Dir\svc.exe -k", files.Contains) == @"C:\Program Files\App Dir\svc.exe", "The existing executable must win.");
+        Check(ServiceCommandLine.ExecutablePath(@"C:\Tools\agent --run", files.Contains) == @"C:\Tools\agent.exe", ".exe must be added to a prefix without extension.");
+        Check(ServiceCommandLine.ExecutablePath(@"C:\Missing Dir\svc.exe -k", files.Contains) == @"C:\Missing Dir\svc.exe", "Without an existing prefix, the .exe rule applies.");
+        Check(ServiceCommandLine.ExecutablePath(@"""C:\Program Files\App Dir\svc.exe""", _ => throw new InvalidOperationException("A quoted path was probed.")) == @"C:\Program Files\App Dir\svc.exe",
+            "A quoted path must not be probed.");
+        Check(new ServiceSnapshot("s", "s", "", "", [], ServiceStartMode.Manual, 0x10, 1, "", "", false, new(null, []), new(ServiceState.Stopped, 0, 0, 0, 0, 0, TimeSpan.Zero)).ExecutablePath == "",
+            "ExecutablePath must default to empty.");
+    }
+
+    [Test]
+    public void ServiceStateConflictsAreConflicts()
+    {
+        // ERROR_DEPENDENT_SERVICES_RUNNING, _SERVICE_ALREADY_RUNNING, _SERVICE_CANNOT_ACCEPT_CTRL, _SERVICE_NOT_ACTIVE.
+        foreach (var code in new[] { 1051, 1056, 1061, 1062 })
+            Check(NativeError.Categorize(code) == AdministrationErrorCategory.Conflict, $"{code} must be Conflict.");
+    }
+
     [Test]
     public void AcceptedControlsAreNativeFlags()
     {

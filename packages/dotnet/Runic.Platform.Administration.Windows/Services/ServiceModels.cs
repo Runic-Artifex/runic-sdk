@@ -112,7 +112,17 @@ public sealed record ServiceSummary(string Name, string DisplayName, ServiceStat
 public sealed record ServiceSnapshot(string Name, string DisplayName, string BinaryCommandLine,
     string AccountName, ImmutableArray<string> Dependencies, ServiceStartMode StartMode,
     uint NativeServiceType, uint NativeErrorControl, string LoadOrderGroup, string Description,
-    bool DelayedAutomaticStart, ServiceFailurePolicy FailurePolicy, ServiceStatus Status);
+    bool DelayedAutomaticStart, ServiceFailurePolicy FailurePolicy, ServiceStatus Status)
+{
+    /// <summary>The executable of <see cref="BinaryCommandLine"/>, without quotes and arguments, as the Service Control
+    /// Manager parses it.</summary>
+    /// <remarks>A quoted path is taken as written. For an unquoted path with spaces, such as
+    /// <c>C:\Program Files\App\svc.exe -k</c>, the SCM starts the first prefix that exists as a file, trying
+    /// <c>C:\Program.exe</c> first; on the local computer this property is found the same way. On a remote computer,
+    /// or when no prefix exists, it is the shortest prefix ending in <c>.exe</c>, otherwise the first word. Environment
+    /// references such as <c>%SystemRoot%</c> are kept; empty when the command line is empty.</remarks>
+    public string ExecutablePath { get; init; } = "";
+}
 
 /// <summary>Creates a Win32 own-process service. Credentials are passed separately and are never part of this model.</summary>
 /// <remarks>BinaryCommandLine must quote the executable path when the command line contains whitespace. AccountName is

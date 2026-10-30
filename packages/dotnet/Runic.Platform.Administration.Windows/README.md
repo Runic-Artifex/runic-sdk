@@ -30,15 +30,15 @@ domain controllers and non-DC DNS servers.
 | Namespace / client | Implemented scope | Target and privileges |
 | --- | --- | --- |
 | Shortcuts / WindowsShellLinkClient | Read/create/selected update; explicit bounded resolution; arguments, working directory, icon, description, show state, hotkey | Local link files, including UNC targets; file permissions. Reading never resolves the target. |
-| Services / WindowsServiceClient | Enumeration, configuration/status/PID; create/update/delete; lifecycle, waits; description, delayed start, failure actions | Local or explicit SCM machine, caller identity; operation-specific SCM/service rights. Reboot failure actions need the appropriate privilege. |
-| Processes / WindowsProcessClient | PID/parent snapshots, lookup and children | Local read-only Toolhelp snapshot; no launch or termination API. A service snapshot supplies its process ID. |
+| Services / WindowsServiceClient | Enumeration, configuration/status/PID and parsed executable path; create/update/delete; lifecycle, stop with dependents, waits; description, delayed start, failure actions | Local or explicit SCM machine, caller identity; operation-specific SCM/service rights. Reboot failure actions need the appropriate privilege. |
+| Processes / WindowsProcessClient | PID/parent/image-path snapshots, lookup by ID or image path and children; close-or-kill, terminate, start-and-wait (optionally elevated) | Local; caller identity. Closing or terminating another user's process needs the rights to it. A service snapshot supplies its process ID. |
 | Tasks / WindowsTaskSchedulerClient | Folders/tasks; typed definitions, XML import/export, selected updates, validation, enable/run/stop/delete; ten trigger families | Local or explicit machine, caller identity; Task Scheduler service and task/folder permissions. Registration password supplied separately. |
 | Firewall / WindowsFirewallClient | Rules, identity checks, selected updates/deletion, deletion of every rule of a name, local policy state and effective profile inspection | Local Windows Firewall service; writes need policy access. Ambiguous native names are rejected for single-rule operations. No global disable API. |
 | Accounts / WindowsLocalGroupClient | Local group membership: add, remove and enumerate members; groups and members by name or SID; group names on the target computer | Local or explicit computer, caller identity; administrative rights to change membership. "Already a member" and "not a member" are results, not failures. |
 | DirectoryServices / WindowsDomainClient | Domain membership/role with the domain's flat, DNS and forest names; controller discovery with DNS or flat names | Local or explicit computer, native NetAPI access. Membership is read without contacting a controller. |
 | DirectoryServices / WindowsDirectoryClient | RootDSE, paged searches, ranged values, typed attributes, create/modify/delete/rename/move | Explicit LDAP endpoint, caller or explicit credentials; delegated directory rights. Signed/sealed Negotiate, LDAPS or StartTLS. |
 | DirectoryServices / ActiveDirectoryClient | User/computer/group/OU creation; memberships, account enablement, password operations and SPNs | Explicit directory client; appropriate AD rights. Newly created user/computer accounts are disabled. No installation/domain naming policy. |
-| SystemInformation / WindowsSystemInformationClient | OS version/product/language and BIOS | Local, normally read-only access; registry, version and SMBIOS APIs. Domain membership and role are on WindowsDomainClient. |
+| SystemInformation / WindowsSystemInformationClient | OS version/product/language, BIOS and the console session's user | Local, normally read-only access; registry, version and SMBIOS APIs. Domain membership and role are on WindowsDomainClient. |
 | Networks / WindowsNetworkClient | Network identities, categories, connectivity and domain type | Local Network List Manager COM; read-only. |
 | Shares / WindowsShareClient | SMB enumeration, configuration, creation/update/deletion and self-relative security descriptors | Local or explicit server; NetShare permissions. Security reads/writes may require elevated rights. Filesystem ACLs are untouched. |
 | Dns / WindowsDnsClient | Zones/AD integration; A, AAAA, CNAME, PTR, MX, TXT, SRV and NS record operations | Explicit Windows DNS server; MicrosoftDNS WMI provider, DCOM/WMI access and DNS administration rights. No zone/server configuration writes. |
@@ -69,7 +69,9 @@ membership.
   `…Async(…, CancellationToken)`: services, shares, domain membership and controller
   discovery, tasks, DNS, LDAP/AD and Group Policy, as well as the local COM-based
   firewall, network and shell-link clients. Local snapshot reads stay synchronous:
-  `WindowsProcessClient` and `GetOperatingSystem`/`GetBiosInformation`. SCM, NetAPI
+  `WindowsProcessClient.Enumerate`/`Find`/`FindByImagePath`/`GetChildren` and
+  `GetOperatingSystem`/`GetBiosInformation`/`GetActiveConsoleUser`; closing,
+  terminating and starting processes are asynchronous. SCM, NetAPI
   and DC-locator calls run off the caller's thread. All async members return `Task`.
 - Find returns null only for native absence. Enumeration errors are failures, not
   successful empty lists. Read models use immutable collections; write specifications
@@ -135,11 +137,26 @@ membership.
   the computer running the client at that time. Both are points in time ("synchronize
   across time zones").
 - GetOperatingSystem exposes RegistryProductName verbatim; Windows can retain a Windows 10 compatibility label on Windows 11. GetOperatingSystemNameAsync reads the display name from native Windows inventory.
-- Service BinaryCommandLine is the configured command line, not an executable path.
+- Service BinaryCommandLine is the configured command line; `ExecutablePath` is its
+  executable as the SCM parses it: a quoted path as written, and for an unquoted
+  path with spaces the first prefix that exists as a file (on the local computer;
+  remotely the shortest prefix ending in `.exe`).
+  `StopWithDependentsAsync(name, timeout)` stops the active dependents first, in
+  dependency order, and returns them; `StopAsync` alone fails with 1051 (`Conflict`)
+  while a dependent runs.
   Writes require a quoted executable path when the command line contains
   whitespace, and new services require an explicit account; there is no
   implicit LocalSystem default.
-  Process observations are snapshots: a process may disappear after enumeration.
+  Process observations are snapshots: a process may disappear after enumeration,
+  and Windows reuses process IDs. `ProcessSnapshot.ImagePath` is the full path, or
+  null when Windows denies access. `CloseOrKillAsync(id, timeout)` posts `WM_CLOSE`
+  to the process's top-level windows (as `taskkill` without `/F`), waits, and
+  terminates it otherwise, reporting `ProcessCloseOutcome`; a process without
+  windows is terminated at once. `TerminateAsync` is `taskkill /F`.
+  `StartAndWaitAsync` returns the exit code; `Elevated` starts through the shell's
+  `runas` verb. Cancellation stops waiting and never kills or closes anything.
+- `GetActiveConsoleUser()` returns the user signed in at the physical console, also
+  from a service running as SYSTEM, or null.
 - Task snapshots retain complete native XML; selected updates preserve untouched
   XML subtrees. Replacing actions/triggers intentionally replaces those subtrees.
   Registration, scheduler state and last execution outcome are separate values.

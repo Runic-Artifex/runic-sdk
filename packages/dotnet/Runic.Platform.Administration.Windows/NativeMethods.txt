@@ -108,3 +108,15 @@ DNS_QUERY_RESULT
 DNS_ADDR_ARRAY
 DNS_ADDR
 DNS_RECORDW
+OpenProcess
+QueryFullProcessImageNameW
+TerminateProcess
+WaitForSingleObject
+EnumWindows
+GetWindowThreadProcessId
+PostMessageW
+WTSGetActiveConsoleSessionId
+WTSQuerySessionInformationW
+WTSFreeMemory
+EnumDependentServicesW
+ENUM_SERVICE_STATUSW

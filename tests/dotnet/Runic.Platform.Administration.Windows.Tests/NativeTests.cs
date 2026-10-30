@@ -414,6 +414,66 @@ internal sealed class NativeTests
         catch (ArgumentOutOfRangeException) { }
     }
 
+    // sdk#729: image paths, close-or-kill, terminate and start-and-wait.
+    [Test]
+    public async Task CheckProcessControlAsync()
+    {
+        var client = new WindowsProcessClient();
+        var self = Environment.ProcessPath ?? throw new InvalidOperationException("No process path.");
+        Check(string.Equals(client.Find(Environment.ProcessId)?.ImagePath, self, StringComparison.OrdinalIgnoreCase), "The current process image path is wrong.");
+        Check(client.FindByImagePath(self).Any(row => row.ProcessId == Environment.ProcessId), "FindByImagePath missed the current process.");
+        Check(client.Enumerate().Any(row => row.ImagePath is null), "Protected processes (System, Idle) must have no image path.");
+        try { _ = client.FindByImagePath("relative.exe"); throw new InvalidOperationException("A relative image path was accepted."); }
+        catch (ArgumentException) { }
+
+        var cmd = Path.Combine(Environment.SystemDirectory, "cmd.exe");
+        Check(await client.StartAndWaitAsync(new(cmd) { Arguments = "/c exit 7" }) == 7, "The exit code was not returned.");
+        try { _ = await client.StartAndWaitAsync(new(Path.Combine(Path.GetTempPath(), "RunicMissing-" + Guid.NewGuid().ToString("N") + ".exe"))); throw new InvalidOperationException("A missing program started."); }
+        catch (WindowsAdministrationException error) { Check(error.Category == AdministrationErrorCategory.NotFound && error.NativeErrorCode == 2, $"A missing program must be NotFound, not {error.Category} ({error.NativeErrorCode})."); }
+
+        // A program without windows cannot be asked to close and is terminated at once.
+        using (var windowless = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(Path.Combine(Environment.SystemDirectory, "PING.EXE"), "-n 120 127.0.0.1")
+        { UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true })!)
+        {
+            Check(client.FindByImagePath(windowless.MainModule!.FileName).Any(row => row.ProcessId == windowless.Id), "FindByImagePath missed the child.");
+            Check(await client.CloseOrKillAsync(windowless.Id, TimeSpan.FromSeconds(30)) == ProcessCloseOutcome.Killed, "A windowless process was not killed.");
+            Check(windowless.HasExited && windowless.ExitCode == 1, "The killed process did not exit with 1.");
+            Check(await client.CloseOrKillAsync(windowless.Id, TimeSpan.FromSeconds(1)) == ProcessCloseOutcome.NotRunning, "An exited process was running.");
+            Check(!await client.TerminateAsync(windowless.Id), "An exited process was terminated.");
+        }
+        using (var sleeper = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(Path.Combine(Environment.SystemDirectory, "PING.EXE"), "-n 120 127.0.0.1")
+        { UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true })!)
+        {
+            Check(await client.TerminateAsync(sleeper.Id, 42), "A running process was not terminated.");
+            Check(sleeper.HasExited && sleeper.ExitCode == 42, "The terminated process did not exit with 42.");
+        }
+
+        // A window that handles WM_CLOSE closes politely.
+        var powershell = Path.Combine(Environment.SystemDirectory, @"WindowsPowerShell\v1.0\powershell.exe");
+        using var windowed = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(powershell,
+            "-NoProfile -NonInteractive -Command \"Add-Type -AssemblyName System.Windows.Forms; [System.Windows.Forms.Application]::Run((New-Object System.Windows.Forms.Form -Property @{ Text = 'Runic close test' }))\"")
+        { UseShellExecute = false, CreateNoWindow = true })!;
+        try
+        {
+            var clock = System.Diagnostics.Stopwatch.StartNew();
+            while (windowed.MainWindowHandle == 0 && !windowed.HasExited && clock.Elapsed < TimeSpan.FromSeconds(60)) { await Task.Delay(200); windowed.Refresh(); }
+            if (windowed.MainWindowHandle == 0) { Console.WriteLine("SKIP The windowed process showed no window; polite close not checked."); return; }
+            Check(await client.CloseOrKillAsync(windowed.Id, TimeSpan.FromSeconds(30)) == ProcessCloseOutcome.Closed, "A window that handles WM_CLOSE was killed.");
+            Check(windowed.HasExited && windowed.ExitCode == 0, "The closed process did not exit normally.");
+        }
+        finally { if (!windowed.HasExited) windowed.Kill(); }
+        Console.WriteLine("PASS Process image paths, start-and-wait, close, kill and terminate.");
+    }
+
+    // sdk#739: the console session's user, read without changing anything.
+    [Test]
+    public void CheckConsoleUser()
+    {
+        var user = new WindowsSystemInformationClient().GetActiveConsoleUser();
+        Check(user is null || (user.UserName.Length > 0 && user.SessionId >= 0), "Unexpected console user: " + user);
+        Console.WriteLine("PASS Console user: " + (user?.ToString() ?? "none"));
+    }
+
     [Test]
     public async Task CheckServicesAsync()
     {
@@ -437,6 +497,13 @@ internal sealed class NativeTests
         // EventLog is queried only; this test never changes a service or machine configuration.
         var service = await client.FindAsync("EventLog") ?? throw new InvalidOperationException("EventLog unavailable on fixture.");
         Check(service.BinaryCommandLine.Length > 0 && service.AccountName.Length > 0, "Service configuration incomplete.");
+        Check(service.ExecutablePath.EndsWith("svchost.exe", StringComparison.OrdinalIgnoreCase) && !service.ExecutablePath.Contains(' ', StringComparison.Ordinal),
+            "EventLog executable path: " + service.ExecutablePath);
+        // sdk#739: a missing service fails before anything is stopped.
+        try { _ = await client.StopWithDependentsAsync(missing, TimeSpan.FromSeconds(1)); throw new InvalidOperationException("A missing service was stopped."); }
+        catch (WindowsAdministrationException error) { Check(error.Category == AdministrationErrorCategory.NotFound, "A missing service must be NotFound."); }
+        try { _ = client.StopWithDependentsAsync("EventLog", TimeSpan.Zero); throw new InvalidOperationException("A zero timeout was accepted."); }
+        catch (ArgumentOutOfRangeException) { }
         Check(service.Status.State == ServiceState.Running, "EventLog is not running on fixture.");
         Check(new WindowsProcessClient().Find(service.Status.ProcessId) is not null, "Service process ID is not observable.");
         var result = await client.WaitForStateAsync("EventLog", ServiceState.Running, TimeSpan.FromSeconds(1));
@@ -461,6 +528,10 @@ internal sealed class NativeTests
             () => services.EnumerateAsync(cancellation.Token),
             () => services.StartAsync(missing, cancellation.Token),
             () => services.DeleteAsync(missing, cancellation.Token),
+            () => services.StopWithDependentsAsync(missing, TimeSpan.FromSeconds(1), cancellation.Token),
+            () => new WindowsProcessClient().CloseOrKillAsync(Environment.ProcessId, TimeSpan.Zero, cancellation.Token),
+            () => new WindowsProcessClient().TerminateAsync(Environment.ProcessId, 1, cancellation.Token),
+            () => new WindowsProcessClient().StartAndWaitAsync(new("cmd.exe"), cancellation.Token),
             () => shares.EnumerateAsync(cancellation.Token),
             () => shares.DeleteAsync(missing, cancellation.Token),
             () => domain.GetMembershipAsync(cancellation.Token),
