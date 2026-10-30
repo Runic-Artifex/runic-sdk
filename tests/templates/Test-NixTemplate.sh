@@ -148,6 +148,9 @@ build() {
 # Starts the built application serving without a window and fetches its page.
 serve() {
   local program="$1" log="$work/serve.log"
+  # Every lane serves into the same log. Empty it first: the background job truncates it only once it starts, so the
+  # loop below could otherwise read the URL of the previous lane's application, which was killed.
+  : > "$log"
   setsid env RUNIC_APPLICATION_SERVE_ONLY=1 "$program" > "$log" 2>&1 < /dev/null &
   served=$!
   local url=""
