@@ -1,5 +1,6 @@
 export { ViewOutlet, RunicViewOutlet, type ViewOutletMissingContext, type ViewRegistry } from "./view-outlet.js";
 export { injectView, type InjectViewOptions, type ViewHandle } from "./inject-view.js";
+export { injectViewResource, type InjectViewResourceOptions, type ViewResource } from "./inject-view-resource.js";
 export { injectCommand, type CommandHandle, type InjectCommandOptions } from "./inject-command.js";
 export { injectOperation, type InjectOperationOptions, type OperationHandle } from "./inject-operation.js";
 export { injectField, type FieldHandle, type FieldView, type InjectFieldOptions } from "./inject-field.js";

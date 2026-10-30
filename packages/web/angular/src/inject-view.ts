@@ -1,6 +1,6 @@
 import { assertInInjectionContext, computed, DestroyRef, effect, inject, Injector, isSignal, signal, untracked, type Signal } from "@angular/core";
 import { createViewController, type ViewClient, type ViewSource } from "@runic-artifex/views";
-import { isViewClient, viewSourceIdentity } from "@runic-artifex/views/bindings";
+import { isViewClient, viewSourceIdentity, viewSourcePreview } from "@runic-artifex/views/bindings";
 
 export interface ViewHandle<TClient extends ViewClient> {
   /** The latest state, or undefined until the client connects. */
@@ -34,6 +34,11 @@ export interface InjectViewOptions<TClient extends ViewClient> {
  * signal, such as a `page` input, to follow it: a changed reference releases
  * the previous client and connects the new one.
  *
+ * A released client stays connected for `keepAlive` milliseconds (2000 by
+ * default), and the next `injectView` of the same reference takes it over with
+ * its state: an `@if` that toggles, HMR and A→B→A navigation show the View at
+ * once instead of opening the route again.
+ *
  * A reference is identified by its `connect` function, so a signal producing a
  * new `{ connect: connectShell }` object does not reconnect.
  */
@@ -65,16 +70,18 @@ export function injectView<TClient extends ViewClient>(source: Signal<ViewSource
   }, { injector });
   injector.get(DestroyRef).onDestroy(() => controller.dispose());
 
+  // A connected client is readable before the effect observes it, and so is a client kept for the reference
+  // (keep-alive), so a component that is created again shows its View at once.
+  const preview = computed(() => {
+    const value = observed();
+    if (value) return value === current().client ? undefined : viewSourcePreview(value);
+    return fresh() ? undefined : viewSourcePreview(read());
+  });
   return {
-    // A connected client is readable before the effect observes it.
-    state: computed(() => {
-      const value = observed();
-      if (value && value !== current().client) return value.snapshot;
-      return fresh() ? current().state : undefined;
-    }),
-    client: computed(() => observed() ?? (fresh() ? current().client : undefined)),
+    state: computed(() => preview()?.state ?? (fresh() ? current().state : undefined)),
+    client: computed(() => preview()?.client ?? (fresh() ? current().client : undefined)),
     error: computed(() => fresh() ? current().error : undefined),
-    pending: computed(() => observed() ? false : fresh() ? current().pending : identity() !== undefined),
+    pending: computed(() => preview() ? false : fresh() ? current().pending : identity() !== undefined),
     retry: () => controller.retry(),
   };
 }
