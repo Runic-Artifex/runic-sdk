@@ -640,24 +640,20 @@ internal sealed class AssetsTests
     private sealed class ChangingAssetSource(AssetManifest manifest) : IAssetSource
     {
         public AssetManifest Manifest { get; } = manifest;
-        public bool Disposed => _stream?.Disposed == true;
-        private TrackingStream? _stream;
+        public bool Disposed { get; private set; }
 
         public ValueTask ValidateAsync(CancellationToken cancellationToken = default) => ValueTask.CompletedTask;
 
-        public ValueTask<AssetReadSnapshot> OpenAsync(string relativePath, CancellationToken cancellationToken = default)
-        {
-            _stream = new TrackingStream();
-            return ValueTask.FromResult(new AssetReadSnapshot(
-                new AssetDescriptor(relativePath, "text/html", 1, new string('2', 64)), _stream));
-        }
+        public ValueTask<AssetReadSnapshot> OpenAsync(string relativePath, CancellationToken cancellationToken = default) =>
+            ValueTask.FromResult(new AssetReadSnapshot(
+                new AssetDescriptor(relativePath, "text/html", 1, new string('2', 64)),
+                new TrackingStream(() => Disposed = true)));
 
-        private sealed class TrackingStream() : MemoryStream([0x41], writable: false)
+        private sealed class TrackingStream(Action disposed) : MemoryStream([0x41], writable: false)
         {
-            public bool Disposed { get; private set; }
             protected override void Dispose(bool disposing)
             {
-                Disposed = true;
+                disposed();
                 base.Dispose(disposing);
             }
         }
