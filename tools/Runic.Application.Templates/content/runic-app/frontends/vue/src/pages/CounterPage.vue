@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed } from "vue";
 import { useCommand, useField, useView } from "@runic-artifex/vue";
+import { describeBridgeError } from "@runic-artifex/views";
 import { CounterFields, type CounterPageReference } from "../generated/counter.js";
 
 const props = defineProps<{ page: CounterPageReference }>();
@@ -32,6 +33,6 @@ const error = computed(() => incrementError.value ?? step.error ?? label.error ?
     </label>
     <!-- Increment waits until the Step it adds has been written. -->
     <button :disabled="!client || incrementing || step.editing" @click="increment()">Increment</button>
-    <p v-if="error !== undefined" role="alert">{{ String(error) }}</p>
+    <p v-if="error !== undefined" role="alert">{{ describeBridgeError(error) }}</p>
   </section>
 </template>

@@ -114,6 +114,8 @@ async function checkPage(url, expectedHeader, metaPolicy) {
     const header = headers.join(" + ") || null;
     const metas = await page.locator('meta[http-equiv="content-security-policy" i]').count();
     if (metaPolicy && metas === 0) throw new Error("The page has no <meta> Content-Security-Policy.");
+    // The status line follows the Bridge connection, so it names the connection only once it is up.
+    await page.getByRole("status").filter({ hasText: "Connected to the .NET Window." }).waitFor({ timeout });
     // A Bridge state push and a command round trip: the Counter button enables once the Window is connected.
     await page.getByRole("button", { name: "Counter", exact: true }).click({ timeout });
     await page.getByRole("heading", { name: "Counter View" }).waitFor({ timeout });

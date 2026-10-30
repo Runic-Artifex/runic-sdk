@@ -186,7 +186,18 @@ clipboard on the default Runic Desktop host (create the project without
 <!--#else -->
 | `Frontend/vite.config.ts` | Adds `runic()` from `@runic-artifex/vite-plugin-runic` for Runic development diagnostics, and so that `dotnet runic dev` can confirm that the development server on its port is the one it started. To add its Runic DevTools dock, install `@vitejs/devtools` and register `DevTools()`. |
 <!--#endif -->
-| `Frontend/src/generated` | Typed clients generated from the ViewModels. They import the shared `@runic-artifex/views` runtime. |
+| `Frontend/src/generated` | Typed clients generated from the ViewModels, and a typed mock for each (`*.mock.ts`). They import the shared `@runic-artifex/views` runtime. |
+<!--#if (frontend == "angular") -->
+| `Frontend/src/app/app.spec.ts` | A frontend test: `ng test` runs the page with Vitest against the generated mocks. See [Test it](#test-it). |
+<!--#elif (frontend == "sveltekit") -->
+| `Frontend/src/routes/page.test.ts`, `Frontend/vitest.config.ts` | A frontend test: Vitest runs the page against the generated mocks, with the Vite configuration and Svelte's browser build. See [Test it](#test-it). |
+<!--#elif (frontend == "svelte") -->
+| `Frontend/src/App.test.ts`, `Frontend/vitest.config.ts` | A frontend test: Vitest runs the page against the generated mocks, with the Vite configuration and Svelte's browser build. See [Test it](#test-it). |
+<!--#elif (frontend == "vue") -->
+| `Frontend/src/App.test.ts` | A frontend test: Vitest runs the page against the generated mocks. See [Test it](#test-it). |
+<!--#else -->
+| `Frontend/src/App.test.tsx` | A frontend test: Vitest runs the page against the generated mocks. See [Test it](#test-it). |
+<!--#endif -->
 <!--#if (tests) -->
 | `RunicWindowApp.Tests/WorkspaceWindowTests.cs` | TUnit tests that drive the Window through `Runic.Application.Testing`. |
 | `global.json` | Runs `dotnet test` on Microsoft.Testing.Platform, which TUnit uses. |
@@ -203,8 +214,26 @@ modules that a Vite plugin generates, such as the Runic Translations
 clean checkout.
 <!--#endif -->
 
-<!--#if (tests) -->
 ## Test it
+
+The frontend test runs the page in a simulated DOM (happy-dom) against the
+typed mocks that the build generates next to each client, without .NET or a
+browser:
+
+```sh
+cd Frontend
+__PACKAGE_MANAGER_NAME__ run test
+```
+
+It needs `Frontend/src/generated`, so build the project once first. The mocks
+take their state, setter and command types from the generated clients, so a
+renamed or retyped ViewModel member breaks the test at compile time. Add your
+own tests next to it. The
+[Testing guide](https://github.com/Runic-Artifex/runic-sdk/blob/v__RUNIC_NUGET_VERSION__/packages/web/views/README.md#testing)
+covers the mocks: failures, virtual time, latency and reconnects.
+
+<!--#if (tests) -->
+The ViewModels have a test project of their own:
 
 ```sh
 dotnet test --project RunicWindowApp.Tests
@@ -229,8 +258,7 @@ project builds the app with `RunicApplicationFrontendBuildEnabled=false`, so tes
 install or build the frontend. `dotnet run --project RunicWindowApp.Tests` runs
 the tests too. See the
 [Runic.Application.Testing guide](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Application.Testing/README.md)
-for the drivers, a fake clock, collections and navigation, and test the frontend
-with the generated typed mocks of `@runic-artifex/views/mock`.
+for the drivers, a fake clock, collections and navigation.
 
 <!--#endif -->
 ## State and threading

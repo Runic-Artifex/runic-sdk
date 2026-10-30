@@ -2,6 +2,7 @@
 
 <script lang="ts">
   import { useView } from "@runic-artifex/svelte";
+  import { describeBridgeError } from "@runic-artifex/views";
   import type { WelcomePageReference } from "../../generated/welcome.js";
 
   let { page }: { page: WelcomePageReference } = $props();
@@ -10,5 +11,5 @@
 
 <section>
   <h2>{welcome.state?.greeting ?? "Connecting…"}</h2>
-  {#if welcome.error}<p role="alert">{String(welcome.error)}</p>{/if}
+  {#if welcome.error !== undefined}<p role="alert">{describeBridgeError(welcome.error)}</p>{/if}
 </section>

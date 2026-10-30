@@ -1,5 +1,6 @@
 import { Component, computed, input } from "@angular/core";
 import { injectCommand, injectField, injectView } from "@runic-artifex/angular";
+import { describeBridgeError } from "@runic-artifex/views";
 import { CounterFields, type CounterPageReference } from "../generated/counter.js";
 
 @Component({
@@ -21,6 +22,6 @@ export class CounterComponent {
   readonly label = injectField(this.counter, CounterFields.label);
   readonly error = computed(() => {
     const error = this.increment.error() ?? this.step.error() ?? this.label.error() ?? this.counter.error();
-    return error === undefined ? undefined : String(error);
+    return error === undefined ? undefined : describeBridgeError(error);
   });
 }

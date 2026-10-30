@@ -10,6 +10,7 @@
   "scripts": {
     "build": "ng build frontend",
     "dev": "ng serve frontend",
+    "test": "ng test frontend --watch=false",
     "typecheck": "ngc --project tsconfig.app.json --noEmit"
   },
   "dependencies": {
@@ -26,7 +27,9 @@
     "@angular/compiler": "22.2.3",
     "@angular/compiler-cli": "22.2.3",
     "@runic-artifex/vite-plugin-runic": "__RUNIC_NPM_VERSION__",
-    "typescript": "6.0.3"
+    "happy-dom": "21.0.4",
+    "typescript": "6.0.3",
+    "vitest": "5.0.3"
   },
   "overrides": {
     "vite": "8.3.4"
