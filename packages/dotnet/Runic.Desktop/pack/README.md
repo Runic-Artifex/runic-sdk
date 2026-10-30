@@ -27,9 +27,7 @@ embedded platform WebView. For calls between JavaScript and .NET, use
 
 `Runic.Desktop` has no ASP.NET Core reference. The application references the
 server that serves its windows: the native server, which needs no ASP.NET Core
-and which new applications use (experimental until 1.0, when it becomes the
-default,
-[`RUNICDESK102`](https://github.com/Runic-Artifex/runic-sdk/blob/main/docs/experimental.md#RUNICDESK102)),
+and which new applications use (the default from 1.0 on),
 
 ```xml
 <PackageReference Include="Runic.Desktop.NativeServer" Version="..." />

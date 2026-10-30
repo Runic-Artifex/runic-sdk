@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Size, startup and memory of examples/first-window-desktop on Kestrel and on the experimental native server (X1),
+# Size, startup and memory of examples/first-window-desktop on Kestrel and on the native server (X1),
 # published for linux-x64 as framework-dependent, self-contained, self-contained trimmed and NativeAOT.
 #
 #   tests/benchmarks/native-server/measure.sh [output-directory]

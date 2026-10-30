@@ -4,8 +4,8 @@ Serves [Runic Desktop](../Runic.Desktop/README.md) surfaces from ASP.NET Core Ke
 
 Since 0.15, `Runic.Desktop` carries no presentation server and no reference to the ASP.NET Core shared framework. A
 Runic Desktop application references one server package. New applications use the native server,
-`Runic.Desktop.NativeServer`, which needs no ASP.NET Core at all and becomes the default at 1.0
-([`RUNICDESK102`](../../../docs/experimental.md#RUNICDESK102) until then). This package is the opt-in for an
+`Runic.Desktop.NativeServer`, which needs no ASP.NET Core at all and is the default from 1.0 on. This package is the
+opt-in for an
 application that uses ASP.NET Core itself:
 
 ```xml

@@ -13,7 +13,7 @@ let
   inherit (pkgs) lib;
   dotnetPin = (lib.importJSON ../../global.json).sdk.version;
   nodePin = lib.fileContents ../../.node-version;
-  # The experimental native Desktop server (native/, X1) pins its Rust toolchain for rustup-based CI runners.
+  # The native Desktop server (native/, X1) pins its Rust toolchain for rustup-based CI runners.
   rustPin = (builtins.fromTOML (builtins.readFile ../../native/rust-toolchain.toml)).toolchain.channel;
   # Fail at evaluation when the provided version differs from the repository pin.
   pinned =
@@ -34,7 +34,7 @@ in
   nodejs = pinned (untilNixpkgsHas pkgs.nodejs_24 nodePin "Node" (
     pkgs.callPackage ./nodejs-24.nix { }
   )) nodePin "Node";
-  # cargo, rustc, clippy and rustfmt of the pinned version, for native/ (the experimental Rust Desktop server).
+  # cargo, rustc, clippy and rustfmt of the pinned version, for native/ (the Rust Desktop server).
   rust = {
     rustc = pinned pkgs.rustc rustPin "rustc";
     cargo = pinned pkgs.cargo rustPin "cargo";

@@ -172,11 +172,11 @@ test("--linux-gtk 4 selects GTK 4 for Runic Desktop and leaves CS-WebUI unchange
 
     const gtk3 = create("gtk3");
     assert.deepEqual(create("gtk3-explicit", "--host", "desktop", "--linux-gtk", "3", "--desktop-server", "native"), gtk3);
-    // The native Desktop server by default (D053.24), experimental until 1.0, so the project accepts RUNICDESK102.
+    // The native Desktop server by default (D053.24); it is no longer experimental (D053.26), so nothing is suppressed.
     assert.deepEqual(references(gtk3.project),
       [`Runic.Application.Views.ReactiveUI@${versions.nuget}`, `Runic.Application.Views.Desktop@${versions.nuget}`,
         `Runic.Desktop.NativeServer@${versions.nuget}`]);
-    assert.match(gtk3.project, /<NoWarn>\$\(NoWarn\);RUNICDESK102<\/NoWarn>/);
+    assert.doesNotMatch(gtk3.project + gtk3.files["Hosts.Tests/Hosts.Tests.csproj"], /RUNICDESK102/);
     const kestrel = create("kestrel", "--desktop-server", "kestrel");
     assert.deepEqual(references(kestrel.project),
       [`Runic.Application.Views.ReactiveUI@${versions.nuget}`, `Runic.Application.Views.Desktop@${versions.nuget}`,

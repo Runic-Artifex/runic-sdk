@@ -1709,7 +1709,7 @@ describes the window owner the platform services receive for a window.
 | Property | Default | Effect |
 | --- | --- | --- |
 | `RunicDesktopMinimalHost` | `false` | With `Runic.Desktop.Kestrel`, `true` builds each surface's listener from an empty ASP.NET Core builder with Kestrel core and sockets only, and NativeAOT trims the default builder path; see the [size and tuning guide](https://docs.runic-artifex.eu/guides/desktop/size-and-tuning/). Any value other than `true` or `false` fails the build with [`RUNICDESK001`](https://github.com/Runic-Artifex/runic-sdk/blob/main/docs/diagnostics.md#runicdesk001). |
-| `RunicDesktopServer` | the referenced server | The presentation server: `Kestrel` (`Runic.Desktop.Kestrel`), `Native` (the experimental `Runic.Desktop.NativeServer`, the default when both are referenced) or `None` for an executable that opens no window. An executable without a server package fails with [`RUNICDESK004`](https://github.com/Runic-Artifex/runic-sdk/blob/main/docs/diagnostics.md#runicdesk004); another value fails with [`RUNICDESK003`](https://github.com/Runic-Artifex/runic-sdk/blob/main/docs/diagnostics.md#runicdesk003). |
+| `RunicDesktopServer` | the referenced server | The presentation server: `Kestrel` (`Runic.Desktop.Kestrel`), `Native` (`Runic.Desktop.NativeServer`, the default when both are referenced) or `None` for an executable that opens no window. An executable without a server package fails with [`RUNICDESK004`](https://github.com/Runic-Artifex/runic-sdk/blob/main/docs/diagnostics.md#runicdesk004); another value fails with [`RUNICDESK003`](https://github.com/Runic-Artifex/runic-sdk/blob/main/docs/diagnostics.md#runicdesk003). |
 
 ## Experimental APIs
 

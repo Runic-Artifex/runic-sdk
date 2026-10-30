@@ -7,7 +7,7 @@ namespace Runic.Desktop.Internal;
 
 // The listener under a PresentationHostCore: it binds one address, hands every request to the host core's dispatch and
 // owns the services the surfaces' scopes come from. Runic.Desktop carries no server of its own and no ASP.NET Core
-// reference (X2): the application references one server package. Runic.Desktop.NativeServer (experimental) sets the
+// reference (X2): the application references one server package. Runic.Desktop.NativeServer sets the
 // Runic.Desktop.NativeServer runtime switch; Runic.Desktop.Kestrel is ASP.NET Core Kestrel, found by name so that
 // Runic.Desktop does not reference it. The switch is a trimming feature switch, so a trimmed or NativeAOT application
 // keeps one server. Requests reach the host core as a PresentationExchange, so nothing above this seam depends on
@@ -63,7 +63,7 @@ internal static class PresentationServers
                 DesktopErrorCategory.Unavailable,
                 "presentation-server-unavailable",
                 "Runic Desktop has no presentation server. Reference the Runic.Desktop.Kestrel package (ASP.NET Core Kestrel) " +
-                "or the experimental Runic.Desktop.NativeServer package in the application (docs/migration-1.0.md).",
+                "or the Runic.Desktop.NativeServer package in the application (docs/migration-1.0.md).",
                 retryable: false);
         }
         return factory.Create(configureServices);

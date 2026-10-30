@@ -1,14 +1,14 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <Import Project="../../../eng/build/desktop.props" />
-  <!-- Experimental (X1, RUNICDESK102), the default server of new applications since 0.15 (D053.24): the native libraries
+  <!-- The native Desktop server (X1), the server of new applications since 0.15 (D053.24, D053.26): the native libraries
        of native/runic-server and the build targets that select them. The managed binding lives in Runic.Desktop
        (Internal/NativeServer), behind the Runic.Desktop.NativeServer feature switch, so this package carries no
        assembly of its own. Released with the SDK (eng/workspace.json), with Runic.Desktop.NativeServer.Static.<rid>. -->
   <PropertyGroup>
     <PackageId>Runic.Desktop.NativeServer</PackageId>
-    <Title>Runic Desktop native server (experimental)</Title>
-    <Description>Experimental: serves Runic Desktop surfaces from a native Rust (axum) HTTP and WebSocket server instead of ASP.NET Core Kestrel.</Description>
-    <PackageTags>runic-artifex;desktop;webview;rust;axum;experimental</PackageTags>
+    <Title>Runic Desktop native server</Title>
+    <Description>Serves Runic Desktop surfaces from a native Rust (axum) HTTP and WebSocket server instead of ASP.NET Core Kestrel.</Description>
+    <PackageTags>runic-artifex;desktop;webview;rust;axum</PackageTags>
     <IncludeBuildOutput>false</IncludeBuildOutput>
     <!-- The shipping policy of eng/build/desktop.props; the package has no assembly. -->
     <IsAotCompatible>true</IsAotCompatible>

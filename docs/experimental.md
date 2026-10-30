@@ -44,27 +44,9 @@ Or suppress it where you use the API, for a file or a region of one:
 
 ## Experimental packages
 
-A whole package can be experimental. It is not part of the release inventory,
-and its build targets report its ID as an error, as the compiler does for an
-experimental API, until the project suppresses it.
-
-<a id="RUNICDESK102"></a>
-
-## RUNICDESK102
-
-The native Desktop server, `Runic.Desktop.NativeServer` (X1). New applications
-use it (`dotnet new runic-app` references it and suppresses this ID), and it
-becomes the default Desktop server at 1.0 (D053.24), when the ID graduates.
-Referencing the
-package serves Runic Desktop surfaces from a native Rust (axum) HTTP and
-WebSocket server instead of ASP.NET Core Kestrel (`Runic.Desktop.Kestrel`): the
-same Views protocol, admission, content and bootstrap code run over it, and the
-application needs no ASP.NET Core. With both server packages referenced, set
-`RunicDesktopServer` to `Kestrel` to build the same project on Kestrel; any
-other value than `Native`, `Kestrel` or `None` fails with
-[`RUNICDESK003`](diagnostics.md#runicdesk003). See the
-[package README](../packages/dotnet/Runic.Desktop.NativeServer/README.md) for
-the supported runtime identifiers and what differs from Kestrel.
+A whole package can be experimental. Its build targets report its ID as an
+error, as the compiler does for an experimental API, until the project
+suppresses it. No package is experimental.
 
 <a id="retired"></a>
 
@@ -74,10 +56,11 @@ When a family graduates, its attribute is removed and its API is supported like
 the rest of its package. Its ID is retired and never names another family, so a
 leftover suppression is harmless; remove it.
 
-<a id="RUNICASSETS001"></a><a id="RUNICDESK101"></a><a id="RUNICDESK100"></a><a id="RUNICWPF001"></a><a id="RUNICNAV001"></a>
+<a id="RUNICDESK102"></a><a id="RUNICASSETS001"></a><a id="RUNICDESK101"></a><a id="RUNICDESK100"></a><a id="RUNICWPF001"></a><a id="RUNICNAV001"></a>
 
 | ID | API family | Graduated in |
 |---|---|---|
+| `RUNICDESK102` | Experimental package: the native Desktop server, `Runic.Desktop.NativeServer` (X1), which served Runic Desktop surfaces from a Rust (axum) server instead of ASP.NET Core Kestrel. Its build targets reported the ID until a project suppressed it. It graduated with its first release (D053.26): new applications use it (D053.24), `Runic.Desktop.Kestrel` is the opt-in, and the [package README](../packages/dotnet/Runic.Desktop.NativeServer/README.md) describes it. Remove a leftover `NoWarn` entry. | 0.15.0 |
 | `RUNICASSETS001` | Development-directory asset source (`Runic.Assets`): `DevelopmentDirectoryAssetSource`, `IAssetSourceChangeNotifier`, `AssetWatchOptions` and `AssetSourceChangedEventArgs`, now on Linux, Windows and macOS. `Refresh` became `RefreshAsync`; `StartWatching(options)` returns nothing and the watch runs until the source is disposed, so `IAssetWatch` was removed. `dotnet runic dev` uses it when no Vite or Angular development server runs: the Runic Desktop window serves the frontend output directory and reloads when it changes ([dotnet-runic](../tools/dotnet-runic/README.md)). | 0.10.0 |
 | `RUNICDESK101` | Low-level presentation transport (`Runic.Desktop`), partly graduated and the rest made internal. Stable: `DesktopSurface.ExecuteJavaScriptAsync` (now returning `ValueTask<string>`), `DesktopSurface.ConnectionCount` and `DesktopSurface.SubscribeConnectionEvents`, whose handler receives the new `DesktopConnectionEvent` (`Kind`, `Surface`) with `DesktopConnectionEventKind` instead of `PresentationInvocation`. Internal: `RegisterCapability`, `RunJavaScriptAsync`, `NavigateAsync`, `SendAsync` and the `Presentation*` types; calls between JavaScript and .NET go through [Runic Windows and Views](../packages/dotnet/Runic.Application.Views.Desktop/README.md). | 0.10.0 |
 | `RUNICDESK100` | Custom window hosts (`Runic.Desktop`, `Runic.Desktop.Gtk4`, `Runic.Application.Views.Wpf`): `IDesktopWindowHostFactory`, `IDesktopWindowHost`, `IDesktopEventLoopWindowHostFactory`, `ILinuxDesktopWindowHostFactory`, `IDesktopNativeDispatchWindowHost`, `IDesktopWindowStateHost`, `IDesktopFileDropWindowHost`, `DesktopWindowHostOptions`, `DesktopHostOptions.WindowHostFactory`, `LinuxDesktopRuntime.ClaimBackend`, `LinuxDesktopRuntime.IsLibraryAvailable`, `Gtk4WindowHostFactory` and `RunicWebView.CreateWindowHostFactory()`. What a host must do is in the Runic.Desktop README, [Custom window hosts](../packages/dotnet/Runic.Desktop/README.md#custom-window-hosts). | 0.10.0 |

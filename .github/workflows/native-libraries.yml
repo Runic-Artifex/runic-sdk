@@ -1,29 +1,112 @@
-# The native Desktop server's library (native/runic-server) for every runtime identifier the SDK ships it for, as
-# artifacts runic-server-<rid>. Called by native-server.yml and by ci.yml, whose packages carry the libraries
-# (Runic.Desktop.NativeServer and Runic.Desktop.NativeServer.Static.<rid>).
+# The native Desktop server's library (native/runic-server) for every runtime identifier the SDK ships it for. Called
+# by ci.yml, whose packages carry the libraries (Runic.Desktop.NativeServer, Runic.Desktop.NativeServer.Static.<rid>),
+# and by native-server.yml.
+#
+# A library depends only on native/ (the crate, Cargo.lock and the toolchain pin), the build script and this workflow,
+# whose hash is the cache key. The lookup job checks the key for each runtime identifier on a Linux runner; a library
+# job, on Linux, Windows or macOS, runs only for a missing one, uploads it as the artifact runic-server-<rid> and, on
+# main, saves it. .github/actions/native-server-libraries collects all seven for a pack: from the cache, or from this
+# run's artifacts, and fails when one is missing.
 name: Native server libraries
 on:
   workflow_call:
+    outputs:
+      key:
+        description: The libraries' cache key prefix; each runtime identifier's entry is <key>-<rid>
+        value: ${{ jobs.lookup.outputs.key }}
+      built:
+        description: The runtime identifiers this run built, as a JSON array; the others come from the cache
+        value: ${{ jobs.lookup.outputs.built }}
 permissions:
   contents: read
 env:
   CARGO_TERM_COLOR: never
 jobs:
+  lookup:
+    name: Library cache
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    outputs:
+      key: ${{ steps.key.outputs.key }}
+      built: ${{ steps.plan.outputs.built }}
+      matrix: ${{ steps.plan.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Compute the cache key
+        id: key
+        run: echo "key=runic-server-${{ hashFiles('native/**', 'eng/native/build-runic-server.sh', '.github/workflows/native-libraries.yml') }}" >> "$GITHUB_OUTPUT"
+      - name: Look up linux-x64
+        id: linux-x64
+        uses: ./.github/actions/dependency-cache
+        with:
+          path: artifacts/native/runic-server/linux-x64
+          key: ${{ steps.key.outputs.key }}-linux-x64
+          lookup-only: "true"
+          enable-cross-os-archive: "true"
+      - name: Look up linux-arm64
+        id: linux-arm64
+        uses: ./.github/actions/dependency-cache
+        with:
+          path: artifacts/native/runic-server/linux-arm64
+          key: ${{ steps.key.outputs.key }}-linux-arm64
+          lookup-only: "true"
+          enable-cross-os-archive: "true"
+      - name: Look up linux-musl-x64
+        id: linux-musl-x64
+        uses: ./.github/actions/dependency-cache
+        with:
+          path: artifacts/native/runic-server/linux-musl-x64
+          key: ${{ steps.key.outputs.key }}-linux-musl-x64
+          lookup-only: "true"
+          enable-cross-os-archive: "true"
+      - name: Look up linux-musl-arm64
+        id: linux-musl-arm64
+        uses: ./.github/actions/dependency-cache
+        with:
+          path: artifacts/native/runic-server/linux-musl-arm64
+          key: ${{ steps.key.outputs.key }}-linux-musl-arm64
+          lookup-only: "true"
+          enable-cross-os-archive: "true"
+      - name: Look up win-x64
+        id: win-x64
+        uses: ./.github/actions/dependency-cache
+        with:
+          path: artifacts/native/runic-server/win-x64
+          key: ${{ steps.key.outputs.key }}-win-x64
+          lookup-only: "true"
+          enable-cross-os-archive: "true"
+      - name: Look up win-arm64
+        id: win-arm64
+        uses: ./.github/actions/dependency-cache
+        with:
+          path: artifacts/native/runic-server/win-arm64
+          key: ${{ steps.key.outputs.key }}-win-arm64
+          lookup-only: "true"
+          enable-cross-os-archive: "true"
+      - name: Look up osx-arm64
+        id: osx-arm64
+        uses: ./.github/actions/dependency-cache
+        with:
+          path: artifacts/native/runic-server/osx-arm64
+          key: ${{ steps.key.outputs.key }}-osx-arm64
+          lookup-only: "true"
+          enable-cross-os-archive: "true"
+      - name: Plan the library jobs for the missing runtime identifiers
+        id: plan
+        env:
+          HITS: "linux-x64=${{ steps.linux-x64.outputs.cache-hit }} linux-arm64=${{ steps.linux-arm64.outputs.cache-hit }} linux-musl-x64=${{ steps.linux-musl-x64.outputs.cache-hit }} linux-musl-arm64=${{ steps.linux-musl-arm64.outputs.cache-hit }} win-x64=${{ steps.win-x64.outputs.cache-hit }} win-arm64=${{ steps.win-arm64.outputs.cache-hit }} osx-arm64=${{ steps.osx-arm64.outputs.cache-hit }}"
+          TABLE: '[{"rid": "linux-x64", "os": "ubuntu-24.04", "target": "x86_64-unknown-linux-gnu", "zig": true}, {"rid": "linux-arm64", "os": "ubuntu-24.04", "target": "aarch64-unknown-linux-gnu", "zig": true}, {"rid": "linux-musl-x64", "os": "ubuntu-24.04", "target": "x86_64-unknown-linux-musl", "zig": true}, {"rid": "linux-musl-arm64", "os": "ubuntu-24.04", "target": "aarch64-unknown-linux-musl", "zig": true}, {"rid": "win-x64", "os": "windows-2025", "target": "x86_64-pc-windows-msvc", "zig": false}, {"rid": "win-arm64", "os": "windows-2025", "target": "aarch64-pc-windows-msvc", "zig": false}, {"rid": "osx-arm64", "os": "macos-15", "target": "aarch64-apple-darwin", "zig": false}]'
+        run: node eng/native/plan-library-jobs.mjs
+
   library:
     name: Library / ${{ matrix.rid }}
+    needs: lookup
+    if: needs.lookup.outputs.built != '[]'
     strategy:
       fail-fast: false
-      matrix:
-        include:
-          # cargo-zigbuild links every Linux library on one runner, with a glibc floor for the gnu ones.
-          - { rid: linux-x64, os: ubuntu-24.04, target: x86_64-unknown-linux-gnu, zig: true }
-          - { rid: linux-arm64, os: ubuntu-24.04, target: aarch64-unknown-linux-gnu, zig: true }
-          - { rid: linux-musl-x64, os: ubuntu-24.04, target: x86_64-unknown-linux-musl, zig: true }
-          - { rid: linux-musl-arm64, os: ubuntu-24.04, target: aarch64-unknown-linux-musl, zig: true }
-          # MSVC and the Apple SDK: their own runners.
-          - { rid: win-x64, os: windows-2025, target: x86_64-pc-windows-msvc }
-          - { rid: win-arm64, os: windows-2025, target: aarch64-pc-windows-msvc }
-          - { rid: osx-arm64, os: macos-15, target: aarch64-apple-darwin }
+      matrix: ${{ fromJSON(needs.lookup.outputs.matrix) }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
     defaults:
@@ -33,28 +116,25 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      # The library depends only on the crate, its lock file, the toolchain pin and the build script. A cached build
-      # (saved on main only, .github/actions/dependency-cache) keeps ci.yml's packs from rebuilding unchanged libraries.
+      # Saves the library at the end of the job on main; elsewhere it only restores (a miss, as the lookup found).
       - uses: ./.github/actions/dependency-cache
         with:
           path: artifacts/native/runic-server/${{ matrix.rid }}
-          key: runic-server-${{ matrix.rid }}-${{ hashFiles('native/**', 'eng/native/build-runic-server.sh') }}
+          key: ${{ needs.lookup.outputs.key }}-${{ matrix.rid }}
+          enable-cross-os-archive: "true"
+      - name: Install the Rust target
+        working-directory: native
+        run: rustup target add ${{ matrix.target }}
+      - name: Install cargo-zigbuild
+        if: matrix.zig
+        run: python3 -m pip install --user cargo-zigbuild==0.24.0 ziglang==0.17.0
+      # cargo-zigbuild links every Linux library on one runner, with a glibc floor for the gnu ones; Windows and macOS
+      # need MSVC and the Apple SDK on their own runners.
       - name: Build
         env:
           RUNIC_CARGO_BUILD: ${{ matrix.zig && 'cargo zigbuild' || 'cargo build' }}
           RUNIC_GLIBC: "2.28"
-          ZIG: ${{ matrix.zig && 'true' || 'false' }}
-          RID: ${{ matrix.rid }}
-          TARGET: ${{ matrix.target }}
-        run: |
-          if [[ -n "$(ls -A "artifacts/native/runic-server/$RID" 2>/dev/null)" ]]; then
-            echo "Restored the $RID library from the cache."
-            ls -l "artifacts/native/runic-server/$RID"
-            exit 0
-          fi
-          (cd native && rustup target add "$TARGET")
-          if [[ "$ZIG" == true ]]; then python3 -m pip install --user cargo-zigbuild==0.24.0 ziglang==0.17.0; fi
-          eng/native/build-runic-server.sh "$RID"
+        run: eng/native/build-runic-server.sh ${{ matrix.rid }}
       # The linker signs the dylib ad hoc. dotnet runic package macos signs every nested library again with the
       # application's identity and the hardened runtime (MacOSBundleLayout; ci.yml's macOS packaging leg checks nested
       # libraries); this checks that the library takes that signature. NativeAOT links the static library instead.

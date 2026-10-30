@@ -1,9 +1,7 @@
-# Runic.Desktop.NativeServer (experimental)
+# Runic.Desktop.NativeServer
 
-**Experimental until 1.0 ([`RUNICDESK102`](https://github.com/Runic-Artifex/runic-sdk/blob/main/docs/experimental.md#RUNICDESK102)).**
-It may change in a minor release before then. New applications
-(`dotnet new runic-app`) use it, and it becomes the default Desktop server at
-1.0, with `Runic.Desktop.Kestrel` as the opt-in.
+The server new Runic Desktop applications use (`dotnet new runic-app`), and the
+default Desktop server from 1.0 on, with `Runic.Desktop.Kestrel` as the opt-in.
 
 Referencing it serves your Runic Desktop windows from a native HTTP and
 WebSocket server written in Rust ([axum](https://github.com/tokio-rs/axum) on
@@ -18,10 +16,6 @@ in its dependencies.
 <ItemGroup>
   <PackageReference Include="Runic.Desktop.NativeServer" />
 </ItemGroup>
-<PropertyGroup>
-  <!-- Accept that the native server is experimental. -->
-  <NoWarn>$(NoWarn);RUNICDESK102</NoWarn>
-</PropertyGroup>
 ```
 
 `RunicDesktopServer` selects the server of a project that references both

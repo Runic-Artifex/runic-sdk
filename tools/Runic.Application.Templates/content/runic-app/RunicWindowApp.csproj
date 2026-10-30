@@ -36,11 +36,6 @@
     <!-- dotnet restore writes packages.lock.json with the exact version and content hash of every NuGet package.
          Commit it: a later restore that resolves a different package fails instead of using it. -->
     <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
-<!--#if (nativeServer) -->
-    <!-- The native server is experimental until Runic 1.0 and may change in a minor release (RUNICDESK102 in the
-         Runic SDK's docs/experimental.md); it is the default server from 1.0 on. -->
-    <NoWarn>$(NoWarn);RUNICDESK102</NoWarn>
-<!--#endif -->
 <!--#if (nix) -->
     <!-- dotnet restore -p:PublishAot=true writes packages.aot.lock.json, whose graph adds the NativeAOT compiler.
          flake.nix restores from both lock files in locked mode for linux-x64, so they list that runtime's packages

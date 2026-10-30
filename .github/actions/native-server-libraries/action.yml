@@ -1,0 +1,65 @@
+name: Collect the native server's libraries
+description: >-
+  Puts the native Desktop server's library of every runtime identifier in artifacts/native/runic-server/<rid>, for a
+  pack: the ones .github/workflows/native-libraries.yml built in this run from their artifacts, the others from the
+  cache. Fails when one is missing, so no pack goes without them.
+inputs:
+  key:
+    description: The cache key prefix (native-libraries.yml's key output)
+    required: true
+  built:
+    description: The runtime identifiers built in this run, as a JSON array (native-libraries.yml's built output)
+    required: true
+runs:
+  using: composite
+  steps:
+    - uses: ./.github/actions/dependency-cache
+      if: ${{ !contains(fromJSON(inputs.built), 'linux-x64') }}
+      with:
+        path: artifacts/native/runic-server/linux-x64
+        key: ${{ inputs.key }}-linux-x64
+        enable-cross-os-archive: "true"
+    - uses: ./.github/actions/dependency-cache
+      if: ${{ !contains(fromJSON(inputs.built), 'linux-arm64') }}
+      with:
+        path: artifacts/native/runic-server/linux-arm64
+        key: ${{ inputs.key }}-linux-arm64
+        enable-cross-os-archive: "true"
+    - uses: ./.github/actions/dependency-cache
+      if: ${{ !contains(fromJSON(inputs.built), 'linux-musl-x64') }}
+      with:
+        path: artifacts/native/runic-server/linux-musl-x64
+        key: ${{ inputs.key }}-linux-musl-x64
+        enable-cross-os-archive: "true"
+    - uses: ./.github/actions/dependency-cache
+      if: ${{ !contains(fromJSON(inputs.built), 'linux-musl-arm64') }}
+      with:
+        path: artifacts/native/runic-server/linux-musl-arm64
+        key: ${{ inputs.key }}-linux-musl-arm64
+        enable-cross-os-archive: "true"
+    - uses: ./.github/actions/dependency-cache
+      if: ${{ !contains(fromJSON(inputs.built), 'win-x64') }}
+      with:
+        path: artifacts/native/runic-server/win-x64
+        key: ${{ inputs.key }}-win-x64
+        enable-cross-os-archive: "true"
+    - uses: ./.github/actions/dependency-cache
+      if: ${{ !contains(fromJSON(inputs.built), 'win-arm64') }}
+      with:
+        path: artifacts/native/runic-server/win-arm64
+        key: ${{ inputs.key }}-win-arm64
+        enable-cross-os-archive: "true"
+    - uses: ./.github/actions/dependency-cache
+      if: ${{ !contains(fromJSON(inputs.built), 'osx-arm64') }}
+      with:
+        path: artifacts/native/runic-server/osx-arm64
+        key: ${{ inputs.key }}-osx-arm64
+        enable-cross-os-archive: "true"
+    - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+      if: inputs.built != '[]'
+      with:
+        pattern: runic-server-*
+        path: artifacts/native/runic-server/downloaded
+    - name: Check that every runtime identifier has its libraries
+      shell: bash
+      run: node eng/native/collect-libraries.mjs

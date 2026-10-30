@@ -42,7 +42,7 @@ test("experimental help links name the release tag, not main", () => {
 });
 
 // A graduated family's ID is never reused: it stays listed as retired and no source marks an API with it.
-const retired = ["RUNICASSETS001", "RUNICDESK100", "RUNICDESK101", "RUNICNAV001", "RUNICWPF001"];
+const retired = ["RUNICASSETS001", "RUNICDESK100", "RUNICDESK101", "RUNICDESK102", "RUNICNAV001", "RUNICWPF001"];
 
 test("graduated diagnostic IDs are retired, not reused", () => {
   const section = docs.slice(docs.indexOf('<a id="retired"></a>'));

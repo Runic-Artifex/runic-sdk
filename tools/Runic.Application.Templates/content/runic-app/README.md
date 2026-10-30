@@ -70,10 +70,9 @@ for native prerequisites and platform services. Create the project with
 <!--#if (nativeServer) -->
 
 The page is served by the native Runic Desktop server
-(`Runic.Desktop.NativeServer`), so the application needs no ASP.NET Core. It is
-experimental until Runic 1.0, which is why the project file suppresses
-`RUNICDESK102`. To use ASP.NET Core Kestrel instead, replace the package with
-`Runic.Desktop.Kestrel` of the same version and remove the suppression.
+(`Runic.Desktop.NativeServer`), so the application needs no ASP.NET Core. To use
+ASP.NET Core Kestrel instead, replace the package with `Runic.Desktop.Kestrel`
+of the same version.
 <!--#endif -->
 
 Outside the `Development` environment, `Program.cs` sends a

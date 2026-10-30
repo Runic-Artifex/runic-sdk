@@ -400,12 +400,15 @@ test('dependency caches restore everywhere and save only on main', () => {
   assert.deepEqual(users, ['.github/actions/dependency-cache/action.yml']);
   const [save, restore] = yaml('.github/actions/dependency-cache/action.yml').runs.steps;
   assert.match(save.uses, /^actions\/cache@/);
-  assert.equal(save.if, "github.ref == 'refs/heads/main'");
+  // A lookup (the native server's library jobs run only on a miss) never saves.
+  assert.equal(save.if, "github.ref == 'refs/heads/main' && inputs.lookup-only != 'true'");
   assert.match(restore.uses, /^actions\/cache\/restore@/);
-  assert.equal(restore.if, "github.ref != 'refs/heads/main'");
+  assert.equal(restore.if, "github.ref != 'refs/heads/main' || inputs.lookup-only == 'true'");
   assert.equal(save.uses.split('@')[1], restore.uses.split('@')[1]);
-  for (const step of [save, restore])
-    assert.deepEqual(step.with, { path: '${{ inputs.path }}', key: '${{ inputs.key }}', 'restore-keys': '${{ inputs.restore-keys }}' });
+  const shared = { path: '${{ inputs.path }}', key: '${{ inputs.key }}', 'restore-keys': '${{ inputs.restore-keys }}',
+    enableCrossOsArchive: '${{ inputs.enable-cross-os-archive }}' };
+  assert.deepEqual(save.with, shared);
+  assert.deepEqual(restore.with, { ...shared, 'lookup-only': '${{ inputs.lookup-only }}' });
 });
 
 test('remote actions are pinned to a commit with their release tag', () => {

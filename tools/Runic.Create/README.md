@@ -55,7 +55,7 @@ commands in the browser.
 | `--package-manager` | `npm`, `pnpm`, `bun` | `npm` |
 | `--host` | `desktop`, `cswebui` | `desktop` |
 | `--linux-gtk` | `3`, `4`: the GTK version of Runic Desktop on Linux; Windows, macOS and `cswebui` are the same with either, so the creator asks for it, and prints it, only with `--host desktop` unless you pass it | `3` |
-| `--desktop-server` | `native` (`Runic.Desktop.NativeServer`, no ASP.NET Core; experimental until 1.0), `kestrel` (`Runic.Desktop.Kestrel`, ASP.NET Core Kestrel): the server Runic Desktop serves the page from; asked for and printed only with `--host desktop` unless you pass it | `native` |
+| `--desktop-server` | `native` (`Runic.Desktop.NativeServer`, no ASP.NET Core), `kestrel` (`Runic.Desktop.Kestrel`, ASP.NET Core Kestrel): the server Runic Desktop serves the page from; asked for and printed only with `--host desktop` unless you pass it | `native` |
 | `--view-models` | `reactiveui`, `toolkit` | `reactiveui` |
 | `--tests` | Adds a TUnit test project for the Window | No test project |
 | `--nix` | Adds a Nix flake that builds the application with the Runic SDK's `buildRunicApplication` | No flake |

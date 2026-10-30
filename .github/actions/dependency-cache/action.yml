@@ -13,18 +13,33 @@ inputs:
   restore-keys:
     description: Key prefixes for a partial match, one per line
     default: ""
+  lookup-only:
+    description: "true: only check whether the key exists (cache-hit), without downloading or saving"
+    default: "false"
+  enable-cross-os-archive:
+    description: "true: an entry saved on one operating system restores on another (the native server's libraries)"
+    default: "false"
+outputs:
+  cache-hit:
+    description: Whether an entry with the exact key exists
+    value: ${{ steps.save.outputs.cache-hit || steps.restore.outputs.cache-hit }}
 runs:
   using: composite
   steps:
     - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-      if: github.ref == 'refs/heads/main'
+      id: save
+      if: github.ref == 'refs/heads/main' && inputs.lookup-only != 'true'
       with:
         path: ${{ inputs.path }}
         key: ${{ inputs.key }}
         restore-keys: ${{ inputs.restore-keys }}
+        enableCrossOsArchive: ${{ inputs.enable-cross-os-archive }}
     - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-      if: github.ref != 'refs/heads/main'
+      id: restore
+      if: github.ref != 'refs/heads/main' || inputs.lookup-only == 'true'
       with:
         path: ${{ inputs.path }}
         key: ${{ inputs.key }}
         restore-keys: ${{ inputs.restore-keys }}
+        enableCrossOsArchive: ${{ inputs.enable-cross-os-archive }}
+        lookup-only: ${{ inputs.lookup-only }}

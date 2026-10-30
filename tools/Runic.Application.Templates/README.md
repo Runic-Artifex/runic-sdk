@@ -96,8 +96,7 @@ What each host opens:
 A `desktop` project serves its page from the native server
 (`Runic.Desktop.NativeServer`): the application needs no ASP.NET Core, so a
 framework-dependent build needs only the .NET runtime and a NativeAOT build is
-about a quarter smaller. The server is experimental until Runic 1.0, so the
-project suppresses `RUNICDESK102`. `--desktop-server kestrel` uses ASP.NET Core
+about a quarter smaller. `--desktop-server kestrel` uses ASP.NET Core
 Kestrel (`Runic.Desktop.Kestrel`) instead, for an application that uses ASP.NET
 Core itself.
 

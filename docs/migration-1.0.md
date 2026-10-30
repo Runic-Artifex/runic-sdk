@@ -988,8 +988,8 @@ Details: 0.15.0 [Runic Desktop: an ordered list of fallback presentations](../en
 
 `Runic.Desktop` no longer references ASP.NET Core. Kestrel, which served every Runic Desktop window, moved into its own
 package, `Runic.Desktop.Kestrel`, and an application references the server it uses: the native server
-`Runic.Desktop.NativeServer`, which needs no ASP.NET Core at all and becomes the default Desktop server at 1.0
-(experimental until then, [`RUNICDESK102`](experimental.md#RUNICDESK102)), or `Runic.Desktop.Kestrel`. A Runic Desktop
+`Runic.Desktop.NativeServer`, which needs no ASP.NET Core at all and is the default Desktop server from 1.0 on, or
+`Runic.Desktop.Kestrel`. A Runic Desktop
 executable without either fails to build with [`RUNICDESK004`](diagnostics.md#RUNICDESK004).
 
 Choose the native server unless the application uses ASP.NET Core itself (its own endpoints, `IConfiguration` or
@@ -998,7 +998,7 @@ memory, and keeps the ASP.NET Core runtime off the user's machine.
 
 | 0.14 | 0.15 |
 | --- | --- |
-| `Runic.Application.Views.Desktop`, `Runic.Application.Views.Wpf` or `Runic.Desktop` alone served windows from Kestrel | Add `<PackageReference Include="Runic.Desktop.NativeServer" Version="0.15.0" />` and `<NoWarn>$(NoWarn);RUNICDESK102</NoWarn>` to the application project for the native server, or `<PackageReference Include="Runic.Desktop.Kestrel" Version="0.15.0" />` to keep Kestrel. A library that only references Runic Desktop changes nothing; the executable chooses |
+| `Runic.Application.Views.Desktop`, `Runic.Application.Views.Wpf` or `Runic.Desktop` alone served windows from Kestrel | Add `<PackageReference Include="Runic.Desktop.NativeServer" Version="0.15.0" />` to the application project for the native server, or `<PackageReference Include="Runic.Desktop.Kestrel" Version="0.15.0" />` to keep Kestrel. A library that only references Runic Desktop changes nothing; the executable chooses |
 | A Nix flake with `buildRunicApplication` | Nothing to set: with `Runic.Desktop.NativeServer` in the lock file the builder compiles the native server from source and runs the application on the .NET runtime without ASP.NET Core (`nativeServer`, `dotnet-runtime`) |
 | ASP.NET Core types (`IConfiguration`, `IHostEnvironment`, `Microsoft.AspNetCore.*`) compiled in an application through `Runic.Desktop`'s framework reference | They compile with `Runic.Desktop.Kestrel`, which references `Microsoft.AspNetCore.App`. Without it, reference the framework or the `Microsoft.Extensions.*` packages the application uses itself |
 | `RunicDesktopMinimalHost` was read by `Runic.Desktop` | `Runic.Desktop.Kestrel` reads it; it has no effect on the native server |

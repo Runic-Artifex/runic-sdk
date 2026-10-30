@@ -1,5 +1,4 @@
 <Project>
-  <!-- Experimental (X1): docs/experimental.md#RUNICDESK102. -->
   <!-- Runic.Desktop's targets choose the server (RunicDesktopServer, Native by default with this package) and write the
        Runic.Desktop.NativeServer runtime switch.
 
@@ -10,7 +9,6 @@
        - RunicDesktopNativeServerLibraryDirectory replaces both with a directory's librunic_server.so/.dylib/.a or
          runic_server.dll/.lib, such as the source-built library of buildRunicApplication (nix/README.md). -->
   <PropertyGroup>
-    <_RunicDesktopNativeServerNoWarn>;$([System.String]::Copy('$(NoWarn)').Replace(',', ';').Replace(' ', ';'));</_RunicDesktopNativeServerNoWarn>
     <_RunicDesktopNativeServerOverride Condition="'$(RunicDesktopNativeServerLibraryDirectory)' != ''">$([MSBuild]::EnsureTrailingSlash('$(RunicDesktopNativeServerLibraryDirectory)'))</_RunicDesktopNativeServerOverride>
     <_RunicDesktopNativeServerRid>$(RuntimeIdentifier)</_RunicDesktopNativeServerRid>
     <_RunicDesktopNativeServerRid Condition="'$(_RunicDesktopNativeServerRid)' == ''">$(NETCoreSdkRuntimeIdentifier)</_RunicDesktopNativeServerRid>
@@ -25,10 +23,6 @@
           CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" Visible="false" />
   </ItemGroup>
   <Target Name="RunicDesktopValidateNativeServer" BeforeTargets="PrepareForBuild">
-    <!-- Like an [Experimental] API, the experimental server is an error until the project suppresses its ID. -->
-    <Error Code="RUNICDESK102" File="$(MSBuildProjectFullPath)" HelpLink="$(_RunicDiagnosticsHelpLinkBase)runicdesk102"
-           Condition="'$(_RunicDesktopNativeServer)' == 'true' and !$(_RunicDesktopNativeServerNoWarn.Contains(';RUNICDESK102;'))"
-           Text="The native Desktop server (Runic.Desktop.NativeServer) is experimental and may change or be removed in a minor release. Add RUNICDESK102 to NoWarn to use it, or reference Runic.Desktop.Kestrel instead." />
     <Error Code="RUNICDESK005" File="$(MSBuildProjectFullPath)" HelpLink="$(_RunicDiagnosticsHelpLinkBase)runicdesk005"
            Condition="'$(_RunicDesktopNativeServer)' == 'true' and '$(_RunicDesktopNativeServerOverride)' != '' and !Exists('$(_RunicDesktopNativeServerOverride)$(_RunicDesktopNativeServerSharedName)') and !Exists('$(_RunicDesktopNativeServerOverride)$(_RunicDesktopNativeServerStaticName)')"
            Text="RunicDesktopNativeServerLibraryDirectory is '$(RunicDesktopNativeServerLibraryDirectory)', which has neither $(_RunicDesktopNativeServerSharedName) nor $(_RunicDesktopNativeServerStaticName)." />
