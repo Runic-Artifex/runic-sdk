@@ -175,6 +175,71 @@ internal sealed class ApiShapeTests
             "Equivalent DNS names must not count as a data change.");
     }
 
+    // sdk#728: resolver queries against a chosen server.
+    [Test]
+    public void DnsReverseLookupNames()
+    {
+        Check(WindowsDnsResolverClient.ReverseLookupName(IPAddress.Parse("192.0.2.10")) == "10.2.0.192.in-addr.arpa", "IPv4 reverse name changed.");
+        Check(WindowsDnsResolverClient.ReverseLookupName(IPAddress.Parse("::ffff:192.0.2.10")) == "10.2.0.192.in-addr.arpa", "A mapped address must use its IPv4 name.");
+        Check(WindowsDnsResolverClient.ReverseLookupName(IPAddress.Parse("2001:db8::567:89ab")) ==
+            "b.a.9.8.7.6.5.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.8.b.d.0.1.0.0.2.ip6.arpa", "IPv6 reverse name changed.");
+    }
+
+    [Test]
+    public void DnsServerSocketAddressIsPort53()
+    {
+        var v4 = new byte[32];
+        WindowsDnsResolverClient.WriteSocketAddress(IPAddress.Parse("192.0.2.10"), v4);
+        Check(v4.AsSpan(0, 8).SequenceEqual(new byte[] { 2, 0, 0, 53, 192, 0, 2, 10 }) && v4.AsSpan(8).IndexOfAnyExcept((byte)0) < 0, "SOCKADDR_IN changed.");
+        var v6 = new byte[32];
+        WindowsDnsResolverClient.WriteSocketAddress(IPAddress.Parse("2001:db8::1%7"), v6);
+        Check(v6.AsSpan(0, 8).SequenceEqual(new byte[] { 23, 0, 0, 53, 0, 0, 0, 0 }) && v6[8] == 0x20 && v6[9] == 0x01 && v6[23] == 1 && v6[24] == 7,
+            "SOCKADDR_IN6 changed.");
+    }
+
+    [Test]
+    public unsafe void DnsQueryStatusesAreResponseCodes()
+    {
+        Check(WindowsDnsResolverClient.Resolution(0, null) == new DnsResolution(DnsResponseCode.NoError, []), "Success without records.");
+        Check(WindowsDnsResolverClient.Resolution(9501, null).ResponseCode == DnsResponseCode.NoError, "DNS_INFO_NO_RECORDS must be NoError.");
+        Check(WindowsDnsResolverClient.Resolution(9003, null).ResponseCode == DnsResponseCode.NameError, "DNS_ERROR_RCODE_NAME_ERROR must be NameError.");
+        Check(WindowsDnsResolverClient.Resolution(9002, null).ResponseCode == DnsResponseCode.ServerFailure, "SERVFAIL changed.");
+        Check(WindowsDnsResolverClient.Resolution(9005, null).ResponseCode == DnsResponseCode.Refused, "REFUSED changed.");
+        try { _ = WindowsDnsResolverClient.Resolution(1460, null); throw new InvalidOperationException("A timeout was a result."); }
+        catch (WindowsAdministrationException error) { Check(error.Category == AdministrationErrorCategory.Unavailable && error.NativeErrorCode == 1460, "A timeout must be Unavailable."); }
+    }
+
+    [Test]
+    public unsafe void DnsAnswerRecordsAreTyped()
+    {
+        var size = sizeof(global::Windows.Win32.NetworkManagement.Dns.DNS_RECORDW) + 64;
+        var memory = (byte*)System.Runtime.InteropServices.NativeMemory.AllocZeroed((nuint)(size * 5));
+        fixed (char* owner = "alias.example.test", target = "host.example.test", first = "v=spf1 -all", second = "say \"hi\"")
+        {
+            try
+            {
+                var records = new global::Windows.Win32.NetworkManagement.Dns.DNS_RECORDW*[5];
+                for (var i = 0; i < 5; i++) records[i] = (global::Windows.Win32.NetworkManagement.Dns.DNS_RECORDW*)(memory + i * size);
+                for (var i = 0; i < 4; i++) records[i]->pNext = records[i + 1];
+                foreach (var record in records) { record->pName = new(owner); record->dwTtl = 300; record->Flags.DW = 1; }
+                records[0]->wType = 5; records[0]->Data.CNAME.pNameHost = new(target);
+                records[1]->wType = 1; records[1]->pName = new(target); records[1]->Data.A.IpAddress = BitConverter.ToUInt32([192, 0, 2, 10]);
+                records[2]->wType = 16; records[2]->Data.TXT.dwStringCount = 2;
+                var strings = (global::Windows.Win32.Foundation.PWSTR*)&records[2]->Data.TXT.pStringArray;
+                strings[0] = new(first); strings[1] = new(second);
+                records[3]->wType = 6; // SOA, without a typed form
+                records[4]->wType = 1; records[4]->Flags.DW = 2; // the authority section is not an answer
+                var answers = WindowsDnsResolverClient.Answers(records[0]);
+                Check(answers.Length == 4, "Expected four answers: " + string.Join(", ", answers));
+                Check(answers[0] == new DnsAnswer("alias.example.test", DnsRecordType.CName, TimeSpan.FromMinutes(5), new DnsRecordData.CName("host.example.test")), "CNAME: " + answers[0]);
+                Check(answers[1] == new DnsAnswer("host.example.test", DnsRecordType.A, TimeSpan.FromMinutes(5), new DnsRecordData.A(IPAddress.Parse("192.0.2.10"))), "A: " + answers[1]);
+                Check(answers[2].Data == new DnsRecordData.Txt("\"v=spf1 -all\" \"say \\\"hi\\\"\""), "TXT: " + answers[2].Data);
+                Check(answers[3].Type == (DnsRecordType)6 && answers[3].Data == new DnsRecordData.Unsupported("TYPE6", ""), "SOA: " + answers[3]);
+            }
+            finally { System.Runtime.InteropServices.NativeMemory.Free(memory); }
+        }
+    }
+
     [Test]
     public void DnsTimeToLiveIsWholeSeconds()
     {

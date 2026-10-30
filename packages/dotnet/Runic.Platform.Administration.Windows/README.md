@@ -42,6 +42,7 @@ domain controllers and non-DC DNS servers.
 | Networks / WindowsNetworkClient | Network identities, categories, connectivity and domain type | Local Network List Manager COM; read-only. |
 | Shares / WindowsShareClient | SMB enumeration, configuration, creation/update/deletion and self-relative security descriptors | Local or explicit server; NetShare permissions. Security reads/writes may require elevated rights. Filesystem ACLs are untouched. |
 | Dns / WindowsDnsClient | Zones/AD integration; A, AAAA, CNAME, PTR, MX, TXT, SRV and NS record operations | Explicit Windows DNS server; MicrosoftDNS WMI provider, DCOM/WMI access and DNS administration rights. No zone/server configuration writes. |
+| Dns / WindowsDnsResolverClient | Resolver queries (A, AAAA, CNAME, PTR, MX, TXT, SRV, NS; other types untyped) and reverse lookups against one chosen DNS server, with the response code | Any DNS server by IPv4 or IPv6 address, port 53; network access only, no administration rights. |
 | GroupPolicy / WindowsGroupPolicyClient | GUID-based GPO operations; GPMC backup/import/restore/report; links/order/inheritance; permissions and WMI-filter associations | Explicit domain/controller, caller identity; GPMC/RSAT installed and delegated AD/GPO/SYSVOL permissions. |
 
 System.DirectoryServices.Protocols 10.0.10 is the only package dependency. All other
@@ -172,6 +173,13 @@ membership.
   not replace sibling records. Unsupported types are returned as Unsupported with
   native class and text; they cannot be written through the curated typed API.
   TXT data follows the DNS WMI provider's quoted textual representation.
+- `WindowsDnsResolverClient` asks the server it was created for (`DnsQueryEx` with a
+  server list), not the computer's configured resolvers, and uses neither the
+  resolver cache, the hosts file, LLMNR, NetBIOS nor DNS suffixes. A name error
+  (NXDOMAIN) or another response code is a `DnsResolution` result with no answers;
+  a server that does not answer is `Unavailable` (1460). Answers are the answer
+  section with owner name, type, TTL and `DnsRecordData`; a CNAME chain returns
+  each step. `ReverseLookupName(address)` builds the `in-addr.arpa`/`ip6.arpa` name.
 - Share security descriptors are `WindowsSecurityDescriptor` values: immutable,
   compared by their self-relative binary form, with `Sddl`, `FromSddl`,
   `FromBinaryForm`, `From(RawSecurityDescriptor)` and `ToRawSecurityDescriptor()`.

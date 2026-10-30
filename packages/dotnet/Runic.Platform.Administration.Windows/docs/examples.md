@@ -227,6 +227,20 @@ single record, preserving other records at that owner. Unsupported native types
 are exposed and rejected for typed writes. The DNS role and remote WMI access
 are prerequisites.
 
+## DNS resolver queries
+
+~~~csharp
+using System.Net;
+using Runic.Platform.Administration.Windows.Dns;
+
+// Ask the domain controller itself, not the configured resolvers, whether reverse lookup works.
+var resolver = new WindowsDnsResolverClient(IPAddress.Parse("192.0.2.10"));
+var reverse = await resolver.ReverseLookupAsync(IPAddress.Parse("192.0.2.25"));
+if (reverse.ResponseCode == DnsResponseCode.NameError) Console.WriteLine("No PTR record.");
+foreach (var answer in reverse.Answers) Console.WriteLine(answer);
+var forward = await resolver.QueryAsync("pc1.example.test", DnsRecordType.A);
+~~~
+
 ## Group Policy
 
 ~~~csharp
