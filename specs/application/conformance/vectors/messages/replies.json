@@ -197,6 +197,43 @@
       "request": "hello",
       "input": {"encoding":"json","value":{"ok":true,"protocol":4,"implementation":{"name":"conformance-producer","version":"1.0.0"},"features":"text-splice/1"}},
       "expect": {"result":"invalid"}
+    },
+    {
+      "id": "messages.replies.command-superseded",
+      "description": "presentation-epoch/1: a scoped command whose epoch is not the route's current one ran nothing.",
+      "operation": "read-reply",
+      "request": "command",
+      "input": {"encoding":"json","value":{"ok":true,"revision":41,"superseded":true}},
+      "expect": {"result":"valid"}
+    },
+    {
+      "id": "messages.replies.open-with-an-epoch",
+      "description": "presentation-epoch/1: the open reply carries the route's current epoch.",
+      "operation": "read-reply",
+      "request": "open",
+      "input": {"encoding":"json","value":{"ok":true,"revision":40,"epoch":40,"state":{"page":1,"canNext":true,"canBack":false,"canPing":true},"presentation":"ok"}},
+      "expect": {"result":"valid"}
+    },
+    {
+      "id": "messages.replies.snapshot-with-an-epoch",
+      "operation": "read-reply",
+      "request": "snapshot",
+      "input": {"encoding":"json","value":{"ok":true,"revision":41,"epoch":41,"state":{"page":2,"canNext":true,"canBack":true,"canPing":true}}},
+      "expect": {"result":"valid"}
+    },
+    {
+      "id": "messages.replies.presented",
+      "operation": "read-reply",
+      "request": "presented",
+      "input": {"encoding":"json","value":{"ok":true}},
+      "expect": {"result":"valid"}
+    },
+    {
+      "id": "messages.replies.closing-reply",
+      "operation": "read-reply",
+      "request": "closing-reply",
+      "input": {"encoding":"json","value":{"ok":true}},
+      "expect": {"result":"valid"}
     }
   ]
 }

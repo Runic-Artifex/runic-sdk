@@ -263,6 +263,20 @@ public sealed class WindowContentSession : IDisposable
         return root?.Close(presentation, connection) ?? BridgePresentationOutcome.Ok;
     }
 
+    // The connections with an open presentation of a route, each once (presented/1 asks them to report a painted state).
+    internal string[] PresentationConnections(string route)
+    {
+        ContentAttachment? content;
+        RootPresentations? root;
+        lock (_gate)
+        {
+            if (_disposed) return [];
+            content = FindContent(route);
+            _rootPresentations.TryGetValue(route, out root);
+        }
+        return content?.Connections() ?? root?.Connections() ?? [];
+    }
+
     // The attached content of a route; the gate is held.
     private ContentAttachment? FindContent(string route)
     {
@@ -362,22 +376,61 @@ public sealed class WindowContentSession : IDisposable
     /// cancel; call again to wait for it. Content, fields, and routes owned by
     /// this session stay intact until the owner later disposes the session.
     /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The first call also tells the window's pages that it closes: each connection that uses <c>presented/1</c>
+    /// receives <c>closing</c>, and the call waits, at the same time as for accepted work and at most
+    /// <paramref name="timeout"/> or 5 seconds, until each such page answered or disconnected.
+    /// <see cref="RunicWindowCloseResult.PagesAcknowledged"/> reports whether they all did. With
+    /// <see cref="TimeSpan.Zero"/> the pages are told but not waited for. Later calls reuse the first call's result.
+    /// </para>
+    /// <para>
+    /// The result's <see cref="RunicWindowCloseResult.Completion"/> completes when the
+    /// remaining operations reach a terminal result. It never faults; the session
+    /// itself stays alive until its owner disposes it.
+    /// </para>
+    /// </remarks>
     /// <param name="timeout">How long to wait for accepted work, or <see cref="Timeout.InfiniteTimeSpan"/>.</param>
     /// <param name="cancellationToken">
     /// Stops this caller's wait. Admission stays stopped and accepted work keeps running.
     /// </param>
-    /// <remarks>
-    /// The result's <see cref="RunicWindowCloseResult.Completion"/> completes when the
-    /// remaining operations reach a terminal result. It never faults; the session
-    /// itself stays alive until its owner disposes it.
-    /// </remarks>
     /// <exception cref="ArgumentOutOfRangeException"><paramref name="timeout"/> is negative and not infinite.</exception>
     /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> was cancelled.</exception>
     public async ValueTask<RunicWindowCloseResult> DrainAsync(TimeSpan timeout, CancellationToken cancellationToken = default)
     {
-        lock (_gate) ThrowIfDisposed();
+        if (timeout < TimeSpan.Zero && timeout != Timeout.InfiniteTimeSpan)
+            throw new ArgumentOutOfRangeException(nameof(timeout));
+        Task<bool> pages;
+        lock (_gate)
+        {
+            ThrowIfDisposed();
+            pages = _pagesAcknowledged ??= AcknowledgeCloseAsync(timeout);
+        }
         var result = await _operations.DrainAsync(timeout, cancellationToken).ConfigureAwait(false);
-        return new(result.Drained, result.RemainingRunningOperations, result.Remaining);
+        var acknowledged = await pages.WaitAsync(cancellationToken).ConfigureAwait(false);
+        return new(result.Drained, result.RemainingRunningOperations, result.Remaining) { PagesAcknowledged = acknowledged };
+    }
+
+    // How long a close waits at most for its pages' closing-reply (presented/1).
+    internal static readonly TimeSpan CloseAcknowledgementLimit = TimeSpan.FromSeconds(5);
+
+    // The close's page acknowledgement, from the first DrainAsync on.
+    private Task<bool>? _pagesAcknowledged;
+
+    // Pushes closing to the pages and waits up to min(timeout, 5 s) for their replies; a zero timeout does not wait.
+    private async Task<bool> AcknowledgeCloseAsync(TimeSpan timeout)
+    {
+        var dispatcher = BridgeDispatcher.For(_transport);
+        var replied = dispatcher.BeginClosing();
+        if (!replied.IsCompleted && timeout != TimeSpan.Zero)
+        {
+            var limit = timeout == Timeout.InfiniteTimeSpan || timeout > CloseAcknowledgementLimit ? CloseAcknowledgementLimit : timeout;
+            try { await replied.WaitAsync(limit, TimeProvider).ConfigureAwait(false); }
+            catch (TimeoutException) { }
+        }
+        if (replied.IsCompleted) return true;
+        if (timeout != TimeSpan.Zero) ViewsLog.CloseUnacknowledged(Logger, dispatcher.UnacknowledgedClosings);
+        return false;
     }
 
     /// <summary>
@@ -997,7 +1050,13 @@ public sealed class WindowContentSession : IDisposable
         var inner = attach(_transport, viewModel, route);
         try
         {
-            if (dormant is not null && dormant.TryResume(inner)) return dormant;
+            if (dormant is not null && dormant.TryResume(inner))
+            {
+                // The open presentations of the route did not see the suspension: the new attachment pushes its first
+                // state, which carries its new epoch (presentation-epoch/1).
+                (inner as IBridgeResumedPresentations)?.PresentationsResumed();
+                return dormant;
+            }
             return new ContentAttachment(this, entry, inner, _transport, route);
         }
         catch { inner.Dispose(); throw; }
@@ -1136,6 +1195,11 @@ public sealed class WindowContentSession : IDisposable
 
         public string Route { get; } = route;
 
+        public string[] Connections()
+        {
+            lock (_gate) return [.. _owners.Owners.Values.Select(owner => owner.ConnectionKey).Distinct(StringComparer.Ordinal)];
+        }
+
         public BridgePresentationOutcome Open(string presentation, BridgeConnection connection)
         {
             lock (_gate)
@@ -1224,6 +1288,11 @@ public sealed class WindowContentSession : IDisposable
         }
 
         public string Route { get; }
+
+        public string[] Connections()
+        {
+            lock (_gate) return [.. _mounts.Owners.Values.Select(owner => owner.ConnectionKey).Distinct(StringComparer.Ordinal)];
+        }
 
         public BridgePresentationOutcome Open(string presentation, BridgeConnection connection)
         {
@@ -1518,7 +1587,8 @@ public sealed class WindowContentSession : IDisposable
         Func<IRunicView> createView,
         Action<IRunicView> bindView,
         Action<IRunicView> claimView,
-        Action<IRunicView> releaseView) : IDisposable, IRunicWebPresentationLifetime, IBridgeDetachmentSignal
+        Action<IRunicView> releaseView) : IDisposable, IRunicWebPresentationLifetime, IBridgeDetachmentSignal,
+        IBridgeResumedPresentations
     {
         private readonly object _gate = new();
         private readonly Dictionary<string, IRunicView> _presentations = new(StringComparer.Ordinal);
@@ -1570,6 +1640,8 @@ public sealed class WindowContentSession : IDisposable
         }
 
         public void BeginDetaching() => (bridge as IBridgeDetachmentSignal)?.BeginDetaching();
+
+        public void PresentationsResumed() => (bridge as IBridgeResumedPresentations)?.PresentationsResumed();
 
         // Lock rule: never hold _gate while waiting for a model turn. A navigator retires
         // content off-turn, and disposing the bridge (with its nested content) waits for a

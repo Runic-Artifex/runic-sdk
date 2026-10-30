@@ -489,8 +489,8 @@ export interface BridgeConnectionHandle {
 }
 
 /**
- * Follows the page's connection to its .NET host (`connecting`, `connected`, `reconnecting`
- * or `lost`) as a shallow ref through `onBridgeConnection`, until the current effect scope is
+ * Follows the page's connection to its .NET host (`connecting`, `connected`, `reconnecting`,
+ * `lost` or `closed`) as a shallow ref through `onBridgeConnection`, until the current effect scope is
  * disposed. Call it in `setup()` or `effectScope().run()`: outside an effect scope it is never
  * released (development builds warn).
  *

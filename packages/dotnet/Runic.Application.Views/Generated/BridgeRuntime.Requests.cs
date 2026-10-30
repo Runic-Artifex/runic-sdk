@@ -11,14 +11,16 @@ namespace Runic.Application.Views.Generated;
 // the window requested before it was ready were handed to the transport.
 public partial class ViewModelBridge<T>
 {
-    private sealed class RouteHandler(ViewModelBridge<T> owner) : IBridgeRouteHandler
+    private sealed class RouteHandler(ViewModelBridge<T> owner) : IBridgeRouteHandler, IBridgePresentedHandler
     {
+        public void Presented(BridgeConnection connection, long revision) => owner.Presented(revision);
+
         public ValueTask<ReadOnlyMemory<byte>> HandleAsync(BridgeRouteRequest request, CancellationToken cancellationToken) =>
             request.Kind switch
             {
                 "open" => new(owner.Open(request)),
                 "close" => new(owner.Close(request)),
-                "snapshot" => new(owner.Snapshot()),
+                "snapshot" => new(owner.Snapshot(request.Connection)),
                 "set" => owner.SetAsync(request, cancellationToken),
                 "write" => owner.WriteAsync(request, cancellationToken),
                 "command" => owner.CommandAsync(request, cancellationToken),
@@ -41,11 +43,15 @@ public partial class ViewModelBridge<T>
         string? registration = null;
         if (outcome == BridgePresentationOutcome.Ok && request.Root.TryGetProperty("handlers", out var handlers))
             registration = RegisterOpenHandlers(presentation, request.Connection, handlers);
-        return ReadState(writer =>
+        var reply = ReadState(request.Connection, writer =>
         {
             writer.WriteString("presentation", outcome == BridgePresentationOutcome.Ok ? "ok" : "ignored");
             if (registration is not null) writer.WriteString("registration", registration);
         }, reuseFirstState: true);
+        // presented/1: a connection that opens the route while the application waits for it to be painted is asked
+        // too, after this reply.
+        if (outcome == BridgePresentationOutcome.Ok) SendPresent(request.Connection);
+        return reply;
     }
 
     private BridgePresentationOutcome OpenPresentation(string presentation, BridgeConnection connection)
@@ -66,13 +72,15 @@ public partial class ViewModelBridge<T>
             return BridgeMessages.Presentation(_presentations?.Close(presentation, request.Connection, out _) ?? BridgePresentationOutcome.Ok);
     }
 
-    private ReadOnlyMemory<byte> Snapshot() => ReadState(static _ => { }, reuseFirstState: false);
+    private ReadOnlyMemory<byte> Snapshot(BridgeConnection connection) => ReadState(connection, static _ => { }, reuseFirstState: false);
 
     // The reply of open and snapshot: the route's full state, after everything pending was published. An open while
     // the route's first state is current copies that state (CaptureFirstState); a snapshot, which a page sends to
-    // recover, always writes the state again.
-    private ReadOnlyMemory<byte> ReadState(Action<Utf8JsonWriter> writeMore, bool reuseFirstState)
+    // recover, always writes the state again. Both carry the route's epoch on a connection that uses
+    // presentation-epoch/1.
+    private ReadOnlyMemory<byte> ReadState(BridgeConnection connection, Action<Utf8JsonWriter> writeMore, bool reuseFirstState)
     {
+        var epoch = connection.UsesPresentationEpoch;
         try
         {
             return _modelTurn.Run<ReadOnlyMemory<byte>>(() =>
@@ -90,8 +98,8 @@ public partial class ViewModelBridge<T>
                         var writer = message.Writer;
                         writer.WriteStartObject();
                         writer.WriteBoolean("ok", true);
-                        if (first) WriteFirstState(writer);
-                        else WriteState(message, updateBaselines: !_delivery.StateRequested);
+                        if (first) WriteFirstState(writer, epoch);
+                        else WriteState(message, updateBaselines: !_delivery.StateRequested, epoch);
                         writeMore(writer);
                         writer.WriteEndObject();
                         return IsInactive ? BridgeMessages.Released : message.ToArray();
@@ -344,8 +352,10 @@ public partial class ViewModelBridge<T>
     }
 
     // The command of a command, can or start request, and its decoded input: null with the reply when the member is not
-    // a command, or the input is missing, extra or invalid.
-    private CommandDescriptor<T>? ReadCommand(BridgeRouteRequest request, out object? input, out ReadOnlyMemory<byte> refusal)
+    // a command, or the input is missing, extra or invalid. Without decode the input is only checked to be present
+    // exactly when the command takes one; the caller decodes it later (DecodeInput).
+    private CommandDescriptor<T>? ReadCommand(BridgeRouteRequest request, out object? input, out ReadOnlyMemory<byte> refusal,
+        bool decode = true)
     {
         input = null;
         refusal = default;
@@ -362,15 +372,26 @@ public partial class ViewModelBridge<T>
                 ? $"The command {member} takes an input." : $"The command {member} takes no input.");
             return null;
         }
-        if (!present) return descriptor;
-        try { input = ReadInput(descriptor, element); }
-        catch (Exception error) when (error is ArgumentException or FormatException or JsonException or InvalidOperationException)
+        if (!present || !decode) return descriptor;
+        if (DecodeInput(descriptor, element, out input) is { } invalid)
         {
-            refusal = EncodeFailure(new("rejected", $"{descriptor.Name} has an invalid input.",
-                BridgeFailureDetails.Capture(error, IncludesFailureDetail), Reason: BridgeFailure.InvalidInput));
+            refusal = invalid;
             return null;
         }
         return descriptor;
+    }
+
+    // Decodes a command's input: null, or the invalid-input reply.
+    private byte[]? DecodeInput(CommandDescriptor<T> descriptor, JsonElement element, out object? input)
+    {
+        input = null;
+        try { input = ReadInput(descriptor, element); }
+        catch (Exception error) when (error is ArgumentException or FormatException or JsonException or InvalidOperationException)
+        {
+            return EncodeFailure(new("rejected", $"{descriptor.Name} has an invalid input.",
+                BridgeFailureDetails.Capture(error, IncludesFailureDetail), Reason: BridgeFailure.InvalidInput));
+        }
+        return null;
     }
 
     // Decodes a command's input. An out-of-range number is an invalid input; an OverflowException from the command
@@ -390,15 +411,20 @@ public partial class ViewModelBridge<T>
 
     private async ValueTask<ReadOnlyMemory<byte>> CommandAsync(BridgeRouteRequest request, CancellationToken cancellationToken)
     {
-        if (ReadCommand(request, out var key, out var refusal) is not { } descriptor) return refusal;
         var connection = request.Connection;
+        // presentation-epoch/1: a command that carries the epoch of its presentation, on a connection that uses the
+        // feature, runs only in that epoch. The check comes before the input, key, availability and capacity checks, in
+        // the command's model turn, so the input of such a command is decoded there, after it.
+        var scope = connection.UsesPresentationEpoch ? request.Envelope.Epoch : null;
+        if (ReadCommand(request, out var key, out var refusal, decode: scope is null) is not { } descriptor) return refusal;
+        var command = new CommandRequest(scope, scope is not null && descriptor.HasInput ? request.Root.GetProperty("input") : null);
         ReadOnlyMemory<byte> reply;
         bool waits;
         if (IsAsynchronous(descriptor))
-            (reply, waits) = await ExecuteAsync(descriptor, key, connection, cancellationToken).ConfigureAwait(false);
+            (reply, waits) = await ExecuteAsync(descriptor, key, connection, command, cancellationToken).ConfigureAwait(false);
         else
         {
-            try { (reply, waits) = _modelTurn.Run(() => Execute(descriptor, key, connection)); }
+            try { (reply, waits) = _modelTurn.Run(() => Execute(descriptor, key, connection, command)); }
             catch (ObjectDisposedException) { return BridgeMessages.Released; }
         }
         if (!waits) return reply;
@@ -427,13 +453,39 @@ public partial class ViewModelBridge<T>
         });
     }
 
-    // A synchronous command, in the request's model turn. The flag says whether the command ran.
-    private (ReadOnlyMemory<byte> Reply, bool Ran) Execute(CommandDescriptor<T> descriptor, object? key, BridgeConnection connection)
+    // The epoch a command request carries on a connection that uses presentation-epoch/1, and its input, which is decoded
+    // after the epoch check.
+    private readonly record struct CommandRequest(long? Epoch, JsonElement? Input);
+
+    // In the command's model turn: the superseded reply of a command whose epoch is not the route's current one, or
+    // null. A renewal that was requested but not yet published counts as a new epoch.
+    private byte[]? Superseded(CommandRequest request) =>
+        request.Epoch is { } epoch && (RenewalPending || epoch != _epoch) ? SupersededReply() : null;
+
+    // In the command's model turn, after the epoch check: decodes a scoped command's input. Null, or the invalid-input
+    // reply.
+    private byte[]? DecodeScopedInput(CommandDescriptor<T> descriptor, CommandRequest request, ref object? key) =>
+        request.Input is { } element ? DecodeInput(descriptor, element, out key) : null;
+
+    // A synchronous command, in the request's model turn. The flag says whether the reply waits for the window's pushes:
+    // the command ran, or it was superseded.
+    private (ReadOnlyMemory<byte> Reply, bool Ran) Execute(CommandDescriptor<T> descriptor, object? key, BridgeConnection connection,
+        CommandRequest request)
     {
         lock (_modelGate)
         {
             if (IsInactive) return (BridgeMessages.Released, false);
             var call = BridgeCall.Start(BridgeCallKind.Command, ModelName, _name, descriptor.Name);
+            if (Superseded(request) is { } superseded)
+            {
+                call.Complete(BridgeCallOutcome.Superseded);
+                return (superseded, true);
+            }
+            if (DecodeScopedInput(descriptor, request, ref key) is { } invalid)
+            {
+                call.Complete(BridgeCallOutcome.Rejected);
+                return (invalid, false);
+            }
             try
             {
                 if (!TryResolve(descriptor, key, out var argument))
@@ -478,12 +530,25 @@ public partial class ViewModelBridge<T>
 
     // An awaited command: admitted in a model turn, awaited outside it, and answered in a new turn.
     private async ValueTask<(ReadOnlyMemory<byte> Reply, bool Ran)> ExecuteAsync(CommandDescriptor<T> descriptor, object? key,
-        BridgeConnection connection, CancellationToken token)
+        BridgeConnection connection, CommandRequest request, CancellationToken token)
     {
         // The awaited command is window work like an admitted operation: closing the window waits for it before the
         // host disposes its scope, and cancels it after the close timeout.
         var atCapacity = false;
         using var admission = _content is null ? null : _content.Operations.TryBeginAwaited(token, out atCapacity);
+        // A superseded command is answered so before it would be refused for capacity.
+        if (atCapacity && request.Epoch is not null)
+        {
+            try
+            {
+                if (_modelTurn.Run(() =>
+                    {
+                        lock (_modelGate) return IsInactive ? BridgeMessages.Released.ToArray() : Superseded(request);
+                    }) is { } answered)
+                    return (answered, !IsInactive);
+            }
+            catch (ObjectDisposedException) { return (BridgeMessages.Released, false); }
+        }
         if (atCapacity)
         {
             var refused = BridgeCall.Start(BridgeCallKind.Command, ModelName, _name, descriptor.Name);
@@ -498,6 +563,7 @@ public partial class ViewModelBridge<T>
         Task<BridgeOperationResult>? execution = null;
         Task<object?>? resolution = null;
         var call = BridgeCall.Start(BridgeCallKind.Command, ModelName, _name, descriptor.Name);
+        var superseded = false;
         try
         {
             var rejected = BridgeCallOutcome.Released;
@@ -506,7 +572,14 @@ public partial class ViewModelBridge<T>
                 lock (_modelGate)
                 {
                     if (IsInactive) return BridgeMessages.Released;
+                    if (Superseded(request) is { } supersededReply)
+                    {
+                        superseded = true;
+                        rejected = BridgeCallOutcome.Superseded;
+                        return supersededReply;
+                    }
                     rejected = BridgeCallOutcome.Rejected;
+                    if (DecodeScopedInput(descriptor, request, ref key) is { } invalid) return invalid;
                     // An asynchronous resolver starts in this turn; the command is admitted in the next.
                     if (descriptor.ResolveArgumentAsync is { } resolveAsync)
                     {
@@ -534,7 +607,7 @@ public partial class ViewModelBridge<T>
             if (rejection is { } refused)
             {
                 call.Complete(rejected);
-                return (refused, false);
+                return (refused, superseded);
             }
             await execution!.ConfigureAwait(false);
             call.Complete(BridgeCallOutcome.Ok);

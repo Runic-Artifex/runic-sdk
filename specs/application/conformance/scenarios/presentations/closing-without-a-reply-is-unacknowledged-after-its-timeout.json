@@ -1,0 +1,26 @@
+{
+  "format": "runic.views.scenario/1",
+  "id": "presentations.closing-without-a-reply-is-unacknowledged-after-its-timeout.v1",
+  "contract": {"id":"runic.views","version":4},
+  "set": "presentations",
+  "roles": ["producer"],
+  "description": "A close whose page never replies to closing completes unacknowledged when its timeout passes.",
+  "view": "wizard",
+  "requires": ["presented/1","virtual-clock"],
+  "ids": {
+    "c1": {"kind":"connection"},
+    "hello-c1": {"kind":"request"},
+    "session": {"kind":"wire","value":"s-1"},
+    "close": {"kind":"close"}
+  },
+  "arrange": {"model":{}},
+  "steps": [
+    {"connect":"c1"},
+    {"send":{"kind":"hello","protocol":4,"session":{"$id":"session"},"client":{"name":{"$any":"string","default":"conformance-client"},"version":{"$any":"string","default":"1.0.0"}},"features":{"$any":"array","default":["text-splice/1","presented/1"]}},"id":"hello-c1"},
+    {"receive":{"ok":true,"protocol":4,"implementation":{"name":{"$any":"string","default":"conformance-producer"},"version":{"$any":"string","default":"1.0.0"}},"features":{"$any":"array","default":["text-splice/1","presented/1"]}},"replyTo":"hello-c1"},
+    {"closeWindow":{"id":"close","timeout":1000}},
+    {"receive":{"kind":"closing"}},
+    {"advance":1000},
+    {"expect":{"closed":{"id":"close","acknowledged":false}}}
+  ]
+}

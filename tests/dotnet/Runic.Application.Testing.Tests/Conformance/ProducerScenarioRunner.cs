@@ -1,5 +1,6 @@
 using System.Text.Json.Nodes;
 using Microsoft.Extensions.Time.Testing;
+using Runic.Application.Views;
 
 namespace Runic.Application.Testing.Tests.Conformance;
 
@@ -21,6 +22,10 @@ internal sealed class ProducerScenarioRunner
     private readonly Dictionary<string, ScenarioConnection> _connections = new(StringComparer.Ordinal);
     // The request step ids sent so far, with their connections.
     private readonly Dictionary<string, ScenarioConnection> _requests = new(StringComparer.Ordinal);
+    // The route each request step named, which the epochs of its reply belong to.
+    private readonly Dictionary<string, string?> _requestRoutes = new(StringComparer.Ordinal);
+    // The closes the closeWindow steps started, by id.
+    private readonly Dictionary<string, Task<RunicWindowCloseResult>> _closes = new(StringComparer.Ordinal);
     private ScenarioConnection? _first;
 
     private ProducerScenarioRunner(ConformanceScenario scenario, ScenarioTransport transport)
@@ -82,15 +87,61 @@ internal sealed class ProducerScenarioRunner
             else _transport.Release();
         }
         else if (step["mutate"] is JsonArray mutations)
+        {
+            foreach (var mutation in mutations)
+                if (mutation?["op"]?.GetValue<string>() == "waitPresented") _messages.Id(mutation["id"]!.GetValue<string>(), "wait");
             await window.MutateAsync(mutations, step["units"]?.GetValue<string>() == "each").ConfigureAwait(false);
+        }
+        else if (step["closeWindow"] is JsonObject close)
+        {
+            var id = close["id"]!.GetValue<string>();
+            _messages.Id(id, "close");
+            if (_closes.ContainsKey(id)) throw new ScenarioFailure($"The close {id} was started before.");
+            _closes.Add(id, window.CloseAsync(TimeSpan.FromMilliseconds(close["timeout"]!.GetValue<int>())));
+        }
         else if (step["expect"] is JsonObject expect)
         {
-            // Only the model is the producer's; state, call, operation, diagnostics and notifications are the client's.
+            // The model, waits and closes are the producer's; state, call, operation, diagnostics, notifications and
+            // connection are the client's.
             if (expect["model"] is JsonObject model)
                 foreach (var (member, value) in model)
                     _messages.MatchValue(value, window.ReadMember(member), $"model.{member}");
+            if (expect["presented"] is JsonObject presented) await ExpectPresentedAsync(presented, window).ConfigureAwait(false);
+            if (expect["closed"] is JsonObject closed) await ExpectClosedAsync(closed).ConfigureAwait(false);
         }
         else if (!step.ContainsKey("call")) throw new ScenarioFailure("The step has no action a producer runner knows.");
+    }
+
+    // expect.presented: a waitPresented wait is pending, or completed with the result, which the runner waits for.
+    private async Task ExpectPresentedAsync(JsonObject presented, IConformanceWindow window)
+    {
+        var id = presented["id"]!.GetValue<string>();
+        _messages.Id(id, "wait");
+        var wait = window.Wait(id);
+        var expected = presented["result"]!;
+        if (expected.GetValueKind() == System.Text.Json.JsonValueKind.String)
+        {
+            if (wait.IsCompleted) throw new ScenarioFailure($"The wait {id} completed with {await wait.ConfigureAwait(false)}; expected it pending.");
+            return;
+        }
+        bool result;
+        try { result = await wait.WaitAsync(ReceiveTimeout).ConfigureAwait(false); }
+        catch (TimeoutException) { throw new ScenarioFailure($"The wait {id} did not complete within {ReceiveTimeout.TotalSeconds} s."); }
+        if (result != expected.GetValue<bool>()) throw new ScenarioFailure($"The wait {id} completed with {result}, expected {expected.GetValue<bool>()}.");
+    }
+
+    // expect.closed: the close of a closeWindow step completed, and whether every page acknowledged it.
+    private async Task ExpectClosedAsync(JsonObject closed)
+    {
+        var id = closed["id"]!.GetValue<string>();
+        _messages.Id(id, "close");
+        if (!_closes.TryGetValue(id, out var close)) throw new ScenarioFailure($"The close {id} was not started.");
+        RunicWindowCloseResult result;
+        try { result = await close.WaitAsync(ReceiveTimeout).ConfigureAwait(false); }
+        catch (TimeoutException) { throw new ScenarioFailure($"The close {id} did not complete within {ReceiveTimeout.TotalSeconds} s."); }
+        var acknowledged = closed["acknowledged"]!.GetValue<bool>();
+        if (result.PagesAcknowledged != acknowledged)
+            throw new ScenarioFailure($"The close {id} has PagesAcknowledged {result.PagesAcknowledged}, expected {acknowledged}.");
     }
 
     private void Connect(string name)
@@ -110,6 +161,7 @@ internal sealed class ProducerScenarioRunner
         var connection = ConnectionOf(step);
         var bytes = _messages.Write(message);
         _requests.Add(id, connection);
+        _requestRoutes.Add(id, (message as JsonObject)?["route"]?.GetValue<string>());
         _transport.Send(connection, bytes, id);
     }
 
@@ -122,7 +174,7 @@ internal sealed class ProducerScenarioRunner
         if (message.ReplyTo != replyTo)
             throw new ScenarioFailure($"Expected {what}, but the next message was {Describe(message)}: {Truncate(message.Json)}");
         var actual = Parse(message);
-        try { _messages.Match(expected, actual); }
+        try { _messages.Match(expected, actual, RouteOf(replyTo)); }
         catch (ScenarioFailure failure) { throw new ScenarioFailure($"{failure.Message}\n  actual: {Truncate(message.Json)}"); }
     }
 
@@ -170,7 +222,7 @@ internal sealed class ProducerScenarioRunner
             {
                 var (index, replyTo, expected) = remaining[candidate];
                 if (replyTo != message.ReplyTo) continue;
-                if (_messages.TryMatch(expected, actual) is { } failure) failures.Add($"step {index + 1}: {failure}");
+                if (_messages.TryMatch(expected, actual, RouteOf(replyTo)) is { } failure) failures.Add($"step {index + 1}: {failure}");
                 else matched = candidate;
             }
             if (matched < 0)
@@ -191,6 +243,9 @@ internal sealed class ProducerScenarioRunner
             throw new ScenarioFailure($"The request {replyTo} was not sent on the connection {connection.Name}.");
         return replyTo;
     }
+
+    // The route a reply's epochs belong to: the route of its request. A push names its own.
+    private string? RouteOf(string? replyTo) => replyTo is not null && _requestRoutes.TryGetValue(replyTo, out var route) ? route : null;
 
     private static async Task<ScenarioMessage> NextAsync(ScenarioConnection connection, string expected)
     {

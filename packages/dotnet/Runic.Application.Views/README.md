@@ -627,6 +627,30 @@ public sealed partial class EditorViewModel(IRunicWindowContext window) : Observ
   `true` or `false` after the application's services, or opens the Window and
   lets its guards decide.
 
+### What the page sees of a close
+
+Every close of a Window (`CloseAsync`, `RequestCloseAsync` once it decided,
+`DisposeAsync`, a host's shutdown) tells its pages, when their client and the
+host implement the `presented/1` feature (0.15): the page renders its last
+state and reports the connection as `closed` instead of reconnecting or lost,
+so a CS-WebUI tab left open after the application exited says that the
+application closed it rather than showing an error.
+
+`CloseAsync(timeout)` waits for each such page to acknowledge, at the same time
+as for accepted operations and at most `timeout` or 5 seconds, whichever is
+shorter; a page that disconnects counts as done. The result reports it:
+
+```csharp
+var closed = await window.CloseAsync(TimeSpan.FromSeconds(10));
+if (!closed.PagesAcknowledged) logger.LogInformation("A page did not confirm the close.");
+```
+
+`PagesAcknowledged` is `true` when every page acknowledged, also when no page
+uses the feature, such as a page of an older release. `DisposeAsync` and
+`CloseAsync(TimeSpan.Zero)` tell the pages but do not wait. Only the first
+close of a Window tells and waits; later calls return its result. An
+unacknowledged close is logged at Debug as event 1026.
+
 ### Menu bar commands
 
 A Window's root ViewModel runs the menu bar's commands while its Window is the
@@ -1285,7 +1309,7 @@ generator, such as a CommunityToolkit `[ObservableProperty]`, points at its
 a link to its entry in the [diagnostics catalog](https://github.com/Runic-Artifex/runic-sdk/blob/main/docs/diagnostics.md#bridge-code-generator)
 for the release you use.
 
-`RUNICBRIDGE013`, `015`, `019`, `020`, `028`, `029`, `030`, `031`, `032` and `033` are warnings; the generator's
+`RUNICBRIDGE013`, `015`, `019`, `020`, `028`, `029`, `030`, `031`, `032`, `033` and `034` are warnings; the generator's
 (`013`, `020`, `028`, `031` and `032`) repeat on builds that reuse the cached generation. Every other
 code fails the build. The
 [diagnostics catalog](https://github.com/Runic-Artifex/runic-sdk/blob/main/docs/diagnostics.md#bridge-code-generator)
@@ -1747,6 +1771,76 @@ No wrapper command is needed.
 
 The generator reports a misplaced attribute or an unusable resolver as
 [`RUNICBRIDGE027`](https://github.com/Runic-Artifex/runic-sdk/blob/main/docs/diagnostics.md#runicbridge027).
+
+## Commands scoped to their page
+
+A wizard's Next, clicked twice before the second page arrived, must not skip a
+page. Mark such a command `[RunicPresentationScoped]` (since 0.15), on the
+command property or on its CommunityToolkit `[RelayCommand]` method, and renew
+the presentation when the command changes the page:
+
+```csharp
+public sealed partial class SetupViewModel : ObservableObject
+{
+    [ObservableProperty]
+    public partial int Step { get; private set; } = 1;
+
+    [RelayCommand]
+    [RunicPresentationScoped]
+    private void Next()
+    {
+        Step++;
+        RunicPresentation.Renew(this);
+    }
+}
+```
+
+The page sends a scoped command with the epoch of the state it showed when the
+user clicked, and the Bridge runs it only while that epoch is current. The
+second Next was clicked on the first page, whose epoch `Renew` ended: it does
+not run, and its call resolves with the current state, without an error, as if
+it had run.
+
+- **Epochs.** An epoch begins with a route's first state, so content that is
+  presented again, a new page in a navigation region, has a new one without
+  `Renew`. `RunicPresentation.Renew(viewModel)` begins one for every route that
+  presents the ViewModel, in every window, from any thread: call it where the
+  page changes without a new presentation, such as Next and Back, or after a
+  cancelled dialog returned to its page. The route publishes the renewal as a
+  full state with its next change or with the reply of the command that called
+  it, and scoped calls are checked against the new epoch at once. A change of a
+  content slot does not renew the slot's owner.
+- **Order.** A superseded call is answered before its input is decoded, its key
+  resolved or its availability checked, so a stale Back on the first page does
+  not report `unavailable`.
+- **Contract.** The generated client lists the commands in `scopedCommands`;
+  adding or removing the attribute changes the View's fingerprint, and the
+  attribute on any other member is warning `RUNICBRIDGE034`. Setters,
+  checked writes and operation starts are not scoped. A page or host of an
+  older release does not use the `presentation-epoch/1` feature and runs scoped
+  commands as before.
+
+## Waiting until the page shows a state
+
+`RunicPresentation.WaitForPresentedAsync(viewModel, timeout, cancellationToken)`
+(since 0.15) completes with `true` once a page rendered the state of
+`viewModel` that includes everything changed before the call, for example
+before a result page takes a screenshot or a window closes after showing a
+summary:
+
+```csharp
+Page = result;
+if (!await RunicPresentation.WaitForPresentedAsync(result, TimeSpan.FromSeconds(2)))
+    logger.LogDebug("No page showed the result in time.");
+```
+
+It publishes what is pending first, as a call's reply does. A ViewModel that no
+route presents yet, as `result` above before its parent published `Page`,
+counts with the first state of the first route that presents it. The first page
+that reports completes the wait; a hidden or minimized page reports after its
+next timer. It returns `false` at the timeout, which runs on the window's
+`TimeProvider`, also when no page uses the `presented/1` feature. Only waits ask
+the page to report, so an idle or typing page sends nothing extra.
 
 ## Operation results and parameterised queries
 
@@ -2502,6 +2596,7 @@ NativeAOT symbols and what to attach to a bug report.
 | 1023 | `BridgeMailboxOverflowed` | Warning | The mailbox of a connection whose transport cannot push to one connection (CS-WebUI) exceeds 1,024 pushes or 4 MiB, so its oldest pushes are dropped. Once per connection. | `Connection`, `Dropped` |
 | 1024 | `BridgeReplyWaitExceeded` | Warning | A setter, checked write, command or operation start waited 5 s for the pushes its window had to deliver before the reply, and replied without them: the page did not take pushes, or code blocked a route's delivery. Once per window. | `Route`, `LimitSeconds`, `Pending` |
 | 1025 | `BridgeCollectionChangedOutsideModelTurn` | Warning | A collection that a Bridge observes changed outside its window's model turn, such as a DynamicData `Bind` without `ObserveOn` the window's scheduler: the change waited for a turn and can race the window. Once per Bridge and field. | `Model`, `Field`, `Route` |
+| 1026 | `WindowCloseUnacknowledged` | Debug | A Window's close waited for its pages that use `presented/1` until its timeout or 5 s, and some did not acknowledge it (`RunicWindowCloseResult.PagesAcknowledged` is `false`). | `Pages` |
 | 1033 | `ModelContextReleaseFailed` | Error | A window session's own model context fails to shut down in the background. | `ErrorType` |
 | 1040, 1041 | Retired | | Reported by `ReactiveRoutedRegion<T>`, removed in 0.9; not reused. | |
 | 1042 | `ReactiveCommandFailed` | Error | A bridged ReactiveUI command reports on `ThrownExceptions` an exception that no Bridge call received, while a generated Bridge presents it, or a command or object observed with `ObserveBridgeExceptions(logger)` reports one; declared `RunicFailureException`s and cancellations are not logged. An exception raised in a Bridge call's flow, such as by a plain `Execute` in a wrapper command, is held until the outermost Bridge call in that flow ends, and not logged if a call received it or an exception wrapping it. Still logged when hand-written code receives and handles it from a plain `Execute`; never when it ran the command with `RunAsync`. A streamed operation holds nothing. Also logged after the Bridge detached, with its logger, for an execution that a Bridge call or `RunAsync` stopped awaiting when it was cancelled, such as an operation that a retiring navigation entry cancels. | `Source` (`Model.Command` for the Bridge; the command expression or `sourceName` for `ObserveBridgeExceptions`), `ErrorType` |
@@ -2559,7 +2654,7 @@ NativeAOT symbols and what to attach to a bug report.
 as `content12`). A declared failure is an expected outcome, so it is logged at
 Debug, still with its exception; `FailureType` is the failure value's type.
 
-Events 1000-1012, 1018-1025, 1050-1053 and 1100-1102 use the category `Runic.Application.Views`
+Events 1000-1012, 1018-1026, 1050-1053 and 1100-1102 use the category `Runic.Application.Views`
 (`RunicViewsTelemetry.LogCategory`); the Hot Reload events 1100-1102 use the
 logger of the window session that owns the Bridge. Events 1110-1114 use
 `Runic.Application.Views.Wpf` and the factory of the host's `Services`. Event 1033 here is a window session's
@@ -2599,7 +2694,8 @@ exception types, never arguments or state.
 Spans are named `<kind> <Model>.<Member>` and have the tags
 `runic.bridge.kind`, `runic.bridge.model`, `runic.bridge.member`,
 `runic.bridge.route` and `runic.bridge.outcome`. The outcome is `ok`,
-`rejected`, `cancelled`, `failed`, `domain_failed` or `released` (`disconnected` before 0.10). An
+`rejected`, `cancelled`, `failed`, `domain_failed` or `released` (`disconnected` before 0.10); a
+`[RunicPresentationScoped]` command that a renewal superseded is `superseded`. An
 admission can also be `unavailable`, `capacity`, `duplicate` or `expired`, and
 an operation whose result could not be delivered is `delivery_failed`. A failed
 span has the status `Error` and `error.type`. A `domain_failed` call is an

@@ -126,6 +126,8 @@ internal static class BridgeCallOutcome
     internal const string Duplicate = "duplicate";
     internal const string Expired = "expired";
     internal const string DeliveryFailed = "delivery_failed";
+    // A scoped command whose presentation was renewed (presentation-epoch/1): nothing ran.
+    internal const string Superseded = "superseded";
     // A declared failure: an expected outcome, so the span status stays Unset,
     // it has no error.type and runic.bridge.failures does not count it.
     internal const string DomainFailed = "domain_failed";
@@ -259,6 +261,10 @@ internal static partial class ViewsLog
         Message = "{Model}.{Field} on route {Route} changed outside the window's model turn, so the change waited for a turn and can race the window. "
             + "Change the collection in a model turn: for DynamicData, ObserveOn the window's scheduler (ReactiveSchedulers.For) before Bind.")]
     internal static partial void CollectionChangedOutsideModelTurn(ILogger logger, string model, string field, string route);
+
+    [LoggerMessage(EventId = 1026, EventName = "WindowCloseUnacknowledged", Level = LogLevel.Debug,
+        Message = "The window closed before {Pages} of its pages acknowledged the close.")]
+    internal static partial void CloseUnacknowledged(ILogger logger, int pages);
 
     [LoggerMessage(EventId = 1010, EventName = "BridgeSnapshotCaptureFailed", Level = LogLevel.Error,
         Message = "Bridge snapshot capture for {Model} on route {Route} failed with {ErrorType}.")]

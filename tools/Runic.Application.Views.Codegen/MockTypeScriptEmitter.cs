@@ -32,6 +32,7 @@ internal sealed record MockTypeScriptPlan(
     IReadOnlyList<(string Field, string Default)> Defaults,
     IReadOnlyList<string> CheckedFields,
     IReadOnlyList<string> Texts,
+    IReadOnlyList<string> ScopedCommands,
     IReadOnlyList<MockSetter> Setters,
     IReadOnlyList<MockCommand> Commands,
     IReadOnlyList<MockOperation> Operations,
@@ -148,6 +149,8 @@ internal static class MockTypeScriptEmitter
             body.AppendLine($"  checkedFields: [{string.Join(", ", plan.CheckedFields.Select(Quote))}],");
         if (plan.Texts.Count > 0)
             body.AppendLine($"  texts: [{string.Join(", ", plan.Texts.Select(Quote))}],");
+        if (plan.ScopedCommands.Count > 0)
+            body.AppendLine($"  scopedCommands: [{string.Join(", ", plan.ScopedCommands.Select(Quote))}],");
         if (plan.Collections.Count > 0)
         {
             body.AppendLine("  collections: {");

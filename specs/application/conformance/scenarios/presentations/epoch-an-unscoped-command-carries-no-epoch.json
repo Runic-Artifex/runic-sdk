@@ -1,0 +1,34 @@
+{
+  "format": "runic.views.scenario/1",
+  "id": "presentations.epoch-an-unscoped-command-carries-no-epoch.v1",
+  "contract": {"id":"runic.views","version":4},
+  "set": "presentations",
+  "roles": ["client"],
+  "description": "A client that uses presentation-epoch/1 sends epoch only with the commands its contract marks scoped; ping is not scoped.",
+  "view": "wizard",
+  "requires": ["presentation-epoch/1"],
+  "ids": {
+    "c1": {"kind":"connection"},
+    "hello-c1": {"kind":"request"},
+    "session": {"kind":"wire","value":"s-1"},
+    "open-wizard": {"kind":"call"},
+    "open-wizard-request": {"kind":"request"},
+    "presentation": {"kind":"wire","value":"p-1"},
+    "ping": {"kind":"call"},
+    "ping-request": {"kind":"request"}
+  },
+  "arrange": {"model":{}},
+  "steps": [
+    {"connect":"c1"},
+    {"send":{"kind":"hello","protocol":4,"session":{"$id":"session"},"client":{"name":{"$any":"string","default":"conformance-client"},"version":{"$any":"string","default":"1.0.0"}},"features":{"$any":"array","default":["text-splice/1","presentation-epoch/1"]}},"id":"hello-c1"},
+    {"receive":{"ok":true,"protocol":4,"implementation":{"name":{"$any":"string","default":"conformance-producer"},"version":{"$any":"string","default":"1.0.0"}},"features":{"$any":"array","default":["text-splice/1","presentation-epoch/1"]}},"replyTo":"hello-c1"},
+    {"call":{"id":"open-wizard","op":"open","route":"wizard"}},
+    {"send":{"kind":"open","route":"wizard","presentation":{"$id":"presentation"}},"id":"open-wizard-request"},
+    {"receive":{"ok":true,"revision":0,"epoch":0,"state":{"page":1,"canNext":true,"canBack":false,"canPing":true},"presentation":"ok"},"replyTo":"open-wizard-request"},
+    {"call":{"id":"ping","op":"command","route":"wizard","member":"ping"}},
+    {"send":{"kind":"command","route":"wizard","member":"ping"},"id":"ping-request"},
+    {"receive":{"ok":true,"revision":0},"replyTo":"ping-request"},
+    {"expect":{"call":{"id":"ping","resolved":null}}},
+    {"expect":{"diagnostics":[]}}
+  ]
+}

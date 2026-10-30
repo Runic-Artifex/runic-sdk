@@ -5,16 +5,23 @@
 import { randomId } from "./clock.js";
 import { emitBridgeDiagnostic, suppressErrorDiagnostic } from "./diagnostics.js";
 import { BridgeError } from "./errors.js";
-import { invalidResponse, readPush, readReply, replyError, type Message, type Push, type PushReading, type Reply } from "./protocol.js";
+import {
+  invalidResponse, presentationEpochFeature, presentedFeature, readPush, readReply, replyError, type Message, type Push, type PushReading, type Reply,
+} from "./protocol.js";
 import { hostCallbacks, protocolMismatchError, reportBridgeError, reportProtocolMismatch, type RunicBridgeClient } from "./transport.js";
 import { bridgeProtocol, clientName, runicProducerName, viewsVersion } from "./version.js";
 import { textSpliceFeature } from "./text.js";
+import { reportWindowClosed } from "./connection-state.js";
+import { flushNotifications, nextFrame } from "./notifications.js";
 
 /** The features this runtime implements and lists in `hello` (specs/application/README.md, "Features"). */
-export const clientFeatures: readonly string[] = [textSpliceFeature];
+export const clientFeatures: readonly string[] = [textSpliceFeature, presentationEpochFeature, presentedFeature];
 
 /** A push handler, registered per push kind and route. */
 export type PushHandler = (push: Push) => void;
+
+/** The kinds of pushes without a route, which window-level handlers receive. */
+export type WindowPushKind = Extract<Push, { readonly route?: undefined }>["kind"];
 
 /** Called with `false` when the connection is lost and with `true` for each new connection after a loss. */
 export type ConnectionListener = (connected: boolean) => void;
@@ -48,6 +55,11 @@ export interface SharedRuntime {
   onPush(kind: Push["kind"], route: string, handler: PushHandler): () => void;
   /** Registers a handler for invalid pushes that name `route`. */
   onInvalidPush(route: string, handler: InvalidPushHandler): () => void;
+  /**
+   * Registers a handler for pushes of `kind` that name no route, such as `closing`. The runtime answers `closing`
+   * itself. A runtime of an earlier release does not have it.
+   */
+  onWindowPush?(kind: WindowPushKind, handler: PushHandler): () => void;
   onConnection(listener: ConnectionListener): () => void;
   /** Stops listening to the host bridge. */
   dispose(): void;
@@ -73,6 +85,7 @@ export function sharedRuntimeFor(bridge: RunicBridgeClient): SharedRuntime {
 
 function createRuntime(bridge: RunicBridgeClient): SharedRuntime {
   const pushHandlers = new Map<string, Set<PushHandler>>();
+  const windowHandlers = new Map<string, Set<PushHandler>>();
   const invalidHandlers = new Map<string, Set<InvalidPushHandler>>();
   const connectionListeners = new Set<ConnectionListener>();
   let connected = false;
@@ -107,11 +120,29 @@ function createRuntime(bridge: RunicBridgeClient): SharedRuntime {
       }
       return;
     }
-    const handlers = pushHandlers.get(key(reading.push.kind, reading.push.route));
+    const push = reading.push;
+    const handlers = push.route === undefined ? windowHandlers.get(push.kind) : pushHandlers.get(key(push.kind, push.route));
     if (!handlers) return;
     for (const handler of [...handlers]) {
-      try { handler(reading.push); } catch (error) { reportBridgeError(error, reading.push.route); }
+      try { handler(push); } catch (error) { reportBridgeError(error, push.route); }
     }
+  }
+
+  /**
+   * presented/1 (specs/application/README.md, "Window close"): the application closes the window. The page delivers what it has, lets one frame
+   * render it, acknowledges with `closing-reply` and reports `closed`, which a following drop does not change.
+   */
+  async function closing(): Promise<void> {
+    if (!features.has(presentedFeature)) return;
+    const current = connection;
+    flushNotifications();
+    await nextFrame();
+    // A new connection is a new window session: its producer did not close it.
+    if (disposed || connection !== current) return;
+    const reply = connected ? runtime.request({ kind: "closing-reply" }) : undefined;
+    // Reported as the reply is sent: the host may end the connection before its answer arrives.
+    reportWindowClosed(true);
+    await reply?.catch(() => undefined);
   }
 
   function refusal(route: string | undefined): BridgeError {
@@ -212,6 +243,7 @@ function createRuntime(bridge: RunicBridgeClient): SharedRuntime {
     },
     onPush: (kind, route, handler) => add(pushHandlers, key(kind, route), handler),
     onInvalidPush: (route, handler) => add(invalidHandlers, route, handler),
+    onWindowPush: (kind, handler) => add(windowHandlers, kind, handler),
     onConnection(listener) {
       connectionListeners.add(listener);
       return () => { connectionListeners.delete(listener); };
@@ -221,7 +253,9 @@ function createRuntime(bridge: RunicBridgeClient): SharedRuntime {
       disposed = true;
       stopMessages();
       stopConnection();
+      stopClosing();
       connected = false;
+      reportWindowClosed(false);
       for (const listener of [...connectionListeners]) {
         try { listener(false); } catch (error) { reportBridgeError(error); }
       }
@@ -229,6 +263,9 @@ function createRuntime(bridge: RunicBridgeClient): SharedRuntime {
     },
   };
 
+  const stopClosing = add(windowHandlers, "closing", () => { void closing(); });
+  // A closed window of an earlier Bridge does not close this one.
+  reportWindowClosed(false);
   const stopMessages = bridge.onMessage(message => dispatch(message));
   const stopConnection = bridge.onConnectionChange(next => {
     if (disposed || reported && next === connected) return;
@@ -236,6 +273,8 @@ function createRuntime(bridge: RunicBridgeClient): SharedRuntime {
     reported = true;
     connected = next;
     if (next) connection++;
+    // A new connection ends the `closed` state of a window the application closed.
+    if (next && !first) reportWindowClosed(false);
     hello = undefined;
     features = new Set<string>();
     // Each connection starts with `hello`; a request that needs it waits for it, and a failed one is sent again.

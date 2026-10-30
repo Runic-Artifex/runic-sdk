@@ -62,6 +62,7 @@ public static class BridgeContractShape
                 parts.Add($"command-cardinality:{TypeName(model)}:{property.Name}:{cardinality.ToString().ToLowerInvariant()}");
                 AppendKey(parts, model, property);
                 AppendFailure(parts, model, property);
+                AppendScoped(parts, model, property);
                 continue;
             }
             if (kind == "command")
@@ -79,6 +80,7 @@ public static class BridgeContractShape
                         $"{model.Name}.{property.Name}.result", [], honorJsonIgnore);
                 AppendKey(parts, model, property);
                 AppendFailure(parts, model, property);
+                AppendScoped(parts, model, property);
                 continue;
             }
             if (kind == "interaction" && interaction is not null)
@@ -132,6 +134,14 @@ public static class BridgeContractShape
                 AppendType(parts, key.ParameterType, new NullabilityInfoContext().Create(key), $"{model.Name}.{command.Name}.key", [],
                     BridgeDtoContract.HonorsJsonIgnore(model.Assembly));
         }
+    }
+
+    // A command scoped to its presentation (presentation-epoch/1) is sent with its presentation's epoch. Only scoped
+    // commands add a part, so other models keep their fingerprint.
+    private static void AppendScoped(List<string> parts, Type model, PropertyInfo command)
+    {
+        if (BridgeCommandSources.IsPresentationScoped(model, command))
+            parts.Add($"scoped:{TypeName(model)}:{command.Name}");
     }
 
     // Only declared commands add parts, so undeclared models keep their

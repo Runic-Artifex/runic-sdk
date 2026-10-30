@@ -8,8 +8,11 @@ import { hostCallbacks, reportBridgeError, type RunicBridgeClient } from "./tran
  * - `reconnecting`: the connection dropped and the host transport is trying to restore it.
  * - `lost`: the Bridge has not been connected for `lostAfter` milliseconds, or never connected
  *   in that time. `lost` is not terminal: the state returns to `connected` when the host comes back.
+ * - `closed`: the application closed this window (`presented/1`, a producer of 0.15 or later). The
+ *   state stays `closed` when the connection then drops, instead of `reconnecting` or `lost`, and
+ *   returns to `connected` when a new connection opens.
  */
-export type BridgeConnectionState = "connecting" | "connected" | "reconnecting" | "lost";
+export type BridgeConnectionState = "connecting" | "connected" | "reconnecting" | "lost" | "closed";
 
 export interface BridgeConnectionOptions {
   /**
@@ -48,7 +51,10 @@ export function onBridgeConnection(listener: (state: BridgeConnectionState) => v
   let lostTimer: ReturnType<typeof setTimeout> | undefined;
   let pollTimer: ReturnType<typeof setTimeout> | undefined;
   let bridge: RunicBridgeClient | undefined;
+  // What the host last reported, for when the window's `closed` state ends.
+  let connectedNow = false;
   const subscriptions: (() => void)[] = [];
+  const channel = connectionChannel();
 
   function publish(next: BridgeConnectionState): void {
     if (stopped || next === state) return;
@@ -62,6 +68,14 @@ export function onBridgeConnection(listener: (state: BridgeConnectionState) => v
   }
   function connectedChanged(connected: boolean): void {
     if (stopped) return;
+    connectedNow = connected;
+    if (channel.closed === true) {
+      // The application closed the window: a drop that follows is the end of the window, not a lost connection.
+      clearTimeout(lostTimer);
+      lostTimer = undefined;
+      publish("closed");
+      return;
+    }
     if (connected) {
       clearTimeout(lostTimer);
       lostTimer = undefined;
@@ -103,6 +117,9 @@ export function onBridgeConnection(listener: (state: BridgeConnectionState) => v
   };
   target.addEventListener?.("pagehide", pageHide);
   target.addEventListener?.("pageshow", pageShow);
+  // A closed window ends with a new connection; the host reports that connection too, so wait for it otherwise.
+  const closedChanged = (closed: boolean) => { if (closed || connectedNow) connectedChanged(connectedNow); };
+  (channel.closedListeners ??= new Set()).add(closedChanged);
 
   connectedChanged(false);
   poll();
@@ -113,6 +130,7 @@ export function onBridgeConnection(listener: (state: BridgeConnectionState) => v
     clearTimeout(lostTimer);
     clearTimeout(pollTimer);
     for (const unsubscribe of subscriptions) unsubscribe();
+    channel.closedListeners?.delete(closedChanged);
     target.removeEventListener?.("pagehide", pageHide);
     target.removeEventListener?.("pageshow", pageShow);
   };
@@ -130,11 +148,27 @@ interface ConnectionChannel {
   started?: boolean;
   requested?: boolean;
   start?: () => void;
+  /**
+   * Whether the application closed the window (presented/1): from the `closing` push until a new connection. The page
+   * runtime sets it; every `onBridgeConnection` of every copy of this package follows it through `closedListeners`.
+   */
+  closed?: boolean;
+  closedListeners?: Set<(closed: boolean) => void>;
 }
 
 function connectionChannel(): ConnectionChannel {
   const host = globalThis as unknown as Record<symbol, ConnectionChannel | undefined>;
   return host[connectionChannelKey] ??= { listeners: new Set() };
+}
+
+/** @internal The page runtime reports that the application closed the window, and that a new connection opened. */
+export function reportWindowClosed(closed: boolean): void {
+  const channel = connectionChannel();
+  if ((channel.closed === true) === closed) return;
+  channel.closed = closed;
+  for (const listener of [...channel.closedListeners ?? []]) {
+    try { listener(closed); } catch (error) { reportBridgeError(error); }
+  }
 }
 
 export function publishConnectionState(): void {

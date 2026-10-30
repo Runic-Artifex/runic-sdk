@@ -765,7 +765,10 @@ test("the dock shows the connection state the page forwards", () => {
   });
   handlers.get("runic:connection")({ state: "reconnecting" });
   assert.deepEqual(latest.connection, { state: "reconnecting" });
+  // presented/1: the application closed the window.
   handlers.get("runic:connection")({ state: "closed" });
+  assert.deepEqual(latest.connection, { state: "closed" });
+  handlers.get("runic:connection")({ state: "paused" });
   assert.deepEqual(latest.connection, { state: "unknown" }, "an unknown state is not shown as a Views state");
   assert.equal("operations" in latest, false);
 });

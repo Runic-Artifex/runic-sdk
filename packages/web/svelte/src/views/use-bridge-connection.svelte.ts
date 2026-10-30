@@ -6,8 +6,8 @@ export interface BridgeConnectionHandle {
 }
 
 /**
- * Follows the page's connection to its .NET host (`connecting`, `connected`, `reconnecting` or
- * `lost`) through `onBridgeConnection` while its owner lives. `state` holds the current state at
+ * Follows the page's connection to its .NET host (`connecting`, `connected`, `reconnecting`,
+ * `lost` or `closed`) through `onBridgeConnection` while its owner lives. `state` holds the current state at
  * once; the subscription starts with the owner's effects, so server rendering never observes.
  * Call during component initialization (or in `$effect.root`); owner destruction unsubscribes.
  *

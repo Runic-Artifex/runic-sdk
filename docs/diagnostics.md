@@ -79,6 +79,7 @@ and severities are open.
 | [`RUNICBRIDGE031`](#runicbridge031) | Warning | Generator | A type implements an IValidatableViewModel that is not ReactiveUI.Validation's |
 | [`RUNICBRIDGE032`](#runicbridge032) | Warning | Generator | An observable collection of DTO rows is not a `[RunicCollection]` |
 | [`RUNICBRIDGE033`](#runicbridge033) | Warning | Build targets | The .NET SDK or Bun is older than this release supports |
+| [`RUNICBRIDGE034`](#runicbridge034) | Warning | Generator | A `[RunicPresentationScoped]` declaration reaches no Bridge command |
 
 ### RUNICBRIDGE001
 
@@ -605,6 +606,18 @@ packages older ones. Since 0.14.
 **Fix:** install .NET SDK 10.0.403 or a newer 10.0 release (runtime 10.0.14),
 and Bun 1.4.4 or a newer 1.x release, then rebuild and republish. Until you
 can, suppress the warning with `<NoWarn>$(NoWarn);RUNICBRIDGE033</NoWarn>`.
+
+### RUNICBRIDGE034
+
+A warning from the Bridge generator (since 0.15). `[RunicPresentationScoped]`
+is on a member that is not a Bridge command property or the CommunityToolkit
+`[RelayCommand]` method of one, such as a state property, a helper method or a
+base-class member the Bridge does not expose. The declaration has no effect: the
+generated client sends no presentation epoch for anything it would have scoped.
+
+**Fix:** put the attribute on the command property, or on the `[RelayCommand]`
+method whose command the Bridge exposes. See
+[Commands scoped to their presentation](../packages/dotnet/Runic.Application.Views/README.md#commands-scoped-to-their-page).
 
 ## dotnet runic
 

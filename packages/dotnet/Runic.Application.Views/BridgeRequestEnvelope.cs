@@ -36,6 +36,10 @@ internal sealed class BridgeRequestEnvelope : IDisposable
     internal string? Route { get; private set; }
     // Present for the kinds that name a member.
     internal string? Member { get; private set; }
+    // A command's epoch (presentation-epoch/1): whether the request has one, and its value when it is a non-negative safe
+    // integer. Whether an epoch that is not one is invalid depends on the connection (BridgeDispatcher).
+    internal bool HasEpoch { get; private set; }
+    internal long? Epoch { get; private set; }
 
     internal bool IsServiceRoute => Route is { } route && route.StartsWith(ReservedRoutePrefix, StringComparison.Ordinal);
 
@@ -101,6 +105,8 @@ internal sealed class BridgeRequestEnvelope : IDisposable
                 // refused with protocol-mismatch rather than invalid-request (BridgeDispatcher).
                 return null;
             case "receive":
+            // closing-reply (presented/1) has no members.
+            case "closing-reply":
                 return null;
         }
 
@@ -110,6 +116,9 @@ internal sealed class BridgeRequestEnvelope : IDisposable
                 return "The request's route is not a route name.";
             Route = routeElement.GetString();
         }
+        // presented (presented/1): the revision a page painted of a route.
+        if (Kind == "presented")
+            return Route is null ? "The request has no route." : Integer(root, "revision", minimum: 0);
         if (!IsViewKind(Kind)) return null;
         if (Route is null) return "The request has no route.";
         if (IsServiceRoute) return null;
@@ -133,6 +142,12 @@ internal sealed class BridgeRequestEnvelope : IDisposable
                     ?? Integer(root, "expectedVersion", minimum: 0)
                     ?? WriteValue(root);
             case "command":
+                if (root.TryGetProperty("epoch", out var epoch))
+                {
+                    HasEpoch = true;
+                    Epoch = TryReadInteger(epoch, out var value) && value >= 0 ? value : null;
+                }
+                return ReadMember(root);
             case "can":
                 return ReadMember(root);
             case "start":

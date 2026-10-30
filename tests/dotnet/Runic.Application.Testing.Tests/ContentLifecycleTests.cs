@@ -86,6 +86,10 @@ public sealed class ContentLifecycleTests
             "The browser's retained mount did not receive a View on the re-attached bridge.");
         var after = Revision(transport, route);
         Require(after > before, $"The re-attached bridge regressed the route revision from {before} to {after}.");
+        // The resumed presentation did not see the suspension: the re-attached bridge pushes its first state, with the
+        // attachment's new epoch (presentation-epoch/1).
+        Require(await PushAsync(transport, route) is { Kind: "state" } resumed && resumed.Revision >= after,
+            "The re-attached bridge did not push its first state to the resumed presentation.");
         a.Value = 1;
         Require(await PublishedRevisionAsync(transport, route) > after,
             "A publication from the re-attached bridge did not advance the route revision.");
@@ -328,6 +332,19 @@ public sealed class ContentLifecycleTests
     {
         using var reply = JsonDocument.Parse(transport.Snapshot(route, "connection"));
         return reply.RootElement.GetProperty("revision").GetInt64();
+    }
+
+    private static async Task<(string Kind, long Revision)?> PushAsync(InMemoryBridgeTransport transport, string route)
+    {
+        var deadline = DateTime.UtcNow.AddSeconds(5);
+        while (DateTime.UtcNow < deadline)
+        {
+            foreach (var push in transport.TakePushes(route))
+                using (push)
+                    return (push.RootElement.GetProperty("kind").GetString()!, push.RootElement.GetProperty("revision").GetInt64());
+            await Task.Delay(10);
+        }
+        return null;
     }
 
     private static async Task<long> PublishedRevisionAsync(InMemoryBridgeTransport transport, string route)

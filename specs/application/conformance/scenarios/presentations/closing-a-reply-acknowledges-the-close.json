@@ -1,0 +1,37 @@
+{
+  "format": "runic.views.scenario/1",
+  "id": "presentations.closing-a-reply-acknowledges-the-close.v1",
+  "contract": {"id":"runic.views","version":4},
+  "set": "presentations",
+  "roles": ["producer","client"],
+  "description": "With presented/1, closing the window pushes closing; the client replies with closing-reply, which acknowledges the close, and reports that the producer closed the window, also after the connection drops.",
+  "view": "wizard",
+  "requires": ["presented/1"],
+  "ids": {
+    "c1": {"kind":"connection"},
+    "hello-c1": {"kind":"request"},
+    "session": {"kind":"wire","value":"s-1"},
+    "open-wizard": {"kind":"call"},
+    "open-wizard-request": {"kind":"request"},
+    "presentation": {"kind":"wire","value":"p-1"},
+    "close": {"kind":"close"},
+    "closing-reply-request": {"kind":"request"}
+  },
+  "arrange": {"model":{}},
+  "steps": [
+    {"connect":"c1"},
+    {"send":{"kind":"hello","protocol":4,"session":{"$id":"session"},"client":{"name":{"$any":"string","default":"conformance-client"},"version":{"$any":"string","default":"1.0.0"}},"features":{"$any":"array","default":["text-splice/1","presented/1"]}},"id":"hello-c1"},
+    {"receive":{"ok":true,"protocol":4,"implementation":{"name":{"$any":"string","default":"conformance-producer"},"version":{"$any":"string","default":"1.0.0"}},"features":{"$any":"array","default":["text-splice/1","presented/1"]}},"replyTo":"hello-c1"},
+    {"call":{"id":"open-wizard","op":"open","route":"wizard"}},
+    {"send":{"kind":"open","route":"wizard","presentation":{"$id":"presentation"}},"id":"open-wizard-request"},
+    {"receive":{"ok":true,"revision":0,"state":{"page":1,"canNext":true,"canBack":false,"canPing":true},"presentation":"ok"},"replyTo":"open-wizard-request"},
+    {"closeWindow":{"id":"close","timeout":10000}},
+    {"receive":{"kind":"closing"}},
+    {"send":{"kind":"closing-reply"},"id":"closing-reply-request"},
+    {"receive":{"ok":true},"replyTo":"closing-reply-request"},
+    {"expect":{"closed":{"id":"close","acknowledged":true}}},
+    {"expect":{"connection":"closed"}},
+    {"disconnect":"c1"},
+    {"expect":{"connection":"closed"},"note":"Not a reconnecting or lost connection."}
+  ]
+}

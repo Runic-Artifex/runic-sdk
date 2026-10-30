@@ -67,3 +67,12 @@ export function flushNotifications(): void {
   notifications.pending.clear();
   for (const deliver of due) deliver();
 }
+
+/**
+ * Resolves after the next animation frame, with the same fallbacks as notifications: a timer while the page is hidden,
+ * the end of the current task without animation frames. presented/1 reports a state painted once a frame passed after
+ * its delivery (specs/application/README.md, "Painted states").
+ */
+export function nextFrame(): Promise<void> {
+  return new Promise<void>(resolve => { schedule(resolve); });
+}

@@ -383,7 +383,8 @@ Renders the page's connection to its .NET host while the component is mounted.
 It wraps `onBridgeConnection` from `@runic-artifex/views` (re-exported here since 0.11, with the
 `BridgeConnectionState` and `BridgeConnectionOptions` types) and returns
 `{ state }`, where `state` is a `BridgeConnectionState`: `connecting`,
-`connected`, `reconnecting` or `lost` (a closed set, see
+`connected`, `reconnecting`, `lost` or `closed` (the application closed the
+window, since 0.15; a closed set, see
 [Connection state](https://github.com/Runic-Artifex/runic-sdk/tree/main/packages/web/views#connection-state)):
 
 ```tsx

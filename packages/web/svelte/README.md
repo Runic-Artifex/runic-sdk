@@ -362,8 +362,8 @@ runs this hook against the packed packages and the desktop transport.
 Follows the page's connection to its .NET host. It wraps `onBridgeConnection`
 from `@runic-artifex/views` (re-exported here since 0.11, with the
 `BridgeConnectionState` and `BridgeConnectionOptions` types) and returns `{ state }`, a reactive
-`BridgeConnectionState`: `connecting`, `connected`, `reconnecting` or `lost` (a
-closed set, see
+`BridgeConnectionState`: `connecting`, `connected`, `reconnecting`, `lost` or `closed` (the
+application closed the window, since 0.15; a closed set, see
 [Connection state](https://github.com/Runic-Artifex/runic-sdk/tree/main/packages/web/views#connection-state)):
 
 ```svelte

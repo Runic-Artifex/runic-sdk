@@ -58,7 +58,8 @@ the normal form.
 
 ### Messages (`vectors/messages`)
 
-The cases check the message envelope only; whether a route or member exists is checked by scenarios.
+The cases check the message envelope only; whether a route or member exists is checked by scenarios. Requests,
+replies and pushes are read as on a connection that uses every [feature](../README.md#features).
 
 | `operation` | Role | `expect.result` |
 | --- | --- | --- |
@@ -87,7 +88,8 @@ Each step has one action. `role` limits a step to one runner; `connection` names
 | `receive` | requires that the producer's next message on the connection equals the message | delivers the message: as the reply to the request `replyTo`, or as a push. With `drop: true` it does not deliver it. |
 | `advance` | advances the virtual clock by that many milliseconds | the same |
 | `delivery` | `hold`: the transport stops taking pushes after the one being delivered; `release`: it takes them again | skips it |
-| `expect` | checks `model` | checks `state`, `call`, `operation`, `diagnostics` or `notifications` |
+| `closeWindow` | starts the window's close with `timeout` milliseconds and names it `id` ([window close](../README.md#window-close)) | skips it |
+| `expect` | checks `model`, `presented` or `closed` | checks `state`, `call`, `operation`, `diagnostics`, `notifications` or `connection` |
 
 A `receive` step waits until the expected message is available, up to the runner's own timeout; time in the scenario
 passes only through `advance`.
@@ -108,6 +110,10 @@ Messages are compared **by JSON value**, never by bytes or member order, with th
   expected revision to the actual one the first time it occurs, and the mapping must be consistent and strictly
   increasing. A producer may therefore advance its counter differently, as long as it orders and repeats revisions
   the same way.
+- **Epochs.** The values of `epoch` ([presentation epochs](../README.md#presentation-epochs)) have their own mapping:
+  the runner maps each distinct expected epoch of a route to the actual one the first time it occurs, and the mapping
+  must be consistent and one-to-one per route, since a producer only has to make each epoch differ from the earlier
+  ones. A runner that writes a message writes the mapped value.
 - **Changes.** A frame's `changes` are compared per field: the changes of each field in order, and the set of fields.
   The order between fields carries no meaning ([frames](../state-changes.md#frames)).
 - **`{"$any": type}`** matches any value of that JSON type (`string`, `number`, `object`, `array`, …). Where the runner must
@@ -149,6 +155,16 @@ Expectations of the client:
 - `operation`: the last status the client observed, without `revision`.
 - `diagnostics`: the codes of every diagnostic reported since the scenario started, in order.
 - `notifications`: how often subscribers of the route were notified of a new state since its `open` resolved.
+- `connection`: the connection state the client reports. `closed` means that it reports that the producer closed the
+  window ([window close](../README.md#window-close)).
+
+Expectations of the producer:
+
+- `model`: values of the root View's model.
+- `presented`: the result of the `waitPresented` wait `id` ([painted states](../README.md#painted-states)): `true` or
+  `false` once it completed, which the runner waits for as for a `receive` step, or `"pending"` while it has not.
+- `closed`: the close of the `closeWindow` step `id` completed, and `acknowledged` is whether every page acknowledged
+  it ([window close](../README.md#window-close)). The runner waits for the close as for a `receive` step.
 
 ### Requirements
 
@@ -159,17 +175,25 @@ Expectations of the client:
 | `held-delivery` | The producer runner can hold the transport's deliveries (`delivery` steps). |
 | `virtual-clock` | The runner's time passes only through `advance` steps. |
 | `text-splice/1` | The implementation implements the feature [`text-splice/1`](../README.md#features). |
+| `presentation-epoch/1` | The implementation implements the feature [`presentation-epoch/1`](../README.md#presentation-epochs). |
+| `presented/1` | The implementation implements the feature [`presented/1`](../README.md#presented-states-and-window-close). |
 
 Every `hello` of a scenario that does not require a feature lists `features` as `{"$any":"array","default":["text-splice/1"]}`:
 a runner that writes the `hello` (or its reply) lists `text-splice/1`, and a runner that checks one accepts any list.
+A client lists every feature it implements, so the client's `hello` of a scenario that a client runner executes is
+always `{"$any":"array","default":[…]}`, also when the scenario requires a feature; the producer's reply decides which
+features are in use.
 The strings of those scenarios are shorter than 64 code units, so their frames and requests are the same with and
-without the feature.
+without the feature. Neither `presentation-epoch/1` nor `presented/1` is in use in them, so their messages carry no
+`epoch` and no `present` or `closing` push. A scenario that requires `presentation-epoch/1` or `presented/1` lists the
+feature in the `default` of both `hello` steps, beside `text-splice/1`, so it is in use whichever runner writes the
+`hello` or its reply.
 
 ### Identifiers
 
 `ids` lists every identifier the scenario uses, and nothing else: each connection (`connection`), each `send` step
-(`request`), each call (`call`), each identifier sent on the wire (`wire`, with its `value`) and each value the
-implementation provides (`provided`). Nothing exists before the steps run. A runner fails a scenario that uses a
+(`request`), each call (`call`), each `waitPresented` mutation (`wait`), each `closeWindow` step (`close`), each
+identifier sent on the wire (`wire`, with its `value`) and each value the implementation provides (`provided`). Nothing exists before the steps run. A runner fails a scenario that uses a
 connection before connecting it, answers a request it did not send, expects a call it did not make, or uses an id that
 `ids` does not list; it never fills in a default. The repository's check rejects such scenarios (C1, #667).
 
@@ -182,7 +206,7 @@ connection before connecting it, answers a request it did not send, expects a ca
 | [`replies`](scenarios/replies) | Revision inclusion; a change without a notification; a call that changes nothing; a call that changes another route; a call that releases its route; a reply before its frame; the revision timeout |
 | [`edits`](scenarios/edits) | `superseded`; edit numbers per member; the client overlay and its end, with the reply to an earlier edit before and after the frame of a later one; a failed edit; checked writes; `set` with a splice against a revision and against the previous edit, `splice-base` that admits nothing and the client's resend in full, a superseded splice, a normalizing setter; checked writes with a splice (`write-splice-*`): applied, a conflict, `splice-base` that retains nothing and the client's resend in full with the same `requestId`, a retry, and a short value sent in full; an edit followed by the frame with its validation, which the overlay does not cover |
 | [`operations`](scenarios/operations) | `watch` with throttled `progress` and the terminal `revision`; `start` ordering; duplicate versus `identity-conflict` by canonical equality; cancel; a declared failure; an unknown operation; a `start` with another build's contract |
-| [`presentations`](scenarios/presentations) | `open` and `close`; a presentation owned by another connection; a reconnect with a new session; an unknown route |
+| [`presentations`](scenarios/presentations) | `open` and `close`; a presentation owned by another connection; a reconnect with a new session; an unknown route; presentation epochs (`epoch-*`): the `epoch` of `open` and `snapshot`, a renewal published as a `state`, a scoped command with the current epoch, a second scoped command from the same state that is superseded, an unscoped command without `epoch`, and a connection without the feature; painted states (`presented-*`): a report that completes a wait, and a wait that times out; window close (`closing-*`): an acknowledged close and the client's closed connection, and a close that times out |
 | [`interactions`](scenarios/interactions) | A confirmation answered, and its repeat; registration outcomes |
 | [`errors`](scenarios/errors) | The protocol-3 `error-reasons`, `domain-failures` and `released` fixtures, converted (`error-reasons` and `released` were removed in 0.13); capacity |
 
@@ -259,6 +283,23 @@ Rules, in this order:
 | `name` | while `name` has at most 8 characters | `Name must be at most 8 characters.` at the path `["name"]`, and in `nameErrors` |
 | `approval` | until a `rule` mutation changes it; initially it holds | `Approval is required.` at the path `[]`. The rule names no member: a change of it changes no other member and announces none. |
 
+### `wizard`
+
+A View whose pages are presentations of one route ([presentation epochs](../README.md#presentation-epochs)).
+
+| Member | Type | Default and behaviour |
+| --- | --- | --- |
+| `page` | `int32` | `1`; read-only |
+| `canNext`, `canBack`, `canPing` | `boolean` | availability members |
+
+| Command | Input | Available | Scoped | Effect |
+| --- | --- | --- | --- | --- |
+| `next` | none | always | yes | adds 1 to `page`, then renews the route |
+| `back` | none | when `page` is greater than 1 | yes | subtracts 1 from `page`, then renews the route |
+| `ping` | none | always | no | changes nothing |
+
+Its contract marks `next` and `back` scoped, so a client that uses `presentation-epoch/1` sends `epoch` with them.
+
 ### Mutations
 
 | `op` | Members | Effect |
@@ -271,3 +312,5 @@ Rules, in this order:
 | `progress` | `member`, `value` | the running operation of the command reports progress |
 | `finish` | `member`, `rows?`, `failure?`, `outcome?` | ends the running operation of the command (see `slowImport`) |
 | `rule` | `rule`, `holds` | sets whether a rule of the `form` View holds, announcing no member change |
+| `renew` | none | renews the root View's route ([presentation epochs](../README.md#presentation-epochs)), as one unit |
+| `waitPresented` | `id`, `timeout` | starts a wait of `timeout` milliseconds until a page painted the root View ([painted states](../README.md#painted-states)), named `id` |

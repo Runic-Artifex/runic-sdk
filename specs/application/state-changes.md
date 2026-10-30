@@ -218,9 +218,11 @@ end, such as a log, which the single splice cannot express without resending the
 
 ### Full states
 
-The producer publishes a full `state` push instead of a frame when the delivery queue overflowed (below), or whenever
-it chooses to. A full state's revision is the revision of the unit it was captured in. After a full state, the next
-frame's `baseRevision` is that state's revision.
+The producer publishes a full `state` push instead of a frame when the delivery queue overflowed (below), for a
+renewal of the route's [presentation epoch](README.md#presentation-epochs) and for content whose presentations resume
+([presentations](README.md#presentations)), or whenever it chooses to. A full state's revision is the revision of the
+unit it was captured in. After a full state, the next frame's `baseRevision` is that state's revision. Frames never
+carry an epoch: a route's epoch changes only with a full state.
 
 ## Delivery and recovery
 

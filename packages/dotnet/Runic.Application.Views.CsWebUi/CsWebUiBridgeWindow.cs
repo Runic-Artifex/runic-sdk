@@ -178,7 +178,7 @@ public sealed class CsWebUiBridgeWindow<TViewModel> : IBridgeWindow, ICsWebUiNat
         if (result.Drained)
         {
             errors.AddRange(await FinalizeResourcesAsync().ConfigureAwait(false));
-            return new(true, 0, CompletionFor(errors));
+            return new(true, 0, CompletionFor(errors)) { PagesAcknowledged = result.PagesAcknowledged };
         }
 
         // A visible closed window must not leave command callbacks active.
@@ -188,7 +188,7 @@ public sealed class CsWebUiBridgeWindow<TViewModel> : IBridgeWindow, ICsWebUiNat
         Task completion;
         lock (_closeGate)
             completion = _closeCompletion ??= DrainThenFinalizeAsync(errors);
-        return new(false, result.RemainingOperations, completion);
+        return new(false, result.RemainingOperations, completion) { PagesAcknowledged = result.PagesAcknowledged };
     }
 
     private async Task DrainThenFinalizeAsync(List<Exception> errors)

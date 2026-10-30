@@ -22,7 +22,11 @@ namespace Runic.Application.Testing.Tests.Conformance;
 //   (generators expanded; members it does not list keep their defaults). The notes View also serves the detail View in
 //   its detail slot with the content id 0123456789abcdef0123456789abcdef.
 // - IConformanceWindow.MutateAsync applies the mutations of one mutate step to the root View's model, as one
-//   publication unit, or each mutation and each appended row as its own unit when eachUnit is true.
+//   publication unit, or each mutation and each appended row as its own unit when eachUnit is true. renew renews the
+//   root View's route (RunicPresentation.Renew) and waitPresented starts RunicPresentation.WaitForPresentedAsync of
+//   the root View, whose result Wait returns by the mutation's id.
+// - IConformanceWindow.CloseAsync starts the window's close with a timeout, as a host's close does
+//   (WindowContentSession.DrainAsync), for a closeWindow step.
 // - IConformanceWindow.ReadMember returns a member of the root View's model as its wire JSON value, for the runner to
 //   compare with expect.model.
 // - IConformanceWindow.Provide returns the value of a provided id (README "Identifiers") that the runner writes before
@@ -40,6 +44,10 @@ internal interface IConformanceWindow : IDisposable
     JsonNode? ReadMember(string member);
 
     JsonNode? Provide(string id);
+
+    Task<bool> Wait(string id);
+
+    Task<RunicWindowCloseResult> CloseAsync(TimeSpan timeout);
 }
 
 // What the runner gives the window: its transport (the ScenarioTransport), its virtual clock and its input limit
@@ -84,6 +92,8 @@ internal sealed class DotNetConformanceViews : IConformanceViews
                     (vm, content) => new NotesBridge(settings.Transport, vm, content)),
                 "form" => new Window<FormViewModel>(session, FormViewModel.Create(model),
                     (vm, content) => new FormBridge(settings.Transport, vm, content)),
+                "wizard" => new Window<WizardViewModel>(session, WizardViewModel.Create(model),
+                    (vm, content) => new WizardBridge(settings.Transport, vm, content)),
                 _ => throw new NotSupportedException($"The test View '{view}' is not a root View."),
             };
         }
@@ -99,6 +109,7 @@ internal sealed class DotNetConformanceViews : IConformanceViews
         private readonly WindowContentSession _session;
         private readonly TModel _model;
         private readonly IDisposable _bridge;
+        private readonly Dictionary<string, Task<bool>> _waits = new(StringComparer.Ordinal);
 
         public Window(WindowContentSession session, TModel model, Func<TModel, WindowContentSession, IDisposable> attach)
         {
@@ -109,6 +120,17 @@ internal sealed class DotNetConformanceViews : IConformanceViews
 
         public Task MutateAsync(JsonArray mutations, bool eachUnit)
         {
+            // The mutations of the presentation features act on the window, from outside the model's turn.
+            if (mutations.All(mutation => mutation!["op"]!.GetValue<string>() is "renew" or "waitPresented"))
+            {
+                foreach (var mutation in mutations)
+                {
+                    if (mutation!["op"]!.GetValue<string>() == "renew") RunicPresentation.Renew(_model);
+                    else _waits.Add(mutation["id"]!.GetValue<string>(), RunicPresentation.WaitForPresentedAsync(_model,
+                        TimeSpan.FromMilliseconds(mutation["timeout"]!.GetValue<int>())).AsTask());
+                }
+                return Task.CompletedTask;
+            }
             RunicModelTurns.Run(_session.ModelContext!, () =>
             {
                 if (!eachUnit)
@@ -132,6 +154,10 @@ internal sealed class DotNetConformanceViews : IConformanceViews
         public JsonNode? ReadMember(string member) => RunicModelTurns.Run(_session.ModelContext!, () => _model.Read(member));
 
         public JsonNode? Provide(string id) => _model.Provide(id);
+
+        public Task<bool> Wait(string id) => _waits[id];
+
+        public Task<RunicWindowCloseResult> CloseAsync(TimeSpan timeout) => _session.DrainAsync(timeout).AsTask();
 
         public void Dispose()
         {

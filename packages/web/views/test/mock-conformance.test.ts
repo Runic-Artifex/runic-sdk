@@ -19,7 +19,7 @@ let sessions = 0;
  */
 class RawClient {
   readonly pushes: Push[] = [];
-  /** The revision each route reached: from an `open` or `snapshot` reply, then from frames. */
+  /** The revision each route reached: from an `open` or `snapshot` reply, then from frames and states. */
   readonly revisions = new Map<string, number>();
   readonly problems: string[] = [];
   readonly stop: () => void;
@@ -35,6 +35,12 @@ class RawClient {
         if (reached !== undefined && push.baseRevision !== reached)
           this.problems.push(`the frame ${push.baseRevision} → ${push.revision} of ${push.route} does not continue revision ${reached}`);
         if (push.revision <= push.baseRevision) this.problems.push(`the frame of ${push.route} does not increase its revision`);
+        this.revisions.set(push.route, push.revision);
+      }
+      // A full state, such as a renewal (presentation-epoch/1), continues the route at its revision.
+      if (push.kind === "state") {
+        const reached = this.revisions.get(push.route);
+        if (reached !== undefined && push.revision <= reached) this.problems.push(`the state ${push.revision} of ${push.route} does not increase its revision`);
         this.revisions.set(push.route, push.revision);
       }
       if (push.kind === "operation" && push.status["revision"] !== undefined) {
@@ -480,5 +486,128 @@ test("an operation start with a known id is a duplicate for a canonically equal 
   const unavailable = await raw.send({ kind: "start", route: "notes", member: "save", operation: "op-2", contract: "Tests.Notes:fp-1" });
   assert.deepEqual([unavailable["admission"], unavailable["reason"], unavailable.revision], ["rejected", "unavailable", raw.revisions.get("notes")]);
   assert.equal(view.operations().length, 1);
+  raw.done();
+});
+
+/* ------------------------------------------------------------------ presentation-epoch/1 and presented/1 */
+
+const features = ["text-splice/1", "presentation-epoch/1", "presented/1"];
+const helloWith = (raw: RawClient, list: readonly string[] = features) =>
+  raw.send({ kind: "hello", protocol: 4, session: `session-${++sessions}`, client, features: list });
+
+function wizard(bridge: MockBridge) {
+  const view = bridge.view("wizard", {
+    state: { page: 1, canNext: true, canBack: false, canPing: true },
+    commands: {
+      next: state => { view.renew(); return { page: (state["page"] as number) + 1, canBack: true }; },
+      back: state => { view.renew(); return { page: (state["page"] as number) - 1, canBack: (state["page"] as number) > 2 }; },
+      ping: () => undefined,
+    },
+  });
+  return view;
+}
+
+test("presentation-epoch/1: open carries the epoch, a renewal is a state at a new revision, a stale command is superseded", async () => {
+  const { bridge, raw } = await connected();
+  const view = wizard(bridge);
+  assert.deepEqual((await helloWith(raw))["features"], features);
+  const open = await raw.send({ kind: "open", route: "wizard", presentation: "p-1" });
+  assert.equal(open["epoch"], view.epoch);
+  const epoch = view.epoch;
+  view.renew();
+  const renewal = raw.pushes.at(-1)!;
+  assert.deepEqual(renewal, { kind: "state", route: "wizard", revision: view.revision, epoch: view.revision, state: view.state });
+  assert.ok(view.epoch > epoch);
+  assert.equal((await raw.send({ kind: "snapshot", route: "wizard" }))["epoch"], view.epoch);
+  // A scoped command with the current epoch runs; its renewal is published with its changes as one state.
+  const next = await raw.send({ kind: "command", route: "wizard", member: "next", epoch: view.epoch });
+  assert.deepEqual([next.revision, next["superseded"]], [view.revision, undefined]);
+  assert.deepEqual(raw.pushes.at(-1), { kind: "state", route: "wizard", revision: view.revision, epoch: view.revision,
+    state: { page: 2, canNext: true, canBack: true, canPing: true } });
+  // The same click again, from the page it was made on: nothing runs.
+  const pushes = raw.pushes.length;
+  assert.deepEqual(await raw.send({ kind: "command", route: "wizard", member: "next", epoch }), { ok: true, revision: view.revision, superseded: true });
+  assert.equal(view.state["page"], 2);
+  assert.equal(raw.pushes.length, pushes);
+  // The epoch is checked before availability, and a command without one is a base command.
+  view.update({ canPing: false });
+  assert.equal((await raw.send({ kind: "command", route: "wizard", member: "ping", epoch }))["superseded"], true);
+  assert.equal((await raw.send({ kind: "command", route: "wizard", member: "ping" })).error?.reason, "unavailable");
+  assert.equal((await raw.send({ kind: "command", route: "wizard", member: "next" })).ok, true);
+  assert.equal(view.state["page"], 3);
+  for (const invalid of [-1, 1.5, "1"])
+    assert.deepEqual(errorOf(await raw.send({ kind: "command", route: "wizard", member: "next", epoch: invalid })), { kind: "rejected", reason: "invalid-request" });
+  raw.done();
+});
+
+test("presentation-epoch/1 not in use: no epoch in replies or states, and an epoch member is ignored", async () => {
+  const { bridge, raw } = await connected();
+  const view = wizard(bridge);
+  await helloWith(raw, ["text-splice/1"]);
+  assert.equal(Object.hasOwn(await raw.send({ kind: "open", route: "wizard", presentation: "p-1" }), "epoch"), false);
+  const next = await raw.send({ kind: "command", route: "wizard", member: "next", epoch: 12345 });
+  assert.equal(next["superseded"], undefined);
+  assert.equal(view.state["page"], 2);
+  const state = raw.pushes.at(-1)!;
+  assert.equal(state.kind, "state");
+  assert.equal(Object.hasOwn(state, "epoch"), false);
+  raw.done();
+});
+
+test("presented/1: waitPresented pushes present and completes with the page's report, or false at its timeout", async () => {
+  const { bridge, raw } = await connected({ scheduling: "manual" });
+  const view = wizard(bridge);
+  await bridge.flushUntil(helloWith(raw));
+  // A wait before the route is open reaches the presentation that opens, after the open reply.
+  const waiting = view.waitPresented(1_000);
+  await bridge.flushUntil(raw.send({ kind: "open", route: "wizard", presentation: "p-1" }));
+  assert.deepEqual(raw.pushes.at(-1), { kind: "present", route: "wizard", revision: view.revision });
+  assert.deepEqual(await bridge.flushUntil(raw.send({ kind: "presented", route: "wizard", revision: view.revision })), { ok: true });
+  assert.equal(await bridge.flushUntil(waiting), true);
+  // A report of an earlier revision does not complete a wait.
+  view.update({ page: 5 });
+  const late = view.waitPresented(1_000);
+  await bridge.flush();
+  assert.deepEqual(raw.pushes.at(-1), { kind: "present", route: "wizard", revision: view.revision });
+  await bridge.flushUntil(raw.send({ kind: "presented", route: "wizard", revision: view.revision - 1 }));
+  await bridge.advance(1_000);
+  assert.equal(await late, false);
+  for (const message of [{ kind: "presented", route: "wizard", revision: -1 }, { kind: "presented", route: "wizard" }])
+    assert.deepEqual(errorOf(await bridge.flushUntil(raw.send(message))), { kind: "rejected", reason: "invalid-request" });
+  assert.deepEqual(errorOf(await bridge.flushUntil(raw.send({ kind: "presented", route: "gone", revision: 1 }))), { kind: "released", reason: undefined });
+  raw.done();
+});
+
+test("presented/1: closeWindow pushes closing and completes with the page's closing-reply, or false at its timeout", async () => {
+  const { bridge, raw } = await connected({ scheduling: "manual" });
+  await bridge.flushUntil(helloWith(raw));
+  const closing = bridge.closeWindow(1_000);
+  await bridge.flush();
+  assert.deepEqual(raw.pushes.at(-1), { kind: "closing" });
+  assert.deepEqual(await bridge.flushUntil(raw.send({ kind: "closing-reply" })), { ok: true });
+  assert.equal(await closing, true);
+  // Once per connection; a reply without a pending close changes nothing.
+  assert.equal(await bridge.closeWindow(), true);
+  assert.deepEqual(await bridge.flushUntil(raw.send({ kind: "closing-reply" })), { ok: true });
+  bridge.disconnect();
+  bridge.reconnect();
+  await bridge.flushUntil(helloWith(raw));
+  const unanswered = bridge.closeWindow(1_000);
+  await bridge.advance(1_000);
+  assert.equal(await unanswered, false);
+  raw.done();
+});
+
+test("presented/1 not in use: no present or closing, and its requests are invalid", async () => {
+  const { bridge, raw } = await connected();
+  const view = wizard(bridge);
+  await helloWith(raw, ["text-splice/1"]);
+  await raw.send({ kind: "open", route: "wizard", presentation: "p-1" });
+  const waiting = view.waitPresented(10);
+  assert.equal(await bridge.closeWindow(), true);
+  assert.equal(await waiting, false);
+  assert.equal(raw.pushes.length, 0);
+  for (const message of [{ kind: "presented", route: "wizard", revision: 0 }, { kind: "closing-reply" }])
+    assert.deepEqual(errorOf(await raw.send(message)), { kind: "rejected", reason: "invalid-request" });
   raw.done();
 });

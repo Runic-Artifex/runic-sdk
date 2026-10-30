@@ -1,0 +1,41 @@
+{
+  "format": "runic.views.scenario/1",
+  "id": "presentations.epoch-open-and-snapshot-carry-the-epoch-and-a-renewal-is-a-state.v1",
+  "contract": {"id":"runic.views","version":4},
+  "set": "presentations",
+  "roles": ["producer","client"],
+  "description": "With presentation-epoch/1, open and snapshot replies carry the route's epoch. A renewal that changes no member is a state at a new revision with a new epoch; the client notifies no subscriber and sends the new epoch with its next scoped command.",
+  "view": "wizard",
+  "requires": ["presentation-epoch/1"],
+  "ids": {
+    "c1": {"kind":"connection"},
+    "hello-c1": {"kind":"request"},
+    "session": {"kind":"wire","value":"s-1"},
+    "open-wizard": {"kind":"call"},
+    "open-wizard-request": {"kind":"request"},
+    "presentation": {"kind":"wire","value":"p-1"},
+    "next": {"kind":"call"},
+    "next-request": {"kind":"request"},
+    "final-read": {"kind":"request"}
+  },
+  "arrange": {"model":{}},
+  "steps": [
+    {"connect":"c1"},
+    {"send":{"kind":"hello","protocol":4,"session":{"$id":"session"},"client":{"name":{"$any":"string","default":"conformance-client"},"version":{"$any":"string","default":"1.0.0"}},"features":{"$any":"array","default":["text-splice/1","presentation-epoch/1"]}},"id":"hello-c1"},
+    {"receive":{"ok":true,"protocol":4,"implementation":{"name":{"$any":"string","default":"conformance-producer"},"version":{"$any":"string","default":"1.0.0"}},"features":{"$any":"array","default":["text-splice/1","presentation-epoch/1"]}},"replyTo":"hello-c1"},
+    {"call":{"id":"open-wizard","op":"open","route":"wizard"}},
+    {"send":{"kind":"open","route":"wizard","presentation":{"$id":"presentation"}},"id":"open-wizard-request"},
+    {"receive":{"ok":true,"revision":0,"epoch":0,"state":{"page":1,"canNext":true,"canBack":false,"canPing":true},"presentation":"ok"},"replyTo":"open-wizard-request"},
+    {"mutate":[{"op":"renew"}]},
+    {"receive":{"kind":"state","route":"wizard","revision":1,"epoch":1,"state":{"page":1,"canNext":true,"canBack":false,"canPing":true}},"note":"A renewal is a full state, also when no member changed."},
+    {"expect":{"state":{"route":"wizard","value":{"page":1,"canNext":true,"canBack":false,"canPing":true}}}},
+    {"expect":{"notifications":{"route":"wizard","count":0}},"note":"The renewal changed no member."},
+    {"call":{"id":"next","op":"command","route":"wizard","member":"next"}},
+    {"send":{"kind":"command","route":"wizard","member":"next","epoch":1},"id":"next-request","note":"The epoch of the renewed state."},
+    {"receive":{"kind":"state","route":"wizard","revision":2,"epoch":2,"state":{"page":2,"canNext":true,"canBack":true,"canPing":true}}},
+    {"receive":{"ok":true,"revision":2},"replyTo":"next-request"},
+    {"expect":{"call":{"id":"next","resolved":null}}},
+    {"send":{"kind":"snapshot","route":"wizard"},"id":"final-read","role":"producer"},
+    {"receive":{"ok":true,"revision":2,"epoch":2,"state":{"page":2,"canNext":true,"canBack":true,"canPing":true}},"replyTo":"final-read","role":"producer"}
+  ]
+}

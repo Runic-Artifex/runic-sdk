@@ -190,6 +190,30 @@ internal sealed class CodegenShapeTests
             $"The selection slot's mock field is not a nullable number:\n{mock}");
     }
 
+    // presentation-epoch/1: a scoped command, on a [RelayCommand] method or a command property, adds a scoped: part to
+    // the fingerprint and is listed in the generated client's and mock's scopedCommands.
+    [Test]
+    public void ScopedCommandsAreInTheFingerprintAndTheGeneratedClient()
+    {
+        var parts = Runic.Application.Views.Generated.BridgeContractShape.Parts(typeof(ScopedWizardViewModel));
+        var model = typeof(ScopedWizardViewModel).FullName;
+        Require(parts.Contains($"scoped:{model}:NextCommand") && parts.Contains($"scoped:{model}:BackCommand")
+                && !parts.Contains($"scoped:{model}:PingCommand") && parts[0] == "runic-bridge-contract-v6",
+            $"The fingerprint does not list exactly the scoped commands:\n{string.Join('\n', parts)}");
+        Require(!Runic.Application.Views.Generated.BridgeContractShape.Parts(typeof(DocumentedViewModel))
+                .Any(part => part.StartsWith("scoped:", StringComparison.Ordinal) && part.Contains("DocumentedViewModel", StringComparison.Ordinal)),
+            "A View without scoped commands has a scoped: part.");
+        var directory = GeneratedTypeScriptDirectory();
+        var client = File.ReadAllText(Path.Combine(directory, "scopedWizard.ts")).ReplaceLineEndings("\n");
+        var mock = File.ReadAllText(Path.Combine(directory, "scopedWizard.mock.ts")).ReplaceLineEndings("\n");
+        Require(client.Contains("scopedCommands: [\"back\", \"next\"], timeout: options?.timeout", StringComparison.Ordinal),
+            $"scopedWizard.ts does not list its scoped commands:\n{client}");
+        Require(mock.Contains("  scopedCommands: [\"back\", \"next\"],\n", StringComparison.Ordinal),
+            $"scopedWizard.mock.ts does not list its scoped commands:\n{mock}");
+        Require(!File.ReadAllText(Path.Combine(directory, "documented.ts")).Contains("scopedCommands", StringComparison.Ordinal),
+            "A client without scoped commands lists scopedCommands.");
+    }
+
     [Test]
     public void GeneratedTypeScriptSurface()
     {

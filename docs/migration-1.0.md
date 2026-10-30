@@ -942,7 +942,20 @@ Details: 0.14.0 [Runic Command Line 0.11.0 in the SDK tools](../eng/release/note
 
 ### Views protocol
 
-<!-- V5: replace this line with the batch's migration entries; remove it if the batch has none. -->
+0.15.0 adds the Views protocol features `presentation-epoch/1` and `presented/1`. Views protocol 4 does not change: a
+0.14 page and a 0.15 host still connect and behave as in 0.14. Update every Runic NuGet and npm package to 0.15.0
+together and rebuild so that the generated clients are regenerated.
+
+| 0.14 | 0.15 |
+| --- | --- |
+| A presentation number in state, stamped on the root and every page and compared in each command, so that a late Next or Back does nothing | `[RunicPresentationScoped]` on the command and `RunicPresentation.Renew(this)` where the page changes; a call from an earlier page resolves without running ([Commands scoped to their page](../packages/dotnet/Runic.Application.Views/README.md#commands-scoped-to-their-page)) |
+| A `UiRendered(id)` command called from the page after the next animation frame | `await RunicPresentation.WaitForPresentedAsync(viewModel, timeout)` |
+| A close token and a close-acknowledged command with a timeout of its own | `CloseAsync(timeout)` waits for the page's acknowledgement within its timeout (at most 5 seconds); read `RunicWindowCloseResult.PagesAcknowledged` |
+| A `switch` over `BridgeConnectionState` with `connecting`, `connected`, `reconnecting` and `lost` | Handle `"closed"` too: the application closed the window. It stays `closed` when the connection then drops |
+| A kept client of content presented again showed its old state until `refreshPresentation` read it | The Bridge pushes the content's state when its presentations resume |
+| A test that expected no push after `Main = b; Main = a` | A `state` push of the resumed content route |
+
+Details: 0.15.0 [Views protocol (V5)](../eng/release/notes/0.15.0.md#views-protocol-v5).
 
 ### Navigation
 

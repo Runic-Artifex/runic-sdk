@@ -13,6 +13,8 @@ const statusText: Record<BridgeConnectionState, string> = {
   connected: "Connected to the .NET Window.",
   reconnecting: "Showing the last state the .NET Window sent.",
   lost: "Showing the last state the .NET Window sent.",
+  // The application closed the Window; a connection drop that follows is not an error.
+  closed: "The application closed this window.",
 };
 const { state, client, error: connectError } = useView({ connect: connectWorkspace });
 const { state: connection } = useBridgeConnection();

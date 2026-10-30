@@ -1,0 +1,43 @@
+{
+  "format": "runic.views.scenario/1",
+  "id": "presentations.epoch-a-second-scoped-command-from-the-same-state-is-superseded.v1",
+  "contract": {"id":"runic.views","version":4},
+  "set": "presentations",
+  "roles": ["producer","client"],
+  "description": "Two scoped commands sent from the same state: the first runs and renews the route, the second carries the old epoch and is superseded. Both calls resolve, without a diagnostic, and the wizard is on page 2.",
+  "view": "wizard",
+  "requires": ["presentation-epoch/1"],
+  "ids": {
+    "c1": {"kind":"connection"},
+    "hello-c1": {"kind":"request"},
+    "session": {"kind":"wire","value":"s-1"},
+    "open-wizard": {"kind":"call"},
+    "open-wizard-request": {"kind":"request"},
+    "presentation": {"kind":"wire","value":"p-1"},
+    "next-1": {"kind":"call"},
+    "next-1-request": {"kind":"request"},
+    "next-2": {"kind":"call"},
+    "next-2-request": {"kind":"request"}
+  },
+  "arrange": {"model":{}},
+  "steps": [
+    {"connect":"c1"},
+    {"send":{"kind":"hello","protocol":4,"session":{"$id":"session"},"client":{"name":{"$any":"string","default":"conformance-client"},"version":{"$any":"string","default":"1.0.0"}},"features":{"$any":"array","default":["text-splice/1","presentation-epoch/1"]}},"id":"hello-c1"},
+    {"receive":{"ok":true,"protocol":4,"implementation":{"name":{"$any":"string","default":"conformance-producer"},"version":{"$any":"string","default":"1.0.0"}},"features":{"$any":"array","default":["text-splice/1","presentation-epoch/1"]}},"replyTo":"hello-c1"},
+    {"call":{"id":"open-wizard","op":"open","route":"wizard"}},
+    {"send":{"kind":"open","route":"wizard","presentation":{"$id":"presentation"}},"id":"open-wizard-request"},
+    {"receive":{"ok":true,"revision":0,"epoch":0,"state":{"page":1,"canNext":true,"canBack":false,"canPing":true},"presentation":"ok"},"replyTo":"open-wizard-request"},
+    {"call":{"id":"next-1","op":"command","route":"wizard","member":"next"}},
+    {"send":{"kind":"command","route":"wizard","member":"next","epoch":0},"id":"next-1-request"},
+    {"call":{"id":"next-2","op":"command","route":"wizard","member":"next"},"note":"A second click before the first one's state arrived."},
+    {"send":{"kind":"command","route":"wizard","member":"next","epoch":0},"id":"next-2-request"},
+    {"receive":{"kind":"state","route":"wizard","revision":1,"epoch":1,"state":{"page":2,"canNext":true,"canBack":true,"canPing":true}},"unordered":true},
+    {"receive":{"ok":true,"revision":1},"replyTo":"next-1-request","unordered":true},
+    {"receive":{"ok":true,"revision":1,"superseded":true},"replyTo":"next-2-request","unordered":true,"note":"Nothing ran; the revision is the route's last published one."},
+    {"expect":{"call":{"id":"next-1","resolved":null}}},
+    {"expect":{"call":{"id":"next-2","resolved":null}}},
+    {"expect":{"state":{"route":"wizard","value":{"page":2,"canNext":true,"canBack":true,"canPing":true}}}},
+    {"expect":{"diagnostics":[]}},
+    {"expect":{"model":{"page":2}}}
+  ]
+}

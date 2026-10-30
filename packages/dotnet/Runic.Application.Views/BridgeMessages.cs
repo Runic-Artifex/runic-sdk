@@ -57,6 +57,8 @@ internal static class BridgeMessages
             // Every feature this producer implements; a feature is in use when the client lists it too.
             writer.WriteStartArray("features");
             writer.WriteStringValue(BridgeDispatcher.TextSpliceFeature);
+            writer.WriteStringValue(BridgeDispatcher.PresentationEpochFeature);
+            writer.WriteStringValue(BridgeDispatcher.PresentedFeature);
             writer.WriteEndArray();
             writer.WriteEndObject();
         });

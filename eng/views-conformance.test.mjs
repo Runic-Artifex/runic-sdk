@@ -378,7 +378,8 @@ const requestRules = {
     && Number.isSafeInteger(m.edit) && m.edit > 0,
   write: m => isRoute(m.route) && isMember(m.member) && isIdentifier(m.requestId) && isSafe(m.expectedVersion)
     && ("splice" in m ? !("value" in m) && !("expectedValue" in m) && isWriteSplice(m.splice) : "expectedValue" in m && "value" in m),
-  command: m => isRoute(m.route) && isMember(m.member),
+  // README.md, "Presentation epochs": on a connection that uses presentation-epoch/1, epoch is a safe integer.
+  command: m => isRoute(m.route) && isMember(m.member) && (m.epoch === undefined || isSafe(m.epoch)),
   can: m => isRoute(m.route) && isMember(m.member),
   start: identity, status: identity, watch: identity, unwatch: identity, cancel: identity,
   stream: m => identity(m) && isSafe(m.cursor),
@@ -387,6 +388,9 @@ const requestRules = {
     && isMember(m.name) && typeof m.contract === "string" && ["answered", "cancelled", "failed"].includes(m.outcome)
     && ((m.outcome === "answered") === ("output" in m)),
   receive: () => true,
+  // README.md, "Presented states and window close" (presented/1).
+  presented: m => isRoute(m.route) && isSafe(m.revision),
+  "closing-reply": () => true,
 };
 
 export function readRequest(text, limits = {}) {
@@ -436,6 +440,8 @@ function validStatus(status) {
 }
 const validFields = fields => fields === undefined || (isObject(fields) && Object.values(fields).every(field => isObject(field) && isSafe(field.version)));
 const isOffsetDateTime = value => { try { decodeValue("offset-date-time", value); return true; } catch { return false; } };
+// A client takes `epoch` of a state push or an open or snapshot reply only when it is a safe integer, and otherwise
+// ignores it (README.md, "Presentation epochs", Client), so the readers do not check it.
 const pushRules = {
   state: m => isRoute(m.route) && isSafe(m.revision) && isObject(m.state) && validFields(m.fields),
   frame: validFrame,
@@ -444,6 +450,9 @@ const pushRules = {
   interaction: m => isRoute(m.route) && isIdentifier(m.presentation) && isIdentifier(m.requestId) && isSafe(m.ownerEpoch)
     && isMember(m.name) && typeof m.contract === "string" && isOffsetDateTime(m.expiresAt) && "input" in m,
   "interaction-cancelled": m => isRoute(m.route) && isIdentifier(m.presentation) && isIdentifier(m.requestId) && isSafe(m.ownerEpoch) && typeof m.message === "string",
+  // presented/1. closing is the first push without a route.
+  present: m => isRoute(m.route) && isSafe(m.revision),
+  closing: () => true,
 };
 export function readPush(text) {
   let message;
@@ -462,7 +471,7 @@ const replyRules = {
   close: m => ["ok", "ignored"].includes(m.presentation),
   set: m => withRevision(m) && (m.superseded === undefined || typeof m.superseded === "boolean"),
   write: m => m.released === true || (isSafe(m.revision) && isObject(m.receipt) && ["applied", "committed-with-error", "conflict", "rejected"].includes(m.receipt.kind)),
-  command: withRevision,
+  command: m => withRevision(m) && (m.superseded === undefined || typeof m.superseded === "boolean"),
   can: m => typeof m.value === "boolean",
   start: m => isSafe(m.revision) && ["accepted", "duplicate", "expired", "rejected"].includes(m.admission)
     && (!["accepted", "duplicate"].includes(m.admission) || validStatus(m.status)) && (m.admission !== "rejected" || typeof m.reason === "string"),
@@ -472,6 +481,8 @@ const replyRules = {
   interactions: m => typeof m.registration === "string",
   "interaction-reply": m => typeof m.result === "string",
   receive: m => Array.isArray(m.messages) && m.messages.every(isObject),
+  presented: () => true,
+  "closing-reply": () => true,
 };
 export function readReply(request, text) {
   let message;
@@ -561,7 +572,8 @@ test("the message vectors match the reference readers of the message catalogue",
 // ---------------------------------------------------------------------------
 // Scenarios are self-contained.
 
-const clientExpectations = new Set(["state", "call", "operation", "diagnostics", "notifications"]);
+const clientExpectations = new Set(["state", "call", "operation", "diagnostics", "notifications", "connection"]);
+const producerExpectations = new Set(["model", "presented", "closed"]);
 function visit(value, callback) {
   callback(value);
   if (Array.isArray(value)) value.forEach(item => visit(item, callback));
@@ -578,7 +590,7 @@ function unorderedGroups(steps) {
     if ("receive" in step && step.unordered) {
       if (!group) groups.push(group = []);
       group.push(index);
-    } else if (!(step.call || (step.expect && !("model" in step.expect)))) group = undefined;
+    } else if (!(step.call || (step.expect && clientExpectations.has(Object.keys(step.expect)[0])))) group = undefined;
   });
   return groups;
 }
@@ -595,6 +607,12 @@ export function scenarioProblems(scenario) {
   };
   const roles = new Set(scenario.roles);
   const connected = new Set(), created = new Set(), requests = new Map(), replied = new Set(), calls = new Set();
+  const started = { wait: new Set(), close: new Set() };
+  const start = (kind, id, where) => {
+    if (started[kind].has(id)) problem(`${where}: ${kind} ${id} is started twice`);
+    use(id, kind, where);
+    started[kind].add(id);
+  };
   let first;
   const steps = scenario.steps ?? [];
   steps.forEach((step, index) => {
@@ -640,9 +658,11 @@ export function scenarioProblems(scenario) {
         replied.add(step.replyTo);
       }
     }
-    if (step.mutate || step.delivery) {
+    if (step.mutate || step.delivery || step.closeWindow) {
       if (!roles.has("producer")) problem(`${where}: a producer step in a client-only scenario`);
     }
+    for (const mutation of step.mutate ?? []) if (mutation.op === "waitPresented") start("wait", mutation.id, where);
+    if (step.closeWindow) start("close", step.closeWindow.id, where);
     if (step.delivery && !(scenario.requires ?? []).includes("held-delivery")) problem(`${where}: delivery needs held-delivery`);
     if (step.advance && !(scenario.requires ?? []).includes("virtual-clock")) problem(`${where}: advance needs virtual-clock`);
     if (step.call) {
@@ -655,7 +675,13 @@ export function scenarioProblems(scenario) {
     if (step.expect) {
       const [kind, value] = Object.entries(step.expect)[0];
       if (clientExpectations.has(kind) && !roles.has("client")) problem(`${where}: a client expectation in a producer-only scenario`);
-      if (kind === "model" && !roles.has("producer")) problem(`${where}: a model expectation in a client-only scenario`);
+      if (producerExpectations.has(kind) && !roles.has("producer")) problem(`${where}: a ${kind} expectation in a client-only scenario`);
+      if (kind === "presented" || kind === "closed") {
+        const startKind = kind === "presented" ? "wait" : "close";
+        if (!started[startKind].has(value.id)) problem(`${where}: ${startKind} ${value.id} was not started`);
+        used.set(value.id, startKind);
+        if (declared[value.id]?.kind !== startKind) problem(`${where}: ${value.id} is not a ${startKind} id`);
+      }
       if (kind === "call" && !calls.has(value.id)) problem(`${where}: call ${value.id} was not made`);
       if (kind === "operation") {
         if (declared[value.id]?.kind !== "wire") problem(`${where}: operation ${value.id} is not a wire id`);
@@ -705,6 +731,12 @@ test("the scenario check rejects references to resources that were not created",
   assert.ok(scenarioProblems({ ...base, steps: [{ connect: "c1" }, { send: { kind: "open", presentation: { $id: "p" } }, id: "r" }, { receive: { ok: true }, replyTo: "r" }] }).some(p => p.includes("p is not in ids")));
   assert.ok(scenarioProblems({ ...base, ids: { ...base.ids, unused: { kind: "call" } }, steps: [{ connect: "c1" }, { send: {}, id: "r" }, { receive: {}, replyTo: "r" }] }).some(p => p.includes("unused")));
   assert.ok(scenarioProblems({ ...base, steps: [{ connect: "c1" }, { expect: { call: { id: "nope", pending: true } } }, { send: {}, id: "r" }, { receive: {}, replyTo: "r" }] }).some(p => p.includes("was not made")));
+  const waits = { ...base, ids: { ...base.ids, w: { kind: "wait" }, x: { kind: "close" } } };
+  const exchange = [{ connect: "c1" }, { send: {}, id: "r" }, { receive: {}, replyTo: "r" }];
+  assert.deepEqual(scenarioProblems({ ...waits, steps: [...exchange, { mutate: [{ op: "waitPresented", id: "w", timeout: 1 }] }, { expect: { presented: { id: "w", result: true } } },
+    { closeWindow: { id: "x", timeout: 1 } }, { expect: { closed: { id: "x", acknowledged: true } } }] }), []);
+  assert.ok(scenarioProblems({ ...waits, steps: [...exchange, { expect: { presented: { id: "w", result: true } } }, { closeWindow: { id: "x", timeout: 1 } }] }).some(p => p.includes("w was not started")));
+  assert.ok(scenarioProblems({ ...waits, steps: [...exchange, { mutate: [{ op: "waitPresented", id: "x", timeout: 1 }] }, { closeWindow: { id: "w", timeout: 1 } }] }).some(p => p.includes("used as")));
 });
 
 test("the scenario check accepts unordered groups of two receives and rejects lone ones", () => {
@@ -713,5 +745,6 @@ test("the scenario check accepts unordered groups of two receives and rejects lo
   assert.deepEqual(scenarioProblems({ ...base, steps: [...steps, { receive: {}, replyTo: "r", unordered: true }, { expect: { state: {} } }, { receive: {}, unordered: true }] }), []);
   assert.ok(scenarioProblems({ ...base, steps: [...steps, { receive: {}, replyTo: "r", unordered: true }, { receive: {} }] }).some(p => p.includes("needs two")));
   assert.ok(scenarioProblems({ ...base, steps: [...steps, { receive: {}, replyTo: "r", unordered: true }, { mutate: [] }, { receive: {}, unordered: true }] }).some(p => p.includes("needs two")));
+  assert.ok(scenarioProblems({ ...base, steps: [...steps, { receive: {}, replyTo: "r", unordered: true }, { expect: { model: {} } }, { receive: {}, unordered: true }] }).some(p => p.includes("needs two")));
   assert.ok(scenarioProblems({ ...base, steps: [...steps, { receive: {}, replyTo: "r", unordered: true }, { receive: {}, unordered: true, drop: true }] }).some(p => p.includes("dropped")));
 });

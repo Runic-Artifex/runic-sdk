@@ -455,8 +455,8 @@ cancelling accepted work. Pass `injector` outside an injection context.
 host for the lifetime of the injection context. It wraps `onBridgeConnection`
 from `@runic-artifex/views` (re-exported here since 0.11, with the
 `BridgeConnectionState` and `BridgeConnectionOptions` types) and returns `{ state }`, a signal of a
-`BridgeConnectionState`: `connecting`, `connected`, `reconnecting` or `lost` (a
-closed set, see
+`BridgeConnectionState`: `connecting`, `connected`, `reconnecting`, `lost` or `closed` (the
+application closed the window, since 0.15; a closed set, see
 [Connection state](https://github.com/Runic-Artifex/runic-sdk/tree/main/packages/web/views#connection-state)):
 
 ```ts

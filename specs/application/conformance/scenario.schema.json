@@ -28,11 +28,11 @@
       "type": "string",
       "pattern": "^specs/application/fixtures/[a-z-]+/[a-z0-9-]+\\.json#.+$"
     },
-    "view": { "enum": ["list", "log", "notes", "form"] },
+    "view": { "enum": ["list", "log", "notes", "form", "wizard"] },
     "requires": {
       "type": "array",
       "uniqueItems": true,
-      "items": { "enum": ["held-delivery", "virtual-clock", "text-splice/1"] }
+      "items": { "enum": ["held-delivery", "virtual-clock", "text-splice/1", "presentation-epoch/1", "presented/1"] }
     },
     "options": {
       "type": "object",
@@ -42,7 +42,7 @@
       }
     },
     "ids": {
-      "description": "Every identifier the scenario uses: connections, ids sent on the wire, call ids and request step ids.",
+      "description": "Every identifier the scenario uses: connections, ids sent on the wire, call ids, request step ids, waits and closes.",
       "type": "object",
       "minProperties": 1,
       "additionalProperties": {
@@ -50,7 +50,7 @@
         "additionalProperties": false,
         "required": ["kind"],
         "properties": {
-          "kind": { "enum": ["connection", "wire", "provided", "call", "request"] },
+          "kind": { "enum": ["connection", "wire", "provided", "call", "request", "wait", "close"] },
           "value": { "type": "string", "minLength": 1, "maxLength": 128 }
         },
         "if": { "properties": { "kind": { "const": "wire" } } },
@@ -153,6 +153,20 @@
           "patternProperties": { "^(note)$": true }
         },
         {
+          "required": ["closeWindow"],
+          "properties": {
+            "closeWindow": {
+              "description": "Producer: starts the window's close with a timeout in milliseconds.",
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["id", "timeout"],
+              "properties": { "id": { "$ref": "#/$defs/name" }, "timeout": { "type": "integer", "minimum": 0 } }
+            }
+          },
+          "additionalProperties": false,
+          "patternProperties": { "^(note)$": true }
+        },
+        {
           "required": ["expect"],
           "properties": { "expect": { "$ref": "#/$defs/expectation" } },
           "additionalProperties": false,
@@ -217,6 +231,16 @@
         {
           "properties": { "op": { "const": "rule" }, "rule": { "type": "string" }, "holds": { "type": "boolean" } },
           "required": ["op", "rule", "holds"],
+          "additionalProperties": false
+        },
+        {
+          "properties": { "op": { "const": "renew" } },
+          "required": ["op"],
+          "additionalProperties": false
+        },
+        {
+          "properties": { "op": { "const": "waitPresented" }, "id": { "$ref": "#/$defs/name" }, "timeout": { "type": "integer", "minimum": 0 } },
+          "required": ["op", "id", "timeout"],
           "additionalProperties": false
         },
         {
@@ -354,6 +378,24 @@
           "additionalProperties": false,
           "required": ["route", "count"],
           "properties": { "route": { "type": "string" }, "count": { "type": "integer", "minimum": 0 } }
+        },
+        "connection": {
+          "description": "Client: the connection state the client reports; closed when it reports that the producer closed the window.",
+          "const": "closed"
+        },
+        "presented": {
+          "description": "Producer: the result of a waitPresented wait, or pending while it has not completed.",
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["id", "result"],
+          "properties": { "id": { "$ref": "#/$defs/name" }, "result": { "enum": [true, false, "pending"] } }
+        },
+        "closed": {
+          "description": "Producer: the close of a closeWindow step completed; whether every page acknowledged it.",
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["id", "acknowledged"],
+          "properties": { "id": { "$ref": "#/$defs/name" }, "acknowledged": { "type": "boolean" } }
         }
       }
     }

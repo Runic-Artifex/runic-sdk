@@ -494,6 +494,8 @@ public partial class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBr
         // revision its predecessor published.
         _revision = content?.CurrentRevision ?? 0;
         _publishedRevision = _revision;
+        // The first state begins the route's first epoch (presentation-epoch/1).
+        _epoch = _revision;
         _keyedCollections = collections ?? [];
         _incrementalCollections = [.. _keyedCollections.Where(descriptor => descriptor.PublishesChanges)];
         _generatedCollectionNames = dataSubscriptions?.Where(member => member.EnumerateChildren is not null)
@@ -588,12 +590,15 @@ public partial class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBr
             _subscribedCommands = [.. subscribedCommands];
             // Last: requests can arrive as soon as the route is served.
             _routeLease = BridgeDispatcher.For(transport).RegisterRoute(name, new RouteHandler(this));
+            // RunicPresentation finds the routes of the model.
+            BridgePresentationRegistry.Add(vm, this);
             RunicViewsHotReload.Track(this);
             // The first unit captures the route's first state in a later model turn (CaptureFirstState).
             _delivery.RequestUnit();
         }
         catch
         {
+            BridgePresentationRegistry.Remove(vm, this);
             _routeLease?.Dispose();
             foreach (var binding in bindings) binding.Dispose();
             ReleaseObservedSubObjects();
@@ -791,6 +796,7 @@ public partial class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBr
     {
         if (Interlocked.Exchange(ref _routeLease, null) is { } lease)
         {
+            BridgePresentationRegistry.Remove(_vm, this);
             lease.Dispose();
             _content?.NextRevision();
         }
