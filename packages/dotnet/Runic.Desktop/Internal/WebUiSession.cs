@@ -400,6 +400,14 @@ internal sealed class WebUiSession : IAsyncDisposable
         }
     }
 
+    // Not inline in DispatchCallIgnoringFailureAsync's finally: ILLink 10.0 rewrites that method (it folds
+    // YieldAwaiter.IsCompleted) and drops a try/finally nested in a finally handler, here the lock's Monitor.Exit
+    // (dotnet/runtime#136414), so a trimmed application kept the gate after its first call and hung on the next.
+    private void ForgetCall(TaskCompletionSource completion)
+    {
+        lock (_admissionGate) _pendingCalls.Remove(completion);
+    }
+
     private void RevokeAdmission()
     {
         lock (_admissionGate)
@@ -632,7 +640,7 @@ internal sealed class WebUiSession : IAsyncDisposable
         }
         finally
         {
-            lock (_admissionGate) _pendingCalls.Remove(completion);
+            ForgetCall(completion);
             completion.TrySetResult();
         }
     }

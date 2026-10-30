@@ -289,7 +289,7 @@
        compile it without a separate manual restore. It is not an app reference. -->
   <ItemGroup Condition="Exists('$(_RunicBridgeCodegenProject)') and '$(RunicApplicationFrontendBootstrap)' != 'true'">
     <ProjectReference Include="$(_RunicBridgeCodegenProject)" ReferenceOutputAssembly="false"
-                      GlobalPropertiesToRemove="PublishAot;RuntimeIdentifier;SelfContained" />
+                      GlobalPropertiesToRemove="PublishAot;PublishTrimmed;RuntimeIdentifier;SelfContained" />
   </ItemGroup>
 
   <!-- The bootstrap pass sets its own output paths. Referenced projects (a
@@ -474,7 +474,7 @@
           DependsOnTargets="_RunicViewsIntermediatePaths;RunicViewsDetectBridgeUse;ResolveAssemblyReferences"
           Condition="'$(RunicApplicationFrontendGenerationEnabled)' == 'true' and '$(DesignTimeBuild)' == 'true' and '$(RunicApplicationFrontendBootstrap)' != 'true'">
     <MSBuild Projects="$(_RunicBridgeCodegenProject)" Targets="Build"
-             Properties="Configuration=$(Configuration);TargetFramework=net10.0;RuntimeIdentifier=;PublishAot=false;SelfContained=false"
+             Properties="Configuration=$(Configuration);TargetFramework=net10.0;RuntimeIdentifier=;PublishAot=false;PublishTrimmed=false;SelfContained=false"
              Condition="Exists('$(_RunicBridgeCodegenProject)') and '$(RunicApplicationFrontendCompositionType)' != ''" />
     <MakeDir Directories="$(_RunicBridgeGeneratedDir)" />
     <WriteLinesToFile File="$(_RunicBridgeGeneratedDir)RunicBridgeComposition.References.txt" Lines="@(ReferencePath)" Overwrite="true" WriteOnlyWhenDifferent="true"
@@ -567,7 +567,7 @@
       <_RunicBridgeReuseGenerated Condition="'$(NoBuild)' == 'true'">true</_RunicBridgeReuseGenerated>
     </PropertyGroup>
     <MSBuild Projects="$(_RunicBridgeCodegenProject)" Targets="Build"
-             Properties="Configuration=$(Configuration);TargetFramework=net10.0;RuntimeIdentifier=;PublishAot=false;SelfContained=false"
+             Properties="Configuration=$(Configuration);TargetFramework=net10.0;RuntimeIdentifier=;PublishAot=false;PublishTrimmed=false;SelfContained=false"
              Condition="Exists('$(_RunicBridgeCodegenProject)') and '$(_RunicBridgeReuseGenerated)' != 'true'" />
     <!-- In a one-project starter, first compile the ordinary C# source so MVVM
          source generators have finished before Bridge inspection. Analyzers
@@ -576,7 +576,7 @@
          surface documentation-dependent analyzer warnings. Source generators
          still run. -->
     <MSBuild Projects="$(MSBuildProjectFullPath)" Targets="Build"
-             Properties="RunicApplicationFrontendBootstrap=true;RunAnalyzers=false;RunCodeAnalysis=false;Configuration=$(Configuration);TargetFramework=$(TargetFramework);RuntimeIdentifier=;PublishAot=false;SelfContained=false;CopyLocalLockFileAssemblies=true;OutputPath=$(_RunicBridgeBootstrapOutputPath);IntermediateOutputPath=$(_RunicBridgeBootstrapIntermediateOutputPath)"
+             Properties="RunicApplicationFrontendBootstrap=true;RunAnalyzers=false;RunCodeAnalysis=false;Configuration=$(Configuration);TargetFramework=$(TargetFramework);RuntimeIdentifier=;PublishAot=false;PublishTrimmed=false;SelfContained=false;CopyLocalLockFileAssemblies=true;OutputPath=$(_RunicBridgeBootstrapOutputPath);IntermediateOutputPath=$(_RunicBridgeBootstrapIntermediateOutputPath)"
              Condition="'$(RunicApplicationFrontendModelAssembly)' == '' and '$(_RunicBridgeReuseGenerated)' != 'true'" />
     <PropertyGroup>
       <_RunicBridgeInputAssembly Condition="'$(RunicApplicationFrontendModelAssembly)' == ''">$(_RunicBridgeBootstrapOutputPath)$(AssemblyName).dll</_RunicBridgeInputAssembly>

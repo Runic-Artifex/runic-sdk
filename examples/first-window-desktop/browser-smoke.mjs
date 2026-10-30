@@ -2,11 +2,13 @@ import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { launchChromium, pause, tail, waitFor } from "../shared/smoke.mjs";
 
+// RUNIC_DESKTOP_VIEWS_EXECUTABLE runs a self-contained publish, such as the trimmed one in CI, instead of the DLL.
+const executable = process.env.RUNIC_DESKTOP_VIEWS_EXECUTABLE;
 const dll = process.env.RUNIC_DESKTOP_VIEWS_DLL
   ?? fileURLToPath(new URL("./bin/Release/net10.0/FirstWindowDesktop.dll", import.meta.url));
 // RUNIC_APPLICATION_SERVE_ONLY makes RunicDesktopHost serve the unchanged example's surface without a window
 // and print RUNIC_APPLICATION_URL=<url>, as CS-WebUI does.
-const host = spawn("dotnet", [dll],
+const host = spawn(executable ?? "dotnet", executable ? [] : [dll],
   { stdio: ["pipe", "pipe", "pipe"], env: { ...process.env, RUNIC_APPLICATION_SERVE_ONLY: "1" } });
 let output = "", errors = "", browser;
 host.stdout.on("data", chunk => { output += chunk; });

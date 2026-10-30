@@ -55,9 +55,16 @@ internal sealed partial class MacThumbnails : IDesktopThumbnails
         finally
         {
             // The generator keeps its own reference while it works.
-            using var pool = new Pool();
-            Release(request);
+            ReleaseRequest(request);
         }
+    }
+
+    // Not inline in GetThumbnailAsync's finally: ILLink 10.0 rewrites that method (it folds OperatingSystem.IsMacOS)
+    // and drops a try/finally nested in a finally handler, here the pool's Dispose (dotnet/runtime#136414).
+    private static void ReleaseRequest(nint request)
+    {
+        using var pool = new Pool();
+        Release(request);
     }
 
     // A missing or unreachable file fails before Quick Look is asked, as on the other platforms.

@@ -508,6 +508,14 @@ jobs:
           node examples/notes-reactive-views/ide-host-smoke.mjs
           node examples/notes-reactive-views/dotnet-hot-reload-smoke.mjs
           RUNIC_HOT_RELOAD_SCENARIO=getter node examples/notes-reactive-views/dotnet-hot-reload-smoke.mjs
+      # A trimmed JIT publish runs ILLink's IL rewriting, which the JIT and NativeAOT builds don't: ILLink 10.0 kept
+      # X509Certificate2Collection's interfaces without its base's (dotnet/runtime#135913, a TypeLoadException when
+      # Kestrel binds) and dropped a lock's release from an async finally (dotnet/runtime#136414, a hang on the second
+      # call). Last in the job: the RID-specific publish restores the referenced projects for linux-x64.
+      - name: Publish the Runic Desktop Views host self-contained and trimmed, and exercise it
+        run: |
+          dotnet publish examples/first-window-desktop/FirstWindowDesktop.csproj -c Release -r linux-x64 --self-contained true -p:PublishTrimmed=true -p:ILLinkTreatWarningsAsErrors=true -p:TrimmerSingleWarn=false -o artifacts/desktop-views-trimmed
+          RUNIC_DESKTOP_VIEWS_EXECUTABLE="$PWD/artifacts/desktop-views-trimmed/FirstWindowDesktop" node examples/first-window-desktop/browser-smoke.mjs
       - name: Check generated files and lockfile
         run: bun eng/ci/source-state.mjs check
   package-consumers:
