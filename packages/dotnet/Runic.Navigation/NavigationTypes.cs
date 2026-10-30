@@ -13,6 +13,21 @@ public sealed record NavigationRegionOptions(NavigationChildRetention WhileParen
     /// lets a later request supersede earlier ones that have not committed.
     /// </summary>
     public NavigationAdmission Admission { get; init; }
+
+    /// <summary>
+    /// Gets whether a push that retains the entry owning this region asks the region's current entry, and the current
+    /// entries of the regions below it, as <see cref="NavigationDepartureKind.Retain"/>, before the retained entry's own
+    /// guard; <see langword="false"/> by default. It applies while the region keeps its entries under the retained entry:
+    /// with <see cref="NavigationChildRetention.Keep"/>, or for a region of borrowed content. In a
+    /// <see cref="NavigationSelection"/>, the selected region's setting decides, and only the selected region is asked.
+    /// </summary>
+    /// <remarks>
+    /// A page whose tabs each keep a stack sets it on the tab regions so that a page pushed over it asks the shown tab's
+    /// page, as a tab switch does. The region joins the push's basis without being superseded or changed: a commit in it
+    /// while the push's guards run supersedes the push. Its region guards are asked by their
+    /// <see cref="NavigationRegionGuardOptions.AskOnRetain"/>.
+    /// </remarks>
+    public bool AskOnParentRetain { get; init; }
 }
 
 /// <summary>How a region admits a request while an earlier request of the region runs.</summary>
@@ -185,6 +200,12 @@ public enum NavigationOperation
     /// region left were retained.
     /// </summary>
     Select,
+
+    /// <summary>
+    /// The departure was asked without navigating (<see cref="NavigationRegion.ConfirmDepartureAsync"/>): no entry departs
+    /// when it commits, and the caller does the agreed work in that commit turn.
+    /// </summary>
+    Confirm,
 }
 
 /// <summary>Whether a departing entry is retained or retired.</summary>
