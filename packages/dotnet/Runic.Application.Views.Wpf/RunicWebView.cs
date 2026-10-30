@@ -170,8 +170,8 @@ public sealed partial class RunicWebView : HwndHost
                 });
                 cancellationToken.ThrowIfCancellationRequested();
                 ObjectDisposedException.ThrowIf(_closing || view._child == 0, this);
-                if (options.StartupProgress is { } startupProgress)
-                    initializing.RegisterStartupProgress(startupProgress);
+                if (options.StartupProgress is not null || options.StartupSignal is not null)
+                    initializing.RegisterStartupProgress(options.StartupProgress ?? (static _ => { }), options.StartupSignal);
                 initializing.RegisterEvents(static _ => { }, RequestClose, options.AllowedPermissions, url);
                 initializing.RegisterMoveFocusRequested(view.TabOut);
                 initializing.ApplyWebContent(

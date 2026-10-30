@@ -680,8 +680,8 @@ internal sealed partial class WindowsWebView2Host : IWebUiEmbeddedHost
         {
             var options = _options!;
             _controller = await WindowsWebView2Controller.CreateAsync(_window, options);
-            if (options.StartupProgress is { } startupProgress)
-                _controller.RegisterStartupProgress(startupProgress);
+            if (options.StartupProgress is not null || options.StartupSignal is not null)
+                _controller.RegisterStartupProgress(options.StartupProgress ?? (static _ => { }), options.StartupSignal);
             _controller.Bounds = ClientBounds();
             _controller.IsVisible = !options.Hidden;
             if (options.Transparent)

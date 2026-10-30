@@ -2543,6 +2543,7 @@ NativeAOT symbols and what to attach to a bug report.
 | 3018 | `DesktopQuitRequested` | Information | On macOS, Quit, the Dock's Quit or logging out quits the application after `DesktopHostOptions.ConfirmQuitAsync` and the close guards agreed: `ShutdownRequested` is cancelled and the windows close. | `Reason` |
 | 3019 | `DesktopQuitConfirmationFailed` | Error | `DesktopHostOptions.ConfirmQuitAsync` threw; the application keeps running. | `ErrorType` |
 | 3020 | `DesktopReopenHandlerFailed` | Error | A `DesktopHost.ReopenRequested` handler threw; later handlers still run. | `ErrorType` |
+| 3021 | `EmbeddedConnectionDeadlineExtended` | Warning | An embedded WebView had requested nothing after `ConnectionTimeout` but was still loading the page, so Runic Desktop kept waiting, up to four times the timeout. Once per presentation, also when the page then connects. | `TimeoutSeconds`, `Progress` (what the WebView was doing), `LimitSeconds` |
 
 `Model` is the ViewModel type name, `Member` the command or property, and
 `Route` the Bridge route (a content presentation's route is per instance, such

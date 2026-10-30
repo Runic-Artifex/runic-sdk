@@ -60,6 +60,8 @@ export const traceAllowList = [
     'TraceWarning("A generated browser profile could not be deleted; it remains in the temporary folder.")',
     'TraceWarning($"The diagnostic sink failed for {BrowserLaunchStalledCode}',
     'TraceWarning($"{BrowserLaunchStalledCode}: {message}")',
+    // A slow embedded start that extended its connection deadline (event 3021, I-176).
+    'TraceWarning($"{ConnectionDeadlineExtendedCode}: {message}")',
     // An embedded window's own diagnostic, such as a crashed WebKitGTK web process (#313).
     'TraceWarning($"The diagnostic sink failed for {diagnostic.Code}',
     'TraceError($"{diagnostic.Code}: {diagnostic.Message}")',

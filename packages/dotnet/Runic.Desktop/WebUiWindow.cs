@@ -81,8 +81,8 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
     private TaskCompletionSource _browserConnected = NewCompletionSource();
     // How far the current presentation got before authentication, for timeout reports.
     private int _connectionProgress;
-    // When the current presentation's first request reached the server (Stopwatch ticks), or 0 before it.
-    private long _firstRequestTimestamp;
+    // The current presentation's connection deadline: its first request and its WebView's startup progress.
+    private ConnectionDeadline? _connectionDeadline;
     // What the server saw of the current presentation's handshake, for timeout reports.
     private BridgeHandshakeLog _handshakeLog = new();
     // Null when the content serves no local files.
@@ -761,14 +761,15 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
         }
         else if (WaitForConnection && _externalUrl is null)
         {
-            var deadline = DateTime.UtcNow + ConnectionTimeout;
+            var deadline = Volatile.Read(ref _connectionDeadline)!;
+            var started = deadline.Now;
             try
             {
                 while (!connection.IsCompleted)
                 {
                     cancellationToken.ThrowIfCancellationRequested();
                     ProcessEmbeddedHostEvents();
-                    if (DateTime.UtcNow >= deadline && RemainingAfterFirstRequest(ConnectionTimeout) is null)
+                    if (RemainingConnectionTime(deadline, started) is null)
                     {
                         throw new TimeoutException(DescribeConnectionTimeout(browserProcess: null));
                     }
@@ -1993,6 +1994,8 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
             ReportDiagnostic = ReportEmbeddedDiagnostic,
             // The log of the open in progress: BeginConnection replaced it before the window is shown.
             StartupProgress = description => HandshakeLog.Record(description),
+            // The deadline of the same open, which the WebView's progress extends (I-176).
+            StartupSignal = Volatile.Read(ref _connectionDeadline) is { } deadline ? deadline.Report : null,
             MenuBarPresentation = _menuBarPresentation,
             ColorScheme = _colorScheme,
             GlobalMenu = _runtimeOptions?.GlobalMenu ?? true,
@@ -2385,7 +2388,7 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
     private Task BeginConnection()
     {
         Volatile.Write(ref _connectionProgress, (int)ConnectionProgress.NoRequest);
-        Volatile.Write(ref _firstRequestTimestamp, 0);
+        Volatile.Write(ref _connectionDeadline, new ConnectionDeadline(ConnectionTimeout, TimeProvider));
         Volatile.Write(ref _handshakeLog, new BridgeHandshakeLog());
         _browserConnected = NewCompletionSource();
         return _browserConnected.Task;
@@ -2394,7 +2397,7 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
     private void ReportConnectionProgress(ConnectionProgress progress)
     {
         // Every reported stage is a request that reached the server.
-        Interlocked.CompareExchange(ref _firstRequestTimestamp, Stopwatch.GetTimestamp(), 0);
+        Volatile.Read(ref _connectionDeadline)?.ReportRequest();
         var current = Volatile.Read(ref _connectionProgress);
         while (current < (int)progress)
         {
@@ -2535,30 +2538,60 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
     // The connection timeout counts from the launch while nothing has reached the server, and from the first
     // request once something has. A browser that starts slowly and reaches the server just before the deadline
     // (27 seconds into 30 on a Windows runner, I-180) still gets the whole timeout to finish the Bridge handshake,
-    // instead of being closed while it connects. A presentation waits at most twice the timeout in all.
+    // instead of being closed while it connects. Before any request, an embedded WebView that is still loading the
+    // page extends the timeout, up to ConnectionDeadline.CapFactor timeouts (I-176); see ConnectionDeadline.
     private async Task WaitWithinConnectionDeadlineAsync(Task connection, CancellationToken cancellationToken)
     {
-        var timeout = ConnectionTimeout;
-        try
+        var deadline = Volatile.Read(ref _connectionDeadline)!;
+        var started = deadline.Now;
+        while (!connection.IsCompleted)
         {
-            await connection.WaitAsync(timeout, cancellationToken).ConfigureAwait(false);
+            if (RemainingConnectionTime(deadline, started) is not { } remaining)
+            {
+                throw new TimeoutException();
+            }
+            try
+            {
+                // A startup signal can move the deadline, so it wakes the wait. A timer waits at most about 49 days.
+                await Task.WhenAny(connection, deadline.Changed)
+                    .WaitAsync(remaining < MaximumConnectionWait ? remaining : MaximumConnectionWait, deadline.Time, cancellationToken)
+                    .ConfigureAwait(false);
+            }
+            catch (TimeoutException)
+            {
+            }
         }
-        catch (TimeoutException) when (RemainingAfterFirstRequest(timeout) is { } remaining)
-        {
-            await connection.WaitAsync(remaining, cancellationToken).ConfigureAwait(false);
-        }
+        await connection.ConfigureAwait(false);
     }
 
-    // How much of the timeout is left since the first request, or null before it or once none is left.
-    private TimeSpan? RemainingAfterFirstRequest(TimeSpan timeout)
+    private static readonly TimeSpan MaximumConnectionWait = TimeSpan.FromDays(1);
+
+    // The time left of a wait that started at started, or null once it ran out. Logs the wait's first extension.
+    private TimeSpan? RemainingConnectionTime(ConnectionDeadline deadline, TimeSpan started)
     {
-        var firstRequest = Volatile.Read(ref _firstRequestTimestamp);
-        if (firstRequest == 0)
+        var remaining = deadline.Remaining(started, out var extended);
+        if (extended is not null)
         {
-            return null;
+            ReportConnectionDeadlineExtended(deadline, extended);
         }
-        var remaining = timeout - Stopwatch.GetElapsedTime(firstRequest);
-        return remaining > TimeSpan.Zero ? remaining : null;
+        return remaining;
+    }
+
+    // A slow start that connects is otherwise invisible (I-176).
+    private void ReportConnectionDeadlineExtended(ConnectionDeadline deadline, ConnectionDeadline.Extension extended)
+    {
+        HandshakeLog.Record($"timeout extended: {extended.Progress}");
+        if (_runtimeOptions?.Logger is { } logger)
+        {
+            DesktopLog.ConnectionDeadlineExtended(
+                logger, deadline.Timeout.TotalSeconds, extended.Progress, deadline.Cap.TotalSeconds);
+        }
+        else
+        {
+            var message = string.Create(System.Globalization.CultureInfo.InvariantCulture,
+                $"the embedded WebView had requested nothing after {deadline.Timeout.TotalSeconds:0.###} seconds but was still making progress ({extended.Progress}); waiting up to {deadline.Cap.TotalSeconds:0.###} seconds.");
+            Trace.TraceWarning($"{ConnectionDeadlineExtendedCode}: {message}");
+        }
     }
 
     // Checked again under the lifecycle gate before the relaunch commits.
@@ -2637,9 +2670,20 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
             process = "; the browser process exited before it could be relaunched";
         }
         var attemptText = attempts > 1 ? $" on launch attempt {attempt} of {attempts}" : string.Empty;
+        var deadline = Volatile.Read(ref _connectionDeadline);
+        var timeout = deadline?.Timeout ?? ConnectionTimeout;
+        if (deadline?.Expired is { Progress: { } extendedBy } expired)
+        {
+            // Before any request, the WebView's progress extended the timeout (I-176).
+            var limit = expired.AtCap
+                ? $"its limit of {ConnectionDeadline.CapFactor} times the timeout"
+                : $"{expired.Elapsed.TotalSeconds:0.#} seconds";
+            return string.Create(System.Globalization.CultureInfo.InvariantCulture,
+                $"{presentation} did not connect within {expired.Elapsed.TotalSeconds:0.#} seconds{attemptText}: {progress}{process}, although the WebView was still making progress ({extendedBy}); the {timeout.TotalSeconds:0.###}-second connection timeout was extended to {limit}. {HandshakeLog.Describe()}");
+        }
         // With a request, the timeout counted from the first one (WaitWithinConnectionDeadlineAsync).
-        var since = Volatile.Read(ref _firstRequestTimestamp) == 0 ? string.Empty : " of its first request";
-        return $"{presentation} did not connect within {ConnectionTimeout.TotalSeconds:0.###} seconds{since}{attemptText}: {progress}{process}. {HandshakeLog.Describe()}";
+        var since = deadline?.HasRequest == true ? " of its first request" : string.Empty;
+        return $"{presentation} did not connect within {timeout.TotalSeconds:0.###} seconds{since}{attemptText}: {progress}{process}. {HandshakeLog.Describe()}";
     }
 
     private Task HandleRequestAsync(HttpContext context) => PrepareResponseAsync(context, DispatchRequestAsync);
@@ -3307,10 +3351,13 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
 
     private TimeSpan ConnectionTimeout => _runtimeOptions?.ConnectionTimeout ?? WebUiApplication.ConnectionTimeout;
 
+    private TimeProvider TimeProvider => _runtimeOptions?.TimeProvider ?? TimeProvider.System;
+
     private int BrowserLaunchAttempts => _runtimeOptions?.BrowserLaunchAttempts ?? WebUiApplication.BrowserLaunchAttempts;
 
     internal const string BrowserLaunchStalledCode = "browser-launch-stalled";
     internal const string BridgeHandshakeExpiredCode = "bridge-handshake-expired";
+    internal const string ConnectionDeadlineExtendedCode = "connection-deadline-extended";
 
     private string? BrowserFolder => _runtimeOptions?.BrowserFolder ?? WebUiApplication.GetBrowserFolder();
 

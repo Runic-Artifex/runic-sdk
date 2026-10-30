@@ -72,4 +72,7 @@ internal sealed record PresentationSurfaceRuntimeOptions(
 
     // LinuxDesktopOptions.GlobalMenu: whether a Native bar may go into the desktop's global menu.
     internal bool GlobalMenu { get; init; } = true;
+
+    // The clock of the connection deadline; tests replace it.
+    internal TimeProvider TimeProvider { get; init; } = TimeProvider.System;
 }
