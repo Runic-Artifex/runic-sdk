@@ -45,7 +45,7 @@ internal sealed class BrowserLaunchBinding
     internal string Begin(Uri target)
     {
         ArgumentNullException.ThrowIfNull(target);
-        var code = Convert.ToBase64String(RandomNumberGenerator.GetBytes(32))
+        var code = Convert.ToBase64String(OsRandom.GetBytes(32))
             .TrimEnd('=')
             .Replace('+', '-')
             .Replace('/', '_');

@@ -1,4 +1,3 @@
-using System.Globalization;
 using System.Net;
 using System.Net.WebSockets;
 using System.Text;
@@ -168,8 +167,8 @@ internal sealed class NativeExchange : PresentationExchange, IDisposable, IThrea
     internal override long? ContentLength
     {
         get => GetResponseHeader("Content-Length") is [var value, ..] &&
-            long.TryParse(value, NumberStyles.None, CultureInfo.InvariantCulture, out var length) ? length : null;
-        set => SetOrRemove("Content-Length", value?.ToString(CultureInfo.InvariantCulture));
+            AsciiNumbers.TryParse(value, out var length) ? length : null;
+        set => SetOrRemove("Content-Length", value is { } length ? AsciiNumbers.Format(length) : null);
     }
 
     internal override void SetResponseHeader(string name, string value) => SetOrRemove(name, value);

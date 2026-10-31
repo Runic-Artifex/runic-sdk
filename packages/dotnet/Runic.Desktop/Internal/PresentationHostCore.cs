@@ -152,7 +152,10 @@ internal sealed class PresentationHostCore : IAsyncDisposable
             await server.DisposeAsync().ConfigureAwait(false);
             throw;
         }
-        _baseUrl = new UriBuilder(Uri.UriSchemeHttp, IPAddress.Loopback.ToString(), port).Uri;
+        // Neither UriBuilder, which lowercases the scheme through TextInfo, nor CultureInfo.InvariantCulture: both load
+        // ICU (≈1.9 ms and ≈4.8 MiB) before the first window opens (S1, D053.25). A port formats the same in every
+        // culture, and the integer formatter needs none for it.
+        _baseUrl = new Uri($"http://127.0.0.1:{port}/");
         _server = server;
     }
 

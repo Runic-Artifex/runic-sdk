@@ -1,15 +1,19 @@
 // Startup and memory of a published Runic Desktop application in serve-only mode (X1; Linux, macOS and Windows since
 // X2): the time from process start until the surface printed RUNIC_APPLICATION_URL, until its page, bootstrap script
 // and Views client were served, and the resident memory then and at its peak (Linux: VmRSS and VmHWM; macOS: ps's
-// RSS, no peak; Windows: the working set and its peak).
+// RSS, no peak; Windows: the working set and its peak). On Linux it also reports whether the process had loaded ICU and
+// OpenSSL by then (S1: neither is on the startup path).
 //
-//   node tests/benchmarks/native-server/startup.mjs <executable> [runs]
+//   node tests/benchmarks/native-server/startup.mjs <executable> [runs] [--url-only]
 //
 // Prints one JSON object with the medians. The application exits on a line on standard input, as serve-only does.
+// --url-only stops the clock at the URL line and requests nothing, for the hello-world baseline (hello-world/), which
+// prints a URL line and serves nothing.
 import { execFileSync, spawn } from "node:child_process";
 import { readFileSync } from "node:fs";
 
-const [executable, runsArgument = "15"] = process.argv.slice(2);
+const urlOnly = process.argv.includes("--url-only");
+const [executable, runsArgument = "15"] = process.argv.slice(2).filter(argument => argument !== "--url-only");
 if (!executable) {
   console.error("usage: node startup.mjs <executable> [runs]");
   process.exit(2);
@@ -33,6 +37,13 @@ function memory(pid) {
   return { rssKiB: workingSet / 1024, peakKiB: peak / 1024 };
 }
 
+// The lazily loaded native libraries the process has mapped (Linux only).
+function libraries(pid) {
+  if (process.platform !== "linux") return {};
+  const maps = readFileSync(`/proc/${pid}/maps`, "utf8");
+  return { icu: /libicu(uc|i18n|data)/.test(maps), openssl: /lib(ssl|crypto)\.so/.test(maps) };
+}
+
 async function once() {
   const started = process.hrtime.bigint();
   const child = spawn(executable, [], {
@@ -52,6 +63,7 @@ async function once() {
     });
   });
   const listening = Number(process.hrtime.bigint() - started) / 1e6;
+  if (urlOnly) return finish(child, { listening, served: NaN, ...memory(child.pid), ...libraries(child.pid) });
   // What a window loads before the page can connect: the entry (after the index redirect) and its scripts.
   const page = await fetch(url, { redirect: "follow" });
   if (!page.ok) throw new Error(`the page answered ${page.status}`);
@@ -62,7 +74,10 @@ async function once() {
     await response.arrayBuffer();
   }
   const served = Number(process.hrtime.bigint() - started) / 1e6;
-  const result = { listening, served, ...memory(child.pid) };
+  return finish(child, { listening, served, ...memory(child.pid), ...libraries(child.pid) });
+}
+
+async function finish(child, result) {
   const exited = new Promise(resolve => child.on("exit", resolve));
   child.stdin.end("\n");
   const timer = setTimeout(() => child.kill("SIGKILL"), 10_000);
@@ -78,7 +93,8 @@ console.log(JSON.stringify({
   executable,
   runs,
   listeningMs: Math.round(median(results.map(result => result.listening)) * 10) / 10,
-  servedMs: Math.round(median(results.map(result => result.served)) * 10) / 10,
+  servedMs: urlOnly ? null : Math.round(median(results.map(result => result.served)) * 10) / 10,
   rssMiB: Math.round(median(results.map(result => result.rssKiB)) / 102.4) / 10,
   peakMiB: Number.isNaN(results[0].peakKiB) ? null : Math.round(median(results.map(result => result.peakKiB)) / 102.4) / 10,
+  ...(process.platform === "linux" ? { icu: results.some(result => result.icu), openssl: results.some(result => result.openssl) } : {}),
 }));

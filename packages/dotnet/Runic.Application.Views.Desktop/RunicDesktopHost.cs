@@ -439,7 +439,9 @@ public sealed class RunicDesktopHost : IRunicWindowHost
                 // Without a presentation, nothing can keep a window open (D018.10), as on CS-WebUI.
                 if (opening.CloseGuard is not null) opening.ReportCloseGuardUnavailable("serve-only mode");
                 owner.ServeUntil(ServeOnlyStopped());
-                Console.Out.WriteLine($"RUNIC_APPLICATION_URL={surface.Url}");
+                // A concatenation, not a format: TextWriter's formatting reads the current culture, which loads ICU
+                // (S1; native-server.yml checks that serve-only startup does without it).
+                Console.Out.WriteLine("RUNIC_APPLICATION_URL=" + surface.Url);
                 Console.Out.Flush();
                 return owner;
             }

@@ -1,7 +1,9 @@
 #!/usr/bin/env node
 // Size and startup of examples/first-window-desktop on Kestrel (Runic.Desktop.Kestrel) and on the native
 // server, for the host's runtime identifier on Linux, macOS and Windows (X2; measure.sh is the Linux-only X1 script,
-// which adds trimmed JIT and the NativeAOT code attribution). Feeds the 1.0 default-server decision (D053.16).
+// which adds trimmed JIT and the NativeAOT code attribution). Feeds the 1.0 default-server decision (D053.16). Each mode
+// also has a hello-world row (hello-world/, S1): a program without Runic that prints its URL line, the floor of the
+// platform's process start, so the rest of a row's "URL ready" is Runic's.
 //
 //   node tests/benchmarks/native-server/measure.mjs [output-directory]
 //
@@ -20,7 +22,8 @@ const out = resolve(process.argv[2] ?? join(root, "artifacts/native-server-measu
 const modes = (process.env.RUNIC_MEASURE_MODES ?? "fdd sc aot").split(/\s+/).filter(Boolean);
 const runs = process.env.RUNIC_MEASURE_RUNS ?? "15";
 const project = join(root, "examples/first-window-desktop/FirstWindowDesktop.csproj");
-const executableName = `FirstWindowDesktop${platform() === "win32" ? ".exe" : ""}`;
+const helloWorld = join(root, "tests/benchmarks/native-server/hello-world/HelloWorld.csproj");
+const executableSuffix = platform() === "win32" ? ".exe" : "";
 mkdirSync(out, { recursive: true });
 
 const files = directory => readdirSync(directory, { recursive: true, withFileTypes: true })
@@ -30,30 +33,33 @@ const files = directory => readdirSync(directory, { recursive: true, withFileTyp
 const sum = list => list.reduce((total, file) => total + statSync(file).size, 0);
 
 function publish(server, mode) {
-  const directory = join(out, `${server}-${mode}`);
+  const hello = server === "hello world";
+  const name = hello ? "HelloWorld" : "FirstWindowDesktop";
+  const directory = join(out, `${hello ? "hello" : server}-${mode}`);
   rmSync(directory, { recursive: true, force: true });
-  const properties = [`-p:RunicDesktopServer=${server}`];
+  const properties = hello ? [] : [`-p:RunicDesktopServer=${server}`];
   if (mode === "fdd") properties.push("--self-contained", "false");
   if (mode === "sc") properties.push("--self-contained", "true");
   if (mode === "trimmed") properties.push("--self-contained", "true", "-p:PublishTrimmed=true");
   if (mode === "aot") properties.push("-p:PublishAot=true");
-  const log = join(out, `${server}-${mode}.log`);
+  const log = join(out, `${hello ? "hello" : server}-${mode}.log`);
   try {
-    writeFileSync(log, execFileSync("dotnet", ["publish", project, "-c", "Release", "-r", rid, "-o", directory, "-nologo", ...properties],
+    writeFileSync(log, execFileSync("dotnet", ["publish", hello ? helloWorld : project, "-c", "Release", "-r", rid, "-o", directory, "-nologo", ...properties],
       { cwd: root, encoding: "utf8", maxBuffer: 64 << 20 }));
   } catch (error) {
     writeFileSync(log, `${error.stdout ?? ""}${error.stderr ?? ""}`);
     throw new Error(`${server} ${mode} did not publish; see ${log}`);
   }
   const published = files(directory);
-  const runtimeConfig = join(directory, "FirstWindowDesktop.runtimeconfig.json");
+  const runtimeConfig = join(directory, `${name}.runtimeconfig.json`);
   const frameworks = existsSync(runtimeConfig)
     ? [JSON.parse(readFileSync(runtimeConfig, "utf8")).runtimeOptions].flatMap(options => [options.framework, ...(options.frameworks ?? [])])
       .filter(Boolean).map(framework => framework.name)
     : [];
   let startup;
   try {
-    startup = JSON.parse(execFileSync(process.execPath, [join(root, "tests/benchmarks/native-server/startup.mjs"), join(directory, executableName), runs],
+    startup = JSON.parse(execFileSync(process.execPath, [join(root, "tests/benchmarks/native-server/startup.mjs"), join(directory, name + executableSuffix), runs,
+      ...(hello ? ["--url-only"] : [])],
       { cwd: root, encoding: "utf8" }));
   } catch (error) {
     startup = { failed: true, error: String(error.stderr ?? error.message).slice(0, 400) };
@@ -61,7 +67,7 @@ function publish(server, mode) {
   const row = {
     server, mode, rid,
     totalBytes: sum(published),
-    executableBytes: statSync(join(directory, executableName)).size,
+    executableBytes: statSync(join(directory, name + executableSuffix)).size,
     aspNetCoreBytes: sum(published.filter(file => /[\\/]Microsoft\.AspNetCore\.[^\\/]*\.dll$/.test(file))),
     sharedFrameworks: frameworks,
     startup,
@@ -71,20 +77,22 @@ function publish(server, mode) {
 }
 
 const rows = [];
-for (const mode of modes) for (const server of ["Kestrel", "Native"]) rows.push(publish(server, mode));
+for (const mode of modes) for (const server of ["hello world", "Kestrel", "Native"]) rows.push(publish(server, mode));
 const dotnet = execFileSync("dotnet", ["--version"], { encoding: "utf8" }).trim();
 const environment = { rid, os: `${platform()} ${release()}`, dotnet, runner: process.env.ImageOS ? `${process.env.ImageOS} ${process.env.ImageVersion ?? ""}`.trim() : null, runs: Number(runs) };
 writeFileSync(join(out, "results.json"), `${JSON.stringify({ environment, rows }, null, 2)}\n`);
 
 const mib = value => (value / 1048576).toFixed(2);
+// Linux only (startup.mjs reads /proc/<pid>/maps).
+const loaded = startup => startup.icu === undefined ? "—" : [startup.icu && "ICU", startup.openssl && "OpenSSL"].filter(Boolean).join(", ") || "neither";
 const table = [
   `${rid}, ${environment.os}, .NET SDK ${dotnet}${environment.runner ? `, ${environment.runner}` : ""}; startup medians of ${runs} serve-only runs.`,
   "",
-  "| Mode | Server | Publish (MiB) | Executable (MiB) | Microsoft.AspNetCore.* (MiB) | Shared frameworks | URL ready (ms) | Page served (ms) | RSS (MiB) |",
-  "| --- | --- | ---: | ---: | ---: | --- | ---: | ---: | ---: |",
+  "| Mode | Server | Publish (MiB) | Executable (MiB) | Microsoft.AspNetCore.* (MiB) | Shared frameworks | URL ready (ms) | Page served (ms) | RSS (MiB) | ICU, OpenSSL loaded |",
+  "| --- | --- | ---: | ---: | ---: | --- | ---: | ---: | ---: | --- |",
   ...rows.map(row => `| ${row.mode} | ${row.server} | ${mib(row.totalBytes)} | ${mib(row.executableBytes)} | ${mib(row.aspNetCoreBytes)} | ` +
     `${row.sharedFrameworks.map(name => name.replace("Microsoft.", "")).join(", ") || "—"} | ` +
-    (row.startup.failed ? "fails | | |" : `${row.startup.listeningMs} | ${row.startup.servedMs} | ${row.startup.rssMiB} |`)),
+    (row.startup.failed ? "fails | | | |" : `${row.startup.listeningMs} | ${row.startup.servedMs ?? "—"} | ${row.startup.rssMiB} | ${loaded(row.startup)} |`)),
 ].join("\n");
 writeFileSync(join(out, "results.md"), `${table}\n`);
 console.log(table);
