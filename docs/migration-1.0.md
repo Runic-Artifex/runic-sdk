@@ -985,6 +985,15 @@ Details: 0.15.0 [Embedded frontends](../eng/release/notes/0.15.0.md#embedded-fro
 
 <!-- X3: replace this line with the batch's migration entries; remove it if the batch has none. -->
 
+### Early first window
+
+| 0.14 | 0.15 |
+| --- | --- |
+| On Windows the WebView2 window appeared only once WebView2 had started, and code (or a UI test) that found the process's top-level window could expect the page in it | A start that takes longer than 1.5 seconds shows the window first, titled `Loading…` with a loading surface, and the WebView after it. UI automation that looks for the page waits for the page's document or title, not only the window |
+| A user who closed the window while the presentation opened made `OpenWindowAsync` fail, and with `EmbeddedThenBrowser` or `Fallbacks` the next presentation opened | `OpenWindowAsync` returns the window closed (`IsOpen` false, `WaitForCloseAsync` returns) and no fallback opens; `ConfirmCloseAsync` is not asked before the page has loaded |
+
+Details: 0.15.0 [Early first window (H2)](../eng/release/notes/0.15.0.md#early-first-window-h2).
+
 ### Cleanups
 
 | 0.14 | 0.15 |

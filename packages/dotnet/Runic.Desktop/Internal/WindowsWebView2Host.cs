@@ -172,7 +172,11 @@ internal sealed partial class WindowsWebView2Host : IWebUiEmbeddedHost
         _thread.Start();
         // Initialization still settles on the window thread. A window that becomes
         // ready after cancellation destroys itself instead of remaining orphaned.
-        using (cancellationToken.UnsafeRegister(static (state, token) => ((TaskCompletionSource)state!).TrySetCanceled(token), _ready))
+        using (cancellationToken.UnsafeRegister(static (state, token) =>
+               {
+                   var host = (WindowsWebView2Host)state!;
+                   if (host._ready.TrySetCanceled(token)) host.AbandonOpening();
+               }, this))
         {
             await _ready.Task.ConfigureAwait(false);
         }
@@ -188,6 +192,7 @@ internal sealed partial class WindowsWebView2Host : IWebUiEmbeddedHost
     {
         if (!IsOpen)
         {
+            AbandonOpening();
             return ValueTask.CompletedTask;
         }
         return new ValueTask(CloseCoreAsync(cancellationToken));
@@ -434,6 +439,10 @@ internal sealed partial class WindowsWebView2Host : IWebUiEmbeddedHost
             await InvokeAsync(() => { if (!DeferDestroyForMenu()) Native.DestroyWindow(_window); }, cancellationToken).ConfigureAwait(false);
             await _closed.Task.WaitAsync(cancellationToken).ConfigureAwait(false);
         }
+        else
+        {
+            AbandonOpening();
+        }
     }
 
     private ValueTask InvokeAsync(Action action, CancellationToken cancellationToken)
@@ -562,6 +571,7 @@ internal sealed partial class WindowsWebView2Host : IWebUiEmbeddedHost
             // NativeAOT does not supply the managed WebView2 wrapper's COM setup.
             Marshal.ThrowExceptionForHR(Native.CoInitializeEx(0, 2)); // COINIT_APARTMENTTHREADED
             comInitialized = true;
+            _threadId = Native.GetCurrentThreadId();
             EnsureWindowClass();
             var options = _options ?? throw new InvalidOperationException("The embedded host has no launch options.");
             var logicalWidth = options.Width;
@@ -602,7 +612,7 @@ internal sealed partial class WindowsWebView2Host : IWebUiEmbeddedHost
             _window = Native.CreateWindowEx(
                 extendedStyle,
                 WindowClassName,
-                "Loading...",
+                WindowsLoadingSurface.Title,
                 style,
                 x,
                 y,
@@ -636,14 +646,25 @@ internal sealed partial class WindowsWebView2Host : IWebUiEmbeddedHost
                 y = Math.Max(0, (Native.GetSystemMetrics(SmCyScreen) - height) / 2);
             }
             Native.SetWindowPos(_window, 0, x, y, width, height, SwpNoZOrder | SwpNoActivate);
+            // The icon is there before the window shows, also when it shows its loading surface.
+            if (!string.IsNullOrWhiteSpace(options.IconFile))
+            {
+                _icon = Native.LoadImage(0, options.IconFile, ImageIcon, 0, 0, LrLoadFromFile);
+                if (_icon != 0)
+                {
+                    Native.SendMessage(_window, WmSetIcon, IconSmall, _icon);
+                    Native.SendMessage(_window, WmSetIcon, IconBig, _icon);
+                }
+            }
 
             SynchronizationContext.SetSynchronizationContext(new WindowSynchronizationContext(this));
-            _ = InitializeAsync(url);
+            ScheduleLoadingSurface(options);
+            _initialization = InitializeAsync(url);
             while (Native.GetMessage(out var message, 0, 0, 0) > 0)
             {
-                Native.TranslateMessage(in message);
-                Native.DispatchMessage(in message);
+                Dispatch(in message);
             }
+            SettleInitialization();
         }
         catch (Exception exception)
         {
@@ -679,11 +700,21 @@ internal sealed partial class WindowsWebView2Host : IWebUiEmbeddedHost
         try
         {
             var options = _options!;
-            _controller = await WindowsWebView2Controller.CreateAsync(_window, options);
+            if (BeforeEnvironmentCreation is { } delay) await delay();
+            if (_window == 0) return; // Closed meanwhile.
+            var controller = await WindowsWebView2Controller.CreateAsync(_window, options);
+            if (_window == 0)
+            {
+                // Closed while WebView2 was starting (SettleInitialization): release it now.
+                controller.Dispose();
+                return;
+            }
+            _controller = controller;
             if (options.StartupProgress is not null || options.StartupSignal is not null)
                 _controller.RegisterStartupProgress(options.StartupProgress ?? (static _ => { }), options.StartupSignal);
             _controller.Bounds = ClientBounds();
             _controller.IsVisible = !options.Hidden;
+            EndLoadingSurface();
             if (options.Transparent)
             {
                 _controller.SetTransparent();
@@ -714,35 +745,8 @@ internal sealed partial class WindowsWebView2Host : IWebUiEmbeddedHost
             var menuKeys = _controller.EnableMenuKeysAsync(url, OnMenuKey);
             await Task.WhenAll(documentStart, fileDrops, menuKeys);
             _controller.Navigate(url.AbsoluteUri);
-            if (!string.IsNullOrWhiteSpace(options.IconFile))
-            {
-                _icon = Native.LoadImage(0, options.IconFile, ImageIcon, 0, 0, LrLoadFromFile);
-                if (_icon != 0)
-                {
-                    Native.SendMessage(_window, WmSetIcon, IconSmall, _icon);
-                    Native.SendMessage(_window, WmSetIcon, IconBig, _icon);
-                }
-            }
-            var maximize = options.Placement is { Maximized: true } && !options.Kiosk;
-            if (options.Kiosk)
-            {
-                Native.ShowWindow(_window, SwMaximize);
-            }
-            else if (options.Hidden)
-            {
-                Native.ShowWindow(_window, SwHide);
-                _maximizeWhenShown = maximize;
-            }
-            else
-            {
-                Native.ShowWindow(_window, maximize ? SwMaximize : SwShow);
-            }
-            // A placement saved full-screen opens full-screen on the monitor of its restored bounds.
-            if (options.Placement is { FullScreen: true } && !options.Kiosk)
-            {
-                EnterFullScreen();
-            }
-            Native.UpdateWindow(_window);
+            // A window that showed its loading surface has its placement and state already.
+            if (!_shown) ShowInitially();
             Volatile.Write(ref _isOpen, 1);
             UpdateState();
             if (!_ready.TrySetResult())
@@ -755,7 +759,7 @@ internal sealed partial class WindowsWebView2Host : IWebUiEmbeddedHost
         {
             _ready.TrySetException(exception);
             // WM_CLOSE would ask the application's close confirmation about a window it never received.
-            Native.DestroyWindow(_window);
+            if (_window != 0) Native.DestroyWindow(_window);
         }
     }
 
@@ -786,8 +790,10 @@ internal sealed partial class WindowsWebView2Host : IWebUiEmbeddedHost
         _window = 0;
         _nativeShutdown.Cancel();
         FailNativeWork();
-        // The message loop ends with the window; pending initialization never resumes.
-        _ready.TrySetException(new InvalidOperationException("The embedded WebView window closed before it was ready."));
+        // The message loop ends with the window; a pending initialization only settles (SettleInitialization).
+        _ready.TrySetException(_closedWhileLoading
+            ? new WindowClosedWhileOpeningException()
+            : new InvalidOperationException("The embedded WebView window closed before it was ready."));
         _closed.TrySetResult();
         Closed?.Invoke(this, EventArgs.Empty);
     }
@@ -840,6 +846,10 @@ internal sealed partial class WindowsWebView2Host : IWebUiEmbeddedHost
         }
         var context = Native.GetWindowLongPtr(window, GwlpUserData);
         var host = context == 0 ? null : GCHandle.FromIntPtr(context).Target as WindowsWebView2Host;
+        if (host is not null && host.HandleLoadingMessage(message, wParam, out var loadingResult))
+        {
+            return loadingResult;
+        }
         switch (message)
         {
             case WmAppDispatch:
@@ -932,10 +942,9 @@ internal sealed partial class WindowsWebView2Host : IWebUiEmbeddedHost
         public override void Post(SendOrPostCallback callback, object? state)
         {
             host._dispatchQueue.Enqueue((callback, state));
-            if (host._window != 0)
-            {
-                Native.PostMessage(host._window, WmAppDispatch, 0, 0);
-            }
+            if (host._window is not 0 and var window && Native.PostMessage(window, WmAppDispatch, 0, 0)) return;
+            // The window closed, possibly while WebView2 was starting (SettleInitialization): the thread dispatches it.
+            if (host._threadId != 0) Native.PostThreadMessage(host._threadId, WmAppDispatch, 0, 0);
         }
     }
 

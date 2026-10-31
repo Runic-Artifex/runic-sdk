@@ -162,6 +162,12 @@ static async Task RunAsyncSmoke()
     }
     if (!SmokeSoak.Enabled) await RunWindowStateSmokeAsync(host);
     if (!SmokeSoak.Enabled) await FileDropSmoke.RunAsync(host);
+    if (!SmokeSoak.Enabled && OperatingSystem.IsWindows())
+    {
+        // D053.27: its slow starts get a deadline of their own.
+        SmokeSoak.Watchdog?.Change(TimeSpan.FromSeconds(180), Timeout.InfiniteTimeSpan);
+        await WindowsLoadingSurfaceSmoke.RunAsync(host);
+    }
     SmokeSoak.Completed();
     }
 }

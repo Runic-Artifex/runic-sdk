@@ -175,8 +175,8 @@ try {
     do {
         $candidate = [System.Windows.Automation.AutomationElement]::RootElement.FindFirst(
             [System.Windows.Automation.TreeScope]::Children, $processCondition)
-        # WebView2 first creates its native host as "Loading..." and changes the
-        # caption after the document title event arrives.
+        # The WebView2 host is titled "Loading" with an ellipsis (also while it shows
+        # its loading surface) until the document title event arrives.
         if ($null -ne $candidate -and $candidate.Current.Name -eq 'Runic Desktop UI Automation') {
             $window = $candidate
             break

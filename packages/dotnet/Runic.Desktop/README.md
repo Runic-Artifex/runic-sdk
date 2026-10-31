@@ -408,11 +408,19 @@ Windows WebView2 windows report this progress; the other embedded windows and
 browsers keep the plain timeout. Each extension logs event 3021, and a timeout at the
 limit says how long the WebView was still loading.
 For an embedded WebView the launch is its first navigation. Creating the WebView2
-environment and controller comes before it, under no deadline, and the window
-appears once they exist. The first WebView2 start after a runtime or Windows update
-can spend tens of seconds there with a cold disk: 13 to 78 seconds on new
-`windows-2025` runners with WebView2 156, where later starts with fresh profiles took
-under a second and the page connected within 2 seconds of the window appearing.
+environment and controller comes before it, under no deadline. The first WebView2
+start after a runtime or Windows update can spend tens of seconds there with a cold
+disk: 13 to 78 seconds on new `windows-2025` runners with WebView2 156, where later
+starts with fresh profiles took under a second and the page connected within 2
+seconds of the window appearing. So the window does not wait for WebView2 longer than
+1.5 seconds: it then appears with a loading surface, which has the window's
+placement, size, maximized or full-screen state, title (`Loading…`, until the page
+sets one) and icon, the background of its `ColorScheme` (or of the Windows app
+theme, or the high-contrast colors) and an indeterminate progress bar, and the
+WebView takes its place once it exists. A start within 1.5 seconds shows the window
+once WebView2 is ready, as before, and a `Hidden` window stays hidden. Closing the
+window during loading closes it without asking `ConfirmCloseAsync`, as nothing has
+loaded: `OpenWindowAsync` returns it closed, and no fallback presentation opens.
 A browser that is still running but has requested nothing after `ConnectionTimeout`
 is stopped and launched again, with a fresh profile unless the window sets one.
 Each relaunch reports `browser-launch-stalled` as a warning and logs event 3004.
