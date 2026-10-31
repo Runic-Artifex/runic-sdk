@@ -155,10 +155,13 @@ internal sealed class PkexecTests
     {
         if (!OperatingSystem.IsLinux()) return;
         using var fixture = new Fixture("pending");
-        using var cancellation = new CancellationTokenSource(TimeSpan.FromMilliseconds(500));
-        var watch = Stopwatch.StartNew();
-        await ThrowsAsync<OperationCanceledException>(() => fixture.Actions.RunAsync(new PrivilegedActionRequest(fixture.ReportAction, []), cancellation.Token).AsTask(), "cancelled");
-        Check(watch.Elapsed < TimeSpan.FromSeconds(20), $"pkexec was stopped, not waited for: {watch.Elapsed}");
+        using var cancellation = new CancellationTokenSource();
+        var run = fixture.Actions.RunAsync(new PrivilegedActionRequest(fixture.ReportAction, []), cancellation.Token).AsTask();
+        // The fake pkexec records its arguments, then waits a minute for an authorization that never comes; cancel then.
+        Check(await TestTimeouts.UntilAsync(() => File.Exists(Path.Combine(fixture.Directory, "argv")), TimeSpan.FromSeconds(10)), "pkexec started");
+        cancellation.Cancel();
+        // pkexec that was waited for instead of stopped exits normally and gives a result, not a cancellation.
+        await ThrowsAsync<OperationCanceledException>(() => run.WaitScaledAsync(TimeSpan.FromSeconds(20)), "cancelled");
         Check(fixture.Host.OpenedProcess, "a pidfd was opened for the waiting pkexec");
     }
 
