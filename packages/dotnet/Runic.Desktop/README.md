@@ -418,9 +418,10 @@ placement, size, maximized or full-screen state, title (`Loading…`, until the 
 sets one) and icon, the background of its `ColorScheme` (or of the Windows app
 theme, or the high-contrast colors) and an indeterminate progress bar, and the
 WebView takes its place once it exists. A start within 1.5 seconds shows the window
-once WebView2 is ready, as before, and a `Hidden` window stays hidden. Closing the
-window during loading closes it without asking `ConfirmCloseAsync`, as nothing has
-loaded: `OpenWindowAsync` returns it closed, and no fallback presentation opens.
+once WebView2 is ready, as before; a `Hidden` window stays hidden, and a
+`Transparent` one waits for WebView2 as before. Closing the window during loading
+closes it without asking `ConfirmCloseAsync`, as nothing has loaded:
+`OpenWindowAsync` returns it closed, and no fallback presentation opens.
 A browser that is still running but has requested nothing after `ConnectionTimeout`
 is stopped and launched again, with a fresh profile unless the window sets one.
 Each relaunch reports `browser-launch-stalled` as a warning and logs event 3004.

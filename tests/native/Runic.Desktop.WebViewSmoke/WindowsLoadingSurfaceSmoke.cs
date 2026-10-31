@@ -10,7 +10,8 @@ using Runic.Platform;
 // WebView2 environment is created, shows the window before its page with the loading surface (the color scheme's
 // background and the "Loading…" title), with the bounds, maximized state and DPI of a window shown when ready, then swaps
 // the WebView in and connects. Closing the window during loading returns it closed, without asking the close guard and
-// without a fallback browser. A hidden window stays hidden, and a start within the grace period never shows the surface.
+// without a fallback browser. A hidden window stays hidden, a transparent one waits for WebView2, and a start within the
+// grace period never shows the surface.
 internal static partial class WindowsLoadingSurfaceSmoke
 {
     private static readonly TimeSpan SlowStart = TimeSpan.FromSeconds(5);
@@ -120,8 +121,15 @@ internal static partial class WindowsLoadingSurfaceSmoke
                 Expect(!IsWindowVisible(window.NativeHandle), "a hidden window became visible");
                 await window.CloseAsync();
             }
+            // A transparent window waits for WebView2: its page would show the surface's last frame through.
+            await using (var window = await surface.OpenWindowAsync(options with { Transparent = true }).AsTask().WaitAsync(Deadline))
+            {
+                Expect(events.IsEmpty, "a transparent window showed the loading surface");
+                Expect(IsWindowVisible(window.NativeHandle), "a transparent window is not visible once open");
+                await window.CloseAsync();
+            }
             Console.WriteLine("PASS WebView2 loading surface: shown after the grace period with the ready placement, swapped, "
-                + "maximized, closed during loading without a fallback, hidden windows stay hidden.");
+                + "maximized, closed during loading without a fallback, hidden and transparent windows wait.");
         }
         finally
         {

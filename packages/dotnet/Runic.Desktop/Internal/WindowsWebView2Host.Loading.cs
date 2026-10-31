@@ -7,7 +7,7 @@ namespace Runic.Desktop.Internal;
 // The loading surface (D053.27, WindowsLoadingSurface): a window whose WebView2 environment and controller are not
 // ready after the grace period is shown anyway, with the same placement, size, maximized or full-screen state and DPI
 // as when it is shown ready, and paints the surface until the WebView is created and covers it. A start within the grace
-// period shows the window once WebView2 is ready, as before. A hidden window never shows the surface.
+// period shows the window once WebView2 is ready, as before. A hidden or transparent window never shows the surface.
 internal sealed partial class WindowsWebView2Host
 {
     private const uint WmPaint = 0x000F;
@@ -36,10 +36,12 @@ internal sealed partial class WindowsWebView2Host
     private uint _threadId;
     private Task? _initialization;
 
-    // Run, before the message loop: the window shows the surface if WebView2 is not ready after the grace period.
+    // Run, before the message loop: the window shows the surface if WebView2 is not ready after the grace period. A
+    // transparent window keeps waiting for WebView2: its page shows the host window through, which would keep the
+    // surface's last frame.
     private void ScheduleLoadingSurface(WebUiEmbeddedHostOptions options)
     {
-        if (options.Hidden) return;
+        if (options.Hidden || options.Transparent) return;
         var delay = (uint)Math.Clamp(LoadingSurfaceDelay.TotalMilliseconds, 0, int.MaxValue);
         Native.SetTimer(_window, GraceTimer, Math.Max(1u, delay), 0);
     }
