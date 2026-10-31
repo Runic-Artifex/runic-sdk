@@ -9,6 +9,8 @@ using TUnit.Core;
 internal sealed class DevelopmentAssetsChecks
 {
     private const byte Navigation = 0xFB;
+    private const byte SendRaw = 0xF8;
+    private const string MarkerFunction = "runicTestMarker";
 
     [Test, NotInParallel(Order = 35)]
     public void TheVariableIsReadOnlyInDevelopmentWithoutApplicationSurfaceOptions()
@@ -208,16 +210,26 @@ internal sealed class DevelopmentAssetsChecks
                 using var response = await http.GetAsync(surface.Url, cancellation.Token);
                 if (response.IsSuccessStatusCode) reloaded = await response.Content.ReadAsStringAsync(cancellation.Token);
             }
-            using var current = await ConnectWhenFreeAsync(surface, cancellation.Token);
-            using var quiet = CancellationTokenSource.CreateLinkedTokenSource(cancellation.Token);
-            quiet.CancelAfter(TimeSpan.FromSeconds(1));
-            try
+            // The window decides in its own Connected handler, which runs before this later subscription's, and sends a
+            // reload before the handler returns. The session sends in order, so a marker sent from the later handler
+            // arrives after any such reload: no time window is needed to see that none was sent.
+            byte[] markerPrefix = [.. System.Text.Encoding.ASCII.GetBytes(MarkerFunction), 0];
+            var marked = 0;
+            using (surface.SubscribeConnectionEvents(connection =>
             {
-                url = await current.WaitForCommandAsync(Navigation, quiet.Token);
-                throw new InvalidOperationException($"A page with the current document was reloaded to '{url}'.");
-            }
-            catch (OperationCanceledException) when (!cancellation.IsCancellationRequested)
+                if (connection.Kind == DesktopConnectionEventKind.Connected && Interlocked.Exchange(ref marked, 1) == 0)
+                    _ = surface.SendAsync(MarkerFunction, "after-connected"u8.ToArray());
+            }))
             {
+                using var current = await ConnectWhenFreeAsync(surface, cancellation.Token);
+                while (true)
+                {
+                    var (command, payload) = await current.NextCommandAsync(cancellation.Token);
+                    if (command == Navigation)
+                        throw new InvalidOperationException(
+                            $"A page with the current document was reloaded to '{System.Text.Encoding.UTF8.GetString(payload).TrimEnd('\0')}'.");
+                    if (command == SendRaw && payload.AsSpan().StartsWith(markerPrefix)) break;
+                }
             }
         }
         finally
