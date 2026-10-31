@@ -958,7 +958,12 @@ Details: 0.14.0 [Runic Command Line 0.11.0 in the SDK tools](../eng/release/note
 
 ### Native message path
 
-<!-- X3: replace this line with the batch's migration entries; remove it if the batch has none. -->
+Nothing changes for applications that use `Runic.Desktop.NativeServer`. The
+native library's C ABI is now version 2, and `Runic.Desktop` still accepts
+only the library of its own version. A library that
+`RunicDesktopNativeServerLibraryDirectory` or Nix's `runicServer` supplies must
+be built from the same release (`nix/runic-server.nix` does this);
+an older one fails at startup with `native-server-unavailable`.
 
 ### Cleanups
 
