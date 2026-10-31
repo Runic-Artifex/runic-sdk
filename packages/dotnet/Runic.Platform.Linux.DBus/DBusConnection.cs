@@ -97,6 +97,9 @@ public sealed class DBusConnection : IAsyncDisposable
         _disconnected.Cancel();
     }
 
+    // The clock of call timeouts; tests replace it with a fake one to end a call at its timeout without waiting.
+    internal TimeProvider TimeProvider { get; set; } = TimeProvider.System;
+
     /// <summary>The connection's unique bus name, such as <c>:1.42</c>; empty on a peer-to-peer connection.</summary>
     public string UniqueName { get; }
 
@@ -128,7 +131,7 @@ public sealed class DBusConnection : IAsyncDisposable
             var reply = _wire.CallMethodAsync(message, static (reply, _) => DBusWire.ReadBody(reply));
             try
             {
-                return await (call.Timeout is { } timeout ? reply.WaitAsync(timeout, cancellationToken) : reply.WaitAsync(cancellationToken))
+                return await (call.Timeout is { } timeout ? reply.WaitAsync(timeout, TimeProvider, cancellationToken) : reply.WaitAsync(cancellationToken))
                     .ConfigureAwait(false);
             }
             catch (Exception error) when (error is TimeoutException || error is OperationCanceledException && cancellationToken.IsCancellationRequested)

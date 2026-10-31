@@ -2,6 +2,7 @@ using System.Collections.Immutable;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Time.Testing;
 using Microsoft.Win32.SafeHandles;
 using Runic.Platform;
 using Runic.Platform.Linux.DBus;
@@ -106,16 +107,16 @@ internal sealed class BusTests
         Check(await ErrorAsync(() => new DBusProxy(client, service.UniqueName, "/org/runic/Test/Other").CallAsync(Interface, "Echo"))
             is { ErrorName: DBusException.UnknownMethod or "org.freedesktop.DBus.Error.UnknownObject" }, "an object that is not exported");
 
-        using (var cancellation = new CancellationTokenSource(TimeSpan.FromMilliseconds(100)))
+        using (var cancellation = new CancellationTokenSource())
         {
-            try { await proxy.CallAsync(Interface, "Sleep", [DBusValue.From(5000)], cancellationToken: cancellation.Token); throw new InvalidOperationException("Cancellation was ignored."); }
-            catch (OperationCanceledException) when (cancellation.IsCancellationRequested) { }
+            // Cancelled while the service still sleeps on the call, which it answers only after a minute.
+            var sleeping = proxy.CallAsync(Interface, "Sleep", [DBusValue.From(60_000)], cancellationToken: cancellation.Token).AsTask();
+            cancellation.Cancel();
+            await ThrowsAsync<OperationCanceledException>(() => sleeping.WaitScaledAsync(TimeSpan.FromSeconds(5)), "cancellation ends the call");
         }
-        // Calls run concurrently and off the connection's read loop, even a handler that blocks its thread: two
-        // half-second calls finish well before a second.
-        var clock = Stopwatch.StartNew();
-        await Task.WhenAll(proxy.CallAsync(Interface, "Block", [DBusValue.From(500)]).AsTask(), proxy.CallAsync(Interface, "Block", [DBusValue.From(500)]).AsTask());
-        Check(clock.ElapsedMilliseconds < 950, $"Calls ran one after another: {clock.ElapsedMilliseconds} ms.");
+        // Calls run concurrently and off the connection's read loop, even a handler that blocks its thread: each of
+        // two calls blocks until the other has arrived, which never happens if they run one after another.
+        await Task.WhenAll(proxy.CallAsync(Interface, "Meet").AsTask(), proxy.CallAsync(Interface, "Meet").AsTask()).WaitScaledAsync(TimeSpan.FromSeconds(10));
 
         Throws<ArgumentException>(() => _ = new DBusProxy(client, "not a name", ObjectPath), "invalid destination");
         await ThrowsAsync<ArgumentException>(() => proxy.CallAsync("NoDots", "Echo").AsTask(), "invalid interface");
@@ -257,19 +258,27 @@ internal sealed class BusTests
         await using var service = await ConnectAsync();
         await using var client = await ConnectAsync();
         await using var export = service.Export(ObjectPath, new EchoObject());
-        var started = Stopwatch.StartNew();
-        var call = new DBusMethodCall(service.UniqueName, ObjectPath, Interface, "Sleep") { Arguments = [DBusValue.From(5000)], Timeout = TimeSpan.FromMilliseconds(200) };
-        Check(await ErrorAsync(() => client.CallMethodAsync(call)) is { ErrorName: DBusException.NoReply }, "the call times out with NoReply");
-        Check(started.Elapsed < TimeSpan.FromSeconds(4), $"the timeout ended the wait ({started.Elapsed})");
+        // The timeouts run on a fake clock, so only advancing it to the timeout ends a call the service answers after a minute.
+        var clock = new FakeTimeProvider();
+        client.TimeProvider = clock;
+        var call = new DBusMethodCall(service.UniqueName, ObjectPath, Interface, "Sleep") { Arguments = [DBusValue.From(60_000)], Timeout = TimeSpan.FromMilliseconds(200) };
+        var waiting = ErrorAsync(() => client.CallMethodAsync(call));
+        clock.Advance(TimeSpan.FromMilliseconds(199));
+        Check(!waiting.IsCompleted, "the call waits until its timeout");
+        clock.Advance(TimeSpan.FromMilliseconds(1));
+        Check(await waiting.WaitScaledAsync(TimeSpan.FromSeconds(5)) is { ErrorName: DBusException.NoReply }, "the timeout ended the call with NoReply");
         var proxy = new DBusProxy(client, service.UniqueName, ObjectPath) { Timeout = TimeSpan.FromMilliseconds(200) };
-        Check(await ErrorAsync(() => proxy.CallAsync(Interface, "Sleep", [DBusValue.From(5000)])) is { ErrorName: DBusException.NoReply }, "the proxy's timeout applies");
+        waiting = ErrorAsync(() => proxy.CallAsync(Interface, "Sleep", [DBusValue.From(60_000)]));
+        clock.Advance(TimeSpan.FromMilliseconds(200));
+        Check(await waiting.WaitScaledAsync(TimeSpan.FromSeconds(5)) is { ErrorName: DBusException.NoReply }, "the proxy's timeout applies");
         Check((await proxy.CallAsync(Interface, "Echo", [DBusValue.From(1)])) is [{ } one] && one.GetInt32() == 1, "a prompt reply arrives within the timeout");
         Check((await proxy.GetPropertyAsync(Interface, "Volume")).GetDouble() == 0.5, "property reads go through the proxy's timeout too");
         Check(await ErrorAsync(() => client.CallMethodAsync(call with { Timeout = System.Threading.Timeout.InfiniteTimeSpan, Arguments = [DBusValue.From(50)] })) is null,
             "an infinite timeout waits");
-        using var cancel = new CancellationTokenSource(TimeSpan.FromMilliseconds(100));
-        await ThrowsAsync<OperationCanceledException>(() => client.CallMethodAsync(call with { Timeout = TimeSpan.FromSeconds(30) }, cancel.Token).AsTask(),
-            "cancelling the token still cancels before the timeout");
+        using var cancel = new CancellationTokenSource();
+        var cancelled = client.CallMethodAsync(call with { Timeout = TimeSpan.FromSeconds(30) }, cancel.Token).AsTask();
+        cancel.Cancel();
+        await ThrowsAsync<OperationCanceledException>(() => cancelled.WaitScaledAsync(TimeSpan.FromSeconds(5)), "cancelling the token still cancels before the timeout");
     }
 
     [Test, Explicit, Category("DBus"), DisplayName("argument keys of a signal filter deliver only the signals they match")]
@@ -292,7 +301,7 @@ internal sealed class BusTests
         // Every signal reached the unfiltered subscription; the connection dispatches in order, so the others have theirs.
         await using (var marks = all.GetAsyncEnumerator(timeout.Token))
             for (int index = 0; index < 5; index++) Check(await marks.MoveNextAsync(), $"signal {index} arrived");
-        // What each subscription received is already buffered: read until it has nothing more for a moment.
+        // What each subscription received is already buffered: read until reading would have to wait.
         static async Task<List<string>> FirstArgumentsAsync(DBusSignalSubscription subscription)
         {
             var seen = new List<string>();
@@ -300,8 +309,9 @@ internal sealed class BusTests
             await using var signals = subscription.GetAsyncEnumerator(idle.Token);
             while (true)
             {
-                idle.CancelAfter(TimeSpan.FromMilliseconds(200));
-                try { if (!await signals.MoveNextAsync()) break; }
+                var next = signals.MoveNextAsync();
+                if (!next.IsCompleted) idle.Cancel();
+                try { if (!await next) break; }
                 catch (OperationCanceledException) { break; }
                 var first = signals.Current.Arguments[0];
                 seen.Add(first.Signature.Value == "s" ? first.GetString() : first.ToString());
@@ -446,6 +456,8 @@ internal sealed class BusTests
     // Echoes its arguments and exposes two properties, the way a generated service would.
     private sealed class EchoObject : DBusObject
     {
+        private readonly object _meeting = new();
+        private int _met;
         private int _counter;
         public double Volume { get; private set; } = 0.5;
         public DBusMethodContext? Last { get; private set; }
@@ -462,7 +474,17 @@ internal sealed class BusTests
                 case "Fail": throw new DBusException("org.runic.Test.Error.Refused", "No.");
                 case "Crash": throw new InvalidOperationException("internal detail /secret/path");
                 case "Sleep": await Task.Delay(context.Arguments[0].GetInt32(), context.RequestAborted); return [];
-                case "Block": Thread.Sleep(context.Arguments[0].GetInt32()); return [];
+                case "Meet":
+                    // Blocks the handler's thread until a second call arrives; a bounded wait so a failure cannot hang the service.
+                    lock (_meeting)
+                    {
+                        _met++;
+                        Monitor.PulseAll(_meeting);
+                        while (_met < 2)
+                            if (!Monitor.Wait(_meeting, TestTimeouts.Scale(TimeSpan.FromSeconds(10))))
+                                throw new DBusException("org.runic.Test.Error.Alone", "The other call never arrived.");
+                    }
+                    return [];
                 case "ReadFd":
                     using (var handle = (SafeFileHandle)context.Arguments[0].GetUnixFd())
                     using (var stream = new FileStream(handle, FileAccess.Read))
