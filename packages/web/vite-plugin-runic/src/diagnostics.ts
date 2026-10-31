@@ -182,6 +182,84 @@ function sanitizeText(value: unknown, maximumLength: number): string | undefined
   return sensitiveContent.test(value) || pathLikeContent.test(value) ? redacted : value;
 }
 
+/** A View state value as the state inspector shows it: JSON, bounded and redacted. */
+export type RunicViewStateValue =
+  | string | number | boolean | null
+  | readonly RunicViewStateValue[]
+  | { readonly [member: string]: RunicViewStateValue };
+
+// The state inspector's bounds: a View's sanitized state is at most about 16,000 characters of JSON. Larger states
+// are shown shallower and with fewer entries.
+const viewStateBudgets = [
+  { depth: 6, entries: 50, text: 200 },
+  { depth: 4, entries: 20, text: 96 },
+  { depth: 2, entries: 10, text: 48 },
+] as const;
+const maximumViewStateLength = 16_000;
+const maximumViewStateKeyLength = 80;
+const tooLarge = "[too large]";
+
+/**
+ * A View's state for the state inspector, under the rules of timeline details: a member whose name suggests a
+ * credential or a path, and a string that looks like a credential or a path, is `[redacted]`; a member whose name
+ * looks like a path is left out. Strings are shortened,
+ * objects and arrays end with a `…` entry that counts what was left out, and nesting stops at `…` once the state is
+ * deep. Functions, symbols and `undefined` are left out; other non-JSON values are their type.
+ */
+export function sanitizeViewState(value: unknown): RunicViewStateValue {
+  for (const budget of viewStateBudgets) {
+    const sanitized = viewStateValue(value, budget, 0, new Set());
+    if (JSON.stringify(sanitized).length <= maximumViewStateLength) return sanitized;
+  }
+  return tooLarge;
+}
+
+function viewStateValue(
+  value: unknown,
+  budget: (typeof viewStateBudgets)[number],
+  depth: number,
+  seen: Set<object>,
+): RunicViewStateValue {
+  if (value === null || typeof value === "boolean") return value;
+  if (typeof value === "number") return Number.isFinite(value) ? value : String(value);
+  if (typeof value === "bigint") return `${value}n`;
+  if (typeof value === "string") {
+    if (sensitiveContent.test(value) || pathLikeContent.test(value)) return redacted;
+    const text = value.replace(failureControlCharacters, "");
+    return text.length > budget.text ? `${text.slice(0, budget.text - 1)}…` : text;
+  }
+  if (typeof value !== "object") return `[${typeof value}]`;
+  if (depth >= budget.depth) return "…";
+  if (seen.has(value)) return "[circular]";
+  seen.add(value);
+  try {
+    if (Array.isArray(value)) {
+      const items = value.slice(0, budget.entries).map((item) => viewStateValue(item, budget, depth + 1, seen));
+      if (value.length > budget.entries) items.push(`… ${value.length - budget.entries} more`);
+      return items;
+    }
+    if (value instanceof Date) return Number.isNaN(value.getTime()) ? "Invalid Date" : value.toISOString();
+    if (value instanceof Map || value instanceof Set) return `[${value.constructor.name}(${value.size})]`;
+    const output: Record<string, RunicViewStateValue> = {};
+    let count = 0;
+    let omitted = 0;
+    for (const key of Object.keys(value)) {
+      const member = (value as Record<string, unknown>)[key];
+      if (member === undefined || typeof member === "function" || typeof member === "symbol") continue;
+      if (count >= budget.entries) { omitted += 1; continue; }
+      // A key that looks like a path is one, so it is left out like a detail's.
+      if (key.length > maximumViewStateKeyLength || controlCharacters.test(key) || pathLikeContent.test(key) ||
+          key === "__proto__" || key === "constructor" || key === "prototype") { omitted += 1; continue; }
+      output[key] = sensitiveKey.test(key) ? redacted : viewStateValue(member, budget, depth + 1, seen);
+      count += 1;
+    }
+    if (omitted > 0) output["…"] = `${omitted} more`;
+    return output;
+  } finally {
+    seen.delete(value);
+  }
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }

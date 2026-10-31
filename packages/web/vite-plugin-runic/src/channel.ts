@@ -4,9 +4,13 @@
 // the client sends with `import.meta.hot.send`, and the plugin listens on `server.ws`. A client that loads otherwise
 // (the Angular CLI's development server, which runs no Vite plugins, or an application import of the package) posts
 // each message to `diagnosticsPath` instead, which `runic()` and `runicDevSessionProxy()` answer.
+//
+// A sanitized View state is at most about 16,000 characters (diagnostics.ts, `sanitizeViewState`).
 
 export const diagnosticEvent = "runic:diagnostic";
 export const connectionEvent = "runic:connection";
+/** The state inspector: a View's state, a closed View, or a page that went away (`DevelopmentTimeline.applyView`). */
+export const viewEvent = "runic:view";
 
 /** The endpoint a client posts `{ "event", "data" }` to, one message per request, answered with 204. */
 export const diagnosticsPath = "/__runic/diagnostics";

@@ -6,13 +6,13 @@ import type { RunicDiagnosticEntry } from "./diagnostics.js";
 import type { RunicDevelopmentState } from "./timeline.js";
 import { isAbsolute, relative } from "node:path";
 import { rewriteHostScripts, webRootPrefix } from "./host-scripts.js";
-import { clientOptionsKey, connectionEvent, diagnosticEvent, diagnosticsPath } from "./channel.js";
+import { clientOptionsKey, connectionEvent, diagnosticEvent, diagnosticsPath, viewEvent } from "./channel.js";
 import { answerClientMessage, answerState, devSessionValue, devSessionVariable, statePath } from "./dev-session.js";
 import { createDevelopmentTimeline, initialDevelopmentState, timelineLimit, withoutFailures } from "./timeline.js";
 
-export { runicDevSession, runicDevSessionProxy } from "./dev-session.js";
+export { runicDevSessionProxy } from "./dev-session.js";
 export type { RunicDevSessionProxyOptions } from "./dev-session.js";
-export type { RunicDevelopmentState } from "./timeline.js";
+export type { RunicDevelopmentState, RunicViewSnapshot } from "./timeline.js";
 
 export type {
   RunicDiagnosticDetail,
@@ -21,6 +21,7 @@ export type {
   RunicDiagnosticEntry,
   RunicDiagnosticSource,
   RunicTraceKind,
+  RunicViewStateValue,
 } from "./diagnostics.js";
 
 const virtualClientId = "virtual:runic/client";
@@ -106,6 +107,7 @@ export function runic(options: RunicViteOptions = {}): RunicVitePlugin {
   const deliver = (event: string, data: unknown): void => {
     if (event === connectionEvent) timeline.applyConnection(data);
     else if (event === diagnosticEvent) timeline.appendDiagnostic(data);
+    else if (event === viewEvent) timeline.applyView(data);
   };
   const command = (): string => timeline.state.vite.command;
 
@@ -192,6 +194,7 @@ export function runic(options: RunicViteOptions = {}): RunicVitePlugin {
       server = viteServer;
       viteServer.ws.on(connectionEvent, (payload) => deliver(connectionEvent, payload));
       viteServer.ws.on(diagnosticEvent, (payload) => deliver(diagnosticEvent, payload));
+      viteServer.ws.on(viewEvent, (payload) => deliver(viewEvent, payload));
       const devSession = devSessionValue(process.env[devSessionVariable]);
       viteServer.middlewares.use(statePath, (_request, response) => {
         answerState(response, timeline.state, devSession);
@@ -278,7 +281,7 @@ function createDevtoolsSpec(current: RunicDevelopmentState): JsonRenderSpec {
       root: {
         type: "Stack",
         props: { direction: "column", gap: 12 },
-        children: ["heading", "connection", "contract", "failure", "timeline"],
+        children: ["heading", "connection", "contract", "views", "superseded", "failure", "timeline"],
       },
       heading: { type: "Text", props: { text: "Runic", variant: "heading" } },
       ...section("connection", "Connection", {
@@ -289,6 +292,8 @@ function createDevtoolsSpec(current: RunicDevelopmentState): JsonRenderSpec {
         Version: current.contract.version || "not reported",
         Fingerprint: current.contract.fingerprint || "not reported",
       }),
+      ...viewsSection(current),
+      ...section("superseded", "Superseded commands", supersededCommands(current)),
       ...section("failure", "Last failure", lastFailure(current)),
       ...section("timeline", "Recent timeline", current.timeline.length === 0
         ? { Events: "none" }
@@ -297,6 +302,40 @@ function createDevtoolsSpec(current: RunicDevelopmentState): JsonRenderSpec {
           ]))),
     },
   };
+}
+
+// The state inspector: a card per open View with its state as a tree, the most recently changed first.
+function viewsSection(current: RunicDevelopmentState): JsonRenderSpec["elements"] {
+  const pages = new Set(current.views.map((view) => view.page));
+  const cards = current.views.map((view, index) => {
+    const revision = view.revision === undefined ? "" : ` · revision ${view.revision}`;
+    const epoch = view.epoch === undefined ? "" : ` · epoch ${view.epoch}`;
+    // Several windows can show the same route; the page tells them apart.
+    const page = pages.size > 1 ? ` · page ${view.page.slice(0, 6)}` : "";
+    return [`views-${index}`, {
+      card: { type: "Card", props: { title: `${view.route}${revision}${epoch}${page}` }, children: [`views-${index}-state`] },
+      state: { type: "Tree", props: { data: view.state, defaultExpanded: index === 0 } },
+    }] as const;
+  });
+  return {
+    views: {
+      type: "Card",
+      props: { title: "Views" },
+      children: cards.length === 0 ? ["views-none"] : cards.map(([id]) => id),
+    },
+    ...(cards.length === 0 ? { "views-none": { type: "Text", props: { text: "No View connected" } } } : {}),
+    ...Object.fromEntries(cards.flatMap(([id, { card, state }]) => [[id, card], [`${id}-state`, state]])),
+  };
+}
+
+// Command replies the producer answered `superseded` (presentation-epoch/1): the call resolved without running.
+function supersededCommands(current: RunicDevelopmentState): Record<string, string> {
+  const entries = current.timeline.filter((entry) => entry.kind === "command" && entry.detail.code === "superseded");
+  if (entries.length === 0) return { Commands: "none" };
+  return Object.fromEntries(entries.slice(-12).reverse().map((entry) => [
+    `${entry.id} · ${entry.timestamp}`,
+    `${entry.detail.route ?? "?"}.${entry.detail.member ?? "?"} from epoch ${entry.detail.epoch ?? "?"}`,
+  ]));
 }
 
 function lastFailure(current: RunicDevelopmentState): Record<string, string> {

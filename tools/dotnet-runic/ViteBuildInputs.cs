@@ -123,7 +123,7 @@ internal static class ViteBuildInputs
     }
 
     /// <summary>
-    /// Whether the resolved configuration has <c>runic()</c> (SvelteKit: <c>runic({ html: false })</c>) or <c>runicDevSession()</c> from
+    /// Whether the resolved configuration has <c>runic()</c> (SvelteKit: <c>runic({ html: false })</c>) from
     /// <c>@runic-artifex/vite-plugin-runic</c>, whose <c>/__runic/state</c> confirms the dev session; null when the
     /// probe did not say.
     /// </summary>
@@ -174,7 +174,7 @@ internal static class ViteBuildInputs
                 root: config.root,
                 inputs: inputs.map((entry) => path.resolve(config.root, String(entry))),
                 routed: (config.plugins ?? []).some((plugin) => plugin?.name === "vite-plugin-sveltekit-setup"),
-                runic: (config.plugins ?? []).some((plugin) => plugin?.name === "runic" || plugin?.name === "runic:dev-session"),
+                runic: (config.plugins ?? []).some((plugin) => plugin?.name === "runic"),
               }) + "\n");
             }).catch((error) => {
               console.error(error instanceof Error ? error.message : String(error));

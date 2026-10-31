@@ -1,7 +1,7 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
-import type { Plugin, ProxyOptions } from "vite";
+import type { ProxyOptions } from "vite";
 import type { RunicDevelopmentState, RunicTimelineEntry } from "./timeline.js";
-import { connectionEvent, diagnosticEvent, diagnosticsPath, maximumClientMessageBytes } from "./channel.js";
+import { connectionEvent, diagnosticEvent, diagnosticsPath, maximumClientMessageBytes, viewEvent } from "./channel.js";
 import { createDevelopmentTimeline, initialDevelopmentState, timelineLimit, withoutFailures } from "./timeline.js";
 
 // `dotnet runic dev` gives the development server process a random session value and accepts the server as ready
@@ -14,13 +14,6 @@ export const statePath = "/__runic/state";
 /** The session value `dotnet runic dev` set, when it has the shape the tool writes: 32 to 128 hex digits. */
 export function devSessionValue(value: string | undefined): string | undefined {
   return value !== undefined && /^[0-9a-f]{32,128}$/.test(value) ? value : undefined;
-}
-
-function answerSession(response: ServerResponse, session: string): void {
-  response.statusCode = 204;
-  response.setHeader("Cache-Control", "no-store");
-  response.setHeader(devSessionHeader, session);
-  response.end();
 }
 
 /** Answers `/__runic/state` with the path-free state, and with the `dotnet runic dev` session when there is one. */
@@ -92,7 +85,7 @@ export async function answerClientMessage(
   catch { return answerStatus(response, 400); }
   if (typeof message !== "object" || message === null || Array.isArray(message)) return answerStatus(response, 400);
   const { event, data } = message as { event?: unknown; data?: unknown };
-  if (event !== diagnosticEvent && event !== connectionEvent) return answerStatus(response, 400);
+  if (event !== diagnosticEvent && event !== connectionEvent && event !== viewEvent) return answerStatus(response, 400);
   deliver(event, data);
   answerStatus(response, 204);
 }
@@ -118,25 +111,6 @@ function readBody(request: IncomingMessage): Promise<string | undefined> {
   });
 }
 
-/**
- * A Vite plugin that only answers `/__runic/state` with the `dotnet runic dev` session. Without `dotnet runic dev`
- * the plugin does nothing.
- *
- * @deprecated Use `runic({ html: false })`, which answers the session too and adds the development client (load it
- * with `import "@runic-artifex/vite-plugin-runic/client"` from SvelteKit's `src/hooks.client.ts`). `runicDevSession`
- * is removed in 0.15.
- */
-export function runicDevSession(): Plugin {
-  return {
-    name: "runic:dev-session",
-    configureServer(server) {
-      const session = devSessionValue(process.env[devSessionVariable]);
-      if (session === undefined) return;
-      server.middlewares.use(statePath, (_request, response) => answerSession(response, session));
-    },
-  };
-}
-
 export interface RunicDevSessionProxyOptions {
   /** How many timeline entries `/__runic/state` keeps: 200 by default, rounded down and limited to 1 to 500. */
   readonly maxTimelineEntries?: number;
@@ -153,7 +127,8 @@ export interface RunicDevSessionProxyOptions {
  *
  * - `/__runic/state` with the path-free development state, and under `dotnet runic dev` with its session;
  * - `/__runic/diagnostics`, which the development client (`@runic-artifex/vite-plugin-runic/client`) posts the
- *   page's Views diagnostics and connection state to. The timeline is bounded, and failures go to the terminal.
+ *   page's Views diagnostics, connection state and View states to. The timeline is bounded, and failures go to the
+ *   terminal.
  */
 export function runicDevSessionProxy(options: RunicDevSessionProxyOptions = {}): Record<string, ProxyOptions> {
   if (options.printFailures !== undefined && typeof options.printFailures !== "boolean") {
@@ -169,6 +144,10 @@ export function runicDevSessionProxy(options: RunicDevSessionProxyOptions = {}):
   const deliver = (event: string, data: unknown): void => {
     if (event === connectionEvent) {
       timeline.applyConnection(data);
+      return;
+    }
+    if (event === viewEvent) {
+      timeline.applyView(data);
       return;
     }
     const entry = timeline.appendDiagnostic(data);

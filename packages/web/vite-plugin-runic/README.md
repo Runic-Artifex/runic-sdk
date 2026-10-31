@@ -70,6 +70,35 @@ fields with the text-field binding of your framework package
 `runic({ staleInputWarning: false })`, or from the page by setting
 `globalThis[Symbol.for("runic.vite.staleInputWarning")] = false`.
 
+### State inspector
+
+With `@runic-artifex/views` 0.15 or later the development client also reports
+each open View's state, as the page shows it, and the dock shows it on the
+**Views** card: one card per View with its route, revision and presentation
+epoch, the most recently changed first, and the state as a tree. The client
+sends a View's latest state at most every 250 ms, and the server keeps the 32
+Views that changed last, per page (several windows can share one development
+server), and forgets a View when it closes and a page's Views when the page
+goes away. The state is redacted and bounded like timeline details: a member
+whose name suggests a credential or a path (`password`, `accessToken`,
+`filePath`, …) and a string that looks like a credential or a path read
+`[redacted]`, strings are shortened, long lists end with `… N more`, and deep
+or large states are shown shallower. It is part of `/__runic/state` (`views`)
+and of the copied diagnostic state, which hold no failures.
+
+A command that the Bridge answered `superseded` (a
+[command scoped to its page](../views/README.md#scoped-commands) called from an earlier page)
+resolves like one that ran, so the page shows nothing. The client reports it
+as a timeline entry (`kind: "command"`, label `<member> superseded`,
+`detail.code: "superseded"` with the route, member, the epoch it was issued for
+and the reply's revision), and the dock lists the latest on the **Superseded
+commands** card. With the Angular CLI, read both from `/__runic/state`.
+
+The inspector runs only where the development client does: never in a build.
+`@runic-artifex/views` reports to it only once the client asked for it
+(`runic.views.inspector` in the
+[shared globals](https://github.com/Runic-Artifex/runic-sdk/blob/main/specs/application/README.md#shared-globals)).
+
 ## SvelteKit and Angular
 
 SvelteKit renders its pages itself and warns about every plugin with a
@@ -163,10 +192,9 @@ times out with `RAPPDEV1007`.
 
 `runicDevSessionProxy()` answers the session for the Angular CLI (above).
 `dotnet runic dev` expects the answer from an Angular frontend whose
-`package.json` declares this package. `runicDevSession()` is a Vite plugin
-that answers only the session, without the development client; SvelteKit
-configurations from before 0.14 use it. It is deprecated in 0.14 and removed
-in 0.15: use `runic({ html: false })` instead.
+`package.json` declares this package. `runicDevSession()`, which answered only
+the session, was removed in 0.15: SvelteKit uses `runic({ html: false })`
+(above).
 
 The `runic-app` template's SvelteKit and Angular frontends are set up this way.
 
