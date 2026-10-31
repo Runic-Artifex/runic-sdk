@@ -26,7 +26,16 @@ the release notes, which give the full detail and the pull requests:
   [Behaviour changes](../eng/release/notes/0.13.0.md#behaviour-changes)
 - 0.14.0: [Fork integration](../eng/release/notes/0.14.0.md#fork-integration-validation-and-dynamicdata-v1),
   [Text splices and requests with `hello`](../eng/release/notes/0.14.0.md#text-splices-and-requests-with-hello-p1)
-- 0.15.0: [Desktop presentation servers](../eng/release/notes/0.15.0.md#desktop-presentation-servers-x2)
+- 0.15.0: [Desktop presentation servers](../eng/release/notes/0.15.0.md#desktop-presentation-servers-x2),
+  [Views protocol](../eng/release/notes/0.15.0.md#views-protocol-v5),
+  [Navigation](../eng/release/notes/0.15.0.md#navigation-n1),
+  [Embedded frontends](../eng/release/notes/0.15.0.md#embedded-frontends-h1-726-730),
+  [Startup](../eng/release/notes/0.15.0.md#startup-s1),
+  [Native message path](../eng/release/notes/0.15.0.md#native-message-path-x3),
+  [Early first window](../eng/release/notes/0.15.0.md#early-first-window-h2),
+  [Cleanups](../eng/release/notes/0.15.0.md#cleanups-c1),
+  [Windows administration](../eng/release/notes/0.15.0.md#windows-administration-w1),
+  [Fallback presentations](../eng/release/notes/0.15.0.md#runic-desktop-an-ordered-list-of-fallback-presentations-h1)
 
 ## Before you start
 
@@ -935,10 +944,6 @@ that the command line is wrong; a failure on what the command found exits 1.
 Details: 0.14.0 [Runic Command Line 0.11.0 in the SDK tools](../eng/release/notes/0.14.0.md#runic-command-line-0110-in-the-sdk-tools-l1).
 
 ## From 0.14 to 0.15
-
-### Desktop server
-
-<!-- X2: replace this line with the batch's migration entries; remove it if the batch has none. -->
 
 ### Views protocol
 
