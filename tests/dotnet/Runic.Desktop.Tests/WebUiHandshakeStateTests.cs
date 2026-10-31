@@ -100,7 +100,8 @@ public sealed class WebUiHandshakeStateTests
     {
         await using var window = new WebUiWindow();
         // The empty stream ends the socket at its first receive.
-        await using var ended = new WebUiSession(window, Socket(new MemoryStream()), 1, 1, string.Empty, TimeSpan.FromMinutes(1));
+        await using var ended = new WebUiSession(window, Socket(new MemoryStream()), 1, 1, string.Empty, TimeSpan.FromMinutes(1),
+            TimeProvider.System);
         await Assert.ThrowsAsync<WebSocketException>(() => ended.RunAsync(CancellationToken.None));
 
         Assert.True(WebUiWindow.YieldSilentConnections(activeConnections: 1, [ended]));
@@ -130,12 +131,13 @@ public sealed class WebUiHandshakeStateTests
         SilentSessionAsync(window, Socket(stream));
 
     // A socket that never sent its token check and is past the yield grace period (here
-    // the 1 ms handshake timeout). Its receive loop is not started, so no deadline runs.
-    private static async Task<WebUiSession> SilentSessionAsync(WebUiWindow window, WebSocket socket)
+    // the 1 ms handshake timeout, on the test's clock). Its receive loop is not started, so no deadline runs.
+    private static Task<WebUiSession> SilentSessionAsync(WebUiWindow window, WebSocket socket)
     {
-        var session = new WebUiSession(window, socket, 1, 1, string.Empty, TimeSpan.FromMilliseconds(1));
-        await Task.Delay(50);
-        return session;
+        var time = new ManualTime();
+        var session = new WebUiSession(window, socket, 1, 1, string.Empty, TimeSpan.FromMilliseconds(1), time);
+        time.Advance(TimeSpan.FromMilliseconds(1));
+        return Task.FromResult(session);
     }
 
     private sealed class ThrowingLogger : ILogger

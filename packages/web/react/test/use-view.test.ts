@@ -469,15 +469,23 @@ describe("useSuspenseView", () => {
     const error = vi.spyOn(console, "error").mockImplementation(() => {});
     try {
       await renderSuspense(reference, false, { releaseTimeout: 30 });
-      await act(async () => { reference.resolveAll(); await new Promise(resolve => setTimeout(resolve, 0)); });
+      vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+      await act(async () => { reference.resolveAll(); await vi.advanceTimersByTimeAsync(0); });
       expect(text()).toBe("failed:offline");
-      await new Promise(resolve => setTimeout(resolve, 60));
+      await vi.advanceTimersByTimeAsync(29);
+      // Still kept: the boundary renders the same failure again.
+      await act(async () => boundary!.reset());
+      expect(text()).toBe("failed:offline");
+      await vi.advanceTimersByTimeAsync(1);
       // The failure was forgotten, so resetting the boundary connects again without retrySuspenseView.
       await act(async () => boundary!.reset());
       expect(text()).toBe("suspended");
-      await act(async () => { reference.resolveAll(); await new Promise(resolve => setTimeout(resolve, 0)); });
+      await act(async () => { reference.resolveAll(); await vi.advanceTimersByTimeAsync(0); });
       expect(text()).toBe("3");
-    } finally { error.mockRestore(); }
+    } finally {
+      vi.useRealTimers();
+      error.mockRestore();
+    }
   });
 
   test("an invalid releaseTimeout throws a RangeError", async () => {
@@ -922,18 +930,23 @@ describe("useBridgeConnection", () => {
 
   test("is connecting without a Bridge and reconnecting after a drop", async () => {
     function Status(): ReactNode { return createElement("output", null, useBridgeConnection().state); }
-    await act(async () => {
-      root ??= createRoot(document.body.appendChild(document.createElement("div")));
-      root.render(createElement(Status));
-    });
-    expect(text()).toBe("connecting");
-    const fake = hostBridge(true);
-    host.__runicBridge = fake.bridge;
-    // The subscription polls every 50 ms until a host script installs the Bridge.
-    await act(async () => { await new Promise(resolve => setTimeout(resolve, 120)); });
-    expect(text()).toBe("connected");
-    await act(async () => fake.set(false));
-    expect(text()).toBe("reconnecting");
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    try {
+      await act(async () => {
+        root ??= createRoot(document.body.appendChild(document.createElement("div")));
+        root.render(createElement(Status));
+      });
+      expect(text()).toBe("connecting");
+      const fake = hostBridge(true);
+      host.__runicBridge = fake.bridge;
+      // The subscription polls every 50 ms until a host script installs the Bridge.
+      await act(async () => { await vi.advanceTimersByTimeAsync(49); });
+      expect(text()).toBe("connecting");
+      await act(async () => { await vi.advanceTimersByTimeAsync(1); });
+      expect(text()).toBe("connected");
+      await act(async () => fake.set(false));
+      expect(text()).toBe("reconnecting");
+    } finally { vi.useRealTimers(); }
   });
 
   test("is closed after the application closed the window, also after the drop that follows", async () => {

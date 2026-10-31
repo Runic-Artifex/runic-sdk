@@ -1,4 +1,6 @@
+using System.Collections.Concurrent;
 using System.Threading.Channels;
+using Microsoft.Extensions.Time.Testing;
 using Runic.Platform;
 using Runic.Platform.Runtime;
 using TUnit.Core;
@@ -6,6 +8,8 @@ using TUnit.Core;
 internal sealed class ApplicationInstanceTests
 {
     private static readonly TimeSpan Wait = TimeSpan.FromSeconds(5);
+    // ApplicationInstance's ForwardTimeout: a launch that has not become or reached the instance by then is busy.
+    private static readonly TimeSpan ClaimDeadline = TimeSpan.FromSeconds(5);
 
     private static string Directory() => Path.Combine(Path.GetTempPath(), "runic-instance-" + Guid.NewGuid().ToString("N")[..8]);
 
@@ -199,9 +203,36 @@ internal sealed class ApplicationInstanceTests
 
     private static readonly ApplicationInstanceOptions Replies = new() { ReplyToLaunches = true };
 
-    private static async Task<IApplicationInstance> ClaimPrimaryAsync(string directory, ApplicationInstanceOptions options)
+    // A fake clock for a claim: it advances by each retry delay the claim waits for, never to the claim deadline.
+    private sealed class RetryClock : FakeTimeProvider
     {
-        var claim = await ApplicationInstance.ClaimAsync("org.example.App", new ApplicationLaunch([], "/"), options, directory, default);
+        private readonly ConcurrentQueue<TimeSpan> _started = new();
+
+        public override ITimer CreateTimer(TimerCallback callback, object? state, TimeSpan dueTime, TimeSpan period)
+        {
+            var timer = base.CreateTimer(callback, state, dueTime, period);
+            _started.Enqueue(dueTime);
+            return timer;
+        }
+
+        public async Task<T> RetryUntilAsync<T>(Task<T> claim, TimeSpan unscaled)
+        {
+            var wait = TestTimeouts.Start(unscaled);
+            while (!claim.IsCompleted)
+            {
+                if (wait.IsExpired) throw wait.Expired();
+                if (!_started.TryDequeue(out var due)) await Task.Delay(5);
+                else if (due > TimeSpan.Zero && due < ClaimDeadline) Advance(due);
+            }
+            wait.Succeeded();
+            return await claim;
+        }
+    }
+
+
+    private static async Task<IApplicationInstance> ClaimPrimaryAsync(string directory, ApplicationInstanceOptions options, TimeProvider? clock = null)
+    {
+        var claim = await ApplicationInstance.ClaimAsync("org.example.App", new ApplicationLaunch([], "/"), options, directory, default, clock);
         return claim is PlatformResult<ApplicationInstanceClaim>.Success { Value: ApplicationInstanceClaim.Primary { Instance: var instance } }
             ? instance : throw new InvalidOperationException($"the first launch is the running instance, not {claim}");
     }
@@ -449,20 +480,18 @@ internal sealed class ApplicationInstanceTests
         var forwardOnly = Replies with { ForwardOnly = true };
         try
         {
+            // "At once" is on a clock that never advances: a claim that retried or waited for its deadline would not end.
             foreach (var options in new[] { forwardOnly, new ApplicationInstanceOptions { ForwardOnly = true } })
             {
-                var stopwatch = System.Diagnostics.Stopwatch.StartNew();
-                var none = await ApplicationInstance.ClaimAsync("org.example.App", new ApplicationLaunch(["status"], "/"), options, directory, default).AsTask().WaitScaledAsync(Wait);
-                Check(none is PlatformResult<ApplicationInstanceClaim>.Success { Value: ApplicationInstanceClaim.NotRunning }, $"without an instance it is not running, not {none}");
-                Check(stopwatch.Elapsed < TimeSpan.FromSeconds(1), $"and reported at once ({stopwatch.Elapsed})");
+                var none = await ApplicationInstance.ClaimAsync("org.example.App", new ApplicationLaunch(["status"], "/"), options, directory, default, new FakeTimeProvider())
+                    .AsTask().WaitScaledAsync(Wait);
+                Check(none is PlatformResult<ApplicationInstanceClaim>.Success { Value: ApplicationInstanceClaim.NotRunning }, $"without an instance it is not running at once, not {none}");
             }
             Check(System.IO.Directory.GetFiles(directory, "*.sock").Length == 0, "nothing listens for launches");
 
             // The next launch becomes the instance at once: the forward-only launch did not keep the lock.
-            var stopwatch2 = System.Diagnostics.Stopwatch.StartNew();
-            await using (var instance = await ClaimPrimaryAsync(directory, Replies))
+            await using (var instance = await ClaimPrimaryAsync(directory, Replies, new FakeTimeProvider()).WaitScaledAsync(Wait))
             {
-                Check(stopwatch2.Elapsed < TimeSpan.FromSeconds(1), $"the next launch is the instance at once ({stopwatch2.Elapsed})");
                 instance.Launched += (_, launch) => _ = Task.Run(async () =>
                 {
                     if (launch.Reply is not { } reply) return;
@@ -619,11 +648,12 @@ internal sealed class ApplicationInstanceTests
                     if (BitConverter.ToInt32(length) is > 0) throw new InvalidOperationException("a launch that waits is not a valid earlier launch");
                 }
             });
-            var stopwatch = System.Diagnostics.Stopwatch.StartNew();
-            var old = await ApplicationInstance.ClaimAsync("org.example.App", new ApplicationLaunch(["--run"], "/"), Replies, directory, default).AsTask().WaitScaledAsync(Wait);
+            var clock = new RetryClock();
+            var started = clock.GetUtcNow();
+            var old = await clock.RetryUntilAsync(ApplicationInstance.ClaimAsync("org.example.App", new ApplicationLaunch(["--run"], "/"), Replies, directory, default, clock).AsTask(), Wait);
             Check(old is PlatformResult<ApplicationInstanceClaim>.Failed { Code: PlatformFailureCode.ResourceBusy, Diagnostic: { Domain: "ApplicationInstance", Code: 0 } },
                 $"an earlier instance is busy, not {old}");
-            Check(stopwatch.Elapsed < TimeSpan.FromSeconds(3), $"and reported promptly, not after the claim deadline ({stopwatch.Elapsed})");
+            Check(clock.GetUtcNow() - started < ClaimDeadline, $"and reported after a few retries, not after the claim deadline ({clock.GetUtcNow() - started})");
             Check(Volatile.Read(ref connections) >= 3 && !earlier.IsFaulted, "the earlier instance only saw negative lengths");
         }
         finally { System.IO.Directory.Delete(directory, recursive: true); }

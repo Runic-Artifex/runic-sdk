@@ -108,6 +108,9 @@ public sealed record DesktopHostOptions
     /// </remarks>
     public TimeSpan ConnectionTimeout { get; init; } = TimeSpan.FromSeconds(15);
 
+    // The clock of the surfaces' connection deadlines and Bridge handshakes; tests replace it.
+    internal TimeProvider TimeProvider { get; init; } = TimeProvider.System;
+
     internal const int DefaultBrowserLaunchAttempts = 2;
 
     internal const int MaximumBrowserLaunchAttempts = 5;

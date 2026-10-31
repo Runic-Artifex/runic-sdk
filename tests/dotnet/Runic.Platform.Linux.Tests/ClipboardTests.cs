@@ -2,6 +2,8 @@ using System.Collections.Concurrent;
 using System.Collections.Immutable;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
+using System.Text.RegularExpressions;
+using Runic.Platform.Linux.DBus;
 using Runic.Platform.Runtime;
 using TUnit.Core;
 
@@ -119,14 +121,47 @@ internal sealed class ClipboardTests
         await using var clipboard = LinuxPlatformProvider.CreateTextClipboard(owner);
         await ExportPortalParentAsync(owner);
         var files = LinuxPlatformProvider.CreateFileDialogs(owner);
-        using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(3));
+        await using var bus = await DBusConnection.ConnectAsync(DBusBus.Session) is PlatformResult<DBusConnection>.Success(var connected) ? connected
+            : throw new InvalidOperationException("No session bus.");
+        var earlier = await PortalRequestsAsync(bus);
+        using var cancellation = new CancellationTokenSource();
+        var request = files.OpenFileAsync(new OpenFileOptions(), cancellation.Token).AsTask();
+        // Cancel once the portal has exported the request's object, so the caller cancels a live request.
+        var live = TestTimeouts.Start(TimeSpan.FromSeconds(10));
+        while (!request.IsCompleted && !(await PortalRequestsAsync(bus)).Except(earlier).Any())
+        {
+            if (live.IsExpired) throw live.Expired();
+            await Task.Delay(50);
+        }
+        live.Succeeded();
+        cancellation.Cancel();
         try
         {
-            var result = await files.OpenFileAsync(new OpenFileOptions(), cancellation.Token);
+            var result = await request.WaitScaledAsync(TimeSpan.FromSeconds(10));
             throw new InvalidOperationException("Expected a live portal request cancelled by the caller; got " + result);
         }
         catch (OperationCanceledException) when (cancellation.IsCancellationRequested) { }
         Console.WriteLine("PASS real desktop portal request and cancellation; clipboard untouched.");
+    }
+
+    // The portal's live Request objects, /org/freedesktop/portal/desktop/request/<sender>/<token>.
+    private static async Task<HashSet<string>> PortalRequestsAsync(DBusConnection bus)
+    {
+        const string root = "/org/freedesktop/portal/desktop/request";
+        var paths = new HashSet<string>(StringComparer.Ordinal);
+        foreach (string sender in await ChildrenAsync(root))
+            foreach (string token in await ChildrenAsync($"{root}/{sender}")) paths.Add($"{root}/{sender}/{token}");
+        return paths;
+
+        async Task<IEnumerable<string>> ChildrenAsync(string path)
+        {
+            try
+            {
+                var reply = await new DBusProxy(bus, "org.freedesktop.portal.Desktop", path).CallAsync("org.freedesktop.DBus.Introspectable", "Introspect");
+                return Regex.Matches(reply[0].GetString(), "<node name=\"([^\"/]+)\"").Select(static match => match.Groups[1].Value).ToList();
+            }
+            catch (DBusException) { return []; }
+        }
     }
 
     [Test, Explicit, Category("DirectoryNative")]

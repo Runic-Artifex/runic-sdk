@@ -13,6 +13,8 @@ internal abstract class DesktopSettingsSource : IDesktopSettings
     private int _readers;
     private bool _disposed;
     private TaskCompletionSource? _disposal;
+    /// <summary>The clock of the once-per-second polling; tests set a fake one.</summary>
+    internal TimeProvider TimeProvider { get; init; } = TimeProvider.System;
     /// <inheritdoc />
     public async ValueTask<PlatformResult<DesktopAppearance>> ReadAsync(CancellationToken cancellationToken = default)
     {
@@ -58,7 +60,7 @@ internal abstract class DesktopSettingsSource : IDesktopSettings
                 catch (ObjectDisposedException) when (linked.IsCancellationRequested)
                 { throw new OperationCanceledException(linked.Token); }
                 if (current != previous) { previous = current; yield return current; }
-                if (changed is null) await Task.Delay(TimeSpan.FromSeconds(1), linked.Token).ConfigureAwait(false);
+                if (changed is null) await Task.Delay(TimeSpan.FromSeconds(1), TimeProvider, linked.Token).ConfigureAwait(false);
                 else await changed.WaitAsync(linked.Token).ConfigureAwait(false);
             }
         }

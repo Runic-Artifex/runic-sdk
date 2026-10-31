@@ -6,6 +6,7 @@ import { join } from "node:path";
 import { promisify } from "node:util";
 import test from "node:test";
 import { nodeCompatibility } from "../../../../eng/node-compatibility.mjs";
+import { npmReleaseAgeArguments } from "../../../../eng/dependencies/release-age.mjs";
 import { scaled } from "../../../../tests/support/timeouts.mjs";
 
 const execute = promisify(execFileCallback);
@@ -49,7 +50,7 @@ test("packed package is source-free and works from an isolated consumer", { time
       "utf8",
     );
     await execFile("npm", [
-      "install", "--ignore-scripts", "--no-audit", "--no-fund", "--package-lock=false", "--omit=peer",
+      "install", "--ignore-scripts", "--no-audit", "--no-fund", "--package-lock=false", "--omit=peer", ...npmReleaseAgeArguments(),
     ], { cwd: root });
     await writeFile(join(root, "index.html"), '<script type="module" src="/entry.js"></script>', "utf8");
     await writeFile(

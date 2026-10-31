@@ -10,6 +10,7 @@ using System.Text.Json;
 using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
+using Microsoft.Extensions.Time.Testing;
 using Runic.Application.Tool;
 using TUnit.Core;
 
@@ -2676,9 +2677,9 @@ internal sealed partial class ToolTests
         // Windows raises Ctrl+C for the whole hidden console, so the stand-in for dotnet watch is Unix-only.
         RunningProcess running = StartStopChild(OperatingSystem.IsWindows() ? "run" : "parent", workspace.Root);
         int application = WaitForStopChild(workspace.Root);
-        var clock = Stopwatch.StartNew();
-        True(running.StopGracefullyAsync(TimeSpan.FromSeconds(20)).Wait(TestTimeouts.Scale(TimeSpan.FromSeconds(40))), "The stop did not finish.");
-        True(clock.Elapsed < TimeSpan.FromSeconds(15), $"The stop waited {clock.Elapsed} for an application that exited.");
+        // The grace period runs on a clock that never advances: only the application's exit can end the stop.
+        True(running.StopGracefullyAsync(TimeSpan.FromSeconds(20), new FakeTimeProvider()).Wait(TestTimeouts.Scale(TimeSpan.FromSeconds(40))),
+            "The stop did not finish when the application exited.");
         True(File.Exists(Path.Combine(workspace.Root, "stopped")), "The application was not asked to stop.");
         if (OperatingSystem.IsWindows()) Equal(StopTestChild.ApplicationExitCode, running.Completion.Result);
         WaitForExit(application);
@@ -2692,9 +2693,13 @@ internal sealed partial class ToolTests
         workspace.Write("stuck", "");
         RunningProcess running = StartStopChild(OperatingSystem.IsWindows() ? "run" : "parent", workspace.Root);
         int application = WaitForStopChild(workspace.Root);
-        var clock = Stopwatch.StartNew();
-        True(running.StopGracefullyAsync(TimeSpan.FromSeconds(1)).Wait(TestTimeouts.Scale(TimeSpan.FromSeconds(30))), "The stop did not finish.");
-        True(clock.Elapsed >= TimeSpan.FromSeconds(1), "The stop did not wait for the grace period.");
+        var time = new FakeTimeProvider();
+        Task stop = running.StopGracefullyAsync(TimeSpan.FromSeconds(1), time);
+        WaitForMarker(Path.Combine(workspace.Root, "signalled"), "The stuck application was not asked to stop.");
+        // The application ignores the signal, so only the grace period, on the fake clock, can end the stop.
+        False(stop.IsCompleted, "The stop did not wait for the grace period.");
+        time.Advance(TimeSpan.FromSeconds(1));
+        True(stop.Wait(TestTimeouts.Scale(TimeSpan.FromSeconds(30))), "The stop did not finish after the grace period.");
         False(File.Exists(Path.Combine(workspace.Root, "stopped")), "The stuck application reported a stop.");
         WaitForExit(application);
         running.DisposeAsync().AsTask().Wait();
@@ -2709,10 +2714,15 @@ internal sealed partial class ToolTests
     private static int WaitForStopChild(string markers)
     {
         string ready = Path.Combine(markers, "ready");
-        var deadline = Stopwatch.StartNew();
-        while (!File.Exists(ready) && deadline.Elapsed < TestTimeouts.Scale(TimeSpan.FromSeconds(30))) Thread.Sleep(50);
-        True(File.Exists(ready), "The stand-in application did not start.");
+        WaitForMarker(ready, "The stand-in application did not start.");
         return int.Parse(File.ReadAllText(ready), System.Globalization.CultureInfo.InvariantCulture);
+    }
+
+    private static void WaitForMarker(string path, string message)
+    {
+        var deadline = Stopwatch.StartNew();
+        while (!File.Exists(path) && deadline.Elapsed < TestTimeouts.Scale(TimeSpan.FromSeconds(30))) Thread.Sleep(50);
+        True(File.Exists(path), message);
     }
 
     private static void WaitForExit(int pid)

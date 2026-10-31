@@ -157,19 +157,19 @@ internal sealed partial class NavigationTests
     public async Task ScheduledDisposalFallsBackToThePoolAfterCloseAsync()
     {
         using var context = new SchedulingSyncContextModelContext();
-        await using var fixture = new Fixture(context, closeTimeout: TimeSpan.FromMinutes(1));
+        // The close timeout runs on a clock that never advances: a disposal that waited for it would not finish.
+        await using var fixture = new Fixture(context, new FakeTimeProvider(), closeTimeout: TimeSpan.FromMinutes(1));
         var probe = new Probe(context);
         var region = fixture.Navigator.CreateRegion<ProbePage>(fixture.Root, NavigationTarget.Borrow(new ProbePage("home", probe)));
         var owned = new AsyncProbePage("owned", probe);
         await Wait(region.PushAsync(NavigationTarget.Own<ProbePage>(owned)).AsTask());
         await context.DisposeAsync();
-        var watch = Stopwatch.StartNew();
         await Wait(fixture.Navigator.DisposeAsync().AsTask());
         var site = probe.Single("dispose:owned");
         Require(owned.Disposed == 1 && owned.LeaseHeldAtDispose && !site.OnModelThread,
             $"After the context closed, owned content was disposed at {site}.");
-        Require(watch.Elapsed < TimeSpan.FromSeconds(10) && fixture.Navigator.UnretiredEntryCount == 0 && fixture.Logs.Count(1068) == 0,
-            $"Disposal with a closed context took {watch.Elapsed} and logged {fixture.Logs.Count(1068)} close timeouts.");
+        Require(fixture.Navigator.UnretiredEntryCount == 0 && fixture.Logs.Count(1068) == 0,
+            $"Disposal with a closed context logged {fixture.Logs.Count(1068)} close timeouts.");
     }
 
     [Test]
@@ -246,7 +246,8 @@ internal sealed partial class NavigationTests
     {
         using var inner = new SchedulingSyncContextModelContext();
         var context = new LifetimeContext(inner);
-        await using var fixture = new Fixture(context, closeTimeout: TimeSpan.FromMinutes(1));
+        // The close timeout runs on a clock that never advances: a disposal that waited for it would not finish.
+        await using var fixture = new Fixture(context, new FakeTimeProvider(), closeTimeout: TimeSpan.FromMinutes(1));
         var gate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var guardStarted = false;
         var home = new Page("home")
@@ -270,10 +271,8 @@ internal sealed partial class NavigationTests
         gate.SetResult();
         var result = await Wait(push);
         Require(result is NavigationResult<Page>.Rejected { Reason: NavigationRejection.Closed }, $"The guarded push gave {result} after the close.");
-        var watch = Stopwatch.StartNew();
         await Wait(fixture.Navigator.DisposeAsync().AsTask());
-        Require(watch.Elapsed < TimeSpan.FromSeconds(10) && next.Disposed == 1 && fixture.Navigator.UnretiredEntryCount == 0,
-            $"Disposal after the context closed took {watch.Elapsed}.");
+        Require(next.Disposed == 1 && fixture.Navigator.UnretiredEntryCount == 0, "Disposal after the context closed left content.");
     }
 
     // A6: a context that closes before a scheduled hook starts gives Rejected(Closed), logs no failure,
@@ -282,7 +281,8 @@ internal sealed partial class NavigationTests
     public async Task ContextClosedBeforeHookStartsAsync()
     {
         using var context = new SchedulingSyncContextModelContext();
-        await using var fixture = new Fixture(context, closeTimeout: TimeSpan.FromMinutes(1));
+        // The close timeout runs on a clock that never advances: a disposal that waited for it would not finish.
+        await using var fixture = new Fixture(context, new FakeTimeProvider(), closeTimeout: TimeSpan.FromMinutes(1));
         var guardRuns = 0;
         var home = new Page("home") { Guard = (_, _) => { Interlocked.Increment(ref guardRuns); return ValueTask.FromResult(true); } };
         var region = fixture.Navigator.CreateRegion<Page>(fixture.Root, NavigationTarget.Borrow(home));
@@ -299,10 +299,8 @@ internal sealed partial class NavigationTests
         Require(fixture.Logs.Count(1060) == 0 && fixture.Logs.Count(1062) == 0, "A closed context was logged as a failure.");
         var late = await Wait(region.BackAsync().AsTask());
         Require(late is NavigationResult<Page>.Rejected { Reason: NavigationRejection.Closed }, $"A request after the close gave {late}.");
-        var watch = Stopwatch.StartNew();
         await Wait(fixture.Navigator.DisposeAsync().AsTask());
-        Require(watch.Elapsed < TimeSpan.FromSeconds(10) && next.Disposed == 1 && fixture.Navigator.UnretiredEntryCount == 0,
-            $"Disposal after the context closed took {watch.Elapsed}.");
+        Require(next.Disposed == 1 && fixture.Navigator.UnretiredEntryCount == 0, "Disposal after the context closed left content.");
     }
 
     // A6 for the later hooks of a transition: the guard passed, then the context closes while the

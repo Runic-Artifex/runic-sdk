@@ -125,6 +125,7 @@ internal sealed class ManualTime : TimeProvider
     private readonly object _gate = new();
     private readonly List<Timer> _timers = [];
     private readonly Channel<ITimer> _created = Channel.CreateUnbounded<ITimer>();
+    private TaskCompletionSource _armed = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private TimeSpan _now;
 
     public override long TimestampFrequency => TimeSpan.TicksPerSecond;
@@ -146,6 +147,22 @@ internal sealed class ManualTime : TimeProvider
 
     // Waits until a timer is created; each creation is taken once.
     public async Task WaitForTimerAsync(CancellationToken cancellationToken) => await _created.Reader.ReadAsync(cancellationToken);
+
+    // Waits until a timer is armed to fire dueIn from now, such as a Task.Delay(dueIn, this) that started since the clock
+    // last moved. It takes nothing, so other waits still see the timer.
+    public async Task WaitForTimerAsync(TimeSpan dueIn, CancellationToken cancellationToken)
+    {
+        while (true)
+        {
+            Task armed;
+            lock (_gate)
+            {
+                if (_timers.Any(timer => timer.Due - _now == dueIn)) return;
+                armed = _armed.Task;
+            }
+            await armed.WaitAsync(cancellationToken);
+        }
+    }
 
     // Moves the clock and runs the timers then due, outside the clock's lock.
     public void Advance(TimeSpan by)
@@ -173,13 +190,17 @@ internal sealed class ManualTime : TimeProvider
 
         public bool Change(TimeSpan dueTime, TimeSpan period)
         {
+            TaskCompletionSource armed;
             lock (owner._gate)
             {
                 owner._timers.Remove(this);
                 if (dueTime == global::System.Threading.Timeout.InfiniteTimeSpan) return true;
                 Due = owner._now + dueTime;
                 owner._timers.Add(this);
+                armed = owner._armed;
+                owner._armed = new(TaskCreationOptions.RunContinuationsAsynchronously);
             }
+            armed.TrySetResult();
             return true;
         }
 

@@ -110,6 +110,16 @@ sealed class DesktopWireClient : IDisposable
         }
     }
 
+    // The next server command, such as Navigation (0xFB) or SendRaw (0xF8), and its payload, in arrival order.
+    public async Task<(byte Command, byte[] Payload)> NextCommandAsync(CancellationToken cancellationToken)
+    {
+        while (true)
+        {
+            var packet = await ReceiveAsync(cancellationToken);
+            if (packet.Length >= HeaderSize) return (packet[7], packet[HeaderSize..]);
+        }
+    }
+
     public void Dispose() => _socket.Dispose();
 
     private Task SendAsync(ushort id, byte command, byte[] payload, CancellationToken cancellationToken)

@@ -1,6 +1,5 @@
 using System.Collections.Concurrent;
 using System.ComponentModel;
-using System.Diagnostics;
 using System.Text.Json;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -128,30 +127,22 @@ internal sealed class CloseGuardTests
                 return true;
             };
 
-            var callback = Stopwatch.StartNew();
-            fixture.Native.UserClose();
-            fixture.Native.UserClose();
-            callback.Stop();
-            Require(callback.Elapsed < TimeSpan.FromSeconds(1), $"The platform close callback blocked for {callback.Elapsed}.");
+            // The guard never answers, so a callback that waited for it would never return; the scaled wait fails it.
+            await Task.Run(() =>
+            {
+                fixture.Native.UserClose();
+                fixture.Native.UserClose();
+            }).WaitScaledAsync(TimeSpan.FromSeconds(1));
             var token = await guardToken.Task.WaitScaledAsync(TimeSpan.FromSeconds(5));
             var pending = fixture.Presentation.RequestCloseAsync().AsTask();
-            using (var stop = new CancellationTokenSource(TimeSpan.FromMilliseconds(100)))
-            {
-                try
-                {
-                    await fixture.Presentation.RequestCloseAsync(stop.Token);
-                    throw new InvalidOperationException("A close request completed while its guard was still deciding.");
-                }
-                catch (OperationCanceledException) { }
-            }
+            await RequireJoinedRequestCancelsAsync(stop => fixture.Presentation.RequestCloseAsync(stop),
+                "A close request completed while its guard was still deciding.");
             Require(fixture.Presentation.IsOpen && fixture.Script.AskCount == 1 && !pending.IsCompleted,
                 "Close requests did not share the pending guard decision.");
 
-            var closing = Stopwatch.StartNew();
+            // A close that waited for the guard would hang, or end its drain at the timeout with Drained false.
             var result = await fixture.Window.CloseAsync(TimeSpan.FromSeconds(5)).AsTask().WaitScaledAsync(TimeSpan.FromSeconds(10));
-            closing.Stop();
-            Require(result.Drained && closing.Elapsed < TimeSpan.FromSeconds(5),
-                $"Closing the window waited for a guard that never answered ({closing.Elapsed}).");
+            Require(result.Drained, "Closing the window waited for a guard that never answered.");
             Require(token.IsCancellationRequested, "Closing the window did not cancel the pending guard.");
             Require(!await pending.WaitScaledAsync(TimeSpan.FromSeconds(5)), "An abandoned guard decision reported the close as allowed.");
             Require(!fixture.Native.IsOpen, "The native window stayed open.");
@@ -320,15 +311,8 @@ internal sealed class CloseGuardTests
         };
         var request = fixture.Opened.RequestCloseAsync().AsTask();
         var token = await guardToken.Task.WaitScaledAsync(TimeSpan.FromSeconds(5));
-        using (var stop = new CancellationTokenSource(TimeSpan.FromMilliseconds(100)))
-        {
-            try
-            {
-                await fixture.Opened.RequestCloseAsync(stop.Token);
-                throw new InvalidOperationException("A request completed while its guard was still deciding.");
-            }
-            catch (OperationCanceledException) { }
-        }
+        await RequireJoinedRequestCancelsAsync(stop => fixture.Opened.RequestCloseAsync(stop),
+            "A request completed while its guard was still deciding.");
         Require(!request.IsCompleted && !token.IsCancellationRequested, "Cancelling one caller's wait ended the shared decision.");
 
         _ = await fixture.Opened.CloseAsync(TimeSpan.FromSeconds(5)).AsTask().WaitScaledAsync(TimeSpan.FromSeconds(10));
@@ -375,6 +359,22 @@ internal sealed class CloseGuardTests
             throw new InvalidOperationException("Closing through an unbound window context did not fail.");
         }
         catch (InvalidOperationException error) when (error.Message.Contains("outside a Window's scope", StringComparison.Ordinal)) { }
+    }
+
+    // A request that joins a pending decision waits for it; cancelling the caller's token, once the request is
+    // waiting, ends only that wait.
+    private static async Task RequireJoinedRequestCancelsAsync(Func<CancellationToken, ValueTask<bool>> request, string completed)
+    {
+        using var stop = new CancellationTokenSource();
+        var joined = request(stop.Token).AsTask();
+        Require(!joined.IsCompleted, completed);
+        await stop.CancelAsync();
+        try
+        {
+            await joined.WaitScaledAsync(TimeSpan.FromSeconds(5));
+            throw new InvalidOperationException(completed);
+        }
+        catch (OperationCanceledException) { }
     }
 }
 

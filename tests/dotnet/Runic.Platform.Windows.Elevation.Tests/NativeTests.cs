@@ -227,11 +227,10 @@ internal sealed partial class NativeTests
         }
         using (var cancellation = new CancellationTokenSource())
         {
-            var stopwatch = Stopwatch.StartNew();
+            // The action sleeps two minutes and then exits with 6, so the exit code alone tells termination from completion.
             var result = await terminating.RunAsync(new(PrivilegedActions.Ignore, []) { Output = line => { if (line.Text == "ignoring") cancellation.Cancel(); } }, cancellation.Token)
                 .AsTask().WaitScaledAsync(TimeSpan.FromSeconds(60));
             Check(result is PlatformResult<PrivilegedActionCompletion>.Success({ ExitCode: WindowsPrivilegedActions.TerminatedExitCode }), $"ignore: {result}");
-            Check(stopwatch.Elapsed < TimeSpan.FromSeconds(30), $"terminated after {stopwatch.Elapsed}");
         }
         using (var cancellation = new CancellationTokenSource())
         {

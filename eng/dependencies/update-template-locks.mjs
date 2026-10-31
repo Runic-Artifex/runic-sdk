@@ -9,12 +9,11 @@ import { root, workspace, run } from "../run.mjs";
 import { readToolchain } from "../toolchain.mjs";
 import { nodeCompatibility } from "../node-compatibility.mjs";
 import { templateFrontendDirectory, templateFrontends } from "../release/template-locks.mjs";
+import { firstPartyScope, minimumReleaseAge, publishedBefore } from "./release-age.mjs";
 
 const toolchain = readToolchain(root);
-// D038: third-party packages resolve to versions published at least a day ago. The Runic packages come from the
-// candidate registry, which lists no publish times; the age check skips them.
-const minimumReleaseAge = 24 * 60 * 60;
-const publishedBefore = new Date(Date.now() - minimumReleaseAge * 1000).toISOString();
+// D038 (release-age.mjs): third-party packages resolve to versions published at least a day ago. The Runic packages
+// come from the candidate registry, which lists no publish times; the age check skips them.
 const runicPackages = workspace.npm.map(entry => entry.name);
 const temporary = await mkdtemp(join(tmpdir(), "runic-template-locks-"));
 let registry;
@@ -44,9 +43,9 @@ try {
     for (const [manager, filename, args] of [
       ["bun", "bun.lock", ["install", "--lockfile-only", "--ignore-scripts", `--minimum-release-age=${minimumReleaseAge}`,
         ...runicPackages.map(name => `--minimum-release-age-excludes=${name}`)]],
-      ["npm", "package-lock.json", ["install", "--package-lock-only", "--ignore-scripts", "--no-audit", "--no-fund", `--before=${publishedBefore}`]],
+      ["npm", "package-lock.json", ["install", "--package-lock-only", "--ignore-scripts", "--no-audit", "--no-fund", `--before=${publishedBefore()}`]],
       ["pnpm", "pnpm-lock.yaml", ["install", "--lockfile-only", "--ignore-scripts", `--config.minimumReleaseAge=${minimumReleaseAge / 60}`,
-        "--config.minimumReleaseAgeExclude=@runic-artifex/*"]],
+        `--config.minimumReleaseAgeExclude=${firstPartyScope}`]],
     ]) {
       const directory = join(temporary, framework, manager);
       await mkdir(directory, { recursive: true });

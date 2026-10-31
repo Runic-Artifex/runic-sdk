@@ -3,8 +3,8 @@
 //
 //   Runic.Privileged.Smoke run VERB [--wait-for-go] [--cancel-on LINE] [ARGUMENT...]   caller
 //
-// --cancel-on cancels the run when the program prints LINE; "agent-ready" instead cancels a second after the
-// action starts, while the test's authentication agent holds the request open.
+// --cancel-on cancels the run when the program prints LINE; "agent-ready" instead cancels when the test's
+// authentication agent writes that line to standard input, once it holds the request open.
 //   Runic.Privileged.Smoke VERB COMMAND [ARGUMENT...]                                  helper, through pkexec
 //
 // Helper commands: "report EXIT ARGUMENT..." prints its identity and arguments and exits with EXIT; "wait" waits
@@ -118,7 +118,8 @@ static async Task<int> RunCaller(string[] args)
         rest.RemoveRange(at, 2);
     }
     using var cancellation = new CancellationTokenSource();
-    if (cancelOn == "agent-ready") cancellation.CancelAfter(TimeSpan.FromSeconds(1));
+    if (cancelOn == "agent-ready")
+        _ = Task.Run(() => { if (Console.ReadLine() == "agent-ready") cancellation.Cancel(); });
     var request = new PrivilegedActionRequest(declaration, [.. rest])
     {
         Output = line =>

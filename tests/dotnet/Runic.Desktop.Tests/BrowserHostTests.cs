@@ -258,21 +258,21 @@ public sealed class BrowserHostTests
     {
         if (OperatingSystem.IsWindows()) return;
 
+        using var isolation = TestClients.Isolate();
         var folder = Directory.CreateTempSubdirectory("runic-desktop-stall-");
         var launches = Path.Combine(folder.FullName, "launches");
-        var window = new WebUiWindow();
+        var time = new ManualTime();
+        var window = StallWindow(folder.FullName, TimeSpan.FromSeconds(1), attempts: 3, time);
         using var relaunches = new StalledLaunchListener(output);
         Trace.Listeners.Add(relaunches);
         try
         {
             await WriteStallingBrowserAsync(folder.FullName, launches);
-            WebUiApplication.SetBrowserFolder(folder.FullName);
-            WebUiApplication.SetConnectionTimeout(1);
-            WebUiApplication.SetBrowserLaunchAttempts(3);
             using var timeout = TestTimeouts.Cancellation(TimeSpan.FromSeconds(30));
 
-            var exception = await Assert.ThrowsAsync<TimeoutException>(() =>
-                window.ShowInBrowserAsync(Page("stalled"), WebUiBrowser.Chrome, timeout.Token));
+            var show = window.ShowInBrowserAsync(Page("stalled"), WebUiBrowser.Chrome, timeout.Token);
+            await RunOutAttemptsAsync(time, TimeSpan.FromSeconds(1), attempts: 3, show, timeout.Token);
+            var exception = await Assert.ThrowsAsync<TimeoutException>(() => show.WaitAsync(timeout.Token));
 
             Assert.Contains(
                 "within 1 seconds on launch attempt 3 of 3: no request reached the server; the browser process is still running",
@@ -291,7 +291,6 @@ public sealed class BrowserHostTests
         {
             Trace.Listeners.Remove(relaunches);
             await window.DisposeAsync();
-            ResetBrowserLaunch();
             folder.Delete(recursive: true);
         }
     }
@@ -301,25 +300,25 @@ public sealed class BrowserHostTests
     {
         if (OperatingSystem.IsWindows()) return;
 
+        using var isolation = TestClients.Isolate();
         var folder = Directory.CreateTempSubdirectory("runic-desktop-stall-");
         var launches = Path.Combine(folder.FullName, "launches");
-        var window = new WebUiWindow();
+        var time = new ManualTime();
+        var window = StallWindow(folder.FullName, TimeSpan.FromSeconds(2), attempts: 2, time);
         try
         {
             await WriteStallingBrowserAsync(folder.FullName, launches);
-            WebUiApplication.SetBrowserFolder(folder.FullName);
-            WebUiApplication.SetConnectionTimeout(2);
-            WebUiApplication.SetBrowserLaunchAttempts(2);
             using var timeout = TestTimeouts.Cancellation(TimeSpan.FromSeconds(30));
 
             var show = window.ShowInBrowserAsync(Page("requested"), WebUiBrowser.Chrome, timeout.Token);
             while (!File.Exists(launches)) await Task.Delay(10, timeout.Token);
             // The page request stands in for a browser that started, then stalled later.
-            using (var client = new HttpClient())
+            using (var client = TestClients.Http())
             {
                 await client.GetStringAsync(window.Url, timeout.Token);
             }
-            var exception = await Assert.ThrowsAsync<TimeoutException>(() => show);
+            await RunOutAttemptsAsync(time, TimeSpan.FromSeconds(2), attempts: 1, show, timeout.Token);
+            var exception = await Assert.ThrowsAsync<TimeoutException>(() => show.WaitAsync(timeout.Token));
 
             Assert.Contains("on launch attempt 1 of 2: the page was requested", exception.Message);
             Assert.Single(await File.ReadAllLinesAsync(launches, timeout.Token));
@@ -327,7 +326,6 @@ public sealed class BrowserHostTests
         finally
         {
             await window.DisposeAsync();
-            ResetBrowserLaunch();
             folder.Delete(recursive: true);
         }
     }
@@ -337,9 +335,11 @@ public sealed class BrowserHostTests
     {
         if (OperatingSystem.IsWindows()) return;
 
+        using var isolation = TestClients.Isolate();
         var folder = Directory.CreateTempSubdirectory("runic-desktop-stall-");
         var launches = Path.Combine(folder.FullName, "launches");
-        var window = new WebUiWindow();
+        var time = new ManualTime();
+        var window = StallWindow(folder.FullName, TimeSpan.FromSeconds(1), attempts: 2, time);
         var gate = (SemaphoreSlim)typeof(WebUiWindow)
             .GetField("_lifecycleGate", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!
             .GetValue(window)!;
@@ -347,9 +347,6 @@ public sealed class BrowserHostTests
         try
         {
             await WriteStallingBrowserAsync(folder.FullName, launches);
-            WebUiApplication.SetBrowserFolder(folder.FullName);
-            WebUiApplication.SetConnectionTimeout(1);
-            WebUiApplication.SetBrowserLaunchAttempts(2);
             using var timeout = TestTimeouts.Cancellation(TimeSpan.FromSeconds(30));
 
             var show = window.ShowInBrowserAsync(Page("late"), WebUiBrowser.Chrome, timeout.Token);
@@ -358,15 +355,19 @@ public sealed class BrowserHostTests
             // relaunch has to wait; the page request then arrives first.
             await gate.WaitAsync(timeout.Token);
             held = true;
-            await Task.Delay(TimeSpan.FromSeconds(1.5), timeout.Token);
-            using (var client = new HttpClient())
+            await RunOutAttemptsAsync(time, TimeSpan.FromSeconds(1), attempts: 1, show, timeout.Token);
+            Assert.True(await TestTimeouts.UntilAsync(() => HasAsyncWaiter(gate), TimeSpan.FromSeconds(10), cancellationToken: timeout.Token),
+                "The stalled launch did not wait for the gate to relaunch.");
+            using (var client = TestClients.Http())
             {
                 await client.GetStringAsync(window.Url, timeout.Token);
             }
             gate.Release();
             held = false;
 
-            var exception = await Assert.ThrowsAsync<TimeoutException>(() => show);
+            // The relaunch saw the request and kept waiting, a whole timeout from the request.
+            await RunOutAttemptsAsync(time, TimeSpan.FromSeconds(1), attempts: 1, show, timeout.Token);
+            var exception = await Assert.ThrowsAsync<TimeoutException>(() => show.WaitAsync(timeout.Token));
             Assert.Contains("on launch attempt 1 of 2: the page was requested", exception.Message);
             Assert.Single(await File.ReadAllLinesAsync(launches, timeout.Token));
         }
@@ -374,7 +375,6 @@ public sealed class BrowserHostTests
         {
             if (held) gate.Release();
             await window.DisposeAsync();
-            ResetBrowserLaunch();
             folder.Delete(recursive: true);
         }
     }
@@ -384,11 +384,13 @@ public sealed class BrowserHostTests
     {
         if (OperatingSystem.IsWindows()) return;
 
+        using var isolation = TestClients.Isolate();
         var folder = Directory.CreateTempSubdirectory("runic-desktop-stall-");
         var launches = Path.Combine(folder.FullName, "launches");
         try
         {
             await WriteStallingBrowserAsync(folder.FullName, launches);
+            var time = new ManualTime();
             await using var host = await DesktopHost.StartAsync(new DesktopHostOptions
             {
                 BrowserFolder = folder.FullName,
@@ -398,14 +400,17 @@ public sealed class BrowserHostTests
                 {
                     if (diagnostic.Code == "browser-launch-stalled") throw new InvalidOperationException("sink failed");
                 },
+                TimeProvider = time,
             });
             await using var surface = await host.CreateSurfaceAsync(new DesktopSurfaceOptions
             {
                 Content = new DesktopContent.Html("never requested"),
             });
 
-            var exception = await Assert.ThrowsAsync<DesktopException>(async () =>
-                await surface.OpenWindowAsync(new DesktopWindowOptions { Browser = BrowserKind.Chrome }));
+            using var timeout = TestTimeouts.Cancellation(TimeSpan.FromSeconds(30));
+            var opening = surface.OpenWindowAsync(new DesktopWindowOptions { Browser = BrowserKind.Chrome }).AsTask();
+            await RunOutAttemptsAsync(time, TimeSpan.FromMilliseconds(500), attempts: 2, opening, timeout.Token);
+            var exception = await Assert.ThrowsAsync<DesktopException>(() => opening.WaitAsync(timeout.Token));
 
             Assert.Contains("on launch attempt 2 of 2: no request reached the server",
                 Assert.IsType<TimeoutException>(exception.InnerException).Message);
@@ -424,6 +429,7 @@ public sealed class BrowserHostTests
     {
         if (OperatingSystem.IsWindows()) return;
 
+        using var isolation = TestClients.Isolate();
         var folder = Directory.CreateTempSubdirectory("runic-desktop-stall-");
         var launches = Path.Combine(folder.FullName, "launches");
         try
@@ -431,6 +437,7 @@ public sealed class BrowserHostTests
             await WriteStallingBrowserAsync(folder.FullName, launches);
             var diagnostics = new ConcurrentQueue<DesktopDiagnostic>();
             var loggers = new ConfigurationValidationTests.RecordingLoggerFactory();
+            var time = new ManualTime();
             await using var host = await DesktopHost.StartAsync(new DesktopHostOptions
             {
                 BrowserFolder = folder.FullName,
@@ -438,14 +445,17 @@ public sealed class BrowserHostTests
                 BrowserLaunchAttempts = 2,
                 DiagnosticSink = diagnostics.Enqueue,
                 LoggerFactory = loggers,
+                TimeProvider = time,
             });
             await using var surface = await host.CreateSurfaceAsync(new DesktopSurfaceOptions
             {
                 Content = new DesktopContent.Html("never requested"),
             });
 
-            var exception = await Assert.ThrowsAsync<DesktopException>(async () =>
-                await surface.OpenWindowAsync(new DesktopWindowOptions { Browser = BrowserKind.Chrome }));
+            using var timeout = TestTimeouts.Cancellation(TimeSpan.FromSeconds(30));
+            var opening = surface.OpenWindowAsync(new DesktopWindowOptions { Browser = BrowserKind.Chrome }).AsTask();
+            await RunOutAttemptsAsync(time, TimeSpan.FromMilliseconds(500), attempts: 2, opening, timeout.Token);
+            var exception = await Assert.ThrowsAsync<DesktopException>(() => opening.WaitAsync(timeout.Token));
 
             Assert.Equal("presentation-connection-timeout", exception.Code);
             Assert.Contains("on launch attempt 2 of 2: no request reached the server",
@@ -477,30 +487,35 @@ public sealed class BrowserHostTests
         await Assert.ThrowsAsync<ArgumentOutOfRangeException>(async () =>
             await DesktopHost.StartAsync(new DesktopHostOptions { BrowserLaunchAttempts = 6 }));
 
+        using var isolation = TestClients.Isolate();
         var folder = Directory.CreateTempSubdirectory("runic-desktop-stall-");
         var launches = Path.Combine(folder.FullName, "launches");
         try
         {
             await WriteStallingBrowserAsync(folder.FullName, launches);
             var diagnostics = new ConcurrentQueue<DesktopDiagnostic>();
+            var time = new ManualTime();
             await using var host = await DesktopHost.StartAsync(new DesktopHostOptions
             {
                 BrowserFolder = folder.FullName,
                 ConnectionTimeout = TimeSpan.FromMilliseconds(500),
                 BrowserLaunchAttempts = 1,
                 DiagnosticSink = diagnostics.Enqueue,
+                TimeProvider = time,
             });
             await using var surface = await host.CreateSurfaceAsync(new DesktopSurfaceOptions
             {
                 Content = new DesktopContent.Html("never requested"),
             });
 
-            var exception = await Assert.ThrowsAsync<DesktopException>(async () =>
-                await surface.OpenWindowAsync(new DesktopWindowOptions { Browser = BrowserKind.Chrome }));
+            using var timeout = TestTimeouts.Cancellation(TimeSpan.FromSeconds(30));
+            var opening = surface.OpenWindowAsync(new DesktopWindowOptions { Browser = BrowserKind.Chrome }).AsTask();
+            await RunOutAttemptsAsync(time, TimeSpan.FromMilliseconds(500), attempts: 1, opening, timeout.Token);
+            var exception = await Assert.ThrowsAsync<DesktopException>(() => opening.WaitAsync(timeout.Token));
 
-            var timeout = Assert.IsType<TimeoutException>(exception.InnerException);
-            Assert.Contains("no request reached the server", timeout.Message);
-            Assert.DoesNotContain("attempt", timeout.Message);
+            var timedOut = Assert.IsType<TimeoutException>(exception.InnerException);
+            Assert.Contains("no request reached the server", timedOut.Message);
+            Assert.DoesNotContain("attempt", timedOut.Message);
             Assert.DoesNotContain(diagnostics, static item => item.Code == "browser-launch-stalled");
             Assert.Single(await File.ReadAllLinesAsync(launches));
         }
@@ -529,12 +544,29 @@ public sealed class BrowserHostTests
         File.SetUnixFileMode(executable, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
     }
 
-    private static void ResetBrowserLaunch()
+    // A window that launches the browser from folder, on the test's clock, as a DesktopHost surface's does.
+    private static WebUiWindow StallWindow(string folder, TimeSpan connectionTimeout, int attempts, ManualTime time) =>
+        new(host: null, pathBase: string.Empty, runtimeOptions: new PresentationSurfaceRuntimeOptions(
+            null, folder, new EmbeddedHostTests.RecordingHostFactory(), WaitForConnection: true, connectionTimeout,
+            DiagnosticSink: null, Logger: null, attempts) { TimeProvider = time });
+
+    // Runs out the connection deadline of each launch attempt on the test's clock: once the wait sleeps for the whole
+    // timeout, moves the clock past it. Stops early when the presentation ends.
+    private static async Task RunOutAttemptsAsync(ManualTime time, TimeSpan timeout, int attempts, Task presentation,
+        CancellationToken cancellationToken)
     {
-        WebUiApplication.SetBrowserFolder(string.Empty);
-        WebUiApplication.SetConnectionTimeout(15);
-        WebUiApplication.SetBrowserLaunchAttempts(2);
+        for (var attempt = 0; attempt < attempts; attempt++)
+        {
+            await Task.WhenAny(time.WaitForTimerAsync(timeout, cancellationToken), presentation).WaitAsync(cancellationToken);
+            if (presentation.IsCompleted) return;
+            time.Advance(timeout);
+        }
     }
+
+    // Whether an asynchronous WaitAsync is queued on the semaphore (SemaphoreSlim keeps them from m_asyncHead).
+    private static bool HasAsyncWaiter(SemaphoreSlim semaphore) =>
+        (typeof(SemaphoreSlim).GetField("m_asyncHead", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)
+            ?? throw new MissingFieldException(nameof(SemaphoreSlim), "m_asyncHead")).GetValue(semaphore) is not null;
 
     [Test]
     public async Task ClosingBrowserWaitsForInheritedPipesBeforeDeletingProfile()

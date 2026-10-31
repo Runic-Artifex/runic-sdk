@@ -111,6 +111,24 @@ internal static class TestTimeouts
     }
 
     /// <summary>
+    /// <see cref="UntilAsync(Func{bool}, TimeSpan, TimeSpan?, CancellationToken, string, string, int)"/> for a condition
+    /// that is read asynchronously, such as an accessibility tree over D-Bus.
+    /// </summary>
+    public static async Task<bool> UntilAsync(Func<Task<bool>> condition, TimeSpan unscaled, TimeSpan? interval = null,
+        CancellationToken cancellationToken = default, [CallerMemberName] string caller = "", [CallerFilePath] string file = "",
+        [CallerLineNumber] int line = 0)
+    {
+        var wait = new ScaledWait(unscaled, caller, file, line);
+        while (!await condition().ConfigureAwait(false))
+        {
+            if (wait.IsExpired) return false;
+            await Task.Delay(interval ?? TimeSpan.FromMilliseconds(25), cancellationToken).ConfigureAwait(false);
+        }
+        wait.Succeeded();
+        return true;
+    }
+
+    /// <summary>
     /// Reports a scaled wait that succeeded after <paramref name="elapsed"/>, more than its <paramref name="unscaled"/>
     /// limit: without the scale it would have failed.
     /// </summary>

@@ -1,7 +1,7 @@
 # A Polkit authentication agent for one process. With AGENT_MODE=dismiss it dismisses every request, as a user
-# closing the dialog would; with AGENT_MODE=hold it keeps the request open, as a dialog the user has not answered.
-# It starts the command in its arguments with standard input on a pipe, registers for that process, then writes
-# "go" so the command starts its privileged action.
+# closing the dialog would; with AGENT_MODE=hold it keeps the request open, as a dialog the user has not answered,
+# and writes "agent-ready" to the command. It starts the command in its arguments with standard input on a pipe,
+# registers for that process, then writes "go" so the command starts its privileged action.
 import asyncio
 import os
 import subprocess
@@ -13,13 +13,17 @@ from dbus_next.service import ServiceInterface, method
 
 
 class Agent(ServiceInterface):
-    def __init__(self):
+    def __init__(self, child):
         super().__init__("org.freedesktop.PolicyKit1.AuthenticationAgent")
+        self.child = child
 
     @method()
     async def BeginAuthentication(self, action_id: "s", message: "s", icon_name: "s", details: "a{ss}", cookie: "s", identities: "a(sa{sv})"):
         if os.environ.get("AGENT_MODE") == "hold":
             print(f"agent: holding {action_id}", flush=True)
+            # The command cancels now, while the request is open (--cancel-on agent-ready).
+            self.child.stdin.write("agent-ready\n")
+            self.child.stdin.flush()
             await asyncio.Event().wait()
         print(f"agent: dismissing {action_id}: {message}", flush=True)
         raise DBusError("org.freedesktop.PolicyKit1.Error.Cancelled", "Dismissed by the test agent")
@@ -35,7 +39,7 @@ async def main():
     with open(f"/proc/{child.pid}/stat") as stat:
         start_time = int(stat.read().rsplit(")", 1)[1].split()[19])
     bus = await MessageBus(bus_type=BusType.SYSTEM).connect()
-    bus.export("/dev/runic/TestAgent", Agent())
+    bus.export("/dev/runic/TestAgent", Agent(child))
     introspection = await bus.introspect("org.freedesktop.PolicyKit1", "/org/freedesktop/PolicyKit1/Authority")
     authority = bus.get_proxy_object("org.freedesktop.PolicyKit1", "/org/freedesktop/PolicyKit1/Authority", introspection) \
         .get_interface("org.freedesktop.PolicyKit1.Authority")

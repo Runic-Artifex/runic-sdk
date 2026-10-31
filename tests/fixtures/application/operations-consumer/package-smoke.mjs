@@ -6,6 +6,7 @@ import { homedir, tmpdir } from "node:os";
 import { join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { launchChromium, scaled, tail, waitFor, waitForExit } from "../../../../examples/shared/smoke.mjs";
+import { npmReleaseAgeArguments } from "../../../../eng/dependencies/release-age.mjs";
 
 const sdk = fileURLToPath(new URL("../../../../", import.meta.url));
 const fixture = fileURLToPath(new URL(".", import.meta.url));
@@ -76,7 +77,8 @@ try {
     "-p:EnableJsonIgnoreOptOut=true", "-p:RunicApplicationFrontendBuildEnabled=false"], directory, true);
   assert.notEqual(baseline.code, 0, "Generation unexpectedly accepted the computed DTO under the opt-out.");
   assert.match(baseline.output, /RUNICBRIDGE003/);
-  await run("npm", ["install", "--ignore-scripts", "--no-audit", "--no-fund", "--package-lock=false"], frontend);
+  await run("npm", ["install", "--ignore-scripts", "--no-audit", "--no-fund", "--package-lock=false", ...npmReleaseAgeArguments()],
+    frontend);
   for (const name of ["views", "svelte"]) {
     const installed = join(frontend, "node_modules/@runic-artifex", name);
     assert.equal((await lstat(installed)).isSymbolicLink(), false, `Installed ${name} is a workspace symlink.`);

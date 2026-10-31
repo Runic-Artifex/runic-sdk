@@ -201,8 +201,9 @@ public static class ApplicationInstance
     internal static ValueTask<PlatformResult<ApplicationInstanceClaim>> ClaimAsync(string applicationId, ApplicationLaunch launch,
         string? directory, CancellationToken cancellationToken) => ClaimAsync(applicationId, launch, HandOver, directory, cancellationToken);
 
+    // The claim deadline and the retries run on timeProvider, the system clock unless a test passes a fake one.
     internal static async ValueTask<PlatformResult<ApplicationInstanceClaim>> ClaimAsync(string applicationId, ApplicationLaunch launch,
-        ApplicationInstanceOptions options, string? directory, CancellationToken cancellationToken)
+        ApplicationInstanceOptions options, string? directory, CancellationToken cancellationToken, TimeProvider? timeProvider = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(applicationId);
         if (applicationId.Length > 255 || applicationId.Any(c => !char.IsAsciiLetterOrDigit(c) && c is not '.' and not '_' and not '-'))
@@ -221,8 +222,9 @@ public static class ApplicationInstance
             CreatePrivateDirectory(directory);
             // Until the deadline: become the running instance once the lock is free, or hand the launch to the
             // instance that holds it. That instance may still be starting, or ending.
-            using var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-            deadline.CancelAfter(ForwardTimeout);
+            var time = timeProvider ?? TimeProvider.System;
+            using var expiry = new CancellationTokenSource(ForwardTimeout, time);
+            using var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, expiry.Token);
             try
             {
                 int unanswered = 0;
@@ -248,7 +250,7 @@ public static class ApplicationInstance
                         unanswered = attempt.Unanswered ? unanswered + 1 : 0;
                         if (unanswered >= UnansweredAttempts) return NoReplies(0);
                     }
-                    await Task.Delay(100, deadline.Token).ConfigureAwait(false);
+                    await Task.Delay(TimeSpan.FromMilliseconds(100), time, deadline.Token).ConfigureAwait(false);
                 }
             }
             catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)

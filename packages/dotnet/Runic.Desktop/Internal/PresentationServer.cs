@@ -34,10 +34,17 @@ internal static class PresentationServers
     internal static bool UseNativeServer =>
         AppContext.TryGetSwitch("Runic.Desktop.NativeServer", out var enabled) && enabled;
 
-    internal static IPresentationServer Create(Action<IServiceCollection>? configureServices) =>
-        UseNativeServer
+    internal static IPresentationServer Create(Action<IServiceCollection>? configureServices)
+    {
+        var server = UseNativeServer
             ? new NativePresentationServer(configureServices)
             : CreateKestrel(configureServices);
+        return Decorator is { } decorate ? decorate(server) : server;
+    }
+
+    // Tests only: wraps each server created while it is set. Runic.Desktop.Tests uses it to keep requests from outside a
+    // test, such as a development tool probing each new loopback listener, from a presentation whose progress it asserts.
+    internal static Func<IPresentationServer, IPresentationServer>? Decorator { get; set; }
 
     // The factory's implicit constructor is public (its class is internal).
     [DynamicDependency(DynamicallyAccessedMemberTypes.PublicParameterlessConstructor, "Runic.Desktop.Kestrel.KestrelPresentationServerFactory", "Runic.Desktop.Kestrel")]

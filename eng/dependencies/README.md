@@ -94,7 +94,8 @@ temporary loopback registry, runs the authority-pinned Bun/npm/pnpm resolvers, t
 removes temporary URLs and deletes its temporary workspace. No packages are published.
 Third-party packages resolve with a one-day release-age cutoff (D038): Bun's
 `--minimum-release-age`, npm's `--before` and pnpm's `minimumReleaseAge`; the Runic
-candidates are exempt.
+candidates are exempt. The package checks that install without a lockfile
+(`npm install --package-lock=false`) use the same cutoff, from `release-age.mjs`.
 The template acceptance step rebinds hashes and npm 12 registry URLs to its own exact
 candidates. pnpm 12 needs its installation script to materialize its native launcher.
 

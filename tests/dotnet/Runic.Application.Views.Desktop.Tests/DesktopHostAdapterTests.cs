@@ -380,11 +380,15 @@ internal sealed class DesktopWindowTests
             var bridge = (DesktopBridgeWindow<OrderedCollectionModel>)window.Host;
             Require(ReferenceEquals(window.DataContext, bridge.ViewModel) && bridge.Window.IsOpen,
                 "OpenWindowAsync did not assign the scoped ViewModel and open the presentation.");
-            using (var stop = new CancellationTokenSource(TimeSpan.FromMilliseconds(50)))
+            using (var stop = new CancellationTokenSource())
             {
+                // Cancelled once the wait has started: it ends then, whatever the time.
+                var waiting = window.WaitForCloseAsync(stop.Token).AsTask();
+                Require(!waiting.IsCompleted, "WaitForCloseAsync returned while the window was open.");
+                await stop.CancelAsync();
                 try
                 {
-                    await window.WaitForCloseAsync(stop.Token);
+                    await waiting.WaitScaledAsync(TimeSpan.FromSeconds(5));
                     throw new InvalidOperationException("WaitForCloseAsync returned while the window was open.");
                 }
                 catch (OperationCanceledException) { }
