@@ -107,7 +107,8 @@ internal static partial class WindowsLoadingSurfaceSmoke
                 Expect(!window.IsOpen, "a window closed during loading opened");
                 Expect(window.Browser == BrowserKind.Embedded && !window.IsFallback, $"closing during loading opened {window.Browser}");
                 Expect(Volatile.Read(ref asked) == 0, "closing during loading asked the close guard");
-                Expect(!IsWindow(loadingWindow), "the loading window still exists");
+                // The open returns from WM_DESTROY, while DestroyWindow may still be finishing on the window thread.
+                await UntilAsync(() => !IsWindow(loadingWindow), "the loading window still exists");
                 await window.WaitForCloseAsync().AsTask().WaitAsync(TestTimeouts.Scale(TimeSpan.FromSeconds(10)));
             }
             release.SetResult();
