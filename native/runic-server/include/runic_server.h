@@ -1,5 +1,5 @@
 /*
- * The C ABI of the experimental native Runic Desktop server (native/runic-server, src/ffi.rs). ABI version 1.
+ * The C ABI of the experimental native Runic Desktop server (native/runic-server, src/ffi.rs). ABI version 2.
  *
  * Threading: every function may be called from any thread. Callbacks run on the server's threads, never while a
  * caller waits inside a runic_server_* function, and none starts after runic_server_stop returned. A callback must
@@ -9,8 +9,13 @@
  * callback, except message data, which stays valid until runic_server_ws_consume or runic_server_ws_release.
  *
  * Writes: runic_server_write, runic_server_ws_send and runic_server_ws_close return RUNIC_SERVER_OK when the data is
- * queued, or RUNIC_SERVER_PENDING when the queue is full; on_completed then reports the token once it is queued or
- * failed. A response or connection has at most one pending write.
+ * written or queued, or RUNIC_SERVER_PENDING when the queue is full; on_completed then reports the token once it is
+ * queued or failed. A response or connection has at most one pending write. runic_server_ws_send and
+ * runic_server_ws_close write from the calling thread when no other write is in progress.
+ *
+ * Coalesced sends (ABI 2): runic_server_ws_queue only queues. RUNIC_SERVER_FLUSH hands the caller the connection's
+ * write; it calls runic_server_ws_flush soon (from any thread, typically after the current work item), which writes
+ * every message queued until then in one vectored write. Until then other sends are queued behind it.
  */
 #ifndef RUNIC_SERVER_H
 #define RUNIC_SERVER_H
@@ -22,10 +27,11 @@
 extern "C" {
 #endif
 
-#define RUNIC_SERVER_ABI_VERSION 1u
+#define RUNIC_SERVER_ABI_VERSION 2u
 
 #define RUNIC_SERVER_OK 0
 #define RUNIC_SERVER_PENDING 1
+#define RUNIC_SERVER_FLUSH 2
 #define RUNIC_SERVER_INVALID_ARGUMENT (-1)
 #define RUNIC_SERVER_UNKNOWN_ID (-2)
 #define RUNIC_SERVER_CLOSED (-3)
@@ -102,6 +108,9 @@ int32_t runic_server_ws_accept(const RunicServer *server, uint64_t id, RunicStr 
                                size_t header_count);
 int32_t runic_server_ws_send(const RunicServer *server, uint64_t connection, uint32_t kind, const uint8_t *data,
                              size_t length, uint64_t token);
+int32_t runic_server_ws_queue(const RunicServer *server, uint64_t connection, uint32_t kind, const uint8_t *data,
+                              size_t length, uint64_t token);
+void runic_server_ws_flush(const RunicServer *server, uint64_t connection);
 int32_t runic_server_ws_close(const RunicServer *server, uint64_t connection, uint16_t code, RunicStr reason,
                               uint64_t token);
 void runic_server_ws_consume(const RunicServer *server, uint64_t connection, uint64_t message);

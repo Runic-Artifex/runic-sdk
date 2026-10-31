@@ -2,15 +2,16 @@ using System.Runtime.InteropServices;
 
 namespace Runic.Desktop.Internal.NativeServer;
 
-// The C ABI of native/runic-server (src/ffi.rs, include/runic_server.h), ABI version 1. Every struct mirrors its
+// The C ABI of native/runic-server (src/ffi.rs, include/runic_server.h), ABI version 2. Every struct mirrors its
 // #[repr(C)] counterpart field by field.
 internal static unsafe partial class NativeServerInterop
 {
     internal const string Library = "runic_server";
-    internal const uint AbiVersion = 1;
+    internal const uint AbiVersion = 2;
 
     internal const int Ok = 0;
     internal const int Pending = 1;
+    internal const int Flush = 2;
     internal const int InvalidArgument = -1;
     internal const int UnknownId = -2;
     internal const int Closed = -3;
@@ -104,9 +105,12 @@ internal static unsafe partial class NativeServerInterop
     internal static partial int AcceptWebSocket(NativeServerHandle server, ulong id, RunicStr protocol,
         RunicHeader* headers, nuint headerCount);
 
-    [LibraryImport(Library, EntryPoint = "runic_server_ws_send")]
-    internal static partial int Send(NativeServerHandle server, ulong connection, uint kind, byte* data, nuint length,
+    [LibraryImport(Library, EntryPoint = "runic_server_ws_queue")]
+    internal static partial int Queue(NativeServerHandle server, ulong connection, uint kind, byte* data, nuint length,
         ulong token);
+
+    [LibraryImport(Library, EntryPoint = "runic_server_ws_flush")]
+    internal static partial void FlushQueue(NativeServerHandle server, ulong connection);
 
     [LibraryImport(Library, EntryPoint = "runic_server_ws_close")]
     internal static partial int Close(NativeServerHandle server, ulong connection, ushort code, RunicStr reason, ulong token);

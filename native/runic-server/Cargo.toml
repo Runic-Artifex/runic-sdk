@@ -15,9 +15,15 @@ name = "runic_server"
 crate-type = ["rlib", "cdylib", "staticlib"]
 
 [dependencies]
-axum = { version = "=0.8.9", default-features = false, features = ["http1", "tokio", "ws"] }
+axum = { version = "=0.8.9", default-features = false, features = ["http1", "tokio"] }
+# The WebSocket handshake's accept key (RFC 6455); the framing is the crate's own (src/websocket.rs).
+base64 = { version = "0.22.1", default-features = false }
 bytes = "1.12"
-futures-util = { version = "0.3.31", default-features = false, features = ["sink", "std"] }
+futures-util = { version = "0.3.31", default-features = false, features = ["std"] }
+# The upgraded connection's own TCP stream (hyper's upgrade under axum's hyper-util server).
+hyper = { version = "1.12", default-features = false }
+hyper-util = { version = "0.1.21", default-features = false, features = ["http1", "server", "tokio"] }
+sha1 = { version = "0.10.7", default-features = false }
 tokio = { version = "1.54", default-features = false, features = ["rt-multi-thread", "net", "sync", "fs", "io-util", "macros", "time"] }
 
 [dev-dependencies]

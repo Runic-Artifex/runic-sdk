@@ -23,10 +23,11 @@ use crate::server::{
 };
 
 /// Bumped on every incompatible change of this file's types or functions.
-pub const ABI_VERSION: u32 = 1;
+pub const ABI_VERSION: u32 = 2;
 
 pub const OK: i32 = 0;
 pub const PENDING: i32 = 1;
+pub const FLUSH: i32 = 2;
 pub const INVALID_ARGUMENT: i32 = -1;
 pub const UNKNOWN_ID: i32 = -2;
 pub const CLOSED: i32 = -3;
@@ -206,6 +207,7 @@ fn outcome(result: Result<WriteOutcome, ServerError>) -> i32 {
     match result {
         Ok(WriteOutcome::Accepted) => OK,
         Ok(WriteOutcome::Pending) => PENDING,
+        Ok(WriteOutcome::Flush) => FLUSH,
         Err(error) => code(&error),
     }
 }
@@ -415,8 +417,40 @@ pub unsafe extern "C" fn runic_server_ws_send(
         2 => MessageKind::Binary,
         _ => return fail(INVALID_ARGUMENT, "unknown message kind"),
     };
-    let data = Bytes::copy_from_slice(unsafe { RunicStr { ptr: data, len: length }.bytes() });
+    let data = unsafe { RunicStr { ptr: data, len: length }.bytes() };
     outcome(server.send(connection, kind, data, token))
+}
+
+/// Queues a message without writing it (`kind` 1 text, 2 binary). Returns OK when queued behind a write in progress,
+/// FLUSH when queued and the caller now holds the connection's write and must call `runic_server_ws_flush`, or PENDING
+/// when on_completed reports `token`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn runic_server_ws_queue(
+    server: *const Server,
+    connection: u64,
+    kind: u32,
+    data: *const u8,
+    length: usize,
+    token: u64,
+) -> i32 {
+    let Some(server) = (unsafe { self::server(server) }) else {
+        return fail(INVALID_ARGUMENT, "server is null");
+    };
+    let kind = match kind {
+        1 => MessageKind::Text,
+        2 => MessageKind::Binary,
+        _ => return fail(INVALID_ARGUMENT, "unknown message kind"),
+    };
+    let data = unsafe { RunicStr { ptr: data, len: length }.bytes() };
+    outcome(server.queue(connection, kind, data, token))
+}
+
+/// Writes the connection's queue from the calling thread after `runic_server_ws_queue` returned FLUSH.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn runic_server_ws_flush(server: *const Server, connection: u64) {
+    if let Some(server) = unsafe { self::server(server) } {
+        server.flush(connection);
+    }
 }
 
 /// Queues a close frame after the queued messages.
