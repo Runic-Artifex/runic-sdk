@@ -72,6 +72,25 @@ describe("useCommand", () => {
     expect(await succeeded).toBe(1);
   });
 
+  test("a reader of error runs again only when error changes, not when pending does", async () => {
+    let failed = 0;
+    let command!: ReturnType<typeof useCommand<[], Promise<number>>>;
+    const destroy = $effect.root(() => {
+      command = useCommand(() => Promise.resolve(1));
+      $effect(() => { void command.error; failed++; });
+    });
+    flushSync();
+    expect(failed).toBe(1);
+    const run = command.run();
+    flushSync();
+    expect(command.pending).toBe(true);
+    await run;
+    flushSync();
+    expect(command.pending).toBe(false);
+    expect(failed).toBe(1);
+    destroy();
+  });
+
   test("keeps a declared failure apart from error; the latest run wins", async () => {
     type Fail = { readonly $case: "titleRequired" } | { readonly $case: "titleTaken"; readonly existingTitle: string };
     const outcomes: ((value: BridgeOutcome<number, Fail> | Error) => void)[] = [];

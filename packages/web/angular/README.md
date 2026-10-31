@@ -18,7 +18,9 @@ match your Runic SDK packages. Angular 22 is supported.
 `injectView(source)` connects a generated page reference, or
 `{ connect: connect<Name> }` for a root ViewModel, for the lifetime of the
 injection context and returns `state`, `client`, `error` and `pending`
-signals and `retry()`:
+signals and `retry()`. Each is its own signal: `client` stays the same object
+for the connection, so an `effect` that reads only `client()` does not run
+again when the View's state changes.
 
 ```ts
 import { Component, input } from "@angular/core";

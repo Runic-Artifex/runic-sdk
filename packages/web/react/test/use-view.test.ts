@@ -158,6 +158,30 @@ describe("useView", () => {
     await act(async () => reference.resolveAll());
     expect(text()).toBe("7");
   });
+
+  test("an effect keyed on client runs once while its command publishes new states (#791)", async () => {
+    const reference = fakeReference();
+    let runs = 0;
+    function Refresher(): ReactNode {
+      const view = useView(reference, { keepAlive: 0 });
+      const client = view.client;
+      useEffect(() => {
+        if (!client) return;
+        runs++;
+        // A command whose answer publishes a new state. Bounded, so a regression fails instead of looping.
+        if (runs <= 10) void Promise.resolve().then(() => client.push(client.snapshot.count + 1));
+      }, [client]);
+      return createElement("output", null, view.state?.count ?? "connecting");
+    }
+    await act(async () => {
+      root = createRoot(document.body.appendChild(document.createElement("div")));
+      root.render(createElement(Refresher));
+    });
+    await act(async () => reference.resolveAll());
+    for (let round = 0; round < 5; round++) await act(async () => { await Promise.resolve(); });
+    expect(runs).toBe(1);
+    expect(text()).toBe("2");
+  });
 });
 
 describe("interactions", () => {

@@ -61,6 +61,9 @@ a client alive in a cache:
   Kept clients are handed over, not shared: two mounted components of the same
   reference have a client each.
 - An already connected client is observed and left to its owner.
+- `client` stays the same object for the connection, so
+  `useEffect(…, [view.client])` does not run again when the View's state
+  changes.
 - `state` renders through `useSyncExternalStore`, so concurrent rendering sees
   one consistent snapshot.
 - `pending` is true while a reference connects. `error` holds a failed

@@ -43,7 +43,11 @@ replaces `client.dispose()` for a client the helper connected. It connects a gen
 reference, or `{ connect: connect<Name> }` for a root ViewModel, while the
 component is mounted. An already connected client is observed and left to its
 owner. The result exposes reactive `state`, `client`, `error` and `pending`
-properties and `retry()`.
+properties and `retry()`. Only `state` follows each published state: `client`
+stays the same object for the connection, and `client`, `error` and `pending`
+notify their readers only when their own value changes, so an `$effect` that
+reads `client` to call a command does not run again when the command's answer
+changes the state.
 
 When the component is destroyed or the getter returns a reference with a
 different `connect` function, the client stays connected for

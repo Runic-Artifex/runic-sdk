@@ -133,4 +133,49 @@ describe("useView", () => {
     expect(view.state).toEqual({ count: 7 });
     destroy();
   });
+
+  test("an effect that reads only client runs once while its command publishes new states (#791)", async () => {
+    const reference = fakeReference();
+    let runs = 0;
+    let view!: ViewHandle<FakeClient>;
+    const destroy = $effect.root(() => {
+      view = useView(() => reference, { keepAlive: 0 });
+      $effect(() => {
+        const client = view.client;
+        if (!client) return;
+        runs++;
+        // A command whose answer publishes a new state, as `refreshHistory()` does. Bounded, so a regression fails
+        // instead of looping without end.
+        if (runs <= 10) void Promise.resolve().then(() => client.push(client.snapshot.count + 1));
+      });
+    });
+    flushSync();
+    await settle();
+    for (let round = 0; round < 5; round++) await settle();
+    expect(runs).toBe(1);
+    expect(view.state).toEqual({ count: 2 });
+    expect(view.pending).toBe(false);
+    expect(view.error).toBeUndefined();
+    destroy();
+  });
+
+  test("error and pending notify their readers only when they change", async () => {
+    const reference = fakeReference();
+    const seen = { error: 0, pending: 0 };
+    let view!: ViewHandle<FakeClient>;
+    const destroy = $effect.root(() => {
+      view = useView(() => reference, { keepAlive: 0 });
+      $effect(() => { void view.error; seen.error++; });
+      $effect(() => { void view.pending; seen.pending++; });
+    });
+    flushSync();
+    await settle();
+    const before = { ...seen };
+    reference.clients[0]!.push(5);
+    reference.clients[0]!.push(6);
+    flushSync();
+    expect(view.state).toEqual({ count: 6 });
+    expect(seen).toEqual(before);
+    destroy();
+  });
 });

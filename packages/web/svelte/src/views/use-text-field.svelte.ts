@@ -1,5 +1,6 @@
 import { untrack } from "svelte";
 import { createTextFieldController, type ViewClient } from "@runic-artifex/views";
+import { derivedFields } from "./derived-fields.svelte.js";
 
 /** A text input bound to one View member. */
 export interface TextFieldHandle {
@@ -82,11 +83,13 @@ export function useTextField<TClient extends ViewClient>(
       current = controller.current;
     });
   });
+  // One derived per member, so a reader of one member runs again only when that member changes.
+  const fields = derivedFields(() => current, ["value", "editing", "error"] as const);
   return {
-    get value() { return current.value; },
+    get value() { return fields.value(); },
     set value(text: string) { controller.input(text); },
-    get editing() { return current.editing; },
-    get error() { return current.error; },
+    get editing() { return fields.editing(); },
+    get error() { return fields.error(); },
     compositionStart: () => controller.compositionStart(),
     compositionEnd: (event: Event | string) => controller.compositionEnd(textOf(event)),
     reset: () => controller.reset(),

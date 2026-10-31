@@ -5,6 +5,7 @@ import {
   type OperationControllerOptions,
   type OperationState,
 } from "@runic-artifex/views";
+import { derivedFields } from "./derived-fields.svelte.js";
 
 export interface OperationHandle<TArgs extends readonly unknown[], TResult, TFailure = never>
   extends OperationState<TResult, TFailure>, Pick<OperationController<TArgs, TResult, TFailure>, "run" | "cancel" | "reset"> {}
@@ -28,22 +29,24 @@ export function useOperation<TArgs extends readonly unknown[], TResult, TFailure
   // leak the controller then. The effect reads no state, so it never re-runs.
   $effect.pre(() => () => { unsubscribe(); controller.dispose(); });
 
+  // One derived per member, so a reader of one member runs again only when that member changes.
+  const fields = derivedFields(() => current, ["pending", "admitting", "operation", "status", "progress", "outcome", "failure", "error", "cancelled", "cancellationRequested", "cancelling", "cancellation", "cancelError"] as const);
   return {
     run: controller.run,
     cancel: controller.cancel,
     reset: controller.reset,
-    get pending() { return current.pending; },
-    get admitting() { return current.admitting; },
-    get operation() { return current.operation; },
-    get status() { return current.status; },
-    get progress() { return current.progress; },
-    get outcome() { return current.outcome; },
-    get failure() { return current.failure; },
-    get error() { return current.error; },
-    get cancelled() { return current.cancelled; },
-    get cancellationRequested() { return current.cancellationRequested; },
-    get cancelling() { return current.cancelling; },
-    get cancellation() { return current.cancellation; },
-    get cancelError() { return current.cancelError; },
+    get pending() { return fields.pending(); },
+    get admitting() { return fields.admitting(); },
+    get operation() { return fields.operation(); },
+    get status() { return fields.status(); },
+    get progress() { return fields.progress(); },
+    get outcome() { return fields.outcome(); },
+    get failure() { return fields.failure(); },
+    get error() { return fields.error(); },
+    get cancelled() { return fields.cancelled(); },
+    get cancellationRequested() { return fields.cancellationRequested(); },
+    get cancelling() { return fields.cancelling(); },
+    get cancellation() { return fields.cancellation(); },
+    get cancelError() { return fields.cancelError(); },
   };
 }

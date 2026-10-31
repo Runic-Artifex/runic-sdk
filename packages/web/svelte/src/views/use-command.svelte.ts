@@ -1,4 +1,5 @@
 import { createCommandController, type BridgeOutcomeFailure } from "@runic-artifex/views";
+import { derivedFields } from "./derived-fields.svelte.js";
 
 export interface CommandHandle<TArgs extends readonly unknown[], TResult, TFailure = BridgeOutcomeFailure<TResult>> {
   /**
@@ -45,11 +46,13 @@ export function useCommand<TArgs extends readonly unknown[], TReturn>(
   } catch (error) {
     if (!String((error as { message?: unknown } | undefined)?.message).includes("effect_orphan")) throw error;
   }
+  // One derived per member, so a reader of one member runs again only when that member changes.
+  const fields = derivedFields(() => current, ["pending", "error", "failure"] as const);
   return {
     run: controller.run,
-    get pending() { return current.pending; },
-    get error() { return current.error; },
-    get failure() { return current.failure; },
+    get pending() { return fields.pending(); },
+    get error() { return fields.error(); },
+    get failure() { return fields.failure(); },
     reset: controller.reset,
   };
 }

@@ -5,7 +5,11 @@ import { isViewClient, viewSourceIdentity, viewSourcePreview } from "@runic-arti
 export interface ViewHandle<TClient extends ViewClient> {
   /** The latest state, or undefined until the client connects. */
   readonly state: TClient["snapshot"] | undefined;
-  /** The connected client for commands, or undefined until it connects. */
+  /**
+   * The connected client for commands, or undefined until it connects. It stays the same object for the connection,
+   * and only `state` follows each published state, so an `$effect` that reads `client`, `error` or `pending` does not
+   * run again when the View's state changes.
+   */
   readonly client: TClient | undefined;
   /** The connection failure, if any. */
   readonly error: unknown;
@@ -67,14 +71,16 @@ export function useView<TClient extends ViewClient>(source: () => ViewSource<TCl
     return fresh() ? undefined : viewSourcePreview(value);
   };
   const fresh = () => viewSourceIdentity(current.source) === identity;
+  // `current` is replaced with every published state, which only `state` follows. The other members are derived, so
+  // an `$effect` that reads only `client` (to call a command) does not run again when the answer publishes a state.
+  const client = $derived(preview()?.client ?? (fresh() ? current.client : undefined));
+  const error = $derived(fresh() ? current.error : undefined);
+  const pending = $derived(preview() ? false : fresh() ? current.pending : identity !== undefined);
   return {
     get state() { return preview()?.state ?? (fresh() ? current.state : undefined); },
-    get client() { return preview()?.client ?? (fresh() ? current.client : undefined); },
-    get error() { return fresh() ? current.error : undefined; },
-    get pending() {
-      if (preview()) return false;
-      return fresh() ? current.pending : identity !== undefined;
-    },
+    get client() { return client; },
+    get error() { return error; },
+    get pending() { return pending; },
     retry() { controller.retry(); },
   };
 }
