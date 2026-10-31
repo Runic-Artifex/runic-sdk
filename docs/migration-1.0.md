@@ -979,7 +979,15 @@ Details: 0.15.0 [Embedded frontends](../eng/release/notes/0.15.0.md#embedded-fro
 
 ### Startup
 
-<!-- S1: replace this line with the batch's migration entries; remove it if the batch has none. -->
+| 0.14 | 0.15 |
+| --- | --- |
+| `AssetArchive.ReadEmbedded` failed at load when an asset of the embedded archive did not match its SHA-256 digest | It checks the manifest and the ZIP directory at load and leaves the digests to the build, which checks every archive it packs and, with `RAS2006`, every `RunicAssetsEmbeddedArchive`. An asset whose length or ZIP entry is wrong fails when it is opened. Call `await source.ValidateAsync()` to check every digest at run time, for a resource that another build step embedded |
+| An archive file loaded with `AssetArchive.Read` or `ReadAsync` | Unchanged: every asset is checked before they return |
+| A `RunicAssetsEmbeddedArchive` that was not a valid archive built and failed at run time | The build fails with `RAS2006`; pack the archive again |
+| A publish with `-p:PublishReadyToRun=true` failed with `NETSDK1191`, or a workaround passed the property to the application project only (`CustomAfterMicrosoftCommonTargets`) | It publishes; remove the workaround. ReadyToRun is recommended for framework-dependent and self-contained publishes ([Packaging](packaging.md#startup-readytorun-and-invariant-globalization)) |
+| An application that wanted ICU off its startup path set `InvariantGlobalization` | The host no longer loads ICU itself. Keep `InvariantGlobalization` only for an interface without culture-specific text ([Packaging](packaging.md#startup-readytorun-and-invariant-globalization)) |
+
+Details: 0.15.0 [Startup](../eng/release/notes/0.15.0.md#startup-s1).
 
 ### Native message path
 
