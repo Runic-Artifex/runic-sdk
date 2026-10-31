@@ -75,7 +75,7 @@ internal sealed partial class NavigationTests
         await Until(() => overrunning.Disposed == 1, "The content was not disposed when its kept work ended after disposal.");
 
         // Work that ends within the close timeout is awaited without a warning.
-        await using var prompt = new Fixture(closeTimeout: TimeSpan.FromSeconds(10));
+        await using var prompt = new Fixture(closeTimeout: TestTimeouts.Scale(TimeSpan.FromSeconds(10)));
         var promptRegion = prompt.Navigator.CreateRegion<Page>(prompt.Root, NavigationTarget.Borrow(new Page("home")));
         var promptPresentation = new KeepingPresentation();
         using var promptAttachment = prompt.Navigator.AttachPresentation(promptPresentation);

@@ -640,7 +640,8 @@ static bool IsWebView2ServerExecFailure(Exception exception)
 static DesktopHostOptions CreateHostOptions() => new()
 {
     Linux = new() { EmbeddedBackend = LinuxEmbeddedBackend.Gtk3WebKit41 },
-    ConnectionTimeout = TimeSpan.FromSeconds(45),
+    // Only lets the window connect on a slow runner; the smoke expects it to connect.
+    ConnectionTimeout = TestTimeouts.Scale(TimeSpan.FromSeconds(45)),
     DiagnosticSink = diagnostic => Console.Error.WriteLine(
         $"Desktop diagnostic: {diagnostic.Category}/{diagnostic.Code}: {diagnostic.Message}"),
 };

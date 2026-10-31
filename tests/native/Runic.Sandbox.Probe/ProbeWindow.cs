@@ -24,7 +24,8 @@ internal static class ProbeWindow
     internal static int Run(Func<ProbeContext, Task> probe) =>
         DesktopEventLoop.Run(new DesktopHostOptions
         {
-            ConnectionTimeout = TimeSpan.FromSeconds(45),
+            // Only lets the window connect on a slow runner; the probe expects it to connect.
+            ConnectionTimeout = TestTimeouts.Scale(TimeSpan.FromSeconds(45)),
             DiagnosticSink = diagnostic => Console.Error.WriteLine($"Desktop diagnostic: {diagnostic.Category}/{diagnostic.Code}: {diagnostic.Message}"),
         }, async host =>
         {
