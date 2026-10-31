@@ -145,3 +145,5 @@ static Runic.Assets.AssetArchive.WriteDirectoryAsync(string! sourceDirectory, Sy
 static Runic.Assets.AssetArchive.WriteTrustedDirectoryAsync(string! sourceDirectory, System.IO.Stream! destination, Runic.Assets.AssetArchiveDirectoryOptions? options = null, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask
 Runic.Assets.AssetRoutingOptions.ContentSecurityPolicy.get -> string?
 Runic.Assets.AssetRoutingOptions.ContentSecurityPolicy.init -> void
+Runic.Assets.AssetSourceExtensions
+static Runic.Assets.AssetSourceExtensions.Subdirectory(this Runic.Assets.IAssetSource! source, string! path, string! entryPoint = "index.html") -> Runic.Assets.IAssetSource!

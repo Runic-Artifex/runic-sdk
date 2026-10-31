@@ -43,3 +43,5 @@ Runic.Application.Views.CsWebUi.RunicCsWebUiHost.MenuBar.get -> System.Collectio
 Runic.Application.Views.CsWebUi.RunicCsWebUiHost.SetMenuBar(System.Collections.Generic.IReadOnlyList<Runic.Platform.DesktopMenu!>! menus) -> void
 Runic.Application.Views.CsWebUi.RunicCsWebUiHostOptions.MenuBar.get -> System.Collections.Generic.IReadOnlyList<Runic.Platform.DesktopMenu!>!
 Runic.Application.Views.CsWebUi.RunicCsWebUiHostOptions.MenuBar.init -> void
+Runic.Application.Views.CsWebUi.RunicCsWebUiHostOptions.Assets.get -> Runic.Assets.IAssetSource?
+Runic.Application.Views.CsWebUi.RunicCsWebUiHostOptions.Assets.init -> void

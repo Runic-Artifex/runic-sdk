@@ -1,3 +1,1 @@
 #nullable enable
-Runic.Assets.AssetSourceExtensions
-static Runic.Assets.AssetSourceExtensions.Subdirectory(this Runic.Assets.IAssetSource! source, string! path, string! entryPoint = "index.html") -> Runic.Assets.IAssetSource!
