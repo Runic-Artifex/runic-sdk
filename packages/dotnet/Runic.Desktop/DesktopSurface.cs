@@ -109,6 +109,11 @@ public sealed class DesktopSurface : IAsyncDisposable
     public int ConnectionCount => _engine.ConnectedSessionCount;
 
     /// <summary>Opens this surface in one installed browser or embedded WebView.</summary>
+    /// <remarks>
+    /// On Windows, a WebView2 window that is not ready within about 1.5 seconds is shown before its page, with a loading
+    /// indicator, and the WebView takes its place once it exists. A user who closes the window then has closed it: this
+    /// method returns the window with <see cref="DesktopWindow.IsOpen"/> false, and no fallback opens.
+    /// </remarks>
     public async ValueTask<DesktopWindow> OpenWindowAsync(
         DesktopWindowOptions? options = null,
         CancellationToken cancellationToken = default)
@@ -155,6 +160,14 @@ public sealed class DesktopSurface : IAsyncDisposable
                         }
                     }
                     await OpenCheckedAsync(candidate, cancellationToken).ConfigureAwait(false);
+                    actualBrowser = candidate;
+                    fellBack = index > 0;
+                    break;
+                }
+                // The user closed the window while it was opening, such as a WebView2 window showing its loading
+                // surface: the window is returned closed, as if it had opened and been closed, and no fallback opens.
+                catch (Internal.WindowClosedWhileOpeningException)
+                {
                     actualBrowser = candidate;
                     fellBack = index > 0;
                     break;
@@ -578,6 +591,10 @@ public sealed class DesktopSurface : IAsyncDisposable
             throw;
         }
         catch (DesktopException)
+        {
+            throw;
+        }
+        catch (Internal.WindowClosedWhileOpeningException)
         {
             throw;
         }

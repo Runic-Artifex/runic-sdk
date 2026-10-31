@@ -12,9 +12,10 @@ internal sealed partial class WindowsAccessibility : AccessibilityClient
     private readonly AutomationPropertyChangedEventHandler _valueChanged;
     private readonly AutomationFocusChangedEventHandler _focusChanged;
 
-    // The fixture starts the probe before it opens its window, and the WebView2 host shows its window only once WebView2
-    // has started (WindowsWebView2Host.InitializeAsync); UI Automation lists shown top-level windows only. That usually
-    // takes a few seconds, but the first WebView2 start on a fresh runner image has taken over a minute.
+    // The fixture starts the probe before it opens its window. The WebView2 host shows its window once WebView2 has
+    // started, or after a grace period with its loading surface and no page yet (WindowsWebView2Host.Loading.cs);
+    // UI Automation lists shown top-level windows only. Starting usually takes a few seconds, but the first WebView2 start
+    // on a fresh runner image has taken over a minute, so the probe waits for the page's document, not only the window.
     private static readonly TimeSpan WindowTimeout = TimeSpan.FromSeconds(30);
     private static readonly TimeSpan FindTimeout = TimeSpan.FromSeconds(10);
 
@@ -22,12 +23,27 @@ internal sealed partial class WindowsAccessibility : AccessibilityClient
     {
         listening();
         var condition = new PropertyCondition(AutomationElement.ProcessIdProperty, pid);
+        var document = new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Document);
         AutomationElement? window = null;
-        if (!await TestTimeouts.UntilAsync(() => (window = AutomationElement.RootElement.FindFirst(TreeScope.Children, condition)) is not null,
-                WindowTimeout, TimeSpan.FromMilliseconds(100), cancellationToken))
+        string? loading = null;
+        var ready = await TestTimeouts.UntilAsync(() =>
+        {
+            try
+            {
+                window = AutomationElement.RootElement.FindFirst(TreeScope.Children, condition);
+                if (window is null) return false;
+                if (window.FindFirst(TreeScope.Descendants, document) is not null) return true;
+                // The window before its page: its loading surface, named by the window's title.
+                loading ??= $"{window.Current.Name} ({window.Current.ControlType.ProgrammaticName})";
+                return false;
+            }
+            catch (ElementNotAvailableException) { return false; }
+        }, WindowTimeout, TimeSpan.FromMilliseconds(200), cancellationToken);
+        if (loading is not null) Console.WriteLine($"The window showed before its page as '{loading}'.");
+        if (!ready)
         {
             throw new InvalidOperationException(string.Create(CultureInfo.InvariantCulture,
-                $"Process {pid} showed no top-level window within {TestTimeouts.Scale(WindowTimeout).TotalSeconds:0.###} s."));
+                $"Process {pid} showed {(window is null ? "no top-level window" : "no page in its window")} within {TestTimeouts.Scale(WindowTimeout).TotalSeconds:0.###} s."));
         }
         return new WindowsAccessibility(window!);
     }
