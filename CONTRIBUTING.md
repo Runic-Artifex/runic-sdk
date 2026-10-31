@@ -250,7 +250,8 @@ bun run version:bump 0.7.0-preview.1
 ```
 
 The command rewrites `RunicSdkVersion` in `eng/Versions.props`, every npm
-manifest and the CLI compatibility metadata. It leaves
+manifest, the native server's Cargo workspace version (`native/Cargo.toml` and
+its `native/Cargo.lock` entry) and the CLI compatibility metadata. It leaves
 `RunicPackageValidationBaselineVersion` at the last published release and the
 independently released `Runic.CommandLine` pin in `Directory.Packages.props`.
 Template locks are stamped from the packed archives. The engineering tests fail
