@@ -1,6 +1,6 @@
 [package]
 name = "runic-server"
-description = "Experimental native HTTP and WebSocket server for Runic Desktop surfaces (loopback, C ABI for .NET)."
+description = "Native HTTP and WebSocket server for Runic Desktop surfaces (loopback, C ABI for .NET)."
 version.workspace = true
 edition.workspace = true
 license.workspace = true

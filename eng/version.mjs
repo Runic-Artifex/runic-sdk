@@ -2,8 +2,9 @@
 // eng/workspace.json owns the SDK release-train version. eng/Versions.props,
 // every npm manifest, the manifests' bun.lock workspace entries and the project
 // references in every committed NuGet packages.lock.json carry copies that
-// `check` compares and `bump` rewrites, as does the version constant that
-// @runic-artifex/views compares with the .NET Views version it connects to.
+// `check` compares and `bump` rewrites, as do the version constant that
+// @runic-artifex/views compares with the .NET Views version it connects to and
+// the native server's Cargo workspace version and its Cargo.lock entry.
 // Directory.Packages.props and the template package read RunicSdkVersion, the
 // CLI compatibility metadata is regenerated, and template locks are stamped
 // from the packed archives. Runic.CommandLine is released independently.
@@ -36,6 +37,11 @@ const sdkVersion = /(<RunicSdkVersion>)([^<]*)(<\/RunicSdkVersion>)/;
 // The browser runtime reports a .NET Runic.Application.Views of another release (D02).
 const viewsVersionFile = "packages/web/views/src/version.ts";
 const viewsVersion = /^(export const viewsVersion = ")([^"]*)(";)$/m;
+// The native Desktop server (Runic.Desktop.NativeServer) builds the runic-server crate.
+const cargoCopies = {
+  "native/Cargo.toml": [/^(\[workspace\.package\]\nversion = ")([^"]*)(")$/m, "[workspace.package] version"],
+  "native/Cargo.lock": [/^(name = "runic-server"\nversion = ")([^"]*)(")$/m, "runic-server entry"],
+};
 const escapeRegExp = text => text.replace(/[.*+?^${}()|[\]\\/]/g, match => `\\${match}`);
 // The eng/Versions.props property that carries each separately versioned package's version.
 export const separateVersions = { "Runic.Application.Views.CsWebUi": "RunicCsWebUiPackageVersion" };
@@ -87,7 +93,7 @@ export function readVersionFiles(base = root) {
     "eng/workspace.json": workspace,
     "eng/Versions.props": read("eng/Versions.props"),
     "bun.lock": read("bun.lock"),
-    ...(existsSync(resolve(base, viewsVersionFile)) ? { [viewsVersionFile]: read(viewsVersionFile) } : {}),
+    ...Object.fromEntries([viewsVersionFile, ...Object.keys(cargoCopies)].filter(path => existsSync(resolve(base, path))).map(path => [path, read(path)])),
     ...Object.fromEntries(JSON.parse(workspace).npm.map(p => [`${p.path}/package.json`, read(`${p.path}/package.json`)])),
     ...Object.fromEntries(execFileSync("git", ["ls-files", "-z", "--", "*packages*.lock.json"], { cwd: base, encoding: "utf8" })
       .split("\0").filter(isNugetLock).map(path => [path, read(path)])),
@@ -111,6 +117,8 @@ export function versionCopies(files) {
     copies[`bun.lock ${entry.path}`] = train(single(files["bun.lock"], lockVersion(entry), `bun.lock workspace entry for ${entry.path}`));
   if (files[viewsVersionFile] !== undefined)
     copies[viewsVersionFile] = train(single(files[viewsVersionFile], viewsVersion, "viewsVersion"));
+  for (const [path, [pattern, label]] of Object.entries(cargoCopies))
+    if (files[path] !== undefined) copies[path] = train(single(files[path], pattern, `${path} ${label}`));
   for (const [path, text] of Object.entries(files)) {
     if (isNugetLock(path)) {
       for (const { key, name, range } of nugetProjectRanges(text))
@@ -175,6 +183,7 @@ export function bumpVersionFiles(files, version, packageVersions = {}) {
         .reduce((props, [name, property]) => replaceVersion(props, propertyVersion(property), packageVersion(after, name)), replaceVersion(text, sdkVersion, version));
     else if (path === "bun.lock") updated = npm.reduce((lock, entry) => replaceVersion(lock, lockVersion(entry), version), text);
     else if (path === viewsVersionFile) updated = replaceVersion(text, viewsVersion, version);
+    else if (Object.hasOwn(cargoCopies, path)) updated = replaceVersion(text, cargoCopies[path][0], version);
     else if (isNugetLock(path))
       updated = [...new Set([...nugetProjectRanges(text)].map(({ name }) => name))]
         .reduce((lock, name) => lock.replaceAll(`"${name}": "[${packageVersion(before, name)}, )"`, `"${name}": "[${packageVersion(after, name)}, )"`), text);
