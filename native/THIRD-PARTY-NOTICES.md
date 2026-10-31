@@ -15,14 +15,12 @@ crate's source package and repository.
 | cfg-if | 1.0.5 | MIT OR Apache-2.0 | https://github.com/rust-lang/cfg-if |
 | cpufeatures | 0.2.17 | MIT OR Apache-2.0 | https://github.com/RustCrypto/utils |
 | crypto-common | 0.1.7 | MIT OR Apache-2.0 | https://github.com/RustCrypto/traits |
-| data-encoding | 2.11.1 | MIT | https://github.com/ia0/data-encoding |
 | digest | 0.10.7 | MIT OR Apache-2.0 | https://github.com/RustCrypto/traits |
 | futures-core | 0.3.34 | MIT OR Apache-2.0 | https://github.com/rust-lang/futures-rs |
 | futures-sink | 0.3.34 | MIT OR Apache-2.0 | https://github.com/rust-lang/futures-rs |
 | futures-task | 0.3.34 | MIT OR Apache-2.0 | https://github.com/rust-lang/futures-rs |
 | futures-util | 0.3.34 | MIT OR Apache-2.0 | https://github.com/rust-lang/futures-rs |
 | generic-array | 0.14.7 | MIT | https://github.com/fizyk20/generic-array.git |
-| getrandom | 0.3.4 | MIT OR Apache-2.0 | https://github.com/rust-random/getrandom |
 | http | 1.5.0 | MIT OR Apache-2.0 | https://github.com/hyperium/http |
 | http-body | 1.1.0 | MIT | https://github.com/hyperium/http-body |
 | http-body-util | 0.1.5 | MIT | https://github.com/hyperium/http-body |
@@ -32,47 +30,32 @@ crate's source package and repository.
 | hyper-util | 0.1.21 | MIT | https://github.com/hyperium/hyper-util |
 | itoa | 1.0.18 | MIT OR Apache-2.0 | https://github.com/dtolnay/itoa |
 | libc | 0.2.191 | MIT OR Apache-2.0 | https://github.com/rust-lang/libc |
-| log | 0.4.34 | MIT OR Apache-2.0 | https://github.com/rust-lang/log |
 | matchit | 0.8.4 | MIT AND BSD-3-Clause | https://github.com/ibraheemdev/matchit |
 | memchr | 2.8.3 | Unlicense OR MIT | https://github.com/BurntSushi/memchr |
 | mime | 0.3.17 | MIT OR Apache-2.0 | https://github.com/hyperium/mime |
 | mio | 1.2.4 | MIT | https://github.com/tokio-rs/mio |
 | percent-encoding | 2.3.2 | MIT OR Apache-2.0 | https://github.com/servo/rust-url/ |
 | pin-project-lite | 0.2.17 | Apache-2.0 OR MIT | https://github.com/taiki-e/pin-project-lite |
-| ppv-lite86 | 0.2.21 | MIT OR Apache-2.0 | https://github.com/cryptocorrosion/cryptocorrosion |
 | proc-macro2 | 1.0.107 | MIT OR Apache-2.0 | https://github.com/dtolnay/proc-macro2 |
 | quote | 1.0.47 | MIT OR Apache-2.0 | https://github.com/dtolnay/quote |
-| r-efi | 5.3.0 | MIT OR Apache-2.0 OR LGPL-2.1-or-later | https://github.com/r-efi/r-efi |
-| rand | 0.9.5 | MIT OR Apache-2.0 | https://github.com/rust-random/rand |
-| rand_chacha | 0.9.0 | MIT OR Apache-2.0 | https://github.com/rust-random/rand |
-| rand_core | 0.9.5 | MIT OR Apache-2.0 | https://github.com/rust-random/rand |
 | serde_core | 1.0.229 | MIT OR Apache-2.0 | https://github.com/serde-rs/serde |
 | serde_derive | 1.0.229 | MIT OR Apache-2.0 | https://github.com/serde-rs/serde |
 | sha1 | 0.10.7 | MIT OR Apache-2.0 | https://github.com/RustCrypto/hashes |
 | slab | 0.4.12 | MIT | https://github.com/tokio-rs/slab |
 | smallvec | 1.16.4 | MIT OR Apache-2.0 | https://github.com/servo/rust-smallvec |
 | socket2 | 0.6.5 | MIT OR Apache-2.0 | https://github.com/rust-lang/socket2 |
-| syn | 2.0.119 | MIT OR Apache-2.0 | https://github.com/dtolnay/syn |
 | syn | 3.0.9 | MIT OR Apache-2.0 | https://github.com/dtolnay/syn |
 | sync_wrapper | 1.0.2 | Apache-2.0 | https://github.com/Actyx/sync_wrapper |
-| thiserror | 2.0.21 | MIT OR Apache-2.0 | https://github.com/dtolnay/thiserror |
-| thiserror-impl | 2.0.21 | MIT OR Apache-2.0 | https://github.com/dtolnay/thiserror |
 | tokio | 1.54.1 | MIT | https://github.com/tokio-rs/tokio |
 | tokio-macros | 2.7.2 | MIT | https://github.com/tokio-rs/tokio |
-| tokio-tungstenite | 0.29.0 | MIT | https://github.com/snapview/tokio-tungstenite |
 | tower | 0.5.3 | MIT | https://github.com/tower-rs/tower |
 | tower-layer | 0.3.3 | MIT | https://github.com/tower-rs/tower |
 | tower-service | 0.3.3 | MIT | https://github.com/tower-rs/tower |
-| tungstenite | 0.29.0 | MIT OR Apache-2.0 | https://github.com/snapview/tungstenite-rs |
 | typenum | 1.20.1 | MIT OR Apache-2.0 | https://github.com/paholg/typenum |
 | unicode-ident | 1.0.27 | (MIT OR Apache-2.0) AND Unicode-3.0 | https://github.com/dtolnay/unicode-ident |
 | version_check | 0.9.5 | MIT/Apache-2.0 | https://github.com/SergioBenitez/version_check |
 | wasi | 0.11.1+wasi-snapshot-preview1 | Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT | https://github.com/bytecodealliance/wasi |
-| wasip2 | 1.0.4+wasi-0.2.12 | Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT | https://github.com/bytecodealliance/wasi-rs |
 | windows-link | 0.2.1 | MIT OR Apache-2.0 | https://github.com/microsoft/windows-rs |
 | windows-sys | 0.61.2 | MIT OR Apache-2.0 | https://github.com/microsoft/windows-rs |
-| wit-bindgen | 0.57.1 | Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT | https://github.com/bytecodealliance/wit-bindgen |
-| zerocopy | 0.8.63 | BSD-2-Clause OR Apache-2.0 OR MIT | https://github.com/google/zerocopy |
-| zerocopy-derive | 0.8.63 | BSD-2-Clause OR Apache-2.0 OR MIT | https://github.com/google/zerocopy |
 
 The library also contains the Rust standard library (MIT OR Apache-2.0, https://github.com/rust-lang/rust).

@@ -9,7 +9,12 @@ namespace Runic.Desktop.Internal.NativeServer;
 // was read: ReceiveAsync copies straight from the library's buffer into the caller's, once, and then consumes the
 // message, which frees its place in the connection's receive window (backpressure towards the peer). Sends are copied
 // into the library's bounded queue; a full queue makes the send wait for the library's completion.
-internal sealed class NativeWebSocket : WebSocket, IValueTaskSource<bool>
+//
+// Writing is coalesced as Kestrel's output pipe does: a send only queues, and the send that finds no write in progress
+// schedules one flush, which writes everything queued by then in one vectored write. The flush is a work item on the
+// sending thread's own thread-pool queue, so it usually runs on that thread once the current work item returns (a
+// reply right after its handler, a burst of pushes after the last one) and wakes no other thread.
+internal sealed class NativeWebSocket : WebSocket, IValueTaskSource<bool>, IThreadPoolWorkItem, IWholeMessageSocket
 {
     private readonly NativePresentationServer _server;
     private readonly Channel<Incoming> _incoming = Channel.CreateUnbounded<Incoming>(
@@ -39,6 +44,8 @@ internal sealed class NativeWebSocket : WebSocket, IValueTaskSource<bool>
     public override string? CloseStatusDescription => _closeDescription;
     public override WebSocketState State => _state;
     public override string? SubProtocol { get; }
+
+    public int RemainingInMessage => _current is { } current ? current.Length - _offset : 0;
 
     // Library thread: queue only.
     internal unsafe void Deliver(ulong message, uint kind, byte* data, nuint length) =>
@@ -189,25 +196,43 @@ internal sealed class NativeWebSocket : WebSocket, IValueTaskSource<bool>
         _fragmentLength += data.Length;
     }
 
-    private async ValueTask SendWholeAsync(ReadOnlyMemory<byte> message, WebSocketMessageType type)
+    private ValueTask SendWholeAsync(ReadOnlyMemory<byte> message, WebSocketMessageType type)
     {
         _send.Reset();
-        await CompleteAsync(SendNative(message.Span, type)).ConfigureAwait(false);
+        var result = QueueNative(message.Span, type);
+        if (result == Flush)
+        {
+            ThreadPool.UnsafeQueueUserWorkItem(this, preferLocal: true);
+            result = Ok;
+        }
+        return CompleteAsync(result);
     }
 
-    private unsafe int SendNative(ReadOnlySpan<byte> message, WebSocketMessageType type)
+    private unsafe int QueueNative(ReadOnlySpan<byte> message, WebSocketMessageType type)
     {
         try
         {
             fixed (byte* data = message)
             {
-                return Send(_server.Handle, Id, type == WebSocketMessageType.Text ? MessageText : MessageBinary, data,
+                return Queue(_server.Handle, Id, type == WebSocketMessageType.Text ? MessageText : MessageBinary, data,
                     (nuint)message.Length, NativePresentationServer.SocketToken(Id));
             }
         }
         catch (ObjectDisposedException)
         {
             return Closed;
+        }
+    }
+
+    // The flush a send scheduled: writes the library's queue from this thread.
+    void IThreadPoolWorkItem.Execute()
+    {
+        try
+        {
+            FlushQueue(_server.Handle, Id);
+        }
+        catch (ObjectDisposedException)
+        {
         }
     }
 
@@ -227,7 +252,10 @@ internal sealed class NativeWebSocket : WebSocket, IValueTaskSource<bool>
         }
     }
 
-    private async ValueTask CompleteAsync(int result)
+    private ValueTask CompleteAsync(int result) =>
+        result == Ok ? ValueTask.CompletedTask : CompleteSlowAsync(result);
+
+    private async ValueTask CompleteSlowAsync(int result)
     {
         if (result == Pending)
         {

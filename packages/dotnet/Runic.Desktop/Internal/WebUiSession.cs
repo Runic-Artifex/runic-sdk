@@ -442,7 +442,8 @@ internal sealed class WebUiSession : IAsyncDisposable
     }
 
     // Each message is its own array, which the dispatched call keeps: its arguments are slices of it. A message that
-    // fits the receive buffer is copied once, at its size; a longer one is received straight into its growing array.
+    // fits the receive buffer is copied once, at its size; a longer one is received straight into its growing array, or,
+    // from a socket that already holds the whole message (the native server's), into one array of its size.
     private async Task<ReadOnlyMemory<byte>?> ReceiveMessageAsync(byte[] buffer, CancellationToken cancellationToken)
     {
         var result = await _socket.ReceiveAsync(buffer.AsMemory(), cancellationToken).ConfigureAwait(false);
@@ -454,6 +455,26 @@ internal sealed class WebUiSession : IAsyncDisposable
         if (result.EndOfMessage)
         {
             return buffer.AsSpan(0, result.Count).ToArray();
+        }
+
+        if (_socket is IWholeMessageSocket { RemainingInMessage: > 0 } whole
+            && (long)result.Count + whole.RemainingInMessage <= MaximumMessageSize)
+        {
+            var exact = new byte[result.Count + whole.RemainingInMessage];
+            buffer.AsSpan(0, result.Count).CopyTo(exact);
+            var received = result.Count;
+            while (!result.EndOfMessage && received < exact.Length)
+            {
+                result = await _socket.ReceiveAsync(exact.AsMemory(received), cancellationToken).ConfigureAwait(false);
+                if (!await AcceptFrameAsync(result.MessageType, received, result.Count, cancellationToken).ConfigureAwait(false))
+                {
+                    return null;
+                }
+
+                received += result.Count;
+            }
+
+            return exact.AsMemory(0, received);
         }
 
         var message = new ArrayBufferWriter<byte>(2 * ReceiveBufferSize);
@@ -975,4 +996,12 @@ internal sealed class WebUiSession : IAsyncDisposable
     }
 
     private sealed record ScriptResult(bool IsError, byte[] Data);
+}
+
+// A WebSocket that holds each received message whole before it is read (NativeWebSocket): the receive loop sizes the
+// message's array once instead of growing it.
+internal interface IWholeMessageSocket
+{
+    // Bytes of the message being read that the next receives return; 0 between messages.
+    int RemainingInMessage { get; }
 }

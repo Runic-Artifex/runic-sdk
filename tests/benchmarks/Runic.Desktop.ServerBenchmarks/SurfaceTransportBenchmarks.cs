@@ -29,11 +29,18 @@ public class SurfaceTransportBenchmarks
     private byte[] _push = null!;
     private byte[] _receive = null!;
 
-    [Params("Kestrel", "Native")]
+    // RUNIC_BENCHMARK_SERVERS and RUNIC_BENCHMARK_SIZES (comma-separated) select cases. In-process, every case runs in
+    // one process after the ones before it; one server or size alone separates a row from the cases before it.
+    [ParamsSource(nameof(Servers))]
     public string Server { get; set; } = "Kestrel";
 
+    public static IEnumerable<string> Servers => Selected("RUNIC_BENCHMARK_SERVERS", "Kestrel,Native");
+
+    public static IEnumerable<int> Sizes =>
+        Selected("RUNIC_BENCHMARK_SIZES", "256,16384,262144").Select(size => int.Parse(size, System.Globalization.CultureInfo.InvariantCulture));
+
     // The size of each request, reply and push, in bytes of UTF-8 JSON.
-    [Params(256, 16_384, 262_144)]
+    [ParamsSource(nameof(Sizes))]
     public int MessageBytes { get; set; }
 
     [GlobalSetup]
@@ -135,6 +142,10 @@ public class SurfaceTransportBenchmarks
             if (length >= HeaderSize && _receive[7] == command) return;
         }
     }
+
+    private static string[] Selected(string variable, string all) =>
+        (Environment.GetEnvironmentVariable(variable) is { Length: > 0 } value ? value : all)
+            .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
 
     // One JSON object of exactly `size` bytes.
     private static byte[] Json(int size, string kind)

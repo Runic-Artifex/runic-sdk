@@ -9,8 +9,7 @@ use std::time::Duration;
 use axum::Router;
 use axum::body::Body as AxumBody;
 use axum::extract::connect_info::Connected;
-use axum::extract::ws::WebSocketUpgrade;
-use axum::extract::{ConnectInfo, FromRequestParts, Request, State};
+use axum::extract::{ConnectInfo, Request, State};
 use axum::http::{HeaderMap, HeaderName, HeaderValue, Method, StatusCode, header};
 use axum::response::Response;
 use axum::serve::IncomingStream;
@@ -106,6 +105,9 @@ pub enum WriteOutcome {
     Accepted,
     /// The queue is full: [`Handler::completed`] reports the token once the data is queued or failed.
     Pending,
+    /// Only from [`Server::queue`]: the data is queued and the caller holds the connection's write. It calls
+    /// [`Server::flush`] soon, from any thread; sends until then are queued behind it and written together.
+    Flush,
 }
 
 #[derive(Debug)]
@@ -301,15 +303,34 @@ impl Server {
         Ok(())
     }
 
-    /// Sends a message on connection `connection`.
+    /// Sends a message on connection `connection`. When no other write is in progress the message is written from
+    /// `data` on the calling thread; otherwise it is copied into the connection's queue.
     pub fn send(
         &self,
         connection: u64,
         kind: MessageKind,
-        data: Bytes,
+        data: impl AsRef<[u8]>,
         token: u64,
     ) -> Result<WriteOutcome, ServerError> {
-        websocket::send(&self.inner, connection, websocket::Outgoing::Data(kind, data), token)
+        websocket::send(&self.inner, connection, websocket::Outgoing::Data(kind, data.as_ref()), token, false)
+    }
+
+    /// Queues a message on connection `connection` without writing it. [`WriteOutcome::Flush`] gives the caller the
+    /// connection's write: it calls [`Server::flush`], and every message queued until then goes out in one write.
+    pub fn queue(
+        &self,
+        connection: u64,
+        kind: MessageKind,
+        data: impl AsRef<[u8]>,
+        token: u64,
+    ) -> Result<WriteOutcome, ServerError> {
+        websocket::send(&self.inner, connection, websocket::Outgoing::Data(kind, data.as_ref()), token, true)
+    }
+
+    /// Writes connection `connection`'s queue after [`Server::queue`] answered [`WriteOutcome::Flush`]. What the socket
+    /// cannot take at once is written by the server's runtime.
+    pub fn flush(&self, connection: u64) {
+        websocket::flush(&self.inner, connection);
     }
 
     /// Sends a close frame after the queued messages. Later sends fail.
@@ -323,7 +344,7 @@ impl Server {
         if reason.len() > 123 {
             return Err(ServerError::InvalidArgument("a close reason has at most 123 bytes"));
         }
-        websocket::send(&self.inner, connection, websocket::Outgoing::Close(code, reason), token)
+        websocket::send(&self.inner, connection, websocket::Outgoing::Close(code, &reason), token, false)
     }
 
     /// Releases a delivered message, which frees its place in the receive window.
@@ -482,7 +503,7 @@ async fn handle(State(inner): State<Arc<Inner>>, ConnectInfo(peer): ConnectInfo<
         return status_only(StatusCode::MISDIRECTED_REQUEST);
     }
     let upgrade = if parts.method == Method::GET && is_upgrade(&parts.headers) {
-        WebSocketUpgrade::from_request_parts(&mut parts, &()).await.ok()
+        websocket::Upgrade::from_parts(&mut parts)
     } else {
         None
     };

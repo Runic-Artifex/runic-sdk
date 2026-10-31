@@ -326,3 +326,203 @@ async fn stopping_fails_waiting_requests_and_starts_no_callbacks() {
         assert!(matches!(event, Event::Aborted(_)), "{event:?}");
     }
 }
+
+// A WebSocket client written against RFC 6455 directly, for frames tokio-tungstenite does not send.
+async fn raw_websocket(server: &Server, events: &mut mpsc::UnboundedReceiver<Event>, port: u16) -> (TcpStream, u64) {
+    let mut stream = TcpStream::connect(("127.0.0.1", port)).await.unwrap();
+    let request = format!(
+        "GET /socket HTTP/1.1\r\nHost: 127.0.0.1:{port}\r\nConnection: Upgrade\r\nUpgrade: websocket\r\n\
+         Sec-WebSocket-Version: 13\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\nX-Runic-Test: 1\r\n\r\n"
+    );
+    stream.write_all(request.as_bytes()).await.unwrap();
+    let Event::Request { id, websocket, .. } = next(events).await else { panic!("a request") };
+    assert!(websocket);
+    server.accept_websocket(id, None, HeaderMap::new()).unwrap();
+    let mut head = Vec::new();
+    while !head.ends_with(b"\r\n\r\n") {
+        head.push(stream.read_u8().await.unwrap());
+    }
+    let head = String::from_utf8(head).unwrap().to_ascii_lowercase();
+    assert!(head.starts_with("http/1.1 101"), "{head}");
+    // RFC 6455 section 1.3's example key and its accept value.
+    assert!(head.contains("sec-websocket-accept: s3pplmbitxaq9kygzzhzrbk+xoo="), "{head}");
+    (stream, id)
+}
+
+fn client_frame(fin: bool, opcode: u8, payload: &[u8]) -> Vec<u8> {
+    let mask = [0x37, 0xfa, 0x21, 0x3d];
+    let mut frame = vec![if fin { 0x80 } else { 0 } | opcode];
+    match payload.len() {
+        length @ 0..=125 => frame.push(0x80 | length as u8),
+        length @ 126..=0xffff => {
+            frame.push(0x80 | 126);
+            frame.extend_from_slice(&(length as u16).to_be_bytes());
+        }
+        length => {
+            frame.push(0x80 | 127);
+            frame.extend_from_slice(&(length as u64).to_be_bytes());
+        }
+    }
+    frame.extend_from_slice(&mask);
+    frame.extend(payload.iter().enumerate().map(|(index, byte)| byte ^ mask[index % 4]));
+    frame
+}
+
+// The next server frame: its opcode and payload. Server frames are unmasked and, from this server, never fragmented.
+async fn server_frame(stream: &mut TcpStream) -> (u8, Vec<u8>) {
+    let read = async {
+        let first = stream.read_u8().await.unwrap();
+        assert_eq!(first & 0x80, 0x80, "a final frame");
+        let length = match stream.read_u8().await.unwrap() {
+            126 => u64::from(stream.read_u16().await.unwrap()),
+            127 => stream.read_u64().await.unwrap(),
+            length => {
+                assert_eq!(length & 0x80, 0, "an unmasked frame");
+                u64::from(length)
+            }
+        };
+        let mut payload = vec![0; usize::try_from(length).unwrap()];
+        stream.read_exact(&mut payload).await.unwrap();
+        (first & 0x0f, payload)
+    };
+    tokio::time::timeout(Duration::from_secs(5), read).await.expect("a frame in time")
+}
+
+fn close_code(payload: &[u8]) -> u16 {
+    u16::from_be_bytes([payload[0], payload[1]])
+}
+
+#[tokio::test]
+async fn fragments_are_joined_pings_answered_and_an_unmasked_frame_closes_with_1002() {
+    let (server, mut events) = start(ServerConfig::default());
+    let (mut stream, id) = raw_websocket(&server, &mut events, server.port()).await;
+    let mut frames = client_frame(false, 0x2, b"ab");
+    frames.extend(client_frame(true, 0x9, b"ping"));
+    frames.extend(client_frame(false, 0x0, b"cd"));
+    frames.extend(client_frame(true, 0x0, b"ef"));
+    stream.write_all(&frames).await.unwrap();
+    assert_eq!(server_frame(&mut stream).await, (0xA, b"ping".to_vec()));
+    let Event::Message { connection, kind, data, .. } = next(&mut events).await else { panic!("a message") };
+    assert_eq!((connection, kind, data.as_slice()), (id, MessageKind::Binary, b"abcdef".as_slice()));
+
+    stream.write_all(&[0x82, 0x01, b'x']).await.unwrap();
+    let (opcode, payload) = server_frame(&mut stream).await;
+    assert_eq!((opcode, close_code(&payload)), (0x8, 1002));
+    let Event::Closed { connection, code, .. } = next(&mut events).await else { panic!("closed") };
+    assert_eq!((connection, code), (id, None));
+}
+
+#[tokio::test]
+async fn an_oversized_message_closes_with_1009_and_invalid_text_with_1007() {
+    let (server, mut events) = start(ServerConfig { max_message_bytes: 8, ..ServerConfig::default() });
+    let port = server.port();
+    let (mut stream, id) = raw_websocket(&server, &mut events, port).await;
+    // Within the limit per frame, over it as a message.
+    let mut frames = client_frame(false, 0x2, b"12345");
+    frames.extend(client_frame(true, 0x0, b"6789"));
+    stream.write_all(&frames).await.unwrap();
+    let (opcode, payload) = server_frame(&mut stream).await;
+    assert_eq!((opcode, close_code(&payload)), (0x8, 1009));
+    let Event::Closed { connection, code, .. } = next(&mut events).await else { panic!("closed") };
+    assert_eq!((connection, code), (id, None));
+
+    let (mut stream, id) = raw_websocket(&server, &mut events, port).await;
+    stream.write_all(&client_frame(true, 0x1, &[0xff, 0xfe])).await.unwrap();
+    let (opcode, payload) = server_frame(&mut stream).await;
+    assert_eq!((opcode, close_code(&payload)), (0x8, 1007));
+    let Event::Closed { connection, code, .. } = next(&mut events).await else { panic!("closed") };
+    assert_eq!((connection, code), (id, None));
+}
+
+#[tokio::test]
+async fn queued_messages_wait_for_the_flush_and_go_out_in_order() {
+    let (server, mut events) = start(ServerConfig::default());
+    let (mut stream, id) = raw_websocket(&server, &mut events, server.port()).await;
+    // The client reads the handshake response before the server's connection task has taken over the stream; until
+    // then that task holds the write, and a queued message is answered Accepted and written by it.
+    while server.queue(id, MessageKind::Binary, b"one", 0).unwrap() != WriteOutcome::Flush {
+        assert_eq!(server_frame(&mut stream).await, (0x2, b"one".to_vec()));
+    }
+    assert_eq!(server.queue(id, MessageKind::Text, b"two", 0).unwrap(), WriteOutcome::Accepted);
+    // A send while the flush is outstanding queues behind it instead of writing first.
+    assert_eq!(server.send(id, MessageKind::Binary, b"three", 0).unwrap(), WriteOutcome::Accepted);
+    let mut byte = [0u8; 1];
+    assert!(tokio::time::timeout(Duration::from_millis(200), stream.peek(&mut byte)).await.is_err(), "nothing yet");
+    server.flush(id);
+    assert_eq!(server_frame(&mut stream).await, (0x2, b"one".to_vec()));
+    assert_eq!(server_frame(&mut stream).await, (0x1, b"two".to_vec()));
+    assert_eq!(server_frame(&mut stream).await, (0x2, b"three".to_vec()));
+    // With the write given back, the next send is written at once.
+    assert_eq!(server.send(id, MessageKind::Binary, b"four", 0).unwrap(), WriteOutcome::Accepted);
+    assert_eq!(server_frame(&mut stream).await, (0x2, b"four".to_vec()));
+    // A release while a flush is outstanding leaves the queued close to the server.
+    assert_eq!(server.queue(id, MessageKind::Binary, b"five", 0).unwrap(), WriteOutcome::Flush);
+    server.close_websocket(id, 1000, String::new(), 0).unwrap();
+    server.release_websocket(id);
+    assert_eq!(server_frame(&mut stream).await, (0x2, b"five".to_vec()));
+    let (opcode, payload) = server_frame(&mut stream).await;
+    assert_eq!((opcode, close_code(&payload)), (0x8, 1000));
+}
+
+#[tokio::test]
+async fn a_websocket_peer_that_reads_nothing_makes_sends_pending() {
+    let (server, mut events) = start(ServerConfig::default());
+    let (mut stream, id) = raw_websocket(&server, &mut events, server.port()).await;
+    let message = vec![b'x'; 1 << 20];
+    let mut sent = 0u64;
+    let mut pending = None;
+    for token in 1..=64u64 {
+        let outcome = server.send(id, MessageKind::Binary, &message, token).unwrap();
+        sent += 1;
+        if outcome == WriteOutcome::Pending {
+            pending = Some(token);
+            break;
+        }
+    }
+    let token = pending.expect("the queue fills while the peer reads nothing");
+    let reader = tokio::spawn(async move {
+        let mut received = 0u64;
+        loop {
+            match server_frame(&mut stream).await {
+                (0x2, payload) => {
+                    assert_eq!(payload.len(), 1 << 20);
+                    received += 1;
+                }
+                (0x8, _) => return received,
+                (opcode, _) => panic!("opcode {opcode}"),
+            }
+        }
+    });
+    let Event::Completed { token: completed, accepted } = next(&mut events).await else { panic!("a completion") };
+    assert_eq!((completed, accepted), (token, true));
+    server.close_websocket(id, 1000, String::new(), 0).unwrap();
+    assert_eq!(reader.await.unwrap(), sent);
+}
+
+#[tokio::test]
+async fn large_messages_arriving_in_pieces_are_unmasked_and_their_buffers_reused() {
+    let (server, mut events) = start(ServerConfig::default());
+    let (mut stream, id) = raw_websocket(&server, &mut events, server.port()).await;
+    for round in 0..3u8 {
+        let length = 100_003 - usize::from(round) * 7;
+        let original: Vec<u8> = (0..length).map(|index| (index % 251) as u8 ^ round).collect();
+        let frame = client_frame(true, 0x2, &original);
+        // Pieces at odd offsets, so the payload arrives in reads that do not start on the mask's period.
+        for piece in frame.chunks(33_331) {
+            stream.write_all(piece).await.unwrap();
+            stream.flush().await.unwrap();
+            tokio::time::sleep(Duration::from_millis(5)).await;
+        }
+        let Event::Message { connection, message, data, .. } = next(&mut events).await else { panic!("a message") };
+        assert_eq!(connection, id);
+        assert!(data == original, "round {round}: the payload differs");
+        server.consume(id, message);
+    }
+    // Large sends reuse their buffers too.
+    for round in 0..3u8 {
+        let payload = vec![round; 70_000];
+        server.queue(id, MessageKind::Binary, &payload, 0).unwrap();
+        server.flush(id);
+        assert_eq!(server_frame(&mut stream).await, (0x2, payload));
+    }
+}
