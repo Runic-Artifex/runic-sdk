@@ -1,4 +1,4 @@
-import { effectScope, nextTick, shallowRef } from "vue";
+import { effectScope, nextTick, shallowRef, watchEffect } from "vue";
 import { describe, expect, test } from "vitest";
 import type { ViewSource } from "@runic-artifex/views";
 import { useView } from "../dist/index.js";
@@ -113,6 +113,28 @@ describe("useView", () => {
     await settle();
     expect(view.error.value).toBeUndefined();
     expect(view.state.value).toEqual({ count: 7 });
+    scope.stop();
+  });
+
+  test("a watcher that reads only client runs once while its command publishes new states (#791)", async () => {
+    const reference = fakeReference();
+    let runs = 0;
+    const scope = effectScope();
+    const view = scope.run(() => {
+      const handle = useView(reference, { keepAlive: 0 });
+      watchEffect(() => {
+        const client = handle.client.value;
+        if (!client) return;
+        runs++;
+        // A command whose answer publishes a new state. Bounded, so a regression fails instead of looping.
+        if (runs <= 10) void Promise.resolve().then(() => client.push(client.snapshot.count + 1));
+      });
+      return handle;
+    })!;
+    await settle();
+    for (let round = 0; round < 5; round++) await settle();
+    expect(runs).toBe(1);
+    expect(view.state.value).toEqual({ count: 2 });
     scope.stop();
   });
 });

@@ -1,5 +1,5 @@
 import "@angular/compiler";
-import { signal } from "@angular/core";
+import { effect, signal } from "@angular/core";
 import { TestBed } from "@angular/core/testing";
 import { BrowserTestingModule, platformBrowserTesting } from "@angular/platform-browser/testing";
 import { afterEach, beforeAll, describe, expect, test } from "vitest";
@@ -120,6 +120,27 @@ describe("injectView", () => {
     expect(view.error()).toBeUndefined();
     await settle();
     expect(view.state()).toEqual({ count: 7 });
+  });
+
+  test("an effect that reads only client runs once while its command publishes new states (#791)", async () => {
+    const reference = fakeReference();
+    let runs = 0;
+    const view = TestBed.runInInjectionContext(() => {
+      const handle = injectView(reference, { keepAlive: 0 });
+      effect(() => {
+        const client = handle.client();
+        if (!client) return;
+        runs++;
+        // A command whose answer publishes a new state. Bounded, so a regression fails instead of looping.
+        if (runs <= 10) void Promise.resolve().then(() => client.push(client.snapshot.count + 1));
+      });
+      return handle;
+    });
+    TestBed.tick();
+    await settle();
+    for (let round = 0; round < 5; round++) await settle();
+    expect(runs).toBe(1);
+    expect(view.state()).toEqual({ count: 2 });
   });
 
   test("requires an injection context or an injector", () => {

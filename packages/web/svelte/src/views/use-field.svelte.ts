@@ -9,6 +9,7 @@ import {
   type ViewClient,
   type FieldState,
 } from "@runic-artifex/views";
+import { derivedFields } from "./derived-fields.svelte.js";
 import type { TextFieldView } from "./use-text-field.svelte.js";
 
 /** The elements {@link FieldHandle.attach} wires. */
@@ -127,15 +128,17 @@ export function useField<TClient extends ViewClient, TValue>(
     };
   };
 
+  // One derived per member, so a reader of one member runs again only when that member changes.
+  const fields = derivedFields(() => current, ["value", "text", "editing", "error", "errors", "conflict"] as const);
   return {
-    get value() { return current.value; },
+    get value() { return fields.value(); },
     set value(value: TValue) { controller.input(value); },
-    get text() { return current.text; },
+    get text() { return fields.text(); },
     set text(text: string) { controller.inputText(text); },
-    get editing() { return current.editing; },
-    get error() { return current.error; },
-    get errors() { return current.errors; },
-    get conflict() { return current.conflict; },
+    get editing() { return fields.editing(); },
+    get error() { return fields.error(); },
+    get errors() { return fields.errors(); },
+    get conflict() { return fields.conflict(); },
     input: (value: TValue) => controller.input(value),
     commit: () => controller.commit(),
     retry: () => controller.retry(),

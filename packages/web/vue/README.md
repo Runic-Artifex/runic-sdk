@@ -50,6 +50,9 @@ connected:
   "Connecting…" and do not open the route again. `keepAlive: 0` disposes at
   once.
 - An already connected client is observed and left to its owner.
+- Each member is its own ref: `client` stays the same object for the
+  connection, so a `watch` or `watchEffect` that reads only `client` does not
+  run again when the View's state changes.
 - The source can be a value, a ref or a getter such as `() => props.page`.
 - `pending` is true while a reference connects. `error` holds a failed
   connection; `retry()` connects again.
