@@ -1,8 +1,8 @@
 using System.Collections.Concurrent;
-using System.Diagnostics;
 using System.Globalization;
 using System.Windows.Interop;
 using System.Windows.Threading;
+using Microsoft.Extensions.Time.Testing;
 using TUnit.Core;
 using TUnit.Core.Executors;
 using static Runic.Navigation.Wpf.Tests.Ui;
@@ -301,7 +301,8 @@ internal sealed class ContextTests
                 var dispatcher = Dispatcher.CurrentDispatcher;
                 uiThread = Thread.CurrentThread;
                 context = new DispatcherModelContext(dispatcher);
-                navigator = new RunicNavigator(new RunicNavigatorOptions { ModelContext = context });
+                // The close timeout runs on a clock that never advances: a disposal that waited for it would not finish.
+                navigator = new RunicNavigator(new RunicNavigatorOptions { ModelContext = context, TimeProvider = new FakeTimeProvider() });
                 region = navigator.CreateRegion<object>(new object());
                 owned = new OwnedProbe();
                 Pump(region.PushAsync(NavigationTarget.Own<object>(owned)));
@@ -338,10 +339,8 @@ internal sealed class ContextTests
             var gatedResult = Pump(gatedPush!, stage);
             Require(gatedResult is NavigationResult<object>.Rejected, $"The gated push gave {gatedResult} after shutdown.");
             stage = "navigator disposal after shutdown";
-            var watch = Stopwatch.StartNew();
             disposal = navigator!.DisposeAsync().AsTask();
             Pump(disposal, stage);
-            Require(watch.Elapsed < TimeSpan.FromSeconds(1), $"Navigator disposal after shutdown took {watch.Elapsed}.");
         }
         catch (Exception failure) when (failure is TimeoutException or InvalidOperationException)
         {
