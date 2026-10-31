@@ -28,6 +28,7 @@ import {
   type BridgeOutcomeFailure,
   type FieldBaseline,
   type FieldDefinition,
+  type FieldState,
   type FieldOptions,
   type LatestOperationController,
   type LatestOperationState,
@@ -414,10 +415,11 @@ export interface FieldHandle<TValue> {
   input(value: TValue): void;
   /**
    * The user is done with the field (`@blur="title.commit"`): with `commit: "pause"` the draft is written now.
-   * Resolves once the field's writes settled, so a command that depends on the field can run after it:
-   * `await title.commit(); await editor.save()`. Never rejects; a failure is `error`.
+   * Resolves with the field's state once its writes settled, so a command that depends on the field can run after it
+   * and skip a failed write: `if ((await title.commit()).error === undefined) await editor.save()`. Never rejects; a
+   * failure is `error`.
    */
-  commit(): Promise<void>;
+  commit(): Promise<FieldState<TValue>>;
   /** Writes the draft again after a failed write; after a `conflict`, over the producer's value. */
   retry(): void;
   /** Drops the draft, the error and a conflict and shows the View's value. Writes in flight still complete. */
@@ -477,7 +479,7 @@ export function useField<TClient extends ViewClient, TValue>(
     errors: computed(() => current.value.errors),
     conflict: computed(() => current.value.conflict),
     input: (value: TValue) => controller.input(value),
-    commit: async () => { await controller.commit(); },
+    commit: () => controller.commit(),
     retry: () => controller.retry(),
     reset: () => controller.reset(),
   }) as FieldHandle<TValue>;

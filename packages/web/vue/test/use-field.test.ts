@@ -3,7 +3,7 @@
 import { createApp, defineComponent, effectScope, h, nextTick, vModelCheckbox, vModelText, withDirectives } from "vue";
 import { describe, expect, expectTypeOf, test } from "vitest";
 import type { FieldWriteOptions, FieldWriteReceipt } from "@runic-artifex/views";
-import { FieldError, useField, useView, type BridgeField, type FieldHandle } from "../dist/index.js";
+import { FieldError, useField, useView, type BridgeField, type FieldHandle, type FieldState } from "../dist/index.js";
 
 type State = { readonly title: string; readonly step: number; readonly done: boolean; readonly titleErrors: readonly string[] };
 type Call = { readonly member: string; readonly value: unknown; readonly checked: boolean; resolve(result?: unknown): void };
@@ -76,7 +76,7 @@ describe("useField", () => {
         "onUpdate:modelValue": ($event: string) => { title.value = $event; }, onBlur: title.commit,
       }), [[vModelText, title.value]]));
     expectTypeOf(field.value).toEqualTypeOf<string>();
-    expectTypeOf(field.commit).returns.toEqualTypeOf<Promise<void>>();
+    expectTypeOf(field.commit).returns.toEqualTypeOf<Promise<FieldState<string>>>();
     const input = target.querySelector("input")!;
     expect(input.value).toBe("saved");
     type(input, "saved!");
@@ -94,13 +94,14 @@ describe("useField", () => {
     expect(client.calls).toEqual([]);
     input.dispatchEvent(new Event("blur"));
     expect(client.calls.map(call => call.value)).toEqual(["saved! 漢"]);
-    let committed = false;
-    void field.commit().then(() => { committed = true; });
+    let committed: unknown;
+    void field.commit().then(state => { committed = state; });
     await settle();
-    expect(committed).toBe(false);
+    expect(committed).toBeUndefined();
     client.calls[0]!.resolve();
     await settle();
-    expect(committed).toBe(true);
+    // commit() resolves with the field's state, as in the other bindings.
+    expect(committed).toMatchObject({ value: "saved! 漢", editing: false, error: undefined });
     expect(field).toMatchObject({ value: "saved! 漢", editing: false });
     app.unmount();
   });

@@ -216,9 +216,10 @@ The options are those of the controller and `injector`:
 
 - `commit: "pause"` writes the draft after `delay` milliseconds without input (700
   by default) and at once on `commit()`, which blur calls; use it where each write is
-  an undo step or starts work in .NET. `commit()` resolves once the field's writes
-  settled, so a command that depends on the field can follow it:
-  `await this.title.commit(); await this.editor.client()?.save();`.
+  an undo step or starts work in .NET. `commit()` resolves with the field's state
+  once its writes settled, so a command that depends on the field can follow it
+  and skip a failed write:
+  `if ((await this.title.commit()).error === undefined) await this.editor.client()?.save();`.
 - `checked: true` writes with the member's checked write: a change by another writer
   since the draft started is a conflict instead of being overwritten.
 - `coalesce` and `keepDraftOnError`, as for `injectTextField`.

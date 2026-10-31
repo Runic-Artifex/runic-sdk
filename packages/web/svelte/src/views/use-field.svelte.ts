@@ -42,7 +42,8 @@ export interface FieldHandle<TValue> {
   /**
    * The user is done with the field (`attach` calls it on blur): with `commit: "pause"` the draft is written now.
    * Resolves with the field's state once its writes settled, so a command that depends on the field can run after
-   * it: `await title.commit(); await editor.save()`. Never rejects; a failure is `error`.
+   * it and skip a failed write: `if ((await title.commit()).error === undefined) await editor.save()`. Never
+   * rejects; a failure is `error`.
    */
   commit(): Promise<FieldState<TValue>>;
   /** Writes the draft again after a failed write; after a `conflict`, over the producer's value. */
