@@ -167,6 +167,25 @@ internal static unsafe partial class MacOsApplication
         }
     }
 
+    // Main thread, without NSApp (a host that presents no window): runs the main run loop in the default mode, which runs
+    // the main dispatch queue, until the work completes. An empty block queued when it completes wakes the loop.
+    internal static void ServeMainQueue(Task work)
+    {
+        _ = work.ContinueWith(static _ => MacOsMainThread.Post(static () => { }), CancellationToken.None,
+            TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
+        var mode = DefaultMode.Value;
+        while (!work.IsCompleted)
+        {
+            var pool = AutoreleasePoolPush();
+            try
+            {
+                // kCFRunLoopRunFinished or kCFRunLoopRunStopped return at once.
+                if (RunInMode(mode, 1, 1) is 1 or 2) Thread.Sleep(5);
+            }
+            finally { AutoreleasePoolPop(pool); }
+        }
+    }
+
     // kCFRunLoopDefaultMode, the CFString constant.
     private static readonly Lazy<nint> DefaultMode = new(static () =>
         NativeLibrary.TryLoad("/System/Library/Frameworks/CoreFoundation.framework/CoreFoundation", out var library)
@@ -603,6 +622,8 @@ internal static unsafe partial class MacOsApplication
     [LibraryImport(ObjC, EntryPoint = "objc_msgSend")] private static partial void SetParam(nint target, nint selector, nint descriptor, uint keyword);
     [LibraryImport(ObjC, EntryPoint = "objc_msgSend")] private static partial nint Int32Descriptor(nint target, nint selector, int value);
     [LibraryImport(ObjC, EntryPoint = "objc_msgSend")] private static partial nint CreateEvent(nint target, nint selector, uint eventClass, uint eventId, nint targetDescriptor, short returnId, int transactionId);
+    [LibraryImport(ObjC, EntryPoint = "objc_autoreleasePoolPush")] private static partial nint AutoreleasePoolPush();
+    [LibraryImport(ObjC, EntryPoint = "objc_autoreleasePoolPop")] private static partial void AutoreleasePoolPop(nint pool);
     [LibraryImport(ObjC, EntryPoint = "class_respondsToSelector")] private static partial byte ClassResponds(nint type, nint selector);
     [LibraryImport(ObjC, EntryPoint = "objc_msgSend")] private static partial byte ContinueWith(nint target, nint selector, nint application, nint activity, nint restorationHandler);
     [LibraryImport(ObjC, EntryPoint = "objc_msgSend")] private static partial void SetHandler(nint target, nint selector, nint handler, nint action, uint eventClass, uint eventId);

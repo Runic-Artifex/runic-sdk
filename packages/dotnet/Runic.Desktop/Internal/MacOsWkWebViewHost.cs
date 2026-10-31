@@ -45,13 +45,19 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
 
     internal static void SetApplicationMenuCommands(IDesktopMenuCommandTarget? target) => Volatile.Write(ref s_applicationMenuCommands, target);
 
-    // The titles of the standard menus (DesktopHostOptions.StandardMenuTitles), applied when the main menu is completed.
-    private static DesktopStandardMenuTitles s_titles = MacOsMainMenu.English;
-    internal static void SetStandardMenuTitles(DesktopStandardMenuTitles titles) => Volatile.Write(ref s_titles, titles);
+    // What a DesktopHost sets when it starts, in a class of its own: setting it does not run this type's static
+    // initialization, which loads AppKit and WebKit and registers Runic's Objective-C classes, in a host that opens no
+    // window, such as a serve-only one.
+    private static class HostSettings
+    {
+        // The titles of the standard menus (DesktopHostOptions.StandardMenuTitles), applied when the main menu is completed.
+        internal static DesktopStandardMenuTitles Titles = MacOsMainMenu.English;
+        // The logger of menu command failures (event 3014) while no key window's command path has one.
+        internal static Microsoft.Extensions.Logging.ILogger? MenuLogger;
+    }
 
-    // The logger of menu command failures (event 3014) while no key window's command path has one.
-    private static Microsoft.Extensions.Logging.ILogger? s_menuLogger;
-    internal static void SetMenuLogger(Microsoft.Extensions.Logging.ILogger logger) => Volatile.Write(ref s_menuLogger, logger);
+    internal static void SetStandardMenuTitles(DesktopStandardMenuTitles titles) => Volatile.Write(ref HostSettings.Titles, titles);
+    internal static void SetMenuLogger(Microsoft.Extensions.Logging.ILogger logger) => Volatile.Write(ref HostSettings.MenuLogger, logger);
 
     // The application menu bar holds the declared menus for every presentation (D036.13): Page and None keep it.
     public DesktopMenuBarPlacement MenuBarPlacement => IsOpen ? DesktopMenuBarPlacement.Global : DesktopMenuBarPlacement.None;
@@ -719,7 +725,7 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
             Api.SendVoidNint(application, "setMainMenu:", mainMenu);
             Api.SendVoid(mainMenu, "release");
         }
-        var titles = Volatile.Read(ref s_titles);
+        var titles = Volatile.Read(ref HostSettings.Titles);
         if (complete)
         {
             var name = Api.Text(Api.SendNint(Api.SendNint(Api.GetClass("NSProcessInfo"), "processInfo"), "processName"));
@@ -784,7 +790,7 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
         if (Api.FindSubmenu(mainMenu, FileIdentifier, MacOsMainMenu.FileActions) is var standardFile and not 0)
         {
             Api.SetTitle(Api.SendNintNint(mainMenu, "itemAtIndex:", Api.IndexOfSubmenu(mainMenu, standardFile)), standardFile,
-                Volatile.Read(ref s_titles).File);
+                Volatile.Read(ref HostSettings.Titles).File);
         }
         var menus = Volatile.Read(ref s_menuBar);
         var declared = ImmutableArray.CreateBuilder<DeclaredEntry>();
@@ -922,11 +928,11 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
 
     internal static bool CanExecuteMenuCommand(DesktopMenuItem item) => KeyWindowCommands() is { } chain
         ? chain.CanExecute(item)
-        : MenuCommandChain.CanExecute(item, null, Volatile.Read(ref s_applicationMenuCommands), Volatile.Read(ref s_menuLogger));
+        : MenuCommandChain.CanExecute(item, null, Volatile.Read(ref s_applicationMenuCommands), Volatile.Read(ref HostSettings.MenuLogger));
 
     internal static bool ExecuteMenuCommand(DesktopMenuItem item) => KeyWindowCommands() is { } chain
         ? chain.TryExecute(item)
-        : MenuCommandChain.TryExecute(item, null, Volatile.Read(ref s_applicationMenuCommands), Volatile.Read(ref s_menuLogger));
+        : MenuCommandChain.TryExecute(item, null, Volatile.Read(ref s_applicationMenuCommands), Volatile.Read(ref HostSettings.MenuLogger));
 
     [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
     private static void MenuCommand(nint self, nint selector, nint sender)
@@ -1042,7 +1048,7 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
     {
         Api.SendVoidBool(menu, "setAutoenablesItems:", false);
         var application = Volatile.Read(ref s_applicationMenuCommands);
-        var logger = Volatile.Read(ref s_menuLogger);
+        var logger = Volatile.Read(ref HostSettings.MenuLogger);
         foreach (var entry in entries)
         {
             switch (entry)
@@ -1084,7 +1090,7 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
             var tag = Api.SendNint(sender, "tag");
             var items = s_dockItems;
             if (tag >= 1 && tag <= items.Count)
-                MenuCommandChain.TryExecute(items[(int)tag - 1], null, Volatile.Read(ref s_applicationMenuCommands), Volatile.Read(ref s_menuLogger));
+                MenuCommandChain.TryExecute(items[(int)tag - 1], null, Volatile.Read(ref s_applicationMenuCommands), Volatile.Read(ref HostSettings.MenuLogger));
         }
         catch
         {

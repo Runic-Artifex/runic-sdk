@@ -12,7 +12,7 @@ public static class DesktopEventLoop
 {
     // One Desktop event loop per process, on every platform.
     private static int _running;
-    // Whether the macOS AppKit loop runs, so native work queued for the main thread runs.
+    // Whether the macOS main thread runs queued native work: AppKit's loop, or the run loop of a host without windows.
     private static int _appKitPumping;
     internal static bool IsRunning => Volatile.Read(ref _appKitPumping) != 0;
 
@@ -110,7 +110,7 @@ public static class DesktopEventLoop
                 ReportFallback(host, loop, unavailable);
             }
             int result = 0;
-            RunCore(async () => result = await RunHostAsync().ConfigureAwait(false), EntryPoint);
+            RunCore(async () => result = await RunHostAsync().ConfigureAwait(false), EntryPoint, presentsWindows);
             return result;
         }
         finally
@@ -163,11 +163,31 @@ public static class DesktopEventLoop
 
     private static void Exit() => Volatile.Write(ref _running, 0);
 
-    private static void RunCore(Func<Task> application, string entryPoint)
+    private static void RunCore(Func<Task> application, string entryPoint, bool presentsWindows = true)
     {
         if (!OperatingSystem.IsMacOS()) { application().GetAwaiter().GetResult(); return; }
         if (!MacOsWkWebViewHost.IsMainThread)
             throw new InvalidOperationException($"Call {entryPoint} directly from the macOS process main thread, before awaiting application work.");
+        // A host that presents no window (serve-only) does without AppKit, as the other platforms do without their window
+        // toolkit's loop: creating NSApp alone takes ≈46 ms on osx-arm64, and AppKit's launch then competes with the
+        // application's start for ≈20 ms more. The main thread runs the main dispatch queue on its run loop instead, so
+        // queued main-thread work still runs.
+        if (!presentsWindows)
+        {
+            Volatile.Write(ref _appKitPumping, 1);
+            try
+            {
+                var served = Task.Run(application);
+                MacOsApplication.ServeMainQueue(served);
+                served.GetAwaiter().GetResult();
+            }
+            finally
+            {
+                Volatile.Write(ref _appKitPumping, 0);
+                MacOsMainThread.FailPending();
+            }
+            return;
+        }
         // NSApp and Runic's application delegate exist before the application's code runs; the main thread then runs
         // AppKit's own loop, which sends finishLaunching once and runs queued main-thread work in every mode.
         var nativeApplication = MacOsApplication.Start();
