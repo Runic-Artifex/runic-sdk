@@ -121,9 +121,10 @@ internal sealed class RunningProcess : IAsyncDisposable
 
     /// <summary>
     /// Asks the application to stop as Ctrl+C in a terminal would, waits up to <paramref name="grace"/> for it to
-    /// exit, then kills whatever remains of the process tree.
+    /// exit, then kills whatever remains of the process tree. <paramref name="timeProvider"/> times the grace; tests pass
+    /// a fake clock.
     /// </summary>
-    internal async Task StopGracefullyAsync(TimeSpan grace)
+    internal async Task StopGracefullyAsync(TimeSpan grace, TimeProvider? timeProvider = null)
     {
         if (Interlocked.Exchange(ref _stopping, 1) != 0)
         {
@@ -131,7 +132,7 @@ internal sealed class RunningProcess : IAsyncDisposable
             return;
         }
 
-        using var timeout = new CancellationTokenSource(grace);
+        using var timeout = new CancellationTokenSource(grace, timeProvider ?? TimeProvider.System);
         try
         {
             if (!Completion.IsCompleted)

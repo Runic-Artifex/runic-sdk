@@ -10,7 +10,7 @@ namespace Runic.Application.Tool.Tests;
 /// <summary>
 /// A child of the test runner that stands in for <c>dotnet watch</c> ("parent", which ignores signals) and the
 /// application under <c>dotnet run</c> ("run"). The "run" role exits with 3 on its first signal unless a "stuck"
-/// file exists in the marker directory.
+/// file exists in the marker directory; stuck, it writes a "signalled" marker instead.
 /// </summary>
 internal static partial class StopTestChild
 {
@@ -41,6 +41,8 @@ internal static partial class StopTestChild
         {
             context.Cancel = true;
             if (!stuck) stopped.Set();
+            // The test knows then that the stop is waiting out its grace period.
+            else if (role == "run") File.WriteAllText(Path.Combine(markers, "signalled"), "");
         }
         using var interrupt = PosixSignalRegistration.Create(PosixSignal.SIGINT, Handle);
         using var terminate = PosixSignalRegistration.Create(PosixSignal.SIGTERM, Handle);
