@@ -43,6 +43,8 @@ const READ_CHUNK: usize = 16 << 10;
 // does not allocate (and fault in) a fresh buffer for each; Kestrel's pipes reuse pooled blocks the same way.
 const SPARE_MIN: usize = 32 << 10;
 const SPARE_MAX: usize = 1 << 20;
+// Queued bytes above which a ping gets no pong.
+const PONG_BACKLOG: usize = 16 << 10;
 // How long a connection waits for the other side's close frame after one side closed.
 const CLOSE_GRACE: Duration = Duration::from_secs(5);
 const ACCEPT_GUID: &[u8] = b"258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
@@ -54,6 +56,7 @@ const OP_CLOSE: u8 = 0x8;
 const OP_PING: u8 = 0x9;
 const OP_PONG: u8 = 0xA;
 
+const CLOSE_NORMAL: u16 = 1000;
 const CLOSE_PROTOCOL_ERROR: u16 = 1002;
 const CLOSE_INVALID_PAYLOAD: u16 = 1007;
 const CLOSE_TOO_BIG: u16 = 1009;
@@ -148,18 +151,25 @@ impl Socket {
     pub(crate) fn consume(&self, message: u64) {
         let lease = self.leases.lock().unwrap().remove(&message);
         if let Some((data, permit)) = lease {
-            drop(permit);
+            // The buffer becomes the spare before the window place is given back, so the next message, which waits for
+            // that place, finds it (to reuse or to free) instead of allocating beside it.
             if let Some(buffer) = reusable(data) {
                 *self.spare_read.lock().unwrap() = Some(buffer);
             }
+            drop(permit);
         }
     }
 
     // A buffer for a large message of `length` bytes.
     fn read_buffer(&self, length: usize) -> BytesMut {
-        match self.spare_read.lock().unwrap().take() {
+        let spare = self.spare_read.lock().unwrap().take();
+        match spare {
             Some(buffer) if buffer.capacity() >= length => buffer,
-            _ => BytesMut::with_capacity(length),
+            spare => {
+                // A spare too small is freed before its replacement is allocated.
+                drop(spare);
+                BytesMut::with_capacity(length)
+            }
         }
     }
 
@@ -566,11 +576,19 @@ async fn run(start: Start, upgraded: Upgraded) {
     loop {
         tokio::select! {
             _ = aborted.wait_for(|aborted| *aborted) => break,
-            close = &mut reader, if !read_done => {
+            end = &mut reader, if !read_done => {
                 read_done = true;
-                let ended = close.is_none();
-                socket.report_closed(&inner, close);
-                if write_done || ended {
+                match end {
+                    ReadEnd::Ended => {
+                        socket.report_closed(&inner, None);
+                        break;
+                    }
+                    // Reported when it failed; the server's close frame is queued and the connection ends once it
+                    // is written.
+                    ReadEnd::Failed => {}
+                    ReadEnd::Closed(code, reason) => socket.report_closed(&inner, Some((code, reason))),
+                }
+                if write_done {
                     break;
                 }
             }
@@ -648,6 +666,8 @@ fn parse_head(buffer: &[u8], limit: usize) -> Result<Option<Head>, u16> {
             None => return Ok(None),
         },
         127 => match buffer.get(2..10) {
+            // The most significant bit of a 64-bit length must be 0.
+            Some(bytes) if bytes[0] & 0x80 != 0 => return Err(CLOSE_PROTOCOL_ERROR),
             Some(bytes) => (u64::from_be_bytes(bytes.try_into().expect("eight bytes")), 10),
             None => return Ok(None),
         },
@@ -709,124 +729,214 @@ async fn fill(stream: &mut OwnedReadHalf, buffer: &mut BytesMut, wanted: usize) 
     true
 }
 
-// The read side: delivers data messages within the receive window and answers pings. Returns the peer's close frame,
-// or None when the transport ended or the peer broke the protocol (then the server's close frame is queued).
-async fn read(
-    socket: &Socket,
-    inner: &Arc<Inner>,
-    mut stream: OwnedReadHalf,
-    mut buffer: BytesMut,
-) -> Option<(u16, String)> {
+// How the read side ended.
+enum ReadEnd {
+    // The peer's close frame; the server's reply is queued.
+    Closed(u16, String),
+    // The transport ended or failed.
+    Ended,
+    // The peer broke the protocol: the server's close frame is queued and the input was drained.
+    Failed,
+}
+
+// The read side: delivers data messages within the receive window and answers pings.
+//
+// Memory: a message waits for its place in the receive window before its payload is read, and a fragmented message is
+// read straight into one buffer that grows to at most `max_message_bytes`, so with a window of one a connection holds
+// at most one message plus its read buffer.
+async fn read(socket: &Socket, inner: &Arc<Inner>, mut stream: OwnedReadHalf, mut buffer: BytesMut) -> ReadEnd {
     let limit = inner.config.max_message_bytes;
-    let fail = |code: u16| -> Option<(u16, String)> {
-        let _ = socket.send(inner, &Outgoing::Close(code, ""), 0, false);
-        None
-    };
-    let mut fragments: Option<(MessageKind, BytesMut)> = None;
+    // An unfinished fragmented message: its kind, its data so far and its place in the receive window.
+    let mut open: Option<(MessageKind, Vec<u8>, OwnedSemaphorePermit)> = None;
     loop {
         let head = match parse_head(&buffer, limit) {
             Ok(Some(head)) => head,
             Ok(None) => {
                 let wanted = buffer.len() + 1;
                 if !fill(&mut stream, &mut buffer, wanted).await {
-                    return None;
+                    return ReadEnd::Ended;
                 }
                 continue;
             }
-            Err(code) => return fail(code),
+            Err(code) => return fail(socket, inner, &mut stream, code).await,
         };
-        let data = matches!(head.opcode, OP_TEXT | OP_BINARY | OP_CONTINUATION);
-        if data && fragments.as_ref().map_or(0, |(_, part)| part.len()) + head.length > limit {
-            return fail(CLOSE_TOO_BIG);
-        }
-        let payload = if head.length >= SPARE_MIN && head.length <= SPARE_MAX {
-            // A large frame is read into a buffer of its own, which the host's consume hands back for the next one.
-            buffer.advance(head.header);
-            // Each chunk is unmasked as it arrives, while the kernel's copy is still in the cache.
-            let mut payload = socket.read_buffer(head.length);
-            let buffered = buffer.len().min(head.length);
-            payload.extend_from_slice(&buffer.split_to(buffered));
-            unmask(&mut payload, head.mask);
-            while payload.len() < head.length {
-                let start = payload.len();
-                let remaining = (head.length - start) as u64;
-                match (&mut stream).take(remaining).read_buf(&mut payload).await {
-                    Ok(0) | Err(_) => return None,
-                    Ok(_) => {}
+        match head.opcode {
+            OP_TEXT | OP_BINARY | OP_CONTINUATION => {
+                let starts = head.opcode != OP_CONTINUATION;
+                // A new message inside an unfinished one, or a continuation without a start.
+                if starts == open.is_some() {
+                    return fail(socket, inner, &mut stream, CLOSE_PROTOCOL_ERROR).await;
                 }
-                let mask = head.mask;
-                unmask(
-                    &mut payload[start..],
-                    [mask[start & 3], mask[(start + 1) & 3], mask[(start + 2) & 3], mask[(start + 3) & 3]],
-                );
-            }
-            payload
-        } else {
-            if !fill(&mut stream, &mut buffer, head.header + head.length).await {
-                return None;
-            }
-            let mut payload = buffer.split_to(head.header + head.length);
-            payload.advance(head.header);
-            unmask(&mut payload, head.mask);
-            payload
-        };
-        let message = match head.opcode {
-            OP_TEXT | OP_BINARY if fragments.is_none() => {
-                let kind = if head.opcode == OP_TEXT { MessageKind::Text } else { MessageKind::Binary };
-                if head.fin {
-                    Some((kind, payload.freeze()))
-                } else {
-                    fragments = Some((kind, payload));
-                    None
+                let so_far = open.as_ref().map_or(0, |(_, data, _)| data.len());
+                if so_far + head.length > limit {
+                    return fail(socket, inner, &mut stream, CLOSE_TOO_BIG).await;
                 }
-            }
-            OP_CONTINUATION if fragments.is_some() => {
-                let (kind, mut part) = fragments.take().expect("checked");
-                part.extend_from_slice(&payload);
-                if head.fin {
-                    Some((kind, part.freeze()))
-                } else {
-                    fragments = Some((kind, part));
-                    None
-                }
-            }
-            OP_CLOSE => {
-                if payload.is_empty() {
-                    return Some((1005, String::new()));
-                }
-                if payload.len() < 2 {
-                    return fail(CLOSE_PROTOCOL_ERROR);
-                }
-                let code = u16::from_be_bytes([payload[0], payload[1]]);
-                if !close_code_allowed(code) {
-                    return fail(CLOSE_PROTOCOL_ERROR);
-                }
-                let Ok(reason) = std::str::from_utf8(&payload[2..]) else {
-                    return fail(CLOSE_INVALID_PAYLOAD);
+                let (kind, mut data, permit) = match open.take() {
+                    Some(open) => open,
+                    None => {
+                        let kind = if head.opcode == OP_TEXT { MessageKind::Text } else { MessageKind::Binary };
+                        let Ok(permit) = socket.window.clone().acquire_owned().await else {
+                            return ReadEnd::Ended;
+                        };
+                        if !head.fin || head.length < SPARE_MIN || head.length > SPARE_MAX {
+                            // Only a large single-frame message reuses the spare buffer; any other frees it first.
+                            drop(socket.spare_read.lock().unwrap().take());
+                        }
+                        if head.fin {
+                            // A whole message in one frame.
+                            let Some(data) = read_frame(socket, &mut stream, &mut buffer, &head).await else {
+                                return ReadEnd::Ended;
+                            };
+                            if !deliver(socket, inner, kind, data.freeze(), permit) {
+                                return fail(socket, inner, &mut stream, CLOSE_INVALID_PAYLOAD).await;
+                            }
+                            continue;
+                        }
+                        (kind, Vec::new(), permit)
+                    }
                 };
-                return Some((code, reason.to_owned()));
+                if !append(&mut stream, &mut buffer, &head, &mut data, limit).await {
+                    return ReadEnd::Ended;
+                }
+                if !head.fin {
+                    open = Some((kind, data, permit));
+                } else if !deliver(socket, inner, kind, Bytes::from(data), permit) {
+                    return fail(socket, inner, &mut stream, CLOSE_INVALID_PAYLOAD).await;
+                }
             }
-            OP_PING => {
-                let _ = socket.send(inner, &Outgoing::Pong(&payload), 0, false);
-                None
+            OP_CLOSE | OP_PING | OP_PONG => {
+                if !fill(&mut stream, &mut buffer, head.header + head.length).await {
+                    return ReadEnd::Ended;
+                }
+                let mut payload = buffer.split_to(head.header + head.length);
+                payload.advance(head.header);
+                unmask(&mut payload, head.mask);
+                match head.opcode {
+                    OP_CLOSE => {
+                        let (code, reason) = match *payload {
+                            [] => (1005, ""),
+                            [code_high, code_low, ref reason @ ..] => {
+                                let code = u16::from_be_bytes([code_high, code_low]);
+                                if !close_code_allowed(code) {
+                                    return fail(socket, inner, &mut stream, CLOSE_PROTOCOL_ERROR).await;
+                                }
+                                let Ok(reason) = std::str::from_utf8(reason) else {
+                                    return fail(socket, inner, &mut stream, CLOSE_INVALID_PAYLOAD).await;
+                                };
+                                (code, reason)
+                            }
+                            [_] => return fail(socket, inner, &mut stream, CLOSE_PROTOCOL_ERROR).await,
+                        };
+                        // The reply, unless the host closed first. A later close from the host is then a no-op.
+                        let _ = socket.send(inner, &Outgoing::Close(CLOSE_NORMAL, ""), 0, false);
+                        return ReadEnd::Closed(code, reason.to_owned());
+                    }
+                    // A peer that does not read its pongs gets none beyond a small backlog (RFC 6455 5.5.3 allows
+                    // answering only the latest ping), so pings cannot grow the write queue.
+                    OP_PING if socket.writes().queued < PONG_BACKLOG => {
+                        let _ = socket.send(inner, &Outgoing::Pong(&payload), 0, false);
+                    }
+                    _ => {}
+                }
             }
-            OP_PONG => None,
-            _ => return fail(CLOSE_PROTOCOL_ERROR),
-        };
-        let Some((kind, data)) = message else {
-            continue;
-        };
-        if kind == MessageKind::Text && std::str::from_utf8(&data).is_err() {
-            return fail(CLOSE_INVALID_PAYLOAD);
+            _ => return fail(socket, inner, &mut stream, CLOSE_PROTOCOL_ERROR).await,
         }
-        let Ok(permit) = socket.window.clone().acquire_owned().await else {
-            return None;
-        };
-        let message = socket.next_message.fetch_add(1, Ordering::Relaxed);
-        socket.leases.lock().unwrap().insert(message, (data.clone(), permit));
-        let id = socket.id;
-        inner.notify(|handler| handler.message(id, message, kind, &data));
     }
+}
+
+// Hands a whole message to the host within the window place `permit`. False for text that is not UTF-8.
+fn deliver(socket: &Socket, inner: &Inner, kind: MessageKind, data: Bytes, permit: OwnedSemaphorePermit) -> bool {
+    if kind == MessageKind::Text && std::str::from_utf8(&data).is_err() {
+        return false;
+    }
+    let message = socket.next_message.fetch_add(1, Ordering::Relaxed);
+    socket.leases.lock().unwrap().insert(message, (data.clone(), permit));
+    let id = socket.id;
+    inner.notify(|handler| handler.message(id, message, kind, &data));
+    true
+}
+
+// Queues the server's close frame for a protocol error, then reads and discards what the peer still sends until it
+// stops or the close grace ends: closing a socket with unread input resets it, and the reset can discard the close
+// frame before the peer reads it.
+async fn fail(socket: &Socket, inner: &Arc<Inner>, stream: &mut OwnedReadHalf, code: u16) -> ReadEnd {
+    let _ = socket.send(inner, &Outgoing::Close(code, ""), 0, false);
+    // The host learns at once that the connection is over; only the transport lingers.
+    socket.report_closed(inner, None);
+    let discard = async {
+        let mut scratch = [0u8; 4096];
+        while matches!(stream.read(&mut scratch).await, Ok(1..)) {}
+    };
+    let _ = tokio::time::timeout(CLOSE_GRACE, discard).await;
+    ReadEnd::Failed
+}
+
+// Reads a whole message's single frame: a large one into a buffer of its own, which the host's consume hands back for
+// the next one, unmasked chunk by chunk as it arrives; a small one from the read buffer. None when the transport ended.
+async fn read_frame(
+    socket: &Socket,
+    stream: &mut OwnedReadHalf,
+    buffer: &mut BytesMut,
+    head: &Head,
+) -> Option<BytesMut> {
+    if head.length < SPARE_MIN || head.length > SPARE_MAX {
+        if !fill(stream, buffer, head.header + head.length).await {
+            return None;
+        }
+        let mut payload = buffer.split_to(head.header + head.length);
+        payload.advance(head.header);
+        unmask(&mut payload, head.mask);
+        return Some(payload);
+    }
+    buffer.advance(head.header);
+    let mut payload = socket.read_buffer(head.length);
+    let buffered = buffer.len().min(head.length);
+    payload.extend_from_slice(&buffer.split_to(buffered));
+    unmask(&mut payload, head.mask);
+    while payload.len() < head.length {
+        let start = payload.len();
+        let remaining = (head.length - start) as u64;
+        match (&mut *stream).take(remaining).read_buf(&mut payload).await {
+            Ok(0) | Err(_) => return None,
+            Ok(_) => {}
+        }
+        unmask(&mut payload[start..], rotate(head.mask, start));
+    }
+    Some(payload)
+}
+
+// Reads a fragment's payload onto the end of its message. The message's buffer doubles as it grows, up to `limit`
+// (which the caller checked the message stays within). False when the transport ended.
+async fn append(
+    stream: &mut OwnedReadHalf,
+    buffer: &mut BytesMut,
+    head: &Head,
+    data: &mut Vec<u8>,
+    limit: usize,
+) -> bool {
+    let start = data.len();
+    let needed = start + head.length;
+    if data.capacity() < needed {
+        let target = data.capacity().saturating_mul(2).max(needed).min(limit);
+        data.reserve_exact(target - start);
+    }
+    buffer.advance(head.header);
+    let buffered = buffer.len().min(head.length);
+    data.extend_from_slice(&buffer.split_to(buffered));
+    while data.len() < needed {
+        let remaining = (needed - data.len()) as u64;
+        match (&mut *stream).take(remaining).read_buf(data).await {
+            Ok(0) | Err(_) => return false,
+            Ok(_) => {}
+        }
+    }
+    unmask(&mut data[start..], head.mask);
+    true
+}
+
+// The mask for a payload that continues at `offset`.
+fn rotate(mask: [u8; 4], offset: usize) -> [u8; 4] {
+    [mask[offset & 3], mask[(offset + 1) & 3], mask[(offset + 2) & 3], mask[(offset + 3) & 3]]
 }
 
 #[cfg(test)]
