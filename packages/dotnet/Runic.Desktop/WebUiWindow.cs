@@ -777,6 +777,7 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
             }
             catch
             {
+                ObserveAbandoned(connection);
                 CloseFailedPresentationAsync(surfaceHosted: content is null).GetAwaiter().GetResult();
                 throw;
             }
@@ -2419,66 +2420,90 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
         // that never requested anything is relaunched; see RelaunchStalledBrowserAsync.
         var attempts = browserProcess is null || relaunchStalled is null ? 1 : BrowserLaunchAttempts;
         var attempt = 1;
-        while (true)
+        try
         {
-            string stalled;
-            try
+            while (true)
             {
-                await WaitWithinConnectionDeadlineAsync(connection, cancellationToken).ConfigureAwait(false);
-                return;
-            }
-            catch (TimeoutException exception)
-            {
-                // Describe the browser process before closing the presentation stops it.
-                stalled = DescribeConnectionTimeout(browserProcess, attempt, attempts);
-                if (attempt >= attempts || !IsStalledBeforeFirstRequest(browserProcess))
+                string stalled;
+                try
                 {
-                    if (await ProbeStalledConnectionAsync().ConfigureAwait(false))
+                    await WaitWithinConnectionDeadlineAsync(connection, cancellationToken).ConfigureAwait(false);
+                    return;
+                }
+                catch (TimeoutException exception)
+                {
+                    // Describe the browser process before closing the presentation stops it.
+                    stalled = DescribeConnectionTimeout(browserProcess, attempt, attempts);
+                    if (attempt >= attempts || !IsStalledBeforeFirstRequest(browserProcess))
                     {
-                        stalled = DescribeConnectionTimeout(browserProcess, attempt, attempts);
+                        if (await ProbeStalledConnectionAsync().ConfigureAwait(false))
+                        {
+                            stalled = DescribeConnectionTimeout(browserProcess, attempt, attempts);
+                        }
+                        var timeout = new TimeoutException(stalled, exception);
+                        await CloseFailedPresentationAsync(surfaceHosted).ConfigureAwait(false);
+                        throw timeout;
                     }
-                    var timeout = new TimeoutException(stalled, exception);
-                    await CloseFailedPresentationAsync(surfaceHosted).ConfigureAwait(false);
-                    throw timeout;
                 }
-            }
-            catch
-            {
-                await CloseFailedPresentationAsync(surfaceHosted).ConfigureAwait(false);
-                throw;
-            }
-
-            RelaunchResult relaunch;
-            try
-            {
-                relaunch = await relaunchStalled!(browserProcess!, connection).ConfigureAwait(false);
-            }
-            catch
-            {
-                await CloseFailedPresentationAsync(surfaceHosted).ConfigureAwait(false);
-                throw;
-            }
-            switch (relaunch.Outcome)
-            {
-                case RelaunchOutcome.KeepWaiting:
-                    // The page progressed after the stall check; this attempt continues.
-                    continue;
-                case RelaunchOutcome.Exited:
+                catch
                 {
-                    var exited = new TimeoutException(
-                        DescribeConnectionTimeout(browserProcess, attempt, attempts, exitedBeforeRelaunch: true));
                     await CloseFailedPresentationAsync(surfaceHosted).ConfigureAwait(false);
-                    throw exited;
+                    throw;
                 }
-                case RelaunchOutcome.Closed:
-                    throw new IOException("The window closed before bridge authentication completed.");
+
+                RelaunchResult relaunch;
+                try
+                {
+                    relaunch = await relaunchStalled!(browserProcess!, connection).ConfigureAwait(false);
+                }
+                catch
+                {
+                    await CloseFailedPresentationAsync(surfaceHosted).ConfigureAwait(false);
+                    throw;
+                }
+                switch (relaunch.Outcome)
+                {
+                    case RelaunchOutcome.KeepWaiting:
+                        // The page progressed after the stall check; this attempt continues.
+                        continue;
+                    case RelaunchOutcome.Exited:
+                    {
+                        var exited = new TimeoutException(
+                            DescribeConnectionTimeout(browserProcess, attempt, attempts, exitedBeforeRelaunch: true));
+                        await CloseFailedPresentationAsync(surfaceHosted).ConfigureAwait(false);
+                        throw exited;
+                    }
+                    case RelaunchOutcome.Closed:
+                        throw new IOException("The window closed before bridge authentication completed.");
+                }
+                attempt++;
+                ReportStalledLaunch(stalled, attempt, attempts);
+                // Stopping the stalled browser faulted its connection, which nothing waits for.
+                ObserveAbandoned(connection);
+                connection = relaunch.Connection!;
+                browserProcess = relaunch.Process!;
             }
-            attempt++;
-            ReportStalledLaunch(stalled, attempt, attempts);
-            connection = relaunch.Connection!;
-            browserProcess = relaunch.Process!;
+        }
+        finally
+        {
+            // A wait that gives up on its connection closes the presentation, which faults the connection after
+            // nothing waits for it any more.
+            if (!connection.IsCompletedSuccessfully)
+            {
+                ObserveAbandoned(connection);
+            }
         }
     }
+
+    // A connection whose wait ended without it: the close that ends its presentation (StopBrowserCoreAsync) faults it
+    // after the wait gave up, by a timeout, a relaunch, a cancellation or a failure. Its fault is expected, so it is
+    // observed here instead of surfacing as an unobserved task exception.
+    private static void ObserveAbandoned(Task connection) =>
+        _ = connection.ContinueWith(
+            static task => _ = task.Exception,
+            CancellationToken.None,
+            TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously,
+            TaskScheduler.Default);
 
     // I-176: when nothing reached the server, records whether the server still accepted a loopback connection at the
     // timeout, and how long a small write-through to the profile's disk (or the temporary folder's) took. A browser
@@ -3225,11 +3250,15 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
             "browser-launch-conflict",
             message,
             Retryable: true));
-        _browserConnected.TrySetException(new DesktopException(
-            DesktopErrorCategory.AuthenticationDenied,
-            "browser-launch-conflict",
-            message,
-            retryable: true));
+        // Only a show that waits for its connection observes the failure (StopBrowserCoreAsync).
+        if (WaitForConnection && _externalUrl is null)
+        {
+            _browserConnected.TrySetException(new DesktopException(
+                DesktopErrorCategory.AuthenticationDenied,
+                "browser-launch-conflict",
+                message,
+                retryable: true));
+        }
         foreach (var session in _sessions.Values)
         {
             _ = CloseBridgeIgnoringFailureAsync(session, CancellationToken.None);
