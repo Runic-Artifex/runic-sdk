@@ -1,3 +1,1 @@
 #nullable enable
-Runic.Application.Views.CsWebUi.RunicCsWebUiHostOptions.Assets.get -> Runic.Assets.IAssetSource?
-Runic.Application.Views.CsWebUi.RunicCsWebUiHostOptions.Assets.init -> void

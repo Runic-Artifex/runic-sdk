@@ -1,6 +1,1 @@
 #nullable enable
-Runic.Navigation.NavigationAdmission.Queue = 2 -> Runic.Navigation.NavigationAdmission
-Runic.Navigation.NavigationOperation.Confirm = 8 -> Runic.Navigation.NavigationOperation
-Runic.Navigation.NavigationRegion.ConfirmDepartureAsync(Runic.Navigation.NavigationDepartureKind kind, System.Action? onConfirmed = null, Runic.Navigation.NavigationRequestOptions? options = null, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Navigation.NavigationResult<object!>!>
-Runic.Navigation.NavigationRegionOptions.AskOnParentRetain.get -> bool
-Runic.Navigation.NavigationRegionOptions.AskOnParentRetain.init -> void

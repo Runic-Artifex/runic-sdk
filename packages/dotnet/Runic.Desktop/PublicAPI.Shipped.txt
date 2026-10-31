@@ -874,3 +874,24 @@ Runic.Desktop.DesktopWindowOptions.SpellChecking.get -> bool
 Runic.Desktop.DesktopWindowOptions.SpellChecking.init -> void
 Runic.Desktop.IDesktopSpellCheckingWindowHost
 Runic.Desktop.IDesktopSpellCheckingWindowHost.SetSpellCheckingLanguagesAsync(System.Collections.Generic.IReadOnlyList<string!>! languages, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask
+override Runic.Desktop.DesktopPresentationAttempt.Equals(object? obj) -> bool
+override Runic.Desktop.DesktopPresentationAttempt.GetHashCode() -> int
+override Runic.Desktop.DesktopPresentationAttempt.ToString() -> string!
+Runic.Desktop.DesktopPresentationAttempt
+Runic.Desktop.DesktopPresentationAttempt.Browser.get -> Runic.Desktop.BrowserKind
+Runic.Desktop.DesktopPresentationAttempt.Browser.init -> void
+Runic.Desktop.DesktopPresentationAttempt.<Clone>$() -> Runic.Desktop.DesktopPresentationAttempt!
+Runic.Desktop.DesktopPresentationAttempt.Deconstruct(out Runic.Desktop.BrowserKind Browser, out Runic.Desktop.DesktopException! Failure) -> void
+Runic.Desktop.DesktopPresentationAttempt.DesktopPresentationAttempt(Runic.Desktop.BrowserKind Browser, Runic.Desktop.DesktopException! Failure) -> void
+Runic.Desktop.DesktopPresentationAttempt.Equals(Runic.Desktop.DesktopPresentationAttempt? other) -> bool
+Runic.Desktop.DesktopPresentationAttempt.Failure.get -> Runic.Desktop.DesktopException!
+Runic.Desktop.DesktopPresentationAttempt.Failure.init -> void
+Runic.Desktop.DesktopPresentationException
+Runic.Desktop.DesktopPresentationException.Attempts.get -> System.Collections.Generic.IReadOnlyList<Runic.Desktop.DesktopPresentationAttempt!>!
+Runic.Desktop.DesktopPresentationException.DesktopPresentationException(System.Collections.Generic.IReadOnlyList<Runic.Desktop.DesktopPresentationAttempt!>! attempts) -> void
+Runic.Desktop.DesktopPresentationPreflight.Fallbacks.get -> System.Collections.Generic.IReadOnlyList<Runic.Desktop.DesktopPresentationAvailability!>!
+Runic.Desktop.DesktopPresentationPreflight.Fallbacks.init -> void
+Runic.Desktop.DesktopWindowOptions.Fallbacks.get -> System.Collections.Generic.IReadOnlyList<Runic.Desktop.BrowserKind>!
+Runic.Desktop.DesktopWindowOptions.Fallbacks.init -> void
+static Runic.Desktop.DesktopPresentationAttempt.operator !=(Runic.Desktop.DesktopPresentationAttempt? left, Runic.Desktop.DesktopPresentationAttempt? right) -> bool
+static Runic.Desktop.DesktopPresentationAttempt.operator ==(Runic.Desktop.DesktopPresentationAttempt? left, Runic.Desktop.DesktopPresentationAttempt? right) -> bool

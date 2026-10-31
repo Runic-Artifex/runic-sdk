@@ -90,8 +90,6 @@ public sealed partial class WindowsDomainClient
     /// <see cref="DomainControllerInfo.DomainName"/> the domain's flat name. Each call is one locator query, so two
     /// calls with different formats can return different controllers. Discovery can block for the DC locator's network
     /// timeouts.</remarks>
-    [System.Diagnostics.CodeAnalysis.SuppressMessage("ApiDesign", "RS0026:Do not add multiple public overloads with optional parameters",
-        Justification = "This overload requires the name format, so a call that omits it resolves to the 0.13 overload unchanged.")]
     public Task<DomainControllerInfo> DiscoverControllerAsync(string? domainName, bool requirePrimary, bool requireWritable,
         DomainControllerNameFormat nameFormat, CancellationToken cancellationToken = default)
     {

@@ -13,9 +13,6 @@
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <IsAotCompatible>true</IsAotCompatible>
     <IsTrimmable>true</IsTrimmable>
-    <!-- New in 0.15.0: no published baseline until then. -->
-    <RunicPackageValidationBaselineMissing>true</RunicPackageValidationBaselineMissing>
-    <RunicPackageFirstReleaseVersion>0.15.0</RunicPackageFirstReleaseVersion>
     <!-- Packs the diagnostics help links (eng/build/release-links.targets) as
          buildTransitive/Runic.Desktop.Kestrel.HelpLinks.props, which buildTransitive/Runic.Desktop.Kestrel.props imports. -->
     <RunicPackDiagnosticsHelpLinks>true</RunicPackDiagnosticsHelpLinks>
