@@ -407,6 +407,12 @@ profile can take many seconds to start while Windows services the disk, and the
 Windows WebView2 windows report this progress; the other embedded windows and
 browsers keep the plain timeout. Each extension logs event 3021, and a timeout at the
 limit says how long the WebView was still loading.
+For an embedded WebView the launch is its first navigation. Creating the WebView2
+environment and controller comes before it, under no deadline, and the window
+appears once they exist. The first WebView2 start after a runtime or Windows update
+can spend tens of seconds there with a cold disk: about 30 seconds on a new
+`windows-2025` runner with WebView2 156, where later starts with fresh profiles took
+under a second and the page connected within 2 seconds of the window appearing.
 A browser that is still running but has requested nothing after `ConnectionTimeout`
 is stopped and launched again, with a fresh profile unless the window sets one.
 Each relaunch reports `browser-launch-stalled` as a warning and logs event 3004.
