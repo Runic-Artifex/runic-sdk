@@ -114,6 +114,8 @@ export function createDevelopmentTimeline(
       if (!isRecord(candidate) || typeof candidate.page !== "string" || !pagePattern.test(candidate.page)) return false;
       const page = candidate.page;
       const route = typeof candidate.route === "string" && routePattern.test(candidate.route) ? candidate.route : undefined;
+      // An invalid route never stands for the whole page.
+      if (candidate.route !== undefined && route === undefined) return false;
       if (candidate.closed === true) {
         const views = state.views.filter((view) => view.page !== page || (route !== undefined && view.route !== route));
         if (views.length !== state.views.length) {

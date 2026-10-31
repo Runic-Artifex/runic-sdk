@@ -84,7 +84,8 @@ test("the Angular proxy keeps View states per page, re-sanitizes them, and forge
     assert.equal(await post("runic:view", { page: "p2", route: "wizard", revision: 1, presentations: 2, state: { page: 1 } }), 204);
     assert.equal(await post("runic:view", { page: "p1", route: "editor", revision: 9, presentations: 1, state: { title: "a" } }), 204);
     // Invalid reports are answered but change nothing.
-    for (const invalid of [{ page: "P 1", route: "x", state: {} }, { page: "p1", route: "../x", state: {} }, { page: "p1", route: "x" }]) {
+    for (const invalid of [{ page: "P 1", route: "x", state: {} }, { page: "p1", route: "../x", state: {} }, { page: "p1", route: "x" },
+      { page: "p1", route: "../x", closed: true }]) {
       assert.equal(await post("runic:view", invalid), 204);
     }
     let views = (await state()).views;
