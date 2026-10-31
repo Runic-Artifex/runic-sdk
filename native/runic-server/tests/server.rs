@@ -438,7 +438,11 @@ async fn an_oversized_message_closes_with_1009_and_invalid_text_with_1007() {
 async fn queued_messages_wait_for_the_flush_and_go_out_in_order() {
     let (server, mut events) = start(ServerConfig::default());
     let (mut stream, id) = raw_websocket(&server, &mut events, server.port()).await;
-    assert_eq!(server.queue(id, MessageKind::Binary, b"one", 0).unwrap(), WriteOutcome::Flush);
+    // The client reads the handshake response before the server's connection task has taken over the stream; until
+    // then that task holds the write, and a queued message is answered Accepted and written by it.
+    while server.queue(id, MessageKind::Binary, b"one", 0).unwrap() != WriteOutcome::Flush {
+        assert_eq!(server_frame(&mut stream).await, (0x2, b"one".to_vec()));
+    }
     assert_eq!(server.queue(id, MessageKind::Text, b"two", 0).unwrap(), WriteOutcome::Accepted);
     // A send while the flush is outstanding queues behind it instead of writing first.
     assert_eq!(server.send(id, MessageKind::Binary, b"three", 0).unwrap(), WriteOutcome::Accepted);

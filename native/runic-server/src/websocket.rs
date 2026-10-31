@@ -533,8 +533,27 @@ async fn run(start: Start, upgraded: Upgraded) {
     let write_half = Arc::new(write_half);
     let mut buffer = BytesMut::with_capacity(READ_CHUNK.max(parts.read_buf.len()));
     buffer.extend_from_slice(&parts.read_buf);
-    socket.writes().stream = Some(write_half.clone());
+    {
+        // This task holds the write until it has written what the host sent before the handshake completed; reading
+        // starts after, so the server's own frames (pongs, a protocol error's close) never wait behind that.
+        let mut writes = socket.writes();
+        writes.stream = Some(write_half.clone());
+        writes.handed_over = false;
+    }
     let mut aborted = socket.aborted.subscribe();
+    let written = async {
+        loop {
+            match socket.drain(&inner, &write_half, false) {
+                Ok(Drained::Empty) => return true,
+                Ok(Drained::Blocked) if write_half.writable().await.is_ok() => {}
+                _ => return false,
+            }
+        }
+    };
+    tokio::select! {
+        _ = aborted.wait_for(|aborted| *aborted) => return,
+        written = written => if !written { return },
+    }
 
     let reader = read(&socket, &inner, read_half, buffer);
     let writer = write(&socket, &inner, &write_half);
