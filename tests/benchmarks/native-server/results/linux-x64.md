@@ -49,3 +49,22 @@ what the host itself loads. On this NixOS machine a framework-dependent process 
 
 ReadyToRun (framework-dependent, native server, after S1; `startup.mjs`, 21 runs, the same session): URL ready
 139.7 → 93.7 ms, page served 165.8 → 114.0 ms, RSS 62.1 → 62.3 MiB, publish 14.7 → 24.8 MiB.
+
+
+## S1: with the hello-world floor (CI, 2026-10-31)
+
+`native-server.yml` platform job of PR #782 (S1). The hello-world rows are a program without Runic that prints its URL line as serve-only does.
+
+linux-x64, linux 7.0.0-1017-azure, .NET SDK 10.0.403, ubuntu24 20261026.354.1; startup medians of 9 serve-only runs.
+
+| Mode | Server | Publish (MiB) | Executable (MiB) | Microsoft.AspNetCore.* (MiB) | Shared frameworks | URL ready (ms) | Page served (ms) | RSS (MiB) | ICU, OpenSSL loaded |
+| --- | --- | ---: | ---: | ---: | --- | ---: | ---: | ---: | --- |
+| fdd | hello world | 0.08 | 0.07 | 0.00 | NETCore.App | 27.8 | — | 29.4 | ICU |
+| fdd | Kestrel | 9.14 | 0.07 | 0.00 | NETCore.App, AspNetCore.App | 202.6 | 264.4 | 72.5 | ICU |
+| fdd | Native | 10.63 | 0.07 | 0.00 | NETCore.App | 165 | 199.6 | 57.5 | ICU |
+| sc | hello world | 78.83 | 0.07 | 0.00 | — | 27.5 | — | 29.6 | ICU |
+| sc | Kestrel | 113.71 | 0.07 | 20.47 | — | 184.8 | 238.9 | 73.5 | ICU |
+| sc | Native | 89.37 | 0.07 | 0.00 | — | 157.9 | 191.6 | 58.2 | ICU |
+| aot | hello world | 1.26 | 1.26 | 0.00 | — | 4.5 | — | 8.3 | ICU |
+| aot | Kestrel | 13.25 | 13.08 | 0.00 | — | 21.2 | 29.6 | 27.6 | ICU |
+| aot | Native | 10.19 | 10.02 | 0.00 | — | 11.4 | 16.1 | 18.8 | ICU |
