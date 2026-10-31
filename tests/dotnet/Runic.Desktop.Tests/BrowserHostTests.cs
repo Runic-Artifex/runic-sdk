@@ -312,16 +312,46 @@ public sealed class BrowserHostTests
 
             var show = window.ShowInBrowserAsync(Page("requested"), WebUiBrowser.Chrome, timeout.Token);
             while (!File.Exists(launches)) await Task.Delay(10, timeout.Token);
-            // The page request stands in for a browser that started, then stalled later.
-            using (var client = TestClients.Http())
-            {
-                await client.GetStringAsync(window.Url, timeout.Token);
-            }
+            // The page's requests stand in for a browser that started, then stalled later.
+            await RequestPageAsync(window.Url!, timeout.Token);
             await RunOutAttemptsAsync(time, TimeSpan.FromSeconds(2), attempts: 1, show, timeout.Token);
             var exception = await Assert.ThrowsAsync<TimeoutException>(() => show.WaitAsync(timeout.Token));
 
             Assert.Contains("on launch attempt 1 of 2: the page was requested", exception.Message);
             Assert.Single(await File.ReadAllLinesAsync(launches, timeout.Token));
+        }
+        finally
+        {
+            await window.DisposeAsync();
+            folder.Delete(recursive: true);
+        }
+    }
+
+    [Test]
+    public async Task RelaunchesABrowserThatOnlyAProbeOfTheListenerReached()
+    {
+        if (OperatingSystem.IsWindows()) return;
+
+        using var isolation = TestClients.Isolate();
+        var folder = Directory.CreateTempSubdirectory("runic-desktop-stall-");
+        var launches = Path.Combine(folder.FullName, "launches");
+        var time = new ManualTime();
+        var window = StallWindow(folder.FullName, TimeSpan.FromSeconds(1), attempts: 2, time);
+        try
+        {
+            await WriteStallingBrowserAsync(folder.FullName, launches);
+            using var timeout = TestTimeouts.Cancellation(TimeSpan.FromSeconds(30));
+
+            var show = window.ShowInBrowserAsync(Page("probed"), WebUiBrowser.Chrome, timeout.Token);
+            while (!File.Exists(launches)) await Task.Delay(10, timeout.Token);
+            // A development tool probes the new listener, as t3code's preview discovery does: it is not the page, so
+            // the stalled browser is still relaunched.
+            await TestClients.ProbeAsync(window.Url!, timeout.Token);
+            await RunOutAttemptsAsync(time, TimeSpan.FromSeconds(1), attempts: 2, show, timeout.Token);
+            var exception = await Assert.ThrowsAsync<TimeoutException>(() => show.WaitAsync(timeout.Token));
+
+            Assert.Contains("on launch attempt 2 of 2: no request reached the server", exception.Message);
+            Assert.Equal(2, (await File.ReadAllLinesAsync(launches, timeout.Token)).Length);
         }
         finally
         {
@@ -358,10 +388,7 @@ public sealed class BrowserHostTests
             await RunOutAttemptsAsync(time, TimeSpan.FromSeconds(1), attempts: 1, show, timeout.Token);
             Assert.True(await TestTimeouts.UntilAsync(() => HasAsyncWaiter(gate), TimeSpan.FromSeconds(10), cancellationToken: timeout.Token),
                 "The stalled launch did not wait for the gate to relaunch.");
-            using (var client = TestClients.Http())
-            {
-                await client.GetStringAsync(window.Url, timeout.Token);
-            }
+            await RequestPageAsync(window.Url!, timeout.Token);
             gate.Release();
             held = false;
 
@@ -523,6 +550,15 @@ public sealed class BrowserHostTests
         {
             folder.Delete(recursive: true);
         }
+    }
+
+    // A browser's page: its first request gets the window's client cookie, which the next one carries, so that one counts
+    // as the page's (a launched browser's first request would carry its launch code instead, with a security policy).
+    private static async Task RequestPageAsync(Uri url, CancellationToken cancellationToken)
+    {
+        using var page = TestClients.Http(cookies: new System.Net.CookieContainer());
+        await page.GetStringAsync(url, cancellationToken);
+        using var icon = await page.GetAsync(new Uri(url, "favicon.ico"), cancellationToken);
     }
 
     // A Chrome stand-in that records its profile, then runs without requesting anything.

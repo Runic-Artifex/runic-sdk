@@ -94,6 +94,12 @@ public sealed record DesktopHostOptions
     /// finish authentication.
     /// </para>
     /// <para>
+    /// Only the page's requests count: those that carry the window's client cookie, which the page's first response
+    /// sets, or the launch code of the browser the window started. A program that probes the listener, such as a
+    /// development tool or a security scanner, gets its usual answer but neither moves the deadline nor keeps a browser
+    /// that stalled before its first request from being relaunched.
+    /// </para>
+    /// <para>
     /// An embedded WebView that has requested nothing yet but is still loading the page extends the deadline: it does
     /// not run out while the WebView's first navigation is in progress, and not within a whole timeout of the last
     /// startup step the WebView reported, up to four times this timeout from the launch (60 seconds with the default).
