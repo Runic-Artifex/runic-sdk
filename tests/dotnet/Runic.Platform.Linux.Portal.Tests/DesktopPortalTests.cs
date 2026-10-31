@@ -1,4 +1,5 @@
 using DBusValue = Runic.Platform.Linux.DBus.DBusValue;
+using Microsoft.Extensions.Time.Testing;
 using Microsoft.Win32.SafeHandles;
 using Runic.Platform;
 using Runic.Platform.Linux.Portal;
@@ -46,18 +47,20 @@ internal sealed class DesktopPortalTests
         await connection.ConnectAsync();
         var service = new DesktopPortalService(connection);
         connection.AddMethodHandler(service);
-        await using var settings = new PortalDesktopSettings(destination: connection.UniqueName!);
+        // The polling interval runs on a fake clock that never advances, so only the signal can wake the watcher.
+        var clock = new TimerCountingClock();
+        await using var settings = new PortalDesktopSettings(destination: connection.UniqueName!) { TimeProvider = clock };
         var result = await settings.ReadAsync();
         Check(result is PlatformResult<DesktopAppearance>.Success { Value.ColorScheme: DesktopColorScheme.Dark, Value.HighContrast: true, Value.ReducedMotion: null, Value.AccentColor.Red: 0.25 }, "native preference variants and unknown optional values");
         using (var watching = TestTimeouts.Cancellation(TimeSpan.FromSeconds(15)))
         {
             await using var watch = settings.WatchAsync(watching.Token).GetAsyncEnumerator(watching.Token);
             Check(await watch.MoveNextAsync() && watch.Current is PlatformResult<DesktopAppearance>.Success { Value.ColorScheme: DesktopColorScheme.Dark }, "initial watched preference");
-            // Wait past the polling interval: a subscribed watcher must not read again until a change.
-            await Task.Delay(1500);
+            // Waiting for the next change, a subscribed watcher starts no polling timer, so it reads again only after a change.
             int reads = service.Calls.Count(call => call == "ReadAll");
-            await Task.Delay(1500);
-            Check(service.Calls.Count(call => call == "ReadAll") == reads, "subscribed settings watch does not poll");
+            var changed = watch.MoveNextAsync().AsTask();
+            clock.Advance(TimeSpan.FromSeconds(3));
+            Check(clock.Timers == 0 && !changed.IsCompleted && service.Calls.Count(call => call == "ReadAll") == reads, "subscribed settings watch does not poll");
             service.ColorScheme = 2;
             using (var signal = connection.GetMessageWriter())
             {
@@ -65,8 +68,7 @@ internal sealed class DesktopPortalTests
                 signal.WriteString("org.freedesktop.appearance"); signal.WriteString("color-scheme"); signal.WriteVariant(VariantValue.UInt32(2));
                 connection.TrySendMessage(signal.CreateMessage());
             }
-            var changed = watch.MoveNextAsync().AsTask();
-            Check(await changed.WaitAsync(TimeSpan.FromMilliseconds(900)) && watch.Current is PlatformResult<DesktopAppearance>.Success { Value.ColorScheme: DesktopColorScheme.Light },
+            Check(await changed.WaitScaledAsync(TimeSpan.FromSeconds(5)) && watch.Current is PlatformResult<DesktopAppearance>.Success { Value.ColorScheme: DesktopColorScheme.Light },
                 "SettingChanged wakes the watcher before a polling interval");
             Check(service.ReadAllSenders.Count == 1, "settings reads and watch share one portal connection");
             service.ColorScheme = 1;
@@ -191,6 +193,19 @@ internal sealed class DesktopPortalTests
         return writer.CreateMessage();
     }
     private static void Check(bool condition, string message) { if (!condition) throw new InvalidOperationException(message); }
+
+    // A watcher that polls starts a timer on its clock for each interval.
+    private sealed class TimerCountingClock : FakeTimeProvider
+    {
+        private int _timers;
+        public int Timers => Volatile.Read(ref _timers);
+
+        public override ITimer CreateTimer(TimerCallback callback, object? state, TimeSpan dueTime, TimeSpan period)
+        {
+            Interlocked.Increment(ref _timers);
+            return base.CreateTimer(callback, state, dueTime, period);
+        }
+    }
 }
 internal sealed class DesktopPortalService(DBusConnection connection) : IPathMethodHandler
 {
