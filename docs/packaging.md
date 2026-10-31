@@ -39,6 +39,35 @@ that uses `Runic.Application.Views.Wpf` or `Runic.Navigation.Wpf`: the .NET SDK
 stops a trimmed WPF publish with `NETSDK1168`. Publish those framework-dependent,
 or self-contained without `PublishTrimmed`.
 
+### Startup: ReadyToRun and invariant globalization
+
+A framework-dependent or self-contained application spends most of its startup
+compiling its own code and Runic's with the JIT. ReadyToRun compiles it ahead
+of time, so we recommend it for every publish that is not NativeAOT:
+
+```sh
+dotnet publish -c Release -r linux-x64 --self-contained false -p:PublishReadyToRun=true
+```
+
+For the Runic Desktop example on the native server (linux-x64,
+framework-dependent), it cuts the time until the first page is served from
+about 170 to 115 ms, and makes the publish 15 to 25 MiB. ReadyToRun needs a
+runtime identifier (`-r`). It is not a default; set
+`<PublishReadyToRun>true</PublishReadyToRun>` in the application project to
+keep it. NativeAOT already compiles everything ahead of time. Since 0.15 the
+property no longer reaches the Views generator's own build, which failed with
+`NETSDK1191`.
+
+The host itself loads neither ICU nor, on Linux, OpenSSL before the first
+window has its page (0.15). An application that formats or compares text for a
+culture loads ICU when it first does, which costs about 2 ms and 5 MiB of
+memory on Linux. The templates keep full globalization, so dates, numbers and
+sorting follow the user's culture. An application whose interface shows no
+culture-specific text can set `<InvariantGlobalization>true</InvariantGlobalization>`:
+ICU is then never loaded, every culture formats and compares like the
+invariant culture, and creating a culture other than the invariant one throws
+`CultureNotFoundException` (unless `PredefinedCulturesOnly` is `false`).
+
 ## The manifests
 
 The command fills manifests from the project file's identity: `ApplicationId`,

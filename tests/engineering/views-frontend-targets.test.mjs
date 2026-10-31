@@ -4,7 +4,7 @@ import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSyn
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { after, before, test } from "node:test";
-import { root } from "../../eng/run.mjs";
+import { configuration, root } from "../../eng/run.mjs";
 
 // The Views MSBuild targets install and build the frontend with external
 // commands. These tests replace both commands with small scripts and check
@@ -814,6 +814,83 @@ test("NoBuild without generated Bridge code fails with RUNICBRIDGE022", () => {
   ({ project } = noBuildProject("no-build-no-views", { noViews: true }));
   result = generateWithoutBuild(project);
   assert.equal(result.status, 0, result.output);
+});
+
+// S1 (D053.25): a publish passes its properties to the whole build. The generator's own build and the bootstrap pass
+// clear the runtime identifier, so PublishReadyToRun reached them without one and failed with NETSDK1191, as
+// PublishTrimmed did before #743. A stand-in dotnet on PATH answers the generator's run; the generator project itself
+// is built for real (CONFIGURATION, as eng/run.mjs builds it).
+test("publish properties reach neither the generator's build nor the bootstrap pass", () => {
+  const project = join(directory, "publish-properties");
+  const fake = join(project, "fake-dotnet");
+  mkdirSync(fake, { recursive: true });
+  writeFileSync(join(fake, "dotnet"), `#!/bin/sh\necho "$@" >> "${join(project, "generator.log")}"\n`, { mode: 0o755 });
+  writeFileSync(join(project, "App.proj"), `<Project>
+  <PropertyGroup>
+    <AssemblyName>App</AssemblyName>
+    <RunicApplicationFrontendGenerationEnabled>true</RunicApplicationFrontendGenerationEnabled>
+    <RunicApplicationFrontendBuildEnabled>false</RunicApplicationFrontendBuildEnabled>
+    <TargetFramework>net10.0</TargetFramework>
+  </PropertyGroup>
+  <!-- The Microsoft.NET.Sdk targets that RunicViewsGenerateBridge depends on, and the bootstrap pass's Build. -->
+  <Target Name="ResolveProjectReferences" />
+  <Target Name="InitializeSourceRootMappedPaths" />
+  <Target Name="Build">
+    <WriteLinesToFile File="$(MSBuildProjectDirectory)/bootstrap.log" Overwrite="true"
+                      Lines="RuntimeIdentifier=$(RuntimeIdentifier);PublishReadyToRun=$(PublishReadyToRun);PublishAot=$(PublishAot);PublishTrimmed=$(PublishTrimmed);SelfContained=$(SelfContained)" />
+  </Target>
+  <Import Project="${targets}" />
+</Project>
+`);
+  const dotnet = spawnSync("sh", ["-c", "command -v dotnet"], { encoding: "utf8" }).stdout.trim();
+  const result = spawnSync(dotnet, ["msbuild", join(project, "App.proj"), "-t:RunicViewsGenerateBridge", `-p:Configuration=${configuration}`,
+    "-p:RuntimeIdentifier=linux-x64", "-p:PublishReadyToRun=true", "-p:PublishAot=true", "-p:PublishTrimmed=true", "-p:SelfContained=true",
+    "-nologo", "-noAutoResponse", "-nodeReuse:false", "-v:m", "-clp:NoSummary"],
+    { cwd: project, encoding: "utf8", env: { ...process.env, PATH: `${fake}:${process.env.PATH}` } });
+  assert.equal(result.status, 0, result.stdout + result.stderr);
+  assert.doesNotMatch(result.stdout, /NETSDK\d+/);
+  assert.deepEqual(readFileSync(join(project, "bootstrap.log"), "utf8").trim().split("\n"),
+    ["RuntimeIdentifier=", "PublishReadyToRun=false", "PublishAot=false", "PublishTrimmed=false", "SelfContained=false"]);
+  assert.match(readFileSync(join(project, "generator.log"), "utf8"), /--generate/);
+});
+
+// S1 (D053.25): every build started the generator twice, once for the bootstrap pass's composition stub and once for
+// the Bridges. The stub is written again only when the composition type, the generator or a reference changed, or it
+// is missing. The generator (an input) is the one eng/run.mjs built.
+test("the bootstrap pass writes its composition stub only when an input changed", () => {
+  const project = join(directory, "bootstrap-stub");
+  const fake = join(project, "fake-dotnet");
+  mkdirSync(fake, { recursive: true });
+  writeFileSync(join(fake, "dotnet"), `#!/bin/sh
+echo "$@" >> "${join(project, "generator.log")}"
+[ "$2" = --composition-stub ] && echo "// stub" > "$4"
+exit 0
+`, { mode: 0o755 });
+  writeFileSync(join(project, "App.proj"), `<Project>
+  <PropertyGroup>
+    <IntermediateOutputPath>obj/</IntermediateOutputPath>
+    <RunicApplicationFrontendBootstrap>true</RunicApplicationFrontendBootstrap>
+  </PropertyGroup>
+  <Target Name="ResolveAssemblyReferences" />
+  <Import Project="${targets}" />
+</Project>
+`);
+  const dotnet = spawnSync("sh", ["-c", "command -v dotnet"], { encoding: "utf8" }).stdout.trim();
+  const stubs = (composition = "App.RunicViews") => {
+    const result = spawnSync(dotnet, ["msbuild", join(project, "App.proj"), "-t:RunicViewsBootstrapComposition",
+      `-p:RunicApplicationFrontendCompositionType=${composition}`, `-p:Configuration=${configuration}`, "-getItem:Compile", "-nologo", "-noAutoResponse", "-nodeReuse:false", "-v:m"],
+      { cwd: project, encoding: "utf8", env: { ...process.env, PATH: `${fake}:${process.env.PATH}` } });
+    assert.equal(result.status, 0, result.stdout + result.stderr);
+    const compile = JSON.parse(result.stdout.slice(result.stdout.indexOf("{"))).Items.Compile.map(item => item.Filename + item.Extension);
+    assert.deepEqual(compile, ["RunicBridgeComposition.Bootstrap.g.cs"]);
+    return readFileSync(join(project, "generator.log"), "utf8").trim().split("\n").length;
+  };
+  assert.equal(stubs(), 1);
+  assert.equal(stubs(), 1, "an unchanged build wrote the stub again");
+  rmSync(join(project, "obj/RunicBridgeComposition.Bootstrap.g.cs"));
+  assert.equal(stubs(), 2, "a missing stub was not written again");
+  assert.equal(stubs("App.Other"), 3, "a new composition type did not write the stub again");
+  assert.equal(stubs("App.Other"), 3);
 });
 
 // W319-003 msbuild backlog: the targets wrote to obj/ whatever UseArtifactsOutput, BaseIntermediateOutputPath or
