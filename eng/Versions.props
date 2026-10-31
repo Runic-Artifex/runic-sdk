@@ -1,13 +1,13 @@
 <Project>
   <PropertyGroup>
-    <RunicSdkVersion>0.14.0</RunicSdkVersion>
+    <RunicSdkVersion>0.15.0</RunicSdkVersion>
     <!-- Last published release; package validation compares shipping libraries with it. -->
     <RunicPackageValidationBaselineVersion>0.14.0</RunicPackageValidationBaselineVersion>
     <!-- Runic.Application.Views.CsWebUi is the preview package. It depends on the prerelease CsWebUi, so from 1.0
          it ships on a prerelease version of its own; the package, central package management and the runic-app
          template's cswebui host read it here. eng/workspace.json owns it ("version" on the package's entry);
          this is a copy that `bun eng/version.mjs check` compares and `bump` rewrites. -->
-    <RunicCsWebUiPackageVersion Condition="'$(RunicCsWebUiPackageVersion)' == ''">0.14.0-preview.1</RunicCsWebUiPackageVersion>
+    <RunicCsWebUiPackageVersion Condition="'$(RunicCsWebUiPackageVersion)' == ''">0.15.0-preview.1</RunicCsWebUiPackageVersion>
     <!-- Last published Runic.Application.Views.CsWebUi, its package validation baseline (0.14.0 shipped it as 0.14.0-preview.1).
          Update it with RunicPackageValidationBaselineVersion after each release. -->
     <RunicCsWebUiPackageValidationBaselineVersion>0.14.0-preview.1</RunicCsWebUiPackageValidationBaselineVersion>
