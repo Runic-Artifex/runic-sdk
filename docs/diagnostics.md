@@ -742,8 +742,8 @@ loads. The message names the page and the server's response.
 check that the configured dev script starts with the frontend's own command,
 such as `npm run dev`.
 
-With `runic()` or `runicDevSession()` from `@runic-artifex/vite-plugin-runic`
-in the Vite configuration, or for Angular with the plugin in `package.json`,
+With `runic()` from `@runic-artifex/vite-plugin-runic` in the Vite
+configuration, or for Angular with the plugin in `package.json`,
 the server is ready only when `/__runic/state` confirms the session that `dev`
 started it with (since 0.11). A message that names the session confirmation
 means that the plugin is older than `dotnet-runic`, that an Angular serve

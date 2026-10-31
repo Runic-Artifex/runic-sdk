@@ -41,13 +41,11 @@ releases and their evidence remain historical records.
    tests fail until you do. Likewise remove `<PackageValidationBaselineName>` from a
    package published for the first time under a new ID (the `Runic.Application.Views*`
    packages after 0.7.0-preview.7), which until then validates against its old ID.
-   Also remove the RS0026 `SuppressMessage` attributes on
-   `ReactiveNavigationEntryExtensions.CreateCompleteCommand`,
-   `DesktopPlatformServices.PresentAsync` and the `string[] args` overloads of
-   `ApplicationInstance.ClaimAsync` once their lines are in
-   `Runic.Navigation.ReactiveUI*/PublicAPI.Shipped.txt`,
-   `Runic.Application.Views.Desktop/PublicAPI.Shipped.txt` and
-   `Runic.Platform.Runtime/PublicAPI.Shipped.txt`: the analyzer accepts shipped overloads.
+   Also remove each RS0026 `SuppressMessage` attribute whose overload's line is now in
+   `PublicAPI.Shipped.txt`: the analyzer accepts shipped overloads. In 0.15 that is
+   `WindowsDomainClient.DiscoverControllerAsync` with a `DomainControllerNameFormat`
+   (`Runic.Platform.Administration.Windows`). `git grep -n RS0026 -- '*.cs'` lists the
+   attributes that remain.
 7. Refresh the docs catalog (see the end of this page).
 
 Full CI includes package/template consumers and native JIT/NativeAOT checks. The

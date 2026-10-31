@@ -987,7 +987,13 @@ Details: 0.15.0 [Embedded frontends](../eng/release/notes/0.15.0.md#embedded-fro
 
 ### Cleanups
 
-<!-- C1: replace this line with the batch's migration entries; remove it if the batch has none. -->
+| 0.14 | 0.15 |
+| --- | --- |
+| SvelteKit: `runicDevSession()` in `vite.config.ts` (deprecated in 0.14) | `runic({ html: false })`, and `import "@runic-artifex/vite-plugin-runic/client";` in `src/hooks.client.ts`. `runicDevSession` is no longer exported, so a configuration that imports it fails to load |
+| Vue: `await title.commit(); if (title.error === undefined) …` | Either still works; `commit()` now resolves with the field's state, so `if ((await title.commit()).error === undefined) …` reads it as in the other bindings. A wrapper typed `() => Promise<void>` still accepts it |
+| A `console.log` of a View's state, or a counter in state, to see whether a scoped command ran | The DevTools dock's **Views** and **Superseded commands** cards, or `views` and the `superseded` timeline entries in `/__runic/state` |
+
+Details: 0.15.0 [Cleanups (C1)](../eng/release/notes/0.15.0.md#cleanups-c1).
 
 ### Windows administration
 

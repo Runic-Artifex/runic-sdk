@@ -82,7 +82,8 @@ presentation meanwhile (`RunicPresentation.Renew`, or content presented again),
 ran: once the route reached the reply's revision, with the current state
 (`commandOutcome` resolves `bridgeSuccess(state)`). It reports no diagnostic,
 and `useCommand`, `injectCommand` and `createCommandController` show no error.
-A caller that must know compares the state it got. Other commands, setters,
+A caller that must know compares the state it got. In development, the state
+inspector of `@runic-artifex/vite-plugin-runic` lists it. Other commands, setters,
 operation starts and interactions are not scoped. With an earlier host, scoped
 commands run as plain commands.
 

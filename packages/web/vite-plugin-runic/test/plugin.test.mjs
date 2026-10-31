@@ -7,7 +7,8 @@ import { promisify } from "node:util";
 import test from "node:test";
 import { DevTools } from "@vitejs/devtools";
 import { build, createServer } from "vite";
-import { runic, runicDevSession, runicDevSessionProxy } from "../dist/index.js";
+import * as pluginModule from "../dist/index.js";
+import { runic, runicDevSessionProxy } from "../dist/index.js";
 import { scaled } from "../../../../tests/support/timeouts.mjs";
 
 const execFile = promisify(execFileCallback);
@@ -335,35 +336,32 @@ test("/__runic/state confirms the dotnet runic dev session", async () => {
   }
 });
 
-test("runicDevSessionProxy and runicDevSession confirm the session without runic()", async () => {
+test("runicDevSessionProxy confirms the session without runic()", async () => {
+  // runicDevSession(), deprecated in 0.14, is gone: runic({ html: false }) answers the session.
+  assert.equal("runicDevSession" in pluginModule, false);
   const previous = process.env.RUNIC_APPLICATION_DEV_SESSION;
   const session = "fedcba9876543210".repeat(4);
   try {
     process.env.RUNIC_APPLICATION_DEV_SESSION = session;
     // The Angular CLI passes its proxyConfig to Vite as server.proxy and adds no Vite plugins.
-    const setups = [{ plugins: [], proxy: runicDevSessionProxy(), status: 200 },
-      { plugins: [runicDevSession()], status: 204 }];
-    assert.equal("transformIndexHtml" in runicDevSession(), false);
-    for (const { plugins, proxy, status } of setups) {
-      const server = await createServer({ configFile: false, logLevel: "silent", plugins,
-        server: { host: "127.0.0.1", port: 0, strictPort: false, proxy } });
-      try {
-        await server.listen();
-        const base = `http://127.0.0.1:${serverPort(server)}`;
-        for (const path of ["/__runic/state", "/__runic/state?probe=1"]) {
-          const state = await fetch(`${base}${path}`);
-          assert.equal(state.status, status, path);
-          assert.equal(state.headers.get("x-runic-dev-session"), session, path);
-          assert.equal(state.headers.get("cache-control"), "no-store", path);
-          await state.arrayBuffer();
-        }
-        for (const path of ["/", "/__runic/statex"]) {
-          const other = await fetch(`${base}${path}`);
-          assert.equal(other.headers.get("x-runic-dev-session"), null, path);
-          await other.arrayBuffer();
-        }
-      } finally { await server.close(); }
-    }
+    const server = await createServer({ configFile: false, logLevel: "silent", plugins: [],
+      server: { host: "127.0.0.1", port: 0, strictPort: false, proxy: runicDevSessionProxy() } });
+    try {
+      await server.listen();
+      const base = `http://127.0.0.1:${serverPort(server)}`;
+      for (const path of ["/__runic/state", "/__runic/state?probe=1"]) {
+        const state = await fetch(`${base}${path}`);
+        assert.equal(state.status, 200, path);
+        assert.equal(state.headers.get("x-runic-dev-session"), session, path);
+        assert.equal(state.headers.get("cache-control"), "no-store", path);
+        await state.arrayBuffer();
+      }
+      for (const path of ["/", "/__runic/statex"]) {
+        const other = await fetch(`${base}${path}`);
+        assert.equal(other.headers.get("x-runic-dev-session"), null, path);
+        await other.arrayBuffer();
+      }
+    } finally { await server.close(); }
     // Without dotnet runic dev (or with a value of another shape) the state answers without a session.
     for (const value of [undefined, "not a session value"]) {
       if (value === undefined) delete process.env.RUNIC_APPLICATION_DEV_SESSION;

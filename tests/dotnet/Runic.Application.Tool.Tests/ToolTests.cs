@@ -466,8 +466,8 @@ internal sealed partial class ToolTests
         True(ViteBuildInputs.ParseRunicPlugin("RUNIC_VITE_INPUTS={\"root\":\"/app\",\"inputs\":[],\"runic\":false}") == false, "A configuration without runic() is reported.");
         True(ViteBuildInputs.ParseRunicPlugin("RUNIC_VITE_INPUTS={\"root\":\"/app\",\"inputs\":[]}") is null, "An older probe says nothing.");
         Contains(ViteBuildInputs.CreateProbe(""), "plugin?.name === \"runic\"");
-        // runicDevSession() only confirms the session; SvelteKit configurations from before 0.14 use it.
-        Contains(ViteBuildInputs.CreateProbe(""), "plugin?.name === \"runic:dev-session\"");
+        // runicDevSession() ("runic:dev-session") was removed in 0.15; a configuration that still imports it fails to load.
+        DoesNotContain(ViteBuildInputs.CreateProbe(""), "runic:dev-session");
 
         True(ViteDevelopmentServer.ConfirmsSession(configuration with { UsesRunicVitePlugin = true }), "The resolved configuration decides.");
         False(ViteDevelopmentServer.ConfirmsSession(configuration with { UsesRunicVitePlugin = false }), "Without runic() nothing can confirm.");

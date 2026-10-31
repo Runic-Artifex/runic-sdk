@@ -1,15 +1,19 @@
 // The development state that `runic()` and `runicDevSessionProxy()` keep in the development server process: the
-// contract metadata, the page's connection state and a bounded timeline of sanitized diagnostics.
+// contract metadata, the page's connection state, the state inspector's Views and a bounded timeline of sanitized
+// diagnostics.
 import type {
   RunicDiagnosticDetail,
   RunicDiagnosticEntry,
   RunicDiagnosticFailure,
   RunicDiagnosticSource,
+  RunicViewStateValue,
 } from "./diagnostics.js";
-import { sanitizeDiagnosticSummary } from "./diagnostics.js";
+import { sanitizeDiagnosticSummary, sanitizeViewState } from "./diagnostics.js";
 
 const defaultTimelineLimit = 200;
 const maximumTimelineLimit = 500;
+// The state inspector keeps the Views that changed most recently, over every page of the server.
+const maximumInspectedViews = 32;
 
 export interface RunicDevelopmentState {
   readonly contract: Readonly<{
@@ -29,7 +33,29 @@ export interface RunicDevelopmentState {
   readonly connection: Readonly<{
     state: "connecting" | "connected" | "reconnecting" | "lost" | "closed" | "unknown";
   }>;
+  /**
+   * The state inspector: each open View's current state, as the development client last reported it, the most
+   * recently changed first. Command replies that the producer answered `superseded` are timeline entries
+   * (`kind: "command"`, `detail.code: "superseded"`).
+   */
+  readonly views: readonly RunicViewSnapshot[];
   readonly timeline: readonly RunicTimelineEntry[];
+}
+
+/** One View in the state inspector. */
+export interface RunicViewSnapshot {
+  /** The page the View is open in: a random identifier per page load, as several windows share one server. */
+  readonly page: string;
+  /** The View's route, such as `editor`. */
+  readonly route: string;
+  /** The revision of `state`, and its presentation epoch on a connection with `presentation-epoch/1`. */
+  readonly revision?: number;
+  readonly epoch?: number;
+  /** How many presentations of the page show the route. */
+  readonly presentations: number;
+  readonly updatedAt: string;
+  /** The state the page shows, bounded and redacted like timeline details. */
+  readonly state: RunicViewStateValue;
 }
 
 export type RunicTimelineEntry = Readonly<Required<Pick<RunicDiagnosticEntry, "id" | "timestamp" | "kind" | "label">> & {
@@ -46,6 +72,12 @@ export interface DevelopmentTimeline {
   appendDiagnostic(candidate: unknown, defaultSource?: RunicDiagnosticSource): RunicTimelineEntry | undefined;
   /** Applies a `{ state }` connection report; returns whether the state changed. */
   applyConnection(candidate: unknown): boolean;
+  /**
+   * Applies a state inspector report: `{ page, route, revision?, epoch?, presentations, state }` for a View's state,
+   * `{ page, route, closed: true }` for a closed View, `{ page, closed: true }` for a page that went away. Returns
+   * whether the report was valid.
+   */
+  applyView(candidate: unknown): boolean;
 }
 
 export function createDevelopmentTimeline(
@@ -78,7 +110,46 @@ export function createDevelopmentTimeline(
       changed(state);
       return true;
     },
+    applyView(candidate) {
+      if (!isRecord(candidate) || typeof candidate.page !== "string" || !pagePattern.test(candidate.page)) return false;
+      const page = candidate.page;
+      const route = typeof candidate.route === "string" && routePattern.test(candidate.route) ? candidate.route : undefined;
+      // An invalid route never stands for the whole page.
+      if (candidate.route !== undefined && route === undefined) return false;
+      if (candidate.closed === true) {
+        const views = state.views.filter((view) => view.page !== page || (route !== undefined && view.route !== route));
+        if (views.length !== state.views.length) {
+          state = { ...state, views };
+          changed(state);
+        }
+        return true;
+      }
+      if (route === undefined || !Object.hasOwn(candidate, "state")) return false;
+      const revision = counter(candidate.revision);
+      const epoch = counter(candidate.epoch);
+      const snapshot: RunicViewSnapshot = {
+        page,
+        route,
+        ...(revision === undefined ? {} : { revision }),
+        ...(epoch === undefined ? {} : { epoch }),
+        presentations: counter(candidate.presentations) ?? 0,
+        updatedAt: new Date().toISOString(),
+        state: sanitizeViewState(candidate.state),
+      };
+      const others = state.views.filter((view) => view.page !== page || view.route !== route);
+      state = { ...state, views: [snapshot, ...others].slice(0, maximumInspectedViews) };
+      changed(state);
+      return true;
+    },
   };
+}
+
+// The development client's page identifier, and a route name (specs/application, "Route names").
+const pagePattern = /^[a-z0-9]{1,32}$/u;
+const routePattern = /^[A-Za-z0-9_.-]{1,128}$/u;
+
+function counter(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isSafeInteger(value) && value >= 0 ? value : undefined;
 }
 
 export function initialDevelopmentState(
@@ -93,6 +164,7 @@ export function initialDevelopmentState(
     },
     vite,
     connection: { state: "unknown" },
+    views: [],
     timeline: [],
   };
 }

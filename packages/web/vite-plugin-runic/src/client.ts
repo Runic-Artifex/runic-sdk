@@ -1,6 +1,7 @@
 // The development client. It forwards the diagnostics and connection state of `@runic-artifex/views` to the
-// development server, which keeps them on its timeline, and warns about script that overwrites a focused text field
-// with an older value (`stale-input`). It has no exports.
+// development server, which keeps them on its timeline, reports each View's state and superseded command replies to
+// the state inspector, and warns about script that overwrites a focused text field with an older value
+// (`stale-input`). It has no exports.
 //
 // `runic()` injects it into served pages through `virtual:runic/client`, and loads it through that module for an
 // application import of `@runic-artifex/vite-plugin-runic/client`; the build replaces it with an empty module. A
@@ -13,8 +14,9 @@ import {
   diagnosticEvent,
   diagnosticsPath,
   maximumClientMessageBytes,
+  viewEvent,
 } from "./channel.js";
-import { sanitizeDiagnosticSummary } from "./diagnostics.js";
+import { sanitizeDiagnosticSummary, sanitizeViewState } from "./diagnostics.js";
 import { installStaleInputWarning } from "./stale-input.js";
 
 interface ViteHotContextLike {
@@ -29,6 +31,8 @@ interface ImportMetaWithHot extends ImportMeta {
 type ClientHost = Record<symbol, unknown> & {
   fetch?: (input: string, init: Record<string, unknown>) => Promise<{ readonly status: number }>;
   TextEncoder?: new () => { encode(text: string): { readonly byteLength: number } };
+  addEventListener?: (type: string, listener: () => void) => void;
+  removeEventListener?: (type: string, listener: () => void) => void;
 };
 
 const host = globalThis as unknown as ClientHost;
@@ -193,16 +197,111 @@ function connectViewsConnection(): void {
   if (typeof connection.start === "function") connection.start();
 }
 
+// The state inspector. @runic-artifex/views 0.15 or later reports to this channel once a reader set `requested`
+// (specs/application, "Shared globals"): each route's state as its presentations receive it, a closed route, and a
+// command the producer answered `superseded`. The client sends a route's latest state at most every 250 ms.
+const viewsInspectorKey = Symbol.for("runic.views.inspector");
+const inspectorListenerKey = "runic:inspector-listener";
+const pageHideListenerKey = "runic:page-hide-listener";
+const pageKey = "runic:page";
+const stateInterval = 250;
+
+type InspectorEvent =
+  | { readonly kind: "state"; readonly route: string; readonly revision?: number; readonly epoch?: number;
+      readonly presentations: number; readonly state: unknown }
+  | { readonly kind: "closed"; readonly route: string }
+  | { readonly kind: "superseded"; readonly route: string; readonly member: string; readonly epoch?: number;
+      readonly revision?: number };
+
+interface ViewsInspectorChannel {
+  readonly listeners: Set<(event: InspectorEvent) => void>;
+  requested?: boolean;
+}
+
+// Several windows can share one development server, so the server keeps Views per page.
+const page = typeof data[pageKey] === "string" ? data[pageKey] as string : (data[pageKey] = randomPage()) as string;
+const pendingStates = new Map<string, Extract<InspectorEvent, { kind: "state" }>>();
+let stateTimer: ReturnType<typeof setTimeout> | undefined;
+
+function randomPage(): string {
+  return `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 10)}`.slice(0, 32);
+}
+
+function sendStates(): void {
+  stateTimer = undefined;
+  for (const event of pendingStates.values()) {
+    send(viewEvent, {
+      page, route: event.route, revision: event.revision, epoch: event.epoch, presentations: event.presentations,
+      // Sanitized here too, so that the state leaves the page bounded and redacted.
+      state: sanitizeViewState(event.state),
+    });
+  }
+  pendingStates.clear();
+}
+
+function reportInspector(event: InspectorEvent): void {
+  if (typeof event !== "object" || event === null || typeof event.route !== "string") return;
+  if (event.kind === "state") {
+    pendingStates.set(event.route, event);
+    stateTimer ??= setTimeout(sendStates, stateInterval);
+  } else if (event.kind === "closed") {
+    pendingStates.delete(event.route);
+    send(viewEvent, { page, route: event.route, closed: true });
+  } else if (event.kind === "superseded") {
+    // The call resolved like one that ran, so only the timeline shows that nothing ran.
+    sendDiagnostic({
+      source: "views",
+      kind: "command",
+      label: `${String(event.member).slice(0, 80)} superseded`,
+      detail: {
+        code: "superseded", route: event.route.slice(0, 120), member: String(event.member).slice(0, 80),
+        ...(typeof event.epoch === "number" ? { epoch: event.epoch } : {}),
+        ...(typeof event.revision === "number" ? { revision: event.revision } : {}),
+      },
+    });
+  }
+}
+
+function viewsInspector(): ViewsInspectorChannel {
+  const channels = host as Record<symbol, ViewsInspectorChannel | undefined>;
+  return channels[viewsInspectorKey] ??= { listeners: new Set() };
+}
+
+function pageHidden(): void {
+  pendingStates.clear();
+  send(viewEvent, { page, closed: true });
+}
+
+function connectViewsInspector(): void {
+  const inspector = viewsInspector();
+  const previous = data[inspectorListenerKey] as ((event: InspectorEvent) => void) | undefined;
+  if (previous) inspector.listeners.delete(previous);
+  inspector.listeners.add(reportInspector);
+  data[inspectorListenerKey] = reportInspector;
+  inspector.requested = true;
+  // The page's Views go away with it; the server also keeps only the 32 most recent.
+  const previousHide = data[pageHideListenerKey] as (() => void) | undefined;
+  if (previousHide) host.removeEventListener?.("pagehide", previousHide);
+  host.addEventListener?.("pagehide", pageHidden);
+  data[pageHideListenerKey] = pageHidden;
+}
+
 // Removes this copy's listeners once the HTTP channel has no server to report to.
 function close(): void {
   channel = "closed";
   pending.length = 0;
   viewsDiagnostics().delete(reportViewsDiagnostic);
   viewsConnection().listeners.delete(reportConnection);
+  viewsInspector().listeners.delete(reportInspector);
+  host.removeEventListener?.("pagehide", pageHidden);
+  if (stateTimer !== undefined) clearTimeout(stateTimer);
+  stateTimer = undefined;
+  pendingStates.clear();
 }
 
 connectViewsDiagnostics();
 connectViewsConnection();
+connectViewsInspector();
 // Vite's HMR context shows that a development server serves the page: install the warning now. Without it
 // (a production build that kept the client), the HTTP channel installs it once the server answers. Installs once
 // per page; HMR re-evaluation leaves it in place.

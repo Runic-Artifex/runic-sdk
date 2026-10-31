@@ -8,6 +8,7 @@ import {
 import { currentRuntime, errorMessage, sharedRuntimeFor, type SharedRuntime } from "./runtime.js";
 import { reportBridgeError, waitForBridge } from "./transport.js";
 import { publishConnectionState } from "./connection-state.js";
+import { reportToInspector } from "./inspector.js";
 import { abortable, abortReason, isAbort, throwIfAborted } from "./lifetime.js";
 import { applySplice, minimumKept, singleSplice, textSpliceFeature } from "./text.js";
 import { deferNotification, flushNotifications, nextFrame } from "./notifications.js";
@@ -273,6 +274,7 @@ class RouteEntry {
     this.waiters.clear();
     this.buffered = [];
     this.endPresent();
+    reportToInspector(() => ({ kind: "closed", route: this.route }));
   }
 
   /* ------------------------------------------------------------ states */
@@ -580,6 +582,10 @@ class RouteEntry {
       if (previous === undefined || !Object.keys(this.members).every(member => Object.is(previous[member], next[member]))) {
         this.exposed = next;
         deferNotification(this.deliver);
+        reportToInspector(() => ({
+          kind: "state", route: this.route, revision: this.revision, epoch: this.exposedEpoch,
+          presentations: this.presentations.size, state: next,
+        }));
       } else {
         // A state that changed no member, such as a renewal (presentation-epoch/1): the presentations that already show
         // it take its epoch without a notification. The others take it with the delivery that is still due.
@@ -837,7 +843,12 @@ async function connectRoute<TState>(options: ViewConnectOptions<TState>): Promis
     // The epoch of the state this presentation's subscribers last received, which the call was made on.
     const epoch = scoped.has(member) && runtime.features?.has(presentationEpochFeature) === true ? lease.epoch : undefined;
     await ready();
-    return request({ kind: "command", route, member, ...(input === undefined ? {} : { input }), ...(epoch === undefined ? {} : { epoch }) });
+    const reply = await request({ kind: "command", route, member, ...(input === undefined ? {} : { input }), ...(epoch === undefined ? {} : { epoch }) });
+    // The call resolves like one that ran; the development state inspector shows that it did not (D053.25).
+    if (reply.ok && reply["superseded"] === true) {
+      reportToInspector(() => ({ kind: "superseded", route, member, epoch, revision: reply.revision }));
+    }
+    return reply;
   }
 
   return {
