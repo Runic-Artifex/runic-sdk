@@ -13,10 +13,14 @@ namespace Runic.Desktop.Internal;
 // primary screen, whose height defines the flip. Changes come from NSApplicationDidChangeScreenParametersNotification.
 internal sealed partial class MacOsWkWebViewHost
 {
-    internal static IDesktopMonitors Monitors { get; } = new MonitorSource();
+    // Every DesktopHost reads it when it starts; the source is the nested class's, so reading it does not run this
+    // type's static initialization (HostSettings).
+    internal static IDesktopMonitors Monitors => MonitorSource.Shared;
 
     private sealed class MonitorSource : DesktopMonitorSource
     {
+        internal static readonly MonitorSource Shared = new();
+
         protected override async ValueTask<PlatformResult<ImmutableArray<DesktopMonitor>>> ReadAsync(CancellationToken cancellationToken)
         {
             if (!IsSupported)

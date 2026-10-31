@@ -1,5 +1,4 @@
 using System.Collections.Concurrent;
-using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Time.Testing;
@@ -389,7 +388,7 @@ internal sealed partial class NavigationTests
     [Test]
     public async Task InitializeWaitStartsWithDisposalAsync()
     {
-        var time = new FakeTimeProvider();
+        var time = new CountingTimeProvider();
         using var context = new SyncContextModelContext();
         await using var fixture = new Fixture(context, time, TimeSpan.FromSeconds(10));
         var region = fixture.Navigator.CreateRegion<Page>(fixture.Root, NavigationTarget.Borrow(new Page("home")));
@@ -423,9 +422,12 @@ internal sealed partial class NavigationTests
 
         // Long past the close timeout, disposal starts its own deadline.
         time.Advance(TimeSpan.FromSeconds(30));
+        var timers = time.Timers;
         var disposal = fixture.Navigator.DisposeAsync().AsTask();
-        await Task.Delay(100);
-        Require(page.Disposed == 0 && !disposal.IsCompleted, "Disposal disposed content under a running initialize hook.");
+        // DisposeAsync registers its deadline before it returns, and the clock stays short of it: only the
+        // hook's return can let disposal go on. The checks after the gate show nothing was disposed under it.
+        Require(time.Timers > timers && page.Disposed == 0 && !disposal.IsCompleted,
+            "Disposal disposed content under a running initialize hook.");
         gate.SetResult();
         await Wait(disposal);
         await Wait(push);
@@ -504,25 +506,31 @@ internal sealed partial class NavigationTests
     [Test]
     public async Task BlockedModelThreadDisposalCompletesAsync()
     {
+        var closeTimeout = TimeSpan.FromSeconds(10);
+        var time = new CountingTimeProvider();
         using var context = new SchedulingSyncContextModelContext();
-        await using var fixture = new Fixture(context, closeTimeout: TimeSpan.FromMilliseconds(300));
+        await using var fixture = new Fixture(context, time, closeTimeout);
         var probe = new Probe(context);
         var region = fixture.Navigator.CreateRegion<ProbePage>(fixture.Root, NavigationTarget.Borrow(new ProbePage("home", probe)));
         var owned = new ProbePage("owned", probe);
         Require(await Wait(region.PushAsync(NavigationTarget.Own(owned))) is NavigationResult<ProbePage>.Committed, "The push did not commit.");
-        var (completed, elapsed) = await context.RunOnThreadAsync(() =>
-        {
-            var watch = Stopwatch.StartNew();
+        var timers = time.Timers;
+        var blocked = context.RunOnThreadAsync(() =>
             // Like GetAwaiter().GetResult(), but a hang fails the test instead of blocking it forever.
-            var completed = fixture.Navigator.DisposeAsync().AsTask().Wait(TestTimeouts.Scale(TimeSpan.FromSeconds(5)));
-            return (completed, watch.Elapsed);
-        }).WaitScaledAsync(Timeout);
+            fixture.Navigator.DisposeAsync().AsTask().Wait(TestTimeouts.Scale(Timeout)));
+        // The deadline of the transition wait, then that of the clearing turn the blocked thread can't run.
+        await Until(() => time.Timers >= timers + 2, "Disposal did not wait for its clearing turn.");
+        time.Advance(closeTimeout - TimeSpan.FromTicks(1));
+        Require(!blocked.IsCompleted && owned.Disposed == 0, "Disposal finished before the close timeout.");
+        time.Advance(TimeSpan.FromTicks(1));
+        var completed = await blocked.WaitScaledAsync(Timeout);
         // The queued clearing turn and the abandoned disposal operation run now.
         await Wait(context.RunOnThreadAsync(() => true));
         await Wait(fixture.Navigator.DisposeAsync().AsTask());
         var site = probe.Single("dispose:owned");
-        Require(completed && owned.Disposed == 1 && !site.OnModelThread && fixture.Navigator.UnretiredEntryCount == 0,
-            $"Disposal with a blocked model thread took {elapsed}; owned content was disposed {owned.Disposed} times, at {site}.");
+        Require(completed && owned.Disposed == 1 && !site.OnModelThread && fixture.Navigator.UnretiredEntryCount == 0
+            && fixture.Logs.Count(1068) == 1,
+            $"Disposal with a blocked model thread completed: {completed}; owned content was disposed {owned.Disposed} times, at {site}.");
     }
 
     // Content that a factory returns after disposal already retired its pending entry is disposed
@@ -530,8 +538,10 @@ internal sealed partial class NavigationTests
     [Test]
     public async Task LateFactoryContentDisposedThroughSchedulerAsync()
     {
+        var closeTimeout = TimeSpan.FromSeconds(10);
+        var time = new CountingTimeProvider();
         using var context = new SchedulingSyncContextModelContext();
-        await using var fixture = new Fixture(context, closeTimeout: TimeSpan.FromMilliseconds(200));
+        await using var fixture = new Fixture(context, time, closeTimeout);
         var probe = new Probe(context);
         var region = fixture.Navigator.CreateRegion<ProbePage>(fixture.Root, NavigationTarget.Borrow(new ProbePage("home", probe)));
         var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -549,10 +559,19 @@ internal sealed partial class NavigationTests
         })).AsTask();
         await Wait(entered.Task);
         var requests = context.HookRequests;
-        await Wait(fixture.Navigator.DisposeAsync().AsTask());
+        // DisposeAsync registers the deadline of its wait for the factory before it returns. The factory
+        // holds the model's thread, so the clearing turn waits for its own deadline next.
+        var disposal = fixture.Navigator.DisposeAsync().AsTask();
+        var timers = time.Timers;
+        time.Advance(closeTimeout);
+        await Until(() => time.Timers > timers, "Disposal did not wait for its clearing turn.");
+        // The clock is now past the clearing turns' deadline: a disposal operation bounded by it would be
+        // abandoned at once instead of waiting for the model's thread.
+        time.Advance(closeTimeout);
+        await Wait(disposal);
         release.Set();
         await Until(() => context.HookRequests > requests, "The late content's disposal was not scheduled.");
-        await Task.Delay(100);
+        Require(late is { Disposed: 0 }, "The late factory content was disposed while the model's thread was held.");
         hold.Set();
         var result = await Wait(push);
         await Until(() => late is { Disposed: 1 }, "The late factory content was not disposed.");
@@ -676,18 +695,19 @@ internal sealed partial class NavigationTests
     public async Task SyncDisposeDoesNotBlockTheModelThreadAsync()
     {
         using var context = new SchedulingSyncContextModelContext();
-        await using var fixture = new Fixture(context);
+        // The close timeout runs on a clock that never advances: a Dispose() that waited for the disposal
+        // it starts, which needs this thread, would not return.
+        await using var fixture = new Fixture(context, new FakeTimeProvider());
         var probe = new Probe(context);
         var region = fixture.Navigator.CreateRegion<ProbePage>(fixture.Root, NavigationTarget.Borrow(new ProbePage("home", probe)));
         var owned = new ProbePage("owned", probe);
         await Wait(region.PushAsync(NavigationTarget.Own(owned)).AsTask());
-        var (elapsed, disposedAtReturn) = await Wait(context.RunOnThreadAsync(() =>
+        var disposedAtReturn = await Wait(context.RunOnThreadAsync(() =>
         {
-            var watch = Stopwatch.StartNew();
             fixture.Navigator.Dispose();
-            return (watch.Elapsed, owned.Disposed);
+            return owned.Disposed;
         }));
-        Require(elapsed < TimeSpan.FromSeconds(1) && disposedAtReturn == 0, $"Dispose() blocked for {elapsed}.");
+        Require(disposedAtReturn == 0, "Dispose() waited for the disposal on the model thread.");
         await Until(() => owned.Disposed == 1 && fixture.Navigator.UnretiredEntryCount == 0, "Dispose() did not finish the disposal.");
         Require(probe.Single("dispose:owned").OnModelThread, "Owned content was not disposed on the model thread.");
         fixture.Navigator.Dispose();
@@ -1082,30 +1102,37 @@ internal sealed partial class NavigationTests
     [Test]
     public async Task BlockedModelThreadScopedDisposalCompletesAsync()
     {
-        var closeTimeout = TimeSpan.FromMilliseconds(300);
+        var closeTimeout = TimeSpan.FromSeconds(10);
+        var time = new CountingTimeProvider();
         using var context = new SchedulingSyncContextModelContext();
         var probe = new Probe(context);
         var services = new ScopeCountingServices(probe);
-        await using var fixture = new Fixture(context, closeTimeout: closeTimeout, services: services, entryScopes: true);
+        await using var fixture = new Fixture(context, time, closeTimeout, services: services, entryScopes: true);
         var region = fixture.Navigator.CreateRegion<ProbePage>(fixture.Root, NavigationTarget.Borrow(new ProbePage("home", probe)));
         Require(await Wait(region.PushAsync(ScopeCountingServices.Target("owned", probe))) is NavigationResult<ProbePage>.Committed,
             "The scoped push did not commit.");
         var owned = (ProbePage)region.Current!;
-        var (completed, elapsed) = await context.RunOnThreadAsync(() =>
-        {
-            var watch = Stopwatch.StartNew();
+        var timers = time.Timers;
+        var blocked = context.RunOnThreadAsync(() =>
             // Like GetAwaiter().GetResult(), but a hang fails the test instead of blocking it forever.
-            var completed = fixture.Navigator.DisposeAsync().AsTask().Wait(TestTimeouts.Scale(TimeSpan.FromSeconds(5)));
-            return (completed, watch.Elapsed);
-        }).WaitScaledAsync(Timeout);
+            fixture.Navigator.DisposeAsync().AsTask().Wait(TestTimeouts.Scale(Timeout)));
+        // The deadline of the transition wait, then that of the clearing turn the blocked thread can't run.
+        await Until(() => time.Timers >= timers + 2, "Disposal did not wait for its clearing turn.");
+        time.Advance(closeTimeout - TimeSpan.FromTicks(1));
+        Require(!blocked.IsCompleted && owned.Disposed == 0, "Disposal finished before the close timeout.");
+        time.Advance(TimeSpan.FromTicks(1));
+        // The documented worst case is twice the close timeout: disposal may wait on the clock once more.
+        timers = time.Timers;
+        await Until(() => blocked.IsCompleted || time.Timers > timers, "Disposal neither completed nor waited after the close timeout.");
+        if (!blocked.IsCompleted) time.Advance(closeTimeout);
+        var completed = await blocked.WaitScaledAsync(Timeout);
         // The queued clearing turn and the abandoned disposal operations run now.
         await Wait(context.RunOnThreadAsync(() => true));
         await Wait(fixture.Navigator.DisposeAsync().AsTask());
 
         var content = probe.Single("dispose:owned");
         var scope = probe.Single("dispose:scope");
-        Require(completed && elapsed < 2 * closeTimeout + TimeSpan.FromMilliseconds(500),
-            $"Disposal with a blocked model thread took {elapsed} (completed: {completed}).");
+        Require(completed, "Disposal with a blocked model thread did not complete within twice the close timeout.");
         Require(owned.Disposed == 1 && services is { Created: 1, Disposed: 1 } && !content.OnModelThread && !scope.OnModelThread
             && SiteIndex(probe, "dispose:owned") < SiteIndex(probe, "dispose:scope") && fixture.Navigator.UnretiredEntryCount == 0,
             $"The content was disposed {owned.Disposed} times at {content}; {services.Disposed} scopes were disposed, at {scope}.");

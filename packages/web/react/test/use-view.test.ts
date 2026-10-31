@@ -3,7 +3,7 @@ import * as React from "react";
 import { Component, createElement, StrictMode, Suspense, useEffect, useState, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { renderToString } from "react-dom/server";
-import { afterEach, describe, expect, expectTypeOf, test, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, expectTypeOf, test, vi } from "vitest";
 import {
   BridgeError, bridgeFailure, bridgeSuccess, type BridgeConnectionState, type BridgeOperation, type BridgeOperationStatus, type BridgeOutcome,
   type MenuBarMenu, type MenuBarRequest, type MenuBarState, type RunicBridgeClient,
@@ -640,8 +640,14 @@ describe("useCollectionViewport", () => {
     await show(50);
     expect(handle?.viewport).toEqual({ start: 0, size: 10, offset: 0, totalSize: 1000 });
     element.scrollTop = 400;
-    await act(async () => { element.dispatchEvent(new Event("scroll")); await new Promise(resolve => setTimeout(resolve, 50)); });
-    expect(handle?.viewport).toEqual({ start: 20, size: 10, offset: 400, totalSize: 1000 });
+    // The controller measures a scroll in the next animation frame.
+    vi.useFakeTimers({ toFake: ["requestAnimationFrame", "cancelAnimationFrame"] });
+    try {
+      await act(async () => { element.dispatchEvent(new Event("scroll")); });
+      expect(handle?.viewport).toEqual({ start: 0, size: 10, offset: 0, totalSize: 1000 });
+      await act(async () => { vi.advanceTimersToNextFrame(); });
+      expect(handle?.viewport).toEqual({ start: 20, size: 10, offset: 400, totalSize: 1000 });
+    } finally { vi.useRealTimers(); }
   });
 });
 
@@ -991,7 +997,13 @@ function keyDown(init: KeyboardEventInit) {
 
 describe("useMenuBar", () => {
   const host = globalThis as typeof globalThis & { __runicBridge?: RunicBridgeClient };
-  afterEach(() => { delete host.__runicBridge; });
+  // The mock host answers at once; the controller's own waits (the Bridge poll, retry backoff) run on fake
+  // timers, so a wait below is a number of event-loop turns, not a share of the runner's speed.
+  beforeEach(() => { vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] }); });
+  afterEach(() => {
+    vi.useRealTimers();
+    delete host.__runicBridge;
+  });
   let bar: MenuBarHandle | undefined;
   const rendered: MenuBarState[] = [];
   function MenuBar(options: UseMenuBarOptions): ReactNode {
@@ -1010,7 +1022,7 @@ describe("useMenuBar", () => {
   async function until(condition: () => boolean) {
     for (let round = 0; !condition(); round++) {
       if (round > 200) throw new Error("The condition was not met.");
-      await act(async () => { await new Promise(resolve => setTimeout(resolve, 2)); });
+      await act(async () => { await vi.advanceTimersByTimeAsync(2); });
     }
   }
 
@@ -1025,7 +1037,7 @@ describe("useMenuBar", () => {
     // StrictMode's extra mount disposed its controller: a shortcut runs once.
     await act(async () => keyDown({ key: "n", code: "KeyN", ctrlKey: true }));
     await until(() => mock.invocations.length > 0);
-    await act(async () => { await new Promise(resolve => setTimeout(resolve, 10)); });
+    await act(async () => { await vi.advanceTimersByTimeAsync(10); });
     expect(mock.invocations.map(item => item.commandId)).toEqual(["file.new"]);
     // A pushed change renders.
     await act(async () => mock.update({ menus: menuBarFixture.menus.slice(0, 1) }));
@@ -1033,7 +1045,7 @@ describe("useMenuBar", () => {
     await act(async () => root?.unmount());
     root = undefined;
     keyDown({ key: "n", code: "KeyN", ctrlKey: true });
-    await new Promise(resolve => setTimeout(resolve, 10));
+    await act(async () => { await vi.advanceTimersByTimeAsync(10); });
     expect(mock.invocations).toHaveLength(1);
   });
 

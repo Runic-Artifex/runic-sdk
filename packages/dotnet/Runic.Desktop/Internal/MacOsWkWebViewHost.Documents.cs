@@ -22,7 +22,7 @@ internal sealed partial class MacOsWkWebViewHost
             var application = Api.SendNint(Api.GetClass("NSApplication"), "sharedApplication");
             // Completes the main menu once; a later host adds Open Recent to the menu an earlier one completed.
             InstallMainMenu(application);
-            if (Api.SendNint(application, "mainMenu") is not 0 and var mainMenu) InstallOpenRecent(mainMenu, Volatile.Read(ref s_titles));
+            if (Api.SendNint(application, "mainMenu") is not 0 and var mainMenu) InstallOpenRecent(mainMenu, Volatile.Read(ref HostSettings.Titles));
             ApplyMenuBar(application);
         }, CancellationToken.None).AsTask();
     }
@@ -163,7 +163,7 @@ internal sealed partial class MacOsWkWebViewHost
             Api.SendVoid(item, "release");
         }
         if (documents.Count > 0) Api.SendVoidNint(menu, "addItem:", Api.SendNint(Api.GetClass("NSMenuItem"), "separatorItem"));
-        var clear = Api.NewMenuItem(Volatile.Read(ref s_titles).ClearMenu, MacOsMainMenu.ClearRecentAction, "", 0, controller);
+        var clear = Api.NewMenuItem(Volatile.Read(ref HostSettings.Titles).ClearMenu, MacOsMainMenu.ClearRecentAction, "", 0, controller);
         Api.SendVoidBool(clear, "setEnabled:", documents.Count > 0);
         Api.SendVoidNint(menu, "addItem:", clear);
         Api.SendVoid(clear, "release");

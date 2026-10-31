@@ -79,6 +79,10 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
     private TaskCompletionSource _browserConnected = NewCompletionSource();
     // How far the current presentation got before authentication, for timeout reports.
     private int _connectionProgress;
+    // Requests the current presentation received that did not prove they came from its page (IsFromPage), and the
+    // first of them.
+    private int _otherRequests;
+    private string? _firstOtherRequest;
     // The current presentation's connection deadline: its first request and its WebView's startup progress.
     private ConnectionDeadline? _connectionDeadline;
     // What the server saw of the current presentation's handshake, for timeout reports.
@@ -777,6 +781,7 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
             }
             catch
             {
+                ObserveAbandoned(connection);
                 CloseFailedPresentationAsync(surfaceHosted: content is null).GetAwaiter().GetResult();
                 throw;
             }
@@ -2386,15 +2391,55 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
     private Task BeginConnection()
     {
         Volatile.Write(ref _connectionProgress, (int)ConnectionProgress.NoRequest);
+        Volatile.Write(ref _otherRequests, 0);
+        Volatile.Write(ref _firstOtherRequest, null);
         Volatile.Write(ref _connectionDeadline, new ConnectionDeadline(ConnectionTimeout, TimeProvider));
         Volatile.Write(ref _handshakeLog, new BridgeHandshakeLog());
         _browserConnected = NewCompletionSource();
         return _browserConnected.Task;
     }
 
+    // A request that reached the presentation counts toward its connection only when it proves it came from the page
+    // (IsFromPage, or proven by the caller); any other request is answered as usual but moves neither the progress nor
+    // the deadline, and the first one is logged.
+    private void ReportConnectionProgress(PresentationExchange context, ConnectionProgress progress, bool proven = false)
+    {
+        if (proven || IsFromPage(context))
+        {
+            ReportConnectionProgress(progress);
+        }
+        else
+        {
+            ReportOtherRequest(context);
+        }
+    }
+
+    private void ReportOtherRequest(PresentationExchange context)
+    {
+        if (Interlocked.Increment(ref _otherRequests) == 1)
+        {
+            var request = $"{context.Method} {context.Path}";
+            Volatile.Write(ref _firstOtherRequest, request);
+            HandshakeLog.Record($"{request} requested without the window's cookie or launch code");
+        }
+    }
+
+    // Whether a request proves that it came from the page this window presented. A development tool or scanner that
+    // probes each new loopback listener (t3code's preview discovery sends GET / to every one) would otherwise make a
+    // stalled browser look connected, skipping its relaunch, and move the deadline. A page's first document request
+    // carries nothing to tell it from such a probe. Its response gives the page the window's client cookie, which
+    // every later request carries; a browser this window launched is bound to one client by its launch code
+    // (ServeBrowserLaunchAsync, which counts that request), and then only that client counts. A WebSocket can also
+    // prove itself with the session credential (AcceptWebSocketAsync).
+    private bool IsFromPage(PresentationExchange context)
+    {
+        var client = FindClient(context);
+        return client != 0 && (!ChecksLaunchBinding || _launchBinding.Admits(client));
+    }
+
     private void ReportConnectionProgress(ConnectionProgress progress)
     {
-        // Every reported stage is a request that reached the server.
+        // Every reported stage is a request from the page that reached the server.
         Volatile.Read(ref _connectionDeadline)?.ReportRequest();
         var current = Volatile.Read(ref _connectionProgress);
         while (current < (int)progress)
@@ -2419,66 +2464,90 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
         // that never requested anything is relaunched; see RelaunchStalledBrowserAsync.
         var attempts = browserProcess is null || relaunchStalled is null ? 1 : BrowserLaunchAttempts;
         var attempt = 1;
-        while (true)
+        try
         {
-            string stalled;
-            try
+            while (true)
             {
-                await WaitWithinConnectionDeadlineAsync(connection, cancellationToken).ConfigureAwait(false);
-                return;
-            }
-            catch (TimeoutException exception)
-            {
-                // Describe the browser process before closing the presentation stops it.
-                stalled = DescribeConnectionTimeout(browserProcess, attempt, attempts);
-                if (attempt >= attempts || !IsStalledBeforeFirstRequest(browserProcess))
+                string stalled;
+                try
                 {
-                    if (await ProbeStalledConnectionAsync().ConfigureAwait(false))
+                    await WaitWithinConnectionDeadlineAsync(connection, cancellationToken).ConfigureAwait(false);
+                    return;
+                }
+                catch (TimeoutException exception)
+                {
+                    // Describe the browser process before closing the presentation stops it.
+                    stalled = DescribeConnectionTimeout(browserProcess, attempt, attempts);
+                    if (attempt >= attempts || !IsStalledBeforeFirstRequest(browserProcess))
                     {
-                        stalled = DescribeConnectionTimeout(browserProcess, attempt, attempts);
+                        if (await ProbeStalledConnectionAsync().ConfigureAwait(false))
+                        {
+                            stalled = DescribeConnectionTimeout(browserProcess, attempt, attempts);
+                        }
+                        var timeout = new TimeoutException(stalled, exception);
+                        await CloseFailedPresentationAsync(surfaceHosted).ConfigureAwait(false);
+                        throw timeout;
                     }
-                    var timeout = new TimeoutException(stalled, exception);
-                    await CloseFailedPresentationAsync(surfaceHosted).ConfigureAwait(false);
-                    throw timeout;
                 }
-            }
-            catch
-            {
-                await CloseFailedPresentationAsync(surfaceHosted).ConfigureAwait(false);
-                throw;
-            }
-
-            RelaunchResult relaunch;
-            try
-            {
-                relaunch = await relaunchStalled!(browserProcess!, connection).ConfigureAwait(false);
-            }
-            catch
-            {
-                await CloseFailedPresentationAsync(surfaceHosted).ConfigureAwait(false);
-                throw;
-            }
-            switch (relaunch.Outcome)
-            {
-                case RelaunchOutcome.KeepWaiting:
-                    // The page progressed after the stall check; this attempt continues.
-                    continue;
-                case RelaunchOutcome.Exited:
+                catch
                 {
-                    var exited = new TimeoutException(
-                        DescribeConnectionTimeout(browserProcess, attempt, attempts, exitedBeforeRelaunch: true));
                     await CloseFailedPresentationAsync(surfaceHosted).ConfigureAwait(false);
-                    throw exited;
+                    throw;
                 }
-                case RelaunchOutcome.Closed:
-                    throw new IOException("The window closed before bridge authentication completed.");
+
+                RelaunchResult relaunch;
+                try
+                {
+                    relaunch = await relaunchStalled!(browserProcess!, connection).ConfigureAwait(false);
+                }
+                catch
+                {
+                    await CloseFailedPresentationAsync(surfaceHosted).ConfigureAwait(false);
+                    throw;
+                }
+                switch (relaunch.Outcome)
+                {
+                    case RelaunchOutcome.KeepWaiting:
+                        // The page progressed after the stall check; this attempt continues.
+                        continue;
+                    case RelaunchOutcome.Exited:
+                    {
+                        var exited = new TimeoutException(
+                            DescribeConnectionTimeout(browserProcess, attempt, attempts, exitedBeforeRelaunch: true));
+                        await CloseFailedPresentationAsync(surfaceHosted).ConfigureAwait(false);
+                        throw exited;
+                    }
+                    case RelaunchOutcome.Closed:
+                        throw new IOException("The window closed before bridge authentication completed.");
+                }
+                attempt++;
+                ReportStalledLaunch(stalled, attempt, attempts);
+                // Stopping the stalled browser faulted its connection, which nothing waits for.
+                ObserveAbandoned(connection);
+                connection = relaunch.Connection!;
+                browserProcess = relaunch.Process!;
             }
-            attempt++;
-            ReportStalledLaunch(stalled, attempt, attempts);
-            connection = relaunch.Connection!;
-            browserProcess = relaunch.Process!;
+        }
+        finally
+        {
+            // A wait that gives up on its connection closes the presentation, which faults the connection after
+            // nothing waits for it any more.
+            if (!connection.IsCompletedSuccessfully)
+            {
+                ObserveAbandoned(connection);
+            }
         }
     }
+
+    // A connection whose wait ended without it: the close that ends its presentation (StopBrowserCoreAsync) faults it
+    // after the wait gave up, by a timeout, a relaunch, a cancellation or a failure. Its fault is expected, so it is
+    // observed here instead of surfacing as an unobserved task exception.
+    private static void ObserveAbandoned(Task connection) =>
+        _ = connection.ContinueWith(
+            static task => _ = task.Exception,
+            CancellationToken.None,
+            TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously,
+            TaskScheduler.Default);
 
     // I-176: when nothing reached the server, records whether the server still accepted a loopback connection at the
     // timeout, and how long a small write-through to the profile's disk (or the temporary folder's) took. A browser
@@ -2641,8 +2710,12 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
     private string DescribeConnectionTimeout(
         Process? browserProcess, int attempt = 1, int attempts = 1, bool exitedBeforeRelaunch = false)
     {
+        var otherRequests = Volatile.Read(ref _otherRequests);
         var progress = (ConnectionProgress)Volatile.Read(ref _connectionProgress) switch
         {
+            // The server cannot tell a page that stopped after its first request from another program's request.
+            ConnectionProgress.NoRequest when otherRequests > 0 => string.Create(System.Globalization.CultureInfo.InvariantCulture,
+                $"no request with the window's cookie or launch code reached the server, {otherRequests} without them did, the first {Volatile.Read(ref _firstOtherRequest)} (the page's first request if it loaded nothing after it, such as {BridgePath}, or another program's)"),
             ConnectionProgress.NoRequest => "no request reached the server",
             ConnectionProgress.DocumentRequested => $"the page was requested, but not {BridgePath}",
             ConnectionProgress.BridgeRequested => "the Bridge script was requested, but no WebSocket opened",
@@ -2692,13 +2765,13 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
         if (IsPath(path, BridgePath) && (context.IsGet || context.IsHead))
         {
             HandshakeLog.Record($"{BridgePath} requested");
-            ReportConnectionProgress(ConnectionProgress.BridgeRequested);
+            ReportConnectionProgress(context, ConnectionProgress.BridgeRequested);
             return ServeBridgeAsync(context);
         }
         if (IsPath(path, DesktopBootstrapPath) && (context.IsGet || context.IsHead))
         {
             HandshakeLog.Record($"{DesktopBootstrapPath} requested");
-            ReportConnectionProgress(ConnectionProgress.BridgeRequested);
+            ReportConnectionProgress(context, ConnectionProgress.BridgeRequested);
             return ServeDesktopBootstrapAsync(context);
         }
         if (IsPath(path, WebSocketPath) && context.IsGet)
@@ -2707,11 +2780,18 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
         }
         if (context.IsGet || context.IsHead)
         {
-            if (path == "/" || Volatile.Read(ref _connectionProgress) < (int)ConnectionProgress.DocumentRequested)
+            if (!IsFromPage(context))
             {
-                HandshakeLog.Record($"{context.Method} {context.Path} requested");
+                ReportOtherRequest(context);
             }
-            ReportConnectionProgress(ConnectionProgress.DocumentRequested);
+            else
+            {
+                if (path == "/" || Volatile.Read(ref _connectionProgress) < (int)ConnectionProgress.DocumentRequested)
+                {
+                    HandshakeLog.Record($"{context.Method} {context.Path} requested");
+                }
+                ReportConnectionProgress(ConnectionProgress.DocumentRequested);
+            }
             return ServeContentAsync(context);
         }
 
@@ -3003,7 +3083,7 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
     {
         if (!context.IsWebSocketRequest)
         {
-            ReportConnectionProgress(ConnectionProgress.WebSocketRejected);
+            ReportConnectionProgress(context, ConnectionProgress.WebSocketRejected);
             HandshakeLog.RecordRejection("not a WebSocket upgrade");
             context.StatusCode = PresentationStatus.UpgradeRequired;
             return;
@@ -3012,7 +3092,7 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
         var acceptedSubprotocol = ValidateWebSocketAdmission(context);
         if (acceptedSubprotocol is null)
         {
-            ReportConnectionProgress(ConnectionProgress.WebSocketRejected);
+            ReportConnectionProgress(context, ConnectionProgress.WebSocketRejected);
             HandshakeLog.RecordRejection(context.StatusCode == PresentationStatus.Unauthorized
                 ? "the session credential was missing"
                 : "the origin is not allowed");
@@ -3021,7 +3101,7 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
 
         if (ChecksLaunchBinding && !_launchBinding.Admits(FindClient(context)))
         {
-            ReportConnectionProgress(ConnectionProgress.WebSocketRejected);
+            ReportOtherRequest(context);
             HandshakeLog.RecordRejection("the client is not the browser this window launched");
             RejectUnboundClient(context, "WebSocket");
             return;
@@ -3037,9 +3117,11 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
             }
         }
 
+        // A WebSocket that offered the session credential came from a page that ran this window's bootstrap.
+        var credentialed = acceptedSubprotocol.Length != 0;
         if (!admitted)
         {
-            ReportConnectionProgress(ConnectionProgress.WebSocketRejected);
+            ReportConnectionProgress(context, ConnectionProgress.WebSocketRejected, credentialed);
             HandshakeLog.RecordRejection("another WebSocket holds the only connection");
             context.StatusCode = PresentationStatus.Forbidden;
             return;
@@ -3047,10 +3129,11 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
 
         try
         {
+            var fromPage = credentialed || IsFromPage(context);
             var clientId = GetOrCreateClient(context);
             using var socket = await context.AcceptWebSocketAsync(
                 acceptedSubprotocol.Length == 0 ? null : acceptedSubprotocol).ConfigureAwait(false);
-            ReportConnectionProgress(ConnectionProgress.WebSocketOpened);
+            ReportConnectionProgress(context, ConnectionProgress.WebSocketOpened, fromPage);
             var connectionId = checked((nuint)Interlocked.Increment(ref _nextConnectionId));
             HandshakeLog.Record($"WebSocket {connectionId} opened");
             var session = new WebUiSession(
@@ -3199,6 +3282,7 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
         switch (_launchBinding.Consume(code, clientId, out var target))
         {
             case BrowserLaunchBinding.Outcome.Bound or BrowserLaunchBinding.Outcome.AlreadyBound:
+                // The launch code proves the request came from the browser this window launched.
                 ReportConnectionProgress(ConnectionProgress.DocumentRequested);
                 context.StatusCode = PresentationStatus.SeeOther;
                 context.SetResponseHeader("Location", target!.AbsoluteUri);
@@ -3225,11 +3309,15 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
             "browser-launch-conflict",
             message,
             Retryable: true));
-        _browserConnected.TrySetException(new DesktopException(
-            DesktopErrorCategory.AuthenticationDenied,
-            "browser-launch-conflict",
-            message,
-            retryable: true));
+        // Only a show that waits for its connection observes the failure (StopBrowserCoreAsync).
+        if (WaitForConnection && _externalUrl is null)
+        {
+            _browserConnected.TrySetException(new DesktopException(
+                DesktopErrorCategory.AuthenticationDenied,
+                "browser-launch-conflict",
+                message,
+                retryable: true));
+        }
         foreach (var session in _sessions.Values)
         {
             _ = CloseBridgeIgnoringFailureAsync(session, CancellationToken.None);

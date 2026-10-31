@@ -733,8 +733,13 @@ public sealed class DesktopApiTests
         time.Advance(TimeSpan.FromSeconds(2));
         var exception = await Assert.ThrowsAsync<DesktopException>(() => opening.WaitAsync(bound.Token));
 
+        // A page's first request does not carry the window's cookie yet, so the server cannot tell it from another
+        // program's; the description names both.
         var timeout = Assert.IsType<TimeoutException>(exception.InnerException);
-        Assert.Contains("the page was requested, but not /webui.js", timeout.Message);
+        Assert.Contains(
+            "no request with the window's cookie or launch code reached the server, 1 without them did, the first GET / " +
+            "(the page's first request if it loaded nothing after it, such as /webui.js, or another program's)",
+            timeout.Message);
     }
 
     [Test]

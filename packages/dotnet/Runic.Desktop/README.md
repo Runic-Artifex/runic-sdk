@@ -399,6 +399,10 @@ page never connects: that fails with `presentation-connection-timeout`, and the 
 the server, and from that request once it has: a browser or WebView that starts
 slowly and requests its page just before the deadline still gets the whole timeout
 to finish the Bridge handshake, so one launch waits at most twice the timeout.
+Only the page's requests count: those with the window's client cookie, which the
+page's first response sets, or with the launch code of the browser the window
+started. A development tool or security scanner that probes the listener gets its
+usual answer but neither moves the deadline nor prevents a stalled browser's relaunch.
 An embedded WebView that has requested nothing yet but is still loading the page
 extends the timeout: it does not run out while the WebView's first navigation is in
 progress, nor within a whole timeout of the last startup step the WebView reported,
