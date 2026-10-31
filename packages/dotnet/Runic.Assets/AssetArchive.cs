@@ -204,13 +204,35 @@ public static class AssetArchive
         return ReadBuffered(copy, options, cancellationToken);
     }
 
-    // Reads an archive that has been copied into memory within MaxArchiveBytes.
+    // Reads an archive that has been copied into memory within MaxArchiveBytes: every asset is inflated and checked
+    // against its SHA-256 digest before the source is returned.
     private static AssetArchiveSource ReadBuffered(
         MemoryStream copy,
         AssetArchiveReadOptions options,
         CancellationToken cancellationToken)
     {
         using var archive = new ZipArchive(copy, ZipArchiveMode.Read, leaveOpen: true);
+        (AssetDescriptor[] descriptors, ZipArchiveEntry[] entries) = ReadDirectory(archive, options, cancellationToken);
+        var content = new byte[descriptors.Length][];
+        for (int index = 0; index < descriptors.Length; index++)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            byte[] bytes = Inflate(entries[index], descriptors[index]);
+            using var validation = new MemoryStream(bytes, writable: false);
+            AssetHashing.Verify(descriptors[index], validation);
+            content[index] = bytes;
+        }
+
+        return new AssetArchiveSource(new AssetManifest(descriptors), new AssetArchiveContent(descriptors, content));
+    }
+
+    // Reads the manifest and the ZIP directory of an archive without inflating any asset. Every declared asset must
+    // have an entry of its declared length, and the archive may hold no other file.
+    private static (AssetDescriptor[] Descriptors, ZipArchiveEntry[] Entries) ReadDirectory(
+        ZipArchive archive,
+        AssetArchiveReadOptions options,
+        CancellationToken cancellationToken)
+    {
         var entries = new Dictionary<string, ZipArchiveEntry>(StringComparer.Ordinal);
         foreach (ZipArchiveEntry entry in archive.Entries)
         {
@@ -294,10 +316,11 @@ public static class AssetArchive
             descriptors = parsed.ToArray();
         }
 
-        var content = new Dictionary<string, byte[]>(StringComparer.Ordinal);
-        foreach (AssetDescriptor descriptor in descriptors)
+        var contentEntries = new ZipArchiveEntry[descriptors.Length];
+        for (int index = 0; index < descriptors.Length; index++)
         {
             cancellationToken.ThrowIfCancellationRequested();
+            AssetDescriptor descriptor = descriptors[index];
             string entryName = ContentPrefix + descriptor.RelativePath;
             if (!entries.Remove(entryName, out ZipArchiveEntry? entry))
             {
@@ -309,13 +332,7 @@ public static class AssetArchive
                 throw new InvalidDataException($"Asset '{descriptor.RelativePath}' has an unexpected length.");
             }
 
-            using Stream input = entry.Open();
-            using var output = new MemoryStream(checked((int)entry.Length));
-            CopyBounded(input, output, descriptor.Length, cancellationToken);
-            byte[] bytes = output.ToArray();
-            using var validation = new MemoryStream(bytes, writable: false);
-            AssetHashing.Verify(descriptor, validation);
-            content.Add(descriptor.RelativePath, bytes);
+            contentEntries[index] = entry;
         }
 
         if (entries.Count != 0)
@@ -323,10 +340,55 @@ public static class AssetArchive
             throw new InvalidDataException("The asset archive contains undeclared files.");
         }
 
-        return new AssetArchiveSource(new AssetManifest(descriptors), content);
+        return (descriptors, contentEntries);
     }
 
-    /// <summary>Loads a canonical Runic Assets archive from an assembly manifest resource.</summary>
+    // Inflates one entry whose directory length ReadDirectory checked. The entry must hold exactly that many bytes.
+    internal static byte[] Inflate(ZipArchiveEntry entry, AssetDescriptor descriptor)
+    {
+        byte[] bytes = new byte[checked((int)descriptor.Length)];
+        using Stream input = entry.Open();
+        int total = 0;
+        int read;
+        while (total < bytes.Length && (read = input.Read(bytes, total, bytes.Length - total)) != 0)
+        {
+            total += read;
+        }
+
+        if (total != bytes.Length || input.ReadByte() != -1)
+        {
+            throw new InvalidDataException($"Asset '{descriptor.RelativePath}' has an unexpected length.");
+        }
+
+        return bytes;
+    }
+
+    /// <summary>
+    /// Loads a canonical Runic Assets archive from an assembly manifest resource. The manifest and the ZIP directory
+    /// are read and checked at once; each asset is inflated when it is first opened and then kept in memory.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Since 0.15 an embedded archive is not checked against its SHA-256 digests when it is loaded or opened. It is
+    /// part of the assembly that holds the application's code, so whoever can change its bytes can change that code
+    /// too, and the Runic.Assets build verified it when it packed or embedded it (<c>RunicAssetsDist</c>,
+    /// <c>RunicAssetsEmbeddedArchive</c>). An asset whose inflated length differs from its declared length, or whose
+    /// ZIP entry is damaged, fails to open with <see cref="InvalidDataException"/>.
+    /// </para>
+    /// <para>
+    /// <see cref="AssetArchiveSource.ValidateAsync"/> checks every asset against its digest on demand, for a resource
+    /// that another build step embedded. <see cref="Read(Stream, AssetArchiveReadOptions?)"/> and
+    /// <see cref="ReadAsync"/>, which read an archive from outside the assembly such as a file, check every digest
+    /// before they return.
+    /// </para>
+    /// </remarks>
+    /// <param name="assembly">The assembly that holds the resource.</param>
+    /// <param name="resourceName">The manifest resource name; <see cref="DefaultResourceName"/> by default.</param>
+    /// <param name="options">The limits; <see langword="null"/> uses the defaults.</param>
+    /// <returns>The source, which reads its assets from the resource.</returns>
+    /// <exception cref="ArgumentException">The assembly has no such resource.</exception>
+    /// <exception cref="InvalidDataException">The manifest or the ZIP directory is invalid or exceeds a limit of
+    /// <paramref name="options"/>.</exception>
     public static AssetArchiveSource ReadEmbedded(
         Assembly assembly,
         string resourceName = DefaultResourceName,
@@ -335,11 +397,54 @@ public static class AssetArchive
         ArgumentNullException.ThrowIfNull(assembly);
         ArgumentException.ThrowIfNullOrWhiteSpace(resourceName);
 
-        using Stream stream = assembly.GetManifestResourceStream(resourceName)
+        Stream stream = assembly.GetManifestResourceStream(resourceName)
             ?? throw new ArgumentException(
                 $"Assembly '{assembly.GetName().Name}' does not contain manifest resource '{resourceName}'.",
                 nameof(resourceName));
-        return Read(stream, options);
+        return ReadInPlace(stream, options);
+    }
+
+    // ReadEmbedded's reader: checks the manifest and the ZIP directory, and inflates each asset on first use without
+    // checking its digest. The source owns stream from here on.
+    internal static AssetArchiveSource ReadInPlace(Stream stream, AssetArchiveReadOptions? options)
+    {
+        ZipArchive? archive = null;
+        try
+        {
+            options = PrepareRead(stream, options);
+            // A manifest resource is mapped with the assembly, so the archive reads it in place. A resource stream
+            // that cannot seek is copied first, within the same limit.
+            if (!stream.CanSeek)
+            {
+                var copy = new MemoryStream();
+                CopyBounded(stream, copy, options.MaxArchiveBytes, CancellationToken.None);
+                copy.Position = 0;
+                stream.Dispose();
+                stream = copy;
+            }
+            else if (stream.Length > options.MaxArchiveBytes)
+            {
+                throw new InvalidDataException(
+                    $"The asset archive exceeds the {options.MaxArchiveBytes} byte archive-size limit.");
+            }
+
+            archive = new ZipArchive(stream, ZipArchiveMode.Read, leaveOpen: false);
+            (AssetDescriptor[] descriptors, ZipArchiveEntry[] entries) = ReadDirectory(archive, options, CancellationToken.None);
+            return new AssetArchiveSource(new AssetManifest(descriptors), new AssetArchiveContent(descriptors, entries));
+        }
+        catch
+        {
+            if (archive is not null)
+            {
+                archive.Dispose();
+            }
+            else
+            {
+                stream.Dispose();
+            }
+
+            throw;
+        }
     }
 
     /// <summary>Validates an archive and returns its canonical, deterministic manifest inspection.</summary>
@@ -833,12 +938,16 @@ public sealed class AssetArchiveReadOptions
     public long MaxTotalUncompressedBytes { get; init; } = 1024L * 1024L * 1024L;
 }
 
-/// <summary>An immutable in-memory source loaded from a Runic Assets archive.</summary>
+/// <summary>
+/// An immutable source loaded from a Runic Assets archive. <see cref="AssetArchive.Read(Stream, AssetArchiveReadOptions?)"/>
+/// and <see cref="AssetArchive.ReadAsync"/> inflate and verify every asset into memory;
+/// <see cref="AssetArchive.ReadEmbedded"/> inflates each asset of an embedded archive when it is first opened.
+/// </summary>
 public sealed class AssetArchiveSource : IAssetSource
 {
-    private readonly IReadOnlyDictionary<string, byte[]> _content;
+    private readonly AssetArchiveContent _content;
 
-    internal AssetArchiveSource(AssetManifest manifest, IReadOnlyDictionary<string, byte[]> content)
+    internal AssetArchiveSource(AssetManifest manifest, AssetArchiveContent content)
     {
         Manifest = manifest;
         _content = content;
@@ -847,13 +956,16 @@ public sealed class AssetArchiveSource : IAssetSource
     /// <inheritdoc />
     public AssetManifest Manifest { get; }
 
-    /// <inheritdoc />
+    /// <summary>Checks every asset against its manifest length and SHA-256 digest, inflating the ones not read yet.</summary>
+    /// <param name="cancellationToken">Cancels the check between assets.</param>
+    /// <exception cref="InvalidDataException">An asset does not match its descriptor.</exception>
     public ValueTask ValidateAsync(CancellationToken cancellationToken = default)
     {
         foreach (AssetDescriptor descriptor in Manifest.Assets)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            using var stream = new MemoryStream(_content[descriptor.RelativePath], writable: false);
+            _content.TryGet(descriptor.RelativePath, out byte[]? content);
+            using var stream = new MemoryStream(content!, writable: false);
             AssetHashing.Verify(descriptor, stream);
         }
 
@@ -867,18 +979,74 @@ public sealed class AssetArchiveSource : IAssetSource
     {
         cancellationToken.ThrowIfCancellationRequested();
         string path = AssetPath.Normalize(relativePath);
-        if (!_content.TryGetValue(path, out byte[]? content))
-        {
-            throw new FileNotFoundException("The requested asset is not declared by the archive manifest.", path);
-        }
-
-        if (!Manifest.TryGetAsset(path, out AssetDescriptor? descriptor))
+        if (!Manifest.TryGetAsset(path, out AssetDescriptor? descriptor)
+            || !_content.TryGet(path, out byte[]? content))
         {
             throw new FileNotFoundException("The requested asset is not declared by the archive manifest.", path);
         }
 
         return ValueTask.FromResult(new AssetReadSnapshot(
-            descriptor!,
+            descriptor,
             new MemoryStream(content, writable: false)));
+    }
+}
+
+// The assets of an AssetArchiveSource by path: inflated up front, or inflated from the archive's ZIP entries on first
+// use and kept. ZipArchive reads its entries through one shared stream, so inflation is serialized.
+internal sealed class AssetArchiveContent
+{
+    private readonly Dictionary<string, Slot> _slots;
+    private readonly Lock _gate = new();
+
+    // Content already inflated (and verified by the caller).
+    internal AssetArchiveContent(AssetDescriptor[] descriptors, byte[][] content)
+    {
+        _slots = new Dictionary<string, Slot>(descriptors.Length, StringComparer.Ordinal);
+        for (int index = 0; index < descriptors.Length; index++)
+        {
+            _slots.Add(descriptors[index].RelativePath, new Slot(descriptors[index], null) { Content = content[index] });
+        }
+    }
+
+    // Content inflated on first use from entries of an archive this instance keeps open.
+    internal AssetArchiveContent(AssetDescriptor[] descriptors, ZipArchiveEntry[] entries)
+    {
+        _slots = new Dictionary<string, Slot>(descriptors.Length, StringComparer.Ordinal);
+        for (int index = 0; index < descriptors.Length; index++)
+        {
+            _slots.Add(descriptors[index].RelativePath, new Slot(descriptors[index], entries[index]));
+        }
+    }
+
+    internal bool TryGet(string path, [System.Diagnostics.CodeAnalysis.NotNullWhen(true)] out byte[]? content)
+    {
+        if (!_slots.TryGetValue(path, out Slot? slot))
+        {
+            content = null;
+            return false;
+        }
+
+        content = Volatile.Read(ref slot.Content);
+        if (content is null)
+        {
+            lock (_gate)
+            {
+                content = slot.Content;
+                if (content is null)
+                {
+                    content = AssetArchive.Inflate(slot.Entry!, slot.Descriptor);
+                    Volatile.Write(ref slot.Content, content);
+                }
+            }
+        }
+
+        return true;
+    }
+
+    private sealed class Slot(AssetDescriptor descriptor, ZipArchiveEntry? entry)
+    {
+        internal readonly AssetDescriptor Descriptor = descriptor;
+        internal readonly ZipArchiveEntry? Entry = entry;
+        internal byte[]? Content;
     }
 }

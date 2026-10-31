@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <Import Project="../../../eng/build/assets.props" />
+  <!-- The startup cost of an embedded Runic Assets archive (S1): measure.mjs packs a synthetic frontend, embeds it as
+       Runic.Assets.StaticFiles through RunicAssetsBenchmarkArchive and runs the published program. -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>$(RunicAssetsDefaultTargetFramework)</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <IsPackable>false</IsPackable>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+    <InvariantGlobalization>true</InvariantGlobalization>
+    <NoWarn>$(NoWarn);CA1515;CA2007</NoWarn>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../../packages/dotnet/Runic.Assets/Runic.Assets.csproj" />
+    <EmbeddedResource Include="$(RunicAssetsBenchmarkArchive)" LogicalName="Runic.Assets.StaticFiles"
+                      Condition="'$(RunicAssetsBenchmarkArchive)' != ''" />
+  </ItemGroup>
+  <Import Project="../../../eng/build/assets.targets" />
+</Project>

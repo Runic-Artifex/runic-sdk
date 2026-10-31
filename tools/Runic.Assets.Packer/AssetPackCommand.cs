@@ -150,6 +150,13 @@ internal static class AssetPackCommand
                     }
                 }
 
+                // The build verifies what it embeds: read the written archive back and check every asset against
+                // its digest, since AssetArchive.ReadEmbedded no longer does at run time.
+                await using (var written = new FileStream(temporary, FileMode.Open, FileAccess.Read, FileShare.Read))
+                {
+                    await AssetArchive.ReadAsync(written, cancellationToken: cancellationToken).ConfigureAwait(false);
+                }
+
                 sourceMaps = FindSourceMaps(temporary);
                 File.Move(temporary, fullDestination, overwrite: true);
             }

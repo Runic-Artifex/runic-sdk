@@ -230,6 +230,79 @@ internal sealed class AssetsTests
         True(changing.Disposed);
     }
 
+    // S1 (D053.25): the build packed and verified this archive; ReadEmbedded reads the directory and inflates on open.
+    [Test, DisplayName("an embedded archive opens each asset on first use and serves folder views")]
+    public async Task EmbeddedArchive()
+    {
+        AssetArchiveSource archive = AssetArchive.ReadEmbedded(typeof(AssetsTests).Assembly, "Runic.Assets.Tests.Archive");
+        SequenceEqual(
+            new[] { "index.html", "settings/app.js", "settings/index.html" },
+            archive.Manifest.Assets.Select(static asset => asset.RelativePath));
+        string root = Path.Combine(AppContext.BaseDirectory, "../../../TestAssets/archive");
+        foreach (AssetDescriptor asset in archive.Manifest.Assets)
+        {
+            SequenceEqual(File.ReadAllBytes(Path.Combine(root, asset.RelativePath)), await ReadAllAsync(archive, asset.RelativePath).ConfigureAwait(false));
+        }
+
+        await archive.ValidateAsync().ConfigureAwait(false);
+        IAssetSource settings = archive.Subdirectory("settings");
+        Equal("index.html", settings.Manifest.EntryPoint.RelativePath);
+        SequenceEqual(File.ReadAllBytes(Path.Combine(root, "settings/app.js")), await ReadAllAsync(settings, "app.js").ConfigureAwait(false));
+        await settings.ValidateAsync().ConfigureAwait(false);
+        Throws<ArgumentException>(() => AssetArchive.ReadEmbedded(typeof(AssetsTests).Assembly, "Runic.Assets.Tests.Missing"));
+    }
+
+    [Test, DisplayName("an archive read in place checks digests on demand and damaged entries when opened")]
+    public async Task ArchiveReadInPlace()
+    {
+        using var directory = new TemporaryDirectory();
+        directory.Write("index.html", "<!doctype html><p>entry</p>");
+        string image = directory.Write("image.png", "not really a png, so stored rather than deflated");
+        using var written = new MemoryStream();
+        await AssetArchive.WriteDirectoryAsync(directory.Path, written).ConfigureAwait(false);
+        byte[] bytes = written.ToArray();
+
+        // Concurrent first opens inflate once each and agree.
+        AssetArchiveSource intact = AssetArchive.ReadInPlace(new MemoryStream(bytes, writable: false), null);
+        byte[][] reads = await Task.WhenAll(Enumerable.Range(0, 16).Select(index =>
+            Task.Run(() => ReadAllAsync(intact, index % 2 == 0 ? "index.html" : "image.png")))).ConfigureAwait(false);
+        for (int index = 0; index < reads.Length; index++)
+        {
+            SequenceEqual(index % 2 == 0 ? Encoding.UTF8.GetBytes("<!doctype html><p>entry</p>") : File.ReadAllBytes(image), reads[index]);
+        }
+
+        // Same length, other content: an archive from outside the assembly fails to load; read in place, the digest
+        // is checked by ValidateAsync only.
+        byte[] tampered = (byte[])bytes.Clone();
+        int stored = tampered.AsSpan().IndexOf("not really"u8);
+        tampered[stored] = (byte)'N';
+        Throws<InvalidDataException>(() => AssetArchive.Read(new MemoryStream(tampered, writable: false)));
+        AssetArchiveSource inPlace = AssetArchive.ReadInPlace(new MemoryStream(tampered, writable: false), null);
+        Equal((byte)'N', (await ReadAllAsync(inPlace, "image.png").ConfigureAwait(false))[0]);
+        await ThrowsAsync<InvalidDataException>(async () => await inPlace.ValidateAsync().ConfigureAwait(false)).ConfigureAwait(false);
+
+        // A damaged deflate stream loads, and fails when the asset is opened.
+        byte[] damaged = (byte[])bytes.Clone();
+        int name = damaged.AsSpan().IndexOf("assets/index.html"u8);
+        int extra = BitConverter.ToUInt16(damaged, name - 2);
+        damaged[name + "assets/index.html".Length + extra] = 0xFF;
+        AssetArchiveSource broken = AssetArchive.ReadInPlace(new MemoryStream(damaged, writable: false), null);
+        await ThrowsAsync<InvalidDataException>(async () => await ReadAllAsync(broken, "index.html").ConfigureAwait(false)).ConfigureAwait(false);
+        SequenceEqual(File.ReadAllBytes(image), await ReadAllAsync(broken, "image.png").ConfigureAwait(false));
+
+        // The directory and the limits are checked when the archive is read.
+        Throws<InvalidDataException>(() => AssetArchive.ReadInPlace(new MemoryStream(bytes, writable: false), new AssetArchiveReadOptions { MaxArchiveBytes = 16 }));
+        Throws<InvalidDataException>(() => AssetArchive.ReadInPlace(new MemoryStream(bytes.AsSpan(0, bytes.Length - 8).ToArray(), writable: false), null));
+    }
+
+    private static async Task<byte[]> ReadAllAsync(IAssetSource source, string path)
+    {
+        await using AssetReadSnapshot snapshot = await source.OpenAsync(path).ConfigureAwait(false);
+        using var copy = new MemoryStream();
+        await snapshot.Content.CopyToAsync(copy).ConfigureAwait(false);
+        return copy.ToArray();
+    }
+
     [Test, DisplayName("portable archives round-trip deterministic metadata")]
     public async Task ArchiveRoundTrip()
     {

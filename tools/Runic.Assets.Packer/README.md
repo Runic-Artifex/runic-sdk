@@ -87,7 +87,25 @@ The `runic.assets.pack-result/1` payload has one property, `archiveLength`, the
 size of the written archive in bytes.
 
 The archive is deterministic: the same files produce the same bytes, so it can
-be cached or compared with `cmp`.
+be cached or compared with `cmp`. Since 0.15 the packer reads the archive back
+and checks every asset against its SHA-256 digest before it replaces the
+destination, because `AssetArchive.ReadEmbedded` no longer checks digests at
+run time.
+
+## Verify an archive
+
+```text
+Runic.Assets.Packer verify <archive> [--format human|json]
+```
+
+Since 0.15, `verify` checks that an archive is a valid Runic Assets archive
+whose assets match their manifest's lengths and SHA-256 digests. The build runs
+it on `RunicAssetsEmbeddedArchive` before embedding it (a failure is build
+error `RAS2006`). It exits with 0 when the archive is valid, and with 1 and
+`RAS1006` (no such file) or `RAS1007` (not a valid archive, with the reason)
+otherwise. JSON output writes the `runic.assets.verify-result/1` payload
+`{ "assetCount": <count> }`. `verify` is a command of the packer only, not of
+`dotnet runic assets`.
 
 ## Default exclusions
 
@@ -128,8 +146,8 @@ a directory another user can write.
 
 | Exit code | Meaning |
 | --- | --- |
-| `0` | The archive was written. |
-| `1` | The archive could not be packed: the source directory does not exist (`RAS1001`), the entry point does not exist or was excluded (`RAS1002`), packing failed (`RAS1003`), for example because of an invalid asset path, a symbolic link or an I/O error, or the pinned mode is unavailable on this OS (`RAS1004`). |
+| `0` | The archive was written (`verify`: the archive is valid). |
+| `1` | The archive could not be packed: the source directory does not exist (`RAS1001`), the entry point does not exist or was excluded (`RAS1002`), packing failed (`RAS1003`), for example because of an invalid asset path, a symbolic link or an I/O error, or the pinned mode is unavailable on this OS (`RAS1004`). `verify`: the archive does not exist (`RAS1006`) or is not valid (`RAS1007`). |
 | `2` | Usage or validation error: an invalid command line, such as a missing argument. |
 | `3` | Internal failure. |
 | `130` | Cancelled. |

@@ -1053,6 +1053,24 @@ is 0. Since 0.11.
 or exclude them with `--exclude` or `RunicAssetsDistExclude`. If the
 application ships them on purpose, add `RAS1005` to `NoWarn`.
 
+### RAS1006
+
+`Runic.Assets.Packer verify` was given an archive that does not exist. Exit
+code 1. Since 0.15.
+
+**Fix:** pack the archive first, or correct the path.
+
+### RAS1007
+
+`Runic.Assets.Packer verify` read an archive that is not a valid Runic Assets
+archive: it is not a ZIP file, its manifest is missing, invalid or of another
+version, it declares an asset it lacks or holds one it does not declare, or an
+asset differs from its manifest's length or SHA-256 digest. The reason follows
+the message. Exit code 1. Since 0.15.
+
+**Fix:** pack the archive again from its source, with the build,
+`dotnet runic assets pack` or `AssetArchive.WriteAsync`.
+
 ### RAS2001
 
 The `Runic.Assets` build targets report this error. The project sets both
@@ -1087,6 +1105,17 @@ The asset packer could not pack `RunicAssetsDist`. Its own `RAS1xxx` error is
 above in the build output.
 
 **Fix:** follow the packer error.
+
+### RAS2006
+
+The archive that `RunicAssetsEmbeddedArchive` names failed the packer's check
+before it was embedded: it is not a valid Runic Assets archive, or an asset
+does not match its manifest. The packer's `RAS1007` error with the reason is
+above in the build output. The build checks the archive because
+`AssetArchive.ReadEmbedded` does not check digests at run time. The check runs
+again when the archive or the packer changes. Since 0.15.
+
+**Fix:** pack the archive again from its source, or correct the path.
 
 ## Runic Desktop build
 

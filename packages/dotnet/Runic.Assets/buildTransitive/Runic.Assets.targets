@@ -56,9 +56,35 @@
            Text="The Runic Assets packer could not pack '$(RunicAssetsDist)' and exited with code $(_RunicAssetsPackerExitCode). Its error is above." />
   </Target>
 
+  <!-- AssetArchive.ReadEmbedded does not check the SHA-256 digests of an embedded archive at run time (since 0.15):
+       the build checks what it embeds. The packer reads back every archive it writes; an archive that the project
+       brings itself (RunicAssetsEmbeddedArchive) is checked here, again only when it or the packer changes. -->
+  <Target Name="RunicAssetsVerifyEmbeddedArchive"
+          Condition="'$(RunicAssetsEmbeddedArchive)' != '' and '$(RunicAssetsDist)' == '' and Exists('$(RunicAssetsEmbeddedArchive)') and '$(DesignTimeBuild)' != 'true'"
+          Inputs="$(RunicAssetsEmbeddedArchive);$(RunicAssetsPackerPath)"
+          Outputs="$(IntermediateOutputPath)runic-assets\$(MSBuildProjectName).embedded-archive.verified">
+    <PropertyGroup>
+      <_RunicAssetsVerifiedStamp>$(IntermediateOutputPath)runic-assets\$(MSBuildProjectName).embedded-archive.verified</_RunicAssetsVerifiedStamp>
+    </PropertyGroup>
+    <Error Code="RAS2003" File="$(MSBuildProjectFullPath)" HelpLink="$(_RunicDiagnosticsHelpLinkBase)ras2003"
+           Condition="!Exists('$(RunicAssetsPackerPath)')"
+           Text="The Runic Assets packer '$(RunicAssetsPackerPath)' does not exist. Restore the project again; the Runic.Assets package may be incomplete." />
+    <Exec Command="&quot;$(_RunicAssetsDotNetHost)&quot; &quot;$(RunicAssetsPackerPath)&quot; verify &quot;$(RunicAssetsEmbeddedArchive)&quot;" IgnoreExitCode="true">
+      <Output TaskParameter="ExitCode" PropertyName="_RunicAssetsVerifierExitCode" />
+    </Exec>
+    <Error Code="RAS2006" File="$(MSBuildProjectFullPath)" HelpLink="$(_RunicDiagnosticsHelpLinkBase)ras2006"
+           Condition="'$(_RunicAssetsVerifierExitCode)' != '0'"
+           Text="The RunicAssetsEmbeddedArchive file '$(RunicAssetsEmbeddedArchive)' is not a valid Runic Assets archive, or an asset does not match its digest (the packer exited with code $(_RunicAssetsVerifierExitCode)). Its error is above; pack the archive again." />
+    <MakeDir Directories="$([System.IO.Path]::GetDirectoryName('$(_RunicAssetsVerifiedStamp)'))" />
+    <Touch Files="$(_RunicAssetsVerifiedStamp)" AlwaysCreate="true" />
+    <ItemGroup>
+      <FileWrites Include="$(_RunicAssetsVerifiedStamp)" />
+    </ItemGroup>
+  </Target>
+
   <Target Name="RunicAssetsEmbedFileSystem"
           BeforeTargets="SplitResourcesByCulture"
-          DependsOnTargets="RunicAssetsPackFileSystem"
+          DependsOnTargets="RunicAssetsPackFileSystem;RunicAssetsVerifyEmbeddedArchive"
           Condition="('$(RunicAssetsDist)' != '' or '$(RunicAssetsEmbeddedArchive)' != '') and '$(DesignTimeBuild)' != 'true' and '$(_RunicAssetsDistStaged)' != 'true'">
     <PropertyGroup>
       <_RunicAssetsGeneratedArchive>$(IntermediateOutputPath)runic-assets\$(MSBuildProjectName).runic-assets</_RunicAssetsGeneratedArchive>
