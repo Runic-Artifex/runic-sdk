@@ -268,6 +268,7 @@
         "tests/dotnet/Runic.Assets.Desktop.Tests",
         "tests/fixtures/assets/Runic.Assets.PackageConsumer",
         "tests/dotnet/Runic.Assets.Tests",
+        "tests/benchmarks/asset-archive",
         "eng/build/assets.props",
         "eng/build/assets.targets",
         "eng/branding/assets",

@@ -17,6 +17,13 @@ public sealed class PresentationExchangeTests
     [Arguments("localhost:-1", "localhost", null)]
     [Arguments("::1:80", "::1:80", null)]
     [Arguments("", "", null)]
+    // Digits only, within an int (S1 parses them without culture data).
+    [Arguments("localhost:+80", "localhost", null)]
+    [Arguments("localhost: 80", "localhost", null)]
+    [Arguments("localhost:2147483647", "localhost", int.MaxValue)]
+    [Arguments("localhost:2147483648", "localhost", null)]
+    [Arguments("localhost:99999999999999999999", "localhost", null)]
+    [Arguments("localhost:\u0663", "localhost", null)]
     public async Task HostHeadersSplitAsHostStringDoes(string header, string host, int? port)
     {
         Assert.Equal((host, port), PresentationExchange.ParseHost(header));

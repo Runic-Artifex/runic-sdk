@@ -29,5 +29,6 @@ internal static class PackerApplication
     // The pack command is AssetPackCommand.PackAsync, which dotnet runic assets pack shares.
     internal static CommandCatalog CreateCatalog(CommandOutcomePresenter<PackerResult>? presenter = null) =>
         GeneratedCommandCatalog.Create(builder => builder
-            .PresentOutcome(AssetPackCommand.CommandPath, presenter ?? AssetPackCommand.PresentAsync));
+            .PresentOutcome(AssetPackCommand.CommandPath, presenter ?? AssetPackCommand.PresentAsync)
+            .PresentOutcome<VerifierResult>(AssetVerifyCommand.CommandPath, AssetVerifyCommand.PresentAsync));
 }

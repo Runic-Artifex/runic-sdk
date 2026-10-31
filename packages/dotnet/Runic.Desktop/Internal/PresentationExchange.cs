@@ -96,9 +96,8 @@ internal abstract class PresentationExchange
             return (value, null);
         }
         var host = value[..portSeparator];
-        return int.TryParse(value.AsSpan(portSeparator + 1), System.Globalization.NumberStyles.None,
-            System.Globalization.CultureInfo.InvariantCulture, out var port)
-            ? (host, port)
+        return AsciiNumbers.TryParse(value.AsSpan(portSeparator + 1), out var port) && port <= int.MaxValue
+            ? (host, (int)port)
             : (host, null);
     }
 

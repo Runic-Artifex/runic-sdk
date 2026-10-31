@@ -151,7 +151,7 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
         _securityPolicy = securityPolicy;
         _runtimeOptions = runtimeOptions;
         _sessionCredential = securityPolicy?.RequireSessionCredential == true
-            ? Convert.ToBase64String(RandomNumberGenerator.GetBytes(32))
+            ? Convert.ToBase64String(OsRandom.GetBytes(32))
                 .TrimEnd('=')
                 .Replace('+', '-')
                 .Replace('/', '_')
@@ -2870,7 +2870,7 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
         var (token, sessionCredential) = GetBootstrapCredentialExpressions(inputs.DocumentStartScript);
         return WebUiBridge.Script
             .Replace("__TOKEN__", token, StringComparison.Ordinal)
-            .Replace("__PORT__", inputs.Port.ToString(System.Globalization.CultureInfo.InvariantCulture), StringComparison.Ordinal)
+            .Replace("__PORT__", AsciiNumbers.Format(inputs.Port), StringComparison.Ordinal)
             .Replace("__BASE_PATH__", inputs.PathBase, StringComparison.Ordinal)
             .Replace("__SESSION_CREDENTIAL__", sessionCredential, StringComparison.Ordinal)
             .Replace("__CUSTOM_WINDOW_DRAG__", inputs.CustomWindowDrag ? "true" : "false", StringComparison.Ordinal);
@@ -2895,7 +2895,7 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
               "use strict";
               const endpoint = new URL({{EncodeJavaScriptString(webSocketPath)}}, globalThis.location.href);
               endpoint.protocol = endpoint.protocol === "https:" ? "wss:" : "ws:";
-              endpoint.port = {{inputs.Port.ToString(System.Globalization.CultureInfo.InvariantCulture)}};
+              endpoint.port = {{AsciiNumbers.Format(inputs.Port)}};
               Object.defineProperty(globalThis, "runicDesktop", {
                 configurable: false,
                 enumerable: true,
@@ -2950,7 +2950,7 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
     private (string Token, string SessionCredential) GetBootstrapCredentialExpressions(bool documentStartScript) =>
         documentStartScript
             ? ($"({DocumentBootstrapProperty}?.token ?? 0)", $"({DocumentBootstrapProperty}?.sessionCredential ?? \"\")")
-            : (_token.ToString(System.Globalization.CultureInfo.InvariantCulture), EncodeJavaScriptString(_sessionCredential));
+            : (AsciiNumbers.Format(_token), EncodeJavaScriptString(_sessionCredential));
 
     private string FrameAncestorsPolicy => _frameAncestorsPolicy ??= CreateFrameAncestorsPolicy(_securityPolicy?.AdditionalOrigins);
 
@@ -2966,7 +2966,7 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
             .Prepend(url)
             .Select(static origin => origin.IsDefaultPort
                 ? $"{origin.Scheme}://{origin.IdnHost}"
-                : $"{origin.Scheme}://{origin.IdnHost}:{origin.Port.ToString(System.Globalization.CultureInfo.InvariantCulture)}")
+                : $"{origin.Scheme}://{origin.IdnHost}:{AsciiNumbers.Format(origin.Port)}")
             .Distinct(StringComparer.Ordinal)
             .Select(EncodeJavaScriptString);
         // SEC-05: a frame receives the credentials only when the document and every document that contains it have an
@@ -2991,7 +2991,7 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
               }
               Object.defineProperty(globalThis, Symbol.for("runic-desktop.bootstrap"), {
                 value: Object.freeze({
-                  token: {{_token.ToString(System.Globalization.CultureInfo.InvariantCulture)}},
+                  token: {{AsciiNumbers.Format(_token)}},
                   sessionCredential: {{EncodeJavaScriptString(_sessionCredential)}}
                 })
               });
@@ -3276,7 +3276,7 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
             return clientId;
         }
 
-        var cookie = Convert.ToHexString(RandomNumberGenerator.GetBytes(16)).ToLowerInvariant();
+        var cookie = Convert.ToHexStringLower(OsRandom.GetBytes(16));
         clientId = checked((nuint)Interlocked.Increment(ref _nextClientId));
         _clients[cookie] = clientId;
         context.AppendResponseHeader("Set-Cookie", PresentationCookies.StrictHttpOnly(AuthCookieName, cookie, $"{_surface?.PathBase}/"));
@@ -3803,7 +3803,7 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
         uint token;
         do
         {
-            RandomNumberGenerator.Fill(bytes);
+            OsRandom.Fill(bytes);
             token = BinaryPrimitives.ReadUInt32LittleEndian(bytes);
         }
         while (token == 0);

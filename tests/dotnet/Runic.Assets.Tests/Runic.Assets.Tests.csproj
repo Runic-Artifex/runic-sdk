@@ -25,5 +25,14 @@
   <ItemGroup>
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
   </ItemGroup>
+
+  <!-- The in-repo Runic.Assets targets pack TestAssets/archive with the packer built above and embed it, as a
+       package consumer's build does, for the AssetArchive.ReadEmbedded tests. -->
+  <PropertyGroup>
+    <RunicAssetsDist>$(MSBuildProjectDirectory)/TestAssets/archive</RunicAssetsDist>
+    <RunicAssetsEmbeddedResourceName>Runic.Assets.Tests.Archive</RunicAssetsEmbeddedResourceName>
+  </PropertyGroup>
+  <Import Project="../../../packages/dotnet/Runic.Assets/buildTransitive/Runic.Assets.props" />
+  <Import Project="../../../packages/dotnet/Runic.Assets/buildTransitive/Runic.Assets.targets" />
   <Import Project="../../../eng/build/assets.targets" />
 </Project>

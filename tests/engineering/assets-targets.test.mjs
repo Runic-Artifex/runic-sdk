@@ -68,3 +68,48 @@ test("RunicAssetsDefaultExcludes=false passes --no-default-excludes, with or wit
     assert.ok(argumentsList.includes("--trusted-generated-output"), argumentsList.join(" "));
   }
 });
+
+// S1 (D053.25): AssetArchive.ReadEmbedded no longer checks digests at run time, so the build verifies an archive that
+// the project embeds with RunicAssetsEmbeddedArchive, once per change of the archive or the packer.
+test("RunicAssetsEmbeddedArchive is verified before it is embedded, once per change, and a failure is RAS2006", () => {
+  const project = join(directory, "embedded-archive");
+  mkdirSync(project, { recursive: true });
+  writeFileSync(join(project, "app.runic-assets"), "archive");
+  writeFileSync(join(project, "packer.mjs"), `import { appendFileSync, existsSync } from "node:fs";
+appendFileSync(${JSON.stringify(join(project, "calls.log"))}, JSON.stringify(process.argv.slice(2)) + "\\n");
+if (existsSync(${JSON.stringify(join(project, "invalid"))})) { console.error("The archive is not a valid Runic Assets archive."); process.exit(1); }
+`);
+  writeFileSync(join(project, "App.proj"), `<Project>
+  <Import Project="${join(buildTransitive, "Runic.Assets.props")}" />
+  <PropertyGroup>
+    <IntermediateOutputPath>obj/</IntermediateOutputPath>
+    <RunicAssetsEmbeddedArchive>$(MSBuildProjectDirectory)/app.runic-assets</RunicAssetsEmbeddedArchive>
+    <RunicAssetsPackerPath>$(MSBuildProjectDirectory)/packer.mjs</RunicAssetsPackerPath>
+    <DotNetHostPath>${process.execPath}</DotNetHostPath>
+  </PropertyGroup>
+  <Import Project="${join(buildTransitive, "Runic.Assets.targets")}" />
+</Project>
+`);
+  const embed = () => spawnSync("dotnet", ["msbuild", join(project, "App.proj"), "-t:RunicAssetsEmbedFileSystem", "-getItem:EmbeddedResource",
+    "-nologo", "-noAutoResponse", "-nodeReuse:false", "-v:m"], { cwd: project, encoding: "utf8" });
+  const calls = () => { try { return readFileSync(join(project, "calls.log"), "utf8").trim().split("\n").map(line => JSON.parse(line)); } catch { return []; } };
+
+  let result = embed();
+  assert.equal(result.status, 0, result.stdout + result.stderr);
+  assert.deepEqual(calls(), [["verify", join(project, "app.runic-assets")]]);
+  const resources = JSON.parse(result.stdout.slice(result.stdout.indexOf("{"))).Items.EmbeddedResource;
+  assert.deepEqual(resources.map(item => item.LogicalName), ["Runic.Assets.StaticFiles"]);
+
+  // Unchanged: no second check.
+  result = embed();
+  assert.equal(result.status, 0, result.stdout + result.stderr);
+  assert.equal(calls().length, 1);
+
+  // A changed archive is checked again, and an invalid one fails the build.
+  writeFileSync(join(project, "invalid"), "");
+  writeFileSync(join(project, "app.runic-assets"), "changed");
+  result = embed();
+  assert.notEqual(result.status, 0, result.stdout);
+  assert.match(result.stdout + result.stderr, /error RAS2006:/);
+  assert.equal(calls().length, 2);
+});

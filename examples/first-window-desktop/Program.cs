@@ -27,8 +27,9 @@ return RunicDesktopHost.Run(provider, hostOptions, async host =>
         Console.WriteLine("DESKTOP_VIEWS_OWNER_OK");
         return 0;
     }
-    // The Desktop adapter behind the host-neutral Window exposes the surface and native presentation.
-    Console.WriteLine(((DesktopBridgeWindow<CounterViewModel>)window.Host).Surface.Url);
+    // The Desktop adapter behind the host-neutral Window exposes the surface and native presentation. A string:
+    // writing the Uri object formats it with the current culture, which loads ICU.
+    Console.WriteLine(((DesktopBridgeWindow<CounterViewModel>)window.Host).Surface.Url.AbsoluteUri);
     await window.WaitForCloseAsync();
     return 0;
 });

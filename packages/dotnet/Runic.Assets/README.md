@@ -67,6 +67,17 @@ AssetArchiveSource assets = AssetArchive.ReadEmbedded(
     Assembly.GetExecutingAssembly());
 ```
 
+`ReadEmbedded` reads the archive's manifest and ZIP directory and inflates each
+asset when it is first opened, so a large frontend no longer delays startup
+(since 0.15). It does not check the SHA-256 digests at run time: the archive is
+part of the assembly that holds the application's code, and the build checked
+it when it packed it (the packer reads back every archive it writes) or, for
+`RunicAssetsEmbeddedArchive`, before it embedded it (`RAS2006`). An asset that
+inflates to another length, or whose ZIP entry is damaged, fails to open with
+`InvalidDataException`; `ValidateAsync` checks every digest on demand.
+`AssetArchive.Read` and `ReadAsync`, for an archive file loaded at run time,
+still inflate and check every asset before they return.
+
 The default entry point is `index.html`. Set `RunicAssetsEntryPoint` for a
 different entry file; set `RunicAssetsDistExclude` to omit files such as build
 statistics (by default `runic-assets.zip`; the value replaces that default, and
@@ -222,8 +233,9 @@ application's script or connect origins. Set it with
 `AssetRoutingOptions.ContentSecurityPolicy`, which the ASP.NET Core and Desktop
 adapters send with HTML assets, or with `DesktopSurfaceOptions.ContentSecurityPolicy`
 for a whole Runic Desktop surface. ASP.NET Core delivery supports RFC conditional requests and
-single byte ranges directly from this metadata. Archive reads validate declared content and can be bounded with
-`AssetArchiveReadOptions` when input is not trusted.
+single byte ranges directly from this metadata. `AssetArchive.Read` and `ReadAsync` validate declared content and can
+be bounded with `AssetArchiveReadOptions` when input is not trusted; `ReadEmbedded` applies the same limits to the
+manifest and the ZIP directory and leaves the digests to the build (see above).
 
 `AssetArchive.Inspect` returns an archive's schema version, its manifest and the
 SHA-256 digest of the canonical manifest bytes. Readers accept only the current

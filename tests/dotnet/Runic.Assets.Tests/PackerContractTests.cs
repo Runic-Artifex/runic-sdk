@@ -76,6 +76,38 @@ internal sealed class PackerContractTests
         Equal("1", await ExitCodeAsync(site, archive, "--trusted-generated-output").ConfigureAwait(false));
     }
 
+    // S1: the build runs `verify` on RunicAssetsEmbeddedArchive, since ReadEmbedded leaves the digests to the build.
+    [Test, DisplayName("packer verify accepts a packed archive and rejects a missing or altered one")]
+    public async Task VerifyChecksTheArchive()
+    {
+        using var directory = new TemporaryDirectory();
+        string site = Path.GetDirectoryName(directory.Write("site/index.html", "<p>x</p>"))!;
+        directory.Write("site/image.png", "stored, not deflated");
+        string archive = Path.Combine(directory.Path, "out.runic-assets");
+        Equal("0", await ExitCodeAsync(site, archive, "--trusted-generated-output").ConfigureAwait(false));
+
+        (int exitCode, string output, string error) = await RunPackerAsync("verify", archive, "--format", "json").ConfigureAwait(false);
+        Equal("0", exitCode.ToString(System.Globalization.CultureInfo.InvariantCulture) + error);
+        using (JsonDocument document = JsonDocument.Parse(output))
+        {
+            Equal("verify", document.RootElement.GetProperty("command").GetString());
+            Equal("runic.assets.verify-result/1", document.RootElement.GetProperty("payloadType").GetString());
+            Equal("{\"assetCount\":2}", document.RootElement.GetProperty("payload").GetRawText());
+        }
+
+        (exitCode, output, _) = await RunPackerAsync("verify", Path.Combine(directory.Path, "missing.runic-assets"), "--format", "json").ConfigureAwait(false);
+        Equal("1", exitCode.ToString(System.Globalization.CultureInfo.InvariantCulture));
+        True(output.Contains("\"RAS1006\"", StringComparison.Ordinal), output);
+
+        // The stored asset keeps its length with other content, so only its digest tells.
+        byte[] bytes = File.ReadAllBytes(archive);
+        bytes[bytes.AsSpan().IndexOf("stored, not"u8)] = (byte)'S';
+        File.WriteAllBytes(archive, bytes);
+        (exitCode, _, error) = await RunPackerAsync("verify", archive).ConfigureAwait(false);
+        Equal("1", exitCode.ToString(System.Globalization.CultureInfo.InvariantCulture));
+        True(error.Contains("RAS1007", StringComparison.Ordinal) && error.Contains("digest", StringComparison.Ordinal), error);
+    }
+
     // The packer once built ParseSettings without an environment reader, so RUNIC_COMMANDLINE_NO_INPUT and option
     // environment fallbacks never reached it. The packer has no prompts, so the test observes the input state where
     // Command Line passes it on: the context its outcome presenter receives, on an interactive console.

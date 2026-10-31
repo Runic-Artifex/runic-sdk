@@ -117,7 +117,10 @@ jobs:
           dotnet publish examples/first-window-desktop/FirstWindowDesktop.csproj -c Release -r linux-x64 \
             -p:RunicDesktopServer=Native -p:PublishAot=true -o artifacts/native-server-aot
           test ! -e artifacts/native-server-aot/librunic_server.so
-          node tests/benchmarks/native-server/startup.mjs artifacts/native-server-aot/FirstWindowDesktop 5
+          # S1: the host loads neither ICU nor OpenSSL before its page is served. LANG=C, because the console's
+          # charset lookup for a UTF-8 locale loads ICU in any .NET program that writes to it, as serve-only does.
+          LANG=C LC_ALL=C node tests/benchmarks/native-server/startup.mjs artifacts/native-server-aot/FirstWindowDesktop 5 | tee "$RUNNER_TEMP/startup.json"
+          node -e 'const r = JSON.parse(require("node:fs").readFileSync(process.argv[1], "utf8")); if (r.icu || r.openssl) { console.error("ICU " + r.icu + ", OpenSSL " + r.openssl + " loaded by the first served page"); process.exit(1); }' "$RUNNER_TEMP/startup.json"
       - name: Retain diagnostics
         if: always()
         continue-on-error: true
