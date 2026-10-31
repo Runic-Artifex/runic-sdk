@@ -12,6 +12,7 @@ import { managedGroups, managedTests, jobSuites, webTests, plan, applicationFixt
 import { actArguments } from './local.mjs';
 import { nativeLegs, testTimeoutScales, wpfLegs } from './platforms.mjs';
 import { testTimeoutScale } from './test-timeout-scale.mjs';
+import { npmReleaseAgeArguments } from '../dependencies/release-age.mjs';
 
 const yaml = path => Bun.YAML.parse(readFileSync(resolve(root, path), 'utf8'));
 const workflow = yaml('.github/workflows/ci.yml');
@@ -420,6 +421,50 @@ test('remote actions are pinned to a commit with their release tag', () => {
   assert.ok(references.length > 0);
   for (const item of references)
     assert.match(`${item.action} ${item.comment}`, /^[\w.-]+\/[\w./-]+@[0-9a-f]{40} # v\d+\.\d+\.\d+$/, `${item.path}: ${item.action}`);
+});
+
+test('an upload that only keeps diagnostics cannot fail a job, one a later job downloads still does', () => {
+  // sdk#779's queue run failed only because an upload of passing tests' diagnostics met ETIMEDOUT.
+  const files = execFileSync('git', ['ls-files', '-z', '.github'], { cwd: root, encoding: 'utf8' }).split('\0')
+    .filter(path => /\.ya?ml$/.test(path));
+  const steps = files.flatMap(path => {
+    const document = yaml(path);
+    return [...Object.values(document.jobs ?? {}).flatMap(job => job.steps ?? []), ...(document.runs?.steps ?? [])]
+      .map(step => ({ path, step }));
+  });
+  const downloaded = steps.filter(({ step }) => step.uses?.startsWith('actions/download-artifact@'))
+    // The release downloads CI's packages by artifact id; CI's own jobs download them by name.
+    .map(({ step }) => step.with?.name ?? step.with?.pattern).filter(Boolean);
+  const consumed = name => downloaded.some(wanted =>
+    new RegExp(`^${wanted.replace(/[.+?^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*')}$`).test(name)
+    || wanted.replace(/\$\{\{[^}]*\}\}/g, '') === name.replace(/\$\{\{[^}]*\}\}/g, ''));
+  const uploads = steps.filter(({ step }) => step.uses?.startsWith('actions/upload-artifact@'));
+  assert.ok(uploads.length > 10);
+  for (const { path, step } of uploads) {
+    // The CI pass marker is read through the API (the plan job) and only lets a later run skip work.
+    const kept = consumed(step.with.name) && !step.with.name.startsWith('ci-passed-');
+    assert.equal(step['continue-on-error'], kept ? undefined : true, `${path}: ${step.with.name}`);
+  }
+  for (const name of ['sdk-build-${{ github.run_id }}', 'runic-sdk-${{ github.run_id }}', 'runic-server-${{ matrix.rid }}',
+    'runic-desktop-native-server-package-${{ github.run_id }}', 'release-candidate-${{ github.run_id }}'])
+    assert.ok(uploads.some(({ step }) => step.with.name === name && step['continue-on-error'] === undefined), name);
+});
+
+test('package checks without a lockfile resolve third-party npm packages published at least a day ago', () => {
+  // D038: sdk#772's queue run met devframe@1.3.0, published 3 s after its install started.
+  const scripts = execFileSync('git', ['ls-files', '-z', '*.mjs'], { cwd: root, encoding: 'utf8' }).split('\0')
+    .filter(path => path && !path.startsWith('native/') && path !== 'eng/ci/contracts.test.mjs');
+  const unlocked = scripts.filter(path => readFileSync(resolve(root, path), 'utf8').includes('"--package-lock=false"'));
+  assert.deepEqual(unlocked.sort(), ['eng/verify-packages.mjs', 'packages/web/vite-plugin-runic/test/package-consumer.test.mjs',
+    'tests/fixtures/application/operations-consumer/package-smoke.mjs', 'tests/web/angular-package-consumer/test-package-consumer.mjs',
+    'tests/web/svelte-package-consumers/package-consumers.mjs']);
+  for (const path of unlocked) {
+    const text = readFileSync(resolve(root, path), 'utf8');
+    const installs = text.split('"--package-lock=false"').length - 1;
+    assert.equal(text.split('...npmReleaseAgeArguments()').length - 1, installs, path);
+  }
+  const now = Date.parse('2026-10-31T12:00:00Z');
+  assert.deepEqual(npmReleaseAgeArguments(now), ['--before=2026-10-30T12:00:00.000Z', '--min-release-age-exclude=@runic-artifex/*']);
 });
 
 // W240-005: the WPF hosts run in a Windows desktop session, then their packed consumer.

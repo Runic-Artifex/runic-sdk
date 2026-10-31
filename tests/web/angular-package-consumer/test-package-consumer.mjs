@@ -6,6 +6,7 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { promisify } from "node:util";
+import { npmReleaseAgeArguments } from "../../../eng/dependencies/release-age.mjs";
 
 const execute = promisify(execFileCallback);
 const root = await mkdtemp(join(tmpdir(), "runic-angular-views-consumer-"));
@@ -40,7 +41,8 @@ try {
     "@angular/build": "22.2.4", "@angular/cli": "22.2.4", "@angular/compiler": "22.2.3",
     "@angular/compiler-cli": "22.2.3", "typescript": "6.0.3"
   } }), "utf8");
-  await execute("npm", ["install", "--ignore-scripts", "--no-audit", "--no-fund", "--package-lock=false"], { cwd: root });
+  await execute("npm", ["install", "--ignore-scripts", "--no-audit", "--no-fund", "--package-lock=false", ...npmReleaseAgeArguments()],
+    { cwd: root });
   await writeFile(join(root, "angular.json"), JSON.stringify({
     $schema: "./node_modules/@angular/cli/lib/config/schema.json", version: 1,
     projects: { consumer: { projectType: "application", root: "", sourceRoot: "src", architect: {
@@ -85,7 +87,8 @@ void bootstrapApplication(ConsumerRoot, { providers: [provideZonelessChangeDetec
   assert.match(await readFile(join(root, "dist", "browser", "index.html"), "utf8"), /consumer-root/);
   // The forms entry needs the optional @angular/forms peer: an AOT build with strict templates over its directive and
   // the Signal Forms helpers.
-  await execute("npm", ["install", "--ignore-scripts", "--no-audit", "--no-fund", "--package-lock=false", "@angular/forms@22.2.3"], { cwd: root });
+  await execute("npm", ["install", "--ignore-scripts", "--no-audit", "--no-fund", "--package-lock=false", ...npmReleaseAgeArguments(),
+    "@angular/forms@22.2.3"], { cwd: root });
   await writeFile(join(root, "src/main.ts"), `import { Component, provideZonelessChangeDetection, signal } from "@angular/core";
 import { FormControl, ReactiveFormsModule } from "@angular/forms";
 import { form, FormField } from "@angular/forms/signals";

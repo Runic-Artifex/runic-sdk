@@ -14,6 +14,7 @@ import { basename, extname, resolve, join } from "node:path";
 import { root, workspace, run, configuration, packedNuget } from "./run.mjs";
 import { nupkgFiles, nupkgDependencies, nupkgDependencyVersions, nupkgFileText } from "./nupkg.mjs";
 import { packageVersion } from "./version.mjs";
+import { npmReleaseAgeArguments } from "./dependencies/release-age.mjs";
 
 const nativeProviders = new Set([
   "runic.platform.windows",
@@ -460,6 +461,7 @@ public sealed class ConsumerViewModel : INotifyPropertyChanged
       "--no-audit",
       "--no-fund",
       "--package-lock=false",
+      ...npmReleaseAgeArguments(),
     ],
     frontend,
   );

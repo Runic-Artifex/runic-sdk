@@ -496,6 +496,9 @@ failure. Jobs are the independent rerun unit; named steps make each failure easy
 to locate. Successful build/package artifacts use a run-scoped name and are kept
 for 30 days, matching the workflow rerun window. A producer rerun overwrites its
 own artifact. Missing or expired artifacts require rerunning their producer too.
+An upload that only keeps diagnostics (the "Retain …" steps) sets `continue-on-error`, so an
+artifact service error cannot fail a job whose checks passed; an artifact a later job downloads
+still fails its producer (`eng/ci/contracts.test.mjs`).
 
 A GitHub rerun uses the original commit and workflow, even after a fix is pushed.
 Push the fix to create a new run; that run builds its own inputs. A new local

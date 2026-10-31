@@ -1,4 +1,5 @@
 import { nodeCompatibility } from "../../../eng/node-compatibility.mjs";
+import { npmReleaseAgeArguments } from "../../../eng/dependencies/release-age.mjs";
 import assert from "node:assert/strict";
 import { execFile as execFileCallback } from "node:child_process";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
@@ -36,7 +37,7 @@ try {
   assert.deepEqual(Object.keys(svelteManifest.exports), [".", "./package.json"]);
   await writeFile(join(root, "package.json"), JSON.stringify({ private: true, type: "module" }), "utf8");
   await execFile("npm", [
-    "install", "--ignore-scripts", "--no-audit", "--no-fund", "--package-lock=false", "--legacy-peer-deps",
+    "install", "--ignore-scripts", "--no-audit", "--no-fund", "--package-lock=false", "--legacy-peer-deps", ...npmReleaseAgeArguments(),
     ...archives,
   ], { cwd: root });
   await writeFile(join(root, "consumer.mjs"), [
