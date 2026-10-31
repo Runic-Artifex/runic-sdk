@@ -21,6 +21,11 @@ internal sealed partial class MacAccessibility : AccessibilityClient
     private readonly TaskCompletionSource _observing = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private volatile bool _disposed;
 
+    // The application answers the accessibility API once AppKit runs its event loop, and the page's controls appear once
+    // WKWebView has loaded it; both are condition waits, scaled on a slow runner.
+    private static readonly TimeSpan EventLoopTimeout = TimeSpan.FromSeconds(30);
+    private static readonly TimeSpan FindTimeout = TimeSpan.FromSeconds(10);
+
     private MacAccessibility(int pid)
     {
         _pid = pid;
@@ -75,17 +80,19 @@ internal sealed partial class MacAccessibility : AccessibilityClient
     {
         nint observer;
         Check(AXObserverCreateWithInfoCallback(pid, &OnNotification, &observer), "AXObserverCreateWithInfoCallback");
+        // The application answers once AppKit runs its event loop (kAXErrorCannotComplete before).
+        var wait = TestTimeouts.Start(EventLoopTimeout);
         foreach (var name in Notifications)
         {
-            // The application answers once AppKit runs its event loop (kAXErrorCannotComplete before).
             var error = AXObserverAddNotification(observer, application, String(name), 0);
-            for (var attempt = 0; error == CannotComplete && attempt < 300; attempt++)
+            while (error == CannotComplete && !wait.IsExpired)
             {
                 Thread.Sleep(100);
                 error = AXObserverAddNotification(observer, application, String(name), 0);
             }
             if (error != AlreadyRegistered) Check(error, $"AXObserverAddNotification {name}");
         }
+        wait.Succeeded();
         CFRunLoopAddSource(_runLoop, AXObserverGetRunLoopSource(observer), DefaultMode);
         CFRunLoopWakeUp(_runLoop);
     }
@@ -147,7 +154,9 @@ internal sealed partial class MacAccessibility : AccessibilityClient
             ControlKind.ListBox => ["AXList", "AXListBox"],
             _ => [],
         };
-        for (var attempt = 0; attempt < 50; attempt++)
+        // The page loads after the window shows.
+        var wait = TestTimeouts.Start(FindTimeout);
+        while (true)
         {
             var matches = new List<Control>();
             Walk(_application, 0, element =>
@@ -156,11 +165,15 @@ internal sealed partial class MacAccessibility : AccessibilityClient
                 if (role is not null && roles.Contains(role) && Name(element) == name)
                     matches.Add(new Control(kind, name, $"{role} ({Text(element, "AXRoleDescription")})", element));
             });
-            if (matches.Count == 1) return matches[0];
+            if (matches.Count == 1)
+            {
+                wait.Succeeded();
+                return matches[0];
+            }
             if (matches.Count > 1) throw new InvalidOperationException($"{matches.Count} elements match {kind} '{name}'.");
+            if (wait.IsExpired) return null;
             await Task.Delay(200, cancellationToken);
         }
-        return null;
     }
 
     private static void Walk(nint element, int depth, Action<nint> visit)

@@ -14,6 +14,11 @@ internal sealed class LinuxAccessibility : AccessibilityClient
     private readonly List<IDisposable> _subscriptions = [];
     private Node _application = new("", "");
 
+    // The application registers on the accessibility bus once its toolkit starts, and the page's controls appear once
+    // WebKit's web process has loaded it; both are condition waits, scaled on a slow runner.
+    private static readonly TimeSpan ApplicationTimeout = TimeSpan.FromSeconds(10);
+    private static readonly TimeSpan FindTimeout = TimeSpan.FromSeconds(10);
+
     private LinuxAccessibility(DBusConnection session, DBusConnection bus)
     {
         _session = session;
@@ -37,21 +42,24 @@ internal sealed class LinuxAccessibility : AccessibilityClient
         listening();
         Node? application = null;
         var seen = new List<string>();
-        for (var attempt = 0; attempt < 100 && application is null; attempt++)
-        {
-            seen.Clear();
-            foreach (var child in await ChildrenAsync(bus, new Node("org.a11y.atspi.Registry", "/org/a11y/atspi/accessible/root")))
+        if (!await TestTimeouts.UntilAsync(async () =>
             {
-                var owner = await bus.CallMethodAsync(Method(bus, "org.freedesktop.DBus", "/org/freedesktop/DBus", "org.freedesktop.DBus",
-                    "GetConnectionUnixProcessID", "s", (ref MessageWriter writer) => writer.WriteString(child.Bus)),
-                    static (message, _) => message.GetBodyReader().ReadUInt32());
-                seen.Add($"{child.Bus} (process {owner})");
-                if (owner == pid) application = child;
-            }
-            if (application is null) await Task.Delay(100, cancellationToken);
+                seen.Clear();
+                foreach (var child in await ChildrenAsync(bus, new Node("org.a11y.atspi.Registry", "/org/a11y/atspi/accessible/root")))
+                {
+                    var owner = await bus.CallMethodAsync(Method(bus, "org.freedesktop.DBus", "/org/freedesktop/DBus", "org.freedesktop.DBus",
+                        "GetConnectionUnixProcessID", "s", (ref MessageWriter writer) => writer.WriteString(child.Bus)),
+                        static (message, _) => message.GetBodyReader().ReadUInt32());
+                    seen.Add($"{child.Bus} (process {owner})");
+                    if (owner == pid) application = child;
+                }
+                return application is not null;
+            }, ApplicationTimeout, TimeSpan.FromMilliseconds(100), cancellationToken))
+        {
+            throw new InvalidOperationException(string.Create(CultureInfo.InvariantCulture,
+                $"Process {pid} has no application on the accessibility bus within {TestTimeouts.Scale(ApplicationTimeout).TotalSeconds:0.###} s; it has: {string.Join(", ", seen)}."));
         }
-        client._application = application ?? throw new InvalidOperationException(
-            $"Process {pid} has no application on the accessibility bus; it has: {string.Join(", ", seen)}.");
+        client._application = application!;
         return client;
     }
 
@@ -141,7 +149,9 @@ internal sealed class LinuxAccessibility : AccessibilityClient
             ControlKind.ListBox => ["list box", "list"],
             _ => [],
         };
-        for (var attempt = 0; attempt < 50; attempt++)
+        // The page loads after the application registers.
+        var wait = TestTimeouts.Start(FindTimeout);
+        while (true)
         {
             var matches = new List<Control>();
             await WalkAsync(_application, 0, [], async node =>
@@ -149,11 +159,15 @@ internal sealed class LinuxAccessibility : AccessibilityClient
                 var role = await RoleAsync(node);
                 if (roles.Contains(role) && await NameAsync(node) == name) matches.Add(new Control(kind, name, role, node));
             }, cancellationToken);
-            if (matches.Count == 1) return matches[0];
+            if (matches.Count == 1)
+            {
+                wait.Succeeded();
+                return matches[0];
+            }
             if (matches.Count > 1) throw new InvalidOperationException($"{matches.Count} elements match {kind} '{name}'.");
+            if (wait.IsExpired) return null;
             await Task.Delay(200, cancellationToken);
         }
-        return null;
     }
 
     internal override async Task<string> DumpAsync(CancellationToken cancellationToken)

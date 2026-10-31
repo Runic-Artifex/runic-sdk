@@ -53,6 +53,11 @@ internal sealed class TestTimeoutsTests
         _ = Task.Delay(30).ContinueWith(_ => Volatile.Write(ref flag, true), TaskScheduler.Default);
         Require(await TestTimeouts.UntilAsync(() => Volatile.Read(ref flag), TimeSpan.FromSeconds(5)), "UntilAsync missed its condition.");
         Require(!await TestTimeouts.UntilAsync(() => false, TimeSpan.FromMilliseconds(30)), "UntilAsync held a condition that never held.");
+        var reads = 0;
+        Require(await TestTimeouts.UntilAsync(async () => { await Task.Yield(); return ++reads == 3; }, TimeSpan.FromSeconds(5)),
+            "UntilAsync missed an asynchronous condition.");
+        Require(!await TestTimeouts.UntilAsync(() => Task.FromResult(false), TimeSpan.FromMilliseconds(30)),
+            "UntilAsync held an asynchronous condition that never held.");
     }
 
     private static void Require(bool condition, string message)

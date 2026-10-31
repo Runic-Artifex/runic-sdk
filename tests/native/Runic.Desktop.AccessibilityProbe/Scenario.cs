@@ -24,6 +24,9 @@ internal static class Fixture
 internal sealed class Scenario(AccessibilityClient client, Report report, Expectations expectations) : IDisposable
 {
     private static readonly TimeSpan EventTimeout = TimeSpan.FromSeconds(5);
+    // How long the window title, a value or a selection may take to reflect the page; condition waits, scaled.
+    private static readonly TimeSpan StateTimeout = TimeSpan.FromSeconds(2);
+    private static readonly TimeSpan StateInterval = TimeSpan.FromMilliseconds(100);
     private readonly EventLog _log = new(client);
     private readonly Dictionary<string, Control> _controls = [];
 
@@ -32,11 +35,8 @@ internal sealed class Scenario(AccessibilityClient client, Report report, Expect
         await FindAllAsync(cancellationToken);
         // The window is named by the page's <title>, which the page has once its controls are there.
         var title = "";
-        for (var attempt = 0; attempt < 20 && !title.Contains(Fixture.Title, StringComparison.Ordinal); attempt++)
-        {
-            if (attempt > 0) await Task.Delay(100, cancellationToken);
-            title = await client.WindowTitleAsync(cancellationToken);
-        }
+        await UntilAsync("window-title", async () => (title = await client.WindowTitleAsync(cancellationToken)).Contains(Fixture.Title, StringComparison.Ordinal),
+            cancellationToken);
         Record("window-title", title.Contains(Fixture.Title, StringComparison.Ordinal), $"window named '{title}'");
         var menu = await client.MenuBarAsync(cancellationToken);
         if (menu is null) report.NotApplicable("menu-bar", "the host has no native menu bar");
@@ -160,25 +160,28 @@ internal sealed class Scenario(AccessibilityClient client, Report report, Expect
     private async Task ExpectValueAsync(string id, Control control, double value, CancellationToken cancellationToken)
     {
         RangeState range = default;
-        for (var attempt = 0; attempt < 20; attempt++)
-        {
-            range = await client.ReadRangeAsync(control, cancellationToken);
-            if (range.Value == value) break;
-            await Task.Delay(100, cancellationToken);
-        }
+        await UntilAsync(id, async () => (range = await client.ReadRangeAsync(control, cancellationToken)).Value == value, cancellationToken);
         Record(id, range.Value == value, $"{control.Name}: {range}");
     }
 
     private async Task ExpectSelectionAsync(string id, Control control, string item, CancellationToken cancellationToken)
     {
         IReadOnlyList<string> selection = [];
-        for (var attempt = 0; attempt < 20; attempt++)
-        {
-            selection = await client.ReadSelectionAsync(control, cancellationToken);
-            if (selection.Count == 1 && selection[0] == item) break;
-            await Task.Delay(100, cancellationToken);
-        }
+        await UntilAsync(id, async () => (selection = await client.ReadSelectionAsync(control, cancellationToken)) is [var selected] && selected == item,
+            cancellationToken);
         Record(id, selection.Count == 1 && selection[0] == item, $"{control.Name} selection: [{string.Join(", ", selection)}]");
+    }
+
+    // A known gap is expected to run out, so its wait is not scaled: scaling would only lengthen the expected miss.
+    private async Task UntilAsync(string id, Func<Task<bool>> condition, CancellationToken cancellationToken)
+    {
+        if (expectations.Gap(id) is null)
+        {
+            await TestTimeouts.UntilAsync(condition, StateTimeout, StateInterval, cancellationToken, caller: id);
+            return;
+        }
+        var until = DateTime.UtcNow + StateTimeout;
+        while (!await condition() && DateTime.UtcNow < until) await Task.Delay(StateInterval, cancellationToken);
     }
 
     // An event of the kind after the mark, from the named element, whose source or data contains the text.
@@ -240,14 +243,19 @@ internal sealed class EventLog : IDisposable
     internal async Task<AccessibilityEvent?> WaitAsync(int mark, Func<AccessibilityEvent, bool> predicate, TimeSpan timeout,
         CancellationToken cancellationToken)
     {
-        var until = DateTime.UtcNow + TestTimeouts.Scale(timeout);
+        var wait = TestTimeouts.Start(timeout);
         while (true)
         {
             var found = Since(mark).FirstOrDefault(predicate);
-            if (found is not null) return found;
-            var left = until - DateTime.UtcNow;
-            if (left <= TimeSpan.Zero) return null;
-            await _added.WaitAsync(left < TimeSpan.FromMilliseconds(200) ? left : TimeSpan.FromMilliseconds(200), cancellationToken);
+            if (found is not null)
+            {
+                wait.Succeeded();
+                return found;
+            }
+            if (wait.IsExpired) return null;
+            var left = wait.Remaining;
+            await _added.WaitAsync(left != Timeout.InfiniteTimeSpan && left < TimeSpan.FromMilliseconds(200) ? left : TimeSpan.FromMilliseconds(200),
+                cancellationToken);
         }
     }
 }
