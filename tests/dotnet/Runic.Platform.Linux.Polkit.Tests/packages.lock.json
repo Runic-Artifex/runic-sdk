@@ -84,7 +84,7 @@
       "runic.platform.linux.polkit": {
         "type": "Project",
         "dependencies": {
-          "Runic.Platform": "[0.14.0, )"
+          "Runic.Platform": "[0.15.0, )"
         }
       }
     }
