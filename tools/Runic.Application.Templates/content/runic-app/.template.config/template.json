@@ -138,9 +138,24 @@
         { "choice": "4", "displayName": "GTK 4", "description": "GTK 4, WebKitGTK 6 and portal pickers" }
       ]
     },
+    "desktopServer": {
+      "type": "parameter",
+      "datatype": "choice",
+      "defaultValue": "native",
+      "displayName": "Desktop server",
+      "description": "The server Runic Desktop serves the page from. The CS-WebUI host has its own.",
+      "choices": [
+        { "choice": "native", "displayName": "Native", "description": "Runic.Desktop.NativeServer (Rust): no ASP.NET Core in the application, smaller and faster to start" },
+        { "choice": "kestrel", "displayName": "Kestrel", "description": "Runic.Desktop.Kestrel: ASP.NET Core Kestrel, for an application that uses ASP.NET Core itself" }
+      ]
+    },
     "desktopHost": {
       "type": "computed",
       "value": "(host == 'desktop')"
+    },
+    "nativeServer": {
+      "type": "computed",
+      "value": "(host == 'desktop' && desktopServer == 'native')"
     },
     "gtk4": {
       "type": "computed",

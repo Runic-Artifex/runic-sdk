@@ -1,4 +1,4 @@
-// The crates of the experimental native Desktop server (native/Cargo.lock):
+// The crates of the native Desktop server (native/Cargo.lock):
 //
 //   node eng/native/crates.mjs notices   writes native/THIRD-PARTY-NOTICES.md from `cargo metadata`
 //   node eng/native/crates.mjs check     fails on a crate whose license is not allowed, a stale notices file, or (with

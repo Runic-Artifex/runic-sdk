@@ -1091,8 +1091,9 @@ above in the build output.
 ## Runic Desktop build
 
 The `Runic.Desktop` build targets report these errors; `RUNICDESK001` comes from
-`Runic.Desktop.Kestrel`, and `RUNICDESK005` and `RUNICDESK102` from the
-experimental `Runic.Desktop.NativeServer` package.
+`Runic.Desktop.Kestrel` and `RUNICDESK005` from `Runic.Desktop.NativeServer`.
+`RUNICDESK102`, the native server's experimental ID until 0.15.0, is retired
+([Graduated and retired IDs](experimental.md#retired)).
 
 ### RUNICDESK001
 
@@ -1114,8 +1115,7 @@ statically, but the restored `Microsoft.Web.WebView2` package has no
 
 `RunicDesktopServer` has a value other than `Native`, `Kestrel` or `None`.
 
-**Fix:** set it to `Native` for the experimental native server
-([`RUNICDESK102`](experimental.md#RUNICDESK102)), `Kestrel` for ASP.NET Core
+**Fix:** set it to `Native` for the native server, `Kestrel` for ASP.NET Core
 Kestrel, `None` for an executable that opens no Runic Desktop window, or remove
 it: with one server package it selects that server, and with both the native
 server.
@@ -1127,9 +1127,10 @@ The executable references Runic Desktop but no presentation server, or
 0.15 `Runic.Desktop` carries no server of its own; without one the first window
 would fail with `presentation-server-unavailable`.
 
-**Fix:** add a `PackageReference` to `Runic.Desktop.Kestrel` (ASP.NET Core
-Kestrel, the server of 0.14 and earlier) or to the experimental
-`Runic.Desktop.NativeServer`, matching the version of `Runic.Desktop`. An
+**Fix:** add a `PackageReference` to `Runic.Desktop.NativeServer` (the native
+server, without ASP.NET Core, which new applications use) or to
+`Runic.Desktop.Kestrel` (ASP.NET Core Kestrel, the server of 0.14 and earlier),
+matching the version of `Runic.Desktop`. An
 executable that opens no Runic Desktop window sets `RunicDesktopServer` to
 `None`. See [Migrating to 1.0](migration-1.0.md#desktop-presentation-server).
 
@@ -1145,15 +1146,6 @@ directory without `librunic_server` or `runic_server`.
 restores for it), use a runtime identifier the package supports (its README
 lists them), or point `RunicDesktopNativeServerLibraryDirectory` at a directory
 with the library, as `buildRunicApplication` does with its source build.
-
-### RUNICDESK102
-
-The project references the experimental native Desktop server,
-`Runic.Desktop.NativeServer`, without accepting that it is experimental. Its
-entry in [Experimental APIs](experimental.md#RUNICDESK102) describes it.
-
-**Fix:** add `RUNICDESK102` to `NoWarn` to use it, or reference
-`Runic.Desktop.Kestrel` instead.
 
 ## Navigation ReactiveUI build
 

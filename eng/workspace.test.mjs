@@ -9,7 +9,7 @@ import { dotnetBuildArguments, packageConsumerStrategy, packageLayouts, resolveM
 const json = (path) => JSON.parse(readFileSync(resolve(root, path), "utf8"));
 test("workspace defines the complete public SDK package inventory", () => {
   const names = [...workspace.npm, ...workspace.nuget].map(p => p.name);
-  assert.equal(workspace.nuget.length, 31);
+  assert.equal(workspace.nuget.length, 39);
   assert.equal(workspace.npm.length, 8);
   assert.equal(new Set(names).size, names.length);
   for (const p of workspace.npm) assert.ok(p.name.startsWith("@runic-artifex/"), p.name);
@@ -303,9 +303,18 @@ test("the DynamicData fork pin matches the locked RunicArtifex.DynamicData versi
 // D053.16: the experimental native Desktop server (X1) is unpublished infrastructure until 0.15. eng/run.mjs pack and
 // the publish checks take their packages from workspace.nuget, so staying out of it keeps the package out of the
 // release artifact; .github/workflows/native-server.yml packs it on its own.
-test("the experimental native Desktop server is not in the release inventory", () => {
-  assert.ok(existsSync(resolve(root, "packages/dotnet/Runic.Desktop.NativeServer/Runic.Desktop.NativeServer.csproj")));
-  assert.ok(!workspace.nuget.some(p => p.name === "Runic.Desktop.NativeServer"));
+// The native Desktop server ships with the SDK (D053.24): its package and one static package per runtime identifier
+// it carries a shared library for, all in the solutions the release packs from. The server benchmarks stay out.
+test("the native Desktop server and its static packages are in the release inventory", () => {
+  const rids = ["linux-x64", "linux-arm64", "linux-musl-x64", "linux-musl-arm64", "win-x64", "win-arm64", "osx-arm64"];
+  const runtimes = /<RunicNativeServerRuntimes>([^<]+)</.exec(readFileSync(resolve(root,
+    "packages/dotnet/Runic.Desktop.NativeServer/Runic.Desktop.NativeServer.csproj"), "utf8"))?.[1].split(";");
+  assert.deepEqual(runtimes, rids);
+  const names = ["Runic.Desktop.NativeServer", ...rids.map(rid => `Runic.Desktop.NativeServer.Static.${rid}`)];
+  for (const name of names) assert.ok(workspace.nuget.some(p => p.name === name), `${name} is not in eng/workspace.json`);
   const solutions = ["RunicSdk.slnx", "RunicSdk.Core.slnx"].map(file => readFileSync(resolve(root, file), "utf8"));
-  for (const solution of solutions) assert.doesNotMatch(solution, /Runic\.Desktop\.NativeServer|Runic\.Desktop\.ServerBenchmarks/);
+  for (const solution of solutions) {
+    for (const name of names) assert.match(solution, new RegExp(`/${name.replaceAll(".", "\\.")}\\.csproj"`));
+    assert.doesNotMatch(solution, /Runic\.Desktop\.ServerBenchmarks/);
+  }
 });

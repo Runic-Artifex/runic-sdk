@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Package-consumer test of the experimental native Desktop server (X2): a consumer that knows nothing of this
+// Package-consumer test of the native Desktop server (X2): a consumer that knows nothing of this
 // repository restores Runic.Desktop and Runic.Desktop.NativeServer from a local feed, serves a surface and reads it
 // back (tests/fixtures/desktop/Runic.Desktop.PackageConsumer), first JIT, then as a NativeAOT executable. It checks
 // that the closure has no ASP.NET Core, that a JIT build loads the package's shared library, and that NativeAOT

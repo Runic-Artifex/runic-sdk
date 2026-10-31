@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Builds the experimental native Desktop server (native/runic-server, X1) for one .NET runtime identifier and copies
+# Builds the native Desktop server (native/runic-server, X1) for one .NET runtime identifier and copies
 # its shared library (JIT applications) and static library (NativeAOT) to artifacts/native/runic-server/<rid>/, where
 # the Runic.Desktop.NativeServer package and the repository's -p:RunicDesktopServer=Native builds read them.
 #

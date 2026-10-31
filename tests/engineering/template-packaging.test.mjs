@@ -61,6 +61,7 @@ test("the cswebui host references the preview package's separately stamped versi
   assert.deepEqual(references, [
     ["Runic.Application.Views.ReactiveUI", "__RUNIC_NUGET_VERSION__"],
     ["Runic.Application.Views.Desktop", "__RUNIC_NUGET_VERSION__"],
+    ["Runic.Desktop.NativeServer", "__RUNIC_NUGET_VERSION__"],
     ["Runic.Desktop.Kestrel", "__RUNIC_NUGET_VERSION__"],
     ["Runic.Desktop.Gtk4", "__RUNIC_NUGET_VERSION__"],
     ["Runic.Application.Views.CsWebUi", "__RUNIC_CSWEBUI_NUGET_VERSION__"],
@@ -117,7 +118,7 @@ test("the shipped template has no hidden or version parameters, and the pack sta
     const symbols = JSON.parse(shipped).symbols;
     const parameters = Object.entries(symbols).filter(([, symbol]) => symbol.type === "parameter").map(([name]) => name);
     assert.deepEqual(parameters,
-      ["frontend", "packageManager", "host", "linuxGtk", "viewModels", "tests", "nix", "packaging", "restore", "applicationId"]);
+      ["frontend", "packageManager", "host", "linuxGtk", "desktopServer", "viewModels", "tests", "nix", "packaging", "restore", "applicationId"]);
     for (const name of parameters) {
       assert.doesNotMatch(`${name} ${symbols[name].replaces ?? ""}`, /version/i, `${name} sets a version`);
       assert.ok(host.symbolInfo[name], `${name} has no dotnetcli.host.json entry`);
@@ -170,10 +171,17 @@ test("--linux-gtk 4 selects GTK 4 for Runic Desktop and leaves CS-WebUI unchange
       .map(([, id, version]) => `${id}@${version}`);
 
     const gtk3 = create("gtk3");
-    assert.deepEqual(create("gtk3-explicit", "--host", "desktop", "--linux-gtk", "3"), gtk3);
+    assert.deepEqual(create("gtk3-explicit", "--host", "desktop", "--linux-gtk", "3", "--desktop-server", "native"), gtk3);
+    // The native Desktop server by default (D053.24); it is no longer experimental (D053.26), so nothing is suppressed.
     assert.deepEqual(references(gtk3.project),
       [`Runic.Application.Views.ReactiveUI@${versions.nuget}`, `Runic.Application.Views.Desktop@${versions.nuget}`,
+        `Runic.Desktop.NativeServer@${versions.nuget}`]);
+    assert.doesNotMatch(gtk3.project + gtk3.files["Hosts.Tests/Hosts.Tests.csproj"], /RUNICDESK102/);
+    const kestrel = create("kestrel", "--desktop-server", "kestrel");
+    assert.deepEqual(references(kestrel.project),
+      [`Runic.Application.Views.ReactiveUI@${versions.nuget}`, `Runic.Application.Views.Desktop@${versions.nuget}`,
         `Runic.Desktop.Kestrel@${versions.nuget}`]);
+    assert.doesNotMatch(kestrel.project, /RUNICDESK102|NativeServer/);
     assert.match(gtk3.project, /<ApplicationId>com\.example\.Hosts<\/ApplicationId>/);
     assert.match(gtk3.project, /<ApplicationTitle>Hosts<\/ApplicationTitle>/);
     assert.match(gtk3.program, /EmbeddedBackend = LinuxEmbeddedBackend\.Gtk3WebKit41/);
@@ -182,7 +190,7 @@ test("--linux-gtk 4 selects GTK 4 for Runic Desktop and leaves CS-WebUI unchange
 
     const gtk4 = create("gtk4", "--host", "desktop", "--linux-gtk", "4");
     assert.deepEqual(references(gtk4.project), [`Runic.Application.Views.ReactiveUI@${versions.nuget}`,
-      `Runic.Application.Views.Desktop@${versions.nuget}`, `Runic.Desktop.Kestrel@${versions.nuget}`,
+      `Runic.Application.Views.Desktop@${versions.nuget}`, `Runic.Desktop.NativeServer@${versions.nuget}`,
       `Runic.Desktop.Gtk4@${versions.nuget}`]);
     assert.match(gtk4.program, /using Runic\.Desktop\.Gtk4;/);
     assert.match(gtk4.program, /\.WithGtk4\(ApplicationIdentity\.Id\);/);
@@ -192,6 +200,7 @@ test("--linux-gtk 4 selects GTK 4 for Runic Desktop and leaves CS-WebUI unchange
     // #435: CS-WebUI references its preview package at its own version, with either GTK choice.
     const cswebui = create("cswebui", "--host", "cswebui");
     assert.deepEqual(create("cswebui-gtk4", "--host", "cswebui", "--linux-gtk", "4"), cswebui);
+    assert.deepEqual(create("cswebui-kestrel", "--host", "cswebui", "--desktop-server", "kestrel"), cswebui);
     assert.deepEqual(references(cswebui.project),
       [`Runic.Application.Views.ReactiveUI@${versions.nuget}`, `Runic.Application.Views.CsWebUi@${versions.cswebui}`]);
     assert.match(cswebui.flake, /host = "cswebui";/);

@@ -61,9 +61,14 @@
 <!--#endif -->
 <!--#if (desktopHost) -->
     <PackageReference Include="Runic.Application.Views.Desktop" Version="__RUNIC_NUGET_VERSION__" />
-    <!-- The presentation server: ASP.NET Core Kestrel. The experimental Runic.Desktop.NativeServer replaces it without
-         ASP.NET Core (docs/experimental.md#RUNICDESK102 in the Runic SDK). -->
+<!--#if (nativeServer) -->
+    <!-- The server Runic Desktop serves the page from: the native server, without ASP.NET Core. Runic.Desktop.Kestrel
+         replaces it for an application that uses ASP.NET Core itself. -->
+    <PackageReference Include="Runic.Desktop.NativeServer" Version="__RUNIC_NUGET_VERSION__" />
+<!--#else -->
+    <!-- The server Runic Desktop serves the page from: ASP.NET Core Kestrel. -->
     <PackageReference Include="Runic.Desktop.Kestrel" Version="__RUNIC_NUGET_VERSION__" />
+<!--#endif -->
 <!--#if (gtk4) -->
     <PackageReference Include="Runic.Desktop.Gtk4" Version="__RUNIC_NUGET_VERSION__" />
 <!--#endif -->

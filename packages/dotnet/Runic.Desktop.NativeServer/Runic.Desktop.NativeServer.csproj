@@ -1,15 +1,18 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <Import Project="../../../eng/build/desktop.props" />
-  <!-- Experimental (X1): the native libraries of native/runic-server and the build targets that switch Runic Desktop
-       from ASP.NET Core Kestrel to them. The managed binding lives in Runic.Desktop (Internal/NativeServer), behind the
-       Runic.Desktop.NativeServer feature switch, so this package carries no assembly of its own. Not part of the
-       release inventory (eng/workspace.json) while it is experimental. -->
+  <!-- The native Desktop server (X1), the server of new applications since 0.15 (D053.24, D053.26): the native libraries
+       of native/runic-server and the build targets that select them. The managed binding lives in Runic.Desktop
+       (Internal/NativeServer), behind the Runic.Desktop.NativeServer feature switch, so this package carries no
+       assembly of its own. Released with the SDK (eng/workspace.json), with Runic.Desktop.NativeServer.Static.<rid>. -->
   <PropertyGroup>
     <PackageId>Runic.Desktop.NativeServer</PackageId>
-    <Title>Runic Desktop native server (experimental)</Title>
-    <Description>Experimental: serves Runic Desktop surfaces from a native Rust (axum) HTTP and WebSocket server instead of ASP.NET Core Kestrel.</Description>
-    <PackageTags>runic-artifex;desktop;webview;rust;axum;experimental</PackageTags>
+    <Title>Runic Desktop native server</Title>
+    <Description>Serves Runic Desktop surfaces from a native Rust (axum) HTTP and WebSocket server instead of ASP.NET Core Kestrel.</Description>
+    <PackageTags>runic-artifex;desktop;webview;rust;axum</PackageTags>
     <IncludeBuildOutput>false</IncludeBuildOutput>
+    <!-- The shipping policy of eng/build/desktop.props; the package has no assembly. -->
+    <IsAotCompatible>true</IsAotCompatible>
+    <IsTrimmable>true</IsTrimmable>
     <GenerateDocumentationFile>false</GenerateDocumentationFile>
     <IncludeSymbols>false</IncludeSymbols>
     <!-- NU5128: no lib/ folder by design; the native assets and buildTransitive targets are the package. -->
@@ -23,6 +26,7 @@
     <!-- The supported runtime identifiers: one shared library each here, and one static package each. -->
     <RunicNativeServerRuntimes>linux-x64;linux-arm64;linux-musl-x64;linux-musl-arm64;win-x64;win-arm64;osx-arm64</RunicNativeServerRuntimes>
     <!-- A release pack must carry every supported runtime identifier. -->
+    <RunicNativeServerRequireAllRuntimes Condition="'$(RunicNativeServerRequireAllRuntimes)' == '' and '$(RUNIC_NATIVE_SERVER_REQUIRE_ALL_RUNTIMES)' == 'true'">true</RunicNativeServerRequireAllRuntimes>
     <RunicNativeServerRequireAllRuntimes Condition="'$(RunicNativeServerRequireAllRuntimes)' == ''">false</RunicNativeServerRequireAllRuntimes>
   </PropertyGroup>
   <ItemGroup>

@@ -281,7 +281,8 @@ test('every test job scales its condition waits by RUNIC_TEST_TIMEOUT_SCALE for 
   assert.equal(setup.runs.steps[0].uses, './.github/actions/test-timeout-scale');
   const action = yaml('.github/actions/test-timeout-scale/action.yml');
   assert.deepEqual(action.runs.steps.map(step => step.run), ['node eng/ci/test-timeout-scale.mjs']);
-  const scaled = job => job.steps.some(step => ['./.github/actions/setup-sdk', './.github/actions/test-timeout-scale'].includes(step.uses));
+  // A job that calls a reusable workflow (native-libraries) runs no tests itself.
+  const scaled = job => job.uses !== undefined || job.steps.some(step => ['./.github/actions/setup-sdk', './.github/actions/test-timeout-scale'].includes(step.uses));
   assert.deepEqual(Object.entries(workflow.jobs).filter(([, job]) => !scaled(job)).map(([name]) => name), ['verify']);
   const musl = workflow.jobs['native-musl'];
   assert.ok(musl.steps.findIndex(step => step.uses === './.github/actions/test-timeout-scale') <
@@ -399,12 +400,15 @@ test('dependency caches restore everywhere and save only on main', () => {
   assert.deepEqual(users, ['.github/actions/dependency-cache/action.yml']);
   const [save, restore] = yaml('.github/actions/dependency-cache/action.yml').runs.steps;
   assert.match(save.uses, /^actions\/cache@/);
-  assert.equal(save.if, "github.ref == 'refs/heads/main'");
+  // A lookup (the native server's library jobs run only on a miss) never saves.
+  assert.equal(save.if, "github.ref == 'refs/heads/main' && inputs.lookup-only != 'true'");
   assert.match(restore.uses, /^actions\/cache\/restore@/);
-  assert.equal(restore.if, "github.ref != 'refs/heads/main'");
+  assert.equal(restore.if, "github.ref != 'refs/heads/main' || inputs.lookup-only == 'true'");
   assert.equal(save.uses.split('@')[1], restore.uses.split('@')[1]);
-  for (const step of [save, restore])
-    assert.deepEqual(step.with, { path: '${{ inputs.path }}', key: '${{ inputs.key }}', 'restore-keys': '${{ inputs.restore-keys }}' });
+  const shared = { path: '${{ inputs.path }}', key: '${{ inputs.key }}', 'restore-keys': '${{ inputs.restore-keys }}',
+    enableCrossOsArchive: '${{ inputs.enable-cross-os-archive }}' };
+  assert.deepEqual(save.with, shared);
+  assert.deepEqual(restore.with, { ...shared, 'lookup-only': '${{ inputs.lookup-only }}' });
 });
 
 test('remote actions are pinned to a commit with their release tag', () => {

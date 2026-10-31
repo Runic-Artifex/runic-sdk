@@ -55,6 +55,7 @@ commands in the browser.
 | `--package-manager` | `npm`, `pnpm`, `bun` | `npm` |
 | `--host` | `desktop`, `cswebui` | `desktop` |
 | `--linux-gtk` | `3`, `4`: the GTK version of Runic Desktop on Linux; Windows, macOS and `cswebui` are the same with either, so the creator asks for it, and prints it, only with `--host desktop` unless you pass it | `3` |
+| `--desktop-server` | `native` (`Runic.Desktop.NativeServer`, no ASP.NET Core), `kestrel` (`Runic.Desktop.Kestrel`, ASP.NET Core Kestrel): the server Runic Desktop serves the page from; asked for and printed only with `--host desktop` unless you pass it | `native` |
 | `--view-models` | `reactiveui`, `toolkit` | `reactiveui` |
 | `--tests` | Adds a TUnit test project for the Window | No test project |
 | `--nix` | Adds a Nix flake that builds the application with the Runic SDK's `buildRunicApplication` | No flake |
@@ -97,14 +98,14 @@ with `"command": "create"` and the `runic.create/2` payload:
   "directory": "apps/MyApp",
   "fullPath": "/work/apps/MyApp",
   "version": "<VERSION>",
-  "options": { "frontend": "react", "package-manager": "npm", "host": "desktop", "linux-gtk": "3", "view-models": "reactiveui" },
+  "options": { "frontend": "react", "package-manager": "npm", "host": "desktop", "linux-gtk": "3", "desktop-server": "native", "view-models": "reactiveui" },
   "toggles": { "tests": true, "nix": false, "packaging": false, "restore": false },
   "textOptions": {},
   "commands": [
     "dotnet new install Runic.Application.Templates@<VERSION>",
-    "dotnet new runic-app --name MyApp --output apps/MyApp --frontend react --package-manager npm --host desktop --linux-gtk 3 --view-models reactiveui --tests"
+    "dotnet new runic-app --name MyApp --output apps/MyApp --frontend react --package-manager npm --host desktop --linux-gtk 3 --desktop-server native --view-models reactiveui --tests"
   ],
-  "reproduceCommand": "dnx Runic.Create@<VERSION> -- MyApp --output apps/MyApp --frontend react --package-manager npm --host desktop --linux-gtk 3 --view-models reactiveui --tests",
+  "reproduceCommand": "dnx Runic.Create@<VERSION> -- MyApp --output apps/MyApp --frontend react --package-manager npm --host desktop --linux-gtk 3 --desktop-server native --view-models reactiveui --tests",
   "created": true
 }
 ```

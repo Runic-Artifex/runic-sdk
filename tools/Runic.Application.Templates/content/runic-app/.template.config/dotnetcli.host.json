@@ -5,6 +5,7 @@
     "packageManager": { "longName": "package-manager", "shortName": "" },
     "host": { "longName": "host", "shortName": "" },
     "linuxGtk": { "longName": "linux-gtk", "shortName": "" },
+    "desktopServer": { "longName": "desktop-server", "shortName": "" },
     "viewModels": { "longName": "view-models", "shortName": "" },
     "tests": { "longName": "tests", "shortName": "" },
     "nix": { "longName": "nix", "shortName": "" },
@@ -20,6 +21,7 @@
     "--nix",
     "--application-id org.example.Notes",
     "--host desktop --linux-gtk 4 --packaging",
+    "--desktop-server kestrel",
     "--tests --restore"
   ]
 }

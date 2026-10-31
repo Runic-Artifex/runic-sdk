@@ -839,10 +839,10 @@ verify_creator() {
     echo "The creator installs the template with --no-install." >&2
     exit 1
   fi
-  # Accepting every default selects Runic Desktop and ReactiveUI.
+  # Accepting every default selects Runic Desktop on the native server (D053.24) and ReactiveUI.
   (cd "$creator_directory/guided" && "$tool_directory/runic-create" Defaults --yes --dry-run) \
     > "$creator_directory/defaults.txt"
-  grep -Fq 'dotnet new runic-app --name Defaults --frontend react --package-manager npm --host desktop --linux-gtk 3 --view-models reactiveui' \
+  grep -Fq 'dotnet new runic-app --name Defaults --frontend react --package-manager npm --host desktop --linux-gtk 3 --desktop-server native --view-models reactiveui' \
     "$creator_directory/defaults.txt"
   echo 'CREATOR_OK'
 }

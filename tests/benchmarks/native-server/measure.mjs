@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Size and startup of examples/first-window-desktop on Kestrel (Runic.Desktop.Kestrel) and on the experimental native
+// Size and startup of examples/first-window-desktop on Kestrel (Runic.Desktop.Kestrel) and on the native
 // server, for the host's runtime identifier on Linux, macOS and Windows (X2; measure.sh is the Linux-only X1 script,
 // which adds trimmed JIT and the NativeAOT code attribution). Feeds the 1.0 default-server decision (D053.16).
 //

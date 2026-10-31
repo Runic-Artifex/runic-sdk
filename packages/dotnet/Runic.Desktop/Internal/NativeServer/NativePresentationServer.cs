@@ -8,7 +8,7 @@ using static Runic.Desktop.Internal.NativeServer.NativeServerInterop;
 
 namespace Runic.Desktop.Internal.NativeServer;
 
-// The experimental native listener (X1): native/runic-server does HTTP/1.1, WebSocket framing, the loopback Host check
+// The native listener (X1): native/runic-server does HTTP/1.1, WebSocket framing, the loopback Host check
 // and file streaming; every request still runs the host core's dispatch and the surfaces' own handlers, so admission,
 // content, bootstrap scripts and the Views protocol are the same code as under Kestrel. Requests reach .NET as a
 // PresentationExchange (NativeExchange); accepted WebSockets are NativeWebSocket.
@@ -127,7 +127,7 @@ internal sealed class NativePresentationServer(Action<IServiceCollection>? confi
             throw new DesktopException(
                 DesktopErrorCategory.Unavailable,
                 "native-server-unavailable",
-                $"The application enabled the experimental native presentation server (Runic.Desktop.NativeServer), but its library '{Library}' could not be loaded for {RuntimeInformation.RuntimeIdentifier}: {exception.Message}",
+                $"The application enabled the native presentation server (Runic.Desktop.NativeServer), but its library '{Library}' could not be loaded for {RuntimeInformation.RuntimeIdentifier}: {exception.Message}",
                 retryable: false);
         }
         if (version != NativeServerInterop.AbiVersion)

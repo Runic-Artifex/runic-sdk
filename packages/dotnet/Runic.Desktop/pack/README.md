@@ -26,15 +26,15 @@ embedded platform WebView. For calls between JavaScript and .NET, use
 ## Presentation server
 
 `Runic.Desktop` has no ASP.NET Core reference. The application references the
-server that serves its windows:
+server that serves its windows: the native server, which needs no ASP.NET Core
+and which new applications use (the default from 1.0 on),
 
 ```xml
-<PackageReference Include="Runic.Desktop.Kestrel" Version="..." />
+<PackageReference Include="Runic.Desktop.NativeServer" Version="..." />
 ```
 
-for ASP.NET Core Kestrel, or the experimental native server,
-`Runic.Desktop.NativeServer`, which needs no ASP.NET Core
-([`RUNICDESK102`](https://github.com/Runic-Artifex/runic-sdk/blob/main/docs/experimental.md#RUNICDESK102)).
+or `Runic.Desktop.Kestrel` for ASP.NET Core Kestrel, for an application that
+uses ASP.NET Core itself.
 An executable without either fails to build with
 [`RUNICDESK004`](https://github.com/Runic-Artifex/runic-sdk/blob/main/docs/diagnostics.md#runicdesk004).
 

@@ -97,7 +97,7 @@ let
         dotnetFlags = [
           "-p:EnablePackageValidation=false"
         ]
-        # The experimental native Desktop server, from source (nix/runic-server.nix): no ASP.NET Core.
+        # The native Desktop server, from source (nix/runic-server.nix): no ASP.NET Core.
         ++ lib.optional nativeServer "-p:RunicDesktopServer=Native";
         inherit nativeServer;
         frontend = {

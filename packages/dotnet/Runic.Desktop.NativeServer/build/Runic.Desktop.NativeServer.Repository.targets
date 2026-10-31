@@ -8,8 +8,6 @@
     <_RunicDesktopNativeServerRepositoryRuntime>$(RuntimeIdentifier)</_RunicDesktopNativeServerRepositoryRuntime>
     <_RunicDesktopNativeServerRepositoryRuntime Condition="'$(_RunicDesktopNativeServerRepositoryRuntime)' == ''">$(NETCoreSdkRuntimeIdentifier)</_RunicDesktopNativeServerRepositoryRuntime>
     <RunicDesktopNativeServerLibraryDirectory Condition="'$(RunicDesktopNativeServerLibraryDirectory)' == ''">$(MSBuildThisFileDirectory)../../../../artifacts/native/runic-server/$(_RunicDesktopNativeServerRepositoryRuntime)/</RunicDesktopNativeServerLibraryDirectory>
-    <!-- Passing the property is this repository's opt-in. -->
-    <NoWarn>$(NoWarn);RUNICDESK102</NoWarn>
   </PropertyGroup>
   <Import Project="../buildTransitive/Runic.Desktop.NativeServer.targets" />
   <ItemGroup>

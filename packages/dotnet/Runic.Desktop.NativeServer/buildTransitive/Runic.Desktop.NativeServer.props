@@ -1,5 +1,5 @@
 <Project>
-  <!-- The help links of RUNICDESK102 at this package's release tag, generated when it was packed. -->
+  <!-- The help links of RUNICDESK005 at this package's release tag, generated when it was packed. -->
   <Import Project="$(MSBuildThisFileDirectory)Runic.Desktop.NativeServer.HelpLinks.props" Condition="Exists('$(MSBuildThisFileDirectory)Runic.Desktop.NativeServer.HelpLinks.props')" />
   <PropertyGroup>
     <!-- Runic.Desktop's targets choose the presentation server from the server packages the project references. -->

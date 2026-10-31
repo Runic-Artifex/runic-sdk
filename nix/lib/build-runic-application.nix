@@ -81,7 +81,7 @@
   # it references and testProjectFile are restored and built as their own project files say.
   nativeAot ? false,
   selfContainedBuild ? nativeAot,
-  # The experimental native Desktop server (Runic.Desktop.NativeServer, docs/experimental.md#RUNICDESK102): build its
+  # The native Desktop server (Runic.Desktop.NativeServer): build its
   # library from source (nix/runic-server.nix) instead of using the package's prebuilt one, for JIT and NativeAOT.
   # null decides from the lock files: true when one of them lists Runic.Desktop.NativeServer. A project that
   # references the SDK's projects sets it, with -p:RunicDesktopServer=Native in dotnetFlags.

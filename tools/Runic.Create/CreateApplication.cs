@@ -57,9 +57,9 @@ internal static partial class CreateApplication
         var selections = new List<OptionSelection>();
         foreach (TemplateOption option in model.Options)
         {
-            // --linux-gtk selects Runic Desktop's GTK version. A CS-WebUI project does not use it, so the creator
-            // neither asks for it nor prints it there unless it was passed.
-            if (option.LongName == "linux-gtk" && !explicitChoices.ContainsKey(option.LongName) &&
+            // --linux-gtk selects Runic Desktop's GTK version and --desktop-server its server. A CS-WebUI project uses
+            // neither, so the creator neither asks for them nor prints them there unless they were passed.
+            if (option.LongName is "linux-gtk" or "desktop-server" && !explicitChoices.ContainsKey(option.LongName) &&
                 selections.Find(selection => selection.Option.LongName == "host")?.Choice.Value is not (null or "desktop"))
             {
                 continue;

@@ -3,15 +3,16 @@
 Serves [Runic Desktop](../Runic.Desktop/README.md) surfaces from ASP.NET Core Kestrel on a loopback port.
 
 Since 0.15, `Runic.Desktop` carries no presentation server and no reference to the ASP.NET Core shared framework. A
-Runic Desktop application references one server package:
+Runic Desktop application references one server package. New applications use the native server,
+`Runic.Desktop.NativeServer`, which needs no ASP.NET Core at all and is the default from 1.0 on. This package is the
+opt-in for an
+application that uses ASP.NET Core itself:
 
 ```xml
 <PackageReference Include="Runic.Desktop.Kestrel" Version="0.15.0" />
 ```
 
-or the experimental native server, `Runic.Desktop.NativeServer`, which needs no ASP.NET Core at all
-([`RUNICDESK102`](../../../docs/experimental.md#RUNICDESK102)). Without either, the build fails with
-[`RUNICDESK004`](../../../docs/diagnostics.md#RUNICDESK004).
+Without either, the build fails with [`RUNICDESK004`](../../../docs/diagnostics.md#RUNICDESK004).
 
 With this package a framework-dependent application needs the ASP.NET Core runtime (`Microsoft.AspNetCore.App`) as
 before. `RunicDesktopMinimalHost=true` builds the Kestrel host from the empty builder

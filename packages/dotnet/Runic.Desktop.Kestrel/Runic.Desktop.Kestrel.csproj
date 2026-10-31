@@ -2,7 +2,7 @@
   <Import Project="../../../eng/build/desktop.props" />
   <!-- ASP.NET Core Kestrel as Runic Desktop's presentation server (X2). Runic.Desktop has no ASP.NET Core reference and
        creates this server by name (PresentationServers.KestrelFactoryType) when the application references this package
-       and not the experimental Runic.Desktop.NativeServer. The package has no public API. -->
+       and not Runic.Desktop.NativeServer. The package has no public API. -->
   <PropertyGroup>
     <AssemblyName>Runic.Desktop.Kestrel</AssemblyName>
     <RootNamespace>Runic.Desktop.Kestrel</RootNamespace>

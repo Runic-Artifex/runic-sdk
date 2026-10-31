@@ -1,7 +1,7 @@
-# The experimental native Desktop server (X1, docs/experimental.md#RUNICDESK102). Runs only when the native server,
+# The native Desktop server (X1, X2). Runs only when the native server,
 # its .NET binding or this workflow changes; applications that do not reference Runic.Desktop.NativeServer are covered
 # by ci.yml alone.
-name: Native Desktop server (experimental)
+name: Native Desktop server
 on:
   push:
     branches: [main]
@@ -23,6 +23,8 @@ on:
       - 'tests/benchmarks/Runic.Desktop.ServerBenchmarks/**'
       - 'nix/runic-server.nix'
       - '.github/workflows/native-server.yml'
+      - '.github/workflows/native-libraries.yml'
+      - '.github/actions/native-server-libraries/**'
   pull_request:
     paths:
       - 'native/**'
@@ -42,6 +44,8 @@ on:
       - 'tests/benchmarks/Runic.Desktop.ServerBenchmarks/**'
       - 'nix/runic-server.nix'
       - '.github/workflows/native-server.yml'
+      - '.github/workflows/native-libraries.yml'
+      - '.github/actions/native-server-libraries/**'
   workflow_dispatch:
 permissions:
   contents: read
@@ -72,60 +76,8 @@ jobs:
         run: node eng/native/crates.mjs check --release-age
 
   libraries:
-    name: Library / ${{ matrix.rid }}
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          # cargo-zigbuild links every Linux library on one runner, with a glibc floor for the gnu ones.
-          - { rid: linux-x64, os: ubuntu-24.04, target: x86_64-unknown-linux-gnu, zig: true }
-          - { rid: linux-arm64, os: ubuntu-24.04, target: aarch64-unknown-linux-gnu, zig: true }
-          - { rid: linux-musl-x64, os: ubuntu-24.04, target: x86_64-unknown-linux-musl, zig: true }
-          - { rid: linux-musl-arm64, os: ubuntu-24.04, target: aarch64-unknown-linux-musl, zig: true }
-          # MSVC and the Apple SDK: their own runners.
-          - { rid: win-x64, os: windows-2025, target: x86_64-pc-windows-msvc }
-          - { rid: win-arm64, os: windows-2025, target: aarch64-pc-windows-msvc }
-          - { rid: osx-arm64, os: macos-15, target: aarch64-apple-darwin }
-    runs-on: ${{ matrix.os }}
-    timeout-minutes: 30
-    defaults:
-      run:
-        shell: bash
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      - name: Install the Rust target
-        working-directory: native
-        run: rustup target add ${{ matrix.target }}
-      - name: Install cargo-zigbuild
-        if: matrix.zig
-        run: python3 -m pip install --user cargo-zigbuild==0.24.0 ziglang==0.17.0
-      - name: Build
-        env:
-          RUNIC_CARGO_BUILD: ${{ matrix.zig && 'cargo zigbuild' || 'cargo build' }}
-          RUNIC_GLIBC: "2.28"
-        run: eng/native/build-runic-server.sh ${{ matrix.rid }}
-      # The linker signs the dylib ad hoc. dotnet runic package macos signs every nested library again with the
-      # application's identity and the hardened runtime (MacOSBundleLayout; ci.yml's macOS packaging leg checks nested
-      # libraries); this checks that the library takes that signature. NativeAOT links the static library instead.
-      - name: Check the macOS library's signature
-        if: runner.os == 'macOS'
-        run: |
-          library=artifacts/native/runic-server/${{ matrix.rid }}/librunic_server.dylib
-          codesign --verify --strict --verbose=2 "$library"
-          codesign --display --verbose=2 "$library" 2>&1 | tee "$RUNNER_TEMP/linker-signature.txt"
-          grep -Eq 'flags=0x[0-9a-f]+\((adhoc|linker-signed)' "$RUNNER_TEMP/linker-signature.txt"
-          signed="$RUNNER_TEMP/librunic_server.dylib"
-          cp "$library" "$signed"
-          codesign --force --sign - --options runtime --timestamp=none "$signed"
-          codesign --verify --strict --verbose=2 "$signed"
-          codesign --display --verbose=2 "$signed" 2>&1 | grep -E '^CodeDirectory .*flags=0x[0-9a-f]+\(adhoc,runtime\)'
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: runic-server-${{ matrix.rid }}
-          path: artifacts/native/runic-server/${{ matrix.rid }}
-          if-no-files-found: error
+    name: Libraries
+    uses: ./.github/workflows/native-libraries.yml
 
   desktop:
     name: Desktop contracts on the native server
@@ -187,22 +139,17 @@ jobs:
         with:
           nuget: native
           install: "false"
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+      - uses: ./.github/actions/native-server-libraries
         with:
-          pattern: runic-server-*
-          path: artifacts/native/runic-server
-      - name: Lay out the libraries by runtime identifier
-        run: |
-          cd artifacts/native/runic-server
-          for directory in runic-server-*; do mv "$directory" "${directory#runic-server-}"; done
-          ls -R
+          key: ${{ needs.libraries.outputs.key }}
+          built: ${{ needs.libraries.outputs.built }}
       # The main package carries the shared libraries of every runtime identifier and a runtime.json; each static
       # library, which NativeAOT links, is a package of its own that NuGet restores only for its runtime identifier.
       - name: Pack with every runtime identifier
         run: |
           dotnet pack packages/dotnet/Runic.Desktop.NativeServer -c Release -p:RunicNativeServerRequireAllRuntimes=true -o artifacts/native-server-package
           for rid in linux-x64 linux-arm64 linux-musl-x64 linux-musl-arm64 win-x64 win-arm64 osx-arm64; do
-            dotnet pack packages/dotnet/Runic.Desktop.NativeServer.Static -c Release -p:RunicNativeServerRuntime=$rid -o artifacts/native-server-package
+            dotnet pack "packages/dotnet/Runic.Desktop.NativeServer.Static/$rid" -c Release -o artifacts/native-server-package
           done
       - name: Check the package layout
         run: |
@@ -235,7 +182,7 @@ jobs:
   # measurements for the 1.0 default-server decision (D053.16), on each platform.
   platforms:
     name: Platform / ${{ matrix.rid }}
-    needs: package
+    needs: [libraries, package]
     strategy:
       fail-fast: false
       matrix:
@@ -260,10 +207,10 @@ jobs:
           node: "true"
           package-managers: "false"
       - uses: ./.github/actions/install-browser
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+      - uses: ./.github/actions/native-server-libraries
         with:
-          name: runic-server-${{ matrix.rid }}
-          path: artifacts/native/runic-server/${{ matrix.rid }}
+          key: ${{ needs.libraries.outputs.key }}
+          built: ${{ needs.libraries.outputs.built }}
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: runic-desktop-native-server-package-${{ github.run_id }}

@@ -142,6 +142,46 @@
     },
     {
       "ecosystem": "nuget",
+      "identity": "Runic.Desktop.NativeServer",
+      "version": "0.14.0"
+    },
+    {
+      "ecosystem": "nuget",
+      "identity": "Runic.Desktop.NativeServer.Static.linux-x64",
+      "version": "0.14.0"
+    },
+    {
+      "ecosystem": "nuget",
+      "identity": "Runic.Desktop.NativeServer.Static.linux-arm64",
+      "version": "0.14.0"
+    },
+    {
+      "ecosystem": "nuget",
+      "identity": "Runic.Desktop.NativeServer.Static.linux-musl-x64",
+      "version": "0.14.0"
+    },
+    {
+      "ecosystem": "nuget",
+      "identity": "Runic.Desktop.NativeServer.Static.linux-musl-arm64",
+      "version": "0.14.0"
+    },
+    {
+      "ecosystem": "nuget",
+      "identity": "Runic.Desktop.NativeServer.Static.win-x64",
+      "version": "0.14.0"
+    },
+    {
+      "ecosystem": "nuget",
+      "identity": "Runic.Desktop.NativeServer.Static.win-arm64",
+      "version": "0.14.0"
+    },
+    {
+      "ecosystem": "nuget",
+      "identity": "Runic.Desktop.NativeServer.Static.osx-arm64",
+      "version": "0.14.0"
+    },
+    {
+      "ecosystem": "nuget",
       "identity": "Runic.Platform.Linux.Portal",
       "version": "0.14.0"
     },
