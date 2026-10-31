@@ -40,7 +40,8 @@ public sealed class BrowserDebuggerPortTests : IDisposable
         }
         // The reader shares writes/deletion so publication can finish during polling.
         await File.WriteAllTextAsync(PortFile, "52444\r\n/devtools/browser/test", deadline.Token);
-        await time.WaitForTimerAsync(BrowserBridgeTests.PortPollInterval, deadline.Token);
+        // A poll that started before the write sleeps once more; one after it returns without sleeping.
+        await Task.WhenAny(time.WaitForTimerAsync(BrowserBridgeTests.PortPollInterval, deadline.Token), pending).WaitScaledAsync(TimeSpan.FromSeconds(5));
         time.Advance(BrowserBridgeTests.PortPollInterval);
         Assert.Equal(52444, await pending.WaitScaledAsync(TimeSpan.FromSeconds(5)));
     }
