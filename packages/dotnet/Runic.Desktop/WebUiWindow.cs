@@ -3059,7 +3059,8 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
                 clientId == 0 ? connectionId : clientId,
                 connectionId,
                 context.GetRequestHeader("Cookie"),
-                WebUiApplication.BridgeHandshakeTimeout);
+                WebUiApplication.BridgeHandshakeTimeout,
+                TimeProvider);
             if (!_sessions.TryAdd(session.Id, session))
             {
                 await session.DisposeAsync().ConfigureAwait(false);

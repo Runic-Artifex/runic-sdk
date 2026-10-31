@@ -470,7 +470,8 @@ public sealed class BrowserBridgeTests
         return null;
     }
 
-    internal static async Task<int> ReadDebuggerPortAsync(string profile, CancellationToken cancellationToken)
+    // Polls every 25 ms on time (the test's clock in BrowserDebuggerPortTests).
+    internal static async Task<int> ReadDebuggerPortAsync(string profile, CancellationToken cancellationToken, TimeProvider? time = null)
     {
         var path = Path.Combine(profile, "DevToolsActivePort");
         while (true)
@@ -498,9 +499,11 @@ public sealed class BrowserBridgeTests
             {
                 // Retry only sharing/lock violations; other I/O failures remain errors.
             }
-            await Task.Delay(25, cancellationToken);
+            await Task.Delay(PortPollInterval, time ?? TimeProvider.System, cancellationToken);
         }
     }
+
+    internal static readonly TimeSpan PortPollInterval = TimeSpan.FromMilliseconds(25);
 
     private static async Task<Uri> FindPageDebuggerUrlAsync(
         int debuggerPort,

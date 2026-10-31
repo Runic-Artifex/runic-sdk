@@ -31,7 +31,9 @@ internal sealed class WebUiSession : IAsyncDisposable
     private readonly TimeSpan _handshakeTimeout;
     private readonly WebUiHandshake _handshake = new();
     private int _framesReceived;
-    private readonly long _openedAt = Stopwatch.GetTimestamp();
+    // The window's clock (PresentationSurfaceRuntimeOptions.TimeProvider), which tests replace.
+    private readonly TimeProvider _time;
+    private readonly long _openedAt;
 
     public WebUiSession(
         WebUiWindow window,
@@ -39,9 +41,12 @@ internal sealed class WebUiSession : IAsyncDisposable
         nuint clientId,
         nuint connectionId,
         string cookies,
-        TimeSpan handshakeTimeout)
+        TimeSpan handshakeTimeout,
+        TimeProvider time)
     {
         _handshakeTimeout = handshakeTimeout;
+        _time = time;
+        _openedAt = time.GetTimestamp();
         _window = window;
         _socket = socket;
         ClientId = clientId;
@@ -175,7 +180,7 @@ internal sealed class WebUiSession : IAsyncDisposable
     public bool CanYieldSilentHandshake =>
         _handshake.State == WebUiHandshake.Pending
         && _handshakeTimeout > TimeSpan.Zero
-        && Stopwatch.GetElapsedTime(_openedAt) >= TimeSpan.FromTicks(Math.Min(_handshakeTimeout.Ticks, MaximumYieldGrace.Ticks));
+        && _time.GetElapsedTime(_openedAt) >= TimeSpan.FromTicks(Math.Min(_handshakeTimeout.Ticks, MaximumYieldGrace.Ticks));
 
     // Closes this socket for a newer one if it is still silent after the grace
     // period (the shorter of two seconds and the handshake timeout).
@@ -191,7 +196,7 @@ internal sealed class WebUiSession : IAsyncDisposable
 
         try
         {
-            await Task.Delay(_handshakeTimeout, cancellationToken).ConfigureAwait(false);
+            await Task.Delay(_handshakeTimeout, _time, cancellationToken).ConfigureAwait(false);
         }
         catch (OperationCanceledException)
         {
@@ -227,7 +232,7 @@ internal sealed class WebUiSession : IAsyncDisposable
                 CultureInfo.InvariantCulture,
                 $"closed by the server: {reason} ({frames} {(frames == 1 ? "message" : "messages")} received)"));
             RevokeAdmission();
-            _window.ReportHandshakeExpired(ConnectionId, Stopwatch.GetElapsedTime(_openedAt), reason);
+            _window.ReportHandshakeExpired(ConnectionId, _time.GetElapsedTime(_openedAt), reason);
         }
         catch (Exception exception)
         {

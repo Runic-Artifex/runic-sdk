@@ -477,6 +477,7 @@ public sealed class DesktopHost : IAsyncDisposable
             MenuHost = this,
             ContentSecurityPolicy = configured.ContentSecurityPolicy,
             GlobalMenu = _options.Linux.GlobalMenu,
+            TimeProvider = _options.TimeProvider,
         };
         var engine = new WebUiWindow(core, path, security, runtime);
         var surface = new DesktopSurface(this, id, engine, isolatedCore, windowHostFactory);

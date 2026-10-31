@@ -666,6 +666,10 @@ public sealed class DesktopApiTests
     [Test]
     public async Task EmbeddedConnectionTimeoutIsReportedInsteadOfFallingBack()
     {
+        // On the test's clock, isolated from requests outside the test (TestClients).
+        using var isolation = TestClients.Isolate();
+        using var bound = TestTimeouts.Cancellation(TimeSpan.FromSeconds(30));
+        var time = new ManualTime();
         var factory = new RecordingWindowHostFactory();
         var diagnostics = new ConcurrentQueue<DesktopDiagnostic>();
         await using var host = await DesktopHost.StartAsync(new DesktopHostOptions
@@ -673,18 +677,21 @@ public sealed class DesktopApiTests
             WindowHostFactory = factory,
             DiagnosticSink = diagnostics.Enqueue,
             ConnectionTimeout = TimeSpan.FromMilliseconds(200),
+            TimeProvider = time,
         });
         await using var surface = await host.CreateSurfaceAsync(new DesktopSurfaceOptions
         {
             Content = new DesktopContent.Html("never connects"),
         });
 
-        var exception = await Assert.ThrowsAsync<DesktopException>(async () =>
-            await surface.OpenWindowAsync(new DesktopWindowOptions
-            {
-                Browser = BrowserKind.Embedded,
-                PresentationPolicy = DesktopPresentationPolicy.EmbeddedThenBrowser,
-            }));
+        var opening = surface.OpenWindowAsync(new DesktopWindowOptions
+        {
+            Browser = BrowserKind.Embedded,
+            PresentationPolicy = DesktopPresentationPolicy.EmbeddedThenBrowser,
+        }).AsTask();
+        await time.WaitForTimerAsync(TimeSpan.FromMilliseconds(200), bound.Token);
+        time.Advance(TimeSpan.FromMilliseconds(200));
+        var exception = await Assert.ThrowsAsync<DesktopException>(() => opening.WaitAsync(bound.Token));
 
         Assert.Equal(DesktopErrorCategory.TimedOut, exception.Category);
         Assert.Equal("presentation-connection-timeout", exception.Code);
@@ -694,18 +701,22 @@ public sealed class DesktopApiTests
         Assert.DoesNotContain(diagnostics, static item => item.Code == "embedded-presentation-fallback");
         Assert.False(factory.Host?.IsOpen);
         // Only the presentation closed; the surface keeps serving for its owner.
-        using var client = new HttpClient();
+        using var client = TestClients.Http();
         Assert.Equal("never connects", await client.GetStringAsync(surface.Url));
     }
 
     [Test]
     public async Task ConnectionTimeoutReportsHowFarThePageGot()
     {
+        using var isolation = TestClients.Isolate();
+        using var bound = TestTimeouts.Cancellation(TimeSpan.FromSeconds(30));
+        var time = new ManualTime();
         var factory = new RecordingWindowHostFactory();
         await using var host = await DesktopHost.StartAsync(new DesktopHostOptions
         {
             WindowHostFactory = factory,
             ConnectionTimeout = TimeSpan.FromSeconds(2),
+            TimeProvider = time,
         });
         await using var surface = await host.CreateSurfaceAsync(new DesktopSurfaceOptions
         {
@@ -715,10 +726,12 @@ public sealed class DesktopApiTests
         {
             Browser = BrowserKind.Embedded,
         }).AsTask();
-        using var client = new HttpClient();
+        await time.WaitForTimerAsync(TimeSpan.FromSeconds(2), bound.Token);
+        using var client = TestClients.Http();
         Assert.Equal("no bridge script", await client.GetStringAsync(surface.Url));
 
-        var exception = await Assert.ThrowsAsync<DesktopException>(() => opening);
+        time.Advance(TimeSpan.FromSeconds(2));
+        var exception = await Assert.ThrowsAsync<DesktopException>(() => opening.WaitAsync(bound.Token));
 
         var timeout = Assert.IsType<TimeoutException>(exception.InnerException);
         Assert.Contains("the page was requested, but not /webui.js", timeout.Message);

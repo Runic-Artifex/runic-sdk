@@ -29,11 +29,20 @@ public sealed class BrowserDebuggerPortTests : IDisposable
     {
         using var deadline = TestTimeouts.Cancellation(TimeSpan.FromSeconds(5));
         await File.WriteAllTextAsync(PortFile, partial, deadline.Token);
-        var pending = BrowserBridgeTests.ReadDebuggerPortAsync(_profile.FullName, deadline.Token);
-        await Assert.ThrowsAsync<TimeoutException>(() => pending.WaitAsync(TimeSpan.FromMilliseconds(75)));
+        // On the test's clock: each poll that found no complete record sleeps until the clock moves.
+        var time = new ManualTime();
+        var pending = BrowserBridgeTests.ReadDebuggerPortAsync(_profile.FullName, deadline.Token, time);
+        for (var poll = 0; poll < 3; poll++)
+        {
+            await time.WaitForTimerAsync(BrowserBridgeTests.PortPollInterval, deadline.Token);
+            Assert.False(pending.IsCompleted, $"The reader accepted the partial record '{partial}'.");
+            time.Advance(BrowserBridgeTests.PortPollInterval);
+        }
         // The reader shares writes/deletion so publication can finish during polling.
         await File.WriteAllTextAsync(PortFile, "52444\r\n/devtools/browser/test", deadline.Token);
-        Assert.Equal(52444, await pending);
+        await time.WaitForTimerAsync(BrowserBridgeTests.PortPollInterval, deadline.Token);
+        time.Advance(BrowserBridgeTests.PortPollInterval);
+        Assert.Equal(52444, await pending.WaitScaledAsync(TimeSpan.FromSeconds(5)));
     }
 
     [Test, WindowsFileLock]
@@ -54,10 +63,14 @@ public sealed class BrowserDebuggerPortTests : IDisposable
     [Test, WindowsFileLock]
     public async Task PersistentPublicationLockHonorsCancellation()
     {
-        using var deadline = new CancellationTokenSource(TimeSpan.FromMilliseconds(100));
+        using var deadline = new CancellationTokenSource();
         using var writer = new FileStream(PortFile, FileMode.CreateNew, FileAccess.Write, FileShare.None);
-        await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
-            BrowserBridgeTests.ReadDebuggerPortAsync(_profile.FullName, deadline.Token).WaitScaledAsync(TimeSpan.FromSeconds(5)));
+        var time = new ManualTime();
+        var pending = BrowserBridgeTests.ReadDebuggerPortAsync(_profile.FullName, deadline.Token, time);
+        // Cancelled while it polls the locked record.
+        await time.WaitForTimerAsync(BrowserBridgeTests.PortPollInterval, CancellationToken.None).WaitScaledAsync(TimeSpan.FromSeconds(5));
+        deadline.Cancel();
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => pending.WaitScaledAsync(TimeSpan.FromSeconds(5)));
     }
 
     [Test]
@@ -67,9 +80,13 @@ public sealed class BrowserDebuggerPortTests : IDisposable
     public async Task MissingOrIncompleteRecordHonorsCancellation(bool incomplete)
     {
         if (incomplete) await File.WriteAllTextAsync(PortFile, "5");
-        using var deadline = new CancellationTokenSource(TimeSpan.FromMilliseconds(100));
-        await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
-            BrowserBridgeTests.ReadDebuggerPortAsync(_profile.FullName, deadline.Token).WaitScaledAsync(TimeSpan.FromSeconds(5)));
+        using var deadline = new CancellationTokenSource();
+        var time = new ManualTime();
+        var pending = BrowserBridgeTests.ReadDebuggerPortAsync(_profile.FullName, deadline.Token, time);
+        // Cancelled while it polls for the record.
+        await time.WaitForTimerAsync(BrowserBridgeTests.PortPollInterval, CancellationToken.None).WaitScaledAsync(TimeSpan.FromSeconds(5));
+        deadline.Cancel();
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => pending.WaitScaledAsync(TimeSpan.FromSeconds(5)));
     }
 
     public void Dispose() => _profile.Delete(recursive: true);
