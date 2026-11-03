@@ -404,46 +404,46 @@ internal sealed class RunicWindowService(IServiceProvider services) : IRunicWind
     {
         ArgumentNullException.ThrowIfNull(key);
         IRunicWindow? found;
-        Task<IRunicWindow>? opening = null;
-        var opens = false;
+        TaskCompletionSource<IRunicWindow>? opening = null;
+        Task<IRunicWindow>? pending = null;
         lock (_gate)
         {
             found = Find(typeof(TWindow), key);
-            if (found is null && !_opening.TryGetValue((typeof(TWindow), key), out opening))
+            if (found is null && !_opening.TryGetValue((typeof(TWindow), key), out pending))
             {
-                opening = OpenKeyedAsync<TWindow>(key, parameter, options, cancellationToken);
-                // An open that completed at once removed nothing yet: it is tracked by now.
-                if (!opening.IsCompleted) _opening[(typeof(TWindow), key)] = opening;
-                opens = true;
+                // Registered before the open starts, so a call meanwhile waits for this Window instead of opening another.
+                opening = new TaskCompletionSource<IRunicWindow>(TaskCreationOptions.RunContinuationsAsynchronously);
+                _opening[(typeof(TWindow), key)] = opening.Task;
             }
         }
-        if (found is null)
+        if (opening is not null)
         {
-            found = await opening!.WaitAsync(cancellationToken).ConfigureAwait(false);
-            // A new Window got the activation from the host when it opened; one that another call opened is brought forward.
-            if (opens)
+            // Outside the lock: opening resolves the ViewModel, which may use this service.
+            IRunicWindow opened;
+            try
             {
-                if (activation is not null) _ = await found.Presentation.PresentAsync(activation, cancellationToken).ConfigureAwait(false);
-                return (TWindow)found;
+                opened = await OpenCoreAsync<TWindow>(new RunicWindowOpenRequest(parameter, key, null), options, cancellationToken)
+                    .ConfigureAwait(false);
+                opening.TrySetResult(opened);
             }
+            catch (Exception error)
+            {
+                if (error is OperationCanceledException canceled) opening.TrySetCanceled(canceled.CancellationToken);
+                else opening.TrySetException(error);
+                throw;
+            }
+            finally
+            {
+                lock (_gate) _opening.Remove((typeof(TWindow), key));
+            }
+            // A new Window is presented with the activation of a launch only; it is in front as it opens otherwise.
+            if (activation is not null) _ = await opened.Presentation.PresentAsync(activation, cancellationToken).ConfigureAwait(false);
+            return (TWindow)opened;
         }
+        // Found, or opened by another call meanwhile: brought forward.
+        found ??= await pending!.WaitAsync(cancellationToken).ConfigureAwait(false);
         _ = await ActivateAsync(found, activation, cancellationToken).ConfigureAwait(false);
         return (TWindow)found;
-    }
-
-    private async Task<IRunicWindow> OpenKeyedAsync<TWindow>(object key, object? parameter, RunicWindowOptions? options,
-        CancellationToken cancellationToken)
-        where TWindow : class, IRunicWindow, new()
-    {
-        try
-        {
-            return await OpenCoreAsync<TWindow>(new RunicWindowOpenRequest(parameter, key, null), options, cancellationToken)
-                .ConfigureAwait(false);
-        }
-        finally
-        {
-            lock (_gate) _opening.Remove((typeof(TWindow), key));
-        }
     }
 
     public async ValueTask<PlatformResult<PlatformUnit>> ActivateAsync(IRunicWindow window, DesktopActivationContext? activation = null,

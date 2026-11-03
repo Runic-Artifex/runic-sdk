@@ -1547,8 +1547,14 @@ public sealed class DesktopWindow : IAsyncDisposable
         Modality = modality;
         if (owner.Window is not { } ownerWindow) return;
         lock (ownerWindow._ownedGate) ownerWindow._owned = [.. ownerWindow._owned, this];
-        Closed += (_, _) => ownerWindow.ReleaseOwned(this);
-        ownerWindow.Closed += (_, _) => _ = CloseWithOwnerAsync();
+        EventHandler closeWithOwner = (_, _) => _ = CloseWithOwnerAsync();
+        ownerWindow.Closed += closeWithOwner;
+        // The owner forgets the window, and its handler, once the window closed.
+        Closed += (_, _) =>
+        {
+            ownerWindow.Closed -= closeWithOwner;
+            ownerWindow.ReleaseOwned(this);
+        };
         // The owner closed while this window opened.
         if (!ownerWindow.IsOpen) _ = CloseWithOwnerAsync();
     }
