@@ -105,7 +105,7 @@ describe("RegionOutlets", () => {
   let mounts: Record<string, number> = {};
   const counting = <K extends Page["kind"]>(kind: K) => defineComponent({
     props: { page: { type: Object as PropType<Extract<Page, { kind: K }>>, required: true } },
-    setup: props => { mounts[kind] = (mounts[kind] ?? 0) + 1; return () => h("output", `${kind}:${props.page.kind}`); },
+    setup: props => { mounts[kind] = (mounts[kind] ?? 0) + 1; return () => h("output", `${kind}:${(props.page as Page).kind}`); },
   });
   const registry = { counter: counting("counter"), welcome: counting("welcome") } satisfies ViewRegistry<Page>;
   const counter: Page = { kind: "counter", connect: async () => fakeClient(1) };
