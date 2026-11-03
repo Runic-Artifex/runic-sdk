@@ -371,6 +371,27 @@ static void ApplyOperationRetirement(Type model, IReadOnlyList<PropertyInfo> com
             $"{model.Name}: RunicOperationRetirement on the class applies to its operations (asynchronous Bridge commands), but it has none; it has no effect here.", model);
 }
 
+// A RunicQueryCollection<TRow, TKey> member (query-collections/1): get-only, without the attributes of other collections,
+// with DTO rows and a string, Guid or Int32 key. Its rows are discovered as a list of TRow, for the row codec and decoder.
+static (BridgeTypeGraph Rows, Type Key) QueryCollectionPlan(Type model, PropertyInfo property, Type row, Type key, bool honorJsonIgnore)
+{
+    if (property.SetMethod?.IsPublic == true)
+        throw new BridgeDiagnosticException(BridgeDiagnosticCodes.QueryCollection,
+            $"{model.Name}.{property.Name}: a RunicQueryCollection must be get-only; the page changes its query with setQuery.", property);
+    if (property.GetCustomAttribute<RunicCollectionAttribute>(true) is not null || property.GetCustomAttribute<RunicAppendOnlyTextAttribute>(true) is not null)
+        throw new BridgeDiagnosticException(BridgeDiagnosticCodes.QueryCollection,
+            $"{model.Name}.{property.Name}: a RunicQueryCollection has its own keys; remove [RunicCollection] or [RunicAppendOnlyText].", property);
+    if (key != typeof(string) && key != typeof(Guid) && key != typeof(int))
+        throw new BridgeDiagnosticException(BridgeDiagnosticCodes.QueryCollection,
+            $"{model.Name}.{property.Name}: a RunicQueryCollection key is a string, Guid or Int32, not {key.Name}.", property);
+    var rows = BridgeTypeGraph.Discover(typeof(IReadOnlyList<>).MakeGenericType(row), rootPath: $"{model.Name}.{property.Name}",
+        origin: property, honorJsonIgnore: honorJsonIgnore, direction: BridgeValueDirection.ToPage);
+    if (rows.Root.Element is not { Kind: BridgeWireKind.Dto })
+        throw new BridgeDiagnosticException(BridgeDiagnosticCodes.QueryCollection,
+            $"{model.Name}.{property.Name}: the rows of a RunicQueryCollection are DTOs, not {row.Name}.", property);
+    return (rows, key);
+}
+
 // An observable collection of DTO rows (ObservableCollection<T>, ReadOnlyObservableCollection<T>) that is not a
 // [RunicCollection] is published by comparison: every change of a row encodes and sends the whole list again, so such a
 // list grows expensive as it grows (RUNICBRIDGE032). A plain list or array is a value the ViewModel replaces and is
@@ -649,11 +670,18 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
     // NavigationSelection slots: state whose wire value is the selection's SelectedIndex, or null for -1.
     var selectionSlots = new HashSet<PropertyInfo>();
     var valueProperties = new Dictionary<PropertyInfo, BridgeTypeGraph>();
+    // RunicQueryCollection<TRow, TKey> members (query-collections/1): the graph of their rows, as a list of TRow, and the key.
+    var queryCollections = new Dictionary<PropertyInfo, (BridgeTypeGraph Rows, Type Key)>();
     foreach (var property in properties)
     {
         if (property.GetMethod is null)
             throw new BridgeDiagnosticException(BridgeDiagnosticCodes.State,
                 $"{model.Name}.{property.Name}: a public getter is required.", property);
+        if (BridgeContractShape.QueryCollectionArguments(property.PropertyType) is { } query)
+        {
+            queryCollections.Add(property, QueryCollectionPlan(model, property, query.Row, query.Key, honorJsonIgnore));
+            continue;
+        }
         if (BridgeContractShape.NavigationRegionContent(property.PropertyType) is { } regionContent)
         {
             if (property.SetMethod?.IsPublic == true)
@@ -923,6 +951,12 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
             cs.AppendLine($"            new global::Runic.Application.Views.Generated.PropertyDescriptor<{fullType}>({descriptorNames}, vm => vm.{property.Name}?.Current, null, static vm => vm.{property.Name}),");
             continue;
         }
+        if (queryCollections.ContainsKey(property))
+        {
+            // The runtime observes the collection's query, total and version, and pages read its rows with query-rows.
+            cs.AppendLine($"            new global::Runic.Application.Views.Generated.PropertyDescriptor<{fullType}>({descriptorNames}, vm => vm.{property.Name}, null, static vm => vm.{property.Name}) {{ QueryRowWriter = {property.Name}RowsCodec.WriteItem }},");
+            continue;
+        }
         if (selectionSlots.Contains(property))
         {
             // The runtime observes the selection's SelectedIndex.
@@ -995,6 +1029,11 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
     foreach (var (property, graph) in valueProperties)
     {
         graph.AppendCSharpCodec(cs, property.Name + "ValueCodec");
+        cs.AppendLine();
+    }
+    foreach (var (property, plan) in queryCollections)
+    {
+        plan.Rows.AppendCSharpCodec(cs, property.Name + "RowsCodec");
         cs.AppendLine();
     }
     foreach (var (command, plan) in commandPlans)
@@ -1106,6 +1145,8 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
             writer.AppendLine("writer.WriteEndArray();");
             stateMembers.Add((jsonName, writer.ToString()));
         }
+        else if (queryCollections.ContainsKey(property))
+            stateMembers.Add((jsonName, $"global::Runic.Application.Views.Generated.BridgeQueryWire.WriteState(writer, vm.{property.Name})"));
         else if (valueProperties.ContainsKey(property))
             stateMembers.Add((jsonName, $"{property.Name}ValueCodec.Write(writer, {(selectionSlots.Contains(property) ? SelectionIndex(property) : $"vm.{property.Name}")})"));
         else throw new InvalidOperationException($"{model.Name}.{property.Name}: no generated value codec.");
@@ -1211,6 +1252,7 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
                     + ")[]" + (nullability.Create(property).ReadState == NullabilityState.Nullable ? " | null" : "")
             : valueProperties.TryGetValue(property, out var valueGraph)
                 ? valueGraph.TypeScriptType()
+            : queryCollections.ContainsKey(property) ? Ref("QueryCollectionState")
                 : throw new InvalidOperationException($"{model.Name}.{property.Name}: no generated TypeScript type.");
         var stateDocumentation = XmlDocumentation.Summary(property);
         if (valueProperties.TryGetValue(property, out var documentedGraph))
@@ -1244,6 +1286,17 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
         + (modelDocumentation is null ? "" : "\n\n" + modelDocumentation));
     ts.AppendLine($"export interface {clientName} extends {Ref("ViewClient")}<{shortName}State> {{");
     if (interactions.Length > 0) ts.AppendLine($"  readonly interactions: {shortName}Interactions;");
+    if (queryCollections.Count > 0)
+    {
+        ts.AppendLine("  /** The rows of each query collection, which this presentation loads for its own range (`query-collections/1`). */");
+        ts.AppendLine("  readonly queries: {");
+        foreach (var (property, plan) in queryCollections)
+        {
+            XmlDocumentation.Append(ts, "    ", XmlDocumentation.Summary(property));
+            ts.AppendLine($"    readonly {TsPropertyName(WireName(property))}: {Ref("QueryCollection")}<{plan.Rows.ItemTypeScriptType()}>;");
+        }
+        ts.AppendLine("  };");
+    }
     foreach (var property in properties.Where(property => property.SetMethod?.IsPublic == true))
     {
         XmlDocumentation.Append(ts, "  ", SetterDocumentation(property));
@@ -1331,6 +1384,8 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
         var field = WireName(property);
         if (valueProperties.TryGetValue(property, out var graph))
             memberDecoders.Add((field, graph.EmitTypeScriptDecoder("wire")));
+        else if (queryCollections.ContainsKey(property))
+            memberDecoders.Add((field, $"{Ref("decodeQueryCollectionState")}(wire)"));
         else if (contentProperties.TryGetValue(property, out var pages))
         {
             var decoder = $"{{ const reference = {Ref("contentReference")}(wire); return {ContentDecoder(property, pages, "reference")}; }}";
@@ -1369,6 +1424,15 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
         ts.AppendLine($"const {Ref("checkedFieldNames")} = [{string.Join(", ", checkedProperties.Select(property => JsonSerializer.Serialize(WireName(property))))}];");
     OperationTypeScriptEmitter.AppendCodecs(ts, operationPlans);
     ts.AppendLine();
+    if (queryCollections.Count > 0)
+    {
+        ts.AppendLine($"const {Ref("queryDefinitions")} = {{");
+        foreach (var (property, plan) in queryCollections)
+        {
+            ts.AppendLine($"  {TsLiteralKey(WireName(property))}: {Ref("defineQueryCollection")}<{plan.Rows.ItemTypeScriptType()}>(wire => {BridgeTypeGraph.ArrowBody(plan.Rows.EmitItemTypeScriptDecoder("wire"))}),");
+        }
+        ts.AppendLine("};");
+    }
     var hasDeltaFields = incrementalCollections.Count > 0 || textFields.Length > 0;
     if (hasDeltaFields)
     {
@@ -1407,6 +1471,9 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
     ts.AppendLine("    dispose: view.dispose,");
     if (interactions.Length > 0)
         ts.AppendLine($"    interactions: view.interactions as unknown as {shortName}Interactions,");
+    if (queryCollections.Count > 0)
+        ts.AppendLine("    queries: { " + string.Join(", ", queryCollections.Keys.Select(property =>
+            $"{TsLiteralKey(WireName(property))}: view.queryCollection({JsonSerializer.Serialize(WireName(property))}, {Ref("queryDefinitions")}[{JsonSerializer.Serialize(WireName(property))}])")) + " },");
     if (needsCheckedWriter)
         ts.AppendLine($"    fieldBaseline<K extends keyof {shortName}CheckedFields>(field: K) {{ return view.fieldBaseline(field) as {Ref("FieldBaseline")}<{shortName}CheckedFields[K]>; }},");
     foreach (var property in properties.Where(property => property.SetMethod?.IsPublic == true))
@@ -1472,10 +1539,12 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
     if (operationPlans.Length > 0) publicImports.Add("type " + Import("BridgeOperationStartOptions"));
     if (operationPlans.Any(operation => operation.IsStream)) publicImports.Add("type " + Import("BridgeStreamOperation"));
     if (interactions.Length > 0) publicImports.Add("type " + Import("BridgeInteractionContext"));
+    if (queryCollections.Count > 0) publicImports.AddRange(["type " + Import("QueryCollection"), "type " + Import("QueryCollectionState")]);
     var runtimeImports = new List<string> { Import("connectView"), Import("disposable"), Import("viewReferences"), "type " + Import("BridgeMemberDecoders") };
     if (operationPlans.Length > 0) runtimeImports.Add("type " + Import("BridgeOperationCodec"));
     if (incrementalCollections.Count > 0) runtimeImports.Add(Import("defineCollection"));
     if (hasDeltaFields) runtimeImports.Add(Import("defineCollections"));
+    if (queryCollections.Count > 0) runtimeImports.AddRange([Import("defineQueryCollection"), Import("decodeQueryCollectionState")]);
     if (textFields.Length > 0) runtimeImports.Add(Import("defineText"));
     if (interactions.Length > 0) runtimeImports.Add(Import("defineInteractions"));
     if (operationPlans.Length > 0) runtimeImports.Add(Import("bridgeOperations"));
@@ -1538,7 +1607,16 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
             var keyMember = graph.Root.Element!.Members.Single(member => member.Property == entry.Value);
             return new MockCollection(WireName(entry.Key), graph.ItemTypeScriptType(), graph.EncodeItemTypeScript("typed"),
                 graph.EmitItemTypeScriptDecoder("wire"), $"String({TsAccess("item", keyMember.WireName)})");
-        }).ToArray(), $"{model.FullName}:{contractFingerprint}"), Path.GetFileNameWithoutExtension(typescriptPath)), model);
+        }).ToArray(), $"{model.FullName}:{contractFingerprint}",
+        queryCollections.Select(entry =>
+        {
+            var rows = entry.Value.Rows;
+            // The mock's default key: a row member named Id or Key of the collection's key type.
+            var keyMember = rows.Root.Element!.Members.FirstOrDefault(member => member.Property.Name is "Id" or "Key"
+                && member.Type.NonNullableType == entry.Value.Key && !member.Type.IsNullable);
+            return new MockQuery(WireName(entry.Key), rows.ItemTypeScriptType(), rows.EncodeItemTypeScript("typed"),
+                rows.EmitItemTypeScriptDecoder("wire"), keyMember is null ? null : $"String({TsAccess("item", keyMember.WireName)})");
+        }).ToArray()), Path.GetFileNameWithoutExtension(typescriptPath)), model);
     Console.WriteLine($"Generated {shortName} bridge from compiled {model.Name}: {properties.Length} properties, {commands.Length} commands.");
     return hasContent || interactions.Length > 0;
 
@@ -1954,6 +2032,8 @@ static class BridgeDiagnosticCodes
     internal const string Toolchain = "RUNICBRIDGE033";
     /// <summary>Warning: a RunicPresentationScoped declaration reaches no Bridge command.</summary>
     internal const string PresentationScoped = "RUNICBRIDGE034";
+    /// <summary>A RunicQueryCollection member has an unsupported shape.</summary>
+    internal const string QueryCollection = "RUNICBRIDGE060";
 
     // Every code with its severity and title, in ID order: the source of the machine-readable list
     // (--list-diagnostics, docs/runicbridge-diagnostics.json). eng/diagnostics.test.mjs checks the
@@ -1994,6 +2074,7 @@ static class BridgeDiagnosticCodes
         (CollectionWithoutKey, "warning", "An observable collection of DTO rows is not a [RunicCollection]"),
         (Toolchain, "warning", "The .NET SDK or Bun is older than this release supports"),
         (PresentationScoped, "warning", "A [RunicPresentationScoped] declaration reaches no Bridge command"),
+        (QueryCollection, "error", "A RunicQueryCollection member has an unsupported shape"),
     ];
 
     // Schema version 1: { schemaVersion, diagnostics: [{ id, severity: "error" | "warning", title }] }. A later

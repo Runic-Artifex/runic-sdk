@@ -36,6 +36,7 @@ internal sealed class BridgeDispatcher : IBridgeRequestHandler
     internal const string TextSpliceFeature = "text-splice/1";
     internal const string PresentationEpochFeature = "presentation-epoch/1";
     internal const string PresentedFeature = "presented/1";
+    internal const string QueryCollectionsFeature = "query-collections/1";
     internal const int MaximumFeatures = 64;
     internal const int MaximumFeatureLength = 64;
     // A request that arrives before its connection's hello waits this long for it, and at most this many wait.
@@ -398,6 +399,9 @@ internal sealed class BridgeDispatcher : IBridgeRequestHandler
                     return Reply(BridgeMessages.Rejected("invalid-request", "The request's epoch is not an integer from 0 to 2^53-1."));
                 if (envelope.Route is not { } route || !(envelope.IsServiceRoute || BridgeRequestEnvelope.IsViewKind(envelope.Kind)))
                     return Reply(BridgeMessages.Rejected("invalid-request", $"'{envelope.Kind}' is not a request kind of this producer."));
+                // query-collections/1: its request kinds exist only on a connection that uses it.
+                if (BridgeRequestEnvelope.IsQueryKind(envelope.Kind) && !connection.UsesQueryCollections && !envelope.IsServiceRoute)
+                    return Reply(BridgeMessages.Rejected("invalid-request", $"The connection does not use {QueryCollectionsFeature}."));
                 IBridgeRouteHandler? handler;
                 lock (_gate) _routes.TryGetValue(route, out handler);
                 if (handler is null)
@@ -530,7 +534,7 @@ internal sealed class BridgeDispatcher : IBridgeRequestHandler
         if (!root.TryGetProperty("client", out var client) || client.ValueKind != JsonValueKind.Object
             || !TryReadName(client, "name", 128, out var clientName) || !TryReadName(client, "version", 64, out var clientVersion))
             return BridgeMessages.Rejected("invalid-request", "The hello's client is not {name, version}.", hello: true);
-        if (!TryReadFeatures(root, out var usesTextSplice, out var usesPresentationEpoch, out var usesPresented))
+        if (!TryReadFeatures(root, out var usesTextSplice, out var usesPresentationEpoch, out var usesPresented, out var usesQueryCollections))
             return BridgeMessages.Rejected("invalid-request",
                 $"The hello's features are not an array of at most {MaximumFeatures} strings of at most {MaximumFeatureLength} characters.", hello: true);
         var session = sessionElement.GetString()!;
@@ -549,6 +553,7 @@ internal sealed class BridgeDispatcher : IBridgeRequestHandler
             connection.UsesTextSplice = usesTextSplice;
             connection.UsesPresentationEpoch = usesPresentationEpoch;
             connection.UsesPresented = usesPresented;
+            connection.UsesQueryCollections = usesQueryCollections;
             connection.HelloCompleted = true;
             if (!usesTextSplice) _connectionsWithoutTextSplice++;
             if (usesPresentationEpoch) _connectionsWithPresentationEpoch++;
@@ -562,9 +567,9 @@ internal sealed class BridgeDispatcher : IBridgeRequestHandler
 
     // The client's features: absent, or an array of strings. A feature this producer does not implement is ignored.
     private static bool TryReadFeatures(JsonElement root, out bool usesTextSplice, out bool usesPresentationEpoch,
-        out bool usesPresented)
+        out bool usesPresented, out bool usesQueryCollections)
     {
-        usesTextSplice = usesPresentationEpoch = usesPresented = false;
+        usesTextSplice = usesPresentationEpoch = usesPresented = usesQueryCollections = false;
         if (!root.TryGetProperty("features", out var features)) return true;
         if (features.ValueKind != JsonValueKind.Array || features.GetArrayLength() > MaximumFeatures) return false;
         foreach (var feature in features.EnumerateArray())
@@ -575,6 +580,7 @@ internal sealed class BridgeDispatcher : IBridgeRequestHandler
             if (name == TextSpliceFeature) usesTextSplice = true;
             else if (name == PresentationEpochFeature) usesPresentationEpoch = true;
             else if (name == PresentedFeature) usesPresented = true;
+            else if (name == QueryCollectionsFeature) usesQueryCollections = true;
         }
         return true;
     }
@@ -713,6 +719,8 @@ internal sealed class BridgeConnection(string key, string clientKey)
     // Whether the connection uses presentation-epoch/1 and presented/1.
     internal bool UsesPresentationEpoch { get; set; }
     internal bool UsesPresented { get; set; }
+    // query-collections/1: the connection reads query collection ranges (query-rows, query-set, query-index).
+    internal bool UsesQueryCollections { get; set; }
     // Whether the window's closing push waits for this connection's closing-reply; the dispatcher's gate guards it.
     internal bool ClosingPending { get; set; }
     // Requests that wait for the hello, in arrival order, and whether the dispatcher is admitting them.

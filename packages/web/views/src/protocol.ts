@@ -11,6 +11,11 @@ export type Message = Readonly<Record<string, unknown>>;
 export const presentationEpochFeature = "presentation-epoch/1";
 /** `presented/1` (specs/application/README.md, "Presented states and window close"): `present` asks the page to report a painted revision; `closing` a close. */
 export const presentedFeature = "presented/1";
+/**
+ * `query-collections/1` (specs/application/README.md, "Query collections"): a page reads the rows of a query collection
+ * for its own range (`query-rows`), changes its query (`query-set`) and finds a key's position (`query-index`).
+ */
+export const queryCollectionsFeature = "query-collections/1";
 
 /** A reply as the runtime reads it. Members beyond `ok`, `error`, `revision` and `released` depend on the request. */
 export type Reply = Message & {
@@ -121,6 +126,11 @@ const replyMembers: Readonly<Record<string, (reply: Message) => boolean>> = {
   "menu-bar-unwatch": () => true,
   presented: () => true,
   "closing-reply": () => true,
+  "query-rows": reply => isSafe(reply["version"]) && (reply["total"] === null || isSafe(reply["total"])) && isSafe(reply["start"])
+    && Array.isArray(reply["keys"]) && Array.isArray(reply["rows"]) && reply["keys"].length === reply["rows"].length
+    && reply["keys"].every(key => isString(key) && key.length > 0),
+  "query-set": reply => isSafe(reply["revision"]),
+  "query-index": reply => isSafe(reply["version"]) && Number.isSafeInteger(reply["index"]) && (reply["index"] as number) >= -1,
 };
 
 /**

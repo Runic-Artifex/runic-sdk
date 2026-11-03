@@ -25,6 +25,9 @@ public partial class ViewModelBridge<T>
                 "write" => owner.WriteAsync(request, cancellationToken),
                 "command" => owner.CommandAsync(request, cancellationToken),
                 "can" => owner.CanAsync(request, cancellationToken),
+                "query-rows" => owner.QueryRowsAsync(request, cancellationToken),
+                "query-set" => owner.QuerySetAsync(request, cancellationToken),
+                "query-index" => owner.QueryIndexAsync(request, cancellationToken),
                 _ => owner.HandleOperationAsync(request, cancellationToken),
             };
     }

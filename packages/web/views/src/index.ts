@@ -85,6 +85,29 @@ export {
   type CollectionViewportController,
   type CollectionViewportOptions,
 } from "./viewport.js";
+export {
+  createQueryCollection,
+  maximumQueryRange,
+  normalizeQuery,
+  type QueryCollection,
+  type QueryCollectionQuery,
+  type QueryCollectionSnapshot,
+  type QueryCollectionState,
+  type QueryRow,
+  type RunicFilter,
+  type RunicQuery,
+  type RunicSortKey,
+} from "./query.js";
+export {
+  createQueryViewportController,
+  createRowSizes,
+  type QueryViewport,
+  type QueryViewportController,
+  type QueryViewportItem,
+  type QueryViewportOptions,
+  type RowSizeEstimate,
+  type RowSizes,
+} from "./query-viewport.js";
 
 /**
  * A generated content reference: a View presented in a content slot, such as a ViewModel slot of .NET

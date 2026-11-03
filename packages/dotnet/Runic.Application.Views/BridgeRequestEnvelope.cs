@@ -51,8 +51,11 @@ internal sealed class BridgeRequestEnvelope : IDisposable
     {
         "open" or "snapshot" or "close" or "set" or "write" or "command" or "can" or "start" or "status" or "watch"
             or "unwatch" or "cancel" or "stream" or "interactions" or "interaction-reply" => true,
-        _ => false,
+        _ => IsQueryKind(kind),
     };
+
+    // The request kinds of query-collections/1.
+    internal static bool IsQueryKind(string kind) => kind is "query-rows" or "query-set" or "query-index";
 
     // The requests that observe or cancel an operation by its identity.
     internal static bool IsOperationObservation(string kind) =>
@@ -164,6 +167,14 @@ internal sealed class BridgeRequestEnvelope : IDisposable
                     ?? Integer(root, "generation", minimum: 0)
                     ?? (root.TryGetProperty("handlers", out var registered)
                         ? Handlers(registered) : "The request has no handlers.");
+            // query-collections/1 (specs/application/README.md, "Query collections").
+            case "query-rows":
+                return ReadMember(root) ?? Integer(root, "start", minimum: 0) ?? Integer(root, "count", minimum: 0);
+            case "query-set":
+                return ReadMember(root) ?? (root.TryGetProperty("query", out var query) && query.ValueKind == JsonValueKind.Object
+                    ? null : "The request has no query object.");
+            case "query-index":
+                return ReadMember(root) ?? String(root, "key");
             case "interaction-reply":
                 return Identifier(root, "presentation")
                     ?? Identifier(root, "requestId")

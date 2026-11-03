@@ -4,7 +4,9 @@ import { viewsVersion } from "./version.js";
 import { applySplice, producerSplices, textSpliceFeature } from "./text.js";
 import { insertRows } from "./collections.js";
 import { flushNotifications } from "./notifications.js";
-import { presentationEpochFeature, presentedFeature } from "./protocol.js";
+import { presentationEpochFeature, presentedFeature, queryCollectionsFeature } from "./protocol.js";
+import { evaluateMockQuery, type MockQueryCollection, type MockQueryLoad, type MockQuerySource } from "./mock-query.js";
+import { normalizeQuery, type QueryCollectionQuery } from "./query.js";
 
 /** A View's wire state: one member per state member, by wire name, encoded as on the wire. */
 export type MockState = Record<string, unknown>;
@@ -215,6 +217,12 @@ export interface MockViewDefinition {
   readonly can?: Readonly<Record<string, MockAvailability>>;
   /** Row keys of each keyed collection field, which `collection(field)` edits with indexed changes. */
   readonly collections?: Readonly<Record<string, (item: unknown) => string>>;
+  /**
+   * Query collections by member wire name (query-collections/1): their rows, which the mock filters, sorts and serves
+   * by range like a .NET row source, optionally with latency. The mock keeps the member's state (`query`, `total`,
+   * `version`); `query(member)` changes its rows and shows the loads it served.
+   */
+  readonly queries?: Readonly<Record<string, MockQuerySource>>;
   /** Wire names of checked fields (`write` and their `fields` versions). */
   readonly checkedFields?: readonly string[];
   /**
@@ -275,6 +283,8 @@ export interface MockView {
   pushFailure(failure: { readonly kind?: BridgeErrorKind; readonly message: string; readonly detail?: BridgeFailureDetail }): void;
   /** Edits a field declared in `collections`. */
   collection(field: string): MockCollection;
+  /** A query collection declared in `queries`. */
+  query(member: string): MockQueryCollection;
   /** Publishes the collection edits and updates made by `edit` as one frame. */
   batch(edit: () => void): void;
   /** Answers the next `times` requests of `kind` (and `member`) of this route with `failure`. */
@@ -377,7 +387,7 @@ const realSetTimeout = globalThis.setTimeout.bind(globalThis);
 const yieldToEventLoop = () => new Promise<void>(resolve => { realSetTimeout(resolve, 0); });
 const maximumRounds = 10_000;
 const mockImplementation = { name: "@runic-artifex/views/mock", version: viewsVersion };
-const mockFeatures: readonly string[] = [textSpliceFeature, presentationEpochFeature, presentedFeature];
+const mockFeatures: readonly string[] = [textSpliceFeature, presentationEpochFeature, presentedFeature, queryCollectionsFeature];
 
 const upperFirst = (value: string) => value.charAt(0).toUpperCase() + value.slice(1);
 const isRecord = (value: unknown): value is Record<string, unknown> => value !== null && typeof value === "object" && !Array.isArray(value);
@@ -488,7 +498,17 @@ interface MockRegisteredView {
   running: number;
   /** presented/1: the pending waits of `waitPresented`. */
   readonly presentWaits: Set<PresentWait>;
+  /** The query collections (query-collections/1): rows, loads, and the ordered rows of the current version. */
+  readonly queries: Map<string, MockQueryRecord>;
   handle: MockView;
+}
+
+interface MockQueryRecord {
+  readonly source: MockQuerySource;
+  rows: readonly unknown[];
+  readonly loads: MockQueryLoad[];
+  ordered: { readonly version: number; readonly rows: readonly unknown[] } | undefined;
+  handle: MockQueryCollection;
 }
 
 interface PresentWait {
@@ -751,6 +771,89 @@ export function createMockBridge(options: MockBridgeOptions = {}): MockBridge {
   function commit(view: MockRegisteredView, next: MockState): void {
     view.state = next;
     publish(view);
+  }
+
+  // query-collections/1: the member's published state, and its rows in the query's order.
+  const queryState = (view: MockRegisteredView, member: string) =>
+    view.state[member] as { readonly query: QueryCollectionQuery; readonly total: number | null; readonly version: number };
+  function orderedRows(view: MockRegisteredView, member: string): readonly unknown[] {
+    const record = view.queries.get(member)!;
+    const state = queryState(view, member);
+    if (record.ordered?.version !== state.version)
+      record.ordered = { version: state.version, rows: evaluateMockQuery(record.rows, state.query, record.source) };
+    return record.ordered.rows;
+  }
+  // A new version of the member: its query, rows or a refresh. Publishes the state with its new total.
+  function bumpQuery(view: MockRegisteredView, member: string, query: QueryCollectionQuery): void {
+    const record = view.queries.get(member)!;
+    const state = queryState(view, member);
+    const version = state.version + 1;
+    const rows = evaluateMockQuery(record.rows, query, record.source);
+    record.ordered = { version, rows };
+    commit(view, { ...view.state, [member]: { query, total: rows.length, version } });
+  }
+  function registerQuery(view: MockRegisteredView, member: string, source: MockQuerySource, state: Record<string, unknown>): void {
+    const query = normalizeQuery(source.query ?? {});
+    const record: MockQueryRecord = { source, rows: [...source.rows], loads: [], ordered: undefined, handle: undefined as unknown as MockQueryCollection };
+    record.handle = {
+      get query() { return queryState(view, member).query; },
+      get version() { return queryState(view, member).version; },
+      get total() { return orderedRows(view, member).length; },
+      get rows() { return record.rows; },
+      get loads() { return record.loads; },
+      view: () => orderedRows(view, member),
+      setRows(rows) {
+        record.rows = [...rows];
+        bumpQuery(view, member, queryState(view, member).query);
+      },
+      invalidate() { bumpQuery(view, member, queryState(view, member).query); },
+    };
+    view.queries.set(member, record);
+    if (state[member] === undefined)
+      state[member] = { query, total: evaluateMockQuery(record.rows, query, source).length, version: 1 };
+  }
+  // Waits for a query source's latency.
+  const queryLatency = (source: MockQuerySource) => source.latency ? bridge.sleep(source.latency) : Promise.resolve();
+
+  async function queryRequest(view: MockRegisteredView, kind: string, member: string | undefined, message: Record<string, unknown>): Promise<Reply> {
+    if (!connection.features.has(queryCollectionsFeature)) return invalidRequest(`${kind} needs the feature ${queryCollectionsFeature}.`);
+    const record = member === undefined ? undefined : view.queries.get(member);
+    if (member === undefined || !record) return invalidRequest(`${view.route} has no query collection ${String(member)}.`);
+    switch (kind) {
+      case "query-rows": {
+        const start = message["start"];
+        const count = message["count"];
+        if (!isSafe(start) || !isSafe(count)) return invalidRequest("The query-rows request has no start and count.");
+        if (count > 1_000) return failed("rejected", "A query-rows request reads at most 1000 rows.", { reason: "invalid-input" });
+        const version = queryState(view, member).version;
+        const rows = orderedRows(view, member);
+        record.loads.push({ start, count, version });
+        await queryLatency(record.source);
+        const page = rows.slice(start, start + count);
+        return ok({ version, total: rows.length, start, keys: page.map(record.source.key), rows: page });
+      }
+      case "query-set": {
+        let query: QueryCollectionQuery;
+        try {
+          query = normalizeQuery(message["query"] as never);
+          evaluateMockQuery([], query, record.source);
+          for (const filter of query.filters)
+            if (filter.op === "custom" && !record.source.custom?.[filter.field]) throw new RangeError(`No custom filter '${filter.field}'.`);
+        } catch (error) {
+          return failed("rejected", `The query of ${member} is not valid: ${error instanceof Error ? error.message : String(error)}`, { reason: "invalid-input" });
+        }
+        if (JSON.stringify(query) !== JSON.stringify(queryState(view, member).query)) bumpQuery(view, member, query);
+        return ok({ revision: view.revision });
+      }
+      default: {
+        const key = message["key"];
+        if (typeof key !== "string") return invalidRequest("The query-index request has no key.");
+        const version = queryState(view, member).version;
+        const index = orderedRows(view, member).findIndex(row => record.source.key(row) === key);
+        await queryLatency(record.source);
+        return ok({ version, index });
+      }
+    }
   }
 
   function collectionOf(view: MockRegisteredView, field: string): MockCollection {
@@ -1285,6 +1388,8 @@ export function createMockBridge(options: MockBridgeOptions = {}): MockBridge {
           }
         return ok({ registration: "ok" });
       }
+      case "query-rows": case "query-set": case "query-index":
+        return queryRequest(view, kind, member, message);
       case "interaction-reply": {
         const request = typeof message["requestId"] === "string" ? view.requests.get(message["requestId"]) : undefined;
         if (!request || request.presentation.id !== message["presentation"]) return ok({ result: "stale" });
@@ -1382,9 +1487,11 @@ export function createMockBridge(options: MockBridgeOptions = {}): MockBridge {
         route, definition, contract: definition.contract ?? `mock.${route}:mock`, fieldVersions: new Map(), presentations: new Map(),
         requests: new Map(), writes: new Map(), batching: false, pending: [], state, published: state, revision, textChanged: new Map(),
         // The first state begins the route's first epoch.
-        epoch: revision, renewing: false, running: 0, presentWaits: new Set(),
+        epoch: revision, renewing: false, running: 0, presentWaits: new Set(), queries: new Map(),
         handle: undefined as unknown as MockView,
       };
+      for (const [member, source] of Object.entries(definition.queries ?? {})) registerQuery(view, member, source, state);
+      view.published = view.state = { ...state };
       view.handle = {
         route,
         get state() { return view.state; },
@@ -1396,6 +1503,11 @@ export function createMockBridge(options: MockBridgeOptions = {}): MockBridge {
             error: { kind: failure.kind ?? "failed", message: failure.message, ...(failure.detail ? { detail: failure.detail } : {}) } });
         },
         collection: field => collectionOf(view, field),
+        query(member) {
+          const record = view.queries.get(member);
+          if (!record) throw new RangeError(`The mock View ${view.route} declares no query collection ${member}.`);
+          return record.handle;
+        },
         batch(edit) {
           if (view.batching) { edit(); return; }
           view.batching = true;

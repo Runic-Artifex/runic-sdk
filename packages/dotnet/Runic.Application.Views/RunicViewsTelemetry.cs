@@ -262,6 +262,20 @@ internal static partial class ViewsLog
             + "Change the collection in a model turn: for DynamicData, ObserveOn the window's scheduler (ReactiveSchedulers.For) before Bind.")]
     internal static partial void CollectionChangedOutsideModelTurn(ILogger logger, string model, string field, string route);
 
+    // query-collections/1 (1190-1199).
+    [LoggerMessage(EventId = 1190, EventName = "BridgeQueryRowsFailed", Level = LogLevel.Error,
+        Message = "Loading rows {Start} to {End} of query collection {Model}.{Member} on route {Route} failed with {ErrorType}.")]
+    internal static partial void QueryRowsFailed(ILogger logger, Exception exception, string model, string member, string route,
+        int start, int end, string errorType);
+
+    [LoggerMessage(EventId = 1191, EventName = "BridgeQueryIndexFailed", Level = LogLevel.Error,
+        Message = "Finding a row of query collection {Model}.{Member} on route {Route} failed with {ErrorType}.")]
+    internal static partial void QueryIndexFailed(ILogger logger, Exception exception, string model, string member, string route, string errorType);
+
+    [LoggerMessage(EventId = 1192, EventName = "BridgeQuerySetFailed", Level = LogLevel.Error,
+        Message = "Setting the query of query collection {Model}.{Member} on route {Route} failed with {ErrorType}.")]
+    internal static partial void QuerySetFailed(ILogger logger, Exception exception, string model, string member, string route, string errorType);
+
     [LoggerMessage(EventId = 1026, EventName = "WindowCloseUnacknowledged", Level = LogLevel.Debug,
         Message = "The window closed before {Pages} of its pages acknowledged the close.")]
     internal static partial void CloseUnacknowledged(ILogger logger, int pages);

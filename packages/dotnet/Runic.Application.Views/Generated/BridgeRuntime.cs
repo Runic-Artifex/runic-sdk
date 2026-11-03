@@ -85,6 +85,12 @@ public sealed class PropertyDescriptor<T>
     /// value; <see langword="null"/> for a read-only property. It throws like the setter.
     /// </summary>
     public Action<T, string>? TextSetter { get; init; }
+    /// <summary>
+    /// Writes one row of a <see cref="RunicQueryCollection{TRow, TKey}"/> property, whose rows a page reads with
+    /// <c>query-rows</c> (<c>query-collections/1</c>); <see langword="null"/> for any other property. <see cref="Get"/>
+    /// returns the collection.
+    /// </summary>
+    public Action<Utf8JsonWriter, object?>? QueryRowWriter { get; init; }
     /// <summary>Whether the browser may write the property.</summary>
     public bool CanWrite => _setter is not null;
     /// <summary>Reads the property value from <paramref name="vm"/>.</summary>
@@ -418,6 +424,8 @@ public partial class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBr
     private readonly Dictionary<string, PropertyDescriptor<T>> _settable = new(StringComparer.Ordinal);
     private readonly Dictionary<string, CheckedPropertyBinding> _checkedByMember = new(StringComparer.Ordinal);
     private readonly Dictionary<string, CommandDescriptor<T>> _commandsByMember = new(StringComparer.Ordinal);
+    // Query collections (query-collections/1) by wire name.
+    private readonly Dictionary<string, PropertyDescriptor<T>> _queryCollections = new(StringComparer.Ordinal);
     private readonly ICommand[] _subscribedCommands;
     private readonly string? _contractFingerprint;
     private readonly IDisposable[] _bindings;
@@ -521,6 +529,8 @@ public partial class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBr
         foreach (var property in properties.Where(property => property.CanWrite))
             _settable[property.WireName] = property;
         foreach (var command in commands) _commandsByMember[command.Member] = command;
+        foreach (var property in properties.Where(property => property.QueryRowWriter is not null))
+            _queryCollections[property.WireName] = property;
 
         var bindings = new List<IDisposable>();
         var subscribedCommands = new List<ICommand>();

@@ -40,6 +40,9 @@ export type {
   MockTypedOperation,
   MockTypedOperationHandler,
   MockTypedOperationOutcome,
+  MockTypedQueryCollection,
+  MockTypedQuerySource,
   MockTypedView,
 } from "./mock-typed.js";
+export type { MockQueryCollection, MockQueryLoad, MockQuerySource } from "./mock-query.js";
 export { installMockMenuBar, type MockMenuBar, type MockMenuBarOptions } from "./mock-menu-bar.js";

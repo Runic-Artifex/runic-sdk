@@ -18,6 +18,8 @@ import {
   type MockState,
   type MockView,
 } from "./mock-bridge.js";
+import type { MockQueryLoad } from "./mock-query.js";
+import type { QueryCollectionQuery, RunicQuery } from "./query.js";
 
 /** The wire form of a content reference in a mock state, such as `{ kind: "editor", id: "1" }`. */
 export interface MockReference<TKind extends string = string> {
@@ -99,6 +101,41 @@ export interface MockTypedCollection<TItem> {
   move(key: string, index: number): void;
 }
 
+/** The rows a typed mock serves for a query collection (query-collections/1). */
+export interface MockTypedQuerySource<TRow> {
+  /** The rows in the source's own order. */
+  readonly rows: readonly TRow[];
+  /**
+   * The wire key of a row. Generated mocks default it to the row's `id` or `key` member when the row has one of the
+   * collection's key type.
+   */
+  readonly key?: (row: TRow) => string;
+  /** Milliseconds each load takes, like a database: virtual time with `manual` scheduling. Defaults to 0. */
+  readonly latency?: number;
+  /** Custom filters by name: whether a row passes with the filter's `value`. */
+  readonly custom?: Readonly<Record<string, (row: TRow, value: unknown) => boolean>>;
+  /** The query the collection starts with. */
+  readonly query?: RunicQuery;
+}
+
+/** A query collection of a typed mock: its rows, and the loads the page asked for. */
+export interface MockTypedQueryCollection<TRow> {
+  readonly query: QueryCollectionQuery;
+  readonly version: number;
+  /** The rows that match the query. */
+  readonly total: number;
+  /** The rows in the source's order. */
+  readonly rows: readonly TRow[];
+  /** Every `query-rows` request the page sent, oldest first: what it loaded, and how much. */
+  readonly loads: readonly MockQueryLoad[];
+  /** The rows in the query's order. */
+  view(): readonly TRow[];
+  /** Replaces the rows and raises the version, as .NET's `Refresh()` after rows were added or removed. */
+  setRows(rows: readonly TRow[]): void;
+  /** Raises the version, as .NET's `Invalidate(key)` after rows changed in place. */
+  invalidate(): void;
+}
+
 /** An interaction that the producer asks the browser to handle. */
 export interface MockTypedInteraction<TInput, TOutput> {
   /** Whether an open client presentation currently handles it. */
@@ -162,6 +199,8 @@ export interface MockTypedViewSpec {
   readonly texts?: readonly string[];
   /** Keyed collections by wire name: a row codec and its key. */
   readonly collections?: Readonly<Record<string, FieldCodec & { key(item: never): string }>>;
+  /** Query collections by wire name: a row codec and, when the generator found one, its key. */
+  readonly queries?: Readonly<Record<string, FieldCodec & { key?(item: never): string }>>;
   /**
    * Setters by client method (`setTitle`): the member's wire name, and the client method of its checked write
    * (`writeTitle`) when it has one.
@@ -205,6 +244,8 @@ export interface MockTypedViewDefinition {
    */
   readonly resolveKey?: object;
   readonly operations?: object;
+  /** Query collections by wire name; the generated definition types them as {@link MockTypedQuerySource}. */
+  readonly queries?: object;
 }
 
 const upperFirst = (value: string) => value.charAt(0).toUpperCase() + value.slice(1);
@@ -324,6 +365,20 @@ export function mockTypedView(bridge: MockBridge, spec: MockTypedViewSpec, defin
     ...(spec.texts ? { texts: spec.texts } : {}),
     ...(spec.collections ? { collections: Object.fromEntries(Object.entries(spec.collections)
       .map(([field, codec]) => [field, (item: unknown) => codec.key(codec.decode(item) as never)])) } : {}),
+    ...(spec.queries ? { queries: Object.fromEntries(Object.entries(spec.queries).map(([member, codec]) => {
+      const source = (definition.queries as Readonly<Record<string, MockTypedQuerySource<unknown>>> | undefined)?.[member];
+      const custom = source?.custom;
+      const key = source?.key ?? codec.key as ((row: unknown) => string) | undefined;
+      if (!key) throw new TypeError(`The mock ${spec.kind} needs queries.${member}.key: its rows have no id or key member.`);
+      return [member, {
+        rows: (source?.rows ?? []).map(row => codec.encode(row)),
+        key: (row: unknown) => key(codec.decode(row)),
+        ...(source?.latency === undefined ? {} : { latency: source.latency }),
+        ...(source?.query === undefined ? {} : { query: source.query }),
+        ...(custom === undefined ? {} : { custom: Object.fromEntries(Object.entries(custom)
+          .map(([name, filter]) => [name, (row: unknown, value: unknown) => filter(codec.decode(row), value)])) }),
+      }];
+    })) } : {}),
     operations,
     ...(spec.contract ? { contract: spec.contract } : {}),
     streams: Object.values(spec.operations ?? {}).filter(plan => plan.stream).map(plan => plan.member),
@@ -350,6 +405,20 @@ export function mockTypedView(bridge: MockBridge, spec: MockTypedViewSpec, defin
       remove: key => raw.collection(field).remove(key),
       replace: (key, item) => raw.collection(field).replace(key, codec.encode(item)),
       move: (key, index) => raw.collection(field).move(key, index),
+    };
+  }
+  const queries: Record<string, MockTypedQueryCollection<unknown>> = {};
+  for (const [member, codec] of Object.entries(spec.queries ?? {})) {
+    const query = () => raw.query(member);
+    queries[member] = {
+      get query() { return query().query; },
+      get version() { return query().version; },
+      get total() { return query().total; },
+      get rows() { return query().rows.map(row => codec.decode(row)); },
+      get loads() { return query().loads; },
+      view: () => query().view().map(row => codec.decode(row)),
+      setRows: rows => query().setRows(rows.map(row => codec.encode(row))),
+      invalidate: () => query().invalidate(),
     };
   }
   const operationLog: Record<string, readonly MockTypedOperation<unknown, unknown, unknown>[]> = {};
@@ -395,6 +464,7 @@ export function mockTypedView(bridge: MockBridge, spec: MockTypedViewSpec, defin
     renew: () => raw.renew(),
     waitPresented: timeout => raw.waitPresented(timeout),
     collections,
+    queries,
     operations: operationLog,
     interactions,
   };

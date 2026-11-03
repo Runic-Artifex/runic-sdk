@@ -103,6 +103,13 @@ public static class BridgeContractShape
                 parts.Add($"content:{TypeName(model)}:{WireName(property)}:contract:{ContractFor(property) ?? "default"}:region:{TypeName(regionContent)}");
                 continue;
             }
+            // A query collection's wire value is {query, total, version}; its rows cross in query-rows replies.
+            if (QueryCollectionArguments(property.PropertyType) is { } query)
+            {
+                parts.Add($"query-collection:{TypeName(model)}:{WireName(property)}:key:{TypeName(query.Key)}");
+                AppendType(parts, query.Row, null, $"{model.Name}.{WireName(property)}.row", [], honorJsonIgnore);
+                continue;
+            }
             // A NavigationSelection slot's wire value is its SelectedIndex, a nullable number.
             if (IsNavigationSelection(property.PropertyType))
             {
@@ -269,6 +276,11 @@ public static class BridgeContractShape
     internal static Type? NavigationRegionContent(Type type) =>
         type.IsGenericType && type.GetGenericTypeDefinition() == typeof(NavigationRegion<>) ? type.GenericTypeArguments[0] : null;
     internal static bool IsNavigationSelection(Type type) => type == typeof(NavigationSelection);
+
+    // The row and key types of a RunicQueryCollection<TRow, TKey> property type, or null for another type.
+    internal static (Type Row, Type Key)? QueryCollectionArguments(Type type) =>
+        type.IsGenericType && type.GetGenericTypeDefinition() == typeof(RunicQueryCollection<,>)
+            ? (type.GenericTypeArguments[0], type.GenericTypeArguments[1]) : null;
     private static Type[] ContentModels(PropertyInfo property, Type owner, IReadOnlyList<Type> models) { var candidate = TryCollection(property.PropertyType, out var item) ? item! : property.PropertyType; return candidate == typeof(object) ? [] : models.Where(model => model != owner && candidate.IsAssignableFrom(model)).ToArray(); }
     private static PresentationView[] DiscoverViews(Assembly assembly) => LoadableTypes(assembly).Where(type => !type.IsAbstract && type.IsClass && type.IsPublic && !type.IsNested).Select(type => (ViewType: type, ModelType: ViewModelFor(type))).Where(item => item.ModelType is not null).Select(item => new PresentationView(item.ViewType, item.ModelType!, ContractFor(item.ViewType))).ToArray();
     private static Type? ViewModelFor(Type view) { for (var current = view.BaseType; current is not null; current = current.BaseType) if (current.IsGenericType && current.GetGenericTypeDefinition() == typeof(RunicView<>)) return current.GenericTypeArguments[0]; return null; }

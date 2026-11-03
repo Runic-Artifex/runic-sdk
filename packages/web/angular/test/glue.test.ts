@@ -4,7 +4,7 @@ import { TestBed } from "@angular/core/testing";
 import { BrowserTestingModule, platformBrowserTesting } from "@angular/platform-browser/testing";
 import { afterEach, beforeAll, describe, expect, test, expectTypeOf, vi } from "vitest";
 import {
-  injectBridgeConnection, injectCollectionViewport, injectCommand, injectLatestOperation, injectMenuBar, injectOperation, injectView, RunicViewOutlet,
+  injectBridgeConnection, injectCollectionViewport, injectCommand, injectQueryCollection, injectLatestOperation, injectMenuBar, injectOperation, injectView, RunicViewOutlet,
   ViewOutlet, type BridgeConnectionHandle, type MenuBarHandle, type LatestOperationHandle, type ViewRegistry,
 } from "../dist/esm/index.js";
 import * as root from "../dist/esm/index.js";
@@ -13,7 +13,8 @@ import {
   BridgeError, bridgeFailure, bridgeSuccess, type BridgeConnectionState, type BridgeOperation, type BridgeOperationStatus, type BridgeOutcome,
   type MenuBarMenu, type MenuBarRequest, type MenuBarState, type RunicBridgeClient,
 } from "@runic-artifex/views";
-import { connectView } from "@runic-artifex/views/generated";
+import { connectView, decodeQueryCollectionState, defineQueryCollection } from "@runic-artifex/views/generated";
+import type { QueryCollectionState } from "@runic-artifex/views";
 import { createMockBridge, installMockBridge, installMockMenuBar } from "@runic-artifex/views/mock";
 
 // Hoisted above the imports, so it sees the warnings Angular logs while the package's
@@ -178,6 +179,26 @@ describe("ViewOutlet", () => {
 
   test("injectCollectionViewport is a root export (graduated in 0.10)", () => {
     expect(typeof root.injectCollectionViewport).toBe("function");
+  });
+
+  test("injectQueryCollection loads the rows its container shows and scrolls to a key", async () => {
+    const bridge = installMockBridge(createMockBridge());
+    bridge.view("catalog", {
+      state: {},
+      queries: { rows: { rows: Array.from({ length: 10_000 }, (_, id) => ({ id, label: `row ${id}` })), key: row => String((row as { id: number }).id) } },
+    });
+    const client = await connectView<{ readonly rows: QueryCollectionState }>({ contract: "catalog:query", route: "catalog", members: { rows: decodeQueryCollectionState } });
+    const collection = client.queryCollection("rows", defineQueryCollection(wire => wire as { readonly id: number; readonly label: string }));
+    const element = document.createElement("div");
+    Object.defineProperty(element, "clientHeight", { configurable: true, value: 100 });
+    const container = signal<HTMLElement | null>(element);
+    const list = TestBed.runInInjectionContext(() => injectQueryCollection(container, () => collection, () => ({ estimateSize: 20, overscan: 0 })));
+    TestBed.tick();
+    for (let round = 0; round < 50 && !list.viewport().items.every(item => item.status === "loaded"); round++) await bridge.flush();
+    expect(list.viewport().items.map(item => item.row?.id)).toEqual([0, 1, 2, 3, 4, 5]);
+    expect(await list.scrollToKey("2500")).toBe(true);
+    expect(element.scrollTop).toBe(50_000);
+    client.dispose();
   });
 
   test("the deprecated RunicViewOutlet alias renders the same outlet", () => {
@@ -520,7 +541,8 @@ describe("injectBridgeConnection", () => {
     expect(() => injectBridgeConnection()).toThrow();
     expect(Object.keys(root).sort()).toEqual([
       "RunicViewOutlet", "ViewOutlet", "injectBridgeConnection", "injectCollectionViewport", "injectCommand", "injectField",
-      "injectLatestOperation", "injectMenuBar", "injectOperation", "injectTextField", "injectView", "injectViewResource", "onBridgeConnection",
+      "injectLatestOperation", "injectMenuBar", "injectOperation", "injectQueryCollection", "injectTextField", "injectView", "injectViewResource",
+      "onBridgeConnection",
     ]);
     // The connection API that useBridgeConnection wraps is re-exported, as the menu-bar types are (0.11).
     expect(root.onBridgeConnection).toBe(viewsOnBridgeConnection);

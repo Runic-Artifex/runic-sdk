@@ -3,7 +3,7 @@ import { emitBridgeDiagnostic, emitErrorDiagnostic } from "./diagnostics.js";
 import { BridgeError } from "./errors.js";
 import { bridgeFailure, bridgeSuccess, type BridgeOutcome } from "./outcome.js";
 import {
-  epochOf, isObject, presentationEpochFeature, presentedFeature, replyError, type Change, type Message, type Push, type Reply,
+  epochOf, isObject, presentationEpochFeature, presentedFeature, queryCollectionsFeature, replyError, type Change, type Message, type Push, type Reply,
 } from "./protocol.js";
 import { currentRuntime, errorMessage, sharedRuntimeFor, type SharedRuntime } from "./runtime.js";
 import { reportBridgeError, waitForBridge } from "./transport.js";
@@ -17,6 +17,7 @@ import { deferNotification, flushNotifications, nextFrame } from "./notification
 import type { BridgeCollections } from "./collections.js";
 import type { BridgeInteractionContext, BridgeInteractions, InteractionSession, InteractionSurface } from "./interactions.js";
 import type { BridgeOperationCodec, BridgeOperationRuntimeHandle, BridgeOperations, OperationScope } from "./operations.js";
+import { createQueryCollection, type QueryCollection, type QueryCollectionDefinition, type QueryCollectionState } from "./query.js";
 
 /** The framework-neutral surface every generated client shares. */
 export interface ViewClient<TState = unknown> {
@@ -150,6 +151,11 @@ export interface ViewConnection<TState> extends ViewClient<TState> {
   /** Returns the operation of `member` with the id `operation`, for example after the page reloaded. */
   recover<TResult, TFailure = never>(member: string, operation: string,
     codec: BridgeOperationCodec<TResult, TFailure>): Promise<BridgeOperationRuntimeHandle<TResult, TFailure>>;
+  /**
+   * The rows of the query collection `member` for this presentation (`query-collections/1`), disposed with the
+   * presentation. Each call creates another, with its own range.
+   */
+  queryCollection<TRow>(member: string, definition: QueryCollectionDefinition<TRow>): QueryCollection<TRow>;
 }
 
 /** The scope of an operation: its route's request channel and revision waits. Internal to the runtime. */
@@ -180,6 +186,10 @@ interface Lease {
   /** The epoch of `current` (presentation-epoch/1): what a scoped command of this presentation was issued for. */
   epoch: number | undefined;
   readonly listeners: Set<(state: unknown) => void>;
+  /** Runtime observers of the delivered state, such as query collections; they do not count as subscribers. */
+  readonly observers: Set<() => void>;
+  /** The presentation's query collections, disposed with it. */
+  readonly queries: Set<Disposable>;
   interactions: InteractionSession | undefined;
 }
 
@@ -607,6 +617,9 @@ class RouteEntry {
       for (const listener of [...lease.listeners]) {
         try { listener(exposed); } catch (error) { reportBridgeError(error, this.route); }
       }
+      for (const observer of [...lease.observers]) {
+        try { observer(); } catch (error) { reportBridgeError(error, this.route); }
+      }
     }
   }
 
@@ -762,7 +775,8 @@ async function connectRoute<TState>(options: ViewConnectOptions<TState>): Promis
     new Set(options.texts ?? []));
   if (!existing) runtime.routes.set(route, entry);
   const lease: Lease = {
-    id: randomId(), disposed: false, registered: false, current: undefined, epoch: undefined, listeners: new Set(), interactions: undefined,
+    id: randomId(), disposed: false, registered: false, current: undefined, epoch: undefined, listeners: new Set(), observers: new Set(),
+    queries: new Set(), interactions: undefined,
   };
   entry.presentations.add(lease);
 
@@ -790,6 +804,9 @@ async function connectRoute<TState>(options: ViewConnectOptions<TState>): Promis
     lease.disposed = true;
     lease.interactions?.dispose();
     lease.listeners.clear();
+    for (const query of [...lease.queries]) query[Symbol.dispose]();
+    lease.queries.clear();
+    lease.observers.clear();
     entry.presentations.delete(lease);
     if (lease.registered && runtime.connected) {
       // The producer also closes the presentation with the connection, so a closed transport is expected here.
@@ -971,6 +988,29 @@ async function connectRoute<TState>(options: ViewConnectOptions<TState>): Promis
       return operations().start(operationScope, member, operation, input, codec);
     }),
     recover: (member, operation, codec) => observed(route, () => operations().recover(operationScope, member, operation, codec)),
+    queryCollection<TRow>(member: string, definition: QueryCollectionDefinition<TRow>): QueryCollection<TRow> {
+      // query-collections/1: a producer that completed its hello without the feature does not know the request kinds.
+      const supported = () => {
+        const features = runtime.features;
+        if (features !== undefined && features.size > 0 && !features.has(queryCollectionsFeature))
+          throw new BridgeError("failed", `The .NET host does not implement ${queryCollectionsFeature}; use the Runic packages of one release.`, { route });
+      };
+      const collection = createQueryCollection<TRow>({
+        route, member,
+        state: () => (isObject(lease.current) ? lease.current[member] : undefined) as QueryCollectionState | undefined,
+        onState: observer => { lease.observers.add(observer); return () => { lease.observers.delete(observer); }; },
+        request: async message => { supported(); return request(message); },
+        setQuery: query => observed(route, async () => {
+          supported();
+          const reply = await request({ kind: "query-set", route, member, query });
+          if (!reply.ok) return failure(reply, "The query could not be set.");
+          await settled(reply);
+        }),
+      }, definition);
+      if (lease.disposed) collection[Symbol.dispose]();
+      else lease.queries.add(collection);
+      return collection;
+    },
   };
 }
 

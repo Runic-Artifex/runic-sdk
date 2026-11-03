@@ -509,6 +509,7 @@ export function useBridgeConnection(options: BridgeConnectionOptions = {}): Brid
 }
 
 export { useCollectionViewport, type CollectionViewportHandle } from "./viewport.js";
+export { useQueryCollection, type QueryCollectionHandle } from "./query.js";
 export { onBridgeConnection, type BridgeConnectionOptions, type BridgeConnectionState } from "@runic-artifex/views";
 export {
   FieldError,
