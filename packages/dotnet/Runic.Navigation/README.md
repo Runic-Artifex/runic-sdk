@@ -816,13 +816,20 @@ services.AddRunicNavigationRoutes(routes => routes
   `{name:bool}`. Values are percent-encoded in a route path and use the
   invariant culture. A path matches the first route, in registration order,
   whose segments and types match and whose content the region accepts.
+- A route path is at most 2048 characters and has no control character, NUL
+  included, also percent-encoded; another one matches nothing. A string
+  parameter is otherwise arbitrary text from a link, an address bar or a saved
+  file: treat it as untrusted, for example as a key to look up, never as a file
+  name or a query.
 - The map works both ways. It creates the target for a route path, and it names
   an entry: by the route the map created it for, or else by its content type
   and its target's input. `PushAsync<CustomerViewModel, int>(42)` is therefore
   `customers/42` without going through the map. The `Map<T>(template, target,
   values)` overload names an entry by its content instead.
 - `AddRunicNavigationRoutes` registers the singleton `INavigationRouteMap` and
-  `NavigationRouteMap`. The methods below resolve it from the navigator's
+  `NavigationRouteMap`. Every call adds its routes to the same map, in call
+  order, so a feature can register its own; a template registered twice throws
+  `ArgumentException`. The methods below resolve the map from the navigator's
   `Services`, or take one as an argument. `INavigationRouteMap` can be
   implemented by an application that keeps its own route table.
 
@@ -837,10 +844,21 @@ region. `region.GetPath()` and `selection.GetPath()` return one part.
 // When the window closes: next to the window placement, in the application's own store.
 File.WriteAllText(statePath, navigator.GetPath().ToJson());
 
-// After the window opened at the next start:
+// After the window opened at the next start, with saving switched off until it returns:
 var result = await navigator.RestoreAsync(NavigationPath.FromJson(File.ReadAllText(statePath)));
 foreach (var issue in result.Issues) logger.LogInformation("Not restored: {Location} ({Kind})", issue.Location, issue.Kind);
 ```
+
+- **Don't save during a restore.** An application that saves the path after
+  each navigation change must not save while `RestoreAsync` runs: an entry that
+  no longer maps, or a guard that refuses, would overwrite the saved path with
+  the part restored so far, and the rest would be lost. Save again once it
+  returns, or only after the user's next change when the restore was
+  incomplete, as the document tabs example does.
+- **Versions.** A saved path is data from an earlier run, maybe of another
+  version of the application. Store the application's version next to it, and
+  discard a path that another version wrote: its routes, and the order in which
+  owners create their regions, may differ.
 
 - Regions and selections are recorded by position: the regions each owner
   created, in creation order, leaving out a selection's regions, and its
@@ -863,14 +881,27 @@ foreach (var issue in result.Issues) logger.LogInformation("Not restored: {Locat
   `Add` in a model turn.
 - Restoring fails softly. `NavigationRestoreResult.Issues` reports each part
   left out, with its `Location` (such as `regions[0]/entries[2]`) and `Kind`,
-  and logs it as event 1220; the rest is restored. An entry whose route no
-  longer matches (`UnmappedRoute`) is left out with the regions below it, and
-  the entries above it are still pushed. A request that doesn't commit, such as
-  a guard that refuses (`NotCommitted`, with its `Outcome`), stops that region
-  only. Regions or selections the owner no longer has (`MissingRegion`,
-  `MissingSelection`), and tabs without `RestoreRegion`
-  (`MissingSelectionRegion`), are left out. Regions the path doesn't name are
-  left as they are.
+  and logs it as event 1220; the rest is restored.
+  - An entry whose route no longer matches (`UnmappedRoute`) stops its region:
+    the region keeps the entries below it, and those above it are left out
+    (`AboveUnmapped`), so a missing Customer 42 never leaves Invoice 7 directly
+    above Customers. `NavigationRestoreOptions.UnmappedEntries = Skip` leaves out
+    only the entry.
+  - A request that doesn't commit, such as a guard that refuses (`NotCommitted`,
+    with its `Outcome`), stops that region only.
+  - Regions or selections the owner no longer has (`MissingRegion`,
+    `MissingSelection`), and tabs without `RestoreRegion`
+    (`MissingSelectionRegion`), are left out. Regions the path doesn't name are
+    left as they are.
+  - A restore is bounded: at most `MaximumEntriesPerRegion` entries of a region
+    and `MaximumRegionsPerSelection` tabs of a selection, 256 each by default;
+    the rest is `LimitExceeded`.
+  - A tab that `RestoreRegion` created and that nothing could be restored into,
+    or that `Add` refused, is discarded, so it isn't saved as an extra region.
+    An application that creates a tab and then doesn't add it, such as when a
+    link's page refuses, discards it with `navigator.DiscardRegionAsync(tab)`.
+- `NavigationRestoreOptions` carries the route map (`Routes`), `UnmappedEntries`
+  and the bounds for `RestoreAsync` and the region and selection restores.
 - `NavigationPath.ToJson` and `FromJson` read and write a stable format
   without reflection, so they work with trimming and NativeAOT. `FromJson`
   throws `FormatException` for a text that isn't a path, a newer `version`, or
@@ -892,7 +923,11 @@ route matches (event 1221):
 **Deep links.** `NavigationRouteLinks.TryGetRoute(uri, schemes, out route)`
 reads the route of a URL with the application's scheme (`myapp://invoice/7`
 and `myapp:invoice/7` give `invoice/7`) or, with `webLinkHosts`, of an `https`
-link of the application's hosts; it drops the query and the fragment. Route
+link of the application's hosts; it drops the query and the fragment, and
+refuses routes longer than 2048 characters or with control characters. `Uri`
+lowercases the host of `myapp://Invoice/7` and converts it to its IDN
+(`xn--…`) form, so a string parameter in the first segment arrives changed:
+start routes with a literal, or use `myapp:` links without `//`. Route
 the open requests of
 [`ApplicationInstance.CreateOpenRequests`](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Platform.Runtime/README.md#opening-files-and-urls),
 which include the URLs of later launches that a second instance forwards, and

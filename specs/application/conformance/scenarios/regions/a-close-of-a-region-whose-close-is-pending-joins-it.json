@@ -30,6 +30,7 @@
     {"mutate":[{"op":"holdGuard"}]},
     {"call":{"id":"close","op":"region","route":"tabs","member":"documents","action":"close","key":"3"}},
     {"send":{"kind":"region","route":"tabs","member":"documents","action":"close","key":"3"},"id":"close-request"},
+    {"expect":{"model":{"asks":1}},"note":"Waits until the close asked its guard, so the next request finds the close pending."},
     {"call":{"id":"close-again","op":"region","route":"tabs","member":"documents","action":"close","key":"3"}},
     {"send":{"kind":"region","route":"tabs","member":"documents","action":"close","key":"3"},"id":"close-again-request"},
     {"mutate":[{"op":"settleGuard","allow":true}]},

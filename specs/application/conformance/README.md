@@ -89,10 +89,13 @@ Each step has one action. `role` limits a step to one runner; `connection` names
 | `advance` | advances the virtual clock by that many milliseconds | the same |
 | `delivery` | `hold`: the transport stops taking pushes after the one being delivered; `release`: it takes them again | skips it |
 | `closeWindow` | starts the window's close with `timeout` milliseconds and names it `id` ([window close](../README.md#window-close)) | skips it |
-| `expect` | checks `model`, `presented` or `closed` | checks `state`, `call`, `operation`, `diagnostics`, `notifications` or `connection` |
+| `expect` | checks `model`, `presented` or `closed`; a `model` expectation waits until it matches | checks `state`, `call`, `operation`, `diagnostics`, `notifications` or `connection` |
 
 A `receive` step waits until the expected message is available, up to the runner's own timeout; time in the scenario
-passes only through `advance`.
+passes only through `advance`. A producer runner's `expect` with `model` waits the same way: it reads the model again
+until every member matches, up to the same timeout (scaled like the runner's other timeouts, such as by
+`RUNIC_TEST_TIMEOUT_SCALE` in the .NET runner). A scenario uses it to wait for work the producer does on its own, such as
+a guard that a request asks, before its next step.
 
 Where the protocol leaves the order of messages open, such as a reply and the frame or reply of a request admitted
 after it ([reply order](../README.md#reply-order)), the steps mark them with `unordered: true`. The `receive` steps with

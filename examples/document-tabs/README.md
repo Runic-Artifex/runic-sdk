@@ -43,7 +43,10 @@ details. See
   `DocumentsViewModel` saves `navigator.GetPath()` as JSON in the user's local
   application data, shortly after and once for a burst of changes. Saving on
   change works however the window ends: CS-WebUI can't ask the application
-  before a browser window closes. At the next start, `RestoreNavigationAsync` reopens every tab with its back
+  before a browser window closes. Nothing is saved while
+  `RestoreNavigationAsync` runs, so a page that no longer has a route doesn't
+  overwrite the saved tabs. A tab whose page couldn't be opened is discarded
+  (`DiscardRegionAsync`) rather than left as an empty region. At the next start, `RestoreNavigationAsync` reopens every tab with its back
   stack and the selected tab. The selection's `RestoreRegion` creates the empty
   tabs the path restores into. The example keeps documents in memory, so a
   reopened document starts empty; an application reads it from its own store.

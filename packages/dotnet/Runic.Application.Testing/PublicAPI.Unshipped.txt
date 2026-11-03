@@ -312,7 +312,6 @@ Runic.Application.Testing.RunicNavigationRestore.Result.init -> void
 Runic.Application.Testing.RunicNavigationRestore.RunicNavigationRestore(Runic.Navigation.NavigationRestoreResult! Result, string! Saved, string! Restored) -> void
 Runic.Application.Testing.RunicNavigationRestore.Saved.get -> string!
 Runic.Application.Testing.RunicNavigationRestore.Saved.init -> void
-static Runic.Application.Testing.RunicNavigationPathTesting.RestorePathAsync(this Runic.Navigation.RunicNavigator! navigator, string! saved, Runic.Navigation.INavigationRouteMap? routes = null, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<Runic.Application.Testing.RunicNavigationRestore!>!
 static Runic.Application.Testing.RunicNavigationPathTesting.SavePath(this Runic.Navigation.RunicNavigator! navigator, Runic.Navigation.INavigationRouteMap? routes = null) -> string!
 static Runic.Application.Testing.RunicNavigationRestore.operator !=(Runic.Application.Testing.RunicNavigationRestore? left, Runic.Application.Testing.RunicNavigationRestore? right) -> bool
 static Runic.Application.Testing.RunicNavigationRestore.operator ==(Runic.Application.Testing.RunicNavigationRestore? left, Runic.Application.Testing.RunicNavigationRestore? right) -> bool
@@ -347,3 +346,4 @@ static Runic.Application.Testing.RunicNavigationPathPush.operator !=(Runic.Appli
 static Runic.Application.Testing.RunicNavigationPathPush.operator ==(Runic.Application.Testing.RunicNavigationPathPush? left, Runic.Application.Testing.RunicNavigationPathPush? right) -> bool
 static Runic.Application.Testing.RunicNavigationReply.operator !=(Runic.Application.Testing.RunicNavigationReply? left, Runic.Application.Testing.RunicNavigationReply? right) -> bool
 static Runic.Application.Testing.RunicNavigationReply.operator ==(Runic.Application.Testing.RunicNavigationReply? left, Runic.Application.Testing.RunicNavigationReply? right) -> bool
+static Runic.Application.Testing.RunicNavigationPathTesting.RestorePathAsync(this Runic.Navigation.RunicNavigator! navigator, string! saved, Runic.Navigation.NavigationRestoreOptions? options = null, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<Runic.Application.Testing.RunicNavigationRestore!>!

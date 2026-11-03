@@ -39,16 +39,16 @@ public static class RunicNavigationPathTesting
     /// </summary>
     /// <param name="navigator">The navigator of the window after the restart.</param>
     /// <param name="saved">The saved JSON.</param>
-    /// <param name="routes">The route map, or <see langword="null"/> for the navigator's registered one.</param>
+    /// <param name="options">The restore's options, such as its route map; the defaults without them.</param>
     /// <param name="cancellationToken">Cancels the restore.</param>
     public static async Task<RunicNavigationRestore> RestorePathAsync(this RunicNavigator navigator, string saved,
-        INavigationRouteMap? routes = null, CancellationToken cancellationToken = default)
+        NavigationRestoreOptions? options = null, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(navigator);
         ArgumentNullException.ThrowIfNull(saved);
-        var result = await navigator.RestoreAsync(NavigationPath.FromJson(saved), routes, cancellationToken).ConfigureAwait(false);
+        var result = await navigator.RestoreAsync(NavigationPath.FromJson(saved), options, cancellationToken).ConfigureAwait(false);
         await navigator.WhenIdleAsync(cancellationToken).ConfigureAwait(false);
-        return new RunicNavigationRestore(result, saved, navigator.GetPath(routes).ToJson());
+        return new RunicNavigationRestore(result, saved, navigator.GetPath(options?.Routes).ToJson());
     }
 }
 

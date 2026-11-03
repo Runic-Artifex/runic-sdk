@@ -234,7 +234,11 @@ public sealed record NavigationRestoreIssue(NavigationRestoreIssueKind Kind, str
 /// <remarks>Later releases can add values.</remarks>
 public enum NavigationRestoreIssueKind
 {
-    /// <summary>No route of the map matches the entry's route for the region, or the entry had no route. The entry and the regions below it are left out; the entries above it are restored.</summary>
+    /// <summary>
+    /// No route of the map matches the entry's route for the region, or the entry had no route. The entry and the regions
+    /// below it are left out. By default the entries above it are left out too (<see cref="AboveUnmapped"/>); with
+    /// <see cref="NavigationUnmappedEntries.Skip"/> they are restored.
+    /// </summary>
     UnmappedRoute,
 
     /// <summary>The owner has fewer regions than the path; the region and its entries are left out.</summary>
@@ -254,4 +258,64 @@ public enum NavigationRestoreIssueKind
     /// region keeps what was restored before it, and the rest of the region is left out.
     /// </summary>
     NotCommitted,
+
+    /// <summary>
+    /// The entries above an <see cref="UnmappedRoute"/> entry, from the <c>Location</c>'s index on, such as
+    /// <c>regions[0]/entries[3..]</c>, are left out, because a page above a missing one may depend on it
+    /// (<see cref="NavigationUnmappedEntries.Stop"/>).
+    /// </summary>
+    AboveUnmapped,
+
+    /// <summary>
+    /// A region has more entries than <see cref="NavigationRestoreOptions.MaximumEntriesPerRegion"/>, or a selection more
+    /// regions than <see cref="NavigationRestoreOptions.MaximumRegionsPerSelection"/>; those from the <c>Location</c>'s
+    /// index on, such as <c>regions[0]/entries[256..]</c>, are left out.
+    /// </summary>
+    LimitExceeded,
+}
+
+/// <summary>What <see cref="RunicNavigator.RestoreAsync"/> does with an entry whose route no route of the map matches.</summary>
+public enum NavigationUnmappedEntries
+{
+    /// <summary>
+    /// The region stops at the entry: it keeps the entries below it, and the entries above it are left out
+    /// (<see cref="NavigationRestoreIssueKind.AboveUnmapped"/>), so a missing Customer 42 doesn't leave Invoice 7 directly
+    /// above Customers. The default.
+    /// </summary>
+    Stop,
+
+    /// <summary>The entry is left out and the entries above it are restored.</summary>
+    Skip,
+}
+
+/// <summary>Configures <see cref="RunicNavigator.RestoreAsync"/> and the region and selection restores.</summary>
+/// <remarks>
+/// A saved path is application data from an earlier run, possibly of another version of the application. Store the
+/// application's version next to the path, and discard a path that another version wrote rather than restoring it: its
+/// routes, and the order in which owners create their regions, may differ.
+/// </remarks>
+public sealed record NavigationRestoreOptions
+{
+    internal static readonly NavigationRestoreOptions Default = new();
+
+    /// <summary>Gets the route map, or <see langword="null"/> (the default) for the <see cref="INavigationRouteMap"/> of the navigator's services.</summary>
+    public INavigationRouteMap? Routes { get; init; }
+
+    /// <summary>Gets what an entry that no route matches does; <see cref="NavigationUnmappedEntries.Stop"/> by default.</summary>
+    public NavigationUnmappedEntries UnmappedEntries { get; init; }
+
+    /// <summary>Gets how many entries of one region are restored at most; 256 by default. Later ones are left out.</summary>
+    public int MaximumEntriesPerRegion { get; init; } = 256;
+
+    /// <summary>Gets how many regions of one selection, such as tabs, are restored at most; 256 by default. Later ones are left out.</summary>
+    public int MaximumRegionsPerSelection { get; init; } = 256;
+
+    internal static NavigationRestoreOptions Check(NavigationRestoreOptions? options)
+    {
+        if (options is null) return Default;
+        ArgumentOutOfRangeException.ThrowIfLessThan(options.MaximumEntriesPerRegion, 1, nameof(options));
+        ArgumentOutOfRangeException.ThrowIfLessThan(options.MaximumRegionsPerSelection, 1, nameof(options));
+        if (!Enum.IsDefined(options.UnmappedEntries)) throw new ArgumentOutOfRangeException(nameof(options), options.UnmappedEntries, "Unknown value.");
+        return options;
+    }
 }
