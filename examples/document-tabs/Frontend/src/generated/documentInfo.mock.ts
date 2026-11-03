@@ -27,7 +27,7 @@ export interface DocumentInfoMock extends MockTypedView<DocumentInfoMockState, D
 const spec: MockTypedViewSpec = {
   kind: "documentInfo",
   route: "documentInfo",
-  contract: "DocumentTabs.DocumentInfoViewModel:2AE7F6CBE05BF030A260C84791B0772D21F754BD03B350109E698429E9FFFDC8",
+  contract: "DocumentTabs.DocumentInfoViewModel:FAB9C7F7B5D35F6E6EE2B5F4A471B8FE01842D3EC58A61B71744ABAEDEC402C5",
   fields: {
     title: { encode: (value: unknown) => { const typed = value as string; return typed; }, decode: (wire: unknown) => bridgeWire.string(wire) },
     words: { encode: (value: unknown) => { const typed = value as number; return typed; }, decode: (wire: unknown) => bridgeWire.integer(wire, -2147483648, 2147483647) },

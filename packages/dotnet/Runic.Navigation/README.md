@@ -792,6 +792,141 @@ entry's scoped dependencies would silently differ from the navigator's. The
 navigator can't tell the two providers apart. `AddRunicNavigation()` leaves
 it off; a window scope already bounds those dependencies.
 
+### Routes, saved paths and deep links
+
+A route map names pages with route paths such as `customers/42/invoices/7`
+(since 0.16). With it the navigator saves its state as a `NavigationPath`,
+rebuilds it after a restart, and opens deep links. Register it once, for both
+ReactiveUI and CommunityToolkit ViewModels:
+
+```csharp
+services.AddRunicNavigationRoutes(routes => routes
+    .Map<CustomerListViewModel>("customers")                       // Create<T>()
+    .Map<CustomerViewModel, int>("customers/{id:int}")              // Create<T, int>(id)
+    .Map<InvoiceViewModel, InvoiceRef>("customers/{id:int}/invoices/{invoice:int}",
+        values => new InvoiceRef(values.GetInt32("id"), values.GetInt32("invoice")),
+        invoice => new NavigationRouteValues().Set("id", invoice.Customer).Set("invoice", invoice.Invoice))
+    .Map<HomeViewModel>("home",                                     // any target, such as a borrowed page
+        (services, _) => NavigationTarget.Borrow(services.GetRequiredService<HomeViewModel>()),
+        _ => new NavigationRouteValues()));
+```
+
+- A template is literal segments, compared without regard to case, and
+  parameters `{name}` (a string), `{name:int}`, `{name:long}`, `{name:guid}` or
+  `{name:bool}`. Values are percent-encoded in a route path and use the
+  invariant culture. A path matches the first route, in registration order,
+  whose segments and types match and whose content the region accepts.
+- The map works both ways. It creates the target for a route path, and it names
+  an entry: by the route the map created it for, or else by its content type
+  and its target's input. `PushAsync<CustomerViewModel, int>(42)` is therefore
+  `customers/42` without going through the map. The `Map<T>(template, target,
+  values)` overload names an entry by its content instead.
+- `AddRunicNavigationRoutes` registers the singleton `INavigationRouteMap` and
+  `NavigationRouteMap`. The methods below resolve it from the navigator's
+  `Services`, or take one as an argument. `INavigationRouteMap` can be
+  implemented by an application that keeps its own route table.
+
+**Saving and restoring.** `navigator.GetPath()` returns the window's
+navigation as a serializable `NavigationPath`: every region and selection that
+no entry owns, each region's entries with their routes, and below each entry the
+regions and selections its content owns, with each selection's selected
+region. `region.GetPath()` and `selection.GetPath()` return one part.
+`RestoreAsync(path)` rebuilds it:
+
+```csharp
+// When the window closes: next to the window placement, in the application's own store.
+File.WriteAllText(statePath, navigator.GetPath().ToJson());
+
+// After the window opened at the next start:
+var result = await navigator.RestoreAsync(NavigationPath.FromJson(File.ReadAllText(statePath)));
+foreach (var issue in result.Issues) logger.LogInformation("Not restored: {Location} ({Kind})", issue.Location, issue.Kind);
+```
+
+- Regions and selections are recorded by position: the regions each owner
+  created, in creation order, leaving out a selection's regions, and its
+  selections. Region-collection tabs are recorded by position too, because
+  their keys don't survive a restart. A path holds no entry ids or content, so
+  it stays valid while the application creates its regions in the same order.
+- `RestoreAsync` reconciles each region with the path through ordinary
+  requests, so guards, `INavigationInitialize`, `INavigationAware` and arrival
+  hooks run as for any navigation. The entries whose routes already match from
+  the bottom stay; then `BackToAsync` the last of them, or `ResetAsync` with the
+  path's first entry when none matches, or `ClearAsync` for an empty region;
+  then the remaining entries are pushed one at a time. Two entries without a
+  route match only at the bottom, so a region's own unrouted root page, such as
+  a borrowed home page, stays. Each entry's regions and selections are restored
+  after the entry is in place, before the entry above it is pushed.
+- A selection restores its regions by position and then selects the saved
+  one. A region collection, whose tabs the application opens at run time, gets
+  the missing tabs from `NavigationSelectionOptions.RestoreRegion`, a function
+  that returns a new empty region of the owner; restored tabs are added with
+  `Add` in a model turn.
+- Restoring fails softly. `NavigationRestoreResult.Issues` reports each part
+  left out, with its `Location` (such as `regions[0]/entries[2]`) and `Kind`,
+  and logs it as event 1220; the rest is restored. An entry whose route no
+  longer matches (`UnmappedRoute`) is left out with the regions below it, and
+  the entries above it are still pushed. A request that doesn't commit, such as
+  a guard that refuses (`NotCommitted`, with its `Outcome`), stops that region
+  only. Regions or selections the owner no longer has (`MissingRegion`,
+  `MissingSelection`), and tabs without `RestoreRegion`
+  (`MissingSelectionRegion`), are left out. Regions the path doesn't name are
+  left as they are.
+- `NavigationPath.ToJson` and `FromJson` read and write a stable format
+  without reflection, so they work with trimming and NativeAOT. `FromJson`
+  throws `FormatException` for a text that isn't a path, a newer `version`, or
+  one nested deeper than 32 levels or with more than 10,000 nodes. The SDK keeps
+  no settings store: the application decides where the path lives.
+
+**Opening a route.** `region.OpenRouteAsync(route, mode)` opens a route path
+from a deep link, a notification or an address bar. It returns the
+request's `NavigationResult<object>`, or `null` without navigating when no
+route matches (event 1221):
+
+| `NavigationRouteOpen` | Effect |
+| --- | --- |
+| `Push` (default) | Pushes the page; when the current page has that route already, nothing changes. |
+| `Replace`, `Reset` | As `ReplaceAsync` and `ResetAsync`. |
+| `BackToOrPush` | Goes back to the page with that route when the history has one, and pushes it otherwise. |
+| `Stack` | Makes the history the route's prefixes that are routes, then the route: `customers/42/invoices/7` gives Customers, Customer 42 and Invoice 7. An unrouted bottom page stays, and pages already in place stay, as for `RestoreAsync`. |
+
+**Deep links.** `NavigationRouteLinks.TryGetRoute(uri, schemes, out route)`
+reads the route of a URL with the application's scheme (`myapp://invoice/7`
+and `myapp:invoice/7` give `invoice/7`) or, with `webLinkHosts`, of an `https`
+link of the application's hosts; it drops the query and the fragment. Route
+the open requests of
+[`ApplicationInstance.CreateOpenRequests`](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Platform.Runtime/README.md#opening-files-and-urls),
+which include the URLs of later launches that a second instance forwards, and
+the `ActivationUri` of a notification's
+[`Activated`](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Platform/README.md)
+event, to the window that shows them:
+
+```csharp
+// Right after ApplicationInstance.ClaimAsync made this process the running instance.
+var opens = ApplicationInstance.CreateOpenRequests(new DesktopOpenOptions(["myapp"]), instance, launch);
+opens.Opened += (_, request) => _ = OpenLinksAsync(request.Items);
+notifications.Activated += (_, activation) =>
+{
+    if (activation.ActivationUri is { } link) _ = OpenLinksAsync([link]);
+};
+
+async Task OpenLinksAsync(IEnumerable<Uri> links)
+{
+    foreach (var link in links)
+        if (NavigationRouteLinks.TryGetRoute(link, ["myapp"], out var route))
+            await shell.Main.OpenRouteAsync(route, NavigationRouteOpen.Stack); // the window's region, from any thread
+}
+```
+
+- A link is untrusted input: any program can open the application's scheme,
+  and an untrusted notification activation can come from any process on Linux.
+  Only the map's routes open, with typed values; check that the record a route
+  names exists, and confirm anything destructive in the page that opens.
+- Open the window first when none is open (`IRunicWindowService.OpenWindowAsync`),
+  then open the route in its region. Requests may come from any thread.
+- The [document tabs example](https://github.com/Runic-Artifex/runic-sdk/tree/main/examples/document-tabs)
+  saves and restores its tabs and opens `document-tabs://documents/2/info`
+  links from the command line, a second instance and a notification.
+
 ### Presenting regions
 
 A host presents a region's `Current`. In Runic.Application.Views, a get-only
@@ -1261,17 +1396,21 @@ public async Task ConfirmCompletesTheRequest()
 | 1075 | `NavigationEntryNotificationFailed` | Error | A `NavigationEntryContext.StateChanged` handler or an `INavigationAware` method throws; the other handlers still run, and the change stands. `Notification` is `StateChanged`, `OnNavigatedTo` or `OnNavigatedFrom`. | `Region`, `RegionId`, `Operation`, `EntryType`, `Notification`, `ErrorType` |
 | 1076 | `NavigationArrivalFailed` | Error | An `INavigationArrived` or `INavigationArrived<TInput>` hook throws; the commit stands and reports `Arrival = Failed`. | `Region`, `RegionId`, `Operation`, `EntryType`, `ErrorType` |
 | 1077 | `NavigationContentReleaseOverdue` | Warning | `DisposeAsync` stopped waiting after `CloseTimeout` for work that a presentation keeps for retired content (`INavigationPresentation.ForgetAsync`), such as a Runic Views operation declared `RunicOperationRetirement.Drain`; the content, its entry scope and its lease are released when that work ends. | `Region`, `RegionId`, `EntryType` |
+| 1220 | `NavigationRestoreSkipped` | Information | `RestoreAsync` left out a part of the path (see [Routes, saved paths and deep links](#routes-saved-paths-and-deep-links)). | `Location`, `Kind` |
+| 1221 | `NavigationRouteUnmatched` | Debug | `OpenRouteAsync` got a route path that no route matches for the region. | `Region`, `RegionId` |
 
 Errors and warnings carry the exception. Rejections, supersessions, joined Backs and
 dismissed results log at Debug. The properties are `Region` (the `TContent`
 type name, or `NavigationSelection` for a selection's request), `RegionId` (a
 per-navigator number that tells apart regions with the same `TContent`, and
 selections), `Operation` (`Select`, or `Clear` for `RemoveAsync`), `EntryType`, `Step`, `Reason`, `Property`
-(event 1063, the region property whose handler threw), `Notification` (event 1075)
+(event 1063, the region property whose handler threw), `Notification` (event 1075),
+`Location` and `Kind` (event 1220: where in the path, such as
+`regions[0]/entries[2]`, and the `NavigationRestoreIssueKind`)
 and `ErrorType`, never
-values.
+values or routes.
 
-- Events 1060-1077 use the category `Runic.Navigation`
+- Events 1060-1077, 1220 and 1221 use the category `Runic.Navigation`
   (`RunicNavigator.LogCategory`), from `RunicNavigatorOptions.LoggerFactory`
   or the scope's `ILoggerFactory` with `AddRunicNavigation()`.
 - Events 1030-1033 use the logger of the `RunicModelContext`:
@@ -1285,5 +1424,6 @@ values.
 
 Navigation reserves events 1060-1079: 1060-1069 for transitions and cleanup,
 and 1070-1079 for results and later navigation events, of which 1077-1079 are
-not used yet. Events 1044-1049 are reserved for the ReactiveUI navigation
-adapter.
+not used yet. Events 1220-1229 are for routes and navigation paths, of which
+1222-1229 are not used yet. Events 1044-1049 are reserved for the ReactiveUI
+navigation adapter.

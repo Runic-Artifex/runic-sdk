@@ -49,6 +49,12 @@
       "runic.platform": {
         "type": "Project"
       },
+      "runic.platform.runtime": {
+        "type": "Project",
+        "dependencies": {
+          "Runic.Platform": "[0.15.1, )"
+        }
+      },
       "CsWebUi": {
         "type": "CentralTransitive",
         "requested": "[2.5.0-beta.4.8, 3.0.0)",
