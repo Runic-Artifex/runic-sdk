@@ -1,2 +1,4 @@
 #nullable enable
 const Runic.Application.Views.CsWebUi.RunicCsWebUiHost.OwnerUnsupportedCode = "window-owner-unsupported" -> string!
+Runic.Application.Views.CsWebUi.RunicCsWebUiHostOptions.MaximumUploadBytes.get -> long?
+Runic.Application.Views.CsWebUi.RunicCsWebUiHostOptions.MaximumUploadBytes.init -> void

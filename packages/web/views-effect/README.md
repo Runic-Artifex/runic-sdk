@@ -65,6 +65,10 @@ const program = Effect.gen(function* () {
 | `catchCase(effect, handlers)` | `Effect<A \| …, E \| …, R \| …>` | Handles every `$case` of a declared `[RunicUnion]` failure in the error channel; a missing case is a type error. |
 | `viewportChanges(controller)` | `Stream<CollectionViewport>` | The rows a `createCollectionViewportController` requests, as a stream. |
 | `followViewport(controller, request)` | `Effect<void, E, R>` | Sends each new row range to .NET and interrupts the request for a range the user scrolled past. |
+| `queryCollectionChanges(collection)` | `Stream<QueryCollectionSnapshot<T>>` | The rows a [query collection](https://github.com/Runic-Artifex/runic-sdk/tree/main/packages/web/views#query-collections) shows for its range: the current snapshot, then each change, latest only. |
+| `queryViewportChanges(controller)` | `Stream<QueryViewport<T>>` | The layout of a `createQueryViewportController` with variable row heights, which loads the rows while the stream runs. |
+| `setQuery(collection, query)` | `Effect<void, ViewError>` | Changes a query collection's sort and filter (ViewModel state every presentation shares). |
+| `indexOfKey(collection, key)` | `Effect<number \| undefined, ViewError>` | The position of a key in the current query, to scroll a search result into view. |
 | `createEffectAction(program, { runFork? })` | `EffectAction & AsyncDisposable` | A latest-wins runner with `status`, `pending`, `value`, `error` and `cause`, for any UI framework. |
 | `fromBridgeError(error)` | `ViewError` | Maps a `BridgeError` from plain code. |
 
@@ -185,6 +189,29 @@ apply, or the transport reconnects, the runtime re-reads the snapshot and the
 stream receives it as an ordinary state; the stream does not fail. Read
 failures of that re-read are reported through `onBridgeDiagnostic` from
 `@runic-artifex/views`.
+
+### View requests
+
+`client.requests.<name>.handle(handler)` of a generated client registers the
+handler of a ViewModel's `ViewRequest<T>` and returns the function that removes
+it, so `Effect.acquireRelease` keeps it for the scope that connected the client:
+
+```ts
+const program = Effect.gen(function* () {
+  const editor = yield* connect(connectEditor);
+  yield* Effect.acquireRelease(
+    Effect.sync(() => editor.requests.focus.handle(({ member }) => focusField(member))),
+    remove => Effect.sync(remove),
+  );
+  yield* Effect.never;
+}).pipe(Effect.scoped);
+```
+
+The handler is a plain function: it runs once the page painted the state the
+request was raised with, and its `signal` aborts when it is removed, the client
+is disposed or the connection is lost. To run an Effect from it, fork it with
+the runtime the application uses. A request is never replayed; see
+[View requests](https://github.com/Runic-Artifex/runic-sdk/tree/main/packages/web/views#view-requests).
 
 ## Framework helpers
 

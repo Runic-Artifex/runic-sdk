@@ -7,7 +7,9 @@ use std::time::Duration;
 use axum::http::{HeaderMap, HeaderValue, StatusCode, header};
 use bytes::Bytes;
 use futures_util::{SinkExt, StreamExt};
-use runic_server::{Body, Handler, MessageKind, RequestHead, Server, ServerConfig, WebSocketClose, WriteOutcome};
+use runic_server::{
+    Body, BodyRead, Handler, MessageKind, RequestHead, Server, ServerConfig, WebSocketClose, WriteOutcome,
+};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
 use tokio::sync::mpsc;
@@ -40,6 +42,11 @@ enum Event {
     Completed {
         token: u64,
         accepted: bool,
+    },
+    Received {
+        token: u64,
+        data: Option<Vec<u8>>,
+        failed: bool,
     },
 }
 
@@ -78,6 +85,14 @@ impl Handler for Recorder {
     }
     fn completed(&self, token: u64, accepted: bool) {
         let _ = self.0.lock().unwrap().send(Event::Completed { token, accepted });
+    }
+    fn received(&self, token: u64, read: BodyRead<'_>) {
+        let (data, failed) = match read {
+            BodyRead::Data(data) => (Some(data.to_vec()), false),
+            BodyRead::End => (None, false),
+            BodyRead::Failed => (None, true),
+        };
+        let _ = self.0.lock().unwrap().send(Event::Received { token, data, failed });
     }
 }
 
@@ -525,4 +540,58 @@ async fn large_messages_arriving_in_pieces_are_unmasked_and_their_buffers_reused
         server.flush(id);
         assert_eq!(server_frame(&mut stream).await, (0x2, payload));
     }
+}
+
+#[tokio::test]
+async fn a_second_read_while_one_waits_for_the_body_is_refused() {
+    let (server, mut events) = start(ServerConfig::default());
+    let port = server.port();
+    let mut stream = TcpStream::connect(("127.0.0.1", port)).await.unwrap();
+    // The head only: the body follows once the first read waits for it.
+    let head = format!(
+        "POST /_runic/upload HTTP/1.1\r\nHost: 127.0.0.1:{port}\r\nConnection: close\r\nX-Runic-Test: 1\r\nContent-Length: 5\r\n\r\n"
+    );
+    stream.write_all(head.as_bytes()).await.unwrap();
+    let Event::Request { id, .. } = next(&mut events).await else { panic!("a request") };
+    server.read(id, 1).expect("a read starts");
+    assert!(server.read(id, 2).is_err(), "a second read while one is in progress is refused");
+    stream.write_all(b"hello").await.unwrap();
+    let Event::Received { token, data, failed } = next(&mut events).await else { panic!("a read result") };
+    assert_eq!((token, failed, data.as_deref()), (1, false, Some(&b"hello"[..])));
+    server.respond(id, StatusCode::NO_CONTENT, HeaderMap::new(), Body::Empty).unwrap();
+}
+
+#[tokio::test]
+async fn a_request_body_is_read_chunk_by_chunk_until_its_end() {
+    let (server, mut events) = start(ServerConfig::default());
+    let port = server.port();
+    let body = "x".repeat(200_000);
+    let request = format!(
+        "POST /_runic/upload HTTP/1.1\r\nHost: 127.0.0.1:{port}\r\nConnection: close\r\nX-Runic-Test: 1\r\nContent-Length: {}\r\n\r\n{body}",
+        body.len()
+    );
+    let client = tokio::spawn(exchange(port, request));
+    let Event::Request { id, method, .. } = next(&mut events).await else { panic!("a request") };
+    assert_eq!(method, "POST");
+    let mut received = Vec::new();
+    let mut token = 0;
+    loop {
+        token += 1;
+        // The next read starts as soon as the previous result arrived: the body is back in its request by then.
+        server.read(id, token).expect("a read starts");
+        let Event::Received { token: reported, data, failed } = next(&mut events).await else {
+            panic!("a read result")
+        };
+        assert_eq!((reported, failed), (token, false));
+        match data {
+            Some(chunk) => received.extend_from_slice(&chunk),
+            None => break,
+        }
+    }
+    assert_eq!(received.len(), body.len());
+    server.respond(id, StatusCode::CREATED, HeaderMap::new(), Body::Empty).unwrap();
+    let response = client.await.unwrap();
+    assert!(response.starts_with("HTTP/1.1 201"), "{response}");
+    // The request completed: its body is gone.
+    assert!(server.read(id, 1000).is_err());
 }

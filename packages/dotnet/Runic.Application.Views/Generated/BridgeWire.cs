@@ -475,6 +475,50 @@ public static class BridgeWire
         writer.WriteStringValue(value == 0 && text.StartsWith('-') ? text[1..] : text);
     }
 
+    /// <summary>
+    /// Writes a <c>blob</c> value (<c>blobs/1</c>): <c>{"url","type","size","name"}</c>, with the URL the Window's host
+    /// serves the blob at. The URL is empty when the blob is written outside a Window's Bridge or the host serves no
+    /// blobs.
+    /// </summary>
+    public static void WriteBlob(Utf8JsonWriter writer, RunicBlob value)
+    {
+        ArgumentNullException.ThrowIfNull(writer);
+        ArgumentNullException.ThrowIfNull(value);
+        var url = BridgeBlobScope.Current is { } scope ? scope.Blobs.Issue(value, scope) : string.Empty;
+        writer.WriteStartObject();
+        writer.WriteString("url", url);
+        writer.WriteString("type", value.ContentType);
+        if (value.Length is { } length) writer.WriteNumber("size", length);
+        else writer.WriteNull("size");
+        if (value.FileName is { } name) writer.WriteString("name", name);
+        else writer.WriteNull("name");
+        writer.WriteEndObject();
+    }
+
+    /// <summary>Writes an <c>upload</c> value (<c>blobs/1</c>): <c>{"id","name","type","size"}</c>.</summary>
+    public static void WriteUpload(Utf8JsonWriter writer, RunicUpload value)
+    {
+        ArgumentNullException.ThrowIfNull(writer);
+        ArgumentNullException.ThrowIfNull(value);
+        BridgeBlobs.WriteUpload(writer, value.Id, value.FileName, value.ContentType, value.Length);
+    }
+
+    /// <summary>
+    /// Reads an <c>upload</c> value (<c>blobs/1</c>): an object whose <c>id</c> names an unclaimed upload of the
+    /// request's Window and connection. Its other members are ignored; the upload's name, type and size are those the
+    /// host received.
+    /// </summary>
+    /// <exception cref="FormatException">The value is not an upload object, or names no such upload.</exception>
+    public static RunicUpload ReadUpload(JsonElement value)
+    {
+        var id = ReadString(RequiredProperty(value, "id"));
+        if (!RunicUploadIds.IsValid(id)) throw Invalid("Expected an upload id.");
+        if (BridgeBlobScope.Current is not { } scope)
+            throw Invalid("An upload is read only from a request of the Window that received it.");
+        return scope.Blobs.Find(id, scope.Connection)
+            ?? throw Invalid("The upload is unknown to this connection, was already claimed, or expired.");
+    }
+
     /// <summary>Writes a UUID string of lowercase hexadecimal digits in <c>D</c> format.</summary>
     public static void WriteGuid(Utf8JsonWriter writer, Guid value)
     {

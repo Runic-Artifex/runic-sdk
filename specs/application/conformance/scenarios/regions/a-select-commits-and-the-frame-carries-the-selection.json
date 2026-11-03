@@ -1,0 +1,36 @@
+{
+  "format": "runic.views.scenario/1",
+  "id": "regions.a-select-commits-and-the-frame-carries-the-selection.v1",
+  "contract": {"id":"runic.views","version":4},
+  "set": "regions",
+  "roles": ["producer","client"],
+  "description": "A select of another region asks the departure guard of the region left, which agrees. The frame sets the whole collection with the new selected index, and the reply, which follows it, carries the Committed outcome.",
+  "view": "tabs",
+  "requires": ["region-collections/1"],
+  "ids": {
+    "c1": {"kind":"connection"},
+    "hello-c1": {"kind":"request"},
+    "session": {"kind":"wire","value":"s-1"},
+    "open-tabs": {"kind":"call"},
+    "open-tabs-request": {"kind":"request"},
+    "presentation": {"kind":"wire","value":"p-1"},
+    "select": {"kind":"call"},
+    "select-request": {"kind":"request"}
+  },
+  "arrange": {"model":{}},
+  "steps": [
+    {"connect":"c1"},
+    {"send":{"kind":"hello","protocol":4,"session":{"$id":"session"},"client":{"name":{"$any":"string","default":"conformance-client"},"version":{"$any":"string","default":"1.0.0"}},"features":{"$any":"array","default":["text-splice/1","region-collections/1"]}},"id":"hello-c1"},
+    {"receive":{"ok":true,"protocol":4,"implementation":{"name":{"$any":"string","default":"conformance-producer"},"version":{"$any":"string","default":"1.0.0"}},"features":{"$any":"array","default":["text-splice/1","region-collections/1"]}},"replyTo":"hello-c1"},
+    {"call":{"id":"open-tabs","op":"open","route":"tabs"}},
+    {"send":{"kind":"open","route":"tabs","presentation":{"$id":"presentation"}},"id":"open-tabs-request"},
+    {"receive":{"ok":true,"revision":0,"state":{"documents":{"regions":[{"key":"1","content":{"kind":"page","id":"00000000000000000000000000000001"}},{"key":"2","content":{"kind":"page","id":"00000000000000000000000000000002"}},{"key":"3","content":{"kind":"page","id":"00000000000000000000000000000003"}}],"selected":0},"pinned":{"regions":[],"selected":null}},"presentation":"ok"},"replyTo":"open-tabs-request"},
+    {"call":{"id":"select","op":"region","route":"tabs","member":"documents","action":"select","key":"2"}},
+    {"send":{"kind":"region","route":"tabs","member":"documents","action":"select","key":"2"},"id":"select-request"},
+    {"receive":{"kind":"frame","route":"tabs","baseRevision":0,"revision":1,"changes":[{"field":"documents","kind":"set","value":{"regions":[{"key":"1","content":{"kind":"page","id":"00000000000000000000000000000001"}},{"key":"2","content":{"kind":"page","id":"00000000000000000000000000000002"}},{"key":"3","content":{"kind":"page","id":"00000000000000000000000000000003"}}],"selected":1}}]}},
+    {"receive":{"ok":true,"revision":1,"outcome":{"kind":"Committed","rejection":null,"arrival":"None"}},"replyTo":"select-request"},
+    {"expect":{"call":{"id":"select","resolved":{"kind":"Committed","rejection":null,"arrival":"None"}}}},
+    {"expect":{"state":{"route":"tabs","value":{"documents":{"regions":[{"key":"1","content":{"kind":"page","id":"00000000000000000000000000000001"}},{"key":"2","content":{"kind":"page","id":"00000000000000000000000000000002"}},{"key":"3","content":{"kind":"page","id":"00000000000000000000000000000003"}}],"selected":1},"pinned":{"regions":[],"selected":null}}}}},
+    {"expect":{"diagnostics":[]}}
+  ]
+}

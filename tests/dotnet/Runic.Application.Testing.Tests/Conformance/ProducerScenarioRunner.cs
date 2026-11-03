@@ -103,13 +103,28 @@ internal sealed class ProducerScenarioRunner
         {
             // The model, waits and closes are the producer's; state, call, operation, diagnostics, notifications and
             // connection are the client's.
-            if (expect["model"] is JsonObject model)
-                foreach (var (member, value) in model)
-                    _messages.MatchValue(value, window.ReadMember(member), $"model.{member}");
+            if (expect["model"] is JsonObject model) await ExpectModelAsync(model, window).ConfigureAwait(false);
             if (expect["presented"] is JsonObject presented) await ExpectPresentedAsync(presented, window).ConfigureAwait(false);
             if (expect["closed"] is JsonObject closed) await ExpectClosedAsync(closed).ConfigureAwait(false);
         }
         else if (!step.ContainsKey("call")) throw new ScenarioFailure("The step has no action a producer runner knows.");
+    }
+
+    // expect.model waits: the runner reads the model again until every member matches, up to the step timeout, so a
+    // scenario can wait for work the producer does on its own, such as a guard being asked (conformance README, "Steps").
+    private async Task ExpectModelAsync(JsonObject model, IConformanceWindow window)
+    {
+        var deadline = DateTime.UtcNow + TestTimeouts.Scale(ReceiveTimeout);
+        while (true)
+        {
+            try
+            {
+                foreach (var (member, value) in model)
+                    _messages.MatchValue(value, window.ReadMember(member), $"model.{member}");
+                return;
+            }
+            catch (ScenarioFailure) when (DateTime.UtcNow < deadline) { await Task.Delay(5).ConfigureAwait(false); }
+        }
     }
 
     // expect.presented: a waitPresented wait is pending, or completed with the result, which the runner waits for.

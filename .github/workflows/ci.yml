@@ -469,15 +469,18 @@ jobs:
         run: |
           node examples/first-window-desktop/browser-smoke.mjs
           xvfb-run -a dotnet run --project examples/first-window-desktop/FirstWindowDesktop.csproj -c Release --no-build -- --probe-owner
+      - name: Exercise blobs and uploads on Runic Desktop
+        run: node examples/attachments/browser-smoke.mjs
       - name: Check composed View lifetime and window scopes
         run: |
           dotnet run --no-build -c Release --project examples/notes-view-first/NotesViewFirst.csproj -- --check-view-lifetime
           dotnet run --no-build -c Release --project examples/notes-view-first/NotesViewFirst.csproj -- --check-view-lifetime --splat
           node examples/notes-view-first/window-smoke.mjs
-      - name: Run the Notes and multi-window example unit tests
+      - name: Run the Notes, multi-window and document tabs example unit tests
         run: |
           dotnet run --project examples/notes-view-first/Tests -c Release --no-build
           dotnet run --project examples/multi-window/Tests -c Release --no-build
+          dotnet run --project examples/document-tabs/Tests -c Release --no-build
           (cd examples/notes-view-first/Frontend && bun install --frozen-lockfile && bun run test)
       - name: Exercise CommunityToolkit and ReactiveUI typed clients
         run: |
@@ -1493,7 +1496,8 @@ jobs:
           dotnet tests/native/Runic.Desktop.WebViewSmoke/bin/Release/net10.0/Runic.Desktop.WebViewSmoke.dll --dpi
           (cd artifacts/webview-exe-only && ./Runic.Desktop.WebViewSmoke.exe --dpi)
           (cd artifacts/webview-exe-only && ./Runic.Desktop.WebViewSmoke.exe --monitors)
-      # FirstWindow and the probes use the CS-WebUI host; menu-bar-probe drives the probe's in-page menu bar routes from Chromium.
+      # FirstWindow and the probes use the CS-WebUI host; menu-bar-probe drives the probe's in-page menu bar routes and
+      # blobs-probe its blobs and uploads (blobs/1) from Chromium.
       - name: Publish Window and View application with NativeAOT
         if: matrix.cswebui
         shell: bash
@@ -1509,6 +1513,7 @@ jobs:
             GDK_BACKEND=x11 xvfb-run -a ./artifacts/views-probes-aot/CsWebUiWindowProbes${{ matrix.extension }} --probe-embedded-assets
             GDK_BACKEND=x11 xvfb-run -a ./artifacts/views-probes-aot/CsWebUiWindowProbes${{ matrix.extension }} --probe-presentation
             GDK_BACKEND=x11 RUNIC_PROBE_EXECUTABLE="$(node -p 'require("node:path").resolve("artifacts/views-probes-aot/CsWebUiWindowProbes${{ matrix.extension }}")')" xvfb-run -a node tests/fixtures/application/cswebui-window-probes/menu-bar-probe.mjs
+            GDK_BACKEND=x11 RUNIC_PROBE_EXECUTABLE="$(node -p 'require("node:path").resolve("artifacts/views-probes-aot/CsWebUiWindowProbes${{ matrix.extension }}")')" xvfb-run -a node tests/fixtures/application/cswebui-window-probes/blobs-probe.mjs
             GDK_BACKEND=x11 RUNIC_FIRST_WINDOW_EXECUTABLE="$(node -p 'require("node:path").resolve("artifacts/views-aot/FirstWindow${{ matrix.extension }}")')" xvfb-run -a node examples/first-window/browser-smoke.mjs
           else
             ./artifacts/views-probes-aot/CsWebUiWindowProbes${{ matrix.extension }} --probe-factory-failure
@@ -1519,6 +1524,7 @@ jobs:
             ./artifacts/views-probes-aot/CsWebUiWindowProbes${{ matrix.extension }} --probe-embedded-assets
             ./artifacts/views-probes-aot/CsWebUiWindowProbes${{ matrix.extension }} --probe-presentation
             RUNIC_PROBE_EXECUTABLE="$(node -p 'require("node:path").resolve("artifacts/views-probes-aot/CsWebUiWindowProbes${{ matrix.extension }}")')" node tests/fixtures/application/cswebui-window-probes/menu-bar-probe.mjs
+            RUNIC_PROBE_EXECUTABLE="$(node -p 'require("node:path").resolve("artifacts/views-probes-aot/CsWebUiWindowProbes${{ matrix.extension }}")')" node tests/fixtures/application/cswebui-window-probes/blobs-probe.mjs
             RUNIC_FIRST_WINDOW_EXECUTABLE="$(node -p 'require("node:path").resolve("artifacts/views-aot/FirstWindow${{ matrix.extension }}")')" node examples/first-window/browser-smoke.mjs
           fi
       # Development tooling, independent of the architecture: Windows x64 runs it.

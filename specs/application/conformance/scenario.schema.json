@@ -15,7 +15,7 @@
       "required": ["id", "version"],
       "properties": { "id": { "const": "runic.views" }, "version": { "const": 4 } }
     },
-    "set": { "enum": ["handshake", "state-changes", "replies", "edits", "operations", "presentations", "interactions", "errors"] },
+    "set": { "enum": ["handshake", "state-changes", "replies", "edits", "operations", "presentations", "regions", "interactions", "view-requests", "errors", "request-sessions", "query-collections", "blobs"] },
     "roles": {
       "type": "array",
       "minItems": 1,
@@ -28,11 +28,11 @@
       "type": "string",
       "pattern": "^specs/application/fixtures/[a-z-]+/[a-z0-9-]+\\.json#.+$"
     },
-    "view": { "enum": ["list", "log", "notes", "form", "wizard"] },
+    "view": { "enum": ["list", "log", "notes", "form", "wizard", "tabs", "catalog", "files"] },
     "requires": {
       "type": "array",
       "uniqueItems": true,
-      "items": { "enum": ["held-delivery", "virtual-clock", "text-splice/1", "presentation-epoch/1", "presented/1"] }
+      "items": { "enum": ["held-delivery", "virtual-clock", "text-splice/1", "presentation-epoch/1", "presented/1", "view-requests/1", "request-session/1", "region-collections/1", "client-errors/1", "query-collections/1", "blobs/1"] }
     },
     "options": {
       "type": "object",
@@ -234,6 +234,21 @@
           "additionalProperties": false
         },
         {
+          "properties": { "op": { "const": "raise" }, "request": { "type": "string" }, "input": true },
+          "required": ["op", "request", "input"],
+          "additionalProperties": false
+        },
+        {
+          "properties": { "op": { "const": "holdGuard" } },
+          "required": ["op"],
+          "additionalProperties": false
+        },
+        {
+          "properties": { "op": { "const": "settleGuard" }, "allow": { "type": "boolean" } },
+          "required": ["op", "allow"],
+          "additionalProperties": false
+        },
+        {
           "properties": { "op": { "const": "renew" } },
           "required": ["op"],
           "additionalProperties": false
@@ -262,9 +277,11 @@
       "required": ["id", "op"],
       "properties": {
         "id": { "$ref": "#/$defs/name" },
-        "op": { "enum": ["open", "close", "set", "write", "command", "can", "start", "wait", "status", "cancel", "register"] },
+        "op": { "enum": ["open", "close", "set", "write", "command", "can", "start", "wait", "status", "cancel", "register", "handle", "unhandle", "region", "queryRange", "setQuery", "indexOf"] },
         "route": { "type": "string" },
         "member": { "type": "string" },
+        "start": { "$ref": "#/$defs/index" },
+        "count": { "type": "integer", "minimum": 0, "maximum": 1000 },
         "value": true,
         "input": true,
         "requestId": { "type": "string" },
@@ -276,6 +293,9 @@
         },
         "operation": { "$ref": "#/$defs/name" },
         "interaction": { "type": "string" },
+        "request": { "type": "string" },
+        "action": { "enum": ["select", "close"] },
+        "key": { "type": "string" },
         "answer": {
           "oneOf": [
             {
@@ -291,16 +311,24 @@
       "additionalProperties": false,
       "allOf": [
         {
-          "if": { "properties": { "op": { "enum": ["open", "close", "set", "write", "command", "can", "start", "register"] } } },
+          "if": { "properties": { "op": { "enum": ["open", "close", "set", "write", "command", "can", "start", "register", "handle", "unhandle", "region", "queryRange", "setQuery", "indexOf"] } } },
           "then": { "required": ["route"] }
         },
         {
-          "if": { "properties": { "op": { "enum": ["set", "write", "command", "can", "start"] } } },
+          "if": { "properties": { "op": { "enum": ["set", "write", "command", "can", "start", "region", "queryRange", "setQuery", "indexOf"] } } },
           "then": { "required": ["member"] }
         },
         {
-          "if": { "properties": { "op": { "enum": ["set", "write"] } } },
+          "if": { "properties": { "op": { "const": "region" } } },
+          "then": { "required": ["action", "key"] }
+        },
+        {
+          "if": { "properties": { "op": { "enum": ["set", "write", "setQuery", "indexOf"] } } },
           "then": { "required": ["value"] }
+        },
+        {
+          "if": { "properties": { "op": { "const": "queryRange" } } },
+          "then": { "required": ["start", "count"] }
         },
         {
           "if": { "properties": { "op": { "enum": ["start", "wait", "status", "cancel"] } } },
@@ -313,6 +341,10 @@
         {
           "if": { "properties": { "op": { "const": "register" } } },
           "then": { "required": ["interaction", "answer"] }
+        },
+        {
+          "if": { "properties": { "op": { "enum": ["handle", "unhandle"] } } },
+          "then": { "required": ["request"] }
         }
       ]
     },
@@ -378,6 +410,13 @@
           "additionalProperties": false,
           "required": ["route", "count"],
           "properties": { "route": { "type": "string" }, "count": { "type": "integer", "minimum": 0 } }
+        },
+        "requests": {
+          "description": "Client: the inputs a handle handler of a route's view request was called with since it was registered, in order.",
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["route", "request", "inputs"],
+          "properties": { "route": { "type": "string" }, "request": { "type": "string" }, "inputs": { "type": "array" } }
         },
         "connection": {
           "description": "Client: the connection state the client reports; closed when it reports that the producer closed the window.",

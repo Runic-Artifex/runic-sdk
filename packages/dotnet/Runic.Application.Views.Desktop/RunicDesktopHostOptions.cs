@@ -101,6 +101,13 @@ public sealed record RunicDesktopHostOptions
     public int? MaximumInputBytes { get; init; }
 
     /// <summary>
+    /// The largest file the page may upload to Windows whose <see cref="RunicWindowOptions.MaximumUploadBytes"/> is
+    /// <see langword="null"/> (<see cref="WindowContentSessionOptions.MaximumUploadBytes"/>), at least 1 KiB.
+    /// <see langword="null"/>, the default, is 256 MiB. The host reads it when each Window opens.
+    /// </summary>
+    public long? MaximumUploadBytes { get; init; }
+
+    /// <summary>
     /// The <c>Content-Security-Policy</c> that every Window's surface sends with its HTML
     /// (<see cref="DesktopSurfaceOptions.ContentSecurityPolicy"/>), or <see langword="null"/>, the default, for none.
     /// </summary>

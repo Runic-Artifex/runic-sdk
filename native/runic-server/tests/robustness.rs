@@ -411,6 +411,7 @@ impl Handler for Recorder {
         let _ = self.0.lock().unwrap().send(Event::Closed { connection, code: close.map(|close| close.code) });
     }
     fn completed(&self, _token: u64, _accepted: bool) {}
+    fn received(&self, _token: u64, _read: runic_server::BodyRead<'_>) {}
 }
 
 async fn connect(server: &Server, events: &mut mpsc::UnboundedReceiver<Event>) -> (TcpStream, u64) {

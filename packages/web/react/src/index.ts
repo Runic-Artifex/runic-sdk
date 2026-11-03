@@ -9,6 +9,7 @@ import {
   useState,
   useSyncExternalStore,
   type ComponentType,
+  type HTMLAttributes,
   type ReactNode,
 } from "react";
 import {
@@ -33,6 +34,9 @@ import {
   type OperationControllerOptions,
   type OperationState,
   type PageReference,
+  regionEntries,
+  type RegionCollection,
+  type RegionEntry,
   type ViewClient,
   type ViewController,
   type ViewControllerState,
@@ -266,6 +270,57 @@ export function ViewOutlet<R extends PageReference>({ content, registry, fallbac
     return createElement("p", { role: "alert" }, `No web component is registered for ${content.kind}.`);
   }
   return createElement(component, { key: referenceKey(content), page: content });
+}
+
+/** How {@link RegionOutlets} renders the regions of a collection. */
+export type RegionOutletsMode = "keep-mounted" | "selected";
+
+/**
+ * Attributes that {@link RegionOutlets} merges onto a region's wrapper, such as `id`, `role` and `aria-labelledby`.
+ * `hidden` and `data-region-key` stay controlled by the outlet, and a `style` is merged with its `display: none`.
+ */
+export type RegionPanelAttributes = Omit<HTMLAttributes<HTMLDivElement>, "hidden"> & {
+  readonly [attribute: `data-${string}`]: string | undefined;
+};
+
+export interface RegionOutletsProps<R extends PageReference> {
+  /** The presented region collection, such as `state.documents`. */
+  readonly collection: RegionCollection<R> | null | undefined;
+  readonly registry: ViewRegistry<R>;
+  /** Rendered while the collection has no region. Defaults to nothing. */
+  readonly fallback?: ReactNode;
+  /** Renders a reference whose kind has no registered component, as in {@link ViewOutlet}. */
+  readonly missing?: (content: R) => ReactNode;
+  /**
+   * `"keep-mounted"` (the default) renders every region and hides all but the selected one, so each region keeps
+   * its component and DOM. `"selected"` renders only the selected region.
+   */
+  readonly mode?: RegionOutletsMode;
+  /**
+   * Returns attributes for a region's wrapper, for example `{ id, role: "tabpanel", "aria-labelledby" }`, so a tab
+   * can point `aria-controls` at the panel.
+   */
+  readonly panelProps?: (entry: RegionEntry<R>) => RegionPanelAttributes;
+}
+
+/**
+ * Renders a {@link ViewOutlet} for the regions of a region collection, each in a `<div data-region-key>` keyed by
+ * the region's key. A region that is not selected is rendered with `hidden` and an inline `display: none`, which
+ * author CSS without `!important` cannot override. A new content reference in a region remounts only that region's
+ * component.
+ */
+export function RegionOutlets<R extends PageReference>({ collection, registry, fallback = null, missing, mode = "keep-mounted", panelProps }: RegionOutletsProps<R>): ReactNode {
+  const shown = regionEntries(collection).filter(region => mode === "keep-mounted" || region.selected);
+  if (shown.length === 0) return fallback;
+  return shown.map(region => {
+    const panel = panelProps?.(region) ?? {};
+    const hidden = !region.selected;
+    return createElement(
+      "div",
+      { ...panel, key: region.key, "data-region-key": region.key, hidden, style: hidden ? { ...panel.style, display: "none" } : panel.style },
+      createElement(ViewOutlet<R>, { content: region.content, registry, ...(missing ? { missing } : {}) }),
+    );
+  });
 }
 
 // A command or operation controller lives while its component is mounted: unmounting disposes it,
@@ -536,15 +591,6 @@ export type FieldHandle<TValue> = FieldState<TValue> & {
 
 const noFieldErrors: readonly string[] = Object.freeze([]);
 
-/** The text a field shows for a value, as the field controller formats it. */
-function formatFieldValue(value: unknown): string {
-  switch (typeof value) {
-    case "string": return value;
-    case "number": case "bigint": case "boolean": return String(value);
-    default: return "";
-  }
-}
-
 /**
  * Binds an element to one View member while the component is mounted, through `createFieldController`: pass a
  * generated descriptor such as `EditorFields.title`, or any definition with `read` and `write`. Spread `inputProps` on
@@ -567,7 +613,7 @@ function formatFieldValue(value: unknown): string {
 export function useField<TClient extends ViewClient, TValue>(
   view: TextFieldView<TClient>,
   field: BridgeField<NoInfer<TClient>, NoInfer<TClient>["snapshot"], TValue> | FieldDefinition<NoInfer<TClient>, NoInfer<TClient>["snapshot"], TValue>,
-  options: FieldOptions = {},
+  options: FieldOptions<TValue> = {},
 ): FieldHandle<TValue> {
   type State = TClient["snapshot"];
   const latest = useRef(field);
@@ -578,6 +624,7 @@ export function useField<TClient extends ViewClient, TValue>(
     ...field.nullable === undefined ? {} : { nullable: field.nullable },
     ...field.integer === undefined ? {} : { integer: field.integer },
     ...field.choices === undefined ? {} : { choices: field.choices },
+    ...field.offset === undefined ? {} : { offset: field.offset },
     read: state => latest.current.read(state),
     write: (client, value) => latest.current.write(client, value),
     ...field.checked === undefined ? {} : { checked: (client, value, write) => latest.current.checked!(client, value, write) },
@@ -607,7 +654,7 @@ export function useField<TClient extends ViewClient, TValue>(
   const value = current.editing ? current.value
     : state === undefined ? (kind === "text" || kind === undefined ? "" : undefined) as TValue
     : field.read(state);
-  const text = Object.is(value, current.value) ? current.text : formatFieldValue(value);
+  const text = Object.is(value, current.value) ? current.text : controller.format(value);
   const errors = field.errors === undefined ? current.errors : state === undefined ? noFieldErrors : field.errors(state);
   const invalid = errors.length > 0 || current.error !== undefined;
   const inputProps = kind === "boolean"
@@ -661,7 +708,18 @@ const serverConnectionState = (): BridgeConnectionState => "connecting";
 
 export { retrySuspenseView, useSuspenseView, type SuspenseViewHandle, type SuspenseViewOptions } from "./suspense.js";
 export { useCollectionViewport, type CollectionViewportHandle } from "./viewport.js";
+export { useQueryCollection, type QueryCollectionHandle } from "./query.js";
 export { onBridgeConnection, type BridgeConnectionOptions, type BridgeConnectionState } from "@runic-artifex/views";
+// blobs/1: uploads from the page and the blob values of state.
+export { upload, type BlobRef, type RunicBlob, type UploadOptions, type UploadProgress } from "@runic-artifex/views";
+export {
+  regionEntries,
+  selectedRegion,
+  type RegionCollection,
+  type RegionEntry,
+  type RegionOutcome,
+  type RegionSlot,
+} from "@runic-artifex/views";
 export {
   FieldError,
   type BridgeField,

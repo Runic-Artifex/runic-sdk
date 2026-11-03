@@ -26,6 +26,10 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
     internal const string ReleasedCapabilityReply =
         "{\"ok\":false,\"state\":null,\"error\":{\"kind\":\"released\",\"message\":\"This View was released.\"}}";
     private const string WebSocketPath = "/_webui_ws_connect";
+    // blobs/1: the window's blobs (GET and HEAD of /_runic/blobs/{token}) and uploads (POST /_runic/upload), which a
+    // Bridge transport serves (SetBlobHandler).
+    internal const string BlobsPath = "/_runic/blobs";
+    internal const string UploadPath = "/_runic/upload";
     private const string ContentSecurityPolicyHeader = "Content-Security-Policy";
     private const string AuthCookieName = "webui_auth";
     private const string DocumentBootstrapProperty = "globalThis[Symbol.for(\"runic-desktop.bootstrap\")]";
@@ -104,6 +108,8 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
     private Func<PresentationExchange, string, CancellationToken, ValueTask<WebUiContent?>>? _requestHandler;
     // DesktopSurfaceOptions.Resources: asked for what the content does not serve, before 404 (#313).
     private Func<PresentationExchange, string, CancellationToken, ValueTask<WebUiContent?>>? _resourceHandler;
+    // blobs/1: serves an admitted blob request (with its token) or upload (with null).
+    private Func<PresentationExchange, string?, Task>? _blobHandler;
     private bool _allowIndexFallback;
     private bool _isPublic;
     private bool _profileConfigured;
@@ -935,6 +941,14 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
     internal void SetResourceHandler(
         Func<PresentationExchange, string, CancellationToken, ValueTask<WebUiContent?>>? handler) =>
         Volatile.Write(ref _resourceHandler, handler);
+
+    // blobs/1: the handler of the window's blob and upload requests, or null to answer them 404.
+    internal void SetBlobHandler(Func<PresentationExchange, string?, Task>? handler) =>
+        Volatile.Write(ref _blobHandler, handler);
+
+    // Removes handler when it is still the window's blob handler.
+    internal void ClearBlobHandler(Func<PresentationExchange, string?, Task> handler) =>
+        Interlocked.CompareExchange(ref _blobHandler, null, handler);
 
     /// <summary>Sets the browser profile name and storage path used for this window.</summary>
     public void SetProfile(string name, string path)
@@ -2866,6 +2880,10 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
     private Task DispatchRequestAsync(PresentationExchange context)
     {
         var path = context.Path;
+        if (PresentationExchange.StartsWithSegments(path, BlobsPath, out var blobToken))
+            return ServeBlobRequestAsync(context, blobToken.TrimStart('/'));
+        if (IsPath(path, UploadPath))
+            return ServeBlobRequestAsync(context, null);
         if (IsPath(path, BridgePath) && (context.IsGet || context.IsHead))
         {
             HandshakeLog.Record($"{BridgePath} requested");
@@ -3001,6 +3019,47 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
         }
 
         await SendNotFoundAsync(context).ConfigureAwait(false);
+    }
+
+    // blobs/1 (specs/application/README.md, "Blobs and uploads"). A blob URL is a capability that works only for this
+    // window's page: with client cookies, the request must carry the cookie of a client this window served (and, for a
+    // launched browser, the client bound to its launch code), and fetch metadata must not name another site. An upload
+    // must also come from an allowed origin with a POST; the Bridge transport then checks its connection's token.
+    private async Task ServeBlobRequestAsync(PresentationExchange context, string? token)
+    {
+        var handler = Volatile.Read(ref _blobHandler);
+        var upload = token is null;
+        if (handler is null || !upload && token!.Contains('/'))
+        {
+            context.SetResponseHeader("Cache-Control", NoCache);
+            context.StatusCode = PresentationStatus.NotFound;
+            return;
+        }
+        if (upload ? !string.Equals(context.Method, "POST", StringComparison.OrdinalIgnoreCase) : !(context.IsGet || context.IsHead))
+        {
+            context.StatusCode = PresentationStatus.MethodNotAllowed;
+            return;
+        }
+        // A blob may be embedded by the window's own pages (same-origin) and fetched by them; an upload is a POST that
+        // a browser always sends with Origin, which must be the surface's or an additional origin of its policy.
+        var crossSite = context.GetRequestHeader("Sec-Fetch-Site").Equals("cross-site", StringComparison.OrdinalIgnoreCase);
+        var origin = context.GetRequestHeader("Origin");
+        var deniedOrigin = upload
+            ? _securityPolicy is not null && (origin.Length == 0 || !_securityPolicy.AllowsOrigin(Url!, origin))
+            : crossSite;
+        var deniedClient = UseClientCookies && !IsFromPage(context);
+        if (deniedOrigin || deniedClient)
+        {
+            _runtimeOptions?.DiagnosticSink?.Invoke(new DesktopDiagnostic(
+                deniedOrigin ? DesktopErrorCategory.OriginDenied : DesktopErrorCategory.AuthenticationDenied,
+                upload ? "upload-not-admitted" : "blob-not-admitted",
+                upload ? "An upload came from another origin or client than this window's page."
+                    : "A blob was requested by another site or client than this window's page.",
+                Retryable: false));
+            context.StatusCode = PresentationStatus.Forbidden;
+            return;
+        }
+        await handler(context, token).ConfigureAwait(false);
     }
 
     // Any page can embed a loopback script, and a classic script needs no CORS

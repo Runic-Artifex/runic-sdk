@@ -470,6 +470,16 @@ The same Window and `async host => ...` body run on CS-WebUI with
   `RunicDesktopHost` with `ServeOnly` was built on the provider, or under
   `RUNIC_APPLICATION_SERVE_ONLY=1`, it reports `Unavailable` and opens no watches; see
   [Power events](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Platform/README.md#power-events).
+- `AddRunicPlatformServices()` also registers `IDesktopRecentDocuments`, the
+  application's recent documents (`DesktopPlatformServices.CreateRecentDocuments()`):
+  Open Recent and the Dock on macOS, Recent items and the Jump List on Windows,
+  and `recently-used.xbel` on Linux, the same lists as
+  `DesktopHost.NoteRecentDocumentAsync`, with each outcome as a `PlatformResult`.
+  It decides on first use: once a `RunicDesktopHost` with `ServeOnly` was built on
+  the provider, or under `RUNIC_APPLICATION_SERVE_ONLY=1`, it reports `Unavailable`.
+  With `AddRunicPlatformServices(applicationId)` Linux names the application by its
+  ID; see
+  [Document apps](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Platform/README.md#document-apps).
 - `AddRunicPlatformServices()` also registers `IApplicationPlatformServices`, the
   one instance of `DesktopPlatformServices.ForApplication()`: the application's
   `FileLauncher` opens URIs and files and reveals files without a window, also
@@ -519,6 +529,11 @@ The same Window and `async host => ...` body run on CS-WebUI with
   `SendAsync` to one connection, both as raw data to `__runicViewsPush`. A
   connection is one authenticated WebSocket; its Desktop connection id is
   both its connection and its client key, so a reconnect is a new connection.
+  A Window's `IRunicConnections` (since 0.16) therefore lists the page's one
+  connection, a new one after each reload, and its `Caller` is that connection
+  during a page's command or in-page menu click, and `null` for the native menu
+  bar and host shortcuts
+  ([Who is connected, and who called](../Runic.Application.Views/README.md#who-is-connected-and-who-called)).
   The requests of one connection are admitted in the order the page sent
   them. Disposing the transport removes the capability and stops pushes; the
   surface stays open. The per-route `Bind`, `BindAsync`, `Publish`,

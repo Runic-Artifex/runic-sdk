@@ -1,0 +1,64 @@
+{
+  "format": "runic.views.scenario/1",
+  "id": "blobs.a-blob-crosses-as-a-url.v1",
+  "contract": {"id":"runic.views","version":4},
+  "set": "blobs",
+  "roles": ["producer","client"],
+  "description": "A blob member crosses as {url, type, size, name}: a URL the host serves, never its bytes. A change to null is a set of the member.",
+  "view": "files",
+  "requires": ["blobs/1"],
+  "ids": {
+    "c1": {"kind":"connection"},
+    "hello-c1": {"kind":"request"},
+    "session": {"kind":"wire","value":"s-1"},
+    "open-files": {"kind":"call"},
+    "open-files-request": {"kind":"request"},
+    "presentation": {"kind":"wire","value":"p-1"}
+  },
+  "arrange": {"model":{"avatar":{"type":"image/png","text":"png","name":"a.png"}}},
+  "steps": [
+    {"connect":"c1"},
+    {
+      "send": {
+        "kind": "hello",
+        "protocol": 4,
+        "session": {"$id":"session"},
+        "client": {"name":{"$any":"string","default":"conformance-client"},"version":{"$any":"string","default":"1.0.0"}},
+        "features": {"$any":"array","default":["blobs/1"]}
+      },
+      "id": "hello-c1"
+    },
+    {
+      "receive": {
+        "ok": true,
+        "protocol": 4,
+        "implementation": {"name":{"$any":"string","default":"conformance-producer"},"version":{"$any":"string","default":"1.0.0"}},
+        "features": {"$any":"array","default":["blobs/1"]},
+        "blobs": {
+          "upload": {"$any":"string","default":"http://conformance.test/_runic/upload"},
+          "token": {"$any":"string","default":"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"},
+          "maximumBytes": 268435456
+        }
+      },
+      "replyTo": "hello-c1"
+    },
+    {"call":{"id":"open-files","op":"open","route":"files"}},
+    {"send":{"kind":"open","route":"files","presentation":{"$id":"presentation"}},"id":"open-files-request"},
+    {
+      "receive": {
+        "ok": true,
+        "revision": 0,
+        "state": {
+          "avatar": {"url":{"$any":"string","default":"http://conformance.test/_runic/blobs/BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB"},"type":"image/png","size":3,"name":"a.png"},
+          "lastUpload": null
+        },
+        "presentation": "ok"
+      },
+      "replyTo": "open-files-request"
+    },
+    {"expect":{"state":{"route":"files","value":{"avatar":{"url":"http://conformance.test/_runic/blobs/BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB","type":"image/png","size":3,"name":"a.png"},"lastUpload":null}}}},
+    {"mutate":[{"op":"assign","member":"avatar","value":null}]},
+    {"receive":{"kind":"frame","route":"files","baseRevision":0,"revision":1,"changes":[{"field":"avatar","kind":"set","value":null}]}},
+    {"expect":{"state":{"route":"files","value":{"avatar":null,"lastUpload":null}}}}
+  ]
+}

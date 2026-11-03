@@ -335,6 +335,12 @@ internal sealed partial class CodegenDiagnosticsTests
                 public sealed class CountLogViewModel : FixtureModel { [RunicAppendOnlyText] public int Count => 0; }
                 public sealed partial class CountLogWindow : RunicWindow<CountLogViewModel>;
                 """, "RUNICBRIDGE008", "public int Count", "CountLogViewModel.Count: RunicAppendOnlyText requires a read-only string state property.").ConfigureAwait(false);
+            // blobs/1: a RunicBlob only goes to the page; a command takes a RunicUpload instead.
+            await RejectAt("BlobInput", """
+                public sealed class BlobInputViewModel : FixtureModel { public IRelayCommand<RunicBlob> AttachCommand { get; } = new RelayCommand<RunicBlob>(_ => { }); }
+                public sealed partial class BlobInputWindow : RunicWindow<BlobInputViewModel>;
+                """, "RUNICBRIDGE065", "public IRelayCommand<RunicBlob> AttachCommand",
+                "A RunicBlob only goes to the page", "Take a RunicUpload").ConfigureAwait(false);
             // A nested DTO member points at the DTO property, not the ViewModel.
             await RejectAt("NestedValue", """
                 public sealed class Row
@@ -414,6 +420,81 @@ internal sealed partial class CodegenDiagnosticsTests
                 public sealed partial class SettableSelectionWindow : RunicWindow<SettableSelectionViewModel>;
                 """, "RUNICBRIDGE008", "public NavigationSelection? Tabs",
                 "SettableSelectionViewModel.Tabs: a NavigationSelection slot must be get-only").ConfigureAwait(false);
+            // Region collections (RUNICBRIDGE070, region-collections/1): a get-only NavigationSelection of known content.
+            const string DocumentPage = """
+                public interface IDocumentPage : INotifyPropertyChanged { }
+                public sealed class DocumentPageViewModel : FixtureModel, IDocumentPage { public string Title => ""; }
+                public sealed partial class DocumentPageView : RunicView<DocumentPageViewModel>;
+
+                """;
+            await RejectAt("RegionCollectionOnString", DocumentPage + """
+                public sealed class StringCollectionViewModel : FixtureModel
+                {
+                    [RunicRegionCollection(typeof(IDocumentPage))]
+                    public string Documents { get; } = "";
+                }
+                public sealed partial class StringCollectionWindow : RunicWindow<StringCollectionViewModel>;
+                """, "RUNICBRIDGE070", "public string Documents",
+                "StringCollectionViewModel.Documents: RunicRegionCollection applies to a NavigationSelection property, not to a String.").ConfigureAwait(false);
+            await RejectAt("SettableRegionCollection", DocumentPage + """
+                public sealed class SettableCollectionViewModel : FixtureModel
+                {
+                    [RunicRegionCollection(typeof(IDocumentPage))]
+                    public NavigationSelection? Documents { get; set; }
+                }
+                public sealed partial class SettableCollectionWindow : RunicWindow<SettableCollectionViewModel>;
+                """, "RUNICBRIDGE070", "public NavigationSelection? Documents",
+                "SettableCollectionViewModel.Documents: a region collection must be get-only").ConfigureAwait(false);
+            await RejectAt("ObjectRegionCollection", DocumentPage + """
+                public sealed class ObjectCollectionViewModel : FixtureModel
+                {
+                    [RunicRegionCollection(typeof(object))]
+                    public NavigationSelection? Documents { get; }
+                }
+                public sealed partial class ObjectCollectionWindow : RunicWindow<ObjectCollectionViewModel>;
+                """, "RUNICBRIDGE070", "public NavigationSelection? Documents",
+                "ObjectCollectionViewModel.Documents: a region collection of object has no known content.").ConfigureAwait(false);
+            await RejectAt("UnknownRegionCollectionContent", """
+                public interface IMissingDocument : INotifyPropertyChanged { }
+                public sealed class MissingCollectionViewModel : FixtureModel
+                {
+                    [RunicRegionCollection(typeof(IMissingDocument))]
+                    public NavigationSelection? Documents { get; }
+                }
+                public sealed partial class MissingCollectionWindow : RunicWindow<MissingCollectionViewModel>;
+                """, "RUNICBRIDGE070", "public NavigationSelection? Documents",
+                "MissingCollectionViewModel.Documents: no ViewModel with a registered View is a IMissingDocument, so the region collection can present nothing.").ConfigureAwait(false);
+            // RUNICBRIDGE071: selectDocuments of a [RelayCommand] SelectDocuments beside the collection's selectDocuments.
+            // The fixture declares the command property that CommunityToolkit generates for the method.
+            await RejectAt("RegionCollectionSelectName", DocumentPage + """
+                public sealed class SelectNameViewModel : FixtureModel
+                {
+                    [RunicRegionCollection(typeof(IDocumentPage))]
+                    public NavigationSelection? Documents { get; }
+                    [RelayCommand] private void SelectDocuments() { }
+                    public IRelayCommand SelectDocumentsCommand { get; } = new RelayCommand(() => { });
+                }
+                public sealed partial class SelectNameWindow : RunicWindow<SelectNameViewModel>;
+                """, "RUNICBRIDGE071", "public NavigationSelection? Documents",
+                "SelectNameViewModel.Documents: the region collection's client method selectDocuments collides with another member of the generated client.").ConfigureAwait(false);
+            // Without PageCanClose there is no closeDocuments, so a CloseDocuments command does not collide.
+            var withoutClose = await GenerateValidAsync(generator, temporaryRoot, "RegionCollectionWithoutClose", Preamble + DocumentPage + """
+                public sealed class WithoutCloseViewModel : FixtureModel
+                {
+                    [RunicRegionCollection(typeof(IDocumentPage), PageCanClose = false)]
+                    public NavigationSelection? Documents { get; }
+                    [RelayCommand] private void CloseDocuments() { }
+                    public IRelayCommand CloseDocumentsCommand { get; } = new RelayCommand(() => { });
+                }
+                public sealed partial class WithoutCloseWindow : RunicWindow<WithoutCloseViewModel>;
+                """).ConfigureAwait(false);
+            var withoutCloseClient = Directory.GetFiles(Path.Combine(Path.GetDirectoryName(withoutClose)!, "ts"), "*.ts", SearchOption.AllDirectories)
+                .Where(path => !path.EndsWith(".mock.ts", StringComparison.Ordinal))
+                .Select(File.ReadAllText).Single(text => text.Contains("connectView<", StringComparison.Ordinal)
+                    && text.Contains("WithoutClose", StringComparison.Ordinal));
+            Require(withoutCloseClient.Contains("selectDocuments", StringComparison.Ordinal)
+                    && withoutCloseClient.Contains("closeDocuments", StringComparison.Ordinal),
+                $"A region collection without PageCanClose beside a CloseDocuments command lost a client member.\n{withoutCloseClient}");
             await RejectAt("UnkeyedCollection", """
                 public sealed class Item { public string Label { get; init; } = ""; }
                 public sealed class ItemsViewModel : FixtureModel
@@ -431,6 +512,33 @@ internal sealed partial class CodegenDiagnosticsTests
                 public sealed partial class PromptWindow : RunicWindow<PromptViewModel>;
                 """, "RUNICBRIDGE011", "public ReactiveUI.Binding.Interaction<string, bool> Confirm",
                 "PromptViewModel.Confirm: interactions are application-owned").ConfigureAwait(false);
+            // RUNICBRIDGE035: a ViewRequest or ViewQuestion is a get-only property, in either MVVM flavor.
+            await RejectAt("SettableViewRequest", """
+                public sealed class FocusViewModel : FixtureModel
+                {
+                    public ViewRequest<string> Focus { get; set; } = new();
+                }
+                public sealed partial class FocusWindow : RunicWindow<FocusViewModel>;
+                """, "RUNICBRIDGE035", "public ViewRequest<string> Focus",
+                "FocusViewModel.Focus: a view request is application-owned and cannot have a public setter.").ConfigureAwait(false);
+            await RejectAt("HiddenViewQuestion", """
+                public sealed class AskViewModel : FixtureModel
+                {
+                    public ViewQuestion<string, bool> Confirm { private get; set; } = new();
+                }
+                public sealed partial class AskWindow : RunicWindow<AskViewModel>;
+                """, "RUNICBRIDGE035", "public ViewQuestion<string, bool> Confirm",
+                "AskViewModel.Confirm: a view question needs a public getter.").ConfigureAwait(false);
+            // A view request's name is a member of the View beside its commands and interactions.
+            await RejectAt("ViewRequestNameCollision", """
+                public sealed class FocusCommandViewModel : FixtureModel
+                {
+                    public ViewRequest<string> Focus { get; } = new();
+                    public IRelayCommand FocusCommand { get; } = new RelayCommand(() => { });
+                }
+                public sealed partial class FocusCommandWindow : RunicWindow<FocusCommandViewModel>;
+                """, "RUNICBRIDGE004", "public sealed class FocusCommandViewModel",
+                "generated view name 'focus' conflicts between FocusCommand and Focus view request").ConfigureAwait(false);
             // RUNICBRIDGE012: a misplaced, repeated or unsupported failure declaration.
             await RejectAt("FailureOnState", """
                 public sealed class StateFailureViewModel : FixtureModel { [RunicFailure(typeof(string))] public string Title { get; set; } = ""; }
@@ -492,6 +600,25 @@ internal sealed partial class CodegenDiagnosticsTests
                 public sealed partial class PayloadFailureWindow : RunicWindow<PayloadFailureViewModel>;
                 """, "RUNICBRIDGE003", "public object Value", "PayloadFailureViewModel.SaveCommand.failure.value").ConfigureAwait(false);
             await RejectKeyDiagnosticsAsync((name, members, code, declaration, expected) => RejectAt(name, members, code, declaration, expected)).ConfigureAwait(false);
+            // query-collections/1: RUNICBRIDGE060 at the query collection property.
+            await RejectAt("QuerySetter", """
+                public sealed record QueryRow(int Id, string Label);
+                public sealed class QuerySetterViewModel : FixtureModel { public RunicQueryCollection<QueryRow, int> Rows { get; set; } = null!; }
+                public sealed partial class QuerySetterWindow : RunicWindow<QuerySetterViewModel>;
+                """, "RUNICBRIDGE060", "public RunicQueryCollection<QueryRow, int> Rows",
+                "QuerySetterViewModel.Rows: a RunicQueryCollection must be get-only").ConfigureAwait(false);
+            await RejectAt("QueryKey", """
+                public sealed record QueryRow(long Id, string Label);
+                public sealed class QueryKeyViewModel : FixtureModel { public RunicQueryCollection<QueryRow, long> Rows { get; } = null!; }
+                public sealed partial class QueryKeyWindow : RunicWindow<QueryKeyViewModel>;
+                """, "RUNICBRIDGE060", "public RunicQueryCollection<QueryRow, long> Rows",
+                "QueryKeyViewModel.Rows: a RunicQueryCollection key is a string, Guid or Int32, not Int64.").ConfigureAwait(false);
+            await RejectAt("QueryAttributes", """
+                public sealed record QueryRow(int Id, string Label);
+                public sealed class QueryAttributesViewModel : FixtureModel { [RunicCollection("Id")] public RunicQueryCollection<QueryRow, int> Rows { get; } = null!; }
+                public sealed partial class QueryAttributesWindow : RunicWindow<QueryAttributesViewModel>;
+                """, "RUNICBRIDGE060", "public RunicQueryCollection<QueryRow, int> Rows",
+                "QueryAttributesViewModel.Rows: a RunicQueryCollection has its own keys").ConfigureAwait(false);
             await Reject("ObjectValue", """
                 public sealed class ObjectViewModel : FixtureModel { public object Value { get; } = new(); }
                 public sealed partial class ObjectWindow : RunicWindow<ObjectViewModel>;
@@ -688,6 +815,18 @@ internal sealed partial class CodegenDiagnosticsTests
                 public sealed partial class PlainWindow : RunicWindow<PlainViewModel>;
                 """, "--di-composition", "Fixture.Composition").ConfigureAwait(false);
             var registration = File.ReadAllText(Path.Combine(composition, "RunicBridgeComposition.g.cs"));
+            // View requests and questions need no ReactiveUI adapter, and a request also needs a content session.
+            var toolkitOnly = await GenerateValidAsync(generator, temporaryRoot, "ViewRequestsWithoutAdapter", Preamble + """
+                public sealed class NoteViewModel : FixtureModel
+                {
+                    public ViewRequest<string> Focus { get; } = new();
+                    public ViewQuestion<string, bool> Confirm { get; } = new();
+                }
+                public sealed partial class NoteWindow : RunicWindow<NoteViewModel>;
+                """, "--reactiveui-flavor", "none", "--di-composition", "Fixture.Composition").ConfigureAwait(false);
+            var toolkitRegistration = File.ReadAllText(Path.Combine(toolkitOnly, "RunicBridgeComposition.g.cs"));
+            Require(!toolkitRegistration.Contains("Func<global::Runic.Application.Views.IBridgeTransport, global::Fixture.NoteViewModel, global::System.IDisposable>", StringComparison.Ordinal),
+                $"DI composition registered a transport-only factory for a view request ViewModel.\n{toolkitRegistration}");
             Require(!registration.Contains("Func<global::Runic.Application.Views.IBridgeTransport, global::Fixture.AskViewModel, global::System.IDisposable>", StringComparison.Ordinal)
                 && registration.Contains("Func<global::Runic.Application.Views.IBridgeTransport, global::Runic.Application.Views.WindowContentSession, global::Fixture.AskViewModel, global::System.IDisposable>", StringComparison.Ordinal)
                 && registration.Contains("Func<global::Runic.Application.Views.IBridgeTransport, global::Fixture.PlainViewModel, global::System.IDisposable>", StringComparison.Ordinal),

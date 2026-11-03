@@ -210,6 +210,19 @@ public sealed record RunicWindowOptions
     public RunicWindowModality Modality { get; init; }
 
     /// <summary>
+    /// The largest file the page may upload to the window (<see cref="WindowContentSessionOptions.MaximumUploadBytes"/>),
+    /// at least 1 KiB. <see langword="null"/>, the default, uses the host's default, or else 256 MiB.
+    /// </summary>
+    public long? MaximumUploadBytes { get; init; }
+
+    /// <summary>
+    /// The most bytes that the window's unclaimed uploads may take at once
+    /// (<see cref="WindowContentSessionOptions.MaximumWindowUploadBytes"/>), at least 1 KiB. <see langword="null"/>, the
+    /// default, is 1 GiB.
+    /// </summary>
+    public long? MaximumWindowUploadBytes { get; init; }
+
+    /// <summary>
     /// Gets <see cref="ContentRoot"/>, or the web root (<c>www</c> unless the build names another) next to the
     /// application. On macOS, when the application runs from a bundle's <c>Contents/MacOS</c> and that directory does
     /// not exist, gets the bundle's <c>Contents/Resources/www</c>: Apple expects only code in <c>Contents/MacOS</c>.
@@ -251,6 +264,8 @@ public sealed record RunicWindowOptions
             throw new ArgumentOutOfRangeException(nameof(Modality), Modality, "The modality is not defined.");
         if (Modality != RunicWindowModality.None && Owner is null)
             throw new ArgumentException("A window-modal Window needs an Owner: set Owner, or Modality to None.", nameof(Modality));
+        BridgeInputLimit.ResolveUpload(MaximumUploadBytes, nameof(MaximumUploadBytes));
+        BridgeInputLimit.ResolveUpload(MaximumWindowUploadBytes, nameof(MaximumWindowUploadBytes));
     }
 }
 
@@ -299,6 +314,8 @@ public sealed class RunicWindowOpening<TViewModel> where TViewModel : class
             ? _attachWithContent(transport, content, ViewModel)
             : _attach!(transport, ViewModel);
         Window.AttachedBridge(content, bridge);
+        // IRunicConnections in this scope follows this Window's page connections.
+        (Scope.ServiceProvider.GetService(typeof(RunicConnections)) as RunicConnections)?.Bind(content);
         return bridge;
     }
 

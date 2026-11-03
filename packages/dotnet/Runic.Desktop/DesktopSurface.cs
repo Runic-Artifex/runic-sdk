@@ -309,6 +309,28 @@ public sealed class DesktopSurface : IAsyncDisposable
 
     internal bool IsExecutingCallback => _engine.IsExecutingCallback;
 
+    // blobs/1: serves the surface's blob and upload requests (WebUiWindow.BlobsPath and UploadPath) through handler,
+    // after the window admitted them, until the result is disposed.
+    internal IDisposable ServeBlobs(Func<Internal.PresentationExchange, string?, Task> handler)
+    {
+        ArgumentNullException.ThrowIfNull(handler);
+        ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
+        _engine.SetBlobHandler(handler);
+        return new BlobLease(_engine, handler);
+    }
+
+    // The surface URL, or null before the surface is attached or after it closed.
+    internal Uri? CurrentUrl => _engine.Url;
+
+    private sealed class BlobLease(WebUiWindow engine, Func<Internal.PresentationExchange, string?, Task> handler) : IDisposable
+    {
+        private int _disposed;
+        public void Dispose()
+        {
+            if (Interlocked.Exchange(ref _disposed, 1) == 0) engine.ClearBlobHandler(handler);
+        }
+    }
+
     // Child presentation adapters use this to retire their borrowed-model session on unload.
     internal event EventHandler? PresentationClosed
     {
@@ -1264,6 +1286,17 @@ public sealed class DesktopWindow : IAsyncDisposable
         cancellationToken.ThrowIfCancellationRequested();
         ObjectDisposedException.ThrowIf(!IsOpen, this);
         return new ValueTask<bool>(_engine.TryExecuteMenuItemAsync(item, MenuCommands, cancellationToken));
+    }
+
+    // The in-page menu bar (Runic.Application.Views.Desktop): runs the item on the application's commands only, as
+    // TryExecuteMenuItemAsync does, but never on this window's MenuCommands. The page runs the window's own commands
+    // itself, with the identity of the page that clicked; this window's target has none.
+    internal ValueTask<bool> TryExecuteApplicationMenuItemAsync(DesktopMenuItem item, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(item);
+        cancellationToken.ThrowIfCancellationRequested();
+        ObjectDisposedException.ThrowIf(!IsOpen, this);
+        return new ValueTask<bool>(_engine.TryExecuteMenuItemAsync(item, window: null, cancellationToken));
     }
 
     // The in-page menu bar (Runic.Application.Views.Desktop): whether each item can run now, asked as

@@ -216,7 +216,10 @@ public abstract class RunicWindow<TViewModel> : RunicView<TViewModel>, IRunicWin
     /// property of its ViewModel), in declaration order, skipping empty ones. A clear asks the departure guard of every
     /// entry and of the child regions they own, as any other navigation would. The window closes when every clear
     /// commits; a guard that rejects or fails, a cancelled or superseded clear keeps it open with its entries, and the
-    /// regions after it are not asked. A guard can confirm through a dialog region of the same window, or through a
+    /// regions after it are not asked. The tabs of a region collection (<see cref="RunicRegionCollectionAttribute"/>) are
+    /// removed one by one with <see cref="NavigationSelection.RemoveAsync"/>, so the tabs that agreed are closed even when
+    /// a later tab keeps the window open; to ask every tab in one decision, own the tabs by a page entry, whose clear
+    /// retires them all in one transition. A guard can confirm through a dialog region of the same window, or through a
     /// ReactiveUI interaction that a web View of this window answers: the close is the window's own departure, so the
     /// one presentation in the window that has mounted a handler for the interaction is asked. Override it to add
     /// checks of your own, and call the base method to keep the navigation guards.
@@ -233,12 +236,23 @@ public abstract class RunicWindow<TViewModel> : RunicView<TViewModel>, IRunicWin
     /// <returns><see langword="true"/> to let the window close.</returns>
     protected virtual async ValueTask<bool> CanCloseAsync(CancellationToken cancellationToken)
     {
-        foreach (var region in (_bridge as IBridgeRegionSlots)?.NavigationRegions() ?? [])
+        foreach (var (region, collection) in (_bridge as IBridgeRegionSlots)?.NavigationRegions() ?? [])
         {
-            if (region.CurrentEntry is null && !region.CanGoBack) continue;
-            // Stays in the model turn, like a command body. Supersede: a close is never refused because the region is
-            // busy, also when it rejects requests while busy.
-            var result = await region.ClearAsync(CloseClearOptions, cancellationToken).ConfigureAwait(true);
+            NavigationResult<object> result;
+            if (collection is not null)
+            {
+                // A tab of a region collection is removed, not cleared, so a tab whose pages agreed disappears even
+                // when a later tab keeps the window open (region-collections/1). A tab that is already gone is skipped.
+                if (!collection.Regions.Contains(region)) continue;
+                result = await collection.RemoveAsync(region, CloseClearOptions, cancellationToken).ConfigureAwait(true);
+            }
+            else
+            {
+                if (region.CurrentEntry is null && !region.CanGoBack) continue;
+                // Stays in the model turn, like a command body. Supersede: a close is never refused because the region
+                // is busy, also when it rejects requests while busy.
+                result = await region.ClearAsync(CloseClearOptions, cancellationToken).ConfigureAwait(true);
+            }
             // A closed navigator has nothing left to guard.
             if (result is NavigationResult<object>.Committed or NavigationResult<object>.Rejected { Reason: NavigationRejection.Closed })
                 continue;

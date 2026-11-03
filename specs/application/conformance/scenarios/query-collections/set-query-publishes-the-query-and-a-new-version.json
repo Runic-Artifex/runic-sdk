@@ -1,0 +1,385 @@
+{
+  "format": "runic.views.scenario/1",
+  "id": "query-collections.set-query-publishes-the-query-and-a-new-version.v1",
+  "contract": {
+    "id": "runic.views",
+    "version": 4
+  },
+  "set": "query-collections",
+  "roles": [
+    "producer",
+    "client"
+  ],
+  "description": "query-set changes the query, which is state every presentation shares: a frame sets the member with the new query, a new version and an unknown total before the reply. The rows of a range follow the new order, and the count the range starts is published.",
+  "view": "catalog",
+  "requires": [
+    "query-collections/1"
+  ],
+  "ids": {
+    "c1": {
+      "kind": "connection"
+    },
+    "hello-c1": {
+      "kind": "request"
+    },
+    "session": {
+      "kind": "wire",
+      "value": "s-1"
+    },
+    "open-catalog": {
+      "kind": "call"
+    },
+    "open-catalog-request": {
+      "kind": "request"
+    },
+    "presentation": {
+      "kind": "wire",
+      "value": "p-1"
+    },
+    "sort": {
+      "kind": "call"
+    },
+    "sort-request": {
+      "kind": "request"
+    },
+    "range": {
+      "kind": "call"
+    },
+    "rows-request": {
+      "kind": "request"
+    }
+  },
+  "arrange": {
+    "model": {
+      "rows": [
+        {
+          "$rows": [
+            1,
+            5
+          ]
+        }
+      ]
+    }
+  },
+  "steps": [
+    {
+      "connect": "c1"
+    },
+    {
+      "send": {
+        "kind": "hello",
+        "protocol": 4,
+        "session": {
+          "$id": "session"
+        },
+        "client": {
+          "name": {
+            "$any": "string",
+            "default": "conformance-client"
+          },
+          "version": {
+            "$any": "string",
+            "default": "1.0.0"
+          }
+        },
+        "features": {
+          "$any": "array",
+          "default": [
+            "text-splice/1",
+            "query-collections/1"
+          ]
+        }
+      },
+      "id": "hello-c1"
+    },
+    {
+      "receive": {
+        "ok": true,
+        "protocol": 4,
+        "implementation": {
+          "name": {
+            "$any": "string",
+            "default": "conformance-producer"
+          },
+          "version": {
+            "$any": "string",
+            "default": "1.0.0"
+          }
+        },
+        "features": {
+          "$any": "array",
+          "default": [
+            "text-splice/1",
+            "query-collections/1"
+          ]
+        }
+      },
+      "replyTo": "hello-c1"
+    },
+    {
+      "call": {
+        "id": "open-catalog",
+        "op": "open",
+        "route": "catalog"
+      }
+    },
+    {
+      "send": {
+        "kind": "open",
+        "route": "catalog",
+        "presentation": {
+          "$id": "presentation"
+        }
+      },
+      "id": "open-catalog-request"
+    },
+    {
+      "receive": {
+        "ok": true,
+        "revision": 0,
+        "state": {
+          "rows": {
+            "query": {
+              "sort": [],
+              "filters": []
+            },
+            "total": 5,
+            "version": 0
+          }
+        },
+        "presentation": "ok"
+      },
+      "replyTo": "open-catalog-request"
+    },
+    {
+      "expect": {
+        "call": {
+          "id": "open-catalog",
+          "resolved": null
+        }
+      }
+    },
+    {
+      "call": {
+        "id": "sort",
+        "op": "setQuery",
+        "route": "catalog",
+        "member": "rows",
+        "value": {
+          "sort": [
+            {
+              "field": "label",
+              "descending": true
+            }
+          ]
+        }
+      }
+    },
+    {
+      "send": {
+        "kind": "query-set",
+        "route": "catalog",
+        "member": "rows",
+        "query": {
+          "sort": [
+            {
+              "field": "label",
+              "descending": true
+            }
+          ],
+          "filters": []
+        }
+      },
+      "id": "sort-request"
+    },
+    {
+      "receive": {
+        "kind": "frame",
+        "route": "catalog",
+        "baseRevision": 0,
+        "revision": 1,
+        "changes": [
+          {
+            "field": "rows",
+            "kind": "set",
+            "value": {
+              "query": {
+                "sort": [
+                  {
+                    "field": "label",
+                    "descending": true
+                  }
+                ],
+                "filters": []
+              },
+              "total": null,
+              "version": 1
+            }
+          }
+        ]
+      }
+    },
+    {
+      "receive": {
+        "ok": true,
+        "revision": 1
+      },
+      "replyTo": "sort-request"
+    },
+    {
+      "expect": {
+        "call": {
+          "id": "sort",
+          "resolved": null
+        }
+      }
+    },
+    {
+      "expect": {
+        "state": {
+          "route": "catalog",
+          "value": {
+            "rows": {
+              "query": {
+                "sort": [
+                  {
+                    "field": "label",
+                    "descending": true
+                  }
+                ],
+                "filters": []
+              },
+              "total": null,
+              "version": 1
+            }
+          }
+        }
+      }
+    },
+    {
+      "call": {
+        "id": "range",
+        "op": "queryRange",
+        "route": "catalog",
+        "member": "rows",
+        "start": 0,
+        "count": 2
+      }
+    },
+    {
+      "send": {
+        "kind": "query-rows",
+        "route": "catalog",
+        "member": "rows",
+        "start": 0,
+        "count": 2
+      },
+      "id": "rows-request"
+    },
+    {
+      "receive": {
+        "ok": true,
+        "version": 1,
+        "total": 5,
+        "start": 0,
+        "keys": [
+          "5",
+          "4"
+        ],
+        "rows": [
+          {
+            "id": 5,
+            "label": "row 5"
+          },
+          {
+            "id": 4,
+            "label": "row 4"
+          }
+        ]
+      },
+      "replyTo": "rows-request",
+      "unordered": true
+    },
+    {
+      "receive": {
+        "kind": "frame",
+        "route": "catalog",
+        "baseRevision": 1,
+        "revision": 2,
+        "changes": [
+          {
+            "field": "rows",
+            "kind": "set",
+            "value": {
+              "query": {
+                "sort": [
+                  {
+                    "field": "label",
+                    "descending": true
+                  }
+                ],
+                "filters": []
+              },
+              "total": 5,
+              "version": 1
+            }
+          }
+        ]
+      },
+      "unordered": true
+    },
+    {
+      "expect": {
+        "call": {
+          "id": "range",
+          "resolved": [
+            "5",
+            "4"
+          ]
+        }
+      }
+    },
+    {
+      "expect": {
+        "state": {
+          "route": "catalog",
+          "value": {
+            "rows": {
+              "query": {
+                "sort": [
+                  {
+                    "field": "label",
+                    "descending": true
+                  }
+                ],
+                "filters": []
+              },
+              "total": 5,
+              "version": 1
+            }
+          }
+        }
+      }
+    },
+    {
+      "expect": {
+        "model": {
+          "rows": {
+            "sort": [
+              {
+                "field": "label",
+                "descending": true
+              }
+            ],
+            "filters": []
+          }
+        }
+      }
+    },
+    {
+      "expect": {
+        "diagnostics": []
+      }
+    }
+  ]
+}

@@ -73,6 +73,9 @@ public sealed class RunicCsWebUiHost : IRunicWindowHost
             throw new ArgumentOutOfRangeException(nameof(options), options.MaximumInputBytes,
                 "MaximumInputBytes must be between 1 024 and 67 108 864 bytes.");
         _maximumInputBytes = options.MaximumInputBytes;
+        if (options.MaximumUploadBytes is < 1_024)
+            throw new ArgumentOutOfRangeException(nameof(options), options.MaximumUploadBytes, "MaximumUploadBytes must be at least 1 024 bytes.");
+        _maximumUploadBytes = options.MaximumUploadBytes;
         _assets = options.Assets;
         _menuBar = new CsWebUiMenuBar(options.MenuBar ?? throw new ArgumentNullException(nameof(options), "MenuBar is null."));
     }
@@ -100,6 +103,7 @@ public sealed class RunicCsWebUiHost : IRunicWindowHost
     private readonly bool? _includeFailureDetail;
     private readonly Runic.Assets.IAssetSource? _assets;
     private readonly int? _maximumInputBytes;
+    private readonly long? _maximumUploadBytes;
 
     private static readonly RunicCsWebUiHostOptions DefaultOptions = new();
 
@@ -253,6 +257,8 @@ public sealed class RunicCsWebUiHost : IRunicWindowHost
                 LoggerFactory = scope.ServiceProvider.GetService<ILoggerFactory>(),
                 IncludeFailureDetail = opening.Options.IncludeFailureDetail ?? _includeFailureDetail,
                 MaximumInputBytes = opening.Options.MaximumInputBytes ?? _maximumInputBytes,
+                MaximumUploadBytes = opening.Options.MaximumUploadBytes ?? _maximumUploadBytes,
+                MaximumWindowUploadBytes = opening.Options.MaximumWindowUploadBytes,
             });
             var menuLogger = (scope.ServiceProvider.GetService<ILoggerFactory>()?.CreateLogger(CsWebUiLog.LogCategory))
                 ?? Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance;
@@ -262,6 +268,9 @@ public sealed class RunicCsWebUiHost : IRunicWindowHost
             var menu = menuRoutes;
             var bindings = new Bindings(menuRoutes);
             menuRoutes = null;
+            // blobs/1: the window's blobs and uploads, from a loopback listener of its own (CsWebUiBlobEndpoint).
+            if (CsWebUiBlobEndpoint.Start(BridgeDispatcher.For(transport).Blobs, window, menuLogger) is { } blobEndpoint)
+                bindings.Add(blobEndpoint);
             host = new CsWebUiBridgeWindow<TViewModel>(scope, window, transport, content, bindings, viewModel);
             var attachment = opening.AttachBridge(transport, content);
             try { host.Attach(attachment); }
@@ -270,7 +279,7 @@ public sealed class RunicCsWebUiHost : IRunicWindowHost
             MenuCommandBinding? menuCommands = null;
             if (MenuCommandBinding.Binds(viewModel))
             {
-                menuCommands = await MenuCommandBinding.BindViewModelAsync(_menuBar, content.ModelContext, viewModel!, menuLogger)
+                menuCommands = await MenuCommandBinding.BindViewModelAsync(_menuBar, content.ModelContext, viewModel!, menuLogger, content)
                     .ConfigureAwait(false);
                 bindings.Add(menuCommands);
             }
@@ -324,7 +333,22 @@ public sealed class RunicCsWebUiHost : IRunicWindowHost
     {
         private readonly object _gate = new();
         private MenuCommandBinding? _commands;
+        private CsWebUiBlobEndpoint? _blobs;
         private bool _disposed;
+
+        // blobs/1: the window's blob endpoint (CsWebUiBlobEndpoint).
+        internal void Add(CsWebUiBlobEndpoint blobs)
+        {
+            lock (_gate)
+            {
+                if (!_disposed)
+                {
+                    _blobs = blobs;
+                    return;
+                }
+            }
+            blobs.Dispose();
+        }
 
         internal void Add(MenuCommandBinding commands)
         {
@@ -342,14 +366,20 @@ public sealed class RunicCsWebUiHost : IRunicWindowHost
         public void Dispose()
         {
             MenuCommandBinding? commands;
+            CsWebUiBlobEndpoint? blobs;
             lock (_gate)
             {
                 if (_disposed) return;
                 _disposed = true;
                 commands = _commands;
+                blobs = _blobs;
             }
             try { routes.Dispose(); }
-            finally { commands?.Dispose(); }
+            finally
+            {
+                try { commands?.Dispose(); }
+                finally { blobs?.Dispose(); }
+            }
         }
     }
 

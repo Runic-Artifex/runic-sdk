@@ -107,13 +107,13 @@ internal sealed class ConformanceTests
         // The route is served, so that open answers.
         using var bridge = new ConformanceInteractionBridge<ConformanceInteractionModel>(transport, model, route, session);
 
-        using (RunicInteractionInvocation.Enter(session, route, "client", "connection"))
+        using (RunicInteractionInvocation.Enter(session, route, "client", BridgeDispatcher.For(transport).ConnectionKeyOf("connection")!))
             Require(await model.Confirm.Handle("fallback"), "An interaction without an eligible browser did not fall back to .NET.");
 
         const string presentation = "scope-present";
         await ConformanceRequests.OpenAsync(transport, route, presentation, name, contract);
         Task<bool> answer;
-        using (RunicInteractionInvocation.Enter(session, route, "client", "connection"))
+        using (RunicInteractionInvocation.Enter(session, route, "client", BridgeDispatcher.For(transport).ConnectionKeyOf("connection")!))
             answer = model.Confirm.Handle("browser");
         using var request = await ConformanceRequests.NextPushAsync(transport, "interaction");
         var root = request.RootElement;
@@ -151,7 +151,7 @@ internal sealed class ConformanceTests
         // The Back starts where a bridged command of the editor would, inside its invocation.
         Task<NavigationResult<object>> Close()
         {
-            using (RunicInteractionInvocation.Enter(session, route, "client", "connection"))
+            using (RunicInteractionInvocation.Enter(session, route, "client", BridgeDispatcher.For(transport).ConnectionKeyOf("connection")!))
                 return region.BackAsync().AsTask();
         }
 

@@ -135,6 +135,9 @@ internal sealed class BridgeTypeGraph
             BridgeWireKind.Array or BridgeWireKind.List => $"readonly {ArrayElement(TypeScriptType(node.Element!))}[]",
             BridgeWireKind.StringDictionary => $"Readonly<Record<string, {TypeScriptType(node.Value!)}>>",
             BridgeWireKind.Custom => node.CustomCodec!.TypeScriptType,
+            // An inline type import: DTOs declared in a shared module need no import statement for it.
+            BridgeWireKind.Blob => "import(\"@runic-artifex/views\").RunicBlob",
+            BridgeWireKind.Upload => "import(\"@runic-artifex/views\").BlobRef",
             // Any JSON value. A JsonNode is never JSON null; null is its C# null.
             BridgeWireKind.Json => node.IsNullable || node.NonNullableType == typeof(JsonElement) ? "unknown" : "NonNullable<unknown>",
             _ => throw new InvalidOperationException($"No TypeScript form exists for {node.Kind}.")
@@ -264,6 +267,8 @@ internal sealed class BridgeTypeGraph
             BridgeWireKind.Union => DecodeUnionTypeScript(node, expression),
             BridgeWireKind.Custom => node.CustomCodec!.TypeScriptDecoderExpression.Replace("$value", expression, StringComparison.Ordinal),
             BridgeWireKind.Json => JsonTypeScript(node, expression),
+            BridgeWireKind.Blob => $"bridgeWire.blob({expression})",
+            BridgeWireKind.Upload => $"bridgeWire.blobRef({expression})",
             _ => throw new InvalidOperationException($"No TypeScript decoder exists for {node.Kind}.")
         };
         return node.IsNullable && node.Kind is not BridgeWireKind.Json ? $"({expression} === null ? null : {nonNull})" : nonNull;
@@ -335,6 +340,8 @@ internal sealed class BridgeTypeGraph
             BridgeWireKind.Dto => "{ " + string.Join(", ", node.Members.Select(member => "[" + Quote(member.WireName) + "]: " + EncodeMemberTypeScript(member, value + "[" + Quote(member.WireName) + "]"))) + " }",
             BridgeWireKind.Union => EncodeUnionTypeScript(node, value),
             BridgeWireKind.Custom => node.CustomCodec!.TypeScriptEncoderExpression.Replace("$value", value, StringComparison.Ordinal),
+            BridgeWireKind.Blob => $"bridgeWire.encodeBlob({value})",
+            BridgeWireKind.Upload => $"bridgeWire.encodeBlobRef({value})",
             _ => value,
         };
         return node.IsNullable
@@ -435,6 +442,12 @@ internal sealed class BridgeTypeGraph
             case BridgeWireKind.Custom:
                 source.AppendLine($"        {CSharpType(node.CustomCodec!.CodecType)}.Write(writer, {value});");
                 break;
+            case BridgeWireKind.Blob:
+                source.AppendLine($"        global::Runic.Application.Views.Generated.BridgeWire.WriteBlob(writer, {value});");
+                break;
+            case BridgeWireKind.Upload:
+                source.AppendLine($"        global::Runic.Application.Views.Generated.BridgeWire.WriteUpload(writer, {value});");
+                break;
             // A default JsonElement holds no value; it crosses as null.
             case BridgeWireKind.Json when node.NonNullableType == typeof(JsonElement):
                 source.AppendLine($"        if ({value}.ValueKind is global::System.Text.Json.JsonValueKind.Undefined) writer.WriteNullValue(); else {value}.WriteTo(writer);");
@@ -514,6 +527,11 @@ internal sealed class BridgeTypeGraph
                 break;
             case BridgeWireKind.Custom:
                 source.AppendLine($"        return {CSharpType(node.CustomCodec!.CodecType)}.Read(element);"); break;
+            // A settable property that holds a blob: the page cannot set it (blobs/1).
+            case BridgeWireKind.Blob:
+                source.AppendLine("        throw global::Runic.Application.Views.Generated.BridgeWire.Invalid(\"A blob is never read from the page; send an upload instead.\");"); break;
+            case BridgeWireKind.Upload:
+                source.AppendLine("        return global::Runic.Application.Views.Generated.BridgeWire.ReadUpload(element);"); break;
             // The element belongs to a document that is disposed after the call.
             case BridgeWireKind.Json when node.NonNullableType == typeof(JsonElement):
                 source.AppendLine("        return element.Clone();"); break;
@@ -690,7 +708,7 @@ internal sealed class BridgeTypeGraph
             }
             catch (BridgeTypeGraphException error) when (error.Member is null && origin is not null)
             {
-                throw new BridgeTypeGraphException(error.Path, error.Detail, origin);
+                throw new BridgeTypeGraphException(error.Path, error.Detail, origin, error.Code);
             }
         }
 
@@ -710,6 +728,16 @@ internal sealed class BridgeTypeGraph
             var node = new BridgeTypeNode(_nextId++, type, nullable) { Nullability = annotations, Direction = direction };
             Nodes.Add(node);
             if (TryScalar(type, out var scalar)) { node.Kind = scalar; return node; }
+            // blobs/1: a blob goes to the page only; the page sends files as uploads.
+            if (type == typeof(Runic.Application.Views.RunicBlob))
+            {
+                if (direction == BridgeValueDirection.FromPage)
+                    throw new BridgeTypeGraphException(path, "A RunicBlob only goes to the page: it cannot be a command input or an interaction result. Take a RunicUpload, which the page creates with client.upload(file).",
+                        code: BridgeDiagnosticCodes.Blob);
+                node.Kind = BridgeWireKind.Blob;
+                return node;
+            }
+            if (type == typeof(Runic.Application.Views.RunicUpload)) { node.Kind = BridgeWireKind.Upload; return node; }
             if (type.IsEnum)
             {
                 if (type.IsDefined(typeof(FlagsAttribute), inherit: false))
@@ -1054,6 +1082,10 @@ internal enum BridgeWireKind
     StringDictionary, Dto, Union, Custom,
     /// <summary>Any JSON value: a JsonElement or a JsonNode.</summary>
     Json,
+    /// <summary>A RunicBlob (blobs/1): a URL the host serves, written to the page only.</summary>
+    Blob,
+    /// <summary>A RunicUpload (blobs/1): a file the page uploaded, named by its id.</summary>
+    Upload,
 }
 
 internal sealed class BridgeTypeNode(int id, Type nonNullableType, bool isNullable)
@@ -1123,11 +1155,13 @@ internal sealed record CustomCodecDescription(Type CodecType, string TypeScriptT
     }
 }
 
-internal sealed class BridgeTypeGraphException(string path, string message, MemberInfo? member = null)
+internal sealed class BridgeTypeGraphException(string path, string message, MemberInfo? member = null, string? code = null)
     : NotSupportedException($"{path}: {message}")
 {
     internal string Path { get; } = path;
     internal string Detail { get; } = message;
+    /// <summary>The diagnostic code, when it is not RUNICBRIDGE003 (a value type that is not a bridge value).</summary>
+    internal string? Code { get; } = code;
     /// <summary>The declaration the diagnostic points at, when known.</summary>
     internal MemberInfo? Member { get; } = member;
 }

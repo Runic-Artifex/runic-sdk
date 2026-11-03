@@ -79,6 +79,12 @@ no change is pending. `State` and `Error` are read-only dependency properties:
 use a `Trigger` or `DataTrigger` on `State` in XAML, and the CLR `StateChanged`
 event in code. The host borrows the model, services and context: it
 never creates or disposes a ViewModel, a scope or a navigation entry.
+Because it creates no Window scope, `IRunicConnections` (since 0.16) is not
+bound to a `RunicViewHost`'s page: resolved from its services it lists no
+connection and raises no events. During a command of the page,
+`RunicInteractionInvocation.Current?.ConnectionKey` names the page's
+connection
+([Who is connected, and who called](../Runic.Application.Views/README.md#who-is-connected-and-who-called)).
 
 `WebContent` sets what the page may do beyond the application's origins, as
 `DesktopWindowOptions.WebContent` does for a Desktop window: external
