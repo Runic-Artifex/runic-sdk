@@ -39,3 +39,43 @@ public interface IRunicMenuCommandSource
     /// <param name="commandId">The menu item's command id.</param>
     ICommand? GetMenuCommand(string commandId);
 }
+
+/// <summary>
+/// A Window's root ViewModel that supplies the check marks of the menu bar's check and radio items while its Window is
+/// the key window.
+/// </summary>
+/// <remarks>
+/// <para>
+/// An item declared with a non-null <c>DesktopMenuItem.IsChecked</c> is a check or radio item. The host asks
+/// <see cref="IsMenuItemChecked"/> for each of them in the ViewModel's model turn when the Window opens, when the menu
+/// bar changes, and whenever the ViewModel raises <see cref="System.ComponentModel.INotifyPropertyChanged.PropertyChanged"/>
+/// for any property, so answer from the ViewModel's own state and raise <c>PropertyChanged</c> when it changes:
+/// <code>
+/// public sealed partial class EditorViewModel : ObservableObject, IRunicMenuCommandSource, IRunicMenuCheckedSource
+/// {
+///     [ObservableProperty] private bool _wordWrap;
+///     [ObservableProperty] private int _zoom = 100;
+///
+///     public bool? IsMenuItemChecked(string commandId, string? commandParameter) =&gt; commandId switch
+///     {
+///         "view.wrap" =&gt; WordWrap,
+///         "view.zoom" =&gt; commandParameter == Zoom.ToString(CultureInfo.InvariantCulture), // a radio group
+///         _ =&gt; null,
+///     };
+/// }
+/// </code>
+/// The menu bar then shows the answers natively, in the page's own menu bar and in a desktop's global menu, and follows
+/// the key window: each Window's root ViewModel answers for its own Window. Each item of a radio group is asked on its
+/// own, so answer <see langword="true"/> for one of them. <see langword="null"/>, or an answer that throws (logged as
+/// the menu command failure), keeps the declared state. Commands that change the state are those of
+/// <see cref="IRunicMenuCommandSource"/>; a ViewModel may implement this interface without it, and its items are then
+/// run by the application's commands.
+/// </para>
+/// </remarks>
+public interface IRunicMenuCheckedSource
+{
+    /// <summary>Gets whether a check or radio item shows its check mark, or <see langword="null"/> to keep the declaration.</summary>
+    /// <param name="commandId">The menu item's command id.</param>
+    /// <param name="commandParameter">The menu item's command parameter, <see langword="null"/> for none.</param>
+    bool? IsMenuItemChecked(string commandId, string? commandParameter);
+}

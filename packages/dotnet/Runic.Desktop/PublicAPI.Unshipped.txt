@@ -1,1 +1,2 @@
 #nullable enable
+Runic.Desktop.IDesktopMenuCommandTarget.IsChecked(Runic.Platform.DesktopMenuItem! item) -> bool?

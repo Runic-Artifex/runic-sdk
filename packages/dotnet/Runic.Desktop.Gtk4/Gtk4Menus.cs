@@ -12,7 +12,7 @@ namespace Runic.Desktop.Gtk4;
 // - Every item has its own action in one GSimpleActionGroup ("runic.item-N"): stateless for plain items, a boolean
 //   state for check items, and an int32 state with the item's own target for radio items, so GTK draws the check or
 //   radio mark from the declaration and each item has its own enabled state. Runic handles activate, so GTK never
-//   changes a state itself. Actions follow CanExecute when a popover of the bar is shown.
+//   changes a state itself. Actions follow CanExecute and IsChecked when a popover of the bar is shown.
 // - The "accel" attribute shows the shortcut text without registering the key; the unhandled-key controller matches
 //   it after the page (GtkMenuShortcuts).
 // - A context menu is a GtkPopoverMenu on the web view pointing at the page point or the last pointer position, with
@@ -236,15 +236,23 @@ internal sealed partial class Gtk4WindowHost : IDesktopMenuWindowHost
         }
     }
 
-    // As AppKit validates items: enabled while the declaration and a target's CanExecute allow it.
+    // As AppKit validates items: enabled while the declaration and a target's CanExecute allow it, and check and radio
+    // items checked as the target's IsChecked answers. Runic sets the states; GTK never changes one itself.
     private void RefreshBarActions(Gtk4MenuModel model)
     {
         try
         {
             if (!ReferenceEquals(model, _barModel)) return;
+            var commands = MenuCommands;
             foreach (var (action, entry) in model.Items)
             {
-                action.SetEnabled(entry.Enabled && entry.Item is { } item && MenuCommands is { } commands && commands.CanExecute(item));
+                action.SetEnabled(entry.Enabled && entry.Item is { } item && commands is not null && commands.CanExecute(item));
+                if (entry is not { Kind: PlannedMenuKind.Check or PlannedMenuKind.Radio, Item: { } toggle }) continue;
+                var isChecked = (commands is not null ? commands.IsChecked(toggle) : toggle.IsChecked) == true;
+                if (entry.Kind == PlannedMenuKind.Check)
+                    action.SetState(GLib.Variant.NewBoolean(isChecked));
+                else
+                    action.SetState(GLib.Variant.NewInt32(isChecked ? model.Ids[entry.Key] : -1));
             }
         }
         catch
@@ -431,6 +439,8 @@ internal sealed partial class Gtk4WindowHost : IDesktopMenuWindowHost
         }, cancellationToken);
 
         public bool CanExecute(DesktopMenuItem item) => host.MenuCommands is { } commands && commands.CanExecute(item);
+
+        public bool? IsChecked(DesktopMenuItem item) => host.MenuCommands is { } commands ? commands.IsChecked(item) : item.IsChecked;
 
         public void Execute(DesktopMenuItem item) => host.RunMenuItem(item);
 

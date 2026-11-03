@@ -685,6 +685,31 @@ new DesktopMenu("View",
 ])
 ```
 
+Check marks follow the ViewModel when it also implements
+`IRunicMenuCheckedSource`. The host asks it for each item declared with
+`IsChecked`, in the model turn, when the Window opens, after `SetMenuBar` and
+whenever the ViewModel raises `PropertyChanged`; `null` keeps the declaration.
+Each Window answers for its own bar, so the native bar follows the key window,
+and the page's bar and a Linux global menu show the same marks:
+
+```csharp
+public sealed partial class EditorViewModel : ObservableObject, IRunicMenuCommandSource, IRunicMenuCheckedSource
+{
+    [ObservableProperty] private bool _wordWrap;
+    [ObservableProperty] private double _zoom = 1.5;
+
+    public bool? IsMenuItemChecked(string commandId, string? commandParameter) => commandId switch
+    {
+        "view.wrap" => WordWrap,
+        "view.zoom" => commandParameter == Zoom.ToString(CultureInfo.InvariantCulture),
+        _ => null,
+    };
+}
+```
+
+ReactiveUI ViewModels raise `PropertyChanged` from `RaiseAndSetIfChanged` the
+same way. A custom `IDesktopMenuCommandTarget` overrides `IsChecked(item)`.
+
 A failure is logged as event 2004, `DesktopMenuCommandFailed` (2102,
 `CsWebUiMenuCommandFailed`, on CS-WebUI). An id the
 ViewModel returns `null` for goes to the application's commands,

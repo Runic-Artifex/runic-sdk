@@ -113,9 +113,15 @@ of unknown kinds and reads an unknown `placement` as `none`, `shortcuts` as `hos
 | `enabled` | the declaration, with its parents' | also the command's `CanExecute` | |
 | `entries` | yes | | |
 | `commandId`, `commandParameter` | | yes, the parameter when declared | |
-| `checked`, `radioGroup` | | when declared | |
+| `checked` | | when declared: the command path's `IsChecked` | |
+| `radioGroup` | | when declared | |
 | `shortcut`, `shortcutText`, `ariaKeyShortcuts` | | when declared and not reserved | |
 
+- `checked` is present when the item declares `IsChecked`, and its value is the window's
+  command path's answer: the window's `MenuCommands.IsChecked(item)`, then
+  `DesktopHost.MenuCommands`, else the declaration. A Runic Window's root ViewModel
+  answers through `IRunicMenuCheckedSource`, and the host pushes a new state when the
+  answer changes. Each radio item carries its own value; a page shows them as given.
 - `key` is stable while the declaration keeps the entry at its position with the same
   kind (a check or radio item has another key than a plain one).
 - `label` is the title; when the title does not contain the access key, it ends with the

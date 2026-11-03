@@ -19,6 +19,21 @@ public interface IDesktopMenuCommandTarget
     /// <summary>Runs the item's command, after <see cref="CanExecute"/> returned <see langword="true"/>.</summary>
     /// <param name="item">The menu item; its <see cref="DesktopMenuItem.CommandId"/> names the command.</param>
     void Execute(DesktopMenuItem item);
+
+    /// <summary>Gets whether a check or radio item shows its check mark now.</summary>
+    /// <param name="item">The menu item; its <see cref="DesktopMenuItem.CommandId"/> and <see cref="DesktopMenuItem.CommandParameter"/> name the state.</param>
+    /// <returns>
+    /// <see langword="true"/> or <see langword="false"/>; <see langword="null"/>, like the default, keeps the item's
+    /// declared <see cref="DesktopMenuItem.IsChecked"/>.
+    /// </returns>
+    /// <remarks>
+    /// Runic Desktop asks it only for items declared with a non-null <see cref="DesktopMenuItem.IsChecked"/>, on the
+    /// platform's UI thread, where it asks <see cref="CanExecute"/>: as a menu opens natively, and when the state of an
+    /// in-page menu bar is built. Answer from state the command updates. The window's target answers first; the
+    /// application's is asked when the window's answer is the declared state. Each item of a radio group is asked on its
+    /// own, so answer <see langword="true"/> for exactly one of them.
+    /// </remarks>
+    bool? IsChecked(DesktopMenuItem item) => item.IsChecked;
 }
 
 /// <summary>Where a window shows the menu bar of <see cref="DesktopHostOptions.MenuBar"/> (<see cref="DesktopWindowOptions.MenuBarPresentation"/>).</summary>

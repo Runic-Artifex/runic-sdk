@@ -295,6 +295,41 @@ public sealed class MenuCommandChainTests
         Assert.True(MenuCommandChain.TryExecute(new DesktopMenuItem("X", "x"), both, both, null));
         Assert.Single(both.Executed);
     }
+
+    // B3: a check mark comes from the first target whose answer differs from the declaration, the window's first.
+    private sealed class CheckTarget(Func<DesktopMenuItem, bool?> isChecked) : IDesktopMenuCommandTarget
+    {
+        public bool CanExecute(DesktopMenuItem item) => true;
+        public void Execute(DesktopMenuItem item) { }
+        public bool? IsChecked(DesktopMenuItem item) => isChecked(item);
+    }
+
+    [Test]
+    public void CheckMarksComeFromTheWindowThenTheApplication()
+    {
+        var wrap = new DesktopMenuItem("Wrap", "view.wrap") { IsChecked = false };
+        var ruler = new DesktopMenuItem("Ruler", "view.ruler") { IsChecked = true };
+        var plain = new DesktopMenuItem("Plain", "view.plain");
+        // The default keeps the declaration.
+        IDesktopMenuCommandTarget declared = new Target("view.wrap");
+        Assert.False(declared.IsChecked(wrap));
+        Assert.Null(declared.IsChecked(plain));
+        var window = new CheckTarget(item => item.CommandId == "view.wrap" ? true : null);
+        var application = new CheckTarget(item => item.CommandId == "view.ruler" ? false : item.IsChecked);
+        var logger = new Logger();
+        var chain = new MenuCommandChain(() => application, logger) { Window = window };
+        Assert.True(chain.IsChecked(wrap));
+        Assert.False(chain.IsChecked(ruler));
+        Assert.Null(chain.IsChecked(plain));
+        // The window's answer that equals the declaration lets the application answer.
+        Assert.False(MenuCommandChain.IsChecked(ruler, new CheckTarget(static _ => true), application, null));
+        Assert.True(MenuCommandChain.IsChecked(ruler, declared, null, null));
+        // A target that throws keeps the declaration and is logged.
+        Assert.True(MenuCommandChain.IsChecked(ruler, new CheckTarget(static _ => throw new InvalidOperationException("broken")), null, logger));
+        var (id, message) = Assert.Single(logger.Entries);
+        Assert.Equal(3014, id.Id);
+        Assert.Contains("IsChecked failed for view.ruler", message);
+    }
 }
 
 public sealed class MenuWindowHostTests

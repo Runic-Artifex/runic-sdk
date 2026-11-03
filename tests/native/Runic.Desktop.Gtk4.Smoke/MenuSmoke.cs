@@ -69,6 +69,10 @@ internal static partial class MenuSmoke
         internal ConcurrentQueue<(string Id, string? Parameter)> Executed { get; } = new();
         public bool CanExecute(DesktopMenuItem item) => _handled.Contains(item.CommandId);
         public void Execute(DesktopMenuItem item) => Executed.Enqueue((item.CommandId, item.CommandParameter));
+        // B3: check marks by "id" or "id:parameter"; the declaration otherwise.
+        internal ConcurrentDictionary<string, bool> Checked { get; } = new(StringComparer.Ordinal);
+        public bool? IsChecked(DesktopMenuItem item) =>
+            Checked.TryGetValue(item.CommandParameter is { } parameter ? item.CommandId + ":" + parameter : item.CommandId, out var value) ? value : item.IsChecked;
     }
 
     internal static int Run(string toolkit, bool rtl)
@@ -161,6 +165,22 @@ internal static partial class MenuSmoke
             Require(await window.TryExecuteMenuItemAsync(new DesktopMenuItem("About", "help.about")) && application.Executed.TryDequeue(out _),
                 "TryExecuteMenuItemAsync runs the application's command");
             Console.WriteLine($"PASS {name} menu commands: availability on show, parameters, disabled items, declared state, the application's target.");
+
+            // B3: the View menu asks IsChecked when it is shown, for check and radio items alike.
+            windowTarget.Checked["view.wrap"] = false;
+            windowTarget.Checked["view.ruler"] = true;
+            windowTarget.Checked["view.zoom:0.8"] = true;
+            windowTarget.Checked["view.zoom:1.5"] = false;
+            windowTarget.Checked["view.theme:dark"] = true;
+            var shown = await window.ReadNativeAsync(handle => inspector.ShowMenu(handle, 1));
+            Require(shown[0] is { Checked: false } && shown[1] is { Checked: true } && shown[2] is { Checked: true } && shown[3] is { Checked: false }
+                && shown[4] is { Checked: false } && shown[5] is { Checked: true },
+                "the check marks of the target's IsChecked: " + string.Join(", ", shown));
+            windowTarget.Checked.Clear();
+            shown = await window.ReadNativeAsync(handle => inspector.ShowMenu(handle, 1));
+            Require(shown[0] is { Checked: true } && shown[1] is { Checked: false } && shown[3] is { Checked: true },
+                "the declared check marks again: " + string.Join(", ", shown));
+            Console.WriteLine($"PASS {name} check marks follow the target's IsChecked when a menu is shown.");
 
             // SetMenuBar rebuilds the bar.
             host.SetMenuBar([.. Bar.Take(1), new DesktopMenu("View", [new DesktopMenuItem("Word Wrap", "view.wrap") { IsChecked = false }]), .. Bar.Skip(2)]);

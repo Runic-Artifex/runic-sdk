@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.ComponentModel;
 using System.Windows.Input;
 using Microsoft.Extensions.Logging;
 using Runic.Navigation;
@@ -10,7 +11,9 @@ namespace Runic.Application.Views.Menus;
 // application's (RunicDesktopHost.UseApplicationMenu). AppKit asks CanExecute on its main thread while it shows a menu or
 // matches a key, so the availability of each command is cached per command id and parameter and updated from
 // CanExecuteChanged. Resolving and running a command happens in the model turn of the ViewModel, when there is one.
-// An item's CommandParameter is the command's parameter. Shared with Runic.Application.Views.CsWebUi, like
+// An item's CommandParameter is the command's parameter. The check marks of check and radio items come from the root
+// ViewModel's IRunicMenuCheckedSource, cached the same way and read again in the model turn whenever the ViewModel raises
+// PropertyChanged and whenever the bar changes. Shared with Runic.Application.Views.CsWebUi, like
 // MenuBarPageRoutes; on Runic Desktop it is also the window's IDesktopMenuCommandTarget (MenuCommandBinding.Desktop.cs).
 internal sealed partial class MenuCommandBinding : IDisposable
 {
@@ -18,16 +21,25 @@ internal sealed partial class MenuCommandBinding : IDisposable
     private readonly Func<string, ICommand?> _resolve;
     private readonly ILogger _logger;
     private readonly IMenuBarSource _host;
+    private readonly Func<string, string?, bool?>? _isChecked;
+    private readonly INotifyPropertyChanged? _notifier;
     private readonly object _gate = new();
     private Dictionary<MenuCommandKey, Entry> _entries = [];
+    // The check marks the ViewModel answered, by command id and parameter; a key without an answer keeps the declaration.
+    private Dictionary<MenuCommandKey, bool> _checked = [];
+    private HashSet<MenuCommandKey> _toggles = [];
+    private int _checkRefresh;
     private bool _disposed;
 
-    private MenuCommandBinding(IMenuBarSource host, IRunicModelContext? context, Func<string, ICommand?> resolve, ILogger logger)
+    private MenuCommandBinding(IMenuBarSource host, IRunicModelContext? context, Func<string, ICommand?> resolve, ILogger logger,
+        Func<string, string?, bool?>? isChecked = null, INotifyPropertyChanged? notifier = null)
     {
         _host = host;
         _context = context;
         _resolve = resolve;
         _logger = logger;
+        _isChecked = isChecked;
+        _notifier = isChecked is null ? null : notifier;
     }
 
     // Binds application commands, which have no model context: the menu bar's command ids resolve before this
@@ -40,14 +52,105 @@ internal sealed partial class MenuCommandBinding : IDisposable
         return binding;
     }
 
-    // Binds every command id of the host's menu bar now, and again whenever the bar changes.
+    // Binds every command id of the host's menu bar now, and again whenever the bar changes. isChecked answers the check
+    // marks (IRunicMenuCheckedSource), read again when the notifier raises PropertyChanged.
     internal static async ValueTask<MenuCommandBinding> BindAsync(IMenuBarSource host, IRunicModelContext? context,
-        Func<string, ICommand?> resolve, ILogger logger)
+        Func<string, ICommand?> resolve, ILogger logger, Func<string, string?, bool?>? isChecked = null, INotifyPropertyChanged? notifier = null)
     {
-        var binding = new MenuCommandBinding(host, context, resolve, logger);
+        var binding = new MenuCommandBinding(host, context, resolve, logger, isChecked, notifier);
         host.MenuBarChanged += binding.OnMenuBarChanged;
+        if (binding._notifier is { } source) source.PropertyChanged += binding.OnPropertyChanged;
         await binding.RebindAsync().ConfigureAwait(false);
         return binding;
+    }
+
+    // Binds a Window's root ViewModel: its commands (IRunicMenuCommandSource) and check marks (IRunicMenuCheckedSource).
+    internal static ValueTask<MenuCommandBinding> BindViewModelAsync(IMenuBarSource host, IRunicModelContext? context, object viewModel,
+        ILogger logger)
+    {
+        Func<string, ICommand?> resolve = viewModel is IRunicMenuCommandSource commands ? commands.GetMenuCommand : static _ => null;
+        Func<string, string?, bool?>? isChecked = viewModel is IRunicMenuCheckedSource checks ? checks.IsMenuItemChecked : null;
+        return BindAsync(host, context, resolve, logger, isChecked, viewModel as INotifyPropertyChanged);
+    }
+
+    // Whether a Window's root ViewModel takes part in the menu bar.
+    internal static bool Binds(object? viewModel) => viewModel is IRunicMenuCommandSource or IRunicMenuCheckedSource;
+
+    // The check mark of a check or radio item: the ViewModel's answer, else the declaration.
+    public bool? IsChecked(DesktopMenuItem item)
+    {
+        ArgumentNullException.ThrowIfNull(item);
+        if (item.IsChecked is null) return null;
+        lock (_gate) return !_disposed && _checked.TryGetValue(MenuCommandKey.Of(item), out var isChecked) ? isChecked : item.IsChecked;
+    }
+
+    private void OnPropertyChanged(object? sender, PropertyChangedEventArgs eventArgs)
+    {
+        // One read for a burst of changes: those raised while a read waits for the model turn join it.
+        if (Interlocked.Exchange(ref _checkRefresh, 1) == 1) return;
+        _ = RefreshCheckedAsync();
+    }
+
+    private async Task RefreshCheckedAsync()
+    {
+        try
+        {
+            HashSet<MenuCommandKey> toggles;
+            lock (_gate)
+            {
+                if (_disposed) return;
+                toggles = _toggles;
+            }
+            Dictionary<MenuCommandKey, bool> answers;
+            if (_context is { IsExecuting: false } context)
+            {
+                answers = await context.InvokeAsync(() =>
+                {
+                    Volatile.Write(ref _checkRefresh, 0);
+                    return ReadChecked(toggles);
+                }).ConfigureAwait(false);
+            }
+            else
+            {
+                Volatile.Write(ref _checkRefresh, 0);
+                answers = ReadChecked(toggles);
+            }
+            bool changed;
+            lock (_gate)
+            {
+                if (_disposed || !ReferenceEquals(toggles, _toggles)) return;
+                changed = !SameAnswers(_checked, answers);
+                if (changed) _checked = answers;
+            }
+            if (changed) RaiseChanged();
+        }
+        catch (Exception error)
+        {
+            Volatile.Write(ref _checkRefresh, 0);
+            MenuBarLog.CommandFailed(_logger, error, "*");
+        }
+    }
+
+    private static bool SameAnswers(Dictionary<MenuCommandKey, bool> before, Dictionary<MenuCommandKey, bool> after) =>
+        before.Count == after.Count && before.All(pair => after.TryGetValue(pair.Key, out var value) && value == pair.Value);
+
+    // The ViewModel's check marks, in its model turn. A failing answer keeps the declaration and is logged.
+    private Dictionary<MenuCommandKey, bool> ReadChecked(HashSet<MenuCommandKey> toggles)
+    {
+        Dictionary<MenuCommandKey, bool> answers = [];
+        if (_isChecked is not { } isChecked) return answers;
+        foreach (var key in toggles)
+        {
+            try
+            {
+                if (isChecked(key.CommandId, key.Parameter) is { } answer) answers[key] = answer;
+            }
+            catch (Exception error) when (error is not OutOfMemoryException)
+            {
+                MenuBarLog.CommandFailed(_logger, error, key.CommandId);
+            }
+        }
+        return answers;
     }
 
     // Raised, on any thread, after the availability of a bound command changed or the bar's commands were bound again,
@@ -106,10 +209,12 @@ internal sealed partial class MenuCommandBinding : IDisposable
     {
         try
         {
-            var ids = CommandIds(_host.MenuBar);
-            var resolved = _context is { IsExecuting: false } context
-                ? await context.InvokeAsync(() => Resolve(ids)).ConfigureAwait(false)
-                : Resolve(ids);
+            var menus = _host.MenuBar;
+            var ids = CommandIds(menus);
+            var toggles = ToggleKeys(menus);
+            var (resolved, answers) = _context is { IsExecuting: false } context
+                ? await context.InvokeAsync(() => (Resolve(ids), ReadChecked(toggles))).ConfigureAwait(false)
+                : (Resolve(ids), ReadChecked(toggles));
             Dictionary<MenuCommandKey, Entry> previous;
             lock (_gate)
             {
@@ -121,6 +226,8 @@ internal sealed partial class MenuCommandBinding : IDisposable
                 else
                 {
                     _entries = resolved;
+                    _toggles = toggles;
+                    _checked = answers;
                 }
             }
             foreach (var entry in previous.Values) entry.Dispose();
@@ -160,9 +267,26 @@ internal sealed partial class MenuCommandBinding : IDisposable
         return ids;
     }
 
+    // The command id and parameter of every check and radio item of the bar.
+    internal static HashSet<MenuCommandKey> ToggleKeys(IReadOnlyList<DesktopMenu> menus)
+    {
+        HashSet<MenuCommandKey> keys = [];
+        void Collect(IEnumerable<DesktopMenuEntry> entries)
+        {
+            foreach (var entry in entries)
+            {
+                if (entry is DesktopMenuItem { IsChecked: not null } item) keys.Add(MenuCommandKey.Of(item));
+                else if (entry is DesktopMenu submenu) Collect(submenu.Items);
+            }
+        }
+        foreach (var menu in menus) Collect(menu.Items);
+        return keys;
+    }
+
     public void Dispose()
     {
         _host.MenuBarChanged -= OnMenuBarChanged;
+        if (_notifier is { } notifier) notifier.PropertyChanged -= OnPropertyChanged;
         Dictionary<MenuCommandKey, Entry> entries;
         lock (_gate)
         {
