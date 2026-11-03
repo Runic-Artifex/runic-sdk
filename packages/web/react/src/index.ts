@@ -591,15 +591,6 @@ export type FieldHandle<TValue> = FieldState<TValue> & {
 
 const noFieldErrors: readonly string[] = Object.freeze([]);
 
-/** The text a field shows for a value, as the field controller formats it. */
-function formatFieldValue(value: unknown): string {
-  switch (typeof value) {
-    case "string": return value;
-    case "number": case "bigint": case "boolean": return String(value);
-    default: return "";
-  }
-}
-
 /**
  * Binds an element to one View member while the component is mounted, through `createFieldController`: pass a
  * generated descriptor such as `EditorFields.title`, or any definition with `read` and `write`. Spread `inputProps` on
@@ -622,7 +613,7 @@ function formatFieldValue(value: unknown): string {
 export function useField<TClient extends ViewClient, TValue>(
   view: TextFieldView<TClient>,
   field: BridgeField<NoInfer<TClient>, NoInfer<TClient>["snapshot"], TValue> | FieldDefinition<NoInfer<TClient>, NoInfer<TClient>["snapshot"], TValue>,
-  options: FieldOptions = {},
+  options: FieldOptions<TValue> = {},
 ): FieldHandle<TValue> {
   type State = TClient["snapshot"];
   const latest = useRef(field);
@@ -633,6 +624,7 @@ export function useField<TClient extends ViewClient, TValue>(
     ...field.nullable === undefined ? {} : { nullable: field.nullable },
     ...field.integer === undefined ? {} : { integer: field.integer },
     ...field.choices === undefined ? {} : { choices: field.choices },
+    ...field.offset === undefined ? {} : { offset: field.offset },
     read: state => latest.current.read(state),
     write: (client, value) => latest.current.write(client, value),
     ...field.checked === undefined ? {} : { checked: (client, value, write) => latest.current.checked!(client, value, write) },
@@ -662,7 +654,7 @@ export function useField<TClient extends ViewClient, TValue>(
   const value = current.editing ? current.value
     : state === undefined ? (kind === "text" || kind === undefined ? "" : undefined) as TValue
     : field.read(state);
-  const text = Object.is(value, current.value) ? current.text : formatFieldValue(value);
+  const text = Object.is(value, current.value) ? current.text : controller.format(value);
   const errors = field.errors === undefined ? current.errors : state === undefined ? noFieldErrors : field.errors(state);
   const invalid = errors.length > 0 || current.error !== undefined;
   const inputProps = kind === "boolean"

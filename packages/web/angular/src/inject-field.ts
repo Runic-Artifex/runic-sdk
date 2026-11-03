@@ -16,7 +16,8 @@ export interface FieldView<TClient extends ViewClient> {
   readonly client: Signal<TClient | undefined>;
 }
 
-export interface InjectFieldOptions extends FieldOptions {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export interface InjectFieldOptions<TValue = any> extends FieldOptions<TValue> {
   /** Required outside an injection context. */
   readonly injector?: Injector;
 }
@@ -83,7 +84,7 @@ function textOf(event: Event | string): string {
 export function injectField<TClient extends ViewClient, TValue>(
   view: FieldView<TClient>,
   field: BridgeField<TClient, TClient["snapshot"], TValue> | FieldDefinition<TClient, TClient["snapshot"], TValue>,
-  { injector: provided, ...options }: InjectFieldOptions = {},
+  { injector: provided, ...options }: InjectFieldOptions<TValue> = {},
 ): FieldHandle<TValue> {
   if (!provided) assertInInjectionContext(injectField);
   const injector = provided ?? inject(Injector);
