@@ -63,6 +63,7 @@ const models: Record<string, ViewModel> = {
   detail: { members: { lastAction: wire.string, canDismiss: wire.boolean }, texts: ["lastAction"] },
   form: { members: { name: wire.string, nameErrors: value => wire.array(value, wire.string), validation: decodeBridgeValidation }, texts: ["name"] },
   wizard: { members: { page: int32, canNext: wire.boolean, canBack: wire.boolean, canPing: wire.boolean }, scopedCommands: ["next", "back"] },
+  files: { members: { avatar: value => value === null ? null : wire.blob(value), lastUpload: value => value === null ? null : wire.string(value) } },
 };
 const modelOf = (route: string) => route.startsWith("content") ? models["detail"]! : models[route]!;
 
@@ -435,7 +436,7 @@ const scenarios = scenarioFiles.map(file => JSON.parse(readFileSync(new URL(`sce
 
 test("the corpus has client scenarios in every set", () => {
   const sets = new Set(scenarios.filter(scenario => scenario.roles.includes("client")).map(scenario => scenario.id.split(".")[0]));
-  for (const set of ["handshake", "state-changes", "replies", "edits", "operations", "presentations", "interactions", "errors"]) assert.ok(sets.has(set), set);
+  for (const set of ["handshake", "state-changes", "replies", "edits", "operations", "presentations", "interactions", "errors", "blobs"]) assert.ok(sets.has(set), set);
 });
 
 for (const scenario of scenarios.filter(item => item.roles.includes("client"))) {

@@ -10,6 +10,8 @@ export { useLatestOperation, type LatestOperationHandle } from "./use-latest-ope
 export { useCollectionViewport, type CollectionViewportHandle } from "./use-collection-viewport.svelte.js";
 export { useBridgeConnection, type BridgeConnectionHandle } from "./use-bridge-connection.svelte.js";
 export { onBridgeConnection, type BridgeConnectionOptions, type BridgeConnectionState } from "@runic-artifex/views";
+// blobs/1: uploads from the page and the blob values of state.
+export { upload, type BlobRef, type RunicBlob, type UploadOptions, type UploadProgress } from "@runic-artifex/views";
 export {
   FieldError,
   type BridgeField,

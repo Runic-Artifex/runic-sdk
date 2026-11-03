@@ -3,7 +3,7 @@
 // name, and an upload is a reference that a command takes as its input.
 import { BridgeError } from "./errors.js";
 import { throwIfAborted } from "./lifetime.js";
-import { currentRuntime, sharedRuntimeFor } from "./runtime.js";
+import { sharedRuntimeFor } from "./runtime.js";
 import { waitForBridge } from "./transport.js";
 import { blobRef, type BlobGrant, type BlobRef } from "./blob-wire.js";
 
@@ -62,7 +62,8 @@ export interface HostUploads {
 export async function upload(content: Blob, options: UploadOptions = {}): Promise<BlobRef> {
   const { signal } = options;
   throwIfAborted(signal);
-  const runtime = currentRuntime() ?? sharedRuntimeFor(await waitForBridge({ signal }));
+  // The runtime of the installed host bridge, as generated clients use it.
+  const runtime = sharedRuntimeFor(await waitForBridge({ signal }));
   const grant = await runtime.blobGrant?.();
   throwIfAborted(signal);
   if (grant === undefined) {

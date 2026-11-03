@@ -140,7 +140,16 @@ it to use one on CS-WebUI. The
 [Runic.Platform guide](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Platform/README.md#hosts-without-a-native-owner)
 lists each service's result on both hosts. A root ViewModel that implements `IRunicFileDropTarget` is
 never called here: a browser window reports no dropped paths, so the page only
-gets HTML5 `File` objects. There is no native menu bar either: the page renders
+gets HTML5 `File` objects. To bring one into .NET, upload it: `client.upload(file)`
+streams it to a loopback endpoint of the window, and a command takes the
+resulting reference as a `RunicUpload` (see
+[Blobs and uploads](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Application.Views/README.md#blobs-and-uploads)).
+`RunicBlob` values, such as images and downloads the ViewModel produces, are
+served from the same endpoint, `http://localhost:{port}/`, another origin than
+the page, which it grants with CORS; a page `Content-Security-Policy` must allow
+`http://localhost:*` for `img-src`, `media-src` and `connect-src`. That
+endpoint cannot see WebUI's clients, so a blob URL is bound to the window, not
+to one browser; an upload also needs its connection's token. There is no native menu bar either: the page renders
 `RunicCsWebUiHostOptions.MenuBar` (see [Menu bar](#menu-bar)).
 
 When WebUI cannot show a window, because it finds no browser, the selected

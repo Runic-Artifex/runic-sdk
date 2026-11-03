@@ -1,6 +1,7 @@
 import {
   isBridgeOutcome, onBridgeConnection, type BridgeConnectionOptions, type BridgeConnectionState, type BridgeOperation, type BridgeOperationStatusOf, type BridgeOutcome, type BridgeOutcomeFailure,
   type CollectionViewport, type CollectionViewportController, type ViewClient, type ViewConnector,
+  upload as uploadBlob, type BlobRef, type UploadOptions,
 } from "@runic-artifex/views";
 import type * as Context from "effect/Context";
 import * as Duration from "effect/Duration";
@@ -126,6 +127,25 @@ export function command<A>(run: () => PromiseLike<A>):
       : Effect.fail(new ViewDomainFailure({ message: "The command failed with its declared failure.", failure: value.failure,
         requestId: undefined }) as ViewDomainFailureOf<BridgeOutcomeFailure<A>>);
   }));
+}
+
+/**
+ * Uploads a file to the window's .NET host (blobs/1) and succeeds with the reference that a command's `RunicUpload`
+ * input takes. Interruption aborts the upload, and the host deletes what it received. Bridge failures become tagged
+ * errors: `ViewUnavailable` when the host takes no uploads, `ViewRejected` at the window's limits.
+ *
+ * ```ts
+ * const ref = yield* upload(file, { onProgress: ({ loaded, total }) => report(loaded / total) });
+ * yield* command(() => editor.attach(ref));
+ * ```
+ */
+export function upload(content: Blob, options: Omit<UploadOptions, "signal"> = {}): Effect.Effect<BlobRef, ViewError> {
+  return Effect.tryPromise({ try: signal => uploadBlob(content, { ...options, signal }), catch: cause => cause }).pipe(
+    Effect.catch(cause => {
+      const failure = viewFailure(cause);
+      return failure === undefined ? Effect.die(cause) : Effect.fail(failure);
+    }),
+  );
 }
 
 export interface OperationOptions {

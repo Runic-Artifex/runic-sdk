@@ -25,6 +25,7 @@ export {
   followViewport,
   operation,
   states,
+  upload,
   viewportChanges,
   type CommandValue,
   type OperationOptions,

@@ -521,6 +521,7 @@ describe("injectBridgeConnection", () => {
     expect(Object.keys(root).sort()).toEqual([
       "RunicViewOutlet", "ViewOutlet", "injectBridgeConnection", "injectCollectionViewport", "injectCommand", "injectField",
       "injectLatestOperation", "injectMenuBar", "injectOperation", "injectTextField", "injectView", "injectViewResource", "onBridgeConnection",
+      "upload",
     ]);
     // The connection API that useBridgeConnection wraps is re-exported, as the menu-bar types are (0.11).
     expect(root.onBridgeConnection).toBe(viewsOnBridgeConnection);

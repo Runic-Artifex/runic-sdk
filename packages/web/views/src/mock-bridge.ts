@@ -1376,10 +1376,16 @@ export function createMockBridge(options: MockBridgeOptions = {}): MockBridge {
     if (!connected || request.token !== `mock-upload-token-${connection.id}` || uploadLimit === undefined)
       return failure(403, "forbidden", "The upload token is not valid for an open connection of this window.");
     const total = request.content.size;
+    // One step of the transfer, paced as the mock's replies are: virtual time with manual scheduling, otherwise at
+    // once or after the latency.
     const step = () => new Promise<void>((resolve, reject) => {
       const stop = () => reject(aborted());
+      if (request.signal?.aborted) { stop(); return; }
       request.signal?.addEventListener("abort", stop, { once: true });
-      schedule(now + sample(), () => { request.signal?.removeEventListener("abort", stop); resolve(); });
+      const done = () => { request.signal?.removeEventListener("abort", stop); resolve(); };
+      if (manual) schedule(now + sample(), done);
+      else if (latency === undefined) queueMicrotask(done);
+      else void realDelay(sample()).then(done);
     });
     await step();
     request.onProgress?.({ loaded: Math.floor(total / 2), total });

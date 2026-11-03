@@ -65,6 +65,8 @@ internal static class ConformanceViews
 internal sealed class DotNetConformanceViews : IConformanceViews
 {
     internal const string DetailId = "0123456789abcdef0123456789abcdef";
+    // The origin of the windows' blob URLs and upload endpoint (blobs/1).
+    internal static readonly Uri BlobOrigin = new("http://conformance.test/");
 
     public IConformanceWindow CreateWindow(string view, JsonObject model, ConformanceWindowSettings settings)
     {
@@ -80,6 +82,8 @@ internal sealed class DotNetConformanceViews : IConformanceViews
             // The detail View's content id is fixed; later ids (interaction requests) are counted.
             CreateId = () => Interlocked.Increment(ref ids) == 1 ? DetailId : $"id{ids}",
         });
+        // blobs/1: the window serves its blobs and uploads below the corpus's origin.
+        BridgeDispatcher.For(settings.Transport).Blobs.Attach(BridgeBlobEndpoint.Below(static () => BlobOrigin));
         try
         {
             return view switch
@@ -94,6 +98,8 @@ internal sealed class DotNetConformanceViews : IConformanceViews
                     (vm, content) => new FormBridge(settings.Transport, vm, content)),
                 "wizard" => new Window<WizardViewModel>(session, WizardViewModel.Create(model),
                     (vm, content) => new WizardBridge(settings.Transport, vm, content)),
+                "files" => new Window<FilesViewModel>(session, FilesViewModel.Create(model),
+                    (vm, content) => new FilesBridge(settings.Transport, vm, content)),
                 _ => throw new NotSupportedException($"The test View '{view}' is not a root View."),
             };
         }

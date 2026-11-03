@@ -221,6 +221,7 @@ reply both list the same string. Features are negotiated per connection, and aga
 | `text-splice/1` | Text members change with splices: [`set` with a splice](#text-splices-in-set), [`write` with a splice](#text-splices-in-write) and [`splice` changes](state-changes.md#text-splices) | 0.14 |
 | `presentation-epoch/1` | A command runs only on the presentation it was issued for: [presentation epochs](#presentation-epochs) | 0.15 |
 | `presented/1` | The page reports that it painted a state, and acknowledges a window close: [presented states and window close](#presented-states-and-window-close) | 0.15 |
+| `blobs/1` | Binary content at host URLs, and files the page uploads over HTTP: [blobs and uploads](#blobs-and-uploads) | 0.16 |
 
 ## Requests and replies
 
@@ -1016,7 +1017,7 @@ Requests:
 
 | `kind` | Members | Success reply |
 | --- | --- | --- |
-| `hello` | `protocol`, `session`, `client {name, version}`, `features?` | `protocol`, `implementation {name, version}`, `features?` |
+| `hello` | `protocol`, `session`, `client {name, version}`, `features?` | `protocol`, `implementation {name, version}`, `features?`, `blobs?` (`blobs/1`) |
 | `open` | `route`, `presentation`, `handlers?` | `revision`, `epoch?` (`presentation-epoch/1`), `state`, `fields?`, `presentation`, `registration?` |
 | `snapshot` | `route` | `revision`, `epoch?` (`presentation-epoch/1`), `state`, `fields?` |
 | `close` | `route`, `presentation` | `presentation` |
@@ -1049,6 +1050,65 @@ Pushes:
 | `interaction-cancelled` | `route`, `presentation`, `requestId`, `ownerEpoch`, `message` | the presentation's connection |
 | `present` (`presented/1`) | `route`, `revision` | while a wait is pending, each connection that uses `presented/1` and has an open presentation of the route |
 | `closing` (`presented/1`) | none | each connection that uses `presented/1` |
+
+## Blobs and uploads
+
+Feature `blobs/1`. Binary content never crosses the message channel: the producer serves a **blob** at a URL, and the
+page sends a file as an **upload**, over HTTP to the host, which a request then names. The wire values are
+[`blob` and `upload`](values.md#blobs-and-uploads).
+
+### Blobs
+
+- A `blob` value is `{url, type, size, name}`. The producer writes it in state, in a collection row, in a result or in
+  any other value that goes to the page; a page never sends one (a settable member that holds a blob is read-only for
+  the page, and a request that sets it is `invalid-input`). Blob values do not depend on the feature: they are part of
+  the contract, and a producer writes them on every connection.
+- `url` is an absolute URL that the window's host serves with `GET` and `HEAD`, or the empty string when the host
+  serves no blobs. It is a **capability**: it contains at least 128 random bits, it is valid only for the window that
+  wrote it, and the producer serves it only while a holder keeps it. A state member holds the blobs of its latest
+  value: when a later value no longer contains a blob, its URL stops working. A blob in a collection row, a result or
+  another value is held until the route is released. Closing the window releases every URL. One blob of the
+  producer's model has one URL per window, so an unchanged member keeps its encoding.
+- A response to a blob URL has the blob's `type` as `Content-Type`, `X-Content-Type-Options: nosniff`, a
+  `Content-Security-Policy` with `sandbox` and `default-src 'none'` (active content such as HTML or SVG never runs in
+  the page's origin when it is opened), `Content-Disposition` `inline` or `attachment` with the blob's `name`,
+  `Cache-Control: private, max-age=31536000, immutable` and an `ETag`; the content behind a URL never changes. A blob
+  whose length the producer knows answers a single byte range (`Range: bytes=a-b`, `206`, `416`). A released or
+  unknown URL answers `404`.
+
+### Uploads
+
+- A connection that uses `blobs/1` gets a grant in the successful `hello` reply when the host takes uploads:
+  `blobs: {upload, token, maximumBytes}`. `upload` is the URL of uploads, `token` a secret of this connection (at least
+  128 random bits) and `maximumBytes` the largest upload the window takes. A connection that does not list the feature,
+  or a host that takes no uploads, gets no `blobs` member.
+- The page uploads one file per request: `POST {upload}` with the file as the body, its media type as `Content-Type`,
+  the header `X-Runic-Upload-Token: {token}` and `X-Runic-Upload-Name` with the file name, percent-encoded as UTF-8.
+  The host answers `201` with `{"ok": true, "upload": {id, name, type, size}}`, or an error
+  `{"ok": false, "error": {kind, reason, message}}`: `403` (`forbidden`, a missing or wrong token or origin), `413`
+  (`too-large`, larger than `maximumBytes`), `429` or `507` (`capacity`, the window receives too many uploads at once,
+  or its unclaimed uploads fill its space), `400` (`invalid-request` or `cancelled`) and `410` (`released`, the
+  connection or window closed meanwhile).
+- An `upload` value names an upload by its `id`. It decodes only in a request of the connection that uploaded it, and
+  only while no request claimed it; any other id is `invalid-input`. The producer's model claims an upload when it
+  reads it; afterwards the id is invalid. An unclaimed upload is deleted when its connection closes, when the window
+  closes, or 10 minutes after it arrived. Everything about an upload — its bytes, type and name — comes from the page
+  and is untrusted: the producer reduces the name to a file name.
+
+### What a host enforces
+
+Every host checks the `Host` of a loopback listener (no DNS rebinding), takes uploads only as `POST` from the page's
+origin with the connection's token, and refuses a blob request whose fetch metadata (`Sec-Fetch-Site: cross-site`)
+names another site. Beyond that:
+
+| Host | Blob URLs | Uploads |
+| --- | --- | --- |
+| Runic Desktop and WPF | served below the window's surface (`{surface}/_runic/blobs/{token}`, same origin as the page); only to the browser client that holds the window's client cookie, and in an installed browser only to the client bound to its launch code | `{surface}/_runic/upload`; also only from that client |
+| CS-WebUI | a loopback listener of the window (`http://localhost:{port}/_runic/blobs/{token}`), another origin than WebUI's page, which it grants with CORS; it cannot see WebUI's clients, so a URL is bound to the window, not to a connection or browser | the listener's `/_runic/upload`, with CORS for the page's origin only |
+| Tests (`Runic.Application.Testing`) | served in memory below `http://runic.test/` | simulated with `UploadAsync` |
+
+A blob URL cannot be bound to one connection, because one encoding of a state goes to every connection of the
+window; the token of an upload is.
 
 ## Versions and compatibility
 

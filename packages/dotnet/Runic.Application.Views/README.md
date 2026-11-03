@@ -1236,6 +1236,8 @@ so a malformed reply never reaches application state.
 | A type with `[RunicCodec]` | The codec's TypeScript type | Whatever the codec writes. |
 | `JsonElement`, `JsonElement?`, `JsonNode?` | `unknown` | Any JSON value, as it is. A `JsonElement` holds JSON `null` as a value; a default `JsonElement`, which holds none, is written as `null`. `JsonNode?` and `JsonElement?` are C# `null` for JSON `null`. |
 | `JsonNode` | `NonNullable<unknown>` | Any JSON value except `null`, which a `JsonNode` cannot hold. `JsonObject`, `JsonArray`, `JsonValue` and `JsonDocument` fail the build: declare a `JsonNode`, or a DTO for a known shape. |
+| `RunicBlob` | `RunicBlob` (`{url, type, size, name}`) | A URL the host serves, never the bytes; see [Blobs and uploads](#blobs-and-uploads). To the page only. |
+| `RunicUpload` | `BlobRef` (`{id, name, type, size}`) | A file the page uploaded with `client.upload(file)`; see [Blobs and uploads](#blobs-and-uploads). |
 
 Other framework types, such as `object`, `char`, `Uri` and tuples, fail the
 build with a `RUNICBRIDGE` diagnostic that names the member.
@@ -2250,9 +2252,122 @@ editor bound to a `string`, or lower it, with `RunicWindowOptions.MaximumInputBy
 set none), `WindowContentSessionOptions.MaximumInputBytes` for a session you
 create, or `RunicWindowTestHostOptions.MaximumInputBytes` in tests. A value must
 be between 1 KiB and 64 MiB; another one throws `ArgumentOutOfRangeException`.
+Binary data does not need a larger limit: a `RunicBlob` crosses as a URL and a
+`RunicUpload` streams over HTTP, outside the Bridge (see
+[Blobs and uploads](#blobs-and-uploads)), so a `byte[]` member, which crosses
+as a JSON array of numbers, is only for small values.
 The WPF host uses the default. Independently of the limit, exact number strings
 (`long`, `ulong`, `BigInteger`, `decimal`) are at most 4 096 characters, and a
 window runs at most 64 awaited command calls at once.
+
+## Blobs and uploads
+
+Images, thumbnails and downloads that a ViewModel produces, and files the user
+picks in the page, cross as `RunicBlob` and `RunicUpload` (Views protocol
+feature `blobs/1`, `specs/application/README.md`, "Blobs and uploads"). Their
+bytes never cross the Bridge as JSON, so neither the input limit nor JSON
+encoding applies, and a large file streams instead of being buffered.
+
+**A blob for the page.** Expose a `RunicBlob` as a state property, in a DTO or
+collection row, or as a command or operation result:
+
+```csharp
+public sealed partial class ProfileViewModel : ObservableObject
+{
+    [ObservableProperty]
+    public partial RunicBlob? Avatar { get; private set; }
+
+    public void ShowAvatar(string path) => Avatar = RunicBlob.FromFile(path, "image/png", "avatar.png");
+
+    [RelayCommand]
+    private Task<RunicBlob> ExportAsync() => Task.FromResult(RunicBlob.FromStream(
+        token => ValueTask.FromResult<Stream>(File.OpenRead(_reportPath)), "text/csv", fileName: "report.csv",
+        disposition: RunicBlobDisposition.Attachment));
+}
+```
+
+The page receives `{url, type, size, name}` and uses `url` directly:
+
+```tsx
+{state.avatar && <img src={state.avatar.url} alt="" />}
+<a href={report.url} download={report.name ?? undefined}>Download</a>
+```
+
+- `FromBytes` keeps bytes in memory, `FromFile` opens the file for each request
+  and `FromStream` calls its function for each request; the host streams the
+  content and answers byte ranges of a seekable stream, which `<video>` and
+  `<audio>` need. Create a new `RunicBlob` for new content: a URL's content
+  never changes, and the browser caches it as immutable.
+- The URL is a capability of the Window: unguessable, served only to the
+  Window's page (on Runic Desktop and WPF only to the browser client that holds
+  the Window's cookie), and released when the state property no longer holds
+  the blob, when the View is released or when the Window closes. A blob in a
+  collection row or a result is released with its View.
+- The response carries the blob's `ContentType`, `X-Content-Type-Options:
+  nosniff` and a sandboxing `Content-Security-Policy`, so an HTML or SVG blob
+  opened in the Window runs no script in the application's origin.
+  `Disposition` sets `Content-Disposition` (`inline` by default, `attachment`
+  to download on navigation) with `FileName`.
+- A property that holds a `RunicBlob` is read-only for the page, whatever its
+  setter. A `RunicBlob` command input fails the build with RUNICBRIDGE065: the
+  page sends files as uploads.
+
+**An upload from the page.** A command takes a `RunicUpload`:
+
+```csharp
+[RelayCommand]
+private async Task AttachAsync(RunicUpload file, CancellationToken cancellationToken)
+{
+    // Everything about an upload comes from the page: check what you read before you use it.
+    await file.SaveAsAsync(Path.Combine(_attachments, Guid.NewGuid().ToString("N")), cancellationToken: cancellationToken);
+    Attachments.Add(new Attachment(file.FileName, file.Length));
+}
+```
+
+The page uploads the file over HTTP, then calls the command with the reference:
+
+```ts
+const file = input.files![0]!;
+const ref = await client.upload(file, { signal, onProgress: ({ loaded, total }) => setProgress(loaded / total) });
+await client.attach(ref);
+```
+
+- `client.upload` exists on generated clients whose contract takes a
+  `RunicUpload`; `upload` from `@runic-artifex/views` does the same for any
+  page. The content streams to the host with the connection's token; the
+  Bridge carries only the reference.
+- An upload decodes only for the Window and the page connection that uploaded
+  it, and only once: the first `OpenReadAsync` (a seekable stream; disposing it
+  deletes the content), `SaveAsAsync` (a rename on the same volume, otherwise a
+  copy) or `Discard` claims it, and a later request that names it is rejected
+  as invalid input. An unclaimed upload is deleted when its connection closes,
+  when the Window closes, or after 10 minutes.
+- `FileName`, `ContentType` and the content are untrusted. `FileName` is
+  reduced to a file name without directories or control characters; never use
+  it as a path.
+- Limits: `RunicWindowOptions.MaximumUploadBytes` (per upload, default 256 MiB)
+  and `MaximumWindowUploadBytes` (unclaimed uploads of a Window at once, default
+  1 GiB), with host defaults `RunicDesktopHostOptions.MaximumUploadBytes` and
+  `RunicCsWebUiHostOptions.MaximumUploadBytes`, and
+  `WindowContentSessionOptions` for a session you create. The WPF host uses the
+  defaults. Uploads are stored in a per-Window folder below
+  `Path.GetTempPath()/runic-uploads`, readable only by the user on Linux and
+  macOS.
+
+| Host | Where blobs and uploads are served | Bound to |
+| --- | --- | --- |
+| Runic Desktop (Kestrel or the native server), WPF `RunicViewHost` | the Window's surface, `/_runic/blobs/` and `/_runic/upload`, same origin as the page | the Window and its browser client (cookie, and the launch code of an installed browser); an upload also to its connection |
+| CS-WebUI | a loopback listener of each Window, `http://localhost:{port}/`, with CORS for the page's origin | the Window; an upload also to its connection. CS-WebUI's file dialogs are unavailable, so an upload is how a file gets in. A page `Content-Security-Policy` must allow `http://localhost:*` for `img-src`, `media-src` and `connect-src` |
+| `Runic.Application.Testing` | in memory, `http://runic.test/` | `RunicWindowTestHost.UploadAsync` and `ReadBlobAsync` |
+
+In tests, `RunicBlob.FromBytes` makes blobs, `RunicUpload.FromBytes` makes an
+upload for a ViewModel without a Window, `RunicWindowTestHost.UploadAsync`
+simulates a page's upload that a command then takes, and
+`RunicWindowTestHost.ReadBlobAsync(url)` returns what the host serves for a URL
+from the state: status, headers and content. On the page side,
+`@runic-artifex/views/mock` grants uploads (`MockBridge.uploads`,
+`uploadContent`, `failNextUpload`) and `mockBlob(content)` makes a `RunicBlob`
+whose URL loads in a test.
 
 ## Declared failures
 
@@ -2611,6 +2726,14 @@ NativeAOT symbols and what to attach to a bug report.
 | 1100 | `HotReloadRestartRequired` | Error | A Hot Reload edit changed a generated Bridge contract; restart the application. The `RUNIC_IDE_CONTRACT_RESTART_REQUIRED` line also goes to standard error. | `Mismatch` |
 | 1101 | `HotReloadRestartNotificationFailed` | Warning | A `RunicViewsHotReload.RestartRequired` handler throws. | `ErrorType` |
 | 1102 | `HotReloadRefreshFailed` | Warning | Refreshing a Bridge after a Hot Reload update throws. | `Model`, `ErrorType` |
+| 1200 | `BlobServeFailed` | Warning | A `RunicBlob` could not be opened or streamed to the page; the request fails. | `ErrorType` |
+| 1201 | `UploadRejected` | Information | The window refused an upload: no valid token, too large, no room, or the connection closed. | `Reason`, `Detail` |
+| 1202 | `UploadReceiveFailed` | Warning | An upload could not be written to the window's upload folder. | `ErrorType` |
+| 1203 | `UploadExpired` | Debug | An upload that no command claimed within 10 minutes was deleted. | `Length` |
+| 1204 | `BlobRequestDenied` | Warning | A blob or upload request came from another origin or site than the window's page (CS-WebUI; Runic Desktop reports it as a Desktop diagnostic). | `Request`, `Reason` |
+| 1205 | `BlobsUnavailable` | Warning | A `RunicBlob` crossed the Bridge, but the window's host serves no blobs, so its URL is empty. Once per window. | |
+| 1206 | `BlobCleanupFailed` | Warning | A stored upload could not be deleted. | `ErrorType` |
+| 1207 | `BlobEndpointFailed` | Warning | CS-WebUI could not start a window's blob endpoint; the window opens without blobs and uploads. | `ErrorType` |
 | 1110 | `ViewHostFallbackShown` | Warning | A WPF `RunicViewHost` cannot open its web presentation and shows its `Fallback`. | `ErrorType` |
 | 1111 | `ViewHostFallbackFailed` | Error | Showing that fallback throws. | `ErrorType` |
 | 1112 | `ViewHostPresentationChangeFailed` | Error | A `RunicViewHost` presentation change throws outside its open. | `ErrorType` |

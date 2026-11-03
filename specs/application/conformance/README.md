@@ -300,6 +300,20 @@ A View whose pages are presentations of one route ([presentation epochs](../READ
 
 Its contract marks `next` and `back` scoped, so a client that uses `presentation-epoch/1` sends `epoch` with them.
 
+### `files`
+
+A View of [blobs and uploads](../README.md#blobs-and-uploads) (`blobs/1`). The window's blob URLs and upload endpoint
+are below `http://conformance.test/`.
+
+| Member | Type | Default and behaviour |
+| --- | --- | --- |
+| `avatar` | nullable `blob` | `null`; the model and `assign` give it as `{type, text, name}`, whose `text` is its UTF-8 content |
+| `lastUpload` | nullable `string` | `null`; the file name of the last upload `attach` claimed |
+
+| Command | Input | Available | Effect |
+| --- | --- | --- | --- |
+| `attach` | `upload` | always | claims the upload and sets `lastUpload` to its file name |
+
 ### Mutations
 
 | `op` | Members | Effect |

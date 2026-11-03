@@ -719,6 +719,48 @@ wire representation: for example `Int64` values are strings.
 The wire protocol is specified in the
 [Application Views specification](https://github.com/Runic-Artifex/runic-sdk/tree/main/specs/application).
 
+## Blobs and uploads
+
+A .NET `RunicBlob` reaches the page as a `RunicBlob`, `{url, type, size, name}`:
+binary content that the window's host serves at `url` (Views feature
+`blobs/1`). Use the URL as it is; the bytes never cross the Bridge.
+
+```tsx
+{state.avatar && <img src={state.avatar.url} alt="" />}
+<a href={report.url} download={report.name ?? undefined}>Download</a>
+```
+
+The URL works on this window only and stops working when the ViewModel replaces
+the blob, when the View is released or when the window closes.
+
+A file goes the other way as an upload. `upload(file, { signal, onProgress })`
+streams it over HTTP to the window's host and resolves with a `BlobRef`, which
+a command whose .NET parameter is a `RunicUpload` takes. A generated client
+whose contract takes one has the same method as `client.upload`:
+
+```ts
+const ref = await client.upload(input.files![0]!, {
+  signal: controller.signal,
+  onProgress: ({ loaded, total }) => (progress.value = loaded / total),
+});
+await client.attach(ref);
+```
+
+It rejects with a `BridgeError`: `unavailable` when the host takes no uploads,
+`rejected` with reason `too-large` or `capacity` at the window's limits, and
+`failed` when the request fails; and with `signal.reason` when it aborts. A
+reference is valid on the connection that uploaded it until a command claims
+it, for at most 10 minutes. Uploads use `XMLHttpRequest`, which reports upload
+progress, or `fetch` where it is missing. On CS-WebUI the host's endpoint is
+another origin than the page, so a page `Content-Security-Policy` must allow
+`http://localhost:*` for `img-src`, `media-src` and `connect-src`.
+
+In tests, the mock Bridge grants uploads and keeps them: `bridge.uploads`,
+`bridge.uploadContent(ref)` and `bridge.failNextUpload({ status: 413 })`;
+`createMockBridge({ uploads: false })` takes none. `mockBlob(content, { type,
+name })` from `@runic-artifex/views/mock` makes a `RunicBlob` for a mock's
+state or result whose URL loads in a test.
+
 ## Testing
 
 The generator writes a typed mock next to each client: `editor.mock.ts`

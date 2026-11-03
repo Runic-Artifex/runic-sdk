@@ -605,6 +605,28 @@ and that a slow reply does not hold up the next request.
   the window holds, not only navigation entries. It is a test-only view of window
   internals, which `WindowContentSession` does not expose.
 
+## Blobs and uploads
+
+A window of `RunicWindowTestHost` serves its blobs below `http://runic.test/`
+(Views feature `blobs/1`). `ReadBlobAsync(url)` returns what the host serves
+for a blob URL of the state or a result, as `RunicServedBlob`: status, headers
+and content, with `range` for a byte range and `head` for `HEAD`. A replaced or
+released URL answers 404, and `ServedBlobCount` counts the URLs the window
+still serves. `UploadAsync(bytes, fileName, contentType)` simulates a page's
+upload with the window's limits (`RunicWindowTestHostOptions.MaximumUploadBytes`)
+and returns the `RunicUpload` that a command input takes;
+`PendingUploadCount` counts the uploads no command claimed.
+
+```csharp
+var upload = await host.UploadAsync("hello"u8.ToArray(), "notes.txt", "text/plain");
+await host.Root.ExecuteAsync(vm => vm.AttachCommand, upload);
+var avatar = host.Root.Snapshot().Get(vm => vm.Avatar).GetProperty("url").GetString()!;
+var served = await host.ReadBlobAsync(avatar);   // served.StatusCode, served.ContentType, served.Content
+```
+
+A ViewModel test without a window uses `RunicUpload.FromBytes` and
+`RunicBlob.FromBytes`, and reads a blob with `RunicBlob.OpenReadAsync`.
+
 ## The whole application in a browser
 
 `RunicWindowTestHost` runs the ViewModels without a page. To test the real page
