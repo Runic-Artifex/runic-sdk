@@ -35,8 +35,22 @@ public sealed class DocumentConventionsTests
         await Assert.ThrowsAsync<ObjectDisposedException>(async () => await window.SetRepresentedFileAsync(Document));
     }
 
-    [Test]
+    [Test, NotInParallel("RecentDocuments")]
     public async Task RecentDocumentsCheckArgumentsAndDoNothingOffMacOS()
+    {
+        // Off macOS the host writes the recent documents (RecentDocumentsTests): a temporary list, not the user's.
+        var previous = RecentDocuments.Shared;
+        var directory = Path.Combine(Path.GetTempPath(), "runic-xbel-" + Guid.NewGuid().ToString("N"));
+        RecentDocuments.Shared = new RecentDocuments(Path.Combine(directory, "recently-used.xbel"));
+        try { await CheckRecentDocumentsAsync(); }
+        finally
+        {
+            RecentDocuments.Shared = previous;
+            if (Directory.Exists(directory)) Directory.Delete(directory, recursive: true);
+        }
+    }
+
+    private static async Task CheckRecentDocumentsAsync()
     {
         var host = await StartAsync();
         await Assert.ThrowsAsync<ArgumentNullException>(async () => await host.NoteRecentDocumentAsync(null!));

@@ -37,6 +37,12 @@ internal sealed partial class MenuCommandBinding : IDisposable
     private Dictionary<MenuCommandKey, bool> _checked = [];
     private HashSet<MenuCommandKey> _toggles = [];
     private int _checkRefresh;
+    // Counts check-mark refresh requests, so a rebind can tell whether one came after it read the check marks.
+    private int _checkRequests;
+    // Numbers the rebinds. They run concurrently when the bar changes quickly and may finish out of order; one that
+    // finishes after a later one was applied is dropped, so an older bar never replaces a newer one.
+    private int _rebinds;
+    private int _appliedRebind;
     private object? _owner;
     private bool _disposed;
 
@@ -110,7 +116,9 @@ internal sealed partial class MenuCommandBinding : IDisposable
     // read starts join it, so a turn that raises PropertyChanged many times costs one read.
     internal void RefreshChecked()
     {
-        if (_isChecked is null || Interlocked.Exchange(ref _checkRefresh, 1) == 1) return;
+        if (_isChecked is null) return;
+        Interlocked.Increment(ref _checkRequests);
+        if (Interlocked.Exchange(ref _checkRefresh, 1) == 1) return;
         if (_context is { } context)
         {
             if (!context.TryPost(ReadCheckedTurn)) Volatile.Write(ref _checkRefresh, 0);
@@ -274,17 +282,27 @@ internal sealed partial class MenuCommandBinding : IDisposable
     {
         try
         {
+            var rebind = Interlocked.Increment(ref _rebinds);
             var menus = _host.MenuBar;
             var ids = CommandIds(menus);
             var toggles = ToggleKeys(menus);
+            var requests = 0;
+            (Dictionary<MenuCommandKey, Entry>, Dictionary<MenuCommandKey, bool>) Read()
+            {
+                requests = Volatile.Read(ref _checkRequests);
+                return (Resolve(ids), ReadChecked(toggles));
+            }
             var (resolved, answers) = _context is { IsExecuting: false } context
-                ? await context.InvokeAsync(() => (Resolve(ids), ReadChecked(toggles))).ConfigureAwait(false)
-                : (Resolve(ids), ReadChecked(toggles));
+                ? await context.InvokeAsync(Read).ConfigureAwait(false)
+                : Read();
             Dictionary<MenuCommandKey, Entry> previous;
+            bool applied;
             lock (_gate)
             {
                 previous = _entries;
-                if (_disposed)
+                applied = !_disposed && rebind > _appliedRebind;
+                if (applied) _appliedRebind = rebind;
+                if (!applied)
                 {
                     previous = resolved;
                 }
@@ -296,7 +314,11 @@ internal sealed partial class MenuCommandBinding : IDisposable
                 }
             }
             foreach (var entry in previous.Values) entry.Dispose();
+            if (!applied) return;
             RaiseChanged();
+            // The answers were read in the rebind's model turn and applied after it. A refresh requested since then may
+            // have read newer answers that this one just replaced: read once more.
+            if (Volatile.Read(ref _checkRequests) != requests) RefreshChecked();
         }
         catch (Exception error)
         {

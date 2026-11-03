@@ -1580,8 +1580,12 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
                 BridgeWireKind.Int8 or BridgeWireKind.UInt8 or BridgeWireKind.Int16 or BridgeWireKind.UInt16 or
                 BridgeWireKind.Int32 or BridgeWireKind.UInt32 or BridgeWireKind.Single or BridgeWireKind.Double => "number",
                 BridgeWireKind.Int64 or BridgeWireKind.UInt64 or BridgeWireKind.BigInteger => "bigint",
-                BridgeWireKind.String or BridgeWireKind.Guid or BridgeWireKind.DateOnly or BridgeWireKind.TimeOnly or BridgeWireKind.DateTime
-                    or BridgeWireKind.DateTimeOffset or BridgeWireKind.TimeSpan or BridgeWireKind.Decimal => "text",
+                // C1: kinds with their own text form (locale numbers, the ISO forms of native date inputs).
+                BridgeWireKind.Decimal => "decimal",
+                BridgeWireKind.DateOnly => "date",
+                BridgeWireKind.TimeOnly => "time",
+                BridgeWireKind.DateTime or BridgeWireKind.DateTimeOffset => "datetime",
+                BridgeWireKind.String or BridgeWireKind.Guid or BridgeWireKind.TimeSpan => "text",
                 BridgeWireKind.Enum => "choice",
                 _ => "value",
             };
@@ -1589,6 +1593,7 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
             if (root.IsNullable) traits += ", nullable: true";
             if (root.Kind is BridgeWireKind.Int8 or BridgeWireKind.UInt8 or BridgeWireKind.Int16 or BridgeWireKind.UInt16
                 or BridgeWireKind.Int32 or BridgeWireKind.UInt32) traits += ", integer: true";
+            if (root.Kind == BridgeWireKind.DateTimeOffset) traits += ", offset: true";
             if (root.Kind == BridgeWireKind.Enum)
             {
                 // The names .NET writes: the first declared name of each value, as the enum codec does.

@@ -79,7 +79,7 @@ export function bindField<TClient extends ViewClient, TValue>(
   element: FieldElement,
   client: TClient,
   field: BridgeField<NoInfer<TClient>, NoInfer<TClient>["snapshot"], TValue> | FieldDefinition<NoInfer<TClient>, NoInfer<TClient>["snapshot"], TValue>,
-  options: FieldOptions = {},
+  options: FieldOptions<TValue> = {},
 ): BoundField<TClient["snapshot"], TClient, TValue> {
   const controller = createFieldController<TClient["snapshot"], TClient, TValue>(field, options);
   const wired = wire(element, controller as unknown as FieldController<unknown, unknown, TValue>);
