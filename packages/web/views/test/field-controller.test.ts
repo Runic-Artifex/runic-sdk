@@ -521,6 +521,93 @@ test("date, time and datetime fields read and show the forms of native date inpu
   assert.equal(utc.parse(localText), "2026-11-03T09:30:00Z", "a DateTime in UTC stays in UTC");
 });
 
+test("date, time and datetime fields in a locale show its numeric form and read it and the ISO form (E5)", () => {
+  const field = <T>(kind: "date" | "time" | "datetime", locale: string | null, initial: T) => {
+    const values: unknown[] = [];
+    let shown = initial;
+    const controller = createFieldController<State, Client, T>(
+      { kind, read: () => shown, write: (_client, value) => { values.push(value); return Promise.resolve(); } }, { coalesce: false, locale });
+    controller.setSource({ state: { title: "", step: 0, titleErrors: [] }, client: fakeClient({ title: "", step: 0, titleErrors: [] }) });
+    return {
+      parse(text: string): unknown {
+        values.length = 0;
+        controller.inputText(text);
+        return controller.current.error instanceof FieldError ? controller.current.error.kind : values[0];
+      },
+      message(text: string): string | undefined { controller.inputText(text); return (controller.current.error as Error | undefined)?.message; },
+      show(value: T) { shown = value; controller.reset(); return controller.current.text; },
+    };
+  };
+  // The order and separators of each locale, with a four-digit year and two-digit days and months.
+  const dates = { de: "03.11.2026", "en-US": "11/03/2026", "en-GB": "03/11/2026", ja: "2026/11/03" } as const;
+  for (const [locale, text] of Object.entries(dates)) {
+    const date = field<string>("date", locale, "2026-11-03");
+    assert.equal(date.show("2026-11-03"), text, locale);
+    assert.equal(date.parse(text), "2026-11-03", `${locale} round-trips`);
+    assert.equal(date.parse("2026-11-03"), "2026-11-03", `${locale} reads the ISO form`);
+    assert.equal(date.parse("2024-02-29"), "2024-02-29", `${locale} reads the ISO form`);
+  }
+  const german = field<string>("date", "de", "2026-11-03");
+  assert.equal(german.parse("3.11.2026"), "2026-11-03", "a day or month of one digit");
+  assert.equal(german.parse(" 29.02.2024 "), "2024-02-29");
+  assert.equal(german.parse("29.02.2026"), "invalid-text", "not a date");
+  assert.equal(german.parse("03.11.26"), "invalid-text", "a two-digit year is ambiguous");
+  assert.equal(german.parse("03.11"), "invalid-text");
+  assert.equal(german.parse("03.11.2026x"), "invalid-text");
+  assert.equal(german.parse("11/03/2026"), "2026-03-11", "another separator, in the locale's order");
+  assert.equal(german.message("3.11"), "3.11 is not a date (DD.MM.YYYY or YYYY-MM-DD).");
+  const american = field<string>("date", "en-US", "2026-11-03");
+  assert.equal(american.parse("1/2/2026"), "2026-01-02", "month first");
+  assert.equal(american.parse("23/11/2026"), "invalid-text", "there is no month 23");
+  assert.equal(american.message("x"), "x is not a date (MM/DD/YYYY or YYYY-MM-DD).");
+  assert.equal(field<string>("date", "en-GB", "2026-11-03").parse("1/2/2026"), "2026-02-01", "day first");
+  assert.equal(field<string>("date", "ar-EG", "2026-11-03").parse("٠٣/١١/٢٠٢٦"), "2026-11-03", "the locale's digits");
+
+  // Hour cycles: 24 hours in de, en-GB and ja, 12 hours with a day period in en-US.
+  const time24 = field<string>("time", "de", "21:05:00");
+  assert.equal(time24.show("21:05:00"), "21:05");
+  assert.equal(time24.show("09:05:30"), "09:05:30");
+  assert.equal(time24.parse("21:05"), "21:05:00");
+  assert.equal(time24.parse("9:05"), "09:05:00");
+  assert.equal(time24.parse("21:05:30,5"), "21:05:30.5", "a fraction after the locale's decimal separator");
+  assert.equal(time24.parse("25:00"), "invalid-text");
+  assert.equal(time24.parse("21:5"), "invalid-text", "minutes have two digits");
+  assert.equal(field<string>("time", "ja", "09:05:00").show("09:05:00"), "9:05", "ja does not pad hours");
+  assert.equal(field<string>("time", "en-GB", "09:05:00").show("09:05:00"), "09:05");
+  const time12 = field<string>("time", "en-US", "21:05:00");
+  assert.equal(time12.show("21:05:00"), "9:05 PM");
+  assert.equal(time12.show("00:30:00"), "12:30 AM");
+  assert.equal(time12.show("12:00:00"), "12:00 PM");
+  assert.equal(time12.parse("9:05 PM"), "21:05:00");
+  assert.equal(time12.parse("9:05 pm"), "21:05:00");
+  assert.equal(time12.parse("12:30 AM"), "00:30:00");
+  assert.equal(time12.parse("12:00 PM"), "12:00:00");
+  assert.equal(time12.parse("9:05:30 AM"), "09:05:30");
+  assert.equal(time12.parse("21:05"), "21:05:00", "without a day period, the ISO 24-hour form");
+  assert.equal(time12.parse("13:05 PM"), "invalid-text", "a 12-hour time has no hour 13");
+  assert.equal(time12.parse("9:05 PM PM"), "invalid-text");
+  assert.equal(time12.message("noon"), "noon is not a time (h:mm AM or hh:mm or hh:mm:ss).");
+
+  const dateTime = field<string>("datetime", "en-US", "2026-11-03T21:05:00");
+  assert.equal(dateTime.show("2026-11-03T21:05:00"), "11/03/2026, 9:05 PM");
+  assert.equal(dateTime.parse("11/03/2026, 9:15 PM"), "2026-11-03T21:15:00");
+  assert.equal(dateTime.parse("11/03/2026 21:15"), "2026-11-03T21:15:00");
+  assert.equal(dateTime.parse("2026-11-03T21:15"), "2026-11-03T21:15:00", "the ISO form");
+  assert.equal(dateTime.parse("2026-11-03T21:15+02:00"), "2026-11-03T21:15:00+02:00", "an ISO offset is kept");
+  assert.equal(dateTime.parse("11/03/2026"), "invalid-text", "a date without a time");
+  assert.equal(dateTime.parse("02/30/2026, 9:15 PM"), "invalid-text");
+  const germanDateTime = field<string>("datetime", "de", "2026-11-03T21:05:00");
+  assert.equal(germanDateTime.show("2026-11-03T21:05:00"), "03.11.2026, 21:05");
+  assert.equal(germanDateTime.parse("03.11.2026, 21:15"), "2026-11-03T21:15:00");
+  assert.equal(field<string>("datetime", "ja", "2026-11-03T21:05:00").show("2026-11-03T21:05:30"), "2026/11/03 21:05:30");
+
+  // `locale: null` is the ISO form of the browser's inputs.
+  const iso = field<string>("date", null, "2026-11-03");
+  assert.equal(iso.show("2026-11-03"), "2026-11-03");
+  assert.equal(iso.parse("03.11.2026"), "invalid-text");
+  assert.equal(field<string>("time", null, "21:05:00").show("21:05:00"), "21:05");
+});
+
 test("parse and format options replace the kind's text form (C1)", () => {
   const values: unknown[] = [];
   const controller = createFieldController<State, Client, number>({ kind: "number", read: state => state.step, write: (_client, value) => { values.push(value); return Promise.resolve(); } }, {

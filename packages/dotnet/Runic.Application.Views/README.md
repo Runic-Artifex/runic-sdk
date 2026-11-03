@@ -2336,13 +2336,16 @@ configureTranslatedText({
 
 Then show references with the framework's helper. Field errors
 (`useField(...).errors`, `injectField`, `createFieldController`) already show
-validation messages in the window's language. A `number`, `decimal` or
-`bigint` field without its own `locale` option shows and reads its text in
-the window's locale (`1,5` in `de`), and formats it again when the locale
-changes, but not while the user edits a draft. Use a text input with
-`inputmode="decimal"` for such a field: `<input type="number">` takes only the
-invariant form. Date and time fields keep the ISO forms of the browser's date
-inputs, which show them in the browser's language.
+validation messages in the window's language. A `number`, `decimal`,
+`bigint`, `date`, `time` or `datetime` field without its own `locale` option
+shows and reads its text in the window's locale (`1,5`, `03.11.2026, 21:30` in
+`de`; `11/03/2026, 9:30 PM` in `en-US`), and formats it again when the locale
+changes, but not while the user edits a draft. Dates and times also accept the
+ISO form, and the ViewModel still receives the invariant and ISO values. Use a
+text input for such a field (`inputmode="decimal"` for numbers):
+`<input type="number">`, `type="date"`, `type="time"` and `datetime-local` take
+only the invariant and ISO forms, so a field bound to one of them takes
+`locale: null`.
 
 **Server rendering.** `configureTranslatedText` configures the page's runtime,
 which is shared by everything on the page. Under SvelteKit or Angular server

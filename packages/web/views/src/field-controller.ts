@@ -89,17 +89,21 @@ export interface FieldOptions<TValue = any> {
    */
   readonly keepDraftOnError?: boolean;
   /**
-   * The locale of the text of `number`, `decimal` and `bigint` fields, as `Intl.NumberFormat` takes it, such as
-   * `"de-DE"` or `navigator.languages`: the text shows the locale's decimal separator and digits (`1,5`), and reads
-   * them and its group separators (`1.234,5`). Without it, the window's locale when the application sets one
-   * (`IRunicWindowLocale`, `translation-text/1`), and otherwise the invariant form (`1.5`), which
-   * `<input type="number">` needs: use a text input with `inputmode="decimal"` where a window locale is set. A
+   * The locale of the text of `number`, `decimal`, `bigint`, `date`, `time` and `datetime` fields, as `Intl` takes
+   * it, such as `"de-DE"` or `navigator.languages`. Numbers show the locale's decimal separator and digits (`1,5`),
+   * and read them and its group separators (`1.234,5`). Dates and times show the locale's numeric form in the
+   * Gregorian calendar with a four-digit year and its hour cycle (`23.11.2026, 21:45` in `de`, `11/23/2026, 9:45 PM`
+   * in `en-US`), and read that form and the ISO form (`2026-11-23`, `21:45`).
+   *
+   * Without it, the window's locale when the application sets one (`IRunicWindowLocale`, `translation-text/1`). A
    * change of the window's locale formats the text again, but not while the field has a draft; the draft keeps the
-   * locale it was typed in, and the text follows once it is written. Dates and times always use the ISO forms of
-   * `<input type="date">`, `"time"` and `"datetime-local"`, which the browser shows in its own language; pass
-   * `format` and `parse` to show them otherwise.
+   * locale it was typed in, and the text follows once it is written. `null`, or no locale at all, is the invariant
+   * form (`1.5`) and the ISO forms that `<input type="number">`, `"date"`, `"time"` and `"datetime-local"` take,
+   * which the browser shows in its own language: pass `null` for a field bound to one of those inputs (`bindField`
+   * does for them), and use a text input (`inputmode="decimal"` for numbers) for a field that follows the locale.
+   * `format` and `parse` replace the kind's text form in any locale.
    */
-  readonly locale?: string | readonly string[];
+  readonly locale?: string | readonly string[] | null;
   /**
    * The most digits a `number` or `decimal` text may have after the decimal separator; more is an `invalid-text`
    * error. A `decimal` allows at most 28 in any case.
@@ -237,12 +241,14 @@ export function createFieldController<TState, TClient, TValue>(
   const nullable = definition.nullable === true;
   const scale = options.scale;
   if (scale !== undefined && (!Number.isSafeInteger(scale) || scale < 0)) throw new RangeError("scale must be a non-negative integer.");
-  // The locale of number texts: the field's own, or the window's, which the field follows when it has no draft.
-  const fieldLocale = (): string | readonly string[] | undefined => options.locale ?? windowLocale() ?? undefined;
-  let numberLocale = fieldLocale();
+  // The locale of number, date and time texts: the field's own, none for `null`, or the window's, which the field
+  // follows when it has no draft.
+  const fieldLocale = (): string | readonly string[] | undefined =>
+    options.locale === null ? undefined : options.locale ?? windowLocale() ?? undefined;
+  let textLocale = fieldLocale();
   const traits = {
     kind, nullable, integer: definition.integer === true, choices: definition.choices, offset: definition.offset === true,
-    scale, get locale() { return numberLocale; },
+    scale, get locale() { return textLocale; },
   };
   const kindParse: FieldTextParser<TValue> = options.parse ?? kindParser<TValue>(traits);
   const parse = (text: string): TValue => {
@@ -290,8 +296,8 @@ export function createFieldController<TState, TClient, TValue>(
   function followLocale(): void {
     if (options.locale !== undefined || draft !== undefined || typedInvalid) return;
     const next = fieldLocale();
-    if (next === numberLocale) return;
-    numberLocale = next;
+    if (next === textLocale) return;
+    textLocale = next;
     typed = undefined;
   }
   function update(notify = true): void {

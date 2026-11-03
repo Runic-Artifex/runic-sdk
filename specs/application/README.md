@@ -916,9 +916,10 @@ The **window's locale** is the language the application chose for the window, or
   asks the application, for example with a command. Every page of the window therefore shows one language, and the
   application can keep the choice with its settings. A page that changes its runtime's locale itself is set back by
   the next push, at the latest after a reconnect.
-- **Number fields.** A client's number field without a locale of its own reads and writes its text in the window's
-  locale, and formats it again when the locale changes, except while the user edits a draft. Dates and times keep
-  the ISO forms of the browser's inputs.
+- **Number, date and time fields.** A client's number, date or time field without a locale of its own reads and
+  writes its text in the window's locale, and formats it again when the locale changes, except while the user edits a
+  draft. Date and time texts also accept the ISO form. The values on the wire keep their forms (`values.md`); only
+  the text a field shows and reads changes.
 - **Client.** A client that uses the feature applies every `locale` push: it sets the locale of the page's
   Translations runtime, also when the push repeats the last value, since the page may have changed its runtime's
   locale itself meanwhile, and formats references in it. It reports a change of the window's locale only when the

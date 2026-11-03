@@ -4,7 +4,7 @@
 import assert from "node:assert/strict";
 import { afterEach, test } from "node:test";
 import {
-  configureTranslatedText, createFieldController, onWindowLocale, resolveText, subscribeText, textLocale, windowLocale,
+  bindField, configureTranslatedText, createFieldController, onWindowLocale, resolveText, subscribeText, textLocale, windowLocale,
   type BridgeValidationState, type TextReference, type TextTranslations,
 } from "../dist/index.js";
 import { connectView, decodeBridgeValidation, fieldErrors } from "../dist/generated.js";
@@ -273,4 +273,74 @@ test("number fields follow the window's locale, but not while the user edits a d
   assert.equal(field.current.text, "2.5", "without the draft, the text follows the window's locale");
   stop();
   field.dispose();
+});
+
+test("date and time fields follow the window's locale, but not while the user edits a draft (E5)", async () => {
+  await reportWindowLocale("de");
+  type State = { readonly due: string; readonly at: string };
+  let state: State = { due: "2026-11-03", at: "21:05:00" };
+  const written: string[] = [];
+  const due = createFieldController<State, object, string>({
+    name: "due", kind: "date", read: current => current.due,
+    write: async (_client, value) => { written.push(value); state = { ...state, due: value }; due.setSource({ state, client: {} }); },
+  }, { commit: "pause" });
+  const at = createFieldController<State, object, string>({
+    name: "at", kind: "time", read: current => current.at, write: async () => undefined,
+  });
+  due.setSource({ state, client: {} });
+  at.setSource({ state, client: {} });
+  const stops = [due.subscribe(() => {}), at.subscribe(() => {})];
+  assert.equal(due.current.text, "03.11.2026");
+  assert.equal(at.current.text, "21:05");
+  due.inputText("24.12.2026");
+  await due.commit();
+  assert.deepEqual(written, ["2026-12-24"], "the wire value stays ISO");
+  due.inputText("2026-12-25");
+  await due.commit();
+  assert.deepEqual(written, ["2026-12-24", "2026-12-25"], "the ISO form is read in any locale");
+  assert.equal(due.current.text, "25.12.2026");
+  // Not editing: a switch formats again.
+  await reportWindowLocale("en-US");
+  assert.equal(due.current.text, "12/25/2026");
+  assert.equal(at.current.text, "9:05 PM");
+  // Editing: the draft keeps the locale it was typed in.
+  due.inputText("1/2/202");
+  await reportWindowLocale("en-GB");
+  assert.equal(due.current.text, "1/2/202");
+  due.reset();
+  assert.equal(due.current.text, "25/12/2026", "without the draft, the text follows the window's locale");
+  await reportWindowLocale(null);
+  assert.equal(due.current.text, "2026-12-25", "without a window locale, the ISO form");
+  for (const stop of stops) stop();
+  due.dispose();
+  at.dispose();
+});
+
+test("a field with locale null, or bound to a native date or number input, keeps the ISO and invariant forms (E5)", async () => {
+  await reportWindowLocale("de");
+  type State = { readonly due: string; readonly amount: number };
+  const state: State = { due: "2026-11-03", amount: 1.5 };
+  const iso = createFieldController<State, object, string>({ kind: "date", read: current => current.due, write: async () => undefined }, { locale: null });
+  iso.setSource({ state, client: {} });
+  assert.equal(iso.current.text, "2026-11-03");
+  const element = (type: string) => Object.assign(new EventTarget(), {
+    tagName: "INPUT", type, value: "", setAttribute() {}, getAttribute: () => null,
+  }) as unknown as HTMLInputElement;
+  const client = {
+    snapshot: state, dispose() {},
+    subscribe(listener: (current: State) => void) { listener(state); return () => {}; },
+  };
+  const dateInput = element("date");
+  const numberInput = element("number");
+  const textInput = element("text");
+  const bound = [
+    bindField(dateInput, client, { kind: "date", read: current => current.due, write: async () => undefined }),
+    bindField(numberInput, client, { kind: "number", read: current => current.amount, write: async () => undefined }),
+    bindField(textInput, client, { kind: "date", read: current => current.due, write: async () => undefined }),
+  ];
+  assert.equal(dateInput.value, "2026-11-03", "<input type=date> takes the ISO form");
+  assert.equal(numberInput.value, "1.5", "<input type=number> takes the invariant form");
+  assert.equal(textInput.value, "03.11.2026", "a text input follows the window's locale");
+  for (const field of bound) field.dispose();
+  iso.dispose();
 });
