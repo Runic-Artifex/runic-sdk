@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { afterEach, test } from "node:test";
+import { afterEach, beforeEach, test } from "node:test";
 import { createMenuBarController, splitAccessKey, type MenuBarController, type MenuBarItem, type MenuBarMenu, type MenuBarRequest } from "../dist/index.js";
 import { createMockBridge, installMockBridge, installMockMenuBar } from "../dist/mock.js";
 
@@ -11,6 +11,11 @@ const fixture = JSON.parse(readFileSync(new URL("../../../../specs/desktop/fixtu
 
 type Host = typeof globalThis & { __runicBridge?: unknown };
 const controllers: MenuBarController[] = [];
+// A mock Bridge another test file left installed would otherwise be reused by installMockMenuBar.
+beforeEach(() => {
+  delete (globalThis as Host).__runicBridge;
+});
+
 afterEach(() => {
   for (const controller of controllers.splice(0)) controller.dispose();
   delete (globalThis as Host).__runicBridge;
