@@ -250,7 +250,7 @@ public sealed class RunicCsWebUiHost : IRunicWindowHost
             MenuCommandBinding? menuCommands = null;
             if (viewModel is IRunicMenuCommandSource menuSource)
             {
-                menuCommands = await MenuCommandBinding.BindAsync(_menuBar, content.ModelContext, menuSource.GetMenuCommand, menuLogger)
+                menuCommands = await MenuCommandBinding.BindAsync(_menuBar, content.ModelContext, menuSource.GetMenuCommand, menuLogger, content)
                     .ConfigureAwait(false);
                 bindings.Add(menuCommands);
             }

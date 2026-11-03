@@ -10,11 +10,15 @@ namespace Runic.Application.Views.Menus;
 // application's (RunicDesktopHost.UseApplicationMenu). AppKit asks CanExecute on its main thread while it shows a menu or
 // matches a key, so the availability of each command is cached per command id and parameter and updated from
 // CanExecuteChanged. Resolving and running a command happens in the model turn of the ViewModel, when there is one.
-// An item's CommandParameter is the command's parameter. Shared with Runic.Application.Views.CsWebUi, like
+// An item's CommandParameter is the command's parameter. A Window's command runs in the window's interaction scope
+// (RunicInteractionInvocation), so its interactions and view requests reach the one page presentation of the Window
+// that handles them, as during a close decision. Shared with Runic.Application.Views.CsWebUi, like
 // MenuBarPageRoutes; on Runic Desktop it is also the window's IDesktopMenuCommandTarget (MenuCommandBinding.Desktop.cs).
 internal sealed partial class MenuCommandBinding : IDisposable
 {
     private readonly IRunicModelContext? _context;
+    // The Window whose root ViewModel's commands these are; null for the application's commands.
+    private readonly WindowContentSession? _window;
     private readonly Func<string, ICommand?> _resolve;
     private readonly ILogger _logger;
     private readonly IMenuBarSource _host;
@@ -22,10 +26,12 @@ internal sealed partial class MenuCommandBinding : IDisposable
     private Dictionary<MenuCommandKey, Entry> _entries = [];
     private bool _disposed;
 
-    private MenuCommandBinding(IMenuBarSource host, IRunicModelContext? context, Func<string, ICommand?> resolve, ILogger logger)
+    private MenuCommandBinding(IMenuBarSource host, IRunicModelContext? context, Func<string, ICommand?> resolve, ILogger logger,
+        WindowContentSession? window = null)
     {
         _host = host;
         _context = context;
+        _window = window;
         _resolve = resolve;
         _logger = logger;
     }
@@ -42,9 +48,9 @@ internal sealed partial class MenuCommandBinding : IDisposable
 
     // Binds every command id of the host's menu bar now, and again whenever the bar changes.
     internal static async ValueTask<MenuCommandBinding> BindAsync(IMenuBarSource host, IRunicModelContext? context,
-        Func<string, ICommand?> resolve, ILogger logger)
+        Func<string, ICommand?> resolve, ILogger logger, WindowContentSession? window = null)
     {
-        var binding = new MenuCommandBinding(host, context, resolve, logger);
+        var binding = new MenuCommandBinding(host, context, resolve, logger, window);
         host.MenuBarChanged += binding.OnMenuBarChanged;
         await binding.RebindAsync().ConfigureAwait(false);
         return binding;
@@ -85,14 +91,21 @@ internal sealed partial class MenuCommandBinding : IDisposable
         try
         {
             if (_context is { IsExecuting: false } context)
-                await context.InvokeAsync(() => ExecuteNow(entry.Command, entry.Parameter)).ConfigureAwait(false);
+                await context.InvokeAsync(() => ExecuteInWindow(entry.Command, entry.Parameter)).ConfigureAwait(false);
             else
-                await Task.Run(() => ExecuteNow(entry.Command, entry.Parameter)).ConfigureAwait(false);
+                await Task.Run(() => ExecuteInWindow(entry.Command, entry.Parameter)).ConfigureAwait(false);
         }
         catch (Exception error)
         {
             MenuBarLog.CommandFailed(_logger, error, entry.CommandId);
         }
+    }
+
+    // The command, and the asynchronous work it starts, run in the Window's scope.
+    private void ExecuteInWindow(ICommand command, string? parameter)
+    {
+        using var scope = _window is null ? null : RunicInteractionInvocation.EnterWindowScope(_window, CancellationToken.None);
+        ExecuteNow(command, parameter);
     }
 
     private static void ExecuteNow(ICommand command, string? parameter)

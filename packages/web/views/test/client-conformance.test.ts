@@ -4,7 +4,9 @@ import assert from "node:assert/strict";
 import { readdirSync, readFileSync } from "node:fs";
 import { test } from "node:test";
 import { BridgeError, isBridgeOutcome, onBridgeConnection, onBridgeDiagnostic, type BridgeConnectionState } from "../dist/index.js";
-import { bridgeOperations, connectView, defineCollection, defineCollections, defineInteractions, defineText, type ViewConnection } from "../dist/generated.js";
+import {
+  bridgeOperations, connectView, defineCollection, defineCollections, defineInteractions, defineRequests, defineText, type ViewConnection,
+} from "../dist/generated.js";
 import * as wire from "../dist/wire.js";
 import { decodeBridgeValidation } from "../dist/validation.js";
 import { clock } from "../dist/clock.js";
@@ -33,6 +35,8 @@ interface ViewModel {
   readonly texts?: readonly string[];
   readonly collections?: ReturnType<typeof defineCollections>;
   readonly interactions?: ReturnType<typeof defineInteractions>;
+  /** View requests (view-requests/1). */
+  readonly requests?: ReturnType<typeof defineRequests>;
   /** Commands that declare a failure. */
   readonly declared?: Readonly<Record<string, (value: unknown) => unknown>>;
   readonly operations?: Readonly<Record<string, { decode: (value: unknown) => unknown; decodeFailure?: (value: unknown) => unknown }>>;
@@ -56,6 +60,13 @@ const models: Record<string, ViewModel> = {
     collections: rowCollections,
     interactions: defineInteractions({
       confirm: { contract: "Tests.Notes:confirm", decodeInput: value => value, encodeOutput: value => value },
+    }),
+    // The corpus gives the request contracts as provided ids; the client writes them first, in its registration, and
+    // writes the value this runner gives a provided id that it writes first.
+    requests: defineRequests({
+      focus: { contract: "provided:focusContract", decodeInput: value => wire.object(value, item => ({ member: wire.string(item["member"]) })) },
+      reveal: { contract: "provided:revealContract", decodeInput: value => wire.object(value, item => ({ id: int32(item["id"]) })) },
+      toast: { contract: "provided:toastContract", decodeInput: value => wire.object(value, item => ({ text: wire.string(item["text"]) })) },
     }),
     declared: { save: failure, slowImport: failure },
     operations: { slowImport: { decode: int32, decodeFailure: failure } },
@@ -250,6 +261,15 @@ async function run(scenario: Scenario): Promise<void> {
   const clients = new Map<string, ViewConnection<Record<string, unknown>>>();
   const handlers = new Map<string, Record<string, (input: never) => unknown>>();
   const notifications = new Map<string, number>();
+  // view-requests/1: the inputs each `handle` handler recorded, and how to unregister it, by route and request.
+  const handled = new Map<string, { readonly inputs: unknown[]; stop?: () => void }>();
+  const handledKey = (route: string, request: string) => `${route}\u0000${request}`;
+  const startHandling = (route: string, request: string) => {
+    const surface = client(route).requests[request];
+    if (!surface) throw new Error(`${scenario.id}: the route ${route} has no view request ${request}.`);
+    const record = handled.get(handledKey(route, request))!;
+    record.stop = surface.handle((input: never) => { record.inputs.push(input); });
+  };
   // The connection state the client reports (presented/1: `closed` after the producer closed the window).
   let connectionState: BridgeConnectionState | undefined;
   const stopConnection = onBridgeConnection(state => { connectionState = state; }, { lostAfter: 2_147_483_647 });
@@ -311,13 +331,29 @@ async function run(scenario: Scenario): Promise<void> {
                 ...(model.collections ? { collections: model.collections } : {}),
                 ...(model.interactions ? { interactions: model.interactions } : {}),
                 ...(handlers.has(route) ? { handlers: handlers.get(route)! } : {}),
+                ...(model.requests ? { requests: model.requests } : {}),
                 operations: bridgeOperations,
               });
               clients.set(route, view);
+              // Handlers of `handle` calls made before the route opened.
+              for (const [key, record] of handled) if (key.startsWith(`${route}\u0000`) && !record.stop) startHandling(route, key.slice(route.length + 1));
               let first = true;
               view.subscribe(() => { if (first) first = false; else notifications.set(route, (notifications.get(route) ?? 0) + 1); });
               return null;
             });
+            break;
+          }
+          case "handle": {
+            // A handler that records each input, registered at once, or once the route opened.
+            handled.get(handledKey(route, call.request))?.stop?.();
+            handled.set(handledKey(route, call.request), { inputs: [] });
+            if (clients.has(route)) startHandling(route, call.request);
+            calls.set(call.id, { state: "resolved", value: null });
+            break;
+          }
+          case "unhandle": {
+            handled.get(handledKey(route, call.request))?.stop?.();
+            calls.set(call.id, { state: "resolved", value: null });
             break;
           }
           case "close": track(call.id, async () => { client(route).dispose(); return null; }); break;
@@ -412,6 +448,13 @@ async function run(scenario: Scenario): Promise<void> {
         if (expect["notifications"])
           assert.equal(notifications.get(expect["notifications"].route) ?? 0, expect["notifications"].count, `${scenario.id} ${at}: notifications`);
         if (expect["connection"] !== undefined) assert.equal(connectionState, expect["connection"], `${scenario.id} ${at}: connection`);
+        if (expect["requests"]) {
+          // A handler runs once the page painted the request's revision: wait for it as for a receive step.
+          const { route, request, inputs } = expect["requests"];
+          const recorded = () => JSON.parse(JSON.stringify(handled.get(handledKey(route, request))?.inputs ?? [])) as Json;
+          for (let wait = 0; matches(recorded(), inputs, ids) !== undefined && wait < 50; wait++) await new Promise(resolve => setTimeout(resolve, 2));
+          sameDeep(recorded(), inputs, `${at} requests of ${route} ${request}`);
+        }
         continue;
       }
       throw new Error(`${scenario.id} ${at}: unknown step ${JSON.stringify(step)}`);
@@ -435,7 +478,8 @@ const scenarios = scenarioFiles.map(file => JSON.parse(readFileSync(new URL(`sce
 
 test("the corpus has client scenarios in every set", () => {
   const sets = new Set(scenarios.filter(scenario => scenario.roles.includes("client")).map(scenario => scenario.id.split(".")[0]));
-  for (const set of ["handshake", "state-changes", "replies", "edits", "operations", "presentations", "interactions", "errors"]) assert.ok(sets.has(set), set);
+  for (const set of ["handshake", "state-changes", "replies", "edits", "operations", "presentations", "interactions", "view-requests", "errors"])
+    assert.ok(sets.has(set), set);
 });
 
 for (const scenario of scenarios.filter(item => item.roles.includes("client"))) {

@@ -1,1 +1,22 @@
 #nullable enable
+Runic.Application.Views.Generated.ViewQuestionDescriptor
+Runic.Application.Views.Generated.ViewRequestDescriptor
+Runic.Application.Views.RunicInteractionUnhandledException
+Runic.Application.Views.RunicInteractionUnhandledException.RunicInteractionUnhandledException() -> void
+Runic.Application.Views.RunicInteractionUnhandledException.RunicInteractionUnhandledException(string! message) -> void
+Runic.Application.Views.RunicInteractionUnhandledException.RunicInteractionUnhandledException(string! message, System.Exception! innerException) -> void
+Runic.Application.Views.ViewQuestion<TInput, TOutput>
+Runic.Application.Views.ViewQuestion<TInput, TOutput>.AskAsync(TInput input, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<TOutput>!
+Runic.Application.Views.ViewQuestion<TInput, TOutput>.Timeout.get -> System.TimeSpan?
+Runic.Application.Views.ViewQuestion<TInput, TOutput>.ViewQuestion(System.Func<TInput, System.Threading.CancellationToken, System.Threading.Tasks.ValueTask<TOutput>>? fallback = null, System.TimeSpan? timeout = null) -> void
+Runic.Application.Views.ViewRequest<T>
+Runic.Application.Views.ViewRequest<T>.Delivery.get -> Runic.Application.Views.ViewRequestDelivery
+Runic.Application.Views.ViewRequest<T>.Raise(T input) -> void
+Runic.Application.Views.ViewRequest<T>.ViewRequest(Runic.Application.Views.ViewRequestDelivery delivery = Runic.Application.Views.ViewRequestDelivery.Drop) -> void
+Runic.Application.Views.ViewRequestDelivery
+Runic.Application.Views.ViewRequestDelivery.Broadcast = 2 -> Runic.Application.Views.ViewRequestDelivery
+Runic.Application.Views.ViewRequestDelivery.Drop = 0 -> Runic.Application.Views.ViewRequestDelivery
+Runic.Application.Views.ViewRequestDelivery.NextMounted = 1 -> Runic.Application.Views.ViewRequestDelivery
+static Runic.Application.Views.Generated.ViewQuestionDescriptor.Create<TModel, TInput, TOutput>(string! name, string! contract, System.Func<TModel!, Runic.Application.Views.ViewQuestion<TInput, TOutput>!>! getQuestion, System.Func<TInput, string!>! encodeInput, System.Func<System.Text.Json.JsonElement, TOutput>! decodeOutput) -> Runic.Application.Views.Generated.BridgeInteractionDescriptor<TModel!>!
+static Runic.Application.Views.Generated.ViewRequestDescriptor.Create<TModel, T>(string! name, string! contract, System.Func<TModel!, Runic.Application.Views.ViewRequest<T>!>! getRequest, System.Func<T, string!>! encodeInput) -> Runic.Application.Views.Generated.BridgeInteractionDescriptor<TModel!>!
+static Runic.Application.Views.RunicInteractionInvocation.EnterWindow(object! viewModel, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.IDisposable!

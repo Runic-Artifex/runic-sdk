@@ -24,10 +24,10 @@ public partial class ViewModelBridge<T>
     {
         switch (request.Kind)
         {
-            case "interactions" or "interaction-reply":
+            case "interactions" or "interaction-reply" or "view-requests":
                 // A Bridge without a window has no presentations to register or answer.
                 if (_content is null)
-                    return new(request.Kind == "interactions"
+                    return new(request.Kind is "interactions" or "view-requests"
                         ? """{"ok":true,"registration":"ignored"}"""u8.ToArray()
                         : """{"ok":true,"result":"stale"}"""u8.ToArray());
                 return new(_content.Interactions.Handle(request));

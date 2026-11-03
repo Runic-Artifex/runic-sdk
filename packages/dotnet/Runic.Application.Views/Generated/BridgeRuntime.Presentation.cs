@@ -34,6 +34,15 @@ public partial class ViewModelBridge<T> : IBridgePresentationRoute, IBridgeResum
 
     TimeProvider IBridgePresentationRoute.TimeProvider => _content?.TimeProvider ?? BridgeDispatcher.For(_transport).TimeProvider;
 
+    WindowContentSession? IBridgePresentationRoute.Content => _content;
+
+    // view-requests/1: the revision that includes everything changed before the request, as for a reply.
+    private long? PublishForViewRequest()
+    {
+        try { return _modelTurn.Run(PublishForReply); }
+        catch (ObjectDisposedException) { return null; }
+    }
+
     // A renewal: the route's full state at a new revision, which begins the new epoch; the model gate is held, in a
     // model turn. A state with invalid keys is withheld, and the renewal stays pending.
     private void PublishRenewal(long changed)

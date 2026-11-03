@@ -170,6 +170,11 @@
       "id": "RUNICBRIDGE034",
       "severity": "warning",
       "title": "A [RunicPresentationScoped] declaration reaches no Bridge command"
+    },
+    {
+      "id": "RUNICBRIDGE035",
+      "severity": "error",
+      "title": "A ViewRequest or ViewQuestion member is not a get-only property"
     }
   ]
 }

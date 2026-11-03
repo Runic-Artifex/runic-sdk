@@ -496,6 +496,44 @@ public sealed class RunicViewDriver<TModel> where TModel : class
             .ConfigureAwait(false));
     }
 
+    /// <summary>
+    /// Opens a presentation of this route that acts as a page's View: it handles every <see cref="ViewRequest{T}"/> of
+    /// <typeparamref name="TModel"/>, so <see cref="RunicTestPresentation{TModel}.TakeViewRequests"/> returns the
+    /// requests it receives, and answers the interactions its <c>Handle</c> registers. Blocks the calling thread until
+    /// it is open.
+    /// </summary>
+    /// <param name="presentation">The presentation id; the host issues <c>test-presentation{n}</c> when omitted.</param>
+    /// <param name="clientKey">The client identity, for tests of several browser clients.</param>
+    /// <param name="connectionKey">The connection identity, for tests of a client disconnect.</param>
+    /// <returns>The presentation; dispose it to stop answering, or unmount it.</returns>
+    /// <exception cref="InvalidOperationException">The open or the registration was not answered <c>ok</c>; the message names the reply.</exception>
+    public RunicTestPresentation<TModel> Present(string? presentation = null, string? clientKey = null, string? connectionKey = null) =>
+        PresentAsync(presentation, clientKey, connectionKey).GetAwaiter().GetResult();
+
+    /// <summary>Opens a presentation that acts as a page's View, as <see cref="Present"/> does, without blocking a thread.</summary>
+    /// <param name="presentation">The presentation id; the host issues <c>test-presentation{n}</c> when omitted.</param>
+    /// <param name="clientKey">The client identity, for tests of several browser clients.</param>
+    /// <param name="connectionKey">The connection identity, for tests of a client disconnect.</param>
+    /// <param name="cancellationToken">Stops waiting for the replies.</param>
+    /// <returns>The presentation; dispose it to stop answering, or unmount it.</returns>
+    /// <exception cref="InvalidOperationException">The open or the registration was not answered <c>ok</c>; the message names the reply.</exception>
+    public async Task<RunicTestPresentation<TModel>> PresentAsync(string? presentation = null, string? clientKey = null,
+        string? connectionKey = null, CancellationToken cancellationToken = default)
+    {
+        var id = await MountAsync(presentation, clientKey, connectionKey, cancellationToken).ConfigureAwait(false);
+        var mounted = new RunicTestPresentation<TModel>(this, _transport, id, clientKey, connectionKey);
+        try { await mounted.RegisterViewRequestsAsync(cancellationToken).ConfigureAwait(false); }
+        catch
+        {
+            mounted.Dispose();
+            throw;
+        }
+        return mounted;
+    }
+
+    // The generated contract fingerprint of the ViewModel, which interaction and view request contracts start with.
+    internal static string ContractFingerprint => Fingerprint.Value;
+
     private static void WriteOpen(Utf8JsonWriter writer, string presentation)
     {
         writer.WriteString("kind", "open");

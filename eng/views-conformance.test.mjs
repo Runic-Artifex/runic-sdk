@@ -388,6 +388,9 @@ const requestRules = {
     && isMember(m.name) && typeof m.contract === "string" && ["answered", "cancelled", "failed"].includes(m.outcome)
     && ((m.outcome === "answered") === ("output" in m)),
   receive: () => true,
+  // README.md, "View requests" (view-requests/1): a positive generation and at most 64 requests.
+  "view-requests": m => isRoute(m.route) && isIdentifier(m.presentation) && Number.isSafeInteger(m.generation) && m.generation > 0
+    && isHandlers(m.requests) && m.requests.length <= 64,
   // README.md, "Presented states and window close" (presented/1).
   presented: m => isRoute(m.route) && isSafe(m.revision),
   "closing-reply": () => true,
@@ -453,6 +456,9 @@ const pushRules = {
   // presented/1. closing is the first push without a route.
   present: m => isRoute(m.route) && isSafe(m.revision),
   closing: () => true,
+  // view-requests/1.
+  "view-request": m => isRoute(m.route) && isIdentifier(m.presentation) && isSafe(m.revision) && isMember(m.name)
+    && typeof m.contract === "string" && "input" in m,
 };
 export function readPush(text) {
   let message;
@@ -480,6 +486,7 @@ const replyRules = {
   stream: m => isObject(m.page) && typeof m.page.kind === "string",
   interactions: m => typeof m.registration === "string",
   "interaction-reply": m => typeof m.result === "string",
+  "view-requests": m => typeof m.registration === "string",
   receive: m => Array.isArray(m.messages) && m.messages.every(isObject),
   presented: () => true,
   "closing-reply": () => true,
@@ -572,7 +579,7 @@ test("the message vectors match the reference readers of the message catalogue",
 // ---------------------------------------------------------------------------
 // Scenarios are self-contained.
 
-const clientExpectations = new Set(["state", "call", "operation", "diagnostics", "notifications", "connection"]);
+const clientExpectations = new Set(["state", "call", "operation", "diagnostics", "notifications", "connection", "requests"]);
 const producerExpectations = new Set(["model", "presented", "closed"]);
 function visit(value, callback) {
   callback(value);
@@ -718,7 +725,7 @@ test("every scenario is self-contained and names its file", () => {
     for (const problem of scenarioProblems(scenario)) failures.push(`${name(path)}: ${problem}`);
   }
   assert.deepEqual(failures, []);
-  for (const set of ["handshake", "state-changes", "replies", "edits", "operations", "presentations", "interactions", "errors"])
+  for (const set of ["handshake", "state-changes", "replies", "edits", "operations", "presentations", "interactions", "view-requests", "errors"])
     assert.ok([...ids].some(id => id.startsWith(`${set}.`)), `no ${set} scenario`);
 });
 

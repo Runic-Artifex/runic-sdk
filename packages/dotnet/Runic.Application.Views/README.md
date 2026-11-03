@@ -674,7 +674,11 @@ The host asks once for each id when the Window opens, and again after
 while its declared `IsEnabled` and its command's `CanExecute(parameter)` are
 `true`, following `CanExecuteChanged`, and runs `Execute(parameter)` in the
 model turn, where `parameter` is the item's `CommandParameter` (`null` for
-none). One command can therefore serve several items, such as one per zoom
+none). A Window's command runs in the window's interaction scope, so a
+question or interaction it asks reaches the one page presentation of the
+Window that handles it, as during a close decision, and a view request goes
+there too (see [Asking the page](#asking-the-page-view-requests-and-questions)).
+One command can therefore serve several items, such as one per zoom
 level in a radio group:
 
 ```csharp
@@ -1841,6 +1845,105 @@ that reports completes the wait; a hidden or minimized page reports after its
 next timer. It returns `false` at the timeout, which runs on the window's
 `TimeProvider`, also when no page uses the `presented/1` feature. Only waits ask
 the page to report, so an idle or typing page sends nothing extra.
+
+## Asking the page: view requests and questions
+
+A ViewModel reaches its web View in two ways, in both MVVM flavors (since
+0.16):
+
+- a **view request**, `ViewRequest<T>`, is one-way: focus a field, scroll a row
+  into view, scroll to the top, show a toast. The ViewModel raises it and
+  carries on; nothing waits for the page.
+- a **view question**, `ViewQuestion<TInput, TOutput>`, waits for the page's
+  answer, such as a confirmation. It is the flavor-neutral counterpart of a
+  ReactiveUI `Interaction<TInput, TOutput>`, so a CommunityToolkit ViewModel can
+  ask the page too.
+
+Expose both as get-only properties:
+
+```csharp
+public sealed record FocusTarget(string Field);
+public sealed record DiscardRequest(string Title);
+
+public sealed partial class EditorViewModel : ObservableObject
+{
+    public ViewRequest<FocusTarget> Focus { get; } = new(ViewRequestDelivery.NextMounted);
+    public ViewRequest<string> Toast { get; } = new(ViewRequestDelivery.Broadcast);
+    public ViewQuestion<DiscardRequest, bool> ConfirmDiscard { get; } = new((_, _) => ValueTask.FromResult(false));
+
+    [RelayCommand]
+    private void AddItem()
+    {
+        var item = new Item();
+        Items.Add(item);
+        Focus.Raise(new FocusTarget($"item-{item.Id}"));
+    }
+
+    [RelayCommand]
+    private async Task DiscardAsync(CancellationToken token)
+    {
+        if (await ConfirmDiscard.AskAsync(new DiscardRequest(Title), token)) Reset();
+    }
+}
+```
+
+The page handles them with the generated client, while the component that
+owns the field is mounted:
+
+```ts
+const stopFocus = editor.requests.focus.handle(({ field }) => document.getElementById(field)?.focus());
+const stopConfirm = editor.interactions.confirmDiscard.handle(({ title }, { signal }) => confirmDialog(`Discard ${title}?`, signal));
+```
+
+`Raise` publishes what the ViewModel changed before it, and the page runs the
+handler once it has rendered that state, so the new item's element exists
+when `focus` runs. A request is not state: a snapshot or a reconnect never
+repeats it, it needs no reset, and it never reaches another window or
+connection. Each request declares where it goes with `ViewRequestDelivery`:
+
+| Delivery | Inside a command a page invoked | Elsewhere (window scope, timer, startup) | With no such presentation, or several |
+| --- | --- | --- | --- |
+| `Drop` (default) | that page's presentation that handles it | the window's one presentation that handles it | dropped, logged at Debug as event 1120 |
+| `NextMounted` | the same | the same | kept, the latest one wins, for the next presentation of the window that handles it (event 1121) |
+| `Broadcast` | every presentation of the window that handles it | the same | dropped |
+
+`Drop` is the default because most requests only make sense for what the
+user is looking at now: a focus or a scroll that arrives after the user moved
+on is worse than none. Use `NextMounted` for a request about a page that is
+about to appear, such as focusing the first field of an item that a command
+opens. A request raised outside a command for a ViewModel that several windows
+present is dropped. An input that does not fit the window's input limit makes
+`Raise` throw `ArgumentException`.
+
+`AskAsync` asks the page in the same scopes as an interaction (see
+[Leave confirmation in a web View](../Runic.Application.Views.ReactiveUI/README.md#leave-confirmation-in-a-web-view)
+for the table). When no page can answer it runs the fallback, or fails with
+`RunicInteractionUnhandledException` when there is none. The page's
+cancellation, its presentation closing, a timeout (by default two minutes, at
+most ten, set with the constructor's `timeout`) and the caller's token fail it
+as interactions do.
+
+**Work that no page started.** A timer, a notification's `Activated` handler
+or other background work of a window enters the window scope explicitly, so
+its questions and interactions reach the window's one presentation that
+handles them, as during a close decision:
+
+```csharp
+using (RunicInteractionInvocation.EnterWindow(viewModel))
+    if (await ConfirmReload.AskAsync(path)) await ReloadAsync();
+```
+
+`EnterWindow` finds the one window that presents the ViewModel and enters no
+scope when none or several do. It never carries a page's identity: only a
+command that a page's transport delivered can reach that page's presentation
+alone. Menu-bar commands of a Window run in the window scope by themselves
+([Menu bar commands](#menu-bar-commands)).
+
+Pages and hosts of earlier releases keep working: the producer sends requests
+only to pages that list the protocol feature `view-requests/1`, and a page of
+this release registers no request handlers with an earlier host. Tests answer and
+collect both through `RunicViewDriver.Present()`; see
+[Runic.Application.Testing](../Runic.Application.Testing/README.md#interactions).
 
 ## Operation results and parameterised queries
 

@@ -491,7 +491,7 @@ test("an operation start with a known id is a duplicate for a canonically equal 
 
 /* ------------------------------------------------------------------ presentation-epoch/1 and presented/1 */
 
-const features = ["text-splice/1", "presentation-epoch/1", "presented/1"];
+const features = ["text-splice/1", "presentation-epoch/1", "presented/1", "view-requests/1"];
 const helloWith = (raw: RawClient, list: readonly string[] = features) =>
   raw.send({ kind: "hello", protocol: 4, session: `session-${++sessions}`, client, features: list });
 
@@ -609,5 +609,55 @@ test("presented/1 not in use: no present or closing, and its requests are invali
   assert.equal(raw.pushes.length, 0);
   for (const message of [{ kind: "presented", route: "wizard", revision: 0 }, { kind: "closing-reply" }])
     assert.deepEqual(errorOf(await raw.send(message)), { kind: "rejected", reason: "invalid-request" });
+  raw.done();
+});
+
+/* ------------------------------------------------------------------ view-requests/1 */
+
+test("view-requests/1: registration outcomes, and raise pushes view-request at the route's revision to registered presentations", async () => {
+  const { bridge, raw } = await connected();
+  const view = bridge.view("notes", { state: { title: "" }, requests: { focus: { contract: "Tests.Notes:focus" }, toast: {} } });
+  await helloWith(raw);
+  await raw.send({ kind: "open", route: "notes", presentation: "p-1" });
+  const register = (generation: number, requests: object[], presentation = "p-1") =>
+    raw.send({ kind: "view-requests", route: "notes", presentation, generation, requests });
+  assert.equal((await register(1, [{ name: "unknown", contract: "x" }]))["registration"], "unsupported");
+  assert.equal((await register(1, [{ name: "focus", contract: "Tests.Notes:other" }]))["registration"], "unsupported");
+  assert.equal((await register(2, [{ name: "focus", contract: "Tests.Notes:focus" }, { name: "toast", contract: "any" }]))["registration"], "ok");
+  // The same generation with the same requests, in any order, is ok; with others, stale; a lower one, stale.
+  assert.equal((await register(2, [{ name: "toast", contract: "any" }, { name: "focus", contract: "Tests.Notes:focus" }]))["registration"], "ok");
+  assert.equal((await register(2, [{ name: "toast", contract: "any" }]))["registration"], "stale");
+  assert.equal((await register(1, []))["registration"], "stale");
+  assert.equal((await register(3, [{ name: "focus", contract: "Tests.Notes:focus" }], "p-2"))["registration"], "ignored");
+  for (const invalid of [
+    { kind: "view-requests", route: "notes", presentation: "p-1", generation: 0, requests: [] },
+    { kind: "view-requests", route: "notes", presentation: "p-1", generation: 3 },
+    { kind: "view-requests", route: "notes", presentation: "p-1", generation: 3, requests: [{ name: "focus" }] },
+    { kind: "view-requests", route: "notes", presentation: "p-1", generation: 3, requests: Array.from({ length: 65 }, (_, index) => ({ name: `r${index}`, contract: "c" })) },
+  ]) assert.deepEqual(errorOf(await raw.send(invalid)), { kind: "rejected", reason: "invalid-request" });
+  assert.deepEqual([...view.requestHandlers].sort(), ["focus", "toast"]);
+  view.update({ title: "changed" });
+  assert.equal(view.raise("focus", { member: "title" }), 1);
+  assert.deepEqual(raw.pushes.at(-1), {
+    kind: "view-request", route: "notes", presentation: "p-1", revision: view.revision, name: "focus", contract: "Tests.Notes:focus", input: { member: "title" },
+  });
+  // Inside a batch the request follows the batch's frame.
+  view.batch(() => { view.update({ title: "batched" }); assert.equal(view.raise("toast", { text: "hi" }), 1); });
+  assert.deepEqual(raw.pushes.slice(-2).map(push => push.kind), ["frame", "view-request"]);
+  assert.equal(raw.pushes.at(-1)!["revision"], view.revision);
+  assert.equal((await register(4, []))["registration"], "ok");
+  assert.equal(view.raise("focus", { member: "title" }), 0);
+  raw.done();
+});
+
+test("view-requests/1 not in use: view-requests is invalid and raise pushes nothing", async () => {
+  const { bridge, raw } = await connected();
+  const view = bridge.view("notes", { state: { title: "" }, requests: { focus: {} } });
+  await helloWith(raw, ["text-splice/1"]);
+  await raw.send({ kind: "open", route: "notes", presentation: "p-1" });
+  assert.deepEqual(errorOf(await raw.send({ kind: "view-requests", route: "notes", presentation: "p-1", generation: 1, requests: [] })),
+    { kind: "rejected", reason: "invalid-request" });
+  assert.equal(view.raise("focus", { member: "title" }), 0);
+  assert.equal(raw.pushes.length, 0);
   raw.done();
 });

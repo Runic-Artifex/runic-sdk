@@ -11,9 +11,11 @@ namespace Runic.Application.Views.Generated;
 // the window requested before it was ready were handed to the transport.
 public partial class ViewModelBridge<T>
 {
-    private sealed class RouteHandler(ViewModelBridge<T> owner) : IBridgeRouteHandler, IBridgePresentedHandler
+    private sealed class RouteHandler(ViewModelBridge<T> owner) : IBridgeRouteHandler, IBridgePresentedHandler, IBridgeViewRequestRoute
     {
         public void Presented(BridgeConnection connection, long revision) => owner.Presented(revision);
+
+        public long? PublishForViewRequest() => owner.PublishForViewRequest();
 
         public ValueTask<ReadOnlyMemory<byte>> HandleAsync(BridgeRouteRequest request, CancellationToken cancellationToken) =>
             request.Kind switch

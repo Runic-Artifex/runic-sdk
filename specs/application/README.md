@@ -12,7 +12,7 @@ protocol to .NET and TypeScript is in the [language mappings](language-mappings.
 
 | Document | Content |
 | --- | --- |
-| This document | Conventions, transport, host bridge, handshake and features, requests and replies, state and revisions, publication, edits, checked writes, commands and presentation epochs, presentations, presented states and window close, operations, interactions, versions |
+| This document | Conventions, transport, host bridge, handshake and features, requests and replies, state and revisions, publication, edits, checked writes, commands and presentation epochs, presentations, presented states and window close, operations, interactions, view requests, versions |
 | [state-changes.md](state-changes.md) | Frames and their changes (`set`, keyed collections, text, text splices), producing and applying them, delivery bounds and recovery |
 | [values.md](values.md) | The JSON profile, wire value types and the canonical form (RFC 8785) |
 | [language-mappings.md](language-mappings.md) | The .NET producer and the TypeScript client |
@@ -221,6 +221,7 @@ reply both list the same string. Features are negotiated per connection, and aga
 | `text-splice/1` | Text members change with splices: [`set` with a splice](#text-splices-in-set), [`write` with a splice](#text-splices-in-write) and [`splice` changes](state-changes.md#text-splices) | 0.14 |
 | `presentation-epoch/1` | A command runs only on the presentation it was issued for: [presentation epochs](#presentation-epochs) | 0.15 |
 | `presented/1` | The page reports that it painted a state, and acknowledges a window close: [presented states and window close](#presented-states-and-window-close) | 0.15 |
+| `view-requests/1` | The producer sends a presentation one-way requests, such as to focus a field: [view requests](#view-requests) | 0.16 |
 
 ## Requests and replies
 
@@ -981,17 +982,77 @@ confirmation.
 **Scope.** Only work of the same window can reach the page, and a request never crosses to another window, client or
 connection. Two scopes exist:
 
-- A command invocation reaches only the single presentation of the invoking client and connection. It reaches the
-  invoking route, or, while a navigation hook that the command started runs (such as the leave guard of the page that
-  the shell's Back departs, or the activation hook of the page that its navigation made current), another route of the
-  same window opened by that client and connection.
-- The window's close decision (a user's close or a close the application requests) reaches the single presentation of
-  the window that registered the handler, from any connection. With none or several, it asks nothing.
+- A **command invocation** reaches only the single presentation of the invoking client and connection that registered
+  the handler. It reaches the invoking route or another route of the same window opened by that client and connection,
+  such as the content View whose interaction a shell's command asks, or the leave guard of the page that the shell's
+  Back departs.
+- The **window scope** reaches the single presentation of the window that registered the handler, from any connection.
+  With none or several, it asks nothing. The window's close decision (a user's close or a close the application
+  requests) and a command of the window's menu bar run in it, and the application can enter it for other work of the
+  window, such as a timer or a notification's activation.
 
-Work outside both scopes, such as navigation that application code starts, never reaches the page. A request ends
+Work outside both scopes never reaches the page. The producer MUST NOT let application code claim a client or
+connection identity: only a request the transport authenticated enters a command invocation. A request ends
 when its scope ends, its presentation closes or its connection closes, or the window closes; the waiting interaction
 then fails. Interactions time out after two minutes by default (at most ten). A window holds at most 32 pending
 requests and 8 per presentation.
+
+## View requests
+
+With the feature `view-requests/1`, the producer sends a presentation one-way **view requests**: presentation actions
+that need no answer, such as to focus a field, scroll a row into view, scroll to the top or show a toast.
+
+```json
+{"kind":"view-requests","route":"notes","presentation":"p-1","generation":1,"requests":[{"name":"focus","contract":"…"}]}
+{"ok":true,"registration":"ok"}
+
+{"kind":"view-request","route":"notes","presentation":"p-1","revision":8,"name":"focus","contract":"…","input":{"member":"title"}}
+```
+
+| Message | Members |
+| --- | --- |
+| request `view-requests` | `route`, `presentation`, `generation`, `requests: [{name, contract}]` |
+| push `view-request` | `route`, `presentation`, `revision`, `name`, `contract`, `input` |
+
+- **Registration.** `requests` lists the view requests the presentation handles, at most 64; `contract` is the string
+  the generated contract defines for the request's input. The reply is `{ok:true, registration}` with the outcomes of
+  [interaction registrations](#interactions): `ok`, `unsupported`, `stale` or `ignored`. A view request registration
+  has its own `generation`, a positive integer independent of the presentation's interaction handlers, and a higher
+  one replaces it. `view-requests` on a connection that does not use the feature is `rejected` with
+  `invalid-request`.
+- **Push.** The producer pushes `view-request` to the connection of each presentation it selects, and only to
+  connections that use the feature. `revision` is the route's revision that includes everything changed before the
+  request: the producer first publishes what is pending on the route, as before a reply. `input` is encoded as the
+  request's input type. The page does not answer.
+
+**Delivery.** Each view request declares a delivery rule: `drop` (the default), `next-mounted` or `broadcast`. A request
+belongs to the object that raised it and reaches only presentations of routes that present that object.
+
+- `drop` and `next-mounted` select one presentation by the [scope](#interactions) of the work that raised the request:
+  in a command invocation, the single presentation of the invoking client and connection that registered the request;
+  in the window scope or outside both scopes, the single presentation of the window that registered it.
+- With no such presentation, or several, `drop` drops the request. `next-mounted` keeps it, replacing the request of
+  that object and name it kept before (the latest request wins), and pushes it to the next presentation of the window
+  that registers it on a route that presents the object. It is then gone. A request kept in a command invocation waits
+  for a presentation of the invoking client and connection. A kept request is also gone when the window closes or no
+  route of the window presents the object any longer. A request raised for an object that no route
+  presents yet is kept for the first window that presents it.
+- `broadcast` reaches every presentation of the window that registered the request, such as a toast in every pane
+  that shows it. A broadcast is never kept.
+- Outside both scopes, a request of an object that several windows present is dropped: a view request never crosses
+  to another window, client or connection.
+
+**Never replayed.** A view request is not state: a `snapshot`, an `open` or a reconnect never repeats one, and a
+request pushed to a connection that closes before the page handled it is lost.
+
+**Client.** For a `view-request` of a presentation it shows, a client calls the presentation's handler with the
+decoded `input` once the page painted the route at `revision` or later, by steps 1 to 3 of
+[painted states](#painted-states), so a handler finds the elements of that state rendered. A request whose presentation
+closed, or that has no handler of that name and contract, is ignored. A handler's failure stays in the page.
+
+A client registers its handlers with `view-requests` after the presentation's `open` succeeded on a connection that
+uses the feature, and again with a higher `generation` whenever they change while the presentation is open. After a
+reconnect, it registers them again once the new `open` succeeded.
 
 ## Window turns
 
@@ -1030,6 +1091,7 @@ Requests:
 | `stream` | `route`, `member`, `operation`, `contract`, `cursor` | `page` |
 | `interactions` | `route`, `presentation`, `generation`, `handlers` | `registration` |
 | `interaction-reply` | `route`, `presentation`, `requestId`, `ownerEpoch`, `name`, `contract`, `outcome`, `output?` | `result` |
+| `view-requests` (`view-requests/1`) | `route`, `presentation`, `generation`, `requests` | `registration` |
 | `presented` (`presented/1`) | `route`, `revision` | none |
 | `closing-reply` (`presented/1`) | none | none |
 | `receive` | none | `messages` |
@@ -1047,6 +1109,7 @@ Pushes:
 | `operation` | `route`, `member`, `operation`, `contract`, `status` | each watching connection |
 | `interaction` | `route`, `presentation`, `requestId`, `ownerEpoch`, `name`, `contract`, `expiresAt`, `input` | the presentation's connection |
 | `interaction-cancelled` | `route`, `presentation`, `requestId`, `ownerEpoch`, `message` | the presentation's connection |
+| `view-request` (`view-requests/1`) | `route`, `presentation`, `revision`, `name`, `contract`, `input` | the connection of each selected presentation |
 | `present` (`presented/1`) | `route`, `revision` | while a wait is pending, each connection that uses `presented/1` and has an open presentation of the route |
 | `closing` (`presented/1`) | none | each connection that uses `presented/1` |
 
@@ -1070,4 +1133,4 @@ sides must implement are [features](#features), listed in `hello`.
 | 1 | 0.6 | Named routes with a snapshot and a state callback per route; collection delta frames were added in 0.7 without a version change. |
 | 2 | 0.9 | The `domain-failed` error and operation status kind. |
 | 3 | 0.10 | A released View answers `released` instead of `disconnected`; the reply error `reason`; a strict version check ([protocol 3](https://github.com/Runic-Artifex/runic-sdk/blob/v0.12.1/specs/application/README.md)). |
-| 4 | 0.13 | One message channel with `hello`; `set` changes in frames; replies by revision; edit numbers; `open`/`close`; operation `watch` and `progress`; RFC 8785 canonical form; value types named by value; ISO 8601 durations; a language-neutral specification and conformance corpus. 0.14 added, without a version change, `hello` `features` with the first feature `text-splice/1`, and requests held behind the `hello`. 0.15 added, without a version change, the features `presentation-epoch/1` and `presented/1`. |
+| 4 | 0.13 | One message channel with `hello`; `set` changes in frames; replies by revision; edit numbers; `open`/`close`; operation `watch` and `progress`; RFC 8785 canonical form; value types named by value; ISO 8601 durations; a language-neutral specification and conformance corpus. 0.14 added, without a version change, `hello` `features` with the first feature `text-splice/1`, and requests held behind the `hello`. 0.15 added, without a version change, the features `presentation-epoch/1` and `presented/1`, and 0.16 the feature `view-requests/1`. |

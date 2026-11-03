@@ -41,5 +41,6 @@ export type {
   MockTypedOperationHandler,
   MockTypedOperationOutcome,
   MockTypedView,
+  MockTypedViewRequest,
 } from "./mock-typed.js";
 export { installMockMenuBar, type MockMenuBar, type MockMenuBarOptions } from "./mock-menu-bar.js";

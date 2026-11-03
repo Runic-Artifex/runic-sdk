@@ -463,7 +463,7 @@ public sealed class RunicDesktopHost : IRunicWindowHost
             {
                 var menuLogger = (loggerFactory?.CreateLogger("Runic.Application.Views.Desktop"))
                     ?? Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance;
-                menu = await MenuCommandBinding.BindAsync(menuSource, content.ModelContext, menuCommands.GetMenuCommand, menuLogger)
+                menu = await MenuCommandBinding.BindAsync(menuSource, content.ModelContext, menuCommands.GetMenuCommand, menuLogger, content)
                     .ConfigureAwait(false);
                 if (!owner.SetMenuCommands(menu)) menu = null;
             }

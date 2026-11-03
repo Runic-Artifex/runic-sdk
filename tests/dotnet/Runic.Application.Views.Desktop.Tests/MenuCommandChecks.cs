@@ -37,7 +37,8 @@ internal sealed class MenuCommandChecks
         {
             WindowHostFactory = new NativeDispatchFactory(), WaitForConnection = false, MenuBar = Bar,
         });
-        var newCommand = new TestCommand();
+        RunicInteractionInvocation? newScope = null;
+        var newCommand = new TestCommand(() => newScope = RunicInteractionInvocation.Current);
         var host = new RunicDesktopHost(provider, desktop, new RunicDesktopHostOptions
         {
             SurfaceOptions = new DesktopSurfaceOptions { Content = new DesktopContent.Html("<!doctype html>") },
@@ -48,6 +49,7 @@ internal sealed class MenuCommandChecks
         Require(application.CanExecute(Item("file.new")) && !application.CanExecute(Item("file.save")), "The application's commands were not bound by id.");
         application.Execute(Item("file.new"));
         await newCommand.Executed.Task.WaitScaledAsync(TimeSpan.FromSeconds(5));
+        Require(newScope is null, "An application command, which has no window, ran in an interaction scope.");
 
         var window = await host.OpenWindowAsync<MenuWindow>();
         try
@@ -62,6 +64,10 @@ internal sealed class MenuCommandChecks
             viewModel.Save.Enabled = true;
             target.Execute(Item("file.save"));
             await viewModel.Save.Executed.Task.WaitScaledAsync(TimeSpan.FromSeconds(5));
+            // A Window's menu command runs in the window scope, so its interactions and view requests reach the
+            // Window's one page presentation (A2).
+            Require(viewModel.SaveScope is { ClientKey: null, ConnectionKey: null, Route: "__runicWindow" },
+                "The Window's menu command did not run in the window's interaction scope.");
 
             target.Execute(Item("tools.explode"));
             await WaitAsync(() => logs.Messages.Any(static message => message.Contains("The menu command tools.explode failed with System.InvalidOperationException", StringComparison.Ordinal)),
@@ -204,7 +210,11 @@ sealed class ParameterCommand(Func<object?, bool> allow) : ICommand
 
 sealed class MenuViewModel : INotifyPropertyChanged, IRunicMenuCommandSource
 {
-    public TestCommand Save { get; } = new();
+    public MenuViewModel() => Save = new(() => SaveScope = RunicInteractionInvocation.Current);
+
+    public TestCommand Save { get; }
+    // The interaction scope Save ran in.
+    public RunicInteractionInvocation? SaveScope { get; private set; }
     public TestCommand Explode { get; } = new(static () => throw new InvalidOperationException("boom"));
     public event PropertyChangedEventHandler? PropertyChanged { add { } remove { } }
 
