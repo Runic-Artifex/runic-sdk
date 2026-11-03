@@ -186,8 +186,8 @@ reported by `OpenWindowAsync` as above. `ShowWindow` and serve-only mode skip
 the check.
 
 Set `RUNIC_APPLICATION_SERVE_ONLY=1` to start the local server without opening
-anything. Each window then writes `RUNIC_APPLICATION_URL=<url>` to
-standard output, ignoring `UseWebView` and `ShowWindow`, and keeps serving
+anything. Each window then writes `RUNIC_APPLICATION_URL=<url>` and
+`RUNIC_APPLICATION_WINDOW=<url> <Window type>` to standard output, ignoring `UseWebView` and `ShowWindow`, and keeps serving
 until a line is read from standard input or the process ends, so a test
 harness or remote browser can drive the unchanged application. Write the line
 on Windows too; the

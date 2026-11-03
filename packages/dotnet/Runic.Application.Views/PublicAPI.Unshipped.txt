@@ -93,3 +93,8 @@ static Runic.Application.Views.RunicWindowServiceExtensions.ObserveWindows(this 
 Runic.Application.Views.RunicWindowsChangedEventArgs.RunicWindowsChangedEventArgs(Runic.Application.Views.IRunicWindow! window, bool opened, System.Collections.Generic.IReadOnlyList<Runic.Application.Views.IRunicWindow!>! windows) -> void
 Runic.Application.Views.RunicWindowsChangedEventArgs.Windows.get -> System.Collections.Generic.IReadOnlyList<Runic.Application.Views.IRunicWindow!>!
 static Runic.Application.Views.RunicWindowServiceExtensions.ObserveWindows(this Runic.Application.Views.IRunicWindowService! windows, Runic.Navigation.IRunicModelContext! context) -> System.IObservable<System.Collections.Generic.IReadOnlyList<Runic.Application.Views.IRunicWindow!>!>!
+Runic.Application.Views.IRunicMenuCheckedSource
+Runic.Application.Views.IRunicMenuCheckedSource.IsMenuItemChecked(string! commandId, string? commandParameter) -> bool?
+Runic.Application.Views.RunicMenu
+static Runic.Application.Views.RunicMenu.Refresh(object! viewModel) -> void
+static Runic.Application.Views.RunicMenu.RefreshAll() -> void

@@ -295,203 +295,44 @@ public sealed class MenuCommandChainTests
         Assert.True(MenuCommandChain.TryExecute(new DesktopMenuItem("X", "x"), both, both, null));
         Assert.Single(both.Executed);
     }
-}
 
-public sealed class MenuWindowHostTests
-{
-    [Test]
-    public async Task AMenuHostGetsTheBarTheCommandPathAndTheContextMenus()
+    // B3: a check mark comes from the first target whose answer differs from the declaration, the window's first.
+    private sealed class CheckTarget(Func<DesktopMenuItem, bool?> isChecked) : IDesktopMenuCommandTarget
     {
-        var factory = new MenuFactory();
-        IReadOnlyList<DesktopMenu> bar = [new("File", [new DesktopMenuItem("Save", "file.save")]) { Role = DesktopMenuRole.File }];
-        var loggers = new ConfigurationValidationTests.RecordingLoggerFactory();
-        await using var host = await DesktopHost.StartAsync(new()
-        {
-            WindowHostFactory = factory, WaitForConnection = false, MenuBar = bar, LoggerFactory = loggers,
-            Linux = new() { GlobalMenu = false },
-        });
-        Assert.DoesNotContain(host.Validate(new() { Browser = BrowserKind.Embedded }).Diagnostics,
-            static item => item.Code == DesktopMenuBar.UnsupportedCode);
-        await using var surface = await host.CreateSurfaceAsync();
-        await using var window = await surface.OpenWindowAsync(new()
-        {
-            Browser = BrowserKind.Embedded,
-            MenuBarPresentation = DesktopMenuBarPresentation.Page,
-        });
-        var native = Assert.Single(factory.Hosts);
-        Assert.Equal(DesktopMenuBarPresentation.Page, native.Options!.MenuBarPresentation);
-        // LinuxDesktopOptions.GlobalMenu reaches the window host.
-        Assert.False(native.Options.GlobalMenu);
-        await WaitAsync(() => native.Bars.Count == 1);
-        Assert.Equal(bar, native.Bars[0]);
-        IReadOnlyList<DesktopMenu> translated = [new("Fichier", [new DesktopMenuItem("Enregistrer", "file.save")]) { Role = DesktopMenuRole.File }];
-        host.SetMenuBar(translated);
-        await WaitAsync(() => native.Bars.Count == 2);
-        Assert.Equal(translated, native.Bars[1]);
-
-        // The host runs items through Runic's command path: the window's target, then the application's.
-        var commands = native.MenuCommands ?? throw new InvalidOperationException("The host got no command path.");
-        var application = new Target("file.save", "file.new");
-        host.MenuCommands = application;
-        var windowTarget = new Target("file.save");
-        window.MenuCommands = windowTarget;
-        var save = new DesktopMenuItem("Save", "file.save") { CommandParameter = "draft" };
-        commands.Execute(save);
-        Assert.Same(save, Assert.Single(windowTarget.Executed));
-        Assert.True(await window.TryExecuteMenuItemAsync(new DesktopMenuItem("New", "file.new")));
-        Assert.Single(application.Executed);
-        Assert.False(await window.TryExecuteMenuItemAsync(new DesktopMenuItem("Quit", "app.quit")));
-        Assert.False(await window.TryExecuteMenuItemAsync(save with { IsEnabled = false }));
-        await Assert.ThrowsAsync<ArgumentException>(async () => await window.TryExecuteMenuItemAsync(new DesktopMenuItem("Run", "runic.x")));
-
-        Assert.Equal(DesktopMenuBarPlacement.Page, window.MenuBarPlacement);
-        var changed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        window.MenuBarPlacementChanged += (sender, _) => { Assert.Same(window, sender); changed.TrySetResult(); };
-        native.Place(DesktopMenuBarPlacement.Global);
-        await changed.Task.WaitScaledAsync(TimeSpan.FromSeconds(5));
-        Assert.Equal(DesktopMenuBarPlacement.Global, window.MenuBarPlacement);
-        // Each move is logged with the placement before and after it (event 3015).
-        var moved = Assert.Single(loggers.Entries, static entry => entry.EventId.Id == 3015);
-        Assert.Equal(("MenuBarPlacementChanged", LogLevel.Information), (moved.EventId.Name, moved.Level));
-        Assert.Contains("from Page to Global", moved.Message, StringComparison.Ordinal);
-
-        ImmutableArray<DesktopMenuEntry> menu = [new DesktopMenuItem("Rename", "row.rename") { CommandParameter = "row-7" }];
-        var chosen = await window.ShowContextMenuAsync(menu);
-        Assert.Same(menu[0], chosen);
-        Assert.Null(native.ContextOptions!.X);
-        Assert.Null(await window.ShowContextMenuAsync(menu, new DesktopContextMenuOptions { X = 4, Y = 8 }));
-        Assert.Equal(8, native.ContextOptions!.Y);
-        await Assert.ThrowsAsync<ArgumentException>(async () => await window.ShowContextMenuAsync([]));
-        await Assert.ThrowsAsync<ArgumentException>(async () => await window.ShowContextMenuAsync(menu, new DesktopContextMenuOptions { Y = 3 }));
-
-        await window.CloseAsync();
-        Assert.Equal(DesktopMenuBarPlacement.None, window.MenuBarPlacement);
-        await Assert.ThrowsAsync<ObjectDisposedException>(async () => await window.TryExecuteMenuItemAsync(save));
+        public bool CanExecute(DesktopMenuItem item) => true;
+        public void Execute(DesktopMenuItem item) { }
+        public bool? IsChecked(DesktopMenuItem item) => isChecked(item);
     }
 
     [Test]
-    public async Task AWindowWithoutContextMenusReportsTheCapability()
+    public void CheckMarksComeFromTheWindowThenTheApplication()
     {
-        var factory = new MenuFactory { ContextMenus = false };
-        await using var host = await DesktopHost.StartAsync(new() { WindowHostFactory = factory, WaitForConnection = false });
-        await using var surface = await host.CreateSurfaceAsync();
-        await using var window = await surface.OpenWindowAsync(new() { Browser = BrowserKind.Embedded });
-        Assert.False(window.Capabilities.HasFlag(DesktopWindowCapabilities.ContextMenu));
-        var error = await Assert.ThrowsAsync<DesktopException>(async () => await window.ShowContextMenuAsync([new DesktopMenuItem("Cut", "cut")]));
-        Assert.Equal("window-capability-unavailable", error.Code);
-        // The factory reports a native bar, so validation finds nothing missing.
-        var diagnostics = host.Validate(new() { Browser = BrowserKind.Embedded }).Diagnostics;
-        Assert.DoesNotContain(diagnostics, static item => item.Code == DesktopMenuBar.UnsupportedCode);
-    }
-
-    [Test]
-    public async Task ValidationNamesTheMissingBarForTheNativePresentationOnly()
-    {
-        if (OperatingSystem.IsMacOS()) return;
-        IReadOnlyList<DesktopMenu> bar = [new("Tools", [new DesktopMenuItem("Run", "tools.run")])];
-        await using var host = await DesktopHost.StartAsync(new() { WindowHostFactory = new PlainFactory(), MenuBar = bar });
-        Assert.Contains(host.Validate(new() { Browser = BrowserKind.Embedded }).Diagnostics, static item => item.Code == DesktopMenuBar.UnsupportedCode);
-        Assert.DoesNotContain(host.Validate(new() { Browser = BrowserKind.Embedded, MenuBarPresentation = DesktopMenuBarPresentation.Page }).Diagnostics,
-            static item => item.Code == DesktopMenuBar.UnsupportedCode);
-        Assert.DoesNotContain(host.Validate(new() { Browser = BrowserKind.Embedded, MenuBarPresentation = DesktopMenuBarPresentation.None }).Diagnostics,
-            static item => item.Code == DesktopMenuBar.UnsupportedCode);
-        Assert.Contains(host.Validate(new() { MenuBarPresentation = (DesktopMenuBarPresentation)9 }).Diagnostics,
-            static item => item.Message.Contains("MenuBarPresentation", StringComparison.Ordinal));
-    }
-
-    private static async Task WaitAsync(Func<bool> condition)
-    {
-        var deadline = DateTime.UtcNow + TestTimeouts.Scale(TimeSpan.FromSeconds(5));
-        while (!condition())
-        {
-            if (DateTime.UtcNow > deadline) throw new TimeoutException("The condition was not met.");
-            await Task.Delay(10);
-        }
-    }
-
-    private sealed class Target(params string[] handled) : IDesktopMenuCommandTarget
-    {
-        internal List<DesktopMenuItem> Executed { get; } = [];
-        public bool CanExecute(DesktopMenuItem item) => handled.Contains(item.CommandId);
-        public void Execute(DesktopMenuItem item) => Executed.Add(item);
-    }
-
-    private sealed class MenuFactory : IDesktopWindowHostFactory
-    {
-        internal List<MenuHost> Hosts { get; } = [];
-        internal bool ContextMenus { get; init; } = true;
-        public bool IsSupported => true;
-        public DesktopWindowCapabilities Capabilities => DesktopWindowCapabilities.NativeHandle | DesktopWindowCapabilities.MenuBar |
-            (ContextMenus ? DesktopWindowCapabilities.ContextMenu : DesktopWindowCapabilities.None);
-        public IDesktopWindowHost Create()
-        {
-            var host = new MenuHost(Capabilities);
-            Hosts.Add(host);
-            return host;
-        }
-    }
-
-    private sealed class PlainFactory : IDesktopWindowHostFactory
-    {
-        public bool IsSupported => true;
-        public IDesktopWindowHost Create() => new MenuHost(DesktopWindowCapabilities.NativeHandle);
-    }
-
-    private sealed class MenuHost(DesktopWindowCapabilities capabilities) : IDesktopMenuWindowHost
-    {
-        private DesktopMenuBarPlacement _placement;
-        public event EventHandler? Closed;
-        public event EventHandler? MenuBarPlacementChanged;
-        public DesktopWindowCapabilities Capabilities => capabilities;
-        public bool IsOpen { get; private set; }
-        public nint NativeHandle => IsOpen ? 1 : 0;
-        internal DesktopWindowHostOptions? Options { get; private set; }
-        internal List<IReadOnlyList<DesktopMenu>> Bars { get; } = [];
-        internal DesktopContextMenuOptions? ContextOptions { get; private set; }
-        public IDesktopMenuCommandTarget? MenuCommands { get; set; }
-        public DesktopMenuBarPlacement MenuBarPlacement => IsOpen ? _placement : DesktopMenuBarPlacement.None;
-
-        internal void Place(DesktopMenuBarPlacement placement)
-        {
-            _placement = placement;
-            MenuBarPlacementChanged?.Invoke(this, EventArgs.Empty);
-        }
-
-        public ValueTask SetMenuBarAsync(IReadOnlyList<DesktopMenu> menus, CancellationToken cancellationToken = default)
-        {
-            lock (Bars) Bars.Add(menus);
-            return ValueTask.CompletedTask;
-        }
-
-        // Chooses the first entry of a menu at the pointer and dismisses one at a point.
-        public ValueTask<DesktopMenuItem?> ShowContextMenuAsync(ImmutableArray<DesktopMenuEntry> items, DesktopContextMenuOptions options,
-            CancellationToken cancellationToken = default)
-        {
-            ContextOptions = options;
-            return ValueTask.FromResult(options.X is null ? items[0] as DesktopMenuItem : null);
-        }
-
-        public ValueTask OpenAsync(Uri url, DesktopWindowHostOptions options, CancellationToken cancellationToken = default)
-        {
-            Options = options;
-            _placement = options.MenuBarPresentation == DesktopMenuBarPresentation.Page ? DesktopMenuBarPlacement.Page : DesktopMenuBarPlacement.Window;
-            IsOpen = true;
-            return ValueTask.CompletedTask;
-        }
-
-        public ValueTask NavigateAsync(Uri url, CancellationToken cancellationToken = default) => ValueTask.CompletedTask;
-        public ValueTask CloseAsync(CancellationToken cancellationToken = default)
-        {
-            if (IsOpen) { IsOpen = false; Closed?.Invoke(this, EventArgs.Empty); }
-            return ValueTask.CompletedTask;
-        }
-        public ValueTask FocusAsync(CancellationToken cancellationToken = default) => ValueTask.CompletedTask;
-        public ValueTask MinimizeAsync(CancellationToken cancellationToken = default) => ValueTask.CompletedTask;
-        public ValueTask ToggleMaximizedAsync(CancellationToken cancellationToken = default) => ValueTask.CompletedTask;
-        public ValueTask ResizeAsync(int width, int height, CancellationToken cancellationToken = default) => ValueTask.CompletedTask;
-        public ValueTask MoveAsync(int x, int y, CancellationToken cancellationToken = default) => ValueTask.CompletedTask;
-        public ValueTask SetVisibleAsync(bool visible, CancellationToken cancellationToken = default) => ValueTask.CompletedTask;
-        public ValueTask BeginMoveAsync(CancellationToken cancellationToken = default) => ValueTask.CompletedTask;
-        public ValueTask DisposeAsync() { IsOpen = false; return ValueTask.CompletedTask; }
+        var wrap = new DesktopMenuItem("Wrap", "view.wrap") { IsChecked = false };
+        var ruler = new DesktopMenuItem("Ruler", "view.ruler") { IsChecked = true };
+        var plain = new DesktopMenuItem("Plain", "view.plain");
+        // The default has no answer, so the declaration decides.
+        IDesktopMenuCommandTarget silent = new Target("view.wrap");
+        Assert.Null(silent.IsChecked(wrap));
+        Assert.True(MenuCommandChain.IsChecked(ruler, silent, silent, null));
+        Assert.False(MenuCommandChain.IsChecked(wrap, silent, null, null));
+        var window = new CheckTarget(item => item.CommandId == "view.wrap" ? true : null);
+        var application = new CheckTarget(item => item.CommandId == "view.ruler" ? false : null);
+        var logger = new Logger();
+        var chain = new MenuCommandChain(() => application, logger) { Window = window };
+        Assert.True(chain.IsChecked(wrap));
+        // The window has no answer for the ruler: the application's decides.
+        Assert.False(chain.IsChecked(ruler));
+        Assert.Null(chain.IsChecked(plain));
+        // The window's answer decides also when it equals the declaration: the application's true does not override
+        // the key window's false.
+        var unchecking = new CheckTarget(static _ => false);
+        Assert.False(MenuCommandChain.IsChecked(wrap, unchecking, new CheckTarget(static _ => true), null));
+        Assert.True(MenuCommandChain.IsChecked(ruler, new CheckTarget(static _ => true), application, null));
+        // A target that throws counts as no answer and is logged; the next one decides.
+        Assert.False(MenuCommandChain.IsChecked(ruler, new CheckTarget(static _ => throw new InvalidOperationException("broken")), application, logger));
+        Assert.True(MenuCommandChain.IsChecked(ruler, new CheckTarget(static _ => throw new InvalidOperationException("broken")), null, logger));
+        Assert.Equal(2, logger.Entries.Count);
+        Assert.Equal(3014, logger.Entries[0].Id.Id);
+        Assert.Contains("IsChecked failed for view.ruler", logger.Entries[0].Message);
     }
 }

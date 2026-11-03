@@ -50,3 +50,4 @@ Runic.Desktop.DesktopWindow.Owner.get -> Runic.Desktop.DesktopWindowOwner?
 Runic.Desktop.DesktopWindowOwner.Window.get -> Runic.Desktop.DesktopWindow?
 static Runic.Desktop.DesktopWindowOwner.FromNativeHandle(nint handle) -> Runic.Desktop.DesktopWindowOwner!
 static Runic.Desktop.DesktopWindowOwner.FromWindow(Runic.Desktop.DesktopWindow! window) -> Runic.Desktop.DesktopWindowOwner!
+Runic.Desktop.IDesktopMenuCommandTarget.IsChecked(Runic.Platform.DesktopMenuItem! item) -> bool?

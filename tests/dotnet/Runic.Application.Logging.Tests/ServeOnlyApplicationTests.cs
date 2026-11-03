@@ -102,6 +102,37 @@ internal sealed class ServeOnlyApplicationTests
         throw new InvalidOperationException("StartAsync did not time out for an application that never serves.");
     }
 
+    // E3: every Window's URL, by position and by the Window type of the additive RUNIC_APPLICATION_WINDOW= line.
+    [Test]
+    public async Task ListsEveryWindowsUrlWithItsType()
+    {
+        var start = StartInfo();
+        start.Environment[LoggingApplication.SecondWindowVariable] = "1";
+        await using var application = await RunicServeOnlyApplication.StartAsync(start, Timeout);
+
+        var second = await application.WaitForWindowUrlAsync(1, Timeout);
+        var byName = await application.WaitForWindowUrlAsync(nameof(SecondLoggingWindow), Timeout);
+        var byFullName = await application.WaitForWindowUrlAsync(typeof(LoggingWindow).FullName!, Timeout);
+
+        Require(application.Urls.Count == 2 && application.Urls[0] == application.Url && application.Urls[1] == second && second != application.Url,
+            $"The application's Window URLs were not listed in order: {string.Join(", ", application.Urls)}.", application);
+        Require(byName == second && byFullName == application.Url, "A Window's URL was not found by its type.", application);
+        Require(application.StandardOutput.Contains($"RUNIC_APPLICATION_WINDOW={second} {typeof(SecondLoggingWindow).FullName}", StringComparison.Ordinal),
+            "The window line does not name the Window type after its URL.", application);
+        // A Window name only matches a whole name: "Window" is not "LoggingWindow".
+        var partial = await CatchAsync(() => application.WaitForWindowUrlAsync("Window", TimeSpan.FromMilliseconds(200)));
+        Require(partial is TimeoutException, "A partial type name matched a Window.", application);
+        Require(await application.StopAsync(Timeout) == 0, "The application did not exit cleanly.", application);
+        var exited = await CatchAsync(() => application.WaitForWindowUrlAsync(2, Timeout));
+        Require(exited is InvalidOperationException, "Waiting for a Window of an exited application did not fail at once.", application);
+    }
+
+    private static async Task<Exception?> CatchAsync(Func<Task> action)
+    {
+        try { await action(); return null; }
+        catch (Exception error) { return error; }
+    }
+
     private static ProcessStartInfo StartInfo() => LoggingApplication.SelfStartInfo(LoggingApplication.Argument);
 
     // A real browser loads the page when the development shell provides Chromium, as the repository's other

@@ -226,3 +226,10 @@ CryptProtectData
 CryptUnprotectData
 LocalFree
 IOleWindow
+WM_POWERBROADCAST
+WM_WTSSESSION_CHANGE
+WTSRegisterSessionNotification
+WTSUnRegisterSessionNotification
+WTSQuerySessionInformation
+WTSFreeMemory
+GetSystemPowerStatus

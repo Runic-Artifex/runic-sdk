@@ -44,6 +44,10 @@ internal static partial class MacOsMenuSmoke
         internal System.Collections.Concurrent.ConcurrentQueue<string> Executed { get; } = new();
         internal System.Collections.Concurrent.ConcurrentQueue<string?> Parameters { get; } = new();
         public bool CanExecute(DesktopMenuItem item) => Enabled && _handled.Contains(item.CommandId);
+        // B3: check marks by "id" or "id:parameter"; the declaration otherwise.
+        internal System.Collections.Concurrent.ConcurrentDictionary<string, bool> Checked { get; } = new(StringComparer.Ordinal);
+        public bool? IsChecked(DesktopMenuItem item) =>
+            Checked.TryGetValue(item.CommandParameter is { } parameter ? item.CommandId + ":" + parameter : item.CommandId, out var value) ? value : item.IsChecked;
         public void Execute(DesktopMenuItem item)
         {
             Parameters.Enqueue(item.CommandParameter);
@@ -156,6 +160,21 @@ internal static partial class MacOsMenuSmoke
         // Radio items show AppKit's check mark as declared; choosing one passes its parameter.
         if (Find(tools, "Small") is not { } small || Send(small, Sel("state")) != 0 || Find(tools, "Large") is not { } large || Send(large, Sel("state")) != 1)
             return "the radio group does not show Large checked and Small unchecked";
+        // B3: validation takes the check marks from the key window's target, or the application's without one.
+        foreach (var target in new[] { windowTarget, applicationTarget })
+        {
+            target.Checked["tools.run"] = false;
+            target.Checked["tools.zoom:0.8"] = true;
+            target.Checked["tools.zoom:1.5"] = false;
+        }
+        Send(tools, Sel("update"));
+        if (Send(wrap, Sel("state")) != 0 || Send(small, Sel("state")) != 1 || Send(large, Sel("state")) != 0)
+            return "the check marks did not follow the target's IsChecked when AppKit validated the menu";
+        windowTarget.Checked.Clear();
+        applicationTarget.Checked.Clear();
+        Send(tools, Sel("update"));
+        if (Send(wrap, Sel("state")) != 1 || Send(small, Sel("state")) != 0 || Send(large, Sel("state")) != 1)
+            return "the check marks did not return to the declaration";
         var key = Bool(window, Sel("isKeyWindow")) != 0;
         var zoomTarget = key ? windowTarget : null;
         Arg(tools, Sel("performActionForItemAtIndex:"), (nint)8);

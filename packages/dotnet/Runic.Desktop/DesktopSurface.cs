@@ -1267,12 +1267,12 @@ public sealed class DesktopWindow : IAsyncDisposable
     }
 
     // The in-page menu bar (Runic.Application.Views.Desktop): whether each item can run now, asked as
-    // TryExecuteMenuItemAsync asks, on the window's UI thread where it has one.
-    internal Task<bool[]> CanExecuteMenuItemsAsync(IReadOnlyList<DesktopMenuItem> items, CancellationToken cancellationToken)
+    // TryExecuteMenuItemAsync asks, and its check mark, on the window's UI thread where it has one.
+    internal Task<(bool Enabled, bool? Checked)[]> MenuItemStatesAsync(IReadOnlyList<DesktopMenuItem> items, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(items);
         ObjectDisposedException.ThrowIf(!IsOpen, this);
-        return _engine.CanExecuteMenuItemsAsync(items, MenuCommands, cancellationToken);
+        return _engine.MenuItemStatesAsync(items, MenuCommands, cancellationToken);
     }
 
     // The in-page menu bar: a page that matches the items' shortcuts itself suspends the host's own matching.

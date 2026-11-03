@@ -1253,14 +1253,17 @@ jobs:
         run: |
           dotnet tests/dotnet/Runic.Platform.Windows.Tests/bin/Release/net10.0/Runic.Platform.Windows.Tests.dll --treenode-filter "/*/*/*/*[Category=NativeTaskbar]" --output detailed
           ./artifacts/clipboard-aot/Runic.Platform.Windows.Tests.exe --treenode-filter "/*/*/*/*[Category=NativeTaskbar]" --output detailed
-      # The runner's connectivity hint and network path, read and watched without asserting the runner's network.
-      - name: Verify network status with JIT and NativeAOT
+      # The runner's connectivity hint and network path, and its power and session state, read and watched without
+      # asserting the runner's network or power.
+      - name: Verify network status and power events with JIT and NativeAOT
         if: runner.os != 'Linux'
         timeout-minutes: 3
         shell: bash
         run: |
           dotnet tests/dotnet/Runic.Platform.${{ matrix.provider }}.Tests/bin/Release/net10.0/Runic.Platform.${{ matrix.provider }}.Tests.dll --treenode-filter "/*/*/*/*[Category=NativeNetwork]" --output detailed
           ./artifacts/clipboard-aot/Runic.Platform.${{ matrix.provider }}.Tests${{ matrix.extension }} --treenode-filter "/*/*/*/*[Category=NativeNetwork]" --output detailed
+          dotnet tests/dotnet/Runic.Platform.${{ matrix.provider }}.Tests/bin/Release/net10.0/Runic.Platform.${{ matrix.provider }}.Tests.dll --treenode-filter "/*/*/*/*[Category=NativePower]" --output detailed
+          ./artifacts/clipboard-aot/Runic.Platform.${{ matrix.provider }}.Tests${{ matrix.extension }} --treenode-filter "/*/*/*/*[Category=NativePower]" --output detailed
       - name: Verify NativeAOT GTK clipboard
         if: runner.os == 'Linux'
         timeout-minutes: 3
