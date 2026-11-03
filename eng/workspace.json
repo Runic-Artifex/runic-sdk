@@ -415,6 +415,7 @@
         "examples/multi-window",
         "examples/notes-view-first",
         "examples/notes-reactive-views",
+        "examples/document-tabs",
         "examples/dynamicdata",
         "examples/shared",
         "examples/Directory.Build.props",

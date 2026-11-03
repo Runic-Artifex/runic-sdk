@@ -41,7 +41,9 @@ The selection API is the same source as the default flavor's
 `WhenSelectedChanged()`, `WhenSelectedIndexChanged()`, `WhenIsTransitioningChanged()`
 and `WhenIsBusyChanged()` observe a `NavigationSelection`, and
 `CreateSelectCommand()` returns a `ReactiveCommand<int, NavigationOutcome>` and
-takes an optional `IScheduler` (since 0.12).
+takes an optional `IScheduler` (since 0.12). `WhenRegionsChanged()` and
+`CreateCloseCommand()`, a `ReactiveCommand<NavigationRegion, NavigationOutcome>`
+over `RemoveAsync`, follow tabs that open and close at run time (since 0.16).
 
 The entry API is the same source as the default flavor's
 ([entry lifecycle and result commands](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Navigation.ReactiveUI/README.md#entry-lifecycle-and-result-commands),

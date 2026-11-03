@@ -105,6 +105,27 @@ reports the connection state `closed` ([Connection state](#connection-state)),
 so a page, such as a CS-WebUI browser tab that outlives the application, can
 say "The application closed this window." instead of showing a lost connection.
 
+### Region collections
+
+A .NET `[RunicRegionCollection]` property, such as document tabs that each keep
+their own back stack, is a `RegionCollection<R>` in the state: `regions`, each
+`{ key, content }`, and `selected`, the index of the selected region or `null`
+without regions. `key` identifies a region for as long as it exists, so key a
+tab's outlet by it; `content` is the region's current page, or `null`. With a
+.NET host of 0.16 or later (the `hello` feature `region-collections/1`), the
+generated `select<Name>(key)` and `close<Name>(key)` resolve with a
+`RegionOutcome`, the .NET `NavigationOutcome`: `{ kind, rejection, arrival }`.
+A departure guard that keeps the tab resolves the call with `kind: "Rejected"`
+and `rejection: "Guard"`; a key of a closed region rejects with reason
+`unresolved-key`. `selected` changes only when a switch commits, so a tab bar
+that highlights it shows the kept tab after a veto.
+
+`regionEntries(collection)` lists the regions with their `index` and whether
+each is `selected`, and `selectedRegion(collection)` returns the selected one.
+The framework adapters' `RegionOutlets` renders one outlet per region. See
+[Region collections](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Application.Views/README.md#region-collections)
+for the .NET side.
+
 ### Cancellation and `using`
 
 `connect<Name>({ signal })`, `waitForBridge({ signal })` and an operation's
@@ -796,6 +817,16 @@ A definition takes:
   answer `expired` and repeating its start answers `expired`. `forget()` makes
   the window forget the request id, as after a restart: it answers `unknown`,
   and a start with the id begins a new operation.
+- `regions`: for a region collection (since 0.16), a handler by wire name that
+  stands in for the departure guards. It receives the decoded state and
+  `{ action, key, index }` and returns `{ outcome, state }`, both optional.
+  Without a handler, or with a `Committed` outcome, the mock applies the select
+  or close as .NET does; another outcome, such as
+  `{ kind: "Rejected", rejection: "Guard", arrival: "None" }`, changes only
+  `state`. A key that no region has rejects with `unresolved-key`, and a close
+  of a collection with `PageCanClose = false` with `unavailable`. In `state`, a
+  region collection is `{ regions: [{ key, content }], selected }` with each
+  `content` another mock's `reference` or `null`.
 
 The returned mock has `state`, `update(changes)` (pushes a full state like a
 .NET publication), `renew()` and `waitPresented(timeout?)` (below), `calls`, `failNext(method, { kind, message, detail, reason })` or

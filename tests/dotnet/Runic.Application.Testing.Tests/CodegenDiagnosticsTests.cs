@@ -414,6 +414,81 @@ internal sealed partial class CodegenDiagnosticsTests
                 public sealed partial class SettableSelectionWindow : RunicWindow<SettableSelectionViewModel>;
                 """, "RUNICBRIDGE008", "public NavigationSelection? Tabs",
                 "SettableSelectionViewModel.Tabs: a NavigationSelection slot must be get-only").ConfigureAwait(false);
+            // Region collections (RUNICBRIDGE070, region-collections/1): a get-only NavigationSelection of known content.
+            const string DocumentPage = """
+                public interface IDocumentPage : INotifyPropertyChanged { }
+                public sealed class DocumentPageViewModel : FixtureModel, IDocumentPage { public string Title => ""; }
+                public sealed partial class DocumentPageView : RunicView<DocumentPageViewModel>;
+
+                """;
+            await RejectAt("RegionCollectionOnString", DocumentPage + """
+                public sealed class StringCollectionViewModel : FixtureModel
+                {
+                    [RunicRegionCollection(typeof(IDocumentPage))]
+                    public string Documents { get; } = "";
+                }
+                public sealed partial class StringCollectionWindow : RunicWindow<StringCollectionViewModel>;
+                """, "RUNICBRIDGE070", "public string Documents",
+                "StringCollectionViewModel.Documents: RunicRegionCollection applies to a NavigationSelection property, not to a String.").ConfigureAwait(false);
+            await RejectAt("SettableRegionCollection", DocumentPage + """
+                public sealed class SettableCollectionViewModel : FixtureModel
+                {
+                    [RunicRegionCollection(typeof(IDocumentPage))]
+                    public NavigationSelection? Documents { get; set; }
+                }
+                public sealed partial class SettableCollectionWindow : RunicWindow<SettableCollectionViewModel>;
+                """, "RUNICBRIDGE070", "public NavigationSelection? Documents",
+                "SettableCollectionViewModel.Documents: a region collection must be get-only").ConfigureAwait(false);
+            await RejectAt("ObjectRegionCollection", DocumentPage + """
+                public sealed class ObjectCollectionViewModel : FixtureModel
+                {
+                    [RunicRegionCollection(typeof(object))]
+                    public NavigationSelection? Documents { get; }
+                }
+                public sealed partial class ObjectCollectionWindow : RunicWindow<ObjectCollectionViewModel>;
+                """, "RUNICBRIDGE070", "public NavigationSelection? Documents",
+                "ObjectCollectionViewModel.Documents: a region collection of object has no known content.").ConfigureAwait(false);
+            await RejectAt("UnknownRegionCollectionContent", """
+                public interface IMissingDocument : INotifyPropertyChanged { }
+                public sealed class MissingCollectionViewModel : FixtureModel
+                {
+                    [RunicRegionCollection(typeof(IMissingDocument))]
+                    public NavigationSelection? Documents { get; }
+                }
+                public sealed partial class MissingCollectionWindow : RunicWindow<MissingCollectionViewModel>;
+                """, "RUNICBRIDGE070", "public NavigationSelection? Documents",
+                "MissingCollectionViewModel.Documents: no ViewModel with a registered View is a IMissingDocument, so the region collection can present nothing.").ConfigureAwait(false);
+            // RUNICBRIDGE071: selectDocuments of a [RelayCommand] SelectDocuments beside the collection's selectDocuments.
+            // The fixture declares the command property that CommunityToolkit generates for the method.
+            await RejectAt("RegionCollectionSelectName", DocumentPage + """
+                public sealed class SelectNameViewModel : FixtureModel
+                {
+                    [RunicRegionCollection(typeof(IDocumentPage))]
+                    public NavigationSelection? Documents { get; }
+                    [RelayCommand] private void SelectDocuments() { }
+                    public IRelayCommand SelectDocumentsCommand { get; } = new RelayCommand(() => { });
+                }
+                public sealed partial class SelectNameWindow : RunicWindow<SelectNameViewModel>;
+                """, "RUNICBRIDGE071", "public NavigationSelection? Documents",
+                "SelectNameViewModel.Documents: the region collection's client method selectDocuments collides with another member of the generated client.").ConfigureAwait(false);
+            // Without PageCanClose there is no closeDocuments, so a CloseDocuments command does not collide.
+            var withoutClose = await GenerateValidAsync(generator, temporaryRoot, "RegionCollectionWithoutClose", Preamble + DocumentPage + """
+                public sealed class WithoutCloseViewModel : FixtureModel
+                {
+                    [RunicRegionCollection(typeof(IDocumentPage), PageCanClose = false)]
+                    public NavigationSelection? Documents { get; }
+                    [RelayCommand] private void CloseDocuments() { }
+                    public IRelayCommand CloseDocumentsCommand { get; } = new RelayCommand(() => { });
+                }
+                public sealed partial class WithoutCloseWindow : RunicWindow<WithoutCloseViewModel>;
+                """).ConfigureAwait(false);
+            var withoutCloseClient = Directory.GetFiles(Path.Combine(Path.GetDirectoryName(withoutClose)!, "ts"), "*.ts", SearchOption.AllDirectories)
+                .Where(path => !path.EndsWith(".mock.ts", StringComparison.Ordinal))
+                .Select(File.ReadAllText).Single(text => text.Contains("connectView<", StringComparison.Ordinal)
+                    && text.Contains("WithoutClose", StringComparison.Ordinal));
+            Require(withoutCloseClient.Contains("selectDocuments", StringComparison.Ordinal)
+                    && withoutCloseClient.Contains("closeDocuments", StringComparison.Ordinal),
+                $"A region collection without PageCanClose beside a CloseDocuments command lost a client member.\n{withoutCloseClient}");
             await RejectAt("UnkeyedCollection", """
                 public sealed class Item { public string Label { get; init; } = ""; }
                 public sealed class ItemsViewModel : FixtureModel

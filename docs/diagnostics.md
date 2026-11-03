@@ -80,6 +80,8 @@ and severities are open.
 | [`RUNICBRIDGE032`](#runicbridge032) | Warning | Generator | An observable collection of DTO rows is not a `[RunicCollection]` |
 | [`RUNICBRIDGE033`](#runicbridge033) | Warning | Build targets | The .NET SDK or Bun is older than this release supports |
 | [`RUNICBRIDGE034`](#runicbridge034) | Warning | Generator | A `[RunicPresentationScoped]` declaration reaches no Bridge command |
+| [`RUNICBRIDGE070`](#runicbridge070) | Error | Generator | A `[RunicRegionCollection]` is not on a get-only NavigationSelection property, or its content type is unsupported |
+| [`RUNICBRIDGE071`](#runicbridge071) | Error | Generator | A region collection's select or close client method collides with another client member |
 
 ### RUNICBRIDGE001
 
@@ -618,6 +620,35 @@ generated client sends no presentation epoch for anything it would have scoped.
 **Fix:** put the attribute on the command property, or on the `[RelayCommand]`
 method whose command the Bridge exposes. See
 [Commands scoped to their presentation](../packages/dotnet/Runic.Application.Views/README.md#commands-scoped-to-their-page).
+
+### RUNICBRIDGE070
+
+An error from the Bridge generator (since 0.16). `[RunicRegionCollection]` is
+on a property that is not a `NavigationSelection`, the property has a public
+setter, the attribute's content type is `object`, or no ViewModel with a
+registered View is assignable to the content type, so the region collection
+could present nothing.
+
+**Fix:** put the attribute on a get-only `NavigationSelection` property, which
+its `Add`, `SelectAsync` and `RemoveAsync` change rather than the web view.
+Name an interface or base class that the regions' ViewModels share as the
+content type, and register a View for at least one ViewModel that implements
+it. See
+[Region collections](../packages/dotnet/Runic.Application.Views/README.md#region-collections).
+
+### RUNICBRIDGE071
+
+An error from the Bridge generator (since 0.16). The generated client method
+`select{Property}` or `close{Property}` of a region collection has the name of
+another member of the generated client: a command's method or its `can…`,
+`start…` or `recover…` method, a `set…` or `write…` method of a property, or
+`snapshot`, `subscribe`, `dispose`, `interactions` or `fieldBaseline`. Without
+`PageCanClose`, the collection has no `close…` method, so only its `select…`
+method can collide.
+
+**Fix:** rename the region collection property or the other member, such as a
+`SelectDocuments` command beside a `Documents` region collection. See
+[Region collections](../packages/dotnet/Runic.Application.Views/README.md#region-collections).
 
 ## dotnet runic
 

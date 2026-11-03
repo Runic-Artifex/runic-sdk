@@ -2396,8 +2396,89 @@ function CustomersPage({ view, state }: { view: CustomersPageClient; state: Cust
 
 Don't move the highlighted tab before the command settles: `state.tabs`
 changes only when the switch commits, so the tab bar shows the kept tab after
-a veto. The tab set is static; Runic Views presents no collection of region
-slots.
+a veto. This tab set is static: each tab is a slot property. For tabs that
+open and close at run time, use a region collection.
+
+### Region collections
+
+Since 0.16, mark a get-only `NavigationSelection` property with
+`[RunicRegionCollection(typeof(TContent))]` to present every region of the
+selection, such as document tabs that each keep their own back stack. The
+ViewModel adds regions with `Add`; the page selects and closes them by key
+(feature `region-collections/1`):
+
+```csharp
+public sealed partial class EditorWindowViewModel(RunicNavigator navigator) : ObservableObject
+{
+    [RunicRegionCollection(typeof(IDocumentPage))]
+    public NavigationSelection Documents { get; } = navigator.CreateSelection(this, []);
+
+    [RelayCommand]
+    private async Task<NavigationOutcome> OpenAsync(string path)
+    {
+        var tab = navigator.CreateRegion<IDocumentPage>(this, NavigationTarget.Create<DocumentViewModel, string>(path));
+        Documents.Add(tab);
+        return (await Documents.SelectAsync(tab)).Outcome;
+    }
+}
+```
+
+The generated state member and client methods:
+
+```ts
+readonly documents: RegionCollection<DocumentPageReference | DocumentInfoPageReference>;
+// { regions: readonly { key: string; content: R | null }[]; selected: number | null }
+selectDocuments(key: string): Promise<RegionOutcome>;
+closeDocuments(key: string): Promise<RegionOutcome>;
+```
+
+- Each region is `{ key, content }`. `key` stays the same while the region
+  exists and is never reused in the window, so frameworks keep each tab's
+  component by it. `content` is the region's `Current`, or `null` while the
+  region is empty; a push inside a tab changes `content` and keeps `key`.
+- `selected` is the index of `Selected`, or `null` without regions. It changes
+  only when a switch commits.
+- `select{Name}(key)` calls `SelectAsync`, so the current page of the tab left
+  is asked as `Retain`. `close{Name}(key)` calls `RemoveAsync`, so every page of
+  the tab is asked as `Retire`; a committed close selects the next tab. Both
+  resolve with the request's `NavigationOutcome` once the state includes it. A
+  veto resolves too, with `kind: "Rejected"` and `rejection: "Guard"`.
+- A key of a tab that closed meanwhile rejects with reason `unresolved-key`.
+- `PageCanClose = false` generates no `close{Name}`; a page's close is then
+  `unavailable`. Close such tabs from the ViewModel.
+- Content that no region presents any more is pruned, like the items of a
+  ViewModel collection. A guarded window close clears the collection's regions
+  one by one, as it clears region slots.
+- Without the attribute, a `NavigationSelection` stays a selection slot whose
+  value is `SelectedIndex`. Only Views with a region collection get a new
+  contract fingerprint.
+- `RUNICBRIDGE070` reports the attribute on another property type, a setter,
+  `typeof(object)` or a content type without a View. `RUNICBRIDGE071` reports a
+  `select{Name}` or `close{Name}` method that collides with another client
+  member.
+
+Each framework adapter renders the regions with `RegionOutlets`, one
+`ViewOutlet` per region keyed by `key`. By default it keeps every region
+mounted and hides all but the selected one, which keeps each tab's DOM. A tab
+bar uses `regionEntries(state.documents)`:
+
+```tsx
+<nav>
+  {regionEntries(state.documents).map(tab => (
+    <span key={tab.key}>
+      <button aria-pressed={tab.selected} onClick={() => void view.selectDocuments(tab.key)}>Tab {tab.index + 1}</button>
+      <button onClick={() => void view.closeDocuments(tab.key)}>×</button>
+    </span>
+  ))}
+</nav>
+<RegionOutlets collection={state.documents} registry={pages} />
+```
+
+In tests, `state.Regions(vm => vm.Documents)` reads the collection, and
+`driver.SelectRegionAsync(vm => vm.Documents, key)` and `CloseRegionAsync`
+send the page's requests; the reply's `RegionOutcome` is the outcome. The
+[document tabs example](https://github.com/Runic-Artifex/runic-sdk/tree/main/examples/document-tabs)
+uses all of it.
 
 ### Navigation command results
 
@@ -2616,6 +2697,8 @@ NativeAOT symbols and what to attach to a bug report.
 | 1112 | `ViewHostPresentationChangeFailed` | Error | A `RunicViewHost` presentation change throws outside its open. | `ErrorType` |
 | 1113 | `ViewHostCleanupFailed` | Error | Releasing a `RunicViewHost` presentation throws. | `ErrorType` |
 | 1114 | `ChildViewCleanupFailed` | Error | A `WpfBridgeView` fails to release after its presentation closed. | `ErrorType` |
+| 1210 | `BridgeRegionRequestFailed` | Error | `SelectAsync` or `RemoveAsync` of a region collection threw for a page's `select{Name}` or `close{Name}`; the call fails. | `Model`, `Member`, `Route`, `ErrorType` |
+| 1211 | `BridgeRegionRequestUnresolved` | Debug | A page's `select{Name}` or `close{Name}` named a key that the region collection no longer has, such as a tab that closed meanwhile; the call rejects with `unresolved-key`. | `Model`, `Member`, `Route`, `Key` |
 | 2000 | `DesktopSnapshotDeliveryFailed` | Error | Runic Desktop cannot deliver a push to a page. | `ErrorType` |
 | 2002 | `DesktopWindowCloseAfterOpen` | Warning | `RUNIC_APPLICATION_CLOSE_AFTER_OPEN=1` closed a Desktop window right after it opened. | `Variable` |
 | 2003 | `DesktopPortalDiagnostic` | Warning or Debug | On Linux, xdg-desktop-portal reports a diagnostic for the portal services `AddRunicPlatformServices()` registers (notifications, status icon, login startup and inhibition): Warning for a rejected identity, an unavailable portal or a denied request, Debug for an accepted request or registration. | `Code`, `DiagnosticMessage`, `Remediation` |
@@ -2654,7 +2737,7 @@ NativeAOT symbols and what to attach to a bug report.
 as `content12`). A declared failure is an expected outcome, so it is logged at
 Debug, still with its exception; `FailureType` is the failure value's type.
 
-Events 1000-1012, 1018-1026, 1050-1053 and 1100-1102 use the category `Runic.Application.Views`
+Events 1000-1012, 1018-1026, 1050-1053, 1100-1102 and 1210-1211 use the category `Runic.Application.Views`
 (`RunicViewsTelemetry.LogCategory`); the Hot Reload events 1100-1102 use the
 logger of the window session that owns the Bridge. Events 1110-1114 use
 `Runic.Application.Views.Wpf` and the factory of the host's `Services`. Event 1033 here is a window session's

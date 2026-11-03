@@ -384,6 +384,23 @@ retained entry, retirement of a parent's child regions, racing navigation and
 closing the window while the dialog asks; [ConfirmNavigationTests](https://github.com/Runic-Artifex/runic-sdk/blob/main/examples/notes-view-first/Tests/ConfirmNavigationTests.cs)
 tests the dialog page on its own with `RunicTestNavigationEntry`.
 
+A [region collection](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Application.Views/README.md#region-collections)
+(since 0.16) reads as a `RunicRegionCollectionState`, and the drivers send the
+page's select and close requests by key:
+
+```csharp
+var tabs = (await host.Root.SnapshotAsync()).Regions(vm => vm.Documents);
+// tabs.Keys, tabs.Regions[i].Content (a PageReference or null), tabs.Selected
+var closed = await host.Root.CloseRegionAsync(vm => vm.Documents, tabs.Keys[0]);
+// closed.RegionOutcome: Committed, or Rejected with Guard when a page refused
+```
+
+`SelectRegionAsync` and `CloseRegionAsync` return a `RunicCallReply` with the
+state after the request; a key that no region has fails with `ErrorReason`
+`unresolved-key`. The test connection's `hello` lists `region-collections/1`
+for these requests; it adds a request kind only, so the other messages are
+those of the base protocol.
+
 ### Interactions
 
 A test answers a ReactiveUI `Interaction`, such as the question of a

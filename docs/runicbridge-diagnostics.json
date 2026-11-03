@@ -170,6 +170,16 @@
       "id": "RUNICBRIDGE034",
       "severity": "warning",
       "title": "A [RunicPresentationScoped] declaration reaches no Bridge command"
+    },
+    {
+      "id": "RUNICBRIDGE070",
+      "severity": "error",
+      "title": "A [RunicRegionCollection] is not on a get-only NavigationSelection property, or its content type is unsupported"
+    },
+    {
+      "id": "RUNICBRIDGE071",
+      "severity": "error",
+      "title": "A region collection's select or close client method collides with another client member"
     }
   ]
 }
