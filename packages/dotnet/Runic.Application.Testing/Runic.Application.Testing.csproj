@@ -16,11 +16,14 @@
     <Using Include="Runic.Application.Views.Generated" />
   </ItemGroup>
   <ItemGroup>
+    <!-- The tests check internal helpers, such as the serve-only parsers, directly. -->
+    <InternalsVisibleTo Include="Runic.Application.Testing.Tests" />
+  </ItemGroup>
+  <ItemGroup>
     <ProjectReference Include="../Runic.Application.Views/Runic.Application.Views.csproj" />
     <PackageReference Include="Microsoft.Extensions.TimeProvider.Testing" />
     <None Include="README.md" Pack="true" PackagePath="/" />
     <!-- The test clipboard checks writes with the real clipboard's rules, as Runic.Platform.Runtime does. -->
-    <InternalsVisibleTo Include="Runic.Application.Testing.Tests" />
     <Compile Include="../Runic.Platform/DesktopClipboardRules.cs" Link="Shared/DesktopClipboardRules.cs" />
   </ItemGroup>
   <Import Project="../../../eng/build/application.targets" />
