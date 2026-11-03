@@ -48,15 +48,55 @@ public sealed partial class ConnectionsViewModel : ObservableObject, IDisposable
         if (_drafts.TryGetCaller(out var draft)) draft.Text = text;
     }
 
+    // A command that awaits until the test releases it, then reads its caller and the caller's draft.
+    internal TaskCompletionSource HoldStarted { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    internal TaskCompletionSource HoldGate { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    internal TaskCompletionSource<(RunicConnection? Caller, bool HasDraft)> HoldDone { get; } =
+        new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+    [RelayCommand]
+    private async Task HoldAsync()
+    {
+        HoldStarted.TrySetResult();
+        await HoldGate.Task.ConfigureAwait(false);
+        HoldDone.TrySetResult((_connections.Caller, _drafts.TryGetCaller(out _)));
+    }
+
+    // Work the command starts and that outlives it: it reads its caller and raises a view request after the command ended.
+    internal TaskCompletionSource BackgroundGate { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    internal Task<(RunicConnection? Caller, RunicConnection? InCommand)>? Background { get; private set; }
+
+    [RelayCommand]
+    private void StartBackground()
+    {
+        var inCommand = _connections.Caller;
+        Background = Task.Run(async () =>
+        {
+            await BackgroundGate.Task.ConfigureAwait(false);
+            Focus.Raise(new ConnectionsFocus("title"));
+            return (_connections.Caller, inCommand);
+        });
+    }
+
+    public ViewRequest<ConnectionsFocus> Focus { get; } = new();
+
     public void Dispose() => _drafts.Dispose();
 }
+
+public sealed record ConnectionsFocus(string Member);
 
 public sealed class ConnectionDraft(RunicConnection connection) : IDisposable
 {
     public RunicConnection Connection { get; } = connection;
     public string Text { get; set; } = "";
     public bool Disposed { get; private set; }
-    public void Dispose() => Disposed = true;
+    public bool ThrowOnDispose { get; set; }
+
+    public void Dispose()
+    {
+        Disposed = true;
+        if (ThrowOnDispose) throw new InvalidOperationException("draft");
+    }
 }
 
 public sealed partial class ConnectionsWindow : RunicWindow<ConnectionsViewModel>;

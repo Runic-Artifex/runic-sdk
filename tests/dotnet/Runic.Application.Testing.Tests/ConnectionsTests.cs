@@ -1,5 +1,9 @@
+using System.Collections.Concurrent;
+using System.Text.Json;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Runic.Application.Views;
+using Runic.Navigation;
 using Runic.Application.Views.ReactiveUI;
 using TUnit.Core;
 
@@ -79,6 +83,206 @@ internal sealed class ConnectionsTests
         (await again.ExecuteAsync(model => model.TouchCommand)).ThrowIfFailed();
         Require(vm.Callers[^1] == new RunicConnection("connection-bob-2", Bob.ClientKey) && connections.Current.Count == 2
             && !vm.Drafts.Values.ContainsKey("connection-bob-2"), "A reconnect was not a new connection.");
+
+        // A transport that reuses Bob's closed key, as CS-WebUI reuses WebUI's slots: the window gives it a new key.
+        var reused = host.Root.ForConnection(Bob.ConnectionKey, Bob.ClientKey);
+        (await reused.ExecuteAsync(model => model.TouchCommand)).ThrowIfFailed();
+        var reusedConnection = new RunicConnection(Bob.ConnectionKey + "#2", Bob.ClientKey);
+        Require(vm.Callers[^1] == reusedConnection && connections.Current.Contains(reusedConnection) && !connections.Current.Contains(Bob),
+            $"The reused transport key did not get a new connection key: {vm.Callers[^1]}");
+        Require(!vm.Drafts.TryGet(Bob, out _), "The closed connection's key reached the connection that reused it.");
+    }
+
+    [Test]
+    public async Task AConnectionThatClosesBeforeItsConnectedTurnIsNeverReportedAndKeepsNoValueAsync()
+    {
+        await using var provider = Provider();
+        await using var window = await new TestWindowHost(provider).OpenWindowAsync<ConnectionsWindow>();
+        var host = ((TestWindow<ConnectionsViewModel>)window.Host).Host;
+        var vm = window.ViewModel;
+        var reported = 0;
+        vm.Connections.Connected += (_, _) => reported++;
+        vm.Connections.Disconnected += (_, _) => reported++;
+
+        // The model context is busy, so the Connected turn of the new page waits.
+        var release = new TaskCompletionSource();
+        var busy = host.Content.ModelContext!.InvokeAsync(() => release.Task.Wait());
+        host.Transport.Request(Hello("s-early"), "connection-early", "client-early");
+        var early = new RunicConnection("connection-early", "client-early");
+        Require(!vm.Drafts.TryGet(early, out _), "A value was created for a connection before its Connected turn.");
+        host.Transport.CloseConnection("connection-early");
+        release.SetResult();
+        await busy;
+        await Turn(host);
+        Require(reported == 0 && vm.Connections.Current.Count == 0 && vm.Drafts.Values.Count == 0 && vm.Viewers == 0,
+            "A connection that closed before its Connected turn was reported or kept a value.");
+    }
+
+    [Test]
+    public async Task ACommandWhoseConnectionClosesMidAwaitKeepsItsCallerButNotItsStateAsync()
+    {
+        await using var provider = Provider();
+        await using var window = await new TestWindowHost(provider).OpenWindowAsync<ConnectionsWindow>();
+        var host = ((TestWindow<ConnectionsViewModel>)window.Host).Host;
+        var vm = window.ViewModel;
+        var bob = host.Root.ForConnection(Bob.ConnectionKey, Bob.ClientKey);
+        (await bob.ExecuteAsync<string>(model => model.TypeCommand, "bob's")).ThrowIfFailed();
+        var bobsDraft = vm.Drafts.Values[Bob.ConnectionKey];
+
+        var hold = bob.ExecuteAsync(model => model.HoldCommand);
+        await vm.HoldStarted.Task.WaitScaledAsync(TimeSpan.FromSeconds(5));
+        host.Transport.CloseConnection(Bob.ConnectionKey);
+        await Turn(host);
+        // Another page gets Bob's transport key while his command still awaits.
+        var next = host.Root.ForConnection(Bob.ConnectionKey, Bob.ClientKey);
+        (await next.ExecuteAsync(model => model.TouchCommand)).ThrowIfFailed();
+        var nextConnection = new RunicConnection(Bob.ConnectionKey + "#2", Bob.ClientKey);
+        Require(vm.Callers[^1] == nextConnection, $"The page that reused the key was {vm.Callers[^1]}.");
+
+        vm.HoldGate.SetResult();
+        var (caller, hasDraft) = await vm.HoldDone.Task.WaitScaledAsync(TimeSpan.FromSeconds(5));
+        Require(caller == Bob, $"The resumed command's caller was {caller}, not its own closed connection.");
+        Require(!hasDraft && bobsDraft.Disposed && !vm.Drafts.Values.ContainsKey(nextConnection.ConnectionKey),
+            "The resumed command got a draft for its closed connection, or the next page's.");
+        try { await hold.WaitScaledAsync(TimeSpan.FromSeconds(5)); }
+        catch (Exception error) when (error is not TimeoutException) { }
+    }
+
+    [Test]
+    public async Task WorkThatOutlivesItsCommandHasNoCallerAndFollowsTheRulesOutsideAScopeAsync()
+    {
+        await using var provider = Provider();
+        await using var window = await new TestWindowHost(provider).OpenWindowAsync<ConnectionsWindow>();
+        var host = ((TestWindow<ConnectionsViewModel>)window.Host).Host;
+        var vm = window.ViewModel;
+        using var alicePage = await host.Root.MountPresentationAsync(clientKey: Alice.ClientKey, connectionKey: Alice.ConnectionKey);
+        using var bobPage = await host.Root.MountPresentationAsync(clientKey: Bob.ClientKey, connectionKey: Bob.ConnectionKey);
+        (await host.Root.ForConnection(Bob.ConnectionKey, Bob.ClientKey).ExecuteAsync(model => model.StartBackgroundCommand)).ThrowIfFailed();
+
+        // The command ended; its background work runs on.
+        vm.BackgroundGate.SetResult();
+        var (caller, inCommand) = await vm.Background!.WaitScaledAsync(TimeSpan.FromSeconds(5));
+        Require(inCommand == Bob && caller is null, $"Work that outlived its command kept the caller {caller}.");
+        await Turn(host);
+        await Turn(host);
+        await BridgeTargetedPushes.For(host.Transport).WhenSent().WaitScaledAsync(TimeSpan.FromSeconds(5));
+        // Outside a scope, a Drop request with two presentations goes to neither, not to the page whose command ended.
+        Require(bobPage.TakeViewRequests().Count == 0 && alicePage.TakeViewRequests().Count == 0,
+            "A request raised after the command ended still reached the command's page.");
+
+        // EnterWindow inside such work is the documented way to reach the window's page.
+        bobPage.Unmount();
+        using (RunicInteractionInvocation.EnterWindow(vm))
+            vm.Focus.Raise(new ConnectionsFocus("window"));
+        var request = await alicePage.NextViewRequestAsync(TimeSpan.FromSeconds(5));
+        Require(request.Input<ConnectionsFocus>().Member == "window", "The window scope did not reach the window's single page.");
+    }
+
+    [Test]
+    public async Task OwnKeysOnlyLoggedFailuresAndHandlersOutsideAnyInvocationAsync()
+    {
+        await using var provider = Provider();
+        await using var scope = provider.CreateAsyncScope();
+        var logs = new LogCapture();
+        var vm = new ConnectionsViewModel(scope.ServiceProvider.GetRequiredService<IRunicConnections>());
+        using var host = RunicWindowTestHost.Create(scope.ServiceProvider, vm, new RunicWindowTestHostOptions { LoggerFactory = logs });
+        var handlerRan = false;
+        RunicInteractionInvocation? handlerInvocation = null;
+        RunicConnection? handlerCaller = null;
+        vm.Connections.Connected += (_, _) => throw new InvalidOperationException("handler");
+        vm.Connections.Connected += (_, _) =>
+        {
+            handlerRan = true;
+            handlerInvocation = RunicInteractionInvocation.Current;
+            handlerCaller = vm.Connections.Caller;
+        };
+
+        // A page connects while the reporting thread runs in another page's live invocation; its handlers run in neither.
+        using (RunicInteractionInvocation.Enter(host.Content, host.RootRoute, Alice.ClientKey, Alice.ConnectionKey))
+        {
+            host.Transport.Request(Hello("s-carol"), "connection-carol", "client-carol");
+            await Turn(host);
+        }
+        var carol = new RunicConnection("connection-carol", "client-carol");
+        Require(handlerRan && vm.Connections.Current.SequenceEqual([carol]) && vm.Viewers == 1,
+            "The handlers after a throwing one did not run.");
+        Require(handlerInvocation is null && handlerCaller is null, "A Connected handler ran in the reporting thread's invocation.");
+        Require(logs.Entries.Any(entry => entry.EventId.Id == 1230 && entry.Exception?.Message == "handler"),
+            "The throwing handler was not logged as event 1230.");
+
+        // TryGet uses the window's own connection, never a client key the caller made up.
+        Require(!vm.Drafts.TryGet(carol with { ClientKey = "client-mallory" }, out _), "A forged client key got a value.");
+        Require(vm.Drafts.TryGet(carol, out var carolsDraft) && ReferenceEquals(carolsDraft.Connection, vm.Connections.Current[0]),
+            "The value was not created with the window's own connection.");
+        Require(!vm.Drafts.TryGet(carol with { ClientKey = "client-mallory" }, out _), "A forged client key read an existing value.");
+
+        // Disposal on disconnect and on Dispose; one throwing value does not stop the others.
+        (await host.Root.ExecuteAsync<string>(model => model.TypeCommand, "alice's")).ThrowIfFailed();
+        var bob = host.Root.ForConnection(Bob.ConnectionKey, Bob.ClientKey);
+        (await bob.ExecuteAsync<string>(model => model.TypeCommand, "bob's")).ThrowIfFailed();
+        var drafts = vm.Drafts.Values;
+        foreach (var draft in drafts.Values) draft.ThrowOnDispose = true;
+        host.Transport.CloseConnection(Bob.ConnectionKey);
+        await Turn(host);
+        Require(drafts[Bob.ConnectionKey].Disposed && !vm.Drafts.Values.ContainsKey(Bob.ConnectionKey) && vm.Left.SequenceEqual([Bob]),
+            "The disconnected connection's draft was not disposed and removed.");
+        vm.Dispose();
+        Require(drafts[Alice.ConnectionKey].Disposed && drafts[carol.ConnectionKey].Disposed && vm.Drafts.Values.Count == 0,
+            "A throwing Dispose stopped the others.");
+        Require(logs.Entries.Count(entry => entry.EventId.Id == 1231) == 3, "The throwing disposals were not logged as event 1231.");
+    }
+
+    [Test]
+    public async Task AClosingWindowFollowsItsConnectionsWithoutRaisingEventsAsync()
+    {
+        using var transport = new InMemoryBridgeTransport();
+        await using var context = new RefusingContext();
+        using var session = new WindowContentSession(transport, new WindowContentSessionOptions { ModelContext = context });
+        using var connections = new RunicConnections();
+        connections.Bind(session);
+        var raised = 0;
+        connections.Connected += (_, _) => raised++;
+        connections.Disconnected += (_, _) => raised++;
+        transport.Request(Hello("s-late"), "connection-late", "client-late");
+        Require(connections.Current.SequenceEqual([new RunicConnection("connection-late", "client-late")]) && raised == 0,
+            "A window whose context takes no turns did not follow its connection, or raised an event outside a turn.");
+        transport.CloseConnection("connection-late");
+        Require(connections.Current.Count == 0 && raised == 0, "The close was not followed, or raised an event outside a turn.");
+    }
+
+    private static string Hello(string session) => JsonSerializer.Serialize(new
+    {
+        kind = "hello", protocol = 4, session, client = new { name = "t", version = "1" },
+    });
+
+    private static async Task Turn<T>(RunicWindowTestHost<T> host) where T : class =>
+        await host.Content.ModelContext!.InvokeAsync(static () => { });
+
+    // A model context of a closing window: it takes no posted turns.
+    private sealed class RefusingContext : IRunicModelContext
+    {
+        public bool IsExecuting => false;
+        public event EventHandler<RunicModelTurnExceptionEventArgs>? UnhandledTurnException { add { } remove { } }
+        public bool TryPost(Action turn) => false;
+        public ValueTask InvokeAsync(Action turn, CancellationToken cancellationToken = default) { turn(); return ValueTask.CompletedTask; }
+        public ValueTask<T> InvokeAsync<T>(Func<T> turn, CancellationToken cancellationToken = default) => ValueTask.FromResult(turn());
+        public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+    }
+
+    private sealed class LogCapture : ILoggerFactory
+    {
+        public ConcurrentQueue<(EventId EventId, Exception? Exception)> Entries { get; } = new();
+        public void AddProvider(ILoggerProvider provider) => throw new NotSupportedException();
+        public ILogger CreateLogger(string categoryName) => new Logger(this);
+        public void Dispose() { }
+
+        private sealed class Logger(LogCapture owner) : ILogger
+        {
+            public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+            public bool IsEnabled(LogLevel logLevel) => true;
+            public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception,
+                Func<TState, Exception?, string> formatter) => owner.Entries.Enqueue((eventId, exception));
+        }
     }
 
     [Test]

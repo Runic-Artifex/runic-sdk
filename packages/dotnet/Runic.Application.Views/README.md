@@ -641,16 +641,32 @@ Window's page connections and tells a command which one invoked it:
   store them, but do not parse them or show them to users.
 - `Connected` and `Disconnected` are plain .NET events, raised in a turn of
   the Window's model context, as a command body runs, so a handler may change
-  state the page sees. `Current` changes in the same turn. A connection the
-  Window already had when the service was bound is reported with `Connected`
-  too. Closing the Window raises no `Disconnected`. A handler that throws is
-  logged as event 1230 `ConnectionHandlerFailed`, and the other handlers still
-  run.
+  state the page sees. `Current` changes in the same turn. The turn runs in no
+  command's invocation, so a handler has no `Caller`. A connection the Window
+  already had when the service was bound is reported with `Connected` too; one
+  that closes before its `Connected` turn runs is never reported. Once a
+  closing Window's model context takes no more turns, `Current` still follows
+  the connections but no event is raised, and closing the Window raises no
+  `Disconnected`. A handler that throws is logged as event 1230
+  `ConnectionHandlerFailed`, and the other handlers still run.
 - `Caller` is the connection whose command, operation or in-page menu click
   of this Window runs on the current asynchronous flow, and `null` elsewhere:
-  in a timer, in the window scope (`RunicInteractionInvocation.EnterWindow`),
-  or when the command belongs to another Window. It stays the same through the
-  command's `await`s.
+  in the window scope (`RunicInteractionInvocation.EnterWindow`), or when the
+  command belongs to another Window. It stays the same through the command's
+  `await`s, also after its connection closed, until the command ends.
+- **A command's invocation ends with the command.** A bridged command or
+  operation ends when its task completes; an in-page menu click, and a
+  command the Bridge runs synchronously, when `Execute` returns. Work the
+  command started that runs on after that, such as a timer, `Task.Run` or a
+  background loop, has no invocation: its `Caller` is `null`, and its
+  questions and view requests follow the rules outside a scope instead of
+  reaching the page that invoked the command. Such work enters
+  `RunicInteractionInvocation.EnterWindow(viewModel)` to reach the window's
+  page. An async menu command asks its page before its first `await`, or is a
+  bridged command instead.
+- A connection key is never reused within a Window. CS-WebUI reuses WebUI's
+  connection slots, so a page that takes the slot of one that left gets a new
+  key (`0:1#2`), and a command of the closed page never reaches it.
 - `connections.WhenChanged()` is an `IObservable<IReadOnlyList<RunicConnection>>`
   that emits `Current` when subscribed and after each change. It needs no
   System.Reactive and works with both ReactiveUI flavors.
@@ -664,17 +680,20 @@ the application's provider lists nothing and raises nothing; there,
 `RunicInteractionInvocation.Current` still names the page's connection during
 a command.
 
-"Who else is viewing", with CommunityToolkit.Mvvm:
+"Who else is viewing", with CommunityToolkit.Mvvm. Each page's claims live in
+a `RunicConnectionState`, so they go when the page disconnects:
 
 ```csharp
-public sealed partial class BoardViewModel : ObservableObject
+public sealed partial class BoardViewModel : ObservableObject, IDisposable
 {
     private readonly IRunicConnections _connections;
-    private readonly Dictionary<string, string> _claims = [];
+    // The cards each page claimed; removed with the page.
+    private readonly RunicConnectionState<HashSet<string>> _claims;
 
     public BoardViewModel(IRunicConnections connections)
     {
         _connections = connections;
+        _claims = new(connections, _ => []);
         connections.Connected += (_, _) => Viewers = connections.Current.Count;
         connections.Disconnected += (_, _) => Viewers = connections.Current.Count;
     }
@@ -686,11 +705,18 @@ public sealed partial class BoardViewModel : ObservableObject
     [RelayCommand]
     private void Claim(string cardId)
     {
-        // The browser that clicked, as the transport authenticated it.
-        if (_connections.Caller is { } caller) _claims[cardId] = caller.ConnectionKey;
+        // The page that clicked, as the transport authenticated it.
+        if (_claims.TryGetCaller(out var claimed)) claimed.Add(cardId);
     }
+
+    public void Dispose() => _claims.Dispose();
 }
 ```
+
+Do not broadcast connection keys, or claims tied to them, in state that every
+page sees together with other users' data unless the application's own
+sign-in decided who may see whom: a viewer count says nothing about anyone, a
+list of keys and what each page did does.
 
 With ReactiveUI:
 
@@ -700,9 +726,14 @@ _viewers = connections.WhenChanged().Select(list => list.Count).ToProperty(this,
 
 **Per-connection state.** `RunicConnectionState<T>` keeps one value per
 connection, such as a draft, a selection or a cursor that each page keeps for
-itself. It creates a value on first use, only for an open connection, and
-removes it, disposing an `IDisposable` value, when the connection's
-`Disconnected` is raised. Dispose it with the ViewModel:
+itself. It creates a value on first use, only for a connection that `Current`
+lists, with the Window's own `RunicConnection` (a `RunicConnection` whose
+client key is not the connection's gets nothing). It removes the value,
+disposing an `IDisposable` one, when the connection's `Disconnected` is
+raised, and disposes the rest when it is disposed; a `Dispose` that throws is
+logged as event 1231 `ConnectionStateDisposeFailed` and the others still run.
+Its factory runs under its lock and must not call `TryGet` of the same state.
+Dispose it with the ViewModel:
 
 ```csharp
 // In a ViewModel whose primary constructor takes IRunicConnections connections:
@@ -2849,6 +2880,7 @@ NativeAOT symbols and what to attach to a bug report.
 | 1121 | `ViewRequestKept` | Debug | A `NextMounted` view request found no single presentation and is kept for the next one that handles it. | `Name` |
 | 1114 | `ChildViewCleanupFailed` | Error | A `WpfBridgeView` fails to release after its presentation closed. | `ErrorType` |
 | 1230 | `ConnectionHandlerFailed` | Error | A handler of `IRunicConnections.Connected` or `Disconnected` throws; the other handlers still run ([Who is connected, and who called](#who-is-connected-and-who-called)). | `Event`, `ErrorType` |
+| 1231 | `ConnectionStateDisposeFailed` | Error | A value of a `RunicConnectionState<T>` throws from `Dispose`, on its connection's disconnect or the state's disposal; the other values are still disposed. | `ValueType`, `ErrorType` |
 | 2000 | `DesktopSnapshotDeliveryFailed` | Error | Runic Desktop cannot deliver a push to a page. | `ErrorType` |
 | 2002 | `DesktopWindowCloseAfterOpen` | Warning | `RUNIC_APPLICATION_CLOSE_AFTER_OPEN=1` closed a Desktop window right after it opened. | `Variable` |
 | 2003 | `DesktopPortalDiagnostic` | Warning or Debug | On Linux, xdg-desktop-portal reports a diagnostic for the portal services `AddRunicPlatformServices()` registers (notifications, status icon, login startup and inhibition): Warning for a rejected identity, an unavailable portal or a denied request, Debug for an accepted request or registration. | `Code`, `DiagnosticMessage`, `Remediation` |

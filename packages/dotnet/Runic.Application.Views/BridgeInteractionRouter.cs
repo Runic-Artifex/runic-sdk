@@ -67,7 +67,22 @@ public sealed class RunicInteractionInvocation
     /// <summary>Cancels interactions requested by this invocation.</summary>
     public CancellationToken CancellationToken { get; }
     /// <summary>The invocation scope on the current asynchronous flow, or <see langword="null"/>.</summary>
-    public static RunicInteractionInvocation? Current => CurrentScope.Value;
+    /// <remarks>
+    /// An invocation ends with the work that entered it: a bridged command or operation when its task completes, an
+    /// in-page menu click or a synchronous command when <c>Execute</c> returns, and the window scope when its
+    /// <see cref="EnterWindow"/> scope is disposed. An ended invocation is no invocation: work it started and that runs
+    /// on, such as a timer, <see cref="Task.Run(Action)"/> or a background loop, reads <see langword="null"/> here, so its
+    /// interactions and view requests follow the rules outside a scope and <c>IRunicConnections.Caller</c> is
+    /// <see langword="null"/>. Long-lived work of a window enters <see cref="EnterWindow"/> itself.
+    /// </remarks>
+    public static RunicInteractionInvocation? Current => CurrentScope.Value is { IsEnded: false } current ? current : null;
+
+    // Whether the work that entered the invocation finished (End).
+    internal bool IsEnded => Volatile.Read(ref _ended) != 0;
+    private int _ended;
+
+    // Ends the invocation: from then on it counts as none on every flow that captured it.
+    internal void End() => Volatile.Write(ref _ended, 1);
 
     // The window scope: the window decides a close, after its close button or RequestCloseAsync, or runs a menu-bar
     // command or work the application entered it for. No browser client started it, so it may ask the one presentation
@@ -78,25 +93,24 @@ public sealed class RunicInteractionInvocation
     // authenticated (the request's connection), never values supplied inside request JSON: the client and connection
     // keys select the browser presentation that answers, so application code must not be able to claim them
     // (W319-003 Views-02). Tests select the identity themselves.
-    internal static IDisposable Enter(WindowContentSession session, string route, string? clientKey,
+    internal static InvocationScope Enter(WindowContentSession session, string route, string? clientKey,
         string? connectionKey, string? commandName = null, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(session);
         ArgumentException.ThrowIfNullOrWhiteSpace(route);
+        return Push(new RunicInteractionInvocation(session, route, clientKey, connectionKey, commandName, cancellationToken));
+    }
+
+    private static InvocationScope Push(RunicInteractionInvocation invocation)
+    {
         var previous = CurrentScope.Value;
-        CurrentScope.Value = new RunicInteractionInvocation(session, route, clientKey, connectionKey,
-            commandName, cancellationToken);
-        return new Scope(previous);
+        CurrentScope.Value = invocation;
+        return new InvocationScope(invocation, previous);
     }
 
     // RunicWindow enters it around its close decision, whatever started the close; the token ends the decision.
-    internal static IDisposable EnterWindowClose(WindowContentSession session, CancellationToken cancellationToken)
-    {
-        var previous = CurrentScope.Value;
-        CurrentScope.Value = new RunicInteractionInvocation(session, WindowCloseRoute, null, null, null,
-            cancellationToken, windowClose: true);
-        return new Scope(previous);
-    }
+    internal static InvocationScope EnterWindowClose(WindowContentSession session, CancellationToken cancellationToken) =>
+        Push(new RunicInteractionInvocation(session, WindowCloseRoute, null, null, null, cancellationToken, windowClose: true));
 
     // The identity of a scope that no flow enters: a request kept for an object no window presented yet is delivered on
     // behalf of the scope that raised it (BridgeInteractionRouter.TakeUnattachedViewRequest).
@@ -105,13 +119,10 @@ public sealed class RunicInteractionInvocation
         new(session, route, clientKey, connectionKey, null, CancellationToken.None, windowScope);
 
     // A menu-bar command of the window runs in the window scope; the token ends its interactions.
-    internal static IDisposable EnterWindowScope(WindowContentSession session, CancellationToken cancellationToken)
+    internal static InvocationScope EnterWindowScope(WindowContentSession session, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(session);
-        var previous = CurrentScope.Value;
-        CurrentScope.Value = new RunicInteractionInvocation(session, WindowRoute, null, null, null,
-            cancellationToken, windowClose: true);
-        return new Scope(previous);
+        return Push(new RunicInteractionInvocation(session, WindowRoute, null, null, null, cancellationToken, windowClose: true));
     }
 
     /// <summary>
@@ -177,12 +188,27 @@ public sealed class RunicInteractionInvocation
         public void Dispose() { }
     }
 
-    private sealed class Scope(RunicInteractionInvocation? previous) : IDisposable
+    // Restores the previous invocation on this flow when disposed, and ends the entered one then, or, after EndAfter, when
+    // the entered work's task completes.
+    internal sealed class InvocationScope(RunicInteractionInvocation invocation, RunicInteractionInvocation? previous) : IDisposable
     {
-        private RunicInteractionInvocation? _previous = previous;
+        private int _disposed;
+        private int _endLater;
+
+        // The entered work continues as task: the invocation ends when the task completes, not when the scope is disposed.
+        internal void EndAfter(Task task)
+        {
+            ArgumentNullException.ThrowIfNull(task);
+            Volatile.Write(ref _endLater, 1);
+            if (task.IsCompleted) invocation.End();
+            else task.ContinueWith(static (_, state) => ((RunicInteractionInvocation)state!).End(), invocation,
+                CancellationToken.None, TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
+        }
+
         public void Dispose()
         {
-            var previous = Interlocked.Exchange(ref _previous, null);
+            if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
+            if (Volatile.Read(ref _endLater) == 0) invocation.End();
             if (previous is not null || CurrentScope.Value is not null) CurrentScope.Value = previous;
         }
     }

@@ -646,6 +646,8 @@ public partial class ViewModelBridge<T>
                 return EncodeFailure(new("rejected", $"{descriptor.Name} is unavailable.", Reason: BridgeFailure.Unavailable));
             using var invocation = EnterInvocation(descriptor, connection, cancellation);
             execution = InvokeCommandAsync(descriptor, argument, cancellation);
+            // The command's invocation lasts until its task completes, not past it (RunicInteractionInvocation.Current).
+            invocation?.EndAfter(execution);
             return null;
         }
     }
@@ -786,7 +788,7 @@ public partial class ViewModelBridge<T>
     }
 
     // A command invocation reaches the interactions of the requesting connection's presentation.
-    private IDisposable? EnterInvocation(CommandDescriptor<T> descriptor, BridgeConnection connection, CancellationToken token) =>
+    private RunicInteractionInvocation.InvocationScope? EnterInvocation(CommandDescriptor<T> descriptor, BridgeConnection connection, CancellationToken token) =>
         _content is null ? null : RunicInteractionInvocation.Enter(_content, _name, connection.ClientKey, connection.Key, descriptor.Name, token);
 
     private bool IsAvailable(CommandDescriptor<T> descriptor, object? argument) =>

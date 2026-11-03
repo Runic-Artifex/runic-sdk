@@ -996,7 +996,10 @@ presentations that count are those of all of them. Two scopes exist:
   notification's activation. Entering it inside a command invocation of the same window keeps the command invocation.
 
 Work outside both scopes never reaches the page. The producer MUST NOT let application code claim a client or
-connection identity: only a request the transport authenticated enters a command invocation. A request ends
+connection identity: only a request the transport authenticated enters a command invocation. A command invocation
+lasts until its command ends: until an asynchronous command's or operation's task completes, or until a synchronous
+command or a menu item returns. Work that the command started and that runs on after it, such as a timer, is outside
+both scopes. A request ends
 when its scope ends, its presentation closes or its connection closes, or the window closes; the waiting interaction
 then fails. Interactions time out after two minutes by default (at most ten). A window holds at most 32 pending
 requests and 8 per presentation.
