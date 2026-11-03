@@ -79,3 +79,17 @@ public sealed class ReactivePathInvoiceViewModel : ReactiveValidationObject
 }
 
 public sealed partial class ReactivePathInvoiceWindow : RunicWindow<ReactivePathInvoiceViewModel>;
+
+// A View whose only fields are row cells: no settable member, so no checked field of its own.
+public sealed class PathRowsViewModel : INotifyPropertyChanged
+{
+    [RunicCollection(nameof(PathLine.Id))]
+    public ObservableCollection<PathLine> Lines { get; } = [new(1, "Pens", 2, 1.50m)];
+
+    [RunicRowEditor]
+    public void UpdateLine(int id, PathLine line) => Lines[Lines.IndexOf(Lines.Single(existing => existing.Id == id))] = line;
+
+    public event PropertyChangedEventHandler? PropertyChanged { add { } remove { } }
+}
+
+public sealed partial class PathRowsWindow : RunicWindow<PathRowsViewModel>;
