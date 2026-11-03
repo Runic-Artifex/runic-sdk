@@ -221,8 +221,8 @@ public static class MacOSPlatformProvider
     /// <remarks>
     /// <see cref="DesktopPowerEventKind.Suspending"/> and <see cref="DesktopPowerEventKind.Resumed"/> follow
     /// <c>NSWorkspaceWillSleepNotification</c> and <c>NSWorkspaceDidWakeNotification</c>, the lock state the distributed
-    /// <c>com.apple.screenIsLocked</c> and <c>com.apple.screenIsUnlocked</c>, which AppKit delivers on the main run
-    /// loop that Runic Desktop's event loop runs. The battery state is IOKit's providing power source, followed with
+    /// <c>com.apple.screenIsLocked</c> and <c>com.apple.screenIsUnlocked</c>, observed for immediate delivery also while
+    /// the application is inactive, which AppKit delivers on the main run loop that Runic Desktop's event loop runs. The battery state is IOKit's providing power source, followed with
     /// <c>com.apple.system.powersources.source</c>, and low power is <c>NSProcessInfo.lowPowerModeEnabled</c> (macOS 12;
     /// <see langword="null"/> before). AppKit does not wait for the application before it sleeps. It needs no window.
     /// </remarks>

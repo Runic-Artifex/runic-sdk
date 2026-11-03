@@ -69,6 +69,31 @@ internal sealed class PowerEventsTests
         Throws<ObjectDisposedException>(() => disposed.WatchAsync());
     }
 
+    [Test, DisplayName("Power events: the queue keeps every event and only the latest state between them")]
+    public async Task QueueAsync()
+    {
+        var queue = new PowerEventQueue();
+        var kinds = new[] { DesktopPowerEventKind.Suspending, DesktopPowerEventKind.Resumed, DesktopPowerEventKind.Locked, DesktopPowerEventKind.Unlocked };
+        // A reader far behind: 400 events with 2000 state changes between them.
+        for (var index = 0; index < 400; index++)
+        {
+            for (var change = 0; change < 5; change++) queue.Add(Event(DesktopPowerEventKind.StateChanged, Mains with { IsOnBattery = change % 2 == 0 }));
+            queue.Add(Event(kinds[index % 4], Mains));
+        }
+        queue.Add(new PlatformResult<DesktopPowerEvent>.Unavailable(PlatformUnavailableReason.BackendUnavailable));
+        queue.Add(Event(DesktopPowerEventKind.StateChanged, Mains with { IsLowPower = true }));
+        Check(queue.Count == 801, $"the queue holds {queue.Count}: 400 events, a state before each and one last state");
+        for (var index = 0; index < 400; index++)
+        {
+            Check(await queue.TakeAsync(CancellationToken.None) == Event(DesktopPowerEventKind.StateChanged, Mains with { IsOnBattery = true }),
+                "the latest of the five states before the event");
+            Check(await queue.TakeAsync(CancellationToken.None) == Event(kinds[index % 4], Mains), $"event {index} kept, in order");
+        }
+        Check(await queue.TakeAsync(CancellationToken.None) == Event(DesktopPowerEventKind.StateChanged, Mains with { IsLowPower = true }),
+            "a state replaces an Unavailable before it");
+        Check(queue.Count == 0, "the queue is empty");
+    }
+
     [Test, DisplayName("Power events: Unavailable reports once, then waits until cancelled or disposed")]
     public async Task UnavailableAsync()
     {

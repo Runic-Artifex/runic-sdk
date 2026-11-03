@@ -497,8 +497,9 @@ and KDE's set. UPower's `OnBattery` is `IsOnBattery`, and the `power-saver` prof
 of `org.freedesktop.UPower.PowerProfiles` (or the earlier `net.hadess.PowerProfiles`)
 is `IsLowPower`. Each source is optional; a value without one is `null`. Reads are
 `Unavailable(BackendUnavailable)`, with the `power-events-unavailable` diagnostic,
-only while none answers. When a source's owner leaves, a watch opens the sources
-again after a few seconds and reports the current state. Runic takes no logind delay
+only while none answers. When a source's owner leaves, a watch reports
+`Unavailable`, opens the sources again after a few seconds and reports the
+current state; sleeps, wakes and lock changes in that gap are missed. Runic takes no logind delay
 lock, so the system does not wait for the application before it sleeps. It needs
 no window and no GTK. Inside Flatpak it needs `--system-talk-name` for
 `org.freedesktop.login1`, `org.freedesktop.UPower` and

@@ -1,3 +1,5 @@
+using System.Collections.Concurrent;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using Runic.Platform.Runtime;
 using static Runic.Platform.MacOS.MacDesktopNative;
@@ -6,7 +8,9 @@ namespace Runic.Platform.MacOS;
 
 // B4: power and session events.
 // - NSWorkspace's notification center: NSWorkspaceWillSleepNotification and NSWorkspaceDidWakeNotification.
-// - The distributed com.apple.screenIsLocked and com.apple.screenIsUnlocked; CGSessionCopyCurrentDictionary's
+// - The distributed com.apple.screenIsLocked and com.apple.screenIsUnlocked, observed with
+//   NSNotificationSuspensionBehaviorDeliverImmediately: the block API's default suspends and coalesces distributed
+//   notifications while the application is inactive, which it is when the screen locks. CGSessionCopyCurrentDictionary's
 //   CGSSessionScreenIsLocked for a read.
 // - IOKit's providing power source (IOPSGetProvidingPowerSourceType), followed with notify(3)'s
 //   com.apple.system.powersources.source on a private dispatch queue.
@@ -79,6 +83,8 @@ internal sealed partial class MacPowerEvents : IPowerEventSource
         private readonly List<(nint Center, nint Observer)> _observers = [];
         private int _token = -1;
         private bool _disposed;
+        // The lock observer (RunicPowerLockObserver) and its distributed center.
+        private nint _lockObserver, _lockCenter;
 
         private Watch(Action<PlatformResult<DesktopPowerEvent>> report) => _tracker = new PowerStateTracker(report);
 
@@ -98,8 +104,7 @@ internal sealed partial class MacPowerEvents : IPowerEventSource
                     tracker.Resumed();
                     tracker.Update(ReadState() with { IsLocked = tracker.State.IsLocked });
                 });
-                watch.Observe(distributed, "com.apple.screenIsLocked", static tracker => tracker.Locked(true));
-                watch.Observe(distributed, "com.apple.screenIsUnlocked", static tracker => tracker.Locked(false));
+                watch.ObserveLock(distributed);
                 watch.Observe(local, "NSProcessInfoPowerStateDidChangeNotification", Refresh);
                 var handler = MacDesktopBlock.Create(_ => watch.Run(Refresh));
                 try { _ = NotifyRegisterDispatch("com.apple.system.powersources.source", out watch._token, s_queue.Value, handler); }
@@ -107,6 +112,23 @@ internal sealed partial class MacPowerEvents : IPowerEventSource
             }
             return watch;
         }
+
+        // Caller holds the gate. addObserver:selector:name:object:suspensionBehavior: delivers while the application is
+        // inactive; the selector-based observer is an instance of RunicPowerLockObserver mapped back to this watch.
+        private void ObserveLock(nint center)
+        {
+            var observer = Send(Send(LockObserverClass.Value, Sel("alloc")), Sel("init"));
+            if (observer == 0) return;
+            s_lockWatches[observer] = this;
+            AddObserverWithBehavior(center, Sel("addObserver:selector:name:object:suspensionBehavior:"), observer, Sel("runicScreenLocked:"),
+                String("com.apple.screenIsLocked"), 0, DeliverImmediately);
+            AddObserverWithBehavior(center, Sel("addObserver:selector:name:object:suspensionBehavior:"), observer, Sel("runicScreenUnlocked:"),
+                String("com.apple.screenIsUnlocked"), 0, DeliverImmediately);
+            _lockObserver = observer;
+            _lockCenter = center;
+        }
+
+        internal void ScreenLock(bool locked) => Run(tracker => tracker.Locked(locked));
 
         private static void Refresh(PowerStateTracker tracker) => tracker.Update(ReadState() with { IsLocked = tracker.State.IsLocked });
 
@@ -153,11 +175,53 @@ internal sealed partial class MacPowerEvents : IPowerEventSource
                     Release(observer);
                 }
                 _observers.Clear();
+                if (_lockObserver != 0)
+                {
+                    Arg(_lockCenter, Sel("removeObserver:"), _lockObserver);
+                    s_lockWatches.TryRemove(_lockObserver, out _);
+                    Release(_lockObserver);
+                    _lockObserver = 0;
+                }
                 if (_token >= 0) _ = NotifyCancel(_token);
             }
             return ValueTask.CompletedTask;
         }
     }
+
+    // NSNotificationSuspensionBehaviorDeliverImmediately.
+    private const nuint DeliverImmediately = 4;
+    private static readonly ConcurrentDictionary<nint, Watch> s_lockWatches = new();
+    private static readonly Lazy<nint> LockObserverClass = new(CreateLockObserverClass);
+
+    private static unsafe nint CreateLockObserverClass()
+    {
+        var type = AllocateClass(Class("NSObject"), "RunicPowerLockObserver", 0);
+        if (type == 0) throw new InvalidOperationException("The power lock observer class already exists.");
+        AddMethod(type, Sel("runicScreenLocked:"), (nint)(delegate* unmanaged[Cdecl]<nint, nint, nint, void>)&ScreenLocked, "v@:@");
+        AddMethod(type, Sel("runicScreenUnlocked:"), (nint)(delegate* unmanaged[Cdecl]<nint, nint, nint, void>)&ScreenUnlocked, "v@:@");
+        RegisterClass(type);
+        return type;
+    }
+
+    [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
+    private static void ScreenLocked(nint self, nint selector, nint notification)
+    {
+        if (s_lockWatches.TryGetValue(self, out var watch)) watch.ScreenLock(true);
+    }
+
+    [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
+    private static void ScreenUnlocked(nint self, nint selector, nint notification)
+    {
+        if (s_lockWatches.TryGetValue(self, out var watch)) watch.ScreenLock(false);
+    }
+
+    [LibraryImport("/usr/lib/libobjc.A.dylib", EntryPoint = "objc_allocateClassPair", StringMarshalling = StringMarshalling.Utf8)]
+    private static partial nint AllocateClass(nint parent, string name, nuint extra);
+    [LibraryImport("/usr/lib/libobjc.A.dylib", EntryPoint = "objc_registerClassPair")] private static partial void RegisterClass(nint type);
+    [LibraryImport("/usr/lib/libobjc.A.dylib", EntryPoint = "class_addMethod", StringMarshalling = StringMarshalling.Utf8)]
+    private static partial byte AddMethod(nint type, nint selector, nint implementation, string types);
+    [LibraryImport("/usr/lib/libobjc.A.dylib", EntryPoint = "objc_msgSend")]
+    private static partial void AddObserverWithBehavior(nint target, nint selector, nint observer, nint observed, nint name, nint @object, nuint behavior);
 
     [LibraryImport("/usr/lib/libobjc.A.dylib", EntryPoint = "objc_msgSend")]
     private static partial nint AddObserver(nint target, nint selector, nint name, nint @object, nint queue, nint block);

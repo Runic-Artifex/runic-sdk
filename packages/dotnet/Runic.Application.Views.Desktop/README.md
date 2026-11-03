@@ -466,8 +466,9 @@ The same Window and `async host => ...` body run on CS-WebUI with
 - `AddRunicPlatformServices()` also registers `IDesktopPowerEvents`, one singleton
   created by `DesktopPlatformServices.CreatePowerEvents()`: sleep, wake, session
   lock and battery events from `WM_POWERBROADCAST` and WTS on Windows, `NSWorkspace`
-  and IOKit on macOS, and logind and UPower on Linux. Under
-  `RUNIC_APPLICATION_SERVE_ONLY=1` it reports `Unavailable`; see
+  and IOKit on macOS, and logind and UPower on Linux. It decides on first use: once a
+  `RunicDesktopHost` with `ServeOnly` was built on the provider, or under
+  `RUNIC_APPLICATION_SERVE_ONLY=1`, it reports `Unavailable` and opens no watches; see
   [Power events](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Platform/README.md#power-events).
 - `AddRunicPlatformServices()` also registers `IApplicationPlatformServices`, the
   one instance of `DesktopPlatformServices.ForApplication()`: the application's

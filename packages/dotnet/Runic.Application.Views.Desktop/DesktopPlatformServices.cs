@@ -748,7 +748,8 @@ public static partial class DesktopPlatformServices
     /// <c>RUNIC_APPLICATION_SERVE_ONLY=1</c>, whose Windows are shown in a browser that may run on another computer,
     /// it reports <see cref="PlatformUnavailableReason.BackendUnavailable"/>.
     /// <see cref="DesktopPlatformServiceCollectionExtensions.AddRunicPlatformServices(IServiceCollection)"/> registers
-    /// one instance for the application.
+    /// one instance for the application, which decides on first use, so <c>RunicDesktopHostOptions.ServeOnly</c> of the
+    /// host built on that provider counts too and a headless server opens no system bus watches.
     /// </remarks>
     public static IDesktopPowerEvents CreatePowerEvents()
     {
@@ -760,6 +761,36 @@ public static partial class DesktopPlatformServices
         else if (OperatingSystem.IsLinux()) events = CreatePortalPowerEvents();
 #endif
         return events ?? DesktopPowerEvents.Unavailable(PlatformUnavailableReason.ProviderNotConfigured);
+    }
+
+    // AddRunicPlatformServices: decided on first use, once a RunicDesktopHost recorded RunicDesktopHostOptions.ServeOnly.
+    internal static IDesktopPowerEvents CreatePowerEvents(DesktopServeOnlyState serveOnly) =>
+        new LazyPowerEvents(() => serveOnly.Choose(CreatePowerEvents, DesktopPowerEvents.Unavailable));
+
+    private sealed class LazyPowerEvents(Func<IDesktopPowerEvents> create) : IDesktopPowerEvents, IDesktopServiceStatus
+    {
+        private readonly Lazy<IDesktopPowerEvents> _inner = new(create);
+        private volatile bool _disposed;
+
+        public CapabilityStatus Status => DesktopServiceStatus.Get(_inner.Value);
+
+        public ValueTask<PlatformResult<DesktopPowerState>> ReadAsync(CancellationToken cancellationToken = default)
+        {
+            ObjectDisposedException.ThrowIf(_disposed, this);
+            return _inner.Value.ReadAsync(cancellationToken);
+        }
+
+        public IAsyncEnumerable<PlatformResult<DesktopPowerEvent>> WatchAsync(CancellationToken cancellationToken = default)
+        {
+            ObjectDisposedException.ThrowIf(_disposed, this);
+            return _inner.Value.WatchAsync(cancellationToken);
+        }
+
+        public ValueTask DisposeAsync()
+        {
+            _disposed = true;
+            return _inner.IsValueCreated ? _inner.Value.DisposeAsync() : ValueTask.CompletedTask;
+        }
     }
 
     [SupportedOSPlatform("windows")]
@@ -1897,7 +1928,7 @@ public static class DesktopPlatformServiceCollectionExtensions
     /// <see cref="DesktopPlatformServices.CreateNotifications(string?)"/>, <see cref="DesktopPlatformServices.CreateStatusIcon(string?)"/>,
     /// <see cref="DesktopPlatformServices.CreateGlobalShortcuts(string?)"/>, <see cref="DesktopPlatformServices.CreateLoginStartup(string?)"/>, <see cref="DesktopPlatformServices.CreateInhibition(string?)"/>,
     /// <see cref="DesktopPlatformServices.CreateSecretStore()"/>, <see cref="DesktopPlatformServices.CreateTrash()"/>,
-    /// <see cref="DesktopPlatformServices.CreateFileTransfers()"/>, <see cref="DesktopPlatformServices.CreateVolumes"/>, <see cref="DesktopPlatformServices.CreateNetworkStatus"/>, <see cref="DesktopPlatformServices.CreatePowerEvents"/>, <see cref="DesktopPlatformServices.CreateApplications()"/>
+    /// <see cref="DesktopPlatformServices.CreateFileTransfers()"/>, <see cref="DesktopPlatformServices.CreateVolumes"/>, <see cref="DesktopPlatformServices.CreateNetworkStatus"/>, <see cref="DesktopPlatformServices.CreatePowerEvents()"/>, <see cref="DesktopPlatformServices.CreateApplications()"/>
     /// and <see cref="DesktopPlatformServices.CreateThumbnails()"/> when first resolved, and disposed with the service provider. Without an application ID, Linux notifications
     /// use the identity the desktop portal infers and Windows notifications report
     /// <see cref="PlatformUnavailableReason.ProviderNotConfigured"/>; pass the ID to
@@ -1963,7 +1994,7 @@ public static class DesktopPlatformServiceCollectionExtensions
                 provider.GetService<ILoggerFactory>()?.CreateLogger(DesktopBridgeTransport.LogCategory)));
         services.TryAddSingleton(static _ => DesktopPlatformServices.CreateVolumes());
         services.TryAddSingleton(static _ => DesktopPlatformServices.CreateNetworkStatus());
-        services.TryAddSingleton(static _ => DesktopPlatformServices.CreatePowerEvents());
+        services.TryAddSingleton(static provider => DesktopPlatformServices.CreatePowerEvents(provider.GetRequiredService<DesktopServeOnlyState>()));
         services.TryAddSingleton(static provider => DesktopPlatformServices.CreateApplications(
             provider.GetService<ILoggerFactory>()?.CreateLogger(DesktopBridgeTransport.LogCategory)));
         services.TryAddSingleton(static provider => DesktopPlatformServices.CreateThumbnails(

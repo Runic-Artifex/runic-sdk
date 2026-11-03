@@ -11,7 +11,8 @@ namespace Runic.Platform.Linux.Portal;
 // - UPower's OnBattery, and the power-profiles daemon's ActiveProfile ("power-saver" is low power), under its current
 //   name org.freedesktop.UPower.PowerProfiles or the earlier net.hadess.PowerProfiles.
 // Each source is optional; the state leaves out what does not answer, and the watch is unavailable only while none
-// answers. A source whose owner leaves restarts the watch after Retry, which reports the current state again.
+// answers. A source whose owner leaves restarts the watch after Retry: the watch reports Unavailable for the gap, in
+// which sleeps, wakes and lock changes are missed, and then the current state.
 internal sealed partial class PortalPowerEvents(PortalApplication? application = null, string? systemAddress = null, string login = PortalPowerEvents.LoginName,
     string upower = PortalPowerEvents.UPowerName, string profiles = PortalPowerEvents.ProfilesName,
     string legacyProfiles = PortalPowerEvents.LegacyProfilesName) : IPowerEventSource
@@ -97,7 +98,10 @@ internal sealed partial class PortalPowerEvents(PortalApplication? application =
             catch (OperationCanceledException) when (stop.IsCancellationRequested) { return; }
             catch (Exception error) when (IsUnavailable(error, stop) || error is OperationCanceledException or ChannelClosedException)
             {
-                // A source went away: open them again after Retry, which reports the current state again.
+                // A source went away: events until the sources are open again are missed, so the watch says so, and the
+                // reopened sources report the current state again, which the watch then shows even when it is unchanged.
+                if (!unavailable) report(new PlatformResult<DesktopPowerEvent>.Unavailable(PlatformUnavailableReason.BackendUnavailable));
+                unavailable = true;
             }
             finally { if (sources is not null) await sources.DisposeAsync().ConfigureAwait(false); }
             try { await Task.Delay(Retry, stop).ConfigureAwait(false); }
@@ -156,6 +160,11 @@ internal sealed partial class PortalPowerEvents(PortalApplication? application =
         private readonly Channel<DBusSignal> _signals = Channel.CreateUnbounded<DBusSignal>(new UnboundedChannelOptions { SingleReader = true });
         private readonly CancellationTokenSource _lost = new();
         private readonly List<DBusSignalSubscription> _subscriptions = [];
+        private readonly List<CancellationTokenRegistration> _owners = [];
+        private static int s_ownerRegistrations;
+
+        // The registrations on the sources' owners that are not disposed yet, in the process; for tests.
+        internal static int OwnerRegistrations => Volatile.Read(ref s_ownerRegistrations);
         private DBusProxy? _session;
         private DBusProxy? _upower;
         private (DBusProxy Proxy, string Interface)? _profiles;
@@ -187,7 +196,8 @@ internal sealed partial class PortalPowerEvents(PortalApplication? application =
             {
                 var connection = await PortalConnection.OpenSystemAsync(owner.SystemAddress, destination, cancellationToken)
                     .WaitAsync(CallTimeout, cancellationToken).ConfigureAwait(false);
-                connection.OwnerChanged.Register(static state => ((Sources)state!).Lose(), this);
+                _owners.Add(connection.OwnerChanged.Register(static state => ((Sources)state!).Lose(), this));
+                Interlocked.Increment(ref s_ownerRegistrations);
                 return connection;
             }
             catch (Exception error) when (IsUnavailable(error, cancellationToken)) { return null; }
@@ -312,6 +322,12 @@ internal sealed partial class PortalPowerEvents(PortalApplication? application =
         {
             foreach (var subscription in _subscriptions) await subscription.DisposeAsync().ConfigureAwait(false);
             _signals.Writer.TryComplete();
+            foreach (var owner in _owners)
+            {
+                await owner.DisposeAsync().ConfigureAwait(false);
+                Interlocked.Decrement(ref s_ownerRegistrations);
+            }
+            _owners.Clear();
             _lost.Dispose();
         }
     }

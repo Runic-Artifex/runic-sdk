@@ -51,8 +51,10 @@ internal sealed class PowerEventsTests
         profiles.Change(profilesName, "ActiveProfile", DBusValue.From("power-saver"));
         Check(await Next(watch) == Event(DesktopPowerEventKind.StateChanged, mains with { IsLowPower = true }), "the power-saver profile");
 
-        // logind leaves: the watch opens the sources again, which still answer, and reports the current state.
+        // logind leaves: the watch reports the gap, opens the sources again, which still answer, and reports the
+        // current state.
         await login.StopAsync();
+        Check(await Next(watch) is PlatformResult<DesktopPowerEvent>.Unavailable(PlatformUnavailableReason.BackendUnavailable), "the gap");
         Check(await Next(watch) == Event(DesktopPowerEventKind.StateChanged, new DesktopPowerState { IsOnBattery = false, IsLowPower = true }),
             "without logind the lock state is unknown");
     }
@@ -74,6 +76,22 @@ internal sealed class PowerEventsTests
         Check(await nothing.ReadAsync(CancellationToken.None) is PlatformResult<DesktopPowerState>.Unavailable(PlatformUnavailableReason.BackendUnavailable),
             "nothing answers");
         lock (diagnostics) Check(diagnostics.Any(static d => d.Code == "power-events-unavailable"), "the diagnostic says so");
+    }
+
+    [Test, Explicit, Category("DBus"), DisplayName("power: reads release their owner registrations")]
+    public async Task ReadsReleaseRegistrationsAsync()
+    {
+        string loginName = UniqueName("Login"), upowerName = UniqueName("UPower");
+        await using var login = await FakeService.StartAsync(loginName, "/org/freedesktop/login1", SessionPath);
+        await using var upower = await FakeService.StartAsync(upowerName, "/org/freedesktop/UPower");
+        login.Session!["LockedHint"] = DBusValue.From(false);
+        upower.Root["OnBattery"] = DBusValue.From(false);
+        var source = new PortalPowerEvents(null, Address(), login: loginName, upower: upowerName, profiles: UniqueName("Absent"), legacyProfiles: UniqueName("Absent"));
+        var before = PortalPowerEvents.Sources.OwnerRegistrations;
+        for (var index = 0; index < 20; index++)
+            Check(await source.ReadAsync(CancellationToken.None) is PlatformResult<DesktopPowerState>.Success, "a read");
+        Check(PortalPowerEvents.Sources.OwnerRegistrations == before,
+            $"twenty reads left {PortalPowerEvents.Sources.OwnerRegistrations - before} owner registrations");
     }
 
     private static PlatformResult<DesktopPowerEvent> Event(DesktopPowerEventKind kind, DesktopPowerState state) =>

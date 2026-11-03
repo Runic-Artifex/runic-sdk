@@ -151,7 +151,9 @@ public sealed class PortalApplication
     /// <c>org.freedesktop.UPower.PowerProfiles</c> (or <c>net.hadess.PowerProfiles</c>) is
     /// <see cref="DesktopPowerState.IsLowPower"/>. Each source is optional; a value without one is <see langword="null"/>,
     /// and reads and watches are <see cref="PlatformUnavailableReason.BackendUnavailable"/>, with the diagnostic
-    /// <c>power-events-unavailable</c>, only while none answers.
+    /// <c>power-events-unavailable</c>, only while none answers. A watch whose source's owner leaves reports
+    /// <see cref="PlatformResult{T}.Unavailable"/>, reconnects after a few seconds and reports the current state; events in
+    /// that gap are missed.
     /// Inside Flatpak the application needs <c>--system-talk-name</c> for each name.
     /// </para>
     /// <para>Runic takes no logind delay lock, so the system does not wait for the application before it sleeps. It

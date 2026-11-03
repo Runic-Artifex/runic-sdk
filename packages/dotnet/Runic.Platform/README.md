@@ -1249,7 +1249,9 @@ provider register `DesktopNetworkStatus.Unavailable(reason)`.
 the current state as `StateChanged`, then each `DesktopPowerEvent`: `Suspending`,
 `Resumed`, `Locked`, `Unlocked`, or `StateChanged` when the battery or low-power
 state changes, with the state after it. A repeated event and a `StateChanged` that
-changes nothing are not reported. `DesktopPowerEventKind` is open.
+changes nothing are not reported. A reader that falls behind loses no
+`Suspending`, `Resumed`, `Locked` or `Unlocked`; state changes waiting between
+them are combined into the latest. `DesktopPowerEventKind` is open.
 
 ```csharp
 await foreach (var result in power.WatchAsync(cancellationToken))
@@ -1266,12 +1268,14 @@ delay the sleep, so save what must not be lost as it changes.
 | Platform | Source |
 | --- | --- |
 | Windows | `WM_POWERBROADCAST` on a hidden window (with `RegisterSuspendResumeNotification`, also on modern standby), `WTSRegisterSessionNotification` for lock and unlock, and `GetSystemPowerStatus` for the battery and Battery Saver, read again on each power status or saver change |
-| macOS | `NSWorkspace`'s will-sleep and did-wake notifications and the screen lock notifications, delivered on the main run loop that Runic Desktop's event loop runs; IOKit's providing power source and `NSProcessInfo`'s Low Power Mode (macOS 12) |
-| Linux | logind's `PrepareForSleep` and the session's `Lock`, `Unlock` and `LockedHint`, UPower's `OnBattery`, and the `power-saver` profile, on the system bus. Each source is optional; none answering is `Unavailable(BackendUnavailable)` with the `power-events-unavailable` diagnostic. Inside Flatpak, allow the names with `--system-talk-name` |
+| macOS | `NSWorkspace`'s will-sleep and did-wake notifications and the screen lock notifications, delivered at once also while the application is inactive, on the main run loop that Runic Desktop's event loop runs; IOKit's providing power source and `NSProcessInfo`'s Low Power Mode (macOS 12) |
+| Linux | logind's `PrepareForSleep` and the session's `Lock`, `Unlock` and `LockedHint`, UPower's `OnBattery`, and the `power-saver` profile, on the system bus. Each source is optional; none answering is `Unavailable(BackendUnavailable)` with the `power-events-unavailable` diagnostic. When a source's daemon restarts, the watch reports `Unavailable` for the few seconds until it reconnects, then the current state: events in that gap, such as a sleep and wake, are missed. Inside Flatpak, allow the names with `--system-talk-name` |
 
 `DesktopPlatformServices.CreatePowerEvents()` and `AddRunicPlatformServices()`
-create one instance for the application; serve-only Runic Desktop and CS-WebUI
-register `DesktopPowerEvents.Unavailable(reason)`.
+create one instance for the application; serve-only Runic Desktop (by
+`RunicDesktopHostOptions.ServeOnly`, decided on first use, or
+`RUNIC_APPLICATION_SERVE_ONLY=1`) and CS-WebUI register
+`DesktopPowerEvents.Unavailable(reason)`.
 
 ## Thumbnails
 

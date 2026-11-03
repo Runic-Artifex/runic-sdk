@@ -79,8 +79,12 @@ public interface IDesktopPowerEvents : IAsyncDisposable
     /// <param name="cancellationToken">Ends the watch, which then throws <see cref="OperationCanceledException"/>.</param>
     /// <remarks>
     /// A <see cref="DesktopPowerEventKind.StateChanged"/> that leaves the state as it was is not reported, nor is a
-    /// repeated event, such as a second <see cref="DesktopPowerEventKind.Locked"/>. When a source goes away the watch
-    /// reports <see cref="PlatformResult{T}.Unavailable"/> and continues with the current state once it is back; without
+    /// repeated event, such as a second <see cref="DesktopPowerEventKind.Locked"/>. A reader that falls behind loses no
+    /// <see cref="DesktopPowerEventKind.Suspending"/>, <see cref="DesktopPowerEventKind.Resumed"/>,
+    /// <see cref="DesktopPowerEventKind.Locked"/> or <see cref="DesktopPowerEventKind.Unlocked"/>; state changes waiting
+    /// between two of them are combined into the latest. When a source goes away the watch
+    /// reports <see cref="PlatformResult{T}.Unavailable"/> and continues with the current state once it is back, so
+    /// events while it was away, such as a sleep and wake, are missed and only the state after them shows; without
     /// a source it reports <see cref="PlatformResult{T}.Unavailable"/> once and then waits. Disposing the service ends
     /// the watch.
     /// </remarks>

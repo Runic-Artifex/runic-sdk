@@ -171,6 +171,9 @@ internal sealed partial class MessageBoxTests
             try { await watch.MoveNextAsync(); throw new InvalidOperationException("A cancelled watch continued."); }
             catch (OperationCanceledException) { }
         }
+        // Each watch's window released its registrations in WM_DESTROY, while the window was still valid.
+        var (teardowns, late) = WindowsPowerEvents.Teardowns;
+        Check(teardowns >= 3 && late == 0, $"teardowns {teardowns}, after the window was gone {late}");
         Console.WriteLine("PASS native Windows power events: read, watched and unregistered");
     }
 

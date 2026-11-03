@@ -1,5 +1,4 @@
 using System.Runtime.CompilerServices;
-using System.Threading.Channels;
 
 namespace Runic.Platform.Runtime;
 
@@ -17,11 +16,11 @@ internal interface IPowerEventSource
 }
 
 // IDesktopPowerEvents over a source: the watch semantics every provider shares. Each watch subscribes on its own.
-// Events queue (up to a bound, then the oldest go), so a slow reader still sees each sleep and wake; a StateChanged that
-// leaves the state as it was and a repeated event are suppressed.
+// Suspending, Resumed, Locked and Unlocked queue and are never dropped, so a slow reader still sees each sleep, wake and
+// lock; StateChanged and Unavailable that follow another of their kind in the queue replace it, so only the latest
+// state waits (PowerEventQueue). A StateChanged that leaves the state as it was and a repeated event are suppressed.
 internal sealed class PowerEventsService(IPowerEventSource source) : IDesktopPowerEvents, IDesktopServiceStatus
 {
-    private const int Queue = 64;
     private readonly CancellationTokenSource _disposed = new();
 
     public CapabilityStatus Status { get; } = new CapabilityStatus.Available();
@@ -43,21 +42,20 @@ internal sealed class PowerEventsService(IPowerEventSource source) : IDesktopPow
     {
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _disposed.Token);
         var token = linked.Token;
-        var updates = Channel.CreateBounded<PlatformResult<DesktopPowerEvent>>(
-            new BoundedChannelOptions(Queue) { FullMode = BoundedChannelFullMode.DropOldest, SingleReader = true });
+        var updates = new PowerEventQueue();
         IAsyncDisposable? subscription = null;
         try
         {
-            try { subscription = await source.SubscribeAsync(result => updates.Writer.TryWrite(result), token).ConfigureAwait(false); }
+            try { subscription = await source.SubscribeAsync(updates.Add, token).ConfigureAwait(false); }
             catch (Exception error) when (error is not OperationCanceledException || !token.IsCancellationRequested)
             {
                 // Without a source the watch reports it once and waits.
-                updates.Writer.TryWrite(new PlatformResult<DesktopPowerEvent>.Unavailable(PlatformUnavailableReason.BackendUnavailable));
+                updates.Add(new PlatformResult<DesktopPowerEvent>.Unavailable(PlatformUnavailableReason.BackendUnavailable));
             }
             PlatformResult<DesktopPowerEvent>? previous = null;
             while (true)
             {
-                var next = await updates.Reader.ReadAsync(token).ConfigureAwait(false);
+                var next = await updates.TakeAsync(token).ConfigureAwait(false);
                 if (Repeats(previous, next)) continue;
                 previous = next;
                 yield return next;
@@ -81,6 +79,51 @@ internal sealed class PowerEventsService(IPowerEventSource source) : IDesktopPow
         _disposed.Cancel();
         return ValueTask.CompletedTask;
     }
+}
+
+// A watch's pending results, in order. Events are kept; a state (StateChanged, or Unavailable) replaces a state that is
+// last in the queue, so the queue holds at most one state between two events and a burst of changes costs nothing.
+#pragma warning disable CA1001 // The semaphore never allocates a wait handle: only WaitAsync waits on it.
+internal sealed class PowerEventQueue
+#pragma warning restore CA1001
+{
+    private readonly Lock _gate = new();
+    private readonly LinkedList<PlatformResult<DesktopPowerEvent>> _items = new();
+    private readonly SemaphoreSlim _available = new(0);
+
+    // Any thread.
+    internal void Add(PlatformResult<DesktopPowerEvent> result)
+    {
+        lock (_gate)
+        {
+            if (IsState(result) && _items.Last is { } last && IsState(last.Value))
+            {
+                last.Value = result;
+                return;
+            }
+            _items.AddLast(result);
+        }
+        _available.Release();
+    }
+
+    internal int Count
+    {
+        get { lock (_gate) return _items.Count; }
+    }
+
+    internal async ValueTask<PlatformResult<DesktopPowerEvent>> TakeAsync(CancellationToken cancellationToken)
+    {
+        await _available.WaitAsync(cancellationToken).ConfigureAwait(false);
+        lock (_gate)
+        {
+            var first = _items.First!;
+            _items.RemoveFirst();
+            return first.Value;
+        }
+    }
+
+    private static bool IsState(PlatformResult<DesktopPowerEvent> result) =>
+        result is PlatformResult<DesktopPowerEvent>.Unavailable or PlatformResult<DesktopPowerEvent>.Success { Value.Kind: DesktopPowerEventKind.StateChanged };
 }
 
 // The state a source keeps between native notifications, and the events they make. Not thread-safe: a source calls it

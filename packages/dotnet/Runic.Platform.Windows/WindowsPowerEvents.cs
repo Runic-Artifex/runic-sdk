@@ -27,6 +27,10 @@ internal sealed partial class WindowsPowerEvents : IPowerEventSource
     private static readonly Lock s_classLock = new();
     private static bool s_classRegistered;
     private static readonly ConcurrentDictionary<nint, Watch> s_windows = new();
+    private static int s_teardowns, s_lateTeardowns;
+
+    // Watches that released their registrations, and those that did so after their window was gone; for the native test.
+    internal static (int Teardowns, int Late) Teardowns => (Volatile.Read(ref s_teardowns), Volatile.Read(ref s_lateTeardowns));
 
     public ValueTask<PlatformResult<DesktopPowerState>> ReadAsync(CancellationToken cancellationToken)
     {
@@ -89,12 +93,13 @@ internal sealed partial class WindowsPowerEvents : IPowerEventSource
         private readonly TaskCompletionSource _stopped = new(TaskCreationOptions.RunContinuationsAsynchronously);
         private readonly PowerStateTracker _tracker = new(report);
         private nint _window;
+        // The window thread's registrations, released in WM_DESTROY while the window is still valid.
+        private bool _session;
+        private nint _suspendResume, _saver;
 
         internal unsafe void Run(TaskCompletionSource<bool> ready)
         {
             HWND window = default;
-            bool session = false;
-            nint suspendResume = 0, saver = 0;
             try
             {
                 var instance = PInvoke.GetModuleHandle((PCWSTR)null);
@@ -105,10 +110,10 @@ internal sealed partial class WindowsPowerEvents : IPowerEventSource
                         default, default, (HINSTANCE)instance.Value, null);
                 if (window == default) return;
                 s_windows[window] = this;
-                session = PInvoke.WTSRegisterSessionNotification(window, NotifyForThisSession);
-                suspendResume = RegisterSuspendResumeNotification(window, DeviceNotifyWindowHandle);
+                _session = PInvoke.WTSRegisterSessionNotification(window, NotifyForThisSession);
+                _suspendResume = RegisterSuspendResumeNotification(window, DeviceNotifyWindowHandle);
                 var setting = PowerSavingStatus;
-                saver = RegisterPowerSettingNotification(window, &setting, DeviceNotifyWindowHandle);
+                _saver = RegisterPowerSettingNotification(window, &setting, DeviceNotifyWindowHandle);
                 _tracker.Start(ReadState());
                 Volatile.Write(ref _window, window);
                 ready.TrySetResult(true);
@@ -126,10 +131,9 @@ internal sealed partial class WindowsPowerEvents : IPowerEventSource
                 Volatile.Write(ref _window, 0);
                 if (window != default)
                 {
-                    if (session) PInvoke.WTSUnRegisterSessionNotification(window);
-                    if (suspendResume != 0) _ = UnregisterSuspendResumeNotification(suspendResume);
-                    if (saver != 0) _ = UnregisterPowerSettingNotification(saver);
+                    // WM_DESTROY unregistered already unless the thread failed before the window closed.
                     if (PInvoke.IsWindow(window)) PInvoke.DestroyWindow(window);
+                    Unregister(window);
                     s_windows.TryRemove(window, out _);
                 }
                 _stopped.TrySetResult();
@@ -152,6 +156,22 @@ internal sealed partial class WindowsPowerEvents : IPowerEventSource
                     _tracker.Update(ReadState() with { IsLocked = _tracker.State.IsLocked });
                     break;
             }
+        }
+
+        // WM_DESTROY, while the window is still valid; again from the thread's end, which then does nothing.
+        internal void Unregister(HWND window)
+        {
+            if (_session || _suspendResume != 0 || _saver != 0)
+            {
+                Interlocked.Increment(ref s_teardowns);
+                if (!PInvoke.IsWindow(window)) Interlocked.Increment(ref s_lateTeardowns);
+            }
+            if (_session) PInvoke.WTSUnRegisterSessionNotification(window);
+            _session = false;
+            if (_suspendResume != 0) _ = UnregisterSuspendResumeNotification(_suspendResume);
+            _suspendResume = 0;
+            if (_saver != 0) _ = UnregisterPowerSettingNotification(_saver);
+            _saver = 0;
         }
 
         internal void Session(uint change)
@@ -205,6 +225,7 @@ internal sealed partial class WindowsPowerEvents : IPowerEventSource
                     PInvoke.DestroyWindow(window);
                     return (LRESULT)0;
                 case PInvoke.WM_DESTROY:
+                    if (s_windows.TryGetValue(window, out var closing)) closing.Unregister(window);
                     PInvoke.PostQuitMessage(0);
                     return (LRESULT)0;
             }
