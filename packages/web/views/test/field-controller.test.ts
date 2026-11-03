@@ -538,3 +538,67 @@ test("parse and format options replace the kind's text form (C1)", () => {
   assert.equal((controller.current.error as FieldError).message, "Enter a percentage.");
   assert.equal(controller.current.text, "lots");
 });
+
+test("a DateTimeOffset edit keeps the value's offset: unchanged text, and a local time in a DST overlap (C1 review)", () => {
+  const zone = process.env["TZ"];
+  process.env["TZ"] = "Europe/Berlin";
+  try {
+    assert.equal(new Date(Date.UTC(2026, 9, 25, 1, 30)).getHours(), 2, "the runtime follows TZ");
+    const field = <T>(definition: Partial<BridgeField<Client, State, T>>, initial: T) => {
+      const values: unknown[] = [];
+      let shown = initial;
+      const controller = createFieldController<State, Client, T>({ read: () => shown, write: (_client, value) => { values.push(value); return Promise.resolve(); }, ...definition }, { coalesce: false });
+      controller.setSource({ state: { title: "", step: 0, titleErrors: [] }, client: fakeClient({ title: "", step: 0, titleErrors: [] }) });
+      return {
+        text: () => controller.current.text,
+        parse(text: string): unknown { values.length = 0; controller.inputText(text); return values[0]; },
+      };
+    };
+    // 2026-10-25 02:30 occurs twice in Berlin: +02:00, then +01:00 after the clocks go back at 03:00.
+    const second = field<string>({ kind: "datetime", offset: true }, "2026-10-25T02:30:00.1234567+01:00");
+    assert.equal(second.text(), "2026-10-25T02:30:00.1234567");
+    assert.equal(second.parse("2026-10-25T02:30:00.1234567"), "2026-10-25T02:30:00.1234567+01:00", "unchanged text is the value");
+    assert.equal(second.parse("2026-10-25T02:45"), "2026-10-25T02:45:00+01:00", "the overlap keeps the previous offset");
+    const first = field<string>({ kind: "datetime", offset: true }, "2026-10-25T02:30:00+02:00");
+    assert.equal(first.parse("2026-10-25T02:45"), "2026-10-25T02:45:00+02:00");
+    // Another zone's offset: unchanged text keeps it; an edit outside an overlap gets the page's offset.
+    const tokyo = field<string>({ kind: "datetime", offset: true }, "2026-07-01T18:00:00+09:00");
+    assert.equal(tokyo.parse(tokyo.text()), "2026-07-01T18:00:00+09:00");
+    assert.equal(tokyo.parse("2026-07-01T12:00"), "2026-07-01T12:00:00+02:00");
+    // A UTC DateTime in the overlap stays at the instant nearest its value.
+    const utc = field<string>({ kind: "datetime" }, "2026-10-25T01:30:00Z");
+    assert.equal(utc.text(), "2026-10-25T02:30");
+    assert.equal(utc.parse("2026-10-25T02:45"), "2026-10-25T01:45:00Z");
+  } finally {
+    if (zone === undefined) delete process.env["TZ"]; else process.env["TZ"] = zone;
+  }
+});
+
+test("scale counts the digits of the number, not of the text typed (C1 review)", () => {
+  const parse = (text: string, scale: number, locale?: string) => {
+    const values: unknown[] = [];
+    const controller = createFieldController<State, Client, number>({ kind: "number", read: () => 0, write: (_client, value) => { values.push(value); return Promise.resolve(); } },
+      { scale, ...locale === undefined ? {} : { locale } });
+    controller.setSource({ state: { title: "", step: 0, titleErrors: [] }, client: fakeClient({ title: "", step: 0, titleErrors: [] }) });
+    controller.inputText(text);
+    return controller.current.error instanceof FieldError ? controller.current.error.kind : values[0];
+  };
+  assert.equal(parse("1.50e2", 0), 150);
+  assert.equal(parse("2.50", 1), 2.5, "trailing zeros are not digits of the number");
+  assert.equal(parse("1e-7", 6), "invalid-text");
+  assert.equal(parse("1e-7", 7), 1e-7);
+  assert.equal(parse("1,500", 0, "en-US"), 1500, "a group separator is not a decimal point");
+});
+
+test("a nullable UTC DateTime that starts as null needs a parse that writes UTC (C1 review, documented)", () => {
+  const write = (options: Parameters<typeof createFieldController<State, Client, string | null>>[1]) => {
+    const values: unknown[] = [];
+    const controller = createFieldController<State, Client, string | null>({ kind: "datetime", nullable: true, read: () => null, write: (_client, value) => { values.push(value); return Promise.resolve(); } }, options);
+    controller.setSource({ state: { title: "", step: 0, titleErrors: [] }, client: fakeClient({ title: "", step: 0, titleErrors: [] }) });
+    controller.inputText("2026-07-01T12:00");
+    return values[0];
+  };
+  assert.equal(write({}), "2026-07-01T12:00:00", "without a value to follow, the text stays a local date and time");
+  const utc = write({ parse: text => text.trim() === "" ? null : new Date(text).toISOString().replace(/\.000Z$/, "Z") }) as string;
+  assert.match(utc, /^2026-07-01T\d{2}:00:00Z$/);
+});

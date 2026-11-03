@@ -439,6 +439,17 @@ An empty text is `null` for a nullable field of any kind but `text`.
 
 A `datetime` text without an offset is a local date and time: a `DateTimeOffset` gets the page's offset at that time,
 a `DateTime` in UTC stays in UTC, and other `DateTime` values stay local. An offset typed (`…T09:30+02:00`) is kept.
+Text that still shows the field's value is that value, with its offset and fraction, and in a DST overlap (a local
+time that occurs twice) an edit keeps the offset of the value it replaces. A `DateTime`'s kind (UTC or local) is a
+convention of the application that the generator cannot see, so it is taken from the value the field replaces: a
+nullable UTC `DateTime` that starts as `null` would be written as a local date and time, which .NET reads as
+`Unspecified`. Give such a field a `parse` that writes UTC:
+
+```ts
+const due = createFieldController(TaskFields.dueUtc, {
+  parse: text => text.trim() === "" ? null : new Date(text).toISOString().replace(/\.000Z$/, "Z"),
+});
+```
 
 Options:
 
@@ -457,7 +468,9 @@ Options:
   decimal separator and digits (`1,5`) and reads them, with group separators between thousands (`1.234,5`; `1.5` is
   not 15 in German). Without it the text is the invariant form (`1.5`), which `<input type="number">` needs; use
   `locale` with `<input inputmode="decimal">`. Text is never grouped while it is edited.
-- `scale` limits the digits after the decimal separator of a `number` or `decimal` text.
+- `scale` limits the digits after the decimal separator of a `number` or `decimal` value: of the number the text
+  means, so `1.50e2` has none and `1e-7` has 7. A `decimal` keeps its trailing zeros (`1.50` has 2); a `number` has
+  none.
 - `parse(text, previous)` and `format(value)` replace the kind's text form, such as for a percentage or a date shown
   in the user's locale. A `parse` that throws keeps the text as the draft with an `invalid-text` `FieldError` carrying
   the thrown message. The controller's `format(value)` returns the text of a value as the field shows it.
