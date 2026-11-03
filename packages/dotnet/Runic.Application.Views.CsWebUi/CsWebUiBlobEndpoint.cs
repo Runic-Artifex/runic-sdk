@@ -89,74 +89,13 @@ internal sealed class CsWebUiBlobEndpoint : IDisposable
         }
     }
 
+    // Every request ends with its response closed, or aborted when it failed midway.
     private async Task HandleAsync(HttpListenerContext context)
     {
         var response = context.Response;
         try
         {
-            var request = context.Request;
-            var path = request.Url?.AbsolutePath ?? "/";
-            var upload = path == "/" + BridgeBlobEndpoint.UploadPath;
-            var blob = path.StartsWith("/" + BridgeBlobEndpoint.BlobsPath, StringComparison.Ordinal);
-            var token = blob ? path[(BridgeBlobEndpoint.BlobsPath.Length + 1)..] : null;
-            if (!upload && (!blob || token!.Length == 0 || token.Contains('/')))
-            {
-                response.StatusCode = 404;
-                return;
-            }
-            var origin = request.Headers["Origin"] ?? string.Empty;
-            var pageOrigin = PageOrigin();
-            var fromPage = origin.Length > 0 && pageOrigin is not null && IsPageOrigin(origin, pageOrigin);
-            if (fromPage)
-            {
-                response.Headers["Access-Control-Allow-Origin"] = origin;
-                response.Headers["Access-Control-Allow-Credentials"] = "true";
-                response.Headers["Vary"] = "Origin";
-            }
-            var method = request.HttpMethod;
-            if (string.Equals(method, "OPTIONS", StringComparison.OrdinalIgnoreCase))
-            {
-                if (!fromPage)
-                {
-                    Deny(response, "preflight from another origin");
-                    return;
-                }
-                response.Headers["Access-Control-Allow-Methods"] = upload ? "POST" : "GET, HEAD";
-                response.Headers["Access-Control-Allow-Headers"] =
-                    $"Content-Type, {BridgeBlobs.UploadTokenHeader}, {BridgeBlobs.UploadNameHeader}, Range";
-                response.Headers["Access-Control-Max-Age"] = "600";
-                response.StatusCode = 204;
-                return;
-            }
-            if (upload)
-            {
-                if (!string.Equals(method, "POST", StringComparison.OrdinalIgnoreCase))
-                {
-                    response.StatusCode = 405;
-                    return;
-                }
-                if (!fromPage)
-                {
-                    Deny(response, "upload from another origin");
-                    return;
-                }
-                await _blobs.ReceiveUploadAsync(new Exchange(context, _stop.Token)).ConfigureAwait(false);
-                return;
-            }
-            if (!string.Equals(method, "GET", StringComparison.OrdinalIgnoreCase) && !string.Equals(method, "HEAD", StringComparison.OrdinalIgnoreCase))
-            {
-                response.StatusCode = 405;
-                return;
-            }
-            // The page is another port of the same host, so its own loads are same-site.
-            if (string.Equals(request.Headers["Sec-Fetch-Site"], "cross-site", StringComparison.OrdinalIgnoreCase) ||
-                origin.Length > 0 && !fromPage)
-            {
-                Deny(response, "blob request from another site");
-                return;
-            }
-            response.Headers["Access-Control-Expose-Headers"] = "Content-Disposition, Content-Length, Content-Range";
-            await _blobs.ServeBlobAsync(token!, new Exchange(context, _stop.Token)).ConfigureAwait(false);
+            await RespondAsync(context).ConfigureAwait(false);
         }
         catch (Exception error) when (error is HttpListenerException or IOException or ObjectDisposedException or InvalidOperationException)
         {
@@ -167,32 +106,100 @@ internal sealed class CsWebUiBlobEndpoint : IDisposable
         catch (Exception error) when (error is HttpListenerException or ObjectDisposedException or InvalidOperationException) { }
     }
 
+    private async Task RespondAsync(HttpListenerContext context)
+    {
+        var response = context.Response;
+        var request = context.Request;
+        var path = request.Url?.AbsolutePath ?? "/";
+        var upload = path == "/" + BridgeBlobEndpoint.UploadPath;
+        var blob = path.StartsWith("/" + BridgeBlobEndpoint.BlobsPath, StringComparison.Ordinal);
+        var token = blob ? path[(BridgeBlobEndpoint.BlobsPath.Length + 1)..] : null;
+        if (!upload && (!blob || token!.Length == 0 || token.Contains('/')))
+        {
+            response.StatusCode = 404;
+            return;
+        }
+        var origin = request.Headers["Origin"] ?? string.Empty;
+        var pageOrigin = PageOrigin();
+        var fromPage = origin.Length > 0 && pageOrigin is not null && IsPageOrigin(origin, pageOrigin);
+        // Every response grants the page's origin, also one to a request without Origin such as an <img>: the
+        // browser caches a blob as immutable and may answer a later fetch of the page from that cached response.
+        if (pageOrigin is not null)
+        {
+            response.Headers["Access-Control-Allow-Origin"] = fromPage ? origin : pageOrigin;
+            response.Headers["Access-Control-Allow-Credentials"] = "true";
+            response.Headers["Vary"] = "Origin";
+        }
+        var method = request.HttpMethod;
+        if (string.Equals(method, "OPTIONS", StringComparison.OrdinalIgnoreCase))
+        {
+            if (!fromPage)
+            {
+                Deny(response, "preflight from another origin");
+                return;
+            }
+            response.Headers["Access-Control-Allow-Methods"] = upload ? "POST" : "GET, HEAD";
+            response.Headers["Access-Control-Allow-Headers"] =
+                $"Content-Type, {BridgeBlobs.UploadTokenHeader}, {BridgeBlobs.UploadNameHeader}, Range";
+            response.Headers["Access-Control-Max-Age"] = "600";
+            response.StatusCode = 204;
+            return;
+        }
+        if (upload)
+        {
+            if (!string.Equals(method, "POST", StringComparison.OrdinalIgnoreCase))
+            {
+                response.StatusCode = 405;
+                return;
+            }
+            if (!fromPage)
+            {
+                Deny(response, "upload from another origin");
+                return;
+            }
+            await _blobs.ReceiveUploadAsync(new Exchange(context, _stop.Token)).ConfigureAwait(false);
+            return;
+        }
+        if (!string.Equals(method, "GET", StringComparison.OrdinalIgnoreCase) && !string.Equals(method, "HEAD", StringComparison.OrdinalIgnoreCase))
+        {
+            response.StatusCode = 405;
+            return;
+        }
+        // The page is another port of the same host, so its own loads are same-site.
+        if (string.Equals(request.Headers["Sec-Fetch-Site"], "cross-site", StringComparison.OrdinalIgnoreCase) ||
+            origin.Length > 0 && !fromPage)
+        {
+            Deny(response, "blob request from another site");
+            return;
+        }
+        response.Headers["Access-Control-Expose-Headers"] = "Content-Disposition, Content-Length, Content-Range";
+        await _blobs.ServeBlobAsync(token!, new Exchange(context, _stop.Token)).ConfigureAwait(false);
+    }
+
     private void Deny(HttpListenerResponse response, string reason)
     {
         BlobsLog.RequestDenied(_blobs.Logger, "CS-WebUI blob", reason);
         response.StatusCode = 403;
     }
 
-    // The origin WebUI serves the window's page from, or null before it is shown.
+    // The origin WebUI serves the window's page from, or null before it is shown. WebUI reports its URL with the
+    // machine's address, while a local browser loads it as localhost: the page is the window's port on a loopback name.
     private string? PageOrigin()
     {
         try
         {
-            return _window.Url is { Length: > 0 } url && Uri.TryCreate(url, UriKind.Absolute, out var page)
-                ? page.GetLeftPart(UriPartial.Authority) : null;
+            return _window.Port is var port and > 0 ? string.Create(CultureInfo.InvariantCulture, $"http://localhost:{port}") : null;
         }
         catch (ObjectDisposedException) { return null; }
     }
 
-    // The page's origin, also under the other loopback name of the same port.
+    // An origin of the window's page: http on the page's port, with a loopback name.
     internal static bool IsPageOrigin(string origin, string pageOrigin)
     {
         if (!Uri.TryCreate(origin, UriKind.Absolute, out var candidate) || !Uri.TryCreate(pageOrigin, UriKind.Absolute, out var page))
             return false;
-        if (candidate.Scheme != page.Scheme || candidate.Port != page.Port || candidate.PathAndQuery != "/") return false;
-        static bool Loopback(string host) => host is "localhost" or "127.0.0.1";
-        return string.Equals(candidate.Host, page.Host, StringComparison.OrdinalIgnoreCase)
-            || Loopback(candidate.Host) && Loopback(page.Host);
+        return candidate.Scheme == page.Scheme && candidate.Port == page.Port && candidate.PathAndQuery == "/"
+            && candidate.Host is "localhost" or "127.0.0.1" or "[::1]";
     }
 
     public void Dispose()

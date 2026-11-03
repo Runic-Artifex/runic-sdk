@@ -34,8 +34,10 @@ switch (args.SingleOrDefault())
     case "--probe-embedded-assets":
         await ProbeEmbeddedAssetsAsync();
         break;
+    case "--probe-blobs":
+        return ProbeBlobs();
     default:
-        Console.Error.WriteLine("Usage: CsWebUiWindowProbes --probe-factory-failure | --probe-window-close | --probe-close-guard | --probe-missing-bridge | --probe-show-failure | --probe-platform-services | --probe-menu-bar | --probe-embedded-assets");
+        Console.Error.WriteLine("Usage: CsWebUiWindowProbes --probe-factory-failure | --probe-window-close | --probe-close-guard | --probe-missing-bridge | --probe-show-failure | --probe-platform-services | --probe-menu-bar | --probe-embedded-assets | --probe-blobs");
         return 2;
 }
 WebUiApplication.Clean();
@@ -310,6 +312,41 @@ static int ProbeMenuBar()
     }
 }
 
+// blobs/1 on CS-WebUI (blobs-probe.mjs drives the page from Chromium): the window's blob endpoint serves the avatar to
+// the page's origin, takes a streamed upload with the connection's token, and the attach command reads it.
+static int ProbeBlobs()
+{
+    var root = Directory.CreateTempSubdirectory("runic-cswebui-blobs-");
+    try
+    {
+        File.Copy(Path.Combine(AppContext.BaseDirectory, "www", "runic-cswebui.js"), Path.Combine(root.FullName, "runic-cswebui.js"));
+        File.WriteAllText(Path.Combine(root.FullName, "index.html"),
+            "<!doctype html><html><head><meta charset=\"utf-8\"><title>Blob probe</title>" +
+            "<script src=\"/webui.js\"></script><script src=\"runic-cswebui.js\"></script></head><body></body></html>");
+        var services = new ServiceCollection();
+        services.AddScoped<BlobProbeViewModel>();
+        services.AddRunicViews();
+        using var provider = services.BuildServiceProvider(new ServiceProviderOptions { ValidateScopes = true });
+        BlobProbeViewModel? model = null;
+        var result = RunicCsWebUiHost.Run(provider, new RunicCsWebUiHostOptions { MaximumUploadBytes = 4 * 1_048_576 }, async host =>
+        {
+            await using var window = await host.OpenWindowAsync<BlobProbeWindow>(new RunicWindowOptions { ContentRoot = root.FullName });
+            model = (BlobProbeViewModel)window.DataContext!;
+            await window.WaitForCloseAsync();
+            return 0;
+        });
+        if (result != 0) return result;
+        if (model?.Received is not { Length: 1_000_000 } received || received.Any(static value => value != (byte)'x') || model.ReceivedName != "probe.txt")
+            throw new InvalidOperationException($"The attach command received {model?.Received?.Length} bytes named {model?.ReceivedName}.");
+        Console.WriteLine("CSWEBUI_BLOBS_OK");
+        return 0;
+    }
+    finally
+    {
+        root.Delete(recursive: true);
+    }
+}
+
 // #726 and #730: a Window serves an asset source through its file handler, without a folder. One folder of an
 // archive is served as a frontend of its own; a path the source does not declare answers 404 instead of a file of the
 // working directory, WebUI's default root; and WebUI's authentication cookie, which a file handler turns off, still
@@ -461,6 +498,32 @@ namespace CsWebUiWindowProbes
     }
 
     public sealed partial class ProbeWindow : RunicWindow<ProbeViewModel>;
+
+    // blobs/1: a 1x1 PNG avatar and a command that reads an upload.
+    public sealed partial class BlobProbeViewModel : ObservableObject
+    {
+        private static readonly byte[] Pixel = Convert.FromBase64String(
+            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8DwHwAFBQIAX8jx0gAAAABJRU5ErkJggg==");
+
+        [ObservableProperty]
+        public partial Runic.Application.Views.RunicBlob Avatar { get; private set; } =
+            Runic.Application.Views.RunicBlob.FromBytes(Pixel, "image/png", "avatar.png");
+
+        [Runic.Application.Views.RunicIgnore] public byte[]? Received { get; private set; }
+        [Runic.Application.Views.RunicIgnore] public string? ReceivedName { get; private set; }
+
+        [RelayCommand]
+        private async Task AttachAsync(Runic.Application.Views.RunicUpload file, CancellationToken cancellationToken)
+        {
+            await using var stream = await file.OpenReadAsync(cancellationToken);
+            using var copy = new MemoryStream();
+            await stream.CopyToAsync(copy, cancellationToken);
+            Received = copy.ToArray();
+            ReceivedName = file.FileName;
+        }
+    }
+
+    public sealed partial class BlobProbeWindow : RunicWindow<BlobProbeViewModel>;
 
     internal static class DesktopMenuProbe
     {
