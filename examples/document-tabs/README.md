@@ -58,6 +58,9 @@ details. See
   built executable, as the
   [opening files and URLs design](../../specs/platform/open-activation.md)
   describes.
+- **Back.** The page calls `installBackNavigation()`, so the mouse's Back
+  button, Alt+Left and Cmd+[ go back in the selected tab: from a details page to
+  its document, through the pages' guards (`navigation-path/1`).
 
 ```sh
 dotnet run --project examples/document-tabs

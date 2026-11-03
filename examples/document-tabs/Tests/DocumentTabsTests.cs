@@ -157,6 +157,19 @@ public sealed class DocumentTabsTests : IAsyncDisposable
     }
 
     [Test]
+    public async Task The_window_Back_goes_back_in_the_selected_tab()
+    {
+        var tabs = await OpenAsync(2);
+        (await Document(tabs, 1).ExecuteAsync(vm => vm.ShowDetailsCommand)).ThrowIfFailed();
+        // The mouse's Back button and Alt+Left, which the page maps with installBackNavigation().
+        var back = await _host.NavigateBackAsync();
+        await Assert.That(back.Outcome?.Kind).IsEqualTo(NavigationOutcomeKind.Committed);
+        await Assert.That((await TabsAsync()).Regions[1].Content?.Kind).IsEqualTo("document");
+        var none = await _host.NavigateBackAsync();
+        await Assert.That(none.Outcome?.Rejection).IsEqualTo(NavigationRejection.NoHistory);
+    }
+
+    [Test]
     public async Task A_deep_link_opens_or_selects_the_document_tab()
     {
         var tabs = await OpenAsync(2);

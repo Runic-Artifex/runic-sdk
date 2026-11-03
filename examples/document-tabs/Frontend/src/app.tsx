@@ -1,6 +1,6 @@
 import { createContext, StrictMode, useContext, useState } from "react";
 import { createRoot } from "react-dom/client";
-import { regionEntries, useCommand, useField, useView, ViewOutlet, type ViewRegistry } from "@runic-artifex/react";
+import { installBackNavigation, regionEntries, useCommand, useField, useView, ViewOutlet, type ViewRegistry } from "@runic-artifex/react";
 import { DocumentFields, type DocumentPageReference } from "./generated/document.js";
 import type { DocumentInfoPageReference } from "./generated/documentInfo.js";
 import { connectDocuments, type DocumentsState } from "./generated/documents.js";
@@ -121,4 +121,6 @@ function DocumentInfoPage({ page }: { page: DocumentInfoPageReference }) {
 
 const pages = { document: DocumentPage, documentInfo: DocumentInfoPage } satisfies ViewRegistry<TabPage>;
 
+// The mouse's Back button, Alt+Left and Cmd+[ go back in the selected tab, through its pages' guards.
+installBackNavigation();
 createRoot(document.querySelector("#app")!).render(<StrictMode><App /></StrictMode>);
