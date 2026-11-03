@@ -507,17 +507,17 @@ public sealed class RunicViewDriver<TModel> where TModel : class
     /// <param name="connectionKey">The connection identity, for tests of a client disconnect.</param>
     /// <returns>The presentation; dispose it to stop answering, or unmount it.</returns>
     /// <exception cref="InvalidOperationException">The open or the registration was not answered <c>ok</c>; the message names the reply.</exception>
-    public RunicTestPresentation<TModel> Present(string? presentation = null, string? clientKey = null, string? connectionKey = null) =>
-        PresentAsync(presentation, clientKey, connectionKey).GetAwaiter().GetResult();
+    public RunicTestPresentation<TModel> MountPresentation(string? presentation = null, string? clientKey = null, string? connectionKey = null) =>
+        MountPresentationAsync(presentation, clientKey, connectionKey).GetAwaiter().GetResult();
 
-    /// <summary>Opens a presentation that acts as a page's View, as <see cref="Present"/> does, without blocking a thread.</summary>
+    /// <summary>Opens a presentation that acts as a page's View, as <see cref="MountPresentation"/> does, without blocking a thread.</summary>
     /// <param name="presentation">The presentation id; the host issues <c>test-presentation{n}</c> when omitted.</param>
     /// <param name="clientKey">The client identity, for tests of several browser clients.</param>
     /// <param name="connectionKey">The connection identity, for tests of a client disconnect.</param>
     /// <param name="cancellationToken">Stops waiting for the replies.</param>
     /// <returns>The presentation; dispose it to stop answering, or unmount it.</returns>
     /// <exception cref="InvalidOperationException">The open or the registration was not answered <c>ok</c>; the message names the reply.</exception>
-    public async Task<RunicTestPresentation<TModel>> PresentAsync(string? presentation = null, string? clientKey = null,
+    public async Task<RunicTestPresentation<TModel>> MountPresentationAsync(string? presentation = null, string? clientKey = null,
         string? connectionKey = null, CancellationToken cancellationToken = default)
     {
         var id = await MountAsync(presentation, clientKey, connectionKey, cancellationToken).ConfigureAwait(false);

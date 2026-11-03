@@ -122,17 +122,17 @@ public static class ReactiveInteractionDescriptor
             {
                 var invocation = RunicInteractionInvocation.Current;
                 if (invocation is null) return;
-                // Only routes of the invoking window, its own route first. The window's router decides whether another
-                // route may answer: from a navigation hook, such as the guard of the page the shell's Back leaves, or
-                // from the window's close decision.
+                // Only routes of the invoking window. The window's router selects among all of them: a command's own
+                // page, preferring its own route, or in the window scope (a close decision, a menu-bar command,
+                // EnterWindow) the window's one presentation that handles the interaction on any of its routes.
                 Binding<TInput, TOutput>[] bindings;
-                lock (_gate)
-                    bindings = [.. _bindings.Where(candidate => ReferenceEquals(candidate.Session, invocation.Session))
-                        .OrderBy(candidate => string.Equals(candidate.Route, invocation.Route, StringComparison.Ordinal) ? 0 : 1)];
-                foreach (var binding in bindings)
+                lock (_gate) bindings = [.. _bindings.Where(candidate => ReferenceEquals(candidate.Session, invocation.Session))];
+                foreach (var group in bindings.GroupBy(candidate => (candidate.Name, candidate.Contract)))
                 {
-                    var request = binding.Session.Interactions.TryRequest(binding.Route, binding.Name, binding.Contract,
-                        context.Input, binding.EncodeInput, binding.DecodeOutput, binding.Timeout);
+                    var binding = group.First();
+                    var request = binding.Session.Interactions.TryRequest(group.Select(member => member.Route).ToArray(),
+                        binding.Name, binding.Contract, context.Input, binding.EncodeInput, binding.DecodeOutput, binding.Timeout,
+                        CancellationToken.None);
                     if (request is null) continue;
                     context.SetOutput(await request.ConfigureAwait(false));
                     return;

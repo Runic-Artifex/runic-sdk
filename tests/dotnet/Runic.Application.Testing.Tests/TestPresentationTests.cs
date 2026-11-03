@@ -2,7 +2,7 @@ using TUnit.Core;
 
 namespace Runic.Application.Testing.Tests;
 
-// RunicViewDriver.Present (A4): a test presentation answers the ViewModel's questions and interactions with the
+// RunicViewDriver.MountPresentation (A4): a test presentation answers the ViewModel's questions and interactions with the
 // handlers the test registers, and takes its view requests, through the generated Bridges of ViewRequestCodegenFixture.
 public sealed class TestPresentationTests
 {
@@ -16,7 +16,7 @@ public sealed class TestPresentationTests
             (transport, content, vm) => new ToolkitViewRequestBridge(transport, vm, content: content),
             new RunicWindowTestHostOptions { RootRoute = "toolkitViewRequest", ViewLocator = new TestViewLocator() });
 
-        using var page = await host.Root.PresentAsync();
+        using var page = await host.Root.MountPresentationAsync();
         var kept = await page.NextViewRequestAsync();
         Require(kept.Name == "focus" && kept.Input<ViewRequestFocusTarget>() == new ViewRequestFocusTarget("title", false),
             $"The kept request did not reach the presentation: {kept}");
@@ -40,7 +40,7 @@ public sealed class TestPresentationTests
         using var host = new RunicWindowTestHost<ReactiveViewRequestViewModel>(model,
             (transport, content, vm) => new ReactiveViewRequestBridge(transport, vm, content: content),
             new RunicWindowTestHostOptions { RootRoute = "reactiveViewRequest", ViewLocator = new TestViewLocator() });
-        using var page = await host.Root.PresentAsync();
+        using var page = await host.Root.MountPresentationAsync();
         await page.HandleAsync<ViewRequestDiscard, bool>(vm => vm.ConfirmDiscard,
             (request, _) => ValueTask.FromResult(request.Title == "Draft"));
         (await host.Root.ExecuteAsync(vm => vm.DiscardCommand)).ThrowIfFailed();

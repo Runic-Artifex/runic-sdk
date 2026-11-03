@@ -529,18 +529,23 @@ The browser is asked when the page's own window starts the departure:
 | A bridged command of this View, such as `close()` or `startClose()` | This View, mounted by the browser connection that ran the command |
 | A bridged command of another View in the same window, such as the shell's Back | This View, mounted by the browser connection that ran the command |
 | A guarded window close: the close button with `GuardClose`, or `RequestCloseAsync()` | This View, when it is the only presentation in the window with a mounted handler |
-| A command of the window's menu bar (`IRunicMenuCommandSource`) | This View, when it is the only presentation in the window with a mounted handler |
+| A menu item clicked in the page's in-page menu bar (`IRunicMenuCommandSource`) | This View, mounted by the browser connection that clicked it |
+| A menu item the native menu bar or a host shortcut runs | This View, when it is the only presentation in the window with a mounted handler |
 | .NET code in `RunicInteractionInvocation.EnterWindow(viewModel)`, such as a timer or a notification's `Activated` | This View, when it is the only presentation in the window with a mounted handler |
 | Navigation that .NET code starts outside a command and the window scope, such as startup | .NET handlers only |
 | A command of another window that navigates this window's region | .NET handlers only |
 
 - An interaction never crosses windows or browser connections. A command's
   question goes only to the connection and client that ran the command, on
-  whichever route of the window asks it. A close, a menu-bar command and
-  `EnterWindow` have no browser caller (the window scope), so they ask only
-  when exactly one presentation in the window, from any connection, has
-  mounted a handler; with several, as in a multi-client CS-WebUI window, none
-  is asked. Application code cannot claim a browser caller's identity.
+  whichever route of the window asks it. A close, a native menu-bar command
+  and `EnterWindow` have no browser caller (the window scope), so they ask
+  only when exactly one presentation in the window, from any connection and on
+  any route that presents the ViewModel, has mounted a handler; with several,
+  as in a multi-client CS-WebUI window or a ViewModel shown in two panes, none
+  is asked. Application code cannot claim a browser caller's identity, and
+  `EnterWindow` inside a command keeps the command's narrower scope.
+- Since 0.16 a .NET fallback that used to answer a cross-route or menu-bar
+  question is skipped while a page has a handler mounted, also a 0.15 page.
 - One-way requests to the page, such as focusing a field, are
   `ViewRequest<T>` members, which need no answer and no fallback; see
   [Asking the page](../Runic.Application.Views/README.md#asking-the-page-view-requests-and-questions).

@@ -23,7 +23,10 @@ public enum ViewRequestDelivery
     /// </summary>
     NextMounted = 1,
 
-    /// <summary>Sends the request to every presentation of the window that handles it, such as a toast in every pane.</summary>
+    /// <summary>
+    /// Sends the request to every presentation of the window that handles it, on every connection of the window, also
+    /// when a command raised it: a window-wide announcement, such as a toast in every pane.
+    /// </summary>
     Broadcast = 2,
 }
 
@@ -44,8 +47,10 @@ public enum ViewRequestDelivery
 /// private void Add() { Items.Add(item); Focus.Raise(new FocusTarget(item.Id)); }
 /// </code>
 /// <para>
-/// A request is not state: a snapshot or a reconnect never repeats it, and it never reaches another window or
-/// connection. The page handles it once it has rendered the state that includes everything the ViewModel changed before
+/// A request is not state: a snapshot or a reconnect never repeats it, and it never reaches another window.
+/// <see cref="ViewRequestDelivery.Drop"/> and <see cref="ViewRequestDelivery.NextMounted"/> requests that a command
+/// raises reach only the invoking page's connection; a <see cref="ViewRequestDelivery.Broadcast"/> reaches every
+/// connection of the window. The page handles it once it has rendered the state that includes everything the ViewModel changed before
 /// raising it, so a handler finds the new row in the page. A page or host of an earlier release ignores requests.
 /// </para>
 /// </remarks>
@@ -54,9 +59,9 @@ public sealed class ViewRequest<T>
 {
     private readonly object _gate = new();
     private readonly List<ViewRequestBinding<T>> _bindings = [];
-    // NextMounted: a request raised while no route of the window presented the ViewModel, kept for the first route
-    // that does (in the invoking window, when it was raised in one).
-    private (T Input, WindowContentSession? Window)? _unattached;
+    // NextMounted: a request raised while no route of any window presented the ViewModel, kept for the first window that
+    // presents it. It holds no window: a request kept for a window is the window's (BridgeInteractionRouter).
+    private (T Input, bool Kept) _unattached;
 
     /// <summary>Creates a view request.</summary>
     /// <param name="delivery">Where the request goes; by default <see cref="ViewRequestDelivery.Drop"/>.</param>
@@ -82,9 +87,18 @@ public sealed class ViewRequest<T>
     {
         var invocation = RunicInteractionInvocation.Current;
         ViewRequestBinding<T>[] bindings;
-        lock (_gate) bindings = [.. _bindings];
+        lock (_gate)
+        {
+            bindings = [.. _bindings];
+            // No window presents the ViewModel yet: the first one that does receives it.
+            if (bindings.Length == 0)
+            {
+                if (Delivery is ViewRequestDelivery.NextMounted) _unattached = (input, true);
+                return;
+            }
+        }
         // The request belongs to the window of the invoking scope, or to the one window that presents the ViewModel.
-        WindowContentSession? window;
+        WindowContentSession window;
         if (invocation is not null) window = invocation.Session;
         else
         {
@@ -94,22 +108,20 @@ public sealed class ViewRequest<T>
                 ViewsLog.ViewRequestDropped(windows[0].Logger, bindings[0].Name, "several windows present the ViewModel");
                 return;
             }
-            window = windows.FirstOrDefault();
+            window = windows[0];
         }
         var inWindow = bindings.Where(binding => ReferenceEquals(binding.Session, window)).ToArray();
         if (inWindow.Length == 0)
         {
+            // The invoking window does not present the ViewModel now: a NextMounted request waits in that window, and
+            // goes with it when it closes.
             if (Delivery is ViewRequestDelivery.NextMounted)
-            {
-                // Kept until a route of that window (or of any window) presents the ViewModel.
-                lock (_gate) _unattached = (input, window);
-                if (window is not null) ViewsLog.ViewRequestKept(window.Logger, bindings.FirstOrDefault()?.Name ?? "?");
-            }
+                window.Interactions.KeepViewRequest(this, bindings[0].Name, bindings[0].Contract, bindings[0].Encode(input, window), invocation);
             return;
         }
         var first = inWindow[0];
         var json = first.Encode(input, first.Session);
-        lock (_gate) _unattached = null;
+        lock (_gate) _unattached = default;
         first.Session.Interactions.RaiseViewRequest(this, inWindow.Select(binding => binding.Route).ToArray(), first.Name,
             first.Contract, json, Delivery, invocation);
     }
@@ -117,21 +129,23 @@ public sealed class ViewRequest<T>
     // The generated Bridge of a route that presents the ViewModel attaches the request to its window.
     internal IDisposable Attach(ViewRequestBinding<T> binding)
     {
-        (T Input, WindowContentSession? Window)? kept;
+        // Registered first: a window that is closing throws here, with no binding added and the kept request kept.
+        var lease = binding.Session.Interactions.RegisterViewRequest(this, binding.Route, binding.Name, binding.Contract);
+        (T Input, bool Kept) unattached;
         lock (_gate)
         {
             _bindings.Add(binding);
-            kept = _unattached is { } value && (value.Window is null || ReferenceEquals(value.Window, binding.Session)) ? value : null;
-            if (kept is not null) _unattached = null;
+            unattached = _unattached;
+            _unattached = default;
         }
-        var lease = binding.Session.Interactions.RegisterViewRequest(binding.Route, binding.Name, binding.Contract);
-        if (kept is { } held)
+        if (unattached.Kept)
         {
             try
             {
                 binding.Session.Interactions.RaiseViewRequest(this, [binding.Route], binding.Name, binding.Contract,
-                    binding.Encode(held.Input, binding.Session), ViewRequestDelivery.NextMounted, invocation: null);
+                    binding.Encode(unattached.Input, binding.Session), ViewRequestDelivery.NextMounted, invocation: null);
             }
+            // An input over this window's limit is dropped, as Raise would have refused it.
             catch (ArgumentException) { }
         }
         return new Lease(this, binding, lease);
@@ -234,13 +248,14 @@ public sealed class ViewQuestion<TInput, TOutput>
         if (RunicInteractionInvocation.Current is { } invocation)
         {
             ViewQuestionBinding<TInput, TOutput>[] bindings;
-            lock (_gate)
-                bindings = [.. _bindings.Where(binding => ReferenceEquals(binding.Session, invocation.Session))
-                    .OrderBy(binding => string.Equals(binding.Route, invocation.Route, StringComparison.Ordinal) ? 0 : 1)];
-            foreach (var binding in bindings)
+            lock (_gate) bindings = [.. _bindings.Where(binding => ReferenceEquals(binding.Session, invocation.Session))];
+            // The router selects among every route of the window that presents the ViewModel, so the window scope asks
+            // only when exactly one presentation of the window handles the question.
+            foreach (var group in bindings.GroupBy(binding => (binding.Name, binding.Contract)))
             {
-                var request = binding.Session.Interactions.TryRequest(binding.Route, binding.Name, binding.Contract, input,
-                    binding.EncodeInput, binding.DecodeOutput, Timeout, cancellationToken);
+                var binding = group.First();
+                var request = binding.Session.Interactions.TryRequest(group.Select(member => member.Route).ToArray(), binding.Name,
+                    binding.Contract, input, binding.EncodeInput, binding.DecodeOutput, Timeout, cancellationToken);
                 if (request is not null) return await request.ConfigureAwait(false);
             }
         }

@@ -16,7 +16,8 @@ namespace Runic.Application.Views.Menus;
 // IMenuBarSource and IMenuBarPageWindow; it references neither Runic.Desktop nor Views.Desktop.
 // - Requests to the reserved route runic.menu-bar, after the connection's hello: menu-bar-watch answers the state and
 //   pushes each later state to the connection; menu-bar-unwatch ends that; menu-bar-invoke runs an item through
-//   IMenuBarPageWindow.TryExecuteAsync, the native bar's command path on Runic Desktop; menu-bar-shortcuts takes or
+//   IMenuBarPageWindow.TryExecuteAsync with the invoking connection, so the Window's command runs as that page's command
+//   invocation; an item only the application's commands run takes the native bar's path; menu-bar-shortcuts takes or
 //   returns the connection's "app" lease, under which the page matches the items' shortcuts itself and the host's own
 //   path runs nothing. A closed connection ends its watch and its leases.
 // - The pushes are targeted, because `shortcuts` differs per connection. On CS-WebUI they travel through the Views
@@ -45,8 +46,10 @@ internal interface IMenuBarPageWindow
     event EventHandler? PlacementChanged;
     // Whether each item can run now, asked as TryExecuteAsync asks. ObjectDisposedException once the window closed.
     Task<bool[]> CanExecuteAsync(IReadOnlyList<DesktopMenuItem> items, CancellationToken cancellationToken);
-    // Runs the item as the native bar does; false when it is disabled or no command can run it now.
-    ValueTask<bool> TryExecuteAsync(DesktopMenuItem item, CancellationToken cancellationToken);
+    // Runs the item as the native bar does; false when it is disabled or no command can run it now. invoker is the
+    // connection whose page chose the item: the Window's command runs in a command invocation of that client and
+    // connection, so it reaches only that page's presentation (specs/application, "Interactions", Scope).
+    ValueTask<bool> TryExecuteAsync(DesktopMenuItem item, BridgeConnection invoker, CancellationToken cancellationToken);
     // While the page holds the "app" lease, the host's own matching is suspended.
     void SuspendHostShortcuts(bool suspended);
 }
@@ -369,7 +372,7 @@ internal sealed class MenuBarPageRoutes : IDisposable, IBridgeRouteHandler
                     || !root.TryGetProperty("key", out var keyValue) || keyValue.ValueKind != JsonValueKind.String
                     || keyValue.GetString() is not { Length: > 0 and <= MaximumKeyLength } key)
                     return new(InvalidRequest("A menu-bar-invoke request has a revision and a key."));
-                return InvokeAsync(revision, key, cancellationToken);
+                return InvokeAsync(revision, key, request.Connection, cancellationToken);
             case "menu-bar-shortcuts":
                 if (!root.TryGetProperty("shortcuts", out var value) || value.ValueKind != JsonValueKind.String
                     || value.GetString() is not ("app" or "runic"))
@@ -380,7 +383,8 @@ internal sealed class MenuBarPageRoutes : IDisposable, IBridgeRouteHandler
         }
     }
 
-    private async ValueTask<ReadOnlyMemory<byte>> InvokeAsync(long revision, string key, CancellationToken cancellationToken)
+    private async ValueTask<ReadOnlyMemory<byte>> InvokeAsync(long revision, string key, BridgeConnection invoker,
+        CancellationToken cancellationToken)
     {
         Snapshot snapshot;
         IMenuBarPageWindow? window;
@@ -396,7 +400,7 @@ internal sealed class MenuBarPageRoutes : IDisposable, IBridgeRouteHandler
         if (window is null) return Result("disabled");
         try
         {
-            return Result(await window.TryExecuteAsync(item, cancellationToken).ConfigureAwait(false) ? "executed" : "disabled");
+            return Result(await window.TryExecuteAsync(item, invoker, cancellationToken).ConfigureAwait(false) ? "executed" : "disabled");
         }
         catch (ObjectDisposedException)
         {

@@ -63,6 +63,18 @@ public sealed class ViewRequestRoutingTests
         Require((await window.RequestsAsync()).Single().Connection == "connection-1",
             "The window scope did not reach its single presentation.");
 
+        // A page's command keeps its own scope: EnterWindow does not widen it to another page.
+        window.OpenAndRegister("p-2", "connection-2", "focus");
+        using (RunicInteractionInvocation.Enter(window.Session, Route, "client-2", "connection-2"))
+        {
+            Require(!RunicInteractionInvocation.TryEnterWindow(window.Model, out var kept) && RunicInteractionInvocation.Current?.ConnectionKey == "connection-2",
+                "EnterWindow replaced the invoking command's scope.");
+            using (kept) window.Model.Focus.Raise(new FocusTarget("command"));
+        }
+        Require((await window.RequestsAsync()).Single().Connection == "connection-2",
+            "A request raised in EnterWindow inside a command did not keep to the invoking page.");
+        window.Close("p-2", "connection-2");
+
         // A presentation without a registration, and one that unregistered, receives nothing.
         window.Register("p-1", "connection-1", 2);
         window.Model.Focus.Raise(new FocusTarget("d"));
@@ -138,9 +150,9 @@ public sealed class ViewRequestRoutingTests
         // A connection without view-requests/1 cannot register; generation 0 is invalid.
         window.Hello("connection-old", "client-old", features: false);
         window.Open("p-old", "connection-old", "client-old");
-        Require(window.Rejection(RequestWindow.RegisterJson("p-old", 1, "focus"), "connection-old", "client-old") == "invalid-request",
+        Require(window.Rejection(RequestWindow.RegisterJson("p-old", 1, ["focus"]), "connection-old", "client-old") == "invalid-request",
             "A connection without the feature registered view requests.");
-        Require(window.Rejection(RequestWindow.RegisterJson("p-1", 0, "focus"), "connection-1") == "invalid-request",
+        Require(window.Rejection(RequestWindow.RegisterJson("p-1", 0, ["focus"]), "connection-1") == "invalid-request",
             "Generation 0 was accepted.");
         var hello = JsonNode.Parse(window.Transport.Request(
             """{"kind":"hello","protocol":4,"session":"s-features","client":{"name":"t","version":"1"},"features":["view-requests/1"]}""",
@@ -238,6 +250,128 @@ public sealed class ViewRequestRoutingTests
             "Cancelling the question's token did not cancel it.");
     }
 
+    [Test]
+    public async Task TheWindowScopeCountsPresentationsOnEveryRouteOfTheObjectAsync()
+    {
+        using var window = new RequestWindow();
+        window.AddRoute("requests-compact");
+        using var fallback = window.Model.Confirm.RegisterHandler(context => context.SetOutput(false));
+        using var main = ReactiveInteractionDescriptor.Create<RequestModel, string, bool>("confirm", "testing.confirm",
+            model => model.Confirm, static input => JsonSerializer.Serialize(input), static output => output.GetBoolean())
+            .Attach(window.Session, window.Model, Route);
+        using var compact = ReactiveInteractionDescriptor.Create<RequestModel, string, bool>("confirm", "testing.confirm",
+            model => model.Confirm, static input => JsonSerializer.Serialize(input), static output => output.GetBoolean())
+            .Attach(window.Session, window.Model, "requests-compact");
+        const string handlers = """[{"name":"confirm","contract":"testing.confirm"}]""";
+        window.Open("p-1", "connection-1", handlers: handlers);
+        window.OpenAndRegisterOn(Route, "p-r1", "connection-1", "focus");
+
+        // One presentation handles each on the window's routes: the window scope asks it.
+        Task<bool> single;
+        using (RunicInteractionInvocation.EnterWindow(window.Model)) single = window.Model.Confirm.Handle("One?");
+        window.Answer((await window.NextPushAsync("interaction")).Json, "true");
+        Require(await single.WaitScaledAsync(TimeSpan.FromSeconds(5)), "The window's single presentation was not asked.");
+
+        // A second presentation on the object's other route: the window has two, so it asks neither, as a request
+        // goes to neither.
+        window.Open("p-2", "connection-2", handlers: handlers, route: "requests-compact");
+        window.OpenAndRegisterOn("requests-compact", "p-r2", "connection-2", "focus");
+        using (RunicInteractionInvocation.EnterWindow(window.Model))
+        {
+            Require(!await window.Model.Confirm.Handle("Two?").WaitScaledAsync(TimeSpan.FromSeconds(5)),
+                "The window scope asked one of two presentations on the object's routes.");
+            window.Model.Focus.Raise(new FocusTarget("two"));
+        }
+        Require((await window.RequestsAsync()).Count == 0, "A request reached one of two presentations on the object's routes.");
+        Require(window.Transport.TakeMessages().All(message => message.Kind != "interaction"), "An interaction was pushed.");
+
+        // A command still reaches its own page, preferring its own route.
+        Task<bool> own;
+        using (RunicInteractionInvocation.Enter(window.Session, "requests-compact", "client-2", "connection-2"))
+            own = window.Model.Confirm.Handle("Mine?");
+        var push = await window.NextPushAsync("interaction");
+        Require(push.Connection == "connection-2" && push.Json["route"]!.GetValue<string>() == "requests-compact",
+            $"The command did not ask its own page: {push.Json}");
+        window.Answer(push.Json, "true", "connection-2");
+        Require(await own.WaitScaledAsync(TimeSpan.FromSeconds(5)), "The command's own page did not answer.");
+    }
+
+    [Test]
+    public async Task RaiseOutsideTheModelTurnReturnsAtOnceAndDeliversInTheNextTurnAsync()
+    {
+        using var window = new RequestWindow();
+        window.OpenAndRegister("p-1", "connection-1", "focus");
+        var release = new ManualResetEventSlim();
+        var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        // The model context is busy with another turn.
+        var busy = Task.Run(async () => await window.Session.ModelContext!.InvokeAsync(() =>
+        {
+            entered.SetResult();
+            release.Wait(TimeSpan.FromSeconds(10));
+        }));
+        await entered.Task.WaitScaledAsync(TimeSpan.FromSeconds(5));
+        var raised = Task.Run(() => window.Model.Focus.Raise(new FocusTarget("later")));
+        Require(await Task.WhenAny(raised, Task.Delay(TimeSpan.FromSeconds(2))) == raised,
+            "Raise waited for the busy model turn.");
+        Require(window.Transport.Messages.All(message => message.Kind != "view-request"),
+            "The request was pushed before its turn published the route.");
+        release.Set();
+        await busy.WaitScaledAsync(TimeSpan.FromSeconds(5));
+        var push = await window.NextPushAsync("view-request");
+        Require(push.Json["input"]!["member"]!.GetValue<string>() == "later" && push.Json["revision"]!.GetValue<long>() == window.Revision(),
+            $"The request was not delivered after the busy turn: {push.Json}");
+    }
+
+    [Test]
+    public async Task RaiseInsideABatchKeepsTheBatchsLaterChangesForItsFrameAsync()
+    {
+        using var window = new RequestWindow();
+        window.OpenAndRegister("p-1", "connection-1", "focus");
+        _ = window.Transport.TakeMessages();
+        await window.InTurnAsync(() =>
+        {
+            using (BridgeSnapshotBatch.Begin(window.Model))
+            {
+                window.Model.Title = "before";
+                window.Model.Focus.Raise(new FocusTarget("title"));
+                window.Model.Note = "after";
+            }
+        });
+        bool Sets(JsonObject frame, string field) => frame["changes"]!.AsArray().Any(change => change!["field"]!.GetValue<string>() == field);
+        var messages = new List<JsonObject>();
+        var deadline = DateTime.UtcNow.AddSeconds(5);
+        while (!(messages.Any(message => message["kind"]!.GetValue<string>() == "view-request")
+            && messages.Any(message => message["kind"]!.GetValue<string>() == "frame" && Sets(message, "note"))))
+        {
+            if (DateTime.UtcNow > deadline) throw new TimeoutException($"Pushes so far: {string.Join(", ", messages)}");
+            await Task.Delay(10);
+            messages.AddRange(window.Transport.TakeMessages().Select(message => JsonNode.Parse(message.Json)!.AsObject()));
+        }
+        var push = messages.Single(message => message["kind"]!.GetValue<string>() == "view-request");
+        var frames = messages.Where(message => message["kind"]!.GetValue<string>() == "frame").ToList();
+        var revision = push["revision"]!.GetValue<long>();
+        Require(frames.Any(frame => frame["revision"]!.GetValue<long>() == revision && Sets(frame, "title") && !Sets(frame, "note")),
+            $"The request's revision is not the frame with the change before it: {push} {string.Join(", ", frames)}");
+        Require(frames.Any(frame => frame["revision"]!.GetValue<long>() > revision && Sets(frame, "note")),
+            $"The batch's later change did not reach a later frame: {string.Join(", ", frames)}");
+    }
+
+    [Test]
+    public async Task ARequestKeptForAConnectionThatClosesIsNotDeliveredToItsNextConnectionAsync()
+    {
+        using var window = new RequestWindow();
+        window.Open("p-3", "connection-3");
+        using (RunicInteractionInvocation.Enter(window.Session, Route, "client-3", "connection-3"))
+            window.Model.Reveal.Raise(9);
+        // The page reloads: its next connection, of the same client, registers the request.
+        window.CloseConnection("connection-3");
+        window.Hello("connection-3b", "client-3");
+        window.Open("p-3", "connection-3b", client: "client-3");
+        Require(window.Request(RequestWindow.RegisterJson("p-3", 1, ["reveal"]), "connection-3b", "client-3")["registration"]!
+            .GetValue<string>() == "ok", "The new connection did not register.");
+        Require((await window.RequestsAsync()).Count == 0, "A request kept for a closed connection reached its next connection.");
+    }
+
     // A window with one route that presents a RequestModel through a Bridge written against the generated-code API.
     private sealed class RequestWindow : IDisposable
     {
@@ -275,9 +409,18 @@ public sealed class ViewRequestRoutingTests
                 ["features"] = features ? new JsonArray("view-requests/1") : new JsonArray(),
             }, connection, client);
 
-        public void Open(string presentation, string connection, string? client = null, string? handlers = null)
+        // The same ViewModel on another route of the window, as two content slots that present one object.
+        public void AddRoute(string route)
         {
-            var message = new JsonObject { ["kind"] = "open", ["route"] = Route, ["presentation"] = presentation };
+            _extra.Add(new RequestBridge(Transport, Model, Session, route));
+            _extra.Add(Session.AttachRootInteractionPresentation(route));
+        }
+
+        private readonly List<IDisposable> _extra = [];
+
+        public void Open(string presentation, string connection, string? client = null, string? handlers = null, string route = Route)
+        {
+            var message = new JsonObject { ["kind"] = "open", ["route"] = route, ["presentation"] = presentation };
             if (handlers is not null) message["handlers"] = JsonNode.Parse(handlers);
             var reply = Request(message, connection, client);
             Require(reply["presentation"]?.GetValue<string>() == "ok"
@@ -287,16 +430,20 @@ public sealed class ViewRequestRoutingTests
         public void Close(string presentation, string connection) =>
             Request(new JsonObject { ["kind"] = "close", ["route"] = Route, ["presentation"] = presentation }, connection);
 
-        public void OpenAndRegister(string presentation, string connection, params string[] requests)
+        public void OpenAndRegister(string presentation, string connection, params string[] requests) =>
+            OpenAndRegisterOn(Route, presentation, connection, requests);
+
+        public void OpenAndRegisterOn(string route, string presentation, string connection, params string[] requests)
         {
-            Open(presentation, connection);
-            Require(Register(presentation, connection, 1, requests) == "ok", "The view requests were not registered.");
+            Open(presentation, connection, route: route);
+            Require(Request(RegisterJson(presentation, 1, requests, route), connection)["registration"]!.GetValue<string>() == "ok",
+                "The view requests were not registered.");
         }
 
-        public static JsonObject RegisterJson(string presentation, long generation, params string[] requests) => new()
+        public static JsonObject RegisterJson(string presentation, long generation, string[] requests, string route = Route) => new()
         {
             ["kind"] = "view-requests",
-            ["route"] = Route,
+            ["route"] = route,
             ["presentation"] = presentation,
             ["generation"] = generation,
             ["requests"] = new JsonArray([.. requests.Select(name => (JsonNode)new JsonObject
@@ -309,6 +456,9 @@ public sealed class ViewRequestRoutingTests
         public string Register(string presentation, string connection, long generation, params string[] requests) =>
             Request(RegisterJson(presentation, generation, requests), connection)["registration"]!.GetValue<string>();
 
+        // Closes a connection, as a page that reloads does; its next hello is a new connection.
+        public void CloseConnection(string connection) => Transport.CloseConnection(connection);
+
         public string? Rejection(JsonObject message, string connection, string? client = null) =>
             Request(message, connection, client)["error"]?["reason"]?.GetValue<string>();
 
@@ -319,6 +469,8 @@ public sealed class ViewRequestRoutingTests
         // The view-request pushes since the last call, after the window handed its pushes to the transport.
         public async Task<List<(string Connection, JsonObject Json)>> RequestsAsync()
         {
+            // A request raised outside the model turn is delivered in the next turn: one more turn runs after it.
+            await Session.ModelContext!.InvokeAsync(static () => { }).AsTask().WaitScaledAsync(TimeSpan.FromSeconds(5));
             await BridgeTargetedPushes.For(Transport).WhenSent().WaitScaledAsync(TimeSpan.FromSeconds(5));
             Take();
             var requests = _pending.Where(push => push.Json["kind"]!.GetValue<string>() == "view-request").ToList();
@@ -344,7 +496,7 @@ public sealed class ViewRequestRoutingTests
             }
         }
 
-        public void Answer(JsonObject push, string output) =>
+        public void Answer(JsonObject push, string output, string connection = "connection-1") =>
             Request(new JsonObject
             {
                 ["kind"] = "interaction-reply",
@@ -356,17 +508,18 @@ public sealed class ViewRequestRoutingTests
                 ["contract"] = push["contract"]!.GetValue<string>(),
                 ["outcome"] = "answered",
                 ["output"] = JsonNode.Parse(output),
-            }, "connection-1");
+            }, connection);
 
         private void Take() => _pending.AddRange(Transport.TakeMessages().Where(message => message.ConnectionKey is not null)
             .Select(message => (message.ConnectionKey!, JsonNode.Parse(message.Json)!.AsObject())));
 
-        private JsonObject Request(JsonObject message, string connection, string? client = null) =>
+        public JsonObject Request(JsonObject message, string connection, string? client = null) =>
             JsonNode.Parse(Transport.Request(message.ToJsonString(), connection,
                 client ?? "client-" + connection["connection-".Length..]))!.AsObject();
 
         public void Dispose()
         {
+            foreach (var extra in Enumerable.Reverse(_extra)) extra.Dispose();
             _rootPresentations.Dispose();
             _bridge.Dispose();
             Session.Dispose();
@@ -386,6 +539,14 @@ public sealed class ViewRequestRoutingTests
             set { _title = value; Raise(); }
         }
 
+        private string _note = "";
+
+        public string Note
+        {
+            get => _note;
+            set { _note = value; Raise(); }
+        }
+
         public ViewRequest<FocusTarget> Focus { get; } = new();
         public ViewRequest<int> Reveal { get; } = new(ViewRequestDelivery.NextMounted);
         public ViewRequest<string> Toast { get; } = new(ViewRequestDelivery.Broadcast);
@@ -396,10 +557,10 @@ public sealed class ViewRequestRoutingTests
         private void Raise([CallerMemberName] string? name = null) => PropertyChanged?.Invoke(this, new(name));
     }
 
-    private sealed class RequestBridge(IBridgeTransport transport, RequestModel model, WindowContentSession session)
-        : ViewModelBridge<RequestModel>(transport, model, Route,
-            [new("title", (writer, value) => writer.WriteStringValue(value.Title))],
-            [new("Title", "title", value => value.Title, null)], [], [], content: session,
+    private sealed class RequestBridge(IBridgeTransport transport, RequestModel model, WindowContentSession session, string route = Route)
+        : ViewModelBridge<RequestModel>(transport, model, route,
+            [new("title", (writer, value) => writer.WriteStringValue(value.Title)), new("note", (writer, value) => writer.WriteStringValue(value.Note))],
+            [new("Title", "title", value => value.Title, null), new("Note", "note", value => value.Note, null)], [], [], content: session,
             interactions:
             [
                 Views.Generated.ViewRequestDescriptor.Create<RequestModel, FocusTarget>("focus", FocusContract, value => value.Focus,

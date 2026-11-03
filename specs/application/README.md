@@ -979,17 +979,21 @@ confirmation.
   pending or an identity that does not match, or `invalid-output` when `output` does not decode, in which case the
   waiting interaction fails with an output error.
 
-**Scope.** Only work of the same window can reach the page, and a request never crosses to another window, client or
-connection. Two scopes exist:
+**Scope.** Only work of the same window can reach the page, and an interaction never crosses to another window, client
+or connection. An interaction object (a ViewModel's member) can be presented on several routes of the window; the
+presentations that count are those of all of them. Two scopes exist:
 
 - A **command invocation** reaches only the single presentation of the invoking client and connection that registered
   the handler. It reaches the invoking route or another route of the same window opened by that client and connection,
   such as the content View whose interaction a shell's command asks, or the leave guard of the page that the shell's
-  Back departs.
-- The **window scope** reaches the single presentation of the window that registered the handler, from any connection.
-  With none or several, it asks nothing. The window's close decision (a user's close or a close the application
-  requests) and a command of the window's menu bar run in it, and the application can enter it for other work of the
-  window, such as a timer or a notification's activation.
+  Back departs. A presentation on the invoking route is preferred when it is the only one there. A page's click on a
+  menu item of its in-page menu bar is such a command invocation, with the identity of the connection that sent the
+  click.
+- The **window scope** reaches the single presentation of the window that registered the handler, from any connection,
+  counted over every route that presents the object. With none or several, it asks nothing. The window's close
+  decision (a user's close or a close the application requests) and a command that the window's native menu bar or a
+  host shortcut runs are in it, and the application can enter it for other work of the window, such as a timer or a
+  notification's activation. Entering it inside a command invocation of the same window keeps the command invocation.
 
 Work outside both scopes never reaches the page. The producer MUST NOT let application code claim a client or
 connection identity: only a request the transport authenticated enters a command invocation. A request ends
@@ -1034,13 +1038,17 @@ belongs to the object that raised it and reaches only presentations of routes th
 - With no such presentation, or several, `drop` drops the request. `next-mounted` keeps it, replacing the request of
   that object and name it kept before (the latest request wins), and pushes it to the next presentation of the window
   that registers it on a route that presents the object. It is then gone. A request kept in a command invocation waits
-  for a presentation of the invoking client and connection. A kept request is also gone when the window closes or no
-  route of the window presents the object any longer. A request raised for an object that no route
-  presents yet is kept for the first window that presents it.
-- `broadcast` reaches every presentation of the window that registered the request, such as a toast in every pane
-  that shows it. A broadcast is never kept.
-- Outside both scopes, a request of an object that several windows present is dropped: a view request never crosses
-  to another window, client or connection.
+  for a presentation of the invoking client and connection, and is gone when that connection closes, so a reconnected
+  page does not receive it. A kept request is also gone when the window closes or no route of the window presents the
+  object any longer. A request raised in a scope of a window that does not present the object yet is kept for that
+  window. A request raised outside both scopes for an object that no window presents yet is kept for the first window
+  that presents it.
+- `broadcast` reaches every presentation of the window that registered the request, on every connection of the window,
+  also when a command invocation raised it: it is a window-wide announcement, as a state change is, such as a toast in
+  every pane that shows it. A broadcast is never kept.
+- Outside both scopes, a request of an object that several windows present is dropped. A view request never reaches
+  another window; `broadcast` reaches every connection of the window, and `drop` and `next-mounted` keep to the
+  invoking client and connection in a command invocation.
 
 **Never replayed.** A view request is not state: a `snapshot`, an `open` or a reconnect never repeats one, and a
 request pushed to a connection that closes before the page handled it is lost.

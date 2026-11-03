@@ -109,8 +109,10 @@ public sealed class RunicInteractionInvocation
     /// the interaction uses its .NET fallback and the request follows its <see cref="ViewRequestDelivery"/>.
     /// </para>
     /// <para>
-    /// When no window, or several, present the ViewModel, it enters no scope and the current one stays. The scope
-    /// has no client or connection identity, so it never reaches one page's presentation on behalf of another.
+    /// It enters no scope, and the current one stays, when no window or several present the ViewModel, and inside a
+    /// command that a page of that window invoked: that command already reaches its own page, and the window scope
+    /// would widen it to another page. <see cref="TryEnterWindow"/> tells which happened. The scope has no client or
+    /// connection identity, so it never reaches one page's presentation on behalf of another.
     /// </para>
     /// <code>
     /// using (RunicInteractionInvocation.EnterWindow(this))
@@ -119,14 +121,37 @@ public sealed class RunicInteractionInvocation
     /// </remarks>
     /// <param name="viewModel">A ViewModel that a route of the window presents.</param>
     /// <param name="cancellationToken">Ends the interactions asked in the scope.</param>
-    /// <returns>The scope; dispose it to restore the previous one.</returns>
+    /// <returns>The scope; dispose it to restore the previous one. It does nothing when no scope was entered.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="viewModel"/> is <see langword="null"/>.</exception>
     public static IDisposable EnterWindow(object viewModel, CancellationToken cancellationToken = default)
+    {
+        TryEnterWindow(viewModel, out var scope, cancellationToken);
+        return scope;
+    }
+
+    /// <summary>
+    /// Enters the window scope of the one window that presents <paramref name="viewModel"/>, as
+    /// <see cref="EnterWindow"/> does, and returns whether it entered it.
+    /// </summary>
+    /// <param name="viewModel">A ViewModel that a route of the window presents.</param>
+    /// <param name="scope">The scope to dispose; it does nothing when the method returns <see langword="false"/>.</param>
+    /// <param name="cancellationToken">Ends the interactions asked in the scope.</param>
+    /// <returns>
+    /// <see langword="true"/> when it entered the window scope; <see langword="false"/> when no window or several present
+    /// the ViewModel, or a command that a page of that window invoked is current and stays.
+    /// </returns>
+    /// <exception cref="ArgumentNullException"><paramref name="viewModel"/> is <see langword="null"/>.</exception>
+    public static bool TryEnterWindow(object viewModel, out IDisposable scope, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(viewModel);
         var windows = BridgePresentationRegistry.Routes(viewModel).Select(route => route.Content).OfType<WindowContentSession>()
             .Distinct().ToArray();
-        return windows.Length == 1 ? EnterWindowScope(windows[0], cancellationToken) : NoScope.Instance;
+        scope = NoScope.Instance;
+        if (windows.Length != 1) return false;
+        // A page's command keeps its own, narrower scope.
+        if (Current is { IsWindowScope: false } command && ReferenceEquals(command.Session, windows[0])) return false;
+        scope = EnterWindowScope(windows[0], cancellationToken);
+        return true;
     }
 
     private sealed class NoScope : IDisposable
@@ -268,7 +293,7 @@ public sealed class BridgeInteractionRouter : IDisposable
     }
 
     // A view request of a route (ViewRequest.Attach); the lease removes it with the route's presentation of its object.
-    internal IDisposable RegisterViewRequest(string route, string name, string contract)
+    internal IDisposable RegisterViewRequest(object owner, string route, string name, string contract)
     {
         ValidateDefinition<object?, object?>(route, name, contract, static _ => "null", static _ => null);
         var key = new DefinitionKey(route, name, contract);
@@ -277,6 +302,9 @@ public sealed class BridgeInteractionRouter : IDisposable
             ThrowIfDisposed();
             _requestDefinitions.TryGetValue(key, out var count);
             _requestDefinitions[key] = checked(count + 1);
+            // A request kept for the object waits for this route too.
+            if (_kept.TryGetValue((owner, name), out var kept) && kept.Contract == contract)
+                _kept[(owner, name)] = kept with { Contract = contract, Keys = [.. kept.Keys, key] };
         }
         return new ViewRequestRegistration(this, key);
     }
@@ -305,54 +333,66 @@ public sealed class BridgeInteractionRouter : IDisposable
         {
             if (_disposed) return;
             var keys = routes.Select(route => new DefinitionKey(route, name, contract)).Where(_requestDefinitions.ContainsKey).ToHashSet();
-            var candidates = _presentations.Values.Where(presentation => presentation.Requests.Overlaps(keys)).ToArray();
+            if (!ReferenceEquals(invocation?.Session, _session)) invocation = null;
             if (delivery is ViewRequestDelivery.Broadcast)
-                targets.AddRange(candidates.Select(presentation => Target(presentation, name, contract, inputJson)));
-            else
+                // Every presentation of the window that handles it, on every connection, whatever raised it.
+                targets.AddRange(_presentations.Values.Where(presentation => presentation.Requests.Overlaps(keys))
+                    .Select(presentation => Target(presentation, name, contract, inputJson)));
+            else if (SelectPresentation(keys, invocation, static presentation => presentation.Requests) is { } selected)
             {
-                // A command invocation keeps to the invoking client and connection; the window scope and work outside a
-                // scope reach the window's one presentation.
-                var scoped = invocation is { IsWindowScope: false } && ReferenceEquals(invocation.Session, _session)
-                    ? candidates.Where(presentation => string.Equals(presentation.ConnectionKey, invocation.ConnectionKey, StringComparison.Ordinal)
-                        && string.Equals(presentation.ClientKey, invocation.ClientKey, StringComparison.Ordinal)).ToArray()
-                    : candidates;
-                if (scoped.Length == 1)
-                {
-                    targets.Add(Target(scoped[0], name, contract, inputJson));
-                    _kept.Remove((owner, name));
-                }
-                else if (delivery is ViewRequestDelivery.NextMounted && keys.Count > 0)
-                {
-                    // The latest request wins. One that a command raised stays with its client and connection.
-                    var command = invocation is { IsWindowScope: false } ? invocation : null;
-                    _kept[(owner, name)] = new KeptViewRequest(keys, name, contract, inputJson, command?.ClientKey, command?.ConnectionKey);
-                    ViewsLog.ViewRequestKept(_session.Logger, name);
-                }
-                else ViewsLog.ViewRequestDropped(_session.Logger, name,
-                    scoped.Length == 0 ? "no presentation handles it" : "several presentations handle it");
+                targets.Add(Target(selected, name, contract, inputJson));
+                _kept.Remove((owner, name));
             }
+            else if (delivery is ViewRequestDelivery.NextMounted)
+                Keep(owner, keys, name, contract, inputJson, invocation);
+            else ViewsLog.ViewRequestDropped(_session.Logger, name, "no single presentation handles it");
         }
         Deliver(targets);
+    }
+
+    // Keeps a NextMounted request (the latest one wins); one that a command raised stays with its client and connection.
+    // keys is empty for a request of an object that no route of this window presents yet. The gate is held.
+    private void Keep(object owner, HashSet<DefinitionKey> keys, string name, string contract, string inputJson,
+        RunicInteractionInvocation? invocation)
+    {
+        var command = invocation is { IsWindowScope: false } ? invocation : null;
+        _kept[(owner, name)] = new KeptViewRequest(keys, name, contract, inputJson, command?.ClientKey, command?.ConnectionKey);
+        ViewsLog.ViewRequestKept(_session.Logger, name);
+    }
+
+    // A NextMounted request raised in a scope of this window for an object that no route of it presents yet: kept here,
+    // so it is gone with the window, until a route of the window presents the object (RegisterViewRequest).
+    internal void KeepViewRequest(object owner, string name, string contract, string inputJson, RunicInteractionInvocation? invocation)
+    {
+        lock (_gate)
+        {
+            if (_disposed) return;
+            Keep(owner, [], name, contract, inputJson, invocation is not null && ReferenceEquals(invocation.Session, _session) ? invocation : null);
+        }
     }
 
     private static ViewRequestTarget Target(Presentation presentation, string name, string contract, string inputJson) =>
         new(presentation.Route, presentation.Id, presentation.ConnectionKey, name, contract, inputJson);
 
-    // Pushes view requests outside the gate: the revision of a route comes from a publication in its model turn.
+    // Pushes view requests outside the gate. Each route first publishes what is pending in its model turn, and the push
+    // carries that revision: inline inside the turn, otherwise in a later turn, so a Raise from another thread returns at
+    // once instead of waiting for the model.
     private void Deliver(List<ViewRequestTarget> targets)
     {
         if (targets.Count == 0) return;
         var dispatcher = BridgeDispatcher.For(_transport);
-        Dictionary<string, long?> revisions = new(StringComparer.Ordinal);
-        foreach (var target in targets)
+        foreach (var group in targets.Where(target => target.ConnectionKey is not null).GroupBy(target => target.Route, StringComparer.Ordinal))
         {
-            if (target.ConnectionKey is not { } connectionKey) continue;
-            if (!revisions.TryGetValue(target.Route, out var revision))
-                revisions[target.Route] = revision = dispatcher.FindRoute(target.Route) is IBridgeViewRequestRoute route
-                    ? route.PublishForViewRequest() : null;
             // A released route has no state to show the request with.
-            if (revision is not { } published) continue;
-            (_pushes ??= BridgeTargetedPushes.For(_transport)).Send(connectionKey, EncodeViewRequestPush(target, published));
+            if (dispatcher.FindRoute(group.Key) is not IBridgeViewRequestRoute route) continue;
+            var routeTargets = group.ToArray();
+            route.PublishForViewRequest(revision =>
+            {
+                if (revision is not { } published) return;
+                lock (_gate) if (_disposed) return;
+                foreach (var target in routeTargets)
+                    (_pushes ??= BridgeTargetedPushes.For(_transport)).Send(target.ConnectionKey!, EncodeViewRequestPush(target, published));
+            });
         }
     }
 
@@ -371,13 +411,16 @@ public sealed class BridgeInteractionRouter : IDisposable
     public Task<TOutput>? TryRequest<TInput, TOutput>(string route, string name, string contract,
         TInput input, Func<TInput, string> encodeInput, Func<JsonElement, TOutput> decodeOutput,
         TimeSpan? timeout = null) =>
-        TryRequest(route, name, contract, input, encodeInput, decodeOutput, timeout, CancellationToken.None);
+        TryRequest([route], name, contract, input, encodeInput, decodeOutput, timeout, CancellationToken.None);
 
-    // TryRequest with the caller's own token, such as ViewQuestion.AskAsync's.
-    internal Task<TOutput>? TryRequest<TInput, TOutput>(string route, string name, string contract,
+    // TryRequest for an interaction object that the window presents on routes, with the caller's own token, such as
+    // ViewQuestion.AskAsync's. The presentation is selected among all of them (SelectPresentation), so the window scope
+    // asks only when exactly one presentation of the window handles the object's interaction.
+    internal Task<TOutput>? TryRequest<TInput, TOutput>(IReadOnlyCollection<string> routes, string name, string contract,
         TInput input, Func<TInput, string> encodeInput, Func<JsonElement, TOutput> decodeOutput,
         TimeSpan? timeout, CancellationToken callerCancellation)
     {
+        ArgumentNullException.ThrowIfNull(routes);
         var invocation = RunicInteractionInvocation.Current;
         if (invocation is null || !ReferenceEquals(invocation.Session, _session)) return null;
         // A navigation hook, such as a leave confirmation's guard, asks on behalf of its transition: the request ends
@@ -391,7 +434,6 @@ public sealed class BridgeInteractionRouter : IDisposable
         if (callerCancellation.IsCancellationRequested) return Task.FromCanceled<TOutput>(callerCancellation);
         var lifetime = ResolveTimeout(timeout);
 
-        var key = new DefinitionKey(route, name, contract);
         string inputJson;
         try
         {
@@ -405,8 +447,9 @@ public sealed class BridgeInteractionRouter : IDisposable
 
         lock (_gate)
         {
-            if (_disposed || !_definitions.ContainsKey(key)) return null;
-            var presentation = SelectPresentation(key, invocation);
+            var keys = routes.Select(route => new DefinitionKey(route, name, contract)).Where(_definitions.ContainsKey).ToHashSet();
+            if (_disposed || keys.Count == 0) return null;
+            var presentation = SelectPresentation(keys, invocation, static presentation => presentation.Capabilities);
             // A mounted endpoint advertises its support separately from its
             // current poll. This keeps an absent component on the normal
             // ReactiveUI fallback path while a short polling gap stays queued.
@@ -414,6 +457,7 @@ public sealed class BridgeInteractionRouter : IDisposable
                 || presentation.Pending.Count >= MaximumPendingPerPresentation) return null;
 
             var requestId = _session.CreateId();
+            var key = new DefinitionKey(presentation.Route, name, contract);
             var request = new PendingRequest(requestId, key, presentation.Id, presentation.Key,
                 presentation.ConnectionKey, presentation.ClientKey, 0, inputJson,
                 value => decodeOutput(value), lifetime, _session.TimeProvider.GetUtcNow().Add(lifetime));
@@ -467,10 +511,15 @@ public sealed class BridgeInteractionRouter : IDisposable
     internal void ReleaseConnection(string connectionKey)
     {
         lock (_gate)
+        {
+            // A request kept for a page whose connection closed never reaches it, nor its next connection.
+            foreach (var (owner, kept) in _kept.ToArray())
+                if (string.Equals(kept.ConnectionKey, connectionKey, StringComparison.Ordinal)) _kept.Remove(owner);
             foreach (var key in _presentations.Values
                 .Where(value => string.Equals(value.ConnectionKey, connectionKey, StringComparison.Ordinal))
                 .Select(value => value.Key).ToArray())
                 ReleasePresentation(key, "The browser connection was disconnected.");
+        }
     }
 
     // Registers the handlers of an open presentation as generation 0 (open's handlers), and returns the registration
@@ -635,13 +684,20 @@ public sealed class BridgeInteractionRouter : IDisposable
         return "ok";
     }
 
-    private Presentation? SelectPresentation(DefinitionKey key, RunicInteractionInvocation invocation)
+    // The one presentation that handles keys (one per route that presents the object), for interactions and view
+    // requests alike. The window scope, and work outside any scope, has no invoking client: any presentation of this
+    // window may handle it, if it is the only one on all of the object's routes. A command invocation keeps to the
+    // invoking client and connection, and prefers its own route's single presentation. The gate is held.
+    private Presentation? SelectPresentation(HashSet<DefinitionKey> keys, RunicInteractionInvocation? invocation,
+        Func<Presentation, HashSet<DefinitionKey>> handles)
     {
-        // The window scope has no invoking client: any presentation of this window may answer, if it is the only one.
-        var matches = _presentations.Values.Where(presentation => presentation.Capabilities.Contains(key)
-            && (invocation.IsWindowScope
-                || (string.Equals(presentation.ConnectionKey, invocation.ConnectionKey, StringComparison.Ordinal)
-                    && string.Equals(presentation.ClientKey, invocation.ClientKey, StringComparison.Ordinal)))).ToArray();
+        var command = invocation is { IsWindowScope: false } ? invocation : null;
+        var matches = _presentations.Values.Where(presentation => handles(presentation).Overlaps(keys)
+            && (command is null
+                || (string.Equals(presentation.ConnectionKey, command.ConnectionKey, StringComparison.Ordinal)
+                    && string.Equals(presentation.ClientKey, command.ClientKey, StringComparison.Ordinal)))).ToArray();
+        if (command is not null && matches.Where(presentation => presentation.Route == command.Route).ToArray() is [var own])
+            return own;
         return matches.Length == 1 ? matches[0] : null;
     }
 

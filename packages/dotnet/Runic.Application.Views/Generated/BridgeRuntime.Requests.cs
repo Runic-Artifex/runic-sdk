@@ -15,7 +15,7 @@ public partial class ViewModelBridge<T>
     {
         public void Presented(BridgeConnection connection, long revision) => owner.Presented(revision);
 
-        public long? PublishForViewRequest() => owner.PublishForViewRequest();
+        public void PublishForViewRequest(Action<long?> deliver) => owner.PublishForViewRequest(deliver);
 
         public ValueTask<ReadOnlyMemory<byte>> HandleAsync(BridgeRouteRequest request, CancellationToken cancellationToken) =>
             request.Kind switch

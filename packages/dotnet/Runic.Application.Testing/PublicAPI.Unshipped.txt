@@ -12,8 +12,8 @@ Runic.Application.Testing.RunicTestPresentation<TModel>.Route.get -> string!
 Runic.Application.Testing.RunicTestPresentation<TModel>.TakeViewRequests(System.Linq.Expressions.Expression<System.Func<TModel!, object?>!>? request = null) -> System.Collections.Generic.IReadOnlyList<Runic.Application.Testing.RunicViewRequest!>!
 Runic.Application.Testing.RunicTestPresentation<TModel>.Unmount() -> void
 Runic.Application.Testing.RunicTestPresentation<TModel>.UnmountAsync(System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task!
-Runic.Application.Testing.RunicViewDriver<TModel>.Present(string? presentation = null, string? clientKey = null, string? connectionKey = null) -> Runic.Application.Testing.RunicTestPresentation<TModel!>!
-Runic.Application.Testing.RunicViewDriver<TModel>.PresentAsync(string? presentation = null, string? clientKey = null, string? connectionKey = null, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<Runic.Application.Testing.RunicTestPresentation<TModel!>!>!
+Runic.Application.Testing.RunicViewDriver<TModel>.MountPresentation(string? presentation = null, string? clientKey = null, string? connectionKey = null) -> Runic.Application.Testing.RunicTestPresentation<TModel!>!
+Runic.Application.Testing.RunicViewDriver<TModel>.MountPresentationAsync(string? presentation = null, string? clientKey = null, string? connectionKey = null, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<Runic.Application.Testing.RunicTestPresentation<TModel!>!>!
 Runic.Application.Testing.RunicViewRequest
 Runic.Application.Testing.RunicViewRequest.InputJson.get -> string!
 Runic.Application.Testing.RunicViewRequest.Input<T>() -> T

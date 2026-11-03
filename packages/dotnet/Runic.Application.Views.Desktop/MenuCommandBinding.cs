@@ -10,9 +10,11 @@ namespace Runic.Application.Views.Menus;
 // application's (RunicDesktopHost.UseApplicationMenu). AppKit asks CanExecute on its main thread while it shows a menu or
 // matches a key, so the availability of each command is cached per command id and parameter and updated from
 // CanExecuteChanged. Resolving and running a command happens in the model turn of the ViewModel, when there is one.
-// An item's CommandParameter is the command's parameter. A Window's command runs in the window's interaction scope
-// (RunicInteractionInvocation), so its interactions and view requests reach the one page presentation of the Window
-// that handles them, as during a close decision. Shared with Runic.Application.Views.CsWebUi, like
+// An item's CommandParameter is the command's parameter. A Window's command that the page's in-page bar invoked runs in
+// a command invocation (RunicInteractionInvocation) with that page's client and connection, so its interactions and
+// view requests reach only that page's presentation; one that the native bar or a host shortcut ran has no page, and
+// runs in the window scope, which reaches the Window's one page presentation that handles them, as during a close
+// decision. Shared with Runic.Application.Views.CsWebUi, like
 // MenuBarPageRoutes; on Runic Desktop it is also the window's IDesktopMenuCommandTarget (MenuCommandBinding.Desktop.cs).
 internal sealed partial class MenuCommandBinding : IDisposable
 {
@@ -75,7 +77,10 @@ internal sealed partial class MenuCommandBinding : IDisposable
         lock (_gate) return !_disposed && _entries.TryGetValue(MenuCommandKey.Of(item), out var entry) && entry.CanExecute;
     }
 
-    public void Execute(DesktopMenuItem item)
+    public void Execute(DesktopMenuItem item) => Execute(item, invoker: null);
+
+    // An item that the page whose connection is invoker chose (MenuBarPageRoutes), or the native bar's (null).
+    internal void Execute(DesktopMenuItem item, BridgeConnection? invoker)
     {
         ArgumentNullException.ThrowIfNull(item);
         Entry? entry;
@@ -83,17 +88,17 @@ internal sealed partial class MenuCommandBinding : IDisposable
         {
             if (_disposed || !_entries.TryGetValue(MenuCommandKey.Of(item), out entry)) return;
         }
-        _ = RunAsync(entry);
+        _ = RunAsync(entry, invoker);
     }
 
-    private async Task RunAsync(Entry entry)
+    private async Task RunAsync(Entry entry, BridgeConnection? invoker)
     {
         try
         {
             if (_context is { IsExecuting: false } context)
-                await context.InvokeAsync(() => ExecuteInWindow(entry.Command, entry.Parameter)).ConfigureAwait(false);
+                await context.InvokeAsync(() => ExecuteInWindow(entry, invoker)).ConfigureAwait(false);
             else
-                await Task.Run(() => ExecuteInWindow(entry.Command, entry.Parameter)).ConfigureAwait(false);
+                await Task.Run(() => ExecuteInWindow(entry, invoker)).ConfigureAwait(false);
         }
         catch (Exception error)
         {
@@ -101,11 +106,15 @@ internal sealed partial class MenuCommandBinding : IDisposable
         }
     }
 
-    // The command, and the asynchronous work it starts, run in the Window's scope.
-    private void ExecuteInWindow(ICommand command, string? parameter)
+    // The command, and the asynchronous work it starts, run in the invoking page's command invocation, or without a page
+    // in the Window's scope. The page's identity is the one its transport authenticated, never one the request claims.
+    private void ExecuteInWindow(Entry entry, BridgeConnection? invoker)
     {
-        using var scope = _window is null ? null : RunicInteractionInvocation.EnterWindowScope(_window, CancellationToken.None);
-        ExecuteNow(command, parameter);
+        using var scope = _window is null ? null
+            : invoker is not null
+                ? RunicInteractionInvocation.Enter(_window, MenuBarPageRoutes.Route, invoker.ClientKey, invoker.Key, entry.CommandId)
+                : RunicInteractionInvocation.EnterWindowScope(_window, CancellationToken.None);
+        ExecuteNow(entry.Command, entry.Parameter);
     }
 
     private static void ExecuteNow(ICommand command, string? parameter)

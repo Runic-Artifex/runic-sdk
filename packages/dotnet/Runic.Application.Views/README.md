@@ -674,10 +674,12 @@ The host asks once for each id when the Window opens, and again after
 while its declared `IsEnabled` and its command's `CanExecute(parameter)` are
 `true`, following `CanExecuteChanged`, and runs `Execute(parameter)` in the
 model turn, where `parameter` is the item's `CommandParameter` (`null` for
-none). A Window's command runs in the window's interaction scope, so a
-question or interaction it asks reaches the one page presentation of the
-Window that handles it, as during a close decision, and a view request goes
-there too (see [Asking the page](#asking-the-page-view-requests-and-questions)).
+none). An item that a page clicks in its in-page menu bar runs as a command
+of that page: its questions, interactions and view requests reach only that
+page. One that the native bar or a host shortcut runs has no page and runs in
+the window's interaction scope, so it reaches the one page presentation of the
+Window that handles it, as during a close decision (see
+[Asking the page](#asking-the-page-view-requests-and-questions)).
 One command can therefore serve several items, such as one per zoom
 level in a radio group:
 
@@ -1898,21 +1900,29 @@ const stopConfirm = editor.interactions.confirmDiscard.handle(({ title }, { sign
 `Raise` publishes what the ViewModel changed before it, and the page runs the
 handler once it has rendered that state, so the new item's element exists
 when `focus` runs. A request is not state: a snapshot or a reconnect never
-repeats it, it needs no reset, and it never reaches another window or
-connection. Each request declares where it goes with `ViewRequestDelivery`:
+repeats it, it needs no reset, and it never reaches another window.
+`Drop` and `NextMounted` requests that a command raises reach only the page
+that invoked it; a `Broadcast` reaches every connection of the window, as a
+state change does. Each request declares where it goes with `ViewRequestDelivery`:
 
 | Delivery | Inside a command a page invoked | Elsewhere (window scope, timer, startup) | With no such presentation, or several |
 | --- | --- | --- | --- |
 | `Drop` (default) | that page's presentation that handles it | the window's one presentation that handles it | dropped, logged at Debug as event 1120 |
 | `NextMounted` | the same | the same | kept, the latest one wins, for the next presentation of the window that handles it (event 1121) |
-| `Broadcast` | every presentation of the window that handles it | the same | dropped |
+| `Broadcast` | every presentation of the window that handles it, on every connection | the same | dropped |
 
 `Drop` is the default because most requests only make sense for what the
 user is looking at now: a focus or a scroll that arrives after the user moved
 on is worse than none. Use `NextMounted` for a request about a page that is
 about to appear, such as focusing the first field of an item that a command
 opens. A request raised outside a command for a ViewModel that several windows
-present is dropped. An input that does not fit the window's input limit makes
+present is dropped. A `NextMounted` request a command keeps waits for that
+page and is gone when its connection closes. One raised before any window
+presents the ViewModel waits for the first window that does; one raised in a
+window that does not present it yet waits for that window. "The one
+presentation" counts every route of the window that presents the ViewModel,
+so a ViewModel shown in two panes has two. `Raise` never waits: outside the
+model's turn it publishes and sends in the next turn. An input that does not fit the window's input limit makes
 `Raise` throw `ArgumentException`.
 
 `AskAsync` asks the page in the same scopes as an interaction (see
@@ -1934,15 +1944,26 @@ using (RunicInteractionInvocation.EnterWindow(viewModel))
 ```
 
 `EnterWindow` finds the one window that presents the ViewModel and enters no
-scope when none or several do. It never carries a page's identity: only a
-command that a page's transport delivered can reach that page's presentation
-alone. Menu-bar commands of a Window run in the window scope by themselves
+scope when none or several do, or when a command that a page of that window
+invoked is current: that command keeps reaching only its own page.
+`TryEnterWindow(viewModel, out var scope)` returns whether it entered the
+scope. It never carries a page's identity: only a command that a page's
+transport delivered can reach that page's presentation alone. A menu item a
+page clicks in its in-page menu bar runs as that page's command; one that the
+native bar or a host shortcut runs is in the window scope
 ([Menu bar commands](#menu-bar-commands)).
+
+**Fallbacks that no longer answer (since 0.16).** A .NET handler or fallback
+that used to answer a question asked by a command on another route of the
+window, or by a menu-bar command, is now skipped while a page has a handler
+mounted for it, also a 0.15 page on a 0.16 host, since interaction handlers
+are not a new feature. Remove such a fallback, or keep it for when no page is
+mounted.
 
 Pages and hosts of earlier releases keep working: the producer sends requests
 only to pages that list the protocol feature `view-requests/1`, and a page of
 this release registers no request handlers with an earlier host. Tests answer and
-collect both through `RunicViewDriver.Present()`; see
+collect both through `RunicViewDriver.MountPresentation()`; see
 [Runic.Application.Testing](../Runic.Application.Testing/README.md#interactions).
 
 ## Operation results and parameterised queries

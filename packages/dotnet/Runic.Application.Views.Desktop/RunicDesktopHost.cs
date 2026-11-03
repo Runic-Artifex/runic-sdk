@@ -467,7 +467,7 @@ public sealed class RunicDesktopHost : IRunicWindowHost
                     .ConfigureAwait(false);
                 if (!owner.SetMenuCommands(menu)) menu = null;
             }
-            menuRoutes.Attach(new DesktopMenuBarPageWindow(presentation, WindowOptions.MenuBarPresentation), menu);
+            menuRoutes.Attach(new DesktopMenuBarPageWindow(presentation, WindowOptions.MenuBarPresentation, menu), menu);
             await CloseAfterOpenIfRequestedAsync(presentation, loggerFactory).ConfigureAwait(false);
             return owner;
         }

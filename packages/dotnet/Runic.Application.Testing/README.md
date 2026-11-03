@@ -386,12 +386,12 @@ tests the dialog page on its own with `RunicTestNavigationEntry`.
 
 ### Interactions
 
-A test can act as the page: `RunicViewDriver.Present()` (since 0.16) opens a
+A test can act as the page: `RunicViewDriver.MountPresentation()` (since 0.16) opens a
 presentation that answers the ViewModel's questions and interactions with the
 handlers the test registers, and receives its view requests:
 
 ```csharp
-using var page = await host.Root.PresentAsync();
+using var page = await host.Root.MountPresentationAsync();
 page.Handle(vm => vm.ConfirmDiscard, request => request.Title == "Draft");           // a ViewQuestion<,>
 page.Handle<DiscardNoteRequest, bool>(vm => vm.ConfirmLeave, request => true);        // a ReactiveUI Interaction<,>
 (await host.Root.ExecuteAsync(vm => vm.DiscardCommand)).ThrowIfFailed();
@@ -409,7 +409,7 @@ one of the same member; `HandleAsync` takes an asynchronous answer, which is
 cancelled when .NET cancels the request. An answer that throws answers
 `failed`. `RunicViewRequest.Input<T>()` reads the input with System.Text.Json's
 web defaults; `InputJson` is the wire JSON. Pass `clientKey` and
-`connectionKey` to `Present` to act as one of several pages: a command sent
+`connectionKey` to `MountPresentation` to act as one of several pages: a command sent
 on that connection reaches only its presentation. Dispose the presentation to
 stop answering, or call `Unmount()`.
 

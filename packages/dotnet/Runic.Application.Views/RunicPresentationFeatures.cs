@@ -111,11 +111,12 @@ internal interface IBridgePresentationRoute
     void AddFirstStateWait(BridgePresentedWait wait);
 }
 
-// A route's handler that publishes what is pending for a view request and returns the route's revision, or null when it
-// was released (view-requests/1).
+// A route's handler that publishes what is pending for a view request and calls deliver with the route's revision, or
+// null when it was released (view-requests/1): inline inside the model's turn, otherwise in a later turn, without
+// waiting for it.
 internal interface IBridgeViewRequestRoute
 {
-    long? PublishForViewRequest();
+    void PublishForViewRequest(Action<long?> deliver);
 }
 
 // A Bridge, or what wraps it, whose route's open presentations resumed on it after a suspension.

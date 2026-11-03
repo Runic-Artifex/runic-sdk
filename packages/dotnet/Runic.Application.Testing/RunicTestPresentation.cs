@@ -27,7 +27,7 @@ public sealed record RunicViewRequest(string Name, string Route, string Presenta
 /// <summary>
 /// A presentation of a route that a test opened as a page does, which answers the ViewModel's interactions and
 /// questions with the handlers the test registers and receives its view requests. Create it with
-/// <see cref="RunicViewDriver{TModel}.Present"/>.
+/// <see cref="RunicViewDriver{TModel}.MountPresentation"/>.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -37,7 +37,7 @@ public sealed record RunicViewRequest(string Name, string Route, string Presenta
 /// registers one more interaction handler, as the generated client's <c>interactions.&lt;name&gt;.handle</c> does.
 /// </para>
 /// <code>
-/// var page = await editor.PresentAsync();
+/// var page = await editor.MountPresentationAsync();
 /// page.Handle&lt;DiscardRequest, bool&gt;(vm =&gt; vm.ConfirmDiscard, request =&gt; true);
 /// (await editor.ExecuteAsync(vm =&gt; vm.DiscardCommand)).ThrowIfFailed();
 /// var focus = Assert.Single(page.TakeViewRequests(vm =&gt; vm.Focus));
