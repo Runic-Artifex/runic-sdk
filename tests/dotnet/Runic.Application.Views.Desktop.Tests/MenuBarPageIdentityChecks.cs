@@ -80,6 +80,39 @@ internal sealed class MenuBarPageIdentityChecks
             "Page a received the command of page b's click.");
     }
 
+    // The native menu bar and host shortcuts run in the window scope, which names no page: it flows with the command's
+    // asynchronous work, so an async command that asks after its first await still reaches the window's one page.
+    [Test]
+    public async Task AnAsyncNativeMenuCommandAsksTheWindowsPageAfterAnAwait()
+    {
+        using var transport = new InMemoryBridgeTransport();
+        using var session = new WindowContentSession(transport, new WindowContentSessionOptions { IncludeFailureDetail = false });
+        var model = new IdentityViewModel();
+        using var bridge = new IdentityBridge(transport, model, session);
+        using var presentations = session.AttachRootInteractionPresentation(Route);
+        var bar = new WebUiMenuBar([new DesktopMenu("File", [new DesktopMenuItem("Ask", "file.ask")])]);
+        using var commands = await WebUiMenuCommands.BindAsync(bar, session.ModelContext, model.GetMenuCommand, NullLogger.Instance, session);
+
+        Send(transport, """{"kind":"hello","protocol":4,"session":"s-a","client":{"name":"t","version":"1"}}""", "connection-a", "client-a");
+        var opened = Send(transport, $$"""{"kind":"open","route":"{{Route}}","presentation":"page-a","handlers":[{"name":"confirm","contract":"{{ConfirmContract}}"}]}""",
+            "connection-a", "client-a");
+        Require(opened["registration"]?.GetValue<string>() == "ok", $"The page did not open: {opened}");
+
+        // The native bar: no page clicked, so no connection identity.
+        commands.Execute(new DesktopMenuItem("Ask", "file.ask"));
+        var question = await NextPushAsync(transport, "interaction");
+        Require(question.Connection == "connection-a" && question.Json["presentation"]!.GetValue<string>() == "page-a"
+            && question.Json["input"]!.GetValue<string>() == "Ask after an await?",
+            $"The async native menu command's question did not reach the window's page: {question.Json}");
+        Send(transport, JsonSerializer.Serialize(new Dictionary<string, object>
+        {
+            ["kind"] = "interaction-reply", ["route"] = Route, ["presentation"] = "page-a",
+            ["requestId"] = question.Json["requestId"]!.GetValue<string>(), ["ownerEpoch"] = question.Json["ownerEpoch"]!.GetValue<long>(),
+            ["name"] = "confirm", ["contract"] = ConfirmContract, ["outcome"] = "answered", ["output"] = true,
+        }), "connection-a", "client-a");
+        Require(await model.AskedAfterAwait.Task.WaitScaledAsync(TimeSpan.FromSeconds(5)), "The page's answer did not reach the command.");
+    }
+
     private static JsonObject Send(InMemoryBridgeTransport transport, string json, string connection, string client) =>
         JsonNode.Parse(transport.Request(json, connection, client))!.AsObject();
 
@@ -130,13 +163,23 @@ internal sealed class MenuBarPageIdentityChecks
         public ViewRequest<IdentityFocus> Focus { get; } = new();
         public ViewQuestion<string, bool> Confirm { get; } = new((_, _) => ValueTask.FromResult(false));
         public ICommand FocusCommand { get; }
-        public IRunicConnections? Connections { get; init; }
+        public RunicConnections? Connections { get; init; }
         public RunicConnection? Caller { get; private set; }
         public TaskCompletionSource<bool> Answered { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
         public event PropertyChangedEventHandler? PropertyChanged { add { } remove { } }
 
-        public ICommand? GetMenuCommand(string commandId) => commandId == "file.focus" ? FocusCommand : null;
+        public TaskCompletionSource<bool> AskedAfterAwait { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        // An async command whose question comes after its first await, when ICommand.Execute has long returned.
+        public ICommand AskCommand => new MenuCommand(async () =>
+        {
+            await Task.Delay(20);
+            AskedAfterAwait.TrySetResult(await Confirm.AskAsync("Ask after an await?"));
+        });
+
+        public ICommand? GetMenuCommand(string commandId) =>
+            commandId == "file.focus" ? FocusCommand : commandId == "file.ask" ? AskCommand : null;
     }
 
     private sealed class MenuCommand(Func<Task> execute) : ICommand

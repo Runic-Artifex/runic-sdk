@@ -106,9 +106,10 @@ internal sealed partial class MenuCommandBinding : IDisposable
         }
     }
 
-    // The command runs in the invoking page's command invocation, or without a page in the Window's scope, until Execute
-    // returns: work that runs on after it has no invocation (RunicInteractionInvocation.Current). The page's identity is
-    // the one its transport authenticated, never one the request claims.
+    // The command runs in the invoking page's command invocation, which ends when Execute returns, so work that runs on
+    // after it has no page identity; without a page it runs in the Window's scope, which names no page and flows with the
+    // command's asynchronous work. The page's identity is the one its transport authenticated, never one the request
+    // claims.
     private void ExecuteInWindow(Entry entry, BridgeConnection? invoker)
     {
         using var scope = _window is null ? null

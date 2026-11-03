@@ -1035,8 +1035,10 @@ connection identity: only a request the transport authenticated enters a command
 two connections of a window one connection identity, also when its transport reuses the key of a connection that
 closed (CS-WebUI reuses WebUI's connection slots), so a command that runs on after its connection closed never reaches
 the connection that came next. A command invocation lasts until its command ends: until an asynchronous command's or
-operation's task completes, or until a synchronous command or a menu item returns. Work that the command started and
-that runs on after it, such as a timer, is outside both scopes. A request ends
+operation's task completes, or until a synchronous command or an in-page menu item returns. Work that the command
+started and that runs on after it, such as a timer, is outside both scopes. A navigation that work in a scope starts
+runs its hooks, such as the departing page's leave guard, in that scope until the navigation ends. The window scope,
+which names no connection, does not end: work that it starts stays in it. A request ends
 when its scope ends, its presentation closes or its connection closes, or the window closes; the waiting interaction
 then fails. Interactions time out after two minutes by default (at most ten). A window holds at most 32 pending
 requests and 8 per presentation.

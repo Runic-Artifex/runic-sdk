@@ -69,12 +69,14 @@ public sealed class RunicInteractionInvocation
     public CancellationToken CancellationToken { get; }
     /// <summary>The invocation scope on the current asynchronous flow, or <see langword="null"/>.</summary>
     /// <remarks>
-    /// An invocation ends with the work that entered it: a bridged command or operation when its task completes, an
-    /// in-page menu click or a synchronous command when <c>Execute</c> returns, and the window scope when its
-    /// <see cref="EnterWindow"/> scope is disposed. An ended invocation is no invocation: work it started and that runs
-    /// on, such as a timer, <see cref="Task.Run(Action)"/> or a background loop, reads <see langword="null"/> here, so its
-    /// interactions and view requests follow the rules outside a scope and <c>IRunicConnections.Caller</c> is
-    /// <see langword="null"/>. Long-lived work of a window enters <see cref="EnterWindow"/> itself.
+    /// An invocation with a connection identity ends with the work that entered it: a bridged command or operation when its
+    /// task completes, an in-page menu click or a synchronous command when <c>Execute</c> returns. An ended invocation is
+    /// no invocation: work it started and that runs on, such as a timer, <see cref="Task.Run(Action)"/> or a background
+    /// loop, reads <see langword="null"/> here, so its interactions and view requests follow the rules outside a scope
+    /// and <c>IRunicConnections.Caller</c> is <see langword="null"/>. A navigation that an invocation starts runs its
+    /// guards in an invocation with the same identity until the navigation ends. The window scope (a native menu-bar
+    /// command, the window's close decision, <see cref="EnterWindow"/>) names no page and does not end. Long-lived work of
+    /// a window enters <see cref="EnterWindow"/> itself.
     /// </remarks>
     public static RunicInteractionInvocation? Current => CurrentScope.Value is { IsEnded: false } current ? current : null;
 
@@ -112,6 +114,24 @@ public sealed class RunicInteractionInvocation
     // RunicWindow enters it around its close decision, whatever started the close; the token ends the decision.
     internal static InvocationScope EnterWindowClose(WindowContentSession session, CancellationToken cancellationToken) =>
         Push(new RunicInteractionInvocation(session, WindowCloseRoute, null, null, null, cancellationToken, windowClose: true));
+
+    // A navigation transition runs its phases in an invocation with the identity of the flow that started it, until the
+    // transition ends (Runic.Navigation's NavigationInvocationFlow): a leave guard of a navigation that a page's command
+    // started reaches that page, also after the command ended. Registered once, before any window session exists.
+    internal static void FlowIntoNavigation()
+    {
+        if (NavigationFlowRegistered) return;
+        Runic.Navigation.NavigationInvocationFlow.Capture = static () => Current;
+        Runic.Navigation.NavigationInvocationFlow.Enter = static captured =>
+        {
+            var invocation = (RunicInteractionInvocation)captured;
+            return Push(new RunicInteractionInvocation(invocation.Session, invocation.Route, invocation.ClientKey,
+                invocation.ConnectionKey, invocation.CommandName, invocation.CancellationToken, invocation.IsWindowScope));
+        };
+        NavigationFlowRegistered = true;
+    }
+
+    private static volatile bool NavigationFlowRegistered;
 
     // The identity of a scope that no flow enters: a request kept for an object no window presented yet is delivered on
     // behalf of the scope that raised it (BridgeInteractionRouter.TakeUnattachedViewRequest).
@@ -189,8 +209,8 @@ public sealed class RunicInteractionInvocation
         public void Dispose() { }
     }
 
-    // Restores the previous invocation on this flow when disposed, and ends the entered one then, or, after EndAfter, when
-    // the entered work's task completes.
+    // Restores the previous invocation on this flow when disposed. An invocation with a connection identity ends then, or,
+    // after EndAfter, when the entered work's task completes; the window scope never ends.
     internal sealed class InvocationScope(RunicInteractionInvocation invocation, RunicInteractionInvocation? previous) : IDisposable
     {
         private int _disposed;
@@ -209,7 +229,9 @@ public sealed class RunicInteractionInvocation
         public void Dispose()
         {
             if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
-            if (Volatile.Read(ref _endLater) == 0) invocation.End();
+            // Only an invocation with a connection identity ends: the window scope names no page, so work it started
+            // keeps it, as before.
+            if (Volatile.Read(ref _endLater) == 0 && invocation.ConnectionKey is not null) invocation.End();
             if (previous is not null || CurrentScope.Value is not null) CurrentScope.Value = previous;
         }
     }

@@ -119,6 +119,8 @@ public sealed class WindowContentSession : IDisposable
             _operations = operations;
             _interactions = interactions;
             _fieldWrites = fieldWrites;
+            // A navigation a command of this window starts keeps the command's identity for its guards.
+            RunicInteractionInvocation.FlowIntoNavigation();
             // The window's dispatcher takes the window's input limit, logger and clock, and reports the connections
             // its transport closes.
             var dispatcher = BridgeDispatcher.For(_transport);

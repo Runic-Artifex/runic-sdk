@@ -654,19 +654,29 @@ Window's page connections and tells a command which one invoked it:
   in the window scope (`RunicInteractionInvocation.EnterWindow`), or when the
   command belongs to another Window. It stays the same through the command's
   `await`s, also after its connection closed, until the command ends.
-- **A command's invocation ends with the command.** A bridged command or
-  operation ends when its task completes; an in-page menu click, and a
-  command the Bridge runs synchronously, when `Execute` returns. Work the
-  command started that runs on after that, such as a timer, `Task.Run` or a
-  background loop, has no invocation: its `Caller` is `null`, and its
-  questions and view requests follow the rules outside a scope instead of
-  reaching the page that invoked the command. Such work enters
-  `RunicInteractionInvocation.EnterWindow(viewModel)` to reach the window's
-  page. An async menu command asks its page before its first `await`, or is a
-  bridged command instead.
-- A connection key is never reused within a Window. CS-WebUI reuses WebUI's
-  connection slots, so a page that takes the slot of one that left gets a new
-  key (`0:1#2`), and a command of the closed page never reaches it.
+- **A page's invocation ends with its command.** An invocation with a
+  connection identity, a page's command, operation or in-page menu click,
+  ends when the work that entered it does: a bridged command or operation
+  when its task completes, an in-page menu click and a command the Bridge
+  runs synchronously when `Execute` returns. Work it started that runs on
+  after that, such as a timer, `Task.Run` or a background loop, has no
+  invocation: its `Caller` is `null`, and its questions and view requests
+  follow the rules outside a scope instead of reaching the page. Such work
+  enters `RunicInteractionInvocation.EnterWindow(viewModel)` to reach the
+  window's page. An async command that a page's in-page menu click runs asks
+  that page before its first `await`, or is a bridged command instead.
+- **The window scope does not end.** A native menu-bar command, a host
+  shortcut, the window's close decision and `EnterWindow` name no page, so
+  their scope flows with the work they start: an async native-menu command
+  that asks after an `await` still reaches the window's one page.
+- **A navigation keeps the identity that started it.** A navigation runs its
+  leave guards and other hooks in an invocation with the identity of the
+  code that started it, until the navigation ends: a guard of a Back that a
+  synchronous command starts without awaiting it (`_ = Main.BackAsync()`)
+  still asks the page that clicked.
+- A connection key is never reused within a Window: the window gives every
+  connection its own key (`0:1#2` on CS-WebUI), and a command of a closed
+  page never reaches the page that took its slot.
 - `connections.WhenChanged()` is an `IObservable<IReadOnlyList<RunicConnection>>`
   that emits `Current` when subscribed and after each change. It needs no
   System.Reactive and works with both ReactiveUI flavors.

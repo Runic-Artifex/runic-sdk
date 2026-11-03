@@ -1052,6 +1052,8 @@ public sealed class RunicNavigator : IAsyncDisposable, IDisposable
         }
 
         var result = BackCallerResult(transition!, backCaller);
+        // The invocation of the flow that starts the transition, which its phases run in (NavigationInvocationFlow).
+        transition!.Invocation = NavigationInvocationFlow.Capture?.Invoke();
         foreach (var earlier in superseded) StartOverrunTimer(earlier);
         Cancel(superseded);
         if (changes != NavigationRegionChanges.None) Notify(region, changes);
@@ -1169,6 +1171,9 @@ public sealed class RunicNavigator : IAsyncDisposable, IDisposable
 
     private async Task RunAsync(NavigationTransition transition)
     {
+        // The phases run in an invocation with the identity of the flow that started the transition, until it ends.
+        using var invocation = transition.Invocation is { } captured && NavigationInvocationFlow.Enter is { } enter
+            ? enter(captured) : null;
         TransitionOutcome outcome = TransitionOutcome.Superseded;
         NavigationCommit? commit = null;
         try
@@ -3295,6 +3300,9 @@ internal enum NavigationCancelReason
 // except the cancellation source, which is cancelled outside it.
 internal sealed class NavigationTransition : IDisposable
 {
+    // The interaction invocation of the flow that started the transition (NavigationInvocationFlow), or null.
+    internal object? Invocation { get; set; }
+
     private readonly CancellationTokenSource _cancellation;
     private readonly CancellationToken _callerToken;
     private readonly List<NavigationBackCaller>? _backCallers;

@@ -107,13 +107,13 @@ internal sealed class ConformanceTests
         // The route is served, so that open answers.
         using var bridge = new ConformanceInteractionBridge<ConformanceInteractionModel>(transport, model, route, session);
 
-        using (RunicInteractionInvocation.Enter(session, route, "client", "connection"))
+        using (RunicInteractionInvocation.Enter(session, route, "client", BridgeDispatcher.For(transport).ConnectionKeyOf("connection")!))
             Require(await model.Confirm.Handle("fallback"), "An interaction without an eligible browser did not fall back to .NET.");
 
         const string presentation = "scope-present";
         await ConformanceRequests.OpenAsync(transport, route, presentation, name, contract);
         Task<bool> answer;
-        using (RunicInteractionInvocation.Enter(session, route, "client", "connection"))
+        using (RunicInteractionInvocation.Enter(session, route, "client", BridgeDispatcher.For(transport).ConnectionKeyOf("connection")!))
             answer = model.Confirm.Handle("browser");
         using var request = await ConformanceRequests.NextPushAsync(transport, "interaction");
         var root = request.RootElement;
@@ -148,14 +148,11 @@ internal sealed class ConformanceTests
         await ConformanceRequests.OpenAsync(transport, route, presentation, name, contract);
 
         Task<JsonDocument> Wait() => ConformanceRequests.NextPushAsync(transport, "interaction");
-        // The Back starts where a bridged command of the editor would, inside its invocation, which lasts until the
-        // command's awaited Back completes.
+        // The Back starts where a bridged command of the editor would, inside its invocation.
         Task<NavigationResult<object>> Close()
         {
-            using var scope = RunicInteractionInvocation.Enter(session, route, "client", "connection");
-            var back = region.BackAsync().AsTask();
-            scope.EndAfter(back);
-            return back;
+            using (RunicInteractionInvocation.Enter(session, route, "client", BridgeDispatcher.For(transport).ConnectionKeyOf("connection")!))
+                return region.BackAsync().AsTask();
         }
 
         // Superseded: the browser receives the question, then a cancellation of the same request.

@@ -261,6 +261,7 @@ public sealed class ModelContextTests
         Task<bool>? firstAnswer = null;
         Task<bool>? secondAnswer = null;
         string? suppressedScope = "not-run";
+        string? endedScope = "not-run";
         string? leakedScope = "not-run";
 
         // The commands still run when their scheduled work does, as awaited commands do.
@@ -282,6 +283,11 @@ public sealed class ModelContextTests
         using (ExecutionContext.SuppressFlow())
         using (Running(session, route, "client-a", BridgeDispatcher.For(transport).ConnectionKeyOf("connection-a") ?? "connection-a", "suppressed", commandsRunning.Task))
             scheduler.Schedule(() => suppressedScope = RunicInteractionInvocation.Current?.CommandName);
+        // A command that ended before its scheduled work ran, as a synchronous command that schedules later work: that work
+        // runs in no invocation, and its interactions follow the rules outside a scope.
+        using (RunicInteractionInvocation.Enter(session, route, "client-a",
+            BridgeDispatcher.For(transport).ConnectionKeyOf("connection-a") ?? "connection-a", commandName: "ended"))
+            scheduler.Schedule(() => endedScope = RunicInteractionInvocation.Current?.CommandName);
         scheduler.Schedule(() => leakedScope = RunicInteractionInvocation.Current?.CommandName);
         releaseDrain.Set();
 
@@ -300,12 +306,13 @@ public sealed class ModelContextTests
         Require(observedScopes.SequenceEqual(["first", "second"]),
             "Scheduled work did not retain its own trusted invocation scope.");
         Require(suppressedScope is null, "ExecutionContext.SuppressFlow was ignored for scheduled work.");
+        Require(endedScope is null, "Scheduled work of a command that had ended still ran in its invocation.");
         Require(leakedScope is null, "A completed scheduled callback leaked its interaction scope into the next turn.");
         commandsRunning.SetResult();
     }
 
     // A command invocation that lasts until running completes, as the Bridge enters one for an awaited command.
-    private static IDisposable Running(WindowContentSession session, string route, string clientKey, string connectionKey,
+    private static RunicInteractionInvocation.InvocationScope Running(WindowContentSession session, string route, string clientKey, string connectionKey,
         string commandName, Task running)
     {
         var scope = RunicInteractionInvocation.Enter(session, route, clientKey, connectionKey, commandName: commandName);
