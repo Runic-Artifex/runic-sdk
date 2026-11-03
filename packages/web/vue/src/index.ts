@@ -504,7 +504,7 @@ export interface FieldHandle<TValue> {
 export function useField<TClient extends ViewClient, TValue>(
   view: TextFieldView<TClient>,
   field: BridgeField<NoInfer<TClient>, NoInfer<TClient>["snapshot"], TValue> | FieldDefinition<NoInfer<TClient>, NoInfer<TClient>["snapshot"], TValue>,
-  options: FieldOptions = {},
+  options: FieldOptions<TValue> = {},
 ): FieldHandle<TValue> {
   const controller = createFieldController<TClient["snapshot"], TClient, TValue>(field, options);
   const current = shallowRef(controller.current);
