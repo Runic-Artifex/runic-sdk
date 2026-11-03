@@ -85,9 +85,11 @@ Runic.Application.Views.RunicWindowResult<TResult>.TryGetValue(out TResult value
 Runic.Application.Views.RunicWindowResult<TResult>.Value.get -> TResult
 Runic.Application.Views.RunicWindowsChangedEventArgs
 Runic.Application.Views.RunicWindowsChangedEventArgs.Opened.get -> bool
-Runic.Application.Views.RunicWindowsChangedEventArgs.RunicWindowsChangedEventArgs(Runic.Application.Views.IRunicWindow! window, bool opened) -> void
 Runic.Application.Views.RunicWindowsChangedEventArgs.Window.get -> Runic.Application.Views.IRunicWindow!
 Runic.Application.Views.RunicWindowServiceExtensions
 static Runic.Application.Views.RunicWindowResult<TResult>.operator !=(Runic.Application.Views.RunicWindowResult<TResult> left, Runic.Application.Views.RunicWindowResult<TResult> right) -> bool
 static Runic.Application.Views.RunicWindowResult<TResult>.operator ==(Runic.Application.Views.RunicWindowResult<TResult> left, Runic.Application.Views.RunicWindowResult<TResult> right) -> bool
 static Runic.Application.Views.RunicWindowServiceExtensions.ObserveWindows(this Runic.Application.Views.IRunicWindowService! windows) -> System.IObservable<System.Collections.Generic.IReadOnlyList<Runic.Application.Views.IRunicWindow!>!>!
+Runic.Application.Views.RunicWindowsChangedEventArgs.RunicWindowsChangedEventArgs(Runic.Application.Views.IRunicWindow! window, bool opened, System.Collections.Generic.IReadOnlyList<Runic.Application.Views.IRunicWindow!>! windows) -> void
+Runic.Application.Views.RunicWindowsChangedEventArgs.Windows.get -> System.Collections.Generic.IReadOnlyList<Runic.Application.Views.IRunicWindow!>!
+static Runic.Application.Views.RunicWindowServiceExtensions.ObserveWindows(this Runic.Application.Views.IRunicWindowService! windows, Runic.Navigation.IRunicModelContext! context) -> System.IObservable<System.Collections.Generic.IReadOnlyList<Runic.Application.Views.IRunicWindow!>!>!

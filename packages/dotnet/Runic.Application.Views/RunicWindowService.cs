@@ -64,20 +64,23 @@ public interface IRunicWindowService
 
     /// <summary>
     /// The open Windows of the application, in the order they opened: every Window that a host opened with these
-    /// services, through this service or <c>host.OpenWindowAsync</c>, until it closes.
+    /// services, through this service or <c>host.OpenWindowAsync</c>, until its close starts.
     /// </summary>
     /// <remarks>
     /// Each read returns a new list. <see cref="WindowsChanged"/> reports each change, and
-    /// <see cref="RunicWindowServiceExtensions.ObserveWindows"/> observes the list. The default implementation, for a test
+    /// <see cref="RunicWindowServiceExtensions.ObserveWindows(IRunicWindowService)"/> observes the list. The default implementation, for a test
     /// fake, throws <see cref="NotSupportedException"/>.
     /// </remarks>
     IReadOnlyList<IRunicWindow> Windows => throw new NotSupportedException($"{GetType().Name} does not list Windows.");
 
-    /// <summary>Occurs after a Window opened or closed, so <see cref="Windows"/> changed.</summary>
+    /// <summary>Occurs after a Window opened or its close started, so <see cref="Windows"/> changed.</summary>
     /// <remarks>
-    /// Raised on the thread that opened the Window, and for a close on the thread pool: a ViewModel that updates its
-    /// state from it posts the change to its model context, as for any service event. A handler that throws is logged
-    /// (event 1181) and does not stop the others. The default implementation, for a test fake, does nothing.
+    /// The changes are raised one at a time and in order, on a thread-pool thread, each with its own
+    /// <see cref="RunicWindowsChangedEventArgs.Windows"/> list. They are not raised in any Window's model context: a
+    /// ViewModel, which belongs to its own Window, posts what it does to its model context, or observes the list with
+    /// <see cref="RunicWindowServiceExtensions.ObserveWindows(IRunicWindowService, Runic.Navigation.IRunicModelContext)"/>,
+    /// which does that. A handler that throws is logged (event 1181) and does not stop the others. The default
+    /// implementation, for a test fake, does nothing.
     /// </remarks>
     event EventHandler<RunicWindowsChangedEventArgs>? WindowsChanged
     {
@@ -319,12 +322,36 @@ internal sealed class RunicWindowService(IServiceProvider services) : IRunicWind
 
     public event EventHandler<RunicWindowsChangedEventArgs>? WindowsChanged;
 
-    // RunicWindow.OpenAsync: every Window that opened with these services, until it closes.
+    // The changes to raise, in order, and whether a thread-pool work item raises them.
+    private readonly Queue<RunicWindowsChangedEventArgs> _changes = new();
+    private bool _raising;
+    private long _sequence;
+
+    // ObserveWindows: the handler, and the list and order number it starts from, taken together.
+    internal (IReadOnlyList<IRunicWindow> Windows, long Sequence) Subscribe(EventHandler<RunicWindowsChangedEventArgs> handler)
+    {
+        lock (_gate)
+        {
+            WindowsChanged += handler;
+            return (WindowList(_windows), _sequence);
+        }
+    }
+
+    private static IRunicWindow[] WindowList(Entry[] entries) => [.. entries.Select(static entry => entry.Window)];
+
+    // RunicWindow.OpenAsync: every Window that opened with these services, until its close starts.
     internal void Track(IRunicWindow window, RunicWindowOptions options, object? key)
     {
         var entry = new Entry(window, key, options.Owner, options.Owner is null ? RunicWindowModality.None : options.Modality);
-        lock (_gate) _windows = [.. _windows, entry];
-        Raise(window, opened: true);
+        lock (_gate)
+        {
+            _windows = [.. _windows, entry];
+            Enqueue(window, opened: true);
+        }
+        RaiseChanges();
+        // The entry goes when the close starts, so FindOrOpenAsync never returns a closing Window; a close the Window
+        // does not report, such as a host's own, still ends it.
+        window.WhenClosing(() => Forget(entry));
         _ = ForgetWhenClosedAsync(entry);
     }
 
@@ -332,20 +359,56 @@ internal sealed class RunicWindowService(IServiceProvider services) : IRunicWind
     {
         try { await entry.Window.WaitForCloseAsync().ConfigureAwait(false); }
         catch (Exception) { /* Released or failed: closed either way. */ }
-        lock (_gate) _windows = [.. _windows.Where(item => !ReferenceEquals(item, entry))];
-        Raise(entry.Window, opened: false);
+        Forget(entry);
     }
 
-    private void Raise(IRunicWindow window, bool opened)
+    private void Forget(Entry entry)
     {
-        if (WindowsChanged is not { } handlers) return;
-        var args = new RunicWindowsChangedEventArgs(window, opened);
-        foreach (EventHandler<RunicWindowsChangedEventArgs> handler in handlers.GetInvocationList())
+        lock (_gate)
         {
-            try { handler(this, args); }
-            catch (Exception error) when (error is not OutOfMemoryException)
+            if (!_windows.Contains(entry)) return;
+            _windows = [.. _windows.Where(item => !ReferenceEquals(item, entry))];
+            Enqueue(entry.Window, opened: false);
+        }
+        RaiseChanges();
+    }
+
+    // Under _gate, with the change: its list and its place in the order.
+    private void Enqueue(IRunicWindow window, bool opened) =>
+        _changes.Enqueue(new RunicWindowsChangedEventArgs(window, opened, WindowList(_windows)) { Sequence = ++_sequence });
+
+    // One thread-pool work item raises the queued changes, one at a time and in order.
+    private void RaiseChanges()
+    {
+        lock (_gate)
+        {
+            if (_raising || _changes.Count == 0) return;
+            _raising = true;
+        }
+        ThreadPool.UnsafeQueueUserWorkItem(static service => service.DrainChanges(), this, preferLocal: false);
+    }
+
+    private void DrainChanges()
+    {
+        while (true)
+        {
+            RunicWindowsChangedEventArgs args;
+            lock (_gate)
             {
-                ViewsLog.WindowsChangedHandlerFailed(Logger, error, error.GetType().FullName ?? error.GetType().Name);
+                if (!_changes.TryDequeue(out args!))
+                {
+                    _raising = false;
+                    return;
+                }
+            }
+            if (WindowsChanged is not { } handlers) continue;
+            foreach (EventHandler<RunicWindowsChangedEventArgs> handler in handlers.GetInvocationList())
+            {
+                try { handler(this, args); }
+                catch (Exception error) when (error is not OutOfMemoryException)
+                {
+                    ViewsLog.WindowsChangedHandlerFailed(Logger, error, error.GetType().FullName ?? error.GetType().Name);
+                }
             }
         }
     }
@@ -357,7 +420,7 @@ internal sealed class RunicWindowService(IServiceProvider services) : IRunicWind
     }
 
     private IRunicWindow? Find(Type type, object key) => Volatile.Read(ref _windows)
-        .LastOrDefault(entry => entry.Window.GetType() == type && Equals(entry.Key, key))?.Window;
+        .LastOrDefault(entry => entry.Window.GetType() == type && Equals(entry.Key, key) && !entry.Window.IsClosing)?.Window;
 
     public async ValueTask<TWindow> OpenWindowAsync<TWindow>(RunicWindowOptions? options = null,
         CancellationToken cancellationToken = default)
@@ -403,47 +466,64 @@ internal sealed class RunicWindowService(IServiceProvider services) : IRunicWind
         where TWindow : class, IRunicWindow, new()
     {
         ArgumentNullException.ThrowIfNull(key);
-        IRunicWindow? found;
-        TaskCompletionSource<IRunicWindow>? opening = null;
-        Task<IRunicWindow>? pending = null;
-        lock (_gate)
+        while (true)
         {
-            found = Find(typeof(TWindow), key);
-            if (found is null && !_opening.TryGetValue((typeof(TWindow), key), out pending))
+            cancellationToken.ThrowIfCancellationRequested();
+            IRunicWindow? found;
+            TaskCompletionSource<IRunicWindow>? opening = null;
+            Task<IRunicWindow>? pending = null;
+            lock (_gate)
             {
-                // Registered before the open starts, so a call meanwhile waits for this Window instead of opening another.
-                opening = new TaskCompletionSource<IRunicWindow>(TaskCreationOptions.RunContinuationsAsynchronously);
-                _opening[(typeof(TWindow), key)] = opening.Task;
+                found = Find(typeof(TWindow), key);
+                if (found is null && !_opening.TryGetValue((typeof(TWindow), key), out pending))
+                {
+                    // Registered before the open starts, so a call meanwhile waits for this Window instead of opening another.
+                    opening = new TaskCompletionSource<IRunicWindow>(TaskCreationOptions.RunContinuationsAsynchronously);
+                    _opening[(typeof(TWindow), key)] = opening.Task;
+                }
             }
+            if (opening is not null)
+            {
+                // Outside the lock: opening resolves the ViewModel, which may use this service.
+                IRunicWindow opened;
+                try
+                {
+                    opened = await OpenCoreAsync<TWindow>(new RunicWindowOpenRequest(parameter, key, null), options, cancellationToken)
+                        .ConfigureAwait(false);
+                    opening.TrySetResult(opened);
+                }
+                catch (Exception error)
+                {
+                    if (error is OperationCanceledException) opening.TrySetCanceled(CancellationToken.None);
+                    else opening.TrySetException(error);
+                    throw;
+                }
+                finally
+                {
+                    lock (_gate) _opening.Remove((typeof(TWindow), key));
+                }
+                // A new Window is presented with the activation of a launch only; it is in front as it opens otherwise.
+                if (activation is not null) _ = await opened.Presentation.PresentAsync(activation, cancellationToken).ConfigureAwait(false);
+                return (TWindow)opened;
+            }
+            if (found is null)
+            {
+                try
+                {
+                    found = await pending!.WaitAsync(cancellationToken).ConfigureAwait(false);
+                }
+                // The call that opened was cancelled, not this one: look again, and open if nothing is there. A failed open
+                // is this call's failure too.
+                catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+                {
+                    continue;
+                }
+                // Opened, but already closing: look again.
+                if (found.IsClosing) continue;
+            }
+            _ = await ActivateAsync(found, activation, cancellationToken).ConfigureAwait(false);
+            return (TWindow)found;
         }
-        if (opening is not null)
-        {
-            // Outside the lock: opening resolves the ViewModel, which may use this service.
-            IRunicWindow opened;
-            try
-            {
-                opened = await OpenCoreAsync<TWindow>(new RunicWindowOpenRequest(parameter, key, null), options, cancellationToken)
-                    .ConfigureAwait(false);
-                opening.TrySetResult(opened);
-            }
-            catch (Exception error)
-            {
-                if (error is OperationCanceledException canceled) opening.TrySetCanceled(canceled.CancellationToken);
-                else opening.TrySetException(error);
-                throw;
-            }
-            finally
-            {
-                lock (_gate) _opening.Remove((typeof(TWindow), key));
-            }
-            // A new Window is presented with the activation of a launch only; it is in front as it opens otherwise.
-            if (activation is not null) _ = await opened.Presentation.PresentAsync(activation, cancellationToken).ConfigureAwait(false);
-            return (TWindow)opened;
-        }
-        // Found, or opened by another call meanwhile: brought forward.
-        found ??= await pending!.WaitAsync(cancellationToken).ConfigureAwait(false);
-        _ = await ActivateAsync(found, activation, cancellationToken).ConfigureAwait(false);
-        return (TWindow)found;
     }
 
     public async ValueTask<PlatformResult<PlatformUnit>> ActivateAsync(IRunicWindow window, DesktopActivationContext? activation = null,
@@ -462,7 +542,7 @@ internal sealed class RunicWindowService(IServiceProvider services) : IRunicWind
     }
 
     private IRunicWindow? ModalOf(IRunicWindow owner) => Volatile.Read(ref _windows)
-        .LastOrDefault(entry => entry.Modality == RunicWindowModality.Window && ReferenceEquals(entry.Owner, owner))?.Window;
+        .LastOrDefault(entry => entry.Modality == RunicWindowModality.Window && ReferenceEquals(entry.Owner, owner) && !entry.Window.IsClosing)?.Window;
 
     public ValueTask<RunicWindowResult<TResult>> OpenForResultAsync<TWindow, TParameter, TResult>(TParameter parameter,
         RunicWindowOptions? options = null, CancellationToken cancellationToken = default)

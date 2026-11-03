@@ -460,6 +460,9 @@ public sealed class RunicDesktopHost : IRunicWindowHost
             // RunicWindow.RequestCloseAsync joins the decision of the native close button.
             if (confirmsClose) opening.UseCloseRequest(presentation.RequestCloseAsync);
             owner.SetPresentation(presentation);
+            // A native close (the user, the window manager) starts the Window's close: it leaves IRunicWindowService.Windows.
+            var closingWindow = opening.Window;
+            presentation.Closed += (_, _) => closingWindow.MarkClosing();
             // IRunicWindowPresentation of the Window's scope follows this window from now on.
             var nativeOwner = (IDesktopNativeOwnerSource)owner;
             opening.UsePresentation(new DesktopWindowPresentation(presentation, () => nativeOwner.NativeOwnerOrNull) { Present = Present });

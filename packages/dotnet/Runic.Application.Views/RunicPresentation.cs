@@ -62,6 +62,15 @@ public interface IRunicWindow : IRunicView, IAsyncDisposable
     internal ValueTask OpenAsync(IRunicWindowHost host, RunicWindowOptions options, RunicWindowOpenRequest request, CancellationToken cancellationToken);
 
     internal RunicWindowValidationResult Validate(IRunicWindowHost host, RunicWindowOptions options);
+
+    // Whether the Window's close has started: the application closed or released it, or a close request decided to close.
+    internal bool IsClosing { get; }
+
+    // Runs action once the close starts, at once when it has started.
+    internal void WhenClosing(Action action);
+
+    // Closes the Window with timeout once it has opened, at once when it is open.
+    internal void CloseWhenOpen(TimeSpan timeout);
 }
 
 /// <summary>
@@ -186,7 +195,7 @@ public abstract class RunicWindow<TViewModel> : RunicView<TViewModel>, IRunicWin
     public ValueTask<bool> RequestCloseAsync(CancellationToken cancellationToken = default)
     {
         var host = Host;
-        if (Volatile.Read(ref _hostCloseRequest) is { } hostRequest) return hostRequest(cancellationToken);
+        if (Volatile.Read(ref _hostCloseRequest) is { } hostRequest) return RequestFromHostAsync(hostRequest, cancellationToken);
         Task<bool> pending;
         lock (_closeGate)
         {
@@ -266,8 +275,70 @@ public abstract class RunicWindow<TViewModel> : RunicView<TViewModel>, IRunicWin
     }
 
     // The application's own close abandons a pending RequestCloseAsync decision.
+    private async ValueTask<bool> RequestFromHostAsync(Func<CancellationToken, ValueTask<bool>> hostRequest, CancellationToken cancellationToken)
+    {
+        var closed = await hostRequest(cancellationToken).ConfigureAwait(false);
+        if (closed) MarkClosing();
+        return closed;
+    }
+
+    private int _closing;
+    private Action? _onClosing;
+    private readonly object _closingGate = new();
+    private int _closeWhenOpen;
+    private TimeSpan _closeWhenOpenTimeout;
+
+    bool IRunicWindow.IsClosing => Volatile.Read(ref _closing) != 0;
+
+    void IRunicWindow.WhenClosing(Action action)
+    {
+        lock (_closingGate)
+        {
+            if (_closing == 0)
+            {
+                _onClosing += action;
+                return;
+            }
+        }
+        action();
+    }
+
+    // The close started: the Window leaves IRunicWindowService.Windows at once. Hosts call it when their window closes.
+    internal void MarkClosing()
+    {
+        Action? handlers;
+        lock (_closingGate)
+        {
+            if (_closing != 0) return;
+            _closing = 1;
+            (handlers, _onClosing) = (_onClosing, null);
+        }
+        handlers?.Invoke();
+    }
+
+    void IRunicWindow.CloseWhenOpen(TimeSpan timeout)
+    {
+        _closeWhenOpenTimeout = timeout;
+        Volatile.Write(ref _closeWhenOpen, 1);
+        if (Volatile.Read(ref _host) is not null) CloseOnceOpen();
+    }
+
+    // Before the Window opened, IRunicWindowResult.CompleteAsync asked to close it.
+    private void CloseOnceOpen()
+    {
+        if (Interlocked.Exchange(ref _closeWhenOpen, 0) == 0) return;
+        _ = CloseQuietlyAsync(_closeWhenOpenTimeout);
+    }
+
+    private async Task CloseQuietlyAsync(TimeSpan timeout)
+    {
+        try { _ = await CloseAsync(timeout).ConfigureAwait(false); }
+        catch (InvalidOperationException) { /* Released meanwhile (ObjectDisposedException). */ }
+    }
+
     private void CloseWithoutAsking()
     {
+        MarkClosing();
         try { _closeWithoutAsking.Cancel(); }
         catch (AggregateException error)
         {
@@ -296,6 +367,7 @@ public abstract class RunicWindow<TViewModel> : RunicView<TViewModel>, IRunicWin
             }
         }
         if (_closeWithoutAsking.IsCancellationRequested) return true;
+        MarkClosing();
         _ = await host.CloseAsync(TimeSpan.Zero).ConfigureAwait(false);
         return true;
     }
@@ -320,6 +392,7 @@ public abstract class RunicWindow<TViewModel> : RunicView<TViewModel>, IRunicWin
         Volatile.Write(ref _host, opened);
         // IRunicWindowService.Windows lists it until it closes.
         (host.Services.GetService(typeof(RunicWindowService)) as RunicWindowService)?.Track(this, options, request.Key);
+        CloseOnceOpen();
     }
 
     RunicWindowValidationResult IRunicWindow.Validate(IRunicWindowHost host, RunicWindowOptions options) =>

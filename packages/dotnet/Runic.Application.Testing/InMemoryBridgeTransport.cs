@@ -40,6 +40,9 @@ public sealed record RunicBridgeMessage(string Json, string? ConnectionKey)
 /// </remarks>
 public sealed class InMemoryBridgeTransport : IBridgeConnectionTransport, IDisposable
 {
+    // RunicTestWindow: why the page takes no input now, such as a window-modal Window that blocks it, or null.
+    internal Func<string?>? InputBlocked { get; set; }
+
     /// <summary>The connection key of requests that name none.</summary>
     public const string DefaultConnectionKey = "connection-1";
 

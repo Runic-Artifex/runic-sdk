@@ -99,13 +99,35 @@ public sealed class RunicTestWindow : IAsyncDisposable
     /// stays open when that returns <see langword="false"/>.
     /// </summary>
     /// <remarks>
-    /// A request while another request or <see cref="IRunicWindow.RequestCloseAsync"/> is being decided waits for the same
-    /// decision, as on Runic Desktop. A closed Window returns <see langword="true"/>. The Windows it owns close with it.
+    /// <para>
+    /// The Windows it owns are asked first, innermost first, as Runic Desktop does: one that refuses keeps this Window
+    /// open, and a window-modal one that agrees closes before this Window's own guard is asked. A request while another
+    /// request or <see cref="IRunicWindow.RequestCloseAsync"/> is being decided waits for the same decision. A closed
+    /// Window returns <see langword="true"/>. The Windows it owns close with it.
+    /// </para>
+    /// <para>
+    /// The user cannot close a Window that a window-modal Window blocks (<see cref="IsBlocked"/>), as on Windows and macOS:
+    /// the call throws instead of passing where the application could not. Its page takes no input either: its root
+    /// driver's commands, operation starts, sets and writes throw <see cref="InvalidOperationException"/>, while snapshots
+    /// still read its state. <see cref="IRunicWindow.RequestCloseAsync"/>, the application's request, still works.
+    /// </para>
     /// </remarks>
     /// <param name="cancellationToken">Stops this caller's wait; the decision continues.</param>
     /// <returns><see langword="true"/> when the Window closed.</returns>
-    public Task<bool> RequestUserCloseAsync(CancellationToken cancellationToken = default) =>
-        _bridge.RequestUserCloseAsync(cancellationToken).WaitAsync(cancellationToken);
+    /// <exception cref="InvalidOperationException">A window-modal Window blocks this one.</exception>
+    public Task<bool> RequestUserCloseAsync(CancellationToken cancellationToken = default)
+    {
+        if (BlockedReason() is { } blocked) throw new InvalidOperationException(blocked);
+        return _bridge.RequestUserCloseAsync(cancellationToken).WaitAsync(cancellationToken);
+    }
+
+    // Why the user cannot use this Window now, or null.
+    internal string? BlockedReason() => IsBlocked
+        ? $"{Window.GetType().Name} is blocked by a window-modal Window it owns; close that Window first, as the user would."
+        : null;
+
+    // The Window that CreateWindowAsync opened: disposing it ends the whole test application.
+    internal bool IsRoot { get; init; }
 
     /// <summary>
     /// Waits until the application opened a <typeparamref name="TWindow"/> after this Window and returns the last one
@@ -118,8 +140,12 @@ public sealed class RunicTestWindow : IAsyncDisposable
         where TWindow : class, IRunicWindow =>
         _application.WaitForWindowAsync(this, typeof(TWindow), timeout ?? TimeSpan.FromSeconds(5), cancellationToken);
 
-    /// <summary>Closes every Window of the application, this one and those it opened, and releases their scopes.</summary>
-    public ValueTask DisposeAsync() => _application.DisposeAsync();
+    /// <summary>
+    /// Closes this Window and releases its scope. For the Window that <see cref="RunicWindowTestHost.CreateWindowAsync{TWindow}"/>
+    /// returned, it closes and releases every Window of the application; for one of <see cref="OpenedWindows"/>, only that
+    /// Window and the Windows it owns, which close with it.
+    /// </summary>
+    public ValueTask DisposeAsync() => IsRoot ? _application.DisposeAsync() : _bridge.DisposeAsync();
 
     internal ITestBridgeWindow Bridge => _bridge;
 }
@@ -130,6 +156,7 @@ internal interface ITestBridgeWindow
     RunicTestWindowPresentation Presentation { get; }
     object Host { get; }
     Task<bool> RequestUserCloseAsync(CancellationToken cancellationToken);
+    Task<bool> AskToCloseAsync(CancellationToken cancellationToken);
     ValueTask<RunicWindowCloseResult> CloseAsync(TimeSpan timeout, CancellationToken cancellationToken = default);
     ValueTask DisposeAsync();
 }
@@ -144,6 +171,7 @@ internal sealed class RunicTestWindowApplication(IServiceProvider services, Runi
     private readonly TimeProvider _time = options.TimeProvider ?? new FakeTimeProvider();
     private long _nextId;
     private int _disposed;
+    private RunicTestWindow? _root;
 
     public IServiceProvider Services { get; } = services;
 
@@ -162,6 +190,41 @@ internal sealed class RunicTestWindowApplication(IServiceProvider services, Runi
     internal bool IsBlocked(RunicTestWindow window)
     {
         lock (_gate) return _windows.Any(item => ReferenceEquals(item.Owner, window) && item.Modality == RunicWindowModality.Window && item.IsOpen);
+    }
+
+    // The open Windows that window owns, the last opened first.
+    internal RunicTestWindow[] OwnedBy(RunicTestWindow window)
+    {
+        lock (_gate) return [.. _windows.Where(item => ReferenceEquals(item.Owner, window) && item.IsOpen).Reverse()];
+    }
+
+    // The owned Windows that their owner hid with it, shown again with it.
+    private readonly Dictionary<RunicTestWindow, List<RunicTestWindow>> _hiddenWithOwner = [];
+
+    // SetVisibleAsync of an owner: its owned Windows hide and show with it, as on Runic Desktop.
+    internal void OwnerVisibilitySet(RunicTestWindow owner, bool visible)
+    {
+        List<RunicTestWindow> windows;
+        lock (_gate)
+        {
+            if (visible)
+            {
+                windows = _hiddenWithOwner.Remove(owner, out var hidden) ? hidden : [];
+            }
+            else
+            {
+                windows = [.. _windows.Where(item => ReferenceEquals(item.Owner, owner) && item.IsOpen && item.Presentation.IsVisible)];
+                if (_hiddenWithOwner.TryGetValue(owner, out var hidden)) hidden.AddRange(windows);
+                else _hiddenWithOwner[owner] = [.. windows];
+            }
+        }
+        foreach (var window in windows)
+        {
+            if (!window.IsOpen) continue;
+            window.Presentation.SetVisibleWithOwner(visible);
+            // Nested owned Windows follow their own owner.
+            OwnerVisibilitySet(window, visible);
+        }
     }
 
     // Closes the open Windows owner owns, without asking, as Runic Desktop does when an owner closes.
@@ -238,13 +301,18 @@ internal sealed class RunicTestWindowApplication(IServiceProvider services, Runi
                 lock (_gate) owner = _windows.FirstOrDefault(item => ReferenceEquals(item.Window, ownerWindow) && item.IsOpen);
                 if (owner is null) opening.ReportOwnerIgnored("the owner is not an open Window of this test host");
             }
-            // RunicWindow.RequestCloseAsync and the user's close share one decision.
+            // RunicWindow.RequestCloseAsync and the user's close share one decision; the application may request it while a
+            // modal Window blocks this one.
             var closing = bridge;
             opening.UseCloseRequest(cancellationToken => new ValueTask<bool>(closing.RequestUserCloseAsync(cancellationToken)));
             opening.UsePresentation(presentation);
             var window = new RunicTestWindow(this, bridge, opening.Window, opening.Options, owner,
-                provider.GetService<RunicWindowParameter>()?.Peek(), opening.Key);
+                provider.GetService<RunicWindowParameter>()?.Peek(), opening.Key)
+            { IsRoot = Volatile.Read(ref _root) is null };
+            Interlocked.CompareExchange(ref _root, window, null);
             bridge.TestWindow = window;
+            host.Transport.InputBlocked = window.BlockedReason;
+            presentation.VisibilitySet += visible => OwnerVisibilitySet(window, visible);
             Add(window);
             return bridge;
         }
@@ -310,9 +378,24 @@ internal sealed class TestBridgeWindow<TViewModel>(RunicTestWindowApplication ap
     private async Task<bool> DecideAsync()
     {
         if (IsClosed) return true;
-        if (opening.CloseGuard is { } guard && !await guard(_closeWithoutAsking.Token).ConfigureAwait(false)) return IsClosed;
+        if (!await AskToCloseAsync(_closeWithoutAsking.Token).ConfigureAwait(false)) return IsClosed;
         _ = await CloseAsync(TimeSpan.Zero).ConfigureAwait(false);
         return true;
+    }
+
+    // As Runic Desktop's owner close: the owned Windows first, innermost first; a window-modal one that agrees closes
+    // before this Window's own guard is asked, so that guard never asks behind it.
+    public async Task<bool> AskToCloseAsync(CancellationToken cancellationToken)
+    {
+        if (TestWindow is { } window)
+        {
+            foreach (var owned in application.OwnedBy(window))
+            {
+                if (!await owned.Bridge.AskToCloseAsync(cancellationToken).ConfigureAwait(false)) return false;
+                if (owned.Modality == RunicWindowModality.Window) _ = await owned.Bridge.CloseAsync(TimeSpan.Zero, cancellationToken).ConfigureAwait(false);
+            }
+        }
+        return opening.CloseGuard is not { } guard || await guard(cancellationToken).ConfigureAwait(false);
     }
 
     public ValueTask<RunicWindowCloseResult> CloseAsync(TimeSpan timeout, CancellationToken cancellationToken = default)
@@ -325,6 +408,7 @@ internal sealed class TestBridgeWindow<TViewModel>(RunicTestWindowApplication ap
 
     private async Task<RunicWindowCloseResult> CloseCoreAsync(TimeSpan timeout)
     {
+        opening.Window.MarkClosing();
         await _closeWithoutAsking.CancelAsync().ConfigureAwait(false);
         var drained = await host.DrainAsync(timeout).ConfigureAwait(false);
         Presentation.SetActivity(RunicWindowActivity.Closed);

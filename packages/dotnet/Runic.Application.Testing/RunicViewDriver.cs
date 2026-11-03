@@ -57,7 +57,6 @@ public sealed class RunicViewDriver<TModel> where TModel : class
         string? clientKey = null, CancellationToken cancellationToken = default)
     {
         var connection = connectionKey ?? InMemoryBridgeTransport.DefaultConnectionKey;
-        await _transport.EnsureHelloAsync(connection, clientKey, cancellationToken).ConfigureAwait(false);
         var json = RunicJson.Write(writer =>
         {
             writer.WriteStartObject();
@@ -65,6 +64,10 @@ public sealed class RunicViewDriver<TModel> where TModel : class
             writer.WriteString("route", Route);
             writer.WriteEndObject();
         });
+        // A Window that a window-modal Window blocks takes no input from its page, as on the desktop.
+        if (_transport.InputBlocked?.Invoke() is { } blocked && IsInput(json))
+            throw new InvalidOperationException(blocked);
+        await _transport.EnsureHelloAsync(connection, clientKey, cancellationToken).ConfigureAwait(false);
         return await _transport.RequestAsync(json, connection, clientKey, cancellationToken).ConfigureAwait(false);
     }
 
@@ -78,6 +81,14 @@ public sealed class RunicViewDriver<TModel> where TModel : class
     /// <exception cref="InvalidOperationException">The route answered with a failure, such as <c>released</c>.</exception>
     public async Task<RunicViewState<TModel>> SnapshotAsync(CancellationToken cancellationToken = default) =>
         ReadState(await SendAsync(WriteSnapshot, cancellationToken: cancellationToken).ConfigureAwait(false), "snapshot");
+
+    // The page's input: a command, an operation start, a property set or a checked write.
+    private static bool IsInput(string json)
+    {
+        using var document = JsonDocument.Parse(json);
+        return document.RootElement.TryGetProperty("kind", out var kind)
+            && kind.GetString() is "command" or "start" or "set" or "write";
+    }
 
     private static void WriteSnapshot(Utf8JsonWriter writer) => writer.WriteString("kind", "snapshot");
 

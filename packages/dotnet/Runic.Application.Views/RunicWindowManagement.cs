@@ -1,5 +1,6 @@
 using System.Diagnostics.CodeAnalysis;
 using Microsoft.Extensions.DependencyInjection;
+using Runic.Navigation;
 
 namespace Runic.Application.Views;
 
@@ -120,14 +121,21 @@ public interface IRunicWindowResult<in TResult>
 
 /// <summary>A Window that opened or closed, for <see cref="IRunicWindowService.WindowsChanged"/>.</summary>
 /// <param name="window">The Window.</param>
-/// <param name="opened"><see langword="true"/> when it opened; <see langword="false"/> when it closed.</param>
-public sealed class RunicWindowsChangedEventArgs(IRunicWindow window, bool opened) : EventArgs
+/// <param name="opened"><see langword="true"/> when it opened; <see langword="false"/> when its close started.</param>
+/// <param name="windows">The open Windows after this change.</param>
+public sealed class RunicWindowsChangedEventArgs(IRunicWindow window, bool opened, IReadOnlyList<IRunicWindow> windows) : EventArgs
 {
-    /// <summary>The Window that opened or closed.</summary>
+    /// <summary>The Window that opened or started closing.</summary>
     public IRunicWindow Window { get; } = window ?? throw new ArgumentNullException(nameof(window));
 
-    /// <summary><see langword="true"/> when <see cref="Window"/> opened; <see langword="false"/> when it closed.</summary>
+    /// <summary><see langword="true"/> when <see cref="Window"/> opened; <see langword="false"/> when its close started.</summary>
     public bool Opened { get; } = opened;
+
+    /// <summary>The open Windows right after this change, in the order they opened. Each event has its own list.</summary>
+    public IReadOnlyList<IRunicWindow> Windows { get; } = windows ?? throw new ArgumentNullException(nameof(windows));
+
+    // The change's place in the service's order, so ObserveWindows skips changes its first list already has.
+    internal long Sequence { get; init; }
 }
 
 /// <summary>Observes <see cref="IRunicWindowService.Windows"/> without System.Reactive.</summary>
@@ -138,24 +146,73 @@ public static class RunicWindowServiceExtensions
     /// <see cref="IRunicWindowService.WindowsChanged"/> that ReactiveUI composes and CommunityToolkit can subscribe to.
     /// </summary>
     /// <remarks>
-    /// A subscription receives <see cref="IRunicWindowService.Windows"/> at once, then the list after each change, on the
-    /// thread that changed it. Dispose the subscription to stop.
+    /// A subscription receives the list at once, on the subscribing thread, then the list after each change, one at a
+    /// time and in order, on a thread-pool thread. Each list is its own. A ViewModel posts what it does with them to
+    /// its own model context, or uses the overload that takes it. Dispose the subscription to stop.
     /// </remarks>
     public static IObservable<IReadOnlyList<IRunicWindow>> ObserveWindows(this IRunicWindowService windows)
     {
         ArgumentNullException.ThrowIfNull(windows);
-        return new WindowsObservable(windows);
+        return new WindowsObservable(windows, null);
     }
 
-    private sealed class WindowsObservable(IRunicWindowService windows) : IObservable<IReadOnlyList<IRunicWindow>>
+    /// <summary>
+    /// The open Windows now and after every change, as <see cref="ObserveWindows(IRunicWindowService)"/>, delivered in
+    /// turns of <paramref name="context"/>, such as the model context of the ViewModel that subscribes.
+    /// </summary>
+    /// <remarks>
+    /// <code>
+    /// _windowList = windows.ObserveWindows(context).Subscribe(list =&gt; OpenCount = list.Count);
+    /// </code>
+    /// Every list, the first one included, is posted with <see cref="IRunicModelContext.TryPost"/>, in order; lists
+    /// that arrive after the context closed are dropped.
+    /// </remarks>
+    public static IObservable<IReadOnlyList<IRunicWindow>> ObserveWindows(this IRunicWindowService windows, IRunicModelContext context)
+    {
+        ArgumentNullException.ThrowIfNull(windows);
+        ArgumentNullException.ThrowIfNull(context);
+        return new WindowsObservable(windows, context);
+    }
+
+    private sealed class WindowsObservable(IRunicWindowService windows, IRunicModelContext? context) : IObservable<IReadOnlyList<IRunicWindow>>
     {
         public IDisposable Subscribe(IObserver<IReadOnlyList<IRunicWindow>> observer)
         {
             ArgumentNullException.ThrowIfNull(observer);
-            void OnChanged(object? sender, RunicWindowsChangedEventArgs args) => observer.OnNext(windows.Windows);
-            windows.WindowsChanged += OnChanged;
-            observer.OnNext(windows.Windows);
-            return new Subscription(() => windows.WindowsChanged -= OnChanged);
+            var gate = new Lock();
+            var seen = long.MinValue;
+            var stopped = false;
+            void Deliver(IReadOnlyList<IRunicWindow> list)
+            {
+                if (context is null) observer.OnNext(list);
+                else context.TryPost(() => { if (!Volatile.Read(ref stopped)) observer.OnNext(list); });
+            }
+            void OnChanged(object? sender, RunicWindowsChangedEventArgs args)
+            {
+                lock (gate)
+                {
+                    // A change the first list already has, from the service's own order.
+                    if (args.Sequence != 0 && args.Sequence <= seen) return;
+                    Deliver(args.Windows);
+                }
+            }
+            lock (gate)
+            {
+                IReadOnlyList<IRunicWindow> first;
+                if (windows is RunicWindowService service)
+                    (first, seen) = service.Subscribe(OnChanged);
+                else
+                {
+                    windows.WindowsChanged += OnChanged;
+                    first = windows.Windows;
+                }
+                Deliver(first);
+            }
+            return new Subscription(() =>
+            {
+                Volatile.Write(ref stopped, true);
+                windows.WindowsChanged -= OnChanged;
+            });
         }
     }
 
@@ -224,16 +281,10 @@ internal sealed class ScopedWindowResult<TResult>(RunicWindowResultHolder holder
                 $"The Window was opened for a {slot.ResultType.Name} result, not a {typeof(TResult).Name}.");
         cancellationToken.ThrowIfCancellationRequested();
         if (!slot.TryComplete(result)) return ValueTask.FromResult(false);
-        // Not awaited: the command that completes the Window is one of the operations its close waits for.
-        if (slot.Window is { } window) _ = CloseAsync(window);
+        // Not awaited: the command that completes the Window is one of the operations its close waits for. A Window that
+        // has not opened yet, completed from its ViewModel's constructor, closes once it opened.
+        slot.Window?.CloseWhenOpen(CloseTimeout);
         return ValueTask.FromResult(true);
-    }
-
-    private static async Task CloseAsync(IRunicWindow window)
-    {
-        // A Window that is closing or released already (ObjectDisposedException is an InvalidOperationException).
-        try { _ = await window.CloseAsync(CloseTimeout, CancellationToken.None).ConfigureAwait(false); }
-        catch (InvalidOperationException) { }
     }
 }
 

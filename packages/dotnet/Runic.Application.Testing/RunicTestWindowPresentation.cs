@@ -199,7 +199,11 @@ public sealed class RunicTestWindowPresentation : IRunicWindowPresentation
         Request(new RunicWindowPresentationRequest(RunicWindowPresentationRequestKind.SetVisible) { Value = visible },
             RunicWindowPresentationFeatures.Visibility,
             // Showing neither restores nor activates the window.
-            () => Apply(hidden: !visible, _minimized, active: visible && Activity.IsActive), cancellationToken);
+            () =>
+            {
+                Apply(hidden: !visible, _minimized, active: visible && Activity.IsActive);
+                VisibilitySet?.Invoke(visible);
+            }, cancellationToken);
 
     /// <inheritdoc />
     public ValueTask<PlatformResult<PlatformUnit>> SetFullScreenAsync(bool fullScreen, CancellationToken cancellationToken = default) =>
@@ -223,6 +227,13 @@ public sealed class RunicTestWindowPresentation : IRunicWindowPresentation
                 RaiseInOrder(() => Raise(nameof(ColorScheme)));
             }, cancellationToken);
     }
+
+    // Raised after SetVisibleAsync hid or showed the window: the test host hides and shows its owned Windows with it.
+    internal event Action<bool>? VisibilitySet;
+
+    // The test host hides or shows an owned Window with its owner, as Runic Desktop does, without recording a request.
+    internal void SetVisibleWithOwner(bool visible) =>
+        Apply(hidden: !visible, _minimized, active: visible && Activity.IsActive);
 
     private void Apply(bool hidden, bool minimized, bool active)
     {
