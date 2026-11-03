@@ -1,1 +1,25 @@
 #nullable enable
+Runic.Application.Testing.RunicServedBlob
+Runic.Application.Testing.RunicServedBlob.<Clone>$() -> Runic.Application.Testing.RunicServedBlob!
+Runic.Application.Testing.RunicServedBlob.Content.get -> byte[]!
+Runic.Application.Testing.RunicServedBlob.Content.init -> void
+Runic.Application.Testing.RunicServedBlob.ContentDisposition.get -> string?
+Runic.Application.Testing.RunicServedBlob.ContentType.get -> string?
+Runic.Application.Testing.RunicServedBlob.Deconstruct(out int StatusCode, out System.Collections.Generic.IReadOnlyDictionary<string!, string!>! Headers, out byte[]! Content) -> void
+Runic.Application.Testing.RunicServedBlob.Equals(Runic.Application.Testing.RunicServedBlob? other) -> bool
+Runic.Application.Testing.RunicServedBlob.Headers.get -> System.Collections.Generic.IReadOnlyDictionary<string!, string!>!
+Runic.Application.Testing.RunicServedBlob.Headers.init -> void
+Runic.Application.Testing.RunicServedBlob.RunicServedBlob(int StatusCode, System.Collections.Generic.IReadOnlyDictionary<string!, string!>! Headers, byte[]! Content) -> void
+Runic.Application.Testing.RunicServedBlob.StatusCode.get -> int
+Runic.Application.Testing.RunicServedBlob.StatusCode.init -> void
+Runic.Application.Testing.RunicWindowTestHost<TViewModel>.PendingUploadCount.get -> int
+Runic.Application.Testing.RunicWindowTestHost<TViewModel>.ReadBlobAsync(string! url, string? range = null, bool head = false, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<Runic.Application.Testing.RunicServedBlob!>!
+Runic.Application.Testing.RunicWindowTestHost<TViewModel>.ServedBlobCount.get -> int
+Runic.Application.Testing.RunicWindowTestHost<TViewModel>.UploadAsync(System.ReadOnlyMemory<byte> content, string! fileName = "upload", string! contentType = "application/octet-stream", string! connectionKey = "connection-1", System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<Runic.Application.Views.RunicUpload!>!
+Runic.Application.Testing.RunicWindowTestHostOptions.MaximumUploadBytes.get -> long?
+Runic.Application.Testing.RunicWindowTestHostOptions.MaximumUploadBytes.init -> void
+override Runic.Application.Testing.RunicServedBlob.Equals(object? obj) -> bool
+override Runic.Application.Testing.RunicServedBlob.GetHashCode() -> int
+override Runic.Application.Testing.RunicServedBlob.ToString() -> string!
+static Runic.Application.Testing.RunicServedBlob.operator !=(Runic.Application.Testing.RunicServedBlob? left, Runic.Application.Testing.RunicServedBlob? right) -> bool
+static Runic.Application.Testing.RunicServedBlob.operator ==(Runic.Application.Testing.RunicServedBlob? left, Runic.Application.Testing.RunicServedBlob? right) -> bool

@@ -1,1 +1,3 @@
 #nullable enable
+Runic.Application.Views.Desktop.RunicDesktopHostOptions.MaximumUploadBytes.get -> long?
+Runic.Application.Views.Desktop.RunicDesktopHostOptions.MaximumUploadBytes.init -> void

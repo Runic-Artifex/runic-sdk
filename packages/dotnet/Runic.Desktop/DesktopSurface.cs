@@ -299,6 +299,28 @@ public sealed class DesktopSurface : IAsyncDisposable
 
     internal bool IsExecutingCallback => _engine.IsExecutingCallback;
 
+    // blobs/1: serves the surface's blob and upload requests (WebUiWindow.BlobsPath and UploadPath) through handler,
+    // after the window admitted them, until the result is disposed.
+    internal IDisposable ServeBlobs(Func<Internal.PresentationExchange, string?, Task> handler)
+    {
+        ArgumentNullException.ThrowIfNull(handler);
+        ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
+        _engine.SetBlobHandler(handler);
+        return new BlobLease(_engine, handler);
+    }
+
+    // The surface URL, or null before the surface is attached or after it closed.
+    internal Uri? CurrentUrl => _engine.Url;
+
+    private sealed class BlobLease(WebUiWindow engine, Func<Internal.PresentationExchange, string?, Task> handler) : IDisposable
+    {
+        private int _disposed;
+        public void Dispose()
+        {
+            if (Interlocked.Exchange(ref _disposed, 1) == 0) engine.ClearBlobHandler(handler);
+        }
+    }
+
     // Child presentation adapters use this to retire their borrowed-model session on unload.
     internal event EventHandler? PresentationClosed
     {

@@ -172,6 +172,19 @@ public sealed record RunicWindowOptions
     public int? MaximumInputBytes { get; init; }
 
     /// <summary>
+    /// The largest file the page may upload to the window (<see cref="WindowContentSessionOptions.MaximumUploadBytes"/>),
+    /// at least 1 KiB. <see langword="null"/>, the default, uses the host's default, or else 256 MiB.
+    /// </summary>
+    public long? MaximumUploadBytes { get; init; }
+
+    /// <summary>
+    /// The most bytes that the window's unclaimed uploads may take at once
+    /// (<see cref="WindowContentSessionOptions.MaximumWindowUploadBytes"/>), at least 1 KiB. <see langword="null"/>, the
+    /// default, is 1 GiB.
+    /// </summary>
+    public long? MaximumWindowUploadBytes { get; init; }
+
+    /// <summary>
     /// Gets <see cref="ContentRoot"/>, or the web root (<c>www</c> unless the build names another) next to the
     /// application. On macOS, when the application runs from a bundle's <c>Contents/MacOS</c> and that directory does
     /// not exist, gets the bundle's <c>Contents/Resources/www</c>: Apple expects only code in <c>Contents/MacOS</c>.
@@ -209,6 +222,8 @@ public sealed record RunicWindowOptions
         if (Width is <= 0) throw new ArgumentOutOfRangeException(nameof(Width), Width, "The width must be positive.");
         if (Height is <= 0) throw new ArgumentOutOfRangeException(nameof(Height), Height, "The height must be positive.");
         BridgeInputLimit.ThrowIfInvalid(MaximumInputBytes, nameof(MaximumInputBytes));
+        BridgeInputLimit.ResolveUpload(MaximumUploadBytes, nameof(MaximumUploadBytes));
+        BridgeInputLimit.ResolveUpload(MaximumWindowUploadBytes, nameof(MaximumWindowUploadBytes));
     }
 }
 

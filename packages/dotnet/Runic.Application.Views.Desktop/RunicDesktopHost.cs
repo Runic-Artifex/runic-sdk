@@ -105,6 +105,9 @@ public sealed class RunicDesktopHost : IRunicWindowHost
             throw new ArgumentOutOfRangeException(nameof(options), options.MaximumInputBytes,
                 "MaximumInputBytes must be between 1 024 and 67 108 864 bytes.");
         _maximumInputBytes = options.MaximumInputBytes;
+        if (options.MaximumUploadBytes is < 1_024)
+            throw new ArgumentOutOfRangeException(nameof(options), options.MaximumUploadBytes, "MaximumUploadBytes must be at least 1 024 bytes.");
+        _maximumUploadBytes = options.MaximumUploadBytes;
         _serveOnly = options.ServeOnly;
     }
 
@@ -118,6 +121,7 @@ public sealed class RunicDesktopHost : IRunicWindowHost
 
     private readonly bool? _includeFailureDetail;
     private readonly int? _maximumInputBytes;
+    private readonly long? _maximumUploadBytes;
     private readonly string? _contentSecurityPolicy;
     private readonly Runic.Assets.IAssetSource? _assets;
 
@@ -419,6 +423,8 @@ public sealed class RunicDesktopHost : IRunicWindowHost
                 LoggerFactory = loggerFactory,
                 IncludeFailureDetail = IncludeFailureDetailFor(opening.Options),
                 MaximumInputBytes = opening.Options.MaximumInputBytes ?? _maximumInputBytes,
+                MaximumUploadBytes = opening.Options.MaximumUploadBytes ?? _maximumUploadBytes,
+                MaximumWindowUploadBytes = opening.Options.MaximumWindowUploadBytes,
             });
             // The reserved route of an in-page menu bar, served before the page loads. The transport reports closed
             // connections to the window's dispatcher, which releases their mounts and menu bar watches.

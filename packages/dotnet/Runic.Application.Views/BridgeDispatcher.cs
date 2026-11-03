@@ -36,6 +36,7 @@ internal sealed class BridgeDispatcher : IBridgeRequestHandler
     internal const string TextSpliceFeature = "text-splice/1";
     internal const string PresentationEpochFeature = "presentation-epoch/1";
     internal const string PresentedFeature = "presented/1";
+    internal const string BlobsFeature = BridgeBlobs.Feature;
     internal const int MaximumFeatures = 64;
     internal const int MaximumFeatureLength = 64;
     // A request that arrives before its connection's hello waits this long for it, and at most this many wait.
@@ -69,6 +70,7 @@ internal sealed class BridgeDispatcher : IBridgeRequestHandler
     {
         _transport = transport;
         _targeted = transport as IBridgeConnectionTransport;
+        Blobs = new BridgeBlobs();
         // A closing window can still attach content while accepted work drains, after its host disposed the
         // transport. Its dispatcher serves nothing then.
         try { _ = transport.Serve(this); }
@@ -91,6 +93,9 @@ internal sealed class BridgeDispatcher : IBridgeRequestHandler
 
     internal IBridgeTransport Transport => _transport;
 
+    // The Window's blobs and uploads (blobs/1). The host attaches its endpoint; the window session disposes it.
+    internal BridgeBlobs Blobs { get; }
+
     internal TimeProvider TimeProvider => _timeProvider;
 
     internal ILogger Logger => _logger;
@@ -109,6 +114,8 @@ internal sealed class BridgeDispatcher : IBridgeRequestHandler
         _maximumInputBytes = maximumInputBytes;
         _logger = logger;
         _timeProvider = timeProvider;
+        Blobs.Logger = logger;
+        Blobs.TimeProvider = timeProvider;
     }
 
     // Serves a route: requests that name it go to the handler until the lease is disposed; after that they answer
@@ -472,6 +479,8 @@ internal sealed class BridgeDispatcher : IBridgeRequestHandler
             observers = [.. _closedObservers];
         }
         RefuseHeld(refusedHeld);
+        // blobs/1: the connection's upload token stops working and its unclaimed uploads are deleted.
+        Blobs.ConnectionClosed(connectionKey);
         foreach (var observer in observers)
         {
             try { observer(connectionKey); }
@@ -530,7 +539,7 @@ internal sealed class BridgeDispatcher : IBridgeRequestHandler
         if (!root.TryGetProperty("client", out var client) || client.ValueKind != JsonValueKind.Object
             || !TryReadName(client, "name", 128, out var clientName) || !TryReadName(client, "version", 64, out var clientVersion))
             return BridgeMessages.Rejected("invalid-request", "The hello's client is not {name, version}.", hello: true);
-        if (!TryReadFeatures(root, out var usesTextSplice, out var usesPresentationEpoch, out var usesPresented))
+        if (!TryReadFeatures(root, out var usesTextSplice, out var usesPresentationEpoch, out var usesPresented, out var usesBlobs))
             return BridgeMessages.Rejected("invalid-request",
                 $"The hello's features are not an array of at most {MaximumFeatures} strings of at most {MaximumFeatureLength} characters.", hello: true);
         var session = sessionElement.GetString()!;
@@ -557,14 +566,15 @@ internal sealed class BridgeDispatcher : IBridgeRequestHandler
         }
         // A page that connects to a closing window is told so, after its hello reply.
         if (closing) BridgeTargetedPushes.For(_transport).Send(connection.Key, ClosingPush());
-        return BridgeMessages.Hello();
+        // blobs/1: the connection's upload grant, when the host takes uploads.
+        return BridgeMessages.Hello(usesBlobs ? Blobs.Grant(connection.Key) : null);
     }
 
     // The client's features: absent, or an array of strings. A feature this producer does not implement is ignored.
     private static bool TryReadFeatures(JsonElement root, out bool usesTextSplice, out bool usesPresentationEpoch,
-        out bool usesPresented)
+        out bool usesPresented, out bool usesBlobs)
     {
-        usesTextSplice = usesPresentationEpoch = usesPresented = false;
+        usesTextSplice = usesPresentationEpoch = usesPresented = usesBlobs = false;
         if (!root.TryGetProperty("features", out var features)) return true;
         if (features.ValueKind != JsonValueKind.Array || features.GetArrayLength() > MaximumFeatures) return false;
         foreach (var feature in features.EnumerateArray())
@@ -575,6 +585,7 @@ internal sealed class BridgeDispatcher : IBridgeRequestHandler
             if (name == TextSpliceFeature) usesTextSplice = true;
             else if (name == PresentationEpochFeature) usesPresentationEpoch = true;
             else if (name == PresentedFeature) usesPresented = true;
+            else if (name == BlobsFeature) usesBlobs = true;
         }
         return true;
     }

@@ -801,9 +801,19 @@ public partial class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBr
             _content?.NextRevision();
         }
         _modelTurn.RunForTeardown(DisposeCore);
+        // blobs/1: the URLs of the blobs the route encoded stop working.
+        _blobs?.ReleaseRoute(this);
         Interlocked.Exchange(ref _modelContextLease, null)?.Dispose();
         GC.SuppressFinalize(this);
     }
+
+    // blobs/1: the Window's blobs and uploads, which the route's codecs reach through BridgeBlobScope.
+    private BridgeBlobs Blobs => _blobs ??= BridgeDispatcher.For(_transport).Blobs;
+    private BridgeBlobs? _blobs;
+
+    // Enters the scope of the route's encodes and decodes; connection is the key of the request's connection, or null
+    // outside a request.
+    private BridgeBlobScope.Restore EnterBlobs(string? connection) => BridgeBlobScope.Enter(Blobs, this, connection);
 
     private void DisposeCore()
     {

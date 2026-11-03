@@ -7,14 +7,14 @@ use std::sync::{Arc, Mutex, RwLock};
 use std::time::Duration;
 
 use axum::Router;
-use axum::body::Body as AxumBody;
+use axum::body::{Body as AxumBody, BodyDataStream};
 use axum::extract::connect_info::Connected;
 use axum::extract::{ConnectInfo, Request, State};
 use axum::http::{HeaderMap, HeaderName, HeaderValue, Method, StatusCode, header};
 use axum::response::Response;
 use axum::serve::IncomingStream;
 use bytes::Bytes;
-use futures_util::stream;
+use futures_util::{StreamExt, stream};
 use tokio::net::TcpListener;
 use tokio::runtime::Runtime;
 use tokio::sync::{mpsc, oneshot, watch};
@@ -51,6 +51,16 @@ pub struct WebSocketClose<'a> {
     pub reason: &'a str,
 }
 
+/// One read of a request body ([`Server::read`]).
+pub enum BodyRead<'a> {
+    /// The next chunk; the slice is valid during the call only.
+    Data(&'a [u8]),
+    /// The body ended.
+    End,
+    /// The body failed or the request ended.
+    Failed,
+}
+
 /// The embedding host. Every method is called on a server thread and must return without waiting on the server: a
 /// host that does work queues it.
 pub trait Handler: Send + Sync + 'static {
@@ -65,6 +75,8 @@ pub trait Handler: Send + Sync + 'static {
     fn closed(&self, connection: u64, close: Option<WebSocketClose<'_>>);
     /// A write the server answered with [`WriteOutcome::Pending`] was accepted (`true`) or failed (`false`).
     fn completed(&self, token: u64, accepted: bool);
+    /// The result of [`Server::read`] with `token`.
+    fn received(&self, token: u64, read: BodyRead<'_>);
 }
 
 /// The listener and its limits.
@@ -155,6 +167,8 @@ pub(crate) struct Inner {
     next_id: AtomicU64,
     pending: Mutex<HashMap<u64, oneshot::Sender<Decision>>>,
     bodies: Mutex<HashMap<u64, BodySender>>,
+    // The request bodies of requests that have not completed: None while a read holds one.
+    requests: Mutex<HashMap<u64, Option<BodyDataStream>>>,
     pub(crate) sockets: Mutex<HashMap<u64, Arc<Socket>>>,
     // true once the server stopped: no handler call starts after stop took the write lock.
     stopped: RwLock<bool>,
@@ -235,6 +249,7 @@ impl Server {
             next_id: AtomicU64::new(1),
             pending: Mutex::new(HashMap::new()),
             bodies: Mutex::new(HashMap::new()),
+            requests: Mutex::new(HashMap::new()),
             sockets: Mutex::new(HashMap::new()),
             stopped: RwLock::new(false),
             runtime: runtime.handle().clone(),
@@ -271,6 +286,31 @@ impl Server {
     pub fn write(&self, id: u64, data: Bytes, token: u64) -> Result<WriteOutcome, ServerError> {
         let sender = self.inner.bodies.lock().unwrap().get(&id).cloned().ok_or(ServerError::UnknownId)?;
         offer(&self.inner, sender, Ok(data), token)
+    }
+
+    /// Reads the next chunk of request `id`'s body. [`Handler::received`] reports it with `token`, from a server
+    /// thread; one read of a request is in progress at a time. Reading after the response is allowed until the request
+    /// completes.
+    pub fn read(&self, id: u64, token: u64) -> Result<(), ServerError> {
+        let mut body = {
+            let mut requests = self.inner.requests.lock().unwrap();
+            let slot = requests.get_mut(&id).ok_or(ServerError::UnknownId)?;
+            slot.take().ok_or(ServerError::InvalidArgument("a read of this request is in progress"))?
+        };
+        let inner = self.inner.clone();
+        self.inner.spawn(async move {
+            let next = body.next().await;
+            match &next {
+                Some(Ok(chunk)) => inner.notify(|handler| handler.received(token, BodyRead::Data(chunk))),
+                Some(Err(_)) => inner.notify(|handler| handler.received(token, BodyRead::Failed)),
+                None => inner.notify(|handler| handler.received(token, BodyRead::End)),
+            }
+            // The body returns to the request unless it completed meanwhile.
+            if let Some(slot) = inner.requests.lock().unwrap().get_mut(&id) {
+                *slot = Some(body);
+            }
+        });
+        Ok(())
     }
 
     /// Ends request `id`'s streamed body.
@@ -386,6 +426,7 @@ impl Server {
         let _ = self.shutdown.send(true);
         self.inner.pending.lock().unwrap().clear();
         self.inner.bodies.lock().unwrap().clear();
+        self.inner.requests.lock().unwrap().clear();
         for (_, socket) in self.inner.sockets.lock().unwrap().drain() {
             socket.abort();
             socket.release();
@@ -462,6 +503,7 @@ impl Drop for RequestGuard {
     fn drop(&mut self) {
         self.inner.pending.lock().unwrap().remove(&self.id);
         self.inner.bodies.lock().unwrap().remove(&self.id);
+        self.inner.requests.lock().unwrap().remove(&self.id);
         if self.armed {
             let id = self.id;
             self.inner.notify(|handler| handler.request_aborted(id));
@@ -496,7 +538,7 @@ async fn handle(State(inner): State<Arc<Inner>>, ConnectInfo(peer): ConnectInfo<
     if inner.is_stopped() {
         return status_only(StatusCode::SERVICE_UNAVAILABLE);
     }
-    let (mut parts, _body) = request.into_parts();
+    let (mut parts, body) = request.into_parts();
     if !inner.config.all_interfaces
         && !host::admits(parts.headers.get(header::HOST).map(HeaderValue::as_bytes), inner.port)
     {
@@ -510,6 +552,8 @@ async fn handle(State(inner): State<Arc<Inner>>, ConnectInfo(peer): ConnectInfo<
     let id = inner.next_id.fetch_add(1, Ordering::Relaxed);
     let (decide, decision) = oneshot::channel();
     inner.pending.lock().unwrap().insert(id, decide);
+    // The body waits for the host's reads (Server::read) until the request completes.
+    inner.requests.lock().unwrap().insert(id, Some(body.into_data_stream()));
     let mut guard = RequestGuard { inner: inner.clone(), id, armed: true };
     let target = parts.uri.path_and_query().map_or("/", |target| target.as_str());
     inner.notify(|handler| {

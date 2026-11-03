@@ -85,7 +85,7 @@ public partial class ViewModelBridge<T>
         {
             var admission = descriptor.ResolveArgumentAsync is null
                 ? _modelTurn.Run(() => IsInactive ? null : Admit(content, descriptor, request.Connection, operation, () =>
-                    TryDecodeInput(descriptor, hasInput ? input : null, out var key) is { } invalid ? (invalid, null)
+                    TryDecodeInput(descriptor, hasInput ? input : null, request.Connection.Key, out var key) is { } invalid ? (invalid, null)
                     : !TryResolve(descriptor, key, out var argument) ? (BridgeFailure.UnresolvedKey, null)
                     : IsAvailable(descriptor, argument) ? (null, argument) : (BridgeFailure.Unavailable, argument)))
                 : await AdmitResolvingAsync(content, descriptor, request.Connection, operation, hasInput ? input : null,
@@ -121,7 +121,7 @@ public partial class ViewModelBridge<T>
         var released = _modelTurn.Run(() =>
         {
             if (IsInactive) return true;
-            invalid = TryDecodeInput(descriptor, input, out var key);
+            invalid = TryDecodeInput(descriptor, input, connection.Key, out var key);
             if (invalid is null) resolution = descriptor.ResolveArgumentAsync!(_vm, key, awaited.Token).AsTask();
             return false;
         });
@@ -179,6 +179,7 @@ public partial class ViewModelBridge<T>
                 (execution, cancellation) => ObserveOperationAsync(_logger, descriptor.Name, _name, descriptor.EncodeFailure, () =>
                 {
                     using var invocation = Enter(cancellation);
+                    using var blobs = EnterBlobs(null);
                     return executeStream(_vm, execution, cancellation, argument);
                 }), retirement, terminalRevision)
             : content.Operations.AcceptUnlessRefused(operation, refusal,
@@ -191,10 +192,11 @@ public partial class ViewModelBridge<T>
     }
 
     // Decodes a start's input; returns invalid-input when it does not decode, or null with the decoded value.
-    private static string? TryDecodeInput(CommandDescriptor<T> descriptor, JsonElement? input, out object? value)
+    private string? TryDecodeInput(CommandDescriptor<T> descriptor, JsonElement? input, string connection, out object? value)
     {
         value = null;
         if (input is not { } element) return null;
+        using var blobs = EnterBlobs(connection);
         try
         {
             value = descriptor.ReadInput?.Invoke(element);

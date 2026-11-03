@@ -16,6 +16,16 @@ export { onBridgeDiagnostic, type BridgeDiagnostic, type BridgeDiagnosticCode, t
 export { bridgeFailure, bridgeSuccess, isBridgeOutcome, matchCase, type BridgeOutcome } from "./outcome.js";
 export type { BridgeValidationMessage, BridgeValidationState } from "./validation.js";
 export { waitForBridge, type RunicBridgeClient, type WaitForBridgeOptions } from "./transport.js";
+export {
+  blobsFeature,
+  upload,
+  type BlobRef,
+  type HostUploadRequest,
+  type HostUploads,
+  type RunicBlob,
+  type UploadOptions,
+  type UploadProgress,
+} from "./blobs.js";
 export { onBridgeConnection, type BridgeConnectionOptions, type BridgeConnectionState } from "./connection-state.js";
 export {
   createCommandController,

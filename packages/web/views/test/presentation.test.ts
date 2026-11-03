@@ -109,7 +109,7 @@ test("hello lists presentation-epoch/1 and presented/1", async () => {
   const original = (host["__runicBridge"] as RunicBridgeClient).request;
   (host["__runicBridge"] as { request: RunicBridgeClient["request"] }).request = text => { requests.push(JSON.parse(text)); return original(text); };
   const client = await connectWizard();
-  assert.deepEqual(requests.find(message => message["kind"] === "hello")?.["features"], allFeatures);
+  assert.deepEqual(requests.find(message => message["kind"] === "hello")?.["features"], [...allFeatures, "blobs/1"]);
   client.dispose();
   void bridge;
 });

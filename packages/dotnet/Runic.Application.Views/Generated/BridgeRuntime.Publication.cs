@@ -481,11 +481,11 @@ public partial class ViewModelBridge<T>
                 writer.WritePropertyName(member.Name);
                 if (compared is null || _incrementalMembers.Contains(member.Name))
                 {
-                    member.Write(writer, _vm);
+                    WriteMemberValue(member, writer);
                     continue;
                 }
                 var start = message.Position;
-                member.Write(writer, _vm);
+                WriteMemberValue(member, writer);
                 compared.Add((member.Name, start, message.Position));
             }
             writer.WriteEndObject();
@@ -510,6 +510,21 @@ public partial class ViewModelBridge<T>
         // The state is a unit that compared every member.
         Published(changed);
         return state;
+    }
+
+    // blobs/1: a state member's blobs are exactly those of its latest write (BridgeBlobs, holders).
+    private void WriteMemberValue(BridgeStateMember<T> member, Utf8JsonWriter writer)
+    {
+        using var route = EnterBlobs(null);
+        using var slot = BridgeBlobScope.EnterSlot(member.Name);
+        member.Write(writer, _vm);
+    }
+
+    // A collection change's rows: their blobs belong to the route until it is released.
+    private void WriteItemValue(BridgeCollectionDescriptor<T> descriptor, Utf8JsonWriter writer, object? item)
+    {
+        using var route = EnterBlobs(null);
+        descriptor.WriteItem(writer, item);
     }
 
     private void WriteFieldVersions(Utf8JsonWriter writer)
@@ -540,7 +555,7 @@ public partial class ViewModelBridge<T>
                 var comparing = BridgeComparingWriter.Rent(previous);
                 try
                 {
-                    member.Write(comparing.Writer, _vm);
+                    WriteMemberValue(member, comparing.Writer);
                     var matches = comparing.Matches;
                     var version = VersionOf(member.Name);
                     if (matches && (version is null || _publishedVersions.GetValueOrDefault(member.Name) == version)) continue;
@@ -559,7 +574,7 @@ public partial class ViewModelBridge<T>
     {
         using (BridgeSnapshotPublication.Enter(() => IsInactive))
             foreach (var member in _stateMembers)
-                if (member.Name == name) return WriteValue(writer => member.Write(writer, _vm));
+                if (member.Name == name) return WriteValue(writer => WriteMemberValue(member, writer));
         throw new InvalidOperationException($"{ModelName} has no state member '{name}'.");
     }
 
@@ -640,7 +655,7 @@ public partial class ViewModelBridge<T>
                     }
                     var keys = (kind == "add" ? args.NewItems : args.OldItems)?.Cast<object?>().Select(descriptor.Key).ToArray() ?? [];
                     var items = kind is "add" or "replace"
-                        ? args.NewItems?.Cast<object?>().Select(item => WriteValue(writer => descriptor.WriteItem(writer, item))).ToArray() ?? []
+                        ? args.NewItems?.Cast<object?>().Select(item => WriteValue(writer => WriteItemValue(descriptor, writer, item))).ToArray() ?? []
                         : [];
                     _pendingCollectionChanges.Add(new(descriptor, kind,
                         kind == "remove" ? args.OldStartingIndex : args.NewStartingIndex,
@@ -678,7 +693,7 @@ public partial class ViewModelBridge<T>
                     // A key changed in place or made invalid becomes a set of the field.
                     if (!TrackItemKey(descriptor, rows, item, at, out var key)) MarkCollectionSet(descriptor);
                     else _pendingCollectionChanges.Add(new(descriptor, "replace", at, at,
-                        [key], [WriteValue(writer => descriptor.WriteItem(writer, item))]));
+                        [key], [WriteValue(writer => WriteItemValue(descriptor, writer, item))]));
                 }
                 if (handled) ScheduleUnit();
                 return handled;

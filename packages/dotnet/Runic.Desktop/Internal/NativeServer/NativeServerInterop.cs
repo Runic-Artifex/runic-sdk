@@ -2,12 +2,12 @@ using System.Runtime.InteropServices;
 
 namespace Runic.Desktop.Internal.NativeServer;
 
-// The C ABI of native/runic-server (src/ffi.rs, include/runic_server.h), ABI version 2. Every struct mirrors its
+// The C ABI of native/runic-server (src/ffi.rs, include/runic_server.h), ABI version 3. Every struct mirrors its
 // #[repr(C)] counterpart field by field.
 internal static unsafe partial class NativeServerInterop
 {
     internal const string Library = "runic_server";
-    internal const uint AbiVersion = 2;
+    internal const uint AbiVersion = 3;
 
     internal const int Ok = 0;
     internal const int Pending = 1;
@@ -23,6 +23,10 @@ internal static unsafe partial class NativeServerInterop
     internal const uint BodyEmpty = 0;
     internal const uint BodyStream = 1;
     internal const uint BodyFile = 2;
+
+    internal const uint BodyReadData = 1;
+    internal const uint BodyReadEnd = 2;
+    internal const uint BodyReadFailed = 3;
 
     internal const uint MessageText = 1;
     internal const uint MessageBinary = 2;
@@ -74,6 +78,7 @@ internal static unsafe partial class NativeServerInterop
         internal delegate* unmanaged[Cdecl]<void*, ulong, ulong, uint, byte*, nuint, void> OnMessage;
         internal delegate* unmanaged[Cdecl]<void*, ulong, int, byte*, nuint, void> OnClosed;
         internal delegate* unmanaged[Cdecl]<void*, ulong, int, void> OnCompleted;
+        internal delegate* unmanaged[Cdecl]<void*, ulong, uint, byte*, nuint, void> OnReceived;
     }
 
     [LibraryImport(Library, EntryPoint = "runic_server_abi_version")]
@@ -94,6 +99,9 @@ internal static unsafe partial class NativeServerInterop
 
     [LibraryImport(Library, EntryPoint = "runic_server_write")]
     internal static partial int Write(NativeServerHandle server, ulong id, byte* data, nuint length, ulong token);
+
+    [LibraryImport(Library, EntryPoint = "runic_server_read")]
+    internal static partial int Read(NativeServerHandle server, ulong id, ulong token);
 
     [LibraryImport(Library, EntryPoint = "runic_server_end")]
     internal static partial int End(NativeServerHandle server, ulong id);

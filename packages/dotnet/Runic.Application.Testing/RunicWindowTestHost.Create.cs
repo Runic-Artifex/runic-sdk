@@ -104,6 +104,7 @@ public static class RunicWindowTestHost
             CreateId = options.CreateId,
             IncludeFailureDetail = options.IncludeFailureDetail,
             MaximumInputBytes = options.MaximumInputBytes,
+            MaximumUploadBytes = options.MaximumUploadBytes,
             PublicationTimeout = options.PublicationTimeout,
         })
         { Services = services };

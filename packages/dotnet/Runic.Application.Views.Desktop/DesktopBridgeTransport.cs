@@ -85,6 +85,14 @@ public sealed class DesktopBridgeTransport : IBridgeConnectionTransport, IDispos
                 });
                 serving.Capability = _surface.RegisterCapability(RequestCapability,
                     (invocation, token) => HandleAsync(handler, invocation, token));
+                // blobs/1: the window's blobs and uploads, below the surface's URL.
+                if (handler is BridgeDispatcher dispatcher)
+                {
+                    var surface = _surface;
+                    dispatcher.Blobs.Attach(BridgeBlobEndpoint.Below(() => surface.CurrentUrl));
+                    serving.Blobs = _surface.ServeBlobs((exchange, token) => DesktopBlobExchange.ServeAsync(dispatcher.Blobs, exchange, token));
+                    serving.Detach = dispatcher.Blobs.Detach;
+                }
             }
             catch
             {
@@ -180,6 +188,12 @@ public sealed class DesktopBridgeTransport : IBridgeConnectionTransport, IDispos
 
         public IDisposable Capability { set => _capability = value; }
 
+        public IDisposable Blobs { set => _blobs = value; }
+
+        public Action? Detach { get; set; }
+
+        private IDisposable? _blobs;
+
         // The lease: stops serving and removes the capability.
         public void Dispose()
         {
@@ -191,6 +205,8 @@ public sealed class DesktopBridgeTransport : IBridgeConnectionTransport, IDispos
         {
             Interlocked.Exchange(ref _capability, null)?.Dispose();
             Interlocked.Exchange(ref _connections, null)?.Dispose();
+            Interlocked.Exchange(ref _blobs, null)?.Dispose();
+            Detach?.Invoke();
         }
     }
 }

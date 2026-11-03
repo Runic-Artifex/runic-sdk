@@ -5,6 +5,8 @@ import { applySplice, producerSplices, textSpliceFeature } from "./text.js";
 import { insertRows } from "./collections.js";
 import { flushNotifications } from "./notifications.js";
 import { presentationEpochFeature, presentedFeature } from "./protocol.js";
+import { blobsFeature, type BlobRef } from "./blob-wire.js";
+import type { HostUploadRequest } from "./blobs.js";
 
 /** A View's wire state: one member per state member, by wire name, encoded as on the wire. */
 export type MockState = Record<string, unknown>;
@@ -60,6 +62,27 @@ export interface MockBridgeOptions {
    * a command handler that awaits holds the next one until it returns.
    */
   readonly reorderRequests?: boolean;
+  /**
+   * blobs/1: whether the mock takes uploads, and its per-upload limit in bytes. By default it takes uploads of up to
+   * 256 MiB; `false` grants none, so `upload()` rejects with `unavailable`.
+   */
+  readonly uploads?: false | { readonly maximumBytes?: number };
+}
+
+/** An upload the mock received (blobs/1). */
+export interface MockUpload {
+  /** The reference `upload()` resolved with, which a command input carries. */
+  readonly ref: BlobRef;
+  /** The uploaded content. */
+  readonly content: Blob;
+}
+
+/** How the mock answers the next upload instead of storing it ({@link MockBridge.failNextUpload}). */
+export interface MockUploadFailure {
+  /** The HTTP status: 413 for too large, 507 or 429 for capacity, another one for a failure. */
+  readonly status: number;
+  readonly reason?: string;
+  readonly message?: string;
 }
 
 /** An unexpected failure the mock answers instead of running a handler. */
@@ -367,6 +390,17 @@ export interface MockBridge extends RunicBridgeClient {
   flushUntil<T>(promise: Promise<T>): Promise<T>;
   /** Moves the virtual clock, delivering timed work in order. */
   advance(milliseconds: number): Promise<void>;
+  /** blobs/1: every upload the mock stored, in order. */
+  readonly uploads: readonly MockUpload[];
+  /** blobs/1: the content of an upload, by its reference or id; undefined for one the mock did not store. */
+  uploadContent(upload: BlobRef | string): Blob | undefined;
+  /** blobs/1: answers the next upload with an HTTP failure instead of storing it. */
+  failNextUpload(failure: MockUploadFailure): void;
+  /**
+   * blobs/1: receives an upload as a host does (the host bridge's `upload`, which `upload()` calls). It reports
+   * progress at half and at the end of the content, one latency apart, and stops when the request's signal aborts.
+   */
+  upload(request: HostUploadRequest): Promise<{ readonly status: number; readonly body: string }>;
 }
 
 /** Creates a mock producer. Install it with {@link installMockBridge}. */
@@ -377,7 +411,8 @@ const realSetTimeout = globalThis.setTimeout.bind(globalThis);
 const yieldToEventLoop = () => new Promise<void>(resolve => { realSetTimeout(resolve, 0); });
 const maximumRounds = 10_000;
 const mockImplementation = { name: "@runic-artifex/views/mock", version: viewsVersion };
-const mockFeatures: readonly string[] = [textSpliceFeature, presentationEpochFeature, presentedFeature];
+const mockFeatures: readonly string[] = [textSpliceFeature, presentationEpochFeature, presentedFeature, blobsFeature];
+const defaultUploadBytes = 256 * 1_048_576;
 
 const upperFirst = (value: string) => value.charAt(0).toUpperCase() + value.slice(1);
 const isRecord = (value: unknown): value is Record<string, unknown> => value !== null && typeof value === "object" && !Array.isArray(value);
@@ -556,6 +591,10 @@ export function createMockBridge(options: MockBridgeOptions = {}): MockBridge {
   let outboundChain: Promise<void> = Promise.resolve();
   let inboundChain: Promise<void> = Promise.resolve();
   let reorderQueue: (() => void)[] | undefined;
+  // blobs/1: the per-upload limit, or undefined when the mock takes no uploads; stored uploads; the next failure.
+  const uploadLimit = options.uploads === false ? undefined : options.uploads?.maximumBytes ?? defaultUploadBytes;
+  const uploads: MockUpload[] = [];
+  const uploadFailures: MockUploadFailure[] = [];
 
   const schedule = (due: number, run: () => void, order = sequence++) => {
     const task = { due, sequence: order, run };
@@ -1160,7 +1199,10 @@ export function createMockBridge(options: MockBridgeOptions = {}): MockBridge {
       connection.features = new Set((listed as string[] | undefined ?? []).filter(feature => mockFeatures.includes(feature)));
       // Requests that waited for the hello are admitted in the order they arrived.
       for (const resume of connection.held.splice(0)) resume(true);
-      return ok({ ...identity, features: mockFeatures });
+      // blobs/1: the connection's upload grant.
+      const grant = connection.features.has(blobsFeature) && uploadLimit !== undefined
+        ? { blobs: { upload: "mock:upload", token: `mock-upload-token-${connection.id}`, maximumBytes: uploadLimit } } : {};
+      return ok({ ...identity, features: mockFeatures, ...grant });
     }
     if (connection.session === undefined) return noHello();
     if (kind === "receive") return ok({ messages: [] });
@@ -1325,8 +1367,38 @@ export function createMockBridge(options: MockBridgeOptions = {}): MockBridge {
     for (const listener of [...connectionListeners]) listener(value);
   }
 
+  async function receiveUpload(request: HostUploadRequest): Promise<{ readonly status: number; readonly body: string }> {
+    const answer = (status: number, value: unknown) => ({ status, body: JSON.stringify(value) });
+    const failure = (status: number, reason: string, message: string) =>
+      answer(status, { ok: false, error: { kind: reason === "released" ? "released" : "rejected", reason, message } });
+    const aborted = () => request.signal?.reason ?? new DOMException("The upload was aborted.", "AbortError");
+    if (request.signal?.aborted) throw aborted();
+    if (!connected || request.token !== `mock-upload-token-${connection.id}` || uploadLimit === undefined)
+      return failure(403, "forbidden", "The upload token is not valid for an open connection of this window.");
+    const total = request.content.size;
+    const step = () => new Promise<void>((resolve, reject) => {
+      const stop = () => reject(aborted());
+      request.signal?.addEventListener("abort", stop, { once: true });
+      schedule(now + sample(), () => { request.signal?.removeEventListener("abort", stop); resolve(); });
+    });
+    await step();
+    request.onProgress?.({ loaded: Math.floor(total / 2), total });
+    await step();
+    if (total > uploadLimit) return failure(413, "too-large", `The upload is larger than the window's limit of ${uploadLimit} bytes.`);
+    const next = uploadFailures.shift();
+    if (next) return failure(next.status, next.reason ?? (next.status === 413 ? "too-large" : "failed"), next.message ?? "The mock refused the upload.");
+    request.onProgress?.({ loaded: total, total });
+    const ref: BlobRef = { id: `mock-upload-${uploads.length + 1}`, name: request.name, type: request.type, size: total };
+    uploads.push({ ref, content: request.content });
+    return answer(201, { ok: true, upload: ref });
+  }
+
   const bridge: MockBridge = {
     calls,
+    uploads,
+    uploadContent: upload => uploads.find(entry => entry.ref.id === (typeof upload === "string" ? upload : upload.id))?.content,
+    failNextUpload(failure) { uploadFailures.push(failure); },
+    upload: receiveUpload,
     get now() { return now; },
     get pending() { return tasks.length; },
     isConnected: () => connected,

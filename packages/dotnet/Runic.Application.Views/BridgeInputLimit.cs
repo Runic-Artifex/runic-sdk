@@ -22,6 +22,11 @@ internal static class BridgeInputLimit
     // Throws for an option value outside the range; null is valid.
     internal static void ThrowIfInvalid(int? value, string name) => _ = Resolve(value, name);
 
+    // Validates an upload limit (blobs/1); null stays null, which selects the default.
+    internal static long? ResolveUpload(long? value, string name) => value is < Minimum
+        ? throw new ArgumentOutOfRangeException(name, value, $"An upload limit must be at least {Minimum} bytes.")
+        : value;
+
     // Whether the UTF-8 encoding of the value fits; a UTF-16 code unit is one to three bytes.
     internal static bool Fits(string value, int maximumBytes) =>
         value.Length <= maximumBytes

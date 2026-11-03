@@ -29,7 +29,10 @@ export {
   type MockState,
   type MockView,
   type MockViewDefinition,
+  type MockUpload,
+  type MockUploadFailure,
 } from "./mock-bridge.js";
+export { mockBlob, type MockBlobOptions } from "./mock-blob.js";
 export type {
   MockCommandHandler,
   MockFailureOf,

@@ -170,6 +170,11 @@
       "id": "RUNICBRIDGE034",
       "severity": "warning",
       "title": "A [RunicPresentationScoped] declaration reaches no Bridge command"
+    },
+    {
+      "id": "RUNICBRIDGE065",
+      "severity": "error",
+      "title": "A RunicBlob is read from the page: a command input, an interaction result or a checked field"
     }
   ]
 }

@@ -1,1 +1,3 @@
 #nullable enable
+Runic.Application.Views.CsWebUi.RunicCsWebUiHostOptions.MaximumUploadBytes.get -> long?
+Runic.Application.Views.CsWebUi.RunicCsWebUiHostOptions.MaximumUploadBytes.init -> void

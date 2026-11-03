@@ -80,6 +80,7 @@ and severities are open.
 | [`RUNICBRIDGE032`](#runicbridge032) | Warning | Generator | An observable collection of DTO rows is not a `[RunicCollection]` |
 | [`RUNICBRIDGE033`](#runicbridge033) | Warning | Build targets | The .NET SDK or Bun is older than this release supports |
 | [`RUNICBRIDGE034`](#runicbridge034) | Warning | Generator | A `[RunicPresentationScoped]` declaration reaches no Bridge command |
+| [`RUNICBRIDGE065`](#runicbridge065) | Error | Generator | A RunicBlob is read from the page: a command input, an interaction result or a checked field |
 
 ### RUNICBRIDGE001
 
@@ -618,6 +619,19 @@ generated client sends no presentation epoch for anything it would have scoped.
 **Fix:** put the attribute on the command property, or on the `[RelayCommand]`
 method whose command the Bridge exposes. See
 [Commands scoped to their presentation](../packages/dotnet/Runic.Application.Views/README.md#commands-scoped-to-their-page).
+
+### RUNICBRIDGE065
+
+An error from the Bridge generator (since 0.16). A `RunicBlob` is a value that
+.NET serves to the page (feature `blobs/1`): it crosses as a URL, never as
+bytes, so the page cannot send one back. This code reports a `RunicBlob` where
+the page would supply it: a command input, an interaction result, or a member
+of a DTO that is one. A state property that holds a `RunicBlob` is read-only
+for the page whatever its setter, so it needs no change.
+
+**Fix:** take a `RunicUpload` instead. The page uploads the file with
+`client.upload(file)` and passes the resulting `BlobRef` to the command. See
+[Blobs and uploads](../packages/dotnet/Runic.Application.Views/README.md#blobs-and-uploads).
 
 ## dotnet runic
 

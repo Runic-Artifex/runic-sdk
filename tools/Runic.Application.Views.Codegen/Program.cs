@@ -721,10 +721,17 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
                 throw new BridgeDiagnosticException(BridgeDiagnosticCodes.State,
                     $"{model.Name}.{property.Name}: a ViewModel collection needs a specific item interface or base class with a registered View.", property);
         }
-        valueProperties.Add(property, BridgeTypeGraph.Discover(property.PropertyType,
-            nullability.Create(property), $"{model.Name}.{property.Name}", property, honorJsonIgnore,
-            property.SetMethod?.IsPublic == true ? BridgeValueDirection.Both : BridgeValueDirection.ToPage));
+        // blobs/1: a property that holds a RunicBlob only goes to the page, whatever its setter (PageSettable).
+        var valueGraph = BridgeTypeGraph.Discover(property.PropertyType,
+            nullability.Create(property), $"{model.Name}.{property.Name}", property, honorJsonIgnore, BridgeValueDirection.ToPage);
+        if (property.SetMethod?.IsPublic == true && !valueGraph.Nodes.Any(node => node.Kind == BridgeWireKind.Blob))
+            valueGraph = BridgeTypeGraph.Discover(property.PropertyType,
+                nullability.Create(property), $"{model.Name}.{property.Name}", property, honorJsonIgnore, BridgeValueDirection.Both);
+        valueProperties.Add(property, valueGraph);
     }
+    // Whether the page sets the property: a public setter, unless the property holds a RunicBlob (blobs/1).
+    bool PageSettable(PropertyInfo property) => property.SetMethod?.IsPublic == true
+        && !(valueProperties.TryGetValue(property, out var graph) && graph.Nodes.Any(node => node.Kind == BridgeWireKind.Blob));
     var incrementalCollections = new Dictionary<PropertyInfo, PropertyInfo>();
     foreach (var property in properties)
     {
@@ -887,8 +894,11 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
     // supports the scalar codecs that the ordinary Bridge already serializes
     // without reflection.
     var checkedProperties = properties
-        .Where(property => property.SetMethod?.IsPublic == true && valueProperties.ContainsKey(property)).ToArray();
+        .Where(property => PageSettable(property) && valueProperties.ContainsKey(property)).ToArray();
     var needsCheckedWriter = checkedProperties.Length > 0;
+    // blobs/1: a client whose command inputs or settable members take a RunicUpload gets upload().
+    var usesUploads = commandPlans.Values.Any(plan => plan.InputGraph?.Nodes.Any(node => node.Kind == BridgeWireKind.Upload) == true)
+        || valueProperties.Any(entry => PageSettable(entry.Key) && entry.Value.Nodes.Any(node => node.Kind == BridgeWireKind.Upload));
     InteractionCodeEmitter.ValidatePublicSurface(model.Name, properties, commands, commandPlans, interactions,
         checkedProperties, WireName, hasErrors, hasValidation);
 
@@ -913,7 +923,7 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
     foreach (var property in properties)
     {
         // A setter reads the request's value with the member's codec.
-        var setter = property.SetMethod?.IsPublic == true && valueProperties.ContainsKey(property)
+        var setter = PageSettable(property) && valueProperties.ContainsKey(property)
             ? $"(vm, value) => vm.{property.Name} = {property.Name}ValueCodec.Read(value)"
             : "null";
         var descriptorNames = $"\"{property.Name}\", \"{WireName(property)}\"";
@@ -1244,7 +1254,12 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
         + (modelDocumentation is null ? "" : "\n\n" + modelDocumentation));
     ts.AppendLine($"export interface {clientName} extends {Ref("ViewClient")}<{shortName}State> {{");
     if (interactions.Length > 0) ts.AppendLine($"  readonly interactions: {shortName}Interactions;");
-    foreach (var property in properties.Where(property => property.SetMethod?.IsPublic == true))
+    if (usesUploads)
+    {
+        XmlDocumentation.Append(ts, "  ", "Uploads a file to the window's .NET host over HTTP (blobs/1) and resolves with the reference that a command's\n`RunicUpload` input takes. `options.onProgress` reports the bytes sent; `options.signal` aborts the upload.");
+        ts.AppendLine("  upload(content: Blob, options?: import(\"@runic-artifex/views\").UploadOptions): Promise<import(\"@runic-artifex/views\").BlobRef>;");
+    }
+    foreach (var property in properties.Where(PageSettable))
     {
         XmlDocumentation.Append(ts, "  ", SetterDocumentation(property));
         ts.AppendLine($"  set{property.Name}(value: {TsPropertyType(property)}): Promise<{shortName}State>;");
@@ -1405,11 +1420,12 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
     ts.AppendLine("    get snapshot() { return view.snapshot; },");
     ts.AppendLine("    subscribe: view.subscribe,");
     ts.AppendLine("    dispose: view.dispose,");
+    if (usesUploads) ts.AppendLine($"    upload: {Ref("upload")},");
     if (interactions.Length > 0)
         ts.AppendLine($"    interactions: view.interactions as unknown as {shortName}Interactions,");
     if (needsCheckedWriter)
         ts.AppendLine($"    fieldBaseline<K extends keyof {shortName}CheckedFields>(field: K) {{ return view.fieldBaseline(field) as {Ref("FieldBaseline")}<{shortName}CheckedFields[K]>; }},");
-    foreach (var property in properties.Where(property => property.SetMethod?.IsPublic == true))
+    foreach (var property in properties.Where(PageSettable))
     {
         // A setter sends the member's value as an edit (specs/application, "Edits").
         var member = JsonSerializer.Serialize(WireName(property));
@@ -1481,6 +1497,7 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
     if (operationPlans.Length > 0) runtimeImports.Add(Import("bridgeOperations"));
     if (hasValidation) runtimeImports.Add(Import("decodeBridgeValidation"));
     if (hasValidation && needsCheckedWriter) runtimeImports.Add(Import("fieldErrors"));
+    if (usesUploads) runtimeImports.Add(Import("upload"));
     ts.Clear();
     ts.AppendLine("// <auto-generated />");
     ts.AppendLine(publicImports.All(name => name.StartsWith("type ", StringComparison.Ordinal))
@@ -1509,7 +1526,7 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
         checkedProperties.Select(WireName).ToArray(),
         textMembers.Select(WireName).ToArray(),
         scopedCommands,
-        properties.Where(property => property.SetMethod?.IsPublic == true && valueProperties.ContainsKey(property))
+        properties.Where(property => PageSettable(property) && valueProperties.ContainsKey(property))
             .Select(property => new MockSetter($"set{property.Name}", WireName(property), TsPropertyType(property),
                 checkedProperties.Contains(property) ? $"write{property.Name}" : null)).ToArray(),
         commands.Select(command =>
@@ -1954,6 +1971,8 @@ static class BridgeDiagnosticCodes
     internal const string Toolchain = "RUNICBRIDGE033";
     /// <summary>Warning: a RunicPresentationScoped declaration reaches no Bridge command.</summary>
     internal const string PresentationScoped = "RUNICBRIDGE034";
+    /// <summary>A RunicBlob is read from the page: a command input, an interaction result or a checked field.</summary>
+    internal const string Blob = "RUNICBRIDGE065";
 
     // Every code with its severity and title, in ID order: the source of the machine-readable list
     // (--list-diagnostics, docs/runicbridge-diagnostics.json). eng/diagnostics.test.mjs checks the
@@ -1994,6 +2013,7 @@ static class BridgeDiagnosticCodes
         (CollectionWithoutKey, "warning", "An observable collection of DTO rows is not a [RunicCollection]"),
         (Toolchain, "warning", "The .NET SDK or Bun is older than this release supports"),
         (PresentationScoped, "warning", "A [RunicPresentationScoped] declaration reaches no Bridge command"),
+        (Blob, "error", "A RunicBlob is read from the page: a command input, an interaction result or a checked field"),
     ];
 
     // Schema version 1: { schemaVersion, diagnostics: [{ id, severity: "error" | "warning", title }] }. A later
@@ -2069,7 +2089,7 @@ static class Diagnostics
         var code = error switch
         {
             BridgeDiagnosticException diagnostic => diagnostic.Code,
-            BridgeTypeGraphException => BridgeDiagnosticCodes.ValueType,
+            BridgeTypeGraphException graph => graph.Code ?? BridgeDiagnosticCodes.ValueType,
             ReflectionTypeLoadException or FileNotFoundException or FileLoadException or BadImageFormatException
                 or TypeLoadException => BridgeDiagnosticCodes.AssemblyLoad,
             // A wrong argument or build property, or output the generator cannot write.
