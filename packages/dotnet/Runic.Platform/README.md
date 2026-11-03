@@ -247,7 +247,10 @@ ViewModel can take `IFileDialogs`, `ITextClipboard`, `IDesktopClipboard`, `IDesk
 `IDesktopMonitors`, `IDesktopMessageBoxes` or `IWindowPlatformServices` in its constructor. Runic.Application.Views.Desktop binds
 them to the native window when it opens. A host without a native owner
 registers `WindowPlatformServices.Unavailable(reason)`, whose operations and
-capabilities all report that reason. Tests can use the same instance.
+capabilities all report that reason. Tests can use the same instance, or the
+scripted, recording fakes of `RunicTestPlatform` in
+[Runic.Application.Testing](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Application.Testing/README.md#platform-services),
+which hand out in-memory file leases and answer message boxes and context menus.
 
 `AnnounceAsync(message, priority)` asks the screen reader to speak a status
 message for the window, such as "Saved", through the platform's accessibility
