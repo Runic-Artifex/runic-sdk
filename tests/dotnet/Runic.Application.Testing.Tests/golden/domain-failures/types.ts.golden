@@ -272,6 +272,11 @@ export interface Testsdelete {
   readonly id: number;
 }
 
+export interface Thumbnail {
+  readonly id: number;
+  readonly image: import("@runic-artifex/views").RunicBlob;
+}
+
 export interface ToolkitCommandRequest {
   readonly documentId: string;
   readonly delta: number;
