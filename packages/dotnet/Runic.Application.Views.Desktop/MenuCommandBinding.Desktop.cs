@@ -59,8 +59,9 @@ namespace Runic.Application.Views.Desktop
         public Task<bool[]> CanExecuteAsync(IReadOnlyList<DesktopMenuItem> items, CancellationToken cancellationToken) =>
             window.CanExecuteMenuItemsAsync(items, cancellationToken);
 
-        // The Window's root ViewModel's command runs with the invoking page's identity; an item it cannot run goes the
-        // native path, to the application's commands, which have no page.
+        // The Window's root ViewModel's command runs with the invoking page's identity; an item it cannot run goes to the
+        // application's commands only, which have no page. The Window's own target is never asked on that path: an item
+        // that became runnable meanwhile would otherwise run there without the page's identity, in the window scope.
         public ValueTask<bool> TryExecuteAsync(DesktopMenuItem item, BridgeConnection invoker, CancellationToken cancellationToken)
         {
             if (commands is not null && item.IsEnabled && commands.CanExecute(item))
@@ -69,7 +70,7 @@ namespace Runic.Application.Views.Desktop
                 commands.Execute(item, invoker);
                 return ValueTask.FromResult(true);
             }
-            return window.TryExecuteMenuItemAsync(item, cancellationToken);
+            return window.TryExecuteApplicationMenuItemAsync(item, cancellationToken);
         }
 
         public void SuspendHostShortcuts(bool suspended) => window.SuspendHostMenuShortcuts(suspended);

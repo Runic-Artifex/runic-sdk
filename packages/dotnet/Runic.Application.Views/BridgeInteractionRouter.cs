@@ -87,6 +87,12 @@ public sealed class RunicInteractionInvocation
         return new Scope(previous);
     }
 
+    // The identity of a scope that no flow enters: a request kept for an object no window presented yet is delivered on
+    // behalf of the scope that raised it (BridgeInteractionRouter.TakeUnattachedViewRequest).
+    internal static RunicInteractionInvocation Detached(WindowContentSession session, string route, string? clientKey,
+        string? connectionKey, bool windowScope) =>
+        new(session, route, clientKey, connectionKey, null, CancellationToken.None, windowScope);
+
     // A menu-bar command of the window runs in the window scope; the token ends its interactions.
     internal static IDisposable EnterWindowScope(WindowContentSession session, CancellationToken cancellationToken)
     {
@@ -262,8 +268,18 @@ public sealed class BridgeInteractionRouter : IDisposable
     private readonly Dictionary<string, Receipt> _receipts = new(StringComparer.Ordinal);
     // view-requests/1: the view requests of the window's routes, and the NextMounted requests kept for the next
     // presentation that registers them, one per raising ViewRequest and name.
+    //
+    // A kept entry whose object the window never presents again (Keys empty, or emptied by RemoveViewRequest only for
+    // routes it had) lives until the window closes, as does an unattached one below. That is bounded: an entry holds
+    // only the latest request of one ViewRequest member of one object that work of this window raised, so their number
+    // is at most the number of such members, and the window's disposal releases them all. A kept command request also
+    // goes when its connection closes (ReleaseConnection).
     private readonly Dictionary<DefinitionKey, int> _requestDefinitions = [];
     private readonly Dictionary<(object Owner, string Name), KeptViewRequest> _kept = [];
+    // NextMounted requests that work in a scope of this window raised for an object that no window presented yet, by
+    // their ViewRequest: the input and the identity of the scope, which the first route of this window that presents
+    // the object takes (TakeUnattachedViewRequest).
+    private readonly Dictionary<object, UnattachedViewRequest> _unattached = [];
     private bool _disposed;
 
     internal BridgeInteractionRouter(WindowContentSession session, IBridgeTransport transport)
@@ -303,8 +319,7 @@ public sealed class BridgeInteractionRouter : IDisposable
             _requestDefinitions.TryGetValue(key, out var count);
             _requestDefinitions[key] = checked(count + 1);
             // A request kept for the object waits for this route too.
-            if (_kept.TryGetValue((owner, name), out var kept) && kept.Contract == contract)
-                _kept[(owner, name)] = kept with { Contract = contract, Keys = [.. kept.Keys, key] };
+            if (_kept.TryGetValue((owner, name), out var kept) && kept.Contract == contract) kept.Keys.Add(key);
         }
         return new ViewRequestRegistration(this, key);
     }
@@ -342,6 +357,7 @@ public sealed class BridgeInteractionRouter : IDisposable
             {
                 targets.Add(Target(selected, name, contract, inputJson));
                 _kept.Remove((owner, name));
+                _unattached.Remove(owner);
             }
             else if (delivery is ViewRequestDelivery.NextMounted)
                 Keep(owner, keys, name, contract, inputJson, invocation);
@@ -358,6 +374,30 @@ public sealed class BridgeInteractionRouter : IDisposable
         var command = invocation is { IsWindowScope: false } ? invocation : null;
         _kept[(owner, name)] = new KeptViewRequest(keys, name, contract, inputJson, command?.ClientKey, command?.ConnectionKey);
         ViewsLog.ViewRequestKept(_session.Logger, name);
+    }
+
+    // A NextMounted request raised in a scope of this window for an object that no window presents yet. Its name, contract
+    // and encoding are only known once a route presents the object, so the input stays as it is; the latest one wins.
+    internal void KeepUnattachedViewRequest(object owner, object? input, long sequence, RunicInteractionInvocation invocation)
+    {
+        lock (_gate)
+        {
+            if (_disposed || !ReferenceEquals(invocation.Session, _session)) return;
+            _unattached[owner] = new UnattachedViewRequest(input, sequence, invocation.Route,
+                invocation.IsWindowScope ? null : invocation.ClientKey, invocation.IsWindowScope ? null : invocation.ConnectionKey,
+                invocation.IsWindowScope);
+        }
+    }
+
+    // Takes the unattached request of owner, with an invocation of its scope's identity that no flow entered, or null.
+    internal (object? Input, long Sequence, RunicInteractionInvocation Identity)? TakeUnattachedViewRequest(object owner)
+    {
+        lock (_gate)
+        {
+            if (_disposed || !_unattached.Remove(owner, out var request)) return null;
+            return (request.Input, request.Sequence, RunicInteractionInvocation.Detached(_session, request.Route,
+                request.ClientKey, request.ConnectionKey, request.WindowScope));
+        }
     }
 
     // A NextMounted request raised in a scope of this window for an object that no route of it presents yet: kept here,
@@ -515,6 +555,8 @@ public sealed class BridgeInteractionRouter : IDisposable
             // A request kept for a page whose connection closed never reaches it, nor its next connection.
             foreach (var (owner, kept) in _kept.ToArray())
                 if (string.Equals(kept.ConnectionKey, connectionKey, StringComparison.Ordinal)) _kept.Remove(owner);
+            foreach (var (owner, unattached) in _unattached.ToArray())
+                if (string.Equals(unattached.ConnectionKey, connectionKey, StringComparison.Ordinal)) _unattached.Remove(owner);
             foreach (var key in _presentations.Values
                 .Where(value => string.Equals(value.ConnectionKey, connectionKey, StringComparison.Ordinal))
                 .Select(value => value.Key).ToArray())
@@ -884,6 +926,7 @@ public sealed class BridgeInteractionRouter : IDisposable
             _receipts.Clear();
             _requestDefinitions.Clear();
             _kept.Clear();
+            _unattached.Clear();
         }
     }
 
@@ -904,6 +947,8 @@ public sealed class BridgeInteractionRouter : IDisposable
     // A NextMounted request kept for the next presentation that registers it on one of the routes of Keys.
     private sealed record KeptViewRequest(HashSet<DefinitionKey> Keys, string Name, string Contract, string InputJson,
         string? ClientKey, string? ConnectionKey);
+    private sealed record UnattachedViewRequest(object? Input, long Sequence, string Route, string? ClientKey,
+        string? ConnectionKey, bool WindowScope);
     private sealed record ViewRequestTarget(string Route, string PresentationId, string? ConnectionKey, string Name,
         string Contract, string InputJson);
     private sealed class Presentation(string route, string id, string? clientKey, string? connectionKey)

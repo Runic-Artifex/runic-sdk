@@ -187,9 +187,12 @@ sealed class TestCommand(Action? execute = null) : ICommand
         remove => _canExecuteChanged -= value;
     }
     public bool CanExecute(object? parameter) => _enabled;
+    // Raised on each Execute.
+    public event Action? Ran;
     public void Execute(object? parameter)
     {
         execute?.Invoke();
+        Ran?.Invoke();
         Executed.TrySetResult();
     }
 }

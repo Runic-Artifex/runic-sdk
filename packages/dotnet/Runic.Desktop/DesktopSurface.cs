@@ -958,6 +958,17 @@ public sealed class DesktopWindow : IAsyncDisposable
         return new ValueTask<bool>(_engine.TryExecuteMenuItemAsync(item, MenuCommands, cancellationToken));
     }
 
+    // The in-page menu bar (Runic.Application.Views.Desktop): runs the item on the application's commands only, as
+    // TryExecuteMenuItemAsync does, but never on this window's MenuCommands. The page runs the window's own commands
+    // itself, with the identity of the page that clicked; this window's target has none.
+    internal ValueTask<bool> TryExecuteApplicationMenuItemAsync(DesktopMenuItem item, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(item);
+        cancellationToken.ThrowIfCancellationRequested();
+        ObjectDisposedException.ThrowIf(!IsOpen, this);
+        return new ValueTask<bool>(_engine.TryExecuteMenuItemAsync(item, window: null, cancellationToken));
+    }
+
     // The in-page menu bar (Runic.Application.Views.Desktop): whether each item can run now, asked as
     // TryExecuteMenuItemAsync asks, on the window's UI thread where it has one.
     internal Task<bool[]> CanExecuteMenuItemsAsync(IReadOnlyList<DesktopMenuItem> items, CancellationToken cancellationToken)

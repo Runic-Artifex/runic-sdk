@@ -59,9 +59,11 @@ public sealed class ViewRequest<T>
 {
     private readonly object _gate = new();
     private readonly List<ViewRequestBinding<T>> _bindings = [];
-    // NextMounted: a request raised while no route of any window presented the ViewModel, kept for the first window that
-    // presents it. It holds no window: a request kept for a window is the window's (BridgeInteractionRouter).
-    private (T Input, bool Kept) _unattached;
+    // NextMounted: a request raised outside any scope while no route of any window presented the ViewModel, kept for the
+    // first window that presents it. It holds no window: one raised in a window's scope is that window's, with its
+    // client and connection (BridgeInteractionRouter.KeepUnattachedViewRequest). Sequence orders the two: the latest wins.
+    private (T Input, bool Kept, long Sequence) _unattached;
+    private static long s_sequence;
 
     /// <summary>Creates a view request.</summary>
     /// <param name="delivery">Where the request goes; by default <see cref="ViewRequestDelivery.Drop"/>.</param>
@@ -90,12 +92,20 @@ public sealed class ViewRequest<T>
         lock (_gate)
         {
             bindings = [.. _bindings];
-            // No window presents the ViewModel yet: the first one that does receives it.
+            // No window presents the ViewModel yet. Outside any scope, the first window that presents it receives it.
             if (bindings.Length == 0)
             {
-                if (Delivery is ViewRequestDelivery.NextMounted) _unattached = (input, true);
-                return;
+                if (Delivery is ViewRequestDelivery.NextMounted && invocation is null)
+                    _unattached = (input, true, Interlocked.Increment(ref s_sequence));
+                if (Delivery is not ViewRequestDelivery.NextMounted || invocation is null) return;
             }
+        }
+        // In a scope of a window, that window keeps it with the scope's identity, so it reaches only the page that
+        // raised it (a command) and goes when that page's connection or the window closes.
+        if (bindings.Length == 0)
+        {
+            invocation!.Session.Interactions.KeepUnattachedViewRequest(this, input, Interlocked.Increment(ref s_sequence), invocation);
+            return;
         }
         // The request belongs to the window of the invoking scope, or to the one window that presents the ViewModel.
         WindowContentSession window;
@@ -130,23 +140,37 @@ public sealed class ViewRequest<T>
     internal IDisposable Attach(ViewRequestBinding<T> binding)
     {
         // Registered first: a window that is closing throws here, with no binding added and the kept request kept.
-        var lease = binding.Session.Interactions.RegisterViewRequest(this, binding.Route, binding.Name, binding.Contract);
-        (T Input, bool Kept) unattached;
+        var router = binding.Session.Interactions;
+        var lease = router.RegisterViewRequest(this, binding.Route, binding.Name, binding.Contract);
+        (T Input, bool Kept, long Sequence) unattached;
         lock (_gate)
         {
             _bindings.Add(binding);
             unattached = _unattached;
             _unattached = default;
         }
-        if (unattached.Kept)
+        // A request that work of this window raised, with its scope's identity; the later of it and one raised outside
+        // any scope wins.
+        var scoped = router.TakeUnattachedViewRequest(this);
+        T input;
+        RunicInteractionInvocation? identity = null;
+        if (scoped is { } request && (!unattached.Kept || request.Sequence > unattached.Sequence))
         {
-            try
-            {
-                binding.Session.Interactions.RaiseViewRequest(this, [binding.Route], binding.Name, binding.Contract,
-                    binding.Encode(unattached.Input, binding.Session), ViewRequestDelivery.NextMounted, invocation: null);
-            }
-            // An input over this window's limit is dropped, as Raise would have refused it.
-            catch (ArgumentException) { }
+            input = (T)request.Input!;
+            identity = request.Identity;
+        }
+        else if (unattached.Kept) input = unattached.Input;
+        else return new Lease(this, binding, lease);
+        try
+        {
+            router.RaiseViewRequest(this, [binding.Route], binding.Name, binding.Contract, binding.Encode(input, binding.Session),
+                ViewRequestDelivery.NextMounted, identity);
+        }
+        // The input of a request kept before any route presented the ViewModel was never encoded. One that cannot be, or
+        // exceeds this window's limit, is dropped, as Raise would have refused it; the route attaches all the same.
+        catch (Exception error) when (error is not OutOfMemoryException)
+        {
+            ViewsLog.ViewRequestDropped(binding.Session.Logger, binding.Name, "its kept input cannot be encoded");
         }
         return new Lease(this, binding, lease);
     }

@@ -372,13 +372,64 @@ public sealed class ViewRequestRoutingTests
         Require((await window.RequestsAsync()).Count == 0, "A request kept for a closed connection reached its next connection.");
     }
 
+    [Test]
+    public async Task ACommandsRequestForAViewModelNoWindowPresentsYetReachesOnlyItsPageAsync()
+    {
+        // A page's command creates the ViewModel and raises before any route presents it, as a command that opens a
+        // new item does.
+        using var window = new RequestWindow(beforeAttach: (session, model) =>
+        {
+            using (RunicInteractionInvocation.Enter(session, "shell", "client-1", "connection-1")) model.Reveal.Raise(5);
+        });
+        // Another page presents it first: the request is not its.
+        window.OpenAndRegister("p-2", "connection-2", "reveal");
+        Require((await window.RequestsAsync()).Count == 0, "A command's kept request reached another page.");
+        window.OpenAndRegister("p-1", "connection-1", "reveal");
+        var pushes = await window.RequestsAsync();
+        Require(pushes.Count == 1 && pushes[0].Connection == "connection-1" && pushes[0].Json["input"]!.GetValue<int>() == 5,
+            $"The command's kept request did not reach only its page: {Show(pushes)}");
+    }
+
+    [Test]
+    public async Task ACommandsRequestForAViewModelNoWindowPresentsYetGoesWithItsConnectionAsync()
+    {
+        using var window = new RequestWindow(beforeAttach: (session, model) =>
+        {
+            using (RunicInteractionInvocation.Enter(session, "shell", "client-1", "connection-1")) model.Reveal.Raise(5);
+        });
+        // The page reloads before it presents the ViewModel: neither its next connection nor another page gets it.
+        window.CloseConnection("connection-1");
+        window.Hello("connection-1b", "client-1");
+        window.Open("p-1", "connection-1b", client: "client-1");
+        Require(window.Request(RequestWindow.RegisterJson("p-1", 1, ["reveal"]), "connection-1b", "client-1")["registration"]!
+            .GetValue<string>() == "ok", "The reloaded page did not register.");
+        window.OpenAndRegister("p-2", "connection-2", "reveal");
+        Require((await window.RequestsAsync()).Count == 0, "A request kept for a closed connection was delivered.");
+    }
+
+    [Test]
+    public async Task AKeptInputThatCannotBeEncodedIsDroppedAndTheRouteStillAttachesAsync()
+    {
+        var model = new RequestModel();
+        // Kept before any window presents the ViewModel, so it is first encoded when a route attaches.
+        model.Broken.Raise(-1);
+        using var window = new RequestWindow(model);
+        window.OpenAndRegister("p-1", "connection-1", "broken");
+        Require((await window.RequestsAsync()).Count == 0, "An input that cannot be encoded was delivered.");
+        window.Model.Broken.Raise(3);
+        var pushes = await window.RequestsAsync();
+        Require(pushes.Count == 1 && pushes[0].Json["input"]!.GetValue<int>() == 3,
+            $"The route's request did not work after a kept input failed to encode: {Show(pushes)}");
+    }
+
     // A window with one route that presents a RequestModel through a Bridge written against the generated-code API.
     private sealed class RequestWindow : IDisposable
     {
         private readonly RequestBridge _bridge;
         private readonly List<(string Connection, JsonObject Json)> _pending = [];
 
-        public RequestWindow(RequestModel? model = null, int? maximumInputBytes = null)
+        public RequestWindow(RequestModel? model = null, int? maximumInputBytes = null,
+            Action<WindowContentSession, RequestModel>? beforeAttach = null)
         {
             Model = model ?? new RequestModel();
             Session = new WindowContentSession(Transport, new WindowContentSessionOptions
@@ -386,6 +437,8 @@ public sealed class ViewRequestRoutingTests
                 IncludeFailureDetail = false,
                 MaximumInputBytes = maximumInputBytes,
             });
+            // Work of the window before any route presents the ViewModel, such as a command of another route.
+            beforeAttach?.Invoke(Session, Model);
             _bridge = new RequestBridge(Transport, Model, Session);
             _rootPresentations = Session.AttachRootInteractionPresentation(Route);
             Hello("connection-1", "client-1");
@@ -449,7 +502,10 @@ public sealed class ViewRequestRoutingTests
             ["requests"] = new JsonArray([.. requests.Select(name => (JsonNode)new JsonObject
             {
                 ["name"] = name,
-                ["contract"] = name switch { "focus" => FocusContract, "reveal" => RevealContract, "toast" => ToastContract, _ => "none" },
+                ["contract"] = name switch
+                {
+                    "focus" => FocusContract, "reveal" => RevealContract, "toast" => ToastContract, "broken" => "testing.request.broken", _ => "none",
+                },
             })]),
         };
 
@@ -550,6 +606,8 @@ public sealed class ViewRequestRoutingTests
         public ViewRequest<FocusTarget> Focus { get; } = new();
         public ViewRequest<int> Reveal { get; } = new(ViewRequestDelivery.NextMounted);
         public ViewRequest<string> Toast { get; } = new(ViewRequestDelivery.Broadcast);
+        // Its encoder fails for a negative input, with an exception a serializer of the application may throw.
+        public ViewRequest<int> Broken { get; } = new(ViewRequestDelivery.NextMounted);
         public Interaction<string, bool> Confirm { get; } = new();
 
         public event PropertyChangedEventHandler? PropertyChanged;
@@ -569,6 +627,8 @@ public sealed class ViewRequestRoutingTests
                     static input => JsonSerializer.Serialize(input)),
                 Views.Generated.ViewRequestDescriptor.Create<RequestModel, string>("toast", ToastContract, value => value.Toast,
                     static input => JsonSerializer.Serialize(input)),
+                Views.Generated.ViewRequestDescriptor.Create<RequestModel, int>("broken", "testing.request.broken", value => value.Broken,
+                    static input => input >= 0 ? JsonSerializer.Serialize(input) : throw new NotImplementedException("No wire form.")),
             ]);
 
     private static string Show(IEnumerable<(string Connection, JsonObject Json)> pushes) =>

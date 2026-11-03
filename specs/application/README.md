@@ -1040,8 +1040,10 @@ belongs to the object that raised it and reaches only presentations of routes th
   that registers it on a route that presents the object. It is then gone. A request kept in a command invocation waits
   for a presentation of the invoking client and connection, and is gone when that connection closes, so a reconnected
   page does not receive it. A kept request is also gone when the window closes or no route of the window presents the
-  object any longer. A request raised in a scope of a window that does not present the object yet is kept for that
-  window. A request raised outside both scopes for an object that no window presents yet is kept for the first window
+  object any longer. A request raised in a scope of a window that does not present the object yet, including before
+  any window presents it, is kept for that window with the scope's identity: one a command invocation raised waits
+  for a presentation of the invoking client and connection and is gone when that connection closes. A request raised
+  outside both scopes for an object that no window presents yet is kept for the first window
   that presents it.
 - `broadcast` reaches every presentation of the window that registered the request, on every connection of the window,
   also when a command invocation raised it: it is a window-wide announcement, as a state change is, such as a toast in

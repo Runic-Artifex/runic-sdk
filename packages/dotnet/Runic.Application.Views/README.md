@@ -1917,9 +1917,10 @@ on is worse than none. Use `NextMounted` for a request about a page that is
 about to appear, such as focusing the first field of an item that a command
 opens. A request raised outside a command for a ViewModel that several windows
 present is dropped. A `NextMounted` request a command keeps waits for that
-page and is gone when its connection closes. One raised before any window
-presents the ViewModel waits for the first window that does; one raised in a
-window that does not present it yet waits for that window. "The one
+page and is gone when its connection closes, also when the command raised it
+on a ViewModel that nothing presents yet, such as an item it opens. One raised
+outside any scope before any window presents the ViewModel waits for the
+first window that does; one raised in a window's scope waits for that window. "The one
 presentation" counts every route of the window that presents the ViewModel,
 so a ViewModel shown in two panes has two. `Raise` never waits: outside the
 model's turn it publishes and sends in the next turn. An input that does not fit the window's input limit makes
