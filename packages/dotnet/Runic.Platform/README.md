@@ -1241,6 +1241,38 @@ waits. `DesktopPlatformServices.CreateNetworkStatus()` and
 `AddRunicPlatformServices()` create one instance for the application. Hosts without a
 provider register `DesktopNetworkStatus.Unavailable(reason)`.
 
+## Power events
+
+`IDesktopPowerEvents` reports sleep, wake, session lock and battery changes:
+`ReadAsync` returns a `DesktopPowerState` (`IsOnBattery`, `IsLowPower` and
+`IsLocked`, each `null` when the platform does not say), and `WatchAsync` reports
+the current state as `StateChanged`, then each `DesktopPowerEvent`: `Suspending`,
+`Resumed`, `Locked`, `Unlocked`, or `StateChanged` when the battery or low-power
+state changes, with the state after it. A repeated event and a `StateChanged` that
+changes nothing are not reported. `DesktopPowerEventKind` is open.
+
+```csharp
+await foreach (var result in power.WatchAsync(cancellationToken))
+{
+    if (result is not PlatformResult<DesktopPowerEvent>.Success(var change)) continue;
+    if (change.Kind == DesktopPowerEventKind.Resumed) await sync.ReconnectAsync();
+    autoRefresh.Enabled = change.State is { IsOnBattery: not true, IsLowPower: not true, IsLocked: not true };
+}
+```
+
+`Suspending` is a hint: the application gets little or no time, and Runic does not
+delay the sleep, so save what must not be lost as it changes.
+
+| Platform | Source |
+| --- | --- |
+| Windows | `WM_POWERBROADCAST` on a hidden window (with `RegisterSuspendResumeNotification`, also on modern standby), `WTSRegisterSessionNotification` for lock and unlock, and `GetSystemPowerStatus` for the battery and Battery Saver, read again on each power status or saver change |
+| macOS | `NSWorkspace`'s will-sleep and did-wake notifications and the screen lock notifications, delivered on the main run loop that Runic Desktop's event loop runs; IOKit's providing power source and `NSProcessInfo`'s Low Power Mode (macOS 12) |
+| Linux | logind's `PrepareForSleep` and the session's `Lock`, `Unlock` and `LockedHint`, UPower's `OnBattery`, and the `power-saver` profile, on the system bus. Each source is optional; none answering is `Unavailable(BackendUnavailable)` with the `power-events-unavailable` diagnostic. Inside Flatpak, allow the names with `--system-talk-name` |
+
+`DesktopPlatformServices.CreatePowerEvents()` and `AddRunicPlatformServices()`
+create one instance for the application; serve-only Runic Desktop and CS-WebUI
+register `DesktopPowerEvents.Unavailable(reason)`.
+
 ## Thumbnails
 
 `IDesktopThumbnails` returns the thumbnail the desktop's file manager shows for

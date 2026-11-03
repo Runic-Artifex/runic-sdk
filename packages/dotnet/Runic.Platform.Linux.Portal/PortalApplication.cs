@@ -140,6 +140,24 @@ public sealed class PortalApplication
     /// fresh state once one answers again. It needs no window and connects to nothing until the first request.</para>
     /// </remarks>
     public IDesktopNetworkStatus CreateNetworkStatus() => new NetworkStatusService(new PortalNetworkStatus(this));
+
+    /// <summary>Creates sleep, wake, session lock and battery events from logind, UPower and the power-profiles daemon.</summary>
+    /// <remarks>
+    /// <para>
+    /// On the system bus: logind's <c>PrepareForSleep</c> is <see cref="DesktopPowerEventKind.Suspending"/> and
+    /// <see cref="DesktopPowerEventKind.Resumed"/>; the process's session (<c>GetSessionByPID</c>, else the user's
+    /// display session) gives <c>Lock</c>, <c>Unlock</c> and <c>LockedHint</c>, which lock screens set. UPower's
+    /// <c>OnBattery</c> is <see cref="DesktopPowerState.IsOnBattery"/>, and the <c>power-saver</c> profile of
+    /// <c>org.freedesktop.UPower.PowerProfiles</c> (or <c>net.hadess.PowerProfiles</c>) is
+    /// <see cref="DesktopPowerState.IsLowPower"/>. Each source is optional; a value without one is <see langword="null"/>,
+    /// and reads and watches are <see cref="PlatformUnavailableReason.BackendUnavailable"/>, with the diagnostic
+    /// <c>power-events-unavailable</c>, only while none answers.
+    /// Inside Flatpak the application needs <c>--system-talk-name</c> for each name.
+    /// </para>
+    /// <para>Runic takes no logind delay lock, so the system does not wait for the application before it sleeps. It
+    /// needs no window, works with either toolkit and without GTK, and connects to nothing until the first request.</para>
+    /// </remarks>
+    public IDesktopPowerEvents CreatePowerEvents() => new PowerEventsService(new PortalPowerEvents(this));
     /// <summary>Creates the registration of this application's URL schemes and file types with the desktop, for the
     /// current user.</summary>
     /// <remarks>
