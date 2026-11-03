@@ -239,6 +239,15 @@ with a `FieldError`. `errors` follows the member's validation in the View's stat
 }
 ```
 
+### Row cells and nested members
+
+Since 0.16, `InvoiceFields.address.street` and `InvoiceFields.lines.at(line.id).quantity` are fields too
+(`field-paths/1`): a member of an object member, and a cell of a row that .NET edits with `[RunicRowEditor]`. Call
+`injectField(view, InvoiceFields.lines.at(line.id).quantity)` in the row's component, or bind it with
+`[runicField]`; `at(key)` returns the same descriptor for the same key. Such a field always writes checked, conflicts
+only when another writer changed the same cell, and shows the messages .NET reports at the cell's validation path. See
+[Fields below a member and row cells](../views/README.md#fields-below-a-member-and-row-cells).
+
 ### Forms: `injectForm(fields, options?)`
 
 Signals over `injectField` handles (`dirty`, `editing`, `validating`, `pending`, `valid`, `submitting`, `state`), and a

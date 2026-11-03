@@ -507,6 +507,32 @@ Receipts of checked writes, also when `write` of a text field calls one:
 | `conflict` | The draft stays; `conflict` and `error.current` are the producer's field, `error` is a `FieldError` `conflict`. Nothing is written until `retry()` writes the draft over the producer's value or `reset()` takes it. A conflict whose incoming value is the value sent is a success. |
 | `committed-with-error` | The value was committed and the draft is dropped; `error` is a `FieldError` `committed-with-error`. |
 
+#### Fields below a member and row cells
+
+With a 0.16 host (`field-paths/1`), `{View}Fields` also describes the members of an object member and the cells of
+the rows of a collection that .NET makes editable (`[RunicRowEditor]`):
+
+```ts
+InvoiceFields.address.street;          // a field of address's street, beside InvoiceFields.address itself
+InvoiceFields.lines.at(line.id).quantity; // a cell: the quantity of the row with that key
+```
+
+They are fields like the others, with every binding: `useField(invoice, InvoiceFields.lines.at(line.id).quantity)`,
+`injectField`, `bindField`, `createFieldController` and forms. `lines.at(key)` returns the same descriptors for the
+same key, so a binding keeps its field across renders, also when the row moves. Each such field:
+
+- has no setter (`checkedOnly`): it always writes with a checked write, based on the state it showed when the draft
+  started, so `checked: true` is not needed;
+- conflicts only when another writer changed the same cell or member meanwhile, not another cell of the row;
+- reads `undefined` once its row is gone, and its write is `rejected`;
+- has the `errors` and `validating` of its validation path, such as `["lines", 2, "quantity"]` for the row's current
+  index, and of the values below it. `fieldErrorsAt(validation, path)` and `fieldValidatingAt(validation, path)` read
+  them for any path.
+
+Against a host without the feature, their writes reject with a `failed` `BridgeError` and send nothing. The mock
+bridge accepts them when a View lists its `fieldPaths` (generated mocks do), and replaces the row unless a `rows`
+editor handles it.
+
 ### Forms
 
 `createFormController(fields, options?)` combines field controllers into one state, and its `submit` writes every

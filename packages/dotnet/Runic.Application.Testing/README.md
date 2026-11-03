@@ -88,7 +88,7 @@ Assert.Equal("Saved Groceries", (await editor.SnapshotAsync()).Read(vm => vm.Sav
 ### Asynchronous and synchronous drivers
 
 Every request has an asynchronous method that never blocks a thread (since 0.14):
-`SnapshotAsync`, `SetAsync`, `SetJsonAsync`, `WriteAsync`, `ExecuteAsync`,
+`SnapshotAsync`, `SetAsync`, `SetJsonAsync`, `WriteAsync`, `WritePathAsync`, `ExecuteAsync`,
 `CanExecuteAsync`, `StartAsync`, `MountAsync`, `UnmountAsync`, `ViewAsync`,
 `ViewsAsync` and `TrackAsync` on a driver, `GetStatusAsync`, `CancelAsync` and
 `ReadStreamAsync` on an operation, `VerifyAsync` on a tracker and `RequestAsync` on
@@ -260,6 +260,14 @@ already have. A `RunicViewDriver<T>` has:
   stale version tests the `Conflict` receipt. A receipt has a
   `RunicFieldWriteReceiptKind` `Kind`, `ErrorMessage`, `Value`, `Version` and
   `State`, read like a reply's.
+- `WritePath(vm => vm.Lines, ["7", "quantity"], value, expectedVersion)` writes a
+  field path below a member, as the page's `InvoiceFields.lines.at(7).quantity`
+  does (`field-paths/1`, since 0.16): the row's key and the cell for a
+  `[RunicCollection]` with a `[RunicRowEditor]`, or member names such as
+  `["street"]` for an object member. The baseline is the path's value and, unless
+  `expectedVersion` is given, the state's revision; an older revision after another
+  write of the cell tests the `Conflict` receipt. Test connections list
+  `field-paths/1` in their `hello`.
 - `Mount(presentation)` sends `open` for a presentation of the route, as a page
   that shows the View does, and returns the presentation id
   (`test-presentation{n}` when omitted); `Unmount(presentation)` sends `close`.

@@ -258,6 +258,8 @@ that module is stable.
 Fields and forms need no Effect wrapper: use `createFieldController` and `createFormController` from
 `@runic-artifex/views`, and run a form's `submit` inside an action, such as
 `createEffectAction(() => Effect.promise(() => form.submit(() => editor.save())))`.
+The descriptors of row cells and nested members (`InvoiceFields.lines.at(key).quantity`, `InvoiceFields.address.street`,
+`field-paths/1`) work with `createFieldController` the same way.
 
 ## Testing
 

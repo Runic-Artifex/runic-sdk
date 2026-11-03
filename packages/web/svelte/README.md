@@ -185,6 +185,15 @@ or text failed (a `BridgeError` or a `FieldError`, whose `kind` is `rejected`, `
 [field controller](https://github.com/Runic-Artifex/runic-sdk/tree/main/packages/web/views#fields) for the receipts
 and text forms.
 
+#### Row cells and nested members
+
+Since 0.16, `InvoiceFields.address.street` and `InvoiceFields.lines.at(line.id).quantity` are fields too
+(`field-paths/1`): a member of an object member, and a cell of a row that .NET edits with `[RunicRowEditor]`. Call
+`useField(() => view, InvoiceFields.lines.at(line.id).quantity)` in the row's component and `{@attach quantity.attach}`
+its input; `at(key)` returns the same descriptor for the same key. Such a field always writes checked, conflicts only
+when another writer changed the same cell, and shows the messages .NET reports at the cell's validation path. See
+[Fields below a member and row cells](../views/README.md#fields-below-a-member-and-row-cells).
+
 ### Forms: `useForm(() => fields, options?)`
 
 One state over field handles, and a `submit` that writes every field before its command (`createFormController` in

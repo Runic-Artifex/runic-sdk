@@ -1713,6 +1713,79 @@ and receipt-metadata budget. Evicted or oversized receipts leave bounded
 request-ID tombstones; reconcile authoritative state before issuing a new ID.
 The write may have succeeded even when its receipt could not be retained.
 
+## Editable rows and nested fields
+
+Since 0.16 a page edits the members of an object and the cells of a keyed
+collection's rows one field at a time, with drafts, conflicts and validation,
+and without a command per cell (`field-paths/1`,
+[field paths](../../../specs/application/README.md#field-paths)):
+
+```csharp
+public sealed record Address(string Street, string PostalCode, string City);
+public sealed record InvoiceLine(int Id, string Product, int Quantity, decimal Price);
+
+public sealed partial class InvoiceViewModel : ObservableObject
+{
+    [ObservableProperty]
+    public partial Address Address { get; set; } = new("", "", "");
+
+    [RunicCollection(nameof(InvoiceLine.Id))]
+    public ObservableCollection<InvoiceLine> Lines { get; } = [];
+
+    [RunicRowEditor]
+    internal void UpdateLine(int id, InvoiceLine line)
+    {
+        if (line.Quantity > 10_000) throw new ArgumentException("At most 10,000 per line.");
+        Lines[Lines.IndexOf(Lines.Single(existing => existing.Id == id))] = line;
+        OnPropertyChanged(nameof(Total));
+    }
+}
+```
+
+```ts
+const street = useField(invoice, InvoiceFields.address.street, { commit: "pause" });
+const quantity = useField(invoice, InvoiceFields.lines.at(line.id).quantity, { commit: "pause" });
+```
+
+- **Object members.** A settable member whose value is a DTO, such as
+  `Address`, also has a field for each of its members, down to three objects
+  deep: `InvoiceFields.address.street`, `InvoiceFields.address.geo.lat`. A
+  write builds the member's value with that one member changed and assigns it
+  with the setter, so the setter's validation, normalization and change
+  notification run as for a whole value. Records, init-only and
+  constructor-initialized members and mutable classes all work: the Bridge
+  rebuilds the value with the member's generated codec instead of changing the
+  object in place. An object on the path that is `null` rejects the write.
+- **Rows.** A `[RunicCollection]` with a `[RunicRowEditor]` method has a field
+  for each row member except the key: `InvoiceFields.lines.at(key).quantity`.
+  The method takes the row's key and the row with the one cell changed; it
+  replaces the row (`Lines[index] = line`), may normalize it and updates what
+  depends on it. Throw to refuse the change: the page keeps its draft and shows
+  the message. Without a collection name the attribute finds the collection by
+  its row type; `[RunicRowEditor(nameof(Lines))]` names it. A collection without
+  a row editor stays read-only for the page. `RUNICBRIDGE050` and `RUNICBRIDGE051`
+  report editors that match no collection, several, or have another signature.
+- **Conflicts.** Each field path is a checked field with its own version: the
+  revision at which a publication last changed it. A write that is based on an
+  older state of the cell than the cell's last change is a `conflict`, also when
+  the value changed back, and keeps the page's draft until the user retries or
+  resets it. A change of another cell of the same row, or another member of the
+  same object, is not a conflict. A write of a row that was removed is rejected.
+- **Validation.** A field's `errors` are the `validation` messages at its path
+  and below: a cell's path names its row by index, such as
+  `["lines", 2, "quantity"]`, which the generated descriptor finds from the row's
+  key. Rows report their messages as any DTO does: an `INotifyDataErrorInfo`
+  row (an immutable record whose `GetErrors` reads its own values), or a
+  `RunicValidationMessage` of the ViewModel with the member path
+  `Lines[2].Quantity`. A nested `ReactiveValidationObject` reports its rules at
+  its members' paths, such as `["address", "street"]`.
+- **Tests.** `RunicViewDriver.WritePathAsync(vm => vm.Lines, ["7", "quantity"], 3)`
+  writes a cell as the page does; pass `expectedVersion` to write from an older
+  state and observe a `RunicFieldWriteReceiptKind.Conflict`.
+
+The [invoice grid example](../../../examples/invoice-grid/README.md) edits an
+address and the cells of an invoice's lines this way.
+
 ## Commands whose parameter has no wire form
 
 A command whose parameter is a .NET object that cannot cross the Bridge, such as
