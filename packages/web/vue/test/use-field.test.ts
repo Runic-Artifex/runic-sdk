@@ -68,6 +68,20 @@ function mountField<TValue>(create: () => FieldHandle<TValue>, render: (field: F
 const type = (input: HTMLInputElement, text: string) => { input.value = text; input.dispatchEvent(new Event("input")); };
 
 describe("useField", () => {
+  test("a field path (checkedOnly) writes with its checked write, without the checked option", async () => {
+    const client = fakeClient({ title: "saved" });
+    // As InvoiceFields.lines.at(key).quantity: no setter of its own, only the checked write.
+    const cell = descriptor<"title", string>("title", "text", { checkedOnly: true });
+    const { field, app } = mountField(() => useField(useView(client), cell), () => h("input"));
+    field.value = "typed";
+    await nextTick();
+    expect(client.calls.map(call => call.checked)).toEqual([true]);
+    client.calls[0]!.resolve({ kind: "applied", snapshot: { value: "typed", version: 2 } });
+    await settle();
+    expect(field).toMatchObject({ value: "typed", editing: false, error: undefined });
+    app.unmount();
+  });
+
   test("v-model on the reactive handle writes a text field through its setter; pause mode writes on blur", async () => {
     const client = fakeClient({ title: "saved" });
     // <input v-model="title.value" @blur="title.commit" @compositionstart… (v-model handles composition)>

@@ -217,6 +217,18 @@ describe("useField", () => {
     destroy();
   });
 
+  test("a field path (checkedOnly) writes with its checked write, without the checked option", async () => {
+    const client = fakeClient({ title: "x" });
+    // As InvoiceFields.lines.at(key).quantity: no setter of its own, only the checked write.
+    const cell = { ...Fields.title, checkedOnly: true };
+    let field!: FieldHandle<string>;
+    const destroy = $effect.root(() => { field = useField(() => ({ state: client.snapshot, client }), cell); });
+    flushSync();
+    field.text = "y";
+    expect(client.calls.map(call => call.checked)).toEqual([true]);
+    destroy();
+  });
+
   test("works outside a component under $effect.root", async () => {
     const client = fakeClient({ title: "x" });
     let field!: FieldHandle<string>;

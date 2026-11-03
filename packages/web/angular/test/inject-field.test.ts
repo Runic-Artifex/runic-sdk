@@ -16,6 +16,20 @@ afterEach(() => {
 });
 
 describe("injectField", () => {
+  test("a field path (checkedOnly) writes with its checked write, without the checked option", async () => {
+    const editor = new FakeEditor({ title: "saved" });
+    // As InvoiceFields.lines.at(key).quantity: no setter of its own, only the checked write.
+    const cell = { ...checkedTitle(value => ({ kind: "applied", snapshot: { value, version: 2 } })), checkedOnly: true,
+      write: () => Promise.reject(new Error("A field path has no setter.")) };
+    const field = TestBed.runInInjectionContext(() => injectField(viewOf(editor), cell));
+    TestBed.tick();
+    field.inputText("typed");
+    await settle();
+    TestBed.tick();
+    expect(editor.written).toEqual(["typed"]);
+    expect(field.error()).toBeUndefined();
+  });
+
   test("a text field keeps the draft while writing, then shows the View's normalized value", async () => {
     const editor = new FakeEditor({ title: "saved" });
     const field = TestBed.runInInjectionContext(() => injectField(viewOf(editor), Fields.title));

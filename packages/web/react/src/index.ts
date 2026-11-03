@@ -571,6 +571,8 @@ export function useField<TClient extends ViewClient, TValue>(
     ...field.choices === undefined ? {} : { choices: field.choices },
     ...field.offset === undefined ? {} : { offset: field.offset },
     ...field.constraints === undefined ? {} : { constraints: field.constraints },
+    // field-paths/1: a field below a member (InvoiceFields.lines.at(key).quantity) always writes checked.
+    ...field.checkedOnly === undefined ? {} : { checkedOnly: field.checkedOnly },
     read: state => latest.current.read(state),
     write: (client, value) => latest.current.write(client, value),
     ...field.checked === undefined ? {} : { checked: (client, value, write) => latest.current.checked!(client, value, write) },

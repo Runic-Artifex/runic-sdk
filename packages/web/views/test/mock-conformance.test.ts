@@ -510,7 +510,7 @@ function wizard(bridge: MockBridge) {
 test("presentation-epoch/1: open carries the epoch, a renewal is a state at a new revision, a stale command is superseded", async () => {
   const { bridge, raw } = await connected();
   const view = wizard(bridge);
-  assert.deepEqual((await helloWith(raw))["features"], [...features, "validation-pending/1", "field-flush/1"]);
+  assert.deepEqual((await helloWith(raw))["features"], [...features, "validation-pending/1", "field-flush/1", "field-paths/1"]);
   const open = await raw.send({ kind: "open", route: "wizard", presentation: "p-1" });
   assert.equal(open["epoch"], view.epoch);
   const epoch = view.epoch;

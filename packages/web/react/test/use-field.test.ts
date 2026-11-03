@@ -86,6 +86,23 @@ const change = (value: string) => ({ currentTarget: { value } });
 const settle = () => act(async () => { for (let i = 0; i < 10; i++) await Promise.resolve(); });
 
 describe("useField", () => {
+  test("a field path (checkedOnly) writes with its checked write, without the checked option", async () => {
+    const client = fakeClient({ title: "saved" });
+    let field: FieldHandle<string> | undefined;
+    // As InvoiceFields.lines.at(key).quantity: no setter of its own, only the checked write.
+    const cell = descriptor<"title", string>("title", "text", { checkedOnly: true });
+    function Editor(): ReactNode {
+      field = useField(useView(client), cell);
+      return createElement("input", field.inputProps);
+    }
+    await mount(createElement(Editor));
+    await act(async () => { field!.inputProps.onChange(change("typed")); });
+    expect(client.calls.map(call => call.checked)).toEqual([true]);
+    await act(async () => { client.calls[0]!.resolve({ kind: "applied", snapshot: { value: "typed", version: 2 } }); });
+    await settle();
+    expect(field!).toMatchObject({ value: "typed", editing: false, error: undefined });
+  });
+
   test("a text field in pause mode keeps typing and composition as the draft and writes on blur", async () => {
     const client = fakeClient({ title: "saved" });
     let field: FieldHandle<string> | undefined;
