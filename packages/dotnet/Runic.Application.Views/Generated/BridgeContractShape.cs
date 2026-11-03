@@ -285,7 +285,8 @@ public static class BridgeContractShape
     private sealed record PresentationView(Type ViewType, Type ModelType, string? Contract);
 }
 
-// field-paths/1: the [RunicRowEditor] methods of a model and the collections they edit.
+// field-paths/1: the [RunicRowEditor] methods of a model and the collections they edit. Only BridgeContractShape uses it.
+[RequiresUnreferencedCode("Reflects over arbitrary model and collection types; used only by code generation and Hot Reload.")]
 internal static class BridgeRowEditors
 {
     // The methods of the model that declare RunicRowEditor, public or not.
