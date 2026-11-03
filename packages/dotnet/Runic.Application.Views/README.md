@@ -2569,6 +2569,48 @@ the application body that `RunicDesktopHost.Run` rethrows. The
 shows how to log it from `AppDomain.UnhandledException`, capture a dump, keep
 NativeAOT symbols and what to attach to a bug report.
 
+### Page errors
+
+An error in the page, such as a `TypeError` in a click handler or a promise
+nothing awaited, stays in the web view's console unless the page reports it.
+Call `installErrorReporting()` of `@runic-artifex/views` once when the page
+starts, before the first View connects:
+
+```ts
+import { installErrorReporting } from "@runic-artifex/views";
+
+installErrorReporting({
+  // Optional: remove application data from messages before they leave the page.
+  redact: report => ({ ...report, message: report.message.replace(/\d{12,19}/g, "[number]") }),
+});
+```
+
+The page then reports uncaught errors (`window.onerror`), unhandled promise
+rejections and the errors the Views runtime catches, such as a subscriber that
+threw, to the .NET host. The host logs each one as event 1150 `PageError` in
+the category `Runic.Application.Views.Page`
+(`RunicViewsTelemetry.PageLogCategory`), with the stack last. That is where a
+crash reporter or log forwarder that reads `ILogger` picks it up, beside the
+host's own errors; filter or route the category on its own, for example
+`builder.AddFilter(RunicViewsTelemetry.PageLogCategory, LogLevel.Error)`.
+
+Reports are bounded and redacted before they leave the page: the message is
+cut at 1024 characters and the stack at 30 lines and 4096 characters, every
+URL loses its query and fragment, and `redact` can change or drop a report. At
+most 10 reports go out per minute (`maxReportsPerMinute`); repeats of one error
+within the minute are counted, and the count arrives as `Dropped`. The host
+treats a report as untrusted input: it cuts texts again (message and URL at
+2048 characters, stack at 8192), removes control characters so a report cannot
+forge log lines, and logs at most 10 reports per connection a minute, logging
+event 1151 `PageErrorsSuppressed` once when it starts counting.
+
+Reporting is a Views protocol 4 feature, `client-errors/1`
+([page errors](https://github.com/Runic-Artifex/runic-sdk/blob/main/specs/application/README.md#page-errors)):
+a page and host of 0.16 or later use it, and with an earlier host the page
+drops its reports. The returned function removes the reporter. Errors still
+reach the console and `onBridgeDiagnostic` as before. Page errors carry no
+trace id; correlate them with the host's spans by time and route.
+
 | Event ID | Name | Level | Logged when | Properties |
 | --- | --- | --- | --- | --- |
 | 1000 | `BridgeCommandFailed` | Error | A command throws. | `Model`, `Member`, `Route`, `ErrorType` |
@@ -2616,6 +2658,8 @@ NativeAOT symbols and what to attach to a bug report.
 | 1112 | `ViewHostPresentationChangeFailed` | Error | A `RunicViewHost` presentation change throws outside its open. | `ErrorType` |
 | 1113 | `ViewHostCleanupFailed` | Error | Releasing a `RunicViewHost` presentation throws. | `ErrorType` |
 | 1114 | `ChildViewCleanupFailed` | Error | A `WpfBridgeView` fails to release after its presentation closed. | `ErrorType` |
+| 1150 | `PageError` | Error | A page that called `installErrorReporting()` reports an uncaught error, unhandled rejection or runtime-caught error (`client-errors/1`). Category `Runic.Application.Views.Page`; see [page errors](#page-errors). | `Source`, `ErrorName`, `ErrorMessage`, `PageUrl`, `Route`, `Dropped`, `Client`, `ErrorStack` |
+| 1151 | `PageErrorsSuppressed` | Warning | A page's connection reports more than 10 errors in a minute; the rest of the minute is counted into `Dropped` of the next 1150. Category `Runic.Application.Views.Page`. | `Limit` |
 | 2000 | `DesktopSnapshotDeliveryFailed` | Error | Runic Desktop cannot deliver a push to a page. | `ErrorType` |
 | 2002 | `DesktopWindowCloseAfterOpen` | Warning | `RUNIC_APPLICATION_CLOSE_AFTER_OPEN=1` closed a Desktop window right after it opened. | `Variable` |
 | 2003 | `DesktopPortalDiagnostic` | Warning or Debug | On Linux, xdg-desktop-portal reports a diagnostic for the portal services `AddRunicPlatformServices()` registers (notifications, status icon, login startup and inhibition): Warning for a rejected identity, an unavailable portal or a denied request, Debug for an accepted request or registration. | `Code`, `DiagnosticMessage`, `Remediation` |

@@ -17,6 +17,7 @@ export { bridgeFailure, bridgeSuccess, isBridgeOutcome, matchCase, type BridgeOu
 export type { BridgeValidationMessage, BridgeValidationState } from "./validation.js";
 export { waitForBridge, type RunicBridgeClient, type WaitForBridgeOptions } from "./transport.js";
 export { onBridgeConnection, type BridgeConnectionOptions, type BridgeConnectionState } from "./connection-state.js";
+export { installErrorReporting, type ClientErrorReport, type ClientErrorSource, type ErrorReportingOptions } from "./error-reporting.js";
 export {
   createCommandController,
   createViewController,

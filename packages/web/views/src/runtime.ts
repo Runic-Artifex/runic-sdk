@@ -6,7 +6,7 @@ import { randomId } from "./clock.js";
 import { emitBridgeDiagnostic, suppressErrorDiagnostic } from "./diagnostics.js";
 import { BridgeError } from "./errors.js";
 import {
-  invalidResponse, presentationEpochFeature, presentedFeature, readPush, readReply, replyError, type Message, type Push, type PushReading, type Reply,
+  clientErrorsFeature, invalidResponse, presentationEpochFeature, presentedFeature, readPush, readReply, replyError, type Message, type Push, type PushReading, type Reply,
 } from "./protocol.js";
 import { hostCallbacks, protocolMismatchError, reportBridgeError, reportProtocolMismatch, type RunicBridgeClient } from "./transport.js";
 import { bridgeProtocol, clientName, runicProducerName, viewsVersion } from "./version.js";
@@ -15,7 +15,7 @@ import { reportWindowClosed } from "./connection-state.js";
 import { flushNotifications, nextFrame } from "./notifications.js";
 
 /** The features this runtime implements and lists in `hello` (specs/application/README.md, "Features"). */
-export const clientFeatures: readonly string[] = [textSpliceFeature, presentationEpochFeature, presentedFeature];
+export const clientFeatures: readonly string[] = [textSpliceFeature, presentationEpochFeature, presentedFeature, clientErrorsFeature];
 
 /** A push handler, registered per push kind and route. */
 export type PushHandler = (push: Push) => void;
@@ -51,6 +51,11 @@ export interface SharedRuntime {
   readonly features?: ReadonlySet<string>;
   /** Sends a request after the connection's `hello` and resolves with its reply; rejects with a BridgeError. */
   request(message: Message, route?: string): Promise<Reply>;
+  /**
+   * Resolves once the current connection's `hello` succeeded, so `features` is final for it; rejects when there is
+   * no connection or the hello fails. A runtime of an earlier release does not have it.
+   */
+  ready?(): Promise<void>;
   /** Registers a handler for pushes of `kind` on `route`. */
   onPush(kind: Push["kind"], route: string, handler: PushHandler): () => void;
   /** Registers a handler for invalid pushes that name `route`. */
@@ -240,6 +245,11 @@ function createRuntime(bridge: RunicBridgeClient): SharedRuntime {
         if (!reply.ok && reply.error?.reason === "no-hello") hello = undefined;
       }
       return reply;
+    },
+    ready() {
+      if (refused !== undefined) return Promise.reject(refusal(undefined));
+      if (!connected) return Promise.reject(new BridgeError("disconnected", "The Bridge is disconnected."));
+      return greet();
     },
     onPush: (kind, route, handler) => add(pushHandlers, key(kind, route), handler),
     onInvalidPush: (route, handler) => add(invalidHandlers, route, handler),

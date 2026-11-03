@@ -11,6 +11,8 @@ export type Message = Readonly<Record<string, unknown>>;
 export const presentationEpochFeature = "presentation-epoch/1";
 /** `presented/1` (specs/application/README.md, "Presented states and window close"): `present` asks the page to report a painted revision; `closing` a close. */
 export const presentedFeature = "presented/1";
+/** `client-errors/1` (specs/application/README.md, "Page errors"): the page reports its errors with `client-error` requests. */
+export const clientErrorsFeature = "client-errors/1";
 
 /** A reply as the runtime reads it. Members beyond `ok`, `error`, `revision` and `released` depend on the request. */
 export type Reply = Message & {

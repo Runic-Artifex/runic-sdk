@@ -4,7 +4,7 @@ import { viewsVersion } from "./version.js";
 import { applySplice, producerSplices, textSpliceFeature } from "./text.js";
 import { insertRows } from "./collections.js";
 import { flushNotifications } from "./notifications.js";
-import { presentationEpochFeature, presentedFeature } from "./protocol.js";
+import { clientErrorsFeature, presentationEpochFeature, presentedFeature } from "./protocol.js";
 
 /** A View's wire state: one member per state member, by wire name, encoded as on the wire. */
 export type MockState = Record<string, unknown>;
@@ -328,6 +328,8 @@ export type MockInterceptor = (request: MockCall) =>
 export interface MockBridge extends RunicBridgeClient {
   /** Every request in order, including `hello` and rejected ones. */
   readonly calls: readonly MockCall[];
+  /** client-errors/1: the error reports the page sent with `installErrorReporting`, in order. */
+  readonly clientErrors: readonly MockClientError[];
   /** The virtual time in milliseconds, which only `advance()` moves. */
   readonly now: number;
   /** Queued requests, replies, pushes and timers that are due now or later. */
@@ -369,6 +371,19 @@ export interface MockBridge extends RunicBridgeClient {
   advance(milliseconds: number): Promise<void>;
 }
 
+/** A `client-error` request the mock producer received (client-errors/1). */
+export interface MockClientError {
+  readonly kind: "client-error";
+  readonly source: string;
+  readonly message: string;
+  readonly name?: string;
+  readonly stack?: string;
+  readonly url?: string;
+  readonly route?: string;
+  /** Reports the page counted but did not send since the previous one. */
+  readonly dropped?: number;
+}
+
 /** Creates a mock producer. Install it with {@link installMockBridge}. */
 /* ------------------------------------------------------------------ internals */
 
@@ -377,7 +392,7 @@ const realSetTimeout = globalThis.setTimeout.bind(globalThis);
 const yieldToEventLoop = () => new Promise<void>(resolve => { realSetTimeout(resolve, 0); });
 const maximumRounds = 10_000;
 const mockImplementation = { name: "@runic-artifex/views/mock", version: viewsVersion };
-const mockFeatures: readonly string[] = [textSpliceFeature, presentationEpochFeature, presentedFeature];
+const mockFeatures: readonly string[] = [textSpliceFeature, presentationEpochFeature, presentedFeature, clientErrorsFeature];
 
 const upperFirst = (value: string) => value.charAt(0).toUpperCase() + value.slice(1);
 const isRecord = (value: unknown): value is Record<string, unknown> => value !== null && typeof value === "object" && !Array.isArray(value);
@@ -540,6 +555,7 @@ export function createMockBridge(options: MockBridgeOptions = {}): MockBridge {
   const messageListeners = new Set<(message: string) => void>();
   const closedSessions = new Set<string>();
   const calls: MockCall[] = [];
+  const clientErrors: MockClientError[] = [];
   // Pushes that follow a request's reply, such as the `present` of a wait to a presentation that just opened.
   const afterReply = new WeakMap<MockCall, () => void>();
   const tasks: Task[] = [];
@@ -1170,6 +1186,13 @@ export function createMockBridge(options: MockBridgeOptions = {}): MockBridge {
       connection.closing?.finish(true);
       return ok();
     }
+    if (kind === "client-error") {
+      // client-errors/1: the producer logs the report; the mock records it in clientErrors.
+      if (!connection.features.has(clientErrorsFeature) || typeof message["source"] !== "string" || typeof message["message"] !== "string")
+        return invalidRequest("client-error needs the feature client-errors/1, a source and a message.");
+      clientErrors.push(message as unknown as MockClientError);
+      return ok();
+    }
     if (kind === "presented" && (!connection.features.has(presentedFeature) || !isSafe(message["revision"])))
       return invalidRequest("presented needs the feature presented/1 and a revision.");
     if (kind === "command" && connection.features.has(presentationEpochFeature) && Object.hasOwn(message, "epoch") && !isSafe(message["epoch"]))
@@ -1327,6 +1350,7 @@ export function createMockBridge(options: MockBridgeOptions = {}): MockBridge {
 
   const bridge: MockBridge = {
     calls,
+    clientErrors,
     get now() { return now; },
     get pending() { return tasks.length; },
     isConnected: () => connected,

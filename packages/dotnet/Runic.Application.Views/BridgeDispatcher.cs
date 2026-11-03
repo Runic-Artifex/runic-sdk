@@ -36,6 +36,7 @@ internal sealed class BridgeDispatcher : IBridgeRequestHandler
     internal const string TextSpliceFeature = "text-splice/1";
     internal const string PresentationEpochFeature = "presentation-epoch/1";
     internal const string PresentedFeature = "presented/1";
+    internal const string ClientErrorsFeature = BridgeClientErrors.Feature;
     internal const int MaximumFeatures = 64;
     internal const int MaximumFeatureLength = 64;
     // A request that arrives before its connection's hello waits this long for it, and at most this many wait.
@@ -63,6 +64,8 @@ internal sealed class BridgeDispatcher : IBridgeRequestHandler
     private TaskCompletionSource? _closing;
     private int _maximumInputBytes = WindowContentSessionOptions.DefaultMaximumInputBytes;
     private ILogger _logger = TraceFallbackLogger.Instance;
+    // client-errors/1: the category of the errors pages report.
+    private ILogger _pageLogger = TraceFallbackLogger.Instance;
     private TimeProvider _timeProvider = TimeProvider.System;
 
     private BridgeDispatcher(IBridgeTransport transport)
@@ -104,10 +107,11 @@ internal sealed class BridgeDispatcher : IBridgeRequestHandler
     internal bool UsesMailbox => _targeted is null;
 
     // Applies the window's options. The window session calls this once it was created.
-    internal void Configure(int maximumInputBytes, ILogger logger, TimeProvider timeProvider)
+    internal void Configure(int maximumInputBytes, ILogger logger, TimeProvider timeProvider, ILogger? pageLogger = null)
     {
         _maximumInputBytes = maximumInputBytes;
         _logger = logger;
+        _pageLogger = pageLogger ?? logger;
         _timeProvider = timeProvider;
     }
 
@@ -391,6 +395,7 @@ internal sealed class BridgeDispatcher : IBridgeRequestHandler
                 if (envelope.Kind == "receive") return Receive(connection, cancellationToken);
                 if (envelope.Kind == "closing-reply") return Reply(ClosingReply(connection));
                 if (envelope.Kind == "presented") return Presented(connection, envelope);
+                if (envelope.Kind == "client-error") return Reply(ClientError(connection, envelope));
                 // presentation-epoch/1: on a connection that uses it, a command's epoch is a non-negative safe integer;
                 // elsewhere the member is ignored.
                 if (envelope.Kind == "command" && envelope.HasEpoch && envelope.Epoch is null && connection.UsesPresentationEpoch
@@ -432,6 +437,16 @@ internal sealed class BridgeDispatcher : IBridgeRequestHandler
         if (!connection.UsesPresented)
             return BridgeMessages.Rejected("invalid-request", "The connection does not use presented/1.");
         lock (_gate) ClosingSettled(connection);
+        return BridgeMessages.Ok.ToArray();
+    }
+
+    // client-error (client-errors/1): the page reports an error, which the window logs; the reply is ok also when the
+    // connection's limit suppressed it.
+    private byte[] ClientError(BridgeConnection connection, BridgeRequestEnvelope envelope)
+    {
+        if (!connection.UsesClientErrors)
+            return BridgeMessages.Rejected("invalid-request", "The connection does not use client-errors/1.");
+        BridgeClientErrors.Report(connection, envelope.Root, _pageLogger, _timeProvider);
         return BridgeMessages.Ok.ToArray();
     }
 
@@ -530,7 +545,7 @@ internal sealed class BridgeDispatcher : IBridgeRequestHandler
         if (!root.TryGetProperty("client", out var client) || client.ValueKind != JsonValueKind.Object
             || !TryReadName(client, "name", 128, out var clientName) || !TryReadName(client, "version", 64, out var clientVersion))
             return BridgeMessages.Rejected("invalid-request", "The hello's client is not {name, version}.", hello: true);
-        if (!TryReadFeatures(root, out var usesTextSplice, out var usesPresentationEpoch, out var usesPresented))
+        if (!TryReadFeatures(root, out var usesTextSplice, out var usesPresentationEpoch, out var usesPresented, out var usesClientErrors))
             return BridgeMessages.Rejected("invalid-request",
                 $"The hello's features are not an array of at most {MaximumFeatures} strings of at most {MaximumFeatureLength} characters.", hello: true);
         var session = sessionElement.GetString()!;
@@ -549,6 +564,7 @@ internal sealed class BridgeDispatcher : IBridgeRequestHandler
             connection.UsesTextSplice = usesTextSplice;
             connection.UsesPresentationEpoch = usesPresentationEpoch;
             connection.UsesPresented = usesPresented;
+            connection.UsesClientErrors = usesClientErrors;
             connection.HelloCompleted = true;
             if (!usesTextSplice) _connectionsWithoutTextSplice++;
             if (usesPresentationEpoch) _connectionsWithPresentationEpoch++;
@@ -562,9 +578,9 @@ internal sealed class BridgeDispatcher : IBridgeRequestHandler
 
     // The client's features: absent, or an array of strings. A feature this producer does not implement is ignored.
     private static bool TryReadFeatures(JsonElement root, out bool usesTextSplice, out bool usesPresentationEpoch,
-        out bool usesPresented)
+        out bool usesPresented, out bool usesClientErrors)
     {
-        usesTextSplice = usesPresentationEpoch = usesPresented = false;
+        usesTextSplice = usesPresentationEpoch = usesPresented = usesClientErrors = false;
         if (!root.TryGetProperty("features", out var features)) return true;
         if (features.ValueKind != JsonValueKind.Array || features.GetArrayLength() > MaximumFeatures) return false;
         foreach (var feature in features.EnumerateArray())
@@ -575,6 +591,7 @@ internal sealed class BridgeDispatcher : IBridgeRequestHandler
             if (name == TextSpliceFeature) usesTextSplice = true;
             else if (name == PresentationEpochFeature) usesPresentationEpoch = true;
             else if (name == PresentedFeature) usesPresented = true;
+            else if (name == ClientErrorsFeature) usesClientErrors = true;
         }
         return true;
     }
@@ -713,6 +730,11 @@ internal sealed class BridgeConnection(string key, string clientKey)
     // Whether the connection uses presentation-epoch/1 and presented/1.
     internal bool UsesPresentationEpoch { get; set; }
     internal bool UsesPresented { get; set; }
+    // client-errors/1: whether the page may report errors, and its limit (BridgeClientErrors), guarded by the connection.
+    internal bool UsesClientErrors { get; set; }
+    internal DateTimeOffset? ClientErrorWindow { get; set; }
+    internal int ClientErrorsLogged { get; set; }
+    internal long ClientErrorsSuppressed { get; set; }
     // Whether the window's closing push waits for this connection's closing-reply; the dispatcher's gate guards it.
     internal bool ClosingPending { get; set; }
     // Requests that wait for the hello, in arrival order, and whether the dispatcher is admitting them.

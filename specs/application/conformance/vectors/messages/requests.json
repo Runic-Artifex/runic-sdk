@@ -460,6 +460,43 @@
       "operation": "read-request",
       "input": {"encoding":"json","value":{"kind":"closing-reply"}},
       "expect": {"result":"valid"}
+    },
+    {
+      "id": "messages.requests.client-error",
+      "description": "client-errors/1: the page reports an uncaught error.",
+      "operation": "read-request",
+      "input": {"encoding":"json","value":{"kind":"client-error","source":"error","name":"TypeError","message":"x is not a function","stack":"TypeError: x is not a function\n    at load (main.js:10:5)","url":"https://app.example/index.html","route":"editor","dropped":2}},
+      "expect": {"result":"valid"}
+    },
+    {
+      "id": "messages.requests.client-error-with-only-its-required-members",
+      "operation": "read-request",
+      "input": {"encoding":"json","value":{"kind":"client-error","source":"unhandled-rejection","message":""}},
+      "expect": {"result":"valid"}
+    },
+    {
+      "id": "messages.requests.client-error-without-a-message",
+      "operation": "read-request",
+      "input": {"encoding":"json","value":{"kind":"client-error","source":"error"}},
+      "expect": {"result":"invalid","error":{"kind":"rejected","reason":"invalid-request"}}
+    },
+    {
+      "id": "messages.requests.client-error-with-a-source-that-is-not-an-identifier",
+      "operation": "read-request",
+      "input": {"encoding":"json","value":{"kind":"client-error","source":"an error","message":"x"}},
+      "expect": {"result":"invalid","error":{"kind":"rejected","reason":"invalid-request"}}
+    },
+    {
+      "id": "messages.requests.client-error-with-a-stack-that-is-not-a-string",
+      "operation": "read-request",
+      "input": {"encoding":"json","value":{"kind":"client-error","source":"error","message":"x","stack":["at load"]}},
+      "expect": {"result":"invalid","error":{"kind":"rejected","reason":"invalid-request"}}
+    },
+    {
+      "id": "messages.requests.client-error-with-a-negative-dropped",
+      "operation": "read-request",
+      "input": {"encoding":"json","value":{"kind":"client-error","source":"error","message":"x","dropped":-1}},
+      "expect": {"result":"invalid","error":{"kind":"rejected","reason":"invalid-request"}}
     }
   ]
 }

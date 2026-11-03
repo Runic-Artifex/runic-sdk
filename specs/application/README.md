@@ -221,6 +221,7 @@ reply both list the same string. Features are negotiated per connection, and aga
 | `text-splice/1` | Text members change with splices: [`set` with a splice](#text-splices-in-set), [`write` with a splice](#text-splices-in-write) and [`splice` changes](state-changes.md#text-splices) | 0.14 |
 | `presentation-epoch/1` | A command runs only on the presentation it was issued for: [presentation epochs](#presentation-epochs) | 0.15 |
 | `presented/1` | The page reports that it painted a state, and acknowledges a window close: [presented states and window close](#presented-states-and-window-close) | 0.15 |
+| `client-errors/1` | The page reports its uncaught errors, which the producer logs: [page errors](#page-errors) | 0.16 |
 
 ## Requests and replies
 
@@ -338,7 +339,7 @@ The reply to a request that changes state is sent after every push that the prod
 was ready, on any route of the window. A command often changes another route as well, such as its shell, so a client
 cannot know which routes to wait for. The wait is bounded to 5 seconds; after that the producer sends the reply, and the
 pushes follow. Replies to `open`, `snapshot`, `close`, `can`, `status`, `watch`, `unwatch`, `cancel`, `stream`,
-`interactions`, `interaction-reply`, `presented` and `closing-reply` do not wait.
+`interactions`, `interaction-reply`, `presented`, `closing-reply` and `client-error` do not wait.
 
 A reply is not ordered with the pushes of requests that the producer admitted after it, nor with their replies. When a
 client sends a request before the reply to its previous one arrived, as two keystrokes in a row do, the frame of the
@@ -834,6 +835,51 @@ connection that does not use the feature it is `rejected` with `invalid-request`
 connection then drops, it keeps reporting that the producer closed the window, not a reconnecting or lost connection.
 A new connection reports a connected client again.
 
+## Page errors
+
+With the feature `client-errors/1`, a page reports the errors it cannot show to the application, such as an uncaught
+exception, and the producer logs them where the application's other diagnostics go:
+
+```json
+{"kind":"client-error","source":"error","name":"TypeError","message":"x is not a function","stack":"TypeError: x is not a function\n    at load (https://app.example/main.js:10:5)","url":"https://app.example/index.html","dropped":2}
+{"ok":true}
+```
+
+| Member | Value |
+| --- | --- |
+| `source` | An identifier of at most 32 characters: `error` for an uncaught exception, `unhandled-rejection` for a rejected promise that nothing handled, `runtime` for an error the client's runtime caught, such as one a subscriber threw. A producer logs another identifier as it is. |
+| `message` | The error's message. |
+| `name?` | The error's type, such as `TypeError`. |
+| `stack?` | The stack, with `\n` between frames. |
+| `url?` | The page's URL without its query and fragment. |
+| `route?` | A route name: the View whose push or subscriber failed, for `runtime`. |
+| `dropped?` | A non-negative safe integer: the reports the client counted but did not send since its previous report. |
+
+**Client.** Reporting is opt-in: a client sends `client-error` only when the application asks it to report errors,
+and only on a connection that uses the feature. A report leaves the page bounded and redacted. The client:
+
+- cuts the message and the stack, and removes the query and fragment of every URL in them and of `url`, which can
+  carry tokens;
+- sends at most a fixed number of reports a minute, counts a repeat of one error within the minute instead of sending
+  it again, and states what it counted in `dropped` of its next report;
+- does not wait for the reply, retry a failed report, or report a failure of `client-error` itself.
+
+**Producer.** The reply is `{ok:true}`, also for a report the producer does not log. The report is untrusted input
+from the page:
+
+- `client-error` on a connection that does not use the feature, without a `source` identifier or a `message` string,
+  or with a member of another type than above, is `rejected` with `invalid-request`. A text longer than the
+  producer's limits is cut, not refused.
+- Before logging, the producer removes control characters other than the stack's line breaks, so a report cannot add
+  lines to a log, and removes the query and fragment of `url` again.
+- The producer bounds what one connection can log: it SHOULD log at most a fixed number of reports per connection a
+  minute and count the rest, and add the count to `dropped` of the next report it logs.
+
+The `.NET` producer logs each report as event 1150 `PageError` (Error) in the category
+`Runic.Application.Views.Page`, at most 10 per connection a minute, and event 1151 `PageErrorsSuppressed` (Warning)
+once a minute when it starts counting. It cuts `message` and `url` at 2048 characters, `stack` at 8192 and `name` at
+128.
+
 ## Operations
 
 An asynchronous command can also be started as a recoverable **operation**, which the page can observe, cancel and
@@ -1032,6 +1078,7 @@ Requests:
 | `interaction-reply` | `route`, `presentation`, `requestId`, `ownerEpoch`, `name`, `contract`, `outcome`, `output?` | `result` |
 | `presented` (`presented/1`) | `route`, `revision` | none |
 | `closing-reply` (`presented/1`) | none | none |
+| `client-error` (`client-errors/1`) | `source`, `message`, `name?`, `stack?`, `url?`, `route?`, `dropped?` | none |
 | `receive` | none | `messages` |
 
 Every failure reply is `{ok:false, error, revision?, released?}`, and a `hello` reply also carries `protocol` and

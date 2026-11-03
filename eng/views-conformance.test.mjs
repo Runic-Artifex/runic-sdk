@@ -391,6 +391,10 @@ const requestRules = {
   // README.md, "Presented states and window close" (presented/1).
   presented: m => isRoute(m.route) && isSafe(m.revision),
   "closing-reply": () => true,
+  // README.md, "Page errors" (client-errors/1).
+  "client-error": m => isIdentifier(m.source) && m.source.length <= 32 && typeof m.message === "string"
+    && ["name", "stack", "url"].every(name => m[name] === undefined || typeof m[name] === "string")
+    && (m.route === undefined || isRoute(m.route)) && (m.dropped === undefined || isSafe(m.dropped)),
 };
 
 export function readRequest(text, limits = {}) {

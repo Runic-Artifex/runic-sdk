@@ -92,6 +92,7 @@ public sealed class WindowContentSession : IDisposable
         _createId = options.CreateId ?? (static () => Guid.NewGuid().ToString("N"));
         _issuedIds = options.CreateId is null ? null : new(StringComparer.Ordinal);
         Logger = loggerFactory?.CreateLogger(RunicViewsTelemetry.LogCategory) ?? TraceFallbackLogger.Instance;
+        PageLogger = loggerFactory?.CreateLogger(RunicViewsTelemetry.PageLogCategory) ?? TraceFallbackLogger.Instance;
         HasLogger = loggerFactory is not null;
         var contextLogger = loggerFactory?.CreateLogger<RunicModelContext>();
         _transport = transport ?? throw new ArgumentNullException(nameof(transport));
@@ -122,7 +123,7 @@ public sealed class WindowContentSession : IDisposable
             // The window's dispatcher takes the window's input limit, logger and clock, and reports the connections
             // its transport closes.
             var dispatcher = BridgeDispatcher.For(_transport);
-            dispatcher.Configure(MaximumInputBytes, Logger, TimeProvider);
+            dispatcher.Configure(MaximumInputBytes, Logger, TimeProvider, PageLogger);
             _connectionObserver = dispatcher.OnConnectionClosed(ReleaseConnection);
             _rootNavigation = AttachRootToNavigator(rootModel);
         }
@@ -198,6 +199,9 @@ public sealed class WindowContentSession : IDisposable
     // Failures of this window's Bridges, operations and mounts. Without a
     // logger factory this is the Trace fallback.
     internal ILogger Logger { get; }
+
+    // The errors the window's pages report (client-errors/1), in their own category.
+    internal ILogger PageLogger { get; }
 
     internal bool HasLogger { get; }
 

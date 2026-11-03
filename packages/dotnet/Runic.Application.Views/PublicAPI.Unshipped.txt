@@ -1,1 +1,2 @@
 #nullable enable
+const Runic.Application.Views.RunicViewsTelemetry.PageLogCategory = "Runic.Application.Views.Page" -> string!

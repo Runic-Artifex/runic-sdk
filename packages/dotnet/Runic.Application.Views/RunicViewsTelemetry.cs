@@ -22,6 +22,17 @@ public static class RunicViewsTelemetry
 
     /// <summary>The category of the Views runtime's log entries.</summary>
     public const string LogCategory = "Runic.Application.Views";
+
+    /// <summary>
+    /// The category of the errors that pages report with <c>installErrorReporting()</c> of <c>@runic-artifex/views</c>
+    /// (Views protocol 4 feature <c>client-errors/1</c>): event 1150 <c>PageError</c> and 1151 <c>PageErrorsSuppressed</c>.
+    /// </summary>
+    /// <remarks>
+    /// A separate category, so an application can route, filter or forward page errors, for example to a crash reporter,
+    /// apart from the runtime's own entries. The reports come from the page and are untrusted: Runic caps their texts,
+    /// removes control characters and URL queries, and logs at most 10 per connection a minute.
+    /// </remarks>
+    public const string PageLogCategory = "Runic.Application.Views.Page";
 }
 
 // Tags carry generated contract names and exception types only, never argument,
@@ -374,6 +385,17 @@ internal static partial class ViewsLog
     [LoggerMessage(EventId = 1102, EventName = "HotReloadRefreshFailed", Level = LogLevel.Warning,
         Message = "Refreshing {Model} after a Hot Reload update failed with {ErrorType}.")]
     internal static partial void HotReloadRefreshFailed(ILogger logger, Exception exception, string model, string errorType);
+
+    // client-errors/1, in the category RunicViewsTelemetry.PageLogCategory. Every value comes from the page, capped and
+    // without control characters (BridgeClientErrors); the stack keeps its line breaks and comes last.
+    [LoggerMessage(EventId = 1150, EventName = "PageError", Level = LogLevel.Error,
+        Message = "The page at {PageUrl} reported an {Source}: {ErrorName}: {ErrorMessage} (route {Route}, {Dropped} more not reported, client {Client})\n{ErrorStack}")]
+    internal static partial void PageError(ILogger logger, string source, string errorName, string errorMessage, string pageUrl,
+        string route, long dropped, string client, string errorStack);
+
+    [LoggerMessage(EventId = 1151, EventName = "PageErrorsSuppressed", Level = LogLevel.Warning,
+        Message = "A page reports more than {Limit} errors a minute; further reports this minute are counted, and the count is logged with the next report.")]
+    internal static partial void PageErrorsSuppressed(ILogger logger, int limit);
 }
 
 // Without an ILoggerFactory the runtime keeps its earlier System.Diagnostics.Trace

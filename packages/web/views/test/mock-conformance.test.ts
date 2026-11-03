@@ -491,7 +491,7 @@ test("an operation start with a known id is a duplicate for a canonically equal 
 
 /* ------------------------------------------------------------------ presentation-epoch/1 and presented/1 */
 
-const features = ["text-splice/1", "presentation-epoch/1", "presented/1"];
+const features = ["text-splice/1", "presentation-epoch/1", "presented/1", "client-errors/1"];
 const helloWith = (raw: RawClient, list: readonly string[] = features) =>
   raw.send({ kind: "hello", protocol: 4, session: `session-${++sessions}`, client, features: list });
 

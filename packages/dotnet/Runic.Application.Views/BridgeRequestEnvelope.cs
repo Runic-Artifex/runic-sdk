@@ -116,6 +116,8 @@ internal sealed class BridgeRequestEnvelope : IDisposable
                 return "The request's route is not a route name.";
             Route = routeElement.GetString();
         }
+        // client-error (client-errors/1): a page's error report, without a route of its own.
+        if (Kind == "client-error") return BridgeClientErrors.Check(root);
         // presented (presented/1): the revision a page painted of a route.
         if (Kind == "presented")
             return Route is null ? "The request has no route." : Integer(root, "revision", minimum: 0);
