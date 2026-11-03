@@ -184,11 +184,13 @@ public sealed class RecentDocumentsTests
         }
     }
 
-    // Windows CI: SHAddToRecentDocs, on its STA thread, puts a shortcut into the Recent items folder.
-    [Test]
+    // Windows, opt-in (--treenode-filter "/*/*/*/*[Category=NativeRecent]"): SHAddToRecentDocs, on its STA thread, puts
+    // a shortcut into the Recent items folder of a desktop session. It changes the user's Recent items, and GitHub's
+    // Windows Server runners create no shortcut, so CI does not run it; the PR's manual checks do.
+    [Test, Explicit, Category("NativeRecent")]
     public async Task WindowsAddsAShortcutToRecentItems()
     {
-        if (!OperatingSystem.IsWindows() || Environment.GetEnvironmentVariable("GITHUB_ACTIONS") != "true") return;
+        if (!OperatingSystem.IsWindows()) throw new PlatformNotSupportedException("SHAddToRecentDocs is Windows only.");
         using (var explorer = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced"))
         {
             if (explorer?.GetValue("Start_TrackDocs") is 0)
@@ -207,7 +209,14 @@ public sealed class RecentDocumentsTests
             Assert.True((await new RecentDocuments(null).AddAsync(document)).Succeeded);
             for (var waited = 0; !File.Exists(shortcut); waited += 100)
             {
-                if (waited > 10_000) throw new InvalidOperationException($"SHAddToRecentDocs did not create {shortcut}.");
+                if (waited > 10_000)
+                {
+                    var folder = Path.GetDirectoryName(shortcut)!;
+                    using var policies = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\Policies\Explorer");
+                    throw new InvalidOperationException($"SHAddToRecentDocs did not create {shortcut}. Folder exists: {Directory.Exists(folder)}, " +
+                        $"shortcuts: {(Directory.Exists(folder) ? Directory.GetFiles(folder, "*.lnk").Length : 0)}, NoRecentDocsHistory: " +
+                        $"{policies?.GetValue("NoRecentDocsHistory") ?? "unset"}, explorer running: {System.Diagnostics.Process.GetProcessesByName("explorer").Length > 0}.");
+                }
                 await Task.Delay(100);
             }
         }
