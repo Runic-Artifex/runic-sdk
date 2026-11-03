@@ -143,6 +143,16 @@ never called here: a browser window reports no dropped paths, so the page only
 gets HTML5 `File` objects. There is no native menu bar either: the page renders
 `RunicCsWebUiHostOptions.MenuBar` (see [Menu bar](#menu-bar)).
 
+A ViewModel's `IRunicWindowPresentation` does what WebUI can:
+`PresentAsync` brings the window to the front (`WebUiWindow.Focus`), and
+`MinimizeAsync` minimizes a `UseWebView` window. The rest, hiding, full screen,
+the edited mark and the color scheme, reports `Unavailable(BackendUnavailable)`.
+A browser window tells WebUI nothing about its focus, so the Window reports no
+activity: `Features` lacks `Activity` and the Window counts as active and
+visible (`RunicWindowActivity.Assumed`). A Window served under
+`RUNIC_APPLICATION_SERVE_ONLY=1` has no window, and its requests report
+`Unavailable(OwnerUnavailable)`.
+
 When WebUI cannot show a window, because it finds no browser, the selected
 browser does not exist or does not start, or the page does not connect within
 the connection timeout, `OpenWindowAsync` throws a

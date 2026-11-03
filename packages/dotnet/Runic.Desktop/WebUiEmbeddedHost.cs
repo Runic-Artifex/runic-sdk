@@ -79,6 +79,20 @@ internal interface IWebUiEmbeddedHost : IAsyncDisposable
         remove { }
     }
 
+    /// <summary>Gets whether the window is active, minimized and visible; null when the host reports none.</summary>
+    DesktopWindowActivity? Activity => null;
+
+    /// <summary>Occurs after <see cref="Activity"/> has changed, possibly on the window's owning thread; requires <see cref="DesktopWindowCapabilities.Activity"/>.</summary>
+    event EventHandler? ActivityChanged
+    {
+        add { }
+        remove { }
+    }
+
+    /// <summary>Changes the open window's light or dark appearance; requires <see cref="DesktopWindowCapabilities.ColorScheme"/>.</summary>
+    ValueTask SetColorSchemeAsync(DesktopColorScheme colorScheme, CancellationToken cancellationToken = default) =>
+        ValueTask.FromException(new NotSupportedException("This host cannot change its color scheme."));
+
     /// <summary>Gets whether the platform window is open.</summary>
     bool IsOpen { get; }
 

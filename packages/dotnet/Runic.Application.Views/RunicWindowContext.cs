@@ -36,6 +36,15 @@ public interface IRunicWindowContext
 internal sealed class RunicWindowContext : IRunicWindowContext
 {
     private IRunicWindow? _window;
+    // The presentation of a scope that no Window opened: it reports OwnerUnavailable.
+    private RunicWindowPresentation? _unbound;
+
+    // IRunicWindowPresentation of this scope: the Window's, once OpenWindowAsync bound it.
+    internal IRunicWindowPresentation Presentation =>
+        Volatile.Read(ref _window)?.Presentation
+        ?? Volatile.Read(ref _unbound)
+        ?? Interlocked.CompareExchange(ref _unbound, new RunicWindowPresentation(), null)
+        ?? _unbound!;
 
     // Called by OpenWindowAsync in the Window's new scope, before it resolves the ViewModel.
     internal void Bind(IRunicWindow window)

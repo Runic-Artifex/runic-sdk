@@ -290,6 +290,24 @@ public sealed class RunicWindowOpening<TViewModel> where TViewModel : class
     }
 
     /// <summary>
+    /// Gives the Window's <see cref="IRunicWindowPresentation"/> the host's own: the window's scope and
+    /// <see cref="IRunicWindow.Presentation"/> forward their requests to it from now on, and raise its activity changes
+    /// in the Window's model turns.
+    /// </summary>
+    /// <remarks>
+    /// Call it once the native window exists, after <see cref="AttachBridge"/>. A host without a native window, such as
+    /// one that only serves the page, does not call it: requests then report
+    /// <see cref="PlatformUnavailableReason.OwnerUnavailable"/>. The host's presentation may raise its events on any thread.
+    /// </remarks>
+    /// <param name="presentation">The host's presentation of this window.</param>
+    /// <exception cref="InvalidOperationException">The Window already has a presentation.</exception>
+    public void UsePresentation(IRunicWindowPresentation presentation)
+    {
+        ArgumentNullException.ThrowIfNull(presentation);
+        Window.AttachPresentation(presentation);
+    }
+
+    /// <summary>
     /// Logs <c>WindowCloseGuardUnavailable</c> (event 1053): the Window guards its close, but
     /// <paramref name="presentation"/>, such as <c>CS-WebUI</c>, cannot keep its window open, so it opens unguarded.
     /// </summary>

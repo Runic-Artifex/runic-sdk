@@ -1,16 +1,16 @@
 # Multi-window project
 
 Several Windows on one project, with ReactiveUI ViewModels on Runic Desktop. A command opens another Window, a rename in one Window shows in every
-Window, and the app's theme setting is saved in a settings file and can follow
-the desktop's color scheme.
+Window, and the app's theme setting is saved in a settings file, switches every
+Window between light and dark at once, and can follow the desktop's color scheme.
 
 | File | What it does |
 | --- | --- |
 | [`ProjectServices.cs`](ProjectServices.cs) | Registers the shared singletons, the per-Window model context with `AddRunicReactiveModelContext()`, the ViewModel, `AddRunicPlatformServices()` and `AddRunicWindowService()`. |
 | [`ProjectViewModel.cs`](ProjectViewModel.cs) | A `ReactiveObject` whose `ReactiveCommand`s take no scheduler. Opens a Window with `IRunicWindowService`, applies renames from other Windows with `TryPost`, and watches `IDesktopSettings`. |
 | [`ProjectService.cs`](ProjectService.cs) | The shared, thread-safe project title, with an event after each rename. |
-| [`SettingsStore.cs`](SettingsStore.cs) | The app's own settings, in a JSON file in the per-user application data folder, written atomically. |
-| [`Program.cs`](Program.cs) | Opens the first Window; the application ends when it closes. |
+| [`SettingsStore.cs`](SettingsStore.cs) | The app's own settings, in a JSON file in the per-user application data folder, written atomically, with an event after each save. |
+| [`Program.cs`](Program.cs) | Applies the saved theme with `DesktopHost.SetColorSchemeAsync`, and each new choice as it is saved, then opens the first Window; the application ends when it closes. |
 | [`Tests/ProjectWindowTests.cs`](Tests/ProjectWindowTests.cs) | Drives two Windows without a browser, with a fake window service, a temporary settings file and fixed desktop preferences. |
 
 Each Window opens in its own DI scope, so it has its own ViewModel and model
