@@ -22,7 +22,7 @@ namespace Runic.Application.Testing;
 public sealed class RunicTestFile
 {
     private readonly object _gate = new();
-    private readonly Queue<FileCommitResult> _commitResults = new();
+    private readonly Queue<(FileCommitResult Result, bool Applied)> _commitResults = new();
     private readonly List<ImmutableArray<byte>> _commits = [];
     private byte[]? _content;
 
@@ -121,13 +121,29 @@ public sealed class RunicTestFile
     /// <summary>Scripts the outcome of the next commit that finds no conflict.</summary>
     /// <param name="result">
     /// <see cref="FileCommitResult.NotCommitted"/> leaves the file unchanged; <see cref="FileCommitResult.CommitUnknown"/>
-    /// also leaves it unchanged, and the lease then accepts both the previous and the staged bytes as its own, as a real
+    /// also leaves it unchanged (use <see cref="EnqueueCommitResult(FileCommitResult, bool)"/> for one that landed), and the lease then accepts both the previous and the staged bytes as its own, as a real
     /// lease does; <see cref="FileCommitResult.Committed"/> commits as an unscripted commit would.
     /// </param>
     public void EnqueueCommitResult(FileCommitResult result)
     {
         ArgumentNullException.ThrowIfNull(result);
-        lock (_gate) _commitResults.Enqueue(result);
+        lock (_gate) _commitResults.Enqueue((result, result is FileCommitResult.Committed));
+    }
+
+    /// <summary>Scripts the outcome of the next commit that finds no conflict, and whether its write landed.</summary>
+    /// <param name="result">The reported outcome.</param>
+    /// <param name="applied">
+    /// Whether the staged bytes replace the content. A real lease reports <see cref="FileCommitResult.CommitUnknown"/>
+    /// exactly when the write may have landed, so both values are valid for it; <see cref="FileCommitResult.Committed"/>
+    /// requires <see langword="true"/> and <see cref="FileCommitResult.NotCommitted"/> <see langword="false"/>.
+    /// </param>
+    /// <exception cref="ArgumentException"><paramref name="applied"/> contradicts <paramref name="result"/>.</exception>
+    public void EnqueueCommitResult(FileCommitResult result, bool applied)
+    {
+        ArgumentNullException.ThrowIfNull(result);
+        if (result is FileCommitResult.Committed && !applied || result is FileCommitResult.NotCommitted && applied)
+            throw new ArgumentException($"A {result.GetType().Name} result cannot have applied = {applied}.", nameof(applied));
+        lock (_gate) _commitResults.Enqueue((result, applied));
     }
 
     internal byte[]? Current
@@ -141,8 +157,8 @@ public sealed class RunicTestFile
         lock (_gate)
         {
             if (!isBaseline(_content)) return new FileCommitResult.NotCommitted(PlatformFailureCode.Conflict);
-            var result = _commitResults.TryDequeue(out var scripted) ? scripted : new FileCommitResult.Committed();
-            if (result is FileCommitResult.Committed)
+            var (result, applied) = _commitResults.TryDequeue(out var scripted) ? scripted : (new FileCommitResult.Committed(), true);
+            if (applied)
             {
                 _content = staged;
                 _commits.Add([.. staged]);

@@ -8,7 +8,8 @@ namespace Runic.Application.Testing;
 /// <summary>One call the application made to its test platform fakes, read by a serve-only browser test.</summary>
 /// <param name="Sequence">The call's position, from 1, among the application's calls.</param>
 /// <param name="Service">The fake: <c>fileDialogs</c>, <c>clipboard</c>, <c>messageBoxes</c>, <c>contextMenus</c>,
-/// <c>notifications</c>, <c>launcher</c> or <c>announcements</c>.</param>
+/// <c>notifications</c>, <c>launcher</c> or <c>announcements</c>; or <c>script</c> with the operation <c>error</c>
+/// when the application rejected a scripted line, with its <c>message</c> and <c>line</c>.</param>
 /// <param name="Operation">What was called, such as <c>openFile</c>, <c>saveFile</c>, <c>commit</c>, <c>write</c> or <c>show</c>.</param>
 /// <param name="Values">What the call carried, such as a dialog's <c>title</c> and <c>outcome</c> or a commit's
 /// <c>file</c> and base64 <c>content</c>; absent values are left out.</param>
@@ -71,7 +72,9 @@ public sealed class RunicServeOnlyTestPlatform : IDisposable
     public static RunicServeOnlyTestPlatform Create()
     {
         var directory = Path.Combine(Path.GetTempPath(), "runic-test-platform-" + Guid.NewGuid().ToString("N"));
-        System.IO.Directory.CreateDirectory(directory);
+        // Only the owner may write the script; the application refuses a directory that other users can write to.
+        if (OperatingSystem.IsWindows()) System.IO.Directory.CreateDirectory(directory);
+        else System.IO.Directory.CreateDirectory(directory, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
         return new RunicServeOnlyTestPlatform(directory);
     }
 
@@ -193,6 +196,10 @@ public sealed class RunicServeOnlyTestPlatform : IDisposable
     /// <param name="cancellationToken">Cancels the wait.</param>
     /// <returns>The call.</returns>
     /// <exception cref="TimeoutException">No such call arrived in time; the message lists the calls that did.</exception>
+    /// <exception cref="InvalidOperationException">
+    /// The application rejected a scripted line, which it records as a <c>script</c> <c>error</c> event, and no
+    /// earlier call matched; the message is the application's.
+    /// </exception>
     public async Task<RunicTestPlatformEvent> WaitForEventAsync(Func<RunicTestPlatformEvent, bool> match, TimeSpan? timeout = null,
         CancellationToken cancellationToken = default)
     {
@@ -204,6 +211,8 @@ public sealed class RunicServeOnlyTestPlatform : IDisposable
         {
             var events = ReadEvents();
             if (events.FirstOrDefault(match) is { } found) return found;
+            if (events.FirstOrDefault(static e => e is { Service: "script", Operation: "error" }) is { } error)
+                throw new InvalidOperationException("The application rejected a scripted test platform line: " + error.Get("message"));
             if (deadline.Elapsed >= wait)
             {
                 throw new TimeoutException($"No matching test platform call arrived within {wait}. The calls were: " +

@@ -490,7 +490,9 @@ Each fake takes the next queued response and records the call:
   transaction at a time (`ResourceBusy` otherwise), a commit happens once, and
   it reports `NotCommitted(Conflict)` when the file no longer holds what the
   application last saw. `file.Write(...)` or `file.Delete()` acts as another
-  writer; `file.EnqueueCommitResult(...)` scripts a failed or uncertain commit;
+  writer; `file.EnqueueCommitResult(...)` scripts a failed or uncertain commit,
+  and `EnqueueCommitResult(new FileCommitResult.CommitUnknown(code), applied: true)`
+  an uncertain one whose write landed, as a real lease can report;
   `file.WriteUnavailable` acts as a read-only grant. `ReadAllText()`,
   `ReadAllBytes()` and `CommittedWrites` show what the application saved.
 - **Message boxes.** `EnqueueAnswer(buttonId)` chooses a button. An unscripted
@@ -742,11 +744,17 @@ section: start the application with `RUNIC_APPLICATION_SERVE_ONLY=1`, read the
 The application in a serve-only browser test runs in its own process, so a test
 scripts its platform fakes through files. The application opts in from a test
 build: call `services.AddRunicServeOnlyTestPlatform()` after its own
-`AddRunicPlatformServices()`. It registers the fakes only when the process runs
-with both `RUNIC_APPLICATION_SERVE_ONLY=1` and `RUNIC_TEST_PLATFORM_DIRECTORY`
-set, and does nothing otherwise. Production builds must not reference this
-package, so keep the call and the reference behind a test-only build, for
-example:
+`AddRunicPlatformServices()`. It does nothing unless the process runs with both
+`RUNIC_APPLICATION_SERVE_ONLY=1` and `RUNIC_TEST_PLATFORM_DIRECTORY` set. Then
+it registers the fakes only when the build opted in as well: the application's
+entry assembly must carry `[assembly: RunicServeOnlyTestPlatform]`, or the call
+throws `InvalidOperationException`. It also throws when the directory is
+missing or, outside Windows, when users other than its owner can write to it
+(`RunicServeOnlyTestPlatform.Create()` makes it `0700`). When the fakes are
+active, the first window logs warning 1158 `ServeOnlyTestPlatformActive` in the
+category `Runic.Application.Testing`. Production builds must not reference this
+package, so keep the call, the attribute and the reference behind a test-only
+build, for example:
 
 ```xml
 <ItemGroup Condition="'$(Configuration)' == 'E2E'">
@@ -755,6 +763,10 @@ example:
 <PropertyGroup Condition="'$(Configuration)' == 'E2E'">
   <DefineConstants>$(DefineConstants);RUNIC_E2E</DefineConstants>
 </PropertyGroup>
+<ItemGroup Condition="'$(Configuration)' == 'E2E'">
+  <!-- The build-time opt-in that AddRunicServeOnlyTestPlatform checks at run time. -->
+  <AssemblyAttribute Include="Runic.Application.Testing.RunicServeOnlyTestPlatformAttribute" />
+</ItemGroup>
 ```
 
 ```csharp
@@ -786,4 +798,8 @@ and `WaitForEventAsync(match)` return each call the application made, such as
 `fileDialogs.saveFile` with its `title`, `fileDialogs.commit` with the file and
 its base64 `content`, `clipboard.write`, `messageBoxes.show` with the `button`
 chosen and `notifications.show`. Every window of the application shares one
-platform, since the script is one queue.
+platform, since the script is one queue; closing a window does not close it.
+A scripted line that the application cannot apply, such as malformed JSON or an
+unknown service, does not fail the application's call: it is recorded as a
+`script.error` event with the `message`, and `WaitForEventAsync` then throws
+`InvalidOperationException` with that message.

@@ -259,3 +259,6 @@ static Runic.Application.Testing.RunicTestPlatformEvent.operator !=(Runic.Applic
 static Runic.Application.Testing.RunicTestPlatformEvent.operator ==(Runic.Application.Testing.RunicTestPlatformEvent? left, Runic.Application.Testing.RunicTestPlatformEvent? right) -> bool
 static Runic.Application.Testing.RunicTestPlatformServiceCollectionExtensions.AddRunicServeOnlyTestPlatform(this Microsoft.Extensions.DependencyInjection.IServiceCollection! services) -> Microsoft.Extensions.DependencyInjection.IServiceCollection!
 static Runic.Application.Testing.RunicTestPlatformServiceCollectionExtensions.AddRunicTestPlatform(this Microsoft.Extensions.DependencyInjection.IServiceCollection! services) -> Microsoft.Extensions.DependencyInjection.IServiceCollection!
+Runic.Application.Testing.RunicTestFile.EnqueueCommitResult(Runic.Platform.FileCommitResult! result, bool applied) -> void
+Runic.Application.Testing.RunicServeOnlyTestPlatformAttribute
+Runic.Application.Testing.RunicServeOnlyTestPlatformAttribute.RunicServeOnlyTestPlatformAttribute() -> void

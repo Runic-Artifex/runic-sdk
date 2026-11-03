@@ -105,6 +105,30 @@ internal sealed class PlatformFakeTests
     }
 
     [Test]
+    public async Task UncertainCommitCanBeScriptedAsLandedOrNotAsync()
+    {
+        foreach (var applied in new[] { true, false })
+        {
+            await using var platform = new RunicTestPlatform();
+            var destination = platform.FileDialogs.EnqueueSave(RunicTestFile.FromText("doc.txt", "v1"));
+            (await platform.FileDialogs.SaveFileAsync(new SaveFileOptions("doc.txt"))).TryGetValue(out var lease);
+            await using var _ = lease!;
+            destination.EnqueueCommitResult(new FileCommitResult.CommitUnknown(PlatformFailureCode.IOError), applied);
+
+            Require(await WriteAsync(lease!, "v2") is FileCommitResult.CommitUnknown, "The scripted uncertain commit was not reported.");
+            Require(destination.ReadAllText() == (applied ? "v2" : "v1"), $"An uncertain commit with applied = {applied} left the wrong content.");
+            Require(destination.CommittedWrites.Count == (applied ? 1 : 0), "A landed uncertain write was not listed with the committed writes.");
+            // Either way the lease takes both contents as its own, so the next commit finds no conflict.
+            Require(await WriteAsync(lease!, "v3") is FileCommitResult.Committed && destination.ReadAllText() == "v3",
+                "The lease did not accept the content after an uncertain commit.");
+        }
+        var file = RunicTestFile.FromText("doc.txt", "v1");
+        Require(Catch(() => file.EnqueueCommitResult(new FileCommitResult.Committed(), applied: false)) is ArgumentException
+            && Catch(() => file.EnqueueCommitResult(new FileCommitResult.NotCommitted(PlatformFailureCode.IOError), applied: true)) is ArgumentException,
+            "A contradictory scripted commit was accepted.");
+    }
+
+    [Test]
     public async Task DocumentReadsBecomeTheBaselineAsync()
     {
         await using var platform = new RunicTestPlatform();
@@ -315,6 +339,92 @@ internal sealed class PlatformFakeTests
             Require(events.Any(static e => e is { Service: "messageBoxes" } && e.Get("button") == "ok"), "The message box answer was not recorded.");
             Require(ReferenceEquals(provider.GetRequiredService<RunicTestPlatform>(), scope.ServiceProvider.GetRequiredService<IWindowPlatformServices>()),
                 "Serve-only windows do not share the scripted platform.");
+        }
+        finally
+        {
+            for (var i = 0; i < variables.Length; i++) Environment.SetEnvironmentVariable(variables[i], saved[i]);
+        }
+    }
+
+    [Test]
+    public async Task ClosingOneServeOnlyWindowLeavesTheSharedPlatformOpenAsync()
+    {
+        await WithServeOnlyEnvironmentAsync(async script =>
+        {
+            await using var provider = new ServiceCollection().AddRunicServeOnlyTestPlatform().BuildServiceProvider();
+            var first = provider.CreateAsyncScope();
+            await using var second = provider.CreateAsyncScope();
+            var shared = first.ServiceProvider.GetRequiredService<IWindowPlatformServices>();
+            _ = first.ServiceProvider.GetRequiredService<IDesktopFileLauncher>();
+            _ = first.ServiceProvider.GetRequiredService<IFileDialogs>();
+            await first.DisposeAsync();
+
+            var platform = provider.GetRequiredService<RunicTestPlatform>();
+            Require(ReferenceEquals(second.ServiceProvider.GetRequiredService<IWindowPlatformServices>(), shared) && !platform.IsClosed,
+                "Closing one window closed the platform the other windows share.");
+            var opened = await second.ServiceProvider.GetRequiredService<IFileDialogs>().OpenFileAsync(new OpenFileOptions());
+            Require(opened is PickerResult<IReadFileLease>.Dismissed, $"The other window's dialog reported {opened} instead of a dismissal.");
+        });
+    }
+
+    [Test]
+    public async Task ServeOnlyPlatformRequiresTheBuildOptInAndAPrivateDirectoryAsync()
+    {
+        await WithServeOnlyEnvironmentAsync(script =>
+        {
+            Require(typeof(PlatformFakeTests).Assembly.IsDefined(typeof(RunicServeOnlyTestPlatformAttribute), inherit: false),
+                "The test assembly does not opt in through its AssemblyAttribute item.");
+            Require(Catch(() => RunicTestPlatformServiceCollectionExtensions.AddServeOnlyTestPlatform(new ServiceCollection(), typeof(string).Assembly))
+                is InvalidOperationException { Message: var message } && message.Contains("RunicServeOnlyTestPlatform", StringComparison.Ordinal),
+                "A build without the opt-in started the serve-only test platform.");
+            Require(Catch(() => RunicTestPlatformServiceCollectionExtensions.AddServeOnlyTestPlatform(new ServiceCollection(), null))
+                is InvalidOperationException, "A process without an entry assembly started the serve-only test platform.");
+            if (!OperatingSystem.IsWindows())
+            {
+                Require((File.GetUnixFileMode(script.Directory) & (UnixFileMode.GroupWrite | UnixFileMode.OtherWrite | UnixFileMode.OtherRead)) == 0,
+                    "The script directory is open to other users.");
+                File.SetUnixFileMode(script.Directory, File.GetUnixFileMode(script.Directory) | UnixFileMode.OtherWrite);
+                Require(Catch(() => new ServiceCollection().AddRunicServeOnlyTestPlatform()) is InvalidOperationException { Message: var shared }
+                    && shared.Contains("Other users", StringComparison.Ordinal), "A directory other users can write to was accepted.");
+            }
+            return Task.CompletedTask;
+        });
+    }
+
+    [Test]
+    public async Task MalformedScriptLinesAreRecordedNotThrownAsync()
+    {
+        await WithServeOnlyEnvironmentAsync(async script =>
+        {
+            await using var provider = new ServiceCollection().AddRunicServeOnlyTestPlatform().BuildServiceProvider();
+            await using var scope = provider.CreateAsyncScope();
+            var dialogs = scope.ServiceProvider.GetRequiredService<IFileDialogs>();
+            await File.AppendAllTextAsync(Path.Combine(script.Directory, "script.jsonl"),
+                "{not json\n{\"service\":\"printer\",\"operation\":\"print\"}\n");
+            script.EnqueueOpenFile("in.txt", "hello");
+
+            var opened = await dialogs.OpenFileAsync(new OpenFileOptions());
+            Require(opened.TryGetValue(out var read), $"The valid line after the malformed ones was not applied: {opened}.");
+            await read!.DisposeAsync();
+            var errors = script.ReadEvents().Where(static e => e is { Service: "script", Operation: "error" }).ToArray();
+            Require(errors.Length == 2 && errors[0].Get("line") == "{not json" && errors[1].Get("message")!.Contains("printer", StringComparison.Ordinal),
+                "The malformed script lines were not recorded as script errors.");
+            Require(await CatchAsync(() => new ValueTask<RunicTestPlatformEvent>(script.WaitForEventAsync(static e => e.Operation == "never")))
+                is InvalidOperationException { Message: var message } && message.Contains("rejected", StringComparison.Ordinal),
+                "WaitForEventAsync did not report the script error.");
+        });
+    }
+
+    private static async Task WithServeOnlyEnvironmentAsync(Func<RunicServeOnlyTestPlatform, Task> test)
+    {
+        using var script = RunicServeOnlyTestPlatform.Create();
+        var variables = new[] { "RUNIC_APPLICATION_SERVE_ONLY", RunicTestPlatformServiceCollectionExtensions.DirectoryEnvironmentVariable };
+        var saved = variables.Select(Environment.GetEnvironmentVariable).ToArray();
+        try
+        {
+            Environment.SetEnvironmentVariable(variables[0], "1");
+            Environment.SetEnvironmentVariable(variables[1], script.Directory);
+            await test(script);
         }
         finally
         {

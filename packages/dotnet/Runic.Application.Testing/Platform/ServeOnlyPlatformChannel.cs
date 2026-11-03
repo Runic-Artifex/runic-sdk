@@ -32,25 +32,40 @@ internal sealed class ServeOnlyPlatformChannel
         {
             foreach (var line in ReadNewLines(_script, ref _scriptOffset))
             {
-                using var document = JsonDocument.Parse(line);
-                var root = document.RootElement;
-                var service = root.GetProperty("service").GetString();
-                var operation = root.GetProperty("operation").GetString() ?? "";
-                var values = new Dictionary<string, string?>(StringComparer.Ordinal);
-                if (root.TryGetProperty("values", out var properties))
+                // A line the application cannot apply is the test's mistake: record it for the test, which
+                // WaitForEventAsync reports, rather than failing the application's platform call.
+                try
                 {
-                    foreach (var property in properties.EnumerateObject())
-                        values[property.Name] = property.Value.ValueKind == JsonValueKind.Null ? null : property.Value.GetString();
+                    Apply(platform, line);
                 }
-                switch (service)
+                catch (Exception exception) when (exception is JsonException or InvalidOperationException or KeyNotFoundException
+                    or ArgumentException or FormatException)
                 {
-                    case "fileDialogs": platform.FileDialogs.EnqueueScripted(operation, values); break;
-                    case "messageBoxes": platform.MessageBoxes.EnqueueScripted(operation, values); break;
-                    case "contextMenus": platform.ContextMenus.EnqueueScripted(operation, values); break;
-                    case "clipboard": platform.Clipboard.EnqueueScripted(operation, values); break;
-                    default: throw new InvalidOperationException($"Unknown scripted platform service '{service}'.");
+                    Record("script", "error", [("message", exception.Message), ("line", line.Length > 1024 ? line[..1024] + "…" : line)]);
                 }
             }
+        }
+    }
+
+    private static void Apply(RunicTestPlatform platform, string line)
+    {
+        using var document = JsonDocument.Parse(line);
+        var root = document.RootElement;
+        var service = root.GetProperty("service").GetString();
+        var operation = root.GetProperty("operation").GetString() ?? "";
+        var values = new Dictionary<string, string?>(StringComparer.Ordinal);
+        if (root.TryGetProperty("values", out var properties))
+        {
+            foreach (var property in properties.EnumerateObject())
+                values[property.Name] = property.Value.ValueKind == JsonValueKind.Null ? null : property.Value.GetString();
+        }
+        switch (service)
+        {
+            case "fileDialogs": platform.FileDialogs.EnqueueScripted(operation, values); break;
+            case "messageBoxes": platform.MessageBoxes.EnqueueScripted(operation, values); break;
+            case "contextMenus": platform.ContextMenus.EnqueueScripted(operation, values); break;
+            case "clipboard": platform.Clipboard.EnqueueScripted(operation, values); break;
+            default: throw new InvalidOperationException($"Unknown scripted platform service '{service}'.");
         }
     }
 

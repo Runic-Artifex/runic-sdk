@@ -20,6 +20,7 @@
     <PackageReference Include="Microsoft.Extensions.TimeProvider.Testing" />
     <None Include="README.md" Pack="true" PackagePath="/" />
     <!-- The test clipboard checks writes with the real clipboard's rules, as Runic.Platform.Runtime does. -->
+    <InternalsVisibleTo Include="Runic.Application.Testing.Tests" />
     <Compile Include="../Runic.Platform/DesktopClipboardRules.cs" Link="Shared/DesktopClipboardRules.cs" />
   </ItemGroup>
   <Import Project="../../../eng/build/application.targets" />
