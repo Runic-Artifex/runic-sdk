@@ -10,7 +10,7 @@
     "producer",
     "client"
   ],
-  "description": "A client that implements request-session/1 names the session of its connection's hello in every request, also in a request sent before the hello's reply.",
+  "description": "A client that implements request-session/1 names the session of its connection's hello in every request, also in a request it sends before the hello's reply.",
   "view": "notes",
   "requires": [
     "request-session/1"
@@ -72,6 +72,27 @@
       "id": "hello-c1"
     },
     {
+      "call": {
+        "id": "open-notes",
+        "op": "open",
+        "route": "notes"
+      }
+    },
+    {
+      "send": {
+        "kind": "open",
+        "route": "notes",
+        "presentation": {
+          "$id": "presentation"
+        },
+        "session": {
+          "$id": "session"
+        }
+      },
+      "id": "open-notes-request",
+      "note": "Sent before the hello's reply, it already names the hello's session."
+    },
+    {
       "receive": {
         "ok": true,
         "protocol": 4,
@@ -94,26 +115,6 @@
         }
       },
       "replyTo": "hello-c1"
-    },
-    {
-      "call": {
-        "id": "open-notes",
-        "op": "open",
-        "route": "notes"
-      }
-    },
-    {
-      "send": {
-        "kind": "open",
-        "route": "notes",
-        "presentation": {
-          "$id": "presentation"
-        },
-        "session": {
-          "$id": "session"
-        }
-      },
-      "id": "open-notes-request"
     },
     {
       "receive": {
@@ -147,6 +148,19 @@
         "presentation": "ok"
       },
       "replyTo": "open-notes-request"
+    },
+    {
+      "expect": {
+        "call": {
+          "id": "open-notes",
+          "resolved": null
+        }
+      }
+    },
+    {
+      "expect": {
+        "diagnostics": []
+      }
     }
   ]
 }

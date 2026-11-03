@@ -1,0 +1,153 @@
+{
+  "format": "runic.views.scenario/1",
+  "id": "request-sessions.a-held-request-with-another-session-is-no-hello.v1",
+  "contract": {
+    "id": "runic.views",
+    "version": 4
+  },
+  "set": "request-sessions",
+  "roles": [
+    "producer"
+  ],
+  "description": "Requests that arrive before the hello are held and checked when it succeeds: on a connection that uses request-session/1, a held request that names another session is answered no-hello, and one that names the hello's session runs.",
+  "view": "notes",
+  "requires": [
+    "request-session/1"
+  ],
+  "ids": {
+    "c1": {
+      "kind": "connection"
+    },
+    "hello-c1": {
+      "kind": "request"
+    },
+    "session": {
+      "kind": "wire",
+      "value": "s-1"
+    },
+    "other": {
+      "kind": "wire",
+      "value": "s-2"
+    },
+    "presentation": {
+      "kind": "wire",
+      "value": "p-1"
+    },
+    "held-other": {
+      "kind": "request"
+    },
+    "held-own": {
+      "kind": "request"
+    }
+  },
+  "arrange": {
+    "model": {}
+  },
+  "steps": [
+    {
+      "connect": "c1"
+    },
+    {
+      "send": {
+        "kind": "close",
+        "route": "notes",
+        "presentation": {
+          "$id": "presentation"
+        },
+        "session": {
+          "$id": "other"
+        }
+      },
+      "id": "held-other",
+      "note": "Another page's request, held before the hello."
+    },
+    {
+      "send": {
+        "kind": "close",
+        "route": "notes",
+        "presentation": {
+          "$id": "presentation"
+        },
+        "session": {
+          "$id": "session"
+        }
+      },
+      "id": "held-own"
+    },
+    {
+      "send": {
+        "kind": "hello",
+        "protocol": 4,
+        "session": {
+          "$id": "session"
+        },
+        "client": {
+          "name": {
+            "$any": "string",
+            "default": "conformance-client"
+          },
+          "version": {
+            "$any": "string",
+            "default": "1.0.0"
+          }
+        },
+        "features": {
+          "$any": "array",
+          "default": [
+            "text-splice/1",
+            "request-session/1"
+          ]
+        }
+      },
+      "id": "hello-c1"
+    },
+    {
+      "receive": {
+        "ok": true,
+        "protocol": 4,
+        "implementation": {
+          "name": {
+            "$any": "string",
+            "default": "conformance-producer"
+          },
+          "version": {
+            "$any": "string",
+            "default": "1.0.0"
+          }
+        },
+        "features": {
+          "$any": "array",
+          "default": [
+            "text-splice/1",
+            "request-session/1"
+          ]
+        }
+      },
+      "replyTo": "hello-c1",
+      "unordered": true
+    },
+    {
+      "receive": {
+        "ok": false,
+        "error": {
+          "kind": "rejected",
+          "reason": "no-hello",
+          "message": {
+            "$any": "string",
+            "default": "…"
+          }
+        }
+      },
+      "replyTo": "held-other",
+      "unordered": true
+    },
+    {
+      "receive": {
+        "ok": true,
+        "presentation": "ok"
+      },
+      "replyTo": "held-own",
+      "unordered": true
+    }
+  ]
+}

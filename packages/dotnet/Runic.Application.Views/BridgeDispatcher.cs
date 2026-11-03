@@ -584,14 +584,37 @@ internal sealed class BridgeDispatcher : IBridgeRequestHandler
 
     private byte[] Hello(BridgeConnection connection, JsonElement root)
     {
-        if (connection.HelloCompleted && connection.UsesRequestSession && root.TryGetProperty("session", out var session)
-            && session.ValueKind == JsonValueKind.String && !session.ValueEquals(connection.Session))
+        // A valid hello of another session on a connection that uses request-session/1 comes from a new page that got the
+        // key before the transport reported the old connection closed. A transport whose keys never repeat gives a new
+        // page a new key, so there a second hello stays invalid-request and the transport's one close stays the old
+        // connection's.
+        if (!_transportKeysUnique && connection.HelloCompleted && connection.UsesRequestSession && IsReplacingHello(connection, root))
             connection = ReplaceConnection(connection);
         var reply = HelloCore(connection, root, out var drain);
         // Requests that waited for a hello that failed answer no-hello; after one that succeeded they are admitted.
         if (drain) _ = Task.Run(() => DrainHeld(connection));
         else if (!connection.HelloCompleted) RefuseHeld(connection);
         return reply;
+    }
+
+    // Whether a hello would succeed on a new connection, with another session than the connection's: it is checked as
+    // HelloCore checks it before the old connection is replaced, so an invalid hello replaces nothing and is answered as
+    // a second hello of the connection.
+    private bool IsReplacingHello(BridgeConnection connection, JsonElement root)
+    {
+        if (!root.TryGetProperty("protocol", out var protocolElement)
+            || !BridgeRequestEnvelope.TryReadInteger(protocolElement, out var protocol) || protocol != ProtocolVersion)
+            return false;
+        if (!root.TryGetProperty("session", out var sessionElement) || sessionElement.ValueKind != JsonValueKind.String
+            || !BridgeRequestEnvelope.IsIdentifier(sessionElement.GetString()!) || sessionElement.ValueEquals(connection.Session))
+            return false;
+        if (!root.TryGetProperty("client", out var client) || client.ValueKind != JsonValueKind.Object
+            || !TryReadName(client, "name", 128, out _) || !TryReadName(client, "version", 64, out _)
+            || !TryReadFeatures(root, out _, out _, out _, out _))
+            return false;
+        var session = sessionElement.GetString()!;
+        lock (_gate)
+            return !_closedSessions.Contains(session) && !_connections.Values.Any(other => other.Session == session);
     }
 
     private byte[] HelloCore(BridgeConnection connection, JsonElement root, out bool drain)
