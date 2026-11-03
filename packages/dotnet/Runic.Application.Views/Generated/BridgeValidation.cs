@@ -91,6 +91,7 @@ public static class BridgeValidation
             errors.WriteStartArray();
             collector = new Collector(errors, readObjectErrors);
             collector.Visit(root, members);
+            collector.ResolvePending();
             hasErrors = collector.HasErrors;
             errors.WriteEndArray();
         }
@@ -104,6 +105,8 @@ public static class BridgeValidation
         // without pending validation writes the same validation as before.
         if (collector.Pending.Count > 0)
         {
+            // Sorted, so a publication that changes no path writes the same value whatever order the model reports.
+            collector.Pending.Sort(ComparePaths);
             writer.WriteStartArray("pending");
             foreach (var path in collector.Pending)
             {
@@ -117,7 +120,27 @@ public static class BridgeValidation
             }
             writer.WriteEndArray();
         }
+        // Pending paths left out or cut have their own flag: truncated describes errors.
+        if (collector.PendingTruncated) writer.WriteBoolean("pendingTruncated", true);
         writer.WriteEndObject();
+    }
+
+    // Paths segment by segment: list indexes before member names and keys, indexes by value, names ordinally; a path
+    // before the paths that continue it.
+    private static int ComparePaths(object[] left, object[] right)
+    {
+        for (var index = 0; index < Math.Min(left.Length, right.Length); index++)
+        {
+            var order = (left[index], right[index]) switch
+            {
+                (int a, int b) => a.CompareTo(b),
+                (int, _) => -1,
+                (_, int) => 1,
+                (var a, var b) => string.CompareOrdinal((string)a, (string)b),
+            };
+            if (order != 0) return order;
+        }
+        return left.Length.CompareTo(right.Length);
     }
 
     /// <summary>
@@ -282,9 +305,26 @@ public static class BridgeValidation
         private bool _truncated;
         private readonly List<object[]> _pending = [];
         private readonly HashSet<string> _pendingKeys = new(StringComparer.Ordinal);
+        private bool _pendingTruncated;
+        private readonly List<(string[] Paths, Node Node)> _pendingRequests = [];
+
+        // validation-pending/1: the pending paths of the objects visited, in visit order. Each path resolves with a
+        // traversal budget of its own; a limit it reaches is pending's truncation, not the errors'.
+        internal void ResolvePending()
+        {
+            var truncated = _truncated;
+            var entries = _entries;
+            foreach (var (paths, node) in _pendingRequests)
+            {
+                AddPending(paths, node);
+                if (_pending.Count >= MaximumErrors && _pendingTruncated) break;
+            }
+            (_truncated, _entries) = (truncated, entries);
+        }
 
         internal bool HasErrors => _hasErrors;
         internal List<object[]> Pending => _pending;
+        internal bool PendingTruncated => _pendingTruncated;
         internal bool Truncated => _truncated;
 
         internal void Visit(object? owner, IReadOnlyList<BridgeDataSubscriptionMember> members)
@@ -314,7 +354,9 @@ public static class BridgeValidation
                     AddErrors(objectErrors ?? errors.GetErrors(null), nodePath, node, skipPresentedMembers: true);
                 }
                 else AddErrors(objectErrors, nodePath, node, skipPresentedMembers: false);
-                if (owner is IRunicPendingValidation pending) AddPending(pending.PendingMemberPaths, node);
+                // Resolved after the traversal, so they do not use the errors' traversal budget.
+                if (owner is IRunicPendingValidation pending && pending.PendingMemberPaths is { Count: > 0 } paths)
+                    _pendingRequests.Add((paths.ToArray(), node));
 
                 foreach (var member in members)
                 {
@@ -520,13 +562,16 @@ public static class BridgeValidation
         {
             foreach (var memberPath in memberPaths)
             {
+                (_entries, _truncated) = (0, false);
                 var path = ResolveMemberPath(memberPath, node) ?? node.Path;
-                if (path.Count > MaximumPathSegments) { _truncated = true; continue; }
-                var segments = path.Select(segment => segment is string text ? (object)Limit(text) : segment).ToArray();
+                if (_truncated) _pendingTruncated = true;
+                if (path.Count > MaximumPathSegments) { _pendingTruncated = true; continue; }
+                var segments = path.Select(segment => segment is string { Length: > MaximumStringLength } text
+                    ? (object)LimitPending(text) : segment).ToArray();
                 var key = string.Join('\u0000', segments.Select(segment => segment is int index
                     ? "#" + index.ToString(System.Globalization.CultureInfo.InvariantCulture) : "$" + (string)segment));
                 if (!_pendingKeys.Add(key)) continue;
-                if (_pending.Count >= MaximumErrors) { _truncated = true; return; }
+                if (_pending.Count >= MaximumErrors) { _pendingTruncated = true; return; }
                 _pending.Add(segments);
             }
         }
@@ -550,6 +595,12 @@ public static class BridgeValidation
             if (!string.IsNullOrEmpty(code)) _writer.WriteString("code", Limit(code));
             if (!string.IsNullOrEmpty(severity)) _writer.WriteString("severity", Limit(severity));
             _writer.WriteEndObject();
+        }
+
+        private string LimitPending(string value)
+        {
+            _pendingTruncated = true;
+            return value[..MaximumStringLength];
         }
 
         private string Limit(string? value)

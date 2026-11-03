@@ -48,6 +48,8 @@ test("validation-pending/1: pending paths decode, and fieldValidating finds a me
   const decoded = decodeBridgeValidation({ hasErrors: false, truncated: false, errors: [], pending: [["user-name"], ["items", 0, "label"], []] });
   assert.deepEqual(decoded.pending, [["user-name"], ["items", 0, "label"], []]);
   assert.equal("pending" in decodeBridgeValidation({ hasErrors: false, truncated: false, errors: [] }), false, "absent stays absent");
+  assert.equal(decodeBridgeValidation({ hasErrors: false, truncated: false, errors: [], pending: [[]], pendingTruncated: true }).pendingTruncated, true);
+  assert.equal("pendingTruncated" in decoded, false);
   assert.throws(() => decodeBridgeValidation({ hasErrors: false, truncated: false, errors: [], pending: [[-1]] }));
   assert.equal(fieldValidating(decoded, "user-name"), true);
   assert.equal(fieldValidating(decoded, "items"), true, "a value below the member");

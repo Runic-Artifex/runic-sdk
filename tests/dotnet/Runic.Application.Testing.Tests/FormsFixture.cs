@@ -74,3 +74,21 @@ public sealed class PendingFormViewModel : INotifyPropertyChanged, IRunicPending
 }
 
 public sealed partial class PendingFormWindow : RunicWindow<PendingFormViewModel>;
+
+// Pending paths below a list, for the limits and the order of validation.pending.
+public sealed class PendingNestedRow { public string Label { get; set; } = ""; }
+
+public sealed class PendingNestedRoot : IRunicPendingValidation
+{
+    public List<PendingNestedRow> Rows { get; } = [.. Enumerable.Range(0, 300).Select(_ => new PendingNestedRow())];
+    public RunicPendingValidation Pending { get; } = new();
+    IReadOnlyCollection<string> IRunicPendingValidation.PendingMemberPaths => Pending.PendingMemberPaths;
+    event EventHandler? IRunicPendingValidation.PendingChanged { add => Pending.PendingChanged += value; remove => Pending.PendingChanged -= value; }
+
+    internal static readonly Runic.Application.Views.Generated.BridgeDataSubscriptionMember[] Metadata =
+    [
+        new("rows", static owner => ((PendingNestedRoot)owner).Rows, propertyName: nameof(Rows),
+            enumerateValidationChildren: static value => Runic.Application.Views.Generated.BridgeValidation.EnumerateIndexed((System.Collections.IEnumerable)value),
+            children: [new("label", static owner => ((PendingNestedRow)owner).Label, propertyName: nameof(PendingNestedRow.Label))]),
+    ];
+}

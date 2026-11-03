@@ -15,3 +15,5 @@ Runic.Application.Views.RunicPendingValidation.this[string! memberPath].get -> b
 Runic.Application.Views.RunicPendingValidation.Track(string! memberPath, System.Func<System.Threading.Tasks.Task!>! validate) -> System.Threading.Tasks.Task!
 Runic.Application.Views.RunicPendingValidation.Track<T>(string! memberPath, System.Func<System.Threading.Tasks.Task<T>!>! validate) -> System.Threading.Tasks.Task<T>!
 static Runic.Application.Views.RunicPendingValidationExtensions.TrackPending<T>(this System.IObservable<T>! states, Runic.Application.Views.RunicPendingValidation! pending, string! memberPath, System.Func<T, bool>! isPending) -> System.IObservable<T>!
+Runic.Application.Views.RunicPendingValidation.Track(string! memberPath, System.Func<System.Threading.CancellationToken, System.Threading.Tasks.Task!>! validate) -> System.Threading.Tasks.Task!
+Runic.Application.Views.RunicPendingValidation.Track<T>(string! memberPath, System.Func<System.Threading.CancellationToken, System.Threading.Tasks.Task<T>!>! validate) -> System.Threading.Tasks.Task<T>!
