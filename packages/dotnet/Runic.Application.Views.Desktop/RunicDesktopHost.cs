@@ -438,6 +438,7 @@ public sealed class RunicDesktopHost : IRunicWindowHost
             {
                 // Without a presentation, nothing can keep a window open (D018.10), as on CS-WebUI.
                 if (opening.CloseGuard is not null) opening.ReportCloseGuardUnavailable("serve-only mode");
+                opening.ReportOwnerIgnored("serve-only mode shows no window");
                 owner.ServeUntil(ServeOnlyStopped());
                 // A concatenation, not a format: TextWriter's formatting reads the current culture, which loads ICU
                 // (S1; native-server.yml checks that serve-only startup does without it).
@@ -448,6 +449,7 @@ public sealed class RunicDesktopHost : IRunicWindowHost
             var windowOptions = GuardedWindowOptions(opening, WindowOptionsFor(opening.Options));
             if (Placement is { } choosePlacement && choosePlacement(opening.Window) is { } placement)
                 windowOptions = windowOptions with { Placement = placement };
+            windowOptions = OwnedWindowOptions(opening, windowOptions);
             var presentation = await surface.OpenWindowAsync(windowOptions, cancellationToken).ConfigureAwait(false);
             // A browser fallback opens without close confirmation; Runic Desktop reports
             // close-confirmation-unavailable for the options, and this names the Window.
@@ -541,6 +543,35 @@ public sealed class RunicDesktopHost : IRunicWindowHost
             ? "the configured embedded-window host"
             : $"the {options.Browser} browser");
         return options;
+    }
+
+    // RunicWindowOptions.Owner and Modality: the owner's Desktop window, when it is an open embedded window of this host's
+    // Desktop that can own windows. Otherwise the Window opens on its own (event 1180).
+    private static DesktopWindowOptions OwnedWindowOptions<TViewModel>(RunicWindowOpening<TViewModel> opening, DesktopWindowOptions options)
+        where TViewModel : class
+    {
+        if (opening.Options.Owner is not { } owner) return options;
+        DesktopWindow? window = null;
+        try { window = (owner.Host as IDesktopNativeOwnerSource)?.WindowOrNull; }
+        catch (InvalidOperationException) { /* The owner has not opened. */ }
+        var reason = window switch
+        {
+            null => "the owner is not an open Runic Desktop window",
+            { IsOpen: false } => "the owner has closed",
+            _ when !window.Capabilities.HasFlag(DesktopWindowCapabilities.Ownership) =>
+                "the owner's presentation cannot own windows, such as an installed browser",
+            _ => null,
+        };
+        if (reason is not null)
+        {
+            opening.ReportOwnerIgnored(reason);
+            return options;
+        }
+        return options with
+        {
+            Owner = DesktopWindowOwner.FromWindow(window!),
+            Modality = opening.Options.Modality == RunicWindowModality.Window ? DesktopWindowModality.Window : DesktopWindowModality.None,
+        };
     }
 
     private const string ConfirmCloseOption = $"{nameof(DesktopWindowOptions)}.{nameof(DesktopWindowOptions.ConfirmCloseAsync)}";

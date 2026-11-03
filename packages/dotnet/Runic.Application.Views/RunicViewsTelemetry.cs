@@ -378,6 +378,15 @@ internal static partial class ViewsLog
     [LoggerMessage(EventId = 1130, EventName = "WindowPresentationHandlerFailed", Level = LogLevel.Error,
         Message = "An IRunicWindowPresentation.{Handler} handler failed with {ErrorType}.")]
     internal static partial void WindowPresentationHandlerFailed(ILogger logger, Exception exception, string handler, string errorType);
+
+    // RunicWindowOptions.Owner that the host cannot apply: the Window opens on its own.
+    [LoggerMessage(EventId = 1180, EventName = "WindowOwnerIgnored", Level = LogLevel.Warning,
+        Message = "The Window {Window} opens without its owner {Owner}: {Reason}.")]
+    internal static partial void WindowOwnerIgnored(ILogger logger, string window, string owner, string reason);
+
+    [LoggerMessage(EventId = 1181, EventName = "WindowsChangedHandlerFailed", Level = LogLevel.Error,
+        Message = "An IRunicWindowService.WindowsChanged handler failed with {ErrorType}.")]
+    internal static partial void WindowsChangedHandlerFailed(ILogger logger, Exception exception, string errorType);
 }
 
 // Without an ILoggerFactory the runtime keeps its earlier System.Diagnostics.Trace

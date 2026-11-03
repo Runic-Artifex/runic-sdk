@@ -93,6 +93,35 @@ public static partial class WpfPlatformServices
         return 0;
     }
 
+    /// <summary>
+    /// The owner for a Runic Desktop window that belongs to a WPF <paramref name="window"/>
+    /// (<see cref="DesktopWindowOptions.Owner"/>): the Desktop window stays above it, and with
+    /// <see cref="DesktopWindowModality.Window"/> the WPF window takes no input until the Desktop window closed, as for
+    /// <see cref="Window.ShowDialog"/>.
+    /// </summary>
+    /// <remarks>
+    /// <code>
+    /// await surface.OpenWindowAsync(new DesktopWindowOptions
+    /// {
+    ///     Owner = WpfPlatformServices.ForDesktopWindowOwner(mainWindow),
+    ///     Modality = DesktopWindowModality.Window,
+    /// });
+    /// </code>
+    /// Call it on the window's UI thread. It creates the window's handle if the window has none yet
+    /// (<see cref="WindowInteropHelper.EnsureHandle"/>). Runic Desktop does not watch a WPF owner: close the Desktop window
+    /// before the WPF window closes. The other way round, a WPF dialog that belongs to a Runic Desktop window sets
+    /// <c>new WindowInteropHelper(dialog).Owner = desktopWindow.NativeHandle</c> before <see cref="Window.ShowDialog"/>.
+    /// </remarks>
+    /// <param name="window">The WPF window that owns the Desktop window.</param>
+    /// <returns>An owner with the window's <c>HWND</c>.</returns>
+    /// <exception cref="InvalidOperationException">The caller is not on the window's UI thread.</exception>
+    public static DesktopWindowOwner ForDesktopWindowOwner(Window window)
+    {
+        ArgumentNullException.ThrowIfNull(window);
+        window.VerifyAccess();
+        return DesktopWindowOwner.FromNativeHandle(new WindowInteropHelper(window).EnsureHandle());
+    }
+
     /// <summary>Brings a WPF window to the front, for example for a launch that another copy of the application forwarded.</summary>
     /// <param name="window">The window, on any thread; the work runs on its dispatcher.</param>
     /// <param name="cancellationToken">Cancels before the request reaches the window's dispatcher.</param>

@@ -31,6 +31,16 @@ public interface IRunicWindowContext
     /// </exception>
     /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> was cancelled.</exception>
     ValueTask<bool> RequestCloseAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// The Window of this scope, for example as the <see cref="RunicWindowOptions.Owner"/> of a dialog it opens, or
+    /// <see langword="null"/> outside a Window's scope.
+    /// </summary>
+    /// <remarks>
+    /// It is set before the ViewModel is resolved, so a constructor may keep it, but the Window opens only after the
+    /// constructor returned. The default implementation, for a test fake, returns <see langword="null"/>.
+    /// </remarks>
+    IRunicWindow? Window => null;
 }
 
 internal sealed class RunicWindowContext : IRunicWindowContext
@@ -52,6 +62,8 @@ internal sealed class RunicWindowContext : IRunicWindowContext
         if (Interlocked.CompareExchange(ref _window, window, null) is { } bound && !ReferenceEquals(bound, window))
             throw new InvalidOperationException("The window context is already bound to another Window.");
     }
+
+    public IRunicWindow? Window => Volatile.Read(ref _window);
 
     public ValueTask<bool> RequestCloseAsync(CancellationToken cancellationToken = default)
     {

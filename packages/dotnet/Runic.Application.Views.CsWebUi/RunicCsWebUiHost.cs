@@ -187,6 +187,26 @@ public sealed class RunicCsWebUiHost : IRunicWindowHost
     IReadOnlyList<RunicWindowDiagnostic> IRunicWindowHost.Validate(RunicWindowOptions options)
     {
         ArgumentNullException.ThrowIfNull(options);
+        var browser = ValidateBrowser();
+        return options.Owner is null ? browser : [.. browser, OwnerUnsupported];
+    }
+
+    /// <summary>
+    /// The code of the warning <see cref="RunicWindowHostExtensions.ValidateWindow{TWindow}"/> reports for a
+    /// <see cref="RunicWindowOptions.Owner"/>: CS-WebUI opens every Window on its own.
+    /// </summary>
+    public const string OwnerUnsupportedCode = "window-owner-unsupported";
+
+    private static readonly RunicWindowDiagnostic OwnerUnsupported = new(OwnerUnsupportedCode,
+        "CS-WebUI cannot own windows or make one modal, so the Window opens on its own.",
+        "Remove RunicWindowOptions.Owner and Modality on CS-WebUI, or run on Runic Desktop.")
+    {
+        Severity = RunicWindowDiagnosticSeverity.Warning,
+        Option = "RunicWindowOptions.Owner",
+    };
+
+    private IReadOnlyList<RunicWindowDiagnostic> ValidateBrowser()
+    {
         if (Environment.GetEnvironmentVariable(ServeOnlyEnvironmentVariable) == "1" || ShowWindow is not null || UseWebView) return [];
         var configured = Environment.GetEnvironmentVariable(WebUiApplication.BrowserPathEnvironmentVariable);
         if (string.IsNullOrWhiteSpace(configured)) return [];
@@ -258,6 +278,7 @@ public sealed class RunicCsWebUiHost : IRunicWindowHost
             // A browser window closes without asking the application, and WebUI reports the close only after it
             // happened: a guarded Window opens unguarded, with a warning (D018.10).
             if (opening.CloseGuard is not null) opening.ReportCloseGuardUnavailable("CS-WebUI");
+            opening.ReportOwnerIgnored("CS-WebUI cannot own windows");
 
             var options = opening.Options;
             var windowName = opening.Window.GetType().Name;

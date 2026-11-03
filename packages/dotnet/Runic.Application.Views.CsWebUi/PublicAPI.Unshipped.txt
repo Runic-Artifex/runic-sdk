@@ -1,1 +1,2 @@
 #nullable enable
+const Runic.Application.Views.CsWebUi.RunicCsWebUiHost.OwnerUnsupportedCode = "window-owner-unsupported" -> string!
