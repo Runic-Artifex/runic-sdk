@@ -51,7 +51,11 @@ public static class BridgeContractShape
         {
             var interaction = BridgeMvvmConventions.Interaction(property.PropertyType);
             var command = BridgeMvvmConventions.TypedCommand(property.PropertyType);
-            var kind = interaction is not null ? "interaction" : command is not null || typeof(ICommand).IsAssignableFrom(property.PropertyType) ? "command" : "state";
+            // A ViewRequest<T> is a one-way view request, never state. Only models with one add the kind, so other
+            // fingerprints stay.
+            var request = RunicViewConventions.ViewRequest(property.PropertyType);
+            var kind = interaction is not null ? "interaction" : request is not null ? "request"
+                : command is not null || typeof(ICommand).IsAssignableFrom(property.PropertyType) ? "command" : "state";
             parts.Add($"member:{TypeName(model)}:{property.Name}:wire:{WireName(property)}:{kind}:access:{(property.SetMethod?.IsPublic == true ? "write" : "read")}");
             if (kind == "command" && command is not null)
             {
@@ -89,6 +93,11 @@ public static class BridgeContractShape
                 AppendType(parts, interaction.GenericTypeArguments[1], ContractAnnotation(property, interaction, nullability, 1), $"{model.Name}.{property.Name}.output", [], honorJsonIgnore);
                 continue;
             }
+            if (kind == "request" && request is not null)
+            {
+                AppendType(parts, request.GenericTypeArguments[0], ContractAnnotation(property, request, nullability, 0), $"{model.Name}.{property.Name}.input", [], honorJsonIgnore);
+                continue;
+            }
             if (kind != "state") continue;
             if (property.GetCustomAttribute<RunicCollectionAttribute>(true) is { } collection)
                 parts.Add($"collection:{TypeName(model)}:{WireName(property)}:key:{collection.KeyProperty}");
@@ -101,6 +110,13 @@ public static class BridgeContractShape
             if (NavigationRegionContent(property.PropertyType) is { } regionContent)
             {
                 parts.Add($"content:{TypeName(model)}:{WireName(property)}:contract:{ContractFor(property) ?? "default"}:region:{TypeName(regionContent)}");
+                continue;
+            }
+            // A region collection (region-collections/1) presents every region of a selection. Only such properties add
+            // the part, so other fingerprints stay.
+            if (RegionCollection(property) is { } regions)
+            {
+                parts.Add($"region-collection:{TypeName(model)}:{WireName(property)}:contract:{ContractFor(property) ?? "default"}:region:{TypeName(regions.ContentType)}:close:{regions.PageCanClose}");
                 continue;
             }
             // A NavigationSelection slot's wire value is its SelectedIndex, a nullable number.
@@ -269,6 +285,8 @@ public static class BridgeContractShape
     internal static Type? NavigationRegionContent(Type type) =>
         type.IsGenericType && type.GetGenericTypeDefinition() == typeof(NavigationRegion<>) ? type.GenericTypeArguments[0] : null;
     internal static bool IsNavigationSelection(Type type) => type == typeof(NavigationSelection);
+    internal static RunicRegionCollectionAttribute? RegionCollection(PropertyInfo property) =>
+        property.GetCustomAttribute<RunicRegionCollectionAttribute>(true);
     private static Type[] ContentModels(PropertyInfo property, Type owner, IReadOnlyList<Type> models) { var candidate = TryCollection(property.PropertyType, out var item) ? item! : property.PropertyType; return candidate == typeof(object) ? [] : models.Where(model => model != owner && candidate.IsAssignableFrom(model)).ToArray(); }
     private static PresentationView[] DiscoverViews(Assembly assembly) => LoadableTypes(assembly).Where(type => !type.IsAbstract && type.IsClass && type.IsPublic && !type.IsNested).Select(type => (ViewType: type, ModelType: ViewModelFor(type))).Where(item => item.ModelType is not null).Select(item => new PresentationView(item.ViewType, item.ModelType!, ContractFor(item.ViewType))).ToArray();
     private static Type? ViewModelFor(Type view) { for (var current = view.BaseType; current is not null; current = current.BaseType) if (current.IsGenericType && current.GetGenericTypeDefinition() == typeof(RunicView<>)) return current.GenericTypeArguments[0]; return null; }

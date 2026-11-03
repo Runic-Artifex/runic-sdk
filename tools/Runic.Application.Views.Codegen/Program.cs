@@ -500,7 +500,7 @@ static void GenerateCompositionRegistration(string path, string compositionType,
         var modelType = $"global::{model.FullName}";
         var bridgeType = BridgeTypeName(model, name);
         // GenerateOne decided whether the bridge constructor requires a content
-        // session (ViewModel content or interactions). Only offer the
+        // session (ViewModel content, interactions or view requests). Only offer the
         // transport-only factory when it can actually construct the bridge.
         if (!contentRequired.Contains(model))
         {
@@ -629,9 +629,11 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
     var contractFingerprint = BridgeContractShape.Compute(model);
     var honorJsonIgnore = BridgeDtoContract.HonorsJsonIgnore(model.Assembly);
     var interactions = InteractionCodeEmitter.Discover(declared, model.Name, contractFingerprint, honorJsonIgnore);
+    var requests = InteractionCodeEmitter.DiscoverRequests(declared, model.Name, contractFingerprint, honorJsonIgnore);
     var commands = declared.Where(property => typeof(ICommand).IsAssignableFrom(property.PropertyType)
         || MvvmCodegenConventions.All.Any(convention => InspectCommand(model, property, () => convention.InspectCommand(property)) is not null)).ToArray();
     var properties = declared.Except(commands).Except(interactions.Select(plan => plan.Property))
+        .Except(requests.Select(plan => plan.Property))
         .Where(property => !IsCommandAvailability(model, property, commands)).ToArray();
     var duplicateWireName = properties.GroupBy(WireName, StringComparer.Ordinal).FirstOrDefault(group => group.Count() > 1);
     if (duplicateWireName is not null)
@@ -639,7 +641,7 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
             $"{model.Name}: state properties {string.Join(" and ", duplicateWireName.Select(property => property.Name))} share the generated wire name '{duplicateWireName.Key}'.",
             duplicateWireName.Last());
     var nullability = new NullabilityInfoContext();
-    if (properties.Length == 0 && commands.Length == 0 && interactions.Length == 0)
+    if (properties.Length == 0 && commands.Length == 0 && interactions.Length == 0 && requests.Length == 0)
         throw new BridgeDiagnosticException(BridgeDiagnosticCodes.ViewModel,
             $"{model.Name}: a ViewModel needs at least one state property, command, or interaction.", model);
     var contentProperties = new Dictionary<PropertyInfo, (Type Model, string Name)[]>();
@@ -648,12 +650,37 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
     var regionSlots = new HashSet<PropertyInfo>();
     // NavigationSelection slots: state whose wire value is the selection's SelectedIndex, or null for -1.
     var selectionSlots = new HashSet<PropertyInfo>();
+    // Region collections (region-collections/1): a [RunicRegionCollection] NavigationSelection presented with every
+    // region's key and content, and the selected index.
+    var regionCollections = new Dictionary<PropertyInfo, (Type Model, string Name)[]>();
     var valueProperties = new Dictionary<PropertyInfo, BridgeTypeGraph>();
     foreach (var property in properties)
     {
         if (property.GetMethod is null)
             throw new BridgeDiagnosticException(BridgeDiagnosticCodes.State,
                 $"{model.Name}.{property.Name}: a public getter is required.", property);
+        if (BridgeContractShape.RegionCollection(property) is { } regionCollection)
+        {
+            if (!BridgeContractShape.IsNavigationSelection(property.PropertyType))
+                throw new BridgeDiagnosticException(BridgeDiagnosticCodes.RegionCollection,
+                    $"{model.Name}.{property.Name}: RunicRegionCollection applies to a NavigationSelection property, not to a {property.PropertyType.Name}.", property);
+            if (property.SetMethod?.IsPublic == true)
+                throw new BridgeDiagnosticException(BridgeDiagnosticCodes.RegionCollection,
+                    $"{model.Name}.{property.Name}: a region collection must be get-only; its Add, SelectAsync and RemoveAsync, not the web view, change it.", property);
+            var collectionContent = regionCollection.ContentType;
+            if (collectionContent == typeof(object))
+                throw new BridgeDiagnosticException(BridgeDiagnosticCodes.RegionCollection,
+                    $"{model.Name}.{property.Name}: a region collection of object has no known content. Name an interface or base class that the regions' ViewModels share.", property);
+            var collectionModels = knownModels.Where(entry => entry.Model != model && collectionContent.IsAssignableFrom(entry.Model))
+                .OrderByDescending(entry => InheritanceDepth(entry.Model))
+                .ThenBy(entry => entry.Model.FullName, StringComparer.Ordinal)
+                .ToArray();
+            if (collectionModels.Length == 0)
+                throw new BridgeDiagnosticException(BridgeDiagnosticCodes.RegionCollection,
+                    $"{model.Name}.{property.Name}: no ViewModel with a registered View is a {collectionContent.Name}, so the region collection can present nothing.", property);
+            regionCollections.Add(property, collectionModels);
+            continue;
+        }
         if (BridgeContractShape.NavigationRegionContent(property.PropertyType) is { } regionContent)
         {
             if (property.SetMethod?.IsPublic == true)
@@ -751,7 +778,7 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
     // fields. Frames and setters may change them with text splices.
     var textMembers = properties.Where(property => !textFields.Contains(property) && !selectionSlots.Contains(property)
         && valueProperties.TryGetValue(property, out var graph) && graph.Root.Kind == BridgeWireKind.String).ToArray();
-    var hasContent = contentProperties.Count > 0 || contentCollections.Count > 0;
+    var hasContent = contentProperties.Count > 0 || contentCollections.Count > 0 || regionCollections.Count > 0;
     if (viewTypes is not null) WarnContentWithoutView(model, contentProperties, contentCollections, regionSlots, viewTypes);
     // A region slot presents its Current, whose nullability (always nullable)
     // is the slot's wire and TypeScript nullability.
@@ -764,7 +791,7 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
     bool IsNullableContent(PropertyInfo property) => (regionSlots.Contains(property)
         ? nullability.Create(property.PropertyType.GetProperty("Current", BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly)!)
         : nullability.Create(property)).ReadState == NullabilityState.Nullable;
-    var contentBindings = contentProperties.Concat(contentCollections).ToArray();
+    var contentBindings = contentProperties.Concat(contentCollections).Concat(regionCollections).ToArray();
     var fullType = $"global::{model.FullName}";
     var commandPlans = new Dictionary<PropertyInfo, GeneratedCommandPlan>();
     var commandSources = commands.ToDictionary(command => command, command => CommandSourceMethod(model, command));
@@ -889,8 +916,10 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
     var checkedProperties = properties
         .Where(property => property.SetMethod?.IsPublic == true && valueProperties.ContainsKey(property)).ToArray();
     var needsCheckedWriter = checkedProperties.Length > 0;
-    InteractionCodeEmitter.ValidatePublicSurface(model.Name, properties, commands, commandPlans, interactions,
+    InteractionCodeEmitter.ValidatePublicSurface(model.Name, properties, commands, commandPlans, interactions, requests,
         checkedProperties, WireName, hasErrors, hasValidation);
+    // Interactions and view requests are attached to the presentations of a WindowContentSession.
+    var presented = interactions.Length > 0 || requests.Length > 0;
 
     var cs = new StringBuilder();
     cs.AppendLine("// <auto-generated />");
@@ -899,7 +928,7 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
     AppendNamespace(cs, BridgeNamespace);
     cs.AppendLine($"internal sealed class {shortName}Bridge : global::Runic.Application.Views.Generated.ViewModelBridge<{fullType}>");
     cs.AppendLine("{");
-    if (interactions.Length > 0)
+    if (presented)
         cs.AppendLine("    private readonly global::System.IDisposable? _rootInteractionMount;");
     if (hasContent)
     {
@@ -921,6 +950,13 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
         {
             // The runtime observes the region and binds the window session.
             cs.AppendLine($"            new global::Runic.Application.Views.Generated.PropertyDescriptor<{fullType}>({descriptorNames}, vm => vm.{property.Name}?.Current, null, static vm => vm.{property.Name}),");
+            continue;
+        }
+        if (regionCollections.ContainsKey(property))
+        {
+            // The runtime observes the selection, its regions and their Current, and answers region requests.
+            var close = BridgeContractShape.RegionCollection(property)!.PageCanClose ? "true" : "false";
+            cs.AppendLine($"            new global::Runic.Application.Views.Generated.PropertyDescriptor<{fullType}>({descriptorNames}, vm => vm.{property.Name}, null, static vm => vm.{property.Name}) {{ RegionCollection = true, RegionClose = {close} }},");
             continue;
         }
         if (selectionSlots.Contains(property))
@@ -951,10 +987,11 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
     foreach (var command in commands)
         cs.AppendLine($"            {commandPlans[command].DescriptorFor(command, fullType)},");
     cs.AppendLine($"        ], \"{contractFingerprint}\", content,");
-    if (interactions.Length > 0)
+    if (presented)
     {
         cs.AppendLine("        [");
-        foreach (var descriptor in InteractionCodeEmitter.CSharpDescriptors(interactions, fullType))
+        foreach (var descriptor in InteractionCodeEmitter.CSharpDescriptors(interactions, fullType)
+            .Concat(InteractionCodeEmitter.CSharpRequestDescriptors(requests, fullType)))
             cs.AppendLine($"            {descriptor},");
         cs.AppendLine("        ],");
     }
@@ -976,7 +1013,7 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
     cs.AppendLine("        )");
     cs.AppendLine("    {");
     if (hasContent) cs.AppendLine("        _content = content!; _owner = vm;");
-    if (interactions.Length > 0)
+    if (presented)
     {
         cs.AppendLine("        global::System.ArgumentNullException.ThrowIfNull(content);");
         cs.AppendLine($"        _rootInteractionMount = routePrefix is null ? content.AttachRootInteractionPresentation(\"{prefix}\") : null;");
@@ -1004,6 +1041,7 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
         if (plan.FailureGraph is { } failure) { failure.AppendCSharpCodec(cs, command.Name + "FailureCodec"); cs.AppendLine(); }
     }
     InteractionCodeEmitter.AppendCSharpCodecs(cs, interactions);
+    InteractionCodeEmitter.AppendCSharpRequestCodecs(cs, requests);
     foreach (var convention in MvvmCodegenConventions.All)
         convention.AppendSupportTypes(cs, commandPlans.Values);
     // The state members in order (specs/application, "State and revisions"). Each writes its value; the runtime writes
@@ -1054,6 +1092,66 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
             writer.AppendLine($"        default: {{ var unregistered = {ContentAccess(property)}!; throw new global::System.NotSupportedException({UnregisteredContentMessage(model, property, regionSlots.Contains(property))}); }}");
             writer.AppendLine("    }");
             writer.AppendLine("}");
+            stateMembers.Add((jsonName, writer.ToString()));
+        }
+        else if (regionCollections.TryGetValue(property, out var regionModels))
+        {
+            // {regions: [{key, content}], selected}: each region's Current is presented like an item of a content
+            // collection, so content shown by no region any more is pruned.
+            var writer = new StringBuilder();
+            writer.AppendLine("var active = new global::System.Collections.Generic.HashSet<string>(global::System.StringComparer.Ordinal);");
+            writer.AppendLine($"var selection = vm.{property.Name};");
+            writer.AppendLine("writer.WriteStartObject();");
+            writer.AppendLine("writer.WriteStartArray(\"regions\");");
+            writer.AppendLine("foreach (var region in selection?.Regions ?? [])");
+            writer.AppendLine("{");
+            writer.AppendLine("    writer.WriteStartObject();");
+            writer.AppendLine("    writer.WriteString(\"key\", global::Runic.Application.Views.Generated.BridgeRegionCollections.Key(region));");
+            writer.AppendLine("    writer.WritePropertyName(\"content\");");
+            writer.AppendLine("    switch (region.Current)");
+            writer.AppendLine("    {");
+            writer.AppendLine("        case null: writer.WriteNullValue(); break;");
+            foreach (var (pageModel, pageName) in regionModels)
+            {
+                var pageType = $"global::{pageModel.FullName}";
+                var bridgeType = BridgeTypeName(pageModel, pageName);
+                var contract = ContractFor(property);
+                Type? selectedView = null;
+                if (viewTypes is not null && viewTypes.TryGetValue(pageModel, out var variants))
+                {
+                    selectedView = variants.FirstOrDefault(view => ContractFor(view) == contract);
+                    if (selectedView is null)
+                        throw new BridgeDiagnosticException(BridgeDiagnosticCodes.View,
+                            $"{model.Name}.{property.Name}: no {pageModel.Name} View has contract '{contract ?? "default"}'.", property);
+                }
+                else if (contract is not null)
+                    throw new BridgeDiagnosticException(BridgeDiagnosticCodes.View,
+                            $"{model.Name}.{property.Name}: no {pageModel.Name} View has contract '{contract}'.", property);
+                var pageKind = PageKind(pageName, contract);
+                var contractArgument = contract is null ? "" : $", contract: \"{contract}\"";
+                writer.AppendLine($"        case {pageType} page:");
+                writer.AppendLine("        {");
+                if (selectedView is not null)
+                    writer.AppendLine($"            var reference = content.PresentItem(vm, \"{property.Name}\", \"{pageKind}\", page, (transport, current, route) => content.AttachPresentation<global::{selectedView.FullName}, {pageType}>(current, route, (presentationTransport, presentationModel, presentationRoute) => new {bridgeType}(presentationTransport, presentationModel, presentationRoute, content){contractArgument}));");
+                else
+                    writer.AppendLine($"            var reference = content.PresentItem(vm, \"{property.Name}\", \"{pageKind}\", page, (transport, current, route) => new {bridgeType}(transport, current, route, content));");
+                writer.AppendLine("            active.Add(reference.Id);");
+                writer.AppendLine("            writer.WriteStartObject();");
+                writer.AppendLine("            writer.WriteString(\"kind\", reference.Kind);");
+                writer.AppendLine("            writer.WriteString(\"id\", reference.Id);");
+                writer.AppendLine("            writer.WriteEndObject();");
+                writer.AppendLine("            break;");
+                writer.AppendLine("        }");
+            }
+            writer.AppendLine($"        default: {{ var unregistered = region.Current!; throw new global::System.NotSupportedException({UnregisteredContentMessage(model, property, true)}); }}");
+            writer.AppendLine("    }");
+            writer.AppendLine("    writer.WriteEndObject();");
+            writer.AppendLine("}");
+            writer.AppendLine("writer.WriteEndArray();");
+            writer.AppendLine("if (selection is { SelectedIndex: >= 0 and var selected }) writer.WriteNumber(\"selected\", selected);");
+            writer.AppendLine("else writer.WriteNull(\"selected\");");
+            writer.AppendLine("writer.WriteEndObject();");
+            writer.AppendLine($"content.PruneCollection(vm, \"{property.Name}\", active);");
             stateMembers.Add((jsonName, writer.ToString()));
         }
         else if (contentCollections.TryGetValue(property, out var collectionModels))
@@ -1169,11 +1267,11 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
         }
         cs.AppendLine($"{indent}]");
     }
-    if (hasContent || interactions.Length > 0)
+    if (hasContent || presented)
     {
         cs.AppendLine("    public override void Dispose()");
         cs.AppendLine("    {");
-        if (interactions.Length > 0) cs.AppendLine("        _rootInteractionMount?.Dispose();");
+        if (presented) cs.AppendLine("        _rootInteractionMount?.Dispose();");
         cs.AppendLine("        base.Dispose();");
         if (hasContent) cs.AppendLine("        _content.ClearOwner(_owner);");
         cs.AppendLine("    }");
@@ -1196,6 +1294,31 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
         }));
         contentImports.AppendLine($"import {{ {members} }} from \"./{LowerFirst(pageName)}.js\";");
     }
+    // region-collections/1: select{Name}(key) and close{Name}(key) of each region collection. RUNICBRIDGE071 when one
+    // collides with another member of the generated client.
+    var clientMembers = new HashSet<string>(["snapshot", "subscribe", "dispose", "interactions", "fieldBaseline"], StringComparer.Ordinal);
+    foreach (var property in properties.Where(property => property.SetMethod?.IsPublic == true)) clientMembers.Add($"set{property.Name}");
+    foreach (var property in checkedProperties) clientMembers.Add($"write{property.Name}");
+    foreach (var command in commands)
+    {
+        var name = command.Name[..^"Command".Length];
+        clientMembers.Add(LowerFirst(name));
+        clientMembers.Add($"can{name}");
+        if (commandPlans[command].IsAsync) { clientMembers.Add($"start{name}"); clientMembers.Add($"recover{name}"); }
+    }
+    var regionMethods = new List<(PropertyInfo Property, string Method, string Action)>();
+    foreach (var property in regionCollections.Keys)
+    {
+        var actions = BridgeContractShape.RegionCollection(property)!.PageCanClose ? new[] { "select", "close" } : ["select"];
+        foreach (var action in actions)
+        {
+            var method = action + property.Name;
+            if (!clientMembers.Add(method))
+                throw new BridgeDiagnosticException(BridgeDiagnosticCodes.RegionCollectionName,
+                    $"{model.Name}.{property.Name}: the region collection's client method {method} collides with another member of the generated client. Rename the property or the other member.", property);
+            regionMethods.Add((property, method, action));
+        }
+    }
     var clientName = $"{shortName}Client";
     ts.AppendLine($"export interface {shortName}State {{");
     if (hasValidation) ts.AppendLine($"  readonly validation: {Ref("BridgeValidationState")};");
@@ -1205,6 +1328,9 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
             ? string.Join(" | ", pages.Select(page =>
                 $"{char.ToUpperInvariant(PageKind(page.Name, ContractFor(property))[0])}{PageKind(page.Name, ContractFor(property))[1..]}PageReference"))
                 + (IsNullableContent(property) ? " | null" : "")
+            : regionCollections.TryGetValue(property, out var regionPages)
+                ? $"{Ref("RegionCollection")}<" + string.Join(" | ", regionPages.Select(page =>
+                    $"{char.ToUpperInvariant(PageKind(page.Name, ContractFor(property))[0])}{PageKind(page.Name, ContractFor(property))[1..]}PageReference")) + ">"
             : contentCollections.TryGetValue(property, out var collectionPages)
                 ? "readonly (" + string.Join(" | ", collectionPages.Select(page =>
                     $"{char.ToUpperInvariant(PageKind(page.Name, ContractFor(property))[0])}{PageKind(page.Name, ContractFor(property))[1..]}PageReference"))
@@ -1230,6 +1356,7 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
     ts.AppendLine("}");
     ts.AppendLine();
     InteractionCodeEmitter.AppendTypeScriptSurface(ts, interactions, shortName);
+    InteractionCodeEmitter.AppendTypeScriptRequestSurface(ts, requests, shortName);
     if (needsCheckedWriter)
     {
         ts.AppendLine($"export interface {shortName}CheckedFields {{");
@@ -1244,6 +1371,7 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
         + (modelDocumentation is null ? "" : "\n\n" + modelDocumentation));
     ts.AppendLine($"export interface {clientName} extends {Ref("ViewClient")}<{shortName}State> {{");
     if (interactions.Length > 0) ts.AppendLine($"  readonly interactions: {shortName}Interactions;");
+    if (requests.Length > 0) ts.AppendLine($"  readonly requests: {shortName}ViewRequests;");
     foreach (var property in properties.Where(property => property.SetMethod?.IsPublic == true))
     {
         XmlDocumentation.Append(ts, "  ", SetterDocumentation(property));
@@ -1276,6 +1404,13 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
         if (plan.Key is not null)
             XmlDocumentation.Append(ts, "  ", $"Whether `{LowerFirst(command.Name[..^"Command".Length])}` can run for `{plan.ParameterName}`: false when .NET finds no object for it.");
         if (plan.HasArgument) ts.AppendLine($"  can{command.Name[..^"Command".Length]}({input}): Promise<boolean>;");
+    }
+    foreach (var (property, method, action) in regionMethods)
+    {
+        XmlDocumentation.Append(ts, "  ", action == "select"
+            ? $"Selects the region of `{WireName(property)}` with `key`. The departure guards of the region left decide; resolves with the request's outcome once the state includes it (`region-collections/1`)."
+            : $"Closes the region of `{WireName(property)}` with `key` and removes it. Its departure guards decide; resolves with the request's outcome once the state includes it (`region-collections/1`).");
+        ts.AppendLine($"  {method}(key: string): Promise<{Ref("RegionOutcome")}>;");
     }
     foreach (var command in commands.Where(command => commandPlans[command].IsAsync))
     {
@@ -1337,6 +1472,8 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
             memberDecoders.Add((field, IsNullableContent(property) ? $"{{ if (wire === null) return null; {decoder[2..]}" : decoder));
             blockDecoders.Add(field);
         }
+        else if (regionCollections.TryGetValue(property, out var regionPages))
+            memberDecoders.Add((field, $"{Ref("regionCollection")}(wire, item => {{ const reference = {Ref("contentReference")}(item); return {ContentDecoder(property, regionPages, "reference")}; }})"));
         else if (contentCollections.TryGetValue(property, out var collectionPages))
         {
             var decoder = $"bridgeWire.array(wire, item => {{ const reference = {Ref("contentReference")}(item); return {ContentDecoder(property, collectionPages, "reference")}; }})";
@@ -1365,6 +1502,7 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
     ts.AppendLine("};");
     ts.AppendLine($"const {Ref("bridgeContract")} = \"{model.FullName}:{contractFingerprint}\";");
     InteractionCodeEmitter.AppendTypeScriptDefinitions(ts, interactions);
+    InteractionCodeEmitter.AppendTypeScriptRequestDefinitions(ts, requests);
     if (needsCheckedWriter)
         ts.AppendLine($"const {Ref("checkedFieldNames")} = [{string.Join(", ", checkedProperties.Select(property => JsonSerializer.Serialize(WireName(property))))}];");
     OperationTypeScriptEmitter.AppendCodecs(ts, operationPlans);
@@ -1389,6 +1527,7 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
         + (textMembers.Length > 0 ? $", texts: [{string.Join(", ", textMembers.Select(property => JsonSerializer.Serialize(WireName(property))))}]" : "")
         + (scopedCommands.Length > 0 ? $", scopedCommands: [{string.Join(", ", scopedCommands.Select(member => JsonSerializer.Serialize(member)))}]" : "")
         + (interactions.Length > 0 ? $", interactions: {Ref("interactionDefinitions")}, handlers: options?.handlers" : "")
+        + (requests.Length > 0 ? $", requests: {Ref("requestDefinitions")}" : "")
         + (operationPlans.Length > 0 ? $", operations: {Ref("bridgeOperations")}" : "");
     // A View with interactions takes their handlers when it connects, so the producer can ask them from the first
     // request on (specs/application, "Presentations").
@@ -1407,6 +1546,8 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
     ts.AppendLine("    dispose: view.dispose,");
     if (interactions.Length > 0)
         ts.AppendLine($"    interactions: view.interactions as unknown as {shortName}Interactions,");
+    if (requests.Length > 0)
+        ts.AppendLine($"    requests: view.requests as unknown as {shortName}ViewRequests,");
     if (needsCheckedWriter)
         ts.AppendLine($"    fieldBaseline<K extends keyof {shortName}CheckedFields>(field: K) {{ return view.fieldBaseline(field) as {Ref("FieldBaseline")}<{shortName}CheckedFields[K]>; }},");
     foreach (var property in properties.Where(property => property.SetMethod?.IsPublic == true))
@@ -1452,6 +1593,8 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
         if (plan.HasArgument)
             ts.AppendLine($"    async can{name}({parameter}) {{ return view.can({member}{argument}); }},");
     }
+    foreach (var (property, method, action) in regionMethods)
+        ts.AppendLine($"    async {method}(key) {{ return view.region({JsonSerializer.Serialize(WireName(property))}, \"{action}\", key); }},");
     OperationTypeScriptEmitter.AppendClientMethods(ts, operationPlans);
     ts.AppendLine("  });");
     ts.AppendLine("}");
@@ -1472,14 +1615,18 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
     if (operationPlans.Length > 0) publicImports.Add("type " + Import("BridgeOperationStartOptions"));
     if (operationPlans.Any(operation => operation.IsStream)) publicImports.Add("type " + Import("BridgeStreamOperation"));
     if (interactions.Length > 0) publicImports.Add("type " + Import("BridgeInteractionContext"));
+    if (requests.Length > 0) publicImports.Add("type " + Import("BridgeViewRequestContext"));
+    if (regionCollections.Count > 0) publicImports.AddRange(["type " + Import("RegionCollection"), "type " + Import("RegionOutcome")]);
     var runtimeImports = new List<string> { Import("connectView"), Import("disposable"), Import("viewReferences"), "type " + Import("BridgeMemberDecoders") };
     if (operationPlans.Length > 0) runtimeImports.Add("type " + Import("BridgeOperationCodec"));
     if (incrementalCollections.Count > 0) runtimeImports.Add(Import("defineCollection"));
     if (hasDeltaFields) runtimeImports.Add(Import("defineCollections"));
     if (textFields.Length > 0) runtimeImports.Add(Import("defineText"));
     if (interactions.Length > 0) runtimeImports.Add(Import("defineInteractions"));
+    if (requests.Length > 0) runtimeImports.Add(Import("defineRequests"));
     if (operationPlans.Length > 0) runtimeImports.Add(Import("bridgeOperations"));
     if (hasValidation) runtimeImports.Add(Import("decodeBridgeValidation"));
+    if (regionCollections.Count > 0) runtimeImports.Add(Import("regionCollection"));
     if (hasValidation && needsCheckedWriter) runtimeImports.Add(Import("fieldErrors"));
     ts.Clear();
     ts.AppendLine("// <auto-generated />");
@@ -1504,7 +1651,9 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
         contentBindings.Select(entry => new MockContentField(WireName(entry.Key),
             string.Join(" | ", entry.Value.Select(page => $"{Ref("MockReference")}<{JsonSerializer.Serialize(PageKind(page.Name, ContractFor(entry.Key)))}>")),
             contentCollections.ContainsKey(entry.Key),
-            IsNullableContent(entry.Key))).ToArray(),
+            !regionCollections.ContainsKey(entry.Key) && IsNullableContent(entry.Key),
+            regionCollections.ContainsKey(entry.Key),
+            regionCollections.ContainsKey(entry.Key) && BridgeContractShape.RegionCollection(entry.Key)!.PageCanClose)).ToArray(),
         MockDefaults(),
         checkedProperties.Select(WireName).ToArray(),
         textMembers.Select(WireName).ToArray(),
@@ -1532,6 +1681,8 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
         }).ToArray(),
         interactions.Select(plan => new MockInteraction(LowerFirst(plan.Property.Name), plan.Input.TypeScriptType(),
             plan.Output.TypeScriptType(), plan.Input.EncodeTypeScript("typed"), plan.Output.EmitTypeScriptDecoder("wire"))).ToArray(),
+        requests.Select(plan => new MockViewRequest(LowerFirst(plan.Property.Name), plan.Input.TypeScriptType(),
+            plan.Input.EncodeTypeScript("typed"))).ToArray(),
         incrementalCollections.Select(entry =>
         {
             var graph = valueProperties[entry.Key];
@@ -1540,7 +1691,7 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
                 graph.EmitItemTypeScriptDecoder("wire"), $"String({TsAccess("item", keyMember.WireName)})");
         }).ToArray(), $"{model.FullName}:{contractFingerprint}"), Path.GetFileNameWithoutExtension(typescriptPath)), model);
     Console.WriteLine($"Generated {shortName} bridge from compiled {model.Name}: {properties.Length} properties, {commands.Length} commands.");
-    return hasContent || interactions.Length > 0;
+    return hasContent || presented;
 
     // Field descriptors (F1): one BridgeField per settable value member, which useField, injectField and
     // createFieldController bind an input to. Every such member is a checked field, so each has its checked write.
@@ -1954,6 +2105,12 @@ static class BridgeDiagnosticCodes
     internal const string Toolchain = "RUNICBRIDGE033";
     /// <summary>Warning: a RunicPresentationScoped declaration reaches no Bridge command.</summary>
     internal const string PresentationScoped = "RUNICBRIDGE034";
+    /// <summary>A ViewRequest or ViewQuestion member is not a get-only property.</summary>
+    internal const string ViewMember = "RUNICBRIDGE035";
+    /// <summary>A [RunicRegionCollection] is not on a get-only NavigationSelection property, or names an unsupported content type.</summary>
+    internal const string RegionCollection = "RUNICBRIDGE070";
+    /// <summary>A region collection's generated select or close method collides with another client member.</summary>
+    internal const string RegionCollectionName = "RUNICBRIDGE071";
 
     // Every code with its severity and title, in ID order: the source of the machine-readable list
     // (--list-diagnostics, docs/runicbridge-diagnostics.json). eng/diagnostics.test.mjs checks the
@@ -1994,6 +2151,9 @@ static class BridgeDiagnosticCodes
         (CollectionWithoutKey, "warning", "An observable collection of DTO rows is not a [RunicCollection]"),
         (Toolchain, "warning", "The .NET SDK or Bun is older than this release supports"),
         (PresentationScoped, "warning", "A [RunicPresentationScoped] declaration reaches no Bridge command"),
+        (ViewMember, "error", "A ViewRequest or ViewQuestion member is not a get-only property"),
+        (RegionCollection, "error", "A [RunicRegionCollection] is not on a get-only NavigationSelection property, or its content type is unsupported"),
+        (RegionCollectionName, "error", "A region collection's select or close client method collides with another client member"),
     ];
 
     // Schema version 1: { schemaVersion, diagnostics: [{ id, severity: "error" | "warning", title }] }. A later
@@ -2132,7 +2292,7 @@ static class TypeScriptModules
     internal static readonly HashSet<string> ReservedParameterNames = new(StringComparer.Ordinal)
     {
         "view", "route", "mount", "requestId", "bridgeWire", "BridgeError", "JSON", "String", "Number", "Object",
-        "globalThis", "hydrate", "bridgeContract", "collectionDefinitions", "interactionDefinitions", "checkedFieldNames",
+        "globalThis", "hydrate", "bridgeContract", "collectionDefinitions", "interactionDefinitions", "requestDefinitions", "checkedFieldNames",
         "arguments", "await", "break", "case", "catch", "class", "const", "continue", "debugger", "default", "delete",
         "do", "else", "enum", "eval", "export", "extends", "false", "finally", "for", "function", "if", "implements",
         "import", "in", "instanceof", "interface", "let", "new", "null", "package", "private", "protected", "public",

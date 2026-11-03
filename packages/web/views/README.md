@@ -105,6 +105,61 @@ reports the connection state `closed` ([Connection state](#connection-state)),
 so a page, such as a CS-WebUI browser tab that outlives the application, can
 say "The application closed this window." instead of showing a lost connection.
 
+### View requests
+
+A ViewModel can ask its View for a presentation action that needs no answer,
+such as focusing a field, scrolling a row into view or showing a toast: a
+`ViewRequest<T>` property in .NET, raised with `Raise(input)`. The generated
+client has `client.requests.<name>` for each one. Register the page's handler
+with `handle((input, { signal }) => …)`, which returns the function that
+unregisters it:
+
+```ts
+const stop = editor.requests.focus.handle(({ member }) => {
+  document.querySelector<HTMLElement>(`[data-member="${member}"]`)?.focus();
+});
+// …
+stop();
+```
+
+A client has one handler per request; `handle` again replaces it. The handler
+runs once the page painted the state the request was raised with: the route
+reached the request's revision, the state was delivered to subscribers and one
+animation frame passed, so the elements of that state are rendered (as for
+[presented states](#presented-states-and-window-close)). Its return value is
+ignored, and a throw or rejection is reported with `reportError`. `signal`
+aborts when the handler is replaced or unregistered, the client is disposed or
+the connection is lost, so an asynchronous handler, such as an animated scroll,
+can stop. A request is never replayed: one raised while no handler is
+registered, while the page is disconnected, or before a reload is not delivered
+later; .NET decides with the request's delivery rule whether it waits for the
+next View that registers it (`ViewRequestDelivery.NextMounted`). The client
+registers its handlers with a .NET host of 0.16 or later (the `hello` feature
+`view-requests/1`); with an earlier host `handle` still works and receives
+nothing. In tests, a generated mock's `requests.<name>.raise(input)` raises a
+request ([Testing](#testing)).
+
+### Region collections
+
+A .NET `[RunicRegionCollection]` property, such as document tabs that each keep
+their own back stack, is a `RegionCollection<R>` in the state: `regions`, each
+`{ key, content }`, and `selected`, the index of the selected region or `null`
+without regions. `key` identifies a region for as long as it exists, so key a
+tab's outlet by it; `content` is the region's current page, or `null`. With a
+.NET host of 0.16 or later (the `hello` feature `region-collections/1`), the
+generated `select<Name>(key)` and `close<Name>(key)` resolve with a
+`RegionOutcome`, the .NET `NavigationOutcome`: `{ kind, rejection, arrival }`.
+A departure guard that keeps the tab resolves the call with `kind: "Rejected"`
+and `rejection: "Guard"`; a key of a closed region rejects with reason
+`unresolved-key`. `selected` changes only when a switch commits, so a tab bar
+that highlights it shows the kept tab after a veto.
+
+`regionEntries(collection)` lists the regions with their `index` and whether
+each is `selected`, and `selectedRegion(collection)` returns the selected one.
+The framework adapters' `RegionOutlets` renders one outlet per region. See
+[Region collections](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Application.Views/README.md#region-collections)
+for the .NET side.
+
 ### Cancellation and `using`
 
 `connect<Name>({ signal })`, `waitForBridge({ signal })` and an operation's
@@ -165,7 +220,7 @@ controllers in [Framework bindings](#framework-bindings).
 | `@runic-artifex/views` | Applications: errors, diagnostics, controllers and client types |
 | `@runic-artifex/views/mock` | Development and tests without .NET: `createMockBridge`, `installMockBridge`, `installMockMenuBar`, `mockFailure` and the `Mock*` types of generated mocks |
 | `@runic-artifex/views/bindings` | Framework bindings such as `@runic-artifex/react`: `viewSourceIdentity`, `isViewClient` |
-| `@runic-artifex/views/generated` | Generated modules: `connectView`, `viewReferences`, `disposable`, `defineCollection(s)`, `defineInteractions`, `bridgeOperations`, `decodeBridgeValidation` |
+| `@runic-artifex/views/generated` | Generated modules: `connectView`, `viewReferences`, `disposable`, `defineCollection(s)`, `defineInteractions`, `defineRequests`, `bridgeOperations`, `decodeBridgeValidation` |
 | `@runic-artifex/views/generated/wire` | Generated modules and generated `*.mock.ts` files: the wire decoders, imported as `import * as bridgeWire` |
 | `@runic-artifex/views/generated/mock` | Generated `*.mock.ts` files: `mockTypedView` and its spec types |
 
@@ -179,7 +234,7 @@ code. A framework binding depends on the exact same release. Use the .NET and
 npm packages of one release together: a .NET host of another release is
 reported as a diagnostic with code `version`, and a client does not connect to a
 host of another Views protocol version (see
-[Errors and diagnostics](#errors-and-diagnostics)). A generated module passes the interaction, operation and keyed
+[Errors and diagnostics](#errors-and-diagnostics)). A generated module passes the interaction, view request, operation and keyed
 collection runtimes to `connectView` only when its ViewModel has them, and
 imports the decoders as a namespace, so a bundler leaves out the protocol code
 and decoders a View does not use. `bun run size` in this package prints the
@@ -796,6 +851,16 @@ A definition takes:
   answer `expired` and repeating its start answers `expired`. `forget()` makes
   the window forget the request id, as after a restart: it answers `unknown`,
   and a start with the id begins a new operation.
+- `regions`: for a region collection (since 0.16), a handler by wire name that
+  stands in for the departure guards. It receives the decoded state and
+  `{ action, key, index }` and returns `{ outcome, state }`, both optional.
+  Without a handler, or with a `Committed` outcome, the mock applies the select
+  or close as .NET does; another outcome, such as
+  `{ kind: "Rejected", rejection: "Guard", arrival: "None" }`, changes only
+  `state`. A key that no region has rejects with `unresolved-key`, and a close
+  of a collection with `PageCanClose = false` with `unavailable`. In `state`, a
+  region collection is `{ regions: [{ key, content }], selected }` with each
+  `content` another mock's `reference` or `null`.
 
 The returned mock has `state`, `update(changes)` (pushes a full state like a
 .NET publication), `renew()` and `waitPresented(timeout?)` (below), `calls`, `failNext(method, { kind, message, detail, reason })` or
@@ -803,8 +868,14 @@ The returned mock has `state`, `update(changes)` (pushes a full state like a
 `pushFailure({ message })` (a failure notice: the client keeps its last state
 and reports the error), `collections.<field>` with `add`, `remove`, `replace`
 and `move` (each pushes a frame; `batch(edit)` combines edits into one),
-and `interactions.<name>.request(input)`, which resolves with the answer of the
-open presentation's handler, or `unhandled` when none is registered.
+`interactions.<name>.request(input)`, which resolves with the answer of the
+open presentation's handler, or `unhandled` when none is registered, and
+`requests.<name>.raise(input)`, which raises a [view request](#view-requests)
+as the ViewModel's `Raise(input)` does and returns how many of the View's open
+presentations it reached (0 when none handles it; it is not kept), with
+`requests.<name>.handled`. Raised inside a command handler or `batch`, the
+request follows their state changes. The mock runs no delivery rule: every
+presentation of the route that registered the request receives it.
 
 `createMockBridge({ scheduling: "manual" })` queues every reply and pushed
 frame until the test calls `flush()`, `flushUntil(promise)` or `advance(ms)`,

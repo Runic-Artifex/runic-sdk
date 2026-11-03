@@ -280,6 +280,22 @@ internal static partial class ViewsLog
         Message = "The window closed before {Pages} of its pages acknowledged the close.")]
     internal static partial void CloseUnacknowledged(ILogger logger, int pages);
 
+    [LoggerMessage(EventId = 1120, EventName = "ViewRequestDropped", Level = LogLevel.Debug,
+        Message = "The view request {Name} was dropped: {Reason}.")]
+    internal static partial void ViewRequestDropped(ILogger logger, string name, string reason);
+
+    [LoggerMessage(EventId = 1121, EventName = "ViewRequestKept", Level = LogLevel.Debug,
+        Message = "The view request {Name} is kept for the next presentation that handles it.")]
+    internal static partial void ViewRequestKept(ILogger logger, string name);
+
+    [LoggerMessage(EventId = 1230, EventName = "ConnectionHandlerFailed", Level = LogLevel.Error,
+        Message = "A handler of IRunicConnections.{Event} threw {ErrorType}; the other handlers still ran.")]
+    internal static partial void ConnectionHandlerFailed(ILogger logger, Exception? exception, string @event, string errorType);
+
+    [LoggerMessage(EventId = 1231, EventName = "ConnectionStateDisposeFailed", Level = LogLevel.Error,
+        Message = "Disposing the {ValueType} of a connection in a RunicConnectionState threw {ErrorType}; the other values were still disposed.")]
+    internal static partial void ConnectionStateDisposeFailed(ILogger logger, Exception? exception, string valueType, string errorType);
+
     [LoggerMessage(EventId = 1010, EventName = "BridgeSnapshotCaptureFailed", Level = LogLevel.Error,
         Message = "Bridge snapshot capture for {Model} on route {Route} failed with {ErrorType}.")]
     internal static partial void SnapshotCaptureFailed(ILogger logger, Exception? exception, string model, string route, string errorType);
@@ -374,6 +390,17 @@ internal static partial class ViewsLog
     [LoggerMessage(EventId = 1053, EventName = "WindowCloseGuardUnavailable", Level = LogLevel.Warning,
         Message = "{Window} guards its close, but {Presentation} cannot keep its window open, so a user close does not ask CanCloseAsync.")]
     internal static partial void WindowCloseGuardUnavailable(ILogger logger, string window, string presentation);
+
+    // region-collections/1: SelectAsync or RemoveAsync of a region collection threw for a page's region request.
+    [LoggerMessage(EventId = 1210, EventName = "BridgeRegionRequestFailed", Level = LogLevel.Error,
+        Message = "A region request of {Model}.{Member} on route {Route} failed with {ErrorType}.")]
+    internal static partial void RegionRequestFailed(ILogger logger, Exception exception, string model, string member, string route, string errorType);
+
+    // region-collections/1: a page's region request named a key that the collection no longer has, such as a tab that
+    // closed before the request arrived. The request is rejected with unresolved-key.
+    [LoggerMessage(EventId = 1211, EventName = "BridgeRegionRequestUnresolved", Level = LogLevel.Debug,
+        Message = "A region request of {Model}.{Member} on route {Route} named the key {Key}, which no region of the collection has.")]
+    internal static partial void RegionRequestUnresolved(ILogger logger, string model, string member, string route, string key);
 
     // Hot Reload applied an edit that changed a generated Bridge contract. The message is the IDE line that
     // RunicViewsHotReload also writes to standard error.

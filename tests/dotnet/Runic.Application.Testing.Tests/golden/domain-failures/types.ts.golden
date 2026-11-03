@@ -314,3 +314,14 @@ export interface ValidationItem {
 export interface ValidationProfile {
   readonly "postal-code": string;
 }
+
+/** What a discard question shows. */
+export interface ViewRequestDiscard {
+  readonly title: string;
+}
+
+/** The field a page focuses. */
+export interface ViewRequestFocusTarget {
+  readonly field: string;
+  readonly selectAll: boolean;
+}

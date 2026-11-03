@@ -9,7 +9,10 @@ using static TypeScriptModuleBindings;
 // scheduling and protocol live in @runic-artifex/views/mock. Setters, commands
 // and operations name the member their requests address.
 internal sealed record MockValueField(string WireName, BridgeTypeGraph Graph);
-internal sealed record MockContentField(string WireName, string ReferenceType, bool IsCollection, bool IsNullable);
+// RegionCollection: a region collection (region-collections/1), whose content references are inside its regions; Close
+// says whether the page can close a region.
+internal sealed record MockContentField(string WireName, string ReferenceType, bool IsCollection, bool IsNullable,
+    bool IsRegionCollection = false, bool Close = false);
 // CheckedMethod: the client method of the member's checked write, if it has one.
 internal sealed record MockSetter(string Method, string WireName, string ValueType, string? CheckedMethod);
 // DecodeInput decodes `wire`. KeyName: the key parameter of a [RunicCommandKey] command, whose InputType is the key's.
@@ -21,6 +24,7 @@ internal sealed record MockOperation(string Method, string Member, string InputT
     internal string TypeArguments => FailureType is null ? $"{InputType}, {ResultType}" : $"{InputType}, {ResultType}, {FailureType}";
 }
 internal sealed record MockInteraction(string Name, string InputType, string OutputType, string EncodeInput, string DecodeOutput);
+internal sealed record MockViewRequest(string Name, string InputType, string EncodeInput);
 internal sealed record MockCollection(string WireName, string ItemType, string Encode, string Decode, string Key);
 
 internal sealed record MockTypeScriptPlan(
@@ -37,6 +41,7 @@ internal sealed record MockTypeScriptPlan(
     IReadOnlyList<MockCommand> Commands,
     IReadOnlyList<MockOperation> Operations,
     IReadOnlyList<MockInteraction> Interactions,
+    IReadOnlyList<MockViewRequest> Requests,
     IReadOnlyList<MockCollection> Collections,
     string Contract);
 
@@ -60,7 +65,9 @@ internal static class MockTypeScriptEmitter
         {
             body.AppendLine(" & {");
             foreach (var field in plan.ContentFields)
-                body.AppendLine($"  readonly {Key(field.WireName)}: {(field.IsCollection ? $"readonly ({field.ReferenceType})[]" : field.ReferenceType)}{(field.IsNullable ? " | null" : "")};");
+                body.AppendLine(field.IsRegionCollection
+                    ? $"  readonly {Key(field.WireName)}: {Ref("MockRegionCollection")}<{field.ReferenceType}>;"
+                    : $"  readonly {Key(field.WireName)}: {(field.IsCollection ? $"readonly ({field.ReferenceType})[]" : field.ReferenceType)}{(field.IsNullable ? " | null" : "")};");
             body.Append('}');
         }
         body.AppendLine(";");
@@ -104,6 +111,15 @@ internal static class MockTypeScriptEmitter
                 body.AppendLine($"    readonly {command.Method}?: (state: {state}, {command.KeyName}: {command.InputType}) => boolean;");
             body.AppendLine("  };");
         }
+        var regions = plan.ContentFields.Where(field => field.IsRegionCollection).ToArray();
+        if (regions.Length > 0)
+        {
+            body.AppendLine("  /** Region requests (region-collections/1); without a handler, a select or close commits. */");
+            body.AppendLine("  readonly regions?: {");
+            foreach (var field in regions)
+                body.AppendLine($"    readonly {Key(field.WireName)}?: {Ref("MockRegionHandler")}<{state}>;");
+            body.AppendLine("  };");
+        }
         if (plan.Operations.Count > 0)
         {
             body.AppendLine("  /** Operation handlers; without one an operation runs its command handler and succeeds. */");
@@ -122,6 +138,8 @@ internal static class MockTypeScriptEmitter
             members.Add($"  readonly operations: {{ {string.Join(" ", plan.Operations.Select(operation => $"readonly {operation.Method}: readonly {Ref("MockTypedOperation")}<{operation.TypeArguments}>[];"))} }};");
         if (plan.Interactions.Count > 0)
             members.Add($"  readonly interactions: {{ {string.Join(" ", plan.Interactions.Select(interaction => $"readonly {interaction.Name}: {Ref("MockTypedInteraction")}<{interaction.InputType}, {interaction.OutputType}>;"))} }};");
+        if (plan.Requests.Count > 0)
+            members.Add($"  readonly requests: {{ {string.Join(" ", plan.Requests.Select(request => $"readonly {request.Name}: {Ref("MockTypedViewRequest")}<{request.InputType}>;"))} }};");
         var baseType = $"{Ref("MockTypedView")}<{state}, {name}Client, {kinds}>";
         if (members.Count == 0) body.AppendLine($"export interface {name}Mock extends {baseType} {{}}");
         else
@@ -158,6 +176,8 @@ internal static class MockTypeScriptEmitter
                 body.AppendLine($"    {Key(collection.WireName)}: {{ encode: (value: unknown) => {Encode(collection.Encode, collection.ItemType)}, decode: (wire: unknown) => {BridgeTypeGraph.ArrowBody(collection.Decode)}, key: (item: {collection.ItemType}) => {collection.Key} }},");
             body.AppendLine("  },");
         }
+        if (regions.Length > 0)
+            body.AppendLine($"  regions: {{ {string.Join(", ", regions.Select(field => $"{Key(field.WireName)}: {{ close: {(field.Close ? "true" : "false")} }}"))} }},");
         if (plan.Setters.Count > 0)
         {
             body.AppendLine("  setters: {");
@@ -186,6 +206,13 @@ internal static class MockTypeScriptEmitter
                 body.AppendLine($"    {interaction.Name}: {{ encodeInput: (value: unknown) => {Encode(interaction.EncodeInput, interaction.InputType)}, decodeOutput: (wire: unknown) => {BridgeTypeGraph.ArrowBody(interaction.DecodeOutput)} }},");
             body.AppendLine("  },");
         }
+        if (plan.Requests.Count > 0)
+        {
+            body.AppendLine("  requests: {");
+            foreach (var request in plan.Requests)
+                body.AppendLine($"    {request.Name}: {{ encodeInput: (value: unknown) => {Encode(request.EncodeInput, request.InputType)} }},");
+            body.AppendLine("  },");
+        }
         body.AppendLine("};");
         body.AppendLine();
         body.AppendLine($"/**");
@@ -205,7 +232,9 @@ internal static class MockTypeScriptEmitter
         if (plan.Operations.Count > 0) mockImports.AddRange(["type " + Import("MockTypedOperation"), "type " + Import("MockTypedOperationHandler")]);
         if (plan.Collections.Count > 0) mockImports.Add("type " + Import("MockTypedCollection"));
         if (plan.Interactions.Count > 0) mockImports.Add("type " + Import("MockTypedInteraction"));
+        if (plan.Requests.Count > 0) mockImports.Add("type " + Import("MockTypedViewRequest"));
         if (plan.ContentFields.Count > 0) mockImports.Add("type " + Import("MockReference"));
+        if (regions.Length > 0) mockImports.AddRange(["type " + Import("MockRegionCollection"), "type " + Import("MockRegionHandler")]);
         var module = new StringBuilder();
         module.AppendLine(GeneratedOutput.Header);
         if (text.Contains("bridgeWire.", StringComparison.Ordinal))

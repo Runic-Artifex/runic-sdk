@@ -59,6 +59,9 @@ internal static class BridgeMessages
             writer.WriteStringValue(BridgeDispatcher.TextSpliceFeature);
             writer.WriteStringValue(BridgeDispatcher.PresentationEpochFeature);
             writer.WriteStringValue(BridgeDispatcher.PresentedFeature);
+            writer.WriteStringValue(BridgeDispatcher.ViewRequestsFeature);
+            writer.WriteStringValue(BridgeDispatcher.RequestSessionFeature);
+            writer.WriteStringValue(BridgeDispatcher.RegionCollectionsFeature);
             writer.WriteStringValue(BridgeDispatcher.ClientErrorsFeature);
             writer.WriteEndArray();
             writer.WriteEndObject();

@@ -93,7 +93,7 @@ public static class RunicWindowTestHost
             ?? throw new InvalidOperationException(
                 $"No generated Bridge is registered for {typeof(TViewModel).FullName}. Call the application's " +
                 "generated AddRunicViews() on the services, and declare a Runic Window for the ViewModel.");
-        return new RunicWindowTestHost<TViewModel>(viewModel, attach, new RunicWindowTestHostOptions
+        var host = new RunicWindowTestHost<TViewModel>(viewModel, attach, new RunicWindowTestHostOptions
         {
             RootRoute = options.RootRoute,
             ViewLocator = options.ViewLocator ?? services.GetService<IRunicViewLocator>(),
@@ -107,5 +107,10 @@ public static class RunicWindowTestHost
             PublicationTimeout = options.PublicationTimeout,
         })
         { Services = services, Platform = services.GetService<RunicTestPlatform>() };
+        // IRunicConnections of these services follows the test window, as OpenWindowAsync binds a Window scope's.
+        // A root provider that validates scopes refuses the scoped service; such services have no window scope to bind.
+        try { (services.GetService(typeof(RunicConnections)) as RunicConnections)?.Bind(host.Content); }
+        catch (InvalidOperationException) { }
+        return host;
     }
 }

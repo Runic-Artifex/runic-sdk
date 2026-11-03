@@ -368,6 +368,74 @@ whose kind has no component as `$implicit` and as `content`, and its markup
 <ng-template #missingView let-page><p role="alert">{{ missingText(page.kind) }}</p></ng-template>
 ```
 
+### Region collections
+
+A .NET `[RunicRegionCollection]` member, such as `state.documents`, lists
+regions that each keep their own back stack. `<runic-region-outlets>`
+(`RegionOutlets`) renders a `ViewOutlet` for each region, tracked by the
+region's key, inside a `<div data-region-key>`. The default
+`mode="keep-mounted"` keeps every region mounted and sets `hidden` and an inline
+`display: none` on all but the selected one, so a tab keeps its component,
+scroll position and unsent input. Author CSS cannot show a hidden panel without
+`!important`. `mode="selected"` renders only the selected region. Projected
+content renders while there is no region, and `missing` is passed to each
+outlet. A region with `content: null` renders nothing.
+
+The package has no tab bar. Build one with `regionEntries` and the generated
+`selectDocuments(key)` and `closeDocuments(key)`. The `panelProps` input is a function that returns attributes
+(`RegionPanelAttributes`) for each region's wrapper, such as `id`,
+`role="tabpanel"` and `aria-labelledby`, so each tab can name its panel in
+`aria-controls`. A `null` value leaves an attribute out. `hidden`, `style` and
+`data-region-key` stay controlled by the outlet and are ignored.
+
+```html
+<div role="tablist">
+  @for (tab of tabs(); track tab.key) {
+    <button [id]="tabId(tab.key)" role="tab" [attr.aria-selected]="tab.selected" [attr.aria-controls]="panelId(tab.key)"
+      (click)="client()?.selectDocuments(tab.key)">
+      {{ tab.content?.kind ?? "Empty" }}
+    </button>
+    <button aria-label="Close" (click)="close(tab.key)">×</button>
+  }
+</div>
+<runic-region-outlets [collection]="state()?.documents" [registry]="documentPages" [panelProps]="panel">
+  No open documents
+</runic-region-outlets>
+```
+
+```ts
+readonly tabs = computed(() => regionEntries(this.state()?.documents));
+readonly tabId = (key: string) => `document-tab-${key}`;
+readonly panelId = (key: string) => `document-panel-${key}`;
+readonly panel = (tab: RegionEntry<DocumentReference>): RegionPanelAttributes =>
+  ({ id: this.panelId(tab.key), role: "tabpanel", "aria-labelledby": this.tabId(tab.key) });
+private readonly injector = inject(Injector);
+
+async close(key: string) {
+  if ((await this.client()?.closeDocuments(key))?.kind !== "Committed") return;
+  afterNextRender(() => {
+    const selected = selectedRegion(this.state()?.documents);
+    if (selected) document.getElementById(this.tabId(selected.key))?.focus();
+  }, { injector: this.injector });
+}
+```
+
+`selected` changes only when a switch or close commits. A departure guard can
+keep the current tab, so highlight `selected` and do not move the highlight
+before the request settles. `select…` and `close…` resolve to the .NET
+`NavigationOutcome`, such as `{ kind: "Rejected", rejection: "Guard" }`.
+
+Closing the selected tab removes its button, and the next tab becomes selected
+when the close commits. After `closeDocuments` resolves with `kind: "Committed"`,
+move focus to the button of the new selected tab, as `close` above does.
+
+In both modes the region collection keeps presenting every region's content,
+so the pages of hidden tabs stay live and still receive state. `"selected"`
+mode only unmounts the components of the regions that are not selected.
+
+`regionEntries`, `selectedRegion` and the region types are re-exported from
+`@runic-artifex/views`.
+
 ## Commands
 
 `injectCommand(command)` returns `run(...args)` and `pending`, `error` and
@@ -624,6 +692,46 @@ The [ReactiveUI leave confirmation](https://github.com/Runic-Artifex/runic-sdk/b
 has the .NET side and which View answers which departure. In a frontend test,
 the generated mock's `interactions.<name>.request(input)` resolves with the
 registered handler's answer; see the [Testing guide](https://github.com/Runic-Artifex/runic-sdk/tree/main/packages/web/views#testing).
+
+## View requests
+
+A `ViewRequest<T>` property of the ViewModel asks the View for a one-way
+presentation action, such as focusing a field or showing a toast, and is
+`client.requests.<name>` on the generated client. Register the page's
+handler in an `effect`: `handle((input, { signal }) => …)` returns the function
+that removes it, so pass that to `onCleanup`, and Angular removes the handler
+when the client changes or the component is destroyed:
+
+```ts
+import { Component, effect, ElementRef, input, viewChild } from "@angular/core";
+import { injectView } from "@runic-artifex/angular";
+import type { EditPageReference } from "./generated/edit";
+
+@Component({ selector: "edit-page", template: `<input #name>` })
+export class EditPage {
+  readonly page = input.required<EditPageReference>();
+  readonly view = injectView(this.page);
+  readonly name = viewChild<ElementRef<HTMLInputElement>>("name");
+
+  constructor() {
+    effect(onCleanup => {
+      const remove = this.view.client()?.requests.focus.handle(({ member }) => {
+        if (member === "name") this.name()?.nativeElement.focus();
+      });
+      if (remove) onCleanup(remove);
+    });
+  }
+}
+```
+
+`input` is typed from the request's `ViewRequest<T>`. The handler runs once
+the page painted the state the request was raised with, so the field of that
+state is rendered; `signal` aborts when the handler is replaced or removed, the
+client is disposed or the connection is lost. A request is never replayed: one
+raised before the effect ran, or while the page is disconnected, is not
+delivered later. See [View requests](https://github.com/Runic-Artifex/runic-sdk/tree/main/packages/web/views#view-requests) for the rules, and in a frontend
+test raise one with the generated mock's `requests.<name>.raise(input)` (the
+[Testing guide](https://github.com/Runic-Artifex/runic-sdk/tree/main/packages/web/views#testing)).
 
 ## Collection viewports
 

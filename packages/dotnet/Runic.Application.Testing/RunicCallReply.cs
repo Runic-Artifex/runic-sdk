@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Runic.Navigation;
 
 namespace Runic.Application.Testing;
 
@@ -16,6 +17,13 @@ public sealed class RunicCallReply<TModel> where TModel : class
         if (root.TryGetProperty("revision", out var revision) && revision.ValueKind == JsonValueKind.Number) Revision = revision.GetInt64();
         Released = root.TryGetProperty("released", out var released) && released.ValueKind == JsonValueKind.True;
         Superseded = root.TryGetProperty("superseded", out var superseded) && superseded.ValueKind == JsonValueKind.True;
+        if (root.TryGetProperty("outcome", out var outcome) && outcome.ValueKind == JsonValueKind.Object)
+            RegionOutcome = new(Enum.Parse<NavigationOutcomeKind>(outcome.GetProperty("kind").GetString()!),
+                outcome.GetProperty("rejection") is { ValueKind: JsonValueKind.String } rejection
+                    ? Enum.Parse<NavigationRejection>(rejection.GetString()!) : null)
+            {
+                Arrival = Enum.Parse<NavigationArrivalState>(outcome.GetProperty("arrival").GetString()!),
+            };
         if (root.TryGetProperty("error", out var error) && error.ValueKind == JsonValueKind.Object)
         {
             ErrorKind = error.GetProperty("kind").GetString();
@@ -57,6 +65,11 @@ public sealed class RunicCallReply<TModel> where TModel : class
     public JsonElement? Failure { get; }
     /// <summary>The route's state after the call, read when the reply carries a revision.</summary>
     public RunicViewState<TModel>? State { get; }
+    /// <summary>
+    /// The outcome of a <c>SelectRegionAsync</c> or <c>CloseRegionAsync</c> call that ran, such as
+    /// <c>Rejected(Guard)</c> when a departure guard kept the region; otherwise <see langword="null"/>.
+    /// </summary>
+    public NavigationOutcome? RegionOutcome { get; }
 
     /// <summary>Returns this reply, or throws when the call failed.</summary>
     /// <exception cref="InvalidOperationException">The call failed; the message names the route, error kind and message.</exception>
@@ -144,10 +157,15 @@ public sealed class RunicTestOperation
 {
     private readonly InMemoryBridgeTransport _transport;
     private readonly string _route;
+    private readonly string _connectionKey;
+    private readonly string? _clientKey;
 
-    internal RunicTestOperation(InMemoryBridgeTransport transport, string route, string contract, string member, string requestId, string admissionJson)
+    internal RunicTestOperation(InMemoryBridgeTransport transport, string route, string contract, string member, string requestId,
+        string admissionJson, string connectionKey = InMemoryBridgeTransport.DefaultConnectionKey, string? clientKey = null)
     {
         _transport = transport;
+        _connectionKey = connectionKey;
+        _clientKey = clientKey;
         _route = route;
         Contract = contract;
         Member = member;
@@ -187,7 +205,7 @@ public sealed class RunicTestOperation
 
     private async ValueTask<string> RequestAsync(string kind, long? cursor = null, CancellationToken cancellationToken = default)
     {
-        await _transport.EnsureHelloAsync(InMemoryBridgeTransport.DefaultConnectionKey, cancellationToken: cancellationToken)
+        await _transport.EnsureHelloAsync(_connectionKey, _clientKey, cancellationToken)
             .ConfigureAwait(false);
         return await _transport.RequestAsync(RunicJson.Write(writer =>
         {
@@ -199,7 +217,7 @@ public sealed class RunicTestOperation
             writer.WriteString("contract", Contract);
             if (cursor is { } value) writer.WriteNumber("cursor", value);
             writer.WriteEndObject();
-        }), cancellationToken: cancellationToken).ConfigureAwait(false);
+        }), _connectionKey, _clientKey, cancellationToken).ConfigureAwait(false);
     }
 
     // The status of a status, watch or unwatch reply.

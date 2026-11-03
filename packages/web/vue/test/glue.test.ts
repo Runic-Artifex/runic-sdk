@@ -3,10 +3,11 @@
 import { createApp, defineComponent, effectScope, h, nextTick, shallowRef, watchEffect, type PropType } from "vue";
 import { afterEach, describe, expect, test, expectTypeOf, vi } from "vitest";
 import {
-  useBridgeConnection, useCollectionViewport, useCommand, useLatestOperation, useMenuBar, useOperation, useView, ViewOutlet, type LatestOperationHandle,
-  type MenuBarHandle, type ViewRegistry,
+  useBridgeConnection, useCollectionViewport, useCommand, useLatestOperation, useMenuBar, useOperation, useView, ViewOutlet, RegionOutlets, type LatestOperationHandle,
+  type MenuBarHandle, type RegionCollection, type RegionPanelAttributes, type ViewRegistry,
 } from "../dist/index.js";
 import * as root from "../dist/index.js";
+import { regionEntries as viewsRegionEntries, selectedRegion as viewsSelectedRegion } from "@runic-artifex/views";
 import { onBridgeConnection as viewsOnBridgeConnection, type BridgeConnectionOptions as ViewsBridgeConnectionOptions, type BridgeConnectionState as ViewsBridgeConnectionState } from "@runic-artifex/views";
 import {
   BridgeError, bridgeFailure, bridgeSuccess, type BridgeConnectionState, type BridgeOperation, type BridgeOperationStatus, type BridgeOutcome,
@@ -96,6 +97,98 @@ describe("ViewOutlet", () => {
     await nextTick();
     expect(host.textContent).toBe("Keine Ansicht für welcome");
     expect(host.querySelector("[role=alert]")).toBeNull();
+    app.unmount();
+  });
+});
+
+describe("RegionOutlets", () => {
+  let mounts: Record<string, number> = {};
+  const counting = <K extends Page["kind"]>(kind: K) => defineComponent({
+    props: { page: { type: Object as PropType<Extract<Page, { kind: K }>>, required: true } },
+    setup: props => { mounts[kind] = (mounts[kind] ?? 0) + 1; return () => h("output", `${kind}:${(props.page as Page).kind}`); },
+  });
+  const registry = { counter: counting("counter"), welcome: counting("welcome") } satisfies ViewRegistry<Page>;
+  const counter: Page = { kind: "counter", connect: async () => fakeClient(1) };
+  const welcome: Page = { kind: "welcome", connect: async () => fakeClient(2) };
+
+  function mountOutlets(mode?: "keep-mounted" | "selected") {
+    mounts = {};
+    const collection = shallowRef<RegionCollection<Page> | undefined>();
+    const host = document.createElement("div");
+    const app = createApp({
+      setup: () => () => h(RegionOutlets<Page>, { collection: collection.value, registry, ...(mode ? { mode } : {}) }, { default: () => "no documents" }),
+    });
+    app.mount(host);
+    const regions = () => [...host.querySelectorAll<HTMLElement>("[data-region-key]")]
+      .map(region => `${region.dataset["regionKey"]}${region.hidden ? "" : "*"}:${region.textContent}`);
+    return { app, host, collection, regions };
+  }
+
+  test("keeps every region mounted and shows only the selected one", async () => {
+    const { app, collection, regions } = mountOutlets();
+    collection.value = { regions: [{ key: "7", content: counter }, { key: "9", content: welcome }, { key: "11", content: null }], selected: 1 };
+    await nextTick();
+    expect(regions()).toEqual(["7:counter:counter", "9*:welcome:welcome", "11:"]);
+    collection.value = { ...collection.value, selected: 0 };
+    await nextTick();
+    expect(regions()).toEqual(["7*:counter:counter", "9:welcome:welcome", "11:"]);
+    expect(mounts).toEqual({ counter: 1, welcome: 1 });
+    app.unmount();
+  });
+
+  test("merges panelProps onto each wrapper and hides a panel with hidden and display: none", async () => {
+    const panelProps = (entry: { readonly key: string }): RegionPanelAttributes => ({
+      id: `panel-${entry.key}`, role: "tabpanel", "aria-labelledby": `tab-${entry.key}`, "data-region-key": "overridden", style: { color: "red" },
+      ...{ hidden: false } as RegionPanelAttributes,
+    });
+    const selected = shallowRef(0);
+    const host = document.createElement("div");
+    const app = createApp({
+      setup: () => () => h(RegionOutlets<Page>, { collection: { regions: [{ key: "7", content: counter }, { key: "9", content: welcome }], selected: selected.value }, registry, panelProps }),
+    });
+    app.mount(host);
+    const [first, second] = [...host.querySelectorAll<HTMLElement>("[role=tabpanel]")];
+    expect([first!.id, first!.getAttribute("aria-labelledby"), first!.dataset["regionKey"]]).toEqual(["panel-7", "tab-7", "7"]);
+    expect([second!.id, second!.dataset["regionKey"]]).toEqual(["panel-9", "9"]);
+    expect([first!.hidden, first!.style.display, first!.style.color]).toEqual([false, "", "red"]);
+    expect([second!.hidden, second!.style.display, second!.style.color]).toEqual([true, "none", "red"]);
+    selected.value = 1;
+    await nextTick();
+    expect([first!.hidden, first!.style.display]).toEqual([true, "none"]);
+    expect([second!.hidden, second!.style.display, second!.style.color]).toEqual([false, "", "red"]);
+    app.unmount();
+  });
+
+  test("remounts only the region whose content changed", async () => {
+    const { app, host, collection } = mountOutlets();
+    collection.value = { regions: [{ key: "7", content: counter }, { key: "9", content: welcome }], selected: 0 };
+    await nextTick();
+    const kept = host.querySelector("[data-region-key='7'] output");
+    collection.value = { regions: [{ key: "7", content: counter }, { key: "9", content: { kind: "welcome", connect: async () => fakeClient(3) } }], selected: 0 };
+    await nextTick();
+    expect(mounts).toEqual({ counter: 1, welcome: 2 });
+    expect(host.querySelector("[data-region-key='7'] output")).toBe(kept);
+    app.unmount();
+  });
+
+  test("renders only the selected region in selected mode", async () => {
+    const { app, collection, regions } = mountOutlets("selected");
+    collection.value = { regions: [{ key: "7", content: counter }, { key: "9", content: welcome }], selected: 1 };
+    await nextTick();
+    expect(regions()).toEqual(["9*:welcome:welcome"]);
+    collection.value = { ...collection.value, selected: 0 };
+    await nextTick();
+    expect(regions()).toEqual(["7*:counter:counter"]);
+    expect(mounts).toEqual({ counter: 1, welcome: 1 });
+    app.unmount();
+  });
+
+  test("renders the default slot without a region", async () => {
+    const { app, host, collection } = mountOutlets();
+    expect(host.textContent).toBe("no documents");
+    collection.value = { regions: [], selected: null };
+    await nextTick();
+    expect(host.textContent).toBe("no documents");
     app.unmount();
   });
 });
@@ -520,9 +613,12 @@ describe("useBridgeConnection", () => {
   test("is a root export (0.11)", () => {
     expect(typeof root.useBridgeConnection).toBe("function");
     expect(Object.keys(root).sort()).toEqual([
-      "FieldError", "ViewOutlet", "onBridgeConnection", "useBridgeConnection", "useCollectionViewport", "useCommand", "useField",
-      "useLatestOperation", "useMenuBar", "useOperation", "useSuspenseView", "useTextField", "useView",
+      "FieldError", "RegionOutlets", "ViewOutlet", "onBridgeConnection", "regionEntries", "selectedRegion", "useBridgeConnection",
+      "useCollectionViewport", "useCommand", "useField", "useLatestOperation", "useMenuBar", "useOperation", "useSuspenseView", "useTextField", "useView",
     ]);
+    // The region helpers a tab bar uses are re-exported (0.16).
+    expect(root.regionEntries).toBe(viewsRegionEntries);
+    expect(root.selectedRegion).toBe(viewsSelectedRegion);
     // The connection API that useBridgeConnection wraps is re-exported, as the menu-bar types are (0.11).
     expect(root.onBridgeConnection).toBe(viewsOnBridgeConnection);
     expectTypeOf<root.BridgeConnectionState>().toEqualTypeOf<ViewsBridgeConnectionState>();

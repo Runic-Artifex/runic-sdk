@@ -1,0 +1,187 @@
+{
+  "format": "runic.views.scenario/1",
+  "id": "view-requests.a-connection-without-the-feature-registers-nothing.v1",
+  "contract": {
+    "id": "runic.views",
+    "version": 4
+  },
+  "set": "view-requests",
+  "roles": [
+    "producer"
+  ],
+  "description": "On a connection that does not use view-requests/1, view-requests is invalid-request and no view-request is pushed.",
+  "view": "notes",
+  "requires": [
+    "view-requests/1"
+  ],
+  "ids": {
+    "c1": {
+      "kind": "connection"
+    },
+    "hello-c1": {
+      "kind": "request"
+    },
+    "session": {
+      "kind": "wire",
+      "value": "s-1"
+    },
+    "open-request": {
+      "kind": "request"
+    },
+    "presentation": {
+      "kind": "wire",
+      "value": "p-1"
+    },
+    "register": {
+      "kind": "request"
+    },
+    "focusContract": {
+      "kind": "provided"
+    }
+  },
+  "arrange": {
+    "model": {}
+  },
+  "steps": [
+    {
+      "connect": "c1"
+    },
+    {
+      "send": {
+        "kind": "hello",
+        "protocol": 4,
+        "session": {
+          "$id": "session"
+        },
+        "client": {
+          "name": {
+            "$any": "string",
+            "default": "conformance-client"
+          },
+          "version": {
+            "$any": "string",
+            "default": "1.0.0"
+          }
+        },
+        "features": {
+          "$any": "array",
+          "default": [
+            "text-splice/1"
+          ]
+        }
+      },
+      "id": "hello-c1"
+    },
+    {
+      "receive": {
+        "ok": true,
+        "protocol": 4,
+        "implementation": {
+          "name": {
+            "$any": "string",
+            "default": "conformance-producer"
+          },
+          "version": {
+            "$any": "string",
+            "default": "1.0.0"
+          }
+        },
+        "features": {
+          "$any": "array",
+          "default": [
+            "text-splice/1"
+          ]
+        }
+      },
+      "replyTo": "hello-c1"
+    },
+    {
+      "send": {
+        "kind": "open",
+        "route": "notes",
+        "presentation": {
+          "$id": "presentation"
+        }
+      },
+      "id": "open-request"
+    },
+    {
+      "receive": {
+        "ok": true,
+        "revision": 0,
+        "state": {
+          "title": "",
+          "note": "",
+          "priority": "Normal",
+          "due": null,
+          "elapsed": "PT0S",
+          "rows": [],
+          "count": 0,
+          "summary": "rows: 0",
+          "detail": {
+            "kind": "detail",
+            "id": "0123456789abcdef0123456789abcdef"
+          },
+          "canClear": false,
+          "canTouch": true,
+          "canSave": true,
+          "canConfirmClear": false,
+          "isSlowImportExecuting": false,
+          "isConfirmClearExecuting": false
+        },
+        "fields": {
+          "note": {
+            "version": 0
+          }
+        },
+        "presentation": "ok"
+      },
+      "replyTo": "open-request"
+    },
+    {
+      "send": {
+        "kind": "view-requests",
+        "route": "notes",
+        "presentation": {
+          "$id": "presentation"
+        },
+        "generation": 1,
+        "requests": [
+          {
+            "name": "focus",
+            "contract": {
+              "$id": "focusContract"
+            }
+          }
+        ]
+      },
+      "id": "register"
+    },
+    {
+      "receive": {
+        "ok": false,
+        "error": {
+          "kind": "rejected",
+          "reason": "invalid-request",
+          "message": {
+            "$any": "string",
+            "default": "…"
+          }
+        }
+      },
+      "replyTo": "register"
+    },
+    {
+      "mutate": [
+        {
+          "op": "raise",
+          "request": "focus",
+          "input": {
+            "member": "title"
+          }
+        }
+      ],
+      "note": "Nothing is pushed."
+    }
+  ]
+}

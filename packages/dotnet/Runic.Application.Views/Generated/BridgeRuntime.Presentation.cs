@@ -34,6 +34,30 @@ public partial class ViewModelBridge<T> : IBridgePresentationRoute, IBridgeResum
 
     TimeProvider IBridgePresentationRoute.TimeProvider => _content?.TimeProvider ?? BridgeDispatcher.For(_transport).TimeProvider;
 
+    WindowContentSession? IBridgePresentationRoute.Content => _content;
+
+    // view-requests/1: delivers with the revision that includes everything changed before the request, as for a reply.
+    // Inside the model's turn the publication runs at once; outside it runs in the next turn, which the caller does not
+    // wait for.
+    private void PublishForViewRequest(Action<long?> deliver)
+    {
+        ValueTask turn;
+        try { turn = _modelTurn.RunAsync(() => deliver(PublishForReply())); }
+        catch (ObjectDisposedException) { return; }
+        if (!turn.IsCompletedSuccessfully) _ = ObserveViewRequestTurnAsync(turn);
+    }
+
+    private async Task ObserveViewRequestTurnAsync(ValueTask turn)
+    {
+        // A model context that closed before the turn ran: the window is closing, and the request is lost with it.
+        try { await turn.ConfigureAwait(false); }
+        catch (ObjectDisposedException) { }
+        catch (Exception error) when (error is not OutOfMemoryException)
+        {
+            ViewsLog.RequestFailed(_logger, error, error.GetType().FullName ?? error.GetType().Name);
+        }
+    }
+
     // A renewal: the route's full state at a new revision, which begins the new epoch; the model gate is held, in a
     // model turn. A state with invalid keys is withheld, and the renewal stays pending.
     private void PublishRenewal(long changed)

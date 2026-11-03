@@ -1,5 +1,8 @@
-import { Component, computed, effect, input, signal, untracked, viewChild, ViewContainerRef, type InputSignal, type TemplateRef, type Type } from "@angular/core";
-import type { PageReference } from "@runic-artifex/views";
+import {
+  Component, computed, Directive, effect, ElementRef, inject, input, Renderer2, signal, untracked, viewChild, ViewContainerRef, type InputSignal,
+  type TemplateRef, type Type,
+} from "@angular/core";
+import { regionEntries, type PageReference, type RegionCollection, type RegionEntry } from "@runic-artifex/views";
 
 /**
  * A build-known map checks each generated reference against its component input. A nullable
@@ -74,6 +77,79 @@ export class ViewOutlet<R extends PageReference = PageReference> {
       });
     });
   }
+}
+
+/** How {@link RegionOutlets} renders the regions of a collection. */
+export type RegionOutletsMode = "keep-mounted" | "selected";
+
+/**
+ * Attributes that {@link RegionOutlets} sets on a region's wrapper, such as `id`, `role` and `aria-labelledby`. A
+ * `null` or `undefined` value leaves the attribute out. `hidden`, `style` and `data-region-key` stay controlled by
+ * the outlet and are ignored here.
+ */
+export type RegionPanelAttributes = Readonly<Record<string, string | null | undefined>>;
+
+const outletAttributes = new Set(["hidden", "style", "data-region-key"]);
+
+// Sets the attributes of the latest panelProps result on its element and removes the ones it no longer returns.
+@Directive({ selector: "[runicRegionPanel]", standalone: true })
+export class RegionPanel {
+  readonly attributes = input<RegionPanelAttributes | undefined>(undefined, { alias: "runicRegionPanel" });
+
+  constructor() {
+    const element = inject<ElementRef<HTMLElement>>(ElementRef).nativeElement;
+    const renderer = inject(Renderer2);
+    let applied = new Set<string>();
+    effect(() => {
+      const set = new Set<string>();
+      for (const [name, value] of Object.entries(this.attributes() ?? {})) {
+        if (value === null || value === undefined || outletAttributes.has(name.toLowerCase())) continue;
+        renderer.setAttribute(element, name, value);
+        set.add(name);
+      }
+      for (const name of applied) if (!set.has(name)) renderer.removeAttribute(element, name);
+      applied = set;
+    });
+  }
+}
+
+/**
+ * Renders a {@link ViewOutlet} for the regions of a region collection, each in a `<div data-region-key>` tracked by
+ * the region's key. A region that is not selected is rendered with `hidden` and an inline `display: none`, which
+ * author CSS without `!important` cannot override. A new content reference in a region remounts only that region's
+ * component. The projected content renders while the collection has no region, and `missing` is passed to each
+ * outlet. `panelProps` returns attributes for each wrapper, so a tab can point `aria-controls` at its panel:
+ *
+ * ```html
+ * <runic-region-outlets [collection]="state()?.documents" [registry]="pages" [panelProps]="panel">No open documents</runic-region-outlets>
+ * ```
+ *
+ * `mode` `"keep-mounted"` (the default) renders every region and hides all but the selected one, so each region
+ * keeps its component and DOM. `"selected"` renders only the selected region.
+ */
+@Component({ selector: "runic-region-outlets", standalone: true, imports: [ViewOutlet, RegionPanel], template: `
+    @for (panel of shown(); track panel.region.key) {
+      <div [runicRegionPanel]="panel.attributes" [hidden]="!panel.region.selected" [style.display]="panel.region.selected ? null : 'none'"
+        [attr.data-region-key]="panel.region.key">
+        <runic-view-outlet [content]="panel.region.content" [registry]="registry()" [missing]="missing()" />
+      </div>
+    } @empty { <ng-content /> }
+  ` })
+export class RegionOutlets<R extends PageReference = PageReference> {
+  readonly collection = input<RegionCollection<R> | null | undefined>();
+  readonly registry = input.required<ViewRegistry<R>>();
+  /** Renders a reference whose kind has no registered component instead of the English alert. */
+  readonly missing = input<TemplateRef<ViewOutletMissingContext<R>> | undefined>();
+  readonly mode = input<RegionOutletsMode>("keep-mounted");
+  /** Returns attributes for a region's wrapper, for example `{ id, role: "tabpanel", "aria-labelledby" }`. */
+  readonly panelProps = input<((entry: RegionEntry<R>) => RegionPanelAttributes) | undefined>();
+  protected readonly shown = computed(() => {
+    const keepMounted = this.mode() === "keep-mounted";
+    const panelProps = this.panelProps();
+    return regionEntries(this.collection())
+      .filter(region => keepMounted || region.selected)
+      .map(region => ({ region, attributes: panelProps?.(region) }));
+  });
 }
 
 /**

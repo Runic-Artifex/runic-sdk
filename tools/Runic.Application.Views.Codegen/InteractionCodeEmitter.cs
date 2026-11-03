@@ -3,7 +3,8 @@ using System.Text;
 using static TypeScriptModuleBindings;
 
 /// <summary>
-/// Emits the optional browser-facing half of a ReactiveUI interaction.  Keeping
+/// Emits the optional browser-facing half of an interaction (a ReactiveUI
+/// interaction or a <c>ViewQuestion</c>) and of a <c>ViewRequest</c>.  Keeping
 /// this separate from Program makes the interaction protocol reviewable: the
 /// main generator merely decides where the generated fragments belong.
 /// </summary>
@@ -23,12 +24,16 @@ internal static class InteractionCodeEmitter
         {
             var interaction = MvvmCodegenConventions.InspectInteraction(property);
             if (interaction is null) continue;
-            if (property.GetMethod is null)
-                throw new BridgeDiagnosticException(BridgeDiagnosticCodes.Interaction,
-                    $"{modelName}.{property.Name}: an interaction needs a public getter.", property);
-            if (property.SetMethod?.IsPublic == true)
-                throw new BridgeDiagnosticException(BridgeDiagnosticCodes.Interaction,
-                    $"{modelName}.{property.Name}: interactions are application-owned and cannot have a public setter.", property);
+            if (interaction.ShapeDiagnostic == BridgeDiagnosticCodes.Interaction)
+            {
+                if (property.GetMethod is null)
+                    throw new BridgeDiagnosticException(BridgeDiagnosticCodes.Interaction,
+                        $"{modelName}.{property.Name}: an interaction needs a public getter.", property);
+                if (property.SetMethod?.IsPublic == true)
+                    throw new BridgeDiagnosticException(BridgeDiagnosticCodes.Interaction,
+                        $"{modelName}.{property.Name}: interactions are application-owned and cannot have a public setter.", property);
+            }
+            else RequireGetOnly(property, modelName, interaction.Kind);
 
             var publicName = LowerFirst(property.Name);
             if (!names.Add(publicName))
@@ -47,6 +52,48 @@ internal static class InteractionCodeEmitter
     }
 
     /// <summary>
+    /// The <c>ViewRequest&lt;T&gt;</c> members of a ViewModel: one-way requests to the page, each with its input
+    /// codec and its contract <c>{fingerprint}:request:{Property}</c> (specs/application, "View requests").
+    /// </summary>
+    internal static GeneratedViewRequestPlan[] DiscoverRequests(IEnumerable<PropertyInfo> members, string modelName,
+        string contractFingerprint, bool honorJsonIgnore)
+    {
+        ArgumentNullException.ThrowIfNull(members);
+        ArgumentException.ThrowIfNullOrWhiteSpace(modelName);
+        ArgumentException.ThrowIfNullOrWhiteSpace(contractFingerprint);
+
+        var plans = new List<GeneratedViewRequestPlan>();
+        var names = new HashSet<string>(StringComparer.Ordinal);
+        var nullability = new NullabilityInfoContext();
+        foreach (var property in members)
+        {
+            if (Runic.Application.Views.RunicViewConventions.ViewRequest(property.PropertyType) is not { } request) continue;
+            RequireGetOnly(property, modelName, "view request");
+            var publicName = LowerFirst(property.Name);
+            if (!names.Add(publicName))
+                throw new BridgeDiagnosticException(BridgeDiagnosticCodes.NameCollision,
+                    $"{modelName}.{property.Name}: duplicate generated view request name '{publicName}'.", property);
+            var input = request.GenericTypeArguments[0];
+            plans.Add(new GeneratedViewRequestPlan(property,
+                BridgeTypeGraph.Discover(input, ContractNullability.Argument(property, nullability, [input], 0),
+                    $"{modelName}.{property.Name}.input", property, honorJsonIgnore, BridgeValueDirection.ToPage),
+                $"{contractFingerprint}:request:{property.Name}"));
+        }
+        return [.. plans];
+    }
+
+    // A ViewRequest or ViewQuestion is application-owned: the generated Bridge attaches the instance it reads once.
+    private static void RequireGetOnly(PropertyInfo property, string modelName, string kind)
+    {
+        if (property.GetMethod?.IsPublic != true)
+            throw new BridgeDiagnosticException(BridgeDiagnosticCodes.ViewMember,
+                $"{modelName}.{property.Name}: a {kind} needs a public getter. Expose it as a get-only property, such as {{ get; }} = new(...).", property);
+        if (property.SetMethod?.IsPublic == true)
+            throw new BridgeDiagnosticException(BridgeDiagnosticCodes.ViewMember,
+                $"{modelName}.{property.Name}: a {kind} is application-owned and cannot have a public setter. Expose it as a get-only property, such as {{ get; }} = new(...).", property);
+    }
+
+    /// <summary>
     /// Checks every generated TypeScript state/view member before emitting any
     /// files. A collision is otherwise a surprisingly easy way to ship a client
     /// whose declaration looks valid but whose object literal overwrites a
@@ -55,14 +102,15 @@ internal static class InteractionCodeEmitter
     /// </summary>
     internal static void ValidatePublicSurface(string modelName, IEnumerable<PropertyInfo> properties,
         IEnumerable<PropertyInfo> commands, IReadOnlyDictionary<PropertyInfo, GeneratedCommandPlan> commandPlans,
-        IEnumerable<GeneratedInteractionPlan> interactions, IEnumerable<PropertyInfo> checkedProperties,
-        Func<PropertyInfo, string> wireName, bool hasErrors, bool hasValidation)
+        IEnumerable<GeneratedInteractionPlan> interactions, IEnumerable<GeneratedViewRequestPlan> requests,
+        IEnumerable<PropertyInfo> checkedProperties, Func<PropertyInfo, string> wireName, bool hasErrors, bool hasValidation)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(modelName);
         ArgumentNullException.ThrowIfNull(properties);
         ArgumentNullException.ThrowIfNull(commands);
         ArgumentNullException.ThrowIfNull(commandPlans);
         ArgumentNullException.ThrowIfNull(interactions);
+        ArgumentNullException.ThrowIfNull(requests);
         ArgumentNullException.ThrowIfNull(checkedProperties);
         ArgumentNullException.ThrowIfNull(wireName);
 
@@ -100,6 +148,8 @@ internal static class InteractionCodeEmitter
         }
         var interactionPlans = interactions.ToArray();
         if (interactionPlans.Length > 0) view.Add("interactions", "the generated interactions property");
+        var requestPlans = requests.ToArray();
+        if (requestPlans.Length > 0) view.Add("requests", "the generated requests property");
         foreach (var property in stateProperties.Where(property => property.SetMethod?.IsPublic == true))
             view.Add("set" + property.Name, property.Name + " setter");
         foreach (var property in checkedMembers) view.Add("write" + property.Name, property.Name + " checked writer");
@@ -118,10 +168,16 @@ internal static class InteractionCodeEmitter
         }
         foreach (var interaction in interactionPlans)
             view.Add(LowerFirst(interaction.Property.Name), interaction.Property.Name + " interaction");
+        // A request's name addresses it in the producer beside the interactions, so it is unique among them too.
+        foreach (var request in requestPlans)
+            view.Add(LowerFirst(request.Property.Name), request.Property.Name + " view request");
 
         var interactionSurface = new MemberNames(modelName, "interactions");
         foreach (var interaction in interactionPlans)
             interactionSurface.Add(LowerFirst(interaction.Property.Name), interaction.Property.Name);
+        var requestSurface = new MemberNames(modelName, "requests");
+        foreach (var request in requestPlans)
+            requestSurface.Add(LowerFirst(request.Property.Name), request.Property.Name);
 
     }
 
@@ -135,6 +191,59 @@ internal static class InteractionCodeEmitter
             plan.Output.AppendCSharpCodec(source, plan.Property.Name + "InteractionOutputCodec");
             source.AppendLine();
         }
+    }
+
+    /// <summary>Appends the write-only input codec of each view request.</summary>
+    internal static void AppendCSharpRequestCodecs(StringBuilder source, IEnumerable<GeneratedViewRequestPlan> plans)
+    {
+        foreach (var plan in plans)
+        {
+            plan.Input.AppendCSharpCodec(source, plan.Property.Name + "RequestInputCodec");
+            source.AppendLine();
+        }
+    }
+
+    /// <summary>
+    /// Returns the view requests' descriptor expressions for the <c>interactions:</c> base constructor argument,
+    /// which the runtime provides in both MVVM flavors.
+    /// </summary>
+    internal static IEnumerable<string> CSharpRequestDescriptors(IEnumerable<GeneratedViewRequestPlan> plans, string modelType)
+    {
+        foreach (var plan in plans)
+            yield return $"global::Runic.Application.Views.Generated.ViewRequestDescriptor.Create<{modelType}, {plan.Input.RootCSharpType()}>(\"{LowerFirst(plan.Property.Name)}\", \"{plan.ContractId}\", vm => vm.{plan.Property.Name}, input => global::Runic.Application.Views.Generated.BridgeWire.EncodeCanonical(writer => {plan.Property.Name}RequestInputCodec.Write(writer, input)))";
+    }
+
+    /// <summary>Appends the public TypeScript view request types.</summary>
+    internal static void AppendTypeScriptRequestSurface(StringBuilder source, IEnumerable<GeneratedViewRequestPlan> plans,
+        string shortName)
+    {
+        var all = plans.ToArray();
+        if (all.Length == 0) return;
+
+        source.AppendLine($"export type {shortName}ViewRequestContext = {Ref("BridgeViewRequestContext")};");
+        source.AppendLine($"export interface {shortName}ViewRequests {{");
+        foreach (var plan in all)
+        {
+            XmlDocumentation.Append(source, "  ", XmlDocumentation.Summary(plan.Property));
+            source.AppendLine($"  readonly {LowerFirst(plan.Property.Name)}: {{ handle(handler: (input: {plan.Input.TypeScriptType()}, context: {shortName}ViewRequestContext) => void | Promise<void>): () => void }};");
+        }
+        source.AppendLine("}");
+        source.AppendLine();
+    }
+
+    /// <summary>
+    /// Appends the module-level <c>requestDefinitions</c> passed to <c>connectView</c>: each view request's contract
+    /// and its generated input decoder.
+    /// </summary>
+    internal static void AppendTypeScriptRequestDefinitions(StringBuilder source, IEnumerable<GeneratedViewRequestPlan> plans)
+    {
+        var all = plans.ToArray();
+        if (all.Length == 0) return;
+
+        source.AppendLine($"const {Ref("requestDefinitions")} = {Ref("defineRequests")}({{");
+        foreach (var plan in all)
+            source.AppendLine($"  {LowerFirst(plan.Property.Name)}: {{ contract: \"{plan.ContractId}\", decodeInput: (value: unknown) => {BridgeTypeGraph.ArrowBody(plan.Input.EmitTypeScriptDecoder("value"))} }},");
+        source.AppendLine("});");
     }
 
     /// <summary>
@@ -232,3 +341,5 @@ internal static class InteractionCodeEmitter
 
 internal sealed record GeneratedInteractionPlan(PropertyInfo Property, MvvmInteraction Contract,
     BridgeTypeGraph Input, BridgeTypeGraph Output, string ContractId);
+
+internal sealed record GeneratedViewRequestPlan(PropertyInfo Property, BridgeTypeGraph Input, string ContractId);

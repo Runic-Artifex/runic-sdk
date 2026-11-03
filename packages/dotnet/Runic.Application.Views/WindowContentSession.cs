@@ -120,6 +120,8 @@ public sealed class WindowContentSession : IDisposable
             _operations = operations;
             _interactions = interactions;
             _fieldWrites = fieldWrites;
+            // A navigation a command of this window starts keeps the command's identity for its guards.
+            RunicInteractionInvocation.FlowIntoNavigation();
             // The window's dispatcher takes the window's input limit, logger and clock, and reports the connections
             // its transport closes.
             var dispatcher = BridgeDispatcher.For(_transport);
@@ -199,6 +201,9 @@ public sealed class WindowContentSession : IDisposable
     // Failures of this window's Bridges, operations and mounts. Without a
     // logger factory this is the Trace fallback.
     internal ILogger Logger { get; }
+
+    // The request dispatcher of the window's transport, which owns its connections.
+    internal BridgeDispatcher Dispatcher => BridgeDispatcher.For(_transport);
 
     // The errors the window's pages report (client-errors/1), in their own category.
     internal ILogger PageLogger { get; }

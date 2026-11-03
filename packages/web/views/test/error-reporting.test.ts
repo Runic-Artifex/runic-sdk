@@ -2,7 +2,7 @@
 // errors, unhandled rejections and runtime-caught errors as bounded, redacted, rate-limited `client-error` requests,
 // only on a connection that uses the feature.
 import assert from "node:assert/strict";
-import { afterEach, test } from "node:test";
+import { after, afterEach, test } from "node:test";
 import { installErrorReporting, type RunicBridgeClient } from "../dist/index.js";
 import { sharedRuntimeFor } from "../dist/runtime.js";
 import { reportBridgeError } from "../dist/transport.js";
@@ -12,7 +12,15 @@ const runtimeKey = Symbol.for("runic.views.generated-client-runtime");
 const host = globalThis as unknown as Record<string | symbol, unknown>;
 const tick = (ms = 0) => new Promise(resolve => setTimeout(resolve, ms));
 
-// The page's window events: Node has no window, so the test gives globalThis an EventTarget's listeners.
+// The page's window events: Node has no window, so the test gives globalThis an EventTarget's listeners. Bun runs every
+// test file in one process, so the file restores the globals it replaced for the files after it.
+const replaced = ["addEventListener", "removeEventListener", "location", "reportError"].map(name => [name, Object.getOwnPropertyDescriptor(host, name)] as const);
+after(() => {
+  for (const [name, descriptor] of replaced) {
+    if (descriptor) Object.defineProperty(host, name, descriptor);
+    else delete host[name];
+  }
+});
 const events = new EventTarget();
 host["addEventListener"] = events.addEventListener.bind(events);
 host["removeEventListener"] = events.removeEventListener.bind(events);
@@ -41,12 +49,16 @@ function rejection(reason: unknown): Event {
 /** A host bridge whose producer lists `features` and records every client-error. */
 function installBridge(features: readonly string[]) {
   const reports: Record<string, unknown>[] = [];
+  let hello: string | undefined;
   const bridge: RunicBridgeClient = {
     isConnected: () => true,
     onConnectionChange(report) { report(true); return () => undefined; },
     onMessage() { return () => undefined; },
     async request(text) {
-      const message = JSON.parse(text) as Record<string, unknown>;
+      const { session, ...message } = JSON.parse(text) as Record<string, unknown>;
+      // request-session/1: every request names the session of its connection's hello.
+      if (message["kind"] === "hello") hello = session as string;
+      else assert.equal(session, hello, `${String(message["kind"])} does not name the session of its hello`);
       if (message["kind"] === "hello") return JSON.stringify({ ok: true, protocol: 4, implementation: { name: "test", version: "0" }, features });
       if (message["kind"] === "client-error") { reports.push(message); return JSON.stringify({ ok: true }); }
       return JSON.stringify({ ok: false, error: { kind: "rejected", reason: "invalid-request", message: "unexpected" } });

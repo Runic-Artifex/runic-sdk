@@ -60,6 +60,7 @@ export type {
   BridgeStreamOperation,
 } from "./operations.js";
 export type { BridgeInteractionContext, InteractionSurface } from "./interactions.js";
+export type { BridgeViewRequestContext, BridgeViewRequestHandler, ViewRequestSurface } from "./requests.js";
 export {
   createFieldController,
   FieldError,
@@ -86,6 +87,16 @@ export {
   type CollectionViewportController,
   type CollectionViewportOptions,
 } from "./viewport.js";
+
+export {
+  regionCollectionsFeature,
+  regionEntries,
+  selectedRegion,
+  type RegionCollection,
+  type RegionEntry,
+  type RegionOutcome,
+  type RegionSlot,
+} from "./regions.js";
 
 /**
  * A generated content reference: a View presented in a content slot, such as a ViewModel slot of .NET

@@ -11,6 +11,7 @@ TypeScript clients. To start a new application, use the
 - [Multi-window project](multi-window/README.md) opens Windows from a ReactiveUI ViewModel, shares state across Windows, and stores app settings next to the desktop's preferences.
 - [CommunityToolkit Notes](notes-view-first/README.md) shows nested content, View scopes, and typed writes.
 - [Reactive Notes](notes-reactive-views/README.md) navigates ReactiveUI ViewModels with RunicNavigator: master/detail with a result, a leave guard asked through an `Interaction`, and multiple Views over a model.
+- [Document tabs](document-tabs/README.md) opens and closes document tabs at run time, each a navigation region with its own back stack, in a React page.
 - [DynamicData](dynamicdata/README.md) presents a 100,000-row cache through independent, keyed viewports.
 - [WPF navigation](wpf-navigation/README.md) navigates a plain WPF app with Runic.Navigation.Wpf alone, has a ReactiveUI variant on Runic.Navigation.ReactiveUI, and [compares it](wpf-navigation/COMPARISON.md) with Prism, ReactiveUI and CrissCross.
 - [Hybrid WPF editor](wpf-hybrid-editor/README.md) replaces one editor with a Runic web View while retaining the native shell, shared model, services and navigation entry.
