@@ -33,6 +33,7 @@ export {
 } from "./controller.js";
 export type { BridgeConnectOptions, FieldBaseline, FieldWriteOptions, FieldWriteReceipt, ViewClient } from "./connection.js";
 export type { BridgeField, BridgeFieldConstraints, BridgeFieldKind } from "./field.js";
+export { fieldErrorsAt, fieldValidatingAt, type BridgeRowFields } from "./field-paths.js";
 export {
   createLatestOperationController,
   createOperationController,

@@ -66,6 +66,11 @@ export interface BridgeField<TClient, TState, TValue> {
   readonly constraints?: BridgeFieldConstraints;
   /** A `choice` member's values, in declaration order. */
   readonly choices?: readonly TValue[];
+  /**
+   * The field has no setter, only its checked write: a field path below a member (`field-paths/1`), such as
+   * `InvoiceFields.address.street`. A field controller then always writes it checked, as with `checked: true`.
+   */
+  readonly checkedOnly?: boolean;
   /** Reads the member from the View's state. */
   read(state: TState): TValue;
   /** Writes the member with its generated setter (an edit, last writer wins). */

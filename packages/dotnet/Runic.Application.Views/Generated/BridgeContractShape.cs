@@ -91,7 +91,12 @@ public static class BridgeContractShape
             }
             if (kind != "state") continue;
             if (property.GetCustomAttribute<RunicCollectionAttribute>(true) is { } collection)
+            {
                 parts.Add($"collection:{TypeName(model)}:{WireName(property)}:key:{collection.KeyProperty}");
+                // field-paths/1: only an editable collection adds a part, so other models keep their fingerprint.
+                if (BridgeRowEditors.For(model, property) is { } editor)
+                    parts.Add($"row-editor:{TypeName(model)}:{WireName(property)}:{editor.Name}");
+            }
             if (property.GetCustomAttribute<RunicAppendOnlyTextAttribute>(true) is not null)
                 parts.Add($"append-only-text:{TypeName(model)}:{WireName(property)}");
             else if (property.PropertyType == typeof(string) && property.GetCustomAttribute<RunicCodecAttribute>(true) is null)
@@ -278,4 +283,35 @@ public static class BridgeContractShape
     private static string PublicName(Type model) => model.Name.EndsWith("ViewModel", StringComparison.Ordinal) ? model.Name[..^"ViewModel".Length] : model.Name;
     private static string TypeName(Type type) { if (type.IsArray) return TypeName(type.GetElementType()!) + "[]"; if (!type.IsGenericType) return type.FullName ?? type.Name; var name = type.GetGenericTypeDefinition().FullName!; name = name[..name.IndexOf('`')]; return name + "<" + string.Join(",", type.GetGenericArguments().Select(TypeName)) + ">"; }
     private sealed record PresentationView(Type ViewType, Type ModelType, string? Contract);
+}
+
+// field-paths/1: the [RunicRowEditor] methods of a model and the collections they edit.
+internal static class BridgeRowEditors
+{
+    // The methods of the model that declare RunicRowEditor, public or not.
+    internal static MethodInfo[] Declared([DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicMethods
+        | DynamicallyAccessedMemberTypes.NonPublicMethods)] Type model) =>
+        [.. model.GetMethods(BindingFlags.Instance | BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic)
+            .Where(method => method.IsDefined(typeof(RunicRowEditorAttribute), true))
+            .OrderBy(method => method.Name, StringComparer.Ordinal)];
+
+    // The row type of a collection property: its IEnumerable<T> element.
+    internal static Type? RowType(Type collection) => collection.IsArray ? collection.GetElementType()
+        : collection.IsGenericType && collection.GetGenericTypeDefinition() == typeof(IEnumerable<>) ? collection.GenericTypeArguments[0]
+        : collection.GetInterfaces().FirstOrDefault(type => type.IsGenericType && type.GetGenericTypeDefinition() == typeof(IEnumerable<>))
+            ?.GenericTypeArguments[0];
+
+    // Whether an editor names the collection, or, naming none, takes its row type as the second parameter.
+    internal static bool Edits(MethodInfo editor, PropertyInfo collection)
+    {
+        var attribute = editor.GetCustomAttribute<RunicRowEditorAttribute>(true)!;
+        if (attribute.Collection is { } name) return name == collection.Name;
+        var parameters = editor.GetParameters();
+        return parameters.Length == 2 && RowType(collection.PropertyType) is { } row && parameters[1].ParameterType == row;
+    }
+
+    // The first editor of a collection, by method name.
+    internal static MethodInfo? For([DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicMethods
+        | DynamicallyAccessedMemberTypes.NonPublicMethods)] Type model, PropertyInfo collection) =>
+        Declared(model).FirstOrDefault(editor => Edits(editor, collection));
 }

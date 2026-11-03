@@ -170,6 +170,16 @@
       "id": "RUNICBRIDGE034",
       "severity": "warning",
       "title": "A [RunicPresentationScoped] declaration reaches no Bridge command"
+    },
+    {
+      "id": "RUNICBRIDGE050",
+      "severity": "error",
+      "title": "A [RunicRowEditor] method matches no single keyed collection or has an unsupported signature"
+    },
+    {
+      "id": "RUNICBRIDGE051",
+      "severity": "error",
+      "title": "A keyed collection has more than one [RunicRowEditor] method"
     }
   ]
 }

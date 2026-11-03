@@ -10,6 +10,7 @@
 
 export { decodeBridgeValidation } from "./validation.js";
 export { fieldErrors, fieldValidating } from "./field.js";
+export { fieldErrorsAt, fieldPath, fieldValidatingAt, rowFields, rowIndex, type FieldPathClient, type FieldPathSpec } from "./field-paths.js";
 export { disposable } from "./lifetime.js";
 export {
   connectView,

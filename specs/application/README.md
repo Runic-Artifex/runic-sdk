@@ -227,6 +227,7 @@ reply both list the same string. Features are negotiated per connection, and aga
 | `presented/1` | The page reports that it painted a state, and acknowledges a window close: [presented states and window close](#presented-states-and-window-close) | 0.15 |
 | `validation-pending/1` | `validation` reports the paths whose validation is in progress: [`pending`](#pending) | 0.16 |
 | `field-flush/1` | The producer asks the pages to write their field drafts before a departure is decided: [field flush](#field-flush) | 0.16 |
+| `field-paths/1` | A checked write names a path below its member, such as a member of an object or a cell of a keyed collection's row: [field paths](#field-paths) | 0.16 |
 
 ## Requests and replies
 
@@ -503,6 +504,8 @@ A checked field accepts writes that are checked against the value and version th
 - The reply carries `revision` like a setter's. A value that does not decode is `rejected` with `invalid-input`.
 - On a connection that uses `text-splice/1`, a `write` of a checked field that is a
   [text member](state-changes.md#text-members) may carry `splice` instead of `expectedValue` and `value` (below).
+- On a connection that uses `field-paths/1`, a `write` may carry `path`: it writes the value at that path below the
+  member ([field paths](#field-paths)).
 
 ### Text splices in `write`
 
@@ -547,6 +550,69 @@ member, `expectedValue` and `value` are strings and the [single splice](state-ch
 In every other case it sends `expectedValue` and `value`. When a splice is answered `splice-base`, the client sends the
 same write with `expectedValue` and `value` and the same `requestId`, once; the write's call settles with that request.
 A retry of a write repeats the form the client sent last.
+
+### Field paths
+
+With the feature `field-paths/1`, a checked write may name a **path** below its member: a member of an object that a
+settable member holds, or a cell of a row of a keyed collection ([state changes](state-changes.md#keyed-collections)).
+Each such path is a **field path** of the contract, which the generated code declares; a client knows them from its
+generated code.
+
+```json
+{"kind":"write","route":"invoice","member":"lines","path":["7","quantity"],"requestId":"w-3","expectedVersion":41,"expectedValue":2,"value":3}
+{"ok":true,"revision":44,"receipt":{"kind":"applied","snapshot":{"value":3,"version":44}}}
+{"kind":"write","route":"invoice","member":"address","path":["street"],"requestId":"w-4","expectedVersion":44,"expectedValue":"","value":"Main Street 1"}
+```
+
+| Member | Contract |
+| --- | --- |
+| `path` | 1 to 64 nonempty strings of at most 2,048 code units. Below a keyed collection: the row's [key](state-changes.md#keyed-collections) (its normal form), then the member names of the cell in the row. Below another member: the member names in its object. |
+| `expectedVersion` | The version of the field path that the write is based on (below). |
+| `expectedValue`, `value` | The value at the path that the write is based on, and the new value, encoded as that value's type. |
+
+**Versions.** A field path's version is the revision of the route's last publication that changed the value at the
+path, or 0 when no publication changed it since the route's first state. A path's version is therefore never above
+the route's revision, and a client that shows the route's state at revision R bases a write of any field path on
+version R: the path did not change after R exactly when its version is at most R. A cell has its own version, so a
+change of one cell of a row does not conflict with a write of another cell. A row that is removed and added again,
+and an object member that becomes `null` and an object again, start at the revision that added them.
+
+**Meaning.** A write with `path` is the checked write of the value at the path. When the field path's version is at
+most `expectedVersion` and its current value is [canonically equal](values.md#canonical-equality) to `expectedValue`,
+the producer builds the member's value (the object, or the row) with the value at the path replaced by `value`,
+decodes it as the member's type and applies it: an object member through its setter, a row through the View's row
+editor, which replaces the row with the same key. The receipts are those of a checked write, with these differences:
+
+- `snapshot` and `incoming` carry the value at the path, and their `version` is the reply's `revision`, at which the
+  route's state shows that value; it is the version of the client's next write of the path.
+- `applied` carries no `validation`: the page reads the path's messages from `validation`, whose paths name rows by
+  their index ([validation](#validation)).
+- When no row has the key, or an object on the path is `null`, the receipt is `rejected`.
+- When the setter or row editor fails, the receipt is `rejected`, or `committed-with-error` when the value at the path
+  changed before it failed.
+
+**Producer.** In this order:
+
+1. A `write` with `path` and `splice`, or with a `path` that is not an array of the segments above, is `rejected` with
+   `invalid-request`.
+2. A `write` with `path` on a connection that does not use `field-paths/1`, or whose `path` is not a field path of the
+   member, is `rejected` with `invalid-request`. A row's key member is not a field path.
+3. A retained `requestId` answers with the original receipt when the retry repeats `path`, `expectedVersion`,
+   `expectedValue` and `value`, canonically equal to the original's, and with `conflict` otherwise, as any `write`.
+4. No row has the key, or an object on the path is `null`: `rejected`.
+5. The field path's version is above `expectedVersion`, or its value is not canonically equal to `expectedValue`:
+   `conflict`, with the value at the path in `incoming`.
+6. A `value` with which the member's value does not decode is `rejected` with `invalid-input`, and no receipt is
+   retained.
+7. Otherwise the producer applies the value and retains the receipt.
+
+A producer keeps, for each route and field path whose member or row it publishes, the revision of the last publication
+that changed it, and the value it published, to compare the next publication with.
+
+**Client.** A client that uses `field-paths/1` writes a field path with `path`, `expectedVersion` the route's revision
+when the draft started (or the version of the last receipt), and `expectedValue` the value at the path in that state.
+It finds a cell's row by its key, also after the row moved. Without the feature, its field paths have no write: a call
+rejects without a request.
 
 ## Validation
 
@@ -1086,7 +1152,7 @@ Requests:
 | `snapshot` | `route` | `revision`, `epoch?` (`presentation-epoch/1`), `state`, `fields?` |
 | `close` | `route`, `presentation` | `presentation` |
 | `set` | `route`, `member`, `value` or `splice` (`text-splice/1`), `edit` | `revision`, `superseded?` |
-| `write` | `route`, `member`, `requestId`, `expectedVersion`, `expectedValue` and `value`, or `splice` (`text-splice/1`) | `revision`, `receipt` |
+| `write` | `route`, `member`, `path?` (`field-paths/1`), `requestId`, `expectedVersion`, `expectedValue` and `value`, or `splice` (`text-splice/1`) | `revision`, `receipt` |
 | `command` | `route`, `member`, `input?`, `epoch?` (`presentation-epoch/1`) | `revision`, `superseded?` |
 | `can` | `route`, `member`, `input?` | `value` |
 | `start` | `route`, `member`, `operation`, `contract`, `input?` | `revision`, `admission`, `reason?`, `status?` |

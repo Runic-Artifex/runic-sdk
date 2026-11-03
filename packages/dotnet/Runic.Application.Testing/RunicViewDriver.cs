@@ -403,6 +403,86 @@ public sealed class RunicViewDriver<TModel> where TModel : class
         return new($"{Route} write {field}", reply, state);
     }
 
+    /// <summary>
+    /// Writes a field path below a member (<c>field-paths/1</c>), as a generated field path descriptor such as
+    /// <c>InvoiceFields.lines.at(7).quantity</c> does, blocking the calling thread. The path is in wire names: for a
+    /// <see cref="RunicCollectionAttribute"/> collection, the row's key and then the cell, such as <c>["7", "quantity"]</c>;
+    /// for an object member, its members, such as <c>["street"]</c>. The baseline is the path's value in the current
+    /// state (<see langword="null"/> when the path reaches no value) and, unless given, the state's revision.
+    /// </summary>
+    /// <remarks>Prefer <see cref="WritePathAsync{TValue}"/> in suites that run tests in parallel; see the class remarks.</remarks>
+    public RunicFieldWriteReceipt<TModel> WritePath<TValue>(Expression<Func<TModel, object?>> member, IReadOnlyList<string> path,
+        TValue value, long? expectedVersion = null)
+    {
+        var (field, write) = WritePathRequest(member, path, value, expectedVersion, Snapshot());
+        var reply = Send(write);
+        var state = reply.Contains("\"revision\"", StringComparison.Ordinal) ? StateAfter(Send(WriteSnapshot)) : null;
+        return new($"{Route} write {field}", reply, state);
+    }
+
+    /// <summary>
+    /// Writes a field path below a member (<c>field-paths/1</c>), as <see cref="WritePath{TValue}"/> does, without
+    /// blocking a thread. A cell that changed after <paramref name="expectedVersion"/> is a
+    /// <see cref="RunicFieldWriteReceiptKind.Conflict"/>.
+    /// </summary>
+    /// <param name="member">The object member or keyed collection, such as <c>vm => vm.Lines</c>.</param>
+    /// <param name="path">The path below it in wire names: a row key and the cell, or the object's members.</param>
+    /// <param name="value">The value to write.</param>
+    /// <param name="expectedVersion">The baseline version; by default the state's revision.</param>
+    /// <param name="cancellationToken">Stops waiting for the replies.</param>
+    public async Task<RunicFieldWriteReceipt<TModel>> WritePathAsync<TValue>(Expression<Func<TModel, object?>> member,
+        IReadOnlyList<string> path, TValue value, long? expectedVersion = null, CancellationToken cancellationToken = default)
+    {
+        var snapshot = await SnapshotAsync(cancellationToken).ConfigureAwait(false);
+        var (field, write) = WritePathRequest(member, path, value, expectedVersion, snapshot);
+        var reply = await SendAsync(write, cancellationToken: cancellationToken).ConfigureAwait(false);
+        var state = reply.Contains("\"revision\"", StringComparison.Ordinal)
+            ? StateAfter(await SendAsync(WriteSnapshot, cancellationToken: cancellationToken).ConfigureAwait(false))
+            : null;
+        return new($"{Route} write {field}", reply, state);
+    }
+
+    private (string Field, Action<Utf8JsonWriter> Write) WritePathRequest<TValue>(Expression<Func<TModel, object?>> property,
+        IReadOnlyList<string> path, TValue value, long? expectedVersion, RunicViewState<TModel> snapshot)
+    {
+        ArgumentNullException.ThrowIfNull(path);
+        if (path.Count == 0) throw new ArgumentException("A field path needs at least one segment.", nameof(path));
+        var member = RunicMembers.Property(property);
+        var field = RunicMembers.WireName(member);
+        var container = snapshot[field];
+        var leaf = path;
+        if (RunicMembers.CollectionKeys(typeof(TModel)).TryGetValue(field, out var key))
+        {
+            container = container.ValueKind == JsonValueKind.Array
+                ? container.EnumerateArray().FirstOrDefault(row => row.ValueKind == JsonValueKind.Object && RunicMembers.KeyOf(row, key) == path[0])
+                : default;
+            if (container.ValueKind != JsonValueKind.Object)
+                throw new InvalidOperationException($"{typeof(TModel).Name}.{member.Name} has no row '{path[0]}'.");
+            leaf = path.Skip(1).ToArray();
+        }
+        // A path that reaches no value, such as one below a null object, is based on null; the window rejects it.
+        foreach (var segment in leaf)
+            container = container.ValueKind == JsonValueKind.Object && container.TryGetProperty(segment, out var next) ? next : default;
+        var expected = container.ValueKind == JsonValueKind.Undefined ? JsonDocument.Parse("null").RootElement : container.Clone();
+        var version = expectedVersion ?? snapshot.Revision;
+        var requestId = $"write{_nextId()}";
+        var encoded = RunicWireValue.Encode(value, typeof(TValue));
+        return ($"{field}.{string.Join('.', path)}", writer =>
+        {
+            writer.WriteString("kind", "write");
+            writer.WriteString("member", field);
+            writer.WriteStartArray("path");
+            foreach (var segment in path) writer.WriteStringValue(segment);
+            writer.WriteEndArray();
+            writer.WriteString("requestId", requestId);
+            writer.WriteNumber("expectedVersion", version);
+            writer.WritePropertyName("expectedValue");
+            expected.WriteTo(writer);
+            writer.WritePropertyName("value");
+            writer.WriteRawValue(encoded);
+        });
+    }
+
     private (string Field, Action<Utf8JsonWriter> Write) WriteRequest<TValue>(Expression<Func<TModel, TValue>> property,
         TValue value, long? expectedVersion, RunicViewState<TModel> snapshot)
     {

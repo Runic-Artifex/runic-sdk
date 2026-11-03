@@ -13,6 +13,8 @@ export const presentationEpochFeature = "presentation-epoch/1";
 export const presentedFeature = "presented/1";
 /** `field-flush/1` (specs/application/README.md, "Field flush"): `flush` asks the page to write its field drafts before a departure is decided. */
 export const fieldFlushFeature = "field-flush/1";
+/** `field-paths/1` (specs/application/README.md, "Field paths"): a checked write names a path below its member. */
+export const fieldPathsFeature = "field-paths/1";
 
 /** A reply as the runtime reads it. Members beyond `ok`, `error`, `revision` and `released` depend on the request. */
 export type Reply = Message & {

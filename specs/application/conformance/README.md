@@ -140,7 +140,7 @@ A `call` names the client operation in language-neutral terms; the runner maps i
 | --- | --- | --- |
 | `open`, `close` | `route` | Connect a View of the route, or release it. |
 | `set` | `route`, `member`, `value` | A generated setter. |
-| `write` | `route`, `member`, `requestId`, `baseline: {value, version}`, `value` | A checked write. |
+| `write` | `route`, `member`, `path?`, `requestId`, `baseline: {value, version}`, `value` | A checked write; with `path`, of that field path below the member (`field-paths/1`). |
 | `command`, `can` | `route`, `member`, `input?` | A command, or its availability. |
 | `start` | `route`, `member`, `operation`, `input?` | Start an operation with the id `operation`. |
 | `wait`, `status`, `cancel` | `operation` | Wait for the operation's terminal status, read its status, or cancel it. |
@@ -177,6 +177,7 @@ Expectations of the producer:
 | `text-splice/1` | The implementation implements the feature [`text-splice/1`](../README.md#features). |
 | `presentation-epoch/1` | The implementation implements the feature [`presentation-epoch/1`](../README.md#presentation-epochs). |
 | `presented/1` | The implementation implements the feature [`presented/1`](../README.md#presented-states-and-window-close). |
+| `field-paths/1` | The implementation implements the feature [`field-paths/1`](../README.md#field-paths). Its scenarios list the feature in the `default` of both `hello` steps, beside `text-splice/1`. |
 
 Every `hello` of a scenario that does not require a feature lists `features` as `{"$any":"array","default":["text-splice/1"]}`:
 a runner that writes the `hello` (or its reply) lists `text-splice/1`, and a runner that checks one accepts any list.
@@ -303,12 +304,25 @@ A View whose pages are presentations of one route ([presentation epochs](../READ
 
 Its contract marks `next` and `back` scoped, so a client that uses `presentation-epoch/1` sends `epoch` with them.
 
+### `invoice`
+
+A View with field paths ([field paths](../README.md#field-paths), `field-paths/1`).
+
+| Member | Type | Default and behaviour |
+| --- | --- | --- |
+| `address` | `{street: string, city: string}` | `{"street":"","city":""}`; settable, a checked field; its field paths are `["street"]` and `["city"]` |
+| `lines` | keyed collection of `{id: int32, label: string, quantity: int32}`, keyed by `id` | `[]`; its field paths are a row's `["label"]` and `["quantity"]` |
+
+Its `fields` are `{"address": {"version"}}`, starting at version 0. Its row editor replaces the row with the key and
+refuses a negative `quantity` with the message `Quantity must not be negative.` Mutations: `assign` of `address`, and
+`insert`, `replaceAt` and `removeAt` with `member` `lines`.
+
 ### Mutations
 
 | `op` | Members | Effect |
 | --- | --- | --- |
 | `assign` | `member`, `value` | sets a member of the root View, announcing the change |
-| `insert`, `removeAt`, `replaceAt`, `move` | `index`, `item`; `index`; `index`, `item`; `oldIndex`, `newIndex` | changes `rows` at a position |
+| `insert`, `removeAt`, `replaceAt`, `move` | `member?`, `index`, `item`; `member?`, `index`; `member?`, `index`, `item`; `oldIndex`, `newIndex` | changes `rows`, or the invoice View's `member` (`lines`), at a position |
 | `reset` | `items` | replaces all rows at once, as a reset |
 | `appendRows` | `start`, `count`, `width?` | appends the rows of the `$rows` generator, one change each |
 | `append` | `member`, `text` | appends text to a text field |

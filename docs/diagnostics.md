@@ -80,6 +80,8 @@ and severities are open.
 | [`RUNICBRIDGE032`](#runicbridge032) | Warning | Generator | An observable collection of DTO rows is not a `[RunicCollection]` |
 | [`RUNICBRIDGE033`](#runicbridge033) | Warning | Build targets | The .NET SDK or Bun is older than this release supports |
 | [`RUNICBRIDGE034`](#runicbridge034) | Warning | Generator | A `[RunicPresentationScoped]` declaration reaches no Bridge command |
+| [`RUNICBRIDGE050`](#runicbridge050) | Error | Generator | A `[RunicRowEditor]` method matches no single keyed collection or has an unsupported signature |
+| [`RUNICBRIDGE051`](#runicbridge051) | Error | Generator | A keyed collection has more than one `[RunicRowEditor]` method |
 
 ### RUNICBRIDGE001
 
@@ -618,6 +620,29 @@ generated client sends no presentation epoch for anything it would have scoped.
 **Fix:** put the attribute on the command property, or on the `[RelayCommand]`
 method whose command the Bridge exposes. See
 [Commands scoped to their presentation](../packages/dotnet/Runic.Application.Views/README.md#commands-scoped-to-their-page).
+
+### RUNICBRIDGE050
+
+An error from the Bridge generator (since 0.16). A `[RunicRowEditor]` method
+must edit exactly one `[RunicCollection]` property of its ViewModel and have the
+shape `void UpdateLine(TKey key, TRow row)`: a public or internal instance
+method whose first parameter is the collection's key type and whose second is
+its row type. Without a collection name the attribute finds the collection by
+the row type, so two collections of one row type need the name.
+
+**Fix:** name the collection, as in `[RunicRowEditor(nameof(Lines))]`, put the
+attribute on a collection that has `[RunicCollection]`, or change the method's
+parameters and return type. See
+[Editable rows and nested fields](../packages/dotnet/Runic.Application.Views/README.md#editable-rows-and-nested-fields).
+
+### RUNICBRIDGE051
+
+An error from the Bridge generator (since 0.16). Two `[RunicRowEditor]` methods
+edit the same collection, so the Bridge cannot tell which one applies a cell's
+change.
+
+**Fix:** keep one row editor per collection. See
+[Editable rows and nested fields](../packages/dotnet/Runic.Application.Views/README.md#editable-rows-and-nested-fields).
 
 ## dotnet runic
 

@@ -6,7 +6,7 @@ import { clock, randomId } from "./clock.js";
 import { emitBridgeDiagnostic, suppressErrorDiagnostic } from "./diagnostics.js";
 import { BridgeError } from "./errors.js";
 import {
-  invalidResponse, presentationEpochFeature, presentedFeature, fieldFlushFeature, readPush, readReply, replyError, type Message, type Push, type PushReading, type Reply,
+  invalidResponse, presentationEpochFeature, presentedFeature, fieldFlushFeature, fieldPathsFeature, readPush, readReply, replyError, type Message, type Push, type PushReading, type Reply,
 } from "./protocol.js";
 import { hostCallbacks, protocolMismatchError, reportBridgeError, reportProtocolMismatch, type RunicBridgeClient } from "./transport.js";
 import { bridgeProtocol, clientName, runicProducerName, viewsVersion } from "./version.js";
@@ -64,7 +64,7 @@ function firstOf(promise: Promise<unknown>, milliseconds: number): Promise<void>
   });
 }
 
-export const clientFeatures: readonly string[] = [textSpliceFeature, presentationEpochFeature, presentedFeature, validationPendingFeature, fieldFlushFeature];
+export const clientFeatures: readonly string[] = [textSpliceFeature, presentationEpochFeature, presentedFeature, validationPendingFeature, fieldFlushFeature, fieldPathsFeature];
 
 /** A push handler, registered per push kind and route. */
 export type PushHandler = (push: Push) => void;

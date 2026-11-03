@@ -63,6 +63,16 @@ const models: Record<string, ViewModel> = {
   detail: { members: { lastAction: wire.string, canDismiss: wire.boolean }, texts: ["lastAction"] },
   form: { members: { name: wire.string, nameErrors: value => wire.array(value, wire.string), validation: decodeBridgeValidation }, texts: ["name"] },
   wizard: { members: { page: int32, canNext: wire.boolean, canBack: wire.boolean, canPing: wire.boolean }, scopedCommands: ["next", "back"] },
+  invoice: {
+    members: {
+      address: value => wire.object(value, item => ({ street: wire.string(item["street"]), city: wire.string(item["city"]) })),
+      lines: value => wire.array(value, line => wire.object(line, item => ({ id: int32(item["id"]), label: wire.string(item["label"]), quantity: int32(item["quantity"]) }))),
+    },
+    checkedFields: ["address"],
+    collections: defineCollections({ lines: defineCollection(
+      (value: unknown) => wire.object(value, item => ({ id: int32(item["id"]), label: wire.string(item["label"]), quantity: int32(item["quantity"]) })),
+      item => String(item.id)) }),
+  },
 };
 const modelOf = (route: string) => route.startsWith("content") ? models["detail"]! : models[route]!;
 
@@ -323,6 +333,7 @@ async function run(scenario: Scenario): Promise<void> {
           case "close": track(call.id, async () => { client(route).dispose(); return null; }); break;
           case "set": track(call.id, async () => { await client(route).set(call.member, call.value); return null; }); break;
           case "write": track(call.id, () => client(route).write(call.member, {
+            ...call.path === undefined ? {} : { path: call.path },
             requestId: call.requestId, expectedVersion: call.baseline.version, expectedValue: call.baseline.value, value: call.value,
           }, value => value)); break;
           case "can": track(call.id, () => client(route).can(call.member, call.input)); break;

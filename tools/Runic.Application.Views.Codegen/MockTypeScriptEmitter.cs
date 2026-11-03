@@ -31,6 +31,7 @@ internal sealed record MockTypeScriptPlan(
     IReadOnlyList<MockContentField> ContentFields,
     IReadOnlyList<(string Field, string Default)> Defaults,
     IReadOnlyList<string> CheckedFields,
+    IReadOnlyList<(string Member, string[][] Paths)> FieldPaths,
     IReadOnlyList<string> Texts,
     IReadOnlyList<string> ScopedCommands,
     IReadOnlyList<MockSetter> Setters,
@@ -147,6 +148,8 @@ internal static class MockTypeScriptEmitter
         body.AppendLine(plan.Defaults.Count == 0 ? "  defaults: {}," : $"  defaults: {{ {string.Join(", ", plan.Defaults.Select(entry => $"{Key(entry.Field)}: {entry.Default}"))} }},");
         if (plan.CheckedFields.Count > 0)
             body.AppendLine($"  checkedFields: [{string.Join(", ", plan.CheckedFields.Select(Quote))}],");
+        if (plan.FieldPaths.Count > 0)
+            body.AppendLine($"  fieldPaths: {{ {string.Join(", ", plan.FieldPaths.Select(entry => $"{Key(entry.Member)}: [{string.Join(", ", entry.Paths.Select(path => $"[{string.Join(", ", path.Select(Quote))}]"))}]"))} }},");
         if (plan.Texts.Count > 0)
             body.AppendLine($"  texts: [{string.Join(", ", plan.Texts.Select(Quote))}],");
         if (plan.ScopedCommands.Count > 0)

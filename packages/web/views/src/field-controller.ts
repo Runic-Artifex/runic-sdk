@@ -267,7 +267,7 @@ export function createFieldController<TState, TClient, TValue>(
   definition: FieldDefinition<TClient, TState, TValue>,
   options: FieldOptions<TValue> = {},
 ): FieldController<TState, TClient, TValue> & Disposable {
-  const checked = options.checked === true;
+  const checked = options.checked === true || definition.checkedOnly === true;
   if (checked && (typeof definition.checked !== "function" || typeof definition.baseline !== "function"))
     throw new TypeError("A checked field needs the member's checked write and baseline; use a generated field descriptor.");
   const pause = options.commit === "pause";

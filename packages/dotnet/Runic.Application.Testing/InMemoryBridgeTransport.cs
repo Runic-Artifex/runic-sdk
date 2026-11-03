@@ -263,12 +263,11 @@ public sealed class InMemoryBridgeTransport : IBridgeConnectionTransport, IDispo
                 writer.WriteString("name", "Runic.Application.Testing");
                 writer.WriteString("version", "1.0.0");
                 writer.WriteEndObject();
-                if (FieldFlush is not null)
-                {
-                    writer.WriteStartArray("features");
-                    writer.WriteStringValue("field-flush/1");
-                    writer.WriteEndArray();
-                }
+                writer.WriteStartArray("features");
+                // field-paths/1: RunicViewDriver.WritePath writes field paths below a member.
+                writer.WriteStringValue("field-paths/1");
+                if (FieldFlush is not null) writer.WriteStringValue("field-flush/1");
+                writer.WriteEndArray();
                 writer.WriteEndObject();
             }), connectionKey, clientKey, CancellationToken.None).ConfigureAwait(false);
             // A test may have sent the connection's hello itself.

@@ -58,6 +58,11 @@ internal sealed class BridgeTypeGraph
     /// <summary>Emits the JSON-wire expression for one public TypeScript collection item.</summary>
     internal string EncodeItemTypeScript(string expression) => EncodeTypeScript(Root.Element!, expression);
 
+    // field-paths/1: the TypeScript type, decoder and encoder of one node of the graph, such as a row's cell.
+    internal static string NodeTypeScriptType(BridgeTypeNode node) => TypeScriptType(node);
+    internal static string NodeTypeScriptDecoder(BridgeTypeNode node, string expression) => EmitTypeScriptDecoder(node, expression);
+    internal static string NodeTypeScriptEncoder(BridgeTypeNode node, string expression) => EncodeTypeScript(node, expression);
+
     /// <summary>
     /// Makes a codec expression safe as a concise arrow-function body. A DTO
     /// encoder (or a custom codec) can emit an object literal, which
@@ -78,7 +83,7 @@ internal sealed class BridgeTypeGraph
 
     // Emits a self-contained direct codec class. The caller normally embeds it
     // in the generated bridge file and passes `Write`/`Read` to BridgeValueCodec.
-    internal void AppendCSharpCodec(StringBuilder source, string className, string accessibility = "private")
+    internal void AppendCSharpCodec(StringBuilder source, string className, string accessibility = "private", bool readItem = false)
     {
         ArgumentNullException.ThrowIfNull(source);
         if (string.IsNullOrWhiteSpace(className)) throw new ArgumentException("A codec class name is required.", nameof(className));
@@ -88,6 +93,9 @@ internal sealed class BridgeTypeGraph
         source.AppendLine($"    internal static {CSharpNodeType(Root)} Read(global::System.Text.Json.JsonElement element) => Read{Root.Id}(element);");
         if (Root.Element is { } element)
             source.AppendLine($"    internal static void WriteItem(global::System.Text.Json.Utf8JsonWriter writer, object? value) => Write{element.Id}(writer, ({CSharpNodeType(element)})value!);");
+        // field-paths/1: an editable collection decodes a row whose cell a write changed.
+        if (readItem && Root.Element is { } row)
+            source.AppendLine($"    internal static {CSharpNodeType(row)} ReadItem(global::System.Text.Json.JsonElement element) => Read{row.Id}(element);");
         source.AppendLine();
         foreach (var node in Nodes.OrderBy(node => node.Id))
         {

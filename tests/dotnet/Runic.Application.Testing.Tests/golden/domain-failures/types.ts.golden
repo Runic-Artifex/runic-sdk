@@ -271,8 +271,31 @@ export interface OptionalVersion {
   readonly previous?: unknown;
 }
 
+export interface PathAddress {
+  readonly street: string;
+  readonly city: string;
+  readonly geo: PathGeo | null;
+}
+
+export interface PathGeo {
+  readonly lat: number;
+  readonly lng: number;
+}
+
+export interface PathLine {
+  readonly id: number;
+  readonly product: string;
+  readonly quantity: number;
+  readonly price: string;
+}
+
 export interface PendingAddress {
   readonly postcode: string;
+}
+
+export interface ReactivePathAddress {
+  readonly street: string;
+  readonly city: string;
 }
 
 export interface ReactiveRulesAddress {

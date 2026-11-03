@@ -4,7 +4,7 @@ import { viewsVersion } from "./version.js";
 import { applySplice, producerSplices, textSpliceFeature } from "./text.js";
 import { insertRows } from "./collections.js";
 import { flushNotifications } from "./notifications.js";
-import { fieldFlushFeature, presentationEpochFeature, presentedFeature } from "./protocol.js";
+import { fieldFlushFeature, fieldPathsFeature, presentationEpochFeature, presentedFeature } from "./protocol.js";
 import { validationPendingFeature } from "./validation.js";
 
 /** A View's wire state: one member per state member, by wire name, encoded as on the wire. */
@@ -219,6 +219,17 @@ export interface MockViewDefinition {
   /** Wire names of checked fields (`write` and their `fields` versions). */
   readonly checkedFields?: readonly string[];
   /**
+   * Field paths by member (`field-paths/1`): the member names below an object member, or below a row of a keyed
+   * collection (whose `collections` entry gives the rows' keys), such as `{ lines: [["quantity"]] }`. A write of a
+   * field path rebuilds the object or the row and applies it with `rows` or `set`, or by replacing it.
+   */
+  readonly fieldPaths?: Readonly<Record<string, readonly (readonly string[])[]>>;
+  /**
+   * Row editors by keyed collection, such as `{ lines: (state, key, row) => … }`: they receive a row with one cell
+   * changed and return a state patch, or throw to reject it. Without one, the row replaces the row with its key.
+   */
+  readonly rows?: Readonly<Record<string, (state: MockState, key: string, row: unknown) => Partial<MockState> | void | Promise<Partial<MockState> | void>>>;
+  /**
    * Wire names of text members (string members other than append-only text fields). On a connection that uses
    * `text-splice/1`, frames change them with splices, and setters accept splices, as a producer does.
    */
@@ -385,7 +396,7 @@ const realSetTimeout = globalThis.setTimeout.bind(globalThis);
 const yieldToEventLoop = () => new Promise<void>(resolve => { realSetTimeout(resolve, 0); });
 const maximumRounds = 10_000;
 const mockImplementation = { name: "@runic-artifex/views/mock", version: viewsVersion };
-const mockFeatures: readonly string[] = [textSpliceFeature, presentationEpochFeature, presentedFeature, validationPendingFeature, fieldFlushFeature];
+const mockFeatures: readonly string[] = [textSpliceFeature, presentationEpochFeature, presentedFeature, validationPendingFeature, fieldFlushFeature, fieldPathsFeature];
 
 const upperFirst = (value: string) => value.charAt(0).toUpperCase() + value.slice(1);
 const isRecord = (value: unknown): value is Record<string, unknown> => value !== null && typeof value === "object" && !Array.isArray(value);
@@ -489,6 +500,8 @@ interface MockRegisteredView {
   revision: number;
   /** The revision of the last publication that changed each text member. */
   readonly textChanged: Map<string, number>;
+  /** field-paths/1: the revision of the last publication that changed each field path, by container and path. */
+  readonly pathChanged: Map<string, number>;
   /** presentation-epoch/1: the current epoch, and whether a renewal waits for its publication. */
   epoch: number;
   renewing: boolean;
@@ -669,6 +682,7 @@ export function createMockBridge(options: MockBridgeOptions = {}): MockBridge {
       for (const field of indexedFields) changes.push({ field, kind: "set", value: view.state[field] as unknown });
       indexed.length = 0;
     }
+    const before = view.published;
     view.published = view.state;
     if (view.renewing) {
       // presentation-epoch/1: a renewal is published as a full state at a new revision, also when nothing changed.
@@ -676,6 +690,7 @@ export function createMockBridge(options: MockBridgeOptions = {}): MockBridge {
       view.revision = ++revision;
       view.epoch = view.revision;
       for (const field of texts) view.textChanged.set(field, view.revision);
+      trackPaths(view, before);
       pushMessage({ kind: "state", route: view.route, revision: view.revision, ...epochOf(view), state: view.state, ...fieldsOf(view) });
       return;
     }
@@ -683,7 +698,90 @@ export function createMockBridge(options: MockBridgeOptions = {}): MockBridge {
     const base = view.revision;
     view.revision = ++revision;
     for (const field of texts) view.textChanged.set(field, view.revision);
+    trackPaths(view, before);
     pushMessage({ kind: "frame", route: view.route, baseRevision: base, revision: view.revision, changes: [...indexed, ...changes] });
+  }
+
+  // field-paths/1: the containers of a member with field paths, by container key: the object, or each row by its key.
+  function containersOf(view: MockRegisteredView, state: MockState, member: string): Map<string, unknown> {
+    const containers = new Map<string, unknown>();
+    const keyOf = view.definition.collections?.[member];
+    const value = state[member];
+    if (keyOf === undefined) { if (value !== null && value !== undefined) containers.set(member, value); }
+    else if (Array.isArray(value)) for (const row of value) containers.set(`${member}\u0000${keyOf(row)}`, row);
+    return containers;
+  }
+
+  function leafOf(container: unknown, path: readonly string[]): { readonly value: unknown } | undefined {
+    let value = container;
+    for (const segment of path) {
+      if (value === null || typeof value !== "object" || Array.isArray(value) || !Object.hasOwn(value, segment)) return undefined;
+      value = (value as Record<string, unknown>)[segment];
+    }
+    return { value };
+  }
+
+  // Each field path that a publication changed, or whose row it added, takes the publication's revision.
+  function trackPaths(view: MockRegisteredView, before: MockState): void {
+    for (const [member, paths] of Object.entries(view.definition.fieldPaths ?? {})) {
+      if (sameJson(before[member], view.state[member])) continue;
+      const old = containersOf(view, before, member);
+      for (const [key, container] of containersOf(view, view.state, member)) {
+        const previous = old.get(key);
+        for (const path of paths)
+          if (previous === undefined || !sameJson(leafOf(previous, path)?.value, leafOf(container, path)?.value))
+            view.pathChanged.set(`${key}\u0000${path.join("\u0000")}`, view.revision);
+      }
+    }
+  }
+
+  async function writePath(view: MockRegisteredView, message: Record<string, unknown>): Promise<Reply> {
+    const member = message["member"] as string;
+    const segments = message["path"];
+    if (!Array.isArray(segments) || segments.length === 0 || segments.some(segment => typeof segment !== "string" || segment.length === 0)
+      || typeof message["requestId"] !== "string" || !isSafe(message["expectedVersion"]) || Object.hasOwn(message, "splice")
+      || !Object.hasOwn(message, "value") || !Object.hasOwn(message, "expectedValue"))
+      return invalidRequest(`${member} has an invalid path write.`);
+    const keyOf = view.definition.collections?.[member];
+    const key = keyOf === undefined ? undefined : segments[0] as string;
+    const path = (keyOf === undefined ? segments : segments.slice(1)) as string[];
+    if (!view.definition.fieldPaths?.[member]?.some(declared => sameJson(declared, path)))
+      return invalidRequest(`${member} has no field ${path.join(".")}.`);
+    const reply = (receipt: Record<string, unknown>) => ok({ revision: view.revision, receipt });
+    const id = `${member}\u0000${message["requestId"]}`;
+    const request = canonicalJson([segments, message["expectedVersion"], message["expectedValue"], message["value"]]);
+    const container = () => containersOf(view, view.state, member).get(key === undefined ? member : `${member}\u0000${key}`);
+    const current = () => leafOf(container(), path);
+    const previous = view.writes.get(id);
+    if (previous) return reply(previous.request === request ? previous.receipt
+      : { kind: "conflict", incoming: { value: current()?.value ?? null, version: view.revision },
+        message: "The request identity was already used with a different checked write." });
+    const retain = (receipt: Record<string, unknown>) => { view.writes.set(id, { request, receipt }); return reply(receipt); };
+    const target = container();
+    const leaf = current();
+    if (target === undefined || leaf === undefined)
+      return retain({ kind: "rejected", message: key === undefined ? `${member} is null.` : `${member} has no row ${key}.` });
+    const changed = view.pathChanged.get(`${key === undefined ? member : `${member}\u0000${key}`}\u0000${path.join("\u0000")}`) ?? 0;
+    if (changed > (message["expectedVersion"] as number) || !sameJson(leaf.value, message["expectedValue"]))
+      return retain({ kind: "conflict", incoming: { value: leaf.value, version: view.revision }, message: "The field baseline no longer matches." });
+    const rebuild = (value: unknown, at: number): unknown => at === path.length ? message["value"]
+      : { ...(value as Record<string, unknown>), [path[at]!]: rebuild((value as Record<string, unknown>)[path[at]!], at + 1) };
+    const updated = rebuild(target, 0);
+    try {
+      if (key === undefined) {
+        const patch = await view.definition.set?.[member]?.(view.state, updated);
+        commit(view, { ...view.state, [member]: updated, ...(patch ?? {}) });
+      } else {
+        const editor = view.definition.rows?.[member];
+        const patch = editor === undefined
+          ? { [member]: (view.state[member] as unknown[]).map(row => keyOf!(row) === key ? updated : row) }
+          : await editor(view.state, key, updated);
+        commit(view, { ...view.state, ...(patch ?? {}) });
+      }
+    } catch (error) {
+      return retain({ kind: "rejected", message: failureFromError(error).message });
+    }
+    return retain({ kind: "applied", snapshot: { value: current()?.value ?? message["value"], version: view.revision } });
   }
 
   /** The `epoch` member of a reply or state on a connection that uses presentation-epoch/1. */
@@ -1266,7 +1364,10 @@ export function createMockBridge(options: MockBridgeOptions = {}): MockBridge {
         } catch (error) { return errorReply(view, error, true); }
         return ok({ revision: view.revision });
       }
-      case "write": return writeChecked(view, message, connection.features.has(textSpliceFeature));
+      case "write":
+        if (Object.hasOwn(message, "path"))
+          return connection.features.has(fieldPathsFeature) ? writePath(view, message) : invalidRequest("A write with a path needs the feature field-paths/1.");
+        return writeChecked(view, message, connection.features.has(textSpliceFeature));
       case "command": case "can": {
         if (member === undefined) return invalidRequest("The request has no member.");
         const handler = view.definition.commands?.[member];
@@ -1414,7 +1515,7 @@ export function createMockBridge(options: MockBridgeOptions = {}): MockBridge {
       if (!/^[A-Za-z0-9_-]{1,128}$/.test(route)) throw new RangeError("A mock route has 1 to 128 letters, digits, '_' or '-'.");
       const state = { ...definition.state };
       const view: MockRegisteredView = {
-        route, definition, contract: definition.contract ?? `mock.${route}:mock`, fieldVersions: new Map(), presentations: new Map(),
+        route, definition, contract: definition.contract ?? `mock.${route}:mock`, fieldVersions: new Map(), pathChanged: new Map(), presentations: new Map(),
         requests: new Map(), writes: new Map(), batching: false, pending: [], state, published: state, revision, textChanged: new Map(),
         // The first state begins the route's first epoch.
         epoch: revision, renewing: false, running: 0, presentWaits: new Set(),
