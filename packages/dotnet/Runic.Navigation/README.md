@@ -934,15 +934,19 @@ them before `submit` runs a command.
 ### Drafts before departures
 
 `RunicDraftFlush` lets presentations write the drafts they hold before a
-departure is decided. The navigator awaits `RunicDraftFlush.FlushAsync` before
-it asks the departure guards of a transition that has any, and a Runic Window
-before its close guard. `Runic.Application.Views` registers each window whose
-pages use `field-flush/1`: it asks them to write their field drafts and waits
-up to 1 second. A guard that reads `IsDirty` therefore sees what the user typed
-last, also for a navigation that a menu, a shortcut or the model starts.
-Register a flush of your own for other presentations with
-`RunicDraftFlush.Register(cancellationToken => …)`. A flush must not wait for the
-model context's turn, and one that fails does not decide the departure. The
+departure is decided. Flushes belong to a model context: the navigator awaits
+`RunicDraftFlush.FlushAsync(navigator.ModelContext)` before it asks the
+departure guards of a transition that has any, so a departure flushes the
+presentations of its own models and never another window's.
+`Runic.Application.Views` registers each window's session with the window's
+model context until the session is disposed: it asks the pages that use
+`field-flush/1` to write their field drafts and waits up to 1 second. A guard
+that reads `IsDirty` therefore sees what the user typed last, also for a
+navigation that a menu, a shortcut or the model starts. Register a flush of
+your own for other presentations with
+`RunicDraftFlush.Register(context, cancellationToken => …)` and dispose the
+result when they go away. A flush must not wait for the model context's turn,
+and one that fails does not decide the departure. The
 [WPF hybrid editor](../../../examples/wpf-hybrid-editor/README.md) uses it.
 
 ### Guards for a whole region

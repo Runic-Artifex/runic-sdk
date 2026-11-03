@@ -67,11 +67,8 @@ internal sealed class BridgeDispatcher : IBridgeRequestHandler
     private int _connectionsWithPresentationEpoch;
     // The window's close (BeginClosing): the connections whose closing-reply is outstanding, and its completion.
     private int _closingPending;
-    // field-flush/1: the flushes waiting for flush-reply, by id, with the connections still to answer; and the
-    // registration with RunicDraftFlush while a connection uses the feature.
+    // field-flush/1: the flushes waiting for flush-reply, by id, with the connections still to answer.
     private readonly Dictionary<string, (TaskCompletionSource Completion, HashSet<string> Waiting)> _flushes = new(StringComparer.Ordinal);
-    private int _connectionsWithFieldFlush;
-    private IDisposable? _draftFlush;
     private long _nextFlush;
     private TaskCompletionSource? _closing;
     private int _maximumInputBytes = WindowContentSessionOptions.DefaultMaximumInputBytes;
@@ -468,7 +465,7 @@ internal sealed class BridgeDispatcher : IBridgeRequestHandler
             flushed = completion.Task;
         }
         var push = System.Text.Encoding.UTF8.GetBytes($$"""{"kind":"flush","id":"{{id}}"}""");
-        foreach (var target in targets) BridgeTargetedPushes.For(_transport).Send(target, push);
+        foreach (var target in targets) _ = SendFlushAsync(id, target, push);
         // Real time, whatever the window's TimeProvider: a departure waits for the user's pages, not for a test clock.
         try
         {
@@ -484,6 +481,27 @@ internal sealed class BridgeDispatcher : IBridgeRequestHandler
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { return false; }
         finally { lock (_gate) _flushes.Remove(id); }
+    }
+
+    // Sends one connection its flush. A connection the push does not reach cannot answer it: it counts as settled.
+    // Sent directly rather than in the targeted pushes' order: a flush follows no frame.
+    private async Task SendFlushAsync(string id, string connectionKey, byte[] push)
+    {
+        bool sent;
+        try { sent = await SendAsync(connectionKey, push).ConfigureAwait(false); }
+#pragma warning disable CA1031 // A failed send is an unreachable page, not a failed departure.
+        catch (Exception) { sent = false; }
+#pragma warning restore CA1031
+        if (sent) return;
+        lock (_gate)
+            if (_flushes.TryGetValue(id, out var flush)) FlushSettled(flush, connectionKey);
+    }
+
+    // The window stops serving its pages (its session is disposed): flushes in progress complete at once.
+    internal void SettleFlushes()
+    {
+        lock (_gate)
+            foreach (var flush in _flushes.Values) flush.Completion.TrySetResult();
     }
 
     // flush-reply (field-flush/1): the page wrote its drafts. An id that no flush waits for answers ok as well.
@@ -529,11 +547,6 @@ internal sealed class BridgeDispatcher : IBridgeRequestHandler
             connection.IsOpen = false;
             if (connection.HelloCompleted && !connection.UsesTextSplice) _connectionsWithoutTextSplice--;
             if (connection.HelloCompleted && connection.UsesPresentationEpoch) _connectionsWithPresentationEpoch--;
-            if (connection.HelloCompleted && connection.UsesFieldFlush && --_connectionsWithFieldFlush == 0)
-            {
-                _draftFlush?.Dispose();
-                _draftFlush = null;
-            }
             foreach (var flush in _flushes.Values) FlushSettled(flush, connectionKey);
             // A closed connection counts as one that acknowledged the window's close.
             ClosingSettled(connection);
@@ -626,8 +639,6 @@ internal sealed class BridgeDispatcher : IBridgeRequestHandler
             connection.UsesPresented = usesPresented;
             connection.UsesFieldFlush = usesFieldFlush;
             connection.HelloCompleted = true;
-            if (usesFieldFlush && _connectionsWithFieldFlush++ == 0)
-                _draftFlush = Runic.Navigation.RunicDraftFlush.Register(cancellationToken => new(FlushFieldsAsync(cancellationToken)));
             if (!usesTextSplice) _connectionsWithoutTextSplice++;
             if (usesPresentationEpoch) _connectionsWithPresentationEpoch++;
             if (connection.Held.Count > 0) drain = connection.Draining = true;

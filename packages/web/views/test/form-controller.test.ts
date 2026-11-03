@@ -283,15 +283,31 @@ test("field-flush/1: the page writes its pause drafts and answers flush; a keybo
     assert.ok(kinds.indexOf("set") >= 0 && kinds.indexOf("set") < kinds.indexOf("flush-reply"), `the draft is written before flush-reply: ${kinds.join(", ")}`);
     assert.equal(field.current.editing, false);
 
-    const page = globalThis as { readonly dispatchEvent?: (event: Event) => boolean };
-    if (typeof page.dispatchEvent === "function" && typeof Event === "function") {
-      field.inputText("Typed before Ctrl+W");
+    const page = globalThis as unknown as { dispatchEvent(event: Event): boolean };
+    const sets = () => bridge.calls.filter(call => call.kind === "set").length;
+    const press = async (init: { key: string; ctrlKey?: boolean; metaKey?: boolean; altKey?: boolean; altGraph?: boolean }) => {
       const event = new Event("keydown");
-      Object.defineProperty(event, "ctrlKey", { value: true });
+      for (const name of ["key", "ctrlKey", "metaKey", "altKey"] as const) if (init[name] !== undefined) Object.defineProperty(event, name, { value: init[name] });
+      if (init.altGraph !== undefined) Object.defineProperty(event, "getModifierState", { value: (modifier: string) => modifier === "AltGraph" && init.altGraph === true });
       page.dispatchEvent(event);
       await settle();
-      assert.equal(bridge.calls.filter(call => call.kind === "set").length, 2, "a shortcut writes the draft");
-    }
+    };
+    field.inputText("Typed before Ctrl+W");
+    await press({ key: "w", ctrlKey: true });
+    assert.equal(sets(), 2, "a shortcut writes the draft");
+    // Typing with AltGr (Windows reports Ctrl and Alt) or macOS Option writes nothing early.
+    field.inputText("name@");
+    await press({ key: "@", ctrlKey: true, altKey: true, altGraph: true });
+    await press({ key: "€", ctrlKey: true, altKey: true });
+    await press({ key: "{", altKey: true });
+    await press({ key: "|", altKey: true, altGraph: false });
+    assert.equal(sets(), 2, "AltGr and Option characters are typing, not shortcuts");
+    // Alt alone (a Windows menu bar) and Cmd+S are shortcuts.
+    await press({ key: "Alt", altKey: true });
+    assert.equal(sets(), 3, "Alt alone writes the draft");
+    field.inputText("name@example");
+    await press({ key: "s", metaKey: true });
+    assert.equal(sets(), 4, "Cmd+S writes the draft");
     field.dispose();
     editor.dispose();
   } finally {

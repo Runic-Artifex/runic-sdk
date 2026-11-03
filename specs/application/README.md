@@ -895,7 +895,9 @@ connection that does not use the feature it is `rejected` with `invalid-request`
 **Client.** On `flush`, a client that uses the feature writes every field draft it has not sent yet, waits for those
 writes for at most 800 milliseconds, and sends `flush-reply` with the push's `id`. A client also writes its drafts on
 its own when the user may be about to leave without a request of its own: on a key with Ctrl, Cmd or Alt before the
-page handles it, and when the page's window loses focus, as when a native menu opens.
+page handles it, unless the key types a character (AltGr, which Windows reports as Ctrl and Alt, and macOS Option
+type characters such as `@`, `€` or `{` on many layouts), and when the page's window loses focus, as when a native
+menu opens.
 
 ## Operations
 

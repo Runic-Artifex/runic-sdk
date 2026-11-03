@@ -124,10 +124,15 @@ public sealed class WindowContentSession : IDisposable
             var dispatcher = BridgeDispatcher.For(_transport);
             dispatcher.Configure(MaximumInputBytes, Logger, TimeProvider);
             _connectionObserver = dispatcher.OnConnectionClosed(ReleaseConnection);
+            // A departure of this window's models flushes its pages first (field-flush/1).
+            if (ModelContext is { } flushContext)
+                _draftFlush = Runic.Navigation.RunicDraftFlush.Register(flushContext,
+                    cancellationToken => new ValueTask(FlushFieldsAsync(cancellationToken)));
             _rootNavigation = AttachRootToNavigator(rootModel);
         }
         catch
         {
+            _draftFlush?.Dispose();
             _connectionObserver?.Dispose();
             try { fieldWrites?.Dispose(); }
             finally
@@ -411,8 +416,13 @@ public sealed class WindowContentSession : IDisposable
         return new(result.Drained, result.RemainingRunningOperations, result.Remaining) { PagesAcknowledged = acknowledged };
     }
 
-    // field-flush/1: asks the window's pages to write their field drafts; true when every page answered.
-    internal Task<bool> FlushFieldsAsync() => BridgeDispatcher.For(_transport).FlushFieldsAsync();
+    // field-flush/1: asks the window's pages to write their field drafts; true when every page answered. A disposed
+    // session asks nothing.
+    internal Task<bool> FlushFieldsAsync(CancellationToken cancellationToken = default) =>
+        Volatile.Read(ref _draftFlush) is null ? Task.FromResult(true) : BridgeDispatcher.For(_transport).FlushFieldsAsync(cancellationToken);
+
+    // field-flush/1: the window's registration with RunicDraftFlush for its model context, until it is disposed.
+    private IDisposable? _draftFlush;
 
     // How long a close waits at most for its pages' closing-reply (presented/1).
     internal static readonly TimeSpan CloseAcknowledgementLimit = TimeSpan.FromSeconds(5);
@@ -871,6 +881,9 @@ public sealed class WindowContentSession : IDisposable
         IDisposable[] attachments;
         RootPresentations[] rootMounts;
         IDisposable[] links;
+        // field-flush/1: no departure waits for this window's pages any more, nor for a flush already in progress.
+        Interlocked.Exchange(ref _draftFlush, null)?.Dispose();
+        BridgeDispatcher.For(_transport).SettleFlushes();
         lock (_gate)
         {
             if (_disposed) return;

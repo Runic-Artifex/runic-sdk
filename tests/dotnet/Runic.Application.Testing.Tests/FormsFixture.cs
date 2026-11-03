@@ -92,3 +92,28 @@ public sealed class PendingNestedRoot : IRunicPendingValidation
             children: [new("label", static owner => ((PendingNestedRow)owner).Label, propertyName: nameof(PendingNestedRow.Label))]),
     ];
 }
+
+// A guarded Window whose close guard records the draft it sees (field-flush/1 before the close guard).
+public sealed class GuardedFormViewModel : INotifyPropertyChanged
+{
+    private string _draft = "";
+    public string Draft { get => _draft; set { _draft = value; PropertyChanged?.Invoke(this, new(nameof(Draft))); } }
+    public event PropertyChangedEventHandler? PropertyChanged;
+}
+
+public sealed partial class GuardedFormWindow : RunicWindow<GuardedFormViewModel>
+{
+    public GuardedFormWindow() => GuardClose = true;
+
+    [RunicIgnore]
+    public string? SeenByGuard { get; private set; }
+
+    [RunicIgnore]
+    public bool Allow { get; set; }
+
+    protected override ValueTask<bool> CanCloseAsync(CancellationToken cancellationToken)
+    {
+        SeenByGuard = ViewModel.Draft;
+        return ValueTask.FromResult(Allow);
+    }
+}

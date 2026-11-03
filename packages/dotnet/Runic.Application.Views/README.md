@@ -2165,10 +2165,13 @@ Use `[RunicIgnore]` on validation-only DTO properties such as a computed
 A web page may hold what the user typed for a moment before it writes it, such
 as a field with `commit: "pause"`. With `field-flush/1` (0.16 hosts and pages),
 the window asks its pages to write those drafts before it asks a departure guard:
-before the guards of a navigation (`RunicDraftFlush`, which the navigator awaits),
-and before the close guard of a Window with `GuardClose`, from
-`RequestCloseAsync` or the close button. It waits up to 1 second (event 1140 when
-a page does not answer) and then decides on the ViewModel's state. In tests, set
+before the guards of a navigation of the window's model context
+(`RunicDraftFlush`, which the navigator awaits), and before the close guard of a
+Window with `GuardClose`, from `RequestCloseAsync` (also inside a model turn, such
+as a native menu's command) or the close button. It asks only its own pages,
+waits up to 1 second (event 1140 when a page does not answer) and then decides
+on the ViewModel's state. A disposed window is asked nothing, and a page that a
+push cannot reach does not delay the decision. In tests, set
 `InMemoryBridgeTransport.FieldFlush` to write what a page would; the mock bridge
 has `flushFields()`.
 

@@ -295,17 +295,134 @@ internal sealed class FormsTests
         _ = host.Root.Snapshot();
 
         // A departure that .NET starts flushes first: the guard reads the draft.
-        await Runic.Navigation.RunicDraftFlush.FlushAsync();
+        var context = host.Content.ModelContext!;
+        await Runic.Navigation.RunicDraftFlush.FlushAsync(context);
         Require(flushed >= 1 && model.UserName == "typed before leaving", "The flush did not write the page's draft.");
         var flush = host.Transport.Messages.Last(message => message.Kind == "flush");
         Require(flush.ConnectionKey == InMemoryBridgeTransport.DefaultConnectionKey && flush.Json.Contains("\"id\":\"flush-", StringComparison.Ordinal),
             $"The flush push: {flush.Json}");
 
         // A page that never answers delays the decision by at most a second.
-        host.Transport.FieldFlush = _ => new ValueTask(Task.Delay(TimeSpan.FromSeconds(30)));
+        host.Transport.FieldFlush = _ => new ValueTask(new TaskCompletionSource().Task);
         var watch = System.Diagnostics.Stopwatch.StartNew();
-        await Runic.Navigation.RunicDraftFlush.FlushAsync();
+        await Runic.Navigation.RunicDraftFlush.FlushAsync(context);
         Require(watch.Elapsed < TimeSpan.FromSeconds(10), $"An unanswered flush waited {watch.Elapsed}.");
+    }
+
+    // A page that never answers: the flush ends after 1 s, logs event 1140, and the departure goes on.
+    [Test]
+    public async Task AnUnansweredFlushEndsAfterOneSecondAndIsLoggedAsync()
+    {
+        var logs = new FlushLogCapture();
+        using var host = new RunicWindowTestHost<PendingFormViewModel>(new PendingFormViewModel(),
+            (transport, content, vm) => new PendingFormBridge(transport, vm, content: content),
+            new RunicWindowTestHostOptions { RootRoute = "pendingForm", ViewLocator = new TestViewLocator(), LoggerFactory = logs });
+        host.Transport.FieldFlush = _ => new ValueTask(new TaskCompletionSource().Task);
+        _ = host.Root.Snapshot();
+        var watch = System.Diagnostics.Stopwatch.StartNew();
+        await Runic.Navigation.RunicDraftFlush.FlushAsync(host.Content.ModelContext!);
+        Require(watch.Elapsed >= TimeSpan.FromMilliseconds(900) && watch.Elapsed < TimeSpan.FromSeconds(10),
+            $"An unanswered flush took {watch.Elapsed}.");
+        Require(logs.Events.Contains(1140), $"Event 1140 was not logged: {string.Join(", ", logs.Events)}");
+    }
+
+    // A disposed window is no longer asked, a flush in progress ends with it, and a later departure does not wait.
+    [Test]
+    public async Task ADisposedWindowIsNotFlushedAsync()
+    {
+        await using var context = new Runic.Navigation.RunicModelContext();
+        var host = new RunicWindowTestHost<PendingFormViewModel>(new PendingFormViewModel(),
+            (transport, content, vm) => new PendingFormBridge(transport, vm, content: content),
+            new RunicWindowTestHostOptions { RootRoute = "pendingForm", ViewLocator = new TestViewLocator(), ModelContext = context });
+        var asked = 0;
+        host.Transport.FieldFlush = _ => { asked++; return new ValueTask(new TaskCompletionSource().Task); };
+        _ = host.Root.Snapshot();
+        var inProgress = Runic.Navigation.RunicDraftFlush.FlushAsync(context).AsTask();
+        await Until(() => asked == 1);
+        var watch = System.Diagnostics.Stopwatch.StartNew();
+        host.Dispose();
+        await inProgress;
+        Require(watch.Elapsed < TimeSpan.FromMilliseconds(800), $"A flush in progress waited {watch.Elapsed} for a disposed window.");
+        watch.Restart();
+        await Runic.Navigation.RunicDraftFlush.FlushAsync(context);
+        Require(watch.Elapsed < TimeSpan.FromMilliseconds(200) && asked == 1, $"A disposed window was flushed ({asked}, {watch.Elapsed}).");
+    }
+
+    // Two windows with their own model contexts: a departure of one neither asks nor waits for the other's pages.
+    [Test]
+    public async Task AFlushAsksOnlyTheWindowsOfItsModelContextAsync()
+    {
+        await using var contextA = new Runic.Navigation.RunicModelContext();
+        await using var contextB = new Runic.Navigation.RunicModelContext();
+        var modelA = new PendingFormViewModel();
+        var modelB = new PendingFormViewModel();
+        using var hostA = new RunicWindowTestHost<PendingFormViewModel>(modelA,
+            (transport, content, vm) => new PendingFormBridge(transport, vm, content: content),
+            new RunicWindowTestHostOptions { RootRoute = "pendingForm", ViewLocator = new TestViewLocator(), ModelContext = contextA });
+        using var hostB = new RunicWindowTestHost<PendingFormViewModel>(modelB,
+            (transport, content, vm) => new PendingFormBridge(transport, vm, content: content),
+            new RunicWindowTestHostOptions { RootRoute = "pendingForm", ViewLocator = new TestViewLocator(), ModelContext = contextB });
+        var askedB = 0;
+        hostA.Transport.FieldFlush = async _ => await hostA.Root.SetAsync(vm => vm.UserName, "typed in A");
+        hostB.Transport.FieldFlush = _ => { askedB++; modelB.UserName = "written in B"; return new ValueTask(new TaskCompletionSource().Task); };
+        _ = hostA.Root.Snapshot();
+        _ = hostB.Root.Snapshot();
+        var watch = System.Diagnostics.Stopwatch.StartNew();
+        await Runic.Navigation.RunicDraftFlush.FlushAsync(contextA);
+        Require(modelA.UserName == "typed in A" && askedB == 0 && modelB.UserName == "" && watch.Elapsed < TimeSpan.FromMilliseconds(800),
+            $"Window A's departure reached window B ({askedB}, {modelB.UserName}, {watch.Elapsed}).");
+    }
+
+    // The close guard flushes its window first, also when the close is requested in a model turn (a native menu's
+    // command): the guard sees what the page had not written yet.
+    [Test]
+    public async Task TheCloseGuardSeesTheDraftAlsoWhenRequestedInATurnAsync()
+    {
+        var services = new Microsoft.Extensions.DependencyInjection.ServiceCollection();
+        Runic.Navigation.RunicNavigationServiceCollectionExtensions.AddRunicNavigation(services);
+        Microsoft.Extensions.DependencyInjection.ServiceCollectionServiceExtensions.AddScoped<GuardedFormViewModel>(services);
+        Microsoft.Extensions.DependencyInjection.ServiceCollectionServiceExtensions.AddScoped<Func<IBridgeTransport, WindowContentSession, GuardedFormViewModel, IDisposable>>(
+            services, _ => (transport, content, model) => new GuardedFormBridge(transport, model, content: content));
+        await using var provider = Microsoft.Extensions.DependencyInjection.ServiceCollectionContainerBuilderExtensions.BuildServiceProvider(services);
+        var window = await new TestWindowHost(provider).OpenWindowAsync<GuardedFormWindow>();
+        var native = (TestWindow<GuardedFormViewModel>)window.Host;
+        var typed = "typed before the close button";
+        native.Host.Transport.FieldFlush = async _ => await native.Host.Root.SetAsync(vm => vm.Draft, typed);
+        _ = native.Host.Root.Snapshot();
+
+        Require(!await window.RequestCloseAsync() && window.SeenByGuard == "typed before the close button" && native.IsOpen,
+            $"The close guard saw '{window.SeenByGuard}'.");
+
+        typed = "typed before the menu command";
+        var context = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<Runic.Navigation.IRunicModelContext>(window.Services);
+        var request = await context.InvokeAsync(() => window.RequestCloseAsync().AsTask());
+        Require(!await request.WaitAsync(TimeSpan.FromSeconds(10)) && window.SeenByGuard == "typed before the menu command",
+            $"A close requested in a turn: the guard saw '{window.SeenByGuard}'.");
+
+        window.Allow = true;
+        Require(await window.RequestCloseAsync() && !native.IsOpen, "The allowed close did not close the window.");
+    }
+
+    private static async Task Until(Func<bool> condition)
+    {
+        for (var attempt = 0; attempt < 500 && !condition(); attempt++) await Task.Delay(10);
+        Require(condition(), "The condition did not hold within 5 s.");
+    }
+
+    private sealed class FlushLogCapture : Microsoft.Extensions.Logging.ILoggerFactory
+    {
+        public System.Collections.Concurrent.ConcurrentBag<int> Events { get; } = [];
+        public void AddProvider(Microsoft.Extensions.Logging.ILoggerProvider provider) => throw new NotSupportedException();
+        public Microsoft.Extensions.Logging.ILogger CreateLogger(string categoryName) => new Logger(this);
+        public void Dispose() { }
+
+        private sealed class Logger(FlushLogCapture owner) : Microsoft.Extensions.Logging.ILogger
+        {
+            public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+            public bool IsEnabled(Microsoft.Extensions.Logging.LogLevel logLevel) => true;
+            public void Log<TState>(Microsoft.Extensions.Logging.LogLevel logLevel, Microsoft.Extensions.Logging.EventId eventId, TState state,
+                Exception? exception, Func<TState, Exception?, string> formatter) => owner.Events.Add(eventId.Id);
+        }
     }
 
     [Test]
@@ -316,7 +433,7 @@ internal sealed class FormsTests
             (transport, content, vm) => new PendingFormBridge(transport, vm, content: content),
             new RunicWindowTestHostOptions { RootRoute = "pendingForm", ViewLocator = new TestViewLocator() });
         _ = host.Root.Snapshot();
-        await Runic.Navigation.RunicDraftFlush.FlushAsync();
+        await Runic.Navigation.RunicDraftFlush.FlushAsync(host.Content.ModelContext!);
         Require(!host.Transport.Messages.Any(message => message.Kind == "flush"), "A page without field-flush/1 got a flush.");
         // flush-reply without the feature is invalid.
         using var reply = JsonDocument.Parse(host.Transport.Request("""{"kind":"flush-reply","id":"flush-1"}"""));

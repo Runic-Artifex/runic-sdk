@@ -546,7 +546,7 @@ writes its drafts before each kind of departure:
 | --- | --- |
 | A command the page sends through `submit` | before the command (`submit` commits every field first) |
 | A navigation or close that .NET starts (a menu, a shortcut, the model, `RequestCloseAsync`, the close button of a window with `GuardClose`) | before the guards are asked: the host pushes `flush` (`field-flush/1`, a 0.16 host and page) and waits up to 1 second for the page's `flush-reply` |
-| A key with Ctrl, Cmd or Alt, and the window losing focus (a native menu opens) | at once, also with hosts and pages without `field-flush/1` |
+| A key with Ctrl, Cmd or Alt that types no character (not AltGr or macOS Option typing `@`, `€`, `{`), and the window losing focus (a native menu opens) | at once, also with hosts and pages without `field-flush/1` |
 | The application closes the window | before `closing-reply` (`presented/1`), within 2 seconds; this is after the close was decided, so it reaches the model, not a close guard |
 
 A page that starts a departure with a plain command (not `submit`) calls `await commitAllFields()` first. Fields

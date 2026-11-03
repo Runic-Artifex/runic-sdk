@@ -24,16 +24,25 @@ const flushLimit = 800;
 
 /**
  * Writes the page's field drafts when the user may be about to leave without the page knowing: a keyboard shortcut
- * (a key with Ctrl, Cmd or Alt, seen before the page's own handlers) or the window losing focus, as when a native menu
- * opens. It helps hosts and pages without field-flush/1 too. Returns the function that removes the listeners.
+ * (a key with Ctrl, Cmd or Alt that produces no character, seen before the page's own handlers) or the window losing
+ * focus, as when a native menu opens. It helps hosts and pages without field-flush/1 too. Returns the function that removes the listeners.
  */
 function flushOnDeparture(): () => void {
   const page = globalThis as { readonly addEventListener?: (type: string, listener: (event: unknown) => void, options?: boolean) => void;
     readonly removeEventListener?: (type: string, listener: (event: unknown) => void, options?: boolean) => void };
   if (typeof page.addEventListener !== "function" || typeof page.removeEventListener !== "function") return () => {};
   const keydown = (event: unknown) => {
-    const key = event as { readonly ctrlKey?: boolean; readonly metaKey?: boolean; readonly altKey?: boolean };
-    if (key.ctrlKey === true || key.metaKey === true || key.altKey === true) void commitAllFields();
+    const key = event as {
+      readonly ctrlKey?: boolean; readonly metaKey?: boolean; readonly altKey?: boolean; readonly key?: unknown;
+      readonly getModifierState?: (modifier: string) => boolean;
+    };
+    if (key.ctrlKey !== true && key.metaKey !== true && key.altKey !== true) return;
+    // Typing, not a shortcut: AltGr (which Windows reports as Ctrl and Alt) and macOS Option produce characters such
+    // as @ € { [ \ | on many layouts, and a key that produces a character without Ctrl or Cmd is text too.
+    if (typeof key.getModifierState === "function" && key.getModifierState("AltGraph")) return;
+    const character = typeof key.key === "string" && [...key.key].length === 1;
+    if (character && (key.metaKey !== true && key.ctrlKey !== true || key.ctrlKey === true && key.altKey === true && key.metaKey !== true)) return;
+    void commitAllFields();
   };
   const blur = (event: unknown) => {
     // The window's own blur, not one of an element inside it.

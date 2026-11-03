@@ -135,7 +135,7 @@ internal sealed partial class NavigationTests
         using var session = new RunicEditSession<string>(note, () => note.Title, title => note.Title = title);
         // A presentation whose user typed into a field that has not written yet: the flush writes it.
         var typed = "Typed, not yet written";
-        using var registration = RunicDraftFlush.Register(async _ =>
+        using var registration = RunicDraftFlush.Register(fixture.Context, async _ =>
         {
             await Task.Yield();
             await fixture.Context.InvokeAsync(() => { if (typed is not null) note.Title = typed; typed = null; });
@@ -147,9 +147,30 @@ internal sealed partial class NavigationTests
         Require(await Wait(region.BackAsync()) is NavigationResult<Page>.Rejected { Reason: NavigationRejection.Guard } && prompts == 1,
             "The guard did not see the draft that the presentation wrote first.");
 
-        // A flush that fails does not decide the departure.
-        using var failing = RunicDraftFlush.Register(_ => throw new InvalidOperationException("The page is gone."));
+        // Another model context's presentations are not asked.
+        await using var other = new RunicModelContext();
+        var otherAsked = 0;
+        using var foreign = RunicDraftFlush.Register(other, _ => { otherAsked++; return ValueTask.CompletedTask; });
         session.Revert();
+        await Wait(region.PushAsync(NavigationTarget.Own(new Page("again") { Guard = leave.CanDepartAsync })));
+        typed = null;
+        Require(await Wait(region.BackAsync()) is NavigationResult<Page>.Committed && otherAsked == 0,
+            "A departure flushed another model context's presentations.");
+
+        // Registrations are removed by identity: the same delegate registered twice stays once after one removal.
+        var calls = 0;
+        Func<CancellationToken, ValueTask> counted = _ => { calls++; return ValueTask.CompletedTask; };
+        var first = RunicDraftFlush.Register(other, counted);
+        using var second = RunicDraftFlush.Register(other, counted);
+        first.Dispose();
+        first.Dispose();
+        await RunicDraftFlush.FlushAsync(other);
+        Require(calls == 1, $"Removing one registration of a delegate removed {2 - calls}.");
+
+        // A flush that fails does not decide the departure.
+        using var failing = RunicDraftFlush.Register(fixture.Context, _ => throw new InvalidOperationException("The page is gone."));
+        session.Revert();
+        await Wait(region.PushAsync(NavigationTarget.Own(new Page("last") { Guard = leave.CanDepartAsync })));
         Require(await Wait(region.BackAsync()) is NavigationResult<Page>.Committed && prompts == 1, "A failing flush blocked the departure.");
     }
 }

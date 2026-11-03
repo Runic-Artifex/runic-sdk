@@ -1446,7 +1446,7 @@ public sealed class RunicNavigator : IAsyncDisposable, IDisposable
 
         // Presentations write their drafts first (RunicDraftFlush), so the guards see the user's last input.
         if (regionGuards.Count > 0 || plan.Guards.Exists(item => item.Entry.Content is INavigationDepartureGuard))
-            await this.AfterUserCode(RunicDraftFlush.FlushAsync(token));
+            await this.AfterUserCode(RunicDraftFlush.FlushAsync(ModelContext, token));
 
         // The region and navigator guards asked before the entries' guards, in the same order as the others (#412).
         foreach (var ask in regionGuards)
