@@ -92,7 +92,7 @@ public sealed partial class AccountPickerWindow : RunicWindow<AccountPickerViewM
 // Completes its result in its constructor, before its Window has opened.
 public sealed class EagerPickerViewModel : INotifyPropertyChanged
 {
-    public EagerPickerViewModel(IRunicWindowResult<string> result) => _ = result.CompleteAsync("eager");
+    public EagerPickerViewModel(IRunicWindowResult<string> result) => _ = result.CompleteAsync("eager").AsTask();
 
     public string Title { get; } = "eager";
 
