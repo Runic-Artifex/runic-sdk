@@ -171,6 +171,25 @@ describe("useField", () => {
     expect(typeof client.calls[1]!.value).toBe("number");
   });
 
+  test("a number field in a locale shows and reads the locale's decimal separator (C1)", async () => {
+    const client = fakeClient({ step: 2.5 });
+    let field: FieldHandle<number> | undefined;
+    function Editor(): ReactNode {
+      field = useField(useView(client), Fields.step, { locale: "de-DE" });
+      return createElement("input", { id: "step", ...field.inputProps });
+    }
+    await mount(createElement(Editor));
+    expect(field!).toMatchObject({ value: 2.5, text: "2,5" });
+    expect(document.querySelector<HTMLInputElement>("#step")!.value).toBe("2,5");
+    await act(async () => { field!.inputProps.onChange(change("1.234,75")); });
+    expect(client.calls.map(call => call.value)).toEqual([1234.75]);
+    await act(async () => { client.calls[0]!.resolve(); });
+    await settle();
+    await act(async () => { client.apply("step", 0.5); });
+    // Without a draft the text of the state being rendered uses the field's format.
+    expect(field!).toMatchObject({ value: 0.5, text: "0,5" });
+  });
+
   test("a boolean field binds a checkbox", async () => {
     const client = fakeClient({ done: false });
     let field: FieldHandle<boolean> | undefined;
