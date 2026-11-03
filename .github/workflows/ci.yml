@@ -469,6 +469,8 @@ jobs:
         run: |
           node examples/first-window-desktop/browser-smoke.mjs
           xvfb-run -a dotnet run --project examples/first-window-desktop/FirstWindowDesktop.csproj -c Release --no-build -- --probe-owner
+      - name: Exercise blobs and uploads on Runic Desktop
+        run: node examples/attachments/browser-smoke.mjs
       - name: Check composed View lifetime and window scopes
         run: |
           dotnet run --no-build -c Release --project examples/notes-view-first/NotesViewFirst.csproj -- --check-view-lifetime

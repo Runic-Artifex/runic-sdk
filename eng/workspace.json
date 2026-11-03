@@ -411,6 +411,7 @@
       "paths": [
         "examples/first-window",
         "examples/first-window-desktop",
+        "examples/attachments",
         "examples/status-icon",
         "examples/multi-window",
         "examples/notes-view-first",
