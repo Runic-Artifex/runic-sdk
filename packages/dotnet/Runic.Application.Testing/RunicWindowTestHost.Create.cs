@@ -107,6 +107,6 @@ public static class RunicWindowTestHost
             MaximumUploadBytes = options.MaximumUploadBytes,
             PublicationTimeout = options.PublicationTimeout,
         })
-        { Services = services };
+        { Services = services, Platform = services.GetService<RunicTestPlatform>() };
     }
 }
