@@ -9,6 +9,7 @@ import {
   useState,
   useSyncExternalStore,
   type ComponentType,
+  type HTMLAttributes,
   type ReactNode,
 } from "react";
 import {
@@ -35,6 +36,7 @@ import {
   type PageReference,
   regionEntries,
   type RegionCollection,
+  type RegionEntry,
   type ViewClient,
   type ViewController,
   type ViewControllerState,
@@ -273,6 +275,14 @@ export function ViewOutlet<R extends PageReference>({ content, registry, fallbac
 /** How {@link RegionOutlets} renders the regions of a collection. */
 export type RegionOutletsMode = "keep-mounted" | "selected";
 
+/**
+ * Attributes that {@link RegionOutlets} merges onto a region's wrapper, such as `id`, `role` and `aria-labelledby`.
+ * `hidden` and `data-region-key` stay controlled by the outlet, and a `style` is merged with its `display: none`.
+ */
+export type RegionPanelAttributes = Omit<HTMLAttributes<HTMLDivElement>, "hidden"> & {
+  readonly [attribute: `data-${string}`]: string | undefined;
+};
+
 export interface RegionOutletsProps<R extends PageReference> {
   /** The presented region collection, such as `state.documents`. */
   readonly collection: RegionCollection<R> | null | undefined;
@@ -286,21 +296,31 @@ export interface RegionOutletsProps<R extends PageReference> {
    * its component and DOM. `"selected"` renders only the selected region.
    */
   readonly mode?: RegionOutletsMode;
+  /**
+   * Returns attributes for a region's wrapper, for example `{ id, role: "tabpanel", "aria-labelledby" }`, so a tab
+   * can point `aria-controls` at the panel.
+   */
+  readonly panelProps?: (entry: RegionEntry<R>) => RegionPanelAttributes;
 }
 
 /**
  * Renders a {@link ViewOutlet} for the regions of a region collection, each in a `<div data-region-key>` keyed by
- * the region's key. A region that is not selected is rendered with `hidden`. A new content reference in a region
- * remounts only that region's component.
+ * the region's key. A region that is not selected is rendered with `hidden` and an inline `display: none`, which
+ * author CSS without `!important` cannot override. A new content reference in a region remounts only that region's
+ * component.
  */
-export function RegionOutlets<R extends PageReference>({ collection, registry, fallback = null, missing, mode = "keep-mounted" }: RegionOutletsProps<R>): ReactNode {
+export function RegionOutlets<R extends PageReference>({ collection, registry, fallback = null, missing, mode = "keep-mounted", panelProps }: RegionOutletsProps<R>): ReactNode {
   const shown = regionEntries(collection).filter(region => mode === "keep-mounted" || region.selected);
   if (shown.length === 0) return fallback;
-  return shown.map(region => createElement(
-    "div",
-    { key: region.key, "data-region-key": region.key, hidden: !region.selected },
-    createElement(ViewOutlet<R>, { content: region.content, registry, ...(missing ? { missing } : {}) }),
-  ));
+  return shown.map(region => {
+    const panel = panelProps?.(region) ?? {};
+    const hidden = !region.selected;
+    return createElement(
+      "div",
+      { ...panel, key: region.key, "data-region-key": region.key, hidden, style: hidden ? { ...panel.style, display: "none" } : panel.style },
+      createElement(ViewOutlet<R>, { content: region.content, registry, ...(missing ? { missing } : {}) }),
+    );
+  });
 }
 
 // A command or operation controller lives while its component is mounted: unmounting disposes it,

@@ -12,7 +12,7 @@ import { connectView } from "@runic-artifex/views/generated";
 import { createMockBridge, installMockBridge, installMockMenuBar } from "@runic-artifex/views/mock";
 import {
   retrySuspenseView, useBridgeConnection, useCollectionViewport, useCommand, useLatestOperation, useMenuBar, useOperation, useSuspenseView,
-  useView, ViewOutlet, RegionOutlets, regionEntries, selectedRegion, type RegionCollection, type BridgeConnectionHandle, type MenuBarHandle, type UseMenuBarOptions, type CollectionViewportHandle, type CommandHandle, type LatestOperationHandle, type OperationHandle, type SuspenseViewOptions,
+  useView, ViewOutlet, RegionOutlets, regionEntries, selectedRegion, type RegionCollection, type RegionPanelAttributes, type BridgeConnectionHandle, type MenuBarHandle, type UseMenuBarOptions, type CollectionViewportHandle, type CommandHandle, type LatestOperationHandle, type OperationHandle, type SuspenseViewOptions,
   type ViewHandle, type ViewRegistry,
 } from "../dist/index.js";
 import * as root_ from "../dist/index.js";
@@ -399,6 +399,26 @@ describe("RegionOutlets", () => {
     await show({ regions: [{ key: "7", content: counter }, { key: "9", content: welcome }, { key: "11", content: null }], selected: 0 });
     expect(regions()).toEqual(["7*:counter:counter", "9:welcome:welcome", "11:"]);
     expect(mounts).toEqual({ counter: 1, welcome: 1 });
+  });
+
+  test("merges panelProps onto each wrapper and hides a panel with hidden and display: none", async () => {
+    const panelProps = (entry: { readonly key: string }): RegionPanelAttributes => ({
+      id: `panel-${entry.key}`, role: "tabpanel", "aria-labelledby": `tab-${entry.key}`, "data-region-key": "overridden", style: { color: "red" },
+      ...{ hidden: false } as RegionPanelAttributes,
+    });
+    const render = async (selected: number) => act(async () => {
+      root ??= createRoot(document.body.appendChild(document.createElement("div")));
+      root.render(createElement(RegionOutlets<Page>, { collection: { regions: [{ key: "7", content: counter }, { key: "9", content: welcome }], selected }, registry, panelProps }));
+    });
+    await render(0);
+    const [first, second] = [...document.querySelectorAll<HTMLElement>("[role=tabpanel]")];
+    expect([first!.id, first!.getAttribute("aria-labelledby"), first!.dataset["regionKey"]]).toEqual(["panel-7", "tab-7", "7"]);
+    expect([second!.id, second!.dataset["regionKey"]]).toEqual(["panel-9", "9"]);
+    expect([first!.hidden, first!.style.display, first!.style.color]).toEqual([false, "", "red"]);
+    expect([second!.hidden, second!.style.display, second!.style.color]).toEqual([true, "none", "red"]);
+    await render(1);
+    expect([first!.hidden, first!.style.display]).toEqual([true, "none"]);
+    expect([second!.hidden, second!.style.display, second!.style.color]).toEqual([false, "", "red"]);
   });
 
   test("remounts only the region whose content changed", async () => {

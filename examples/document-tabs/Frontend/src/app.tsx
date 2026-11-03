@@ -1,6 +1,6 @@
 import { createContext, StrictMode, useContext, useState } from "react";
 import { createRoot } from "react-dom/client";
-import { RegionOutlets, regionEntries, useCommand, useField, useView, ViewOutlet, type ViewRegistry } from "@runic-artifex/react";
+import { regionEntries, useCommand, useField, useView, ViewOutlet, type ViewRegistry } from "@runic-artifex/react";
 import { DocumentFields, type DocumentPageReference } from "./generated/document.js";
 import type { DocumentInfoPageReference } from "./generated/documentInfo.js";
 import { connectDocuments, type DocumentsState } from "./generated/documents.js";
@@ -9,8 +9,10 @@ type TabPage = DocumentsState["documents"]["regions"][number]["content"];
 
 const documents = { connect: connectDocuments };
 
-// Closes the tab that presents a page; App provides it.
-const CloseTab = createContext<(page: NonNullable<TabPage>) => Promise<void>>(async () => {});
+// Closes a tab by its region key; App provides it.
+const CloseTab = createContext<(key: string) => Promise<void>>(async () => {});
+// The region key of the tab a page is in; each tab's panel provides it.
+const TabKey = createContext<string | undefined>(undefined);
 
 function App() {
   const { state, client, error } = useView(documents);
@@ -30,15 +32,12 @@ function App() {
       setNotice(`The tab was not closed: ${outcome.kind}${outcome.rejection ? ` (${outcome.rejection})` : ""}.`);
     }
   }
-  const closePage = async (page: NonNullable<TabPage>) => {
-    const tab = regionEntries(state?.documents).find(entry => entry.content === page);
-    if (tab) await close(tab.key);
-  };
+  const tabs = regionEntries(state?.documents);
 
   if (error) return <p role="alert">{String(error)}</p>;
-  return <CloseTab.Provider value={closePage}>
+  return <CloseTab.Provider value={close}>
     <div role="tablist" aria-label="Documents">
-      {regionEntries(state?.documents).map(tab => (
+      {tabs.map(tab => (
         // The highlight follows `selected`, which changes only when a switch or close commits.
         <span key={tab.key} className="tab" data-selected={tab.selected || undefined}>
           <button role="tab" aria-selected={tab.selected} onClick={() => void client?.selectDocuments(tab.key)}>
@@ -50,9 +49,16 @@ function App() {
       <button disabled={!state?.canNewDocument || newDocument.pending} onClick={() => void newDocument.run()}>New</button>
     </div>
     {notice && <p role="status">{notice}</p>}
-    {/* Every tab stays mounted and only the selected one is shown, so a tab keeps its DOM, such as unsent input. */}
-    <RegionOutlets collection={state?.documents} registry={pages} mode="keep-mounted"
-      fallback={<p>No open documents. Choose New to open one.</p>} />
+    {/* Every tab stays mounted and only the selected one is shown, so a tab keeps its DOM, such as unsent input.
+        Each panel tells its page the tab's key. A push in a tab remounts only that tab's page. */}
+    {tabs.length === 0 && <p>No open documents. Choose New to open one.</p>}
+    {tabs.map(tab => (
+      <div key={tab.key} role="tabpanel" data-region-key={tab.key} hidden={!tab.selected}>
+        <TabKey.Provider value={tab.key}>
+          <ViewOutlet content={tab.content} registry={pages} />
+        </TabKey.Provider>
+      </div>
+    ))}
   </CloseTab.Provider>;
 }
 
@@ -75,11 +81,12 @@ function DocumentPage({ page }: { page: DocumentPageReference }) {
   const title = useField(view, DocumentFields.title);
   const body = useField(view, DocumentFields.body);
   const closeTab = useContext(CloseTab);
+  const key = useContext(TabKey);
   const save = useCommand(() => client?.save());
   const details = useCommand(() => client?.showDetails());
   const discardAndClose = useCommand(async () => {
     await client?.discard();
-    await closeTab(page);
+    if (key !== undefined) await closeTab(key);
   });
   if (!state) return <p>Connecting…</p>;
   return <section>

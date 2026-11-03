@@ -1,5 +1,6 @@
 using System.ComponentModel;
 using System.Globalization;
+using System.Runtime.CompilerServices;
 using System.Text.Json;
 using Runic.Navigation;
 
@@ -10,8 +11,9 @@ namespace Runic.Application.Views.Generated;
 public static class BridgeRegionCollections
 {
     /// <summary>
-    /// The key of a region in a region collection: a decimal integer, unique among the regions of the region's navigator
-    /// and never reused by it, so it identifies the region for as long as the window lives.
+    /// The key of a region in a region collection: the decimal id of the region in its navigator. It is unique in the
+    /// collection and never reused for another region, because a selection's regions share one navigator, which never
+    /// reuses an id. Collections of different navigators can have equal keys.
     /// </summary>
     /// <param name="region">A region of the collection.</param>
     /// <returns>The region's key.</returns>
@@ -19,6 +21,29 @@ public static class BridgeRegionCollections
     {
         ArgumentNullException.ThrowIfNull(region);
         return region.Core.Id.ToString(CultureInfo.InvariantCulture);
+    }
+
+    // The page closes of regions that have not settled, by region, whichever route or connection asked: a close of a
+    // region whose close is pending joins it, so its guards are asked once and every close gets the same outcome.
+    private static readonly ConditionalWeakTable<NavigationRegion, Task<NavigationResult<object>>> PendingCloses = new();
+
+    // In the request's model turn: the pending page close of the region, or a new one.
+    internal static Task<NavigationResult<object>> Close(NavigationSelection selection, NavigationRegion region, CancellationToken cancellationToken)
+    {
+        lock (PendingCloses)
+        {
+            if (PendingCloses.TryGetValue(region, out var pending) && !pending.IsCompleted) return pending;
+            var close = selection.RemoveAsync(region, cancellationToken: cancellationToken).AsTask();
+            if (close.IsCompleted) return close;
+            PendingCloses.AddOrUpdate(region, close);
+            _ = close.ContinueWith(static (completed, state) =>
+            {
+                var region = (NavigationRegion)state!;
+                lock (PendingCloses)
+                    if (PendingCloses.TryGetValue(region, out var current) && ReferenceEquals(current, completed)) PendingCloses.Remove(region);
+            }, region, CancellationToken.None, TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
+            return close;
+        }
     }
 
     // The region of the selection that a region request's key names, or null.
@@ -71,7 +96,7 @@ public partial class ViewModelBridge<T>
                     Reason: "capacity"))
                 : EncodeFailure(new(BridgeFailure.Released, "The window is closing."));
         var cancellation = admission?.Token ?? token;
-        ValueTask<NavigationResult<object>> started = default;
+        Task<NavigationResult<object>>? started = null;
         ReadOnlyMemory<byte>? refused;
         try
         {
@@ -86,9 +111,11 @@ public partial class ViewModelBridge<T>
                         ViewsLog.RegionRequestUnresolved(_logger, ModelName, descriptor.Name, _name, key);
                         return EncodeFailure(new("rejected", $"{descriptor.Name} has no region with this key.", Reason: BridgeFailure.UnresolvedKey));
                     }
+                    // A close of a region whose page close is pending joins it. A select is admitted as any request of
+                    // the selection: it supersedes a pending close, which then ends Superseded for every joined close.
                     started = close
-                        ? selection.RemoveAsync(region, cancellationToken: cancellation)
-                        : selection.SelectAsync(region, cancellationToken: cancellation);
+                        ? BridgeRegionCollections.Close(selection, region, cancellation)
+                        : selection.SelectAsync(region, cancellationToken: cancellation).AsTask();
                     return null;
                 }
             });
@@ -103,7 +130,7 @@ public partial class ViewModelBridge<T>
 
         NavigationOutcome outcome;
         BridgeFailure? failure = null;
-        try { outcome = (await started.ConfigureAwait(false)).Outcome; }
+        try { outcome = (await started!.ConfigureAwait(false)).Outcome; }
         catch (OperationCanceledException)
         {
             outcome = new(NavigationOutcomeKind.Rejected, NavigationRejection.Cancelled);

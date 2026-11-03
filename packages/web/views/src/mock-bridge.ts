@@ -239,11 +239,15 @@ export interface MockViewDefinition {
   readonly regions?: Readonly<Record<string, MockRegionDefinition>>;
 }
 
-/** A page's request to select or close the region with `key`; `index` is its position in the collection. */
+/**
+ * A page's request to select or close the region with `key`; `index` is its position in the collection. `signal`
+ * aborts when a later request of the collection supersedes this one while it is decided.
+ */
 export interface MockRegionRequest {
   readonly action: "select" | "close";
   readonly key: string;
   readonly index: number;
+  readonly signal: AbortSignal;
 }
 
 /**
@@ -262,7 +266,9 @@ export interface MockRegionDefinition {
   readonly close: boolean;
   /**
    * Decides a request whose key names a region, standing in for the departure guards. Without it, every request
-   * commits. A thrown error answers the request `failed`.
+   * commits. A thrown error answers the request `failed`. While a decision is pending, a `close` of the same region
+   * joins it and is answered with its outcome, and any other request of the collection supersedes it: the pending
+   * request, and the closes that joined it, answer `Superseded`, and their decision is ignored.
    */
   readonly decide?: (state: MockState, request: MockRegionRequest) => MockRegionDecision | void | Promise<MockRegionDecision | void>;
 }
@@ -544,7 +550,17 @@ interface MockRegisteredView {
   running: number;
   /** presented/1: the pending waits of `waitPresented`. */
   readonly presentWaits: Set<PresentWait>;
+  /** region-collections/1: the request of each region collection whose decision is pending. */
+  readonly regionRequests: Map<string, PendingRegionRequest>;
   handle: MockView;
+}
+
+interface PendingRegionRequest {
+  readonly action: "select" | "close";
+  readonly key: string;
+  supersede(): void;
+  /** Settles once the request's effects are published. */
+  readonly result: Promise<{ readonly outcome: RegionOutcome } | { readonly error: unknown }>;
 }
 
 interface PresentWait {
@@ -1329,14 +1345,30 @@ export function createMockBridge(options: MockBridgeOptions = {}): MockBridge {
           return failed("rejected", `${member!} does not let the page close a region.`, { reason: "unavailable" });
         const index = regionsOf(view.state[member!]).findIndex(region => region.key === key);
         if (index < 0) return failed("rejected", `${member!} has no region with this key.`, { reason: "unresolved-key" });
-        let decision: MockRegionDecision | void;
-        try { decision = await collection.decide?.(view.state, { action, key, index }); }
-        catch (error) { return errorReply(view, error, true); }
-        const outcome: RegionOutcome = decision?.outcome ?? { kind: "Committed", rejection: null, arrival: "None" };
-        const next = { ...view.state, ...(decision?.state ?? {}) };
-        if (outcome.kind === "Committed") next[member!] = regionCommitted(next[member!], action, key);
-        commit(view, next);
-        return ok({ revision: view.revision, outcome });
+        const settled = (result: Awaited<PendingRegionRequest["result"]>) =>
+          "error" in result ? errorReply(view, result.error, true) : ok({ revision: view.revision, outcome: result.outcome });
+        const pending = view.regionRequests.get(member!);
+        // A close of a region whose close is pending joins it, without asking again.
+        if (pending && action === "close" && pending.action === "close" && pending.key === key) return settled(await pending.result);
+        pending?.supersede();
+        const controller = new AbortController();
+        let supersede = () => {};
+        const superseded = new Promise<"superseded">(resolve => { supersede = () => { controller.abort(); resolve("superseded"); }; });
+        const decide = async (): Promise<Awaited<PendingRegionRequest["result"]>> => {
+          let decision: MockRegionDecision | void | "superseded";
+          try { decision = await Promise.race([collection.decide?.(view.state, { action, key, index, signal: controller.signal }), superseded]); }
+          catch (error) { return { error }; }
+          finally { if (view.regionRequests.get(member!) === entry) view.regionRequests.delete(member!); }
+          if (decision === "superseded") return { outcome: { kind: "Superseded", rejection: null, arrival: "None" } };
+          const outcome: RegionOutcome = decision?.outcome ?? { kind: "Committed", rejection: null, arrival: "None" };
+          const next = { ...view.state, ...(decision?.state ?? {}) };
+          if (outcome.kind === "Committed") next[member!] = regionCommitted(next[member!], action, key);
+          commit(view, next);
+          return { outcome };
+        };
+        const entry: PendingRegionRequest = { action, key, supersede: () => supersede(), result: Promise.resolve().then(decide) };
+        view.regionRequests.set(member!, entry);
+        return settled(await entry.result);
       }
       case "presented": {
         const reported = message["revision"] as number;
@@ -1378,9 +1410,10 @@ export function createMockBridge(options: MockBridgeOptions = {}): MockBridge {
 
   // Requests that change state are admitted one at a time, as a window's turns: each runs once the previous one
   // has answered. Reads, operation observation and interaction replies are not held, so a command that waits for
-  // an interaction can receive its reply.
+  // an interaction can receive its reply. Region requests are not held either: a later one joins or supersedes the
+  // pending one of its collection.
   let turn: Promise<unknown> = Promise.resolve();
-  const turnKinds = new Set(["set", "write", "command", "start", "region"]);
+  const turnKinds = new Set(["set", "write", "command", "start"]);
   function admitted(kind: string, run: () => Promise<Reply>): Promise<Reply> {
     if (!turnKinds.has(kind)) return run();
     const next = turn.then(run, run);
@@ -1460,7 +1493,7 @@ export function createMockBridge(options: MockBridgeOptions = {}): MockBridge {
         route, definition, contract: definition.contract ?? `mock.${route}:mock`, fieldVersions: new Map(), presentations: new Map(),
         requests: new Map(), writes: new Map(), batching: false, pending: [], state, published: state, revision, textChanged: new Map(),
         // The first state begins the route's first epoch.
-        epoch: revision, renewing: false, running: 0, presentWaits: new Set(),
+        epoch: revision, renewing: false, running: 0, presentWaits: new Set(), regionRequests: new Map(),
         handle: undefined as unknown as MockView,
       };
       view.handle = {

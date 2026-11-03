@@ -383,10 +383,11 @@ internal sealed class BridgeSnapshotDetachedException : Exception
 }
 
 // The navigation regions a Bridge presents as content slots, in declaration order: what a guarded
-// Window clears before it closes.
+// Window clears before it closes. A region of a region collection names its selection, so the close removes it
+// instead of clearing it.
 internal interface IBridgeRegionSlots
 {
-    IReadOnlyList<NavigationRegion> NavigationRegions();
+    IReadOnlyList<(NavigationRegion Region, NavigationSelection? Collection)> NavigationRegions();
 }
 
 /// <summary>Base class of generated bridges that expose one ViewModel over an <see cref="IBridgeTransport"/>.</summary>
@@ -773,17 +774,17 @@ public partial class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBr
         }
     }
 
-    IReadOnlyList<NavigationRegion> IBridgeRegionSlots.NavigationRegions() => _modelTurn.Run(() =>
+    IReadOnlyList<(NavigationRegion Region, NavigationSelection? Collection)> IBridgeRegionSlots.NavigationRegions() => _modelTurn.Run(() =>
     {
-        List<NavigationRegion> regions = [];
+        List<(NavigationRegion Region, NavigationSelection? Collection)> regions = [];
         foreach (var property in _properties)
         {
             var observed = property.Observe?.Invoke(_vm);
-            if (observed is NavigationRegion region && !regions.Contains(region)) regions.Add(region);
+            if (observed is NavigationRegion region && !regions.Exists(entry => entry.Region == region)) regions.Add((region, null));
             // A region collection's regions, in order (region-collections/1).
             else if (property.RegionCollection && observed is NavigationSelection selection)
                 foreach (var member in selection.Regions)
-                    if (!regions.Contains(member)) regions.Add(member);
+                    if (!regions.Exists(entry => entry.Region == member)) regions.Add((member, selection));
         }
         return regions;
     });

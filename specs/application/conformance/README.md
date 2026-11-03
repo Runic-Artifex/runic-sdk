@@ -210,7 +210,7 @@ connection before connecting it, answers a request it did not send, expects a ca
 | [`edits`](scenarios/edits) | `superseded`; edit numbers per member; the client overlay and its end, with the reply to an earlier edit before and after the frame of a later one; a failed edit; checked writes; `set` with a splice against a revision and against the previous edit, `splice-base` that admits nothing and the client's resend in full, a superseded splice, a normalizing setter; checked writes with a splice (`write-splice-*`): applied, a conflict, `splice-base` that retains nothing and the client's resend in full with the same `requestId`, a retry, and a short value sent in full; an edit followed by the frame with its validation, which the overlay does not cover |
 | [`operations`](scenarios/operations) | `watch` with throttled `progress` and the terminal `revision`; `start` ordering; duplicate versus `identity-conflict` by canonical equality; cancel; a declared failure; an unknown operation; a `start` with another build's contract |
 | [`presentations`](scenarios/presentations) | `open` and `close`; a presentation owned by another connection; a reconnect with a new session; an unknown route; presentation epochs (`epoch-*`): the `epoch` of `open` and `snapshot`, a renewal published as a `state`, a scoped command with the current epoch, a second scoped command from the same state that is superseded, an unscoped command without `epoch`, and a connection without the feature; painted states (`presented-*`): a report that completes a wait, and a wait that times out; window close (`closing-*`): an acknowledged close and the client's closed connection, and a close that times out |
-| [`regions`](scenarios/regions) | Region collections (`region-collections/1`): a select that commits and the frame that carries the selection; a select a departure guard refuses, which publishes nothing; a close of the selected region, which selects the next one, or the previous one after the last; the key of a closed region, which is `unresolved-key`; a close the collection does not allow, which is `unavailable`; a region request on a connection without the feature, which is `invalid-request` |
+| [`regions`](scenarios/regions) | Region collections (`region-collections/1`): a select that commits and the frame that carries the selection; a select a departure guard refuses, which publishes nothing; a close of the selected region, which selects the next one, or the previous one after the last; the key of a closed region, which is `unresolved-key`; a close the collection does not allow, which is `unavailable`; a region request on a connection without the feature, which is `invalid-request`; a close of a region whose close is pending, which joins it; a select that supersedes a pending close |
 | [`interactions`](scenarios/interactions) | A confirmation answered, and its repeat; registration outcomes |
 | [`errors`](scenarios/errors) | The protocol-3 `error-reasons`, `domain-failures` and `released` fixtures, converted (`error-reasons` and `released` were removed in 0.13); capacity |
 
@@ -315,7 +315,10 @@ A View with region collections ([region collections](../README.md#region-collect
 
 The model value `veto` (`boolean`, default `false`) is not a state member; `assign` sets it and publishes nothing.
 While it is `true`, the departure guard of every page refuses, so a `select` that leaves a page and a `close` of a page
-are `Rejected` with the rejection `Guard`. Otherwise a request commits, with the arrival `None`.
+are `Rejected` with the rejection `Guard`. Otherwise a request commits, with the arrival `None`. After a `holdGuard`
+mutation, the next ask of a page's departure guard stays pending until a `settleGuard` mutation answers it, or until a
+later request supersedes the one that asked. The model value `asks` (`int32`, read-only) counts the asks of the pages'
+departure guards.
 
 ### `page`
 
@@ -335,4 +338,6 @@ member), the View's name.
 | `finish` | `member`, `rows?`, `failure?`, `outcome?` | ends the running operation of the command (see `slowImport`) |
 | `rule` | `rule`, `holds` | sets whether a rule of the `form` View holds, announcing no member change |
 | `renew` | none | renews the root View's route ([presentation epochs](../README.md#presentation-epochs)), as one unit |
+| `holdGuard` | none | the next ask of a departure guard of the `tabs` View's pages stays pending |
+| `settleGuard` | `allow` | answers the held ask, also one that is still to come: `true` lets the page be left or closed, `false` refuses |
 | `waitPresented` | `id`, `timeout` | starts a wait of `timeout` milliseconds until a page painted the root View ([painted states](../README.md#painted-states)), named `id` |

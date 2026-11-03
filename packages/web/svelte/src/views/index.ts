@@ -1,5 +1,6 @@
 export { default as ViewOutlet } from "./ViewOutlet.svelte";
 export { default as RegionOutlets } from "./RegionOutlets.svelte";
+export type { RegionPanelAttributes } from "./region-panel.js";
 export type { ViewRegistry } from "./view-registry.js";
 export { useSuspenseView, useView, type SuspenseViewHandle, type UseViewOptions, type ViewHandle } from "./use-view.svelte.js";
 export { preloadView, type PreloadViewOptions } from "@runic-artifex/views";

@@ -4,7 +4,7 @@ import { BridgeError, BridgeOperationUncertainError, createOperationController, 
   type RegionCollection } from "../dist/index.js";
 import { bridgeOperations, connectView, defineCollection, defineCollections, defineInteractions, regionCollection } from "../dist/generated.js";
 import * as bridgeWire from "../dist/wire.js";
-import { createMockBridge, installMockBridge, type MockBridge, type MockBridgeOptions, type MockRegionHandler, type MockTypedCollection,
+import { createMockBridge, installMockBridge, type MockBridge, type MockBridgeOptions, type MockRegionHandler, type MockRegionRequest, type MockTypedCollection,
   type MockTypedInteraction, type MockTypedOperation, type MockTypedView } from "../dist/mock.js";
 import { mockTypedView } from "../dist/generated-mock.js";
 
@@ -701,7 +701,7 @@ test("region collections: a handler's outcome other than Committed changes only 
   const vetoed = { kind: "Rejected", rejection: "Guard", arrival: "None" } as const;
   let veto = true;
   const tabs = mockTabs(bridge, (state, request) => {
-    requests.push({ selected: state.documents.selected, ...request });
+    requests.push({ selected: state.documents.selected, action: request.action, key: request.key, index: request.index });
     if (!veto) return undefined;
     return { outcome: vetoed, state: { pinned: { regions: [], selected: null } } };
   });
@@ -752,5 +752,88 @@ test("region collections: a handler that throws fails the request, and failNext 
   tabs.failNext("closeDocuments", { kind: "rejected", reason: "capacity", message: "Busy." });
   await assert.rejects(client.region("documents", "close", "2"), (error: unknown) =>
     error instanceof BridgeError && error.kind === "rejected" && error.reason === "capacity");
+  client.dispose();
+});
+
+// A region handler whose closes stay pending until the test allows them; selects commit at once.
+function heldCloses() {
+  const asked: MockRegionRequest[] = [];
+  const allows: (() => void)[] = [];
+  const handler: MockRegionHandler<Tabs> = (_state, request) => {
+    asked.push(request);
+    if (request.action === "close") return new Promise<void>(resolve => { allows.push(resolve); });
+    return undefined;
+  };
+  return { asked, allows, handler };
+}
+const regionCalls = (bridge: MockBridge) => bridge.calls.filter(call => call.kind === "region").length;
+
+test("region collections: a second close of a region whose close is pending joins it and asks nothing", async () => {
+  const bridge = fresh();
+  const held = heldCloses();
+  const tabs = mockTabs(bridge, held.handler);
+  const client = await connectTabs();
+  const pushed = frames(bridge);
+  const first = client.region("documents", "close", "2");
+  const second = client.region("documents", "close", "2");
+  await until(() => regionCalls(bridge) === 2 && held.asked.length === 1, "The closes were not admitted.");
+  await new Promise(resolve => setTimeout(resolve, 5));
+  assert.equal(held.allows.length, 1);
+  held.allows[0]!();
+  assert.deepEqual(await first, committed);
+  assert.deepEqual(await second, committed);
+  assert.equal(held.asked.length, 1);
+  assert.deepEqual(keysOf(tabs.state.documents), ["1", "3", "4"]);
+  assert.equal(pushed.frames.length, 1);
+  pushed.stop();
+  client.dispose();
+});
+
+test("region collections: a close from a new connection joins the close the lost one left pending", async () => {
+  const bridge = fresh();
+  const held = heldCloses();
+  const tabs = mockTabs(bridge, held.handler);
+  const client = await connectTabs();
+  const lost = client.region("documents", "close", "2");
+  await until(() => held.asked.length === 1, "The close was not asked.");
+  bridge.disconnect();
+  await assert.rejects(lost, (error: unknown) => error instanceof BridgeError && error.kind === "disconnected");
+  bridge.reconnect();
+  await until(() => bridge.calls.filter(call => call.kind === "open").length === 2, "The View did not open again.");
+  const joined = client.region("documents", "close", "2");
+  await until(() => regionCalls(bridge) === 2, "The second close was not sent.");
+  await new Promise(resolve => setTimeout(resolve, 5));
+  held.allows[0]!();
+  assert.deepEqual(await joined, committed);
+  assert.equal(held.asked.length, 1);
+  assert.deepEqual(keysOf(tabs.state.documents), ["1", "3", "4"]);
+  client.dispose();
+});
+
+test("region collections: a select supersedes a pending close, whose decision is then ignored", async () => {
+  const bridge = fresh();
+  const held = heldCloses();
+  const tabs = mockTabs(bridge, held.handler);
+  const client = await connectTabs();
+  const close = client.region("documents", "close", "2");
+  const joined = client.region("documents", "close", "2");
+  await until(() => regionCalls(bridge) === 2 && held.asked.length === 1, "The closes were not admitted.");
+  await new Promise(resolve => setTimeout(resolve, 5));
+  const superseded = { kind: "Superseded", rejection: null, arrival: "None" };
+  assert.deepEqual(await client.region("documents", "select", "3"), committed);
+  assert.deepEqual(await close, superseded);
+  assert.deepEqual(await joined, superseded);
+  assert.equal(held.asked[0]!.signal.aborted, true);
+  held.allows[0]!();
+  await new Promise(resolve => setTimeout(resolve, 5));
+  assert.deepEqual(keysOf(tabs.state.documents), ["1", "2", "3", "4"]);
+  assert.equal(tabs.state.documents.selected, 2);
+  // Closing the selected region selects the next; a select of it then commits at once.
+  assert.deepEqual(await Promise.all([client.region("documents", "close", "3"), (async () => {
+    await until(() => held.allows.length === 2, "The close was not asked.");
+    held.allows[1]!();
+  })()]).then(([outcome]) => outcome), committed);
+  assert.equal(tabs.state.documents.selected, 2);
+  assert.deepEqual(await client.region("documents", "select", "4"), committed);
   client.dispose();
 });

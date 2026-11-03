@@ -925,6 +925,9 @@ async function connectRoute<TState>(options: ViewConnectOptions<TState>): Promis
     },
     region: (member, action, key) => observed(route, async () => {
       assertConnected();
+      // The features describe the current connection only once its hello succeeded: a call right after a reconnect
+      // waits for the new hello instead of reading the empty set of a connection that is still greeting.
+      await runtime.whenGreeted?.();
       if (runtime.features?.has(regionCollectionsFeature) !== true)
         throw new BridgeError("failed", "The .NET host does not implement region-collections/1. Use the Runic packages of one release.", { route });
       await ready();

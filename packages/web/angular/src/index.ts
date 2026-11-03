@@ -3,6 +3,7 @@ export {
   RegionOutlets,
   RunicViewOutlet,
   type RegionOutletsMode,
+  type RegionPanelAttributes,
   type ViewOutletMissingContext,
   type ViewRegistry,
 } from "./view-outlet.js";

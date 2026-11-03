@@ -9,12 +9,16 @@ namespace Runic.Application.Testing.Tests.Conformance;
 // The tabs View (specs/application/conformance/README.md, "Test Views"): region collections (region-collections/1).
 // documents is a [RunicRegionCollection] NavigationSelection of three regions that each present a page View, created
 // first on the window's own navigator, so their keys are 1, 2 and 3; pinned is an empty one the page may not close. Each
-// page's departure guard refuses while the model's veto is set. The hand-written Bridge writes the collections as the
-// generator does.
+// page's departure guard refuses while the model's veto is set; after holdGuard, the next ask waits for settleGuard or
+// for its cancellation, and asks counts every ask. The hand-written Bridge writes the collections as the generator does.
 internal sealed class TabsViewModel : ConformanceModel, IDisposable
 {
     private static readonly string[] Titles = ["one", "two", "three"];
     private readonly RunicNavigator _navigator;
+    // holdGuard: the answer the next guard ask waits for, until an ask claims it; settleGuard completes it.
+    private TaskCompletionSource<bool>? _held;
+    private TaskCompletionSource<bool>? _unclaimed;
+    private int _asks;
 
     private TabsViewModel(RunicNavigator navigator)
     {
@@ -41,16 +45,37 @@ internal sealed class TabsViewModel : ConformanceModel, IDisposable
         return vm;
     }
 
+    // A page's departure guard: counts the ask, waits for a held answer, or refuses while veto is set.
+    internal async ValueTask<bool> CanDepartAsync(CancellationToken cancellationToken)
+    {
+        Interlocked.Increment(ref _asks);
+        var held = Interlocked.Exchange(ref _unclaimed, null);
+        return held is null ? !Veto : await held.Task.WaitAsync(cancellationToken).ConfigureAwait(false);
+    }
+
     internal override void Apply(JsonObject mutation, Func<IDisposable>? unit)
     {
-        if (mutation["op"]!.GetValue<string>() == "assign" && mutation["member"]!.GetValue<string>() == "veto")
-            Veto = mutation["value"]!.GetValue<bool>();
-        else throw new NotSupportedException($"The tabs View has no mutation {mutation.ToJsonString()}.");
+        switch (mutation["op"]!.GetValue<string>())
+        {
+            case "assign" when mutation["member"]!.GetValue<string>() == "veto":
+                Veto = mutation["value"]!.GetValue<bool>();
+                break;
+            case "holdGuard":
+                _held = new(TaskCreationOptions.RunContinuationsAsynchronously);
+                Volatile.Write(ref _unclaimed, _held);
+                break;
+            case "settleGuard":
+                (_held ?? throw new InvalidOperationException("settleGuard without holdGuard.")).TrySetResult(mutation["allow"]!.GetValue<bool>());
+                break;
+            default:
+                throw new NotSupportedException($"The tabs View has no mutation {mutation.ToJsonString()}.");
+        }
     }
 
     internal override JsonNode? Read(string member) => member switch
     {
         "veto" => Veto,
+        "asks" => Volatile.Read(ref _asks),
         _ => throw new NotSupportedException($"The tabs View has no member {member}."),
     };
 
@@ -63,7 +88,7 @@ internal sealed class TabsPageViewModel(TabsViewModel owner, string title) : Con
     public string Title { get; } = title;
 
     public ValueTask<bool> CanDepartAsync(NavigationDeparture departure, CancellationToken cancellationToken) =>
-        ValueTask.FromResult(!owner.Veto);
+        owner.CanDepartAsync(cancellationToken);
 
     internal override void Apply(JsonObject mutation, Func<IDisposable>? unit) =>
         throw new NotSupportedException("The page View has no mutations.");

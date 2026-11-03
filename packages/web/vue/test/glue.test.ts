@@ -4,7 +4,7 @@ import { createApp, defineComponent, effectScope, h, nextTick, shallowRef, watch
 import { afterEach, describe, expect, test, expectTypeOf, vi } from "vitest";
 import {
   useBridgeConnection, useCollectionViewport, useCommand, useLatestOperation, useMenuBar, useOperation, useView, ViewOutlet, RegionOutlets, type LatestOperationHandle,
-  type MenuBarHandle, type RegionCollection, type ViewRegistry,
+  type MenuBarHandle, type RegionCollection, type RegionPanelAttributes, type ViewRegistry,
 } from "../dist/index.js";
 import * as root from "../dist/index.js";
 import { regionEntries as viewsRegionEntries, selectedRegion as viewsSelectedRegion } from "@runic-artifex/views";
@@ -133,6 +133,29 @@ describe("RegionOutlets", () => {
     await nextTick();
     expect(regions()).toEqual(["7*:counter:counter", "9:welcome:welcome", "11:"]);
     expect(mounts).toEqual({ counter: 1, welcome: 1 });
+    app.unmount();
+  });
+
+  test("merges panelProps onto each wrapper and hides a panel with hidden and display: none", async () => {
+    const panelProps = (entry: { readonly key: string }): RegionPanelAttributes => ({
+      id: `panel-${entry.key}`, role: "tabpanel", "aria-labelledby": `tab-${entry.key}`, "data-region-key": "overridden", style: { color: "red" },
+      ...{ hidden: false } as RegionPanelAttributes,
+    });
+    const selected = shallowRef(0);
+    const host = document.createElement("div");
+    const app = createApp({
+      setup: () => () => h(RegionOutlets<Page>, { collection: { regions: [{ key: "7", content: counter }, { key: "9", content: welcome }], selected: selected.value }, registry, panelProps }),
+    });
+    app.mount(host);
+    const [first, second] = [...host.querySelectorAll<HTMLElement>("[role=tabpanel]")];
+    expect([first!.id, first!.getAttribute("aria-labelledby"), first!.dataset["regionKey"]]).toEqual(["panel-7", "tab-7", "7"]);
+    expect([second!.id, second!.dataset["regionKey"]]).toEqual(["panel-9", "9"]);
+    expect([first!.hidden, first!.style.display, first!.style.color]).toEqual([false, "", "red"]);
+    expect([second!.hidden, second!.style.display, second!.style.color]).toEqual([true, "none", "red"]);
+    selected.value = 1;
+    await nextTick();
+    expect([first!.hidden, first!.style.display]).toEqual([true, "none"]);
+    expect([second!.hidden, second!.style.display, second!.style.color]).toEqual([false, "", "red"]);
     app.unmount();
   });
 

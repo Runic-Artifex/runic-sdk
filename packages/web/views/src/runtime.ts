@@ -50,6 +50,12 @@ export interface SharedRuntime {
    * the connection's `hello` succeeded. A runtime of an earlier release does not have it.
    */
   readonly features?: ReadonlySet<string>;
+  /**
+   * Resolves once the current connection's `hello` succeeded, so `features` describes it; sends the `hello` when none is
+   * on its way. Rejects like `request` while disconnected or after a protocol mismatch. A runtime of an earlier release
+   * does not have it.
+   */
+  whenGreeted?(): Promise<void>;
   /** Sends a request after the connection's `hello` and resolves with its reply; rejects with a BridgeError. */
   request(message: Message, route?: string): Promise<Reply>;
   /** Registers a handler for pushes of `kind` on `route`. */
@@ -211,6 +217,15 @@ function createRuntime(bridge: RunicBridgeClient): SharedRuntime {
     operations: new Map(),
     edits: new Map(),
     get features() { return features; },
+    async whenGreeted() {
+      if (refused !== undefined) throw refusal(undefined);
+      if (!connected) throw new BridgeError("disconnected", "The Bridge is disconnected.");
+      try { await greet(); }
+      catch (error) {
+        if (refused !== undefined) throw refusal(undefined);
+        throw error;
+      }
+    },
     async request(message, route) {
       if (refused !== undefined) throw refusal(route);
       if (!connected) throw new BridgeError("disconnected", "The Bridge is disconnected.", route === undefined ? {} : { route });

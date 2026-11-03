@@ -687,8 +687,9 @@ commands the contract scopes. On a connection without the feature, `epoch` is an
 6. availability: `unavailable`;
 7. the window's command capacity: `capacity`.
 
-**Scope.** `presentation-epoch/1` scopes `command` only. `start`, `can`, `set`, `write` and interaction replies carry
-no epoch: operations have their own identity and duplicate detection, and setters are last-writer-wins by design.
+**Scope.** `presentation-epoch/1` scopes `command` only. `start`, `can`, `set`, `write`, `region` and interaction
+replies carry no epoch: operations have their own identity and duplicate detection, setters are last-writer-wins by
+design, and a `region` request names its region by key ([region collections](#region-collections)).
 
 **Client.** A client that uses the feature:
 
@@ -728,7 +729,7 @@ document tabs that each keep their own back stack. Its value is an object:
 | Member | Contract |
 | --- | --- |
 | `regions` | The regions in order. Each is `{key, content}`. |
-| `regions[].key` | A string of 1 to 128 printable ASCII characters that identifies the region in the window. It stays the same while the region is in the collection, differs from the key of every other region of the window, and is never given to another region later. A client treats it as opaque and compares it only for equality. |
+| `regions[].key` | A string of 1 to 128 printable ASCII characters that identifies the region in the collection. It stays the same while the region is in the collection, differs from the key of every other region of the collection, and is never given to another region of the collection later. Two collections can use the same key. A client treats it as opaque and compares it only for equality. |
 | `regions[].content` | The region's current content reference, or `null` while the region is empty. It is presented like an item of a content collection: content that no region presents any more is pruned ([Content](#content)). |
 | `selected` | The index in `regions` of the selected region, a non-negative integer less than the number of regions, or `null` exactly when `regions` is empty. |
 
@@ -776,7 +777,17 @@ departure guard refused.
 - A `close` can release the route that sent it, as a command that navigates away from its page does. Its reply then has
   `released: true` instead of `revision`, and keeps `outcome` ([released by the call](#revisions-in-replies)).
 - A client resolves the call once the route has reached the reply's revision ([client resolution](#client-resolution)),
-  with `outcome`.
+  with `outcome`. A client sends a `region` request only once it knows that the connection uses the feature, so a call
+  made while a new connection's `hello` is on its way waits for that `hello`'s reply.
+- **Concurrent requests.** A `close` of a region whose `close` is still pending, from any connection, joins it: the
+  producer does not decide again, and every joined request gets the pending request's `outcome`, each with its own
+  `revision`. A `close` that is joined still counts toward the capacity. Any other request of the collection, such as
+  a `select`, is admitted as a later request: it supersedes the pending requests of the collection, which end with the
+  `outcome` kind `Superseded`, and the producer abandons their decisions. A request whose key names the region that a
+  committed `close` selected commits like any other.
+- **Not scoped to a presentation.** `region` requests carry no `epoch` ([presentation epochs](#presentation-epochs)):
+  they name the region by its key, which identifies the region whatever state the page showed, and a key of a region
+  that is gone is `unresolved-key`.
 
 `region` is a request that changes state, so its reply follows the pushes the producer published before it
 ([reply order](#reply-order)).

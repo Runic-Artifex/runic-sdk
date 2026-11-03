@@ -234,6 +234,16 @@
           "additionalProperties": false
         },
         {
+          "properties": { "op": { "const": "holdGuard" } },
+          "required": ["op"],
+          "additionalProperties": false
+        },
+        {
+          "properties": { "op": { "const": "settleGuard" }, "allow": { "type": "boolean" } },
+          "required": ["op", "allow"],
+          "additionalProperties": false
+        },
+        {
           "properties": { "op": { "const": "renew" } },
           "required": ["op"],
           "additionalProperties": false

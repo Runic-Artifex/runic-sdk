@@ -7,6 +7,7 @@ import {
   toValue,
   watch,
   type Component,
+  type HTMLAttributes,
   type MaybeRefOrGetter,
   type Ref,
   type SetupContext,
@@ -38,6 +39,7 @@ import {
   type PageReference,
   regionEntries,
   type RegionCollection,
+  type RegionEntry,
   type ViewClient,
   type ViewConnector,
   type ViewControllerOptions,
@@ -194,6 +196,12 @@ export const ViewOutlet = defineComponent(<R extends PageReference>(props: ViewO
 /** How {@link RegionOutlets} renders the regions of a collection. */
 export type RegionOutletsMode = "keep-mounted" | "selected";
 
+/**
+ * Attributes that {@link RegionOutlets} merges onto a region's wrapper, such as `id`, `role` and `aria-labelledby`.
+ * `hidden` and `data-region-key` stay controlled by the outlet, and a `style` is merged with its `display: none`.
+ */
+export type RegionPanelAttributes = Omit<HTMLAttributes, "hidden"> & { readonly [attribute: `data-${string}`]: string | undefined };
+
 export interface RegionOutletsProps<R extends PageReference> {
   /** The presented region collection, such as `state.documents`. */
   collection: RegionCollection<R> | null | undefined;
@@ -203,12 +211,18 @@ export interface RegionOutletsProps<R extends PageReference> {
    * its component and DOM. `"selected"` renders only the selected region.
    */
   mode?: RegionOutletsMode;
+  /**
+   * Returns attributes for a region's wrapper, for example `{ id, role: "tabpanel", "aria-labelledby" }`, so a tab
+   * can point `aria-controls` at the panel.
+   */
+  panelProps?: (entry: RegionEntry<R>) => RegionPanelAttributes;
 }
 
 /**
  * Renders a {@link ViewOutlet} for the regions of a region collection, each in a `<div data-region-key>` keyed by
- * the region's key. A region that is not selected is rendered with `hidden`. A new content reference in a region
- * remounts only that region's component. The default slot renders while the collection has no region, and the
+ * the region's key. A region that is not selected is rendered with `hidden` and an inline `display: none`, which
+ * author CSS without `!important` cannot override. A new content reference in a region remounts only that region's
+ * component. The default slot renders while the collection has no region, and the
  * `missing` slot is passed to each outlet:
  *
  * ```vue
@@ -220,12 +234,16 @@ export const RegionOutlets = defineComponent(<R extends PageReference>(props: Re
   const shown = regionEntries(props.collection).filter(region => mode === "keep-mounted" || region.selected);
   if (shown.length === 0) return slots.default?.();
   const missing = slots["missing"];
-  return shown.map(region => h(
-    "div",
-    { key: region.key, "data-region-key": region.key, hidden: !region.selected },
-    h(ViewOutlet<R>, { content: region.content, registry: props.registry }, missing ? { missing } : {}),
-  ));
-}, { name: "RegionOutlets", props: ["collection", "registry", "mode"] });
+  return shown.map(region => {
+    const panel = props.panelProps?.(region) ?? {};
+    const hidden = !region.selected;
+    return h(
+      "div",
+      { ...panel, key: region.key, "data-region-key": region.key, hidden, style: hidden ? [panel.style, { display: "none" }] : panel.style },
+      h(ViewOutlet<R>, { content: region.content, registry: props.registry }, missing ? { missing } : {}),
+    );
+  });
+}, { name: "RegionOutlets", props: ["collection", "registry", "mode", "panelProps"] });
 
 export interface CommandHandle<TArgs extends readonly unknown[], TResult, TFailure = BridgeOutcomeFailure<TResult>> {
   /**

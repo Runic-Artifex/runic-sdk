@@ -6,7 +6,7 @@ import { afterEach, beforeAll, describe, expect, test, expectTypeOf, vi } from "
 import {
   injectBridgeConnection, injectCollectionViewport, injectCommand, injectLatestOperation, injectMenuBar, injectOperation, injectView, RunicViewOutlet,
   ViewOutlet, RegionOutlets, regionEntries, selectedRegion, type BridgeConnectionHandle, type MenuBarHandle, type LatestOperationHandle,
-  type RegionCollection, type RegionOutletsMode, type ViewRegistry,
+  type RegionCollection, type RegionOutletsMode, type RegionPanelAttributes, type ViewRegistry,
 } from "../dist/esm/index.js";
 import * as root from "../dist/esm/index.js";
 import { regionEntries as viewsRegionEntries, selectedRegion as viewsSelectedRegion } from "@runic-artifex/views";
@@ -108,13 +108,14 @@ Component({
 class RegionsHost {
   readonly collection = signal<RegionCollection<Page> | undefined>(undefined);
   readonly mode = signal<RegionOutletsMode>("keep-mounted");
+  readonly panelProps = signal<((entry: { readonly key: string }) => RegionPanelAttributes) | undefined>(undefined);
   readonly registry = registry;
 }
 Component({
   selector: "test-regions-host",
   standalone: true,
   imports: [RegionOutlets],
-  template: `<runic-region-outlets [collection]="collection()" [registry]="registry" [mode]="mode()"><span class="fallback">No documents</span></runic-region-outlets>`,
+  template: `<runic-region-outlets [collection]="collection()" [registry]="registry" [mode]="mode()" [panelProps]="panelProps()"><span class="fallback">No documents</span></runic-region-outlets>`,
 })(RegionsHost);
 
 beforeAll(() => {
@@ -237,6 +238,29 @@ describe("RegionOutlets", () => {
     expect(regions()).toEqual(["7*:counter:counter", "9:welcome:welcome", "11:"]);
     expect(counterMounts).toBe(1);
     expect(element.querySelector("test-welcome")).toBe(welcomeElement);
+  });
+
+  test("sets panelProps on each wrapper and hides a panel with hidden and display: none", () => {
+    counterMounts = 0;
+    const fixture = TestBed.createComponent(RegionsHost);
+    const host = fixture.componentInstance;
+    host.panelProps.set(entry => ({
+      id: `panel-${entry.key}`, role: "tabpanel", "aria-labelledby": `tab-${entry.key}`, "data-region-key": "overridden", hidden: "", style: "display: block",
+      title: entry.key === "7" ? "first" : null,
+    }));
+    host.collection.set({ regions: [{ key: "7", content: counter }, { key: "9", content: welcome }], selected: 0 });
+    fixture.detectChanges();
+    const element = fixture.nativeElement as HTMLElement;
+    const [first, second] = [...element.querySelectorAll<HTMLElement>("[role=tabpanel]")];
+    expect([first!.id, first!.getAttribute("aria-labelledby"), first!.dataset["regionKey"], first!.title]).toEqual(["panel-7", "tab-7", "7", "first"]);
+    expect([second!.id, second!.dataset["regionKey"], second!.hasAttribute("title")]).toEqual(["panel-9", "9", false]);
+    expect([first!.hidden, first!.style.display]).toEqual([false, ""]);
+    expect([second!.hidden, second!.style.display]).toEqual([true, "none"]);
+    host.collection.set({ regions: [{ key: "7", content: counter }, { key: "9", content: welcome }], selected: 1 });
+    host.panelProps.set(entry => ({ id: `panel-${entry.key}`, role: "tabpanel" }));
+    fixture.detectChanges();
+    expect([first!.hidden, first!.style.display, first!.hasAttribute("title"), first!.hasAttribute("aria-labelledby")]).toEqual([true, "none", false, false]);
+    expect([second!.hidden, second!.style.display]).toEqual([false, ""]);
   });
 
   test("remounts only the region whose content changed", () => {

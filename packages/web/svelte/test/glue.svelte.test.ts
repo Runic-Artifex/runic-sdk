@@ -2,7 +2,7 @@
 
 import { flushSync, mount, unmount } from "svelte";
 import { describe, expect, test, expectTypeOf } from "vitest";
-import { useCollectionViewport, useCommand, useView, type ViewRegistry } from "../src/views/index.js";
+import { useCollectionViewport, useCommand, useView, type RegionPanelAttributes, type ViewRegistry } from "../src/views/index.js";
 import * as root from "../src/index.js";
 import { bridgeFailure, bridgeSuccess, regionEntries, selectedRegion, type BridgeOutcome, type RegionCollection } from "@runic-artifex/views";
 import Counter from "./fixtures/Counter.svelte";
@@ -88,6 +88,27 @@ describe("RegionOutlets", () => {
     expect(regions()).toEqual(["7*:counter:counter", "9:welcome:welcome", "11:"]);
     expect([...target.querySelectorAll("output")]).toEqual(outputs);
     unmount();
+  });
+
+  test("merges panelProps onto each wrapper and hides a panel with hidden and display: none", () => {
+    const panelProps = (entry: { readonly key: string }): RegionPanelAttributes => ({
+      id: `panel-${entry.key}`, role: "tabpanel", "aria-labelledby": `tab-${entry.key}`, "data-region-key": "overridden", style: "color: red",
+      ...{ hidden: false } as RegionPanelAttributes,
+    });
+    let collection = $state.raw<RegionCollection<Page>>({ regions: [{ key: "7", content: counter }, { key: "9", content: welcome }], selected: 0 });
+    const target = document.createElement("div");
+    const component = mount(Regions, { target, props: { get collection() { return collection; }, registry, panelProps } });
+    flushSync();
+    const [first, second] = [...target.querySelectorAll<HTMLElement>("[role=tabpanel]")];
+    expect([first!.id, first!.getAttribute("aria-labelledby"), first!.dataset["regionKey"]]).toEqual(["panel-7", "tab-7", "7"]);
+    expect([second!.id, second!.dataset["regionKey"]]).toEqual(["panel-9", "9"]);
+    expect([first!.hidden, first!.style.display, first!.style.color]).toEqual([false, "", "red"]);
+    expect([second!.hidden, second!.style.display, second!.style.color]).toEqual([true, "none", "red"]);
+    collection = { ...collection, selected: 1 };
+    flushSync();
+    expect([first!.hidden, first!.style.display]).toEqual([true, "none"]);
+    expect([second!.hidden, second!.style.display, second!.style.color]).toEqual([false, "", "red"]);
+    unmount(component);
   });
 
   test("remounts only the region whose content changed", () => {

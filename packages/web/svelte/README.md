@@ -266,26 +266,44 @@ text. It receives the reference whose kind has no component, and its markup
 A .NET `[RunicRegionCollection]` member, such as `state.documents`, lists
 regions that each keep their own back stack. `<RegionOutlets>` renders a
 `ViewOutlet` for each region, keyed by the region's key, inside a
-`<div data-region-key>`. The default `mode="keep-mounted"` keeps every region
-mounted and sets `hidden` on all but the selected one, so a tab keeps its
-component, scroll position and unsent input. `mode="selected"` renders only the
+`<div data-region-key>`. The default `mode="keep-mounted"` keeps every region mounted
+and sets `hidden` and an inline `display: none` on all but the selected one, so
+a tab keeps its component, scroll position and unsent input. Author CSS cannot
+show a hidden panel without `!important`. `mode="selected"` renders only the
 selected region. The `fallback` snippet renders while there is no region, and
 the `missing` snippet is passed to each outlet. A region with `content: null`
 renders nothing.
 
 The package has no tab bar. Build one with `regionEntries` and the generated
-`selectDocuments(key)` and `closeDocuments(key)`:
+`selectDocuments(key)` and `closeDocuments(key)`. The `panelProps(entry)` prop returns attributes (`RegionPanelAttributes`) for
+each region's wrapper, such as `id`, `role="tabpanel"` and `aria-labelledby`, so
+each tab can name its panel in `aria-controls`. `hidden` and `data-region-key`
+stay controlled by the outlet, and its `display: none` takes precedence over a
+returned `style`.
 
 ```svelte
+<script lang="ts">
+  const tabId = (key: string) => `document-tab-${key}`;
+  const panelId = (key: string) => `document-panel-${key}`;
+  async function close(key: string) {
+    if ((await workspace.client?.closeDocuments(key))?.kind !== "Committed") return;
+    await tick();
+    const selected = selectedRegion(workspace.state?.documents);
+    if (selected) document.getElementById(tabId(selected.key))?.focus();
+  }
+</script>
+
 <div role="tablist">
   {#each regionEntries(workspace.state?.documents) as tab (tab.key)}
-    <button role="tab" aria-selected={tab.selected} onclick={() => workspace.client?.selectDocuments(tab.key)}>
+    <button id={tabId(tab.key)} role="tab" aria-selected={tab.selected} aria-controls={panelId(tab.key)}
+      onclick={() => workspace.client?.selectDocuments(tab.key)}>
       {tab.content?.kind ?? "Empty"}
     </button>
-    <button aria-label="Close" onclick={() => workspace.client?.closeDocuments(tab.key)}>×</button>
+    <button aria-label="Close" onclick={() => close(tab.key)}>×</button>
   {/each}
 </div>
-<RegionOutlets collection={workspace.state?.documents} registry={documentPages}>
+<RegionOutlets collection={workspace.state?.documents} registry={documentPages}
+  panelProps={tab => ({ id: panelId(tab.key), role: "tabpanel", "aria-labelledby": tabId(tab.key) })}>
   {#snippet fallback()}<p>No open documents</p>{/snippet}
 </RegionOutlets>
 ```
@@ -294,6 +312,15 @@ The package has no tab bar. Build one with `regionEntries` and the generated
 keep the current tab, so highlight `selected` and do not move the highlight
 before the request settles. `select…` and `close…` resolve to the .NET
 `NavigationOutcome`, such as `{ kind: "Rejected", rejection: "Guard" }`.
+
+Closing the selected tab removes its button, and the next tab becomes selected
+when the close commits. After `closeDocuments` resolves with `kind: "Committed"`,
+move focus to the button of the new selected tab, as `close` above does.
+
+In both modes the region collection keeps presenting every region's content,
+so the pages of hidden tabs stay live and still receive state. `"selected"`
+mode only unmounts the components of the regions that are not selected.
+
 `regionEntries`, `selectedRegion` and the region types are re-exported from
 `@runic-artifex/views`.
 

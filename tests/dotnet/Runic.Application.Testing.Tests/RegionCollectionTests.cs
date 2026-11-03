@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Microsoft.Extensions.DependencyInjection;
 using Runic.Application.Testing;
 using Runic.Application.Views;
 using Runic.Application.Views.Generated;
@@ -138,7 +139,7 @@ internal sealed class RegionCollectionTests
         var generated = File.ReadAllText(Path.Combine(GeneratedTypeScriptDirectory(), "navDocuments.ts")).ReplaceLineEndings("\n");
         foreach (var expected in new[]
         {
-            "  readonly documents: RegionCollection<ReactiveNavEditorPageReference | NavEditorPageReference | NavHomePageReference | NavLogPagePageReference>;",
+            "  readonly documents: RegionCollection<ReactiveNavEditorPageReference | NavEditorPageReference | NavHomePageReference | NavLogPagePageReference | NavTabbedPagePageReference>;",
             "  selectDocuments(key: string): Promise<RegionOutcome>;",
             "  closeDocuments(key: string): Promise<RegionOutcome>;",
             "    async selectDocuments(key) { return view.region(\"documents\", \"select\", key); },",
@@ -152,6 +153,168 @@ internal sealed class RegionCollectionTests
         Require(mock.Contains("readonly documents: MockRegionCollection<", StringComparison.Ordinal)
                 && mock.Contains("regions: { documents: { close: true } },", StringComparison.Ordinal),
             $"The mock does not describe the region collection:\n{mock}");
+    }
+
+    // A guarded window close removes the collection's tabs one by one: the tabs whose pages agreed are gone even when a
+    // later tab keeps the window open, so no empty tabs remain.
+    [Test]
+    public async Task WindowCloseRemovesTheTabsThatAgreedAsync()
+    {
+        var services = new ServiceCollection();
+        services.AddRunicNavigation();
+        services.AddScoped<NavDocumentsViewModel>();
+        services.AddScoped<Func<IBridgeTransport, WindowContentSession, NavDocumentsViewModel, IDisposable>>(
+            _ => (transport, content, model) => new NavDocumentsBridge(transport, model, content: content));
+        await using var provider = services.BuildServiceProvider();
+        var window = await new TestWindowHost(provider).OpenWindowAsync<NavDocumentsWindow>();
+        var native = (TestWindow<NavDocumentsViewModel>)window.Host;
+        try
+        {
+            var model = window.ViewModel;
+            (await native.Host.Root.ExecuteAsync(vm => vm.OpenCommand, "\"a\"")).ThrowIfFailed();
+            (await native.Host.Root.ExecuteAsync(vm => vm.OpenCommand, "\"b\"")).ThrowIfFailed();
+            var keeper = new NavHomeViewModel { Guard = _ => ValueTask.FromResult(false) };
+            await model.Documents.Navigator.ModelContext.InvokeAsync(() => model.OpenPage(keeper));
+            Require(model.Documents.Regions.Count == 3, "The window did not open three tabs.");
+
+            Require(!await native.UserCloseAsync().WaitScaledAsync(Timeout) && native.IsOpen, "A vetoing tab did not keep the window open.");
+            var left = (await native.Host.Root.SnapshotAsync()).Regions(vm => vm.Documents);
+            Require(model.Documents.Regions.Count == 1 && left.Regions.Count == 1 && left.Regions[0].Content?.Kind == "navHome"
+                    && left.Selected == 0 && model.Opened["a"] is NavEditorViewModel { Disposed: 1 },
+                $"The tabs that agreed were not removed: {Describe(left)}.");
+
+            keeper.Guard = null;
+            Require(await native.UserCloseAsync().WaitScaledAsync(Timeout) && !native.IsOpen, "The window did not close once every tab agreed.");
+        }
+        finally { await window.DisposeAsync(); }
+    }
+
+    // A close of a tab whose close is pending joins it: the guard is asked once and both get the same outcome, on one
+    // connection or two.
+    [Test]
+    public async Task ASecondCloseJoinsThePendingCloseAsync()
+    {
+        foreach (var secondConnection in new[] { false, true })
+        {
+            await using var window = await DocumentsWindow.CreateAsync();
+            var (home, asks, decision) = HeldTab(window);
+            var key = (await window.Host.Root.SnapshotAsync()).Regions(vm => vm.Documents).Keys[0];
+            var first = window.Host.Root.CloseRegionAsync(vm => vm.Documents, key);
+            await Until(() => Task.FromResult(asks() == 1), "The first close did not ask the guard.");
+            var second = secondConnection
+                ? RawRegionAsync(window.Host.Transport, "second", "close", key)
+                : window.Host.Root.CloseRegionAsync(vm => vm.Documents, key).ContinueWith(task => task.Result.Json, TaskScheduler.Default);
+            await Task.Delay(50);
+            Require(!first.IsCompleted && !second.IsCompleted && asks() == 1, "The second close did not wait for the first, or asked again.");
+            decision.SetResult(true);
+            var replies = new[] { (await first.WaitScaledAsync(Timeout)).Json, await second.WaitScaledAsync(Timeout) };
+            Require(replies.All(reply => reply.Contains("\"outcome\":{\"kind\":\"Committed\"", StringComparison.Ordinal)) && asks() == 1
+                    && window.Shell.Documents.Regions.Count == 0,
+                $"The joined closes ({(secondConnection ? "two connections" : "one connection")}) gave {string.Join(" and ", replies)} after {asks()} asks.");
+            GC.KeepAlive(home);
+        }
+    }
+
+    // A select while a close is pending supersedes the close, whose guard is cancelled; the tab stays.
+    [Test]
+    public async Task ASelectSupersedesAPendingCloseAsync()
+    {
+        await using var window = await DocumentsWindow.CreateAsync();
+        (await window.Host.Root.ExecuteAsync(vm => vm.OpenCommand, "\"a\"")).ThrowIfFailed();
+        var (_, asks, _) = HeldTab(window);
+        var keys = (await window.Host.Root.SnapshotAsync()).Regions(vm => vm.Documents).Keys;
+        var close = window.Host.Root.CloseRegionAsync(vm => vm.Documents, keys[1]);
+        await Until(() => Task.FromResult(asks() == 1), "The close did not ask the guard.");
+        var select = await window.Host.Root.SelectRegionAsync(vm => vm.Documents, keys[0]);
+        var closed = await close.WaitScaledAsync(Timeout);
+        Require(closed.RegionOutcome?.Kind == NavigationOutcomeKind.Superseded && select.RegionOutcome?.Kind == NavigationOutcomeKind.Committed
+                && window.Shell.Documents.Regions.Count == 2 && window.Shell.Documents.SelectedIndex == 0,
+            $"A select during a pending close gave {closed} and {select}.");
+    }
+
+    // After the selected tab closed, the page's next request names the newly selected tab's key from the same frame.
+    [Test]
+    public async Task ARequestWithTheNewlySelectedKeyCommitsAsync()
+    {
+        await using var window = await DocumentsWindow.CreateAsync();
+        foreach (var title in new[] { "a", "b", "c" })
+            (await window.Host.Root.ExecuteAsync(vm => vm.OpenCommand, JsonSerializer.Serialize(title))).ThrowIfFailed();
+        var root = window.Host.Root;
+        var keys = (await root.SnapshotAsync()).Regions(vm => vm.Documents).Keys;
+        (await root.SelectRegionAsync(vm => vm.Documents, keys[1])).ThrowIfFailed();
+        var closed = await root.CloseRegionAsync(vm => vm.Documents, keys[1]);
+        var next = closed.State!.Regions(vm => vm.Documents);
+        Require(next.SelectedRegion?.Key == keys[2], $"Closing the selected middle tab selected {Describe(next)}.");
+        var selected = await root.SelectRegionAsync(vm => vm.Documents, next.SelectedRegion!.Key);
+        var closedNext = await root.CloseRegionAsync(vm => vm.Documents, next.SelectedRegion!.Key);
+        Require(selected.RegionOutcome?.Kind == NavigationOutcomeKind.Committed && closedNext.RegionOutcome?.Kind == NavigationOutcomeKind.Committed
+                && closedNext.State!.Regions(vm => vm.Documents).Keys.SequenceEqual([keys[0]]),
+            $"Requests with the newly selected key gave {selected} and {closedNext}.");
+    }
+
+    // Region requests count toward the window's 64 awaited calls, joined closes too.
+    [Test]
+    public async Task RegionRequestsCountTowardTheAwaitedCapacityAsync()
+    {
+        await using var window = await DocumentsWindow.CreateAsync();
+        var (_, asks, decision) = HeldTab(window);
+        var key = (await window.Host.Root.SnapshotAsync()).Regions(vm => vm.Documents).Keys[0];
+        var closes = Enumerable.Range(0, 64).Select(_ => window.Host.Root.CloseRegionAsync(vm => vm.Documents, key)).ToArray();
+        await Until(() => Task.FromResult(asks() == 1), "The closes did not ask the guard.");
+        await Task.Delay(50);
+        var refused = await window.Host.Root.CloseRegionAsync(vm => vm.Documents, key);
+        Require(!refused.Succeeded && refused.ErrorReason == "capacity", $"The 65th awaited call gave {refused}.");
+        decision.SetResult(true);
+        var replies = await Task.WhenAll(closes).WaitScaledAsync(Timeout);
+        Require(replies.All(reply => reply.RegionOutcome?.Kind == NavigationOutcomeKind.Committed) && asks() == 1,
+            "The 64 joined closes did not all commit with one guard ask.");
+    }
+
+    // A close that settles after its route was released, here because the shell stopped presenting the page: the reply
+    // has released: true instead of a revision, and keeps outcome.
+    [Test]
+    public async Task AReplyOfAReleasedRouteKeepsTheOutcomeAsync()
+    {
+        await using var context = new RunicModelContext();
+        await using var navigator = new RunicNavigator(new RunicNavigatorOptions { ModelContext = context });
+        var held = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var asked = 0;
+        var tab = new NavHomeViewModel { Guard = _ => { Interlocked.Increment(ref asked); return new(held.Task); } };
+        var page = new NavTabbedPageViewModel(navigator, tab);
+        var shell = new NavContentShellViewModel(page);
+        using var host = new RunicWindowTestHost<NavContentShellViewModel>(shell,
+            (transport, content, vm) => new NavContentShellBridge(transport, vm, content: content),
+            new RunicWindowTestHostOptions { ModelContext = context, ViewLocator = new NavViewLocator() });
+        var driver = host.Root.View<NavTabbedPageViewModel>(vm => vm.Page);
+        var key = (await driver.SnapshotAsync()).Regions(vm => vm.Documents).Keys[0];
+        var close = driver.CloseRegionAsync(vm => vm.Documents, key);
+        await Until(() => Task.FromResult(Volatile.Read(ref asked) == 1), "The close did not ask the guard.");
+        await context.InvokeAsync(shell.Clear);
+        await Until(async () => (await host.Root.SnapshotAsync()).Get(vm => vm.Page).ValueKind == JsonValueKind.Null
+            && !BridgeDispatcher.For(host.Transport).Serves(driver.Route), "The page's route was not released.");
+        held.SetResult(true);
+        var reply = await close.WaitScaledAsync(Timeout);
+        Require(reply.Released && reply.Revision is null && reply.RegionOutcome is { Kind: NavigationOutcomeKind.Committed },
+            $"The close of a released route gave {reply}.");
+    }
+
+    // A tab whose page asks a held guard, and the number of asks; the test settles the decision.
+    private static (NavHomeViewModel Page, Func<int> Asks, TaskCompletionSource<bool> Decision) HeldTab(DocumentsWindow window)
+    {
+        var decision = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var asks = 0;
+        var page = new NavHomeViewModel { Guard = token => { Interlocked.Increment(ref asks); return new(decision.Task.WaitAsync(token)); } };
+        window.Context.InvokeAsync(() => window.Shell.OpenPage(page)).AsTask().GetAwaiter().GetResult();
+        return (page, () => Volatile.Read(ref asks), decision);
+    }
+
+    // A region request on another connection, after its own hello.
+    private static async Task<string> RawRegionAsync(InMemoryBridgeTransport transport, string connection, string action, string key)
+    {
+        await transport.RequestAsync(
+            $$"""{"kind":"hello","protocol":4,"session":"{{connection}}","client":{"name":"test","version":"1"},"features":["region-collections/1"]}""", connection);
+        return await transport.RequestAsync(
+            $$"""{"kind":"region","route":"navDocuments","member":"documents","action":"{{action}}","key":"{{key}}"}""", connection);
     }
 
     private static string Describe(RunicRegionCollectionState state) =>

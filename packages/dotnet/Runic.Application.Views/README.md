@@ -2444,11 +2444,29 @@ closeDocuments(key: string): Promise<RegionOutcome>;
   resolve with the request's `NavigationOutcome` once the state includes it. A
   veto resolves too, with `kind: "Rejected"` and `rejection: "Guard"`.
 - A key of a tab that closed meanwhile rejects with reason `unresolved-key`.
+  Keys are unique in the collection and never reused for another of its
+  regions; two collections can share a key.
+- **Concurrent requests.** A close of a tab whose close is still pending,
+  from the same page or another one, joins it: the guards are asked once, and
+  every close resolves with the same outcome. A select while a close is
+  pending is a later request of the selection, so it supersedes the close
+  (`NavigationAdmission.Supersede`): the close resolves `Superseded`, its
+  guards' cancellation token is cancelled, so a guard that shows a prompt
+  should close it, and the tab stays. A guard that ignores the token holds the
+  select until it returns.
+- `select{Name}` and `close{Name}` wait for the connection's `hello` after a
+  reconnect, and carry no presentation epoch: the key names the tab, whatever
+  state the page showed.
 - `PageCanClose = false` generates no `close{Name}`; a page's close is then
   `unavailable`. Close such tabs from the ViewModel.
 - Content that no region presents any more is pruned, like the items of a
-  ViewModel collection. A guarded window close clears the collection's regions
-  one by one, as it clears region slots.
+  ViewModel collection.
+- **Window close.** A guarded window close (`GuardClose`) removes the
+  collection's tabs one by one with `RemoveAsync`. The first tab that refuses
+  keeps the window open; the tabs before it are closed, not left empty. To ask
+  every tab in one decision, own the tabs and the selection by a page entry in
+  a region slot: the close's clear of that slot retires every tab in one
+  transition, and closes none when one refuses.
 - Without the attribute, a `NavigationSelection` stays a selection slot whose
   value is `SelectedIndex`. Only Views with a region collection get a new
   contract fingerprint.
@@ -2459,8 +2477,13 @@ closeDocuments(key: string): Promise<RegionOutcome>;
 
 Each framework adapter renders the regions with `RegionOutlets`, one
 `ViewOutlet` per region keyed by `key`. By default it keeps every region
-mounted and hides all but the selected one, which keeps each tab's DOM. A tab
-bar uses `regionEntries(state.documents)`:
+mounted and hides all but the selected one (`hidden` and an inline
+`display: none`), which keeps each tab's DOM. In both modes the Bridge
+presents every tab's content, so every tab's route stays live and keeps
+receiving state; `mode: "selected"` only unmounts the hidden components.
+`panelProps(entry)` adds attributes to each panel, such as `role="tabpanel"`
+and an `id` for the tab's `aria-controls`; the adapters' READMEs show a tab
+bar with roles and focus handling. A tab bar uses `regionEntries(state.documents)`:
 
 ```tsx
 <nav>

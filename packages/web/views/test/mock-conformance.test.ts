@@ -615,17 +615,38 @@ test("presented/1 not in use: no present or closing, and its requests are invali
 /* ------------------------------------------------------------------ region collections (region-collections/1) */
 
 // The tabs View of the corpus (specs/application/conformance/README.md, "Test Views"): documents, which the page may
-// close, with a departure guard that refuses while veto is set, and pinned, which it may not close.
+// close, with a departure guard that refuses while veto is set, and pinned, which it may not close. holdGuard() holds
+// the next ask of the guard until settleGuard(allow); asks counts the asks.
 const reference = (id: number) => ({ kind: "page", id: id.toString(16).padStart(32, "0") });
+const guardRefused = { outcome: { kind: "Rejected", rejection: "Guard", arrival: "None" } };
 function tabs(bridge: MockBridge) {
-  const model = { veto: false };
+  let held: { promise: Promise<boolean>; resolve(allow: boolean): void } | undefined;
+  let unclaimed: Promise<boolean> | undefined;
+  const model = {
+    veto: false,
+    asks: 0,
+    holdGuard() {
+      let resolve!: (allow: boolean) => void;
+      held = { promise: new Promise<boolean>(settle => { resolve = settle; }), resolve };
+      unclaimed = held.promise;
+    },
+    settleGuard(allow: boolean) { held!.resolve(allow); },
+  };
   const view = bridge.view("tabs", {
     state: {
       documents: { regions: [1, 2, 3].map(id => ({ key: String(id), content: reference(id) })), selected: 0 },
       pinned: { regions: [], selected: null },
     },
     regions: {
-      documents: { close: true, decide: () => model.veto ? { outcome: { kind: "Rejected", rejection: "Guard", arrival: "None" } } : undefined },
+      documents: {
+        close: true,
+        decide: async () => {
+          model.asks++;
+          const answer = unclaimed;
+          unclaimed = undefined;
+          return (answer ? await answer : !model.veto) ? undefined : guardRefused;
+        },
+      },
       pinned: { close: false },
     },
   });
@@ -668,4 +689,31 @@ test("region-collections/1: unresolved-key, unavailable, and invalid-request wit
   await helloWith(other.raw, ["text-splice/1"]);
   assert.deepEqual(errorOf(await other.raw.send(regionRequest("select", "2"))), { kind: "rejected", reason: "invalid-request" });
   other.raw.done();
+});
+
+test("region-collections/1: a close of a region whose close is pending joins it, a select supersedes it", async () => {
+  const { bridge, raw } = await connected();
+  const { view, model } = tabs(bridge);
+  await helloWith(raw);
+  await raw.send({ kind: "open", route: "tabs", presentation: "p-1" });
+  const committed = { kind: "Committed", rejection: null, arrival: "None" };
+  model.holdGuard();
+  const close = raw.send(regionRequest("close", "3"));
+  const again = raw.send(regionRequest("close", "3"));
+  await new Promise(resolve => setTimeout(resolve, 5));
+  model.settleGuard(true);
+  assert.deepEqual(await Promise.all([close, again]), [{ ok: true, revision: view.revision, outcome: committed }, { ok: true, revision: view.revision, outcome: committed }]);
+  assert.equal(model.asks, 1);
+  assert.equal(raw.frames("tabs").length, 1);
+
+  model.holdGuard();
+  const superseded = raw.send(regionRequest("close", "2"));
+  await new Promise(resolve => setTimeout(resolve, 5));
+  assert.deepEqual(await raw.send(regionRequest("select", "2")), { ok: true, revision: view.revision, outcome: committed });
+  assert.deepEqual((await superseded)["outcome"], { kind: "Superseded", rejection: null, arrival: "None" });
+  model.settleGuard(true);
+  await new Promise(resolve => setTimeout(resolve, 5));
+  assert.deepEqual(view.state["documents"], { regions: [{ key: "1", content: reference(1) }, { key: "2", content: reference(2) }], selected: 1 });
+  assert.equal(model.asks, 3);
+  raw.done();
 });
