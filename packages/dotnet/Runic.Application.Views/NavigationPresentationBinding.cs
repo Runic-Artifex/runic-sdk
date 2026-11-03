@@ -87,6 +87,8 @@ internal static class NavigationPresentationBinding
             var binding = new Binding(slot, session);
             binding.Attachment = navigator.AttachPresentation(binding);
             slot.Binding = binding;
+            // navigation-path/1: the window's dispatcher serves the navigator's Back and route path.
+            BridgeDispatcher.For(session.Transport).Navigator = navigator;
             // A session disposed after the IsDisposed check above unbinds at once.
             if (!session.TryLinkDisposal(binding)) binding.Dispose();
         }

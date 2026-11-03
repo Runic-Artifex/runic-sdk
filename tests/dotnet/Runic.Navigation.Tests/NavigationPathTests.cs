@@ -232,6 +232,39 @@ internal sealed partial class NavigationTests
         Require(Throws<FormatException>(() => NavigationPath.FromJson(deep.ToString())), "A path nested 40 levels deep was accepted.");
     }
 
+    // ---- Window Back ----------------------------------------------------------------------------------------------------
+
+    // The window's Back goes back in the innermost presented region that can: the selected tab before its page, a
+    // dialog before everything, and the main region last.
+    [Test]
+    public async Task WindowBackGoesBackInTheInnermostRegionAsync()
+    {
+        await using var app = new RoutedApp();
+        Require(await Wait(app.Navigator.BackAsync()) is NavigationResult<object>.Rejected { Reason: NavigationRejection.NoHistory },
+            "Back with no history did not report NoHistory.");
+        await Wait(app.Main.OpenRouteAsync("customers/42"));
+        var customer = (CustomerPage)app.Main.Current!;
+        await Wait(customer.Tabs.SelectAsync(customer.Notes));
+        await Wait(customer.Notes.PushAsync<NotesPage, string>("billing"));
+        // The overview tab has history too, but isn't selected.
+        await Wait(customer.Overview.PushAsync<NotesPage, string>("hidden"));
+
+        Require(await Wait(app.Navigator.BackAsync()) is NavigationResult<object>.Committed && customer.Notes.Current is OverviewPage
+                && customer.Overview.Current is NotesPage && app.Main.Current == customer,
+            "Back did not go back in the selected tab first.");
+        Require(await Wait(app.Navigator.BackAsync()) is NavigationResult<object>.Committed && app.Main.Current is RouteHomePage,
+            "Back did not go back in the main region once the tab had no history.");
+
+        // A dialog region created later is asked first; its result entry is dismissed.
+        var dialogs = app.Navigator.CreateRegion<IRoutePage>(app.Root);
+        var request = dialogs.PushForResult<OverviewPage, bool>();
+        Require((await Wait(request.Transition)).IsCommitted, "The dialog was not pushed.");
+        await Wait(app.Main.OpenRouteAsync("customers"));
+        Require(await Wait(app.Navigator.BackAsync()) is NavigationResult<object>.Committed && dialogs.Current is null
+                && await Wait(request.Completion) is NavigationCompletion<bool>.Dismissed && app.Main.Current is CustomersPage,
+            "Back did not dismiss the dialog first.");
+    }
+
     // ---- The application under test -----------------------------------------------------------------------------------
 
     private interface IRoutePage;

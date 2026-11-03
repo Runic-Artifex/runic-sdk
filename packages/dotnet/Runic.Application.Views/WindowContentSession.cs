@@ -21,6 +21,9 @@ public sealed class WindowContentSession : IDisposable
 
     private readonly object _gate = new();
     private readonly IBridgeTransport _transport;
+
+    // The window's transport, whose dispatcher serves the window-level requests (navigation-path/1).
+    internal IBridgeTransport Transport => _transport;
     private readonly IRunicViewLocator? _viewLocator;
     private readonly BridgeOperationRouter _operations;
     private readonly BridgeInteractionRouter _interactions;

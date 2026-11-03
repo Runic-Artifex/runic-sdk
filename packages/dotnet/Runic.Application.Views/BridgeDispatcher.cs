@@ -37,6 +37,7 @@ internal sealed class BridgeDispatcher : IBridgeRequestHandler
     internal const string PresentationEpochFeature = "presentation-epoch/1";
     internal const string PresentedFeature = "presented/1";
     internal const string RegionCollectionsFeature = "region-collections/1";
+    internal const string NavigationPathFeature = "navigation-path/1";
     internal const int MaximumFeatures = 64;
     internal const int MaximumFeatureLength = 64;
     // A request that arrives before its connection's hello waits this long for it, and at most this many wait.
@@ -204,6 +205,22 @@ internal sealed class BridgeDispatcher : IBridgeRequestHandler
     internal int UnacknowledgedClosings
     {
         get { lock (_gate) return _closingPending; }
+    }
+
+    // The keys of the open connections that completed their hello with navigation-path/1.
+    internal List<string> NavigationPathConnections()
+    {
+        lock (_gate) return [.. _connections.Values.Where(static connection => connection.HelloCompleted && connection.IsOpen && connection.UsesNavigationPath)
+            .Select(static connection => connection.Key)];
+    }
+
+    // The navigator whose regions this window presents (NavigationPresentationBinding), weakly.
+    private WeakReference<Runic.Navigation.RunicNavigator>? _navigator;
+
+    internal Runic.Navigation.RunicNavigator? Navigator
+    {
+        get => Volatile.Read(ref _navigator) is { } reference && reference.TryGetTarget(out var navigator) ? navigator : null;
+        set => Volatile.Write(ref _navigator, value is null ? null : new(value));
     }
 
     private static byte[] ClosingPush() => """{"kind":"closing"}"""u8.ToArray();
@@ -392,6 +409,11 @@ internal sealed class BridgeDispatcher : IBridgeRequestHandler
                 if (envelope.Kind == "receive") return Receive(connection, cancellationToken);
                 if (envelope.Kind == "closing-reply") return Reply(ClosingReply(connection));
                 if (envelope.Kind == "presented") return Presented(connection, envelope);
+                // navigation-path/1: the window's Back and the page's route path; a request kind only with the feature.
+                if (envelope.Kind == "navigation")
+                    return connection.UsesNavigationPath
+                        ? BridgeNavigation.HandleAsync(this, envelope, cancellationToken)
+                        : Reply(BridgeMessages.Rejected("invalid-request", "The connection does not use navigation-path/1."));
                 // presentation-epoch/1: on a connection that uses it, a command's epoch is a non-negative safe integer;
                 // elsewhere the member is ignored.
                 if (envelope.Kind == "command" && envelope.HasEpoch && envelope.Epoch is null && connection.UsesPresentationEpoch
@@ -534,7 +556,8 @@ internal sealed class BridgeDispatcher : IBridgeRequestHandler
         if (!root.TryGetProperty("client", out var client) || client.ValueKind != JsonValueKind.Object
             || !TryReadName(client, "name", 128, out var clientName) || !TryReadName(client, "version", 64, out var clientVersion))
             return BridgeMessages.Rejected("invalid-request", "The hello's client is not {name, version}.", hello: true);
-        if (!TryReadFeatures(root, out var usesTextSplice, out var usesPresentationEpoch, out var usesPresented, out var usesRegionCollections))
+        if (!TryReadFeatures(root, out var usesTextSplice, out var usesPresentationEpoch, out var usesPresented, out var usesRegionCollections,
+                out var usesNavigationPath))
             return BridgeMessages.Rejected("invalid-request",
                 $"The hello's features are not an array of at most {MaximumFeatures} strings of at most {MaximumFeatureLength} characters.", hello: true);
         var session = sessionElement.GetString()!;
@@ -554,6 +577,7 @@ internal sealed class BridgeDispatcher : IBridgeRequestHandler
             connection.UsesPresentationEpoch = usesPresentationEpoch;
             connection.UsesPresented = usesPresented;
             connection.UsesRegionCollections = usesRegionCollections;
+            connection.UsesNavigationPath = usesNavigationPath;
             connection.HelloCompleted = true;
             if (!usesTextSplice) _connectionsWithoutTextSplice++;
             if (usesPresentationEpoch) _connectionsWithPresentationEpoch++;
@@ -562,14 +586,16 @@ internal sealed class BridgeDispatcher : IBridgeRequestHandler
         }
         // A page that connects to a closing window is told so, after its hello reply.
         if (closing) BridgeTargetedPushes.For(_transport).Send(connection.Key, ClosingPush());
+        // navigation-path/1: the page learns the window's route path after its hello reply.
+        if (usesNavigationPath) BridgeNavigation.Greeted(this, connection.Key);
         return BridgeMessages.Hello();
     }
 
     // The client's features: absent, or an array of strings. A feature this producer does not implement is ignored.
     private static bool TryReadFeatures(JsonElement root, out bool usesTextSplice, out bool usesPresentationEpoch,
-        out bool usesPresented, out bool usesRegionCollections)
+        out bool usesPresented, out bool usesRegionCollections, out bool usesNavigationPath)
     {
-        usesTextSplice = usesPresentationEpoch = usesPresented = usesRegionCollections = false;
+        usesTextSplice = usesPresentationEpoch = usesPresented = usesRegionCollections = usesNavigationPath = false;
         if (!root.TryGetProperty("features", out var features)) return true;
         if (features.ValueKind != JsonValueKind.Array || features.GetArrayLength() > MaximumFeatures) return false;
         foreach (var feature in features.EnumerateArray())
@@ -581,6 +607,7 @@ internal sealed class BridgeDispatcher : IBridgeRequestHandler
             else if (name == PresentationEpochFeature) usesPresentationEpoch = true;
             else if (name == PresentedFeature) usesPresented = true;
             else if (name == RegionCollectionsFeature) usesRegionCollections = true;
+            else if (name == NavigationPathFeature) usesNavigationPath = true;
         }
         return true;
     }
@@ -721,6 +748,8 @@ internal sealed class BridgeConnection(string key, string clientKey)
     internal bool UsesPresented { get; set; }
     // region-collections/1: the connection may send region requests.
     internal bool UsesRegionCollections { get; set; }
+    // navigation-path/1: the connection receives navigation-path pushes and may send navigation requests.
+    internal bool UsesNavigationPath { get; set; }
     // Whether the window's closing push waits for this connection's closing-reply; the dispatcher's gate guards it.
     internal bool ClosingPending { get; set; }
     // Requests that wait for the hello, in arrival order, and whether the dispatcher is admitting them.

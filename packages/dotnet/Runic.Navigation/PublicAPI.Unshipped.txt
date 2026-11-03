@@ -148,3 +148,4 @@ Runic.Navigation.NavigationRouteValues.Set(string! name, string! value) -> Runic
 Runic.Navigation.NavigationRouteValues.Set(string! name, System.Guid value) -> Runic.Navigation.NavigationRouteValues!
 Runic.Navigation.NavigationRouteValues.this[string! name].get -> object!
 Runic.Navigation.NavigationRouteValues.TryGetValue(string! name, out object! value) -> bool
+Runic.Navigation.RunicNavigator.BackAsync(Runic.Navigation.NavigationRequestOptions? options = null, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Navigation.NavigationResult<object!>!>

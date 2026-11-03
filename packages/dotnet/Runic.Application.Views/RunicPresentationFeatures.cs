@@ -1,5 +1,6 @@
 using System.Runtime.CompilerServices;
 using Runic.Application.Views.Generated;
+using Runic.Navigation;
 
 namespace Runic.Application.Views;
 
@@ -32,6 +33,30 @@ public static class RunicPresentation
     {
         ArgumentNullException.ThrowIfNull(viewModel);
         foreach (var route in BridgePresentationRegistry.Routes(viewModel)) route.Renew();
+    }
+
+    /// <summary>
+    /// Makes <paramref name="region"/> the window's path region (feature <c>navigation-path/1</c>): the route of its
+    /// current entry is the page's route path, which a page that installs the navigation path keeps in its URL. A browser's
+    /// Back and Forward and its address bar open a route path in the region with
+    /// <see cref="NavigationRouteOpen.BackToOrPush"/>, through the departure guards; a refused change reverts the URL.
+    /// </summary>
+    /// <remarks>
+    /// Call it once per window, for example in the constructor of the window's ViewModel. The window's Back (the mouse's
+    /// Back button and Alt+Left, <see cref="RunicNavigator.BackAsync"/>) works without it. Dispose the result to stop.
+    /// </remarks>
+    /// <param name="region">A region of the window's navigator, typically its main region.</param>
+    /// <param name="routes">The route map, or <see langword="null"/> for the <see cref="INavigationRouteMap"/> of the navigator's services.</param>
+    /// <exception cref="InvalidOperationException">
+    /// No route map was passed or registered, or the navigator already syncs another region.
+    /// </exception>
+    public static IDisposable SyncNavigationPath(NavigationRegion region, INavigationRouteMap? routes = null)
+    {
+        ArgumentNullException.ThrowIfNull(region);
+        var map = routes ?? region.Navigator.Services?.GetService(typeof(INavigationRouteMap)) as INavigationRouteMap
+            ?? throw new InvalidOperationException(
+                "No navigation route map: pass one, or register it with services.AddRunicNavigationRoutes(...) in the navigator's services.");
+        return NavigationPathSync.Create(region, map);
     }
 
     /// <summary>

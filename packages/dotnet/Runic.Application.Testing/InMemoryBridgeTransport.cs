@@ -236,6 +236,9 @@ public sealed class InMemoryBridgeTransport : IBridgeConnectionTransport, IDispo
                 // feature adds a request kind only, so the window's other messages are those of the base protocol.
                 writer.WriteStartArray("features");
                 writer.WriteStringValue("region-collections/1");
+                // The host's Back and route path requests (NavigateBackAsync, OpenNavigationPathAsync). A window without a
+                // path region pushes nothing for it.
+                writer.WriteStringValue("navigation-path/1");
                 writer.WriteEndArray();
                 writer.WriteEndObject();
             }), connectionKey, clientKey, CancellationToken.None).ConfigureAwait(false);

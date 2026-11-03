@@ -10,3 +10,4 @@ Runic.Application.Views.Generated.PropertyDescriptor<T>.RegionCollection.get -> 
 Runic.Application.Views.Generated.PropertyDescriptor<T>.RegionCollection.init -> void
 Runic.Application.Views.Generated.PropertyDescriptor<T>.RegionClose.get -> bool
 Runic.Application.Views.Generated.PropertyDescriptor<T>.RegionClose.init -> void
+static Runic.Application.Views.RunicPresentation.SyncNavigationPath(Runic.Navigation.NavigationRegion! region, Runic.Navigation.INavigationRouteMap? routes = null) -> System.IDisposable!
