@@ -2718,6 +2718,8 @@ NativeAOT symbols and what to attach to a bug report.
 | 1111 | `ViewHostFallbackFailed` | Error | Showing that fallback throws. | `ErrorType` |
 | 1112 | `ViewHostPresentationChangeFailed` | Error | A `RunicViewHost` presentation change throws outside its open. | `ErrorType` |
 | 1113 | `ViewHostCleanupFailed` | Error | Releasing a `RunicViewHost` presentation throws. | `ErrorType` |
+| 1120 | `ViewRequestDropped` | Debug | A `ViewRequest<T>` found no single presentation to deliver to, or several windows present its ViewModel, and was dropped ([Asking the page](#asking-the-page-view-requests-and-questions)). | `Name`, `Reason` |
+| 1121 | `ViewRequestKept` | Debug | A `NextMounted` view request found no single presentation and is kept for the next one that handles it. | `Name` |
 | 1114 | `ChildViewCleanupFailed` | Error | A `WpfBridgeView` fails to release after its presentation closed. | `ErrorType` |
 | 2000 | `DesktopSnapshotDeliveryFailed` | Error | Runic Desktop cannot deliver a push to a page. | `ErrorType` |
 | 2002 | `DesktopWindowCloseAfterOpen` | Warning | `RUNIC_APPLICATION_CLOSE_AFTER_OPEN=1` closed a Desktop window right after it opened. | `Variable` |
