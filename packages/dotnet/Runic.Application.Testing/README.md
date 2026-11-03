@@ -657,6 +657,9 @@ var second = await app.WaitForWindowUrlAsync(1, TimeSpan.FromSeconds(10));
 
 The type is the Window class's full name or its name without the namespace,
 as the host names it on its `RUNIC_APPLICATION_WINDOW=` line from 0.16 on.
+A closed generic Window type has no spaces there: its generic definition's
+name with its arguments' names without namespaces, such as
+``DocumentWindow`1[Report]``.
 A wait that runs out throws `TimeoutException` and leaves the application
 running. A wait on an application that has exited throws
 `InvalidOperationException`.

@@ -80,7 +80,10 @@ public sealed class RunicServeOnlyApplication : IAsyncDisposable
     public Uri Url { get; private set; } = null!;
 
     /// <summary>The URL of each Window's page the application has written so far, in the order it opened them.</summary>
-    /// <remarks>The first is <see cref="Url"/>. A line with an invalid URL is not listed.</remarks>
+    /// <remarks>
+    /// The first is <see cref="Url"/>: an invalid first URL fails <see cref="StartAsync(ProcessStartInfo, TimeSpan?, CancellationToken)"/>,
+    /// and a later line with an invalid URL is not listed.
+    /// </remarks>
     public IReadOnlyList<Uri> Urls
     {
         get { lock (_windows) return [.. _windows.Select(static window => window.Url)]; }
@@ -105,7 +108,8 @@ public sealed class RunicServeOnlyApplication : IAsyncDisposable
     /// <summary>Waits for the URL of the first Window of type <paramref name="windowType"/>.</summary>
     /// <param name="windowType">
     /// The Window class's full name, such as <c>MyApp.SettingsWindow</c>, or its name without the namespace, such as
-    /// <c>SettingsWindow</c>.
+    /// <c>SettingsWindow</c>. A closed generic Window type is named without spaces, by its generic definition and its
+    /// arguments' names without namespaces: <c>MyApp.DocumentWindow`1[Report]</c> or <c>DocumentWindow`1[Report]</c>.
     /// </param>
     /// <param name="timeout">How long to wait.</param>
     /// <param name="cancellationToken">Cancels the wait; the application keeps running.</param>
@@ -125,7 +129,21 @@ public sealed class RunicServeOnlyApplication : IAsyncDisposable
             $"a Window of type '{windowType}'", timeout, cancellationToken);
     }
 
-    private static bool IsType(string fullName, string wanted) =>
+    // RUNIC_APPLICATION_WINDOW=<url> <type>: the URL of a line already read, then the Window type, which hosts write
+    // without spaces (a closed generic type as MyApp.DocumentWindow`1[Report]); later fields are ignored.
+    internal static bool TryParseWindowLine(string line, [System.Diagnostics.CodeAnalysis.NotNullWhen(true)] out Uri? url,
+        [System.Diagnostics.CodeAnalysis.NotNullWhen(true)] out string? type)
+    {
+        url = null;
+        type = null;
+        if (!line.StartsWith(WindowPrefix, StringComparison.Ordinal)) return false;
+        var fields = line[WindowPrefix.Length..].Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        if (fields.Length < 2 || !Uri.TryCreate(fields[0], UriKind.Absolute, out url)) return false;
+        type = fields[1];
+        return true;
+    }
+
+    internal static bool IsType(string fullName, string wanted) =>
         fullName == wanted || fullName.Length > wanted.Length && fullName.EndsWith(wanted, StringComparison.Ordinal)
             && fullName[^(wanted.Length + 1)] is '.' or '+';
 
@@ -444,22 +462,19 @@ public sealed class RunicServeOnlyApplication : IAsyncDisposable
                 lock (_output) _output.AppendLine(line);
                 if (line.StartsWith(UrlPrefix, StringComparison.Ordinal))
                 {
+                    // The first URL line decides StartAsync: a valid one is Url and Urls[0], listed before Url is set;
+                    // an invalid one fails the start. A later invalid line is not listed.
                     var url = line[UrlPrefix.Length..].Trim();
-                    _url.TrySetResult(url);
                     if (Uri.TryCreate(url, UriKind.Absolute, out var uri)) WindowsChanged(windows => windows.Add((uri, null)));
+                    _url.TrySetResult(url);
                 }
-                else if (line.StartsWith(WindowPrefix, StringComparison.Ordinal))
+                else if (TryParseWindowLine(line, out var uri, out var type))
                 {
-                    // "<url> <type>": the URL of a line already read, then the Window type; later fields are ignored.
-                    var fields = line[WindowPrefix.Length..].Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries);
-                    if (fields.Length >= 2 && Uri.TryCreate(fields[0], UriKind.Absolute, out var uri))
+                    WindowsChanged(windows =>
                     {
-                        WindowsChanged(windows =>
-                        {
-                            var index = windows.FindIndex(window => window.Url == uri && window.Type is null);
-                            if (index >= 0) windows[index] = (uri, fields[1]);
-                        });
-                    }
+                        var index = windows.FindIndex(window => window.Url == uri && window.Type is null);
+                        if (index >= 0) windows[index] = (uri, type);
+                    });
                 }
             }
         }

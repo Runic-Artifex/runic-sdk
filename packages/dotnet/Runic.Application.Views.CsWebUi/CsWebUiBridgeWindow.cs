@@ -70,7 +70,7 @@ public sealed class CsWebUiBridgeWindow<TViewModel> : IBridgeWindow, ICsWebUiNat
     // Shows the content with the application's presentation, WebUI's recommended presentation (an installed
     // browser in app mode, then the system default browser, then the platform WebView) or only in the WebView.
     // The serve-only switch replaces each of them.
-    internal void Show(string content, bool webView, Action<WebUiWindow, string>? show, string? windowType = null)
+    internal void Show(string content, bool webView, Action<WebUiWindow, string>? show, Type? windowType = null)
     {
         if (TryServeOnly(content, windowType)) return;
         if (show is not null) show(_window, content);
@@ -80,7 +80,7 @@ public sealed class CsWebUiBridgeWindow<TViewModel> : IBridgeWindow, ICsWebUiNat
 
     internal const string ServeOnlyEnvironmentVariable = "RUNIC_APPLICATION_SERVE_ONLY";
 
-    private bool TryServeOnly(string content, string? windowType)
+    private bool TryServeOnly(string content, Type? windowType)
     {
         if (Environment.GetEnvironmentVariable(ServeOnlyEnvironmentVariable) != "1") return false;
         // Zero waits for WebUiApplication.Exit rather than for a first browser
@@ -89,7 +89,7 @@ public sealed class CsWebUiBridgeWindow<TViewModel> : IBridgeWindow, ICsWebUiNat
         var url = _window.StartServer(content);
         // One write, so another window's lines cannot come between the two (Runic.Application.Views.Desktop README,
         // "Automation"): the URL line older parsers read, then the window line that names the Window type.
-        Console.Out.Write(ServeOnlyLines(url, windowType));
+        Console.Out.Write(ServeOnlyAnnouncement.Lines(url, windowType));
         Console.Out.Flush();
         // End of input (for example </dev/null) is not a stop request.
         new Thread(static () =>
@@ -261,9 +261,4 @@ public sealed class CsWebUiBridgeWindow<TViewModel> : IBridgeWindow, ICsWebUiNat
         try { await action().ConfigureAwait(false); }
         catch (Exception error) { errors.Add(error); }
     }
-
-    // RUNIC_APPLICATION_URL=<url>, then RUNIC_APPLICATION_WINDOW=<url> <Window type> when the type is known.
-    internal static string ServeOnlyLines(string url, string? windowType) =>
-        "RUNIC_APPLICATION_URL=" + url + Environment.NewLine
-        + (windowType is null ? "" : "RUNIC_APPLICATION_WINDOW=" + url + " " + windowType + Environment.NewLine);
 }

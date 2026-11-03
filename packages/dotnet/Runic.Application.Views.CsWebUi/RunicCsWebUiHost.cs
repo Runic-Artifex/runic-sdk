@@ -261,7 +261,7 @@ public sealed class RunicCsWebUiHost : IRunicWindowHost
 
             var options = opening.Options;
             var windowName = opening.Window.GetType().Name;
-            var windowType = opening.Window.GetType().FullName;
+            var windowType = opening.Window.GetType();
             var native = window;
             var shown = host;
             void Show()

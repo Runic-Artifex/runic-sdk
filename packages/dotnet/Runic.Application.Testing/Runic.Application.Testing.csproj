@@ -16,6 +16,10 @@
     <Using Include="Runic.Application.Views.Generated" />
   </ItemGroup>
   <ItemGroup>
+    <!-- The tests check internal helpers, such as the serve-only parsers, directly. -->
+    <InternalsVisibleTo Include="Runic.Application.Testing.Tests" />
+  </ItemGroup>
+  <ItemGroup>
     <ProjectReference Include="../Runic.Application.Views/Runic.Application.Views.csproj" />
     <PackageReference Include="Microsoft.Extensions.TimeProvider.Testing" />
     <None Include="README.md" Pack="true" PackagePath="/" />

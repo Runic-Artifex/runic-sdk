@@ -733,7 +733,9 @@ The serve-only protocol, the same on both hosts:
 - **Window.** Directly after its URL line, in the same write, each window
   writes `RUNIC_APPLICATION_WINDOW=<url> <type>`: its URL again and the full
   name of its Window class, such as `MyApp.SettingsWindow`, separated by a
-  space. Hosts before 0.16 write no such line, and a parser that only reads
+  space. The type has no spaces: a closed generic Window type is written as
+  its generic definition's full name with its arguments' names without
+  namespaces, such as ``MyApp.DocumentWindow`1[Report]``. Hosts before 0.16 write no such line, and a parser that only reads
   `RUNIC_APPLICATION_URL=` lines ignores it. Read the first two
   space-separated fields; a later release may add more after them.
 - **Stop.** Writing a line to standard input ends serving for every window
