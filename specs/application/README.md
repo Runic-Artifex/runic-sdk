@@ -988,7 +988,10 @@ connection. Two scopes exist:
 - The window's close decision (a user's close or a close the application requests) reaches the single presentation of
   the window that registered the handler, from any connection. With none or several, it asks nothing.
 
-Work outside both scopes, such as navigation that application code starts, never reaches the page. A request ends
+Work outside both scopes, such as navigation that application code starts, never reaches the page. A producer MUST
+NOT give two connections of a window one connection identity, also when its transport reuses the key of a connection
+that closed (CS-WebUI reuses WebUI's connection slots), so a command that runs on after its connection closed never
+reaches the connection that came next. A request ends
 when its scope ends, its presentation closes or its connection closes, or the window closes; the waiting interaction
 then fails. Interactions time out after two minutes by default (at most ten). A window holds at most 32 pending
 requests and 8 per presentation.
