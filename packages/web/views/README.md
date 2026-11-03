@@ -374,8 +374,21 @@ EditorFields.title; // { name: "title", kind: "text", read, write, checked, base
 EditorFields.step;  // { name: "step", kind: "number", integer: true, … }
 ```
 
-`kind` is `text` (any TypeScript `string`: strings, `Guid`, dates, decimals), `number` (`integer` for integer
-types), `bigint`, `boolean`, `choice` (an enum; `choices` lists its names) or `value` (objects, lists, unions), and
+`kind` selects the field's text form:
+
+| Kind | C# types | Value | Text |
+| --- | --- | --- | --- |
+| `text` | `string`, `Guid`, `TimeSpan` | `string` | the value |
+| `number` | `int`, `double`, … (`integer` for integer types) | `number` | `1.5`, or in the `locale` option's form |
+| `decimal` | `decimal` | `string`, exact (`"1234.50"`) | as `number`; at most 28 digits after the point |
+| `bigint` | `long`, `ulong`, `BigInteger` | `bigint` | as `number` |
+| `boolean` | `bool` | `boolean` | `true` or `false` (bind a checkbox) |
+| `date` | `DateOnly` | `string` `YYYY-MM-DD` | the same, as `<input type="date">` |
+| `time` | `TimeOnly` | `string` `hh:mm:ss[.f]` | `hh:mm` when the seconds are zero, as `<input type="time">` |
+| `datetime` | `DateTime`, `DateTimeOffset` (`offset: true`) | `string` (`2026-11-03T09:30:00+01:00`) | the page's local date and time, as `<input type="datetime-local">` |
+| `choice` | enums (`choices` lists the names) | `string` | the name |
+| `value` | objects, lists, unions | the value | none |
+
 `nullable` marks nullable members. `read` and `write` are the member and its setter; `checked` and `baseline` its
 checked write and `fieldBaseline`. A View with validation adds `errors(state)`: the member's messages from
 `{name}Errors`, or from `validation` at the member's path, followed by the messages below it, such as those of an
@@ -422,7 +435,21 @@ save.onclick = async () => { await commitFields(title, body); await editor.save(
 
 `input(value)` takes a value, `inputText(text)` the text of an input, parsed for the field's kind: `-` or `1e` in a
 number field stay the draft with a `FieldError` of kind `invalid-text`, and nothing is written until the text parses.
-An empty text is `null` for a nullable number, choice or boolean.
+An empty text is `null` for a nullable field of any kind but `text`.
+
+A `datetime` text without an offset is a local date and time: a `DateTimeOffset` gets the page's offset at that time,
+a `DateTime` in UTC stays in UTC, and other `DateTime` values stay local. An offset typed (`…T09:30+02:00`) is kept.
+Text that still shows the field's value is that value, with its offset and fraction, and in a DST overlap (a local
+time that occurs twice) an edit keeps the offset of the value it replaces. A `DateTime`'s kind (UTC or local) is a
+convention of the application that the generator cannot see, so it is taken from the value the field replaces: a
+nullable UTC `DateTime` that starts as `null` would be written as a local date and time, which .NET reads as
+`Unspecified`. Give such a field a `parse` that writes UTC:
+
+```ts
+const due = createFieldController(TaskFields.dueUtc, {
+  parse: text => text.trim() === "" ? null : new Date(text).toISOString().replace(/\.000Z$/, "Z"),
+});
+```
 
 Options:
 
@@ -437,6 +464,21 @@ Options:
   writer meanwhile is a conflict instead of being overwritten. Checked writes are one at a time.
 - `keepDraftOnError: false` shows the View's value after a failed, rejected or conflicting write instead of the
   draft.
+- `locale` (such as `"de-DE"` or `navigator.languages`) shows `number`, `decimal` and `bigint` text with the locale's
+  decimal separator and digits (`1,5`) and reads them, with group separators between thousands (`1.234,5`; `1.5` is
+  not 15 in German). Without it the text is the invariant form (`1.5`), which `<input type="number">` needs; use
+  `locale` with `<input inputmode="decimal">`. Text is never grouped while it is edited.
+- `scale` limits the digits after the decimal separator of a `number` or `decimal` value: of the number the text
+  means, so `1.50e2` has none and `1e-7` has 7. A `decimal` keeps its trailing zeros (`1.50` has 2); a `number` has
+  none.
+- `parse(text, previous)` and `format(value)` replace the kind's text form, such as for a percentage or a date shown
+  in the user's locale. A `parse` that throws keeps the text as the draft with an `invalid-text` `FieldError` carrying
+  the thrown message. The controller's `format(value)` returns the text of a value as the field shows it.
+
+```ts
+const price = createFieldController(OrderFields.price, { locale: navigator.languages, scale: 2 });
+price.inputText("1.234,50"); // in de-DE writes "1234.50"
+```
 
 Receipts of checked writes, also when `write` of a text field calls one:
 

@@ -4,16 +4,21 @@ import type { BridgeValidationState } from "./validation.js";
 /**
  * How a field's value is edited, which selects its text form and input wiring:
  *
- * - `text`: a TypeScript `string` (strings, `Guid`, dates and durations);
+ * - `text`: a TypeScript `string` (strings, `Guid`, durations, and dates of releases before 0.16);
  * - `number`: a `number`; `integer` is set for integer CLR types;
+ * - `decimal`: a `string` in the `decimal` wire form (`"-1234.50"`), exact; its text uses the field's locale;
  * - `bigint`: a `bigint` (`long`, `ulong`, `BigInteger`);
+ * - `date`: a `string` `YYYY-MM-DD` (`DateOnly`), the form of `<input type="date">`;
+ * - `time`: a `string` `hh:mm:ss[.f]` (`TimeOnly`); its text drops zero seconds, as `<input type="time">` does;
+ * - `datetime`: a `string` date and time (`DateTime`, and `DateTimeOffset` with `offset`); its text is the page's
+ *   local date and time, the form of `<input type="datetime-local">`;
  * - `boolean`: a `boolean`, edited with a checkbox;
  * - `choice`: an enum name, one of `choices`;
  * - `value`: any other value (objects, lists, unions, custom codecs), which has no text form.
  *
  * Open: a later release may add kinds; treat an unknown kind like `value`.
  */
-export type BridgeFieldKind = "text" | "number" | "bigint" | "boolean" | "choice" | "value";
+export type BridgeFieldKind = "text" | "number" | "decimal" | "bigint" | "boolean" | "date" | "time" | "datetime" | "choice" | "value";
 
 /**
  * A generated descriptor of one settable View member, such as `EditorFields.title`: how a field reads it from the
@@ -28,6 +33,8 @@ export interface BridgeField<TClient, TState, TValue> {
   readonly nullable?: boolean;
   /** A `number` member of an integer CLR type. */
   readonly integer?: boolean;
+  /** A `datetime` member whose values carry an offset (`DateTimeOffset`): a local text gets the page's offset. */
+  readonly offset?: boolean;
   /** A `choice` member's values, in declaration order. */
   readonly choices?: readonly TValue[];
   /** Reads the member from the View's state. */
