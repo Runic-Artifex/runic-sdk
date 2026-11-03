@@ -1,4 +1,26 @@
 #nullable enable
+Runic.Application.Testing.RunicServeOnlyApplication.Urls.get -> System.Collections.Generic.IReadOnlyList<System.Uri!>!
+Runic.Application.Testing.RunicServeOnlyApplication.WaitForWindowUrlAsync(int index, System.TimeSpan timeout, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<System.Uri!>!
+Runic.Application.Testing.RunicServeOnlyApplication.WaitForWindowUrlAsync(string! windowType, System.TimeSpan timeout, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<System.Uri!>!
+const Runic.Application.Testing.RunicTestPlatformServiceCollectionExtensions.DirectoryEnvironmentVariable = "RUNIC_TEST_PLATFORM_DIRECTORY" -> string!
+override Runic.Application.Testing.RunicAnnouncementCall.Equals(object? obj) -> bool
+override Runic.Application.Testing.RunicAnnouncementCall.GetHashCode() -> int
+override Runic.Application.Testing.RunicAnnouncementCall.ToString() -> string!
+override Runic.Application.Testing.RunicContextMenuCall.Equals(object? obj) -> bool
+override Runic.Application.Testing.RunicContextMenuCall.GetHashCode() -> int
+override Runic.Application.Testing.RunicContextMenuCall.ToString() -> string!
+override Runic.Application.Testing.RunicFileDialogCall.Equals(object? obj) -> bool
+override Runic.Application.Testing.RunicFileDialogCall.GetHashCode() -> int
+override Runic.Application.Testing.RunicFileDialogCall.ToString() -> string!
+override Runic.Application.Testing.RunicLaunchCall.Equals(object? obj) -> bool
+override Runic.Application.Testing.RunicLaunchCall.GetHashCode() -> int
+override Runic.Application.Testing.RunicLaunchCall.ToString() -> string!
+override Runic.Application.Testing.RunicMessageBoxCall.Equals(object? obj) -> bool
+override Runic.Application.Testing.RunicMessageBoxCall.GetHashCode() -> int
+override Runic.Application.Testing.RunicMessageBoxCall.ToString() -> string!
+override Runic.Application.Testing.RunicTestPlatformEvent.Equals(object? obj) -> bool
+override Runic.Application.Testing.RunicTestPlatformEvent.GetHashCode() -> int
+override Runic.Application.Testing.RunicTestPlatformEvent.ToString() -> string!
 Runic.Application.Testing.RunicAnnouncementCall
 Runic.Application.Testing.RunicAnnouncementCall.<Clone>$() -> Runic.Application.Testing.RunicAnnouncementCall!
 Runic.Application.Testing.RunicAnnouncementCall.Deconstruct(out string! Message, out Runic.Platform.PlatformAnnouncementPriority Priority) -> void
@@ -245,28 +267,9 @@ Runic.Application.Testing.RunicWindowTestHost<TViewModel>.ServedBlobCount.get ->
 Runic.Application.Testing.RunicWindowTestHost<TViewModel>.UploadAsync(System.ReadOnlyMemory<byte> content, string! fileName = "upload", string! contentType = "application/octet-stream", string! connectionKey = "connection-1", System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<Runic.Application.Views.RunicUpload!>!
 Runic.Application.Testing.RunicWindowTestHostOptions.MaximumUploadBytes.get -> long?
 Runic.Application.Testing.RunicWindowTestHostOptions.MaximumUploadBytes.init -> void
-const Runic.Application.Testing.RunicTestPlatformServiceCollectionExtensions.DirectoryEnvironmentVariable = "RUNIC_TEST_PLATFORM_DIRECTORY" -> string!
-override Runic.Application.Testing.RunicAnnouncementCall.Equals(object? obj) -> bool
-override Runic.Application.Testing.RunicAnnouncementCall.GetHashCode() -> int
-override Runic.Application.Testing.RunicAnnouncementCall.ToString() -> string!
-override Runic.Application.Testing.RunicContextMenuCall.Equals(object? obj) -> bool
-override Runic.Application.Testing.RunicContextMenuCall.GetHashCode() -> int
-override Runic.Application.Testing.RunicContextMenuCall.ToString() -> string!
-override Runic.Application.Testing.RunicFileDialogCall.Equals(object? obj) -> bool
-override Runic.Application.Testing.RunicFileDialogCall.GetHashCode() -> int
-override Runic.Application.Testing.RunicFileDialogCall.ToString() -> string!
-override Runic.Application.Testing.RunicLaunchCall.Equals(object? obj) -> bool
-override Runic.Application.Testing.RunicLaunchCall.GetHashCode() -> int
-override Runic.Application.Testing.RunicLaunchCall.ToString() -> string!
-override Runic.Application.Testing.RunicMessageBoxCall.Equals(object? obj) -> bool
-override Runic.Application.Testing.RunicMessageBoxCall.GetHashCode() -> int
-override Runic.Application.Testing.RunicMessageBoxCall.ToString() -> string!
 override Runic.Application.Testing.RunicServedBlob.Equals(object? obj) -> bool
 override Runic.Application.Testing.RunicServedBlob.GetHashCode() -> int
 override Runic.Application.Testing.RunicServedBlob.ToString() -> string!
-override Runic.Application.Testing.RunicTestPlatformEvent.Equals(object? obj) -> bool
-override Runic.Application.Testing.RunicTestPlatformEvent.GetHashCode() -> int
-override Runic.Application.Testing.RunicTestPlatformEvent.ToString() -> string!
 static Runic.Application.Testing.RunicAnnouncementCall.operator !=(Runic.Application.Testing.RunicAnnouncementCall? left, Runic.Application.Testing.RunicAnnouncementCall? right) -> bool
 static Runic.Application.Testing.RunicAnnouncementCall.operator ==(Runic.Application.Testing.RunicAnnouncementCall? left, Runic.Application.Testing.RunicAnnouncementCall? right) -> bool
 static Runic.Application.Testing.RunicContextMenuCall.operator !=(Runic.Application.Testing.RunicContextMenuCall? left, Runic.Application.Testing.RunicContextMenuCall? right) -> bool

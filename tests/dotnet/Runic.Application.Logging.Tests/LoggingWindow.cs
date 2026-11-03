@@ -10,9 +10,20 @@ public sealed partial class LoggingWindow : RunicWindow<LoggingViewModel>
     public LoggingWindow() => GuardClose = true;
 }
 
+// A second Window, which the application opens after the first with RUNIC_TEST_SECOND_WINDOW=1, so a serve-only
+// test sees two URLs and their Window types.
+public sealed partial class SecondLoggingWindow : RunicWindow<SecondLoggingViewModel>;
+
 public sealed class LoggingViewModel : INotifyPropertyChanged
 {
     public string Title { get; set; } = "Logging";
+
+    public event PropertyChangedEventHandler? PropertyChanged { add { } remove { } }
+}
+
+public sealed class SecondLoggingViewModel : INotifyPropertyChanged
+{
+    public string Title { get; set; } = "Second";
 
     public event PropertyChangedEventHandler? PropertyChanged { add { } remove { } }
 }

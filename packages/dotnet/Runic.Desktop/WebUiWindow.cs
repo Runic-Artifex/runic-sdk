@@ -1642,16 +1642,17 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
         return MenuCommandChain.TryExecute(item, window, application, Logger);
     }
 
-    // Whether each item can run now, as the command path asks: on the window's UI thread when it has one.
-    internal async Task<bool[]> CanExecuteMenuItemsAsync(IReadOnlyList<Runic.Platform.DesktopMenuItem> items, IDesktopMenuCommandTarget? window,
-        CancellationToken cancellationToken)
+    // Whether each item can run now, as the command path asks, and its check mark: on the window's UI thread when it has one.
+    internal async Task<(bool Enabled, bool? Checked)[]> MenuItemStatesAsync(IReadOnlyList<Runic.Platform.DesktopMenuItem> items,
+        IDesktopMenuCommandTarget? window, CancellationToken cancellationToken)
     {
         var application = MenuHost?.MenuCommands;
-        var results = new bool[items.Count];
+        var results = new (bool Enabled, bool? Checked)[items.Count];
         void Ask()
         {
             for (var index = 0; index < items.Count; index++)
-                results[index] = MenuCommandChain.CanExecute(items[index], window, application, Logger);
+                results[index] = (MenuCommandChain.CanExecute(items[index], window, application, Logger),
+                    MenuCommandChain.IsChecked(items[index], window, application, Logger));
         }
         if (Volatile.Read(ref _embeddedHost) is { IsOpen: true, SupportsNativeDispatch: true } host && !host.CheckNativeAccess())
         {
