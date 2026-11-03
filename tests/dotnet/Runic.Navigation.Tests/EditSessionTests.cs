@@ -135,10 +135,10 @@ internal sealed partial class NavigationTests
         using var session = new RunicEditSession<string>(note, () => note.Title, title => note.Title = title);
         // A presentation whose user typed into a field that has not written yet: the flush writes it.
         var typed = "Typed, not yet written";
-        using var registration = RunicDraftFlush.Register(fixture.Context, async _ =>
+        using var registration = RunicDraftFlush.Register(fixture.Context, async cancellationToken =>
         {
             await Task.Yield();
-            await fixture.Context.InvokeAsync(() => { if (typed is not null) note.Title = typed; typed = null; });
+            await fixture.Context.InvokeAsync(() => { if (typed is not null) note.Title = typed; typed = null; }, cancellationToken);
         });
         var prompts = 0;
         var leave = new LeaveConfirmation(() => session.IsDirty, (_, _) => { prompts++; return ValueTask.FromResult(false); });
