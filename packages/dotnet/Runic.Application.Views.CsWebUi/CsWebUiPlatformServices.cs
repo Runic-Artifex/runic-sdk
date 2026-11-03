@@ -38,7 +38,7 @@ public static class CsWebUiPlatformServiceCollectionExtensions
     /// <see cref="IApplicationPlatformServices"/>, <see cref="IDesktopSettings"/>,
     /// <see cref="IDesktopNotifications"/>, <see cref="IDesktopStatusIcon"/>, <see cref="IDesktopGlobalShortcuts"/>, <see cref="IDesktopLoginStartup"/>,
     /// <see cref="IDesktopInhibition"/>, <see cref="IDesktopSecretStore"/>, <see cref="IDesktopTrash"/>,
-    /// <see cref="IDesktopFileTransfers"/>, <see cref="IDesktopVolumes"/>, <see cref="IDesktopNetworkStatus"/>, <see cref="IDesktopApplications"/> and <see cref="IDesktopThumbnails"/> for the application. CS-WebUI windows have no native owner, so every window
+    /// <see cref="IDesktopFileTransfers"/>, <see cref="IDesktopVolumes"/>, <see cref="IDesktopNetworkStatus"/>, <see cref="IDesktopPowerEvents"/>, <see cref="IDesktopApplications"/> and <see cref="IDesktopThumbnails"/> for the application. CS-WebUI windows have no native owner, so every window
     /// operation and the capability snapshot report <see cref="PlatformUnavailableReason.OwnerUnavailable"/>. This
     /// package selects no native provider, so every application service reports
     /// <see cref="PlatformUnavailableReason.ProviderNotConfigured"/>.
@@ -69,6 +69,7 @@ public static class CsWebUiPlatformServiceCollectionExtensions
         services.TryAddSingleton(static _ => DesktopFileTransfers.Unavailable(PlatformUnavailableReason.ProviderNotConfigured));
         services.TryAddSingleton(static _ => DesktopVolumes.Unavailable(PlatformUnavailableReason.ProviderNotConfigured));
         services.TryAddSingleton(static _ => DesktopNetworkStatus.Unavailable(PlatformUnavailableReason.ProviderNotConfigured));
+        services.TryAddSingleton(static _ => DesktopPowerEvents.Unavailable(PlatformUnavailableReason.ProviderNotConfigured));
         services.TryAddSingleton(static _ => DesktopApplications.Unavailable(PlatformUnavailableReason.ProviderNotConfigured));
         services.TryAddSingleton(static _ => DesktopThumbnails.Unavailable(PlatformUnavailableReason.ProviderNotConfigured));
         services.TryAddScoped(static _ => WindowPlatformServices.Unavailable(PlatformUnavailableReason.OwnerUnavailable));

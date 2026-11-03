@@ -487,6 +487,31 @@ internal sealed class ServeOnlyChecks
             [new(DesktopErrorCategory.Unavailable, Code, "The test window host has no display.", Retryable: false)];
     }
 
+    // The lines both hosts write (Runic Desktop and CS-WebUI share ServeOnlyAnnouncement): the URL line, then the
+    // window line whose type field has no spaces, even for a closed generic Window type.
+    [Test]
+    public void ServeOnlyLinesNameTheWindowTypeWithoutSpaces()
+    {
+        const string url = "http://127.0.0.1:5000/";
+        Check(ServeOnlyAnnouncement.Lines(url, null) == "RUNIC_APPLICATION_URL=" + url + Environment.NewLine,
+            "A window without a type wrote more than its URL line.");
+        Check(ServeOnlyAnnouncement.Lines(url, typeof(ProbeWindow)) == "RUNIC_APPLICATION_URL=" + url + Environment.NewLine
+            + "RUNIC_APPLICATION_WINDOW=" + url + " " + typeof(ProbeWindow).FullName + Environment.NewLine,
+            "The window line does not follow the URL line with the Window's full name.");
+
+        var generic = ServeOnlyAnnouncement.WindowTypeName(typeof(GenericProbe<Dictionary<string, int[]>>));
+        Check(typeof(GenericProbe<Dictionary<string, int[]>>).FullName!.Contains(' ', StringComparison.Ordinal),
+            "The case no longer covers a type whose full name has spaces.");
+        Check(generic == typeof(GenericProbe<>).FullName + "[Dictionary`2[String,Int32[]]]",
+            $"The generic Window type was written as '{generic}'.");
+        var line = ServeOnlyAnnouncement.Lines(url, typeof(GenericProbe<string>)).Split(Environment.NewLine)[1];
+        Check(line.Split(' ') is [_, var type] && type == typeof(GenericProbe<>).FullName + "[String]",
+            $"The generic window line does not split into a URL and a type: '{line}'.");
+    }
+
+    // A generic Window stand-in; only its name is used.
+    private sealed class GenericProbe<T>;
+
     private static void Check(bool condition, string message)
     {
         if (!condition) throw new InvalidOperationException(message);

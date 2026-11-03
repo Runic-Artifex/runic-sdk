@@ -276,3 +276,28 @@ test("shortcuts: \"app\" takes the lease, handleKeyDown invokes, and dispose or 
   assert.equal(bar.handleKeyDown(event), false, "A disposed controller matched a shortcut.");
   await assert.rejects(bar.invoke(item(fixture.menus, "file.new")), (error: { kind?: string }) => error.kind === "released");
 });
+
+test("check marks follow the host's later states, each radio item with its own value", async () => {
+  const host = installMockMenuBar(fixture.menus, { platform: "linux" });
+  const bar = controller();
+  await until(() => bar.current.status === "ready", "The controller did not connect.");
+  const zoom = () => {
+    const found: (boolean | undefined)[] = [];
+    const walk = (entries: readonly MenuBarMenu["entries"][number][]): void => {
+      for (const entry of entries) {
+        if (entry.kind === "menu") walk(entry.entries);
+        else if (entry.kind === "item" && entry.commandId === "view.zoom") found.push(entry.checked);
+      }
+    };
+    walk(bar.current.menus);
+    return found;
+  };
+  assert.deepEqual(zoom(), [false, true]);
+  const toggle = (entries: readonly MenuBarMenu["entries"][number][]): MenuBarMenu["entries"][number][] => entries.map(entry =>
+    entry.kind === "menu" ? { ...entry, entries: toggle(entry.entries) }
+      : entry.kind === "item" && entry.checked !== undefined ? { ...entry, checked: !entry.checked } : entry);
+  host.update({ menus: host.menus.map(menu => ({ ...menu, entries: toggle(menu.entries) })) });
+  await until(() => zoom()[0] === true, "checked did not follow the host.");
+  assert.deepEqual(zoom(), [true, false]);
+  assert.equal(item(bar.current.menus, "view.sidebar").checked, false);
+});

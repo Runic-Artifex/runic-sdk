@@ -24,6 +24,9 @@ internal static class LoggingApplication
     internal const string ChildProcessVariable = "RUNIC_TEST_CHILD_PROCESS";
     internal const string ChildProcessArgument = "--run-child-process";
 
+    // With RUNIC_TEST_SECOND_WINDOW=1, the application also opens a SecondLoggingWindow and waits for both to close.
+    internal const string SecondWindowVariable = "RUNIC_TEST_SECOND_WINDOW";
+
     // The window options the application checks at startup. X without Y is incomplete, so Runic Desktop
     // reports window-option-incomplete (event 3003) on every platform.
     internal static readonly Runic.Desktop.DesktopWindowOptions CheckedOptions = RunicDesktopHost.DefaultWindowOptions with { X = 100 };
@@ -38,6 +41,7 @@ internal static class LoggingApplication
         services.AddLogging(logging => logging.AddSerilog(
             new LoggerConfiguration().MinimumLevel.Debug().WriteTo.Sink(sink).CreateLogger(), dispose: true));
         services.AddScoped<LoggingViewModel>();
+        services.AddScoped<SecondLoggingViewModel>();
         services.AddRunicViews();
         var provider = services.BuildServiceProvider(new ServiceProviderOptions { ValidateScopes = true, ValidateOnBuild = true });
         try
@@ -51,7 +55,14 @@ internal static class LoggingApplication
                 host.ValidateWindow<LoggingWindow>().ThrowIfInvalid();
                 using var child = StartChildProcess();
                 await using (var window = await host.OpenWindowAsync<LoggingWindow>())
-                    await window.WaitForCloseAsync();
+                {
+                    if (Environment.GetEnvironmentVariable(SecondWindowVariable) == "1")
+                    {
+                        await using var second = await host.OpenWindowAsync<SecondLoggingWindow>();
+                        await Task.WhenAll(window.WaitForCloseAsync().AsTask(), second.WaitForCloseAsync().AsTask());
+                    }
+                    else await window.WaitForCloseAsync();
+                }
                 if (child is not null && Environment.GetEnvironmentVariable(ChildProcessVariable) != "leak")
                 {
                     child.Kill();

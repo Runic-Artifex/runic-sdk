@@ -154,3 +154,8 @@ static Runic.Application.Views.RunicRowRange.operator !=(Runic.Application.Views
 static Runic.Application.Views.RunicRowRange.operator ==(Runic.Application.Views.RunicRowRange left, Runic.Application.Views.RunicRowRange right) -> bool
 static Runic.Application.Views.RunicSortKey.operator !=(Runic.Application.Views.RunicSortKey left, Runic.Application.Views.RunicSortKey right) -> bool
 static Runic.Application.Views.RunicSortKey.operator ==(Runic.Application.Views.RunicSortKey left, Runic.Application.Views.RunicSortKey right) -> bool
+Runic.Application.Views.IRunicMenuCheckedSource
+Runic.Application.Views.IRunicMenuCheckedSource.IsMenuItemChecked(string! commandId, string? commandParameter) -> bool?
+Runic.Application.Views.RunicMenu
+static Runic.Application.Views.RunicMenu.Refresh(object! viewModel) -> void
+static Runic.Application.Views.RunicMenu.RefreshAll() -> void
