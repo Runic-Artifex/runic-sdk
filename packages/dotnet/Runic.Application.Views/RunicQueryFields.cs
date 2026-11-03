@@ -93,7 +93,7 @@ public sealed class RunicQueryFields<TRow>
                     throw new ArgumentException($"The query has no custom filter '{filter.Field}'.", nameof(query));
                 // The filter runs once over no rows, so an argument it cannot read fails here, before the query is taken,
                 // and not in every later load.
-                try { _ = custom(Enumerable.Empty<TRow>().AsQueryable(), filter.Value).Take(0).ToList(); }
+                try { _ = custom(new NoRows<TRow>(), filter.Value).Take(0).ToList(); }
                 catch (ArgumentException) { throw; }
                 catch (Exception error) when (error is not OperationCanceledException and not OutOfMemoryException)
                 {
@@ -297,4 +297,20 @@ internal static class RunicQueryValues
 
     private static string String(JsonElement value) =>
         value.ValueKind == JsonValueKind.String ? value.GetString()! : throw new FormatException("Expected a string.");
+}
+
+// A queryable over no rows whose provider only collects the expression: Validate runs a custom filter over it without
+// compiling or executing anything (EnumerableQuery, which AsQueryable returns, needs dynamic code and breaks AOT).
+file sealed class NoRows<T>(System.Linq.Expressions.Expression? expression = null) : IOrderedQueryable<T>, IQueryProvider
+{
+    public Type ElementType => typeof(T);
+    // The root is this queryable, so Queryable's operators accept it as an IQueryable<T> argument.
+    public System.Linq.Expressions.Expression Expression => expression ?? System.Linq.Expressions.Expression.Constant(this);
+    public IQueryProvider Provider => this;
+    public IEnumerator<T> GetEnumerator() => Enumerable.Empty<T>().GetEnumerator();
+    System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() => GetEnumerator();
+    public IQueryable CreateQuery(System.Linq.Expressions.Expression expression) => new NoRows<T>(expression);
+    public IQueryable<TElement> CreateQuery<TElement>(System.Linq.Expressions.Expression expression) => new NoRows<TElement>(expression);
+    public object? Execute(System.Linq.Expressions.Expression expression) => null;
+    public TResult Execute<TResult>(System.Linq.Expressions.Expression expression) => default!;
 }
