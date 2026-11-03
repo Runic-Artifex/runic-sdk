@@ -443,7 +443,9 @@ public sealed class RunicDesktopHost : IRunicWindowHost
                 owner.ServeUntil(ServeOnlyStopped());
                 // A concatenation, not a format: TextWriter's formatting reads the current culture, which loads ICU
                 // (S1; native-server.yml checks that serve-only startup does without it).
-                Console.Out.WriteLine("RUNIC_APPLICATION_URL=" + surface.Url);
+                // One write, so another window's lines cannot come between the URL line older parsers read and the
+                // window line that names the Window type (README, "Automation").
+                Console.Out.Write(ServeOnlyAnnouncement.Lines(surface.Url.ToString(), opening.Window.GetType()));
                 Console.Out.Flush();
                 return owner;
             }
