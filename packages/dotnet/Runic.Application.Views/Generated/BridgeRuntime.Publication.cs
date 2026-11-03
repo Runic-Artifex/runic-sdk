@@ -512,19 +512,51 @@ public partial class ViewModelBridge<T>
         return state;
     }
 
-    // blobs/1: a state member's blobs are exactly those of its latest write (BridgeBlobs, holders).
+    // blobs/1: a state member's blobs are exactly those of its latest write (BridgeBlobs, holders). A keyed collection
+    // that publishes its changes holds each row's blobs by the row's key instead, so a row change replaces only that
+    // row's blobs; its rows are written as its changes write them, which is the member's own encoding.
     private void WriteMemberValue(BridgeStateMember<T> member, Utf8JsonWriter writer)
     {
         using var route = EnterBlobs(null);
-        using var slot = BridgeBlobScope.EnterSlot(member.Name);
-        member.Write(writer, _vm);
+        if (IncrementalCollection(member.Name) is { } descriptor && descriptor.Get(_vm) is System.Collections.IEnumerable rows)
+        {
+            var keys = new HashSet<string>(StringComparer.Ordinal);
+            writer.WriteStartArray();
+            foreach (var row in rows)
+            {
+                var key = descriptor.Key(row);
+                keys.Add(key);
+                using var slot = BridgeBlobScope.EnterSlot(RowSlot(descriptor, key));
+                descriptor.WriteItem(writer, row);
+            }
+            writer.WriteEndArray();
+            Blobs.ReleaseSlots(this, RowSlot(descriptor, ""), keep: slot => keys.Contains(slot[(descriptor.Name.Length + 1)..]));
+            return;
+        }
+        using (BridgeBlobScope.EnterSlot(member.Name)) member.Write(writer, _vm);
     }
 
-    // A collection change's rows: their blobs belong to the route until it is released.
+    // A collection change's row: its blobs are those of the row's latest write, by its key.
     private void WriteItemValue(BridgeCollectionDescriptor<T> descriptor, Utf8JsonWriter writer, object? item)
     {
         using var route = EnterBlobs(null);
+        using var slot = BridgeBlobScope.EnterSlot(RowSlot(descriptor, descriptor.Key(item)));
         descriptor.WriteItem(writer, item);
+    }
+
+    // The rows a collection change took away release their blobs.
+    private void ReleaseRows(BridgeCollectionDescriptor<T> descriptor, IEnumerable<string> keys)
+    {
+        foreach (var key in keys) Blobs.ReleaseSlots(this, RowSlot(descriptor, key), exact: true);
+    }
+
+    private static string RowSlot(BridgeCollectionDescriptor<T> descriptor, string key) => descriptor.Name + "\u0000" + key;
+
+    private BridgeCollectionDescriptor<T>? IncrementalCollection(string name)
+    {
+        foreach (var descriptor in _incrementalCollections)
+            if (descriptor.Name == name) return descriptor;
+        return null;
     }
 
     private void WriteFieldVersions(Utf8JsonWriter writer)
@@ -657,6 +689,14 @@ public partial class ViewModelBridge<T>
                     var items = kind is "add" or "replace"
                         ? args.NewItems?.Cast<object?>().Select(item => WriteValue(writer => WriteItemValue(descriptor, writer, item))).ToArray() ?? []
                         : [];
+                    // blobs/1: a removed row, or a replaced one whose key no new row has, releases its blobs.
+                    if (kind is "remove" or "replace")
+                    {
+                        var kept = kind == "replace"
+                            ? args.NewItems?.Cast<object?>().Select(descriptor.Key).ToHashSet(StringComparer.Ordinal) ?? []
+                            : [];
+                        ReleaseRows(descriptor, keys.Where(key => !kept.Contains(key)));
+                    }
                     _pendingCollectionChanges.Add(new(descriptor, kind,
                         kind == "remove" ? args.OldStartingIndex : args.NewStartingIndex,
                         args.OldStartingIndex, keys, items));

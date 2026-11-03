@@ -139,6 +139,8 @@ internal sealed class BlobStoreChecks
     public void RouteHeldBlobsAreCappedAndABlobCanBeReleased()
     {
         using var blobs = Blobs(null, null);
+        var log = new EventLog();
+        blobs.Logger = log;
         blobs.MaximumRetainedBlobs = 3;
         var route = new object();
         var results = Enumerable.Range(0, 5).Select(index => RunicBlob.FromBytes(Encoding.UTF8.GetBytes($"r{index}"), "text/plain")).ToArray();
@@ -146,6 +148,9 @@ internal sealed class BlobStoreChecks
         using (BridgeBlobScope.Enter(blobs, route, null))
             urls = [.. results.Select(blob => blobs.Issue(blob, BridgeBlobScope.Current!))];
         Check(blobs.BlobCount == 3, $"The window keeps {blobs.BlobCount} route-held blobs.");
+        // One warning for the request that released two blobs, with their number.
+        Check(log.Messages.Count(message => message.Id == 1208) == 1 && log.Messages.Single(message => message.Id == 1208).Text.Contains("2 oldest", StringComparison.Ordinal),
+            $"Evictions were logged as: {string.Join(" | ", log.Messages.Select(message => $"{message.Id} {message.Text}"))}");
         Check(!blobs.TryResolve(Token(urls[0]), out _) && !blobs.TryResolve(Token(urls[1]), out _) && blobs.TryResolve(Token(urls[4]), out _),
             "The oldest route-held blobs were not the ones released.");
 
@@ -177,6 +182,100 @@ internal sealed class BlobStoreChecks
         var policies = exchange.Headers.Where(header => header.Name == "Content-Security-Policy").Select(header => header.Value).ToArray();
         Check(exchange.StatusCode == 200 && policies.Length == 2 && policies[0] == "frame-ancestors 'self'" && policies[1].Contains("sandbox", StringComparison.Ordinal),
             $"The policies are {string.Join(" | ", policies)}");
+    }
+
+    [Test]
+    public void TheSweepDeletesOnlyThisUsersFoldersUntouchedForADay()
+    {
+        using var work = new Work();
+        var root = work.Directory("sweep", Private);
+        var now = DateTime.UtcNow;
+        string Folder(string name, DateTime changed, DateTime? file = null, Action<string>? fill = null)
+        {
+            var path = Path.Combine(root, name);
+            Directory.CreateDirectory(path);
+            var inner = Path.Combine(path, "upload");
+            File.WriteAllText(inner, name);
+            File.SetLastWriteTimeUtc(inner, file ?? changed);
+            fill?.Invoke(path);
+            Directory.SetLastWriteTimeUtc(path, changed);
+            return path;
+        }
+        // Inside the stale folder, a link to a file outside it: deleting the folder deletes the link, not its target.
+        var stale = Folder("runic-uploads-stale", now.AddDays(-2),
+            fill: path => File.CreateSymbolicLink(Path.Combine(path, "planted"), work.Secret));
+        var fresh = Folder("runic-uploads-fresh", now.AddHours(-23));
+        var busy = Folder("runic-uploads-busy", now.AddDays(-2), file: now.AddMinutes(-5));
+        var other = Folder("other-folder", now.AddDays(-2));
+        // A link of the prefix's name to a folder of the user's that nothing changed for long: never followed.
+        var target = work.Directory("target", Private);
+        File.WriteAllText(Path.Combine(target, "keep.txt"), "keep");
+        Directory.SetLastWriteTimeUtc(target, now.AddDays(-5));
+        var link = Path.Combine(root, "runic-uploads-link");
+        Directory.CreateSymbolicLink(link, target);
+
+        BridgeUploadFolder.Sweep(root, now, Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance);
+
+        Check(!Directory.Exists(stale), "A folder untouched for two days was kept.");
+        Check(Directory.Exists(fresh) && Directory.Exists(busy) && Directory.Exists(other), "The sweep deleted a folder it must keep.");
+        Check(new DirectoryInfo(link).LinkTarget is not null && File.Exists(Path.Combine(target, "keep.txt")), "The sweep followed a link.");
+        Check(File.ReadAllText(work.Secret) == "secret", "The sweep deleted through a link inside a folder.");
+    }
+
+    [Test]
+    public async Task ABaseOrFolderOfAnotherUserIsNotUsed()
+    {
+        if (OperatingSystem.IsWindows()) return;
+        using var work = new Work();
+        var own = work.Directory("own", Private);
+        Check(BridgeUploadFolder.LinkStatus(own) is { IsDirectory: true } status && status.Owner == BridgeUploadFolder.EffectiveUser,
+            "lstat does not report the owner.");
+        Check(BridgeUploadFolder.IsSafeBase(own), "This user's private base was refused.");
+        // The root directory is root's and not writable by others: a safe base by its owner and mode.
+        Check(BridgeUploadFolder.IsSafeBase("/"), "A root-owned base was refused.");
+        var file = Path.Combine(work.Root, "file");
+        File.WriteAllText(file, "");
+        Check(!BridgeUploadFolder.IsSafeBase(file), "A file was accepted as a base.");
+
+        // The same directories, seen by another effective user, belong to someone else.
+        using (BridgeUploadFolder.ActAsUser(4_242_424))
+        {
+            Check(!BridgeUploadFolder.IsSafeBase(own), "Another user's base was accepted.");
+            using var blobs = Blobs(own, own);
+            await Refused(blobs, "content");
+            Check(blobs.UploadCounters == (0, 0), $"A refused folder kept the slot: {blobs.UploadCounters}");
+        }
+
+        // mkdtemp: a new 0700 folder of this user for each window.
+        using var first = Blobs(own, null);
+        using var second = Blobs(own, null);
+        await Store(first, "a");
+        await Store(second, "b");
+        Check(first.UploadFolder != second.UploadFolder && BridgeUploadFolder.IsPrivateDirectory(first.UploadFolder!)
+            && BridgeUploadFolder.IsPrivateDirectory(second.UploadFolder!), "The windows' folders are not new and private.");
+        using (BridgeUploadFolder.ActAsUser(4_242_424))
+            Check(!BridgeUploadFolder.IsPrivateDirectory(first.UploadFolder!), "A folder of another user counted as private.");
+    }
+
+    [Test]
+    public async Task OnWindowsTheWindowFolderGrantsOnlyTheUserSystemAndAdministrators()
+    {
+        if (!OperatingSystem.IsWindows()) return;
+        using var work = new Work();
+        using var blobs = Blobs(work.Directory("base", Private), null);
+        await Store(blobs, "content");
+        var security = new DirectoryInfo(blobs.UploadFolder!).GetAccessControl();
+        var allowed = new[]
+        {
+            System.Security.Principal.WindowsIdentity.GetCurrent().User!,
+            new System.Security.Principal.SecurityIdentifier(System.Security.Principal.WellKnownSidType.LocalSystemSid, null),
+            new System.Security.Principal.SecurityIdentifier(System.Security.Principal.WellKnownSidType.BuiltinAdministratorsSid, null),
+        };
+        var rules = security.GetAccessRules(true, true, typeof(System.Security.Principal.SecurityIdentifier))
+            .Cast<System.Security.AccessControl.FileSystemAccessRule>().ToArray();
+        Check(security.AreAccessRulesProtected && rules.All(rule => !rule.IsInherited && allowed.Contains(rule.IdentityReference))
+            && allowed.All(identity => rules.Any(rule => rule.IdentityReference == identity)),
+            $"The folder's ACL is {string.Join(", ", rules.Select(rule => $"{rule.IdentityReference}:{rule.FileSystemRights}:{rule.IsInherited}"))}");
     }
 
     private static BridgeBlobs Blobs(string? temporaryBase, string? fallbackBase, TimeProvider? time = null)
@@ -300,6 +399,19 @@ internal sealed class BlobStoreChecks
         public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
         public override void SetLength(long value) => throw new NotSupportedException();
         public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
+    }
+
+    // The events a store logs, by id.
+    private sealed class EventLog : Microsoft.Extensions.Logging.ILogger
+    {
+        internal List<(int Id, string Text)> Messages { get; } = [];
+        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+        public bool IsEnabled(Microsoft.Extensions.Logging.LogLevel logLevel) => true;
+        public void Log<TState>(Microsoft.Extensions.Logging.LogLevel logLevel, Microsoft.Extensions.Logging.EventId eventId, TState state,
+            Exception? exception, Func<TState, Exception?, string> formatter)
+        {
+            lock (Messages) Messages.Add((eventId.Id, formatter(state, exception)));
+        }
     }
 
     private sealed class RecordingExchange : IBridgeBlobExchange

@@ -1066,9 +1066,11 @@ page sends a file as an **upload**, over HTTP to the host, which a request then 
 - `url` is an absolute URL that the window's host serves with `GET` and `HEAD`, or the empty string when the host
   serves no blobs. It is a **capability**: it contains at least 128 random bits, it is valid only for the window that
   wrote it, and the producer serves it only while a holder keeps it. A state member holds the blobs of its latest
-  value: when a later value no longer contains a blob, its URL stops working. A blob in a collection row, a result or
-  another value is held until the route is released; a producer MAY release the least recently written of these
-  earlier, to bound what a long-lived route holds, and its model MAY release a blob explicitly. Closing the window
+  value: when a later value no longer contains a blob, its URL stops working. A row of a keyed collection holds the
+  blobs of its latest write, until it is removed or replaced. The producer MUST NOT release a blob that state or a
+  row still holds. A blob in a result or another value is held until the route is released; a producer MAY release
+  the least recently written of these earlier, to bound what a long-lived route holds, and its model MAY release any
+  blob explicitly. Closing the window
   releases every URL. One blob of the producer's model has one URL per window, so an unchanged member keeps its
   encoding; a blob written again after it was released gets a new URL.
 - A response to a blob URL has the blob's `type` as `Content-Type`, `X-Content-Type-Options: nosniff`, a

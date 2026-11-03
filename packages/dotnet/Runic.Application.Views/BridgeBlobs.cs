@@ -56,6 +56,7 @@ internal sealed class BridgeBlobs : IDisposable
     private int _receiving;
     // Increments when the Window closes: a store still in flight then changes no counter of the next session.
     private int _generation;
+    private int _evictedPending;
     private bool _closed;
     private bool _unavailableLogged;
 
@@ -71,8 +72,10 @@ internal sealed class BridgeBlobs : IDisposable
     internal string? UploadBase { get; set; }
     internal string? UploadFallbackBase { get; set; }
 
-    // The most blobs that routes hold without a state member (collection rows, results, interaction inputs) per Window.
-    // Beyond it the least recently written one is released (event 1208).
+    // The most blobs that routes hold without a state member or collection row (command and operation results,
+    // interaction inputs) per Window. Beyond it the least recently written one is released (event 1208, once per
+    // publication or request with the number released). Blobs of state and of a live collection's rows are never
+    // released for it: they stay until the member or the row no longer holds them.
     internal int MaximumRetainedBlobs { get; set; } = DefaultMaximumRetainedBlobs;
 
     // The Window's upload folder, or null before its first upload; for tests.
@@ -169,6 +172,34 @@ internal sealed class BridgeBlobs : IDisposable
         }
     }
 
+    // Releases the blobs of a route's slots: the slot itself with exact, otherwise every slot whose name starts with
+    // the prefix and that keep does not keep, such as the rows of a collection that are gone.
+    internal void ReleaseSlots(object route, string prefix, Func<string, bool>? keep = null, bool exact = false)
+    {
+        lock (_gate)
+        {
+            if (_closed) return;
+            foreach (var holder in _slots.Keys.Where(holder => ReferenceEquals(holder.Route, route) && holder.Slot is { } slot
+                && (exact ? slot == prefix : slot.StartsWith(prefix, StringComparison.Ordinal) && keep?.Invoke(slot) != true)).ToArray())
+            {
+                if (!_slots.Remove(holder, out var entries)) continue;
+                foreach (var entry in entries) Unhold(entry, holder);
+            }
+        }
+    }
+
+    // The route-held blobs released for the cap since the last report, which a scope's end logs once (event 1208).
+    internal void ReportEvictions()
+    {
+        int evicted;
+        lock (_gate)
+        {
+            evicted = _evictedPending;
+            _evictedPending = 0;
+        }
+        if (evicted > 0) BlobsLog.BlobEvicted(Logger, evicted, MaximumRetainedBlobs);
+    }
+
     // A route was released: so is everything it held.
     internal void ReleaseRoute(object route)
     {
@@ -226,7 +257,7 @@ internal sealed class BridgeBlobs : IDisposable
             evicted.Retained = null;
             foreach (var routeHolder in evicted.Holders.Where(static candidate => candidate.Slot is null).ToArray())
                 Unhold(evicted, routeHolder);
-            BlobsLog.BlobEvicted(Logger, MaximumRetainedBlobs);
+            _evictedPending++;
         }
     }
 
@@ -876,6 +907,11 @@ internal sealed class StoredUpload(BridgeBlobs owner, string id, string connecti
 
     // Renames the file when its path is still the file this upload created and the destination then is a plain file;
     // otherwise copies the content from the open handle. Either way the upload is deleted afterwards.
+    //
+    // File.Move works by path, unlike every read of the upload, which goes through its handle. That is safe because
+    // the path is in the Window's folder, which BridgeUploadFolder created for this user alone (mode 0700 below a
+    // base no other user can change, or a protected ACL on Windows): no other user can replace the file or the folder
+    // between the checks and the move. The checks before and after it only catch this process's own mistakes.
     public async ValueTask SaveAsAsync(string destination, bool overwrite, CancellationToken cancellationToken)
     {
         try
@@ -928,8 +964,9 @@ internal sealed class StoredUpload(BridgeBlobs owner, string id, string connecti
 
     internal void Expire() => owner.Expired(this);
 
-    // Closes the handle, then deletes the path: Windows cannot delete an open file. Deleting a path that was replaced
-    // by a link removes the link, never its target.
+    // Closes the handle, then deletes the path: Windows cannot delete an open file. Deletion also works by path, safe in
+    // the private folder for the same reason as SaveAsAsync's move; a path that was replaced by a link loses the link,
+    // never its target.
     internal void Delete(ILogger logger)
     {
         if (Interlocked.Exchange(ref _deleted, 1) != 0) return;
@@ -1025,7 +1062,7 @@ internal sealed class BridgeBlobScope
     {
         var previous = CurrentScope.Value;
         CurrentScope.Value = new BridgeBlobScope(blobs, route, connection, null);
-        return new Restore(true, previous, null, null);
+        return new Restore(true, previous, null, null, blobs);
     }
 
     // Collects the blobs a state member's write encodes; disposing replaces the member's blobs with them.
@@ -1035,17 +1072,20 @@ internal sealed class BridgeBlobScope
         if (previous is null) return default;
         var slot = new List<BridgeBlobs.BlobEntry>();
         CurrentScope.Value = new BridgeBlobScope(previous.Blobs, previous.Route, previous.Connection, slot);
-        return new Restore(true, previous, member, slot);
+        return new Restore(true, previous, member, slot, null);
     }
 
     // default restores nothing: a slot entered without a scope.
-    internal readonly struct Restore(bool active, BridgeBlobScope? previous, string? member, List<BridgeBlobs.BlobEntry>? slot) : IDisposable
+    // A route scope's end reports the blobs the cap released meanwhile, once (report).
+    internal readonly struct Restore(bool active, BridgeBlobScope? previous, string? member, List<BridgeBlobs.BlobEntry>? slot,
+        BridgeBlobs? report) : IDisposable
     {
         public void Dispose()
         {
             if (!active) return;
             CurrentScope.Value = previous;
             if (member is not null) previous!.Blobs.ReplaceSlot(previous.Route, member, slot!);
+            if (report is not null && previous is null) report.ReportEvictions();
         }
     }
 }
@@ -1086,6 +1126,6 @@ internal static partial class BlobsLog
     internal static partial void EndpointFailed(ILogger logger, Exception exception, string errorType);
 
     [LoggerMessage(EventId = 1208, EventName = "BlobEvicted", Level = LogLevel.Warning,
-        Message = "The window holds more than {Maximum} blobs of collection rows, results and interactions, so the oldest one's URL was released.")]
-    internal static partial void BlobEvicted(ILogger logger, int maximum);
+        Message = "The window holds more than {Maximum} blobs of command results and interactions, so the URLs of the {Count} oldest were released.")]
+    internal static partial void BlobEvicted(ILogger logger, int count, int maximum);
 }

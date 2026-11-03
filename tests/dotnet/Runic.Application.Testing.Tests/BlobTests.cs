@@ -192,6 +192,47 @@ internal sealed class BlobTests
             && types.Contains("upload(content: Blob", StringComparison.Ordinal), $"The ReactiveUI client lacks the blob types:\n{types}");
     }
 
+    [Test]
+    public async Task ThumbnailsOfALiveCollectionStayServedWhateverTheirNumber()
+    {
+        var model = new BlobGalleryViewModel();
+        static Thumbnail Row(int id) => new(id, RunicBlob.FromBytes(Encoding.UTF8.GetBytes($"t{id}"), "image/png"));
+        for (var id = 0; id < 1_500; id++) model.Thumbnails.Add(Row(id));
+        using var host = new RunicWindowTestHost<BlobGalleryViewModel>(model,
+            (transport, content, vm) => new BlobGalleryBridge(transport, vm, content: content),
+            new RunicWindowTestHostOptions { RootRoute = "blobGallery", ViewLocator = new TestViewLocator() });
+        string Url(int index)
+        {
+            using var state = host.Transport.SnapshotState("blobGallery");
+            return state.RootElement.GetProperty("state").GetProperty("thumbnails")[index].GetProperty("image").GetProperty("url").GetString()!;
+        }
+
+        // Every row's blob stays: the cap of route-held blobs does not apply to a live collection's rows.
+        var first = Url(0);
+        var last = Url(1_499);
+        Require(host.ServedBlobCount == 1_500, $"The window serves {host.ServedBlobCount} of 1500 thumbnails.");
+        Require(Encoding.UTF8.GetString((await host.ReadBlobAsync(first)).Content) == "t0"
+            && Encoding.UTF8.GetString((await host.ReadBlobAsync(last)).Content) == "t1499", "A thumbnail on screen is not served.");
+
+        // A row that leaves the collection, or is replaced by another blob, releases its blob; the others stay.
+        var second = Url(1);
+        model.Thumbnails.RemoveAt(0);
+        Require((await host.ReadBlobAsync(first)).StatusCode == 404, "A removed row's thumbnail is still served.");
+        model.Thumbnails[0] = Row(1);
+        Require((await host.ReadBlobAsync(second)).StatusCode == 404, "A replaced row's thumbnail is still served.");
+        Require((await host.ReadBlobAsync(Url(0))).StatusCode == 200 && (await host.ReadBlobAsync(last)).StatusCode == 200,
+            "A row that stayed lost its thumbnail.");
+        model.Thumbnails.Clear();
+        Require(Url0Count() == 0 && host.ServedBlobCount == 0 && (await host.ReadBlobAsync(last)).StatusCode == 404,
+            $"Cleared rows keep {host.ServedBlobCount} thumbnails.");
+
+        int Url0Count()
+        {
+            using var state = host.Transport.SnapshotState("blobGallery");
+            return state.RootElement.GetProperty("state").GetProperty("thumbnails").GetArrayLength();
+        }
+    }
+
     private static string GeneratedTypeScriptDirectory()
     {
         for (var directory = new DirectoryInfo(Environment.CurrentDirectory); directory is not null; directory = directory.Parent)

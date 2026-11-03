@@ -65,3 +65,14 @@ public sealed class ReactiveBlobViewModel : ReactiveUI.ReactiveObject
 }
 
 public sealed partial class ReactiveBlobWindow : RunicWindow<ReactiveBlobViewModel>;
+
+// A gallery: a keyed collection of thumbnail rows, more than the window's cap of route-held blobs.
+public sealed record Thumbnail(int Id, RunicBlob Image);
+
+public sealed partial class BlobGalleryViewModel : ObservableObject
+{
+    [RunicCollection(nameof(Thumbnail.Id))]
+    public System.Collections.ObjectModel.ObservableCollection<Thumbnail> Thumbnails { get; } = [];
+}
+
+public sealed partial class BlobGalleryWindow : RunicWindow<BlobGalleryViewModel>;

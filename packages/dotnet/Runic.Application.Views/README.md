@@ -2302,13 +2302,17 @@ The page receives `{url, type, size, name}` and uses `url` directly:
   Window's page (on Runic Desktop and WPF only to the browser client that holds
   the Window's cookie).
 - How long a URL works:
-  - A blob in a state property: until the property holds another value. Set
-    it to `null` or a new blob, and the old URL answers 404.
-  - A blob in a collection row, a command or operation result, or an
-    interaction input: until its View is released (interactions: until the
-    Window closes). A Window keeps at most 1,024 of these; beyond that the
-    least recently sent one is released and event 1208 `BlobEvicted` is
-    logged.
+  - A blob in a state property, or in a DTO or list inside it: until the
+    property holds another value. Set it to `null` or a new blob, and the old
+    URL answers 404.
+  - A blob in a row of a `[RunicCollection]`: until that row leaves the
+    collection or is replaced by a row with another blob. Any number of rows
+    stays served, so a list of 1,500 thumbnails keeps all 1,500.
+  - A blob in a command or operation result, or in an interaction input: until
+    its View is released (interactions: until the Window closes). A Window
+    keeps at most 1,024 of these; beyond that the least recently sent ones are
+    released, and event 1208 `BlobEvicted` is logged once per request with
+    their number. Results the page still needs belong in state instead.
   - Any blob: until you call `blob.Release()`, which ends its URLs in every
     Window at once. Release a download or a thumbnail a long-lived View no
     longer shows. If the blob crosses the Bridge again, it gets a new URL.
@@ -2752,7 +2756,7 @@ NativeAOT symbols and what to attach to a bug report.
 | 1205 | `BlobsUnavailable` | Warning | A `RunicBlob` crossed the Bridge, but the window's host serves no blobs, so its URL is empty. Once per window. | |
 | 1206 | `BlobCleanupFailed` | Warning | A stored upload could not be deleted. | `ErrorType` |
 | 1207 | `BlobEndpointFailed` | Warning | CS-WebUI could not start a window's blob endpoint; the window opens without blobs and uploads. | `ErrorType` |
-| 1208 | `BlobEvicted` | Warning | A window holds more blobs of collection rows, results and interactions than its limit (1,024), so the least recently sent one's URL was released. Release blobs a View no longer shows with `RunicBlob.Release()`. | `Maximum` |
+| 1208 | `BlobEvicted` | Warning | A window holds more blobs of command results and interaction inputs than its limit (1,024), so the least recently sent ones' URLs were released; logged once per request or publication. State and collection rows never count. Release results a View no longer shows with `RunicBlob.Release()`. | `Count`, `Maximum` |
 | 1110 | `ViewHostFallbackShown` | Warning | A WPF `RunicViewHost` cannot open its web presentation and shows its `Fallback`. | `ErrorType` |
 | 1111 | `ViewHostFallbackFailed` | Error | Showing that fallback throws. | `ErrorType` |
 | 1112 | `ViewHostPresentationChangeFailed` | Error | A `RunicViewHost` presentation change throws outside its open. | `ErrorType` |
