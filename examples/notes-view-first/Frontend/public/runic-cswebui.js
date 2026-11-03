@@ -279,6 +279,20 @@
   const receiveRequest = '{"kind":"receive"}';
   const receiveMessage = joined =>
     joined.session === undefined ? receiveRequest : JSON.stringify({ kind: "receive", session: joined.session });
+  // request-session/1 (specs/application/README.md, "Request sessions"): every
+  // request names the session of its connection's hello. The page's runtime
+  // adds it to its own requests; a request that other page code sends through
+  // __runicBridge.request without one gets the session of the hello this page
+  // sent last, so it still acts for this page.
+  function withSession(message, session) {
+    if (session === undefined || typeof message !== "string") return message;
+    const named = `"session":${JSON.stringify(session)}}`;
+    if (message.endsWith(named)) return message;
+    let parsed;
+    try { parsed = JSON.parse(message); } catch { return message; }
+    if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed) || "session" in parsed) return message;
+    return JSON.stringify({ ...parsed, session });
+  }
   // The session of a hello the page sends; the runtime writes kind first.
   function helloSession(message) {
     if (typeof message !== "string" || !message.startsWith('{"kind":"hello"')) return undefined;
@@ -401,6 +415,7 @@
       const joined = currentConnection();
       const session = helloSession(message);
       if (session !== undefined) joined.session = session;
+      else message = withSession(message, joined.session);
       const reply = send(joined, "__runicViews", [message]);
       const settled = () => requestSettled(joined);
       reply.then(settled, settled);
