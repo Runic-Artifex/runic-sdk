@@ -463,6 +463,13 @@ The same Window and `async host => ...` body run on CS-WebUI with
   boxes: task dialogs on Windows, also for a WPF window, sheets on macOS and GTK
   message or alert dialogs on Linux; see
   [Message boxes](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Platform/README.md#message-boxes).
+- `AddRunicPlatformServices()` also registers `IDesktopRecentDocuments`, the
+  application's recent documents (`DesktopPlatformServices.CreateRecentDocuments()`):
+  Open Recent and the Dock on macOS, Recent items and the Jump List on Windows,
+  and `recently-used.xbel` on Linux, the same lists as
+  `DesktopHost.NoteRecentDocumentAsync`, with each outcome as a `PlatformResult`.
+  Under `RUNIC_APPLICATION_SERVE_ONLY=1` it reports `Unavailable`; see
+  [Document apps](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Platform/README.md#document-apps).
 - `AddRunicPlatformServices()` also registers `IApplicationPlatformServices`, the
   one instance of `DesktopPlatformServices.ForApplication()`: the application's
   `FileLauncher` opens URIs and files and reveals files without a window, also

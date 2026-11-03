@@ -123,9 +123,15 @@ macOS conventions on top:
 | --- | --- | --- |
 | `window.SetRepresentedFileAsync(path)` | The title bar's proxy icon and the path menu of Command-click on the title (`NSWindow.representedURL`); `null` removes them | Nothing |
 | `window.SetDocumentEditedAsync(edited)` | The dot in the close button (`NSWindow.documentEdited`) | Nothing |
-| `host.NoteRecentDocumentAsync(path)` | Adds the document to Open Recent and the Dock menu's recent documents (`NSDocumentController.noteNewRecentDocumentURL:`) | Nothing |
-| `host.ClearRecentDocumentsAsync()` | Empties them, as Clear Menu does | Nothing |
+| `host.NoteRecentDocumentAsync(path)` | Adds the document to Open Recent and the Dock menu's recent documents (`NSDocumentController.noteNewRecentDocumentURL:`) | Windows: Recent items and the Jump List (`SHAddToRecentDocs`). Linux: `recently-used.xbel`, which GTK and KDE file choosers list |
+| `host.ClearRecentDocumentsAsync()` | Empties them, as Clear Menu does | Windows: the application's Jump List destinations. Linux: this application's entries |
 | `MacOSDesktopOptions.OpenRecentMenu` | Adds Open Recent at the top of the standard File menu | Ignored |
+
+The recent documents are also `IDesktopRecentDocuments` of Runic.Platform,
+which reports each outcome as a `PlatformResult`; Runic Windows get it from
+`AddRunicPlatformServices` (`DesktopPlatformServices.CreateRecentDocuments`),
+so a ViewModel can note the document it opened. The host's two methods ignore
+a failure on Windows and Linux.
 
 ```csharp
 var options = new DesktopHostOptions

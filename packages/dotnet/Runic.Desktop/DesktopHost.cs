@@ -100,7 +100,11 @@ public sealed class DesktopHost : IAsyncDisposable
     /// and when the path arrives as an open request, reopen the document with
     /// <c>IDesktopFileBookmarks.OpenDocumentAsync</c>.
     /// </para>
-    /// <para>Windows and Linux: the call checks its argument and does nothing.</para>
+    /// <para>
+    /// Windows: <c>SHAddToRecentDocs</c>, which also fills the application's Jump List. Linux: the freedesktop.org
+    /// <c>recently-used.xbel</c> that GTK and KDE read. A failure there is not reported; use
+    /// <see cref="IDesktopRecentDocuments"/> (<c>DesktopPlatformServices.CreateRecentDocuments</c> of Runic Windows) for the result.
+    /// </para>
     /// </remarks>
     /// <exception cref="ArgumentException"><paramref name="path"/> is empty, not fully qualified, or contains a NUL character.</exception>
     /// <exception cref="ArgumentNullException"><paramref name="path"/> is <see langword="null"/>.</exception>
@@ -112,7 +116,9 @@ public sealed class DesktopHost : IAsyncDisposable
         ValidateDocumentPath(path, nameof(path));
         ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
         cancellationToken.ThrowIfCancellationRequested();
-        return OperatingSystem.IsMacOS() ? MacOsWkWebViewHost.NoteRecentDocumentAsync(path, cancellationToken) : ValueTask.CompletedTask;
+        return OperatingSystem.IsMacOS()
+            ? MacOsWkWebViewHost.NoteRecentDocumentAsync(path, cancellationToken)
+            : IgnoreResultAsync(RecentDocuments.Shared.AddAsync(path, cancellationToken));
     }
 
     /// <summary>Empties the application's recent documents, as Clear Menu in Open Recent does.</summary>
@@ -120,7 +126,8 @@ public sealed class DesktopHost : IAsyncDisposable
     /// <returns>A task that completes when the list is empty.</returns>
     /// <remarks>
     /// On macOS this calls <c>NSDocumentController.clearRecentDocuments:</c> on the main thread, which
-    /// <see cref="DesktopEventLoop"/> serves. Windows and Linux: does nothing.
+    /// <see cref="DesktopEventLoop"/> serves. Windows: removes the application's Jump List destinations. Linux: removes the
+    /// application from <c>recently-used.xbel</c>, and the documents only it had.
     /// </remarks>
     /// <exception cref="ObjectDisposedException">The host is disposed.</exception>
     /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> was cancelled.</exception>
@@ -128,8 +135,13 @@ public sealed class DesktopHost : IAsyncDisposable
     {
         ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
         cancellationToken.ThrowIfCancellationRequested();
-        return OperatingSystem.IsMacOS() ? MacOsWkWebViewHost.ClearRecentDocumentsAsync(cancellationToken) : ValueTask.CompletedTask;
+        return OperatingSystem.IsMacOS()
+            ? MacOsWkWebViewHost.ClearRecentDocumentsAsync(cancellationToken)
+            : IgnoreResultAsync(RecentDocuments.Shared.ClearAsync(cancellationToken));
     }
+
+    // Windows and Linux report a failure as a result (IDesktopRecentDocuments); these methods keep returning nothing.
+    private static async ValueTask IgnoreResultAsync(ValueTask<PlatformResult<PlatformUnit>> request) => _ = await request.ConfigureAwait(false);
 
     // A document's path for the platform's document conventions: fully qualified, without NUL.
     internal static void ValidateDocumentPath(string path, string parameterName)

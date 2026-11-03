@@ -1,1 +1,2 @@
 #nullable enable
+static Runic.Application.Views.Desktop.DesktopPlatformServices.CreateRecentDocuments() -> Runic.Platform.IDesktopRecentDocuments!

@@ -553,7 +553,7 @@ public sealed class RunicDesktopHost : IRunicWindowHost
 
     internal const string ServeOnlyEnvironmentVariable = "RUNIC_APPLICATION_SERVE_ONLY";
 
-    private static bool ServeOnlyRequested => Environment.GetEnvironmentVariable(ServeOnlyEnvironmentVariable) == "1";
+    internal static bool ServeOnlyRequested => Environment.GetEnvironmentVariable(ServeOnlyEnvironmentVariable) == "1";
 
     private static readonly object s_serveOnlyGate = new();
     // Completes when the next line is read; replaced by each line, so a Window that opens later waits for a new one.
