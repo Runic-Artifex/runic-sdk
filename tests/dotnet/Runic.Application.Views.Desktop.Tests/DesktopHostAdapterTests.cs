@@ -611,11 +611,14 @@ sealed class NativeDispatchFactory : IDesktopWindowHostFactory
     public DesktopWindowState? InitialState { get; init; }
     // A window host that reports its activity from this one at open, and changes its color scheme; none when it is null.
     public DesktopWindowActivity? InitialActivity { get; init; }
+    // A window host that owns windows (DesktopWindowCapabilities.Ownership).
+    public bool Owns { get; init; }
     public bool IsSupported => true;
     public IDesktopWindowHost Create()
     {
         var host = new NativeDispatchHost
         {
+            Owns = Owns,
             SupportsNativeDispatch = SupportsDispatch, Announces = Announces, InitialState = InitialState, ContextMenus = ContextMenus,
             Placement = MenuBarPlacement,
             Drags = Drags,
@@ -687,7 +690,9 @@ sealed class NativeDispatchHost : IDesktopNativeDispatchWindowHost, IDesktopWind
         (Placement != DesktopMenuBarPlacement.None ? DesktopWindowCapabilities.MenuBar : DesktopWindowCapabilities.None) |
         (Drags ? DesktopWindowCapabilities.FileDrag : DesktopWindowCapabilities.None) |
         (InitialState is null ? DesktopWindowCapabilities.None : DesktopWindowCapabilities.State) |
-        (InitialActivity is null ? DesktopWindowCapabilities.None : DesktopWindowCapabilities.Activity | DesktopWindowCapabilities.ColorScheme);
+        (InitialActivity is null ? DesktopWindowCapabilities.None : DesktopWindowCapabilities.Activity | DesktopWindowCapabilities.ColorScheme) |
+        (Owns ? DesktopWindowCapabilities.Ownership : DesktopWindowCapabilities.None);
+    public bool Owns { get; init; }
     public System.Collections.Concurrent.ConcurrentQueue<(string Message, DesktopAnnouncementPriority Priority)> Announcements { get; } = new();
     public ValueTask AnnounceAsync(string message, DesktopAnnouncementPriority priority, CancellationToken cancellationToken = default)
     {

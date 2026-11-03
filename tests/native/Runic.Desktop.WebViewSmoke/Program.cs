@@ -79,6 +79,11 @@ try
         // Must run before the first await, as --zoom.
         MacOsWebContentSmoke.Run(CreateHostOptions());
     }
+    else if (args.Contains("--owner", StringComparer.Ordinal))
+    {
+        // B6. Must run before the first await, as --zoom: on macOS the AppKit loop owns the main thread.
+        Environment.ExitCode = OwnerSmoke.Run(CreateHostOptions());
+    }
     else if (args.Contains("--color-scheme", StringComparer.Ordinal))
     {
         // Must run before the first await, as --zoom: on macOS the AppKit loop owns the main thread.

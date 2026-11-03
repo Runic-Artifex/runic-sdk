@@ -1986,6 +1986,8 @@ internal sealed partial class Gtk4WindowHost : IDesktopNativeDispatchWindowHost,
     {
         var window = GetWindow();
         var webView = GetWebView();
+        // Before the window goes, so the owner takes input again first.
+        ReleaseOwner();
         window.Destroy();
         CleanupNative(window, webView);
     }
@@ -2010,6 +2012,7 @@ internal sealed partial class Gtk4WindowHost : IDesktopNativeDispatchWindowHost,
         {
             return;
         }
+        ReleaseOwner();
         ReleaseDragOut();
         _drops?.Dispose();
         Gtk4FileDrops.Disconnect(this);

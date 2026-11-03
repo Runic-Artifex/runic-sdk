@@ -63,6 +63,9 @@ if (Array.IndexOf(args, "--global-menu") is var globalMenu and >= 0)
 if (Array.IndexOf(args, "--global-menu-session") is var globalMenuSession and >= 0 && globalMenuSession + 2 < args.Length)
     return GlobalMenuSessionSmoke.Run(args[globalMenuSession + 1], args[globalMenuSession + 2]);
 
+// --owner (B6): owned and window-modal GTK 4 windows.
+if (args.Contains("--owner", StringComparer.Ordinal)) return OwnerGtk4Smoke.Run();
+
 if (args.Contains("--rtl", StringComparer.Ordinal)) return RightToLeftSmoke.Run();
 
 if (Array.IndexOf(args, "--monitors") is var monitors and >= 0)
