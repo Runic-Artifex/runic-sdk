@@ -391,6 +391,10 @@ const requestRules = {
   // README.md, "Presented states and window close" (presented/1).
   presented: m => isRoute(m.route) && isSafe(m.revision),
   "closing-reply": () => true,
+  // README.md, "Query collections" (query-collections/1).
+  "query-rows": m => isRoute(m.route) && isMember(m.member) && isSafe(m.start) && isSafe(m.count),
+  "query-set": m => isRoute(m.route) && isMember(m.member) && isObject(m.query),
+  "query-index": m => isRoute(m.route) && isMember(m.member) && typeof m.key === "string",
 };
 
 export function readRequest(text, limits = {}) {
@@ -483,6 +487,10 @@ const replyRules = {
   receive: m => Array.isArray(m.messages) && m.messages.every(isObject),
   presented: () => true,
   "closing-reply": () => true,
+  "query-rows": m => isSafe(m.version) && (m.total === null || isSafe(m.total)) && isSafe(m.start) && Array.isArray(m.keys)
+    && Array.isArray(m.rows) && m.keys.length === m.rows.length && m.keys.every(key => typeof key === "string" && key.length > 0),
+  "query-set": m => withRevision(m),
+  "query-index": m => isSafe(m.version) && Number.isSafeInteger(m.index) && m.index >= -1,
 };
 export function readReply(request, text) {
   let message;
@@ -718,7 +726,7 @@ test("every scenario is self-contained and names its file", () => {
     for (const problem of scenarioProblems(scenario)) failures.push(`${name(path)}: ${problem}`);
   }
   assert.deepEqual(failures, []);
-  for (const set of ["handshake", "state-changes", "replies", "edits", "operations", "presentations", "interactions", "errors"])
+  for (const set of ["handshake", "state-changes", "replies", "edits", "operations", "presentations", "interactions", "errors", "query-collections"])
     assert.ok([...ids].some(id => id.startsWith(`${set}.`)), `no ${set} scenario`);
 });
 

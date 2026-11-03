@@ -15,7 +15,7 @@
       "required": ["id", "version"],
       "properties": { "id": { "const": "runic.views" }, "version": { "const": 4 } }
     },
-    "set": { "enum": ["handshake", "state-changes", "replies", "edits", "operations", "presentations", "interactions", "errors"] },
+    "set": { "enum": ["handshake", "state-changes", "replies", "edits", "operations", "presentations", "interactions", "errors", "query-collections"] },
     "roles": {
       "type": "array",
       "minItems": 1,
@@ -28,11 +28,11 @@
       "type": "string",
       "pattern": "^specs/application/fixtures/[a-z-]+/[a-z0-9-]+\\.json#.+$"
     },
-    "view": { "enum": ["list", "log", "notes", "form", "wizard"] },
+    "view": { "enum": ["list", "log", "notes", "form", "wizard", "catalog"] },
     "requires": {
       "type": "array",
       "uniqueItems": true,
-      "items": { "enum": ["held-delivery", "virtual-clock", "text-splice/1", "presentation-epoch/1", "presented/1"] }
+      "items": { "enum": ["held-delivery", "virtual-clock", "text-splice/1", "presentation-epoch/1", "presented/1", "query-collections/1"] }
     },
     "options": {
       "type": "object",
@@ -262,9 +262,11 @@
       "required": ["id", "op"],
       "properties": {
         "id": { "$ref": "#/$defs/name" },
-        "op": { "enum": ["open", "close", "set", "write", "command", "can", "start", "wait", "status", "cancel", "register"] },
+        "op": { "enum": ["open", "close", "set", "write", "command", "can", "start", "wait", "status", "cancel", "register", "queryRange", "setQuery", "indexOf"] },
         "route": { "type": "string" },
         "member": { "type": "string" },
+        "start": { "$ref": "#/$defs/index" },
+        "count": { "type": "integer", "minimum": 0, "maximum": 1000 },
         "value": true,
         "input": true,
         "requestId": { "type": "string" },
@@ -291,16 +293,20 @@
       "additionalProperties": false,
       "allOf": [
         {
-          "if": { "properties": { "op": { "enum": ["open", "close", "set", "write", "command", "can", "start", "register"] } } },
+          "if": { "properties": { "op": { "enum": ["open", "close", "set", "write", "command", "can", "start", "register", "queryRange", "setQuery", "indexOf"] } } },
           "then": { "required": ["route"] }
         },
         {
-          "if": { "properties": { "op": { "enum": ["set", "write", "command", "can", "start"] } } },
+          "if": { "properties": { "op": { "enum": ["set", "write", "command", "can", "start", "queryRange", "setQuery", "indexOf"] } } },
           "then": { "required": ["member"] }
         },
         {
-          "if": { "properties": { "op": { "enum": ["set", "write"] } } },
+          "if": { "properties": { "op": { "enum": ["set", "write", "setQuery", "indexOf"] } } },
           "then": { "required": ["value"] }
+        },
+        {
+          "if": { "properties": { "op": { "const": "queryRange" } } },
+          "then": { "required": ["start", "count"] }
         },
         {
           "if": { "properties": { "op": { "enum": ["start", "wait", "status", "cancel"] } } },

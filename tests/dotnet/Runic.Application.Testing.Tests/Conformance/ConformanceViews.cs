@@ -94,6 +94,8 @@ internal sealed class DotNetConformanceViews : IConformanceViews
                     (vm, content) => new FormBridge(settings.Transport, vm, content)),
                 "wizard" => new Window<WizardViewModel>(session, WizardViewModel.Create(model),
                     (vm, content) => new WizardBridge(settings.Transport, vm, content)),
+                "catalog" => new Window<CatalogConformanceViewModel>(session, CatalogConformanceViewModel.Create(model, session.ModelContext),
+                    (vm, content) => new CatalogConformanceBridge(settings.Transport, vm, content)),
                 _ => throw new NotSupportedException($"The test View '{view}' is not a root View."),
             };
         }
