@@ -137,6 +137,14 @@ public sealed class RunicWindowTestHost<TViewModel> : IDisposable where TViewMod
     }
 
     /// <summary>
+    /// The window's platform fakes: the scope's <see cref="RunicTestPlatform"/> when <see cref="Services"/> registers
+    /// one with <c>AddRunicTestPlatform()</c>, or <see langword="null"/>.
+    /// </summary>
+    /// <remarks>Script dialogs, message boxes, context menus and the clipboard through it, and read what the ViewModel did
+    /// with them. Disposing the host closes it, as closing a window closes its platform services.</remarks>
+    public RunicTestPlatform? Platform { get; internal init; }
+
+    /// <summary>
     /// The window's clock: a <see cref="FakeTimeProvider"/> unless the options supply another clock.
     /// </summary>
     public TimeProvider Time { get; }
@@ -177,7 +185,11 @@ public sealed class RunicWindowTestHost<TViewModel> : IDisposable where TViewMod
         finally
         {
             try { Content.Dispose(); }
-            finally { Transport.Dispose(); }
+            finally
+            {
+                try { Transport.Dispose(); }
+                finally { Platform?.Close(); }
+            }
         }
     }
 
