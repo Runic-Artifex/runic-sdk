@@ -190,7 +190,13 @@ internal static partial class MenuSmoke
 
             if (rtl)
             {
+                // The bar SetMenuBar just replaced has its positions once GTK has laid it out.
                 var direction = await window.ReadNativeAsync(handle => inspector.BarDirection(handle));
+                for (var waited = 0; !(direction.Direction == 2 && direction.FirstIsRight) && waited < 5000; waited += 100)
+                {
+                    await Task.Delay(100);
+                    direction = await window.ReadNativeAsync(handle => inspector.BarDirection(handle));
+                }
                 Require(direction.Direction == 2 && direction.FirstIsRight, $"a right-to-left bar with File at the right: {direction}");
                 Console.WriteLine($"PASS {name} the bar is right to left.");
             }

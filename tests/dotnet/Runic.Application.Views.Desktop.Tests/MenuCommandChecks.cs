@@ -203,8 +203,7 @@ internal sealed class MenuCommandChecks
             var target = ((DesktopBridgeWindow<CheckedMenuViewModel>)window.Host).Window.MenuCommands!;
             var wrap = (DesktopMenuItem)bar[0].Items[0];
             var ruler = (DesktopMenuItem)bar[0].Items[1];
-            Require(Runic.Navigation.RunicModelContextRegistry.Shared.TryGet(viewModel, out var context) && context is not null,
-                "The ViewModel has no model context.");
+            var context = Runic.Navigation.RunicModelContextRegistry.Shared.GetRequired(viewModel);
 
             // Fifty changes in one turn: one read after it.
             var before = viewModel.WrapReads;
