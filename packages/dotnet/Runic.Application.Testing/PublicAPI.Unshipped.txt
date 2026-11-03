@@ -292,29 +292,10 @@ Runic.Application.Testing.RunicViewDriver<TModel>.IndexOfAsync<TRow, TKey>(Syste
 Runic.Application.Testing.RunicViewDriver<TModel>.QueryRowsAsync<TRow, TKey>(System.Linq.Expressions.Expression<System.Func<TModel!, Runic.Application.Views.RunicQueryCollection<TRow, TKey>!>!>! collection, int start, int count, string? connectionKey = null, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<Runic.Application.Testing.RunicQueryRows!>!
 Runic.Application.Testing.RunicViewDriver<TModel>.SetQueryAsync<TRow, TKey>(System.Linq.Expressions.Expression<System.Func<TModel!, Runic.Application.Views.RunicQueryCollection<TRow, TKey>!>!>! collection, Runic.Application.Views.RunicQuery! query, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<Runic.Application.Testing.RunicCallReply<TModel!>!>!
 Runic.Application.Testing.RunicWindowTestHost<TViewModel>.Platform.get -> Runic.Application.Testing.RunicTestPlatform?
-const Runic.Application.Testing.RunicTestPlatformServiceCollectionExtensions.DirectoryEnvironmentVariable = "RUNIC_TEST_PLATFORM_DIRECTORY" -> string!
-override Runic.Application.Testing.RunicAnnouncementCall.Equals(object? obj) -> bool
-override Runic.Application.Testing.RunicAnnouncementCall.GetHashCode() -> int
-override Runic.Application.Testing.RunicAnnouncementCall.ToString() -> string!
-override Runic.Application.Testing.RunicContextMenuCall.Equals(object? obj) -> bool
-override Runic.Application.Testing.RunicContextMenuCall.GetHashCode() -> int
-override Runic.Application.Testing.RunicContextMenuCall.ToString() -> string!
-override Runic.Application.Testing.RunicFileDialogCall.Equals(object? obj) -> bool
-override Runic.Application.Testing.RunicFileDialogCall.GetHashCode() -> int
-override Runic.Application.Testing.RunicFileDialogCall.ToString() -> string!
-override Runic.Application.Testing.RunicLaunchCall.Equals(object? obj) -> bool
-override Runic.Application.Testing.RunicLaunchCall.GetHashCode() -> int
-override Runic.Application.Testing.RunicLaunchCall.ToString() -> string!
-override Runic.Application.Testing.RunicMessageBoxCall.Equals(object? obj) -> bool
-override Runic.Application.Testing.RunicMessageBoxCall.GetHashCode() -> int
-override Runic.Application.Testing.RunicMessageBoxCall.ToString() -> string!
 override Runic.Application.Testing.RunicQueryRows.Equals(object? obj) -> bool
 override Runic.Application.Testing.RunicQueryRows.GetHashCode() -> int
 override Runic.Application.Testing.RunicQueryRows.ToString() -> string!
 override Runic.Application.Testing.RunicRowLoad.GetHashCode() -> int
-override Runic.Application.Testing.RunicTestPlatformEvent.Equals(object? obj) -> bool
-override Runic.Application.Testing.RunicTestPlatformEvent.GetHashCode() -> int
-override Runic.Application.Testing.RunicTestPlatformEvent.ToString() -> string!
 static Runic.Application.Testing.RunicAnnouncementCall.operator !=(Runic.Application.Testing.RunicAnnouncementCall? left, Runic.Application.Testing.RunicAnnouncementCall? right) -> bool
 static Runic.Application.Testing.RunicAnnouncementCall.operator ==(Runic.Application.Testing.RunicAnnouncementCall? left, Runic.Application.Testing.RunicAnnouncementCall? right) -> bool
 static Runic.Application.Testing.RunicContextMenuCall.operator !=(Runic.Application.Testing.RunicContextMenuCall? left, Runic.Application.Testing.RunicContextMenuCall? right) -> bool
