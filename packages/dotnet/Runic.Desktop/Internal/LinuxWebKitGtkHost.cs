@@ -78,11 +78,13 @@ internal sealed partial class LinuxWebKitGtkHost : IWebUiEmbeddedHost
         Volatile.Write(ref _activityUpdateQueued, 0);
         if (_window == 0 || !Api.CanReportState) return;
         var minimized = (Api.GetWindowStateFlags(_window) & GdkWindowStateIconified) != 0;
+        // A hidden window is never active: GTK can keep is-active set on a window it just unmapped.
+        var visible = !minimized && Api.GtkWidgetGetVisible(_window);
         var activity = new DesktopWindowActivity
         {
-            IsActive = !minimized && Api.GtkWindowIsActive(_window),
+            IsActive = visible && Api.GtkWindowIsActive(_window),
             IsMinimized = minimized,
-            IsVisible = !minimized && Api.GtkWidgetGetVisible(_window),
+            IsVisible = visible,
         };
         if (Equals(activity, Volatile.Read(ref _activity))) return;
         Volatile.Write(ref _activity, activity);

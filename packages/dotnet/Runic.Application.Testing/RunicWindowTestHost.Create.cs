@@ -155,6 +155,6 @@ public static class RunicWindowTestHost
             MaximumInputBytes = options.MaximumInputBytes,
             PublicationTimeout = options.PublicationTimeout,
         })
-        { Services = services };
+        { Services = services, Platform = services.GetService<RunicTestPlatform>() };
     }
 }

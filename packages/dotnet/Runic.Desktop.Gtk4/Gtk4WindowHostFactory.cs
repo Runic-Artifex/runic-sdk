@@ -499,11 +499,13 @@ internal sealed partial class Gtk4WindowHost : IDesktopNativeDispatchWindowHost,
         var state = surface is null ? 0 : ToplevelGetState(surface.Handle.DangerousGetHandle());
         var minimized = (state & GdkToplevelStateMinimized) != 0;
         var hidden = minimized || (state & GdkToplevelStateSuspended) != 0;
+        // A hidden window is never active: GTK can keep is-active set on a window it just unmapped.
+        var visible = !hidden && window.GetVisible();
         var activity = new DesktopWindowActivity
         {
-            IsActive = !hidden && window.IsActive,
+            IsActive = visible && window.IsActive,
             IsMinimized = minimized,
-            IsVisible = !hidden && window.GetVisible(),
+            IsVisible = visible,
         };
         if (Equals(activity, Volatile.Read(ref _activity))) return;
         Volatile.Write(ref _activity, activity);
