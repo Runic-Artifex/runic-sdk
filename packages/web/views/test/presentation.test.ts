@@ -13,7 +13,7 @@ const members = { page: (value: unknown) => bridgeWire.integer(value, 0, 1000), 
 const runtimeKey = Symbol.for("runic.views.generated-client-runtime");
 const host = globalThis as unknown as Record<string | symbol, unknown>;
 const tick = (ms = 0) => new Promise(resolve => setTimeout(resolve, ms));
-const allFeatures = ["text-splice/1", "presentation-epoch/1", "presented/1", "request-session/1"];
+const allFeatures = ["text-splice/1", "presentation-epoch/1", "presented/1", "view-requests/1", "request-session/1"];
 
 interface Sent { readonly message: Record<string, unknown>; resolve(reply: object): void }
 
@@ -107,7 +107,7 @@ function installFrames() {
 
 const connectWizard = () => connectView<State>({ contract: "Tests.Wizard:fp-1", route: "wizard", members, scopedCommands: ["next", "back"] });
 
-test("hello lists presentation-epoch/1 and presented/1", async () => {
+test("hello lists presentation-epoch/1, presented/1 and view-requests/1", async () => {
   const requests: Record<string, unknown>[] = [];
   const bridge = installBridge();
   const original = (host["__runicBridge"] as RunicBridgeClient).request;

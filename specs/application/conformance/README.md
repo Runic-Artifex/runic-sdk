@@ -151,6 +151,7 @@ A `call` names the client operation in language-neutral terms; the runner maps i
 | `start` | `route`, `member`, `operation`, `input?` | Start an operation with the id `operation`. |
 | `wait`, `status`, `cancel` | `operation` | Wait for the operation's terminal status, read its status, or cancel it. |
 | `register` | `route`, `interaction`, `answer` | Register a handler that answers `{output}`, `cancel`s, `fail`s or `never` answers. |
+| `handle`, `unhandle` | `route`, `request` | Register a [view request](../README.md#view-requests) handler of the route that records each input it is called with, or unregister it. |
 
 Expectations of the client:
 
@@ -163,6 +164,9 @@ Expectations of the client:
 - `notifications`: how often subscribers of the route were notified of a new state since its `open` resolved.
 - `connection`: the connection state the client reports. `closed` means that it reports that the producer closed the
   window ([window close](../README.md#window-close)).
+- `requests`: `{route, request, inputs}`, the inputs the `handle` handler of that route and request was called with
+  since it was registered, in order. The runner waits for them as for a `receive` step, since a handler runs once the
+  page painted the request's revision.
 
 Expectations of the producer:
 
@@ -183,6 +187,7 @@ Expectations of the producer:
 | `text-splice/1` | The implementation implements the feature [`text-splice/1`](../README.md#features). |
 | `presentation-epoch/1` | The implementation implements the feature [`presentation-epoch/1`](../README.md#presentation-epochs). |
 | `presented/1` | The implementation implements the feature [`presented/1`](../README.md#presented-states-and-window-close). |
+| `view-requests/1` | The implementation implements the feature [`view-requests/1`](../README.md#view-requests). |
 | `request-session/1` | The implementation implements the feature [`request-session/1`](../README.md#request-sessions). |
 
 Every `hello` of a scenario that does not require a feature lists `features` as `{"$any":"array","default":["text-splice/1"]}`:
@@ -192,7 +197,7 @@ always `{"$any":"array","default":[…]}`, also when the scenario requires a fea
 features are in use.
 The strings of those scenarios are shorter than 64 code units, so their frames and requests are the same with and
 without the feature. Neither `presentation-epoch/1` nor `presented/1` is in use in them, so their messages carry no
-`epoch` and no `present` or `closing` push. A scenario that requires `presentation-epoch/1` or `presented/1` lists the
+`epoch` and no `present` or `closing` push. A scenario that requires `presentation-epoch/1`, `presented/1` or `view-requests/1` lists the
 feature in the `default` of both `hello` steps, beside `text-splice/1`, so it is in use whichever runner writes the
 `hello` or its reply.
 
@@ -215,6 +220,7 @@ connection before connecting it, answers a request it did not send, expects a ca
 | [`operations`](scenarios/operations) | `watch` with throttled `progress` and the terminal `revision`; `start` ordering; duplicate versus `identity-conflict` by canonical equality; cancel; a declared failure; an unknown operation; a `start` with another build's contract |
 | [`presentations`](scenarios/presentations) | `open` and `close`; a presentation owned by another connection; a reconnect with a new session; an unknown route; presentation epochs (`epoch-*`): the `epoch` of `open` and `snapshot`, a renewal published as a `state`, a scoped command with the current epoch, a second scoped command from the same state that is superseded, an unscoped command without `epoch`, and a connection without the feature; painted states (`presented-*`): a report that completes a wait, and a wait that times out; window close (`closing-*`): an acknowledged close and the client's closed connection, and a close that times out |
 | [`interactions`](scenarios/interactions) | A confirmation answered, and its repeat; registration outcomes |
+| [`view-requests`](scenarios/view-requests) | A command's request reaches the invoking presentation after its state; a request outside a command reaches the single presentation, and is dropped with none or several; `next-mounted` keeps the latest request for the next registration; `broadcast` reaches every presentation; registration outcomes; a connection without the feature |
 | [`request-sessions`](scenarios/request-sessions) | `request-session/1`: a request that names another session or none is `no-hello` and does not act; a `hello` with another session replaces the connection and releases its presentation; the client names its session in every request |
 | [`errors`](scenarios/errors) | The protocol-3 `error-reasons`, `domain-failures` and `released` fixtures, converted (`error-reasons` and `released` were removed in 0.13); capacity |
 
@@ -253,6 +259,15 @@ The model of the protocol-3 text fixtures. Members: `log`, a nullable append-onl
 | `canClear`, `canTouch`, `canSave`, `canConfirmClear` | `boolean` | availability members ([commands](../README.md#commands-and-availability)) |
 | `isSlowImportExecuting`, `isConfirmClearExecuting` | `boolean` | execution members |
 
+View requests ([view requests](../README.md#view-requests)), whose contracts are the provided ids `focusContract`,
+`revealContract` and `toastContract`:
+
+| Request | Input | Delivery | Raised by |
+| --- | --- | --- | --- |
+| `focus` | `{member: string}` | `drop` | the `touch` command, with `{"member":"title"}` after its effect; the `raise` mutation |
+| `reveal` | `{id: int32}` | `next-mounted` | the `raise` mutation |
+| `toast` | `{text: string}` | `broadcast` | the `raise` mutation |
+
 Its `fields` are `{"note": {"version"}}`, starting at version 0. Its text members are `title`, `note` and `summary`.
 Commands:
 
@@ -261,7 +276,7 @@ Commands:
 | `addRow` | `string` (the label) | when the label is not empty | appends `{id, label}`, with `id` one more than the largest id (1 for the first row) |
 | `removeRow` | the key of a row (a key command) | always | removes the row; a key of no row is `unresolved-key` |
 | `clear` | none | when there are rows | removes every row, as a reset |
-| `touch` | none | always | appends `!` to `title` without announcing the change |
+| `touch` | none | always | appends `!` to `title` without announcing the change, then raises the `focus` view request |
 | `save` | none | always | fails with its declared failure `{"$case": "titleRequired"}` when `title` is empty; otherwise changes nothing |
 | `annotate` | `string` | always | sets the `detail` View's `lastAction` to the input; changes nothing in `notes` |
 | `slowImport` | `{source: string, limit: int32}` | while it is not executing | asynchronous; runs until a `finish` mutation; reports `progress` mutations; `finish` with `rows` appends rows with those labels and succeeds with their number (`int32`); `finish` with `failure` fails with that declared failure (`{"$case": "sourceMissing"}`); `finish` with `outcome: "cancelled"` ends cancelled, which the command honours only after `cancel` |
@@ -322,3 +337,4 @@ Its contract marks `next` and `back` scoped, so a client that uses `presentation
 | `rule` | `rule`, `holds` | sets whether a rule of the `form` View holds, announcing no member change |
 | `renew` | none | renews the root View's route ([presentation epochs](../README.md#presentation-epochs)), as one unit |
 | `waitPresented` | `id`, `timeout` | starts a wait of `timeout` milliseconds until a page painted the root View ([painted states](../README.md#painted-states)), named `id` |
+| `raise` | `request`, `input` | raises a view request of the `notes` View outside any scope ([view requests](../README.md#view-requests)) |

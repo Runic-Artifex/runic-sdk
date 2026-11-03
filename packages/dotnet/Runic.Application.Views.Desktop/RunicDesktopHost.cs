@@ -470,11 +470,11 @@ public sealed class RunicDesktopHost : IRunicWindowHost
             {
                 var menuLogger = (loggerFactory?.CreateLogger("Runic.Application.Views.Desktop"))
                     ?? Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance;
-                menu = await MenuCommandBinding.BindViewModelAsync(menuSource, content.ModelContext, viewModel, menuLogger)
+                menu = await MenuCommandBinding.BindViewModelAsync(menuSource, content.ModelContext, viewModel, menuLogger, content)
                     .ConfigureAwait(false);
                 if (!owner.SetMenuCommands(menu)) menu = null;
             }
-            menuRoutes.Attach(new DesktopMenuBarPageWindow(presentation, WindowOptions.MenuBarPresentation), menu);
+            menuRoutes.Attach(new DesktopMenuBarPageWindow(presentation, WindowOptions.MenuBarPresentation, menu), menu);
             await CloseAfterOpenIfRequestedAsync(presentation, loggerFactory).ConfigureAwait(false);
             return owner;
         }

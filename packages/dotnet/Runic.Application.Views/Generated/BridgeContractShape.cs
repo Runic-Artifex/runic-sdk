@@ -51,7 +51,11 @@ public static class BridgeContractShape
         {
             var interaction = BridgeMvvmConventions.Interaction(property.PropertyType);
             var command = BridgeMvvmConventions.TypedCommand(property.PropertyType);
-            var kind = interaction is not null ? "interaction" : command is not null || typeof(ICommand).IsAssignableFrom(property.PropertyType) ? "command" : "state";
+            // A ViewRequest<T> is a one-way view request, never state. Only models with one add the kind, so other
+            // fingerprints stay.
+            var request = RunicViewConventions.ViewRequest(property.PropertyType);
+            var kind = interaction is not null ? "interaction" : request is not null ? "request"
+                : command is not null || typeof(ICommand).IsAssignableFrom(property.PropertyType) ? "command" : "state";
             parts.Add($"member:{TypeName(model)}:{property.Name}:wire:{WireName(property)}:{kind}:access:{(property.SetMethod?.IsPublic == true ? "write" : "read")}");
             if (kind == "command" && command is not null)
             {
@@ -87,6 +91,11 @@ public static class BridgeContractShape
             {
                 AppendType(parts, interaction.GenericTypeArguments[0], ContractAnnotation(property, interaction, nullability, 0), $"{model.Name}.{property.Name}.input", [], honorJsonIgnore);
                 AppendType(parts, interaction.GenericTypeArguments[1], ContractAnnotation(property, interaction, nullability, 1), $"{model.Name}.{property.Name}.output", [], honorJsonIgnore);
+                continue;
+            }
+            if (kind == "request" && request is not null)
+            {
+                AppendType(parts, request.GenericTypeArguments[0], ContractAnnotation(property, request, nullability, 0), $"{model.Name}.{property.Name}.input", [], honorJsonIgnore);
                 continue;
             }
             if (kind != "state") continue;

@@ -1,5 +1,7 @@
 using System.Collections.Concurrent;
 using System.ComponentModel;
+using System.Diagnostics.CodeAnalysis;
+using System.Runtime.CompilerServices;
 using System.Windows.Input;
 using Microsoft.Extensions.Logging;
 using Runic.Navigation;
@@ -13,11 +15,17 @@ namespace Runic.Application.Views.Menus;
 // CanExecuteChanged. Resolving and running a command happens in the model turn of the ViewModel, when there is one.
 // An item's CommandParameter is the command's parameter. The check marks of check and radio items come from the root
 // ViewModel's IRunicMenuCheckedSource, cached the same way and read again in the model turn whenever the ViewModel raises
-// PropertyChanged and whenever the bar changes. Shared with Runic.Application.Views.CsWebUi, like
+// PropertyChanged and whenever the bar changes. A Window's command that the page's in-page bar invoked runs in a command
+// invocation (RunicInteractionInvocation) with that page's client and connection, so its interactions and view requests
+// reach only that page's presentation; one that the native bar or a host shortcut ran has no page, and runs in the
+// window scope, which reaches the Window's one page presentation that handles them, as during a close decision. Shared
+// with Runic.Application.Views.CsWebUi, like
 // MenuBarPageRoutes; on Runic Desktop it is also the window's IDesktopMenuCommandTarget (MenuCommandBinding.Desktop.cs).
 internal sealed partial class MenuCommandBinding : IDisposable
 {
     private readonly IRunicModelContext? _context;
+    // The Window whose root ViewModel's commands these are; null for the application's commands.
+    private readonly WindowContentSession? _window;
     private readonly Func<string, ICommand?> _resolve;
     private readonly ILogger _logger;
     private readonly IMenuBarSource _host;
@@ -39,10 +47,11 @@ internal sealed partial class MenuCommandBinding : IDisposable
     private bool _disposed;
 
     private MenuCommandBinding(IMenuBarSource host, IRunicModelContext? context, Func<string, ICommand?> resolve, ILogger logger,
-        Func<string, string?, bool?>? isChecked = null, INotifyPropertyChanged? notifier = null)
+        Func<string, string?, bool?>? isChecked = null, INotifyPropertyChanged? notifier = null, WindowContentSession? window = null)
     {
         _host = host;
         _context = context;
+        _window = window;
         _resolve = resolve;
         _logger = logger;
         _isChecked = isChecked;
@@ -62,9 +71,10 @@ internal sealed partial class MenuCommandBinding : IDisposable
     // Binds every command id of the host's menu bar now, and again whenever the bar changes. isChecked answers the check
     // marks (IRunicMenuCheckedSource), read again when the notifier raises PropertyChanged.
     internal static async ValueTask<MenuCommandBinding> BindAsync(IMenuBarSource host, IRunicModelContext? context,
-        Func<string, ICommand?> resolve, ILogger logger, Func<string, string?, bool?>? isChecked = null, INotifyPropertyChanged? notifier = null)
+        Func<string, ICommand?> resolve, ILogger logger, Func<string, string?, bool?>? isChecked = null, INotifyPropertyChanged? notifier = null,
+        WindowContentSession? window = null)
     {
-        var binding = new MenuCommandBinding(host, context, resolve, logger, isChecked, notifier);
+        var binding = new MenuCommandBinding(host, context, resolve, logger, isChecked, notifier, window);
         host.MenuBarChanged += binding.OnMenuBarChanged;
         if (binding._notifier is { } source) source.PropertyChanged += binding.OnPropertyChanged;
         await binding.RebindAsync().ConfigureAwait(false);
@@ -72,12 +82,13 @@ internal sealed partial class MenuCommandBinding : IDisposable
     }
 
     // Binds a Window's root ViewModel: its commands (IRunicMenuCommandSource) and check marks (IRunicMenuCheckedSource).
+    // window is the Window's session, whose interaction scopes its commands run in.
     internal static async ValueTask<MenuCommandBinding> BindViewModelAsync(IMenuBarSource host, IRunicModelContext? context, object viewModel,
-        ILogger logger)
+        ILogger logger, WindowContentSession? window = null)
     {
         Func<string, ICommand?> resolve = viewModel is IRunicMenuCommandSource commands ? commands.GetMenuCommand : static _ => null;
         Func<string, string?, bool?>? isChecked = viewModel is IRunicMenuCheckedSource checks ? checks.IsMenuItemChecked : null;
-        var binding = await BindAsync(host, context, resolve, logger, isChecked, viewModel as INotifyPropertyChanged).ConfigureAwait(false);
+        var binding = await BindAsync(host, context, resolve, logger, isChecked, viewModel as INotifyPropertyChanged, window).ConfigureAwait(false);
         if (isChecked is not null)
         {
             // RunicMenu.Refresh(viewModel) and RefreshAll reach the binding until it is disposed.
@@ -190,7 +201,10 @@ internal sealed partial class MenuCommandBinding : IDisposable
         lock (_gate) return !_disposed && _entries.TryGetValue(MenuCommandKey.Of(item), out var entry) && entry.CanExecute;
     }
 
-    public void Execute(DesktopMenuItem item)
+    public void Execute(DesktopMenuItem item) => Execute(item, invoker: null);
+
+    // An item that the page whose connection is invoker chose (MenuBarPageRoutes), or the native bar's (null).
+    internal void Execute(DesktopMenuItem item, BridgeConnection? invoker)
     {
         ArgumentNullException.ThrowIfNull(item);
         Entry? entry;
@@ -198,17 +212,17 @@ internal sealed partial class MenuCommandBinding : IDisposable
         {
             if (_disposed || !_entries.TryGetValue(MenuCommandKey.Of(item), out entry)) return;
         }
-        _ = RunAsync(entry);
+        _ = RunAsync(entry, invoker);
     }
 
-    private async Task RunAsync(Entry entry)
+    private async Task RunAsync(Entry entry, BridgeConnection? invoker)
     {
         try
         {
             if (_context is { IsExecuting: false } context)
-                await context.InvokeAsync(() => ExecuteNow(entry.Command, entry.Parameter)).ConfigureAwait(false);
+                await context.InvokeAsync(() => ExecuteInWindow(entry, invoker)).ConfigureAwait(false);
             else
-                await Task.Run(() => ExecuteNow(entry.Command, entry.Parameter)).ConfigureAwait(false);
+                await Task.Run(() => ExecuteInWindow(entry, invoker)).ConfigureAwait(false);
         }
         catch (Exception error)
         {
@@ -216,9 +230,50 @@ internal sealed partial class MenuCommandBinding : IDisposable
         }
     }
 
-    private static void ExecuteNow(ICommand command, string? parameter)
+    // The command runs in the invoking page's command invocation, or without a page in the Window's scope, which names no
+    // page and flows with the command's asynchronous work. A page's invocation ends when Execute returns, unless the
+    // command is a CommunityToolkit IAsyncRelayCommand that started a task: then it ends with that task, so the command
+    // asks the clicking page also after its first await. The page's identity is the one its transport authenticated,
+    // never one the request claims.
+    private void ExecuteInWindow(Entry entry, BridgeConnection? invoker)
     {
-        if (command.CanExecute(parameter)) command.Execute(parameter);
+        using var scope = _window is null ? null
+            : invoker is not null
+                ? RunicInteractionInvocation.Enter(_window, MenuBarPageRoutes.Route, invoker.ClientKey, invoker.Key, entry.CommandId)
+                : RunicInteractionInvocation.EnterWindowScope(_window, CancellationToken.None);
+        var before = invoker is null ? null : ExecutionTask(entry.Command);
+        if (!entry.Command.CanExecute(entry.Parameter)) return;
+        entry.Command.Execute(entry.Parameter);
+        // A task that this Execute started: another reference than before, still running.
+        if (invoker is not null && scope is not null && ExecutionTask(entry.Command) is { IsCompleted: false } task
+            && !ReferenceEquals(task, before))
+        {
+            // The command reports its own failure; the continuation only observes it.
+            _ = task.ContinueWith(static completed => _ = completed.Exception, CancellationToken.None,
+                TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
+            scope.EndAfter(task);
+        }
+    }
+
+    // CommunityToolkit.Mvvm's IAsyncRelayCommand.ExecutionTask, read by name because Runic references no MVVM library. A
+    // trimmed or AOT application whose command lost the property's metadata reads null, and the invocation ends when
+    // Execute returns, as for any other command.
+    private static readonly ConditionalWeakTable<Type, PropertyInfoHolder> ExecutionTaskProperties = new();
+
+    private sealed class PropertyInfoHolder(System.Reflection.PropertyInfo? property)
+    {
+        public System.Reflection.PropertyInfo? Property { get; } = property;
+    }
+
+    [UnconditionalSuppressMessage("Trimming", "IL2070", Justification = "Without the interface's metadata the property reads null, and the command keeps the behaviour of other commands.")]
+    [UnconditionalSuppressMessage("Trimming", "IL2075", Justification = "Without the interface's metadata the property reads null, and the command keeps the behaviour of other commands.")]
+    private static Task? ExecutionTask(ICommand command)
+    {
+        var holder = ExecutionTaskProperties.GetValue(command.GetType(), static type =>
+            new PropertyInfoHolder(type.GetInterface("CommunityToolkit.Mvvm.Input.IAsyncRelayCommand")?.GetProperty("ExecutionTask")));
+        if (holder.Property is not { } property) return null;
+        try { return property.GetValue(command) as Task; }
+        catch (Exception) { return null; }
     }
 
     private void OnMenuBarChanged(object? sender, EventArgs eventArgs) => _ = RebindAsync();

@@ -144,10 +144,15 @@ public sealed class RunicTestOperation
 {
     private readonly InMemoryBridgeTransport _transport;
     private readonly string _route;
+    private readonly string _connectionKey;
+    private readonly string? _clientKey;
 
-    internal RunicTestOperation(InMemoryBridgeTransport transport, string route, string contract, string member, string requestId, string admissionJson)
+    internal RunicTestOperation(InMemoryBridgeTransport transport, string route, string contract, string member, string requestId,
+        string admissionJson, string connectionKey = InMemoryBridgeTransport.DefaultConnectionKey, string? clientKey = null)
     {
         _transport = transport;
+        _connectionKey = connectionKey;
+        _clientKey = clientKey;
         _route = route;
         Contract = contract;
         Member = member;
@@ -187,7 +192,7 @@ public sealed class RunicTestOperation
 
     private async ValueTask<string> RequestAsync(string kind, long? cursor = null, CancellationToken cancellationToken = default)
     {
-        await _transport.EnsureHelloAsync(InMemoryBridgeTransport.DefaultConnectionKey, cancellationToken: cancellationToken)
+        await _transport.EnsureHelloAsync(_connectionKey, _clientKey, cancellationToken)
             .ConfigureAwait(false);
         return await _transport.RequestAsync(RunicJson.Write(writer =>
         {
@@ -199,7 +204,7 @@ public sealed class RunicTestOperation
             writer.WriteString("contract", Contract);
             if (cursor is { } value) writer.WriteNumber("cursor", value);
             writer.WriteEndObject();
-        }), cancellationToken: cancellationToken).ConfigureAwait(false);
+        }), _connectionKey, _clientKey, cancellationToken).ConfigureAwait(false);
     }
 
     // The status of a status, watch or unwatch reply.

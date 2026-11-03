@@ -138,6 +138,12 @@ connection. With no eligible browser handler, the adapter does not consume the
 interaction, preserving normal ReactiveUI .NET handler precedence and unhandled
 behavior.
 
+A ReactiveUI ViewModel uses the flavor-neutral `ViewRequest<T>` for one-way
+requests to the page, such as focusing a new row, and may use
+`ViewQuestion<TInput, TOutput>` instead of an `Interaction` where it wants no
+ReactiveUI handler chain; see
+[Asking the page](../Runic.Application.Views/README.md#asking-the-page-view-requests-and-questions).
+
 The browser handler is a ReactiveUI handler registered when the View's bridge
 attaches. ReactiveUI asks the latest handler first, so a .NET handler registered
 after the View attached, such as a WPF View's in `WhenActivated`, answers before
@@ -523,14 +529,26 @@ The browser is asked when the page's own window starts the departure:
 | A bridged command of this View, such as `close()` or `startClose()` | This View, mounted by the browser connection that ran the command |
 | A bridged command of another View in the same window, such as the shell's Back | This View, mounted by the browser connection that ran the command |
 | A guarded window close: the close button with `GuardClose`, or `RequestCloseAsync()` | This View, when it is the only presentation in the window with a mounted handler |
-| Navigation that .NET code starts outside a command, such as a timer or startup | .NET handlers only |
+| A menu item clicked in the page's in-page menu bar (`IRunicMenuCommandSource`) | This View, mounted by the browser connection that clicked it |
+| A menu item the native menu bar or a host shortcut runs | This View, when it is the only presentation in the window with a mounted handler |
+| .NET code in `RunicInteractionInvocation.EnterWindow(viewModel)`, such as a timer or a notification's `Activated` | This View, when it is the only presentation in the window with a mounted handler |
+| Navigation that .NET code starts outside a command and the window scope, such as startup | .NET handlers only |
 | A command of another window that navigates this window's region | .NET handlers only |
 
 - An interaction never crosses windows or browser connections. A command's
-  question goes only to the connection and client that ran the command. A
-  close has no browser caller, so it asks only when exactly one presentation in
-  the window, from any connection, has mounted a handler; with several, as in a
-  multi-client CS-WebUI window, none is asked.
+  question goes only to the connection and client that ran the command, on
+  whichever route of the window asks it. A close, a native menu-bar command
+  and `EnterWindow` have no browser caller (the window scope), so they ask
+  only when exactly one presentation in the window, from any connection and on
+  any route that presents the ViewModel, has mounted a handler; with several,
+  as in a multi-client CS-WebUI window or a ViewModel shown in two panes, none
+  is asked. Application code cannot claim a browser caller's identity, and
+  `EnterWindow` inside a command keeps the command's narrower scope.
+- Since 0.16 a .NET fallback that used to answer a cross-route or menu-bar
+  question is skipped while a page has a handler mounted, also a 0.15 page.
+- One-way requests to the page, such as focusing a field, are
+  `ViewRequest<T>` members, which need no answer and no fallback; see
+  [Asking the page](../Runic.Application.Views/README.md#asking-the-page-view-requests-and-questions).
 - A .NET handler keeps ReactiveUI's order: the latest registered is asked first.
   A fallback registered in the ViewModel's constructor answers only when no
   browser handler is eligible, for example when the View isn't mounted or the

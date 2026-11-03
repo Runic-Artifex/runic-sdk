@@ -3,7 +3,7 @@ import { emitBridgeDiagnostic, emitErrorDiagnostic } from "./diagnostics.js";
 import { BridgeError } from "./errors.js";
 import { bridgeFailure, bridgeSuccess, type BridgeOutcome } from "./outcome.js";
 import {
-  epochOf, isObject, presentationEpochFeature, presentedFeature, replyError, type Change, type Message, type Push, type Reply,
+  epochOf, isObject, presentationEpochFeature, presentedFeature, replyError, viewRequestsFeature, type Change, type Message, type Push, type Reply,
 } from "./protocol.js";
 import { currentRuntime, errorMessage, sharedRuntimeFor, type SharedRuntime } from "./runtime.js";
 import { reportBridgeError, waitForBridge } from "./transport.js";
@@ -12,11 +12,12 @@ import { reportToInspector } from "./inspector.js";
 import { abortable, abortReason, isAbort, throwIfAborted } from "./lifetime.js";
 import { applySplice, minimumKept, singleSplice, textSpliceFeature } from "./text.js";
 import { deferNotification, flushNotifications, nextFrame } from "./notifications.js";
-// Interactions, operations and keyed collections are injected by the generated
-// clients that use them, so this module imports only their types.
+// Interactions, view requests, operations and keyed collections are injected by the
+// generated clients that use them, so this module imports only their types.
 import type { BridgeCollections } from "./collections.js";
 import type { BridgeInteractionContext, BridgeInteractions, InteractionSession, InteractionSurface } from "./interactions.js";
 import type { BridgeOperationCodec, BridgeOperationRuntimeHandle, BridgeOperations, OperationScope } from "./operations.js";
+import type { BridgeViewRequests, ViewRequestSession, ViewRequestSurface } from "./requests.js";
 
 /** The framework-neutral surface every generated client shares. */
 export interface ViewClient<TState = unknown> {
@@ -101,6 +102,8 @@ export interface ViewConnectOptions<TState> extends BridgeConnectOptions {
    * An `undefined` entry registers nothing, so a generated `connect{Name}` can pass its typed options through.
    */
   readonly handlers?: Readonly<Record<string, ((input: never, context: BridgeInteractionContext) => unknown) | undefined>>;
+  /** The client's view requests, from `defineRequests` (`view-requests/1`). */
+  readonly requests?: BridgeViewRequests;
   /** The keyed collections and append-only text fields, from `defineCollections`. */
   readonly collections?: BridgeCollections;
   /** `bridgeOperations`, for a client with operations. */
@@ -126,12 +129,17 @@ export interface ViewConnection<TState> extends ViewClient<TState> {
   readonly route: string;
   readonly interactions: Readonly<Record<string, InteractionSurface>>;
   /**
+   * The View's view requests by name (specs/application/README.md, "View requests"), whose handlers this
+   * presentation registers; an empty object for a View without view requests.
+   */
+  readonly requests: Readonly<Record<string, ViewRequestSurface>>;
+  /**
    * A generated setter: sends `set` with the member's next edit number and exposes `value` (decoded with the
    * member's decoder) in `snapshot` until the edit's revision arrives or the edit fails. A superseded edit resolves
    * like an applied one.
    */
   set(member: string, value: unknown): Promise<TState>;
-  /** Runs a command after the presentation's interaction handlers are registered. */
+  /** Runs a command after the presentation's interaction and view request handlers are registered. */
   command(member: string, input?: unknown): Promise<TState>;
   /**
    * Runs a command that declares a failure type, like `command`. Its declared failure resolves
@@ -157,7 +165,7 @@ export interface RouteOperationScope extends OperationScope {
   readonly runtime: SharedRuntime;
   /** Throws a `disconnected` BridgeError when the Bridge is disconnected, or `released` when the View was released. */
   assertConnected(): void;
-  /** Resolves when the producer acknowledged the presentation's interaction handlers. */
+  /** Resolves when the producer acknowledged the presentation's interaction and view request handlers. */
   ready(): Promise<void>;
   /** Resolves once the route reached `revision`, at once when the route is not open. */
   waitForRevision(revision: number): Promise<void>;
@@ -181,6 +189,7 @@ interface Lease {
   epoch: number | undefined;
   readonly listeners: Set<(state: unknown) => void>;
   interactions: InteractionSession | undefined;
+  requests: ViewRequestSession | undefined;
 }
 
 interface Overlay {
@@ -487,6 +496,7 @@ class RouteEntry {
       if (reply!["presentation"] !== "ignored") {
         lease.registered = true;
         lease.interactions?.opened(typeof reply!["registration"] === "string" ? reply!["registration"] : undefined);
+        lease.requests?.opened();
         return;
       }
       if (attempt === reopenAttempts || lease.disposed || !this.live()) return;
@@ -513,6 +523,7 @@ class RouteEntry {
     for (const lease of this.presentations) {
       lease.registered = false;
       lease.interactions?.paused();
+      lease.requests?.paused();
     }
     // A recovery stops at once; the new connection opens the route again.
     this.backoff?.cancel();
@@ -633,9 +644,7 @@ class RouteEntry {
       if (![...this.presentations].some(lease => !lease.disposed && lease.listeners.size > 0))
         await new Promise<void>(resolve => { this.subscribed = resolve; });
       if (!current()) return;
-      await this.waitForRevision(revision);
-      flushNotifications();
-      await nextFrame();
+      await this.painted(revision);
       if (!current()) return;
       // A higher revision was asked for meanwhile: wait for it too, and report it once.
       if (this.presentWanted !== revision) continue;
@@ -645,6 +654,17 @@ class RouteEntry {
       // A failed report changes nothing on the page; the producer's wait ends at its timeout.
       await this.runtime.request({ kind: "presented", route: this.route, revision: painted }, this.route).catch(() => undefined);
     }
+  }
+
+  /**
+   * Resolves once the page painted the route at `revision` or later (specs/application/README.md, "Painted states",
+   * steps 1 to 3): the route reached `revision`, its state was delivered to the subscribers of its presentations, and
+   * one animation frame passed. `present` reports and view requests wait for it.
+   */
+  async painted(revision: number): Promise<void> {
+    await this.waitForRevision(revision);
+    flushNotifications();
+    await nextFrame();
   }
 
   /** A presentation of the route got a subscriber. */
@@ -763,6 +783,7 @@ async function connectRoute<TState>(options: ViewConnectOptions<TState>): Promis
   if (!existing) runtime.routes.set(route, entry);
   const lease: Lease = {
     id: randomId(), disposed: false, registered: false, current: undefined, epoch: undefined, listeners: new Set(), interactions: undefined,
+    requests: undefined,
   };
   entry.presentations.add(lease);
 
@@ -779,6 +800,13 @@ async function connectRoute<TState>(options: ViewConnectOptions<TState>): Promis
   if (options.interactions) lease.interactions = options.interactions({
     route, presentation: lease.id, live, request, onPush: (kind, handler) => runtime.onPush(kind, route, handler),
   });
+  if (options.requests) lease.requests = options.requests({
+    route, presentation: lease.id, live, request,
+    enabled: () => runtime.features?.has(viewRequestsFeature) === true,
+    connection: () => runtime.connection,
+    onPush: (kind, handler) => runtime.onPush(kind, route, handler),
+    painted: revision => entry.painted(revision),
+  });
   for (const [name, handler] of Object.entries(options.handlers ?? {})) {
     if (handler === undefined) continue;
     const surface = lease.interactions?.surface[name];
@@ -789,6 +817,7 @@ async function connectRoute<TState>(options: ViewConnectOptions<TState>): Promis
     if (lease.disposed) return;
     lease.disposed = true;
     lease.interactions?.dispose();
+    lease.requests?.dispose();
     lease.listeners.clear();
     entry.presentations.delete(lease);
     if (lease.registered && runtime.connected) {
@@ -816,7 +845,8 @@ async function connectRoute<TState>(options: ViewConnectOptions<TState>): Promis
   lease.epoch = entry.exposedEpoch;
   presentationRefreshes.set(dispose, () => { if (live() && runtime.connected) void entry.recover(); });
 
-  const ready = async () => { await lease.interactions?.ready(); };
+  // A command waits for the handlers registered before it, so a request it raises can reach them.
+  const ready = async () => { await lease.interactions?.ready(); await lease.requests?.ready(); };
   const current = () => lease.current as TState;
   // A call that ran resolves once the route reached its revision; a failed one rejects after that.
   const settled = async (reply: Reply): Promise<void> => {
@@ -866,6 +896,7 @@ async function connectRoute<TState>(options: ViewConnectOptions<TState>): Promis
     },
     dispose,
     interactions: lease.interactions?.surface ?? {},
+    requests: lease.requests?.surface ?? {},
     set: (member, value) => observed(route, async () => {
       assertConnected();
       // The splice is computed against what the page shows before this edit.

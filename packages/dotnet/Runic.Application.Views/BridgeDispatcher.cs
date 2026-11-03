@@ -36,6 +36,7 @@ internal sealed class BridgeDispatcher : IBridgeRequestHandler
     internal const string TextSpliceFeature = "text-splice/1";
     internal const string PresentationEpochFeature = "presentation-epoch/1";
     internal const string PresentedFeature = "presented/1";
+    internal const string ViewRequestsFeature = "view-requests/1";
     // Every request names the session of its connection's hello (specs/application/README.md, "Request sessions").
     internal const string RequestSessionFeature = "request-session/1";
     internal const int MaximumFeatures = 64;
@@ -64,6 +65,8 @@ internal sealed class BridgeDispatcher : IBridgeRequestHandler
     private readonly Queue<string> _closedSessionOrder = new();
     private readonly Dictionary<string, IBridgeRouteHandler> _routes = new(StringComparer.Ordinal);
     private readonly List<Action<string>> _closedObservers = [];
+    // Observers of connections that complete their hello (IRunicConnections), in the order the hellos completed.
+    private readonly List<Action<BridgeConnection>> _openedObservers = [];
     // Answers status, watch, unwatch, cancel and stream of a route nothing serves, for an operation the window knows.
     private Func<BridgeRouteRequest, ReadOnlyMemory<byte>?>? _releasedOperations;
     // Connections that completed their hello without text-splice/1: while there is one, frames carry no splices.
@@ -172,7 +175,46 @@ internal sealed class BridgeDispatcher : IBridgeRequestHandler
         return new ObserverLease(this, observer);
     }
 
-    // The connection, if it is open and completed its hello.
+    // Calls opened with each connection that completes its hello and closed with the key of each connection that closes,
+    // until the lease is disposed, and returns the connections that completed their hello before, under the same lock,
+    // so an observer misses none and sees none twice. The calls come after the dispatcher's own bookkeeping, outside its
+    // lock: opened before the connection's hello reply and before the requests that waited for the hello are admitted.
+    internal IDisposable ObserveConnections(Action<BridgeConnection> opened, Action<string> closed,
+        out IReadOnlyList<BridgeConnection> current)
+    {
+        ArgumentNullException.ThrowIfNull(opened);
+        ArgumentNullException.ThrowIfNull(closed);
+        lock (_gate)
+        {
+            current = [.. _connections.Values.Where(static connection => connection.HelloCompleted && connection.IsOpen)];
+            _openedObservers.Add(opened);
+            _closedObservers.Add(closed);
+        }
+        return new ConnectionObserverLease(this, opened, closed);
+    }
+
+    private sealed class ConnectionObserverLease(BridgeDispatcher owner, Action<BridgeConnection> opened, Action<string> closed)
+        : IDisposable
+    {
+        private BridgeDispatcher? _owner = owner;
+
+        public void Dispose()
+        {
+            if (Interlocked.Exchange(ref _owner, null) is not { } dispatcher) return;
+            lock (dispatcher._gate)
+            {
+                dispatcher._openedObservers.Remove(opened);
+                dispatcher._closedObservers.Remove(closed);
+            }
+        }
+    }
+
+    // The handler of a route this window serves, or null.
+    internal IBridgeRouteHandler? FindRoute(string route)
+    {
+        lock (_gate) return _routes.TryGetValue(route, out var handler) ? handler : null;
+    }
+
     // The key of the open connection that the transport reports with this transport key, or null. Tests and host code
     // that know only the transport's key use it to name the window's connection.
     internal string? ConnectionKeyOf(string transportKey)
@@ -415,6 +457,9 @@ internal sealed class BridgeDispatcher : IBridgeRequestHandler
                 if (envelope.Kind == "receive") return Receive(connection, cancellationToken);
                 if (envelope.Kind == "closing-reply") return Reply(ClosingReply(connection));
                 if (envelope.Kind == "presented") return Presented(connection, envelope);
+                // view-requests/1: a presentation registers its view request handlers only on a connection that uses it.
+                if (envelope.Kind == "view-requests" && !connection.UsesViewRequests)
+                    return Reply(BridgeMessages.Rejected("invalid-request", "The connection does not use view-requests/1."));
                 // presentation-epoch/1: on a connection that uses it, a command's epoch is a non-negative safe integer;
                 // elsewhere the member is ignored.
                 if (envelope.Kind == "command" && envelope.HasEpoch && envelope.Epoch is null && connection.UsesPresentationEpoch
@@ -590,7 +635,16 @@ internal sealed class BridgeDispatcher : IBridgeRequestHandler
         // connection's.
         if (!_transportKeysUnique && connection.HelloCompleted && connection.UsesRequestSession && IsReplacingHello(connection, root))
             connection = ReplaceConnection(connection);
-        var reply = HelloCore(connection, root, out var drain);
+        var reply = HelloCore(connection, root, out var drain, out var opened);
+        // Observers learn of the connection before its hello reply and its held requests, so a command it sends finds it.
+        foreach (var observer in opened)
+        {
+            try { observer(connection); }
+            catch (Exception error)
+            {
+                ViewsLog.RequestFailed(_logger, error, error.GetType().FullName ?? error.GetType().Name);
+            }
+        }
         // Requests that waited for a hello that failed answer no-hello; after one that succeeded they are admitted.
         if (drain) _ = Task.Run(() => DrainHeld(connection));
         else if (!connection.HelloCompleted) RefuseHeld(connection);
@@ -610,16 +664,18 @@ internal sealed class BridgeDispatcher : IBridgeRequestHandler
             return false;
         if (!root.TryGetProperty("client", out var client) || client.ValueKind != JsonValueKind.Object
             || !TryReadName(client, "name", 128, out _) || !TryReadName(client, "version", 64, out _)
-            || !TryReadFeatures(root, out _, out _, out _, out _))
+            || !TryReadFeatures(root, out _, out _, out _, out _, out _))
             return false;
         var session = sessionElement.GetString()!;
         lock (_gate)
             return !_closedSessions.Contains(session) && !_connections.Values.Any(other => other.Session == session);
     }
 
-    private byte[] HelloCore(BridgeConnection connection, JsonElement root, out bool drain)
+    private byte[] HelloCore(BridgeConnection connection, JsonElement root, out bool drain,
+        out Action<BridgeConnection>[] opened)
     {
         drain = false;
+        opened = [];
         // The protocol first: a hello of another version is refused with protocol-mismatch whatever its other members.
         if (!root.TryGetProperty("protocol", out var protocolElement)
             || !BridgeRequestEnvelope.TryReadInteger(protocolElement, out var protocol) || protocol < 0)
@@ -645,7 +701,7 @@ internal sealed class BridgeDispatcher : IBridgeRequestHandler
         if (!root.TryGetProperty("client", out var client) || client.ValueKind != JsonValueKind.Object
             || !TryReadName(client, "name", 128, out var clientName) || !TryReadName(client, "version", 64, out var clientVersion))
             return BridgeMessages.Rejected("invalid-request", "The hello's client is not {name, version}.", hello: true);
-        if (!TryReadFeatures(root, out var usesTextSplice, out var usesPresentationEpoch, out var usesPresented,
+        if (!TryReadFeatures(root, out var usesTextSplice, out var usesPresentationEpoch, out var usesPresented, out var usesViewRequests,
                 out var usesRequestSession))
             return BridgeMessages.Rejected("invalid-request",
                 $"The hello's features are not an array of at most {MaximumFeatures} strings of at most {MaximumFeatureLength} characters.", hello: true);
@@ -665,12 +721,14 @@ internal sealed class BridgeDispatcher : IBridgeRequestHandler
             connection.UsesTextSplice = usesTextSplice;
             connection.UsesPresentationEpoch = usesPresentationEpoch;
             connection.UsesPresented = usesPresented;
+            connection.UsesViewRequests = usesViewRequests;
             connection.UsesRequestSession = usesRequestSession;
             connection.HelloCompleted = true;
             if (!usesTextSplice) _connectionsWithoutTextSplice++;
             if (usesPresentationEpoch) _connectionsWithPresentationEpoch++;
             if (connection.Held.Count > 0) drain = connection.Draining = true;
             closing = usesPresented && _closing is not null;
+            opened = [.. _openedObservers];
         }
         // A page that connects to a closing window is told so, after its hello reply.
         if (closing) BridgeTargetedPushes.For(_transport).Send(connection.Key, ClosingPush());
@@ -679,10 +737,10 @@ internal sealed class BridgeDispatcher : IBridgeRequestHandler
 
     // The client's features: absent, or an array of strings. A feature this producer does not implement is ignored.
     private static bool TryReadFeatures(JsonElement root, out bool usesTextSplice, out bool usesPresentationEpoch,
-        out bool usesPresented, out bool usesRequestSession)
+        out bool usesPresented, out bool usesViewRequests, out bool usesRequestSession)
     {
         usesRequestSession = false;
-        usesTextSplice = usesPresentationEpoch = usesPresented = false;
+        usesTextSplice = usesPresentationEpoch = usesPresented = usesViewRequests = false;
         if (!root.TryGetProperty("features", out var features)) return true;
         if (features.ValueKind != JsonValueKind.Array || features.GetArrayLength() > MaximumFeatures) return false;
         foreach (var feature in features.EnumerateArray())
@@ -693,6 +751,7 @@ internal sealed class BridgeDispatcher : IBridgeRequestHandler
             if (name == TextSpliceFeature) usesTextSplice = true;
             else if (name == PresentationEpochFeature) usesPresentationEpoch = true;
             else if (name == PresentedFeature) usesPresented = true;
+            else if (name == ViewRequestsFeature) usesViewRequests = true;
             else if (name == RequestSessionFeature) usesRequestSession = true;
         }
         return true;
@@ -837,6 +896,8 @@ internal sealed class BridgeConnection(string key, string clientKey, string? tra
     // Whether the connection uses presentation-epoch/1 and presented/1.
     internal bool UsesPresentationEpoch { get; set; }
     internal bool UsesPresented { get; set; }
+    // Whether the connection uses view-requests/1.
+    internal bool UsesViewRequests { get; set; }
     // Whether the connection uses request-session/1: every later request must name Session.
     internal bool UsesRequestSession { get; set; }
     // Whether the window's closing push waits for this connection's closing-reply; the dispatcher's gate guards it.

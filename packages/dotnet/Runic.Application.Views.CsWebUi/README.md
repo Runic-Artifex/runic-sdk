@@ -347,6 +347,28 @@ connection that just closed, even before WebUI reports that close. Since 0.16:
   page sent earlier. Edits carry their own numbers, so a later edit still wins,
   and a broadcast and a mailbox push are not ordered relative to each other.
 
+### Several clients
+
+With WebUI's `MultiClient` configuration, every browser that reaches the
+window's server shares the window: they see one ViewModel, and broadcasts
+reach them all. `IRunicConnections` (since 0.16), which
+`AddRunicWindowService()` registers per Window scope, lists the window's
+connections and raises `Connected` and `Disconnected` in a model turn. Its
+`Caller`, read in a command, an operation or an in-page menu click, is the
+connection that sent it. The keys are the trusted keys above (WebUI's client
+id, and `clientId:connectionId`), never values the page sends; a reload is a
+new connection. See
+[Who is connected, and who called](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Application.Views/README.md#who-is-connected-and-who-called)
+for the API, `RunicConnectionState<T>` for a value per connection, and a
+"who else is viewing" example.
+
+A connection key says which page sent a request, not who the user is: WebUI
+admits every client that reaches the server (see [Security](#security)).
+`MultiClient` needs the application's own authentication, for example a
+sign-in command that maps the caller's `ConnectionKey` to a user the
+application checked, kept in a `RunicConnectionState<T>` so it goes when the
+page disconnects.
+
 ## Security
 
 This host adds no admission of its own. Runic Desktop checks the `Origin` of
@@ -366,7 +388,10 @@ decisions:
   process. Use it for test harnesses on machines you control.
 - **Multiple clients.**
   `WebUiApplication.SetConfiguration(WebUiConfiguration.MultiClient, true)` lets
-  every client that reaches the server share the window.
+  every client that reaches the server share the window. `IRunicConnections`
+  then lists each client's connection and tells a command which one invoked it
+  ([Several clients](#several-clients)), but its keys only tell pages apart:
+  authenticate users in the application before you act on who they are.
 - **Your own WebUI build.** A library from `CSWEBUI_NATIVE_LIBRARY` or
   `WebUiNativeLibrary.SetLibraryPath` must include WebUI commit `efac0e24d`:
   with an older WebUI, Bridge calls that arrive together can run with each

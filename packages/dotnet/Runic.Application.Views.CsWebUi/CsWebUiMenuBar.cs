@@ -109,11 +109,11 @@ namespace Runic.Application.Views.CsWebUi
             return Task.FromResult(result);
         }
 
-        public ValueTask<bool> TryExecuteAsync(DesktopMenuItem item, CancellationToken cancellationToken)
+        public ValueTask<bool> TryExecuteAsync(DesktopMenuItem item, BridgeConnection invoker, CancellationToken cancellationToken)
         {
             cancellationToken.ThrowIfCancellationRequested();
             if (!CanExecute(item)) return ValueTask.FromResult(false);
-            commands!.Execute(item);
+            commands!.Execute(item, invoker);
             return ValueTask.FromResult(true);
         }
 

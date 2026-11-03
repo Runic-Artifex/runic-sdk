@@ -1,4 +1,56 @@
 #nullable enable
+Runic.Application.Views.Generated.ViewQuestionDescriptor
+Runic.Application.Views.Generated.ViewRequestDescriptor
+Runic.Application.Views.RunicInteractionUnhandledException
+Runic.Application.Views.RunicInteractionUnhandledException.RunicInteractionUnhandledException() -> void
+Runic.Application.Views.RunicInteractionUnhandledException.RunicInteractionUnhandledException(string! message) -> void
+Runic.Application.Views.RunicInteractionUnhandledException.RunicInteractionUnhandledException(string! message, System.Exception! innerException) -> void
+Runic.Application.Views.ViewQuestion<TInput, TOutput>
+Runic.Application.Views.ViewQuestion<TInput, TOutput>.AskAsync(TInput input, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<TOutput>!
+Runic.Application.Views.ViewQuestion<TInput, TOutput>.Timeout.get -> System.TimeSpan?
+Runic.Application.Views.ViewQuestion<TInput, TOutput>.ViewQuestion(System.Func<TInput, System.Threading.CancellationToken, System.Threading.Tasks.ValueTask<TOutput>>? fallback = null, System.TimeSpan? timeout = null) -> void
+Runic.Application.Views.ViewRequest<T>
+Runic.Application.Views.ViewRequest<T>.Delivery.get -> Runic.Application.Views.ViewRequestDelivery
+Runic.Application.Views.ViewRequest<T>.Raise(T input) -> void
+Runic.Application.Views.ViewRequest<T>.ViewRequest(Runic.Application.Views.ViewRequestDelivery delivery = Runic.Application.Views.ViewRequestDelivery.Drop) -> void
+Runic.Application.Views.ViewRequestDelivery
+Runic.Application.Views.ViewRequestDelivery.Broadcast = 2 -> Runic.Application.Views.ViewRequestDelivery
+Runic.Application.Views.ViewRequestDelivery.Drop = 0 -> Runic.Application.Views.ViewRequestDelivery
+Runic.Application.Views.ViewRequestDelivery.NextMounted = 1 -> Runic.Application.Views.ViewRequestDelivery
+static Runic.Application.Views.Generated.ViewQuestionDescriptor.Create<TModel, TInput, TOutput>(string! name, string! contract, System.Func<TModel!, Runic.Application.Views.ViewQuestion<TInput, TOutput>!>! getQuestion, System.Func<TInput, string!>! encodeInput, System.Func<System.Text.Json.JsonElement, TOutput>! decodeOutput) -> Runic.Application.Views.Generated.BridgeInteractionDescriptor<TModel!>!
+static Runic.Application.Views.Generated.ViewRequestDescriptor.Create<TModel, T>(string! name, string! contract, System.Func<TModel!, Runic.Application.Views.ViewRequest<T>!>! getRequest, System.Func<T, string!>! encodeInput) -> Runic.Application.Views.Generated.BridgeInteractionDescriptor<TModel!>!
+static Runic.Application.Views.RunicInteractionInvocation.EnterWindow(object! viewModel, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.IDisposable!
+static Runic.Application.Views.RunicInteractionInvocation.TryEnterWindow(object! viewModel, out System.IDisposable! scope, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> bool
+Runic.Application.Views.IRunicConnections
+Runic.Application.Views.IRunicConnections.Caller.get -> Runic.Application.Views.RunicConnection?
+Runic.Application.Views.IRunicConnections.Connected -> System.EventHandler<Runic.Application.Views.RunicConnectionEventArgs!>?
+Runic.Application.Views.IRunicConnections.Current.get -> System.Collections.Generic.IReadOnlyList<Runic.Application.Views.RunicConnection!>!
+Runic.Application.Views.IRunicConnections.Disconnected -> System.EventHandler<Runic.Application.Views.RunicConnectionEventArgs!>?
+Runic.Application.Views.RunicConnection
+Runic.Application.Views.RunicConnection.<Clone>$() -> Runic.Application.Views.RunicConnection!
+Runic.Application.Views.RunicConnection.ClientKey.get -> string!
+Runic.Application.Views.RunicConnection.ClientKey.init -> void
+Runic.Application.Views.RunicConnection.ConnectionKey.get -> string!
+Runic.Application.Views.RunicConnection.ConnectionKey.init -> void
+Runic.Application.Views.RunicConnection.Deconstruct(out string! ConnectionKey, out string! ClientKey) -> void
+Runic.Application.Views.RunicConnection.Equals(Runic.Application.Views.RunicConnection? other) -> bool
+override Runic.Application.Views.RunicConnection.Equals(object? obj) -> bool
+override Runic.Application.Views.RunicConnection.GetHashCode() -> int
+Runic.Application.Views.RunicConnection.RunicConnection(string! ConnectionKey, string! ClientKey) -> void
+override Runic.Application.Views.RunicConnection.ToString() -> string!
+static Runic.Application.Views.RunicConnection.operator !=(Runic.Application.Views.RunicConnection? left, Runic.Application.Views.RunicConnection? right) -> bool
+static Runic.Application.Views.RunicConnection.operator ==(Runic.Application.Views.RunicConnection? left, Runic.Application.Views.RunicConnection? right) -> bool
+Runic.Application.Views.RunicConnectionEventArgs
+Runic.Application.Views.RunicConnectionEventArgs.Connection.get -> Runic.Application.Views.RunicConnection!
+Runic.Application.Views.RunicConnectionEventArgs.RunicConnectionEventArgs(Runic.Application.Views.RunicConnection! connection) -> void
+Runic.Application.Views.RunicConnectionState<T>
+Runic.Application.Views.RunicConnectionState<T>.Dispose() -> void
+Runic.Application.Views.RunicConnectionState<T>.RunicConnectionState(Runic.Application.Views.IRunicConnections! connections, System.Func<Runic.Application.Views.RunicConnection!, T>! create) -> void
+Runic.Application.Views.RunicConnectionState<T>.TryGet(Runic.Application.Views.RunicConnection! connection, out T value) -> bool
+Runic.Application.Views.RunicConnectionState<T>.TryGetCaller(out T value) -> bool
+Runic.Application.Views.RunicConnectionState<T>.Values.get -> System.Collections.Generic.IReadOnlyDictionary<string!, T>!
+Runic.Application.Views.RunicConnectionsExtensions
+static Runic.Application.Views.RunicConnectionsExtensions.WhenChanged(this Runic.Application.Views.IRunicConnections! connections) -> System.IObservable<System.Collections.Generic.IReadOnlyList<Runic.Application.Views.RunicConnection!>!>!
 Runic.Application.Views.IRunicWindow.Presentation.get -> Runic.Application.Views.IRunicWindowPresentation!
 Runic.Application.Views.IRunicWindowPresentation
 Runic.Application.Views.IRunicWindowPresentation.Activity.get -> Runic.Application.Views.RunicWindowActivity!
