@@ -111,6 +111,8 @@ internal sealed partial class LinuxWebKitGtkHost
 
         public bool CanExecute(DesktopMenuItem item) => host.CanExecuteMenuItem(item);
 
+        public bool? IsChecked(DesktopMenuItem item) => host.IsMenuItemChecked(item);
+
         public void Execute(DesktopMenuItem item) => host.RunMenuItem(item);
 
         public void PlacementChanged(bool global) => host.OnGlobalPlacement(global);

@@ -106,6 +106,8 @@ public sealed class RunicDesktopHost : IRunicWindowHost
                 "MaximumInputBytes must be between 1 024 and 67 108 864 bytes.");
         _maximumInputBytes = options.MaximumInputBytes;
         _serveOnly = options.ServeOnly;
+        // Serve-only services decide on first use (DesktopServeOnlyState).
+        DesktopServeOnlyState.RecordFor(services, options.ServeOnly);
     }
 
     private readonly bool _serveOnly;
@@ -441,7 +443,9 @@ public sealed class RunicDesktopHost : IRunicWindowHost
                 owner.ServeUntil(ServeOnlyStopped());
                 // A concatenation, not a format: TextWriter's formatting reads the current culture, which loads ICU
                 // (S1; native-server.yml checks that serve-only startup does without it).
-                Console.Out.WriteLine("RUNIC_APPLICATION_URL=" + surface.Url);
+                // One write, so another window's lines cannot come between the URL line older parsers read and the
+                // window line that names the Window type (README, "Automation").
+                Console.Out.Write(ServeOnlyAnnouncement.Lines(surface.Url.ToString(), opening.Window.GetType()));
                 Console.Out.Flush();
                 return owner;
             }
@@ -459,11 +463,11 @@ public sealed class RunicDesktopHost : IRunicWindowHost
             if (confirmsClose) opening.UseCloseRequest(presentation.RequestCloseAsync);
             owner.SetPresentation(presentation);
             MenuCommandBinding? menu = null;
-            if (viewModel is IRunicMenuCommandSource menuCommands)
+            if (MenuCommandBinding.Binds(viewModel))
             {
                 var menuLogger = (loggerFactory?.CreateLogger("Runic.Application.Views.Desktop"))
                     ?? Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance;
-                menu = await MenuCommandBinding.BindAsync(menuSource, content.ModelContext, menuCommands.GetMenuCommand, menuLogger, content)
+                menu = await MenuCommandBinding.BindViewModelAsync(menuSource, content.ModelContext, viewModel, menuLogger, content)
                     .ConfigureAwait(false);
                 if (!owner.SetMenuCommands(menu)) menu = null;
             }
@@ -553,7 +557,7 @@ public sealed class RunicDesktopHost : IRunicWindowHost
 
     internal const string ServeOnlyEnvironmentVariable = "RUNIC_APPLICATION_SERVE_ONLY";
 
-    private static bool ServeOnlyRequested => Environment.GetEnvironmentVariable(ServeOnlyEnvironmentVariable) == "1";
+    internal static bool ServeOnlyRequested => Environment.GetEnvironmentVariable(ServeOnlyEnvironmentVariable) == "1";
 
     private static readonly object s_serveOnlyGate = new();
     // Completes when the next line is read; replaced by each line, so a Window that opens later waits for a new one.

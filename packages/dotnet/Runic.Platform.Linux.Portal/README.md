@@ -223,6 +223,7 @@ thread the service is on; an exception it throws is ignored.
 | `thumbnail-cache-unavailable` | Information | The host's thumbnail cache is not visible inside the sandbox. |
 | `thumbnailer-access-denied` | Warning | The sandbox does not allow talking to the thumbnailer. |
 | `network-monitor-unavailable` | Warning | Neither the NetworkMonitor portal nor NetworkManager answers, so network status is unavailable. |
+| `power-events-unavailable` | Warning | Neither logind, UPower nor a power-profiles daemon answers on the system bus, so power events are unavailable. |
 
 ## Desktop services
 
@@ -485,6 +486,24 @@ answers, reads are `Unavailable(BackendUnavailable)` and the
 reports a fresh state once one answers. It needs no window and no GTK. Inside
 Flatpak the portal needs no permission; NetworkManager needs
 `--system-talk-name=org.freedesktop.NetworkManager`.
+
+## Power events
+
+`PortalApplication.CreatePowerEvents()` follows the system bus. logind's
+`PrepareForSleep(true)` and `PrepareForSleep(false)` are `Suspending` and
+`Resumed`. The process's session (`GetSessionByPID`, else the user's display
+session) gives `Lock`, `Unlock` and `LockedHint`, which lock screens such as GNOME's
+and KDE's set. UPower's `OnBattery` is `IsOnBattery`, and the `power-saver` profile
+of `org.freedesktop.UPower.PowerProfiles` (or the earlier `net.hadess.PowerProfiles`)
+is `IsLowPower`. Each source is optional; a value without one is `null`. Reads are
+`Unavailable(BackendUnavailable)`, with the `power-events-unavailable` diagnostic,
+only while none answers. When a source's owner leaves, a watch reports
+`Unavailable`, opens the sources again after a few seconds and reports the
+current state; sleeps, wakes and lock changes in that gap are missed. Runic takes no logind delay
+lock, so the system does not wait for the application before it sleeps. It needs
+no window and no GTK. Inside Flatpak it needs `--system-talk-name` for
+`org.freedesktop.login1`, `org.freedesktop.UPower` and
+`org.freedesktop.UPower.PowerProfiles`.
 
 ## Badges and progress
 

@@ -51,3 +51,8 @@ Runic.Application.Views.RunicConnectionState<T>.TryGetCaller(out T value) -> boo
 Runic.Application.Views.RunicConnectionState<T>.Values.get -> System.Collections.Generic.IReadOnlyDictionary<string!, T>!
 Runic.Application.Views.RunicConnectionsExtensions
 static Runic.Application.Views.RunicConnectionsExtensions.WhenChanged(this Runic.Application.Views.IRunicConnections! connections) -> System.IObservable<System.Collections.Generic.IReadOnlyList<Runic.Application.Views.RunicConnection!>!>!
+Runic.Application.Views.IRunicMenuCheckedSource
+Runic.Application.Views.IRunicMenuCheckedSource.IsMenuItemChecked(string! commandId, string? commandParameter) -> bool?
+Runic.Application.Views.RunicMenu
+static Runic.Application.Views.RunicMenu.Refresh(object! viewModel) -> void
+static Runic.Application.Views.RunicMenu.RefreshAll() -> void

@@ -34,7 +34,7 @@ internal sealed class MenuBarPageIdentityChecks
         using var presentations = session.AttachRootInteractionPresentation(Route);
         var bar = new WebUiMenuBar([new DesktopMenu("File", [new DesktopMenuItem("Focus", "file.focus")])]);
         using var routes = new WebUiMenuBarRoutes(bar, transport, NullLogger.Instance);
-        using var commands = await WebUiMenuCommands.BindAsync(bar, session.ModelContext, model.GetMenuCommand, NullLogger.Instance, session);
+        using var commands = await WebUiMenuCommands.BindAsync(bar, session.ModelContext, model.GetMenuCommand, NullLogger.Instance, window: session);
         routes.Attach(new WebUiMenuBarPageWindow(bar, commands), commands);
 
         // Two browsers show the window; each page handles the request and the question.
@@ -92,7 +92,7 @@ internal sealed class MenuBarPageIdentityChecks
         using var presentations = session.AttachRootInteractionPresentation(Route);
         var bar = new WebUiMenuBar([new DesktopMenu("File", [new DesktopMenuItem("Later", "file.later")])]);
         using var routes = new WebUiMenuBarRoutes(bar, transport, NullLogger.Instance);
-        using var commands = await WebUiMenuCommands.BindAsync(bar, session.ModelContext, model.GetMenuCommand, NullLogger.Instance, session);
+        using var commands = await WebUiMenuCommands.BindAsync(bar, session.ModelContext, model.GetMenuCommand, NullLogger.Instance, window: session);
         routes.Attach(new WebUiMenuBarPageWindow(bar, commands), commands);
         foreach (var (connection, client, presentation) in new[] { ("connection-a", "client-a", "page-a"), ("connection-b", "client-b", "page-b") })
         {
@@ -135,7 +135,7 @@ internal sealed class MenuBarPageIdentityChecks
         using var bridge = new IdentityBridge(transport, model, session);
         using var presentations = session.AttachRootInteractionPresentation(Route);
         var bar = new WebUiMenuBar([new DesktopMenu("File", [new DesktopMenuItem("Ask", "file.ask")])]);
-        using var commands = await WebUiMenuCommands.BindAsync(bar, session.ModelContext, model.GetMenuCommand, NullLogger.Instance, session);
+        using var commands = await WebUiMenuCommands.BindAsync(bar, session.ModelContext, model.GetMenuCommand, NullLogger.Instance, window: session);
 
         Send(transport, """{"kind":"hello","protocol":4,"session":"s-a","client":{"name":"t","version":"1"}}""", "connection-a", "client-a");
         var opened = Send(transport, $$"""{"kind":"open","route":"{{Route}}","presentation":"page-a","handlers":[{"name":"confirm","contract":"{{ConfirmContract}}"}]}""",

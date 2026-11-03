@@ -39,6 +39,9 @@ Runic.Application.Testing.RunicViewDriver<TModel>.ClientKey.get -> string!
 Runic.Application.Testing.RunicViewDriver<TModel>.ConnectionKey.get -> string!
 Runic.Application.Testing.RunicViewDriver<TModel>.ForConnection(string! connectionKey, string? clientKey = null) -> Runic.Application.Testing.RunicViewDriver<TModel!>!
 Runic.Application.Testing.RunicWindowTestHost<TViewModel>.Connections.get -> Runic.Application.Views.IRunicConnections!
+Runic.Application.Testing.RunicServeOnlyApplication.Urls.get -> System.Collections.Generic.IReadOnlyList<System.Uri!>!
+Runic.Application.Testing.RunicServeOnlyApplication.WaitForWindowUrlAsync(int index, System.TimeSpan timeout, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<System.Uri!>!
+Runic.Application.Testing.RunicServeOnlyApplication.WaitForWindowUrlAsync(string! windowType, System.TimeSpan timeout, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<System.Uri!>!
 const Runic.Application.Testing.RunicTestPlatformServiceCollectionExtensions.DirectoryEnvironmentVariable = "RUNIC_TEST_PLATFORM_DIRECTORY" -> string!
 override Runic.Application.Testing.RunicAnnouncementCall.Equals(object? obj) -> bool
 override Runic.Application.Testing.RunicAnnouncementCall.GetHashCode() -> int
