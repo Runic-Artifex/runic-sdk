@@ -2518,7 +2518,8 @@ window's navigation, on Runic Desktop and CS-WebUI alike.
 button, Alt+Left, Cmd+[ and the keyboard's Browser Back key then run
 `RunicNavigator.BackAsync()` for the window's navigator: in the innermost
 presented region that can go back, such as the selected tab before its page,
-through the departure guards. Alt+Left and Cmd+[ stay with text fields, and an
+through the departure guards. Only regions a Bridge of the window presents
+count, as a content slot or a tab of a presented region collection. Alt+Left and Cmd+[ stay with text fields, and an
 event the page already handled is left alone. `navigateBack()` does the same
 from code. The .NET side needs nothing beyond its navigator.
 
@@ -2550,7 +2551,13 @@ installNavigationPath(); // #/customers/42 follows Main; Back, Forward and the a
   opens that path as a deep link.
 - On CS-WebUI the browser's own Back then works through the history; add
   `installBackNavigation()` for the mouse and keys in a Desktop window, whose
-  web view may have no history to go back in. Both can be installed.
+  web view may not map them. Both can be installed: the keys then go back in
+  the page's history, so a Back runs once.
+- The path region can be chosen after the page connected, or the window can
+  learn its navigator later: the page is told the path then, and a link in its
+  URL opens at that moment.
+- Several pages of one window, such as two CS-WebUI browsers, share the path
+  region: every page's history follows it, and the last change wins.
 - One path region per window: a second `SyncNavigationPath` for the navigator
   throws until the first is disposed.
 - Tests drive it with `RunicWindowTestHost.NavigateBackAsync()` and

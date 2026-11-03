@@ -135,22 +135,32 @@ route path:
 ```ts
 import { installBackNavigation, installNavigationPath } from "@runic-artifex/views";
 
-installBackNavigation();  // the mouse's Back button, Alt+Left, Cmd+[ and Browser Back
+installBackNavigation();  // the mouse's Back button, Alt+Left, Cmd+[ on macOS and Browser Back
 installNavigationPath();  // #/customers/42 follows the .NET path region
 ```
 
 - `installBackNavigation()` sends the window's Back for the mouse's button 3,
-  Alt+Left, Cmd+[ and the Browser Back key: .NET goes back in the innermost
-  presented region that can, through its departure guards. It leaves Alt+Left
-  and Cmd+[ to text fields, and events the page prevented to the page.
+  Alt+Left, Cmd+[ (on macOS only) and the Browser Back key: .NET goes back in
+  the innermost presented region that can, through its departure guards. It
+  leaves Alt+Left and Cmd+[ to text fields, and events the page prevented to the
+  page. Keys and clicks inside an iframe go to the iframe's document and don't
+  reach it. While `installNavigationPath()` is active, the same inputs go back in
+  the page's history instead, and its `popstate` opens the previous path, so a
+  Back never runs twice; at the first history entry they send the window's Back.
 - `installNavigationPath({ prefix })` keeps the URL's fragment (`#/` and the
   path by default) and the history in step with the region the .NET window syncs
   (`RunicPresentation.SyncNavigationPath`). A push adds a history entry and a
-  Back moves back. The browser's Back and Forward and an edited address bar
-  open their paths in .NET; a refused one, or one no route matches, puts the
-  URL back. A path in the URL when the page loads opens as a deep link. A
+  Back moves back. Each entry keeps its index and path in `history.state`, so
+  a reload keeps them. The browser's Back and Forward and an edited address bar
+  open their paths in .NET; going back to an entry without a path, such as a
+  home page without a route, sends the window's Back. A refused move, or one no
+  route matches, puts the URL back; of several quick moves only the last one
+  does. A path in the URL when the page loads opens as a deep link once the
+  window reports its path; a reload or reconnect shows the window's path. A
   fragment that doesn't start with the prefix, such as an in-page anchor, is
   left alone.
+- Several pages of one window, such as two CS-WebUI browsers, follow the same
+  path region: each history follows every change, and the last change wins.
 - `navigateBack()` and `openNavigationPath(path)` send the same requests from
   code and resolve with `{ outcome, path }`: the .NET `NavigationOutcome`, or
   `null` when no route matched, and the window's path after it.

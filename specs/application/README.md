@@ -947,7 +947,8 @@ region**, which the application chooses. A route path is a string of segments se
 **Back.** `action: "back"` goes back in the innermost presented region that can: the producer looks at the window's
 regions that no page owns, the most recently created first, and within a region at the regions its current page owns,
 the most recently created first, before the region itself; of a region collection or other selection it follows only
-the selected region. The first region whose current page is a result entry (a dialog) dismisses it; otherwise the
+the selected region. A region counts only while a View of the window presents it, as a content slot or a region of a
+presented region collection; a region nothing presents, and the regions below it, are skipped. The first region whose current page is a result entry (a dialog) dismisses it; otherwise the
 first region with a page below the current one goes back to it. The request is an ordinary navigation request: the
 departure guards decide, and a refusal is an outcome, not an error. With no such region the outcome is `Rejected`
 with the rejection `NoHistory`. Back works whether or not the window has a path region.
@@ -963,20 +964,34 @@ absent for a window without a path region. A page whose URL shows another path t
 `path` back: a refused Back or address bar edit reverts the URL. The reply follows the frames and the
 `navigation-path` push of the change it caused.
 
-**`navigation-path`.** After each change of the path region's current page that changes its route, or its stack, the
-producer pushes the new path, after the frames of the change, with `operation`:
+**`navigation-path`.** When the window's path region becomes available after a connection's `hello`, because the
+application chose it later or the window learned its regions later, the producer pushes the path with `operation:
+"replace"` to that connection. After each change of the path region's current page that changes its route, or its
+stack, the producer pushes the new path, after the frames of the change, with `operation`:
 
 - `push` when one page was pushed on top of the previous stack;
 - `back` when the new stack is the beginning of the previous one;
 - `replace` otherwise, such as a replace or reset.
 
-**Client.** The page may keep its URL and history in step: on `push` it adds a history entry with the path, on `back`
-it moves back to the previous entry when that entry shows the path and replaces the current one otherwise, and on
-`replace` it replaces the current entry. When the user moves through the history or edits the address bar, the page
-sends `open` with the URL's path. A URL that already has a route path when the page loads is a deep link: the page
-sends `open` with it instead of showing `navigationPath`. A client that uses the feature may also map the mouse's Back
-button and keyboard shortcuts for Back to `action: "back"`. How a route path appears in the URL is the client's choice;
-the Runic client uses the fragment, `#/customers/42`.
+**Several connections.** Every connection of the window that uses the feature receives the pushes, so the history of
+each page follows the one path region, and requests of several pages are ordinary navigation requests of that region:
+the last change wins.
+
+**Client.** The page may keep its URL and history in step: on `push` it adds a history entry with the path above the
+current one, dropping those above it, on `back` it moves back to the previous entry when that entry shows the path and
+replaces the current one otherwise, and on `replace` it replaces the current entry.
+
+- When the user moves through the history or edits the address bar, the page sends `open` with the URL's path. A move
+  back to an entry whose path is `null`, such as a home page without a route, sends `action: "back"` instead.
+- When the reply's `path` differs from the URL's, the page shows the reply's path again; of several moves in quick
+  succession only the latest one's reply does.
+- A URL that already has a route path when a page loads is a deep link: the page sends `open` with it once the window
+  first reports its path, in the `hello` reply or a later `replace`, instead of showing that path. A page that reloads
+  an entry it wrote, or reconnects, shows the window's path instead.
+- A client that uses the feature may also map the mouse's Back button and keyboard shortcuts for Back to
+  `action: "back"`; while it keeps its history in step, it goes back in its history instead, so a Back runs once.
+- How a route path appears in the URL is the client's choice; the Runic client uses the fragment, `#/customers/42`,
+  and keeps each entry's index and path in `history.state`.
 
 ## Operations
 

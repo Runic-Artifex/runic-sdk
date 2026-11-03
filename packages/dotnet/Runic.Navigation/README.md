@@ -972,8 +972,10 @@ entry's content owns, the most recently created first, before the region
 itself. Of a selection it follows only the selected region. The first region
 whose current entry is a `PushForResult` entry dismisses it, as a dialog closes
 on Back; otherwise the first region with history goes `BackAsync`. With none,
-the result is `Rejected(NoHistory)`. A web View page maps the mouse and keyboard
-to it with `installBackNavigation()`; see
+the result is `Rejected(NoHistory)`. Called on the navigator, every region
+counts; a web View page's Back counts only the regions the window's Bridges
+present. A web View page maps the mouse and keyboard to it with
+`installBackNavigation()`; see
 [Back and the URL](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Application.Views/README.md#back-and-the-url).
 WPF apps keep `NavigationHost`'s `BrowseBack` for their own region.
 

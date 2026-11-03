@@ -73,6 +73,69 @@ internal sealed class NavigationPathBridgeTests
         Require(host.NavigationPathPushes.Count == 0, "A window without a path region pushed a path.");
     }
 
+    // Two pages of one window, such as two CS-WebUI browsers: both follow the path region, and the last change wins.
+    [Test]
+    public async Task TwoConnectionsShareThePathRegionAsync()
+    {
+        await using var window = new PathWindow();
+        var host = window.Host;
+        using var sync = RunicPresentation.SyncNavigationPath(window.Shell.Main, window.Routes);
+        host.Root.Snapshot();
+        const string second = "connection-2";
+        var hello = await host.Transport.RequestAsync("""{"kind":"hello","protocol":4,"session":"second-session","client":{"name":"second","version":"1"},"features":["navigation-path/1"]}""", second)
+            .AsTask().WaitScaledAsync(Timeout);
+        Require(hello.Contains("\"navigationPath\":\"home\"", StringComparison.Ordinal), $"The second hello: {hello}");
+
+        await host.OpenNavigationPathAsync("editors/a").WaitScaledAsync(Timeout);
+        var reply = await host.Transport.RequestAsync("""{"kind":"navigation","action":"open","path":"editors/b"}""", second).AsTask().WaitScaledAsync(Timeout);
+        Require(reply.Contains("\"path\":\"editors/b\"", StringComparison.Ordinal), $"The second page's open: {reply}");
+        await Until(() => Pushes(host, second).SequenceEqual(["editors/a push", "editors/b push"])
+                && host.NavigationPathPushes.Select(push => $"{push.Path} {push.Operation}").SequenceEqual(["editors/a push", "editors/b push"]),
+            $"The connections did not both follow: {string.Join(", ", Pushes(host, second))} / {string.Join(", ", host.NavigationPathPushes)}.");
+        Require(window.Shell.Main.Current is NavEditorViewModel { Title: "b" }, "The last change did not win.");
+    }
+
+    // The window's Back skips a region that no Bridge presents, however recently it was created.
+    [Test]
+    public async Task BackSkipsRegionsNoBridgePresentsAsync()
+    {
+        await using var window = new PathWindow();
+        var host = window.Host;
+        host.Root.Snapshot();
+        await window.Other.PushAsync(NavigationTarget.Own<INavPageViewModel>(new NavEditorViewModel("hidden 1"))).AsTask().WaitScaledAsync(Timeout);
+        await window.Other.PushAsync(NavigationTarget.Own<INavPageViewModel>(new NavEditorViewModel("hidden 2"))).AsTask().WaitScaledAsync(Timeout);
+        var none = await host.NavigateBackAsync().WaitScaledAsync(Timeout);
+        Require(none.Outcome?.Rejection == NavigationRejection.NoHistory && window.Other.History.Count == 1,
+            $"Back went back in a region no Bridge presents: {none.Json}");
+        await window.Shell.Main.PushAsync(NavigationTarget.Own<INavPageViewModel>(new NavEditorViewModel("a"))).AsTask().WaitScaledAsync(Timeout);
+        var back = await host.NavigateBackAsync().WaitScaledAsync(Timeout);
+        Require(back.Outcome?.Kind == NavigationOutcomeKind.Committed && window.Shell.Main.Current is NavHomeViewModel && window.Other.History.Count == 1,
+            $"Back did not go back in the presented region: {back.Json}");
+    }
+
+    // A page that said hello before the window had a path region learns it when the region appears.
+    [Test]
+    public async Task ALatePathRegionIsAnnouncedAsync()
+    {
+        await using var window = new PathWindow();
+        var host = window.Host;
+        host.Root.Snapshot();
+        var back = await host.NavigateBackAsync().WaitScaledAsync(Timeout);
+        Require(!back.HasPath && host.NavigationPathPushes.Count == 0, "A window without a path region pushed a path.");
+        using var sync = RunicPresentation.SyncNavigationPath(window.Shell.Main, window.Routes);
+        await Until(() => host.NavigationPathPushes is [("home", "replace")], $"The late path region was not announced: {string.Join(", ", host.NavigationPathPushes)}.");
+    }
+
+    private static string[] Pushes(RunicWindowTestHost<NavShellViewModel> host, string connection) =>
+    [
+        .. host.Transport.Messages.Where(message => message.ConnectionKey == connection && message.Kind == "navigation-path")
+            .Select(static message =>
+            {
+                using var document = System.Text.Json.JsonDocument.Parse(message.Json);
+                return $"{document.RootElement.GetProperty("path").GetString()} {document.RootElement.GetProperty("operation").GetString()}";
+            }),
+    ];
+
     private sealed class Guard(Func<bool> answer) : INavigationRegionGuard
     {
         public ValueTask<bool> CanDepartAsync(NavigationRegionDeparture departure, CancellationToken cancellationToken) =>

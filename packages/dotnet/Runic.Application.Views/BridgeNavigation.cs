@@ -38,7 +38,7 @@ internal static class BridgeNavigation
         try
         {
             var result = path is null
-                ? await navigator.BackAsync(cancellationToken: cancellationToken).ConfigureAwait(false)
+                ? await navigator.PresentedBackAsync(NavigationPresentationBinding.IsPresented, null, cancellationToken).ConfigureAwait(false)
                 : await sync!.Region.OpenRouteAsync(path, NavigationRouteOpen.BackToOrPush, sync.Routes, cancellationToken: cancellationToken)
                     .ConfigureAwait(false);
             outcome = result?.Outcome;
@@ -123,8 +123,23 @@ internal sealed class NavigationPathSync : IDisposable
             }
             var sync = new NavigationPathSync(region, routes);
             Syncs.Add(navigator, sync);
+            // Pages that said hello before the window had a path region learn its path now.
+            sync.Announce();
             return sync;
         }
+    }
+
+    // Pushes the current path as a replace to the window's connections that use the feature, when the window is presented:
+    // the path region became available after their hello.
+    public void Announce()
+    {
+        string? path;
+        lock (_gate)
+        {
+            if (_disposed) return;
+            path = _path;
+        }
+        Send(path, "replace");
     }
 
     public string? CurrentPath()

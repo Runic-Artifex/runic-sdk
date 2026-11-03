@@ -244,6 +244,11 @@
           "additionalProperties": false
         },
         {
+          "properties": { "op": { "const": "syncPath" } },
+          "required": ["op"],
+          "additionalProperties": false
+        },
+        {
           "properties": { "op": { "const": "renew" } },
           "required": ["op"],
           "additionalProperties": false

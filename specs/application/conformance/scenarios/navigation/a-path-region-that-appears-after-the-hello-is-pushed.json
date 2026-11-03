@@ -1,0 +1,32 @@
+{
+  "format": "runic.views.scenario/1",
+  "id": "navigation.a-path-region-that-appears-after-the-hello-is-pushed.v1",
+  "contract": {"id":"runic.views","version":4},
+  "set": "navigation",
+  "roles": ["producer"],
+  "description": "The page says hello before the window has a path region, so the hello reply carries no navigationPath and nothing is pushed. When the first documents region becomes the path region (syncPath), the producer pushes its path as a replace to the connection, which honours a load-time link only now. The page then opens the tabs route and a path, as before.",
+  "view": "tabs",
+  "requires": ["navigation-path/1"],
+  "ids": {
+    "c1": {"kind":"connection"},
+    "hello-c1": {"kind":"request"},
+    "session": {"kind":"wire","value":"s-1"},
+    "open-tabs-request": {"kind":"request"},
+    "presentation": {"kind":"wire","value":"p-1"},
+    "open-four": {"kind":"request"}
+  },
+  "arrange": {"model":{}},
+  "steps": [
+    {"connect":"c1"},
+    {"send":{"kind":"hello","protocol":4,"session":{"$id":"session"},"client":{"name":{"$any":"string","default":"conformance-client"},"version":{"$any":"string","default":"1.0.0"}},"features":{"$any":"array","default":["text-splice/1","navigation-path/1"]}},"id":"hello-c1"},
+    {"receive":{"ok":true,"protocol":4,"implementation":{"name":{"$any":"string","default":"conformance-producer"},"version":{"$any":"string","default":"1.0.0"}},"features":{"$any":"array","default":["text-splice/1","navigation-path/1"]}},"replyTo":"hello-c1"},
+    {"mutate":[{"op":"syncPath"}],"note":"The window's path region becomes available after the hello."},
+    {"receive":{"kind":"navigation-path","path":"pages/one","operation":"replace"}},
+    {"send":{"kind":"open","route":"tabs","presentation":{"$id":"presentation"}},"id":"open-tabs-request"},
+    {"receive":{"ok":true,"revision":0,"state":{"documents":{"regions":[{"key":"1","content":{"kind":"page","id":"00000000000000000000000000000001"}},{"key":"2","content":{"kind":"page","id":"00000000000000000000000000000002"}},{"key":"3","content":{"kind":"page","id":"00000000000000000000000000000003"}}],"selected":0},"pinned":{"regions":[],"selected":null}},"presentation":"ok"},"replyTo":"open-tabs-request"},
+    {"send":{"kind":"navigation","action":"open","path":"pages/four"},"id":"open-four","note":"A load-time link #/pages/four, opened once the path was reported."},
+    {"receive":{"kind":"frame","route":"tabs","baseRevision":0,"revision":{"$any":"number","default":2},"changes":[{"field":"documents","kind":"set","value":{"regions":[{"key":"1","content":{"kind":"page","id":"00000000000000000000000000000004"}},{"key":"2","content":{"kind":"page","id":"00000000000000000000000000000002"}},{"key":"3","content":{"kind":"page","id":"00000000000000000000000000000003"}}],"selected":0}}]}},
+    {"receive":{"kind":"navigation-path","path":"pages/four","operation":"push"}},
+    {"receive":{"ok":true,"outcome":{"kind":"Committed","rejection":null,"arrival":"None"},"path":"pages/four"},"replyTo":"open-four"}
+  ]
+}

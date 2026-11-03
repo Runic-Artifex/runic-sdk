@@ -138,6 +138,8 @@ interface BackMouseEvent {
 export interface BackNavigationOptions {
   /** The page's window; `globalThis.window` by default. */
   readonly window?: NavigationWindow;
+  /** Whether Cmd+[ goes back, as on macOS; detected from the browser by default. */
+  readonly macOS?: boolean;
 }
 
 const editable = (target: unknown): boolean => {
@@ -147,20 +149,36 @@ const editable = (target: unknown): boolean => {
   return element.tagName === "INPUT" || element.tagName === "TEXTAREA" || element.tagName === "SELECT";
 };
 
+const detectMacOS = (): boolean => {
+  const browser = (globalThis as { navigator?: { platform?: string; userAgentData?: { platform?: string } } }).navigator;
+  return /mac/i.test(browser?.userAgentData?.platform ?? browser?.platform ?? "");
+};
+
+// The history Back of an active installNavigationPath: true when it went back in the page's history, which then opens
+// the previous path through popstate.
+let historyBack: (() => boolean) | undefined;
+
 /**
- * Maps the mouse's Back button (button 3) and Alt+Left, Cmd+[ and the keyboard's Browser Back key to
- * {@link navigateBack}, so they go back in the window's innermost region on Runic Desktop and CS-WebUI alike. The page's
- * own handlers win: an event whose default was prevented is left alone, and Alt+Left and Cmd+[ are left to text fields.
- * Returns a function that removes the handlers.
+ * Maps the mouse's Back button (button 3), Alt+Left, Cmd+[ on macOS and the keyboard's Browser Back key to the window's
+ * Back, so they go back in its innermost presented region on Runic Desktop and CS-WebUI alike. While
+ * {@link installNavigationPath} is active they go back in the page's history instead, whose `popstate` then opens the
+ * previous path, so a Back never runs twice; at the first history entry they fall back to {@link navigateBack}.
+ * The page's own handlers win: an event whose default was prevented is left alone, and Alt+Left and Cmd+[ are left to
+ * text fields. Keys and mouse buttons inside an iframe go to the iframe's document and don't reach these handlers.
+ * Returns a function that removes them.
  */
 export function installBackNavigation(options: BackNavigationOptions = {}): () => void {
   const page = options.window ?? (globalThis as unknown as { window?: NavigationWindow }).window;
   if (!page) return () => {};
-  const back = () => { void navigateBack().catch(reportBridgeError); };
+  const macOS = options.macOS ?? detectMacOS();
+  const back = () => {
+    if (historyBack?.()) return;
+    void navigateBack().catch(reportBridgeError);
+  };
   const onKey = (event: BackKeyEvent) => {
     if (event.defaultPrevented) return;
     const altLeft = event.key === "ArrowLeft" && event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey;
-    const commandBracket = event.key === "[" && event.metaKey && !event.altKey && !event.ctrlKey && !event.shiftKey;
+    const commandBracket = macOS && event.key === "[" && event.metaKey && !event.altKey && !event.ctrlKey && !event.shiftKey;
     if (event.key !== "BrowserBack" && !((altLeft || commandBracket) && !editable(event.target))) return;
     event.preventDefault();
     back();
@@ -195,33 +213,52 @@ export interface NavigationPathOptions {
 
 const stateKey = "runicNavigation";
 
+// What this install keeps in history.state: the entry's index and the path it shows, so a reload keeps both.
+interface HistoryRecord {
+  readonly index: number;
+  readonly path: string | null;
+}
+
+const recordOf = (state: unknown): HistoryRecord | undefined => {
+  const value = (state as Record<string, unknown> | null)?.[stateKey] as Record<string, unknown> | undefined;
+  if (!value || typeof value !== "object") return undefined;
+  const { index, path } = value;
+  return typeof index === "number" && Number.isSafeInteger(index) && index >= 0 && (path === null || typeof path === "string")
+    ? { index, path } : undefined;
+};
+
 /**
  * Keeps the URL's fragment and the browser's history in step with the window's route path (`navigation-path/1`):
  *
  * - A change of the path region pushes a history entry, goes back to the previous one, or replaces the current one.
+ *   Each entry keeps its index and path in `history.state`, so a reload keeps them.
  * - The browser's Back and Forward and an edited address bar open the URL's route path with {@link openNavigationPath},
- *   through the departure guards. When the request doesn't commit, the URL goes back to the window's path: the history
- *   moves back to the entry the user left, or the current entry is replaced.
- * - A URL with a route path when the page loads opens it, as a deep link.
+ *   through the departure guards. Going back to an entry without a route path, such as a home page without a route,
+ *   sends the window's Back instead. When the request doesn't commit, the URL goes back to the window's path: the history
+ *   moves back to the entry that shows it, or the current entry is replaced. Only the latest of several quick moves
+ *   reverts.
+ * - A URL with a route path when the page loads opens it, as a deep link, once the window reports its path. A reconnect
+ *   of the same page shows the window's path instead.
  *
  * Install it once per page. The browser's own Back then goes through the history, so on CS-WebUI the Back button, the
- * mouse's Back button and Alt+Left all work. Don't install it next to another router that owns the fragment, such as
- * SvelteKit's hash router. Returns a function that stops it.
+ * mouse's Back button and Alt+Left all work, and {@link installBackNavigation} goes back in the history too. Don't install
+ * it next to another router that owns the fragment, such as SvelteKit's hash router. Returns a function that stops it.
  */
 export function installNavigationPath(options: NavigationPathOptions = {}): () => void {
   const page = options.window ?? (globalThis as unknown as { window?: NavigationWindow }).window;
   if (!page) return () => {};
   const prefix = options.prefix ?? "#/";
-  // Our index of each history entry, kept in history.state, and the path each one shows.
+  // The path each entry shows, by index, as far as this page knows.
   const paths = new Map<number, string | null>();
-  const indexOf = (state: unknown): number | undefined => {
-    const value = (state as Record<string, unknown> | null)?.[stateKey];
-    return typeof value === "number" && Number.isSafeInteger(value) ? value : undefined;
-  };
-  let index = indexOf(page.history.state) ?? 0;
-  let highest = index;
-  // Pops this install caused (history.back and go), which it does not answer.
-  let expectedPops = 0;
+  const loaded = recordOf(page.history.state);
+  let index = loaded?.index ?? 0;
+  if (loaded) paths.set(index, loaded.path);
+  // The index of the entry that shows the window's path, as the window last confirmed it.
+  let confirmed = index;
+  // The index a history move of this install (back or go) lands on; its popstate is not answered.
+  let expected: number | undefined;
+  // Each user move gets a number; only the latest one's reply may revert the URL.
+  let moves = 0;
   let disposed = false;
 
   const url = (path: string | null) => path === null ? prefix : prefix + path;
@@ -231,81 +268,103 @@ export function installNavigationPath(options: NavigationPathOptions = {}): () =
     const path = hash.slice(prefix.length);
     return path === "" ? null : path;
   };
-  const state = (at: number) => ({ ...(page.history.state as object | null ?? {}), [stateKey]: at });
+  const state = (at: number, path: string | null) => ({ ...(page.history.state as object | null ?? {}), [stateKey]: { index: at, path } });
   const replace = (path: string | null) => {
-    page.history.replaceState(state(index), "", url(path));
+    page.history.replaceState(state(index, path), "", url(path));
     paths.set(index, path);
+    confirmed = index;
   };
   const push = (path: string | null) => {
-    index = ++highest;
-    page.history.pushState(state(index), "", url(path));
+    index += 1;
+    // pushState drops the entries above the current one; so are their records.
+    for (const at of [...paths.keys()]) if (at >= index) paths.delete(at);
+    page.history.pushState(state(index, path), "", url(path));
     paths.set(index, path);
+    confirmed = index;
+  };
+  const go = (to: number) => {
+    if (to === index) return;
+    expected = to;
+    page.history.go(to - index);
+    index = to;
   };
 
   // A change of the window's path region.
   const apply = (change: NavigationPathChange) => {
     if (disposed) return;
-    if (current() === change.path) {
-      paths.set(index, change.path);
-      return;
-    }
+    if (current() === change.path) return replace(change.path);
     if (change.operation === "push") push(change.path);
-    else if (change.operation === "back" && paths.has(index - 1) && paths.get(index - 1) === change.path) {
-      expectedPops++;
-      page.history.back();
+    else if (change.operation === "back" && index > 0 && paths.has(index - 1) && paths.get(index - 1) === change.path) {
+      go(index - 1);
+      confirmed = index;
     }
     else replace(change.path);
   };
 
-  // A Back, Forward or address bar edit: open the URL's path; revert the URL when that doesn't commit.
+  // A Back, Forward or address bar edit: open the URL's path, or go back for an entry without one; revert the URL when
+  // that doesn't commit.
   const onPop = (event: { readonly state: unknown }) => {
     if (disposed) return;
+    const record = recordOf(event.state);
+    if (expected !== undefined) {
+      const target = expected;
+      expected = undefined;
+      if (record?.index === target) return;
+    }
     const left = index;
-    const at = indexOf(event.state);
-    if (expectedPops > 0) {
-      expectedPops--;
-      if (at !== undefined) index = at;
-      return;
-    }
-    const path = current();
+    const path = record ? record.path : current();
     if (path === undefined) return; // a fragment that is not a route path, such as an in-page anchor
-    if (at === undefined) {
-      // An edited address bar: a new entry without our state.
-      index = ++highest;
-      page.history.replaceState(state(index), "", url(path));
+    if (record) index = record.index;
+    else {
+      // An edited address bar: a new entry above the one left, without our record.
+      index = left + 1;
+      for (const at of [...paths.keys()]) if (at >= index) paths.delete(at);
+      page.history.replaceState(state(index, path), "", url(path));
     }
-    else index = at;
     paths.set(index, path);
-    if (path === null) return;
-    void openNavigationPath(path).then(reply => {
-      if (disposed || reply.path === undefined || reply.path === path) return;
-      // The region stayed: show its path again, by moving back to the entry the user left when it is ours.
-      if (at !== undefined && paths.get(left) === reply.path && index === at) {
-        expectedPops++;
-        page.history.go(left - at);
-        index = left;
+    const move = ++moves;
+    const settle = (reply: NavigationReply) => {
+      if (disposed || move !== moves || reply.path === undefined) return;
+      if (reply.path === path) {
+        confirmed = index;
+        return;
       }
+      // The region kept another page: show its path again, at the entry that shows it when there is one.
+      if (paths.get(confirmed) === reply.path) go(confirmed);
       else replace(reply.path);
-    }, reportBridgeError);
+    };
+    // An entry without a route path, such as a home page without a route: the window goes back to it.
+    const request = path === null ? navigateBack() : openNavigationPath(path);
+    void request.then(settle, reportBridgeError);
   };
 
-  // The page loaded or reconnected: a route path in the URL is a deep link; otherwise the URL shows the window's path.
+  // The window reports its path: when the connection starts, or when its path region becomes available later. The first
+  // report of this page is where a load-time route path opens as a deep link; later ones show the window's path.
   let first = true;
-  const greeted = (change: NavigationPathChange) => {
+  const linked = current();
+  const reported = (change: NavigationPathChange) => {
     if (!first || change.operation !== "replace") return apply(change);
     first = false;
-    const linked = current();
-    if (linked === undefined || linked === null || linked === change.path) return replace(change.path);
+    if (loaded || linked === undefined || linked === null || linked === change.path) return replace(change.path);
     paths.set(index, linked);
     void openNavigationPath(linked).then(reply => {
-      if (!disposed && reply.path !== undefined && reply.path !== linked) replace(reply.path);
+      if (disposed || reply.path === undefined) return;
+      if (reply.path !== linked) replace(reply.path);
+      else confirmed = index;
     }, reportBridgeError);
   };
 
   page.addEventListener("popstate", onPop);
-  const stop = onNavigationPath(greeted);
+  const stop = onNavigationPath(reported);
+  const back = () => {
+    if (disposed || index === 0) return false;
+    page.history.back();
+    return true;
+  };
+  historyBack = back;
   return () => {
     disposed = true;
+    if (historyBack === back) historyBack = undefined;
     stop();
     page.removeEventListener("popstate", onPop);
   };
