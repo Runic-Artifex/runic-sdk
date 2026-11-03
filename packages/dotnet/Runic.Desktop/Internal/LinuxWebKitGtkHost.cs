@@ -49,7 +49,8 @@ internal sealed partial class LinuxWebKitGtkHost : IWebUiEmbeddedHost
 
     // Full screen needs gtk_window_unfullscreen; placing on a monitor also a position, which Wayland does not give.
     public DesktopWindowCapabilities Capabilities => KnownCapabilities |
-        (Api.CanReportState ? DesktopWindowCapabilities.State : DesktopWindowCapabilities.None) |
+        (Api.CanReportState ? DesktopWindowCapabilities.State | DesktopWindowCapabilities.Activity : DesktopWindowCapabilities.None) |
+        DesktopWindowCapabilities.ColorScheme |
         (Api.CanReceiveFileDrops ? DesktopWindowCapabilities.FileDrop : DesktopWindowCapabilities.None) |
         (Api.CanUseFullScreen ? DesktopWindowCapabilities.FullScreen : DesktopWindowCapabilities.None) |
         (Api.CanPlaceOnMonitor && !Api.IsWaylandDisplay() ? DesktopWindowCapabilities.MonitorPlacement : DesktopWindowCapabilities.None);
@@ -59,6 +60,64 @@ internal sealed partial class LinuxWebKitGtkHost : IWebUiEmbeddedHost
     public DesktopWindowState? State => Volatile.Read(ref _state);
 
     public event EventHandler? StateChanged;
+
+    private DesktopWindowActivity? _activity;
+    private int _activityUpdateQueued;
+
+    public DesktopWindowActivity? Activity => Volatile.Read(ref _activity);
+
+    public event EventHandler? ActivityChanged;
+
+    // GTK thread only: after the window gained or lost the focus (notify::is-active), was shown or hidden
+    // (notify::visible), or was iconified or restored (window-state-event). On Wayland GTK 3 learns nothing of a
+    // minimize, since xdg-shell reports no minimized state, so a minimized window there stays visible and only loses
+    // the focus.
+    private void UpdateActivity()
+    {
+        Volatile.Write(ref _activityUpdateQueued, 0);
+        if (_window == 0 || !Api.CanReportState) return;
+        var minimized = (Api.GetWindowStateFlags(_window) & GdkWindowStateIconified) != 0;
+        // A hidden window is never active: GTK can keep is-active set on a window it just unmapped.
+        var visible = !minimized && Api.GtkWidgetGetVisible(_window);
+        var activity = new DesktopWindowActivity
+        {
+            IsActive = visible && Api.GtkWindowIsActive(_window),
+            IsMinimized = minimized,
+            IsVisible = visible,
+        };
+        if (Equals(activity, Volatile.Read(ref _activity))) return;
+        Volatile.Write(ref _activity, activity);
+        try
+        {
+            ActivityChanged?.Invoke(this, EventArgs.Empty);
+        }
+        catch
+        {
+            // Never unwind through GTK.
+        }
+    }
+
+    private void QueueActivityUpdate()
+    {
+        if (IsOpen && Interlocked.Exchange(ref _activityUpdateQueued, 1) == 0) Dispatcher.Post(UpdateActivity);
+    }
+
+    [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
+    private static void OnActivityNotify(nint window, nint property, nint context)
+    {
+        try
+        {
+            if (GCHandle.FromIntPtr(context).Target is LinuxWebKitGtkHost host) host.QueueActivityUpdate();
+        }
+        catch
+        {
+            // Native callbacks cannot unwind through GTK.
+        }
+    }
+
+    // GTK's application-wide prefer-dark setting (GtkColorScheme): every window of the process follows it.
+    public ValueTask SetColorSchemeAsync(Runic.Platform.DesktopColorScheme colorScheme, CancellationToken cancellationToken = default)
+        => InvokeWindowAsync(() => GtkColorScheme.Apply(Api.GtkSettingsGetDefault(), colorScheme, Api.GtkSettingsResetPropertyPointer), cancellationToken);
     public bool SupportsDocumentStartScript => true;
     public bool SupportsNativeDispatch => true;
     public bool CheckNativeAccess() => Dispatcher.CheckAccess;
@@ -345,6 +404,8 @@ internal sealed partial class LinuxWebKitGtkHost : IWebUiEmbeddedHost
             // once GTK has recorded the new size, position and state.
             Api.Connect(_window, "configure-event", (nint)(delegate* unmanaged[Cdecl]<nint, nint, nint, int>)&OnWindowGeometryEvent, this);
             Api.Connect(_window, "window-state-event", (nint)(delegate* unmanaged[Cdecl]<nint, nint, nint, int>)&OnWindowGeometryEvent, this);
+            Api.Connect(_window, "notify::is-active", (nint)(delegate* unmanaged[Cdecl]<nint, nint, nint, void>)&OnActivityNotify, this);
+            Api.Connect(_window, "notify::visible", (nint)(delegate* unmanaged[Cdecl]<nint, nint, nint, void>)&OnActivityNotify, this);
         }
         // WebKit sends each key to the page first. It runs handlers connected after its
         // own only for keys the page did not handle. The keyboard script reports
@@ -398,6 +459,7 @@ internal sealed partial class LinuxWebKitGtkHost : IWebUiEmbeddedHost
 
         Volatile.Write(ref _isOpen, 1);
         UpdateState();
+        UpdateActivity();
     }
 
     // GTK thread only. Reads the window after GTK has processed its configure and state events.
@@ -470,10 +532,11 @@ internal sealed partial class LinuxWebKitGtkHost : IWebUiEmbeddedHost
     {
         try
         {
-            if (GCHandle.FromIntPtr(context).Target is LinuxWebKitGtkHost { IsOpen: true } host
-                && Interlocked.Exchange(ref host._stateUpdateQueued, 1) == 0)
+            if (GCHandle.FromIntPtr(context).Target is LinuxWebKitGtkHost { IsOpen: true } host)
             {
-                Dispatcher.Post(host.UpdateState);
+                if (Interlocked.Exchange(ref host._stateUpdateQueued, 1) == 0) Dispatcher.Post(host.UpdateState);
+                // window-state-event: iconified and restored.
+                host.QueueActivityUpdate();
             }
         }
         catch
@@ -1140,6 +1203,11 @@ internal sealed partial class LinuxWebKitGtkHost : IWebUiEmbeddedHost
                 GtkWindowMaximizePointer = Required(_gtk, "gtk_window_maximize");
                 GtkWindowUnmaximizePointer = Required(_gtk, "gtk_window_unmaximize");
                 GtkWindowIsMaximizedPointer = Required(_gtk, "gtk_window_is_maximized");
+                GtkWindowIsActivePointer = Required(_gtk, "gtk_window_is_active");
+                GtkWidgetGetVisiblePointer = Required(_gtk, "gtk_widget_get_visible");
+                GtkSettingsGetDefaultPointer = Required(_gtk, "gtk_settings_get_default");
+                // GTK 3.20: NoPreference returns the color scheme settings to the desktop's.
+                GtkSettingsResetPropertyPointer = Optional(_gtk, "gtk_settings_reset_property");
                 GtkWindowFullscreenPointer = Required(_gtk, "gtk_window_fullscreen");
                 GtkWidgetGrabFocusPointer = Required(_gtk, "gtk_widget_grab_focus");
                 GtkWindowGetFocusPointer = Required(_gtk, "gtk_window_get_focus");
@@ -1577,6 +1645,10 @@ internal sealed partial class LinuxWebKitGtkHost : IWebUiEmbeddedHost
         private nint GtkWindowMaximizePointer { get; }
         private nint GtkWindowUnmaximizePointer { get; }
         private nint GtkWindowIsMaximizedPointer { get; }
+        private nint GtkWindowIsActivePointer { get; }
+        private nint GtkWidgetGetVisiblePointer { get; }
+        private nint GtkSettingsGetDefaultPointer { get; }
+        internal nint GtkSettingsResetPropertyPointer { get; }
         private nint GtkWindowFullscreenPointer { get; }
         private nint GtkWidgetGrabFocusPointer { get; }
         private nint GtkWindowGetFocusPointer { get; }
@@ -1765,6 +1837,9 @@ internal sealed partial class LinuxWebKitGtkHost : IWebUiEmbeddedHost
         internal void GtkWindowMaximize(nint window) => ((delegate* unmanaged[Cdecl]<nint, void>)GtkWindowMaximizePointer)(window);
         internal void GtkWindowUnmaximize(nint window) => ((delegate* unmanaged[Cdecl]<nint, void>)GtkWindowUnmaximizePointer)(window);
         internal bool GtkWindowIsMaximized(nint window) => ((delegate* unmanaged[Cdecl]<nint, int>)GtkWindowIsMaximizedPointer)(window) != 0;
+        internal bool GtkWindowIsActive(nint window) => ((delegate* unmanaged[Cdecl]<nint, int>)GtkWindowIsActivePointer)(window) != 0;
+        internal bool GtkWidgetGetVisible(nint widget) => ((delegate* unmanaged[Cdecl]<nint, int>)GtkWidgetGetVisiblePointer)(widget) != 0;
+        internal nint GtkSettingsGetDefault() => ((delegate* unmanaged[Cdecl]<nint>)GtkSettingsGetDefaultPointer)();
         internal void GtkWindowFullscreen(nint window) => ((delegate* unmanaged[Cdecl]<nint, void>)GtkWindowFullscreenPointer)(window);
         internal void GtkWidgetGrabFocus(nint widget) => ((delegate* unmanaged[Cdecl]<nint, int>)GtkWidgetGrabFocusPointer)(widget);
         internal nint GtkWindowGetFocus(nint window) => ((delegate* unmanaged[Cdecl]<nint, nint>)GtkWindowGetFocusPointer)(window);

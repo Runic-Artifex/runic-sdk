@@ -416,6 +416,10 @@ internal static partial class ViewsLog
         Message = "Refreshing {Model} after a Hot Reload update failed with {ErrorType}.")]
     internal static partial void HotReloadRefreshFailed(ILogger logger, Exception exception, string model, string errorType);
 
+    [LoggerMessage(EventId = 1130, EventName = "WindowPresentationHandlerFailed", Level = LogLevel.Error,
+        Message = "An IRunicWindowPresentation.{Handler} handler failed with {ErrorType}.")]
+    internal static partial void WindowPresentationHandlerFailed(ILogger logger, Exception exception, string handler, string errorType);
+
     // client-errors/1, in the category RunicViewsTelemetry.PageLogCategory. Every value comes from the page, capped and
     // without control or bidirectional formatting characters (BridgeClientErrors); the stack keeps its line breaks,
     // each line starting with "    | ", and comes last.

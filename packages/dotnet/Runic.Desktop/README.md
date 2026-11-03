@@ -540,6 +540,61 @@ follows the system. A [custom window host](#custom-window-hosts) receives the
 option in `DesktopWindowHostOptions.ColorScheme`, and reports
 `color-scheme-unsupported` from `ValidateOptions` if it cannot apply it.
 
+#### Switching while the application runs
+
+`DesktopHost.SetColorSchemeAsync` switches the whole application, for example
+when the user picks a theme in the settings; `DesktopWindow.SetColorSchemeAsync`
+switches one open window. Both need `DesktopWindowCapabilities.ColorScheme`,
+which every built-in embedded window reports:
+
+```csharp
+await host.SetColorSchemeAsync(DesktopColorScheme.Dark);   // every window without its own scheme
+await window.SetColorSchemeAsync(DesktopColorScheme.Light); // this window, until it returns to NoPreference
+```
+
+A window shows its own scheme (`DesktopWindowOptions.ColorScheme`, or its last
+`SetColorSchemeAsync`) when that is `Light` or `Dark`; with `NoPreference` it
+shows the application's (`DesktopHost.ColorScheme`), and that, by default, the
+system's. Windows that open later follow the application's scheme too. The
+page's `prefers-color-scheme` and form controls change at once, without a
+reload. `DesktopWindow.ColorScheme` reports the scheme the window shows now,
+and changes only once the window applied it: a switch that fails leaves it.
+
+| Window host | What a switch sets |
+| --- | --- |
+| Windows, WebView2 | The profile's preferred color scheme and the title bar's dark mode (`DWMWA_USE_IMMERSIVE_DARK_MODE`, attribute 19 on Windows 10 1809 to 1909). `NoPreference` returns the profile to the system's scheme and gives the title bar the system's apps theme as it is at the time of the call; a later change of the system's theme does not reach the title bar |
+| macOS, WKWebView | `NSWindow.appearance`; the application's scheme also sets `NSApp.appearance`, which menus, alerts and panels follow |
+| Linux, GTK 3 | GTK's `gtk-application-prefer-dark-theme` setting, which WebKitGTK's `prefers-color-scheme` follows |
+| Linux, GTK 4 | GTK's `gtk-interface-color-scheme` (GTK 4.20 or later) and `gtk-application-prefer-dark-theme`; the libadwaita style manager instead when the application has initialized libadwaita |
+| WPF `RunicWebView` | The child WebView2's preferred color scheme |
+| Installed browsers | Nothing: `DesktopWindow.SetColorSchemeAsync` throws `DesktopException` (`window-capability-unavailable`), and the application's scheme skips them |
+
+Some schemes are not a window's own. A window reports
+`DesktopWindowCapabilities.PerWindowColorScheme` when its scheme is; without
+it, the scheme is shared:
+
+- **Linux.** GTK's settings, and the libadwaita style manager, belong to the
+  process, so every GTK window shares one scheme.
+- **Windows, a configured `ProfilePath`.** WebView2 keeps the preferred color
+  scheme per profile, so the windows that share a `DesktopWindowOptions.ProfilePath`
+  share it. A window without one gets a profile of its own and keeps its own scheme.
+
+`DesktopWindow.SetColorSchemeAsync` on a shared scheme changes every window
+that shares it, and `ColorScheme` of each reports the change.
+`DesktopHost.SetColorSchemeAsync` first switches the windows whose scheme is
+their own, then applies the application's scheme to every shared one, so the
+application's scheme wins whatever order the windows are in. On Linux
+`NoPreference` resets GTK's settings (`gtk_settings_reset_property`, GTK 3.20
+and GTK 4), so they follow the desktop again, also when the user changes it
+later. A GTK theme without a dark variant keeps its own colors in the window's
+frame, though the page still follows. A custom window host switches by
+implementing `IDesktopColorSchemeWindowHost`, and reports
+`PerWindowColorScheme` when the scheme is the window's alone; Runic treats the
+windows of a configured `ProfilePath` as sharing it.
+
+Runic Windows reach the same switch host-neutrally through
+`IRunicWindowPresentation.SetColorSchemeAsync` (Runic.Application.Views).
+
 ## Title bar and drag regions on macOS
 
 `DesktopWindowOptions.MacOS.TitleBar` gives the macOS window the custom header
@@ -659,6 +714,34 @@ macOS nothing happens. To print there, or to print a document rather than the
 page, write it to a PDF or HTML file in .NET and open it with
 `IDesktopFileLauncher.LaunchAsync` from Runic.Platform; the user prints it from
 the default application, such as Preview. CI does not check printing.
+
+## Window activity
+
+An embedded window whose `Capabilities` include `DesktopWindowCapabilities.Activity`
+reports in `DesktopWindow.Activity` whether it is active (has the desktop's
+keyboard focus), minimized and visible, and raises
+`DesktopWindow.ActivityChanged` after each change, so an application can pause
+polling or animations nobody sees, or decide whether to notify:
+
+```csharp
+window.ActivityChanged += (_, e) => poller.Interval = e.Activity.IsActive ? fast : slow;
+```
+
+Every built-in embedded window reports it from its own events: `WM_ACTIVATE`
+and `WM_WINDOWPOSCHANGED` on Windows, the key-window, miniaturize and occlusion
+notifications on macOS, `notify::is-active`, `notify::visible` and the
+iconified state on Linux (GTK 3 and GTK 4). The event runs on the thread pool,
+never concurrently, and changes that arrive while a handler runs are combined;
+a handler that throws is logged as event 3040, `WindowActivityHandlerFailed`.
+A minimized or hidden window is neither active nor visible, and a closed one
+reports itself inactive and hidden in a last event. Wayland compositors do not
+report that a window was minimized: the GTK 4 window (GTK 4.12 and later)
+reports a window the compositor stopped showing as not visible, and the GTK 3
+window on Wayland only reports that it lost the focus. An installed browser, and
+a custom window host without `IDesktopActivityWindowHost`, report `null`.
+
+`DesktopWindow.FocusAsync` restores a minimized window on Windows before it
+activates it, as it already did on macOS and Linux.
 
 ## Window state and restore
 
@@ -1706,11 +1789,14 @@ The optional interfaces each add one feature:
 | `IDesktopFileDropWindowHost` | `DesktopWindow.FilesDropped`, with paths from the native drop, never from the page ([File drops](#file-drops)) | `DesktopWindowCapabilities.FileDrop` |
 | `IDesktopDragSourceWindowHost` | `DesktopWindow.StartDragAsync`, with data the application checked ([Dragging files out](#dragging-files-out)) | `DesktopWindowCapabilities.FileDrag` |
 | `IDesktopSpellCheckingWindowHost` | `DesktopHost.SetSpellCheckingLanguagesAsync` in an open window; apply `DesktopWindowHostOptions.SpellCheckingLanguages` when opening ([Spell checking](#spell-checking)) | — |
+| `IDesktopActivityWindowHost` | `DesktopWindow.Activity` and `ActivityChanged` ([Window activity](#window-activity)) | `DesktopWindowCapabilities.Activity` |
+| `IDesktopColorSchemeWindowHost` | `DesktopWindow` and `DesktopHost.SetColorSchemeAsync` in an open window ([Light and dark windows](#light-and-dark-windows)) | `DesktopWindowCapabilities.ColorScheme`, and `PerWindowColorScheme` when the scheme is the window's alone |
 | `IDesktopEventLoopWindowHostFactory` | A toolkit loop on the process main thread | — |
 | `ILinuxDesktopWindowHostFactory` | The Linux toolkit the factory loads | `Backend` |
 
-The GTK 4 host implements the first three and `IDesktopSpellCheckingWindowHost`, and its factory the last two;
-`RunicWebView` implements `IDesktopFileDropWindowHost`. A host that reports
+The GTK 4 host implements the first three, `IDesktopSpellCheckingWindowHost`, `IDesktopActivityWindowHost` and
+`IDesktopColorSchemeWindowHost`, and its factory the last two; `RunicWebView` implements `IDesktopFileDropWindowHost`
+and `IDesktopColorSchemeWindowHost`. A host that reports
 `DesktopWindowCapabilities.Announcements` implements `AnnounceAsync`
 ([Accessibility](#accessibility)). Report events of an open window, such as a
 crashed web process, through `DesktopWindowHostOptions.DiagnosticSink`, from any

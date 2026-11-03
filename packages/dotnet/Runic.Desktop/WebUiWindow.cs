@@ -189,7 +189,23 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
 
     /// <summary>Gets the native embedded-window handle, or zero outside WebView mode.</summary>
     public nint NativeWindowHandle => _embeddedHost?.NativeHandle ?? 0;
-    internal DesktopWindowCapabilities WindowCapabilities => _embeddedHost?.Capabilities ?? DesktopWindowCapabilities.None;
+    internal DesktopWindowCapabilities WindowCapabilities => _embeddedHost is { } host
+        ? SharedProfile(host) is null ? host.Capabilities : host.Capabilities & ~DesktopWindowCapabilities.PerWindowColorScheme
+        : DesktopWindowCapabilities.None;
+
+    // The ProfilePath the current window opened with, when the application configured one: windows that share it share
+    // WebView2's preferred color scheme. A generated profile belongs to one window.
+    private string? _configuredProfilePath;
+
+    private string? SharedProfile(IWebUiEmbeddedHost host) =>
+        host is WindowsWebView2Host or DesktopWindowHostAdapter ? _configuredProfilePath : null;
+
+    // What the current window's color scheme belongs to: null for the window alone, else a key that the windows sharing
+    // it have in common (DesktopHost tracks the scheme of each).
+    internal string? EmbeddedColorSchemeScope => _embeddedHost is not { } host
+        || (WindowCapabilities & DesktopWindowCapabilities.PerWindowColorScheme) != 0
+        ? null
+        : SharedProfile(host) is { } profile ? "profile:" + profile.ToUpperInvariant() : "process";
 
     internal bool SupportsNativeDispatch => _embeddedHost?.SupportsNativeDispatch == true;
     internal bool CheckNativeAccess() => _embeddedHost?.CheckNativeAccess() == true;
@@ -646,6 +662,7 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
                 host.Closed += EmbeddedHostClosed;
                 Volatile.Write(ref _embeddedWindowState, null);
                 host.StateChanged += EmbeddedHostStateChanged;
+                host.ActivityChanged += EmbeddedHostActivityChanged;
                 host.MenuBarPlacementChanged += EmbeddedHostMenuBarPlacementChanged;
                 host.FilesDropped += EmbeddedHostFilesDropped;
                 _embeddedHost = host;
@@ -659,12 +676,14 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
                     RecordMenuBarPlacement(host);
                     PushMenuBar(host);
                     PushSpellCheckingLanguages(host);
+                    PushColorScheme(host);
                 }
                 catch
                 {
                     StopCloseConfirmation();
                     host.Closed -= EmbeddedHostClosed;
                     host.StateChanged -= EmbeddedHostStateChanged;
+                    host.ActivityChanged -= EmbeddedHostActivityChanged;
                     host.MenuBarPlacementChanged -= EmbeddedHostMenuBarPlacementChanged;
                     host.FilesDropped -= EmbeddedHostFilesDropped;
                     _embeddedHost = null;
@@ -723,6 +742,7 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
                 host.Closed += EmbeddedHostClosed;
                 Volatile.Write(ref _embeddedWindowState, null);
                 host.StateChanged += EmbeddedHostStateChanged;
+                host.ActivityChanged += EmbeddedHostActivityChanged;
                 host.MenuBarPlacementChanged += EmbeddedHostMenuBarPlacementChanged;
                 host.FilesDropped += EmbeddedHostFilesDropped;
                 _embeddedHost = host;
@@ -737,12 +757,14 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
                     RecordMenuBarPlacement(host);
                     PushMenuBar(host);
                     PushSpellCheckingLanguages(host);
+                    PushColorScheme(host);
                 }
                 catch
                 {
                     StopCloseConfirmation();
                     host.Closed -= EmbeddedHostClosed;
                     host.StateChanged -= EmbeddedHostStateChanged;
+                    host.ActivityChanged -= EmbeddedHostActivityChanged;
                     host.MenuBarPlacementChanged -= EmbeddedHostMenuBarPlacementChanged;
                     host.FilesDropped -= EmbeddedHostFilesDropped;
                     _embeddedHost = null;
@@ -1484,7 +1506,39 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
     internal void SetMenuBarPresentation(DesktopMenuBarPresentation presentation) => _menuBarPresentation = presentation;
 
     // The light or dark appearance of the next embedded window (DesktopWindowOptions.ColorScheme).
-    internal void SetColorScheme(Runic.Platform.DesktopColorScheme colorScheme) => _colorScheme = colorScheme;
+    internal void SetColorScheme(Runic.Platform.DesktopColorScheme colorScheme, bool fromApplication = false)
+    {
+        _colorScheme = colorScheme;
+        _colorSchemeFromApplication = fromApplication;
+    }
+
+    // Whether the next window's scheme is the application's (DesktopHost.SetColorSchemeAsync), which a host whose scheme
+    // belongs to the process, as GTK's does, applies once it is open.
+    private bool _colorSchemeFromApplication;
+
+    private void PushColorScheme(IWebUiEmbeddedHost host)
+    {
+        if (!_colorSchemeFromApplication || (host.Capabilities & DesktopWindowCapabilities.ColorScheme) == 0) return;
+        _ = PushColorSchemeAsync(host, _colorScheme);
+    }
+
+    private async Task PushColorSchemeAsync(IWebUiEmbeddedHost host, Runic.Platform.DesktopColorScheme colorScheme)
+    {
+        try
+        {
+            await host.SetColorSchemeAsync(colorScheme).ConfigureAwait(false);
+        }
+        catch (Exception error) when (error is not OutOfMemoryException)
+        {
+            if (!host.IsOpen || !ReferenceEquals(Volatile.Read(ref _embeddedHost), host)) return;
+            ReportEmbeddedDiagnostic(new DesktopDiagnostic(DesktopErrorCategory.OperationFailed, "color-scheme-failed",
+                $"The window could not apply the application's color scheme: {DesktopLog.ErrorType(error)}.", Retryable: true)
+            {
+                Severity = DesktopDiagnosticSeverity.Warning,
+                Option = "DesktopHost.ColorScheme",
+            });
+        }
+    }
 
     // The saved placement the next embedded window restores; ApplyWindowOptions already set its size and position.
     internal void SetPlacement(DesktopWindowPlacement placement) => _placement = placement;
@@ -1662,6 +1716,27 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
     }
 
     private DesktopWindowState? _embeddedWindowState;
+
+    // The current embedded window's activity, and each change, from the current host only.
+    internal DesktopWindowActivity? EmbeddedWindowActivity => Volatile.Read(ref _embeddedHost)?.Activity;
+
+    internal event Action<object, DesktopWindowActivity>? EmbeddedWindowActivityChanged;
+
+    private void EmbeddedHostActivityChanged(object? sender, EventArgs eventArgs)
+    {
+        if (sender is IWebUiEmbeddedHost host && ReferenceEquals(Volatile.Read(ref _embeddedHost), host) && host.Activity is { } activity)
+        {
+            EmbeddedWindowActivityChanged?.Invoke(host, activity);
+        }
+    }
+
+    // DesktopWindow.SetColorSchemeAsync and DesktopHost.SetColorSchemeAsync for the open embedded window; the next
+    // window opens with the scheme too.
+    internal ValueTask SetEmbeddedColorSchemeAsync(Runic.Platform.DesktopColorScheme colorScheme, CancellationToken cancellationToken)
+    {
+        _colorScheme = colorScheme;
+        return GetEmbeddedHost().SetColorSchemeAsync(colorScheme, cancellationToken);
+    }
 
     private void EmbeddedHostStateChanged(object? sender, EventArgs eventArgs)
     {
@@ -1956,6 +2031,7 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
     private WebUiEmbeddedHostOptions CreateEmbeddedHostOptions()
     {
         string? profilePath = null;
+        _configuredProfilePath = _profileConfigured ? _profilePath : null;
         if (_profileConfigured)
         {
             profilePath = _profilePath;
@@ -2080,6 +2156,7 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
                 StopCloseConfirmation();
                 closed.Closed -= EmbeddedHostClosed;
                 closed.StateChanged -= EmbeddedHostStateChanged;
+                closed.ActivityChanged -= EmbeddedHostActivityChanged;
                 closed.MenuBarPlacementChanged -= EmbeddedHostMenuBarPlacementChanged;
                 closed.FilesDropped -= EmbeddedHostFilesDropped;
                 _currentBrowser = WebUiBrowser.NoBrowser;
@@ -2107,6 +2184,7 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
                 StopCloseConfirmation();
                 host.Closed -= EmbeddedHostClosed;
                 host.StateChanged -= EmbeddedHostStateChanged;
+                host.ActivityChanged -= EmbeddedHostActivityChanged;
                 host.MenuBarPlacementChanged -= EmbeddedHostMenuBarPlacementChanged;
                 host.FilesDropped -= EmbeddedHostFilesDropped;
                 _currentBrowser = WebUiBrowser.NoBrowser;
@@ -2284,6 +2362,7 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
         {
             embeddedHost.Closed -= EmbeddedHostClosed;
             embeddedHost.StateChanged -= EmbeddedHostStateChanged;
+            embeddedHost.ActivityChanged -= EmbeddedHostActivityChanged;
             embeddedHost.MenuBarPlacementChanged -= EmbeddedHostMenuBarPlacementChanged;
             embeddedHost.FilesDropped -= EmbeddedHostFilesDropped;
             try

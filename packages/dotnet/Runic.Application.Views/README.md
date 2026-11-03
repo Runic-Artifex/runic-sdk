@@ -775,6 +775,113 @@ In tests, `RunicWindowTestHost.Connections` lists the test connections and
 `host.Root.ForConnection("bob-tab", clientKey: "bob")` drives the Window as a
 second page; see
 [Runic.Application.Testing](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Application.Testing/README.md#several-pages-of-one-window).
+### Presenting, hiding and observing a ViewModel's own Window
+
+`IRunicWindowPresentation` is the Window a ViewModel belongs to as it appears on
+the desktop. `AddRunicWindowService()` registers it per scope, next to
+`IRunicWindowContext`, so the ViewModel takes it in its constructor and never
+casts `IRunicWindow.Host` to a host's type:
+
+| Member | What it does |
+| --- | --- |
+| `PresentAsync(activation)` | Brings the Window to the front: shows a hidden one, restores a minimized one and asks for the keyboard focus, with the launch's activation token where the desktop needs one. |
+| `MinimizeAsync()` | Minimizes it to the taskbar or Dock. |
+| `SetVisibleAsync(visible)` | Hides it without closing it, for example to a status icon, or shows it again. |
+| `SetFullScreenAsync(fullScreen)` | Enters or leaves full screen. |
+| `SetDocumentEditedAsync(edited)` | Marks unsaved changes where the platform shows them: the dot in the macOS close button. |
+| `SetColorSchemeAsync(scheme)` | Switches it between light and dark; the page's `prefers-color-scheme` follows. |
+| `IsActive`, `IsMinimized`, `IsVisible`, `Activity` | Whether it has the keyboard focus, is minimized and is shown, with `ActivityChanged` and `PropertyChanged`. |
+| `Features` | What the host can do now. |
+
+With CommunityToolkit.Mvvm, a ViewModel that polls less while the user works
+elsewhere and hides to the status area:
+
+```csharp
+public sealed partial class InboxViewModel : ObservableObject
+{
+    private readonly IRunicWindowPresentation _window;
+
+    public InboxViewModel(IRunicWindowPresentation window)
+    {
+        _window = window;
+        window.ActivityChanged += (_, e) => PollInterval = e.Activity.IsActive ? TimeSpan.FromSeconds(5) : TimeSpan.FromMinutes(1);
+    }
+
+    [ObservableProperty]
+    public partial TimeSpan PollInterval { get; private set; } = TimeSpan.FromSeconds(5);
+
+    [RelayCommand]
+    private async Task HideToTrayAsync() => await _window.SetVisibleAsync(false);
+}
+```
+
+With ReactiveUI, observe a property with `WhenAnyValue`, or the activity as an
+`IObservable<RunicWindowActivity>` from `ObserveActivity()`, which needs no
+System.Reactive and composes with either flavor:
+
+```csharp
+public InboxViewModel(IRunicWindowPresentation window)
+{
+    _pollInterval = window.WhenAnyValue(w => w.IsActive)
+        .Select(active => active ? TimeSpan.FromSeconds(5) : TimeSpan.FromMinutes(1))
+        .ToProperty(this, x => x.PollInterval);
+    HideToTrayCommand = ReactiveCommand.CreateFromTask(async token => { await window.SetVisibleAsync(false, token); });
+}
+```
+
+- The changes are raised in a turn of the Window's model context, as a command
+  runs, so a handler sets ViewModel state directly.
+- Requests return `PlatformResult<PlatformUnit>`, as the platform services do,
+  and never throw for what a host cannot do: `BackendUnavailable` for a feature
+  the host lacks, `OwnerUnavailable` before the Window opens or in a scope that
+  no Window opened, `OwnerClosed` once it closed. A desktop may refuse to take
+  the focus from the application the user works in; Windows then flashes the
+  taskbar button and `PresentAsync` reports `PermissionDenied`.
+- Where the host reports no activity (no `RunicWindowPresentationFeatures.Activity`),
+  the Window counts as active and visible (`RunicWindowActivity.Assumed`), so
+  work that pauses while it is inactive keeps running. A closed Window reports
+  `RunicWindowActivity.Closed`. Unknown counts as active, so check
+  `Features.HasFlag(RunicWindowPresentationFeatures.Activity)` before you rely
+  on `IsActive == true`: code that notifies only while the Window is inactive
+  never notifies on CS-WebUI or in an installed browser, and should notify
+  there whatever `IsActive` says.
+- On Linux a minimized window is only a hint: Wayland compositors do not tell
+  an application that its window was minimized. A GTK 4 window (GTK 4.12 and
+  later) reports itself not visible once the compositor stops showing it; a
+  GTK 3 window on Wayland stays visible and only loses the focus.
+- The color scheme is not every Window's own. Without
+  `RunicWindowPresentationFeatures.PerWindowColorScheme` it is shared, and
+  `SetColorSchemeAsync` changes every Window that shares it: on Linux every GTK
+  window of the application, on Windows the windows that share a WebView2
+  profile (`DesktopWindowOptions.ProfilePath`). `ColorScheme` reports what each
+  Window shows, also after another Window or the application changed it, and
+  raises `PropertyChanged`. On Runic Desktop the application's scheme
+  (`DesktopHost.SetColorSchemeAsync`) is applied to a shared scheme last, so it
+  wins over the Windows' own, whatever order they are in.
+- Code outside the scope, such as a status icon's handler, reads the same
+  object from `IRunicWindow.Presentation`:
+  `await window.Presentation.PresentAsync(launch.PlatformContext)`.
+- Tests register `RunicTestWindowPresentation` with
+  `AddRunicTestWindowPresentation()` from Runic.Application.Testing. It
+  records each request and lets the test change the activity, and reaches the
+  ViewModel through the same per-Window presentation as a host's.
+- This is not a ViewModel activation hook (the I-142 proposal, which was
+  dropped): it reports the native window, not whether a View currently shows
+  the ViewModel. Use the View lifetime hooks for that.
+
+| Host | Present | Minimize | Hide and show | Full screen | Document edited | Color scheme | Activity |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| Runic Desktop, WebView2 | Yes | Yes | Yes | Yes | No | Yes; shared by the windows of a configured `ProfilePath` | Yes |
+| Runic Desktop, WKWebView | Yes | Yes | Yes | Yes | Yes | Yes | Yes |
+| Runic Desktop, WebKitGTK (GTK 3, GTK 4) | Yes | Yes | Yes | Yes | No | Yes, shared by every window of the application | Yes; minimized only on X11 |
+| Runic Desktop, an installed browser after a fallback | No | No | No | No | No | No | No |
+| WPF, `WpfPlatformServices.ForWindowPresentation(window)` | Yes | Yes | Yes | Yes | No | Title bar and the pages of `RunicViewHost`s | Yes |
+| CS-WebUI | Yes | WebView only | No | No | No | No | No |
+
+A custom Runic Desktop window host provides the activity and the color scheme
+through `IDesktopActivityWindowHost` and `IDesktopColorSchemeWindowHost`; a
+custom Window host gives the Window its own presentation with
+`RunicWindowOpening<TViewModel>.UsePresentation` once the native window exists.
 
 ### What the page sees of a close
 
@@ -3075,6 +3182,7 @@ trace id; correlate them with the host's spans by time and route.
 | 1120 | `ViewRequestDropped` | Debug | A `ViewRequest<T>` found no single presentation to deliver to, or several windows present its ViewModel, and was dropped ([Asking the page](#asking-the-page-view-requests-and-questions)). | `Name`, `Reason` |
 | 1121 | `ViewRequestKept` | Debug | A `NextMounted` view request found no single presentation and is kept for the next one that handles it. | `Name` |
 | 1114 | `ChildViewCleanupFailed` | Error | A `WpfBridgeView` fails to release after its presentation closed. | `ErrorType` |
+| 1130 | `WindowPresentationHandlerFailed` | Error | An `IRunicWindowPresentation.ActivityChanged` or `PropertyChanged` handler threw; later handlers and changes still run. | `Handler`, `ErrorType` |
 | 1150 | `PageError` | Error | A page that called `installErrorReporting()` reports an uncaught error, unhandled rejection or runtime-caught error (`client-errors/1`). Category `Runic.Application.Views.Page`; see [page errors](#page-errors). | `Source`, `ErrorName`, `ErrorMessage`, `PageUrl`, `Route`, `Dropped`, `Client`, `ErrorStack` |
 | 1151 | `PageErrorsSuppressed` | Warning | A page's connection reports more than 10 errors in a minute; the rest of the minute is counted into `Dropped` of the next 1150. Category `Runic.Application.Views.Page`. | `Limit` |
 | 1152 | `WindowPageErrorsSuppressed` | Warning | A window's pages report more than 30 errors in a minute across their connections, such as a page in a reload loop; the rest of the minute is counted into `Dropped` of the next 1150. Category `Runic.Application.Views.Page`. | `Limit` |
@@ -3114,16 +3222,18 @@ trace id; correlate them with the host's spans by time and route.
 | 3019 | `DesktopQuitConfirmationFailed` | Error | `DesktopHostOptions.ConfirmQuitAsync` threw; the application keeps running. | `ErrorType` |
 | 3020 | `DesktopReopenHandlerFailed` | Error | A `DesktopHost.ReopenRequested` handler threw; later handlers still run. | `ErrorType` |
 | 3021 | `EmbeddedConnectionDeadlineExtended` | Warning | An embedded WebView had requested nothing after `ConnectionTimeout` but was still loading the page, so Runic Desktop kept waiting, up to four times the timeout. Once per presentation, also when the page then connects. | `TimeoutSeconds`, `Progress` (what the WebView was doing), `LimitSeconds` |
+| 3040 | `WindowActivityHandlerFailed` | Error | A `DesktopWindow.ActivityChanged` handler threw; later handlers and events still run. | `ErrorType` |
 
 `Model` is the ViewModel type name, `Member` the command or property, and
 `Route` the Bridge route (a content presentation's route is per instance, such
 as `content12`). A declared failure is an expected outcome, so it is logged at
 Debug, still with its exception; `FailureType` is the failure value's type.
 
-Events 1000-1012, 1018-1026, 1050-1053, 1100-1102 and 1210-1211 use the category `Runic.Application.Views`
-(`RunicViewsTelemetry.LogCategory`); the Hot Reload events 1100-1102 use the
+Events 1000-1012, 1018-1026, 1050-1053, 1100-1102, 1130 and 1210-1211 use the category `Runic.Application.Views`
+(`RunicViewsTelemetry.LogCategory`); event 1130 uses the logger of the Window's session; the Hot Reload events 1100-1102 use the
 logger of the window session that owns the Bridge. Events 1110-1114 use
-`Runic.Application.Views.Wpf` and the factory of the host's `Services`. Event 1033 here is a window session's
+`Runic.Application.Views.Wpf` and the factory of the host's `Services`; so does event 1130 of
+`WpfPlatformServices.ForWindowPresentation`, with the factory passed to it. Event 1033 here is a window session's
 own model context failing to shut down, and uses the session's logger.
 Events 1013 and 1014 use the logger passed to `new AcceptedWorkScope(logger)`,
 or `Trace` without one.

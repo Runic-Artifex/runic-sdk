@@ -63,6 +63,57 @@ Runic.Application.Views.Generated.PropertyDescriptor<T>.RegionCollection.init ->
 Runic.Application.Views.Generated.PropertyDescriptor<T>.RegionClose.get -> bool
 Runic.Application.Views.Generated.PropertyDescriptor<T>.RegionClose.init -> void
 const Runic.Application.Views.RunicViewsTelemetry.PageLogCategory = "Runic.Application.Views.Page" -> string!
+Runic.Application.Views.IRunicWindow.Presentation.get -> Runic.Application.Views.IRunicWindowPresentation!
+Runic.Application.Views.IRunicWindowPresentation
+Runic.Application.Views.IRunicWindowPresentation.Activity.get -> Runic.Application.Views.RunicWindowActivity!
+Runic.Application.Views.IRunicWindowPresentation.ActivityChanged -> System.EventHandler<Runic.Application.Views.RunicWindowActivityChangedEventArgs!>?
+Runic.Application.Views.IRunicWindowPresentation.ColorScheme.get -> Runic.Platform.DesktopColorScheme
+Runic.Application.Views.IRunicWindowPresentation.Features.get -> Runic.Application.Views.RunicWindowPresentationFeatures
+Runic.Application.Views.IRunicWindowPresentation.IsActive.get -> bool
+Runic.Application.Views.IRunicWindowPresentation.IsMinimized.get -> bool
+Runic.Application.Views.IRunicWindowPresentation.IsVisible.get -> bool
+Runic.Application.Views.IRunicWindowPresentation.MinimizeAsync(System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Platform.PlatformResult<Runic.Platform.PlatformUnit>!>
+Runic.Application.Views.IRunicWindowPresentation.PresentAsync(Runic.Platform.DesktopActivationContext? activation = null, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Platform.PlatformResult<Runic.Platform.PlatformUnit>!>
+Runic.Application.Views.IRunicWindowPresentation.SetColorSchemeAsync(Runic.Platform.DesktopColorScheme colorScheme, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Platform.PlatformResult<Runic.Platform.PlatformUnit>!>
+Runic.Application.Views.IRunicWindowPresentation.SetDocumentEditedAsync(bool edited, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Platform.PlatformResult<Runic.Platform.PlatformUnit>!>
+Runic.Application.Views.IRunicWindowPresentation.SetFullScreenAsync(bool fullScreen, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Platform.PlatformResult<Runic.Platform.PlatformUnit>!>
+Runic.Application.Views.IRunicWindowPresentation.SetVisibleAsync(bool visible, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Platform.PlatformResult<Runic.Platform.PlatformUnit>!>
+Runic.Application.Views.RunicWindow<TViewModel>.Presentation.get -> Runic.Application.Views.IRunicWindowPresentation!
+Runic.Application.Views.RunicWindowActivity
+Runic.Application.Views.RunicWindowActivity.<Clone>$() -> Runic.Application.Views.RunicWindowActivity!
+static Runic.Application.Views.RunicWindowActivity.Assumed.get -> Runic.Application.Views.RunicWindowActivity!
+static Runic.Application.Views.RunicWindowActivity.Closed.get -> Runic.Application.Views.RunicWindowActivity!
+Runic.Application.Views.RunicWindowActivity.Deconstruct(out bool IsActive, out bool IsMinimized, out bool IsVisible) -> void
+Runic.Application.Views.RunicWindowActivity.Equals(Runic.Application.Views.RunicWindowActivity? other) -> bool
+override Runic.Application.Views.RunicWindowActivity.Equals(object? obj) -> bool
+override Runic.Application.Views.RunicWindowActivity.GetHashCode() -> int
+Runic.Application.Views.RunicWindowActivity.IsActive.get -> bool
+Runic.Application.Views.RunicWindowActivity.IsActive.init -> void
+Runic.Application.Views.RunicWindowActivity.IsMinimized.get -> bool
+Runic.Application.Views.RunicWindowActivity.IsMinimized.init -> void
+Runic.Application.Views.RunicWindowActivity.IsVisible.get -> bool
+Runic.Application.Views.RunicWindowActivity.IsVisible.init -> void
+Runic.Application.Views.RunicWindowActivity.RunicWindowActivity(bool IsActive, bool IsMinimized, bool IsVisible) -> void
+override Runic.Application.Views.RunicWindowActivity.ToString() -> string!
+static Runic.Application.Views.RunicWindowActivity.operator !=(Runic.Application.Views.RunicWindowActivity? left, Runic.Application.Views.RunicWindowActivity? right) -> bool
+static Runic.Application.Views.RunicWindowActivity.operator ==(Runic.Application.Views.RunicWindowActivity? left, Runic.Application.Views.RunicWindowActivity? right) -> bool
+Runic.Application.Views.RunicWindowActivityChangedEventArgs
+Runic.Application.Views.RunicWindowActivityChangedEventArgs.Activity.get -> Runic.Application.Views.RunicWindowActivity!
+Runic.Application.Views.RunicWindowActivityChangedEventArgs.Previous.get -> Runic.Application.Views.RunicWindowActivity!
+Runic.Application.Views.RunicWindowActivityChangedEventArgs.RunicWindowActivityChangedEventArgs(Runic.Application.Views.RunicWindowActivity! previous, Runic.Application.Views.RunicWindowActivity! activity) -> void
+Runic.Application.Views.RunicWindowOpening<TViewModel>.UsePresentation(Runic.Application.Views.IRunicWindowPresentation! presentation) -> void
+Runic.Application.Views.RunicWindowPresentationExtensions
+static Runic.Application.Views.RunicWindowPresentationExtensions.ObserveActivity(this Runic.Application.Views.IRunicWindowPresentation! presentation) -> System.IObservable<Runic.Application.Views.RunicWindowActivity!>!
+Runic.Application.Views.RunicWindowPresentationFeatures
+Runic.Application.Views.RunicWindowPresentationFeatures.Activity = 64 -> Runic.Application.Views.RunicWindowPresentationFeatures
+Runic.Application.Views.RunicWindowPresentationFeatures.ColorScheme = 32 -> Runic.Application.Views.RunicWindowPresentationFeatures
+Runic.Application.Views.RunicWindowPresentationFeatures.DocumentEdited = 16 -> Runic.Application.Views.RunicWindowPresentationFeatures
+Runic.Application.Views.RunicWindowPresentationFeatures.FullScreen = 8 -> Runic.Application.Views.RunicWindowPresentationFeatures
+Runic.Application.Views.RunicWindowPresentationFeatures.Minimize = 2 -> Runic.Application.Views.RunicWindowPresentationFeatures
+Runic.Application.Views.RunicWindowPresentationFeatures.None = 0 -> Runic.Application.Views.RunicWindowPresentationFeatures
+Runic.Application.Views.RunicWindowPresentationFeatures.PerWindowColorScheme = 128 -> Runic.Application.Views.RunicWindowPresentationFeatures
+Runic.Application.Views.RunicWindowPresentationFeatures.Present = 1 -> Runic.Application.Views.RunicWindowPresentationFeatures
+Runic.Application.Views.RunicWindowPresentationFeatures.Visibility = 4 -> Runic.Application.Views.RunicWindowPresentationFeatures
 Runic.Application.Views.IRunicMenuCheckedSource
 Runic.Application.Views.IRunicMenuCheckedSource.IsMenuItemChecked(string! commandId, string? commandParameter) -> bool?
 Runic.Application.Views.RunicMenu

@@ -598,6 +598,25 @@ public enum DesktopWindowCapabilities
     /// The window can start native drags of files, text and URIs out of it (<see cref="DesktopWindow.StartDragAsync"/>).
     /// </summary>
     FileDrag = 1 << 15,
+
+    /// <summary>
+    /// The window reports whether it is active, minimized and visible (<see cref="DesktopWindow.Activity"/> and
+    /// <see cref="DesktopWindow.ActivityChanged"/>).
+    /// </summary>
+    Activity = 1 << 16,
+
+    /// <summary>
+    /// The window changes its light or dark appearance while it is open (<see cref="DesktopWindow.SetColorSchemeAsync"/>).
+    /// </summary>
+    ColorScheme = 1 << 17,
+
+    /// <summary>
+    /// <see cref="DesktopWindow.SetColorSchemeAsync"/> changes this window only. Without it, but with
+    /// <see cref="ColorScheme"/>, the scheme is shared: on Linux by every GTK window of the process, on Windows by the
+    /// windows that share a WebView2 profile (<see cref="DesktopWindowOptions.ProfilePath"/>), and a call changes all of
+    /// them.
+    /// </summary>
+    PerWindowColorScheme = 1 << 18,
 }
 
 /// <summary>How urgently a screen reader speaks an announcement (<see cref="DesktopWindow.AnnounceAsync"/>).</summary>
