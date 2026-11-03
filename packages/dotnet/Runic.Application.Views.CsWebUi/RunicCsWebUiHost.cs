@@ -276,6 +276,9 @@ public sealed class RunicCsWebUiHost : IRunicWindowHost
             }
             if (loop is null) Show();
             else host.WebUiClosed = await loop.ShowAsync(Show, cancellationToken).ConfigureAwait(false);
+            // Serve-only shows no window: the Window then has no presentation.
+            if (Environment.GetEnvironmentVariable(CsWebUiBridgeWindow<TViewModel>.ServeOnlyEnvironmentVariable) != "1")
+                opening.UsePresentation(new CsWebUiWindowPresentation(native, UseWebView && ShowWindow is null));
             return host;
         }
         catch

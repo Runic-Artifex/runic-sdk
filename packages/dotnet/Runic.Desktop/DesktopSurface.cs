@@ -204,6 +204,7 @@ public sealed class DesktopSurface : IAsyncDisposable
                 actualBrowser = FromCompatibilityBrowser(_engine.CurrentBrowser);
             }
             window = new DesktopWindow(this, _engine, requestedBrowser, actualBrowser, fellBack);
+            window.InitializeColorScheme(configured.ColorScheme);
             _window = window;
         }
         finally
@@ -360,6 +361,25 @@ public sealed class DesktopSurface : IAsyncDisposable
     internal ValueTask CloseWindowForShutdownAsync() =>
         Volatile.Read(ref _window) is { } window ? window.CloseAsync() : ValueTask.CompletedTask;
 
+    // A window's own scheme, else the application's (DesktopHost.ColorScheme).
+    internal DesktopColorScheme EffectiveColorScheme(DesktopColorScheme own) =>
+        own != DesktopColorScheme.NoPreference ? own : _host.ColorScheme;
+
+    // DesktopHost.SetColorSchemeAsync: the current embedded window follows the application's scheme unless it has its
+    // own; the next window opens with it (ApplyWindowOptions).
+    internal async ValueTask ApplyApplicationColorSchemeAsync(CancellationToken cancellationToken)
+    {
+        if (Volatile.Read(ref _window) is not { IsOpen: true } window) return;
+        try
+        {
+            await window.ApplyApplicationColorSchemeAsync(cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception error) when (error is InvalidOperationException or ObjectDisposedException && !window.IsOpen)
+        {
+            // The window closed meanwhile.
+        }
+    }
+
     // DesktopHost.SetSpellCheckingLanguagesAsync: the current embedded window applies them; a window that is opening
     // applies them once it is open (WebUiWindow), and one that closes meanwhile needs none.
     internal async ValueTask ApplySpellCheckingLanguagesAsync(IReadOnlyList<string> languages, CancellationToken cancellationToken)
@@ -481,7 +501,8 @@ public sealed class DesktopSurface : IAsyncDisposable
         _engine.SetWebContent(options.WebContent);
         _engine.SetCloseConfirmation(options.ConfirmCloseAsync);
         _engine.SetMenuBarPresentation(options.MenuBarPresentation);
-        _engine.SetColorScheme(options.ColorScheme);
+        _engine.SetColorScheme(EffectiveColorScheme(options.ColorScheme),
+            fromApplication: options.ColorScheme == DesktopColorScheme.NoPreference && _host.ColorScheme != DesktopColorScheme.NoPreference);
         _engine.SetMonitorAndLanguage(options.MonitorId, options.LayoutDirection, options.Language);
         _engine.SetMacOS(options.MacOS);
         _engine.SetSpellChecking(options.SpellChecking);
@@ -802,8 +823,12 @@ public sealed class DesktopWindow : IAsyncDisposable
             _engine.EmbeddedWindowStateChanged += OnEngineStateChanged;
             _engine.EmbeddedFilesDropped += OnEngineFilesDropped;
             _engine.EmbeddedMenuBarPlacementChanged += OnEngineMenuBarPlacementChanged;
+            _engine.EmbeddedWindowActivityChanged += OnEngineActivityChanged;
+            _engine.PresentationClosed += OnEnginePresentationClosed;
             _state = _engine.EmbeddedWindowState;
             _raisedState = _state;
+            _activity = _engine.EmbeddedWindowActivity;
+            _raisedActivity = _activity;
         }
     }
 
@@ -847,6 +872,7 @@ public sealed class DesktopWindow : IAsyncDisposable
             _engine.EmbeddedWindowStateChanged -= OnEngineStateChanged;
             _engine.EmbeddedFilesDropped -= OnEngineFilesDropped;
             _engine.EmbeddedMenuBarPlacementChanged -= OnEngineMenuBarPlacementChanged;
+            _engine.EmbeddedWindowActivityChanged -= OnEngineActivityChanged;
             return;
         }
         Volatile.Write(ref _state, state);
@@ -855,6 +881,169 @@ public sealed class DesktopWindow : IAsyncDisposable
             ThreadPool.UnsafeQueueUserWorkItem(static window => window.DispatchStateChanged(), this, preferLocal: false);
         }
     }
+
+    private DesktopWindowActivity? _activity;
+    private DesktopWindowActivity? _raisedActivity;
+    private int _activitySignaled;
+    private int _activityDispatching;
+
+    /// <summary>
+    /// Gets whether the window is active, minimized and visible, as the window last reported it; <see langword="null"/>
+    /// when the presentation reports none.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// An embedded window whose <see cref="Capabilities"/> include <see cref="DesktopWindowCapabilities.Activity"/>
+    /// reports it when it opens and whenever it gains or loses the keyboard focus, is minimized or restored, and is
+    /// shown or hidden. Every built-in embedded window does; an installed browser and a custom window host that does not
+    /// implement <see cref="IDesktopActivityWindowHost"/> report none. Reading it is cheap and does not reach the native
+    /// window. After the window closed it reports the window inactive and not visible.
+    /// </para>
+    /// <para>
+    /// Runic Windows read it through <c>IRunicWindowPresentation</c> (Runic.Application.Views), which a ViewModel takes
+    /// in its constructor on every host.
+    /// </para>
+    /// </remarks>
+    public DesktopWindowActivity? Activity => Volatile.Read(ref _activity);
+
+    /// <summary>Occurs after the window's <see cref="Activity"/> has changed.</summary>
+    /// <remarks>
+    /// Raised on the thread pool, never on the window's native thread and never concurrently. Changes that arrive faster
+    /// than the handlers run are combined, so a handler sees the latest activity. A handler that throws is logged (event
+    /// 3040, <c>WindowActivityHandlerFailed</c>) and does not stop later events. The last event of a window that closes
+    /// reports it inactive and not visible; no event is raised after that or after the window was replaced.
+    /// </remarks>
+    public event EventHandler<DesktopWindowActivityChangedEventArgs>? ActivityChanged;
+
+    private static readonly DesktopWindowActivity ClosedActivity = new();
+
+    private void OnEngineActivityChanged(object host, DesktopWindowActivity activity)
+    {
+        if (!ReferenceEquals(host, _stateSource))
+        {
+            _engine.EmbeddedWindowActivityChanged -= OnEngineActivityChanged;
+            return;
+        }
+        Volatile.Write(ref _activity, activity);
+        SignalActivity();
+    }
+
+    private void SignalActivity()
+    {
+        if (Interlocked.Exchange(ref _activitySignaled, 1) == 0 && Interlocked.CompareExchange(ref _activityDispatching, 1, 0) == 0)
+        {
+            ThreadPool.UnsafeQueueUserWorkItem(static window => window.DispatchActivityChanged(), this, preferLocal: false);
+        }
+    }
+
+    // The user or the platform closed the embedded window.
+    private void OnEnginePresentationClosed(object? sender, EventArgs eventArgs)
+    {
+        if (IsOpen) return;
+        _engine.PresentationClosed -= OnEnginePresentationClosed;
+        ReportClosedActivity();
+    }
+
+    // The window closed: it reports itself inactive and hidden once, also when its host's last report was active.
+    private void ReportClosedActivity()
+    {
+        if (Volatile.Read(ref _activity) is null) return;
+        Volatile.Write(ref _activity, ClosedActivity);
+        SignalActivity();
+    }
+
+    private void DispatchActivityChanged()
+    {
+        while (true)
+        {
+            Volatile.Write(ref _activitySignaled, 0);
+            var activity = Volatile.Read(ref _activity);
+            // The closing report is raised after the window is no longer the surface's open window.
+            var closing = ReferenceEquals(activity, ClosedActivity);
+            if (activity is not null && !Equals(activity, _raisedActivity) && (closing || AcceptsState))
+            {
+                _raisedActivity = activity;
+                if (ActivityChanged is { } handlers)
+                {
+                    var args = new DesktopWindowActivityChangedEventArgs(activity);
+                    foreach (EventHandler<DesktopWindowActivityChangedEventArgs> handler in handlers.GetInvocationList())
+                    {
+                        try
+                        {
+                            handler(this, args);
+                        }
+                        catch (Exception error) when (error is not OutOfMemoryException)
+                        {
+                            if (_engine.Logger is { } logger)
+                                Internal.DesktopLog.WindowActivityHandlerFailed(logger, error, Internal.DesktopLog.ErrorType(error));
+                            else
+                                System.Diagnostics.Trace.TraceError($"A DesktopWindow.ActivityChanged handler failed with {error.GetType().FullName}.");
+                        }
+                    }
+                }
+            }
+            Volatile.Write(ref _activityDispatching, 0);
+            if (Volatile.Read(ref _activitySignaled) == 0 || Interlocked.CompareExchange(ref _activityDispatching, 1, 0) != 0)
+            {
+                return;
+            }
+        }
+    }
+
+    private DesktopColorScheme? _colorScheme;
+
+    /// <summary>
+    /// Gets the window's own light or dark appearance: <see cref="DesktopWindowOptions.ColorScheme"/>, or the scheme of the
+    /// last <see cref="SetColorSchemeAsync"/>. <see cref="DesktopColorScheme.NoPreference"/> follows
+    /// <see cref="DesktopHost.ColorScheme"/>, the application's.
+    /// </summary>
+    public DesktopColorScheme ColorScheme => _colorScheme ?? DesktopColorScheme.NoPreference;
+
+    /// <summary>Changes the window's light or dark appearance while it is open, for example when the user picks a theme.</summary>
+    /// <param name="colorScheme">
+    /// <see cref="DesktopColorScheme.Light"/> or <see cref="DesktopColorScheme.Dark"/>, or
+    /// <see cref="DesktopColorScheme.NoPreference"/> to follow the application's scheme (<see cref="DesktopHost.ColorScheme"/>),
+    /// which by default follows the system.
+    /// </param>
+    /// <param name="cancellationToken">Cancels waiting for the window and the queued native operation.</param>
+    /// <returns>A task that completes when the window and its page show the scheme.</returns>
+    /// <remarks>
+    /// <para>
+    /// Requires <see cref="DesktopWindowCapabilities.ColorScheme"/>. The page's <c>prefers-color-scheme</c> and its form
+    /// controls follow, as for <see cref="DesktopWindowOptions.ColorScheme"/>, and so does the window's own frame: on
+    /// Windows the WebView2 profile's preferred color scheme and the title bar's dark mode, on macOS
+    /// <c>NSWindow.appearance</c>.
+    /// </para>
+    /// <para>
+    /// The GTK windows on Linux share one scheme: GTK's <c>gtk-application-prefer-dark-theme</c> setting, and the
+    /// libadwaita style manager when the application uses libadwaita, belong to the process, so a call changes every
+    /// window of the application. WebView2 keeps the preferred color scheme per profile, so windows that share a
+    /// <see cref="DesktopWindowOptions.ProfilePath"/> share it too.
+    /// </para>
+    /// </remarks>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="colorScheme"/> is not a defined value.</exception>
+    /// <exception cref="ObjectDisposedException">The surface is disposed, or this window is closed or was replaced.</exception>
+    /// <exception cref="DesktopException">The window lacks the required capability (<c>window-capability-unavailable</c>).</exception>
+    /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> was cancelled.</exception>
+    public ValueTask SetColorSchemeAsync(DesktopColorScheme colorScheme, CancellationToken cancellationToken = default)
+    {
+        if (!Enum.IsDefined(colorScheme)) throw new ArgumentOutOfRangeException(nameof(colorScheme));
+        return _surface.RunWindowOperationAsync(this, DesktopWindowCapabilities.ColorScheme, () =>
+        {
+            _colorScheme = colorScheme;
+            return _engine.SetEmbeddedColorSchemeAsync(_surface.EffectiveColorScheme(colorScheme), cancellationToken);
+        }, cancellationToken);
+    }
+
+    // The window's own scheme as it opened (DesktopWindowOptions.ColorScheme).
+    internal void InitializeColorScheme(DesktopColorScheme colorScheme) => _colorScheme ??= colorScheme;
+
+    // DesktopHost.SetColorSchemeAsync: a window without its own scheme follows the application's.
+    internal ValueTask ApplyApplicationColorSchemeAsync(CancellationToken cancellationToken) =>
+        IsOpen && Browser == BrowserKind.Embedded && (Capabilities & DesktopWindowCapabilities.ColorScheme) != 0
+            ? _surface.RunWindowOperationAsync(this, DesktopWindowCapabilities.ColorScheme,
+                () => _engine.SetEmbeddedColorSchemeAsync(_surface.EffectiveColorScheme(ColorScheme), cancellationToken), cancellationToken)
+            : ValueTask.CompletedTask;
 
     private IDesktopMenuCommandTarget? _menuCommands;
 
@@ -1546,6 +1735,7 @@ public sealed class DesktopWindow : IAsyncDisposable
             _engine.PresentationClosed -= OnPresentationClosed;
         }
         // The native release that follows may need the thread that owns the window; WaitForCloseAsync joins it.
+        ReportClosedActivity();
         RaiseClosed();
     }
 
@@ -1633,6 +1823,9 @@ public sealed class DesktopWindow : IAsyncDisposable
         {
             await _surface.CloseWindowAsync(this).ConfigureAwait(false);
             _engine.EmbeddedWindowStateChanged -= OnEngineStateChanged;
+            _engine.EmbeddedWindowActivityChanged -= OnEngineActivityChanged;
+            _engine.PresentationClosed -= OnEnginePresentationClosed;
+            ReportClosedActivity();
             _closed.TrySetResult();
         }
         catch (Exception exception)

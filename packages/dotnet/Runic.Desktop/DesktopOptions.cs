@@ -598,6 +598,17 @@ public enum DesktopWindowCapabilities
     /// The window can start native drags of files, text and URIs out of it (<see cref="DesktopWindow.StartDragAsync"/>).
     /// </summary>
     FileDrag = 1 << 15,
+
+    /// <summary>
+    /// The window reports whether it is active, minimized and visible (<see cref="DesktopWindow.Activity"/> and
+    /// <see cref="DesktopWindow.ActivityChanged"/>).
+    /// </summary>
+    Activity = 1 << 16,
+
+    /// <summary>
+    /// The window changes its light or dark appearance while it is open (<see cref="DesktopWindow.SetColorSchemeAsync"/>).
+    /// </summary>
+    ColorScheme = 1 << 17,
 }
 
 /// <summary>How urgently a screen reader speaks an announcement (<see cref="DesktopWindow.AnnounceAsync"/>).</summary>

@@ -307,3 +307,25 @@ running instance take the foreground because the forwarding launch allows it
 result is `Failed` with `PermissionDenied`. A closed window, or one whose
 dispatcher shut down, reports `OwnerClosed`. `Window.Activate()` alone neither
 restores the window nor reports a refusal.
+
+## The window's presentation for its ViewModels
+
+`WpfPlatformServices.ForWindowPresentation(window)` gives the ViewModels a WPF
+window shows the same `IRunicWindowPresentation` a Runic Window's ViewModel takes
+on Runic Desktop. Register it with the window's other services, on the UI thread:
+
+```csharp
+services.AddSingleton(WpfPlatformServices.ForWindowPresentation(mainWindow));
+```
+
+`PresentAsync` is `WpfPlatformServices.PresentAsync`; `MinimizeAsync` minimizes
+the window, `SetVisibleAsync` calls `Show()` and `Hide()`, and full screen hides
+the window's frame and maximizes it, and leaving restores the frame and state it
+had. `SetColorSchemeAsync` sets the title bar's dark mode and the page's
+`prefers-color-scheme` of every `RunicViewHost` in the window; the application's
+WPF controls keep the theme the application gives them. `SetDocumentEditedAsync`
+reports `Unavailable(BackendUnavailable)`, as on Windows generally. `IsActive`,
+`IsMinimized` and `IsVisible` follow `Activated`, `Deactivated`, `StateChanged`
+and `IsVisibleChanged`, and the changes are raised on the window's dispatcher,
+the ViewModels' thread in WPF. Once the window closes, requests report
+`OwnerClosed`.

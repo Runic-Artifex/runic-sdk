@@ -424,6 +424,37 @@ CommunityToolkit.Mvvm has no interaction type: a Toolkit guard asks in a
 dialog region, and a test answers it by executing the dialog's command through
 its driver, as in [Navigation](#navigation).
 
+### The Window's presentation
+
+A ViewModel that takes `IRunicWindowPresentation` presents, hides or minimizes
+its Window and reacts to its activity. `AddRunicTestWindowPresentation()`
+registers a recording `RunicTestWindowPresentation` per scope, in place of the
+real one, so the application's own registration method runs unchanged.
+`host.Presentation` returns it, and `host.SetWindowActivityAsync` changes the
+activity in a turn of the window's model context, as a real window does:
+
+```csharp
+await using var services = new ServiceCollection().AddInbox().AddRunicTestWindowPresentation().BuildServiceProvider();
+await using var scope = services.CreateAsyncScope();
+using var host = RunicWindowTestHost.Create<InboxViewModel>(scope.ServiceProvider);
+
+(await host.Root.ExecuteAsync(vm => vm.HideToTrayCommand)).ThrowIfFailed();
+Assert.Equal([new RunicWindowPresentationRequest(RunicWindowPresentationRequestKind.SetVisible) { Value = false }],
+    host.Presentation!.Requests);
+
+await host.SetWindowActivityAsync(new RunicWindowActivity(IsActive: false, IsMinimized: false, IsVisible: true));
+Assert.Equal(TimeSpan.FromMinutes(1), host.ViewModel.PollInterval);
+```
+
+The fake behaves like a window that obeys: `PresentAsync` makes it active and
+visible, `MinimizeAsync` minimizes it, `SetVisibleAsync(false)` hides it, and
+`IsFullScreen`, `IsDocumentEdited` and `ColorScheme` follow their requests.
+`PresentCount` counts the presentations. Set `Features` to test a host that
+cannot do something (the request then reports `BackendUnavailable` and changes
+nothing), and `Respond` to answer with another result, such as a desktop that
+refuses the focus. A ViewModel built by hand takes a `new RunicTestWindowPresentation()`,
+whose `SetActivity` raises the changes on the calling thread.
+
 ### Collections and frames
 
 `Track()` follows a route from a snapshot through its pushes, as the generated

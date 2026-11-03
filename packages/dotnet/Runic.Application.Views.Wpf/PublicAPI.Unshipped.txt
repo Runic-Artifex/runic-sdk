@@ -1,1 +1,2 @@
 #nullable enable
+static Runic.Application.Views.Wpf.WpfPlatformServices.ForWindowPresentation(System.Windows.Window! window) -> Runic.Application.Views.IRunicWindowPresentation!

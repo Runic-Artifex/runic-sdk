@@ -7,13 +7,17 @@ export interface CounterState {
   readonly count: number;
   readonly canIncrement: boolean;
   readonly isIncrementExecuting: boolean;
+  readonly canHide: boolean;
+  readonly isHideExecuting: boolean;
 }
 
 export interface CounterIncrementOperation extends BridgeOperation<void> {}
+export interface CounterHideOperation extends BridgeOperation<void> {}
 
 /** A connected Counter ViewModel. Dispose it when its presentation ends. */
 export interface CounterClient extends ViewClient<CounterState> {
   increment(): Promise<CounterState>;
+  hide(): Promise<CounterState>;
   /**
    * Starts `Increment` as an operation that the page can observe, cancel and recover. `options.requestId` names it;
    * the default is a random id. A start with a request id that .NET already admitted returns that operation.
@@ -21,6 +25,13 @@ export interface CounterClient extends ViewClient<CounterState> {
   startIncrement(options?: BridgeOperationStartOptions): Promise<CounterIncrementOperation>;
   /** Returns the `Increment` operation started with `requestId`, for example after the page reloaded. */
   recoverIncrement(requestId: string): Promise<CounterIncrementOperation>;
+  /**
+   * Starts `Hide` as an operation that the page can observe, cancel and recover. `options.requestId` names it;
+   * the default is a random id. A start with a request id that .NET already admitted returns that operation.
+   */
+  startHide(options?: BridgeOperationStartOptions): Promise<CounterHideOperation>;
+  /** Returns the `Hide` operation started with `requestId`, for example after the page reloaded. */
+  recoverHide(requestId: string): Promise<CounterHideOperation>;
 }
 
 export interface CounterPageReference {
@@ -34,9 +45,12 @@ const members: BridgeMemberDecoders<CounterState> = {
   count: (wire: unknown) => bridgeWire.integer(wire, -2147483648, 2147483647),
   canIncrement: (wire: unknown) => bridgeWire.boolean(wire),
   isIncrementExecuting: (wire: unknown) => bridgeWire.boolean(wire),
+  canHide: (wire: unknown) => bridgeWire.boolean(wire),
+  isHideExecuting: (wire: unknown) => bridgeWire.boolean(wire),
 };
-const bridgeContract = "StatusIconSample.CounterViewModel:94E13113B7E71AFC1789CFB0BAC9CDA9E2BEBAA621AD805BBF2A3ADEB3575981";
+const bridgeContract = "StatusIconSample.CounterViewModel:0C5139B243CE41368857833A409BBF0B4B357F0987010DE12C67036485AF437D";
 const incrementOperation: BridgeOperationCodec<void> = { decode: value => undefined };
+const hideOperation: BridgeOperationCodec<void> = { decode: value => undefined };
 
 /**
  * Connects a Counter client. It waits up to `options.timeout` milliseconds (default 5000) for the
@@ -51,7 +65,10 @@ async function connectCounterAt(route: string, options?: BridgeConnectOptions): 
     subscribe: view.subscribe,
     dispose: view.dispose,
     async increment() { return view.command("increment"); },
+    async hide() { return view.command("hide"); },
     startIncrement(options?: BridgeOperationStartOptions) { return view.start("increment", options?.requestId ?? globalThis.crypto.randomUUID(), undefined, incrementOperation); },
     recoverIncrement(requestId: string) { return view.recover("increment", requestId, incrementOperation); },
+    startHide(options?: BridgeOperationStartOptions) { return view.start("hide", options?.requestId ?? globalThis.crypto.randomUUID(), undefined, hideOperation); },
+    recoverHide(requestId: string) { return view.recover("hide", requestId, hideOperation); },
   });
 }

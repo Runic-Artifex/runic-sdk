@@ -97,6 +97,35 @@ public sealed class RunicWindowTestHost<TViewModel> : IDisposable where TViewMod
     public IServiceProvider? Services { get; internal init; }
 
     /// <summary>
+    /// The window's recording presentation: the <see cref="RunicTestWindowPresentation"/> that <see cref="Services"/>
+    /// resolve as <see cref="IRunicWindowPresentation"/>, as
+    /// <see cref="RunicTestWindowPresentationServiceCollectionExtensions.AddRunicTestWindowPresentation"/> registers it, or
+    /// <see langword="null"/> when they resolve none or another one.
+    /// </summary>
+    public RunicTestWindowPresentation? Presentation =>
+        Services?.GetService(typeof(IRunicWindowPresentation)) as RunicTestWindowPresentation;
+
+    /// <summary>
+    /// Changes the activity of <see cref="Presentation"/> in a turn of the window's model context, as a real host
+    /// reports a window that gains or loses the focus, is minimized or hidden, so the ViewModel's handlers run as they
+    /// would in the application.
+    /// </summary>
+    /// <param name="activity">The new activity, such as <c>new RunicWindowActivity(IsActive: false, IsMinimized: false, IsVisible: true)</c>.</param>
+    /// <param name="cancellationToken">Cancels waiting for the turn.</param>
+    /// <exception cref="InvalidOperationException">The services resolve no <see cref="RunicTestWindowPresentation"/>.</exception>
+    public async Task SetWindowActivityAsync(RunicWindowActivity activity, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(activity);
+        var presentation = Presentation ?? throw new InvalidOperationException(
+            "The window's services resolve no RunicTestWindowPresentation. Call services.AddRunicTestWindowPresentation() " +
+            "and create the host with RunicWindowTestHost.Create(scope.ServiceProvider).");
+        if (Content.ModelContext is { IsExecuting: false } context)
+            await context.InvokeAsync(() => presentation.SetActivity(activity), cancellationToken).ConfigureAwait(false);
+        else
+            presentation.SetActivity(activity);
+    }
+
+    /// <summary>
     /// The window's clock: a <see cref="FakeTimeProvider"/> unless the options supply another clock.
     /// </summary>
     public TimeProvider Time { get; }

@@ -70,7 +70,13 @@ custom-argument, and icon-file options, and on Wayland a global position;
 `DesktopHost.Validate` reports each one as a `window-option-unsupported`
 error before a window opens. It ignores `ColorScheme`, because WebKitGTK follows
 the GTK theme for every window, and reports it as a `color-scheme-unsupported`
-warning. It supports independent minimum dimensions.
+warning. `DesktopHost.SetColorSchemeAsync` and `DesktopWindow.SetColorSchemeAsync`
+switch every window of the application while it runs: the host implements
+`IDesktopColorSchemeWindowHost` with GTK's `gtk-interface-color-scheme` (GTK 4.20
+or later) and `gtk-application-prefer-dark-theme` settings, or the libadwaita
+style manager when the application has initialized libadwaita. It implements
+`IDesktopActivityWindowHost` from `notify::is-active`, `notify::visible` and the
+surface's minimized state. It supports independent minimum dimensions.
 Runic.Application.Views.Desktop's `services.AddRunicPlatformServices()` selects the
 GTK 4 window services when the process runs this backend: portal-first file dialogs,
 parented through `Runic.Platform.Linux.Gtk4`, so KDE uses its own picker.

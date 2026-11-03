@@ -77,6 +77,10 @@ public sealed partial class RunicWebView : HwndHost
     private bool TabOut(int reason) => MoveFocus(new TraversalRequest(
         reason == 2 ? FocusNavigationDirection.Previous : FocusNavigationDirection.Next));
 
+    // WpfPlatformServices.ForWindowPresentation: the page's prefers-color-scheme follows the WPF window's scheme. On the dispatcher.
+    internal void SetColorScheme(Runic.Platform.DesktopColorScheme colorScheme) =>
+        _presentation?.Controller?.SetPreferredColorScheme(colorScheme, followSystem: true);
+
     // The open presentation's controller, for native checks.
     internal WindowsWebView2Controller? Controller => _presentation?.Controller;
 
@@ -106,12 +110,14 @@ public sealed partial class RunicWebView : HwndHost
             WpfPresentationOptions.Validate(options);
     }
 
-    private sealed class PresentationHost(RunicWebView view) : IDesktopFileDropWindowHost, IDesktopMenuWindowHost, IDesktopPageAnnouncementHost
+    private sealed class PresentationHost(RunicWebView view) : IDesktopFileDropWindowHost, IDesktopMenuWindowHost, IDesktopPageAnnouncementHost,
+        IDesktopColorSchemeWindowHost
     {
         // WPF owns the window and its chrome, so the declared menu bar is the application's to show (a WPF Menu);
         // context menus are WPF ContextMenus over the control.
         internal const DesktopWindowCapabilities HostCapabilities =
-            DesktopWindowCapabilities.Focus | DesktopWindowCapabilities.FileDrop | DesktopWindowCapabilities.ContextMenu;
+            DesktopWindowCapabilities.Focus | DesktopWindowCapabilities.FileDrop | DesktopWindowCapabilities.ContextMenu |
+            DesktopWindowCapabilities.ColorScheme;
         private WindowsWebView2Controller? _controller;
         private bool _closing;
         private bool _open;
@@ -245,6 +251,10 @@ public sealed partial class RunicWebView : HwndHost
             FocusOnDispatcher();
         }, cancellationToken);
         public ValueTask DisposeAsync() => CloseAsync();
+        // The page's prefers-color-scheme; the WPF window keeps its own chrome (WpfPlatformServices.ForWindowPresentation
+        // sets the title bar's).
+        public ValueTask SetColorSchemeAsync(Runic.Platform.DesktopColorScheme colorScheme, CancellationToken cancellationToken = default) =>
+            DispatchAsync(() => _controller?.SetPreferredColorScheme(colorScheme, followSystem: true), cancellationToken);
         private ValueTask DispatchAsync(Action action, CancellationToken token)
         {
             token.ThrowIfCancellationRequested();

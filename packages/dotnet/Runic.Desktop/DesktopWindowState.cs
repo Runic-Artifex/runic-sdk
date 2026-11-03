@@ -151,3 +151,43 @@ public sealed class DesktopWindowStateChangedEventArgs : EventArgs
     /// <summary>Gets the new state.</summary>
     public DesktopWindowState State { get; }
 }
+
+/// <summary>Whether a window is active, minimized and visible, as <see cref="DesktopWindow.Activity"/> last reported it.</summary>
+/// <remarks>
+/// <para>
+/// A window is active while it has the keyboard focus of the desktop: it is the foreground window on Windows, the key
+/// window on macOS, and the active window (<c>gtk_window_is_active</c>) on Linux. Another window of the application,
+/// a dialog in front of it or another application takes the activity away.
+/// </para>
+/// <para>
+/// A minimized window is in the taskbar or Dock; a hidden window (<see cref="DesktopWindow.SetVisibleAsync"/>,
+/// <see cref="DesktopWindowOptions.Hidden"/>) is not visible. A minimized window is neither active nor, on most
+/// platforms, visible. Use the values to pause work the user cannot see, such as polling or animations.
+/// </para>
+/// </remarks>
+public sealed record DesktopWindowActivity
+{
+    /// <summary>Gets whether the window has the desktop's keyboard focus.</summary>
+    public bool IsActive { get; init; }
+
+    /// <summary>Gets whether the window is minimized (iconified, miniaturized).</summary>
+    public bool IsMinimized { get; init; }
+
+    /// <summary>Gets whether the window is shown: not hidden and not minimized, though other windows may cover it.</summary>
+    public bool IsVisible { get; init; }
+}
+
+/// <summary>Provides the new activity of a window for <see cref="DesktopWindow.ActivityChanged"/>.</summary>
+public sealed class DesktopWindowActivityChangedEventArgs : EventArgs
+{
+    /// <summary>Creates event data for <paramref name="activity"/>.</summary>
+    /// <param name="activity">The new activity.</param>
+    public DesktopWindowActivityChangedEventArgs(DesktopWindowActivity activity)
+    {
+        ArgumentNullException.ThrowIfNull(activity);
+        Activity = activity;
+    }
+
+    /// <summary>Gets the new activity.</summary>
+    public DesktopWindowActivity Activity { get; }
+}

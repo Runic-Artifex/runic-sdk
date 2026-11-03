@@ -295,20 +295,22 @@ public sealed class Gtk4ProfileTests
             DesktopWindowCapabilities.Minimize | DesktopWindowCapabilities.Maximize | DesktopWindowCapabilities.Resize |
             DesktopWindowCapabilities.Move | DesktopWindowCapabilities.Announcements;
         const DesktopWindowCapabilities placement = DesktopWindowCapabilities.FullScreen | DesktopWindowCapabilities.MonitorPlacement;
+        // Activity and the run-time color scheme: WebView2 and WKWebView without conditions; GTK 3 once GTK has loaded.
+        const DesktopWindowCapabilities presentation = DesktopWindowCapabilities.Activity | DesktopWindowCapabilities.ColorScheme;
         if (OperatingSystem.IsWindows())
             Assert.Equal(known | DesktopWindowCapabilities.State | DesktopWindowCapabilities.FileDrop | DesktopWindowCapabilities.MenuBar |
-                DesktopWindowCapabilities.ContextMenu | placement | DesktopWindowCapabilities.FileDrag,
+                DesktopWindowCapabilities.ContextMenu | placement | DesktopWindowCapabilities.FileDrag | presentation,
                 advertised);
         else if (OperatingSystem.IsMacOS())
             Assert.Equal(known | DesktopWindowCapabilities.State | DesktopWindowCapabilities.MenuBar | DesktopWindowCapabilities.ContextMenu | placement
-                | DesktopWindowCapabilities.FileDrag, advertised);
+                | DesktopWindowCapabilities.FileDrag | presentation, advertised);
         else if (OperatingSystem.IsLinux())
             Assert.Equal(known | DesktopWindowCapabilities.MenuBar | DesktopWindowCapabilities.ContextMenu | DesktopWindowCapabilities.FileDrag,
                 advertised);
         // Each built-in host reports its KnownCapabilities plus only what its loaded toolkit adds.
         Assert.Equal(Internal.WindowsWebView2Host.KnownCapabilities | Internal.MacOsWkWebViewHost.KnownCapabilities | Internal.LinuxWebKitGtkHost.KnownCapabilities,
             known | DesktopWindowCapabilities.State | DesktopWindowCapabilities.FileDrop | DesktopWindowCapabilities.MenuBar |
-            DesktopWindowCapabilities.ContextMenu | placement | DesktopWindowCapabilities.FileDrag);
+            DesktopWindowCapabilities.ContextMenu | placement | DesktopWindowCapabilities.FileDrag | presentation);
     }
 
     [Test]
