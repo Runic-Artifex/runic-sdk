@@ -368,6 +368,43 @@ whose kind has no component as `$implicit` and as `content`, and its markup
 <ng-template #missingView let-page><p role="alert">{{ missingText(page.kind) }}</p></ng-template>
 ```
 
+### Region collections
+
+A .NET `[RunicRegionCollection]` member, such as `state.documents`, lists
+regions that each keep their own back stack. `<runic-region-outlets>`
+(`RegionOutlets`) renders a `ViewOutlet` for each region, tracked by the
+region's key, inside a `<div data-region-key>`. The default
+`mode="keep-mounted"` keeps every region mounted and sets `hidden` on all but
+the selected one, so a tab keeps its component, scroll position and unsent
+input. `mode="selected"` renders only the selected region. Projected content
+renders while there is no region, and `missing` is passed to each outlet. A
+region with `content: null` renders nothing.
+
+The package has no tab bar. Build one with `regionEntries` and the generated
+`selectDocuments(key)` and `closeDocuments(key)`:
+
+```html
+<div role="tablist">
+  @for (tab of tabs(); track tab.key) {
+    <button role="tab" [attr.aria-selected]="tab.selected" (click)="client()?.selectDocuments(tab.key)">
+      {{ tab.content?.kind ?? "Empty" }}
+    </button>
+    <button aria-label="Close" (click)="client()?.closeDocuments(tab.key)">×</button>
+  }
+</div>
+<runic-region-outlets [collection]="state()?.documents" [registry]="documentPages">No open documents</runic-region-outlets>
+```
+
+with `readonly tabs = computed(() => regionEntries(this.state()?.documents));`
+in the component.
+
+`selected` changes only when a switch or close commits. A departure guard can
+keep the current tab, so highlight `selected` and do not move the highlight
+before the request settles. `select…` and `close…` resolve to the .NET
+`NavigationOutcome`, such as `{ kind: "Rejected", rejection: "Guard" }`.
+`regionEntries`, `selectedRegion` and the region types are re-exported from
+`@runic-artifex/views`.
+
 ## Commands
 
 `injectCommand(command)` returns `run(...args)` and `pending`, `error` and

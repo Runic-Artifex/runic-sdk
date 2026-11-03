@@ -381,6 +381,8 @@ const requestRules = {
   // README.md, "Presentation epochs": on a connection that uses presentation-epoch/1, epoch is a safe integer.
   command: m => isRoute(m.route) && isMember(m.member) && (m.epoch === undefined || isSafe(m.epoch)),
   can: m => isRoute(m.route) && isMember(m.member),
+  // README.md, "Region collections" (region-collections/1).
+  region: m => isRoute(m.route) && isMember(m.member) && ["select", "close"].includes(m.action) && typeof m.key === "string",
   start: identity, status: identity, watch: identity, unwatch: identity, cancel: identity,
   stream: m => identity(m) && isSafe(m.cursor),
   interactions: m => isRoute(m.route) && isIdentifier(m.presentation) && isSafe(m.generation) && isHandlers(m.handlers),
@@ -473,6 +475,7 @@ const replyRules = {
   write: m => m.released === true || (isSafe(m.revision) && isObject(m.receipt) && ["applied", "committed-with-error", "conflict", "rejected"].includes(m.receipt.kind)),
   command: m => withRevision(m) && (m.superseded === undefined || typeof m.superseded === "boolean"),
   can: m => typeof m.value === "boolean",
+  region: m => withRevision(m) && isObject(m.outcome) && typeof m.outcome.kind === "string",
   start: m => isSafe(m.revision) && ["accepted", "duplicate", "expired", "rejected"].includes(m.admission)
     && (!["accepted", "duplicate"].includes(m.admission) || validStatus(m.status)) && (m.admission !== "rejected" || typeof m.reason === "string"),
   status: m => validStatus(m.status), watch: m => validStatus(m.status), unwatch: m => validStatus(m.status),
@@ -718,7 +721,7 @@ test("every scenario is self-contained and names its file", () => {
     for (const problem of scenarioProblems(scenario)) failures.push(`${name(path)}: ${problem}`);
   }
   assert.deepEqual(failures, []);
-  for (const set of ["handshake", "state-changes", "replies", "edits", "operations", "presentations", "interactions", "errors"])
+  for (const set of ["handshake", "state-changes", "replies", "edits", "operations", "presentations", "regions", "interactions", "errors"])
     assert.ok([...ids].some(id => id.startsWith(`${set}.`)), `no ${set} scenario`);
 });
 

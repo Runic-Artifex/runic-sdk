@@ -491,7 +491,7 @@ test("an operation start with a known id is a duplicate for a canonically equal 
 
 /* ------------------------------------------------------------------ presentation-epoch/1 and presented/1 */
 
-const features = ["text-splice/1", "presentation-epoch/1", "presented/1"];
+const features = ["text-splice/1", "presentation-epoch/1", "presented/1", "region-collections/1"];
 const helloWith = (raw: RawClient, list: readonly string[] = features) =>
   raw.send({ kind: "hello", protocol: 4, session: `session-${++sessions}`, client, features: list });
 
@@ -610,4 +610,62 @@ test("presented/1 not in use: no present or closing, and its requests are invali
   for (const message of [{ kind: "presented", route: "wizard", revision: 0 }, { kind: "closing-reply" }])
     assert.deepEqual(errorOf(await raw.send(message)), { kind: "rejected", reason: "invalid-request" });
   raw.done();
+});
+
+/* ------------------------------------------------------------------ region collections (region-collections/1) */
+
+// The tabs View of the corpus (specs/application/conformance/README.md, "Test Views"): documents, which the page may
+// close, with a departure guard that refuses while veto is set, and pinned, which it may not close.
+const reference = (id: number) => ({ kind: "page", id: id.toString(16).padStart(32, "0") });
+function tabs(bridge: MockBridge) {
+  const model = { veto: false };
+  const view = bridge.view("tabs", {
+    state: {
+      documents: { regions: [1, 2, 3].map(id => ({ key: String(id), content: reference(id) })), selected: 0 },
+      pinned: { regions: [], selected: null },
+    },
+    regions: {
+      documents: { close: true, decide: () => model.veto ? { outcome: { kind: "Rejected", rejection: "Guard", arrival: "None" } } : undefined },
+      pinned: { close: false },
+    },
+  });
+  return { view, model };
+}
+const regionRequest = (action: string, key: string, member = "documents") => ({ kind: "region", route: "tabs", member, action, key });
+
+test("region-collections/1: select and close commit after their frame, a veto publishes nothing", async () => {
+  const { bridge, raw } = await connected();
+  const { view, model } = tabs(bridge);
+  assert.deepEqual((await helloWith(raw))["features"], features);
+  await raw.send({ kind: "open", route: "tabs", presentation: "p-1" });
+  const committed = { kind: "Committed", rejection: null, arrival: "None" };
+  assert.deepEqual(await raw.send(regionRequest("select", "2")), { ok: true, revision: view.revision, outcome: committed });
+  assert.deepEqual(raw.frames("tabs").at(-1)?.changes, [{ field: "documents", kind: "set", value: view.state["documents"] }]);
+  model.veto = true;
+  const pushes = raw.pushes.length;
+  assert.deepEqual(await raw.send(regionRequest("close", "2")),
+    { ok: true, revision: view.revision, outcome: { kind: "Rejected", rejection: "Guard", arrival: "None" } });
+  assert.equal(raw.pushes.length, pushes);
+  model.veto = false;
+  await raw.send(regionRequest("close", "2"));
+  assert.deepEqual(view.state["documents"], { regions: [{ key: "1", content: reference(1) }, { key: "3", content: reference(3) }], selected: 1 });
+  raw.done();
+});
+
+test("region-collections/1: unresolved-key, unavailable, and invalid-request without the feature or for a bad request", async () => {
+  const { bridge, raw } = await connected();
+  tabs(bridge);
+  await helloWith(raw);
+  await raw.send(regionRequest("close", "3"));
+  assert.deepEqual(errorOf(await raw.send(regionRequest("select", "3"))), { kind: "rejected", reason: "unresolved-key" });
+  assert.deepEqual(errorOf(await raw.send(regionRequest("close", "1", "pinned"))), { kind: "rejected", reason: "unavailable" });
+  for (const message of [regionRequest("open", "1"), regionRequest("select", "1", "title"), { kind: "region", route: "tabs", member: "documents", action: "select" }])
+    assert.deepEqual(errorOf(await raw.send(message)), { kind: "rejected", reason: "invalid-request" });
+  raw.done();
+
+  const other = await connected();
+  tabs(other.bridge);
+  await helloWith(other.raw, ["text-splice/1"]);
+  assert.deepEqual(errorOf(await other.raw.send(regionRequest("select", "2"))), { kind: "rejected", reason: "invalid-request" });
+  other.raw.done();
 });

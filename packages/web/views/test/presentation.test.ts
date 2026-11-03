@@ -13,7 +13,7 @@ const members = { page: (value: unknown) => bridgeWire.integer(value, 0, 1000), 
 const runtimeKey = Symbol.for("runic.views.generated-client-runtime");
 const host = globalThis as unknown as Record<string | symbol, unknown>;
 const tick = (ms = 0) => new Promise(resolve => setTimeout(resolve, ms));
-const allFeatures = ["text-splice/1", "presentation-epoch/1", "presented/1"];
+const allFeatures = ["text-splice/1", "presentation-epoch/1", "presented/1", "region-collections/1"];
 
 interface Sent { readonly message: Record<string, unknown>; resolve(reply: object): void }
 

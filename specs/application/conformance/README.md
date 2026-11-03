@@ -145,12 +145,13 @@ A `call` names the client operation in language-neutral terms; the runner maps i
 | `start` | `route`, `member`, `operation`, `input?` | Start an operation with the id `operation`. |
 | `wait`, `status`, `cancel` | `operation` | Wait for the operation's terminal status, read its status, or cancel it. |
 | `register` | `route`, `interaction`, `answer` | Register a handler that answers `{output}`, `cancel`s, `fail`s or `never` answers. |
+| `region` | `route`, `member`, `action`, `key` | Select or close the region with `key` of a region collection ([region collections](../README.md#region-collections)): `action` is `select` or `close`. |
 
 Expectations of the client:
 
 - `state`: the state the client exposes for the route, after the [setter overlay](../README.md#client-overlay).
 - `call`: `pending`, `resolved` (with the call's value: `null` for calls without one, the boolean of `can`, a checked
-  write's receipt, an operation's terminal status without `revision`), or `rejected` with the error's `kind` and the
+  write's receipt, an operation's terminal status without `revision`, a region request's `outcome`), or `rejected` with the error's `kind` and the
   `reason` or `failure` given.
 - `operation`: the last status the client observed, without `revision`.
 - `diagnostics`: the codes of every diagnostic reported since the scenario started, in order.
@@ -177,6 +178,7 @@ Expectations of the producer:
 | `text-splice/1` | The implementation implements the feature [`text-splice/1`](../README.md#features). |
 | `presentation-epoch/1` | The implementation implements the feature [`presentation-epoch/1`](../README.md#presentation-epochs). |
 | `presented/1` | The implementation implements the feature [`presented/1`](../README.md#presented-states-and-window-close). |
+| `region-collections/1` | The implementation implements the feature [`region-collections/1`](../README.md#region-collections). |
 
 Every `hello` of a scenario that does not require a feature lists `features` as `{"$any":"array","default":["text-splice/1"]}`:
 a runner that writes the `hello` (or its reply) lists `text-splice/1`, and a runner that checks one accepts any list.
@@ -185,9 +187,10 @@ always `{"$any":"array","default":[…]}`, also when the scenario requires a fea
 features are in use.
 The strings of those scenarios are shorter than 64 code units, so their frames and requests are the same with and
 without the feature. Neither `presentation-epoch/1` nor `presented/1` is in use in them, so their messages carry no
-`epoch` and no `present` or `closing` push. A scenario that requires `presentation-epoch/1` or `presented/1` lists the
-feature in the `default` of both `hello` steps, beside `text-splice/1`, so it is in use whichever runner writes the
-`hello` or its reply.
+`epoch` and no `present` or `closing` push. A scenario that requires `presentation-epoch/1`, `presented/1` or
+`region-collections/1` lists the feature in the `default` of both `hello` steps, beside `text-splice/1`, so it is in use
+whichever runner writes the `hello` or its reply; one that shows the producer without the feature lists only
+`text-splice/1`.
 
 ### Identifiers
 
@@ -207,6 +210,7 @@ connection before connecting it, answers a request it did not send, expects a ca
 | [`edits`](scenarios/edits) | `superseded`; edit numbers per member; the client overlay and its end, with the reply to an earlier edit before and after the frame of a later one; a failed edit; checked writes; `set` with a splice against a revision and against the previous edit, `splice-base` that admits nothing and the client's resend in full, a superseded splice, a normalizing setter; checked writes with a splice (`write-splice-*`): applied, a conflict, `splice-base` that retains nothing and the client's resend in full with the same `requestId`, a retry, and a short value sent in full; an edit followed by the frame with its validation, which the overlay does not cover |
 | [`operations`](scenarios/operations) | `watch` with throttled `progress` and the terminal `revision`; `start` ordering; duplicate versus `identity-conflict` by canonical equality; cancel; a declared failure; an unknown operation; a `start` with another build's contract |
 | [`presentations`](scenarios/presentations) | `open` and `close`; a presentation owned by another connection; a reconnect with a new session; an unknown route; presentation epochs (`epoch-*`): the `epoch` of `open` and `snapshot`, a renewal published as a `state`, a scoped command with the current epoch, a second scoped command from the same state that is superseded, an unscoped command without `epoch`, and a connection without the feature; painted states (`presented-*`): a report that completes a wait, and a wait that times out; window close (`closing-*`): an acknowledged close and the client's closed connection, and a close that times out |
+| [`regions`](scenarios/regions) | Region collections (`region-collections/1`): a select that commits and the frame that carries the selection; a select a departure guard refuses, which publishes nothing; a close of the selected region, which selects the next one, or the previous one after the last; the key of a closed region, which is `unresolved-key`; a close the collection does not allow, which is `unavailable`; a region request on a connection without the feature, which is `invalid-request` |
 | [`interactions`](scenarios/interactions) | A confirmation answered, and its repeat; registration outcomes |
 | [`errors`](scenarios/errors) | The protocol-3 `error-reasons`, `domain-failures` and `released` fixtures, converted (`error-reasons` and `released` were removed in 0.13); capacity |
 
@@ -299,6 +303,24 @@ A View whose pages are presentations of one route ([presentation epochs](../READ
 | `ping` | none | always | no | changes nothing |
 
 Its contract marks `next` and `back` scoped, so a client that uses `presentation-epoch/1` sends `epoch` with them.
+
+### `tabs`
+
+A View with region collections ([region collections](../README.md#region-collections)). Members:
+
+| Member | Type | Default and behaviour |
+| --- | --- | --- |
+| `documents` | region collection of `page` Views; the page may close a region | three regions with the keys `"1"`, `"2"` and `"3"`, which present the `page` Views `one`, `two` and `three` with the ids `00000000000000000000000000000001`, `…02` and `…03`; the first is selected |
+| `pinned` | region collection of `page` Views; the page may not close a region | no regions |
+
+The model value `veto` (`boolean`, default `false`) is not a state member; `assign` sets it and publishes nothing.
+While it is `true`, the departure guard of every page refuses, so a `select` that leaves a page and a `close` of a page
+are `Rejected` with the rejection `Guard`. Otherwise a request commits, with the arrival `None`.
+
+### `page`
+
+The content View that each region of the `tabs` View presents, of kind `page`. Member: `title` (`string`, a text
+member), the View's name.
 
 ### Mutations
 

@@ -23,6 +23,8 @@ export {
   type MockOperationHandler,
   type MockOperationKind,
   type MockOperationOutcome,
+  type MockRegionDecision,
+  type MockRegionDefinition,
   type MockRequestMatch,
   type MockScheduling,
   type MockSetter,

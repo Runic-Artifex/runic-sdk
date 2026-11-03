@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import { readdirSync, readFileSync } from "node:fs";
 import { test } from "node:test";
 import { BridgeError, isBridgeOutcome, onBridgeConnection, onBridgeDiagnostic, type BridgeConnectionState } from "../dist/index.js";
-import { bridgeOperations, connectView, defineCollection, defineCollections, defineInteractions, defineText, type ViewConnection } from "../dist/generated.js";
+import { bridgeOperations, connectView, defineCollection, defineCollections, defineInteractions, defineText, regionCollection, type ViewConnection } from "../dist/generated.js";
 import * as wire from "../dist/wire.js";
 import { decodeBridgeValidation } from "../dist/validation.js";
 import { clock } from "../dist/clock.js";
@@ -63,6 +63,8 @@ const models: Record<string, ViewModel> = {
   detail: { members: { lastAction: wire.string, canDismiss: wire.boolean }, texts: ["lastAction"] },
   form: { members: { name: wire.string, nameErrors: value => wire.array(value, wire.string), validation: decodeBridgeValidation }, texts: ["name"] },
   wizard: { members: { page: int32, canNext: wire.boolean, canBack: wire.boolean, canPing: wire.boolean }, scopedCommands: ["next", "back"] },
+  // region-collections/1: the regions present page Views.
+  tabs: { members: { documents: value => regionCollection(value, reference), pinned: value => regionCollection(value, reference) } },
 };
 const modelOf = (route: string) => route.startsWith("content") ? models["detail"]! : models[route]!;
 
@@ -326,6 +328,7 @@ async function run(scenario: Scenario): Promise<void> {
             requestId: call.requestId, expectedVersion: call.baseline.version, expectedValue: call.baseline.value, value: call.value,
           }, value => value)); break;
           case "can": track(call.id, () => client(route).can(call.member, call.input)); break;
+          case "region": track(call.id, () => client(route).region(call.member, call.action, call.key)); break;
           case "command": {
             const declared = modelOf(route).declared?.[call.member];
             track(call.id, async () => {
@@ -435,7 +438,7 @@ const scenarios = scenarioFiles.map(file => JSON.parse(readFileSync(new URL(`sce
 
 test("the corpus has client scenarios in every set", () => {
   const sets = new Set(scenarios.filter(scenario => scenario.roles.includes("client")).map(scenario => scenario.id.split(".")[0]));
-  for (const set of ["handshake", "state-changes", "replies", "edits", "operations", "presentations", "interactions", "errors"]) assert.ok(sets.has(set), set);
+  for (const set of ["handshake", "state-changes", "replies", "edits", "operations", "presentations", "regions", "interactions", "errors"]) assert.ok(sets.has(set), set);
 });
 
 for (const scenario of scenarios.filter(item => item.roles.includes("client"))) {

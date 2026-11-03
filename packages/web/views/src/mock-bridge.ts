@@ -5,6 +5,7 @@ import { applySplice, producerSplices, textSpliceFeature } from "./text.js";
 import { insertRows } from "./collections.js";
 import { flushNotifications } from "./notifications.js";
 import { presentationEpochFeature, presentedFeature } from "./protocol.js";
+import { regionCollectionsFeature, type RegionOutcome } from "./regions.js";
 
 /** A View's wire state: one member per state member, by wire name, encoded as on the wire. */
 export type MockState = Record<string, unknown>;
@@ -231,6 +232,39 @@ export interface MockViewDefinition {
   readonly streams?: readonly string[];
   /** The View's operation contract, `{view}:{fingerprint}`. Defaults to `mock.{route}:mock`. */
   readonly contract?: string;
+  /**
+   * Region collections by member wire name (region-collections/1). The member's state value is
+   * `{ regions: [{ key, content }], selected }`; `region` requests select or close its regions by key.
+   */
+  readonly regions?: Readonly<Record<string, MockRegionDefinition>>;
+}
+
+/** A page's request to select or close the region with `key`; `index` is its position in the collection. */
+export interface MockRegionRequest {
+  readonly action: "select" | "close";
+  readonly key: string;
+  readonly index: number;
+}
+
+/**
+ * What a region collection decides about a request: its `outcome` (`Committed` by default) and more state changes.
+ * Without `outcome`, or with a `Committed` one, the mock applies the selection or close itself; with another outcome,
+ * such as a departure guard's veto, it changes only `state`.
+ */
+export interface MockRegionDecision {
+  readonly outcome?: RegionOutcome;
+  readonly state?: MockState;
+}
+
+/** A region collection of a mock View (region-collections/1). */
+export interface MockRegionDefinition {
+  /** Whether the page can close a region; a `close` of a collection without it is `unavailable`. */
+  readonly close: boolean;
+  /**
+   * Decides a request whose key names a region, standing in for the departure guards. Without it, every request
+   * commits. A thrown error answers the request `failed`.
+   */
+  readonly decide?: (state: MockState, request: MockRegionRequest) => MockRegionDecision | void | Promise<MockRegionDecision | void>;
 }
 
 /** How the browser answered an interaction request. */
@@ -377,11 +411,33 @@ const realSetTimeout = globalThis.setTimeout.bind(globalThis);
 const yieldToEventLoop = () => new Promise<void>(resolve => { realSetTimeout(resolve, 0); });
 const maximumRounds = 10_000;
 const mockImplementation = { name: "@runic-artifex/views/mock", version: viewsVersion };
-const mockFeatures: readonly string[] = [textSpliceFeature, presentationEpochFeature, presentedFeature];
+const mockFeatures: readonly string[] = [textSpliceFeature, presentationEpochFeature, presentedFeature, regionCollectionsFeature];
 
 const upperFirst = (value: string) => value.charAt(0).toUpperCase() + value.slice(1);
 const isRecord = (value: unknown): value is Record<string, unknown> => value !== null && typeof value === "object" && !Array.isArray(value);
 const isSafe = (value: unknown): value is number => typeof value === "number" && Number.isSafeInteger(value) && value >= 0;
+
+interface RegionCollectionValue { readonly regions: readonly { readonly key: string; readonly content: unknown }[]; readonly selected: number | null }
+
+/** The regions of a region collection member's state value; none when it is not one. */
+const regionsOf = (value: unknown): RegionCollectionValue["regions"] =>
+  isRecord(value) && Array.isArray(value["regions"]) ? value["regions"] as RegionCollectionValue["regions"] : [];
+
+/**
+ * A committed region request (README "Region collections"): a select changes `selected`; a close removes the region,
+ * and when it was selected, the next region becomes selected, or the previous one when it was the last, or none.
+ */
+function regionCommitted(value: unknown, action: "select" | "close", key: string): unknown {
+  const regions = regionsOf(value);
+  const index = regions.findIndex(region => region.key === key);
+  if (index < 0) return value;
+  if (action === "select") return { ...(value as object), selected: index };
+  const selected = (value as RegionCollectionValue).selected;
+  const kept = regions.filter((_, at) => at !== index);
+  const next = kept.length === 0 || selected === null ? null
+    : selected === index ? Math.min(index, kept.length - 1) : selected > index ? selected - 1 : selected;
+  return { ...(value as object), regions: kept, selected: next };
+}
 
 /**
  * The canonical form of a JSON value (RFC 8785) in JavaScript: scalars and member names as `JSON.stringify` writes
@@ -1174,6 +1230,10 @@ export function createMockBridge(options: MockBridgeOptions = {}): MockBridge {
       return invalidRequest("presented needs the feature presented/1 and a revision.");
     if (kind === "command" && connection.features.has(presentationEpochFeature) && Object.hasOwn(message, "epoch") && !isSafe(message["epoch"]))
       return invalidRequest("The command's epoch is not a non-negative safe integer.");
+    // region-collections/1: a region request is a request kind only on a connection that uses the feature.
+    if (kind === "region" && (typeof message["member"] !== "string" || typeof message["key"] !== "string"
+      || (message["action"] !== "select" && message["action"] !== "close") || !connection.features.has(regionCollectionsFeature)))
+      return invalidRequest("A region request needs the feature region-collections/1, a member, a key and the action select or close.");
     const route = message["route"];
     if (typeof route !== "string") return invalidRequest("The request has no route.");
     const view = views.get(route);
@@ -1260,6 +1320,24 @@ export function createMockBridge(options: MockBridgeOptions = {}): MockBridge {
         }
         return ok({ revision: view.revision });
       }
+      case "region": {
+        const action = message["action"] as "select" | "close";
+        const key = message["key"] as string;
+        const collection = view.definition.regions?.[member!];
+        if (!collection) return invalidRequest(`${route} has no region collection ${member!}.`);
+        if (action === "close" && !collection.close)
+          return failed("rejected", `${member!} does not let the page close a region.`, { reason: "unavailable" });
+        const index = regionsOf(view.state[member!]).findIndex(region => region.key === key);
+        if (index < 0) return failed("rejected", `${member!} has no region with this key.`, { reason: "unresolved-key" });
+        let decision: MockRegionDecision | void;
+        try { decision = await collection.decide?.(view.state, { action, key, index }); }
+        catch (error) { return errorReply(view, error, true); }
+        const outcome: RegionOutcome = decision?.outcome ?? { kind: "Committed", rejection: null, arrival: "None" };
+        const next = { ...view.state, ...(decision?.state ?? {}) };
+        if (outcome.kind === "Committed") next[member!] = regionCommitted(next[member!], action, key);
+        commit(view, next);
+        return ok({ revision: view.revision, outcome });
+      }
       case "presented": {
         const reported = message["revision"] as number;
         for (const wait of [...view.presentWaits]) if (reported >= wait.revision) wait.finish(true);
@@ -1302,7 +1380,7 @@ export function createMockBridge(options: MockBridgeOptions = {}): MockBridge {
   // has answered. Reads, operation observation and interaction replies are not held, so a command that waits for
   // an interaction can receive its reply.
   let turn: Promise<unknown> = Promise.resolve();
-  const turnKinds = new Set(["set", "write", "command", "start"]);
+  const turnKinds = new Set(["set", "write", "command", "start", "region"]);
   function admitted(kind: string, run: () => Promise<Reply>): Promise<Reply> {
     if (!turnKinds.has(kind)) return run();
     const next = turn.then(run, run);

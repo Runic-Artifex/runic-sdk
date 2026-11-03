@@ -296,6 +296,41 @@ reference whose kind has no component, and its markup (including any `role`) is 
   missing={page => <p role="alert">{t("missingView", { kind: page.kind })}</p>} />
 ```
 
+### Region collections
+
+A .NET `[RunicRegionCollection]` member, such as `state.documents`, lists
+regions that each keep their own back stack. `<RegionOutlets>` renders a
+`ViewOutlet` for each region, keyed by the region's key, inside a
+`<div data-region-key>`. The default `mode="keep-mounted"` keeps every region
+mounted and sets `hidden` on all but the selected one, so a tab keeps its
+component, scroll position and unsent input. `mode="selected"` renders only the
+selected region. `fallback` renders while there is no region, and `missing` is
+passed to each outlet. A region with `content: null` renders nothing.
+
+The package has no tab bar. Build one with `regionEntries` and the generated
+`selectDocuments(key)` and `closeDocuments(key)`:
+
+```tsx
+<div role="tablist">
+  {regionEntries(state?.documents).map(tab => (
+    <span key={tab.key}>
+      <button role="tab" aria-selected={tab.selected} onClick={() => void client?.selectDocuments(tab.key)}>
+        {tab.content?.kind ?? "Empty"}
+      </button>
+      <button aria-label="Close" onClick={() => void client?.closeDocuments(tab.key)}>×</button>
+    </span>
+  ))}
+</div>
+<RegionOutlets collection={state?.documents} registry={documentPages} fallback={<p>No open documents</p>} />
+```
+
+`selected` changes only when a switch or close commits. A departure guard can
+keep the current tab, so highlight `selected` and do not move the highlight
+before the request settles. `select…` and `close…` resolve to the .NET
+`NavigationOutcome`, such as `{ kind: "Rejected", rejection: "Guard" }`.
+`regionEntries`, `selectedRegion` and the region types are re-exported from
+`@runic-artifex/views`.
+
 ## `useCommand(command)`
 
 Returns `{ run, pending, error, failure, reset }`. `run(...args)` calls the latest

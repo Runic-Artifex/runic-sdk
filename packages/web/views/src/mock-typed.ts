@@ -15,6 +15,8 @@ import {
   type MockOperation,
   type MockOperationHandler,
   type MockOperationKind,
+  type MockRegionDefinition,
+  type MockRegionRequest,
   type MockSetter,
   type MockState,
   type MockView,
@@ -32,12 +34,7 @@ export interface MockRegionCollection<R extends MockReference = MockReference> {
   readonly selected: number | null;
 }
 
-/** A page's request to select or close the region with `key`; `index` is its position in the collection. */
-export interface MockRegionRequest {
-  readonly action: "select" | "close";
-  readonly key: string;
-  readonly index: number;
-}
+export type { MockRegionRequest };
 
 /**
  * What a region handler decides: the request's `outcome` (`Committed` by default) and more state changes. Without
@@ -308,6 +305,21 @@ export function mockTypedView(bridge: MockBridge, spec: MockTypedViewSpec, defin
       catch (error) { throw encodedFailure(error, command.encodeFailure); }
     };
   }
+  // region-collections/1: a handler decides with the decoded state; its state changes are encoded.
+  const regions: Record<string, MockRegionDefinition> = {};
+  for (const [field, plan] of Object.entries(spec.regions ?? {})) {
+    const handler = handlersOf(definition.regions, field) as MockRegionHandler<unknown> | undefined;
+    regions[field] = {
+      close: plan.close,
+      ...(handler ? {
+        decide: async (state: MockState, request: MockRegionRequest) => {
+          const result = await handler(decode(state), request);
+          if (!result) return undefined;
+          return { ...(result.outcome ? { outcome: result.outcome } : {}), ...(result.state ? { state: encode(result.state) } : {}) };
+        },
+      } : {}),
+    };
+  }
   const operations: Record<string, MockOperationHandler | "manual"> = {};
   const wrapOperation = (method: string) => (raw: MockOperation): MockTypedOperation<unknown, unknown, unknown> => {
     const plan = spec.operations![method]!;
@@ -356,6 +368,7 @@ export function mockTypedView(bridge: MockBridge, spec: MockTypedViewSpec, defin
     ...(spec.collections ? { collections: Object.fromEntries(Object.entries(spec.collections)
       .map(([field, codec]) => [field, (item: unknown) => codec.key(codec.decode(item) as never)])) } : {}),
     operations,
+    ...(spec.regions ? { regions } : {}),
     ...(spec.contract ? { contract: spec.contract } : {}),
     streams: Object.values(spec.operations ?? {}).filter(plan => plan.stream).map(plan => plan.member),
   });
@@ -371,6 +384,11 @@ export function mockTypedView(bridge: MockBridge, spec: MockTypedViewSpec, defin
     requests.set(`can${upperFirst(method)}`, { kind: "can", member: command.member });
   }
   for (const [method, plan] of Object.entries(spec.operations ?? {})) requests.set(`start${upperFirst(method)}`, { kind: "start", member: plan.member });
+  // A failure of select{Name} or close{Name} answers the next region request of the member, whatever its action.
+  for (const [field, plan] of Object.entries(spec.regions ?? {})) {
+    requests.set(`select${upperFirst(field)}`, { kind: "region", member: field });
+    if (plan.close) requests.set(`close${upperFirst(field)}`, { kind: "region", member: field });
+  }
 
   const collections: Record<string, MockTypedCollection<unknown>> = {};
   for (const [field, codec] of Object.entries(spec.collections ?? {})) {

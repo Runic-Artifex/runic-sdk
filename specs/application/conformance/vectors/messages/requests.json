@@ -460,6 +460,37 @@
       "operation": "read-request",
       "input": {"encoding":"json","value":{"kind":"closing-reply"}},
       "expect": {"result":"valid"}
+    },
+    {
+      "id": "messages.requests.region",
+      "description": "region-collections/1: select or close the region of a region collection that a key names.",
+      "operation": "read-request",
+      "input": {"encoding":"json","value":{"kind":"region","route":"tabs","member":"documents","action":"close","key":"7"}},
+      "expect": {"result":"valid"}
+    },
+    {
+      "id": "messages.requests.region-without-a-key",
+      "operation": "read-request",
+      "input": {"encoding":"json","value":{"kind":"region","route":"tabs","member":"documents","action":"select"}},
+      "expect": {"result":"invalid","error":{"kind":"rejected","reason":"invalid-request"}}
+    },
+    {
+      "id": "messages.requests.region-with-a-key-that-is-not-a-string",
+      "operation": "read-request",
+      "input": {"encoding":"json","value":{"kind":"region","route":"tabs","member":"documents","action":"select","key":7}},
+      "expect": {"result":"invalid","error":{"kind":"rejected","reason":"invalid-request"}}
+    },
+    {
+      "id": "messages.requests.region-with-another-action",
+      "operation": "read-request",
+      "input": {"encoding":"json","value":{"kind":"region","route":"tabs","member":"documents","action":"open","key":"7"}},
+      "expect": {"result":"invalid","error":{"kind":"rejected","reason":"invalid-request"}}
+    },
+    {
+      "id": "messages.requests.region-without-a-member",
+      "operation": "read-request",
+      "input": {"encoding":"json","value":{"kind":"region","route":"tabs","action":"select","key":"7"}},
+      "expect": {"result":"invalid","error":{"kind":"rejected","reason":"invalid-request"}}
     }
   ]
 }

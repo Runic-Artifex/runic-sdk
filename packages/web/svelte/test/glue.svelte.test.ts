@@ -4,9 +4,10 @@ import { flushSync, mount, unmount } from "svelte";
 import { describe, expect, test, expectTypeOf } from "vitest";
 import { useCollectionViewport, useCommand, useView, type ViewRegistry } from "../src/views/index.js";
 import * as root from "../src/index.js";
-import { bridgeFailure, bridgeSuccess, type BridgeOutcome } from "@runic-artifex/views";
+import { bridgeFailure, bridgeSuccess, regionEntries, selectedRegion, type BridgeOutcome, type RegionCollection } from "@runic-artifex/views";
 import Counter from "./fixtures/Counter.svelte";
 import Outlet from "./fixtures/Outlet.svelte";
+import Regions from "./fixtures/Regions.svelte";
 import type { Page } from "./fixtures/pages.js";
 import Welcome from "./fixtures/Welcome.svelte";
 
@@ -51,6 +52,80 @@ describe("ViewOutlet", () => {
     flushSync();
     expect(target.querySelector("[role=alert]")?.textContent).toBe("No web component is registered for welcome.");
     unmount(component);
+  });
+});
+
+describe("RegionOutlets", () => {
+  const registry = { counter: Counter, welcome: Welcome } satisfies ViewRegistry<Page>;
+  const counter: Page = { kind: "counter", connect: async () => undefined };
+  const welcome: Page = { kind: "welcome", connect: async () => undefined };
+
+  function mountRegions(mode?: "keep-mounted" | "selected") {
+    const target = document.createElement("div");
+    // Raw, like useView's state: a deep $state proxy would wrap every reference in a new proxy on each assignment.
+    let collection = $state.raw<RegionCollection<Page> | undefined>();
+    const props = {
+      get collection() { return collection; },
+      set collection(value) { collection = value; },
+      registry,
+      ...(mode ? { mode } : {}),
+    };
+    const component = mount(Regions, { target, props });
+    flushSync();
+    const regions = () => [...target.querySelectorAll<HTMLElement>("[data-region-key]")]
+      .map(region => `${region.dataset["regionKey"]}${region.hidden ? "" : "*"}:${region.textContent?.trim()}`);
+    return { target, props, regions, unmount: () => unmount(component) };
+  }
+
+  test("keeps every region mounted and shows only the selected one", () => {
+    const { target, props, regions, unmount } = mountRegions();
+    props.collection = { regions: [{ key: "7", content: counter }, { key: "9", content: welcome }, { key: "11", content: null }], selected: 1 };
+    flushSync();
+    expect(regions()).toEqual(["7:counter:counter", "9*:welcome:welcome", "11:"]);
+    const outputs = [...target.querySelectorAll("output")];
+    props.collection = { ...props.collection!, selected: 0 };
+    flushSync();
+    expect(regions()).toEqual(["7*:counter:counter", "9:welcome:welcome", "11:"]);
+    expect([...target.querySelectorAll("output")]).toEqual(outputs);
+    unmount();
+  });
+
+  test("remounts only the region whose content changed", () => {
+    const { target, props, unmount } = mountRegions();
+    props.collection = { regions: [{ key: "7", content: counter }, { key: "9", content: welcome }], selected: 0 };
+    flushSync();
+    const kept = target.querySelector("[data-region-key='7'] output");
+    const replaced = target.querySelector("[data-region-key='9'] output");
+    props.collection = { regions: [{ key: "7", content: counter }, { key: "9", content: { kind: "welcome", connect: async () => undefined } }], selected: 0 };
+    flushSync();
+    expect(target.querySelector("[data-region-key='7'] output")).toBe(kept);
+    expect(target.querySelector("[data-region-key='9'] output")).not.toBe(replaced);
+    unmount();
+  });
+
+  test("renders only the selected region in selected mode", () => {
+    const { props, regions, unmount } = mountRegions("selected");
+    props.collection = { regions: [{ key: "7", content: counter }, { key: "9", content: welcome }], selected: 1 };
+    flushSync();
+    expect(regions()).toEqual(["9*:welcome:welcome"]);
+    props.collection = { ...props.collection!, selected: 0 };
+    flushSync();
+    expect(regions()).toEqual(["7*:counter:counter"]);
+    unmount();
+  });
+
+  test("renders the fallback without a region", () => {
+    const { target, props, unmount } = mountRegions();
+    expect(target.textContent).toBe("no documents");
+    props.collection = { regions: [], selected: null };
+    flushSync();
+    expect(target.textContent).toBe("no documents");
+    unmount();
+  });
+
+  test("re-exports the region helpers", () => {
+    expect(root.regionEntries).toBe(regionEntries);
+    expect(root.selectedRegion).toBe(selectedRegion);
   });
 });
 

@@ -155,7 +155,7 @@ internal sealed class RegionCollectionTests
     }
 
     private static string Describe(RunicRegionCollectionState state) =>
-        $"[{string.Join(", ", state.Regions.Select(region => $"{region.Key}:{region.Content?.Kind ?? "empty"}"))}] selected {state.Selected?.ToString() ?? "none"}";
+        $"[{string.Join(", ", state.Regions.Select(region => $"{region.Key}:{region.Content?.Kind ?? "empty"}"))}] selected {state.Selected?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? "none"}";
 
     private static string GeneratedTypeScriptDirectory()
     {

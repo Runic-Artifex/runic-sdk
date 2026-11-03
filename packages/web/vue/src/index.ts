@@ -36,6 +36,8 @@ import {
   type OperationControllerOptions,
   type OperationState,
   type PageReference,
+  regionEntries,
+  type RegionCollection,
   type ViewClient,
   type ViewConnector,
   type ViewControllerOptions,
@@ -188,6 +190,42 @@ export const ViewOutlet = defineComponent(<R extends PageReference>(props: ViewO
   }
   return h(component, { key: referenceKey(content), page: content });
 }, { name: "ViewOutlet", props: ["content", "registry"] });
+
+/** How {@link RegionOutlets} renders the regions of a collection. */
+export type RegionOutletsMode = "keep-mounted" | "selected";
+
+export interface RegionOutletsProps<R extends PageReference> {
+  /** The presented region collection, such as `state.documents`. */
+  collection: RegionCollection<R> | null | undefined;
+  registry: ViewRegistry<R>;
+  /**
+   * `"keep-mounted"` (the default) renders every region and hides all but the selected one, so each region keeps
+   * its component and DOM. `"selected"` renders only the selected region.
+   */
+  mode?: RegionOutletsMode;
+}
+
+/**
+ * Renders a {@link ViewOutlet} for the regions of a region collection, each in a `<div data-region-key>` keyed by
+ * the region's key. A region that is not selected is rendered with `hidden`. A new content reference in a region
+ * remounts only that region's component. The default slot renders while the collection has no region, and the
+ * `missing` slot is passed to each outlet:
+ *
+ * ```vue
+ * <RegionOutlets :collection="state?.documents" :registry="pages"><p>No open documents</p></RegionOutlets>
+ * ```
+ */
+export const RegionOutlets = defineComponent(<R extends PageReference>(props: RegionOutletsProps<R>, { slots }: SetupContext) => (): VNodeChild => {
+  const mode = props.mode ?? "keep-mounted";
+  const shown = regionEntries(props.collection).filter(region => mode === "keep-mounted" || region.selected);
+  if (shown.length === 0) return slots.default?.();
+  const missing = slots["missing"];
+  return shown.map(region => h(
+    "div",
+    { key: region.key, "data-region-key": region.key, hidden: !region.selected },
+    h(ViewOutlet<R>, { content: region.content, registry: props.registry }, missing ? { missing } : {}),
+  ));
+}, { name: "RegionOutlets", props: ["collection", "registry", "mode"] });
 
 export interface CommandHandle<TArgs extends readonly unknown[], TResult, TFailure = BridgeOutcomeFailure<TResult>> {
   /**
@@ -510,6 +548,14 @@ export function useBridgeConnection(options: BridgeConnectionOptions = {}): Brid
 
 export { useCollectionViewport, type CollectionViewportHandle } from "./viewport.js";
 export { onBridgeConnection, type BridgeConnectionOptions, type BridgeConnectionState } from "@runic-artifex/views";
+export {
+  regionEntries,
+  selectedRegion,
+  type RegionCollection,
+  type RegionEntry,
+  type RegionOutcome,
+  type RegionSlot,
+} from "@runic-artifex/views";
 export {
   FieldError,
   type BridgeField,

@@ -1,5 +1,5 @@
 import { Component, computed, effect, input, signal, untracked, viewChild, ViewContainerRef, type InputSignal, type TemplateRef, type Type } from "@angular/core";
-import type { PageReference } from "@runic-artifex/views";
+import { regionEntries, type PageReference, type RegionCollection } from "@runic-artifex/views";
 
 /**
  * A build-known map checks each generated reference against its component input. A nullable
@@ -74,6 +74,41 @@ export class ViewOutlet<R extends PageReference = PageReference> {
       });
     });
   }
+}
+
+/** How {@link RegionOutlets} renders the regions of a collection. */
+export type RegionOutletsMode = "keep-mounted" | "selected";
+
+/**
+ * Renders a {@link ViewOutlet} for the regions of a region collection, each in a `<div data-region-key>` tracked by
+ * the region's key. A region that is not selected is rendered with `hidden`. A new content reference in a region
+ * remounts only that region's component. The projected content renders while the collection has no region, and
+ * `missing` is passed to each outlet:
+ *
+ * ```html
+ * <runic-region-outlets [collection]="state()?.documents" [registry]="pages">No open documents</runic-region-outlets>
+ * ```
+ *
+ * `mode` `"keep-mounted"` (the default) renders every region and hides all but the selected one, so each region
+ * keeps its component and DOM. `"selected"` renders only the selected region.
+ */
+@Component({ selector: "runic-region-outlets", standalone: true, imports: [ViewOutlet], template: `
+    @for (region of shown(); track region.key) {
+      <div [hidden]="!region.selected" [attr.data-region-key]="region.key">
+        <runic-view-outlet [content]="region.content" [registry]="registry()" [missing]="missing()" />
+      </div>
+    } @empty { <ng-content /> }
+  ` })
+export class RegionOutlets<R extends PageReference = PageReference> {
+  readonly collection = input<RegionCollection<R> | null | undefined>();
+  readonly registry = input.required<ViewRegistry<R>>();
+  /** Renders a reference whose kind has no registered component instead of the English alert. */
+  readonly missing = input<TemplateRef<ViewOutletMissingContext<R>> | undefined>();
+  readonly mode = input<RegionOutletsMode>("keep-mounted");
+  protected readonly shown = computed(() => {
+    const keepMounted = this.mode() === "keep-mounted";
+    return regionEntries(this.collection()).filter(region => keepMounted || region.selected);
+  });
 }
 
 /**

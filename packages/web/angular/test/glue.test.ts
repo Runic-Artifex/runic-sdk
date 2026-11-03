@@ -5,9 +5,11 @@ import { BrowserTestingModule, platformBrowserTesting } from "@angular/platform-
 import { afterEach, beforeAll, describe, expect, test, expectTypeOf, vi } from "vitest";
 import {
   injectBridgeConnection, injectCollectionViewport, injectCommand, injectLatestOperation, injectMenuBar, injectOperation, injectView, RunicViewOutlet,
-  ViewOutlet, type BridgeConnectionHandle, type MenuBarHandle, type LatestOperationHandle, type ViewRegistry,
+  ViewOutlet, RegionOutlets, regionEntries, selectedRegion, type BridgeConnectionHandle, type MenuBarHandle, type LatestOperationHandle,
+  type RegionCollection, type RegionOutletsMode, type ViewRegistry,
 } from "../dist/esm/index.js";
 import * as root from "../dist/esm/index.js";
+import { regionEntries as viewsRegionEntries, selectedRegion as viewsSelectedRegion } from "@runic-artifex/views";
 import { onBridgeConnection as viewsOnBridgeConnection, type BridgeConnectionOptions as ViewsBridgeConnectionOptions, type BridgeConnectionState as ViewsBridgeConnectionState } from "@runic-artifex/views";
 import {
   BridgeError, bridgeFailure, bridgeSuccess, type BridgeConnectionState, type BridgeOperation, type BridgeOperationStatus, type BridgeOutcome,
@@ -102,6 +104,19 @@ Component({
   template: `<runic-view-outlet [content]="content()" [registry]="registry" />`,
 })(LegacyHost);
 
+// Region collections: one outlet per region, keyed by the region's key.
+class RegionsHost {
+  readonly collection = signal<RegionCollection<Page> | undefined>(undefined);
+  readonly mode = signal<RegionOutletsMode>("keep-mounted");
+  readonly registry = registry;
+}
+Component({
+  selector: "test-regions-host",
+  standalone: true,
+  imports: [RegionOutlets],
+  template: `<runic-region-outlets [collection]="collection()" [registry]="registry" [mode]="mode()"><span class="fallback">No documents</span></runic-region-outlets>`,
+})(RegionsHost);
+
 beforeAll(() => {
   TestBed.initTestEnvironment(BrowserTestingModule, platformBrowserTesting());
 });
@@ -194,6 +209,67 @@ describe("ViewOutlet", () => {
     TestBed.createComponent(Host).detectChanges();
     TestBed.createComponent(LegacyHost).detectChanges();
     expect(warnings.filter(warning => warning.includes("NG0912"))).toEqual([]);
+  });
+});
+
+describe("RegionOutlets", () => {
+  const counter: Page = { kind: "counter", connect: async () => undefined };
+  const welcome: Page = { kind: "welcome", connect: async () => undefined };
+
+  function render(mode: RegionOutletsMode = "keep-mounted") {
+    counterMounts = 0;
+    const fixture = TestBed.createComponent(RegionsHost);
+    fixture.componentInstance.mode.set(mode);
+    fixture.detectChanges();
+    const element = fixture.nativeElement as HTMLElement;
+    const show = (collection: RegionCollection<Page> | undefined) => { fixture.componentInstance.collection.set(collection); fixture.detectChanges(); };
+    const regions = () => [...element.querySelectorAll<HTMLElement>("[data-region-key]")]
+      .map(region => `${region.dataset["regionKey"]}${region.hidden ? "" : "*"}:${region.textContent?.trim()}`);
+    return { element, show, regions };
+  }
+
+  test("keeps every region mounted and shows only the selected one", () => {
+    const { element, show, regions } = render();
+    show({ regions: [{ key: "7", content: counter }, { key: "9", content: welcome }, { key: "11", content: null }], selected: 1 });
+    expect(regions()).toEqual(["7:counter:counter", "9*:welcome:welcome", "11:"]);
+    const welcomeElement = element.querySelector("test-welcome");
+    show({ regions: [{ key: "7", content: counter }, { key: "9", content: welcome }, { key: "11", content: null }], selected: 0 });
+    expect(regions()).toEqual(["7*:counter:counter", "9:welcome:welcome", "11:"]);
+    expect(counterMounts).toBe(1);
+    expect(element.querySelector("test-welcome")).toBe(welcomeElement);
+  });
+
+  test("remounts only the region whose content changed", () => {
+    const { element, show } = render();
+    show({ regions: [{ key: "7", content: counter }, { key: "9", content: welcome }], selected: 0 });
+    const welcomeElement = element.querySelector("test-welcome");
+    show({ regions: [{ key: "7", content: { kind: "counter", connect: async () => undefined } }, { key: "9", content: welcome }], selected: 0 });
+    expect(counterMounts).toBe(2);
+    expect(element.querySelector("test-welcome")).toBe(welcomeElement);
+  });
+
+  test("renders only the selected region in selected mode", () => {
+    const { show, regions } = render("selected");
+    show({ regions: [{ key: "7", content: counter }, { key: "9", content: welcome }], selected: 1 });
+    expect(regions()).toEqual(["9*:welcome:welcome"]);
+    expect(counterMounts).toBe(0);
+    show({ regions: [{ key: "7", content: counter }, { key: "9", content: welcome }], selected: 0 });
+    expect(regions()).toEqual(["7*:counter:counter"]);
+    expect(counterMounts).toBe(1);
+  });
+
+  test("renders projected content without a region", () => {
+    const { element, show } = render();
+    expect(element.querySelector(".fallback")?.textContent).toBe("No documents");
+    show({ regions: [], selected: null });
+    expect(element.querySelector(".fallback")?.textContent).toBe("No documents");
+    show({ regions: [{ key: "7", content: welcome }], selected: 0 });
+    expect(element.querySelector(".fallback")).toBeNull();
+  });
+
+  test("re-exports the region helpers", () => {
+    expect(regionEntries).toBe(viewsRegionEntries);
+    expect(selectedRegion).toBe(viewsSelectedRegion);
   });
 });
 
@@ -519,8 +595,9 @@ describe("injectBridgeConnection", () => {
   test("requires an injection context or an injector, and is a root export (0.11)", () => {
     expect(() => injectBridgeConnection()).toThrow();
     expect(Object.keys(root).sort()).toEqual([
-      "RunicViewOutlet", "ViewOutlet", "injectBridgeConnection", "injectCollectionViewport", "injectCommand", "injectField",
+      "RegionOutlets", "RunicViewOutlet", "ViewOutlet", "injectBridgeConnection", "injectCollectionViewport", "injectCommand", "injectField",
       "injectLatestOperation", "injectMenuBar", "injectOperation", "injectTextField", "injectView", "injectViewResource", "onBridgeConnection",
+      "regionEntries", "selectedRegion",
     ]);
     // The connection API that useBridgeConnection wraps is re-exported, as the menu-bar types are (0.11).
     expect(root.onBridgeConnection).toBe(viewsOnBridgeConnection);

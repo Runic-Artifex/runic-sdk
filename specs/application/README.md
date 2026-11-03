@@ -12,7 +12,7 @@ protocol to .NET and TypeScript is in the [language mappings](language-mappings.
 
 | Document | Content |
 | --- | --- |
-| This document | Conventions, transport, host bridge, handshake and features, requests and replies, state and revisions, publication, edits, checked writes, commands and presentation epochs, presentations, presented states and window close, operations, interactions, versions |
+| This document | Conventions, transport, host bridge, handshake and features, requests and replies, state and revisions, publication, edits, checked writes, commands and presentation epochs, content and region collections, presentations, presented states and window close, operations, interactions, versions |
 | [state-changes.md](state-changes.md) | Frames and their changes (`set`, keyed collections, text, text splices), producing and applying them, delivery bounds and recovery |
 | [values.md](values.md) | The JSON profile, wire value types and the canonical form (RFC 8785) |
 | [language-mappings.md](language-mappings.md) | The .NET producer and the TypeScript client |
@@ -221,6 +221,7 @@ reply both list the same string. Features are negotiated per connection, and aga
 | `text-splice/1` | Text members change with splices: [`set` with a splice](#text-splices-in-set), [`write` with a splice](#text-splices-in-write) and [`splice` changes](state-changes.md#text-splices) | 0.14 |
 | `presentation-epoch/1` | A command runs only on the presentation it was issued for: [presentation epochs](#presentation-epochs) | 0.15 |
 | `presented/1` | The page reports that it painted a state, and acknowledges a window close: [presented states and window close](#presented-states-and-window-close) | 0.15 |
+| `region-collections/1` | The page selects and closes the regions of a region collection by key: [region collections](#region-collections) | 0.16 |
 
 ## Requests and replies
 
@@ -257,9 +258,9 @@ it.
 | `splice-base` | `rejected` | A `set` with a splice names a base the producer does not have, or the splice does not fit it ([Text splices in `set`](#text-splices-in-set)); a `write` with a splice does not fit the field's value at `expectedVersion`, or that value is not a string ([Text splices in `write`](#text-splices-in-write)). |
 | `protocol-mismatch` | `failed` | A `hello` named another protocol version. |
 | `invalid-input` | `rejected` | A value or input does not decode as its type ([values](values.md#wire-value-types)), the setter or command rejects it as invalid input, or the request is larger than the input limit. |
-| `unavailable` | `rejected` | A command is not available ([Commands](#commands-and-availability)). |
-| `unresolved-key` | `rejected` | The key of a key command resolves to nothing. |
-| `capacity` | `rejected` | A limit of the window or connection is reached: 64 awaited commands, 64 presentations per route and connection, 64 watches per connection, or 64 requests held before a connection's `hello`. |
+| `unavailable` | `rejected` | A command is not available ([Commands](#commands-and-availability)), or a region collection does not let the page close a region. |
+| `unresolved-key` | `rejected` | The key of a key command resolves to nothing, or a `region` request's key names no region of the collection. |
+| `capacity` | `rejected` | A limit of the window or connection is reached: 64 awaited commands and `region` requests, 64 presentations per route and connection, 64 watches per connection, or 64 requests held before a connection's `hello`. |
 | `state-withheld` | any | The request ran, but the producer cannot publish a state that includes its effects, because a keyed collection has invalid keys ([state changes](state-changes.md#invalid-keys)). |
 
 A request that names a route the producer does not serve, because it was never bound or because it was released, is
@@ -269,7 +270,7 @@ producer answered, so the transport is connected and only the route is gone.
 
 ### Revisions in replies
 
-Every reply to a request that changes state carries `revision`: `set`, `write`, `command` and `start`, whether they
+Every reply to a request that changes state carries `revision`: `set`, `write`, `command`, `region` and `start`, whether they
 succeed or fail, as long as the request ran. The rules are in [State and revisions](#state-and-revisions). Two
 exceptions:
 
@@ -308,6 +309,7 @@ A route's **state** is a JSON object with one member per state member of its Vie
 
 - value members, encoded as their type;
 - content slots: a content reference `{kind, id}` or `null`; content collections: arrays of content references;
+  region collections: `{regions, selected}` ([region collections](#region-collections));
 - keyed collections: arrays of rows; append-only text fields: strings ([state changes](state-changes.md));
 - the availability members `can{Name}` and `is{Name}Executing` of commands
   ([Commands](#commands-and-availability)).
@@ -714,6 +716,71 @@ parent's release, suspends it when no other slot presents it. A suspended object
 checked fields, so its requests answer `released`; only its identity remains. The producer MAY forget the identity
 later, and a forgotten object gets a new id when it is presented again.
 
+### Region collections
+
+A **region collection** is a state member that presents a set of navigation regions that changes at run time, such as
+document tabs that each keep their own back stack. Its value is an object:
+
+```json
+{"regions":[{"key":"7","content":{"kind":"document","id":"0123456789abcdef0123456789abcdef"}},{"key":"9","content":null}],"selected":1}
+```
+
+| Member | Contract |
+| --- | --- |
+| `regions` | The regions in order. Each is `{key, content}`. |
+| `regions[].key` | A string of 1 to 128 printable ASCII characters that identifies the region in the window. It stays the same while the region is in the collection, differs from the key of every other region of the window, and is never given to another region later. A client treats it as opaque and compares it only for equality. |
+| `regions[].content` | The region's current content reference, or `null` while the region is empty. It is presented like an item of a content collection: content that no region presents any more is pruned ([Content](#content)). |
+| `selected` | The index in `regions` of the selected region, a non-negative integer less than the number of regions, or `null` exactly when `regions` is empty. |
+
+The member changes like any other member: a frame carries it as a `set` change of the whole value. Regions are added
+by the producer only. Which region is selected, and which regions the collection has, change only when the producer
+commits the change, so a client that shows `selected` shows the region that is still selected after a request that a
+departure guard refused.
+
+**Region requests.** With the feature `region-collections/1`, the client selects or closes a region by its key:
+
+```json
+{"kind":"region","route":"editor","member":"documents","action":"close","key":"7"}
+{"ok":true,"revision":44,"outcome":{"kind":"Committed","rejection":null,"arrival":"None"}}
+```
+
+| Request | Members | Reply |
+| --- | --- | --- |
+| `region` | `route`, `member`, `action`, `key` | `{ok:true, revision, outcome}` after the request settled |
+
+- `action` is `select` (show the region) or `close` (remove the region from the collection and end it). `key` is a
+  string. A `region` request on a connection that does not use the feature, an `action` other than these two, or a
+  `member` that is not a region collection of the route, is `invalid-request`.
+- A `key` that names no region of the collection when the producer admits the request, such as the key of a region
+  that closed meanwhile, is `rejected` with `unresolved-key`, and nothing runs.
+- A `close` of a collection whose contract does not let the page close regions is `rejected` with `unavailable`.
+- A region request counts toward the window's 64 awaited calls ([Commands](#commands-and-availability)); another one
+  is `rejected` with `capacity` and runs nothing.
+- **Order of checks.** A producer answers the first that fails: the envelope and the feature (`invalid-request`), the
+  route (`released`), the member (`invalid-request`), a `close` the collection does not allow (`unavailable`), the
+  window's capacity (`capacity`), then the key (`unresolved-key`).
+- The producer decides whether the request commits, for example by asking the departure guards of the region left or
+  closed. The request keeps its reply until it settled. `outcome` says how it ended; a refused or superseded request
+  is not an error:
+
+| `outcome` member | Contract |
+| --- | --- |
+| `kind` | `Committed`, `Rejected`, `Superseded` or `Failed`. The set is open: a client keeps a kind it does not know. |
+| `rejection` | Why a `Rejected` request was refused, such as `Guard` (a departure guard refused), `Busy`, `Cancelled` or `Closed`; `null` for the other kinds. The set is open. |
+| `arrival` | For `Committed`, how the work that the producer runs when content becomes current ended: `None`, `Completed`, `Failed` or `Cancelled`; `None` for the other kinds. The set is open. |
+
+- A committed `select` changes `selected`. A committed `close` removes the region from `regions`; when it was the
+  selected region, the next region becomes selected, or the previous one when it was the last, or none when it was the
+  only one.
+- A request that fails in the producer for another reason, an unexpected exception, is `failed` and has `revision`.
+- A `close` can release the route that sent it, as a command that navigates away from its page does. Its reply then has
+  `released: true` instead of `revision`, and keeps `outcome` ([released by the call](#revisions-in-replies)).
+- A client resolves the call once the route has reached the reply's revision ([client resolution](#client-resolution)),
+  with `outcome`.
+
+`region` is a request that changes state, so its reply follows the pushes the producer published before it
+([reply order](#reply-order)).
+
 ## Presentations
 
 A client registers each route it shows with `open`, and ends the registration with `close`:
@@ -1024,6 +1091,7 @@ Requests:
 | `write` | `route`, `member`, `requestId`, `expectedVersion`, `expectedValue` and `value`, or `splice` (`text-splice/1`) | `revision`, `receipt` |
 | `command` | `route`, `member`, `input?`, `epoch?` (`presentation-epoch/1`) | `revision`, `superseded?` |
 | `can` | `route`, `member`, `input?` | `value` |
+| `region` (`region-collections/1`) | `route`, `member`, `action`, `key` | `revision`, `outcome` |
 | `start` | `route`, `member`, `operation`, `contract`, `input?` | `revision`, `admission`, `reason?`, `status?` |
 | `status`, `watch`, `unwatch` | `route`, `member`, `operation`, `contract` | `status` |
 | `cancel` | `route`, `member`, `operation`, `contract` | `cancellation` |
@@ -1070,4 +1138,4 @@ sides must implement are [features](#features), listed in `hello`.
 | 1 | 0.6 | Named routes with a snapshot and a state callback per route; collection delta frames were added in 0.7 without a version change. |
 | 2 | 0.9 | The `domain-failed` error and operation status kind. |
 | 3 | 0.10 | A released View answers `released` instead of `disconnected`; the reply error `reason`; a strict version check ([protocol 3](https://github.com/Runic-Artifex/runic-sdk/blob/v0.12.1/specs/application/README.md)). |
-| 4 | 0.13 | One message channel with `hello`; `set` changes in frames; replies by revision; edit numbers; `open`/`close`; operation `watch` and `progress`; RFC 8785 canonical form; value types named by value; ISO 8601 durations; a language-neutral specification and conformance corpus. 0.14 added, without a version change, `hello` `features` with the first feature `text-splice/1`, and requests held behind the `hello`. 0.15 added, without a version change, the features `presentation-epoch/1` and `presented/1`. |
+| 4 | 0.13 | One message channel with `hello`; `set` changes in frames; replies by revision; edit numbers; `open`/`close`; operation `watch` and `progress`; RFC 8785 canonical form; value types named by value; ISO 8601 durations; a language-neutral specification and conformance corpus. 0.14 added, without a version change, `hello` `features` with the first feature `text-splice/1`, and requests held behind the `hello`. 0.15 added, without a version change, the features `presentation-epoch/1` and `presented/1`. 0.16 added, without a version change, the feature `region-collections/1`. |

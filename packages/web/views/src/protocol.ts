@@ -104,6 +104,8 @@ const replyMembers: Readonly<Record<string, (reply: Message) => boolean>> = {
   write: reply => isSafe(reply["revision"]) && isObject(reply["receipt"]),
   command: reply => isSafe(reply["revision"]) && (reply["superseded"] === undefined || typeof reply["superseded"] === "boolean"),
   can: reply => typeof reply["value"] === "boolean",
+  // region-collections/1: a region request that settled carries its outcome.
+  region: reply => isSafe(reply["revision"]) && isObject(reply["outcome"]) && isString(reply["outcome"]["kind"]),
   start: reply => isSafe(reply["revision"]) && isString(reply["admission"])
     && (reply["admission"] !== "accepted" && reply["admission"] !== "duplicate" || validStatus(reply["status"]))
     && (reply["status"] === undefined || validStatus(reply["status"])),
