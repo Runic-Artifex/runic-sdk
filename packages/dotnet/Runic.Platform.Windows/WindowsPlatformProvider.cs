@@ -237,6 +237,24 @@ public static class WindowsPlatformProvider
             : DesktopNetworkStatus.Unavailable(PlatformUnavailableReason.BackendUnavailable);
     }
 
+    /// <summary>Creates sleep, wake, session lock and battery events.</summary>
+    /// <remarks>
+    /// <para>
+    /// Each watch runs a hidden top-level window on its own thread: <c>WM_POWERBROADCAST</c> (with
+    /// <c>RegisterSuspendResumeNotification</c>, also on modern standby) gives <see cref="DesktopPowerEventKind.Suspending"/>
+    /// and <see cref="DesktopPowerEventKind.Resumed"/>, <c>WTSRegisterSessionNotification</c> the lock and unlock of the
+    /// current session, and <c>GetSystemPowerStatus</c>, read again on each power status or Battery Saver change, the
+    /// battery and saver state. A read takes the lock state from <c>WTSQuerySessionInformation</c>.
+    /// </para>
+    /// <para>Windows gives an application about two seconds after <c>Suspending</c>; Runic does not delay the sleep. It
+    /// needs no window of the application.</para>
+    /// </remarks>
+    public static IDesktopPowerEvents CreatePowerEvents()
+    {
+        if (!WindowsSupport.IsAvailable || !OperatingSystem.IsWindowsVersionAtLeast(8)) throw new PlatformNotSupportedException();
+        return new PowerEventsService(new WindowsPowerEvents());
+    }
+
     // Task dialogs owned by a window, on its thread. Without Common Controls version 6 every box is unavailable.
     internal static IDesktopMessageBoxes CreateMessageBoxes(INativeWindowOwner owner)
     {

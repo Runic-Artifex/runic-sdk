@@ -840,8 +840,13 @@ such as one per recent file or zoom level. AppKit asks `CanExecute` whenever it
 shows a menu or matches a key, on its main thread, so keep it cheap; an item
 that no target can run is disabled. An item or menu declared with
 `IsEnabled = false` is disabled without asking, a disabled menu disables its
-items too, and `IsChecked` shows a check mark as declared: build the bar again
-with `SetMenuBar` when the state changes. Items with the same `RadioGroup` in
+items too. An item declared with `IsChecked` is a check item whose mark
+follows the target's `IsChecked(item)`, asked where `CanExecute` is: as a menu
+opens (macOS, Win32, GTK 3 and 4, a desktop's global menu) and when an in-page
+bar's state is built. The key window's target is asked first and the
+application's next; the first non-null answer decides, also one equal to the
+declaration, and the default `null` leaves the item to the declaration. Marks
+therefore follow the front window without `SetMenuBar`. Items with the same `RadioGroup` in
 one menu are radio items, of which one is checked (`DesktopHost.Validate`
 reports `menu-radio-checked` for more); macOS shows them with the check mark.
 `AccessKey` is a letter or digit that Windows and Linux underline and open with
