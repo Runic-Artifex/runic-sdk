@@ -300,14 +300,15 @@ impl Server {
         let inner = self.inner.clone();
         self.inner.spawn(async move {
             let next = body.next().await;
+            // The body returns to the request, unless it completed meanwhile, before the host hears of the chunk: a host
+            // that starts the next read from the callback must find it there.
+            if let Some(slot) = inner.requests.lock().unwrap().get_mut(&id) {
+                *slot = Some(body);
+            }
             match &next {
                 Some(Ok(chunk)) => inner.notify(|handler| handler.received(token, BodyRead::Data(chunk))),
                 Some(Err(_)) => inner.notify(|handler| handler.received(token, BodyRead::Failed)),
                 None => inner.notify(|handler| handler.received(token, BodyRead::End)),
-            }
-            // The body returns to the request unless it completed meanwhile.
-            if let Some(slot) = inner.requests.lock().unwrap().get_mut(&id) {
-                *slot = Some(body);
             }
         });
         Ok(())

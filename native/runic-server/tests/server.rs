@@ -543,6 +543,25 @@ async fn large_messages_arriving_in_pieces_are_unmasked_and_their_buffers_reused
 }
 
 #[tokio::test]
+async fn a_second_read_while_one_waits_for_the_body_is_refused() {
+    let (server, mut events) = start(ServerConfig::default());
+    let port = server.port();
+    let mut stream = TcpStream::connect(("127.0.0.1", port)).await.unwrap();
+    // The head only: the body follows once the first read waits for it.
+    let head = format!(
+        "POST /_runic/upload HTTP/1.1\r\nHost: 127.0.0.1:{port}\r\nConnection: close\r\nX-Runic-Test: 1\r\nContent-Length: 5\r\n\r\n"
+    );
+    stream.write_all(head.as_bytes()).await.unwrap();
+    let Event::Request { id, .. } = next(&mut events).await else { panic!("a request") };
+    server.read(id, 1).expect("a read starts");
+    assert!(server.read(id, 2).is_err(), "a second read while one is in progress is refused");
+    stream.write_all(b"hello").await.unwrap();
+    let Event::Received { token, data, failed } = next(&mut events).await else { panic!("a read result") };
+    assert_eq!((token, failed, data.as_deref()), (1, false, Some(&b"hello"[..])));
+    server.respond(id, StatusCode::NO_CONTENT, HeaderMap::new(), Body::Empty).unwrap();
+}
+
+#[tokio::test]
 async fn a_request_body_is_read_chunk_by_chunk_until_its_end() {
     let (server, mut events) = start(ServerConfig::default());
     let port = server.port();
@@ -558,9 +577,8 @@ async fn a_request_body_is_read_chunk_by_chunk_until_its_end() {
     let mut token = 0;
     loop {
         token += 1;
+        // The next read starts as soon as the previous result arrived: the body is back in its request by then.
         server.read(id, token).expect("a read starts");
-        // A second read while one is in progress is refused.
-        assert!(server.read(id, 999).is_err());
         let Event::Received { token: reported, data, failed } = next(&mut events).await else {
             panic!("a read result")
         };
