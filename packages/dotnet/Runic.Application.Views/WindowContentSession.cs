@@ -158,6 +158,30 @@ public sealed class WindowContentSession : IDisposable
     /// </summary>
     public IRunicModelContext? ModelContext => _rootModelLease?.Context ?? _sessionModelContext;
 
+    /// <summary>
+    /// The window's locale, a BCP 47 tag such as <c>de</c> or <c>pt-BR</c>, or <see langword="null"/> while the
+    /// application sets none and each page keeps its own. Setting it pushes it to the window's pages (feature
+    /// <c>translation-text/1</c>), which show text references, such as validation messages, in that language and set the
+    /// locale of their Translations runtime; a page that connects later receives it after its <c>hello</c>. It can be set
+    /// from any thread.
+    /// </summary>
+    /// <remarks>
+    /// A ViewModel of a Window that <c>OpenWindowAsync</c> opened sets it through <see cref="IRunicWindowLocale"/>.
+    /// Setting <see langword="null"/> after a locale leaves the pages in the language they show.
+    /// </remarks>
+    /// <exception cref="ArgumentException">The value is not 1 to 64 letters, digits and <c>-</c>, starting with a letter.</exception>
+    public string? Locale
+    {
+        get => BridgeDispatcher.For(_transport).Locale;
+        set
+        {
+            if (BridgeDispatcher.For(_transport).SetLocale(value)) LocaleChanged?.Invoke(this, EventArgs.Empty);
+        }
+    }
+
+    /// <summary>Raised on the setting thread after <see cref="Locale"/> changed.</summary>
+    public event EventHandler? LocaleChanged;
+
     /// <summary>Gets whether the window's root ViewModel receives dropped files (<see cref="IRunicFileDropTarget"/>).</summary>
     public bool AcceptsFileDrops => _rootModel is IRunicFileDropTarget;
 

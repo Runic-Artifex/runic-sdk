@@ -268,4 +268,46 @@ export function json(value: unknown, nullable = true): unknown {
   return value;
 }
 
+/**
+ * A text reference of Runic Translations (the `text-reference` wire type, values.md): a catalog, a message key, typed
+ * arguments and an optional fallback text, as the Translations transport writes it. The page shows it in the window's
+ * language with `resolveText` or a framework's `useText`, which call the application's Translations runtime
+ * (`resolveTextReference`). Its type is structural, so a `TextReferenceWire` of a generated `transport.js` is one.
+ */
+export interface TextReference {
+  readonly version: 1 | 2;
+  readonly catalog: string;
+  readonly contractFingerprint: string;
+  readonly key: string;
+  readonly arguments?: Readonly<Record<string, unknown>>;
+  readonly fallbackText?: string;
+}
+
+/** The largest text reference, in UTF-16 code units of its JSON (at most 256 KiB of UTF-8 bytes in .NET). */
+const maximumTextReferenceLength = 256 * 1024;
+
+/** Whether a value has the shape of a {@link TextReference}. Its arguments are checked when it is resolved. */
+export function isTextReference(value: unknown): value is TextReference {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return false;
+  const reference = value as Record<string, unknown>;
+  return (reference["version"] === 1 || reference["version"] === 2)
+    && typeof reference["catalog"] === "string" && typeof reference["contractFingerprint"] === "string"
+    && typeof reference["key"] === "string" && reference["key"].length > 0
+    && (reference["arguments"] === undefined || typeof reference["arguments"] === "object" && reference["arguments"] !== null
+      && !Array.isArray(reference["arguments"]))
+    && (reference["fallbackText"] === undefined || typeof reference["fallbackText"] === "string");
+}
+
+/**
+ * A `text-reference` value: an object with `version` 1 or 2, string `catalog` and `contractFingerprint`, a nonempty
+ * `key`, an `arguments` object and a string `fallbackText` when present, of JSON values. The Translations runtime checks
+ * the rest against its catalog when the page shows it.
+ */
+export function textReference(value: unknown): TextReference {
+  if (!isTextReference(value)) throw new TypeError("Expected a text reference.");
+  checkJson(value, 1);
+  if (JSON.stringify(value).length > maximumTextReferenceLength) throw new RangeError("The text reference is too large.");
+  return value;
+}
+
 export { decodeBigInt as bigint, decodeBoolean as boolean, decodeObject as object, decodeString as string };

@@ -216,7 +216,8 @@ reply both list the same string. Features are negotiated per connection, and aga
 - **Members of state values.** A member that a feature adds to a value of the route's state is part of that value
   whatever the connections' features: the state is one value per route, which the producer compares across
   publications. A reader without the feature ignores it as a member its type does not define
-  ([values](values.md#composite-values)). `pending` in [`validation`](#validation) is the only such member.
+  ([values](values.md#composite-values)). `pending` and the errors' `text` in [`validation`](#validation) are the only
+  such members.
 - A feature never changes the meaning of a message of the base protocol, so a client and a producer of one protocol
   version always connect, whatever features they implement.
 
@@ -226,6 +227,7 @@ reply both list the same string. Features are negotiated per connection, and aga
 | `presentation-epoch/1` | A command runs only on the presentation it was issued for: [presentation epochs](#presentation-epochs) | 0.15 |
 | `presented/1` | The page reports that it painted a state, and acknowledges a window close: [presented states and window close](#presented-states-and-window-close) | 0.15 |
 | `validation-pending/1` | `validation` reports the paths whose validation is in progress: [`pending`](#pending) | 0.16 |
+| `translation-text/1` | The window's locale, and the [`text`](#text) of validation errors: [translated text](#translated-text) | 0.16 |
 
 ## Requests and replies
 
@@ -616,6 +618,27 @@ progress, such as an asynchronous rule that asks a server whether a name is take
 - **Client.** A client that uses the feature reads `pending` as a list of paths; a member's field is validating
   while a path starts with the member's wire name. A client without it ignores the member.
 
+### `text`
+
+With the feature `translation-text/1`, an error may have a member `text`: its message as a
+[text reference](values.md#text-reference) of Runic Translations, which the page shows in the window's language
+([translated text](#translated-text)). `message` stays the error's text and is the fallback where the page cannot
+translate the reference.
+
+```json
+{"path":["title"],"message":"Title must be at most 80 characters.","code":"title-too-long",
+ "text":{"version":2,"catalog":"notes","contractFingerprint":"sha256:…","key":"title_too_long",
+ "arguments":{"max":{"type":"int64","value":"80"}},"fallbackText":"Title must be at most 80 characters."}}
+```
+
+- **Presence.** `text` is present when the model gives the error a reference, and absent otherwise. It is part of the
+  `validation` value on every connection ([members of state values](#features)); a client without the feature
+  ignores it.
+- **Limits.** A reference of more than 16 KiB of UTF-8 is left out of its error, which sets `truncated`.
+- **Client.** A client that reads an error with a `text` that is not a text reference ignores the member and shows
+  the message.
+- `{name}Errors` keeps the messages.
+
 ### `{name}Errors`
 
 An array of the messages the model reports for the member `name` of the View's own object, in the model's order, or
@@ -865,6 +888,42 @@ connection that does not use the feature it is `rejected` with `invalid-request`
 connection then drops, it keeps reporting that the producer closed the window, not a reconnecting or lost connection.
 A new connection reports a connected client again.
 
+## Translated text
+
+Text that the application produces, such as a status line or a validation message, can be a
+[text reference](values.md#text-reference) of Runic Translations instead of a formatted sentence: a member, field,
+command result or other value of the type `text-reference`, and the [`text`](#text) of a validation error. The page
+formats each reference in the window's language with the Translations runtime of the page. When the language changes,
+the page formats the references it has again; no message crosses the wire per string.
+
+The **window's locale** is the language the application chose for the window, or none. With the feature
+`translation-text/1`, the producer pushes it:
+
+```json
+{"kind":"locale","locale":"de"}
+```
+
+| Message | Members | Meaning |
+| --- | --- | --- |
+| push `locale` | `locale` | To each connection that uses the feature: the window's locale, a language tag of 1 to 64 ASCII letters, digits and `-`, starting with a letter and without an empty subtag (`de`, `pt-BR`), or `null` when the application sets none. A window-level push without a `route`. |
+
+- **When.** The producer pushes `locale` to a connection after its `hello` succeeded, when the window has a locale,
+  and to every connection that uses the feature each time the application changes it, also to `null`. The last
+  push a connection receives is the window's locale. A producer may send the first push before the `hello` reply
+  reaches the page.
+- **The application owns it.** Only the application sets the window's locale; a page that offers a language switch
+  asks the application, for example with a command. Every page of the window therefore shows one language, and the
+  application can keep the choice with its settings.
+- **Client.** A client that uses the feature applies the last `locale` push: it sets the locale of the page's
+  Translations runtime, so the page's own messages follow, and formats references in it. It applies a `locale` push
+  whatever the features it has read so far, since the push may come before the `hello` reply. On `null` it keeps
+  the language it shows. Without a window locale, the page formats references in its own language. A `locale` push
+  whose `locale` is neither a tag nor `null` is invalid and ignored. A client without the feature ignores the push
+  kind.
+- **Formatting.** A reference the page's Translations runtime cannot format, such as one of another catalog or
+  whose arguments no longer match, shows its `fallbackText`; the page chooses what to show without one. The text is
+  plain: a page shows it as text, never as markup.
+
 ## Operations
 
 An asynchronous command can also be started as a recoverable **operation**, which the page can observe, cancel and
@@ -1080,6 +1139,7 @@ Pushes:
 | `interaction-cancelled` | `route`, `presentation`, `requestId`, `ownerEpoch`, `message` | the presentation's connection |
 | `present` (`presented/1`) | `route`, `revision` | while a wait is pending, each connection that uses `presented/1` and has an open presentation of the route |
 | `closing` (`presented/1`) | none | each connection that uses `presented/1` |
+| `locale` (`translation-text/1`) | `locale` | each connection that uses `translation-text/1`, after its `hello` and on each change |
 
 ## Versions and compatibility
 
@@ -1101,4 +1161,4 @@ sides must implement are [features](#features), listed in `hello`.
 | 1 | 0.6 | Named routes with a snapshot and a state callback per route; collection delta frames were added in 0.7 without a version change. |
 | 2 | 0.9 | The `domain-failed` error and operation status kind. |
 | 3 | 0.10 | A released View answers `released` instead of `disconnected`; the reply error `reason`; a strict version check ([protocol 3](https://github.com/Runic-Artifex/runic-sdk/blob/v0.12.1/specs/application/README.md)). |
-| 4 | 0.13 | One message channel with `hello`; `set` changes in frames; replies by revision; edit numbers; `open`/`close`; operation `watch` and `progress`; RFC 8785 canonical form; value types named by value; ISO 8601 durations; a language-neutral specification and conformance corpus. 0.14 added, without a version change, `hello` `features` with the first feature `text-splice/1`, and requests held behind the `hello`. 0.15 added, without a version change, the features `presentation-epoch/1` and `presented/1`. |
+| 4 | 0.13 | One message channel with `hello`; `set` changes in frames; replies by revision; edit numbers; `open`/`close`; operation `watch` and `progress`; RFC 8785 canonical form; value types named by value; ISO 8601 durations; a language-neutral specification and conformance corpus. 0.14 added, without a version change, `hello` `features` with the first feature `text-splice/1`, and requests held behind the `hello`. 0.15 added, without a version change, the features `presentation-epoch/1` and `presented/1`. 0.16 added, without a version change, the features `validation-pending/1` and `translation-text/1` and the value type `text-reference`. |

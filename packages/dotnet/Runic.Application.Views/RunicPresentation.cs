@@ -310,6 +310,8 @@ public abstract class RunicWindow<TViewModel> : RunicView<TViewModel>, IRunicWin
     {
         Volatile.Write(ref _content, content);
         Volatile.Write(ref _bridge, bridge);
+        // IRunicWindowLocale in this scope follows and sets the window's locale from now on.
+        (Volatile.Read(ref _services)?.GetService(typeof(RunicWindowContext)) as RunicWindowContext)?.AttachContent(content);
     }
 
     // The host's close guard: CanCloseAsync in a model turn. It never throws, so a host keeps the window open on any

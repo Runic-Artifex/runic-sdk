@@ -92,6 +92,7 @@ Examples: `P1DT2H3M4.5S`, `PT0.0000001S`, `-PT1H`, `P1D`, and the extremes `-P10
 | object | object | one member per field the contract defines, named by its wire name (below) |
 | union | object | a member `$case` (string) names the case; the other members are the fields of that case |
 | content reference | `{"kind", "id"}` or `null` | `kind` is the presented View's kind name and `id` the content's id (see [Content](README.md#content)) |
+| `text-reference` | object | a text reference of Runic Translations ([below](#text-reference)) |
 | custom | any | a value type with its own codec; its contract specifies its JSON |
 
 For objects and unions:
@@ -101,6 +102,32 @@ For objects and unions:
   field.
 - A reader ignores members the type does not define.
 - `$case` is reserved: no object field is named `$case`.
+
+### `text-reference`
+
+A text reference identifies a message of a Runic Translations catalog, its typed arguments and an optional fallback
+text, so that the page shows it in the window's language ([translated text](README.md#translated-text)). Its JSON is
+the reference as the
+[Translations transport](https://github.com/Runic-Artifex/runic-translations-sdk/blob/main/specs/translations/transport-v2.md)
+writes it, version 1 or 2:
+
+```json
+{"version":2,"catalog":"notes","contractFingerprint":"sha256:…","key":"title_too_long",
+ "arguments":{"max":{"type":"int64","value":"80"}},"fallbackText":"Title must be at most 80 characters."}
+```
+
+- **Valid.** An object with `version` 1 or 2, string `catalog` and `contractFingerprint`, a non-empty string `key`,
+  an object `arguments` when present and a string `fallbackText` when present, of at most 256 KiB of UTF-8. A
+  reader MAY apply the Translations transport's further rules, such as the canonical argument forms and the nesting
+  limits, and then rejects a value that breaks them as invalid input.
+- **Normal form.** The value as written. The Translations writers write one form for a reference, so two references
+  are the same value when they are canonically equal.
+- **Resolution** is not the reader's: the page formats a reference with its Translations runtime when it shows it,
+  which checks the key and arguments against its catalog and falls back to `fallbackText`
+  ([translated text](README.md#translated-text)).
+
+The type needs no feature: the generated client and the producer of one build agree on it. Only the window's locale
+and the `text` of validation errors are the feature `translation-text/1`.
 
 ### Names
 

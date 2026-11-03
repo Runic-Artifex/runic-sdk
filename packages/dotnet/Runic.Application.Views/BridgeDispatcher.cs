@@ -39,6 +39,11 @@ internal sealed class BridgeDispatcher : IBridgeRequestHandler
     // validation-pending/1: validation may carry pending paths. The producer writes them in the route's state for
     // every connection (state is one value per route); a client without the feature ignores the member.
     internal const string ValidationPendingFeature = "validation-pending/1";
+    // translation-text/1: the window's locale, pushed to the connections that use the feature (SetLocale), and the text
+    // of validation errors, which is part of the route's state like pending.
+    internal const string TranslationTextFeature = "translation-text/1";
+    // The longest locale tag the window pushes (BCP 47 tags are far shorter).
+    internal const int MaximumLocaleLength = 64;
     internal const int MaximumFeatures = 64;
     internal const int MaximumFeatureLength = 64;
     // A request that arrives before its connection's hello waits this long for it, and at most this many wait.
@@ -64,6 +69,10 @@ internal sealed class BridgeDispatcher : IBridgeRequestHandler
     // The window's close (BeginClosing): the connections whose closing-reply is outstanding, and its completion.
     private int _closingPending;
     private TaskCompletionSource? _closing;
+    // translation-text/1: the window's locale, or null when the page keeps its own. Pushes of it are queued under
+    // _localeGate, so a connection that completes its hello while the locale changes receives the last value last.
+    private readonly object _localeGate = new();
+    private string? _locale;
     private int _maximumInputBytes = WindowContentSessionOptions.DefaultMaximumInputBytes;
     private ILogger _logger = TraceFallbackLogger.Instance;
     private TimeProvider _timeProvider = TimeProvider.System;
@@ -209,6 +218,56 @@ internal sealed class BridgeDispatcher : IBridgeRequestHandler
     }
 
     private static byte[] ClosingPush() => """{"kind":"closing"}"""u8.ToArray();
+
+    // translation-text/1: the window's locale, or null when the page keeps its own.
+    internal string? Locale
+    {
+        get { lock (_localeGate) return _locale; }
+    }
+
+    // Sets the window's locale and pushes it to every connection that uses translation-text/1. False when it did not
+    // change.
+    internal bool SetLocale(string? locale)
+    {
+        if (locale is not null && !IsLocale(locale))
+            throw new ArgumentException(
+                $"'{locale}' is not a locale tag: use 1 to {MaximumLocaleLength} letters, digits and '-', such as \"de\" or \"pt-BR\".",
+                nameof(locale));
+        lock (_localeGate)
+        {
+            if (string.Equals(_locale, locale, StringComparison.Ordinal)) return false;
+            _locale = locale;
+            List<string> targets = [];
+            lock (_gate)
+                foreach (var connection in _connections.Values)
+                    if (connection.HelloCompleted && connection.UsesTranslationText && connection.IsOpen) targets.Add(connection.Key);
+            var push = LocalePush(locale);
+            foreach (var target in targets) BridgeTargetedPushes.For(_transport).Send(target, push);
+        }
+        ViewsLog.WindowLocaleChanged(_logger, locale);
+        return true;
+    }
+
+    // A locale tag: letters, digits and '-', starting with a letter, without an empty subtag.
+    internal static bool IsLocale(string value)
+    {
+        if (value.Length is 0 or > MaximumLocaleLength || !char.IsAsciiLetter(value[0]) || value[^1] == '-') return false;
+        for (var index = 0; index < value.Length; index++)
+        {
+            var character = value[index];
+            if (character == '-' ? value[index - 1] == '-' : !char.IsAsciiLetterOrDigit(character)) return false;
+        }
+        return true;
+    }
+
+    private static byte[] LocalePush(string? locale) => BridgeMessages.Write(writer =>
+    {
+        writer.WriteStartObject();
+        writer.WriteString("kind", "locale");
+        if (locale is null) writer.WriteNull("locale");
+        else writer.WriteString("locale", locale);
+        writer.WriteEndObject();
+    });
 
     // A connection that acknowledged the window's close or closed; the gate is held.
     private void ClosingSettled(BridgeConnection connection)
@@ -533,7 +592,8 @@ internal sealed class BridgeDispatcher : IBridgeRequestHandler
         if (!root.TryGetProperty("client", out var client) || client.ValueKind != JsonValueKind.Object
             || !TryReadName(client, "name", 128, out var clientName) || !TryReadName(client, "version", 64, out var clientVersion))
             return BridgeMessages.Rejected("invalid-request", "The hello's client is not {name, version}.", hello: true);
-        if (!TryReadFeatures(root, out var usesTextSplice, out var usesPresentationEpoch, out var usesPresented))
+        if (!TryReadFeatures(root, out var usesTextSplice, out var usesPresentationEpoch, out var usesPresented,
+                out var usesTranslationText))
             return BridgeMessages.Rejected("invalid-request",
                 $"The hello's features are not an array of at most {MaximumFeatures} strings of at most {MaximumFeatureLength} characters.", hello: true);
         var session = sessionElement.GetString()!;
@@ -552,6 +612,7 @@ internal sealed class BridgeDispatcher : IBridgeRequestHandler
             connection.UsesTextSplice = usesTextSplice;
             connection.UsesPresentationEpoch = usesPresentationEpoch;
             connection.UsesPresented = usesPresented;
+            connection.UsesTranslationText = usesTranslationText;
             connection.HelloCompleted = true;
             if (!usesTextSplice) _connectionsWithoutTextSplice++;
             if (usesPresentationEpoch) _connectionsWithPresentationEpoch++;
@@ -560,14 +621,19 @@ internal sealed class BridgeDispatcher : IBridgeRequestHandler
         }
         // A page that connects to a closing window is told so, after its hello reply.
         if (closing) BridgeTargetedPushes.For(_transport).Send(connection.Key, ClosingPush());
+        // translation-text/1: a page that connects to a window with a locale is told it, after its hello reply. Under the
+        // locale gate, so a change that raced the hello is queued after this push.
+        if (usesTranslationText)
+            lock (_localeGate)
+                if (_locale is not null) BridgeTargetedPushes.For(_transport).Send(connection.Key, LocalePush(_locale));
         return BridgeMessages.Hello();
     }
 
     // The client's features: absent, or an array of strings. A feature this producer does not implement is ignored.
     private static bool TryReadFeatures(JsonElement root, out bool usesTextSplice, out bool usesPresentationEpoch,
-        out bool usesPresented)
+        out bool usesPresented, out bool usesTranslationText)
     {
-        usesTextSplice = usesPresentationEpoch = usesPresented = false;
+        usesTextSplice = usesPresentationEpoch = usesPresented = usesTranslationText = false;
         if (!root.TryGetProperty("features", out var features)) return true;
         if (features.ValueKind != JsonValueKind.Array || features.GetArrayLength() > MaximumFeatures) return false;
         foreach (var feature in features.EnumerateArray())
@@ -578,6 +644,7 @@ internal sealed class BridgeDispatcher : IBridgeRequestHandler
             if (name == TextSpliceFeature) usesTextSplice = true;
             else if (name == PresentationEpochFeature) usesPresentationEpoch = true;
             else if (name == PresentedFeature) usesPresented = true;
+            else if (name == TranslationTextFeature) usesTranslationText = true;
         }
         return true;
     }
@@ -716,6 +783,7 @@ internal sealed class BridgeConnection(string key, string clientKey)
     // Whether the connection uses presentation-epoch/1 and presented/1.
     internal bool UsesPresentationEpoch { get; set; }
     internal bool UsesPresented { get; set; }
+    internal bool UsesTranslationText { get; set; }
     // Whether the window's closing push waits for this connection's closing-reply; the dispatcher's gate guards it.
     internal bool ClosingPending { get; set; }
     // Requests that wait for the hello, in arrival order, and whether the dispatcher is admitting them.

@@ -490,6 +490,23 @@ With Radix (`@radix-ui/react-menubar`) the open menu is the root's controlled
 Check items are `Menubar.CheckboxItem checked`, radio groups
 `Menubar.RadioGroup value` with `Menubar.RadioItem`.
 
+## `useText(value, fallback?)`
+
+Shows a text reference that a ViewModel produced, such as a status line or a
+validation error's `text`, in the window's language, and renders again when the
+language changes. A string shows as it is; `null` and `undefined` show
+`fallback`. Connect the page's Translations runtime once with
+`configureTranslatedText` ([Translated text](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Application.Views/README.md#translated-text)).
+`useWindowLocale()` reads the window's locale.
+
+```tsx
+const status = useText(view.state?.status);
+<p>{status}</p>
+function ErrorLine({ error }: { error: BridgeValidationMessage }) {
+  return <li>{useText(error.text, error.message)}</li>;
+}
+```
+
 ## Errors
 
 The `error` of `useView` and of a command or operation handle is typed

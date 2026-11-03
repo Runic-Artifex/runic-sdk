@@ -1795,7 +1795,11 @@ static void AppendValidationContextReader(StringBuilder cs, IReadOnlyList<string
         cs.AppendLine("                if (validation.IsValid) continue;");
         cs.AppendLine($"                var properties = validation is global::{flavor}.Components.Abstractions.IValidatesProperties {{ PropertyCount: > 0 }} validatesProperties");
         cs.AppendLine("                    ? global::System.Linq.Enumerable.ToArray(validatesProperties.Properties) : null;");
-        cs.AppendLine("                errors.Add(new(validation.Text?.ToSingleLine(\" \") ?? string.Empty, properties));");
+        // translation-text/1: a component, or its text, that carries a text reference gives the error its text.
+        cs.AppendLine("                var message = validation.Text?.ToSingleLine(\" \") ?? string.Empty;");
+        cs.AppendLine("                var text = validation is global::Runic.Application.Views.IRunicTextReferenceSource { Text: { } own } ? own");
+        cs.AppendLine("                    : validation.Text is global::Runic.Application.Views.IRunicTextReferenceSource { Text: { } carried } ? carried : null;");
+        cs.AppendLine("                errors.Add(text is null ? new global::System.ComponentModel.DataAnnotations.ValidationResult(message, properties) : new global::Runic.Application.Views.RunicValidationResult(message, text, properties));");
         cs.AppendLine("            }");
         cs.AppendLine("            return errors;");
         cs.AppendLine("        }");

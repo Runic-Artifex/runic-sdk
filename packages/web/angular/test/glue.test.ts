@@ -519,8 +519,10 @@ describe("injectBridgeConnection", () => {
   test("requires an injection context or an injector, and is a root export (0.11)", () => {
     expect(() => injectBridgeConnection()).toThrow();
     expect(Object.keys(root).sort()).toEqual([
-      "RunicViewOutlet", "ViewOutlet", "injectBridgeConnection", "injectCollectionViewport", "injectCommand", "injectField",
-      "injectLatestOperation", "injectMenuBar", "injectOperation", "injectTextField", "injectView", "injectViewResource", "onBridgeConnection",
+      "RunicTextPipe", "RunicViewOutlet", "ViewOutlet", "configureTranslatedText", "injectBridgeConnection",
+      "injectCollectionViewport", "injectCommand", "injectField", "injectLatestOperation", "injectMenuBar",
+      "injectOperation", "injectText", "injectTextField", "injectView", "injectViewResource", "injectWindowLocale",
+      "onBridgeConnection", "resolveText", "windowLocale",
     ]);
     // The connection API that useBridgeConnection wraps is re-exported, as the menu-bar types are (0.11).
     expect(root.onBridgeConnection).toBe(viewsOnBridgeConnection);

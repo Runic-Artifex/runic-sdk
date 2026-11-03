@@ -89,6 +89,7 @@ Each step has one action. `role` limits a step to one runner; `connection` names
 | `advance` | advances the virtual clock by that many milliseconds | the same |
 | `delivery` | `hold`: the transport stops taking pushes after the one being delivered; `release`: it takes them again | skips it |
 | `closeWindow` | starts the window's close with `timeout` milliseconds and names it `id` ([window close](../README.md#window-close)) | skips it |
+| `setLocale` | sets the window's locale, a tag or `null` ([translated text](../README.md#translated-text)) | skips it |
 | `expect` | checks `model`, `presented` or `closed` | checks `state`, `call`, `operation`, `diagnostics`, `notifications` or `connection` |
 
 A `receive` step waits until the expected message is available, up to the runner's own timeout; time in the scenario
@@ -157,6 +158,7 @@ Expectations of the client:
 - `notifications`: how often subscribers of the route were notified of a new state since its `open` resolved.
 - `connection`: the connection state the client reports. `closed` means that it reports that the producer closed the
   window ([window close](../README.md#window-close)).
+- `locale`: the window's locale the client reports, or `null` ([translated text](../README.md#translated-text)).
 
 Expectations of the producer:
 
@@ -177,6 +179,7 @@ Expectations of the producer:
 | `text-splice/1` | The implementation implements the feature [`text-splice/1`](../README.md#features). |
 | `presentation-epoch/1` | The implementation implements the feature [`presentation-epoch/1`](../README.md#presentation-epochs). |
 | `presented/1` | The implementation implements the feature [`presented/1`](../README.md#presented-states-and-window-close). |
+| `translation-text/1` | The implementation implements the feature [`translation-text/1`](../README.md#translated-text). |
 
 Every `hello` of a scenario that does not require a feature lists `features` as `{"$any":"array","default":["text-splice/1"]}`:
 a runner that writes the `hello` (or its reply) lists `text-splice/1`, and a runner that checks one accepts any list.
@@ -184,10 +187,11 @@ A client lists every feature it implements, so the client's `hello` of a scenari
 always `{"$any":"array","default":[…]}`, also when the scenario requires a feature; the producer's reply decides which
 features are in use.
 The strings of those scenarios are shorter than 64 code units, so their frames and requests are the same with and
-without the feature. Neither `presentation-epoch/1` nor `presented/1` is in use in them, so their messages carry no
-`epoch` and no `present` or `closing` push. A scenario that requires `presentation-epoch/1` or `presented/1` lists the
+without the feature. None of `presentation-epoch/1`, `presented/1` and `translation-text/1` is in use in them, so their messages carry no
+`epoch` and no `present`, `closing` or `locale` push. A scenario that requires `presentation-epoch/1`, `presented/1` or `translation-text/1` lists the
 feature in the `default` of both `hello` steps, beside `text-splice/1`, so it is in use whichever runner writes the
-`hello` or its reply.
+`hello` or its reply; a producer scenario that checks a connection without the feature, such as
+`locale-is-not-pushed-without-the-feature`, lists only `text-splice/1`.
 
 ### Identifiers
 
@@ -201,7 +205,7 @@ connection before connecting it, answers a request it did not send, expects a ca
 
 | Set | Content |
 | --- | --- |
-| [`handshake`](scenarios/handshake) | `hello`; protocol mismatch in either direction; the version diagnostic only for `Runic.Application.Views`; unknown kinds; `features` both ways, unknown and invalid ones, and a feature only one side lists; requests held before `hello`, admitted after it or answered `no-hello` after 5 seconds; the `open` sent with the `hello`, and sent again after a `no-hello` |
+| [`handshake`](scenarios/handshake) | `hello`; protocol mismatch in either direction; the version diagnostic only for `Runic.Application.Views`; unknown kinds; `features` both ways, unknown and invalid ones, and a feature only one side lists; the window's locale pushed after `hello` and on each change, and not without `translation-text/1` (`locale-*`); requests held before `hello`, admitted after it or answered `no-hello` after 5 seconds; the `open` sent with the `hello`, and sent again after a `no-hello` |
 | [`state-changes`](scenarios/state-changes) | The protocol-3 collection and text fixtures, converted (`source` names the case; the text fixtures were removed in 0.13, see [v0.12.1](https://github.com/Runic-Artifex/runic-sdk/tree/v0.12.1/specs/application/fixtures)); member `set` changes together with collection changes; members that never announce a change; a `set` that resets a collection; overflow; recovery while frames arrive; invalid frames; text splices (`splice-*`): a keystroke, a deletion, a short member, a rolling member, a rewrite, a surrogate pair, a checked field, and a splice that does not fit; a validation rule that names no member ([validation](../README.md#validation)); an asynchronous check that starts and ends (`validation-pending-*`) |
 | [`replies`](scenarios/replies) | Revision inclusion; a change without a notification; a call that changes nothing; a call that changes another route; a call that releases its route; a reply before its frame; the revision timeout |
 | [`edits`](scenarios/edits) | `superseded`; edit numbers per member; the client overlay and its end, with the reply to an earlier edit before and after the frame of a later one; a failed edit; checked writes; `set` with a splice against a revision and against the previous edit, `splice-base` that admits nothing and the client's resend in full, a superseded splice, a normalizing setter; checked writes with a splice (`write-splice-*`): applied, a conflict, `splice-base` that retains nothing and the client's resend in full with the same `requestId`, a retry, and a short value sent in full; an edit followed by the frame with its validation, which the overlay does not cover |
@@ -280,7 +284,7 @@ Rules, in this order:
 
 | Rule | Holds | Otherwise |
 | --- | --- | --- |
-| `name` | while `name` has at most 8 characters | `Name must be at most 8 characters.` at the path `["name"]`, and in `nameErrors` |
+| `name` | while `name` has at most 8 characters | `Name must be at most 8 characters.` at the path `["name"]`, with the [`text`](../README.md#text) `{"version":2,"catalog":"conformance","contractFingerprint":"sha256:` and 64 zeros `","key":"name_too_long","arguments":{"max":{"type":"int64","value":"8"}},"fallbackText":"Name must be at most 8 characters."}`, and in `nameErrors` |
 | `approval` | until a `rule` mutation changes it; initially it holds | `Approval is required.` at the path `[]`. The rule names no member: a change of it changes no other member and announces none. |
 
 `name` also has an asynchronous check ([`pending`](../README.md#pending), `validation-pending/1`): while a `check`

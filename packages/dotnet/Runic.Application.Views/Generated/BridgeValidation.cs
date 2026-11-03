@@ -49,6 +49,8 @@ public static class BridgeValidation
     private const int MaximumErrors = 256;
     private const int MaximumPathSegments = 64;
     private const int MaximumStringLength = 2_048;
+    // translation-text/1: a larger text reference is left out of its error, which then shows its message.
+    private const int MaximumTextBytes = 16 * 1_024;
 
     /// <summary>Writes <c>{ hasErrors, truncated, errors }</c> for <paramref name="root"/>.</summary>
     public static void Write(Utf8JsonWriter writer, object root,
@@ -354,6 +356,9 @@ public static class BridgeValidation
                     AddErrors(objectErrors ?? errors.GetErrors(null), nodePath, node, skipPresentedMembers: true);
                 }
                 else AddErrors(objectErrors, nodePath, node, skipPresentedMembers: false);
+                // translation-text/1: GetErrors(member) of an object the reader handles, such as a
+                // ReactiveValidationObject, reports plain messages; the reader's entries carry their text.
+                var memberTexts = objectErrors is null ? null : MemberTexts(objectErrors);
                 // Resolved after the traversal, so they do not use the errors' traversal budget.
                 if (owner is IRunicPendingValidation pending && pending.PendingMemberPaths is { Count: > 0 } paths)
                     _pendingRequests.Add((paths.ToArray(), node));
@@ -369,7 +374,8 @@ public static class BridgeValidation
                         if (owner is INotifyDataErrorInfo propertyErrors)
                         {
                             if (readsHasErrors) _hasErrors |= propertyErrors.HasErrors;
-                            AddErrors(propertyErrors.GetErrors(member.PropertyName), _path, node, skipPresentedMembers: false);
+                            AddErrors(propertyErrors.GetErrors(member.PropertyName), _path, node, skipPresentedMembers: false,
+                                memberTexts, member.PropertyName);
                         }
 
                         var value = member.Read(owner);
@@ -408,8 +414,21 @@ public static class BridgeValidation
             if (member.Children.Count > 0) Visit(value, member.Children);
         }
 
+        // The text references of the reader's entries that name members, by member and message.
+        private static Dictionary<(string Member, string Message), RunicTextReference>? MemberTexts(IEnumerable entries)
+        {
+            Dictionary<(string, string), RunicTextReference>? texts = null;
+            foreach (var entry in entries)
+                if (entry is ValidationResult result && TextOf(result) is { } text)
+                    foreach (var name in result.MemberNames)
+                        if (!string.IsNullOrEmpty(name))
+                            (texts ??= [])[(name, MessageText(result.ErrorMessage))] = text;
+            return texts;
+        }
+
         private void AddErrors(IEnumerable? values, IReadOnlyList<object> defaultPath, Node node,
-            bool skipPresentedMembers)
+            bool skipPresentedMembers, Dictionary<(string Member, string Message), RunicTextReference>? memberTexts = null,
+            string? memberName = null)
         {
             if (values is null) return;
             foreach (var value in values)
@@ -418,15 +437,19 @@ public static class BridgeValidation
                 switch (value)
                 {
                     case RunicValidationMessage message:
-                        AddMessage(MessageText(message.Message), message.Code, message.Severity, message.MemberPaths, defaultPath, node);
+                        AddMessage(MessageText(message.Message), message.Code, message.Severity, message.Text, message.MemberPaths, defaultPath, node);
                         break;
                     case ValidationResult result:
                         var memberNames = result.MemberNames;
                         if (skipPresentedMembers && !TryUnpresented(ref memberNames, node.Members)) break;
-                        AddMessage(MessageText(result.ErrorMessage), null, null, memberNames, defaultPath, node);
+                        AddMessage(MessageText(result.ErrorMessage), null, null, TextOf(result), memberNames, defaultPath, node);
                         break;
                     default:
-                        AddMessage(MessageText(value), null, null, null, defaultPath, node);
+                        var plain = MessageText(value);
+                        var text = TextOf(value);
+                        if (text is null && memberName is not null && memberTexts is not null)
+                            text = memberTexts.GetValueOrDefault((memberName, plain));
+                        AddMessage(plain, null, null, text, null, defaultPath, node);
                         break;
                 }
             }
@@ -452,12 +475,16 @@ public static class BridgeValidation
             return true;
         }
 
-        private void AddMessage(string message, string? code, string? severity,
+        // translation-text/1: the text reference of an entry that has one (IRunicTextReferenceSource).
+        private static RunicTextReference? TextOf(object? entry) =>
+            entry is IRunicTextReferenceSource { Text: { } text } ? text : null;
+
+        private void AddMessage(string message, string? code, string? severity, RunicTextReference? text,
             IEnumerable<string>? memberPaths, IReadOnlyList<object> defaultPath, Node node)
         {
             if (memberPaths is null)
             {
-                WriteError(defaultPath, message, code, severity);
+                WriteError(defaultPath, message, code, severity, text);
                 return;
             }
 
@@ -467,9 +494,9 @@ public static class BridgeValidation
                 found = true;
                 if (_errors >= MaximumErrors) { _truncated = true; return; }
                 var resolved = ResolveMemberPath(memberPath, node);
-                WriteError(resolved ?? defaultPath, message, code, severity);
+                WriteError(resolved ?? defaultPath, message, code, severity, text);
             }
-            if (!found) WriteError(defaultPath, message, code, severity);
+            if (!found) WriteError(defaultPath, message, code, severity, text);
         }
 
         // Resolves a CLR member path relative to its object, such as "Profile.PostalCode", "Items[0].Name",
@@ -576,7 +603,8 @@ public static class BridgeValidation
             }
         }
 
-        private void WriteError(IReadOnlyList<object> path, string message, string? code, string? severity)
+        private void WriteError(IReadOnlyList<object> path, string message, string? code, string? severity,
+            RunicTextReference? text)
         {
             _hasErrors = true;
             _errors++;
@@ -594,6 +622,14 @@ public static class BridgeValidation
             _writer.WriteString("message", Limit(message));
             if (!string.IsNullOrEmpty(code)) _writer.WriteString("code", Limit(code));
             if (!string.IsNullOrEmpty(severity)) _writer.WriteString("severity", Limit(severity));
+            // translation-text/1: the message as a text reference, which a page shows in the window's language. It is
+            // part of the state whatever the connections' features; a client without the feature ignores it.
+            if (text is { Utf8Json.Length: > MaximumTextBytes }) _truncated = true;
+            else if (text is not null)
+            {
+                _writer.WritePropertyName("text");
+                text.WriteTo(_writer);
+            }
             _writer.WriteEndObject();
         }
 

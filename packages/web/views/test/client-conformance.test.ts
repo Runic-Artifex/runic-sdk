@@ -3,7 +3,7 @@
 import assert from "node:assert/strict";
 import { readdirSync, readFileSync } from "node:fs";
 import { test } from "node:test";
-import { BridgeError, isBridgeOutcome, onBridgeConnection, onBridgeDiagnostic, type BridgeConnectionState } from "../dist/index.js";
+import { BridgeError, isBridgeOutcome, onBridgeConnection, onBridgeDiagnostic, windowLocale, type BridgeConnectionState } from "../dist/index.js";
 import { bridgeOperations, connectView, defineCollection, defineCollections, defineInteractions, defineText, type ViewConnection } from "../dist/generated.js";
 import * as wire from "../dist/wire.js";
 import { decodeBridgeValidation } from "../dist/validation.js";
@@ -286,7 +286,7 @@ async function run(scenario: Scenario): Promise<void> {
       }
       if ("disconnect" in step) { host.disconnect(); await idle(); continue; }
       // The producer's mutations (including presented/1's `renew` and `waitPresented`), its transport and its close.
-      if ("mutate" in step || "delivery" in step || "closeWindow" in step) continue;
+      if ("mutate" in step || "delivery" in step || "closeWindow" in step || "setLocale" in step) continue;
       if ("advance" in step) { await advance(step["advance"]); continue; }
       if ("call" in step) {
         const call = step["call"];
@@ -412,6 +412,8 @@ async function run(scenario: Scenario): Promise<void> {
         if (expect["notifications"])
           assert.equal(notifications.get(expect["notifications"].route) ?? 0, expect["notifications"].count, `${scenario.id} ${at}: notifications`);
         if (expect["connection"] !== undefined) assert.equal(connectionState, expect["connection"], `${scenario.id} ${at}: connection`);
+        // translation-text/1: the window's locale the client reports.
+        if ("locale" in expect) assert.equal(windowLocale(), expect["locale"], `${scenario.id} ${at}: locale`);
         continue;
       }
       throw new Error(`${scenario.id} ${at}: unknown step ${JSON.stringify(step)}`);

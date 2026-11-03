@@ -7,6 +7,7 @@ import {
   toValue,
   watch,
   type Component,
+  type ComputedRef,
   type MaybeRefOrGetter,
   type Ref,
   type SetupContext,
@@ -21,6 +22,10 @@ import {
   createTextFieldController,
   createViewController,
   onBridgeConnection,
+  onWindowLocale,
+  resolveText,
+  subscribeText,
+  windowLocale,
   type BridgeConnectionOptions,
   type BridgeConnectionState,
   type BridgeField,
@@ -36,6 +41,7 @@ import {
   type OperationControllerOptions,
   type OperationState,
   type PageReference,
+  type TextReference,
   type ViewClient,
   type ViewConnector,
   type ViewControllerOptions,
@@ -511,7 +517,41 @@ export function useBridgeConnection(options: BridgeConnectionOptions = {}): Brid
   return { state };
 }
 
+/**
+ * A text reference that a ViewModel produced, such as a status line or a validation message's `text`, in the window's
+ * language (`resolveText`), as a computed ref that follows a language switch until the effect scope stops. `source` and
+ * `fallback` may be refs or getters: `useText(() => view.state.value?.status)`. A string shows as it is; `null` and
+ * `undefined` show `fallback`. Configure the page's Translations runtime once with `configureTranslatedText`; without
+ * one, a reference shows its fallback text.
+ *
+ * ```vue
+ * const status = useText(() => view.state.value?.status);
+ * <p>{{ status }}</p>
+ * ```
+ */
+export function useText(
+  source: MaybeRefOrGetter<TextReference | string | null | undefined>,
+  fallback?: MaybeRefOrGetter<string | undefined>,
+): ComputedRef<string> {
+  const version = shallowRef(0);
+  releaseWithScope("useText", subscribeText(() => { version.value++; }));
+  return computed(() => {
+    void version.value;
+    return resolveText(toValue(source), toValue(fallback));
+  });
+}
+
+/** The window's locale that the application set, or `null` while it sets none, as a ref, until the effect scope stops. */
+export function useWindowLocale(): Readonly<Ref<string | null>> {
+  const locale = shallowRef<string | null>(windowLocale());
+  releaseWithScope("useWindowLocale", onWindowLocale(next => { locale.value = next; }));
+  return locale;
+}
+
 export { useCollectionViewport, type CollectionViewportHandle } from "./viewport.js";
+export {
+  configureTranslatedText, resolveText, windowLocale, type TextReference, type TextTranslations,
+} from "@runic-artifex/views";
 export { onBridgeConnection, type BridgeConnectionOptions, type BridgeConnectionState } from "@runic-artifex/views";
 export {
   FieldError,

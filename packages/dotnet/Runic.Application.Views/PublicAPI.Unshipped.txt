@@ -17,3 +17,35 @@ Runic.Application.Views.RunicPendingValidation.Track<T>(string! memberPath, Syst
 static Runic.Application.Views.RunicPendingValidationExtensions.TrackPending<T>(this System.IObservable<T>! states, Runic.Application.Views.RunicPendingValidation! pending, string! memberPath, System.Func<T, bool>! isPending) -> System.IObservable<T>!
 Runic.Application.Views.RunicPendingValidation.Track(string! memberPath, System.Func<System.Threading.CancellationToken, System.Threading.Tasks.Task!>! validate) -> System.Threading.Tasks.Task!
 Runic.Application.Views.RunicPendingValidation.Track<T>(string! memberPath, System.Func<System.Threading.CancellationToken, System.Threading.Tasks.Task<T>!>! validate) -> System.Threading.Tasks.Task<T>!
+const Runic.Application.Views.RunicTextReference.MaximumUtf8Bytes = 262144 -> int
+override Runic.Application.Views.RunicTextReference.Equals(object? obj) -> bool
+override Runic.Application.Views.RunicTextReference.GetHashCode() -> int
+override Runic.Application.Views.RunicTextReference.ToString() -> string!
+Runic.Application.Views.IRunicTextReferenceSource
+Runic.Application.Views.IRunicTextReferenceSource.Text.get -> Runic.Application.Views.RunicTextReference?
+Runic.Application.Views.IRunicWindowLocale
+Runic.Application.Views.IRunicWindowLocale.Locale.get -> string?
+Runic.Application.Views.IRunicWindowLocale.Locale.set -> void
+Runic.Application.Views.RunicTextReference
+Runic.Application.Views.RunicTextReference.Catalog.get -> string!
+Runic.Application.Views.RunicTextReference.ContractFingerprint.get -> string!
+Runic.Application.Views.RunicTextReference.Equals(Runic.Application.Views.RunicTextReference? other) -> bool
+Runic.Application.Views.RunicTextReference.FallbackText.get -> string?
+Runic.Application.Views.RunicTextReference.Key.get -> string!
+Runic.Application.Views.RunicTextReference.ToJson() -> string!
+Runic.Application.Views.RunicTextReference.Utf8Json.get -> System.ReadOnlyMemory<byte>
+Runic.Application.Views.RunicTextReference.Version.get -> int
+Runic.Application.Views.RunicTextReference.WriteTo(System.Text.Json.Utf8JsonWriter! writer) -> void
+Runic.Application.Views.RunicValidationMessage.Text.get -> Runic.Application.Views.RunicTextReference?
+Runic.Application.Views.RunicValidationMessage.Text.init -> void
+Runic.Application.Views.RunicValidationResult
+Runic.Application.Views.RunicValidationResult.RunicValidationResult(Runic.Application.Views.RunicValidationResult! validationResult) -> void
+Runic.Application.Views.RunicValidationResult.RunicValidationResult(string? errorMessage, Runic.Application.Views.RunicTextReference? text, System.Collections.Generic.IEnumerable<string!>? memberNames = null) -> void
+Runic.Application.Views.RunicValidationResult.Text.get -> Runic.Application.Views.RunicTextReference?
+Runic.Application.Views.WindowContentSession.LocaleChanged -> System.EventHandler?
+Runic.Application.Views.WindowContentSession.Locale.get -> string?
+Runic.Application.Views.WindowContentSession.Locale.set -> void
+static Runic.Application.Views.RunicTextReference.Create<T>(T reference, System.Text.Json.Serialization.Metadata.JsonTypeInfo<T>! typeInfo) -> Runic.Application.Views.RunicTextReference!
+static Runic.Application.Views.RunicTextReference.Parse(string! json) -> Runic.Application.Views.RunicTextReference!
+static Runic.Application.Views.RunicTextReference.Parse(System.ReadOnlySpan<byte> utf8Json) -> Runic.Application.Views.RunicTextReference!
+static Runic.Application.Views.RunicTextReference.Read(System.Text.Json.JsonElement value) -> Runic.Application.Views.RunicTextReference!

@@ -99,6 +99,8 @@ internal sealed class ProducerScenarioRunner
             if (_closes.ContainsKey(id)) throw new ScenarioFailure($"The close {id} was started before.");
             _closes.Add(id, window.CloseAsync(TimeSpan.FromMilliseconds(close["timeout"]!.GetValue<int>())));
         }
+        // translation-text/1: the window's locale, as WindowContentSession.Locale sets it.
+        else if (step.ContainsKey("setLocale")) BridgeDispatcher.For(_transport).SetLocale(step["setLocale"]?.GetValue<string>());
         else if (step["expect"] is JsonObject expect)
         {
             // The model, waits and closes are the producer's; state, call, operation, diagnostics, notifications and

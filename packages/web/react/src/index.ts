@@ -19,6 +19,11 @@ import {
   createTextFieldController,
   createViewController,
   onBridgeConnection,
+  onWindowLocale,
+  resolveText,
+  subscribeText,
+  textVersion,
+  windowLocale,
   type BridgeConnectionOptions,
   type BridgeConnectionState,
   type BridgeField,
@@ -33,6 +38,7 @@ import {
   type OperationControllerOptions,
   type OperationState,
   type PageReference,
+  type TextReference,
   type ViewClient,
   type ViewController,
   type ViewControllerState,
@@ -654,9 +660,42 @@ export function useBridgeConnection(options: BridgeConnectionOptions = {}): Brid
 
 const serverConnectionState = (): BridgeConnectionState => "connecting";
 
+/**
+ * Renders a text reference that a ViewModel produced, such as a status line or a validation message's `text`, in the
+ * window's language (`resolveText`), and renders again when the language changes. A string renders as it is;
+ * `null` and `undefined` render `fallback`. Configure the page's Translations runtime once with
+ * `configureTranslatedText`; without one, a reference shows its fallback text.
+ *
+ * ```tsx
+ * const status = useText(view.state?.status);
+ * <p>{status}</p>
+ * {view.state?.validation.errors.map(error => <ErrorLine key={error.message} error={error} />)}
+ * function ErrorLine({ error }) { return <li>{useText(error.text, error.message)}</li>; }
+ * ```
+ */
+export function useText(value: TextReference | string | null | undefined, fallback?: string): string {
+  const version = useSyncExternalStore(subscribeText, textVersion, textVersion);
+  // version is the language the text resolves in.
+  return useMemo(() => resolveText(value, fallback), [value, fallback, version]);
+}
+
+/**
+ * Renders the window's locale that the application set (`IRunicWindowLocale` in .NET), or `null` while it sets none,
+ * for example to set `lang` on an element. The server snapshot is `null`.
+ */
+export function useWindowLocale(): string | null {
+  return useSyncExternalStore(subscribeWindowLocale, windowLocale, serverWindowLocale);
+}
+
+const subscribeWindowLocale = (onChange: () => void) => onWindowLocale(() => onChange());
+const serverWindowLocale = (): string | null => null;
+
 export { retrySuspenseView, useSuspenseView, type SuspenseViewHandle, type SuspenseViewOptions } from "./suspense.js";
 export { useCollectionViewport, type CollectionViewportHandle } from "./viewport.js";
 export { onBridgeConnection, type BridgeConnectionOptions, type BridgeConnectionState } from "@runic-artifex/views";
+export {
+  configureTranslatedText, resolveText, windowLocale, type TextReference, type TextTranslations,
+} from "@runic-artifex/views";
 export {
   FieldError,
   type BridgeField,

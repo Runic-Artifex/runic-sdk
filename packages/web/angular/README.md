@@ -552,6 +552,22 @@ export class AppMenuBar {
 }
 ```
 
+## Translated text
+
+`injectText(() => source, () => fallback?)` is a signal of a text reference in
+the window's language, and the `runicText` pipe does the same in templates; both
+follow a language switch. Connect the page's Translations runtime once with
+`configureTranslatedText` ([Translated text](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Application.Views/README.md#translated-text)).
+`injectWindowLocale()` reads the window's locale.
+
+```ts
+@Component({
+  imports: [RunicTextPipe],
+  template: `<p>{{ view.state()?.status | runicText }}</p>
+    @for (error of view.state()?.validation.errors; track $index) { <li>{{ error.text | runicText: error.message }}</li> }`,
+})
+```
+
 ## Errors
 
 The `error()` signal of `injectView` and of a command or operation is typed

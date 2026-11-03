@@ -25,6 +25,8 @@ export {
   followViewport,
   operation,
   states,
+  textChanges,
+  texts,
   viewportChanges,
   type CommandValue,
   type OperationOptions,

@@ -182,6 +182,13 @@ public static class BridgeContractShape
             parts.Add($"custom:{path}:codec:{TypeName(custom.CodecType)}:ts:{shape?.TypeScriptType ?? "missing"}:decoder:{shape?.DecoderExpression ?? "missing"}:encoder:{shape?.EncoderExpression ?? "missing"}");
             return;
         }
+        // translation-text/1: a Runic text reference, or Runic.Translations.TranslationReference by name.
+        if (type == typeof(RunicTextReference) || type.FullName == "Runic.Translations.TranslationReference"
+            && type.Assembly.GetName().Name == "Runic.Translations")
+        {
+            parts.Add($"text-reference:{path}");
+            return;
+        }
         if (type == typeof(System.Text.Json.JsonElement) || type == typeof(System.Text.Json.Nodes.JsonNode))
         {
             parts.Add($"json:{path}");

@@ -2,9 +2,16 @@ import * as bridgeWire from "./wire.js";
 
 export interface BridgeValidationMessage {
   readonly path: readonly (string | number)[];
+  /** The message; the fallback of `text`. */
   readonly message: string;
   readonly code?: string;
   readonly severity?: string;
+  /**
+   * The message as a text reference, which `resolveText`, `useText` and the framework helpers show in the window's
+   * language, with `message` as the fallback (a producer of 0.16 or later, `translation-text/1`). Absent when the
+   * model gave none.
+   */
+  readonly text?: bridgeWire.TextReference;
 }
 
 /**
@@ -12,6 +19,12 @@ export interface BridgeValidationMessage {
  * at `validation.pending`.
  */
 export const validationPendingFeature = "validation-pending/1";
+
+/**
+ * `translation-text/1` (specs/application/README.md, "Translated text"): validation errors may carry `text`, and the
+ * producer pushes the window's locale.
+ */
+export const translationTextFeature = "translation-text/1";
 
 export interface BridgeValidationState {
   readonly hasErrors: boolean;
@@ -36,6 +49,8 @@ export function decodeBridgeValidation(value: unknown): BridgeValidationState {
       message: bridgeWire.string(error["message"]),
       ...(error["code"] === undefined ? {} : { code: bridgeWire.string(error["code"]) }),
       ...(error["severity"] === undefined ? {} : { severity: bridgeWire.string(error["severity"]) }),
+      // translation-text/1: a malformed text leaves the error with its message.
+      ...(bridgeWire.isTextReference(error["text"]) ? { text: error["text"] } : {}),
     }))),
     ...(state["pending"] === undefined ? {} : {
       pending: bridgeWire.array(state["pending"], path => bridgeWire.array(path, part =>

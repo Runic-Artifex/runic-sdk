@@ -374,6 +374,11 @@ internal static partial class ViewsLog
     [LoggerMessage(EventId = 1102, EventName = "HotReloadRefreshFailed", Level = LogLevel.Warning,
         Message = "Refreshing {Model} after a Hot Reload update failed with {ErrorType}.")]
     internal static partial void HotReloadRefreshFailed(ILogger logger, Exception exception, string model, string errorType);
+
+    // translation-text/1: the application set the window's locale, which its pages follow (null: they keep their own).
+    [LoggerMessage(EventId = 1170, EventName = "WindowLocaleChanged", Level = LogLevel.Debug,
+        Message = "The window's locale is now {Locale}.")]
+    internal static partial void WindowLocaleChanged(ILogger logger, string? locale);
 }
 
 // Without an ILoggerFactory the runtime keeps its earlier System.Diagnostics.Trace

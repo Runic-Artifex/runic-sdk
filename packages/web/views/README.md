@@ -1140,6 +1140,41 @@ View is expected around every navigation, so its `released` rejection reaches
 the caller but is not reported as a diagnostic; `onBridgeConnection` reports a
 lost host.
 
+## Translated text
+
+Text that a ViewModel produces as a Runic Translations text reference, such as a
+status line (a `TextReference` member) or a validation error's `text`, shows in
+the window's language (`translation-text/1`). Connect the page's Translations
+runtime once; the window's locale, which the application sets with
+`IRunicWindowLocale`, is then passed to its `setLocale`:
+
+```ts
+import { configureTranslatedText, resolveText, subscribeText } from "@runic-artifex/views";
+import { m } from "virtual:runic-translations/app/messages";
+import { configureLocaleResolver, createLocaleSource } from "virtual:runic-translations/app/runtime";
+import { resolveTextReference } from "virtual:runic-translations/app/transport";
+
+const locale = createLocaleSource({ initialLocale: navigator.language });
+configureLocaleResolver(locale.getLocale);
+configureTranslatedText({
+  ...locale,
+  resolve: (reference, language) => resolveTextReference(reference, m, { locale: language }).text,
+});
+
+status.textContent = resolveText(editor.snapshot.status);
+subscribeText(() => { status.textContent = resolveText(editor.snapshot.status); });
+```
+
+`resolveText(value, fallback)` formats a reference in the window's language, or
+shows its `fallbackText`, then `fallback`, then its key; a string shows as it
+is. For a validation error: `resolveText(error.text, error.message)`. Field
+errors already show translated messages and update on a language switch.
+`windowLocale()` and `onWindowLocale` read the window's locale. The framework
+packages wrap this as `useText` (React, Vue, Svelte), `injectText` and the
+`runicText` pipe (Angular) and `texts` (Effect). The mock bridge's
+`setWindowLocale(locale)` pushes a locale in page tests. See
+[Translated text](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Application.Views/README.md#translated-text) for the .NET side.
+
 ## Connection state
 
 `onBridgeConnection(listener, options?)` reports the page's connection to its

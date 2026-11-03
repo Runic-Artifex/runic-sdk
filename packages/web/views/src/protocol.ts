@@ -46,7 +46,9 @@ export type Push =
   /** presented/1: report `presented` once the page painted `route` at `revision` or later. */
   | Message & { readonly kind: "present"; readonly route: string; readonly revision: number }
   /** presented/1: the application closes the window; the only push without a route, for window-level handlers. */
-  | Message & { readonly kind: "closing"; readonly route?: undefined };
+  | Message & { readonly kind: "closing"; readonly route?: undefined }
+  /** translation-text/1: the window's locale, or null when the application sets none; a window-level push. */
+  | Message & { readonly kind: "locale"; readonly route?: undefined; readonly locale: string | null };
 
 /** The kinds of {@link Push}; a client ignores other kinds. */
 export type PushKind = Push["kind"];
@@ -182,7 +184,10 @@ function invalidChanges(changes: unknown): string | undefined {
   return undefined;
 }
 
-const pushKinds = new Set(["state", "frame", "failure", "operation", "interaction", "interaction-cancelled", "menu-bar", "present", "closing"]);
+const pushKinds = new Set(["state", "frame", "failure", "operation", "interaction", "interaction-cancelled", "menu-bar", "present", "closing", "locale"]);
+
+// A locale tag the producer may push: letters, digits and '-', starting with a letter, at most 64 characters.
+const localeTag = /^[A-Za-z][A-Za-z0-9]*(?:-[A-Za-z0-9]+)*$/;
 
 /** The epoch of a reply or `state` push, when it carries one that is a safe integer (presentation-epoch/1). */
 export function epochOf(message: Message): number | undefined {
@@ -202,6 +207,12 @@ export function readPush(text: unknown): PushReading {
   if (!pushKinds.has(kind)) return { result: "ignored" };
   // `closing` is about the window: a route it names is ignored, like any member a client does not need.
   if (kind === "closing") return { result: "valid", push: push as Push };
+  if (kind === "locale") {
+    const locale = push["locale"];
+    if (locale !== null && !(isString(locale) && locale.length <= 64 && localeTag.test(locale)))
+      return { result: "invalid", kind, reason: "The locale push has no locale tag." };
+    return { result: "valid", push: { kind: "locale", locale } as Push };
+  }
   if (route === undefined) return invalid("The push has no route.");
   switch (kind) {
     case "state":

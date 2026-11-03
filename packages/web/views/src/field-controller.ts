@@ -6,6 +6,7 @@ import { FieldError } from "./field-error.js";
 import { kindFormatter, kindParser, type FieldTextParser } from "./field-text.js";
 import { disposable } from "./lifetime.js";
 import { reportBridgeError } from "./transport.js";
+import { subscribeText } from "./translated-text.js";
 
 export { FieldError, type FieldErrorKind } from "./field-error.js";
 
@@ -264,6 +265,7 @@ export function createFieldController<TState, TClient, TValue>(
   // checked: the field's value and version that the next write is checked against.
   let baseline: FieldBaseline<TValue> | undefined;
   let disposed = false;
+  let stopText: (() => void) | undefined;
   // commit() calls waiting for the field's writes.
   let idleWaiters: ((state: FieldState<TValue>) => void)[] = [];
   const empty = (kind === "text" || kind === undefined ? "" : undefined) as TValue;
@@ -460,7 +462,12 @@ export function createFieldController<TState, TClient, TValue>(
     subscribe(listener: () => void) {
       if (disposed) return () => {};
       listeners.add(listener);
-      return () => { listeners.delete(listener); };
+      // translation-text/1: messages with a text reference follow the window's language while someone listens.
+      stopText ??= subscribeText(() => { if (!disposed) update(); });
+      return () => {
+        listeners.delete(listener);
+        if (listeners.size === 0) { stopText?.(); stopText = undefined; }
+      };
     },
     setSource(next: FieldSource<TState, TClient> | undefined) {
       source = next;
@@ -513,6 +520,8 @@ export function createFieldController<TState, TClient, TValue>(
       if (disposed) return;
       disposed = true;
       listeners.clear();
+      stopText?.();
+      stopText = undefined;
       cancelTimer();
       resolveIdle();
       // The last value the user typed is not lost with the field.
