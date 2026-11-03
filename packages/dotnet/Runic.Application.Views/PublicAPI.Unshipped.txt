@@ -21,11 +21,27 @@ Runic.Application.Views.RunicRowEditorAttribute
 Runic.Application.Views.RunicRowEditorAttribute.Collection.get -> string?
 Runic.Application.Views.RunicRowEditorAttribute.RunicRowEditorAttribute() -> void
 Runic.Application.Views.RunicRowEditorAttribute.RunicRowEditorAttribute(string! collection) -> void
-Runic.Application.Views.Generated.CheckedPropertyDescriptor<T>.FieldPaths.get -> System.Collections.Generic.IReadOnlyList<string![]!>?
+Runic.Application.Views.Generated.CheckedPropertyDescriptor<T>.FieldPaths.get -> System.Collections.Generic.IReadOnlyList<Runic.Application.Views.Generated.BridgeFieldPath!>?
 Runic.Application.Views.Generated.CheckedPropertyDescriptor<T>.FieldPaths.init -> void
-Runic.Application.Views.Generated.BridgeCollectionDescriptor<T>.FieldPaths.get -> System.Collections.Generic.IReadOnlyList<string![]!>?
+Runic.Application.Views.Generated.BridgeCollectionDescriptor<T>.FieldPaths.get -> System.Collections.Generic.IReadOnlyList<Runic.Application.Views.Generated.BridgeFieldPath!>?
 Runic.Application.Views.Generated.BridgeCollectionDescriptor<T>.FieldPaths.init -> void
-Runic.Application.Views.Generated.BridgeCollectionDescriptor<T>.ReadRow.get -> System.Func<System.Text.Json.JsonElement, object?>?
-Runic.Application.Views.Generated.BridgeCollectionDescriptor<T>.ReadRow.init -> void
-Runic.Application.Views.Generated.BridgeCollectionDescriptor<T>.UpdateRow.get -> System.Action<T, object?>?
+Runic.Application.Views.Generated.BridgeCollectionDescriptor<T>.UpdateRow.get -> System.Action<T, object?, Runic.Application.Views.RunicRowEdit!>?
 Runic.Application.Views.Generated.BridgeCollectionDescriptor<T>.UpdateRow.init -> void
+Runic.Application.Views.Generated.BridgeCollectionDescriptor<T>.RowConflicts.get -> Runic.Application.Views.RunicRowConflicts
+Runic.Application.Views.Generated.BridgeCollectionDescriptor<T>.RowConflicts.init -> void
+Runic.Application.Views.Generated.BridgeFieldPath
+Runic.Application.Views.Generated.BridgeFieldPath.BridgeFieldPath(string![]! path, System.Func<object!, System.Text.Json.JsonElement, object!>! set) -> void
+Runic.Application.Views.Generated.BridgeFieldPath.Path.get -> System.Collections.Generic.IReadOnlyList<string!>!
+Runic.Application.Views.Generated.BridgeFieldPath.Set.get -> System.Func<object!, System.Text.Json.JsonElement, object!>!
+Runic.Application.Views.RunicRowEdit
+Runic.Application.Views.RunicRowEdit.ConnectionKey.get -> string?
+Runic.Application.Views.RunicRowEdit.Path.get -> System.Collections.Generic.IReadOnlyList<string!>!
+Runic.Application.Views.RunicRowEdit.Previous.get -> object!
+Runic.Application.Views.RunicRowConflicts
+Runic.Application.Views.RunicRowConflicts.Cell = 0 -> Runic.Application.Views.RunicRowConflicts
+Runic.Application.Views.RunicRowConflicts.Row = 1 -> Runic.Application.Views.RunicRowConflicts
+Runic.Application.Views.RunicRowEditorAttribute.Conflicts.get -> Runic.Application.Views.RunicRowConflicts
+Runic.Application.Views.RunicRowEditorAttribute.Conflicts.set -> void
+Runic.Application.Views.RunicNoFieldAttribute
+Runic.Application.Views.RunicNoFieldAttribute.RunicNoFieldAttribute() -> void
+static Runic.Application.Views.Generated.BridgeFieldPath.ReplaceMember(System.Action<System.Text.Json.Utf8JsonWriter!>! writeObject, string! member, System.Action<System.Text.Json.Utf8JsonWriter!>! writeValue) -> System.Text.Json.JsonDocument!

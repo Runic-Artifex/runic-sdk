@@ -8,10 +8,12 @@ namespace Runic.Application.Views;
 /// <remarks>
 /// <para>
 /// The method takes the row's key and the updated row, such as <c>void UpdateLine(int id, InvoiceLine line)</c>, and
+/// optionally a <see cref="RunicRowEdit"/> with the changed cell and the row before the edit, and
 /// replaces the row in the collection (<c>Lines[index] = line</c>), recomputes what depends on it and may normalize it.
-/// Throw to reject the change; the page keeps its draft and shows the exception's message. Rows are immutable values
-/// here: the Bridge builds the updated row from the current one, so records, init-only properties and mutable classes
-/// all work.
+/// Throw to reject the change; the page keeps its draft and shows the exception's message. The Bridge copies the
+/// current row with the one cell changed: a record with <c>with</c>, a sealed class with its copy constructor or
+/// <c>Clone()</c>, so members the page does not see, such as a <see cref="RunicIgnoreAttribute"/> database id, are
+/// kept. A row type it cannot copy exactly is error <c>RUNICBRIDGE052</c>.
 /// </para>
 /// <para>
 /// Each cell is a checked field (<c>field-paths/1</c>): a cell that another writer changed after the page read it is a
@@ -31,4 +33,10 @@ public sealed class RunicRowEditorAttribute : Attribute
 
     /// <summary>The collection property, or <see langword="null"/> to find it by the row type.</summary>
     public string? Collection { get; }
+
+    /// <summary>
+    /// When a cell write is a conflict: <see cref="RunicRowConflicts.Cell"/> (the default) when another writer changed
+    /// the same cell meanwhile, <see cref="RunicRowConflicts.Row"/> when anything in the row changed.
+    /// </summary>
+    public RunicRowConflicts Conflicts { get; set; }
 }

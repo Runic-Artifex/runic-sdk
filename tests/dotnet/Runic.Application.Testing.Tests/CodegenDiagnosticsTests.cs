@@ -228,6 +228,90 @@ internal sealed partial class CodegenDiagnosticsTests
         }
     }
 
+    // field-paths/1 (C4 review): row editors whose rows cannot be copied exactly, query collections, objects in a row
+    // that cannot be copied, and an editor named when its rows' type cannot come from the page.
+    [Test]
+    public async Task RowEditorsAreCheckedAsync()
+    {
+        var root = FindWorkspaceRoot();
+        var configuration = System.Reflection.CustomAttributeExtensions.GetCustomAttribute<System.Reflection.AssemblyConfigurationAttribute>(
+            typeof(CodegenDiagnosticsTests).Assembly)?.Configuration ?? "Release";
+        var generator = Path.Combine(root, "tools", "Runic.Application.Views.Codegen", "bin", configuration, "net10.0", "BridgeCodegen.dll");
+        var temporaryRoot = Path.Combine(Path.GetTempPath(), $"runic-codegen-row-editors-{Guid.NewGuid():N}");
+        const string Rows = Preamble;
+        try
+        {
+            // A class that is not sealed would lose a derived row's members.
+            var open = await GenerateAsync(generator, temporaryRoot, "OpenRow", Rows + """
+                public class OpenLine { public int Id { get; set; } public int Quantity { get; set; } }
+                public sealed class OpenViewModel : FixtureModel
+                {
+                    [RunicCollection(nameof(OpenLine.Id))] public System.Collections.ObjectModel.ObservableCollection<OpenLine> Lines { get; } = [];
+                    [RunicRowEditor] public void UpdateLine(int id, OpenLine line) { }
+                }
+                public sealed partial class OpenWindow : RunicWindow<OpenViewModel>;
+                """).ConfigureAwait(false);
+            Require(open.Contains("error RUNICBRIDGE052:", StringComparison.Ordinal)
+                && open.Contains("OpenViewModel.UpdateLine: the rows of Lines cannot be copied", StringComparison.Ordinal)
+                && open.Contains("not sealed", StringComparison.Ordinal), open);
+
+            // A sealed class with a member the page does not see and no way to copy it.
+            var hidden = await GenerateAsync(generator, temporaryRoot, "HiddenRow", Rows + """
+                public sealed class HiddenLine { public int Id { get; set; } public int Quantity { get; set; } [RunicIgnore] public long DatabaseId { get; set; } }
+                public sealed class HiddenViewModel : FixtureModel
+                {
+                    [RunicCollection(nameof(HiddenLine.Id))] public System.Collections.ObjectModel.ObservableCollection<HiddenLine> Lines { get; } = [];
+                    [RunicRowEditor] public void UpdateLine(int id, HiddenLine line) { }
+                }
+                public sealed partial class HiddenWindow : RunicWindow<HiddenViewModel>;
+                """).ConfigureAwait(false);
+            Require(hidden.Contains("error RUNICBRIDGE052:", StringComparison.Ordinal) && hidden.Contains("(DatabaseId)", StringComparison.Ordinal), hidden);
+
+            // A query collection cannot be edited yet.
+            var query = await GenerateAsync(generator, temporaryRoot, "QueryRows", Rows + """
+                public sealed record QueryLine(int Id, int Quantity);
+                public sealed class RunicQueryCollection<TRow, TKey> : System.Collections.ObjectModel.ObservableCollection<TRow>;
+                public sealed class QueryViewModel : FixtureModel
+                {
+                    public RunicQueryCollection<QueryLine, int> Lines { get; } = [];
+                    [RunicRowEditor(nameof(Lines))] public void UpdateLine(int id, QueryLine line) { }
+                }
+                public sealed partial class QueryWindow : RunicWindow<QueryViewModel>;
+                """).ConfigureAwait(false);
+            Require(query.Contains("error RUNICBRIDGE050:", StringComparison.Ordinal) && query.Contains("a query collection", StringComparison.Ordinal), query);
+
+            // An object inside an editable row that cannot be copied has no fields below it, with a warning.
+            var (exitCode, nested, _) = await RunGeneratorAsync(generator, temporaryRoot, "NestedRow", Rows + """
+                public class Product { public string Code { get; set; } = ""; }
+                public sealed record NestedLine(int Id, int Quantity, Product Product);
+                public sealed class NestedViewModel : FixtureModel
+                {
+                    [RunicCollection(nameof(NestedLine.Id))] public System.Collections.ObjectModel.ObservableCollection<NestedLine> Lines { get; } = [];
+                    [RunicRowEditor] public void UpdateLine(int id, NestedLine line, RunicRowEdit edit) { }
+                }
+                public sealed partial class NestedWindow : RunicWindow<NestedViewModel>;
+                """).ConfigureAwait(false);
+            Require(exitCode == 0 && nested.Contains("warning RUNICBRIDGE053:", StringComparison.Ordinal)
+                && nested.Contains("NestedLine.Product has no fields below it", StringComparison.Ordinal), nested);
+
+            // A row type that cannot come from the page names the editor that makes it.
+            var oneWay = await GenerateAsync(generator, temporaryRoot, "OneWayRow", Rows + """
+                public sealed record OneWayLine(int Id, IntPtr Handle);
+                public sealed class OneWayViewModel : FixtureModel
+                {
+                    [RunicCollection(nameof(OneWayLine.Id))] public System.Collections.ObjectModel.ObservableCollection<OneWayLine> Lines { get; } = [];
+                    [RunicRowEditor] public void UpdateLine(int id, OneWayLine line) { }
+                }
+                public sealed partial class OneWayWindow : RunicWindow<OneWayViewModel>;
+                """).ConfigureAwait(false);
+            Require(oneWay.Contains("OneWayViewModel.UpdateLine is their [RunicRowEditor]", StringComparison.Ordinal), oneWay);
+        }
+        finally
+        {
+            if (Directory.Exists(temporaryRoot)) Directory.Delete(temporaryRoot, recursive: true);
+        }
+    }
+
     // RUNICBRIDGE032: an observable collection of DTO rows that is not a [RunicCollection] is a located warning that
     // names the rows' key when they have one; a keyed collection, a plain list and an observable list of strings are not.
     [Test]

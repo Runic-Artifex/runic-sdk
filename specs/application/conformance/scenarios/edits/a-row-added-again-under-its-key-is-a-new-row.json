@@ -1,0 +1,300 @@
+{
+  "format": "runic.views.scenario/1",
+  "id": "edits.a-row-added-again-under-its-key-is-a-new-row.v1",
+  "contract": {
+    "id": "runic.views",
+    "version": 4
+  },
+  "set": "edits",
+  "roles": [
+    "producer",
+    "client"
+  ],
+  "description": "A row removed and added again under its key, here in one publication, starts at the revision that added it: a write based on an older state is a conflict, though the value is the same.",
+  "view": "invoice",
+  "requires": [
+    "field-paths/1"
+  ],
+  "ids": {
+    "c1": {
+      "kind": "connection"
+    },
+    "hello-c1": {
+      "kind": "request"
+    },
+    "session": {
+      "kind": "wire",
+      "value": "s-1"
+    },
+    "open-invoice": {
+      "kind": "call"
+    },
+    "open-invoice-request": {
+      "kind": "request"
+    },
+    "presentation": {
+      "kind": "wire",
+      "value": "p-1"
+    },
+    "readded": {
+      "kind": "call"
+    },
+    "readded-request": {
+      "kind": "request"
+    },
+    "readdedId": {
+      "kind": "wire",
+      "value": "w-readded"
+    }
+  },
+  "arrange": {
+    "model": {
+      "address": {
+        "street": "",
+        "city": "Bern"
+      },
+      "lines": [
+        {
+          "id": 1,
+          "label": "Pens",
+          "quantity": 1
+        },
+        {
+          "id": 2,
+          "label": "Ink",
+          "quantity": 4
+        }
+      ]
+    }
+  },
+  "steps": [
+    {
+      "connect": "c1"
+    },
+    {
+      "send": {
+        "kind": "hello",
+        "protocol": 4,
+        "session": {
+          "$id": "session"
+        },
+        "client": {
+          "name": {
+            "$any": "string",
+            "default": "conformance-client"
+          },
+          "version": {
+            "$any": "string",
+            "default": "1.0.0"
+          }
+        },
+        "features": {
+          "$any": "array",
+          "default": [
+            "text-splice/1",
+            "field-paths/1"
+          ]
+        }
+      },
+      "id": "hello-c1"
+    },
+    {
+      "receive": {
+        "ok": true,
+        "protocol": 4,
+        "implementation": {
+          "name": {
+            "$any": "string",
+            "default": "conformance-producer"
+          },
+          "version": {
+            "$any": "string",
+            "default": "1.0.0"
+          }
+        },
+        "features": {
+          "$any": "array",
+          "default": [
+            "text-splice/1",
+            "field-paths/1"
+          ]
+        }
+      },
+      "replyTo": "hello-c1"
+    },
+    {
+      "call": {
+        "id": "open-invoice",
+        "op": "open",
+        "route": "invoice"
+      }
+    },
+    {
+      "send": {
+        "kind": "open",
+        "route": "invoice",
+        "presentation": {
+          "$id": "presentation"
+        }
+      },
+      "id": "open-invoice-request"
+    },
+    {
+      "receive": {
+        "ok": true,
+        "revision": 0,
+        "state": {
+          "address": {
+            "street": "",
+            "city": "Bern"
+          },
+          "lines": [
+            {
+              "id": 1,
+              "label": "Pens",
+              "quantity": 1
+            },
+            {
+              "id": 2,
+              "label": "Ink",
+              "quantity": 4
+            }
+          ]
+        },
+        "fields": {
+          "address": {
+            "version": 0
+          }
+        },
+        "presentation": "ok"
+      },
+      "replyTo": "open-invoice-request"
+    },
+    {
+      "mutate": [
+        {
+          "op": "removeAt",
+          "member": "lines",
+          "index": 0
+        },
+        {
+          "op": "insert",
+          "member": "lines",
+          "index": 0,
+          "item": {
+            "id": 1,
+            "label": "Pens",
+            "quantity": 1
+          }
+        }
+      ]
+    },
+    {
+      "receive": {
+        "kind": "frame",
+        "route": "invoice",
+        "baseRevision": 0,
+        "revision": 1,
+        "changes": [
+          {
+            "field": "lines",
+            "kind": "remove",
+            "index": 0,
+            "oldIndex": 0,
+            "keys": [
+              "1"
+            ],
+            "items": []
+          },
+          {
+            "field": "lines",
+            "kind": "add",
+            "index": 0,
+            "oldIndex": -1,
+            "keys": [
+              "1"
+            ],
+            "items": [
+              {
+                "id": 1,
+                "label": "Pens",
+                "quantity": 1
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "call": {
+        "id": "readded",
+        "op": "write",
+        "route": "invoice",
+        "member": "lines",
+        "path": [
+          "1",
+          "quantity"
+        ],
+        "requestId": "w-readded",
+        "baseline": {
+          "value": 1,
+          "version": 0
+        },
+        "value": 3
+      }
+    },
+    {
+      "send": {
+        "kind": "write",
+        "route": "invoice",
+        "member": "lines",
+        "path": [
+          "1",
+          "quantity"
+        ],
+        "requestId": {
+          "$id": "readdedId"
+        },
+        "expectedVersion": 0,
+        "expectedValue": 1,
+        "value": 3
+      },
+      "id": "readded-request"
+    },
+    {
+      "receive": {
+        "ok": true,
+        "revision": 1,
+        "receipt": {
+          "kind": "conflict",
+          "incoming": {
+            "value": 1,
+            "version": 1
+          },
+          "message": {
+            "$any": "string",
+            "default": "The field changed."
+          }
+        }
+      },
+      "replyTo": "readded-request"
+    },
+    {
+      "expect": {
+        "call": {
+          "id": "readded",
+          "resolved": {
+            "kind": "conflict",
+            "incoming": {
+              "value": 1,
+              "version": 1
+            },
+            "message": {
+              "$any": "string"
+            }
+          }
+        }
+      }
+    }
+  ]
+}

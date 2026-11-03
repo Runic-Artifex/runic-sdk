@@ -307,7 +307,7 @@ internal static class BridgeRowEditors
         var attribute = editor.GetCustomAttribute<RunicRowEditorAttribute>(true)!;
         if (attribute.Collection is { } name) return name == collection.Name;
         var parameters = editor.GetParameters();
-        return parameters.Length == 2 && RowType(collection.PropertyType) is { } row && parameters[1].ParameterType == row;
+        return parameters.Length is 2 or 3 && RowType(collection.PropertyType) is { } row && parameters[1].ParameterType == row;
     }
 
     // The first editor of a collection, by method name.

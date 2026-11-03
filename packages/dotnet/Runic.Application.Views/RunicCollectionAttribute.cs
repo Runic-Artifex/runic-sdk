@@ -22,4 +22,8 @@ internal sealed record BridgeCollectionChange<T>(
     int Index,
     int OldIndex,
     string[] Keys,
-    byte[][] Items);
+    byte[][] Items)
+{
+    // The keys of Items (an add's or a replace's new rows), for field-paths/1, which observes only the changed rows.
+    public string[] ItemKeys { get; init; } = Kind == "add" ? Keys : [];
+}

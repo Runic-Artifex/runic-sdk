@@ -1309,7 +1309,7 @@ generator, such as a CommunityToolkit `[ObservableProperty]`, points at its
 a link to its entry in the [diagnostics catalog](https://github.com/Runic-Artifex/runic-sdk/blob/main/docs/diagnostics.md#bridge-code-generator)
 for the release you use.
 
-`RUNICBRIDGE013`, `015`, `019`, `020`, `028`, `029`, `030`, `031`, `032`, `033` and `034` are warnings; the generator's
+`RUNICBRIDGE013`, `015`, `019`, `020`, `028`, `029`, `030`, `031`, `032`, `033`, `034` and `053` are warnings; the generator's
 (`013`, `020`, `028`, `031` and `032`) repeat on builds that reuse the cached generation. Every other
 code fails the build. The
 [diagnostics catalog](https://github.com/Runic-Artifex/runic-sdk/blob/main/docs/diagnostics.md#bridge-code-generator)
@@ -1750,17 +1750,24 @@ const quantity = useField(invoice, InvoiceFields.lines.at(line.id).quantity, { c
 - **Object members.** A settable member whose value is a DTO, such as
   `Address`, also has a field for each of its members, down to three objects
   deep: `InvoiceFields.address.street`, `InvoiceFields.address.geo.lat`. A
-  write builds the member's value with that one member changed and assigns it
-  with the setter, so the setter's validation, normalization and change
-  notification run as for a whole value. Records, init-only and
-  constructor-initialized members and mutable classes all work: the Bridge
-  rebuilds the value with the member's generated codec instead of changing the
-  object in place. An object on the path that is `null` rejects the write.
+  write copies the member's value with that one member changed and assigns the
+  copy with the setter, so the setter's validation, normalization and change
+  notification run as for a whole value. An object on the path that is `null`
+  rejects the write.
+- **Copies.** The generated copy keeps what the page does not see, such as a
+  `[RunicIgnore]` database id: a record or struct is copied with `with`, a
+  sealed class with its copy constructor or `Clone()`, and a sealed class whose
+  settable members are all on the wire through its codec. A class that is not
+  sealed, or one with hidden settable members and no copy constructor or
+  `Clone()`, cannot be copied exactly and has no fields below it; as rows it is
+  `RUNICBRIDGE052`, as an object inside a row warning `RUNICBRIDGE053`.
+  `[RunicNoField]` leaves a member of a row or object without a field.
 - **Rows.** A `[RunicCollection]` with a `[RunicRowEditor]` method has a field
   for each row member except the key: `InvoiceFields.lines.at(key).quantity`.
-  The method takes the row's key and the row with the one cell changed; it
-  replaces the row (`Lines[index] = line`), may normalize it and updates what
-  depends on it. Throw to refuse the change: the page keeps its draft and shows
+  The method takes the row's key and the row with the one cell changed, and
+  optionally a `RunicRowEdit` with the changed cell (`Path`), the row before the
+  edit (`Previous`) and the page's `ConnectionKey`; it replaces the row
+  (`Lines[index] = line`), may normalize it and updates what depends on it. Throw to refuse the change: the page keeps its draft and shows
   the message. Without a collection name the attribute finds the collection by
   its row type; `[RunicRowEditor(nameof(Lines))]` names it. A collection without
   a row editor stays read-only for the page. `RUNICBRIDGE050` and `RUNICBRIDGE051`
@@ -1770,7 +1777,17 @@ const quantity = useField(invoice, InvoiceFields.lines.at(line.id).quantity, { c
   older state of the cell than the cell's last change is a `conflict`, also when
   the value changed back, and keeps the page's draft until the user retries or
   resets it. A change of another cell of the same row, or another member of the
-  same object, is not a conflict. A write of a row that was removed is rejected.
+  same object, is not a conflict. A write of a row that was removed is rejected,
+  and a row removed and added again under its key is a new row. With
+  `[RunicRowEditor(Conflicts = RunicRowConflicts.Row)]` any change of the row
+  after the page's state is a conflict instead, so a price typed for a line
+  whose product another user changed meanwhile is not applied.
+- **Receipts.** An editor that removes the row is `rejected`; one that changes
+  the row and then throws is `committed-with-error`.
+- **Cost.** The window keeps a digest of each field path's value per row. A
+  publication compares only the rows its changes carry; a reset of the
+  collection or a full state compares every row. `[RunicRowEditor]` does not
+  apply to query collections yet (`RUNICBRIDGE050`).
 - **Validation.** A field's `errors` are the `validation` messages at its path
   and below: a cell's path names its row by index, such as
   `["lines", 2, "quantity"]`, which the generated descriptor finds from the row's

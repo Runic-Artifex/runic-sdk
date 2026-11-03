@@ -304,12 +304,26 @@ public partial class ViewModelBridge<T>
     // The baselines after a published frame: members holds the members that changed.
     private void Commit(List<(string Name, byte[] Value)> members, long revision, bool fullState = false)
     {
-        // field-paths/1: the paths that this publication changed take its revision as their version.
+        // field-paths/1: the paths that this publication changed take its revision as their version. Indexed changes
+        // carry their rows' encodings, so only those rows are observed; a set or a full state scans the member.
         foreach (var target in _pathTargets.Values)
         {
-            var changed = fullState || members.Exists(member => member.Name == target.Member)
-                || target.Rows is { } rows && (_collectionSets.Contains(rows) || _pendingCollectionChanges.Exists(change => change.Descriptor == rows));
-            if (changed) _fieldPaths.Observe(target.Member, FieldPathContainers(target), target.Paths, revision);
+            if (fullState || members.Exists(member => member.Name == target.Member)
+                || target.Rows is { } set && _collectionSets.Contains(set))
+            {
+                _fieldPaths.Scan(target.Member, FieldPathContainers(target), target.Segments, revision);
+                continue;
+            }
+            if (target.Rows is not { } rows) continue;
+            foreach (var change in _pendingCollectionChanges)
+            {
+                if (change.Descriptor != rows) continue;
+                if (change.Kind is "remove" or "replace")
+                    foreach (var key in change.Keys)
+                        if (Array.IndexOf(change.ItemKeys, key) < 0) _fieldPaths.Remove(target.Member, key);
+                for (var index = 0; index < change.ItemKeys.Length && index < change.Items.Length; index++)
+                    _fieldPaths.Observe(target.Member, change.ItemKeys[index], change.Items[index], target.Segments, revision);
+            }
         }
         foreach (var (name, value) in members) _baselines![name] = value;
         foreach (var field in _checkedProperties) _publishedVersions[field.Descriptor.WireName] = field.Registry.Current.Version;
@@ -651,7 +665,10 @@ public partial class ViewModelBridge<T>
                         : [];
                     _pendingCollectionChanges.Add(new(descriptor, kind,
                         kind == "remove" ? args.OldStartingIndex : args.NewStartingIndex,
-                        args.OldStartingIndex, keys, items));
+                        args.OldStartingIndex, keys, items)
+                    {
+                        ItemKeys = kind == "replace" ? args.NewItems?.Cast<object?>().Select(descriptor.Key).ToArray() ?? [] : kind == "add" ? keys : [],
+                    });
                     if (_pendingCollectionChanges.Count(change => change.Descriptor == descriptor) > MaximumChanges)
                         MarkCollectionSet(descriptor);
                 }
@@ -685,7 +702,7 @@ public partial class ViewModelBridge<T>
                     // A key changed in place or made invalid becomes a set of the field.
                     if (!TrackItemKey(descriptor, rows, item, at, out var key)) MarkCollectionSet(descriptor);
                     else _pendingCollectionChanges.Add(new(descriptor, "replace", at, at,
-                        [key], [WriteValue(writer => descriptor.WriteItem(writer, item))]));
+                        [key], [WriteValue(writer => descriptor.WriteItem(writer, item))]) { ItemKeys = [key] });
                 }
                 if (handled) ScheduleUnit();
                 return handled;

@@ -1,21 +1,20 @@
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
-using System.Text.Json.Nodes;
 
 namespace Runic.Application.Views;
 
 // field-paths/1 (specs/application/README.md, "Field paths"): the producer side of checked writes below a member.
 //
-// A container is the value a path write rebuilds: a settable member's object (key "address") or a keyed collection's
-// row (key "lines" + "\0" + row key). A path's version is the revision of the route's last publication that changed
-// the value at the path. The tracker keeps, per container, the encoding it had in the last publication and the
-// revision at which each of its field paths last changed, so a write based on an older state of the path is a
-// conflict even when the value changed back. Containers seen in the route's first publication start at version 0.
+// A container is the value a path write copies: a settable member's object (key "") or a keyed collection's row (its
+// key). A path's version is the revision of the route's last publication that changed the value at the path. The
+// tracker keeps, per member and container, a hash of each declared path's value and of the whole container as the
+// last publication showed them, with the revision at which each last changed, so a write based on an older state of
+// the path is a conflict even when the value changed back. Containers seen in the member's first scan start at
+// version 0. A publication observes only the rows its indexed changes carry; sets and full states scan the member.
 internal sealed class BridgeFieldPathTracker
 {
-    private readonly Dictionary<string, Container> _containers = new(StringComparer.Ordinal);
-    private readonly HashSet<string> _scanned = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, MemberState> _members = new(StringComparer.Ordinal);
     private readonly Dictionary<string, RetainedReceipt> _receipts = new(StringComparer.Ordinal);
     private readonly Queue<string> _receiptOrder = new();
     private readonly HashSet<string> _expired = new(StringComparer.Ordinal);
@@ -25,49 +24,86 @@ internal sealed class BridgeFieldPathTracker
     internal const int MaximumRetainedReceipts = 64;
     internal const int MaximumRetainedBytes = 262_144;
 
-    internal static string RowContainer(string member, string key) => member + "\0" + key;
-
-    // Records the containers of one member after a publication at revision. rows is every container of the member
-    // with its encoding; a container missing from it was removed. The member's first scan sets no versions.
-    internal void Observe(string member, IEnumerable<(string Container, byte[] Encoded)> containers,
-        IReadOnlyList<string[]> paths, long revision)
+    // Every container of a member after a set or a full state; a container missing from it was removed.
+    internal void Scan(string member, IEnumerable<(string Key, byte[] Encoded)> containers, IReadOnlyList<string[]> paths, long revision)
     {
-        var initial = _scanned.Add(member);
+        var state = State(member);
+        var initial = !state.Scanned;
+        state.Scanned = true;
         var seen = new HashSet<string>(StringComparer.Ordinal);
         foreach (var (key, encoded) in containers)
         {
             seen.Add(key);
-            if (!_containers.TryGetValue(key, out var container))
-            {
-                _containers[key] = new(member, encoded, initial ? 0 : revision);
-                continue;
-            }
-            if (container.Encoded.AsSpan().SequenceEqual(encoded)) continue;
-            try
-            {
-                using var before = JsonDocument.Parse(container.Encoded);
-                using var after = JsonDocument.Parse(encoded);
-                foreach (var path in paths)
-                    if (!string.Equals(LeafText(before.RootElement, path), LeafText(after.RootElement, path), StringComparison.Ordinal))
-                        container.Changed[PathKey(path)] = revision;
-            }
-            catch (JsonException) { container.Added = revision; container.Changed.Clear(); }
-            container.Encoded = encoded;
+            Observe(state, key, encoded, paths, initial ? 0 : revision);
         }
-        // A removed container is forgotten; a row added again later under its key starts at its new revision.
-        List<string>? removed = null;
-        foreach (var (key, container) in _containers)
-            if (container.Member == member && !seen.Contains(key)) (removed ??= []).Add(key);
-        if (removed is not null) foreach (var key in removed) _containers.Remove(key);
+        state.Containers.Keys.Where(key => !seen.Contains(key)).ToList().ForEach(key => state.Containers.Remove(key));
     }
 
-    // The path's version: the revision of the last publication that changed it, 0 when none did since the route's
-    // first publication.
-    internal long VersionOf(string container, string[] path)
+    // One container that a publication added or replaced, from its published encoding.
+    internal void Observe(string member, string key, byte[] encoded, IReadOnlyList<string[]> paths, long revision)
     {
-        if (!_containers.TryGetValue(container, out var entry)) return 0;
-        return Math.Max(entry.Added, entry.Changed.GetValueOrDefault(PathKey(path)));
+        var state = State(member);
+        Observe(state, key, encoded, paths, state.Scanned ? revision : 0);
     }
+
+    // A row that a publication removed: a row added again later under its key starts at its new revision.
+    internal void Remove(string member, string key)
+    {
+        if (_members.TryGetValue(member, out var state)) state.Containers.Remove(key);
+    }
+
+    private MemberState State(string member)
+    {
+        if (!_members.TryGetValue(member, out var state)) _members[member] = state = new();
+        return state;
+    }
+
+    private static void Observe(MemberState state, string key, byte[] encoded, IReadOnlyList<string[]> paths, long revision)
+    {
+        var rowHash = Hash(encoded);
+        if (state.Containers.TryGetValue(key, out var container) && container.RowHash == rowHash) return;
+        var hashes = new ulong[paths.Count];
+        try
+        {
+            using var document = JsonDocument.Parse(encoded);
+            for (var index = 0; index < paths.Count; index++)
+                hashes[index] = LeafText(document.RootElement, paths[index]) is { } text ? Hash(Encoding.UTF8.GetBytes(text)) : 0;
+        }
+        catch (JsonException) { container = null; }
+        if (container is null)
+        {
+            state.Containers[key] = new(revision, rowHash, hashes);
+            return;
+        }
+        for (var index = 0; index < paths.Count; index++)
+            if (container.Hashes[index] != hashes[index])
+            {
+                container.Hashes[index] = hashes[index];
+                container.Changed[index] = revision;
+            }
+        container.RowHash = rowHash;
+        container.RowChanged = revision;
+    }
+
+    // The path's version: the revision of the last publication that changed it, 0 when none did since the member's
+    // first scan.
+    internal long VersionOf(string member, string key, int path)
+    {
+        if (!_members.TryGetValue(member, out var state) || !state.Containers.TryGetValue(key, out var container)) return 0;
+        return Math.Max(container.Added, container.Changed[path]);
+    }
+
+    // The row's version (RunicRowConflicts.Row): the revision of the last publication that changed anything in it.
+    internal long RowVersionOf(string member, string key)
+    {
+        if (!_members.TryGetValue(member, out var state) || !state.Containers.TryGetValue(key, out var container)) return 0;
+        return Math.Max(container.Added, container.RowChanged);
+    }
+
+    // The number of containers the tracker keeps for a member; for tests.
+    internal int Count(string member) => _members.TryGetValue(member, out var state) ? state.Containers.Count : 0;
+
+    private static ulong Hash(ReadOnlySpan<byte> bytes) => BitConverter.ToUInt64(SHA256.HashData(bytes));
 
     // A retained receipt for requestId: the original receipt when identity matches, a conflict otherwise. False when
     // the request id is new.
@@ -130,32 +166,23 @@ internal sealed class BridgeFieldPathTracker
     internal static string Canonical(JsonElement value) =>
         BridgeCanonicalJson.ToString(Encoding.UTF8.GetBytes(value.GetRawText()));
 
-    // The container with the value at path replaced by value; null when the path does not reach a member of an
-    // object.
-    internal static byte[]? Rebuild(byte[] container, string[] path, JsonElement value)
-    {
-        if (JsonNode.Parse(container) is not JsonObject root) return null;
-        var owner = root;
-        for (var index = 0; index < path.Length - 1; index++)
-        {
-            if (!owner.TryGetPropertyValue(path[index], out var next) || next is not JsonObject nested) return null;
-            owner = nested;
-        }
-        if (!owner.ContainsKey(path[^1])) return null;
-        owner[path[^1]] = JsonNode.Parse(value.GetRawText());
-        return JsonSerializer.SerializeToUtf8Bytes(root);
-    }
-
     internal static string PathKey(string[] path) => string.Join('\0', path);
 
     private static string Digest(string value) => Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(value)));
 
-    private sealed class Container(string member, byte[] encoded, long added)
+    private sealed class MemberState
     {
-        public string Member { get; } = member;
-        public byte[] Encoded { get; set; } = encoded;
-        public long Added { get; set; } = added;
-        public Dictionary<string, long> Changed { get; } = new(StringComparer.Ordinal);
+        public bool Scanned { get; set; }
+        public Dictionary<string, Container> Containers { get; } = new(StringComparer.Ordinal);
+    }
+
+    private sealed class Container(long added, ulong rowHash, ulong[] hashes)
+    {
+        public long Added { get; } = added;
+        public ulong RowHash { get; set; } = rowHash;
+        public long RowChanged { get; set; } = added;
+        public ulong[] Hashes { get; } = hashes;
+        public long[] Changed { get; } = new long[hashes.Length];
     }
 
     private sealed record RetainedReceipt(string Identity, BridgeFieldPathReceipt Receipt, int Bytes);

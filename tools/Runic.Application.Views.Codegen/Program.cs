@@ -649,6 +649,14 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
     var regionSlots = new HashSet<PropertyInfo>();
     // NavigationSelection slots: state whose wire value is the selection's SelectedIndex, or null for -1.
     var selectionSlots = new HashSet<PropertyInfo>();
+    // field-paths/1: a query collection's rows come from a row source page by page; editing them is not supported yet.
+    // The check goes by the type's name, before the collection's own checks, so it applies as soon as
+    // RunicQueryCollection<TRow, TKey> exists.
+    foreach (var editor in Runic.Application.Views.Generated.BridgeRowEditors.Declared(model))
+        if (editor.GetCustomAttribute<RunicRowEditorAttribute>(true)!.Collection is { } named && model.GetProperty(named) is { } namedProperty
+            && namedProperty.PropertyType.IsGenericType && namedProperty.PropertyType.GetGenericTypeDefinition().Name.StartsWith("RunicQueryCollection", StringComparison.Ordinal))
+            throw new BridgeDiagnosticException(BridgeDiagnosticCodes.RowEditor,
+                $"{model.Name}.{editor.Name}: [RunicRowEditor] names {named}, a query collection, whose rows cannot be edited from the page yet.", editor);
     var valueProperties = new Dictionary<PropertyInfo, BridgeTypeGraph>();
     foreach (var property in properties)
     {
@@ -725,9 +733,20 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
         // field-paths/1: the rows of an editable collection also come from the page, rebuilt with one cell changed.
         var fromPage = property.SetMethod?.IsPublic == true || property.GetCustomAttribute<RunicCollectionAttribute>(true) is not null
             && Runic.Application.Views.Generated.BridgeRowEditors.For(model, property) is not null;
-        valueProperties.Add(property, BridgeTypeGraph.Discover(property.PropertyType,
-            nullability.Create(property), $"{model.Name}.{property.Name}", property, honorJsonIgnore,
-            fromPage ? BridgeValueDirection.Both : BridgeValueDirection.ToPage));
+        BridgeTypeGraph graph;
+        try
+        {
+            graph = BridgeTypeGraph.Discover(property.PropertyType,
+                nullability.Create(property), $"{model.Name}.{property.Name}", property, honorJsonIgnore,
+                fromPage ? BridgeValueDirection.Both : BridgeValueDirection.ToPage);
+        }
+        catch (BridgeTypeGraphException error) when (property.SetMethod?.IsPublic != true && fromPage)
+        {
+            var editor = Runic.Application.Views.Generated.BridgeRowEditors.For(model, property)!;
+            throw new BridgeTypeGraphException(error.Path,
+                $"{error.Detail} The rows also come from the page because {model.Name}.{editor.Name} is their [RunicRowEditor].", error.Member ?? editor);
+        }
+        valueProperties.Add(property, graph);
     }
     var incrementalCollections = new Dictionary<PropertyInfo, PropertyInfo>();
     foreach (var property in properties)
@@ -760,11 +779,16 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
         var key = incrementalCollections[collection];
         var rowType = valueProperties[collection].Root.Element!.NonNullableType;
         var parameters = editor.GetParameters();
-        if (editor.IsStatic || editor.IsGenericMethodDefinition || editor.ReturnType != typeof(void) || parameters.Length != 2
+        if (editor.IsStatic || editor.IsGenericMethodDefinition || editor.ReturnType != typeof(void) || parameters.Length is not (2 or 3)
             || parameters[0].ParameterType != key.PropertyType || parameters[1].ParameterType != rowType
+            || parameters.Length == 3 && parameters[2].ParameterType != typeof(RunicRowEdit)
             || !(editor.IsPublic || editor.IsAssembly || editor.IsFamilyOrAssembly))
             throw new BridgeDiagnosticException(BridgeDiagnosticCodes.RowEditor,
-                $"{model.Name}.{editor.Name}: a [RunicRowEditor] for {collection.Name} must be a public or internal instance method void {editor.Name}({BridgeTypeGraph.CSharpType(key.PropertyType)} key, {BridgeTypeGraph.CSharpType(rowType)} row).", editor);
+                $"{model.Name}.{editor.Name}: a [RunicRowEditor] for {collection.Name} must be a public or internal instance method void {editor.Name}({BridgeTypeGraph.CSharpType(key.PropertyType)} key, {BridgeTypeGraph.CSharpType(rowType)} row), optionally with a third parameter RunicRowEdit edit.", editor);
+        // RUNICBRIDGE052: a row that cannot be copied exactly would lose what the page does not see.
+        if (BridgeFieldLeaf.CopyOf(valueProperties[collection].Root.Element!) is { Kind: BridgeFieldCopy.None } refused)
+            throw new BridgeDiagnosticException(BridgeDiagnosticCodes.RowCopy,
+                $"{model.Name}.{editor.Name}: the rows of {collection.Name} cannot be copied with one cell changed: {refused.Reason}. Make {BridgeTypeGraph.CSharpType(rowType)} a record, or seal it and give it a copy constructor or a Clone() method.", editor);
         if (!rowEditors.TryAdd(collection, editor))
             throw new BridgeDiagnosticException(BridgeDiagnosticCodes.RowEditors,
                 $"{model.Name}: {collection.Name} has two [RunicRowEditor] methods, {rowEditors[collection].Name} and {editor.Name}.", editor);
@@ -922,10 +946,13 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
     // field-paths/1: the field paths below settable object members and below the rows of editable collections.
     var nestedPaths = checkedProperties
         .Where(property => valueProperties[property].Root.Kind == BridgeWireKind.Dto)
-        .Select(property => (Property: property, Leaves: BridgeFieldLeaf.Of(valueProperties[property].Root, null)))
+        .Select(property => (Property: property, Leaves: BridgeFieldLeaf.Of(valueProperties[property].Root, null, null)))
         .Where(entry => entry.Leaves.Count > 0).ToDictionary(entry => entry.Property, entry => entry.Leaves);
     var rowPaths = rowEditors.Keys
-        .Select(property => (Property: property, Leaves: BridgeFieldLeaf.Of(valueProperties[property].Root.Element!, incrementalCollections[property])))
+        .Select(property => (Property: property, Leaves: BridgeFieldLeaf.Of(valueProperties[property].Root.Element!, incrementalCollections[property],
+            // RUNICBRIDGE053: an object inside an editable row that cannot be copied has no fields below it.
+            (member, reason) => Diagnostics.Warn(BridgeDiagnosticCodes.RowObjectCopy,
+                $"{model.Name}.{property.Name}: {member.DeclaringType?.Name}.{member.Name} has no fields below it: {reason}. Mark it [RunicNoField], make its type a record, or seal it and give it a copy constructor or a Clone() method.", member))))
         .ToDictionary(entry => entry.Property, entry => entry.Leaves);
     var hasFieldPaths = nestedPaths.Count > 0 || rowPaths.Values.Any(leaves => leaves.Count > 0);
     InteractionCodeEmitter.ValidatePublicSurface(model.Name, properties, commands, commandPlans, interactions,
@@ -982,7 +1009,7 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
         foreach (var property in checkedProperties)
         {
             var type = valueProperties[property].RootCSharpType();
-            var paths = nestedPaths.TryGetValue(property, out var nested) ? $" {{ FieldPaths = {BridgeFieldLeaf.CSharpPaths(nested)} }}" : "";
+            var paths = nestedPaths.TryGetValue(property, out var nested) ? $" {{ FieldPaths = {BridgeFieldLeaf.CSharpPaths(nested, property.Name + "ValueCodec")} }}" : "";
             cs.AppendLine($"            new global::Runic.Application.Views.Generated.CheckedPropertyDescriptor<{fullType}>(\"{property.Name}\", \"{WireName(property)}\", global::Runic.Application.Views.Generated.CheckedFieldValueKind.Json, vm => vm.{property.Name}, (vm, value) => vm.{property.Name} = ({type})value!, readValue: element => {property.Name}ValueCodec.Read(element), writeValue: (writer, value) => {property.Name}ValueCodec.Write(writer, ({type})value!)){paths},");
         }
         cs.AppendLine("        ],");
@@ -1010,9 +1037,10 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
         var keyExpression = key.PropertyType == typeof(string) ? keyAccess
             : key.PropertyType == typeof(Guid) ? keyAccess + ".ToString(\"D\")"
             : keyAccess + ".ToString(global::System.Globalization.CultureInfo.InvariantCulture)";
-        // field-paths/1: a row editor decodes the rebuilt row and passes it with its key.
+        // field-paths/1: a row editor receives the copied row with its key, and the edit when it takes one.
         var editable = rowEditors.TryGetValue(property, out var editor)
-            ? $" {{ FieldPaths = {BridgeFieldLeaf.CSharpPaths(rowPaths[property])}, ReadRow = static element => {property.Name}ValueCodec.ReadItem(element), UpdateRow = static (vm, row) => vm.{editor.Name}((({itemType})row!).{key.Name}, ({itemType})row!) }}"
+            ? $" {{ FieldPaths = {BridgeFieldLeaf.CSharpPaths(rowPaths[property], property.Name + "ValueCodec")}, UpdateRow = static (vm, row, edit) => vm.{editor.Name}((({itemType})row!).{key.Name}, ({itemType})row!{(editor.GetParameters().Length == 3 ? ", edit" : "")})"
+                + (editor.GetCustomAttribute<RunicRowEditorAttribute>(true)!.Conflicts == RunicRowConflicts.Row ? ", RowConflicts = global::Runic.Application.Views.RunicRowConflicts.Row" : "") + " }"
             : "";
         cs.AppendLine($"            new global::Runic.Application.Views.Generated.BridgeCollectionDescriptor<{fullType}>(\"{WireName(property)}\", static vm => vm.{property.Name}, {property.Name}ValueCodec.WriteItem, static item => {keyExpression}){editable},");
     }
@@ -1038,7 +1066,9 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
     }
     foreach (var (property, graph) in valueProperties)
     {
-        graph.AppendCSharpCodec(cs, property.Name + "ValueCodec", readItem: rowEditors.ContainsKey(property));
+        graph.AppendCSharpCodec(cs, property.Name + "ValueCodec",
+            fieldPaths: nestedPaths.TryGetValue(property, out var nestedLeaves) ? (graph.Root, nestedLeaves)
+                : rowPaths.TryGetValue(property, out var rowLeaves) && rowLeaves.Count > 0 ? (graph.Root.Element!, rowLeaves) : null);
         cs.AppendLine();
     }
     foreach (var (command, plan) in commandPlans)
@@ -2225,6 +2255,10 @@ static class BridgeDiagnosticCodes
     internal const string RowEditor = "RUNICBRIDGE050";
     /// <summary>A keyed collection has two [RunicRowEditor] methods.</summary>
     internal const string RowEditors = "RUNICBRIDGE051";
+    /// <summary>The rows of a [RunicRowEditor] collection cannot be copied with one cell changed.</summary>
+    internal const string RowCopy = "RUNICBRIDGE052";
+    /// <summary>Warning: an object inside an editable row cannot be copied, so it has no fields below it.</summary>
+    internal const string RowObjectCopy = "RUNICBRIDGE053";
 
     // Every code with its severity and title, in ID order: the source of the machine-readable list
     // (--list-diagnostics, docs/runicbridge-diagnostics.json). eng/diagnostics.test.mjs checks the
@@ -2267,6 +2301,8 @@ static class BridgeDiagnosticCodes
         (PresentationScoped, "warning", "A [RunicPresentationScoped] declaration reaches no Bridge command"),
         (RowEditor, "error", "A [RunicRowEditor] method matches no single keyed collection or has an unsupported signature"),
         (RowEditors, "error", "A keyed collection has more than one [RunicRowEditor] method"),
+        (RowCopy, "error", "The rows of a [RunicRowEditor] collection cannot be copied with one cell changed"),
+        (RowObjectCopy, "warning", "An object inside an editable row cannot be copied, so it has no fields below it"),
     ];
 
     // Schema version 1: { schemaVersion, diagnostics: [{ id, severity: "error" | "warning", title }] }. A later
@@ -2648,35 +2684,73 @@ internal static class CommandDescriptorSyntax
 }
 
 // field-paths/1: one field path below a member or a row: its wire names and the members it passes through. A path
-// names a member that the page reads and the codec writes back (a settable or constructor-initialized member), down
-// to three objects deep; an object member has its own descriptor and those of its members.
+// names a member that the page reads and that the copy of its object can change, down to three objects deep; an
+// object member has its own descriptor and those of its members. [RunicNoField] leaves a member out.
 internal sealed record BridgeFieldLeaf(string[] Path, BridgeTypeMember[] Chain)
 {
     internal BridgeTypeNode Node => Chain[^1].Type;
 
-    internal static List<BridgeFieldLeaf> Of(BridgeTypeNode owner, PropertyInfo? key)
+    internal static List<BridgeFieldLeaf> Of(BridgeTypeNode owner, PropertyInfo? key, Action<PropertyInfo, string>? skipped)
     {
         var leaves = new List<BridgeFieldLeaf>();
+        if (CopyOf(owner).Kind == BridgeFieldCopy.None) return leaves;
         Visit(owner, [], []);
         return leaves;
 
         void Visit(BridgeTypeNode node, string[] prefix, BridgeTypeMember[] chain)
         {
+            var copy = CopyOf(node).Kind;
             var parameters = node.Constructor?.GetParameters() ?? [];
             foreach (var member in node.Members)
             {
                 if (!member.Readable || member.Absent || member.Property == key) continue;
-                if (!member.Writable && !parameters.Any(parameter => string.Equals(parameter.Name, member.Property.Name, StringComparison.OrdinalIgnoreCase)))
-                    continue;
+                if (member.Property.GetCustomAttribute<RunicNoFieldAttribute>(true) is not null) continue;
+                var settable = copy switch
+                {
+                    BridgeFieldCopy.With => member.Writable,
+                    BridgeFieldCopy.Constructor or BridgeFieldCopy.Clone => member.Writable && !IsInitOnly(member.Property),
+                    _ => member.Writable || parameters.Any(parameter => string.Equals(parameter.Name, member.Property.Name, StringComparison.OrdinalIgnoreCase)),
+                };
+                if (!settable) continue;
                 string[] path = [.. prefix, member.WireName];
                 BridgeTypeMember[] next = [.. chain, member];
                 leaves.Add(new(path, next));
-                if (member.Type.Kind == BridgeWireKind.Dto && prefix.Length < 2 && member.Type != owner && chain.All(step => step.Type != member.Type))
-                    Visit(member.Type, path, next);
+                if (member.Type.Kind != BridgeWireKind.Dto || prefix.Length >= 2 || member.Type == owner || chain.Any(step => step.Type == member.Type)) continue;
+                if (CopyOf(member.Type) is { Kind: BridgeFieldCopy.None } refused)
+                {
+                    skipped?.Invoke(member.Property, refused.Reason!);
+                    continue;
+                }
+                Visit(member.Type, path, next);
             }
         }
     }
 
-    internal static string CSharpPaths(IReadOnlyList<BridgeFieldLeaf> leaves) =>
-        $"[{string.Join(", ", leaves.Select(leaf => $"[{string.Join(", ", leaf.Path.Select(segment => JsonSerializer.Serialize(segment)))}]"))}]";
+    // How an object of a node is copied with one member changed, or why it cannot be copied exactly: a record or a
+    // struct with `with`, a sealed class with its copy constructor or Clone(), or a sealed class whose every settable
+    // member is on the wire through its codec. A class that is not sealed would lose a derived type's members.
+    internal static (BridgeFieldCopy Kind, string? Reason) CopyOf(BridgeTypeNode node)
+    {
+        var type = node.NonNullableType;
+        if (type.IsValueType || type.GetMethod("<Clone>$", BindingFlags.Public | BindingFlags.Instance) is not null) return (BridgeFieldCopy.With, null);
+        if (!type.IsSealed) return (BridgeFieldCopy.None, $"{BridgeTypeGraph.CSharpType(type)} is a class that is not sealed, so a derived row would lose its own members");
+        if (type.GetConstructor([type]) is { IsPublic: true }) return (BridgeFieldCopy.Constructor, null);
+        if (type.GetMethod("Clone", BindingFlags.Public | BindingFlags.Instance, Type.EmptyTypes) is { } clone && clone.ReturnType == type)
+            return (BridgeFieldCopy.Clone, null);
+        var hidden = type.GetProperties(BindingFlags.Public | BindingFlags.Instance)
+            .Where(property => property.SetMethod?.IsPublic == true && property.GetIndexParameters().Length == 0
+                && !node.Members.Any(member => member.Property.Name == property.Name))
+            .Select(property => property.Name).ToArray();
+        return hidden.Length > 0
+            ? (BridgeFieldCopy.None, $"{BridgeTypeGraph.CSharpType(type)} has settable members the page does not see ({string.Join(", ", hidden)}) and no copy constructor or Clone()")
+            : (BridgeFieldCopy.Wire, null);
+    }
+
+    private static bool IsInitOnly(PropertyInfo property) =>
+        property.SetMethod?.ReturnParameter.GetRequiredCustomModifiers().Any(modifier => modifier.FullName == "System.Runtime.CompilerServices.IsExternalInit") == true;
+
+    internal static string CSharpPaths(IReadOnlyList<BridgeFieldLeaf> leaves, string codec) =>
+        $"[{string.Join(", ", leaves.Select((leaf, index) => $"new([{string.Join(", ", leaf.Path.Select(segment => JsonSerializer.Serialize(segment)))}], {codec}.SetPath{index})"))}]";
 }
+
+internal enum BridgeFieldCopy { None, With, Constructor, Clone, Wire }

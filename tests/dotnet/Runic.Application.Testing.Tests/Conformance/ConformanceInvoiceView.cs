@@ -30,12 +30,8 @@ internal sealed record InvoiceAddress(string Street, string City)
 
 internal sealed record InvoiceLine(int Id, string Label, int Quantity)
 {
-    internal static InvoiceLine Read(JsonElement value)
-    {
-        var quantity = value.GetProperty("quantity");
-        if (quantity.ValueKind != JsonValueKind.Number || !quantity.TryGetInt32(out var count)) throw new FormatException("Expected an int32.");
-        return new(value.GetProperty("id").GetInt32(), ConformanceWire.String(value.GetProperty("label")), count);
-    }
+    internal static int ReadQuantity(JsonElement quantity) =>
+        quantity.ValueKind == JsonValueKind.Number && quantity.TryGetInt32(out var count) ? count : throw new FormatException("Expected an int32.");
 
     internal static InvoiceLine Read(JsonNode? node) =>
         new(node!["id"]!.GetValue<int>(), node["label"]!.GetValue<string>(), node["quantity"]!.GetValue<int>());
@@ -126,15 +122,24 @@ internal sealed class InvoiceBridge(IBridgeTransport transport, InvoiceViewModel
         [
             new("Address", "address", CheckedFieldValueKind.Json, model => model.Address, (model, value) => model.Address = (InvoiceAddress)value!,
                 readValue: InvoiceAddress.Read, writeValue: (writer, value) => InvoiceAddress.Write(writer, (InvoiceAddress)value!))
-            { FieldPaths = [["street"], ["city"]] },
+            {
+                FieldPaths =
+                [
+                    new(["street"], (address, value) => (InvoiceAddress)address with { Street = ConformanceWire.String(value) }),
+                    new(["city"], (address, value) => (InvoiceAddress)address with { City = ConformanceWire.String(value) }),
+                ],
+            },
         ],
         [], "conformance-invoice", content,
         collections:
         [
             new("lines", model => model.Lines, (writer, row) => InvoiceLine.Write(writer, (InvoiceLine)row!), InvoiceLine.KeyOf)
             {
-                FieldPaths = [["label"], ["quantity"]],
-                ReadRow = element => InvoiceLine.Read(element),
-                UpdateRow = (model, row) => model.UpdateLine(((InvoiceLine)row!).Id, (InvoiceLine)row),
+                FieldPaths =
+                [
+                    new(["label"], (line, value) => (InvoiceLine)line with { Label = ConformanceWire.String(value) }),
+                    new(["quantity"], (line, value) => (InvoiceLine)line with { Quantity = InvoiceLine.ReadQuantity(value) }),
+                ],
+                UpdateRow = (model, row, _) => model.UpdateLine(((InvoiceLine)row!).Id, (InvoiceLine)row),
             },
         ]);

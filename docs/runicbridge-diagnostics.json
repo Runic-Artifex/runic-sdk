@@ -180,6 +180,16 @@
       "id": "RUNICBRIDGE051",
       "severity": "error",
       "title": "A keyed collection has more than one [RunicRowEditor] method"
+    },
+    {
+      "id": "RUNICBRIDGE052",
+      "severity": "error",
+      "title": "The rows of a [RunicRowEditor] collection cannot be copied with one cell changed"
+    },
+    {
+      "id": "RUNICBRIDGE053",
+      "severity": "warning",
+      "title": "An object inside an editable row cannot be copied, so it has no fields below it"
     }
   ]
 }

@@ -143,6 +143,35 @@ test("a removed row's cell rejects its write and keeps the draft", async () => {
   view.dispose();
 });
 
+test("the mock forgets a removed row: added again under its key, it is a new row", async () => {
+  const { view, client } = await connect();
+  const before = view.fieldPathVersion();
+  const row = { id: 2, product: "Ink", quantity: 1 };
+  invoice.collection("lines").remove("2");
+  invoice.collection("lines").add(row);
+  await until(() => view.snapshot.lines.length === 2 && view.fieldPathVersion() > before);
+  const receipt = await client.writePath("lines", ["2", "quantity"], { requestId: "w-re", expectedVersion: before, expectedValue: 1, value: 3 },
+    value => wire.integer(value, 0, 9));
+  assert.equal(receipt.kind, "conflict");
+  view.dispose();
+});
+
+test("the mock answers rejected when a row editor removes the row", async () => {
+  bridge = installMockBridge(createMockBridge());
+  invoice = bridge.view("invoice", {
+    state: { address: { street: "", city: "" }, lines: [{ id: 1, product: "Pens", quantity: 2 }], validation: { hasErrors: false, truncated: false, errors: [] } },
+    checkedFields: ["address"],
+    collections: { lines: (item: unknown) => String((item as Line).id) },
+    fieldPaths: { lines: [["quantity"]] },
+    rows: { lines: (state, _key, updated) => (updated as Line).quantity === 0 ? { lines: (state["lines"] as Line[]).filter(item => item.id !== 1) } : undefined },
+  });
+  const { view, client } = await connect();
+  const receipt = await client.writePath("lines", ["1", "quantity"], { requestId: "w-0", expectedVersion: view.fieldPathVersion(), expectedValue: 2, value: 0 },
+    value => wire.integer(value, 0, 9));
+  assert.equal(receipt.kind, "rejected");
+  view.dispose();
+});
+
 test("a cell's errors and pending checks are found at its row's index", () => {
   const state: State = {
     address: { street: "", city: "" },

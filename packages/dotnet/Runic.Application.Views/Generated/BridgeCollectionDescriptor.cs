@@ -21,17 +21,17 @@ public sealed record BridgeCollectionDescriptor<T>(
     bool PublishesChanges = true)
 {
     /// <summary>
-    /// The paths in a row that accept checked writes with <c>field-paths/1</c> (its cells), as wire member names, such as
-    /// <c>["quantity"]</c>; <see langword="null"/> when the rows are not editable.
+    /// The paths in a row that accept checked writes with <c>field-paths/1</c> (its cells), with the generated copy of a
+    /// row with one cell changed; <see langword="null"/> when the rows are not editable.
     /// </summary>
-    public IReadOnlyList<string[]>? FieldPaths { get; init; }
-
-    /// <summary>Decodes a row, for a cell write that rebuilt it. It throws like a setter's decoder for an invalid row.</summary>
-    public Func<JsonElement, object?>? ReadRow { get; init; }
+    public IReadOnlyList<BridgeFieldPath>? FieldPaths { get; init; }
 
     /// <summary>
-    /// Applies an updated row: calls the ViewModel's <see cref="RunicRowEditorAttribute"/> method with the row's key and
-    /// the row. It throws to reject the update.
+    /// Applies an updated row: calls the ViewModel's <see cref="RunicRowEditorAttribute"/> method with the row's key, the
+    /// row and the edit. It throws to reject the update.
     /// </summary>
-    public Action<T, object?>? UpdateRow { get; init; }
+    public Action<T, object?, RunicRowEdit>? UpdateRow { get; init; }
+
+    /// <summary>When a cell write is a conflict: per cell (the default) or per row.</summary>
+    public RunicRowConflicts RowConflicts { get; init; }
 }

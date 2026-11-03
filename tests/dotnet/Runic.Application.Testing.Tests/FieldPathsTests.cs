@@ -145,6 +145,213 @@ internal sealed class FieldPathsTests
         Require(!client.Contains("path: [\"id\"]", StringComparison.Ordinal), client);
     }
 
+    // Review 1: a cell write copies the row, so members the page does not see survive it.
+    [Test]
+    public async Task MembersThePageDoesNotSeeSurviveACellWriteAsync()
+    {
+        var model = new PathInvoiceViewModel();
+        model.Lines[0] = model.Lines[0] with { DatabaseId = 42 };
+        using var host = Toolkit(model);
+        var receipt = await host.Root.WritePathAsync(vm => vm.Lines, ["1", "quantity"], 4);
+        Require(receipt.Kind == RunicFieldWriteReceiptKind.Applied && model.Lines[0].Quantity == 4 && model.Lines[0].DatabaseId == 42,
+            $"{receipt.Json} {model.Lines[0]}");
+
+        // A sealed class row is copied with its copy constructor.
+        var tasks = new PathTasksViewModel();
+        using var taskHost = Tasks(tasks);
+        var title = await taskHost.Root.WritePathAsync(vm => vm.Tasks, ["1", "title"], "Pencil");
+        Require(title.Kind == RunicFieldWriteReceiptKind.Applied && tasks.Tasks[0].Title == "Pencil" && tasks.Tasks[0].Secret == "s1", title.Json);
+        // [RunicNoField] leaves a member without a field.
+        var status = await taskHost.Root.WritePathAsync(vm => vm.Tasks, ["1", "status"], "done");
+        Require(status.Kind == RunicFieldWriteReceiptKind.Failed && tasks.Tasks[0].Status == "open", status.Json);
+    }
+
+    // Review 3: the editor receives the changed cell, the row before the edit and the connection.
+    [Test]
+    public async Task TheRowEditorReceivesTheEditAsync()
+    {
+        var model = new PathInvoiceViewModel();
+        using var host = Toolkit(model);
+        var before = model.Lines[1];
+        await host.Root.WritePathAsync(vm => vm.Lines, ["2", "price"], "5.00");
+        var edit = model.Edits.Single();
+        Require(edit.Path.SequenceEqual(["price"]) && ReferenceEquals(edit.Previous, before)
+            && edit.ConnectionKey == InMemoryBridgeTransport.DefaultConnectionKey, $"{string.Join(".", edit.Path)} {edit.Previous} {edit.ConnectionKey}");
+    }
+
+    // Review 3: RunicRowConflicts.Row: any change of the row after the write's baseline is a conflict.
+    [Test]
+    public async Task RowConflictsMakeAnyChangeOfTheRowAConflictAsync()
+    {
+        var tasks = new PathTasksViewModel();
+        using var host = Tasks(tasks);
+        var before = (await host.Root.SnapshotAsync()).Revision;
+        await host.Root.WritePathAsync(vm => vm.Tasks, ["1", "title"], "Notebook");
+        var owner = await host.Root.WritePathAsync(vm => vm.Tasks, ["1", "owner"], "b", expectedVersion: before);
+        Require(owner.Kind == RunicFieldWriteReceiptKind.Conflict && owner.Value?.GetString() == "a" && tasks.Tasks[0].Owner == "a", owner.Json);
+        var retried = await host.Root.WritePathAsync(vm => vm.Tasks, ["1", "owner"], "b", expectedVersion: owner.Version);
+        Require(retried.Kind == RunicFieldWriteReceiptKind.Applied && tasks.Tasks[0].Owner == "b", retried.Json);
+    }
+
+    // Review 4: receipts of an editor that removes the row, or changes it and then fails.
+    [Test]
+    public async Task ReceiptsFollowWhatTheEditorDidAsync()
+    {
+        var model = new PathInvoiceViewModel();
+        using var host = Toolkit(model);
+        var exploded = await host.Root.WritePathAsync(vm => vm.Lines, ["1", "product"], "explode");
+        Require(exploded.Kind == RunicFieldWriteReceiptKind.CommittedWithError && exploded.ErrorMessage == PathInvoiceViewModel.Exploded
+            && exploded.Value?.GetString() == "explode" && model.Lines[0].Product == "explode", exploded.Json);
+        var removed = await host.Root.WritePathAsync(vm => vm.Lines, ["2", "product"], "remove");
+        Require(removed.Kind == RunicFieldWriteReceiptKind.Rejected && removed.Value is null && model.Lines.Count == 1
+            && removed.ErrorMessage!.Contains("no row '2'", StringComparison.Ordinal), removed.Json);
+    }
+
+    // Review 5: a row removed and added again under its key, in separate publications and in one.
+    [Test]
+    public async Task ARowAddedAgainUnderItsKeyIsANewRowAsync()
+    {
+        var model = new PathInvoiceViewModel();
+        using var host = Toolkit(model);
+        var line = model.Lines[0];
+        var before = (await host.Root.SnapshotAsync()).Revision;
+        await InTurn(host, () => model.Lines.RemoveAt(0));
+        await host.Root.SnapshotAsync();
+        await InTurn(host, () => model.Lines.Insert(0, line));
+        var separate = await host.Root.WritePathAsync(vm => vm.Lines, ["1", "quantity"], 3, expectedVersion: before);
+        Require(separate.Kind == RunicFieldWriteReceiptKind.Conflict && model.Lines[0].Quantity == 2, separate.Json);
+
+        before = (await host.Root.SnapshotAsync()).Revision;
+        await InTurn(host, () => { model.Lines.RemoveAt(0); model.Lines.Insert(0, line); });
+        var together = await host.Root.WritePathAsync(vm => vm.Lines, ["1", "quantity"], 3, expectedVersion: before);
+        Require(together.Kind == RunicFieldWriteReceiptKind.Conflict && model.Lines[0].Quantity == 2, together.Json);
+    }
+
+    // Review 5: a move changes no cell.
+    [Test]
+    public async Task AMovedRowsCellIsWrittenFromTheStateBeforeTheMoveAsync()
+    {
+        var model = new PathInvoiceViewModel();
+        using var host = Toolkit(model);
+        var before = (await host.Root.SnapshotAsync()).Revision;
+        await InTurn(host, () => model.Lines.Move(0, 1));
+        var receipt = await host.Root.WritePathAsync(vm => vm.Lines, ["1", "quantity"], 6, expectedVersion: before);
+        Require(receipt.Kind == RunicFieldWriteReceiptKind.Applied && model.Lines[1] is { Id: 1, Quantity: 6 }, receipt.Json);
+    }
+
+    // Review 5: the editor normalizes a neighbour cell; a draft of that cell based on the older state conflicts.
+    [Test]
+    public async Task ANeighbourTheEditorNormalizedConflictsAsync()
+    {
+        var model = new PathInvoiceViewModel();
+        using var host = Toolkit(model);
+        var before = (await host.Root.SnapshotAsync()).Revision;
+        await host.Root.WritePathAsync(vm => vm.Lines, ["1", "quantity"], 0);
+        Require(model.Lines[0].Price == 0, $"{model.Lines[0]}");
+        var price = await host.Root.WritePathAsync(vm => vm.Lines, ["1", "price"], "2.00", expectedVersion: before);
+        Require(price.Kind == RunicFieldWriteReceiptKind.Conflict && price.Value?.GetString() == "0", price.Json);
+    }
+
+    // Review 5: two pages write the same cell from the same state: the second is a conflict.
+    [Test]
+    public async Task TwoConnectionsWritingTheSameCellConflictAsync()
+    {
+        var model = new PathInvoiceViewModel();
+        using var host = Toolkit(model);
+        var revision = (await host.Root.SnapshotAsync()).Revision;
+        Hello(host, "second");
+        var first = Write(host, InMemoryBridgeTransport.DefaultConnectionKey, "a-1", "1", "quantity", revision, 2, 5);
+        var second = Write(host, "second", "b-1", "1", "quantity", revision, 2, 7);
+        Require(Receipt(first) == "applied" && Receipt(second) == "conflict" && model.Lines[0].Quantity == 5, $"{first}\n{second}");
+    }
+
+    // Review 5: a retry whose receipt was evicted is a conflict, never applied again.
+    [Test]
+    public async Task ARetryAfterItsReceiptWasEvictedIsNotAppliedAgainAsync()
+    {
+        var model = new PathInvoiceViewModel();
+        using var host = Toolkit(model);
+        var revision = (await host.Root.SnapshotAsync()).Revision;
+        var first = Write(host, InMemoryBridgeTransport.DefaultConnectionKey, "w-first", "2", "product", revision, "Ink", "Toner");
+        Require(Receipt(first) == "applied", first);
+        for (var index = 0; index < 70; index++)
+            await host.Root.WritePathAsync(vm => vm.Lines, ["1", "product"], $"Pens {index}");
+        await host.Root.WritePathAsync(vm => vm.Lines, ["2", "product"], "Ink");
+        var retry = Write(host, InMemoryBridgeTransport.DefaultConnectionKey, "w-first", "2", "product", revision, "Ink", "Toner");
+        Require(Receipt(retry) == "conflict" && model.Lines[1].Product == "Ink", retry);
+    }
+
+    // Review 2: one cell change in a 10,000-row grid encodes a few rows, not the grid.
+    [Test]
+    public async Task ACellWriteInALargeGridEncodesOnlyTheChangedRowAsync()
+    {
+        var model = new PathRowsViewModel();
+        for (var id = 2; id <= 10_000; id++) model.Lines.Add(new(id, $"Item {id}", 1, 1m));
+        var encodes = 0;
+        using var host = new RunicWindowTestHost<PathRowsViewModel>(model,
+            (transport, content, vm) => new CountingRowsBridge(transport, vm, content, () => encodes++),
+            new RunicWindowTestHostOptions { RootRoute = "countingRows", ViewLocator = new TestViewLocator() });
+        var revision = (await host.Root.SnapshotAsync()).Revision;
+        encodes = 0;
+        var reply = Write(host, InMemoryBridgeTransport.DefaultConnectionKey, "w-big", "5000", "quantity", revision, 1, 9);
+        Require(Receipt(reply) == "applied" && model.Lines[4999].Quantity == 9, reply);
+        Require(encodes <= 5, $"One cell write encoded {encodes} rows.");
+    }
+
+    private static RunicWindowTestHost<PathTasksViewModel> Tasks(PathTasksViewModel model) =>
+        new(model, (transport, content, vm) => new PathTasksBridge(transport, vm, content: content),
+            new RunicWindowTestHostOptions { RootRoute = "pathTasks", ViewLocator = new TestViewLocator() });
+
+    // Changes made in one model turn are one publication unit.
+    private static Task InTurn<T>(RunicWindowTestHost<T> host, Action change) where T : class
+    {
+        Runic.Application.Views.RunicModelTurns.Run(host.Content.ModelContext!, change);
+        return Task.CompletedTask;
+    }
+
+    private static void Hello<T>(RunicWindowTestHost<T> host, string connection) where T : class =>
+        host.Transport.Request($$"""{"kind":"hello","protocol":4,"session":"{{connection}}-session","client":{"name":"probe","version":"1"},"features":["field-paths/1"]}""", connection);
+
+    private static string Write<T>(RunicWindowTestHost<T> host, string connection, string requestId, string key, string cell, long version,
+        object expected, object value) where T : class =>
+        host.Transport.Request(JsonSerializer.Serialize(new Dictionary<string, object>
+        {
+            ["kind"] = "write", ["route"] = host.RootRoute, ["member"] = "lines", ["path"] = new[] { key, cell }, ["requestId"] = requestId,
+            ["expectedVersion"] = version, ["expectedValue"] = expected, ["value"] = value,
+        }), connection);
+
+    private static string? Receipt(string reply)
+    {
+        using var document = JsonDocument.Parse(reply);
+        return document.RootElement.TryGetProperty("receipt", out var receipt) ? receipt.GetProperty("kind").GetString() : null;
+    }
+
+    // A hand-written Bridge of PathRowsViewModel that counts how often it encodes a row.
+    private sealed class CountingRowsBridge(IBridgeTransport transport, PathRowsViewModel vm, WindowContentSession content, Action encoded)
+        : Runic.Application.Views.Generated.ViewModelBridge<PathRowsViewModel>(transport, vm, "countingRows",
+            [new("lines", (writer, model) => { writer.WriteStartArray(); foreach (var line in model.Lines) WriteLine(writer, line); writer.WriteEndArray(); })],
+            [new("Lines", "lines", model => model.Lines, null)], [], [], "counting-rows", content,
+            collections:
+            [
+                new("lines", model => model.Lines, (writer, row) => { encoded(); WriteLine(writer, (PathLine)row!); },
+                    row => ((PathLine)row!).Id.ToString(System.Globalization.CultureInfo.InvariantCulture))
+                {
+                    FieldPaths = [new(["quantity"], (row, value) => (PathLine)row with { Quantity = value.GetInt32() })],
+                    UpdateRow = (model, row, _) => model.UpdateLine(((PathLine)row!).Id, (PathLine)row),
+                },
+            ])
+    {
+        private static void WriteLine(Utf8JsonWriter writer, PathLine line)
+        {
+            writer.WriteStartObject();
+            writer.WriteNumber("id", line.Id);
+            writer.WriteString("product", line.Product);
+            writer.WriteNumber("quantity", line.Quantity);
+            writer.WriteString("price", line.Price.ToString(System.Globalization.CultureInfo.InvariantCulture));
+            writer.WriteEndObject();
+        }
+    }
+
     private static string GeneratedTypeScriptDirectory()
     {
         for (var directory = new DirectoryInfo(Environment.CurrentDirectory); directory is not null; directory = directory.Parent)

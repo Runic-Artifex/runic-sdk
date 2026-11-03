@@ -163,11 +163,11 @@ public sealed class CheckedPropertyDescriptor<T>(
     internal Action<Utf8JsonWriter, object?>? Write { get; } = writeValue;
 
     /// <summary>
-    /// The paths below the member that accept checked writes with <c>field-paths/1</c>, as wire member names, such as
-    /// <c>["street"]</c> of an address; <see langword="null"/> when none do. A path write decodes the member's value with
-    /// the path's value replaced and assigns it with the setter.
+    /// The paths below the member that accept checked writes with <c>field-paths/1</c>, such as <c>["street"]</c> of an
+    /// address, with the generated copy of the member's value with that path changed; <see langword="null"/> when none
+    /// do. A path write assigns the copy with the setter.
     /// </summary>
-    public IReadOnlyList<string[]>? FieldPaths { get; init; }
+    public IReadOnlyList<BridgeFieldPath>? FieldPaths { get; init; }
 
     // A detached copy of a mutable value: decode what the generated writer wrote.
     internal object? Snapshot(object? value)
@@ -187,6 +187,47 @@ public sealed class CheckedPropertyDescriptor<T>(
     {
         public new bool Equals(object? left, object? right) => BridgeCanonicalJson.Equal(owner.Write!, left, right);
         public int GetHashCode(object? value) => BridgeCanonicalJson.Hash(owner.Write!, value);
+    }
+}
+
+/// <summary>One field path below a member or a row (<c>field-paths/1</c>). Created by generated bridges.</summary>
+/// <param name="path">The wire member names below the member or the row, such as <c>["street"]</c>.</param>
+/// <param name="set">
+/// Returns a copy of the object or row with the value at the path replaced by the decoded wire value, keeping every
+/// member the wire does not carry. It throws <see cref="FormatException"/>, <see cref="JsonException"/>,
+/// <see cref="ArgumentException"/> or <see cref="OverflowException"/> for a value that is not valid input.
+/// </param>
+[EditorBrowsable(EditorBrowsableState.Never)]
+public sealed class BridgeFieldPath(string[] path, Func<object, JsonElement, object> set)
+{
+    /// <summary>The wire member names below the member or the row.</summary>
+    public IReadOnlyList<string> Path { get; } = path ?? throw new ArgumentNullException(nameof(path));
+
+    /// <summary>Copies the object or row with the value at the path replaced.</summary>
+    public Func<object, JsonElement, object> Set { get; } = set ?? throw new ArgumentNullException(nameof(set));
+
+    internal string[] Segments { get; } = path;
+
+    /// <summary>
+    /// The JSON object that <paramref name="writeObject"/> writes, with its member <paramref name="member"/> replaced
+    /// by what <paramref name="writeValue"/> writes: the copy of a sealed class whose settable members are all on the
+    /// wire, for its generated codec to read back.
+    /// </summary>
+    public static JsonDocument ReplaceMember(Action<Utf8JsonWriter> writeObject, string member, Action<Utf8JsonWriter> writeValue)
+    {
+        ArgumentNullException.ThrowIfNull(writeObject);
+        ArgumentNullException.ThrowIfNull(member);
+        ArgumentNullException.ThrowIfNull(writeValue);
+        static byte[] Write(Action<Utf8JsonWriter> write)
+        {
+            var buffer = new System.Buffers.ArrayBufferWriter<byte>();
+            using (var writer = new Utf8JsonWriter(buffer)) write(writer);
+            return buffer.WrittenSpan.ToArray();
+        }
+        var owner = System.Text.Json.Nodes.JsonNode.Parse(Write(writeObject)) as System.Text.Json.Nodes.JsonObject
+            ?? throw new FormatException("The value to copy is not an object.");
+        owner[member] = System.Text.Json.Nodes.JsonNode.Parse(Write(writeValue));
+        return JsonDocument.Parse(owner.ToJsonString());
     }
 }
 
@@ -532,10 +573,10 @@ public partial class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBr
             _settable[property.WireName] = property;
         foreach (var command in commands) _commandsByMember[command.Member] = command;
         foreach (var descriptor in checkedProperties)
-            if (descriptor is { FieldPaths.Count: > 0, ValueKind: CheckedFieldValueKind.Json, Read: not null, Write: not null })
+            if (descriptor is { FieldPaths.Count: > 0, ValueKind: CheckedFieldValueKind.Json, Write: not null })
                 _pathTargets[descriptor.WireName] = new(descriptor.WireName, descriptor.FieldPaths, descriptor, null);
         foreach (var descriptor in _keyedCollections)
-            if (descriptor is { FieldPaths.Count: > 0, ReadRow: not null, UpdateRow: not null })
+            if (descriptor is { FieldPaths.Count: > 0, UpdateRow: not null })
                 _pathTargets[descriptor.Name] = new(descriptor.Name, descriptor.FieldPaths, null, descriptor);
 
         var bindings = new List<IDisposable>();
@@ -847,15 +888,18 @@ public partial class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBr
     private bool IsInactive => _disposed || Volatile.Read(ref _detaching) != 0;
 
     // A member with field paths: a settable object member (Nested) or a keyed collection with a row editor (Rows).
-    private sealed class FieldPathTarget(string member, IReadOnlyList<string[]> paths, CheckedPropertyDescriptor<T>? nested,
+    private sealed class FieldPathTarget(string member, IReadOnlyList<BridgeFieldPath> paths, CheckedPropertyDescriptor<T>? nested,
         BridgeCollectionDescriptor<T>? rows)
     {
-        private readonly HashSet<string> _keys = paths.Select(BridgeFieldPathTracker.PathKey).ToHashSet(StringComparer.Ordinal);
+        private readonly Dictionary<string, int> _indexes = paths.Select((path, index) => (Key: BridgeFieldPathTracker.PathKey(path.Segments), index))
+            .ToDictionary(entry => entry.Key, entry => entry.index, StringComparer.Ordinal);
         public string Member { get; } = member;
-        public IReadOnlyList<string[]> Paths { get; } = paths;
+        public IReadOnlyList<BridgeFieldPath> Paths { get; } = paths;
+        public string[][] Segments { get; } = [.. paths.Select(path => path.Segments)];
         public CheckedPropertyDescriptor<T>? Nested { get; } = nested;
         public BridgeCollectionDescriptor<T>? Rows { get; } = rows;
-        public bool Declares(string[] path) => _keys.Contains(BridgeFieldPathTracker.PathKey(path));
+        // The index of a declared path, or -1.
+        public int IndexOf(string[] path) => _indexes.TryGetValue(BridgeFieldPathTracker.PathKey(path), out var index) ? index : -1;
     }
 
     private sealed record CheckedPropertyBinding(CheckedPropertyDescriptor<T> Descriptor,

@@ -575,21 +575,31 @@ path, or 0 when no publication changed it since the route's first state. A path'
 the route's revision, and a client that shows the route's state at revision R bases a write of any field path on
 version R: the path did not change after R exactly when its version is at most R. A cell has its own version, so a
 change of one cell of a row does not conflict with a write of another cell. A row that is removed and added again,
-and an object member that becomes `null` and an object again, start at the revision that added them.
+also within one publication, and an object member that becomes `null` and an object again, start at the revision
+that added them. A move changes no cell.
+
+**Row conflicts.** The application may check the rows of a collection as a whole instead (the .NET
+`[RunicRowEditor(Conflicts = RunicRowConflicts.Row)]`): a write of any cell of a row is then based on the row's
+version, the revision of the last publication that changed anything in the row, so a cell that another writer left
+alone conflicts too when they changed the row meanwhile. The client sends the same request either way.
 
 **Meaning.** A write with `path` is the checked write of the value at the path. When the field path's version is at
 most `expectedVersion` and its current value is [canonically equal](values.md#canonical-equality) to `expectedValue`,
-the producer builds the member's value (the object, or the row) with the value at the path replaced by `value`,
-decodes it as the member's type and applies it: an object member through its setter, a row through the View's row
-editor, which replaces the row with the same key. The receipts are those of a checked write, with these differences:
+the producer copies the member's value (the object, or the row) with the value at the path replaced by `value`,
+decoded as that value's type, and applies the copy: an object member through its setter, a row through the View's
+row editor, which replaces the row with the same key. The copy keeps everything the producer holds that the wire
+does not carry, such as a member the page does not see; a producer that cannot copy a value exactly declares no field
+paths below it. The receipts are those of a checked write, with these differences:
 
 - `snapshot` and `incoming` carry the value at the path, and their `version` is the reply's `revision`, at which the
   route's state shows that value; it is the version of the client's next write of the path.
 - `applied` carries no `validation`: the page reads the path's messages from `validation`, whose paths name rows by
   their index ([validation](#validation)).
-- When no row has the key, or an object on the path is `null`, the receipt is `rejected`.
-- When the setter or row editor fails, the receipt is `rejected`, or `committed-with-error` when the value at the path
-  changed before it failed.
+- When no row has the key, or an object on the path is `null`, the receipt is `rejected`. So it is when the row editor
+  removed the row, or the setter cleared the object: there is no value at the path to report.
+- When the setter or row editor fails, the receipt is `rejected` when the object or row is unchanged, and
+  `committed-with-error`, with the value at the path, when it changed before the failure.
+- A reused or expired `requestId` of a write whose row is gone is `rejected`, since `incoming` would have no value.
 
 **Producer.** In this order:
 
@@ -598,16 +608,19 @@ editor, which replaces the row with the same key. The receipts are those of a ch
 2. A `write` with `path` on a connection that does not use `field-paths/1`, or whose `path` is not a field path of the
    member, is `rejected` with `invalid-request`. A row's key member is not a field path.
 3. A retained `requestId` answers with the original receipt when the retry repeats `path`, `expectedVersion`,
-   `expectedValue` and `value`, canonically equal to the original's, and with `conflict` otherwise, as any `write`.
+   `expectedValue` and `value`, canonically equal to the original's, and with `conflict` otherwise, as any `write`
+   (`rejected` when the row is gone).
 4. No row has the key, or an object on the path is `null`: `rejected`.
-5. The field path's version is above `expectedVersion`, or its value is not canonically equal to `expectedValue`:
-   `conflict`, with the value at the path in `incoming`.
+5. The field path's version (the row's, with row conflicts) is above `expectedVersion`, or its value is not
+   canonically equal to `expectedValue`: `conflict`, with the value at the path in `incoming`.
 6. A `value` with which the member's value does not decode is `rejected` with `invalid-input`, and no receipt is
    retained.
 7. Otherwise the producer applies the value and retains the receipt.
 
 A producer keeps, for each route and field path whose member or row it publishes, the revision of the last publication
-that changed it, and the value it published, to compare the next publication with.
+that changed it, and a digest of the value it published, to compare the next publication with. A frame's indexed
+changes carry the rows that changed, so a publication compares only those; a `set` of the collection and a full state
+compare every row.
 
 **Client.** A client that uses `field-paths/1` writes a field path with `path`, `expectedVersion` the route's revision
 when the draft started (or the version of the last receipt), and `expectedValue` the value at the path in that state.

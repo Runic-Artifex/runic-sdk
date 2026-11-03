@@ -726,7 +726,13 @@ export function createMockBridge(options: MockBridgeOptions = {}): MockBridge {
     for (const [member, paths] of Object.entries(view.definition.fieldPaths ?? {})) {
       if (sameJson(before[member], view.state[member])) continue;
       const old = containersOf(view, before, member);
-      for (const [key, container] of containersOf(view, view.state, member)) {
+      const now = containersOf(view, view.state, member);
+      // A removed row is forgotten: added again under its key, it starts at its new revision.
+      for (const key of old.keys()) {
+        if (now.has(key)) continue;
+        for (const changed of [...view.pathChanged.keys()]) if (changed.startsWith(`${key}\u0000`)) view.pathChanged.delete(changed);
+      }
+      for (const [key, container] of now) {
         const previous = old.get(key);
         for (const path of paths)
           if (previous === undefined || !sameJson(leafOf(previous, path)?.value, leafOf(container, path)?.value))
@@ -753,14 +759,17 @@ export function createMockBridge(options: MockBridgeOptions = {}): MockBridge {
     const container = () => containersOf(view, view.state, member).get(key === undefined ? member : `${member}\u0000${key}`);
     const current = () => leafOf(container(), path);
     const previous = view.writes.get(id);
-    if (previous) return reply(previous.request === request ? previous.receipt
-      : { kind: "conflict", incoming: { value: current()?.value ?? null, version: view.revision },
-        message: "The request identity was already used with a different checked write." });
+    const gone = key === undefined ? `${member} is null.` : `${member} has no row ${key}.`;
+    if (previous) {
+      if (previous.request === request) return reply(previous.receipt);
+      const now = current();
+      return reply(now === undefined ? { kind: "rejected", message: gone }
+        : { kind: "conflict", incoming: { value: now.value, version: view.revision }, message: "The request identity was already used with a different checked write." });
+    }
     const retain = (receipt: Record<string, unknown>) => { view.writes.set(id, { request, receipt }); return reply(receipt); };
     const target = container();
     const leaf = current();
-    if (target === undefined || leaf === undefined)
-      return retain({ kind: "rejected", message: key === undefined ? `${member} is null.` : `${member} has no row ${key}.` });
+    if (target === undefined || leaf === undefined) return retain({ kind: "rejected", message: gone });
     const changed = view.pathChanged.get(`${key === undefined ? member : `${member}\u0000${key}`}\u0000${path.join("\u0000")}`) ?? 0;
     if (changed > (message["expectedVersion"] as number) || !sameJson(leaf.value, message["expectedValue"]))
       return retain({ kind: "conflict", incoming: { value: leaf.value, version: view.revision }, message: "The field baseline no longer matches." });
@@ -779,9 +788,15 @@ export function createMockBridge(options: MockBridgeOptions = {}): MockBridge {
         commit(view, { ...view.state, ...(patch ?? {}) });
       }
     } catch (error) {
-      return retain({ kind: "rejected", message: failureFromError(error).message });
+      // A handler that changed the object or row before it failed committed that change.
+      const after = container();
+      const failure = failureFromError(error).message;
+      if (after === undefined) return retain({ kind: "rejected", message: gone });
+      return retain(sameJson(after, target) ? { kind: "rejected", message: failure }
+        : { kind: "committed-with-error", snapshot: { value: current()?.value ?? null, version: view.revision }, message: failure });
     }
-    return retain({ kind: "applied", snapshot: { value: current()?.value ?? message["value"], version: view.revision } });
+    const applied = current();
+    return retain(applied === undefined ? { kind: "rejected", message: gone } : { kind: "applied", snapshot: { value: applied.value, version: view.revision } });
   }
 
   /** The `epoch` member of a reply or state on a connection that uses presentation-epoch/1. */
