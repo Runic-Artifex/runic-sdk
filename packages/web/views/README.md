@@ -399,7 +399,7 @@ without aliases, which `choices` repeats: `export const LayoutValues = ["List", 
 | `[Required]` | `required: true` |
 | `[MinLength]`, `[MaxLength]`, `[StringLength]` | `minLength`, `maxLength` |
 | `[Range]` | `min`, `max` (numbers, or the invariant text of other bounds such as decimals), `minExclusive`, `maxExclusive` |
-| `[RegularExpression]` | `pattern`, when the .NET pattern means the same in JavaScript (no inline options, named groups, lookbehind or `\A`/`\Z`) |
+| `[RegularExpression]` | `pattern`, for the patterns a browser's `pattern` attribute (which compiles with the `v` flag) reads as .NET does: no inline options, named groups, lookbehind, `\A`/`\Z`/`\z`/`\G`, `\p`, `\d`/`\w`/`\b` (Unicode in .NET, ASCII in JavaScript), and in a character class no unescaped `( ) [ { } / \|`, lone `-` or doubled punctuators such as `&&`. Other patterns are left out; .NET still validates them |
 
 ```tsx
 const { maxLength, required } = EditorFields.title.constraints ?? {};
