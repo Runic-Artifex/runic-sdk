@@ -162,6 +162,13 @@ public sealed class CheckedPropertyDescriptor<T>(
     internal Func<JsonElement, object?>? Read { get; } = readValue;
     internal Action<Utf8JsonWriter, object?>? Write { get; } = writeValue;
 
+    /// <summary>
+    /// The paths below the member that accept checked writes with <c>field-paths/1</c>, as wire member names, such as
+    /// <c>["street"]</c> of an address; <see langword="null"/> when none do. A path write decodes the member's value with
+    /// the path's value replaced and assigns it with the setter.
+    /// </summary>
+    public IReadOnlyList<string[]>? FieldPaths { get; init; }
+
     // A detached copy of a mutable value: decode what the generated writer wrote.
     internal object? Snapshot(object? value)
     {
@@ -418,6 +425,9 @@ public partial class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBr
     private readonly Dictionary<string, PropertyDescriptor<T>> _settable = new(StringComparer.Ordinal);
     private readonly Dictionary<string, CheckedPropertyBinding> _checkedByMember = new(StringComparer.Ordinal);
     private readonly Dictionary<string, CommandDescriptor<T>> _commandsByMember = new(StringComparer.Ordinal);
+    // field-paths/1: the members with field paths below them, by wire name, and the versions of those paths.
+    private readonly Dictionary<string, FieldPathTarget> _pathTargets = new(StringComparer.Ordinal);
+    private readonly BridgeFieldPathTracker _fieldPaths = new();
     private readonly ICommand[] _subscribedCommands;
     private readonly string? _contractFingerprint;
     private readonly IDisposable[] _bindings;
@@ -521,6 +531,12 @@ public partial class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBr
         foreach (var property in properties.Where(property => property.CanWrite))
             _settable[property.WireName] = property;
         foreach (var command in commands) _commandsByMember[command.Member] = command;
+        foreach (var descriptor in checkedProperties)
+            if (descriptor is { FieldPaths.Count: > 0, ValueKind: CheckedFieldValueKind.Json, Read: not null, Write: not null })
+                _pathTargets[descriptor.WireName] = new(descriptor.WireName, descriptor.FieldPaths, descriptor, null);
+        foreach (var descriptor in _keyedCollections)
+            if (descriptor is { FieldPaths.Count: > 0, ReadRow: not null, UpdateRow: not null })
+                _pathTargets[descriptor.Name] = new(descriptor.Name, descriptor.FieldPaths, null, descriptor);
 
         var bindings = new List<IDisposable>();
         var subscribedCommands = new List<ICommand>();
@@ -829,6 +845,18 @@ public partial class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBr
     void IBridgeDetachmentSignal.BeginDetaching() => Interlocked.Exchange(ref _detaching, 1);
 
     private bool IsInactive => _disposed || Volatile.Read(ref _detaching) != 0;
+
+    // A member with field paths: a settable object member (Nested) or a keyed collection with a row editor (Rows).
+    private sealed class FieldPathTarget(string member, IReadOnlyList<string[]> paths, CheckedPropertyDescriptor<T>? nested,
+        BridgeCollectionDescriptor<T>? rows)
+    {
+        private readonly HashSet<string> _keys = paths.Select(BridgeFieldPathTracker.PathKey).ToHashSet(StringComparer.Ordinal);
+        public string Member { get; } = member;
+        public IReadOnlyList<string[]> Paths { get; } = paths;
+        public CheckedPropertyDescriptor<T>? Nested { get; } = nested;
+        public BridgeCollectionDescriptor<T>? Rows { get; } = rows;
+        public bool Declares(string[] path) => _keys.Contains(BridgeFieldPathTracker.PathKey(path));
+    }
 
     private sealed record CheckedPropertyBinding(CheckedPropertyDescriptor<T> Descriptor,
         BridgeFieldWriteRegistry<object?> Registry);

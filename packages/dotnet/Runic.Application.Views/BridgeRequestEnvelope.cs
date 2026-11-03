@@ -47,6 +47,9 @@ internal sealed class BridgeRequestEnvelope : IDisposable
 
     // The request kinds of Views routes. hello and receive belong to the connection, and reserved routes (runic.*)
     // define their own kinds.
+    internal const int MaximumFieldPathSegments = 64;
+    internal const int MaximumFieldPathSegmentLength = 2_048;
+
     internal static bool IsViewKind(string kind) => kind switch
     {
         "open" or "snapshot" or "close" or "set" or "write" or "command" or "can" or "start" or "status" or "watch"
@@ -218,6 +221,16 @@ internal sealed class BridgeRequestEnvelope : IDisposable
     // (text-splice/1): exactly one of value and splice, and no expectedValue with a splice.
     private static string? WriteValue(JsonElement root)
     {
+        // field-paths/1: a path below the member, of 1 to 64 nonempty strings (row keys and member wire names).
+        if (root.TryGetProperty("path", out var path))
+        {
+            if (path.ValueKind != JsonValueKind.Array || path.GetArrayLength() is < 1 or > MaximumFieldPathSegments)
+                return $"The request's path is not an array of 1 to {MaximumFieldPathSegments} segments.";
+            foreach (var segment in path.EnumerateArray())
+                if (segment.ValueKind != JsonValueKind.String || segment.GetString() is not { Length: > 0 and <= MaximumFieldPathSegmentLength })
+                    return $"The request's path segments are not nonempty strings of at most {MaximumFieldPathSegmentLength} characters.";
+            if (root.TryGetProperty("splice", out _)) return "A write with a path has no splice.";
+        }
         if (!root.TryGetProperty("splice", out var splice)) return Present(root, "expectedValue") ?? Present(root, "value");
         if (root.TryGetProperty("value", out _)) return "The request has both a value and a splice.";
         if (root.TryGetProperty("expectedValue", out _)) return "The request has both an expectedValue and a splice.";

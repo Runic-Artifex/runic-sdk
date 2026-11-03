@@ -17,3 +17,15 @@ Runic.Application.Views.RunicPendingValidation.Track<T>(string! memberPath, Syst
 static Runic.Application.Views.RunicPendingValidationExtensions.TrackPending<T>(this System.IObservable<T>! states, Runic.Application.Views.RunicPendingValidation! pending, string! memberPath, System.Func<T, bool>! isPending) -> System.IObservable<T>!
 Runic.Application.Views.RunicPendingValidation.Track(string! memberPath, System.Func<System.Threading.CancellationToken, System.Threading.Tasks.Task!>! validate) -> System.Threading.Tasks.Task!
 Runic.Application.Views.RunicPendingValidation.Track<T>(string! memberPath, System.Func<System.Threading.CancellationToken, System.Threading.Tasks.Task<T>!>! validate) -> System.Threading.Tasks.Task<T>!
+Runic.Application.Views.RunicRowEditorAttribute
+Runic.Application.Views.RunicRowEditorAttribute.Collection.get -> string?
+Runic.Application.Views.RunicRowEditorAttribute.RunicRowEditorAttribute() -> void
+Runic.Application.Views.RunicRowEditorAttribute.RunicRowEditorAttribute(string! collection) -> void
+Runic.Application.Views.Generated.CheckedPropertyDescriptor<T>.FieldPaths.get -> System.Collections.Generic.IReadOnlyList<string![]!>?
+Runic.Application.Views.Generated.CheckedPropertyDescriptor<T>.FieldPaths.init -> void
+Runic.Application.Views.Generated.BridgeCollectionDescriptor<T>.FieldPaths.get -> System.Collections.Generic.IReadOnlyList<string![]!>?
+Runic.Application.Views.Generated.BridgeCollectionDescriptor<T>.FieldPaths.init -> void
+Runic.Application.Views.Generated.BridgeCollectionDescriptor<T>.ReadRow.get -> System.Func<System.Text.Json.JsonElement, object?>?
+Runic.Application.Views.Generated.BridgeCollectionDescriptor<T>.ReadRow.init -> void
+Runic.Application.Views.Generated.BridgeCollectionDescriptor<T>.UpdateRow.get -> System.Action<T, object?>?
+Runic.Application.Views.Generated.BridgeCollectionDescriptor<T>.UpdateRow.init -> void

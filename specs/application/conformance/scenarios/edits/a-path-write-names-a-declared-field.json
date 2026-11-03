@@ -1,0 +1,284 @@
+{
+  "format": "runic.views.scenario/1",
+  "id": "edits.a-path-write-names-a-declared-field.v1",
+  "contract": {
+    "id": "runic.views",
+    "version": 4
+  },
+  "set": "edits",
+  "roles": [
+    "producer"
+  ],
+  "description": "A path write names a field the contract declares: a row's key and a member the address does not have are invalid-request, and a value the cell's type does not decode is invalid-input. Nothing runs.",
+  "view": "invoice",
+  "requires": [
+    "field-paths/1"
+  ],
+  "ids": {
+    "c1": {
+      "kind": "connection"
+    },
+    "hello-c1": {
+      "kind": "request"
+    },
+    "session": {
+      "kind": "wire",
+      "value": "s-1"
+    },
+    "open-invoice-request": {
+      "kind": "request"
+    },
+    "presentation": {
+      "kind": "wire",
+      "value": "p-1"
+    },
+    "key": {
+      "kind": "request"
+    },
+    "undeclared": {
+      "kind": "request"
+    },
+    "invalid": {
+      "kind": "request"
+    },
+    "w1": {
+      "kind": "wire",
+      "value": "w-1"
+    },
+    "w2": {
+      "kind": "wire",
+      "value": "w-2"
+    },
+    "w3": {
+      "kind": "wire",
+      "value": "w-3"
+    }
+  },
+  "arrange": {
+    "model": {
+      "address": {
+        "street": "",
+        "city": "Bern"
+      },
+      "lines": [
+        {
+          "id": 1,
+          "label": "Pens",
+          "quantity": 1
+        },
+        {
+          "id": 2,
+          "label": "Ink",
+          "quantity": 4
+        }
+      ]
+    }
+  },
+  "steps": [
+    {
+      "connect": "c1"
+    },
+    {
+      "send": {
+        "kind": "hello",
+        "protocol": 4,
+        "session": {
+          "$id": "session"
+        },
+        "client": {
+          "name": {
+            "$any": "string",
+            "default": "conformance-client"
+          },
+          "version": {
+            "$any": "string",
+            "default": "1.0.0"
+          }
+        },
+        "features": {
+          "$any": "array",
+          "default": [
+            "text-splice/1",
+            "field-paths/1"
+          ]
+        }
+      },
+      "id": "hello-c1"
+    },
+    {
+      "receive": {
+        "ok": true,
+        "protocol": 4,
+        "implementation": {
+          "name": {
+            "$any": "string",
+            "default": "conformance-producer"
+          },
+          "version": {
+            "$any": "string",
+            "default": "1.0.0"
+          }
+        },
+        "features": {
+          "$any": "array",
+          "default": [
+            "text-splice/1",
+            "field-paths/1"
+          ]
+        }
+      },
+      "replyTo": "hello-c1"
+    },
+    {
+      "send": {
+        "kind": "open",
+        "route": "invoice",
+        "presentation": {
+          "$id": "presentation"
+        }
+      },
+      "id": "open-invoice-request"
+    },
+    {
+      "receive": {
+        "ok": true,
+        "revision": 0,
+        "state": {
+          "address": {
+            "street": "",
+            "city": "Bern"
+          },
+          "lines": [
+            {
+              "id": 1,
+              "label": "Pens",
+              "quantity": 1
+            },
+            {
+              "id": 2,
+              "label": "Ink",
+              "quantity": 4
+            }
+          ]
+        },
+        "fields": {
+          "address": {
+            "version": 0
+          }
+        },
+        "presentation": "ok"
+      },
+      "replyTo": "open-invoice-request"
+    },
+    {
+      "send": {
+        "kind": "write",
+        "route": "invoice",
+        "member": "lines",
+        "path": [
+          "1",
+          "id"
+        ],
+        "requestId": {
+          "$id": "w1"
+        },
+        "expectedVersion": 0,
+        "expectedValue": 1,
+        "value": 9
+      },
+      "id": "key"
+    },
+    {
+      "receive": {
+        "ok": false,
+        "error": {
+          "kind": "rejected",
+          "reason": "invalid-request",
+          "message": {
+            "$any": "string"
+          }
+        }
+      },
+      "replyTo": "key"
+    },
+    {
+      "send": {
+        "kind": "write",
+        "route": "invoice",
+        "member": "address",
+        "path": [
+          "zip"
+        ],
+        "requestId": {
+          "$id": "w2"
+        },
+        "expectedVersion": 0,
+        "expectedValue": "",
+        "value": "3000"
+      },
+      "id": "undeclared"
+    },
+    {
+      "receive": {
+        "ok": false,
+        "error": {
+          "kind": "rejected",
+          "reason": "invalid-request",
+          "message": {
+            "$any": "string"
+          }
+        }
+      },
+      "replyTo": "undeclared"
+    },
+    {
+      "send": {
+        "kind": "write",
+        "route": "invoice",
+        "member": "lines",
+        "path": [
+          "1",
+          "quantity"
+        ],
+        "requestId": {
+          "$id": "w3"
+        },
+        "expectedVersion": 0,
+        "expectedValue": 1,
+        "value": "two"
+      },
+      "id": "invalid"
+    },
+    {
+      "receive": {
+        "ok": false,
+        "error": {
+          "kind": "rejected",
+          "reason": "invalid-input",
+          "message": {
+            "$any": "string"
+          }
+        }
+      },
+      "replyTo": "invalid"
+    },
+    {
+      "expect": {
+        "model": {
+          "lines": [
+            {
+              "id": 1,
+              "label": "Pens",
+              "quantity": 1
+            },
+            {
+              "id": 2,
+              "label": "Ink",
+              "quantity": 4
+            }
+          ]
+        }
+      }
+    }
+  ]
+}

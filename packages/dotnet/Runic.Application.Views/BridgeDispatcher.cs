@@ -41,6 +41,8 @@ internal sealed class BridgeDispatcher : IBridgeRequestHandler
     internal const string ValidationPendingFeature = "validation-pending/1";
     // field-flush/1: the producer asks the pages to write their field drafts (flush) before a departure is decided.
     internal const string FieldFlushFeature = "field-flush/1";
+    // field-paths/1: a checked write may name a path below its member: a nested member or a keyed collection's row cell.
+    internal const string FieldPathsFeature = "field-paths/1";
     // How long a flush waits at most for the pages' flush-reply.
     internal static readonly TimeSpan FieldFlushLimit = TimeSpan.FromSeconds(1);
     internal const int MaximumFeatures = 64;
@@ -618,7 +620,7 @@ internal sealed class BridgeDispatcher : IBridgeRequestHandler
         if (!root.TryGetProperty("client", out var client) || client.ValueKind != JsonValueKind.Object
             || !TryReadName(client, "name", 128, out var clientName) || !TryReadName(client, "version", 64, out var clientVersion))
             return BridgeMessages.Rejected("invalid-request", "The hello's client is not {name, version}.", hello: true);
-        if (!TryReadFeatures(root, out var usesTextSplice, out var usesPresentationEpoch, out var usesPresented, out var usesFieldFlush))
+        if (!TryReadFeatures(root, out var usesTextSplice, out var usesPresentationEpoch, out var usesPresented, out var usesFieldFlush, out var usesFieldPaths))
             return BridgeMessages.Rejected("invalid-request",
                 $"The hello's features are not an array of at most {MaximumFeatures} strings of at most {MaximumFeatureLength} characters.", hello: true);
         var session = sessionElement.GetString()!;
@@ -638,6 +640,7 @@ internal sealed class BridgeDispatcher : IBridgeRequestHandler
             connection.UsesPresentationEpoch = usesPresentationEpoch;
             connection.UsesPresented = usesPresented;
             connection.UsesFieldFlush = usesFieldFlush;
+            connection.UsesFieldPaths = usesFieldPaths;
             connection.HelloCompleted = true;
             if (!usesTextSplice) _connectionsWithoutTextSplice++;
             if (usesPresentationEpoch) _connectionsWithPresentationEpoch++;
@@ -651,9 +654,9 @@ internal sealed class BridgeDispatcher : IBridgeRequestHandler
 
     // The client's features: absent, or an array of strings. A feature this producer does not implement is ignored.
     private static bool TryReadFeatures(JsonElement root, out bool usesTextSplice, out bool usesPresentationEpoch,
-        out bool usesPresented, out bool usesFieldFlush)
+        out bool usesPresented, out bool usesFieldFlush, out bool usesFieldPaths)
     {
-        usesTextSplice = usesPresentationEpoch = usesPresented = usesFieldFlush = false;
+        usesTextSplice = usesPresentationEpoch = usesPresented = usesFieldFlush = usesFieldPaths = false;
         if (!root.TryGetProperty("features", out var features)) return true;
         if (features.ValueKind != JsonValueKind.Array || features.GetArrayLength() > MaximumFeatures) return false;
         foreach (var feature in features.EnumerateArray())
@@ -665,6 +668,7 @@ internal sealed class BridgeDispatcher : IBridgeRequestHandler
             else if (name == PresentationEpochFeature) usesPresentationEpoch = true;
             else if (name == PresentedFeature) usesPresented = true;
             else if (name == FieldFlushFeature) usesFieldFlush = true;
+            else if (name == FieldPathsFeature) usesFieldPaths = true;
         }
         return true;
     }
@@ -805,6 +809,8 @@ internal sealed class BridgeConnection(string key, string clientKey)
     internal bool UsesPresented { get; set; }
     // Whether the connection uses field-flush/1.
     internal bool UsesFieldFlush { get; set; }
+    // Whether the connection uses field-paths/1.
+    internal bool UsesFieldPaths { get; set; }
     // Whether the window's closing push waits for this connection's closing-reply; the dispatcher's gate guards it.
     internal bool ClosingPending { get; set; }
     // Requests that wait for the hello, in arrival order, and whether the dispatcher is admitting them.

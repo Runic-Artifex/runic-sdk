@@ -1,0 +1,256 @@
+{
+  "format": "runic.views.scenario/1",
+  "id": "edits.a-row-editor-that-throws-rejects-the-write.v1",
+  "contract": {
+    "id": "runic.views",
+    "version": 4
+  },
+  "set": "edits",
+  "roles": [
+    "producer",
+    "client"
+  ],
+  "description": "A row editor that throws refuses the cell's value: the receipt is rejected with the exception's message and nothing changes.",
+  "view": "invoice",
+  "requires": [
+    "field-paths/1"
+  ],
+  "ids": {
+    "c1": {
+      "kind": "connection"
+    },
+    "hello-c1": {
+      "kind": "request"
+    },
+    "session": {
+      "kind": "wire",
+      "value": "s-1"
+    },
+    "open-invoice": {
+      "kind": "call"
+    },
+    "open-invoice-request": {
+      "kind": "request"
+    },
+    "presentation": {
+      "kind": "wire",
+      "value": "p-1"
+    },
+    "negative": {
+      "kind": "call"
+    },
+    "negative-request": {
+      "kind": "request"
+    },
+    "negativeId": {
+      "kind": "wire",
+      "value": "w-negative"
+    }
+  },
+  "arrange": {
+    "model": {
+      "address": {
+        "street": "",
+        "city": "Bern"
+      },
+      "lines": [
+        {
+          "id": 1,
+          "label": "Pens",
+          "quantity": 1
+        },
+        {
+          "id": 2,
+          "label": "Ink",
+          "quantity": 4
+        }
+      ]
+    }
+  },
+  "steps": [
+    {
+      "connect": "c1"
+    },
+    {
+      "send": {
+        "kind": "hello",
+        "protocol": 4,
+        "session": {
+          "$id": "session"
+        },
+        "client": {
+          "name": {
+            "$any": "string",
+            "default": "conformance-client"
+          },
+          "version": {
+            "$any": "string",
+            "default": "1.0.0"
+          }
+        },
+        "features": {
+          "$any": "array",
+          "default": [
+            "text-splice/1",
+            "field-paths/1"
+          ]
+        }
+      },
+      "id": "hello-c1"
+    },
+    {
+      "receive": {
+        "ok": true,
+        "protocol": 4,
+        "implementation": {
+          "name": {
+            "$any": "string",
+            "default": "conformance-producer"
+          },
+          "version": {
+            "$any": "string",
+            "default": "1.0.0"
+          }
+        },
+        "features": {
+          "$any": "array",
+          "default": [
+            "text-splice/1",
+            "field-paths/1"
+          ]
+        }
+      },
+      "replyTo": "hello-c1"
+    },
+    {
+      "call": {
+        "id": "open-invoice",
+        "op": "open",
+        "route": "invoice"
+      }
+    },
+    {
+      "send": {
+        "kind": "open",
+        "route": "invoice",
+        "presentation": {
+          "$id": "presentation"
+        }
+      },
+      "id": "open-invoice-request"
+    },
+    {
+      "receive": {
+        "ok": true,
+        "revision": 0,
+        "state": {
+          "address": {
+            "street": "",
+            "city": "Bern"
+          },
+          "lines": [
+            {
+              "id": 1,
+              "label": "Pens",
+              "quantity": 1
+            },
+            {
+              "id": 2,
+              "label": "Ink",
+              "quantity": 4
+            }
+          ]
+        },
+        "fields": {
+          "address": {
+            "version": 0
+          }
+        },
+        "presentation": "ok"
+      },
+      "replyTo": "open-invoice-request"
+    },
+    {
+      "call": {
+        "id": "negative",
+        "op": "write",
+        "route": "invoice",
+        "member": "lines",
+        "path": [
+          "1",
+          "quantity"
+        ],
+        "requestId": "w-negative",
+        "baseline": {
+          "value": 1,
+          "version": 0
+        },
+        "value": -1
+      }
+    },
+    {
+      "send": {
+        "kind": "write",
+        "route": "invoice",
+        "member": "lines",
+        "path": [
+          "1",
+          "quantity"
+        ],
+        "requestId": {
+          "$id": "negativeId"
+        },
+        "expectedVersion": 0,
+        "expectedValue": 1,
+        "value": -1
+      },
+      "id": "negative-request"
+    },
+    {
+      "receive": {
+        "ok": true,
+        "revision": 0,
+        "receipt": {
+          "kind": "rejected",
+          "message": {
+            "$any": "string",
+            "default": "Quantity must not be negative."
+          }
+        }
+      },
+      "replyTo": "negative-request"
+    },
+    {
+      "expect": {
+        "call": {
+          "id": "negative",
+          "resolved": {
+            "kind": "rejected",
+            "message": {
+              "$any": "string"
+            }
+          }
+        }
+      }
+    },
+    {
+      "expect": {
+        "model": {
+          "lines": [
+            {
+              "id": 1,
+              "label": "Pens",
+              "quantity": 1
+            },
+            {
+              "id": 2,
+              "label": "Ink",
+              "quantity": 4
+            }
+          ]
+        }
+      },
+      "role": "producer"
+    }
+  ]
+}

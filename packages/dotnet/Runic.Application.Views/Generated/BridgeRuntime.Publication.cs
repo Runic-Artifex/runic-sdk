@@ -302,8 +302,15 @@ public partial class ViewModelBridge<T>
         _checkedByMember.TryGetValue(member, out var field) ? field.Registry.Current.Version : null;
 
     // The baselines after a published frame: members holds the members that changed.
-    private void Commit(List<(string Name, byte[] Value)> members, long revision)
+    private void Commit(List<(string Name, byte[] Value)> members, long revision, bool fullState = false)
     {
+        // field-paths/1: the paths that this publication changed take its revision as their version.
+        foreach (var target in _pathTargets.Values)
+        {
+            var changed = fullState || members.Exists(member => member.Name == target.Member)
+                || target.Rows is { } rows && (_collectionSets.Contains(rows) || _pendingCollectionChanges.Exists(change => change.Descriptor == rows));
+            if (changed) _fieldPaths.Observe(target.Member, FieldPathContainers(target), target.Paths, revision);
+        }
         foreach (var (name, value) in members) _baselines![name] = value;
         foreach (var field in _checkedProperties) _publishedVersions[field.Descriptor.WireName] = field.Registry.Current.Version;
         foreach (var field in _textFields) _textBaselines[field] = field.Get(_vm) as string;
@@ -506,7 +513,7 @@ public partial class ViewModelBridge<T>
             _baselines[name] = message.Buffer.ToArray(start, length);
         }
         foreach (var descriptor in _incrementalCollections) _collectionInstances[descriptor] = descriptor.Get(_vm);
-        Commit([], _revision);
+        Commit([], _revision, fullState: true);
         // The state is a unit that compared every member.
         Published(changed);
         return state;

@@ -18,4 +18,20 @@ public sealed record BridgeCollectionDescriptor<T>(
     Func<T, object?> Get,
     Action<Utf8JsonWriter, object?> WriteItem,
     Func<object?, string> Key,
-    bool PublishesChanges = true);
+    bool PublishesChanges = true)
+{
+    /// <summary>
+    /// The paths in a row that accept checked writes with <c>field-paths/1</c> (its cells), as wire member names, such as
+    /// <c>["quantity"]</c>; <see langword="null"/> when the rows are not editable.
+    /// </summary>
+    public IReadOnlyList<string[]>? FieldPaths { get; init; }
+
+    /// <summary>Decodes a row, for a cell write that rebuilt it. It throws like a setter's decoder for an invalid row.</summary>
+    public Func<JsonElement, object?>? ReadRow { get; init; }
+
+    /// <summary>
+    /// Applies an updated row: calls the ViewModel's <see cref="RunicRowEditorAttribute"/> method with the row's key and
+    /// the row. It throws to reject the update.
+    /// </summary>
+    public Action<T, object?>? UpdateRow { get; init; }
+}

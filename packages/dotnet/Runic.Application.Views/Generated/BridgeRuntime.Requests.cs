@@ -222,6 +222,7 @@ public partial class ViewModelBridge<T>
     private async ValueTask<ReadOnlyMemory<byte>> WriteAsync(BridgeRouteRequest request, CancellationToken cancellationToken)
     {
         var member = request.Member!;
+        if (request.Root.TryGetProperty("path", out var path)) return await WritePathAsync(request, path, cancellationToken).ConfigureAwait(false);
         if (_unownedCheckedFields.Contains(member))
             return EncodeFailure(new("failed", "Acknowledged field writes require a WindowContentSession."));
         if (!_checkedByMember.TryGetValue(member, out var property))
@@ -293,6 +294,181 @@ public partial class ViewModelBridge<T>
         if (!waits) return reply;
         await WaitForPublishedAsync(cancellationToken).ConfigureAwait(false);
         return ReleasedIfInactive(reply);
+    }
+
+    // field-paths/1: a checked write of the value at a path below the member (specs/application/README.md, "Field paths").
+    private async ValueTask<ReadOnlyMemory<byte>> WritePathAsync(BridgeRouteRequest request, JsonElement pathElement,
+        CancellationToken cancellationToken)
+    {
+        var member = request.Member!;
+        if (!request.Connection.UsesFieldPaths)
+            return BridgeMessages.Rejected("invalid-request", "The connection does not use field-paths/1.");
+        var segments = pathElement.EnumerateArray().Select(segment => segment.GetString()!).ToArray();
+        if (!_pathTargets.TryGetValue(member, out var target))
+            return BridgeMessages.Rejected("invalid-request", $"The route {_name} has no fields below '{member}'.");
+        var rows = target.Rows is not null;
+        if (rows && segments.Length < 2)
+            return BridgeMessages.Rejected("invalid-request", $"A path in '{member}' names a row key and a cell.");
+        var key = rows ? segments[0] : null;
+        var path = rows ? segments[1..] : segments;
+        if (!target.Declares(path))
+            return BridgeMessages.Rejected("invalid-request", $"The route {_name} has no field '{string.Join('.', path)}' below '{member}'.");
+        var root = request.Root;
+        var requestId = root.GetProperty("requestId").GetString()!;
+        if (requestId.Length > MaximumFieldWriteRequestIdLength)
+            return BridgeMessages.Rejected("invalid-request", "The requestId is too long.");
+        BridgeRequestEnvelope.TryReadInteger(root.GetProperty("expectedVersion"), out var expectedVersion);
+        var expectedValue = root.GetProperty("expectedValue").Clone();
+        var value = root.GetProperty("value").Clone();
+        var expectedText = BridgeFieldPathTracker.Canonical(expectedValue);
+        var identity = string.Join('\u0001', [member, .. segments,
+            expectedVersion.ToString(System.Globalization.CultureInfo.InvariantCulture), expectedText, BridgeFieldPathTracker.Canonical(value)]);
+        var container = rows ? BridgeFieldPathTracker.RowContainer(member, key!) : member;
+        var name = rows ? $"{target.Rows!.Name}[{key}].{string.Join('.', path)}" : $"{target.Nested!.Name}.{string.Join('.', path)}";
+        var waits = true;
+        ReadOnlyMemory<byte> reply;
+        try
+        {
+            reply = _modelTurn.Run<ReadOnlyMemory<byte>>(() =>
+            {
+                lock (_modelGate)
+                {
+                    if (IsInactive) return BridgeMessages.Released;
+                    var call = BridgeCall.Start(BridgeCallKind.Write, ModelName, _name, member);
+                    try
+                    {
+                        if (_fieldPaths.TryGetRetained(requestId, identity, out var retained, out var matches))
+                        {
+                            call.Complete(BridgeCallOutcome.Ok);
+                            if (matches) return RanReply(null, writer => retained!.Write(writer));
+                            return RanReply(null, (writer, revision) => new BridgeFieldPathReceipt("conflict",
+                                ReadLeaf(target, key, path) ?? "null", revision,
+                                "The request identity was already used with a different write, or expired.").Write(writer));
+                        }
+                        var encoded = EncodeContainer(target, key, out var row);
+                        BridgeFieldPathReceipt Settle(BridgeFieldPathReceipt receipt)
+                        {
+                            _fieldPaths.Retain(requestId, identity, receipt);
+                            return receipt;
+                        }
+                        if (encoded is null)
+                        {
+                            call.Complete(BridgeCallOutcome.Ok);
+                            var missing = Settle(new("rejected", null, 0, rows
+                                ? $"{target.Rows!.Name} has no row '{key}'."
+                                : $"{target.Nested!.Name} is null."));
+                            return RanReply(null, writer => missing.Write(writer));
+                        }
+                        string? current;
+                        using (var document = JsonDocument.Parse(encoded)) current = BridgeFieldPathTracker.LeafText(document.RootElement, path);
+                        if (current is null)
+                        {
+                            call.Complete(BridgeCallOutcome.Ok);
+                            var unreachable = Settle(new("rejected", null, 0, $"{name} cannot be written: an object on its path is null."));
+                            return RanReply(null, writer => unreachable.Write(writer));
+                        }
+                        if (_fieldPaths.VersionOf(container, path) > expectedVersion || current != expectedText)
+                        {
+                            call.Complete(BridgeCallOutcome.Ok);
+                            return RanReply(null, (writer, revision) => Settle(new("conflict", current, revision,
+                                "The write baseline no longer matches the authoritative field.")).Write(writer));
+                        }
+                        // The container with the path's value replaced, decoded with the member's codec: invalid input
+                        // is refused before anything runs, and retains nothing.
+                        object? updated;
+                        try
+                        {
+                            var rebuilt = BridgeFieldPathTracker.Rebuild(encoded, path, value)
+                                ?? throw new FormatException($"{name} is not a member of the value.");
+                            using var document = JsonDocument.Parse(rebuilt);
+                            updated = rows ? target.Rows!.ReadRow!(document.RootElement) : target.Nested!.Read!(document.RootElement);
+                            if (rows && (updated is null || target.Rows!.Key(updated) != key))
+                                throw new FormatException($"{name} would change the row's key.");
+                        }
+                        catch (Exception error) when (error is ArgumentException or FormatException or JsonException
+                            or InvalidOperationException or KeyNotFoundException or OverflowException or InvalidCastException)
+                        {
+                            call.Complete(BridgeCallOutcome.Rejected);
+                            waits = false;
+                            return EncodeFailure(new("rejected", $"{name} has an invalid checked write.",
+                                BridgeFailureDetails.Capture(error, IncludesFailureDetail), Reason: BridgeFailure.InvalidInput));
+                        }
+                        try
+                        {
+                            if (rows) target.Rows!.UpdateRow!(_vm, updated);
+                            else target.Nested!.Set(_vm, updated);
+                        }
+                        catch (Exception error)
+                        {
+                            call.Complete(BridgeCallOutcome.Ok);
+                            // The editor or setter may have changed the value before it failed.
+                            var after = ReadLeaf(target, key, path);
+                            return after is not null && after != current
+                                ? RanReply(null, (writer, revision) => Settle(new("committed-with-error", after, revision, error.Message)).Write(writer))
+                                : RanReply(null, writer => Settle(new("rejected", null, 0, error.Message)).Write(writer));
+                        }
+                        call.Complete(BridgeCallOutcome.Ok);
+                        var applied = ReadLeaf(target, key, path) ?? BridgeFieldPathTracker.Canonical(value);
+                        return RanReply(null, (writer, revision) => Settle(new("applied", applied, revision, null)).Write(writer));
+                    }
+                    catch (Exception error)
+                    {
+                        call.Complete(BridgeCallOutcome.Failed, error);
+                        ViewsLog.FieldWriteFailed(_logger, error, ModelName, name, _name, BridgeTelemetry.ErrorType(error));
+                        return RanReply(new("failed", $"Could not update {name}.", BridgeFailureDetails.Capture(error, IncludesFailureDetail)));
+                    }
+                }
+            });
+        }
+        catch (ObjectDisposedException) { return BridgeMessages.Released; }
+        if (!waits) return reply;
+        await WaitForPublishedAsync(cancellationToken).ConfigureAwait(false);
+        return ReleasedIfInactive(reply);
+    }
+
+    // The encoding of a path target's container: the member's object, or the row with the key; null when the member
+    // is null or no row has the key.
+    private byte[]? EncodeContainer(FieldPathTarget target, string? key, out object? row)
+    {
+        row = null;
+        if (target.Nested is { } nested)
+        {
+            var value = nested.Get(_vm);
+            return value is null ? null : WriteValue(writer => nested.Write!(writer, value));
+        }
+        var descriptor = target.Rows!;
+        if (descriptor.Get(_vm) is not System.Collections.IEnumerable items) return null;
+        foreach (var item in items)
+        {
+            if (item is null || descriptor.Key(item) != key) continue;
+            row = item;
+            return WriteValue(writer => descriptor.WriteItem(writer, item));
+        }
+        return null;
+    }
+
+    // The canonical text of the value at a path now, or null when the path reaches no value.
+    private string? ReadLeaf(FieldPathTarget target, string? key, string[] path)
+    {
+        if (EncodeContainer(target, key, out _) is not { } encoded) return null;
+        using var document = JsonDocument.Parse(encoded);
+        return BridgeFieldPathTracker.LeafText(document.RootElement, path);
+    }
+
+    // The containers of a path target now, for the tracker after a publication.
+    private IEnumerable<(string, byte[])> FieldPathContainers(FieldPathTarget target)
+    {
+        if (target.Nested is not null)
+        {
+            if (EncodeContainer(target, null, out _) is { } encoded) yield return (target.Member, encoded);
+            yield break;
+        }
+        var descriptor = target.Rows!;
+        if (descriptor.Get(_vm) is not System.Collections.IEnumerable items) yield break;
+        foreach (var item in items)
+            if (item is not null)
+                yield return (BridgeFieldPathTracker.RowContainer(target.Member, descriptor.Key(item)),
+                    WriteValue(writer => descriptor.WriteItem(writer, item)));
     }
 
     // A checked write with a splice: the registry rebuilds the value from the field's value at expectedVersion. Null
@@ -719,7 +895,11 @@ public partial class ViewModelBridge<T>
 
     // The reply of a request that ran, in its model turn: the route's revision after publishing everything pending, or
     // released: true when the request released its own route, or the reason state-withheld.
-    private byte[] RanReply(BridgeFailure? error, Action<Utf8JsonWriter>? writeMore = null)
+    private byte[] RanReply(BridgeFailure? error, Action<Utf8JsonWriter>? writeMore = null) =>
+        RanReply(error, writeMore is null ? null : (writer, _) => writeMore(writer));
+
+    // writeMore receives the reply's revision.
+    private byte[] RanReply(BridgeFailure? error, Action<Utf8JsonWriter, long>? writeMore)
     {
         if (IsInactive) return EncodeRanReply(error, revision: null, released: true);
         var revision = PublishForReply();
@@ -732,7 +912,8 @@ public partial class ViewModelBridge<T>
                 : error with { Reason = BridgeFailure.StateWithheld };
             return EncodeRanReply(withheld, revision: null, released: false);
         }
-        return EncodeRanReply(error, revision, released: false, writeMore);
+        var at = revision.Value;
+        return EncodeRanReply(error, revision, released: false, writeMore is null ? null : writer => writeMore(writer, at));
     }
 
     private static byte[] EncodeRanReply(BridgeFailure? error, long? revision, bool released, Action<Utf8JsonWriter>? writeMore = null) =>
