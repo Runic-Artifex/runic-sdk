@@ -46,7 +46,10 @@ export type Push =
   /** presented/1: report `presented` once the page painted `route` at `revision` or later. */
   | Message & { readonly kind: "present"; readonly route: string; readonly revision: number }
   /** presented/1: the application closes the window; the only push without a route, for window-level handlers. */
-  | Message & { readonly kind: "closing"; readonly route?: undefined };
+  | Message & { readonly kind: "closing"; readonly route?: undefined }
+  /** navigation-path/1: the window's route path changed; a window push. */
+  | Message & { readonly kind: "navigation-path"; readonly route?: undefined; readonly path: string | null;
+    readonly operation: "push" | "back" | "replace" };
 
 /** The kinds of {@link Push}; a client ignores other kinds. */
 export type PushKind = Push["kind"];
@@ -123,6 +126,9 @@ const replyMembers: Readonly<Record<string, (reply: Message) => boolean>> = {
   "menu-bar-unwatch": () => true,
   presented: () => true,
   "closing-reply": () => true,
+  // navigation-path/1: the outcome, null when no route matched, and the window's path after the request.
+  navigation: reply => (reply["outcome"] === null || isObject(reply["outcome"]) && isString(reply["outcome"]["kind"]))
+    && (reply["path"] === undefined || reply["path"] === null || isString(reply["path"])),
 };
 
 /**
@@ -184,7 +190,7 @@ function invalidChanges(changes: unknown): string | undefined {
   return undefined;
 }
 
-const pushKinds = new Set(["state", "frame", "failure", "operation", "interaction", "interaction-cancelled", "menu-bar", "present", "closing"]);
+const pushKinds = new Set(["state", "frame", "failure", "operation", "interaction", "interaction-cancelled", "menu-bar", "present", "closing", "navigation-path"]);
 
 /** The epoch of a reply or `state` push, when it carries one that is a safe integer (presentation-epoch/1). */
 export function epochOf(message: Message): number | undefined {
@@ -204,6 +210,13 @@ export function readPush(text: unknown): PushReading {
   if (!pushKinds.has(kind)) return { result: "ignored" };
   // `closing` is about the window: a route it names is ignored, like any member a client does not need.
   if (kind === "closing") return { result: "valid", push: push as Push };
+  // navigation-path/1: about the window too.
+  if (kind === "navigation-path") {
+    const operation = push["operation"];
+    if (!(push["path"] === null || isString(push["path"])) || !(operation === "push" || operation === "back" || operation === "replace"))
+      return invalid("The navigation-path push is invalid.");
+    return { result: "valid", push: { ...push, route: undefined } as Push };
+  }
   if (route === undefined) return invalid("The push has no route.");
   switch (kind) {
     case "state":

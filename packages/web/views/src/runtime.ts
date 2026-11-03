@@ -12,11 +12,13 @@ import { hostCallbacks, protocolMismatchError, reportBridgeError, reportProtocol
 import { bridgeProtocol, clientName, runicProducerName, viewsVersion } from "./version.js";
 import { textSpliceFeature } from "./text.js";
 import { regionCollectionsFeature } from "./regions.js";
+import { navigationPathFeature } from "./navigation-feature.js";
 import { reportWindowClosed } from "./connection-state.js";
 import { flushNotifications, nextFrame } from "./notifications.js";
 
 /** The features this runtime implements and lists in `hello` (specs/application/README.md, "Features"). */
-export const clientFeatures: readonly string[] = [textSpliceFeature, presentationEpochFeature, presentedFeature, regionCollectionsFeature];
+export const clientFeatures: readonly string[] = [textSpliceFeature, presentationEpochFeature, presentedFeature, regionCollectionsFeature,
+  navigationPathFeature];
 
 /** A push handler, registered per push kind and route. */
 export type PushHandler = (push: Push) => void;
@@ -56,6 +58,12 @@ export interface SharedRuntime {
    * does not have it.
    */
   whenGreeted?(): Promise<void>;
+  /**
+   * navigation-path/1: the window's route path that the current connection's `hello` reply carried, `null` for an empty
+   * path region, or `undefined` when the window has no path region or the connection does not use the feature. A
+   * runtime of an earlier release does not have it.
+   */
+  readonly navigationPath?: string | null | undefined;
   /** Sends a request after the connection's `hello` and resolves with its reply; rejects with a BridgeError. */
   request(message: Message, route?: string): Promise<Reply>;
   /** Registers a handler for pushes of `kind` on `route`. */
@@ -103,6 +111,8 @@ function createRuntime(bridge: RunicBridgeClient): SharedRuntime {
   let hello: { readonly connection: number; readonly promise: Promise<void>; done: boolean } | undefined;
   // The features in use on the current connection.
   let features: ReadonlySet<string> = new Set<string>();
+  // navigation-path/1: the hello reply's path of the current connection.
+  let navigationPath: string | null | undefined;
   // A producer of another protocol: every call of the page fails from then on.
   let refused: string | undefined;
   let versionReported = false;
@@ -190,7 +200,11 @@ function createRuntime(bridge: RunicBridgeClient): SharedRuntime {
       if (!reply.ok) throw replyError(reply.error, undefined, "The Bridge refused the connection.");
       // A feature is in use when both sides list it; a producer of 0.13 lists none.
       const listed = Array.isArray(reply["features"]) ? reply["features"] as readonly string[] : [];
-      if (connection === current) features = new Set(clientFeatures.filter(feature => listed.includes(feature)));
+      if (connection === current) {
+        features = new Set(clientFeatures.filter(feature => listed.includes(feature)));
+        const path = reply["navigationPath"];
+        navigationPath = features.has(navigationPathFeature) && (path === null || typeof path === "string") ? path : undefined;
+      }
       const implementation = reply["implementation"] as { readonly name: string; readonly version: string };
       if (implementation.name === runicProducerName && implementation.version !== viewsVersion && !versionReported) {
         versionReported = true;
@@ -217,6 +231,7 @@ function createRuntime(bridge: RunicBridgeClient): SharedRuntime {
     operations: new Map(),
     edits: new Map(),
     get features() { return features; },
+    get navigationPath() { return navigationPath; },
     async whenGreeted() {
       if (refused !== undefined) throw refusal(undefined);
       if (!connected) throw new BridgeError("disconnected", "The Bridge is disconnected.");
@@ -293,6 +308,7 @@ function createRuntime(bridge: RunicBridgeClient): SharedRuntime {
     if (next && !first) reportWindowClosed(false);
     hello = undefined;
     features = new Set<string>();
+    navigationPath = undefined;
     // Each connection starts with `hello`; a request that needs it waits for it, and a failed one is sent again.
     if (next) void greet().catch(() => undefined);
     // The first report states the connection the page starts on; routes open on it themselves.

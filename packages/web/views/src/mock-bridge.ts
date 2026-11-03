@@ -6,6 +6,7 @@ import { insertRows } from "./collections.js";
 import { flushNotifications } from "./notifications.js";
 import { presentationEpochFeature, presentedFeature } from "./protocol.js";
 import { regionCollectionsFeature, type RegionOutcome } from "./regions.js";
+import { navigationPathFeature } from "./navigation-feature.js";
 
 /** A View's wire state: one member per state member, by wire name, encoded as on the wire. */
 export type MockState = Record<string, unknown>;
@@ -61,6 +62,27 @@ export interface MockBridgeOptions {
    * a command handler that awaits holds the next one until it returns.
    */
   readonly reorderRequests?: boolean;
+  /**
+   * navigation-path/1: the window's Back and route path. `path` is the window's route path, which the `hello` reply of a
+   * connection that uses the feature carries; without it the window has no path region. `handle` answers `navigation`
+   * requests; without it they are `unavailable`. Use {@link MockBridge.pushNavigationPath} for a change the application makes.
+   */
+  readonly navigation?: MockNavigation;
+}
+
+/** A `navigation` request (navigation-path/1): the window's Back, or a route path to open. */
+export type MockNavigationRequest = { readonly action: "back" } | { readonly action: "open"; readonly path: string };
+
+/** The answer to a {@link MockNavigationRequest}: the outcome (`null` when no route matched) and the path after it. */
+export interface MockNavigationResult {
+  readonly outcome: RegionOutcome | null;
+  readonly path?: string | null;
+}
+
+/** The window's navigation in a mock (navigation-path/1). */
+export interface MockNavigation {
+  readonly path?: string | null;
+  handle?(request: MockNavigationRequest): MockNavigationResult | Promise<MockNavigationResult>;
 }
 
 /** An unexpected failure the mock answers instead of running a handler. */
@@ -396,6 +418,11 @@ export interface MockBridge extends RunicBridgeClient {
    * connection returns the first result. The connection stays open: call `disconnect()` to end it as a host does.
    */
   closeWindow(timeout?: number): Promise<boolean>;
+  /**
+   * Pushes the window's route path to the connection when it uses navigation-path/1, as the application's navigation of
+   * the path region does, and makes it the path of later `hello` replies.
+   */
+  pushNavigationPath(path: string | null, operation: "push" | "back" | "replace"): void;
   /** Resolves after `milliseconds` of virtual time, for handlers that model latency. */
   sleep(milliseconds: number): Promise<void>;
   /**
@@ -417,7 +444,8 @@ const realSetTimeout = globalThis.setTimeout.bind(globalThis);
 const yieldToEventLoop = () => new Promise<void>(resolve => { realSetTimeout(resolve, 0); });
 const maximumRounds = 10_000;
 const mockImplementation = { name: "@runic-artifex/views/mock", version: viewsVersion };
-const mockFeatures: readonly string[] = [textSpliceFeature, presentationEpochFeature, presentedFeature, regionCollectionsFeature];
+const mockFeatures: readonly string[] = [textSpliceFeature, presentationEpochFeature, presentedFeature, regionCollectionsFeature,
+  navigationPathFeature];
 
 const upperFirst = (value: string) => value.charAt(0).toUpperCase() + value.slice(1);
 const isRecord = (value: unknown): value is Record<string, unknown> => value !== null && typeof value === "object" && !Array.isArray(value);
@@ -595,6 +623,8 @@ export function createMockBridge(options: MockBridgeOptions = {}): MockBridge {
   const manual = options.scheduling === "manual";
   const reorder = options.reorderRequests === true;
   const latency = options.latency;
+  // navigation-path/1: the window's route path, undefined without a path region.
+  let navigationPath = options.navigation?.path;
   if (typeof latency === "number" && (!Number.isFinite(latency) || latency < 0) || typeof latency === "object"
     && (!Number.isFinite(latency.min) || !Number.isFinite(latency.max) || latency.min < 0 || latency.max < latency.min))
     throw new RangeError("The mock latency must be non-negative milliseconds, a { min, max } range or \"slow\".");
@@ -1232,7 +1262,8 @@ export function createMockBridge(options: MockBridgeOptions = {}): MockBridge {
       connection.features = new Set((listed as string[] | undefined ?? []).filter(feature => mockFeatures.includes(feature)));
       // Requests that waited for the hello are admitted in the order they arrived.
       for (const resume of connection.held.splice(0)) resume(true);
-      return ok({ ...identity, features: mockFeatures });
+      return ok({ ...identity, features: mockFeatures,
+        ...(connection.features.has(navigationPathFeature) && navigationPath !== undefined ? { navigationPath } : {}) });
     }
     if (connection.session === undefined) return noHello();
     if (kind === "receive") return ok({ messages: [] });
@@ -1246,6 +1277,19 @@ export function createMockBridge(options: MockBridgeOptions = {}): MockBridge {
       return invalidRequest("presented needs the feature presented/1 and a revision.");
     if (kind === "command" && connection.features.has(presentationEpochFeature) && Object.hasOwn(message, "epoch") && !isSafe(message["epoch"]))
       return invalidRequest("The command's epoch is not a non-negative safe integer.");
+    // navigation-path/1: the window's Back and route path; no route.
+    if (kind === "navigation") {
+      const action = message["action"];
+      if (!connection.features.has(navigationPathFeature) || Object.hasOwn(message, "route")
+        || !(action === "back" || action === "open" && typeof message["path"] === "string" && message["path"].length <= 2048))
+        return invalidRequest("A navigation request needs the feature navigation-path/1, no route, and the action back or open with a path.");
+      const handler = options.navigation?.handle;
+      if (!handler || action === "open" && navigationPath === undefined)
+        return failed("rejected", "The mock window has no navigation.", { reason: "unavailable" });
+      const result = await handler(action === "back" ? { action } : { action: "open", path: message["path"] as string });
+      if (result.path !== undefined) navigationPath = result.path;
+      return ok({ outcome: result.outcome, ...(navigationPath === undefined ? {} : { path: navigationPath }) });
+    }
     // region-collections/1: a region request is a request kind only on a connection that uses the feature.
     if (kind === "region" && (typeof message["member"] !== "string" || typeof message["key"] !== "string"
       || (message["action"] !== "select" && message["action"] !== "close") || !connection.features.has(regionCollectionsFeature)))
@@ -1566,6 +1610,10 @@ export function createMockBridge(options: MockBridgeOptions = {}): MockBridge {
       return new Promise<void>(resolve => { schedule(now + milliseconds, resolve); });
     },
     closeWindow: (timeout = 5_000) => closeWindow(timeout),
+    pushNavigationPath(path, operation) {
+      navigationPath = path;
+      if (connected && connection.features.has(navigationPathFeature)) pushMessage({ kind: "navigation-path", path, operation });
+    },
     flush,
     async flushUntil<T>(promise: Promise<T>): Promise<T> {
       let settled = false;

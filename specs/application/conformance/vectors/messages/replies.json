@@ -260,6 +260,37 @@
       "expect": {"result":"valid"}
     },
     {
+      "id": "messages.replies.navigation",
+      "description": "navigation-path/1: the outcome and the window's route path after it.",
+      "operation": "read-reply",
+      "request": "navigation",
+      "input": {"encoding":"json","value":{"ok":true,"outcome":{"kind":"Rejected","rejection":"Guard","arrival":"None"},"path":"customers/42"}},
+      "expect": {"result":"valid"}
+    },
+    {
+      "id": "messages.replies.navigation-unmatched",
+      "description": "No route matched the opened path: the outcome is null.",
+      "operation": "read-reply",
+      "request": "navigation",
+      "input": {"encoding":"json","value":{"ok":true,"outcome":null,"path":null}},
+      "expect": {"result":"valid"}
+    },
+    {
+      "id": "messages.replies.navigation-without-a-path-region",
+      "description": "A window without a path region answers Back without a path.",
+      "operation": "read-reply",
+      "request": "navigation",
+      "input": {"encoding":"json","value":{"ok":true,"outcome":{"kind":"Committed","rejection":null,"arrival":"None"}}},
+      "expect": {"result":"valid"}
+    },
+    {
+      "id": "messages.replies.navigation-without-an-outcome",
+      "operation": "read-reply",
+      "request": "navigation",
+      "input": {"encoding":"json","value":{"ok":true,"path":"home"}},
+      "expect": {"result":"invalid"}
+    },
+    {
       "id": "messages.replies.region-without-an-outcome",
       "operation": "read-reply",
       "request": "region",
