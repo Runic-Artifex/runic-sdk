@@ -613,8 +613,9 @@ describe("useBridgeConnection", () => {
   test("is a root export (0.11)", () => {
     expect(typeof root.useBridgeConnection).toBe("function");
     expect(Object.keys(root).sort()).toEqual([
-      "FieldError", "RegionOutlets", "ViewOutlet", "onBridgeConnection", "regionEntries", "selectedRegion", "useBridgeConnection",
-      "useCollectionViewport", "useCommand", "useField", "useLatestOperation", "useMenuBar", "useOperation", "useSuspenseView", "useTextField", "useView",
+      "FieldError", "RegionOutlets", "ViewOutlet", "installBackNavigation", "installNavigationPath", "navigateBack", "onBridgeConnection",
+      "onNavigationPath", "openNavigationPath", "regionEntries", "selectedRegion", "useBridgeConnection", "useCollectionViewport",
+      "useCommand", "useField", "useLatestOperation", "useMenuBar", "useOperation", "useSuspenseView", "useTextField", "useView",
     ]);
     // The region helpers a tab bar uses are re-exported (0.16).
     expect(root.regionEntries).toBe(viewsRegionEntries);

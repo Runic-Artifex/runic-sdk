@@ -575,6 +575,16 @@ export {
   type RegionSlot,
 } from "@runic-artifex/views";
 export {
+  installBackNavigation,
+  installNavigationPath,
+  navigateBack,
+  onNavigationPath,
+  openNavigationPath,
+  type NavigationPathChange,
+  type NavigationPathOptions,
+  type NavigationReply,
+} from "@runic-artifex/views";
+export {
   FieldError,
   type BridgeField,
   type BridgeFieldKind,

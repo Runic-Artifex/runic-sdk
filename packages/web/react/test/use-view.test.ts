@@ -253,9 +253,10 @@ describe("useView options", () => {
 
   test("the root entry keeps every earlier export and adds useBridgeConnection and useMenuBar (0.11), useField, FieldError and useViewState (0.14)", () => {
     expect(Object.keys(root_).sort()).toEqual([
-      "FieldError", "RegionOutlets", "ViewOutlet", "onBridgeConnection", "regionEntries", "retrySuspenseView", "selectedRegion", "useBridgeConnection",
-      "useCollectionViewport", "useCommand", "useField", "useLatestOperation", "useMenuBar", "useOperation", "useSuspenseView", "useTextField", "useView",
-      "useViewState",
+      "FieldError", "RegionOutlets", "ViewOutlet", "installBackNavigation", "installNavigationPath", "navigateBack", "onBridgeConnection",
+      "onNavigationPath", "openNavigationPath", "regionEntries", "retrySuspenseView", "selectedRegion", "useBridgeConnection",
+      "useCollectionViewport", "useCommand", "useField", "useLatestOperation", "useMenuBar", "useOperation", "useSuspenseView",
+      "useTextField", "useView", "useViewState",
     ]);
     // The region helpers a tab bar uses are re-exported (0.16).
     expect(regionEntries).toBe(viewsRegionEntries);
