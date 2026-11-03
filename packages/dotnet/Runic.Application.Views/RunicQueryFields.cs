@@ -64,8 +64,10 @@ public sealed class RunicQueryFields<TRow>
     /// <summary>Registers a <see cref="RunicFilterOperator.Custom"/> filter, the escape hatch for filters the typed model lacks.</summary>
     /// <param name="name">The filter's name.</param>
     /// <param name="apply">
-    /// Applies the filter with its JSON argument (<see cref="JsonValueKind.Undefined"/> when the page sent none). It
-    /// throws <see cref="ArgumentException"/> for an argument it does not accept.
+    /// Applies the filter with its JSON argument (<see cref="JsonValueKind.Undefined"/> when the page sent none). The
+    /// argument is untrusted JSON from the page: read only what the filter expects, and throw
+    /// <see cref="ArgumentException"/> for anything else. <see cref="Validate"/> runs the filter once over no rows, so
+    /// an argument it rejects is <c>invalid-input</c> when the page sets the query.
     /// </param>
     /// <returns>This instance.</returns>
     public RunicQueryFields<TRow> AddCustom(string name, Func<IQueryable<TRow>, JsonElement, IQueryable<TRow>> apply)
@@ -87,7 +89,16 @@ public sealed class RunicQueryFields<TRow>
         {
             if (filter.Operator == RunicFilterOperator.Custom)
             {
-                if (!_custom.ContainsKey(filter.Field)) throw new ArgumentException($"The query has no custom filter '{filter.Field}'.", nameof(query));
+                if (!_custom.TryGetValue(filter.Field, out var custom))
+                    throw new ArgumentException($"The query has no custom filter '{filter.Field}'.", nameof(query));
+                // The filter runs once over no rows, so an argument it cannot read fails here, before the query is taken,
+                // and not in every later load.
+                try { _ = custom(Enumerable.Empty<TRow>().AsQueryable(), filter.Value).Take(0).ToList(); }
+                catch (ArgumentException) { throw; }
+                catch (Exception error) when (error is not OperationCanceledException and not OutOfMemoryException)
+                {
+                    throw new ArgumentException($"The custom filter '{filter.Field}' does not accept its value: {error.Message}", nameof(query), error);
+                }
                 continue;
             }
             // Building the predicate reads its values.

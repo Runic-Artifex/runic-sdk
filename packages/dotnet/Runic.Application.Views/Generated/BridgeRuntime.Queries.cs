@@ -7,7 +7,36 @@ namespace Runic.Application.Views.Generated;
 // (query-index). The rows never enter the route's state; its state member carries the query, total and version.
 public partial class ViewModelBridge<T>
 {
-    private async ValueTask<ReadOnlyMemory<byte>> QueryRowsAsync(BridgeRouteRequest request, CancellationToken cancellationToken)
+    // The requests a connection may have in flight per query collection: two query-rows (a page sends one at a time), one
+    // query-set and one query-index. Further ones answer busy, so one page cannot take every slot of the row source.
+    internal const int MaximumQueryRowsPerConnection = 2;
+
+    private ValueTask<ReadOnlyMemory<byte>> Admitted(BridgeRouteRequest request, int limit,
+        Func<ValueTask<ReadOnlyMemory<byte>>> run)
+    {
+        var key = $"{_name}\u0000{request.Member}\u0000{request.Kind}";
+        if (!request.Connection.TryEnterQuery(key, limit))
+            return new(BridgeMessages.Rejected("busy",
+                $"This connection already has {limit} {request.Kind} request{(limit == 1 ? "" : "s")} of {request.Member} in flight."));
+        return Run();
+
+        async ValueTask<ReadOnlyMemory<byte>> Run()
+        {
+            try { return await run().ConfigureAwait(false); }
+            finally { request.Connection.ExitQuery(key); }
+        }
+    }
+
+    private ValueTask<ReadOnlyMemory<byte>> QueryRowsAsync(BridgeRouteRequest request, CancellationToken cancellationToken) =>
+        Admitted(request, MaximumQueryRowsPerConnection, () => QueryRowsCoreAsync(request, cancellationToken));
+
+    private ValueTask<ReadOnlyMemory<byte>> QuerySetAsync(BridgeRouteRequest request, CancellationToken cancellationToken) =>
+        Admitted(request, 1, () => QuerySetCoreAsync(request, cancellationToken));
+
+    private ValueTask<ReadOnlyMemory<byte>> QueryIndexAsync(BridgeRouteRequest request, CancellationToken cancellationToken) =>
+        Admitted(request, 1, () => QueryIndexCoreAsync(request, cancellationToken));
+
+    private async ValueTask<ReadOnlyMemory<byte>> QueryRowsCoreAsync(BridgeRouteRequest request, CancellationToken cancellationToken)
     {
         if (QueryCollection(request, out var property, out var failure) is not { } collection) return failure;
         var start = (int)Math.Min(int.MaxValue, Integer(request.Root, "start"));
@@ -22,6 +51,8 @@ public partial class ViewModelBridge<T>
             return EncodeFailure(new("cancelled", "The rows request was cancelled."));
         }
         catch (ObjectDisposedException) { return BridgeMessages.Released; }
+        // A collection disposed while its load ran cancels the load: the View is gone, not failed.
+        catch (Exception) when (collection.IsDisposed || IsInactive) { return BridgeMessages.Released; }
         catch (Exception error)
         {
             ViewsLog.QueryRowsFailed(_logger, error, ModelName, property.Name, _name, start, start + (int)count, BridgeTelemetry.ErrorType(error));
@@ -54,7 +85,7 @@ public partial class ViewModelBridge<T>
         }
     }
 
-    private async ValueTask<ReadOnlyMemory<byte>> QuerySetAsync(BridgeRouteRequest request, CancellationToken cancellationToken)
+    private async ValueTask<ReadOnlyMemory<byte>> QuerySetCoreAsync(BridgeRouteRequest request, CancellationToken cancellationToken)
     {
         if (QueryCollection(request, out var property, out var failure) is not { } collection) return failure;
         RunicQuery query;
@@ -97,7 +128,7 @@ public partial class ViewModelBridge<T>
         return ReleasedIfInactive(reply);
     }
 
-    private async ValueTask<ReadOnlyMemory<byte>> QueryIndexAsync(BridgeRouteRequest request, CancellationToken cancellationToken)
+    private async ValueTask<ReadOnlyMemory<byte>> QueryIndexCoreAsync(BridgeRouteRequest request, CancellationToken cancellationToken)
     {
         if (QueryCollection(request, out var property, out var failure) is not { } collection) return failure;
         var key = request.Root.GetProperty("key").GetString()!;
@@ -108,6 +139,7 @@ public partial class ViewModelBridge<T>
             return EncodeFailure(new("cancelled", "The index request was cancelled."));
         }
         catch (ObjectDisposedException) { return BridgeMessages.Released; }
+        catch (Exception) when (collection.IsDisposed || IsInactive) { return BridgeMessages.Released; }
         catch (Exception error)
         {
             ViewsLog.QueryIndexFailed(_logger, error, ModelName, property.Name, _name, BridgeTelemetry.ErrorType(error));

@@ -176,3 +176,108 @@ test("query state and queries decode and normalize strictly", () => {
   assert.throws(() => normalizeQuery({ filters: [{ field: "a", op: "near" } as never] }), TypeError);
   assert.deepEqual(normalizeQuery({ filters: [{ field: "a", op: "range", min: 1, max: null }] }), { sort: [], filters: [{ field: "a", op: "range", min: 1 }] });
 });
+
+test("a range in flight across a query change never shows rows of the old query", async () => {
+  const bridge = createMockBridge({ scheduling: "manual" });
+  installMockBridge(bridge);
+  const pending = connect(50, { latency: 40, bridge });
+  await bridge.flush();
+  const { view, client, collection } = await bridge.flushUntil(pending);
+  const shown: string[] = [];
+  collection.subscribe(() => {
+    const { query, rows } = collection.current;
+    // Every loaded row the page renders under the new query must be a row of that query.
+    if (query.sort.length > 0) for (const row of rows) if (row.status === "loaded") shown.push(`${row.row!.id}`);
+  });
+  collection.setRange(0, 3);
+  await bridge.flush();
+  assert.equal(view.query("rows").loads.length, 1);
+  // The query changes while the old query's rows are on their way.
+  const sorted = collection.setQuery({ sort: [{ field: "id", descending: true }] });
+  await bridge.flush();
+  await sorted;
+  await bridge.advance(40);
+  await bridge.advance(40);
+  await bridge.flush();
+  assert.deepEqual(collection.current.rows.map(row => row.row?.id), [49, 48, 47]);
+  assert.ok(shown.every(id => Number(id) >= 47), `old-query rows were shown: ${shown.join(",")}`);
+  assert.deepEqual(view.query("rows").loads.map(load => load.version), [1, 2]);
+  client.dispose();
+});
+
+test("rows of a version the state has not reached wait for it", async () => {
+  const { bridge, view, client, collection } = await connect(10);
+  // .NET loaded these rows after a change whose frame has not arrived yet.
+  let ahead = true;
+  bridge.intercept(({ kind }) => kind === "query-rows" && ahead
+    ? { ok: true, version: 2, total: 10, start: 0, keys: ["9", "8"], rows: [{ id: 9, label: "row 9", size: 2 }, { id: 8, label: "row 8", size: 1 }] }
+    : undefined);
+  collection.setRange(0, 2);
+  await bridge.flush();
+  assert.ok(collection.current.rows.every(row => row.status === "loading"), "rows ahead of the state were shown");
+  ahead = false;
+  const loads = bridge.calls.filter(call => call.kind === "query-rows").length;
+  view.update(state => ({ ...state, rows: { query: { sort: [{ field: "id", descending: true }], filters: [] }, total: 10, version: 2 } }));
+  await bridge.flush();
+  assert.deepEqual(collection.current.rows.map(row => row.row?.id), [9, 8]);
+  assert.equal(bridge.calls.filter(call => call.kind === "query-rows").length, loads, "rows that were already current were loaded again");
+  client.dispose();
+});
+
+test("setQuery sends one query at a time and the latest query only", async () => {
+  const { bridge, client, collection } = await connect(100);
+  const calls = ["1", "12", "123", "1234"].map(text => collection.setQuery({ filters: [{ field: "label", op: "contains", value: text }] }));
+  await Promise.all(calls);
+  const sent = bridge.calls.filter(call => call.kind === "query-set");
+  assert.equal(sent.length, 2, "the queries typed while one was in flight were not coalesced");
+  assert.deepEqual(client.snapshot.rows.query.filters, [{ field: "label", op: "contains", value: "1234" }]);
+  client.dispose();
+});
+
+test("scrollToKey searches again when the query changed during the search, and requests answered busy are retried", async () => {
+  const { bridge, client, collection } = await connect(1_000);
+  const viewport = createQueryViewportController(collection, { estimateSize: 10, overscan: 0 });
+  const unsubscribe = viewport.subscribe(() => {});
+  const element = { scrollTop: 0, clientHeight: 100, addEventListener() {}, removeEventListener() {} } as unknown as HTMLElement;
+  viewport.attach(element);
+  let stale = true;
+  bridge.intercept(({ kind }) => {
+    if (kind !== "query-index" || !stale) return undefined;
+    stale = false;
+    return { ok: true, version: 0, index: 3 };
+  });
+  assert.equal(await viewport.scrollToKey("500"), true);
+  assert.equal(bridge.calls.filter(call => call.kind === "query-index").length, 2);
+  assert.equal(element.scrollTop, 5_000);
+  let busy = 2;
+  bridge.intercept(({ kind }) => kind === "query-rows" && busy-- > 0
+    ? { ok: false, error: { kind: "rejected", reason: "busy", message: "busy" } } : undefined);
+  element.scrollTop = 7_000;
+  viewport.attach(null);
+  viewport.attach(element);
+  await until(() => viewport.current.items.length > 0 && viewport.current.items.every(item => item.status === "loaded"), bridge);
+  assert.equal(viewport.current.items[0]!.row!.id, 700);
+  assert.equal(collection.current.error, undefined);
+  unsubscribe();
+  viewport.dispose();
+  client.dispose();
+});
+
+test("a long scroll keeps the client's rows bounded", async () => {
+  const { bridge, client, collection } = await connect(20_000);
+  for (let start = 0; start < 20_000; start += 400) {
+    collection.setRange(start, 50);
+    await until(() => collection.current.rows.every(row => row.status === "loaded"), bridge);
+  }
+  let loaded = 0;
+  for (let index = 0; index < 20_000; index++) if (collection.row(index).status === "loaded") loaded++;
+  assert.ok(loaded <= 2_000, `${loaded} rows stayed loaded`);
+  assert.equal(collection.row(0).status, "loading");
+  client.dispose();
+});
+
+test("setQuery rejects a query it cannot normalize instead of throwing", async () => {
+  const { client, collection } = await connect(5);
+  await assert.rejects(collection.setQuery({ filters: [{ field: "id", op: "near" } as never] }), TypeError);
+  client.dispose();
+});

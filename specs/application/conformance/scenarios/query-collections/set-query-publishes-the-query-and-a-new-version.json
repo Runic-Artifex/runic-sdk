@@ -10,7 +10,7 @@
     "producer",
     "client"
   ],
-  "description": "query-set changes the query, which is state every presentation shares: a frame sets the member with the new query and a new version before the reply. The rows of a range follow the new order.",
+  "description": "query-set changes the query, which is state every presentation shares: a frame sets the member with the new query, a new version and an unknown total before the reply. The rows of a range follow the new order, and the count the range starts is published.",
   "view": "catalog",
   "requires": [
     "query-collections/1"
@@ -212,7 +212,7 @@
                 ],
                 "filters": []
               },
-              "total": 5,
+              "total": null,
               "version": 1
             }
           }
@@ -249,7 +249,7 @@
                 ],
                 "filters": []
               },
-              "total": 5,
+              "total": null,
               "version": 1
             }
           }
@@ -297,7 +297,36 @@
           }
         ]
       },
-      "replyTo": "rows-request"
+      "replyTo": "rows-request",
+      "unordered": true
+    },
+    {
+      "receive": {
+        "kind": "frame",
+        "route": "catalog",
+        "baseRevision": 1,
+        "revision": 2,
+        "changes": [
+          {
+            "field": "rows",
+            "kind": "set",
+            "value": {
+              "query": {
+                "sort": [
+                  {
+                    "field": "label",
+                    "descending": true
+                  }
+                ],
+                "filters": []
+              },
+              "total": 5,
+              "version": 1
+            }
+          }
+        ]
+      },
+      "unordered": true
     },
     {
       "expect": {
@@ -307,6 +336,28 @@
             "5",
             "4"
           ]
+        }
+      }
+    },
+    {
+      "expect": {
+        "state": {
+          "route": "catalog",
+          "value": {
+            "rows": {
+              "query": {
+                "sort": [
+                  {
+                    "field": "label",
+                    "descending": true
+                  }
+                ],
+                "filters": []
+              },
+              "total": 5,
+              "version": 1
+            }
+          }
         }
       }
     },

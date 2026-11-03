@@ -28,7 +28,7 @@ describe("useQueryCollection", () => {
     function List(): ReactNode {
       handle = useQueryCollection(collection, { estimateSize: 20, overscan: 0 });
       return createElement("div", { ref: handle.ref },
-        handle.items.map(item => createElement("div", { key: item.index, ref: handle!.measure(item.index) }, item.row?.label ?? "…")));
+        handle.items.map(item => createElement("div", { key: item.key ?? `p${item.index}`, ref: handle!.measure(item.index) }, item.row?.label ?? "…")));
     }
     const host = document.body.appendChild(document.createElement("div"));
     await act(async () => { root = createRoot(host); root.render(createElement(List)); });
@@ -44,6 +44,10 @@ describe("useQueryCollection", () => {
     for (let round = 0; round < 50 && !(handle!.items[0]?.index === 5000 && handle!.items.every(item => item.status === "loaded")); round++)
       await act(async () => { await bridge.flush(); });
     expect(handle!.items[0]?.row?.label).toBe("row 5000");
+    // One ref callback per index across renders, so React does not detach and reattach every row on every render.
+    const before = handle!.measure(5001);
+    await act(async () => { root!.render(createElement(List)); });
+    expect(handle!.measure(5001)).toBe(before);
     client.dispose();
   });
 });

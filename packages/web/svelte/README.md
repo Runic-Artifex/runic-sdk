@@ -571,7 +571,7 @@ It is safe in SvelteKit: on the server, `viewport` stays empty.
 </script>
 <div {@attach list.attach} style="height: 480px; overflow: auto">
   <div style="height: {list.viewport.totalSize}px; position: relative">
-    {#each list.viewport.items as item (item.index)}
+    {#each list.viewport.items as item (item.key ?? `p${item.index}`)}
       <div {@attach list.measure(item.index)} style="position: absolute; top: {item.top}px; width: 100%">{item.row?.label ?? "…"}</div>
     {/each}
   </div>

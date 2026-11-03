@@ -74,37 +74,78 @@ internal sealed class QueryCollectionTests
         Require(rows.Total == 30 && rows.Keys.Count == 5, "A range past the end did not end at the last row.");
         source.SetRows(CatalogRows.Create(40));
         (await host.Root.ExecuteAsync(vm => vm.RefreshCommand)).ThrowIfFailed();
-        await WaitAsync(async () => (await host.Root.SnapshotAsync()).Get(vm => vm.Rows).GetProperty("total").GetInt32() == 40);
+        // The new count is taken when a page loads rows again.
         var after = await host.Root.QueryRowsAsync(vm => vm.Rows, 25, 10);
+        await WaitAsync(async () => (await host.Root.SnapshotAsync()).Get(vm => vm.Rows).GetProperty("total").GetInt32() == 40);
         Require(after.Version == 1 && after.Keys.Count == 10 && source.Counts == 2, "Refresh did not reload the rows and count again.");
     }
 
     [Test]
     public async Task ScrollingHalfAMillionRowsKeepsMemoryAndTrafficBoundedAsync()
     {
-        // Measured claim (PLAN-0.14): the collection keeps at most MaximumCachedPages pages, and each request sends only
-        // its range, however long the list is and however far a page scrolls.
+        // Measured claim (PLAN-0.14): the collection keeps at most MaximumCachedPages pages, the source reads only the
+        // pages that ranges touch, each reply carries only its range's rows, and no frame ever carries a row, however
+        // long the list is and however far two pages scroll.
         const int total = 500_000;
+        const int pageSize = 100;
         var source = new RunicTestRowSource<CatalogRow, int>(CatalogRows.Create(total), CatalogRows.Fields(), row => row.Id);
         using var collection = new RunicQueryCollection<CatalogRow, int>(source, row => row.Id,
-            new RunicQueryCollectionOptions { PageSize = 100, MaximumCachedPages = 16 });
+            new RunicQueryCollectionOptions { PageSize = pageSize, MaximumCachedPages = 16 });
         await using var services = Services<CatalogHolder>((transport, content, vm) => new CatalogHolderBridge(transport, vm, content: content));
         using var host = RunicWindowTestHost.Create(services, new CatalogHolder(collection));
+        // The drivers send each connection's hello.
+        await host.Root.QueryRowsAsync(vm => vm.Rows, 0, 1);
+        await host.Root.QueryRowsAsync(vm => vm.Rows, 0, 1, connectionKey: "second");
+        host.Transport.TakeMessages();
         long replyBytes = 0;
-        var ranges = 0;
-        for (var start = 0; start < total; start += 997)
+        long rowsSent = 0;
+        var pages = new HashSet<int> { 0 };
+        string Request(int start) => $$"""{"kind":"query-rows","route":"{{host.Root.Route}}","member":"rows","start":{{start}},"count":40}""";
+        for (var step = 0; step < 500; step++)
         {
-            var rows = await host.Root.QueryRowsAsync(vm => vm.Rows, start, 40);
-            replyBytes += JsonSerializer.Serialize(rows.Rows).Length;
-            ranges++;
+            // Two pages scroll at once, in opposite directions.
+            var first = step * 997 % (total - 40);
+            var second = total - 40 - step * 613 % (total - 40);
+            var replies = await Task.WhenAll(
+                host.Transport.RequestAsync(Request(first)).AsTask(),
+                host.Transport.RequestAsync(Request(second), "second").AsTask());
+            foreach (var (reply, start) in replies.Zip([first, second]))
+            {
+                using var document = JsonDocument.Parse(reply);
+                var rows = document.RootElement.GetProperty("rows");
+                Require(rows.GetArrayLength() == 40 && rows[0].GetProperty("id").GetInt32() == start, $"A range reply did not carry its range: {reply[..Math.Min(200, reply.Length)]}");
+                replyBytes += System.Text.Encoding.UTF8.GetByteCount(reply);
+                rowsSent += 40;
+                pages.Add(start / pageSize);
+                pages.Add((start + 39) / pageSize);
+            }
             var statistics = collection.Statistics;
-            Require(statistics.CachedPages <= 16 && statistics.CachedRows <= 1_600,
-                $"The cache grew past its bound at row {start}: {statistics}");
+            Require(statistics.CachedPages <= 16 && statistics.CachedRows <= 16 * pageSize, $"The cache grew past its bound at step {step}: {statistics}");
         }
         var final = collection.Statistics;
-        // Each range of 40 rows touches one or two pages of 100: the source never reads the whole list.
-        Require(final.RowsLoaded <= ranges * 2 * 100 && final.RowsLoaded < total, $"The source read more than the ranges needed: {final}");
-        Require(replyBytes / ranges < 40 * 64, $"A range reply carried more than its rows: {replyBytes / ranges} bytes per range.");
+        // Every page a range touched was read once at most, while it stayed cached; a page the cache evicted is read again.
+        Require(final.RowsLoaded <= (pages.Count + 1_000) * pageSize && final.RowsLoaded < total, $"The source read more than the ranges needed: {final}");
+        // 40 rows of {id, label, size} and their keys: about 1.9 KB a reply, whatever the list's length.
+        Require(replyBytes / (rowsSent / 40) < 2_200, $"A range reply carried more than its rows: {replyBytes / (rowsSent / 40)} bytes per range.");
+        // Frames carry the query state only: no row crosses a broadcast.
+        var pushes = host.Transport.TakeMessages();
+        Require(pushes.All(push => !push.Json.Contains("\"label\"", StringComparison.Ordinal)), "A push carried rows.");
+    }
+
+    [Test]
+    public async Task PagesThatLeftTheCacheStillServeTheirWaitersAsync()
+    {
+        // Two connections wait for more pages than the cache keeps: evicted pages deliver to their waiters, are not
+        // cached, and the cache stays within its bound.
+        var clock = new Microsoft.Extensions.Time.Testing.FakeTimeProvider();
+        var source = new RunicTestRowSource<CatalogRow, int>(CatalogRows.Create(10_000), CatalogRows.Fields(), row => row.Id, clock)
+            { Latency = TimeSpan.FromSeconds(1) };
+        using var collection = new RunicQueryCollection<CatalogRow, int>(source, row => row.Id,
+            new RunicQueryCollectionOptions { PageSize = 100, MaximumCachedPages = 2, MaximumConcurrentLoads = 8 });
+        var loads = Enumerable.Range(0, 6).Select(page => collection.LoadAsync(new(page * 1_000, 100)).AsTask()).ToArray();
+        await WaitAsync(() => { clock.Advance(TimeSpan.FromSeconds(1)); return Task.FromResult(loads.All(task => task.IsCompleted)); });
+        Require(loads.Select((task, page) => task.Result[0].Id == page * 1_000).All(ok => ok), "An evicted page did not deliver to its waiter.");
+        Require(collection.Statistics.CachedPages <= 2, $"The cache kept more pages than its bound: {collection.Statistics}");
     }
 
     [Test]
@@ -209,7 +250,149 @@ internal sealed class QueryCollectionTests
         Require(source.Loads.Select(load => load.Range.Start).Contains(100), "The view did not load the page its panel read.");
         collection.SetQuery(new RunicQuery([new RunicSortKey("id", Descending: true)]));
         await WaitAsync(() => Task.FromResult(context.Run() && changes[^1].Action == NotifyCollectionChangedAction.Reset));
-        await WaitAsync(() => Task.FromResult(context.Run() && view[0] is { Id: 999 }));
+        await WaitAsync(() => Task.FromResult(context.Run() && view.Count == 1_000 && view[0] is { Id: 999 }));
+    }
+
+    [Test]
+    public async Task AStormOfQueryChangesRunsBoundedSourceWorkAsync()
+    {
+        // Each query change cancels the count and the key searches of the query it replaces, and counts, searches and
+        // loads share the collection's slots: 50 query changes never run more than two source calls at once.
+        var clock = new Microsoft.Extensions.Time.Testing.FakeTimeProvider();
+        var source = new RunicTestRowSource<CatalogRow, int>(CatalogRows.Create(10_000), CatalogRows.Fields(), row => row.Id, clock)
+            { Latency = TimeSpan.FromSeconds(1) };
+        using var collection = new RunicQueryCollection<CatalogRow, int>(source, row => row.Id,
+            new RunicQueryCollectionOptions { PageSize = 100, MaximumConcurrentLoads = 2 });
+        var first = collection.LoadAsync(new(0, 10)).AsTask();
+        var searches = new List<Task<int>>();
+        for (var size = 0; size < 50; size++)
+        {
+            collection.SetQuery(new RunicQuery(filters: [RunicFilter.Equal("size", size % 7)]).WithSort(new RunicSortKey("id", Descending: size % 2 == 0)));
+            searches.Add(collection.IndexOfAsync(size).AsTask());
+        }
+        await WaitAsync(() => { clock.Advance(TimeSpan.FromSeconds(1)); return Task.FromResult(first.IsCompleted && searches.All(task => task.IsCompleted)); });
+        Require(source.MaximumConcurrency <= 2, $"{source.MaximumConcurrency} source calls ran at once.");
+        // The counts and searches of replaced queries were cancelled before they reached the source.
+        // A replaced search is cancelled in the source, at its next row, and runs again for the current query.
+        Require(source.Counts <= 4, $"Replaced queries still counted: {source.Counts} counts.");
+        Require(searches[^1].Result >= 0 && first.Result.All(row => row.Size == 49 % 7), "The latest query's work did not complete.");
+    }
+
+    [Test]
+    public async Task OneConnectionCannotTakeEverySlotAsync()
+    {
+        var clock = new Microsoft.Extensions.Time.Testing.FakeTimeProvider();
+        var source = new RunicTestRowSource<CatalogRow, int>(CatalogRows.Create(100_000), CatalogRows.Fields(), row => row.Id, clock)
+            { Latency = TimeSpan.FromSeconds(1) };
+        using var collection = new RunicQueryCollection<CatalogRow, int>(source, row => row.Id, new RunicQueryCollectionOptions { PageSize = 100 });
+        await using var services = Services<CatalogHolder>((transport, content, vm) => new CatalogHolderBridge(transport, vm, content: content));
+        using var host = RunicWindowTestHost.Create(services, new CatalogHolder(collection));
+        string Request(int start) => $$"""{"kind":"query-rows","route":"{{host.Root.Route}}","member":"rows","start":{{start}},"count":10}""";
+        // The drivers send each connection's hello; the first range also counts the list.
+        await GreetAsync(host.Transport, "second");
+        var hello = host.Root.QueryRowsAsync(vm => vm.Rows, 0, 1);
+        var helloSecond = host.Root.IndexOfAsync(vm => vm.Rows, "1");
+        await WaitAsync(() => { clock.Advance(TimeSpan.FromSeconds(1)); return Task.FromResult(hello.IsCompleted && helloSecond.IsCompleted); });
+        // One connection floods: two requests are admitted, the others answer busy at once.
+        var flood = Enumerable.Range(1, 10).Select(page => host.Transport.RequestAsync(Request(page * 1_000)).AsTask()).ToArray();
+        var busy = flood.Count(task => task.IsCompleted && task.Result.Contains("\"reason\":\"busy\"", StringComparison.Ordinal));
+        Require(busy == 8, $"{busy} of the flood's requests answered busy, not 8.");
+        // Another connection is still admitted, and is served.
+        var other = host.Transport.RequestAsync(Request(50_000), "second").AsTask();
+        await WaitAsync(() => { clock.Advance(TimeSpan.FromSeconds(1)); return Task.FromResult(other.IsCompleted && flood.All(task => task.IsCompleted)); });
+        Require(other.Result.Contains("\"start\":50000", StringComparison.Ordinal), $"The second connection was not served: {other.Result}");
+        // Two key searches of one connection: the second answers busy.
+        var searches = new[] { host.Root.IndexOfAsync(vm => vm.Rows, "7"), host.Root.IndexOfAsync(vm => vm.Rows, "8") };
+        await WaitAsync(() => { clock.Advance(TimeSpan.FromSeconds(1)); return Task.FromResult(searches.All(task => task.IsCompleted)); });
+        Require(searches.Count(task => task.IsFaulted && task.Exception!.InnerException!.Message.Contains("busy", StringComparison.Ordinal)) == 1,
+            "A second query-index of one connection was not answered busy.");
+        // A range past the counted end reads nothing from the source.
+        var loads = source.Loads.Count;
+        var past = await host.Transport.RequestAsync(Request(2_000_000_000));
+        Require(past.Contains("\"rows\":[]", StringComparison.Ordinal) && past.Contains("\"total\":100000", StringComparison.Ordinal)
+            && source.Loads.Count == loads, $"A range past the end reached the source: {past}");
+    }
+
+    [Test]
+    public async Task TheTotalOfAQueryChangeIsUnknownUntilCountedAsync()
+    {
+        var clock = new Microsoft.Extensions.Time.Testing.FakeTimeProvider();
+        var source = new RunicTestRowSource<CatalogRow, int>(CatalogRows.Create(70), CatalogRows.Fields(), row => row.Id, clock)
+            { Latency = TimeSpan.FromSeconds(1) };
+        using var collection = new RunicQueryCollection<CatalogRow, int>(source, row => row.Id);
+        var first = collection.LoadAsync(new(0, 5)).AsTask();
+        await WaitAsync(() => { clock.Advance(TimeSpan.FromSeconds(1)); return Task.FromResult(first.IsCompleted && collection.Total == 70); });
+        collection.SetQuery(new RunicQuery(filters: [RunicFilter.Equal("size", 3)]));
+        Require(collection.Total is null, "The old query's total survived a query change.");
+        var filtered = collection.LoadAsync(new(0, 5)).AsTask();
+        await WaitAsync(() => { clock.Advance(TimeSpan.FromSeconds(1)); return Task.FromResult(filtered.IsCompleted && collection.Total == 10); });
+        // A refresh keeps the total until the new count, which may be the same.
+        collection.Refresh();
+        Require(collection.Total == 10, "Refresh forgot the total.");
+    }
+
+    [Test]
+    public async Task ACustomFilterValidatesItsArgumentWhenTheQueryIsSetAsync()
+    {
+        var fields = CatalogRows.Fields().AddCustom("sizeAtLeast", (rows, value) =>
+        {
+            var minimum = value.GetInt32();
+            return rows.Where(row => row.Size >= minimum);
+        });
+        var source = new RunicQueryableRowSource<CatalogRow, int>(() => CatalogRows.Create(20).AsQueryable(), fields, row => row.Id);
+        await using var services = Services<CatalogHolder>((transport, content, vm) => new CatalogHolderBridge(transport, vm, content: content));
+        using var collection = new RunicQueryCollection<CatalogRow, int>(source, row => row.Id);
+        using var host = RunicWindowTestHost.Create(services, new CatalogHolder(collection));
+        var text = RunicFilter.Custom("sizeAtLeast", JsonDocument.Parse("\"three\"").RootElement);
+        var rejected = await host.Root.SetQueryAsync(vm => vm.Rows, new RunicQuery(filters: [text]));
+        Require(!rejected.Succeeded && rejected.ErrorReason == "invalid-input" && collection.Query.Filters.Count == 0,
+            $"A custom filter argument it cannot read reached the shared query: {rejected.Json}");
+        // An unknown filter op is invalid input too.
+        var reply = await host.Transport.RequestAsync($$$"""{"kind":"query-set","route":"{{{host.Root.Route}}}","member":"rows","query":{"filters":[{"field":"size","op":"near","value":3}]}}""");
+        Require(reply.Contains("\"reason\":\"invalid-input\"", StringComparison.Ordinal), $"An unknown filter op was not invalid input: {reply}");
+        var number = RunicFilter.Custom("sizeAtLeast", JsonDocument.Parse("5").RootElement);
+        Require((await host.Root.SetQueryAsync(vm => vm.Rows, new RunicQuery(filters: [number]))).Succeeded, "A valid custom argument was rejected.");
+    }
+
+    [Test]
+    public async Task ADisposedCollectionAnswersReleasedAndCancelsEvictedPagesAsync()
+    {
+        var clock = new Microsoft.Extensions.Time.Testing.FakeTimeProvider();
+        var source = new RunicTestRowSource<CatalogRow, int>(CatalogRows.Create(10_000), CatalogRows.Fields(), row => row.Id, clock)
+            { Latency = TimeSpan.FromSeconds(1) };
+        var collection = new RunicQueryCollection<CatalogRow, int>(source, row => row.Id,
+            new RunicQueryCollectionOptions { PageSize = 100, MaximumCachedPages = 1, MaximumConcurrentLoads = 4 });
+        await using var services = Services<CatalogHolder>((transport, content, vm) => new CatalogHolderBridge(transport, vm, content: content));
+        using var host = RunicWindowTestHost.Create(services, new CatalogHolder(collection));
+        string Request(int start, string connection) => $$"""{"kind":"query-rows","route":"{{host.Root.Route}}","member":"rows","start":{{start}},"count":10}""";
+        await host.Root.IndexOfAsync(vm => vm.Rows, "x");
+        await GreetAsync(host.Transport, "second");
+        // Two pages wait for their loads; the second evicts the first from the one-page cache.
+        var evicted = host.Transport.RequestAsync(Request(0, "")).AsTask();
+        var cached = host.Transport.RequestAsync(Request(5_000, ""), "second").AsTask();
+        await Task.Delay(50);
+        collection.Dispose();
+        await WaitAsync(() => Task.FromResult(evicted.IsCompleted && cached.IsCompleted));
+        Require(evicted.Result.Contains("\"released\"", StringComparison.Ordinal) && cached.Result.Contains("\"released\"", StringComparison.Ordinal),
+            $"A disposed collection's requests were not answered released: {evicted.Result} {cached.Result}");
+        Require(source.Loads.Count == 0, "A load of a disposed collection completed.");
+    }
+
+    [Test]
+    public async Task TheGeneratedBridgeBindsItsModelContextAsync()
+    {
+        var source = new RunicTestRowSource<CatalogRow, int>(CatalogRows.Create(10), CatalogRows.Fields(), row => row.Id);
+        // A collection created without a model context, as an application might.
+        using var collection = new RunicQueryCollection<CatalogRow, int>(source, row => row.Id);
+        await using var services = Services<CatalogHolder>((transport, content, vm) => new CatalogHolderBridge(transport, vm, content: content));
+        var context = services.GetRequiredService<IRunicModelContext>();
+        using var host = RunicWindowTestHost.Create(services, new CatalogHolder(collection));
+        var inTurn = new List<bool>();
+        collection.PropertyChanged += (_, _) => { lock (inTurn) inTurn.Add(context.IsExecuting); };
+        await Task.Run(collection.Refresh);
+        await host.Root.QueryRowsAsync(vm => vm.Rows, 0, 5);
+        await WaitAsync(() => Task.FromResult(collection.Total == 10));
+        lock (inTurn) Require(inTurn.Count > 0 && inTurn.All(executing => executing), "A query collection raised a change outside its Bridge's model context.");
     }
 
     // A ViewModel that only holds a collection the test configured.
@@ -219,6 +402,13 @@ internal sealed class QueryCollectionTests
         services.AddRunicReactiveModelContext();
         services.AddScoped(_ => attach);
         return services.BuildServiceProvider();
+    }
+
+    // Sends a connection's hello, which the drivers send only for the connections they use.
+    private static async Task GreetAsync(InMemoryBridgeTransport transport, string connection)
+    {
+        var reply = await transport.RequestAsync($$"""{"kind":"hello","protocol":4,"session":"{{connection}}-raw","client":{"name":"test","version":"1"},"features":["query-collections/1"]}""", connection);
+        Require(reply.StartsWith("{\"ok\":true", StringComparison.Ordinal), $"The hello of {connection} failed: {reply}");
     }
 
     private static async Task WaitAsync(Func<Task<bool>> condition)

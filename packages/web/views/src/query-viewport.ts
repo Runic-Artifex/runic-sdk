@@ -236,15 +236,18 @@ export function createQueryViewportController<TRow>(collection: QueryCollection<
   // Asks the collection for the rows the container shows.
   function compute(): void {
     if (disposed) return;
-    const total = collection.current.total ?? 0;
-    if (total !== sizes.count) sizes.resize(total);
+    // An unknown total (before the first count, or after a query change) keeps the sizes the list has, such as the
+    // length scrollToKey extended it to, until the total arrives.
+    const known = collection.current.total;
+    if (known !== null && known !== sizes.count) sizes.resize(known);
+    const total = sizes.count;
     const top = element?.scrollTop ?? 0;
     const height = element?.clientHeight ?? 0;
     const first = sizes.indexAt(Math.max(0, top));
     const last = sizes.indexAt(top + height);
     const start = Math.max(0, first - overscan());
     // Before the total is known, the first rows load so it becomes known.
-    const end = total === 0 ? Math.max(1, Math.ceil(height / Math.max(1, sizes.count === 0 ? estimate(0) : sizes.sizeOf(0)))) + overscan()
+    const end = total === 0 ? Math.max(1, Math.ceil(height / Math.max(1, estimate(0)))) + overscan()
       : Math.min(total, last + 1 + overscan());
     collection.setRange(start, Math.max(0, end - start));
     publish();
@@ -258,7 +261,7 @@ export function createQueryViewportController<TRow>(collection: QueryCollection<
     // Rows of another query have other sizes.
     const text = JSON.stringify(snapshot.query);
     if (text !== queryText) { queryText = text; sizes.reset(); }
-    if ((snapshot.total ?? 0) !== sizes.count) { compute(); return; }
+    if (snapshot.total !== null && snapshot.total !== sizes.count) { compute(); return; }
     publish();
   };
   let stop: (() => void) | undefined;
@@ -280,7 +283,8 @@ export function createQueryViewportController<TRow>(collection: QueryCollection<
       if (!disposed && stop === undefined) {
         stop = collection.subscribe(follow);
         // What changed while nobody followed.
-        if ((collection.current.total ?? 0) !== sizes.count || JSON.stringify(collection.current.query) !== queryText) follow();
+        const total = collection.current.total;
+        if (total !== null && total !== sizes.count || JSON.stringify(collection.current.query) !== queryText) follow();
       }
       return () => {
         listeners.delete(listener);
@@ -328,12 +332,18 @@ export function createQueryViewportController<TRow>(collection: QueryCollection<
     },
     scrollToIndex(index, align = "start") { scrollTo(index, align); },
     async scrollToKey(key, align = "start") {
-      const index = await collection.indexOf(key);
-      if (index === undefined || disposed) return false;
-      // The total can arrive with the position: the list must be long enough to reach it.
-      if (index >= sizes.count) sizes.resize(Math.max(index + 1, collection.current.total ?? 0));
-      scrollTo(index, align);
-      return true;
+      // A position found under a query that changed meanwhile is a position of the old query: search again.
+      for (let attempt = 0; attempt < 3; attempt++) {
+        const found = await collection.locate(key);
+        if (disposed) return false;
+        if (found.version < collection.current.version) continue;
+        if (found.index === undefined) return false;
+        // The total can arrive after the position: the list must be long enough to reach it until then.
+        if (found.index >= sizes.count) sizes.resize(Math.max(found.index + 1, collection.current.total ?? 0));
+        scrollTo(found.index, align);
+        return true;
+      }
+      return false;
     },
     update(next) {
       const estimateChanged = next.estimateSize !== settings.estimateSize;

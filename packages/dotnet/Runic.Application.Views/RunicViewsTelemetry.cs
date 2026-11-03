@@ -276,6 +276,11 @@ internal static partial class ViewsLog
         Message = "Setting the query of query collection {Model}.{Member} on route {Route} failed with {ErrorType}.")]
     internal static partial void QuerySetFailed(ILogger logger, Exception exception, string model, string member, string route, string errorType);
 
+    [LoggerMessage(EventId = 1193, EventName = "QueryCollectionWithoutModelContext", Level = LogLevel.Warning,
+        Message = "A query collection of {Row} rows raised a change outside any model context, on the thread its load completed on. "
+            + "Present it through a generated Bridge, which binds the ViewModel's model context, or set RunicQueryCollectionOptions.ModelContext.")]
+    internal static partial void QueryCollectionWithoutModelContext(ILogger logger, string row);
+
     [LoggerMessage(EventId = 1026, EventName = "WindowCloseUnacknowledged", Level = LogLevel.Debug,
         Message = "The window closed before {Pages} of its pages acknowledged the close.")]
     internal static partial void CloseUnacknowledged(ILogger logger, int pages);

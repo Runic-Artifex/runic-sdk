@@ -212,7 +212,7 @@ connection before connecting it, answers a request it did not send, expects a ca
 | [`operations`](scenarios/operations) | `watch` with throttled `progress` and the terminal `revision`; `start` ordering; duplicate versus `identity-conflict` by canonical equality; cancel; a declared failure; an unknown operation; a `start` with another build's contract |
 | [`presentations`](scenarios/presentations) | `open` and `close`; a presentation owned by another connection; a reconnect with a new session; an unknown route; presentation epochs (`epoch-*`): the `epoch` of `open` and `snapshot`, a renewal published as a `state`, a scoped command with the current epoch, a second scoped command from the same state that is superseded, an unscoped command without `epoch`, and a connection without the feature; painted states (`presented-*`): a report that completes a wait, and a wait that times out; window close (`closing-*`): an acknowledged close and the client's closed connection, and a close that times out |
 | [`interactions`](scenarios/interactions) | A confirmation answered, and its repeat; registration outcomes |
-| [`query-collections`](scenarios/query-collections) | Query collections (`query-collections/1`): the state member without rows and a range read by one connection; a query change published as a frame with a new version before its reply, and the rows in its order; a query the source rejects (`invalid-input`); the position of a key, and of a key the query excludes; a row that changes in place raises the version and the page loads its range again; the request kinds on a connection without the feature |
+| [`query-collections`](scenarios/query-collections) | Query collections (`query-collections/1`): the state member without rows and a range read by one connection; a query change published as a frame with a new version and an unknown total before its reply, and the rows in its order with the count they start; a filter that changes the total, and a client that asks for no position past it; a query the source rejects, and an unknown filter `op` (`invalid-input`); the position of a key, and of a key the query excludes; a row that changes in place raises the version and the page loads its range again; the request kinds on a connection without the feature |
 | [`errors`](scenarios/errors) | The protocol-3 `error-reasons`, `domain-failures` and `released` fixtures, converted (`error-reasons` and `released` were removed in 0.13); capacity |
 
 ## Test Views
@@ -326,7 +326,7 @@ A query collection ([`query-collections/1`](../README.md#query-collections)). Me
 
 | Member | Type | Notes |
 | --- | --- | --- |
-| `rows` | query collection of `{id: int32, label: string}`, keyed by `id` | `arrange.model.rows` are the source's rows; its first state already has `total` |
+| `rows` | query collection of `{id: int32, label: string}`, keyed by `id` | `arrange.model.rows` are the source's rows; its first state already has `total`. After a query change the total is `null` until a range is read, which counts it. |
 
 The row source has the fields `id` (sort, `equals`, `range`) and `label` (sort, `equals`, `contains` ignoring case), and
 the custom filter `even`, which keeps rows with an even `id`. Rows are ordered by the sort keys, then by `id`. The

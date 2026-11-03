@@ -184,6 +184,8 @@ public sealed class RunicQueryCollectionView<TRow> : IList, IReadOnlyList<TRow?>
             if (_disposed || total == _count && version == _loadedVersion) return;
             _loadedVersion = version;
             Reset(total);
+            // A new query's total is unknown until counted: the first page's load brings it.
+            if (_total() is null) StartLoad(0);
         });
     }
 

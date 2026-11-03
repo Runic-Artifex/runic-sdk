@@ -581,7 +581,7 @@ const list = useQueryCollection(() => client.value?.queries.rows, { estimateSize
 <template>
   <div :ref="list.attach" style="height: 480px; overflow: auto">
     <div :style="{ height: `${list.viewport.value.totalSize}px`, position: 'relative' }">
-      <div v-for="item in list.viewport.value.items" :key="item.index" :ref="el => list.measure(el, item.index)"
+      <div v-for="item in list.viewport.value.items" :key="item.key ?? `p${item.index}`" :ref="el => list.measure(el, item.index)"
         :style="{ position: 'absolute', top: `${item.top}px`, width: '100%' }">{{ item.row?.label ?? "…" }}</div>
     </div>
   </div>

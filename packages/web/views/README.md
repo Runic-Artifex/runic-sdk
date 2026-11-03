@@ -291,9 +291,14 @@ const index = await rows.indexOf("4711");    // the key's position in the curren
   `loading` and `error` summarize the range; `retry()` loads it again after a failure.
 - The collection sends at most one `query-rows` at a time, for the positions of the latest range it has not loaded at
   the current version (at most 1,000 rows), so fast scrolling sends few requests. It keeps the rows near its range
-  (at least 2,000) and drops the others.
-- `setQuery(query)` changes ViewModel state that every presentation shares, and resolves once the state includes it; a
-  query .NET cannot run rejects with a `BridgeError` of kind `rejected` and reason `invalid-input`. A filter is
+  (at least 2,000) and drops the others. A range it scrolled past while its request was in flight is not cancelled (the
+  protocol has no request for that); it costs at most one range. A request .NET answers `busy`, because another
+  presentation on the connection has as many in flight as .NET admits, is sent again after a short delay.
+- Rows loaded under a query that has since changed are dropped, and rows loaded at a version the state has not reached
+  yet stay placeholders until it does, so a page never shows a row of another query.
+- `setQuery(query)` changes ViewModel state that every presentation shares, and resolves once the state includes it.
+  One query is in flight at a time: a query set meanwhile replaces the one waiting, and the calls it replaced settle with
+  it, so a search box can call it on every keystroke. A query .NET cannot run, or an unknown filter `op`, rejects with a `BridgeError` of kind `rejected` and reason `invalid-input`. A filter is
   `equals` (`value`), `contains` (a string `value`), `range` (`min?`, `max?`, inclusive) or `custom` (a filter .NET
   defines by name, with an optional `value`). Values are wire values: an `Int64` as a decimal string.
 - When the version increases, after a query change or a change of rows in .NET, the collection loads its range again;
@@ -310,8 +315,9 @@ row of the range with its `top` and `size`), `totalSize` for the spacer, and `to
 - `attach(element)` follows the container's scroll position (once per animation frame) and size.
 - `observe(rowElement, index)` measures a rendered row with a `ResizeObserver`; a row above the visible ones that changes
   height moves `scrollTop` by the difference, so what the user looks at stays in place.
-- `scrollToKey(key, align?)` asks .NET for the key's position (`query-index`) and scrolls to it; it resolves `false` when
-  no row of the current query has the key. `scrollToIndex(index, align?)` scrolls to a position.
+- `scrollToKey(key, align?)` asks .NET for the key's position (`query-index`, with `locate(key)`) and scrolls to it; a
+  position found under a query that changed meanwhile is searched again. It resolves `false` when no row of the current
+  query has the key. Until the total is known, the list stays long enough to reach the position. `scrollToIndex(index, align?)` scrolls to a position.
 - A new query forgets the measured heights. `createRowSizes(count, estimate)` is the size tree alone, for any list.
 
 The framework packages wrap it as `useQueryCollection` (`injectQueryCollection` in Angular; `queryViewportChanges` in
@@ -322,7 +328,7 @@ const list = useQueryCollection(catalog.queries.rows, { estimateSize: 32 });
 <div ref={list.ref} style={{ height: 480, overflow: "auto" }}>
   <div style={{ height: list.totalSize, position: "relative" }}>
     {list.items.map(item => (
-      <div key={item.key ?? `#${item.index}`} ref={list.measure(item.index)} style={{ position: "absolute", top: item.top, width: "100%" }}>
+      <div key={item.key ?? `p${item.index}`} ref={list.measure(item.index)} style={{ position: "absolute", top: item.top, width: "100%" }}>
         {item.row ? item.row.label : "…"}
       </div>
     ))}

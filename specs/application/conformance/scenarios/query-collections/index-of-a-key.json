@@ -218,7 +218,7 @@
                   }
                 ]
               },
-              "total": 5,
+              "total": null,
               "version": 1
             }
           }
@@ -227,39 +227,10 @@
     },
     {
       "receive": {
-        "kind": "frame",
-        "route": "catalog",
-        "baseRevision": 1,
-        "revision": 2,
-        "changes": [
-          {
-            "field": "rows",
-            "kind": "set",
-            "value": {
-              "query": {
-                "sort": [],
-                "filters": [
-                  {
-                    "field": "even",
-                    "op": "custom"
-                  }
-                ]
-              },
-              "total": 2,
-              "version": 1
-            }
-          }
-        ]
-      },
-      "unordered": true
-    },
-    {
-      "receive": {
         "ok": true,
         "revision": 1
       },
-      "replyTo": "even-request",
-      "unordered": true
+      "replyTo": "even-request"
     },
     {
       "expect": {
@@ -352,7 +323,7 @@
                   }
                 ]
               },
-              "total": 2,
+              "total": null,
               "version": 1
             }
           }

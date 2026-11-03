@@ -13,19 +13,26 @@ const goTo = document.querySelector<HTMLInputElement>("#goto")!;
 
 // Rows are laid out by their measured heights; 56 px until a row was measured.
 const viewport = createQueryViewportController(products, { estimateSize: 56, overscan: 6 });
-const nodes = new Map<number, { element: HTMLDivElement; stop: () => void; content: unknown }>();
+// Rendered rows by key, or by position while a row is a placeholder, so a row keeps its element when it moves.
+const nodes = new Map<string, { element: HTMLDivElement; index: number; stop: () => void; content: unknown }>();
+const keyOf = (item: { readonly key: string | undefined; readonly index: number }) => item.key ?? `p${item.index}`;
 
 function render(): void {
   const current = viewport.current;
   spacer.style.height = `${current.totalSize}px`;
-  const shown = new Set(current.items.map(item => item.index));
-  for (const [index, node] of nodes) if (!shown.has(index)) { node.stop(); node.element.remove(); nodes.delete(index); }
+  const shown = new Set(current.items.map(keyOf));
+  for (const [key, node] of nodes) if (!shown.has(key)) { node.stop(); node.element.remove(); nodes.delete(key); }
   for (const item of current.items) {
-    let node = nodes.get(item.index);
+    let node = nodes.get(keyOf(item));
     if (!node) {
       const element = spacer.appendChild(document.createElement("div"));
-      node = { element, stop: viewport.observe(element, item.index), content: undefined };
-      nodes.set(item.index, node);
+      node = { element, index: item.index, stop: viewport.observe(element, item.index), content: undefined };
+      nodes.set(keyOf(item), node);
+    } else if (node.index !== item.index) {
+      // The row moved: its height now measures its new position.
+      node.stop();
+      node.index = item.index;
+      node.stop = viewport.observe(node.element, item.index);
     }
     node.element.style.top = `${item.top}px`;
     node.element.className = `row${item.row ? "" : " placeholder"}${item.stale ? " stale" : ""}`;

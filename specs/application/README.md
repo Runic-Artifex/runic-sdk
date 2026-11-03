@@ -260,6 +260,7 @@ it.
 | `invalid-input` | `rejected` | A value or input does not decode as its type ([values](values.md#wire-value-types)), the setter or command rejects it as invalid input, or the request is larger than the input limit. |
 | `unavailable` | `rejected` | A command is not available ([Commands](#commands-and-availability)). |
 | `unresolved-key` | `rejected` | The key of a key command resolves to nothing. |
+| `busy` | `rejected` | A connection already has as many query collection requests of that kind in flight as the producer admits ([query collections](#query-collections)). Nothing ran; it ends when one completes. |
 | `capacity` | `rejected` | A limit of the window or connection is reached: 64 awaited commands, 64 presentations per route and connection, 64 watches per connection, or 64 requests held before a connection's `hello`. |
 | `state-withheld` | any | The request ran, but the producer cannot publish a state that includes its effects, because a keyed collection has invalid keys ([state changes](state-changes.md#invalid-keys)). |
 
@@ -731,7 +732,7 @@ pages that scroll the same list never receive, or move, each other's rows.
 | Member | Contract |
 | --- | --- |
 | `query` | The collection's sort and filter, in the form below. It is state of the View: every presentation shares it, and a `query-set` of one presentation changes it for all. |
-| `total` | The number of rows that match `query`, or `null` until the producer counted them. |
+| `total` | The number of rows that match `query`, or `null` while the producer has not counted them: before the first count, and after a change of `query` until the new query is counted, since the old total belongs to the old query. After rows were added or removed under the same query, the producer MAY keep the old total until its new count. |
 | `version` | A non-negative safe integer that increases whenever rows a page loaded may be out of date: after the query changed, after rows were added or removed, and after a row changed in place. A page loads its range again when it increases. |
 
 The member changes like any other value member: in a `state`, or a `set` change in a frame. A `total` that becomes known
@@ -748,6 +749,11 @@ name; the producer decides which fields exist. A filter has `field` and `op`:
 | `range` | `min?`, `max?` | the field is at least `min` and at most `max`; an absent bound is open |
 | `custom` | `value?` | the producer's own filter named `field` passes with `value` |
 
+An `op` the producer does not know, like a field or a value it cannot use, makes the query `invalid-input`: a later
+release can add operators without a new version of the feature, and a client that sends one to an older producer gets
+`invalid-input`. A producer checks a query, including the values of its `custom` filters, before it takes it, so a
+query it cannot run never becomes state.
+
 A producer writes the query in this canonical form: both arrays present, `descending` present, and `value`, `min` and
 `max` only when they have a value, in the order listed. Two queries are equal when their canonical forms are.
 The producer orders rows by the sort keys and then by row key, so that ranges are stable.
@@ -761,7 +767,8 @@ The producer orders rows by the sort keys and then by row key, so that ranges ar
 | `query-index` | `route`, `member`, `key` | `version`, `index` |
 
 - **`query-rows`** reads `count` rows from position `start` (both non-negative safe integers; `count` at most 1,000,
-  else `rejected` with `invalid-input`). The reply's `rows` are the rows from `start` in the query's order, encoded as
+  else `rejected` with `invalid-input`). Once the producer has counted the current query, a range at or past `total`
+  answers no rows without reading the source. The reply's `rows` are the rows from `start` in the query's order, encoded as
   the row type, at most `count` and fewer at the end of the list; `keys` are their keys, which follow the
   [keyed collection rules](state-changes.md#keyed-collections) (nonempty strings, unique, a lowercase GUID or an `Int32`
   in decimal). `version` is the version the rows were loaded at, and `total` the count of the rows that match, or
@@ -774,21 +781,37 @@ The producer orders rows by the sort keys and then by row key, so that ranges ar
 - **`query-index`** answers the position of the row whose wire key is `key` in the current query's order, or `-1` when
   no row that matches the query has it, at `version`. A page uses it to scroll a row into view.
 - A `member` that is not a query collection of the route is `rejected` with `invalid-request`. On a connection that does
-  not use the feature, the three kinds are `invalid-request`. A failure to load is `failed`.
+  not use the feature, the three kinds are `invalid-request`. A failure to load is `failed`. A collection that was
+  released while a request ran answers `released`.
+- **Limits per connection.** A producer admits, per connection and collection, at most 2 `query-rows`, 1 `query-set` and
+  1 `query-index` in flight. Another one is `rejected` with the reason `busy` at once and ran nothing; the client sends
+  it again after the one in flight completed. `busy` differs from `capacity`: it ends as soon as a request completes.
 
 **Producer.** A producer may serve rows from a cache, coalesce requests for the same rows, and bound how many loads run
-at once, as long as every reply's rows are the rows of the query in force at its `version`. It cancels a load when
-the request's connection closes.
+at once, as long as every reply's rows are the rows of the query in force at its `version`. It bounds the source work a
+page can cause: loads, counts and key searches share a fixed number of slots; a change of the query cancels the count
+and the key searches of the old one; and a load stops once no request waits for it, such as when the request's
+connection closes. The protocol has no request to cancel a `query-rows`: a client that scrolls past a range in flight
+lets it complete, which costs at most one range because it has one in flight at a time.
 
 **Client.** A client that uses the feature:
 
 - keeps, per presentation and collection, the rows it loaded with their version, and shows a placeholder for a position
-  of its range it has not loaded;
+  of its range it has not loaded, or whose row has a version that its state has not reached yet (it may belong to a
+  query the page does not show yet);
+- records the version at which the current query took effect, the first state with that query, and discards the rows
+  of any reply with an older version, since they are rows of another query; on a change of `query` it keeps only the
+  rows loaded at that version or later;
 - sends at most one `query-rows` of a collection at a time, for the positions of its latest range that it has not loaded
   at the current version, at most 1,000;
 - loads its range again when `version` increases, and discards every row when `query` changes; it shows rows of an older
   version until their new version arrives;
-- does not send `query-rows` for positions at or after `total` once `total` is known.
+- does not send `query-rows` for positions at or after `total` once `total` is known;
+- sends one `query-set` of a collection at a time; a query set while one is in flight replaces the one waiting to be
+  sent, and the calls it replaced settle with it;
+- sends one `query-index` of a collection at a time, and uses a position whose `version` is older than its state's
+  version only after searching again, since the query changed meanwhile;
+- sends a request answered `busy` again after a short delay.
 
 Scenarios: [`query-collections`](conformance/scenarios/query-collections).
 

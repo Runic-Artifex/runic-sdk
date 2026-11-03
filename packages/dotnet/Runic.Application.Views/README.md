@@ -2052,7 +2052,8 @@ public sealed class OrdersViewModel : ObservableObject
 ```
 
 - **State.** The property's member in the page's state is `{ query, total, version }`: the sort and filter, the number
-  of matching rows (`null` until counted), and a version that increases when loaded rows may be out of date. The rows
+  of matching rows (`null` until counted, and again after a query change until a page reads rows of the new query; a
+  refresh keeps the old total until its new count), and a version that increases when loaded rows may be out of date. The rows
   are not state. Each page reads the rows of its range with the generated client's `queries.orders.setRange(start,
   count)`, and .NET answers that page alone (`query-collections/1`, [protocol](../../../specs/application/README.md#query-collections)).
   Two CS-WebUI clients or two windows that scroll the same list therefore don't move each other's rows, and a page that
@@ -2067,19 +2068,35 @@ public sealed class OrdersViewModel : ObservableObject
   total, as from `COUNT(*) OVER ()`, `IndexOfAsync(query, key)` and `Validate(query)`. `RunicQueryableRowSource` runs
   a query over any `IQueryable<T>`: an in-memory list (`rows.AsQueryable()`) or a database table through Entity
   Framework Core or another LINQ provider. `RunicQueryFields<TRow>` lists the fields a page may use and maps them to
-  `Where` and `OrderBy` expressions that the provider translates; a query that names another field is rejected as
-  invalid input. A source with asynchronous LINQ (`ToListAsync`) or an HTTP API implements the interface itself with
+  `Where` and `OrderBy` expressions that the provider translates; a query that names another field, an unknown filter
+  operator, or a value the field cannot read is rejected as invalid input, and never becomes the collection's query.
+  A source of your own implements `Validate`: the page's field names, custom filter names and values are untrusted
+  input, so accept only what the source supports by name. A `custom` filter's delegate also receives untrusted JSON;
+  `Validate` runs it once over no rows, so an argument it rejects is invalid input when the page sets the query. A source with asynchronous LINQ (`ToListAsync`) or an HTTP API implements the interface itself with
   `fields.Apply(...)`. The collection orders by the row key last, so a range is stable.
-- **Loading.** The collection reads the source in pages of `PageSize` rows (100), at most `MaximumConcurrentLoads` (4)
-  at a time and never in a model turn. Requests that need the same page share its load, a load that no request waits for
-  any more is cancelled (a page that scrolled past it), a failed page is not kept, and at most `MaximumCachedPages` (64)
-  pages stay cached, least recently used first. Memory therefore stays bounded whatever the list's length:
-  `QueryCollectionTests.ScrollingHalfAMillionRowsKeepsMemoryAndTrafficBoundedAsync` scrolls 500,000 rows in ranges of 40
-  with at most 16 cached pages, and each reply carries only its range. `Statistics` reports what was loaded.
+- **Loading.** The collection reads the source in pages of `PageSize` rows (100), never in a model turn. Loads, counts
+  and key searches share `MaximumConcurrentLoads` (4) slots, so no burst of requests runs more source calls at once.
+  Requests that need the same page share its load, a load that no request waits for any more is cancelled (a page that
+  scrolled past it), a failed page is not kept, and at most `MaximumCachedPages` (64) pages stay cached, least recently
+  used first. A query change cancels the count and key searches of the old query, and the new query is counted when a
+  page next reads rows, so a burst of query changes counts the last one. A range at or past a counted total reads
+  nothing. Memory and traffic therefore stay bounded whatever the list's length:
+  `QueryCollectionTests.ScrollingHalfAMillionRowsKeepsMemoryAndTrafficBoundedAsync` scrolls 500,000 rows with two pages
+  at once, with at most 16 cached pages, about 1.9 KB per 40-row reply and no row in any frame. `Statistics` reports
+  what was loaded.
+- **Fairness.** The Bridge admits per connection and collection 2 `query-rows`, 1 `query-set` and 1 `query-index` in
+  flight, and answers more `busy` at once, so one page cannot take every slot of the source from another; the page's
+  client retries them after a short delay.
+- **Cancellation of synchronous LINQ.** `RunicQueryableRowSource` checks cancellation between the rows it reads, so a
+  cancelled load or search frees its slot at its next row. A synchronous provider cannot interrupt a call before its first
+  row, such as a `Count()` or a slow query plan: that call completes in the background, in its slot. A source with
+  asynchronous LINQ (`CountAsync`, `ToListAsync` with the token) is interrupted at once.
 - **Changes.** Call `Invalidate(key)` after a row changed in place: the cached page that holds it is discarded and the
   version raised, so pages load their range again, mostly from the cache. Call `Refresh()` after rows were added or
   removed, which moves the rows after them: every page and the count are taken again. `SetQuery` does the same for a
-  new query. Pass the ViewModel's `ModelContext`, so the collection publishes these changes in its turns.
+  new query. The generated Bridge binds the ViewModel's model context to the collection, so these changes are published in
+  its turns. A collection used without a Bridge raises them in its `ModelContext`, or the `SynchronizationContext` it was
+  created on (a WPF View's UI thread); without either, it logs event 1193 once and raises them where they happen.
 - **Scroll to a key.** A page's `scrollToKey(key)` asks .NET for the row's position in the current query
   (`IndexOfAsync`, a `query-index` request) and scrolls there, for example to bring a search result into view.
 - **WPF.** A WPF View binds `Orders.CreateView()` as an `ItemsControl`'s `ItemsSource` with a virtualizing panel: the
@@ -2732,6 +2749,7 @@ NativeAOT symbols and what to attach to a bug report.
 | 1025 | `BridgeCollectionChangedOutsideModelTurn` | Warning | A collection that a Bridge observes changed outside its window's model turn, such as a DynamicData `Bind` without `ObserveOn` the window's scheduler: the change waited for a turn and can race the window. Once per Bridge and field. | `Model`, `Field`, `Route` |
 | 1190 | `BridgeQueryRowsFailed` | Error | A query collection's row source threw while loading a page's range, or its rows could not be encoded. The page's `query-rows` is answered `failed`, and its range shows the error. | `Model`, `Member`, `Route`, `Start`, `End`, `ErrorType` |
 | 1191 | `BridgeQueryIndexFailed` | Error | A query collection's row source threw in `IndexOfAsync`. The page's `query-index` is answered `failed`. | `Model`, `Member`, `Route`, `ErrorType` |
+| 1193 | `QueryCollectionWithoutModelContext` | Warning | A query collection raised a property change outside any model or synchronization context, on the thread its load completed on: it was used without a Bridge and without `RunicQueryCollectionOptions.ModelContext`. Once per collection. | `Row` |
 | 1192 | `BridgeQuerySetFailed` | Error | Changing a query collection's query threw something other than the `ArgumentException` of an invalid query. | `Model`, `Member`, `Route`, `ErrorType` |
 | 1026 | `WindowCloseUnacknowledged` | Debug | A Window's close waited for its pages that use `presented/1` until its timeout or 5 s, and some did not acknowledge it (`RunicWindowCloseResult.PagesAcknowledged` is `false`). | `Pages` |
 | 1033 | `ModelContextReleaseFailed` | Error | A window session's own model context fails to shut down in the background. | `ErrorType` |
@@ -2791,7 +2809,7 @@ NativeAOT symbols and what to attach to a bug report.
 as `content12`). A declared failure is an expected outcome, so it is logged at
 Debug, still with its exception; `FailureType` is the failure value's type.
 
-Events 1000-1012, 1018-1026, 1050-1053, 1100-1102 and 1190-1192 use the category `Runic.Application.Views`
+Events 1000-1012, 1018-1026, 1050-1053, 1100-1102 and 1190-1193 use the category `Runic.Application.Views`
 (`RunicViewsTelemetry.LogCategory`); the Hot Reload events 1100-1102 use the
 logger of the window session that owns the Bridge. Events 1110-1114 use
 `Runic.Application.Views.Wpf` and the factory of the host's `Services`. Event 1033 here is a window session's

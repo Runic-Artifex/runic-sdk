@@ -19,6 +19,13 @@ namespace Runic.Application.Views;
 /// <see cref="IndexOfAsync"/> reads the keys of the filtered, ordered rows until it finds the key. A database source that
 /// needs a faster search implements it with <c>ROW_NUMBER()</c>.
 /// </para>
+/// <para>
+/// <b>Cancellation.</b> A load and a key search stop at the next row they read once cancelled, and free their slot of the
+/// collection. A synchronous LINQ provider cannot interrupt one call that has not returned a row yet: a <c>Count()</c>, or
+/// the database's work before a query's first row. Such a call finishes in the background after its query changed, still
+/// holding its slot, so a slow table keeps at most <see cref="RunicQueryCollectionOptions.MaximumConcurrentLoads"/> of them
+/// running. A source with asynchronous LINQ (<c>CountAsync</c>, <c>ToListAsync</c> with the token) is interrupted at once.
+/// </para>
 /// </remarks>
 /// <param name="rows">Returns the rows to query.</param>
 /// <param name="fields">The fields the page may sort and filter by.</param>
@@ -41,7 +48,13 @@ public sealed class RunicQueryableRowSource<TRow, TKey>(Func<IQueryable<TRow>> r
     public ValueTask<RunicRowPage<TRow>> LoadAsync(RunicQuery query, RunicRowRange range, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        var page = _fields.Apply(_rows(), query, _key).Skip(range.Start).Take(range.Count).ToList();
+        // Rows are read one by one, so a cancelled load stops at the next row and frees its slot.
+        var page = new List<TRow>(Math.Min(range.Count, 1_000));
+        foreach (var row in _fields.Apply(_rows(), query, _key).Skip(range.Start).Take(range.Count))
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            page.Add(row);
+        }
         return new(new RunicRowPage<TRow>(page));
     }
 

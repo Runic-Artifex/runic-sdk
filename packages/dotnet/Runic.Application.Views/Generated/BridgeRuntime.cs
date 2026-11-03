@@ -761,6 +761,8 @@ public partial class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBr
             if (ReferenceEquals(previous.Source, next)) continue;
             previous.Subscription?.Dispose();
             _observed.Remove(property.Name);
+            // A query collection publishes in this ViewModel's model turns (query-collections/1).
+            if (next is IBridgeQueryCollection query) query.Bind(_modelContextLease?.Context ?? _content?.ModelContext, _logger);
             var subscription = next switch
             {
                 NavigationRegion region => NavigationPresentationBinding.Observe(region, _content, ScheduleUnit),

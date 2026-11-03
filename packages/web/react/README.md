@@ -587,7 +587,7 @@ loads the rows the container shows, with placeholders until they arrive, and lay
 const list = useQueryCollection(client.queries.rows, { estimateSize: 32 });
 return <div ref={list.ref} style={{ height: 480, overflow: "auto" }}>
   <div style={{ height: list.totalSize, position: "relative" }}>
-    {list.items.map(item => <div key={item.index} ref={list.measure(item.index)} style={{ position: "absolute", top: item.top, width: "100%" }}>
+    {list.items.map(item => <div key={item.key ?? `p${item.index}`} ref={list.measure(item.index)} style={{ position: "absolute", top: item.top, width: "100%" }}>
       {item.row?.label ?? "…"}
     </div>)}
   </div>

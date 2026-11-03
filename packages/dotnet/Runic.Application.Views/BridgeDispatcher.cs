@@ -721,6 +721,27 @@ internal sealed class BridgeConnection(string key, string clientKey)
     internal bool UsesPresented { get; set; }
     // query-collections/1: the connection reads query collection ranges (query-rows, query-set, query-index).
     internal bool UsesQueryCollections { get; set; }
+    // query-collections/1: the requests in flight per route, member and kind, which the route bounds per connection.
+    private readonly Dictionary<string, int> _queryRequests = new(StringComparer.Ordinal);
+
+    // Admits a query request unless the connection already has limit of them in flight.
+    internal bool TryEnterQuery(string key, int limit)
+    {
+        lock (_queryRequests)
+        {
+            var count = _queryRequests.GetValueOrDefault(key);
+            if (count >= limit) return false;
+            _queryRequests[key] = count + 1;
+            return true;
+        }
+    }
+
+    internal void ExitQuery(string key)
+    {
+        lock (_queryRequests)
+            if (_queryRequests.TryGetValue(key, out var count) && count > 1) _queryRequests[key] = count - 1;
+            else _queryRequests.Remove(key);
+    }
     // Whether the window's closing push waits for this connection's closing-reply; the dispatcher's gate guards it.
     internal bool ClosingPending { get; set; }
     // Requests that wait for the hello, in arrival order, and whether the dispatcher is admitting them.

@@ -53,11 +53,15 @@ public sealed class RunicQueryCollection<TRow, TKey> : INotifyPropertyChanged, I
     private readonly int _pageSize;
     private readonly int _maximumPages;
     private readonly SemaphoreSlim _loads;
-    private readonly IRunicModelContext? _context;
-    private readonly SynchronizationContext? _synchronization;
+    private IRunicModelContext? _context;
+    private SynchronizationContext? _synchronization;
+    private Microsoft.Extensions.Logging.ILogger _logger = TraceFallbackLogger.Instance;
+    private int _contextWarned;
     private readonly CancellationTokenSource _lifetime = new();
     // The pages by index, and their use order: most recent first.
     private readonly Dictionary<int, Page> _pages = [];
+    // Every page whose load has not completed, cached or not, so Dispose can cancel it.
+    private readonly HashSet<Page> _loading = [];
     private readonly LinkedList<Page> _recent = new();
 
     // The collection's current state, which loads use. Generation changes with the query and Refresh.
@@ -67,6 +71,8 @@ public sealed class RunicQueryCollection<TRow, TKey> : INotifyPropertyChanged, I
     private int? _total;
     private Task<int>? _count;
     private int _countGeneration = -1;
+    // Cancelled when the generation ends: the count and the key searches of an old query stop.
+    private CancellationTokenSource _generationCancel = new();
 
     // The state the ViewModel and the Bridge see, committed in the model context.
     private RunicQuery _publishedQuery;
@@ -110,7 +116,11 @@ public sealed class RunicQueryCollection<TRow, TKey> : INotifyPropertyChanged, I
     public RunicQuery Query => _publishedQuery;
 
     /// <summary>The number of rows that match <see cref="Query"/>, or <see langword="null"/> until it was counted.</summary>
-    /// <remarks>The collection counts when a page first loads rows, and again after each query change and refresh.</remarks>
+    /// <remarks>
+    /// The collection counts when a page first loads rows, and again when a page loads rows after a query change or a
+    /// refresh. After a query change it is <see langword="null"/> until then; a refresh keeps the old total until the new
+    /// count arrives.
+    /// </remarks>
     public int? Total => _publishedTotal;
 
     /// <summary>
@@ -146,6 +156,8 @@ public sealed class RunicQueryCollection<TRow, TKey> : INotifyPropertyChanged, I
             ObjectDisposedException.ThrowIf(_disposed, this);
             if (_query.Equals(query)) return;
             _query = query;
+            // The total belongs to the old query: it is unknown until the new one is counted.
+            _total = null;
             Restart();
         }
         Commit();
@@ -227,11 +239,10 @@ public sealed class RunicQueryCollection<TRow, TKey> : INotifyPropertyChanged, I
         {
             if (_disposed) return;
             _disposed = true;
-            foreach (var page in _pages.Values.ToArray())
-            {
-                Remove(page, cancelUnwaited: false);
-                page.TryCancel();
-            }
+            foreach (var page in _pages.Values.ToArray()) Remove(page, cancelUnwaited: false);
+            // Also the loads of pages that left the cache while requests still waited for them.
+            foreach (var page in _loading.ToArray()) page.TryCancel();
+            _generationCancel.Cancel();
         }
         _lifetime.Cancel();
         _lifetime.Dispose();
@@ -248,11 +259,14 @@ public sealed class RunicQueryCollection<TRow, TKey> : INotifyPropertyChanged, I
             // Requests that wait for a page of the old query read the new one instead.
             page.TryCancel();
         }
-        // The count of a list that pages use is taken again at once, so the total follows the query.
-        var counting = _count is not null;
+        // The count and the key searches of the old generation stop, so a burst of query changes does not leave a count
+        // per change running.
+        _generationCancel.Cancel();
+        _generationCancel.Dispose();
+        _generationCancel = new();
+        // The new generation is counted when a page next loads rows, so a burst of changes counts the last query only.
         _count = null;
         _countGeneration = -1;
-        if (counting) EnsureCount();
     }
 
     internal async Task<BridgeQueryRows> LoadCoreAsync(int start, int count, CancellationToken cancellationToken)
@@ -261,7 +275,7 @@ public sealed class RunicQueryCollection<TRow, TKey> : INotifyPropertyChanged, I
         if (count is < 0 or > RunicQueryCollectionOptions.MaximumRangeCount)
             throw new ArgumentOutOfRangeException(nameof(count), $"A range has 0 to {RunicQueryCollectionOptions.MaximumRangeCount} rows.");
         // A query change while the pages load cancels them; the request then reads the new generation.
-        for (var attempt = 0; ; attempt++)
+        while (true)
         {
             long version;
             int generation;
@@ -273,6 +287,12 @@ public sealed class RunicQueryCollection<TRow, TKey> : INotifyPropertyChanged, I
                 version = _version;
                 generation = _generation;
                 total = EnsureCount();
+                // Once the current query is counted, a range at or past its end reads nothing from the source.
+                if (total.IsCompletedSuccessfully)
+                {
+                    if (start >= total.Result) return new(version, total.Result, start, []);
+                    count = Math.Min(count, total.Result - start);
+                }
                 if (count > 0)
                     for (var index = start / _pageSize; index <= (start + count - 1) / _pageSize; index++)
                     {
@@ -296,7 +316,8 @@ public sealed class RunicQueryCollection<TRow, TKey> : INotifyPropertyChanged, I
                 var counted = await total.WaitAsync(cancellationToken).ConfigureAwait(false);
                 return new(version, counted, start, rows);
             }
-            catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested && attempt < 3 && Superseded(generation))
+            // A request whose pages a query change cancelled reads the newest query, however often it changes meanwhile.
+            catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested && Superseded(generation))
             {
             }
             finally
@@ -309,22 +330,27 @@ public sealed class RunicQueryCollection<TRow, TKey> : INotifyPropertyChanged, I
 
     internal async Task<(long Version, int Index)> IndexOfCoreAsync(TKey key, CancellationToken cancellationToken)
     {
-        for (var attempt = 0; ; attempt++)
+        while (true)
         {
             RunicQuery query;
             long version;
             int generation;
+            CancellationToken ended;
             lock (_gate)
             {
                 ObjectDisposedException.ThrowIf(_disposed, this);
                 query = _query;
                 version = _version;
                 generation = _generation;
+                ended = _generationCancel.Token;
             }
-            using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _lifetime.Token);
-            var index = await Task.Run(async () => await _source.IndexOfAsync(query, key, linked.Token).ConfigureAwait(false), linked.Token)
-                .ConfigureAwait(false);
-            if (!Superseded(generation) || attempt >= 3) return (version, index);
+            // A search runs in a slot of the source like a load, and stops when the query changes.
+            using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, ended);
+            int index;
+            try { index = await RunInSlotAsync(() => _source.IndexOfAsync(query, key, linked.Token), linked.Token).ConfigureAwait(false); }
+            // A search that a query change cancelled searches the newest query.
+            catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested && Superseded(generation)) { continue; }
+            if (!Superseded(generation)) return (version, index);
         }
     }
 
@@ -339,12 +365,13 @@ public sealed class RunicQueryCollection<TRow, TKey> : INotifyPropertyChanged, I
         if (_count is not null && _countGeneration == _generation) return _count;
         var generation = _countGeneration = _generation;
         var query = _query;
-        var token = _lifetime.Token;
-        var count = _count = Task.Run(async () =>
+        // The generation's token: Restart cancels the count of a query that is no longer current.
+        var token = _generationCancel.Token;
+        var count = _count = Task.Run(() => RunInSlotAsync(() =>
         {
             Interlocked.Increment(ref _counts);
-            return await _source.CountAsync(query, token).ConfigureAwait(false);
-        }, token);
+            return _source.CountAsync(query, token);
+        }, token), token);
         _ = count.ContinueWith(completed =>
         {
             lock (_gate)
@@ -376,20 +403,19 @@ public sealed class RunicQueryCollection<TRow, TKey> : INotifyPropertyChanged, I
         var range = new RunicRowRange(index * _pageSize, _pageSize);
         var task = Task.Run(async () =>
         {
-            await _loads.WaitAsync(cancel.Token).ConfigureAwait(false);
-            try
+            var loaded = await RunInSlotAsync(() =>
             {
                 Interlocked.Increment(ref _pageLoads);
-                var loaded = await _source.LoadAsync(query, range, cancel.Token).ConfigureAwait(false);
-                var rows = loaded.Rows ?? throw new InvalidOperationException("A row source returned a page without rows.");
-                if (rows.Count > range.Count) throw new InvalidOperationException($"A row source returned {rows.Count} rows for a range of {range.Count}.");
-                Interlocked.Add(ref _rowsLoaded, rows.Count);
-                if (loaded.Total is { } total) ReportTotal(generation, total);
-                return rows;
-            }
-            finally { _loads.Release(); }
+                return _source.LoadAsync(query, range, cancel.Token);
+            }, cancel.Token).ConfigureAwait(false);
+            var rows = loaded.Rows ?? throw new InvalidOperationException("A row source returned a page without rows.");
+            if (rows.Count > range.Count) throw new InvalidOperationException($"A row source returned {rows.Count} rows for a range of {range.Count}.");
+            Interlocked.Add(ref _rowsLoaded, rows.Count);
+            if (loaded.Total is { } total) ReportTotal(generation, total);
+            return rows;
         }, cancel.Token);
         page = new Page(index, task, cancel);
+        _loading.Add(page);
         page.Node = _recent.AddFirst(page);
         _pages.Add(index, page);
         _ = task.ContinueWith(completed =>
@@ -398,6 +424,7 @@ public sealed class RunicQueryCollection<TRow, TKey> : INotifyPropertyChanged, I
             {
                 // A failed page is not kept: the next request loads it again.
                 if (!completed.IsCompletedSuccessfully && page.Cached) Remove(page, cancelUnwaited: false);
+                _loading.Remove(page);
                 page.Complete();
             }
         }, CancellationToken.None, TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
@@ -436,6 +463,36 @@ public sealed class RunicQueryCollection<TRow, TKey> : INotifyPropertyChanged, I
         if (cancelUnwaited && page.Waiters == 0) page.TryCancel();
     }
 
+    // Runs one call of the source in one of its MaximumConcurrentLoads slots: loads, counts and key searches share them,
+    // so no burst of requests runs more source calls at once.
+    private async Task<T> RunInSlotAsync<T>(Func<ValueTask<T>> call, CancellationToken cancellationToken)
+    {
+        await _loads.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            return await call().ConfigureAwait(false);
+        }
+        finally { _loads.Release(); }
+    }
+
+    // The generated Bridge binds the ViewModel's model context and logger, unless the collection was given a context.
+    internal void Bind(IRunicModelContext? context, Microsoft.Extensions.Logging.ILogger logger)
+    {
+        lock (_gate)
+        {
+            _logger = logger;
+            if (_context is not null || context is null) return;
+            _context = context;
+            _synchronization = null;
+        }
+    }
+
+    internal bool IsDisposed
+    {
+        get { lock (_gate) return _disposed; }
+    }
+
     private void ReportTotal(int generation, int total)
     {
         lock (_gate)
@@ -451,6 +508,10 @@ public sealed class RunicQueryCollection<TRow, TKey> : INotifyPropertyChanged, I
     {
         if (_context is { IsExecuting: true } || _context is null && (_synchronization is null || SynchronizationContext.Current == _synchronization))
         {
+            // Without a model context or a synchronization context, a change from a load raises its notification on a
+            // thread-pool thread, where it can race the ViewModel's other code.
+            if (_context is null && _synchronization is null && Interlocked.Exchange(ref _contextWarned, 1) == 0)
+                ViewsLog.QueryCollectionWithoutModelContext(_logger, typeof(TRow).Name);
             Publish();
             return;
         }
@@ -533,6 +594,10 @@ public sealed class RunicQueryCollection<TRow, TKey> : INotifyPropertyChanged, I
 
     void IBridgeQueryCollection.SetQuery(RunicQuery query) => SetQuery(query);
 
+    void IBridgeQueryCollection.Bind(IRunicModelContext? context, Microsoft.Extensions.Logging.ILogger logger) => Bind(context, logger);
+
+    bool IBridgeQueryCollection.IsDisposed => IsDisposed;
+
     private sealed class Page(int index, Task<IReadOnlyList<TRow>> task, CancellationTokenSource cancel)
     {
         public int Index { get; } = index;
@@ -603,6 +668,8 @@ internal interface IBridgeQueryCollection
     string KeyOf(object? row);
     Task<(long Version, int Index)> IndexOfAsync(string key, CancellationToken cancellationToken);
     void SetQuery(RunicQuery query);
+    void Bind(IRunicModelContext? context, Microsoft.Extensions.Logging.ILogger logger);
+    bool IsDisposed { get; }
 }
 
 // The rows of a query-rows reply: the version they were loaded at, the total, and the rows from start.

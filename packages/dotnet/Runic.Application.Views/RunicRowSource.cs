@@ -34,13 +34,18 @@ public interface IRunicRowSource<TRow, in TKey> where TKey : notnull
     /// <param name="cancellationToken">Cancels the search.</param>
     ValueTask<int> IndexOfAsync(RunicQuery query, TKey key, CancellationToken cancellationToken);
 
-    /// <summary>
-    /// Checks that the source can run <paramref name="query"/> before the collection takes it. The default accepts every
-    /// query.
-    /// </summary>
+    /// <summary>Checks that the source can run <paramref name="query"/> before the collection takes it.</summary>
+    /// <remarks>
+    /// The query comes from a page and is untrusted: its field names, custom filter names and values are whatever the
+    /// page sent. Reject every field, operator and value the source does not support by name, rather than passing them
+    /// to a database. <see cref="RunicQueryFields{TRow}.Validate"/> does so for registered fields.
+    /// </remarks>
     /// <param name="query">The query.</param>
-    /// <exception cref="ArgumentException">The query names a field or filter the source does not have.</exception>
-    void Validate(RunicQuery query) { }
+    /// <exception cref="ArgumentException">
+    /// The query names a field or filter the source does not have, or a value it cannot use. The page receives
+    /// <c>invalid-input</c>, and the collection keeps its query.
+    /// </exception>
+    void Validate(RunicQuery query);
 }
 
 /// <summary>A range of rows: <paramref name="Count"/> rows from position <paramref name="Start"/>.</summary>

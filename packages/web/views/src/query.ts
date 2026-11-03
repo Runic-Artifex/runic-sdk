@@ -6,6 +6,7 @@ import { BridgeError } from "./errors.js";
 import { disposable } from "./lifetime.js";
 import { replyError, type Message, type Reply } from "./protocol.js";
 import { errorMessage } from "./runtime.js";
+import { delay } from "./clock.js";
 
 /** One sort key of a {@link RunicQuery}. */
 export interface RunicSortKey {
@@ -95,6 +96,11 @@ export interface QueryCollection<TRow> {
   setQuery(query: RunicQuery): Promise<void>;
   /** The position of the row with `key` in the current query's order, or `undefined` when no row has it. */
   indexOf(key: string): Promise<number | undefined>;
+  /**
+   * The position of the row with `key`, with the version .NET found it at. A version older than `current.version`
+   * means the query changed meanwhile, and the position belongs to the old one. `scrollToKey` uses it.
+   */
+  locate(key: string): Promise<{ readonly index: number | undefined; readonly version: number }>;
   /** The row at any position: loaded, or a placeholder. */
   row(index: number): QueryRow<TRow>;
   /** Loads the range again after a failure. */
@@ -203,19 +209,29 @@ export function createQueryCollection<TRow>(scope: QueryCollectionScope, definit
   // The total of the newest reply, which can be ahead of the state.
   let replied: { readonly total: number; readonly version: number } | undefined;
   let seenQuery: string | undefined;
+  // The version at which the current query took effect: rows and totals of an older version belong to another query.
+  let queryVersion = 0;
   let current: QueryCollectionSnapshot<TRow>;
+  // setQuery: the query waiting to be sent, with the calls it settles; one query-set is in flight at a time.
+  let pendingQuery: { query: Message; readonly waiters: { resolve(): void; reject(error: unknown): void }[] } | undefined;
+  let sendingQuery = false;
+  // Key searches run one at a time.
+  let searches: Promise<unknown> = Promise.resolve();
 
   const state = () => scope.state();
+  // The published total, or before it is counted the total of a reply of the current query that the state has reached.
   const totalOf = (published: QueryCollectionState | undefined): number | null => {
-    if (replied !== undefined && (published === undefined || replied.version >= published.version)) return replied.total;
-    return published?.total ?? null;
+    if (published === undefined) return null;
+    if (published.total !== null) return published.total;
+    return replied !== undefined && replied.version >= queryVersion && replied.version <= published.version ? replied.total : null;
   };
   const endOf = (total: number | null) => total === null ? start + count : Math.min(start + count, total);
 
   function rowAt(index: number, published: QueryCollectionState | undefined): QueryRow<TRow> {
     const cached = cache.get(index);
     const version = published?.version ?? 0;
-    if (cached) return { index, status: "loaded", key: cached.key, row: cached.row, stale: cached.version < version };
+    // A row of a version the state has not reached may belong to a query the page does not show yet: it waits.
+    if (cached && cached.version <= version) return { index, status: "loaded", key: cached.key, row: cached.row, stale: cached.version < version };
     const failed = failure !== undefined && index >= failure.start && index < failure.end;
     return { index, status: failed ? "error" : "loading", key: undefined, row: undefined, stale: false };
   }
@@ -273,11 +289,13 @@ export function createQueryCollection<TRow>(scope: QueryCollectionScope, definit
   async function load(span: { readonly start: number; readonly end: number }): Promise<void> {
     let error: BridgeError | undefined;
     try {
-      const reply = await scope.request({ kind: "query-rows", route: scope.route, member: scope.member, start: span.start, count: span.end - span.start });
+      const reply = await admitted(() => scope.request({ kind: "query-rows", route: scope.route, member: scope.member, start: span.start, count: span.end - span.start }), replyBusy);
       if (!reply.ok) error = replyError(reply.error, scope.route, "The rows could not be loaded.");
       else if (!disposed) {
         const version = reply["version"] as number;
         const total = reply["total"] as number | null;
+        // Rows loaded under a query that has since been replaced are rows of no current position.
+        if (version < queryVersion) { inflight = undefined; notify(); pump(); return; }
         const first = reply["start"] as number;
         const keys = reply["keys"] as readonly string[];
         const rows = reply["rows"] as readonly unknown[];
@@ -313,18 +331,65 @@ export function createQueryCollection<TRow>(scope: QueryCollectionScope, definit
   const stopState = scope.onState(() => {
     const published = state();
     if (published === undefined) return;
-    // A new query moves every row: what was loaded is no row of it.
+    // A new query moves every row: what was loaded under an older version is no row of it. Rows loaded at the new
+    // query's version or later, which can arrive before the state, are its rows.
     const text = queryText(published.query);
     if (seenQuery !== undefined && text !== seenQuery) {
-      cache.clear();
+      queryVersion = published.version;
+      for (const [index, row] of cache) if (row.version < queryVersion) cache.delete(index);
       failure = undefined;
-      replied = undefined;
+      if (replied !== undefined && replied.version < queryVersion) replied = undefined;
     }
     seenQuery = text;
     notify();
     pump();
   });
   seenQuery = state() === undefined ? undefined : queryText(state()!.query);
+  queryVersion = state()?.version ?? 0;
+
+  // Retries a request that .NET answered busy: another presentation on this connection has as many in flight as .NET
+  // admits (query-collections/1). It waits a little longer each time.
+  async function admitted<T>(send: () => Promise<T>, busy: (result: T) => boolean): Promise<T> {
+    for (let attempt = 0; ; attempt++) {
+      const result = await send();
+      if (!busy(result) || attempt >= 8 || disposed) return result;
+      await delay(10 * 2 ** attempt).promise;
+    }
+  }
+  const replyBusy = (reply: Reply) => !reply.ok && reply.error?.reason === "busy";
+
+  async function sendQueries(): Promise<void> {
+    if (sendingQuery) return;
+    sendingQuery = true;
+    try {
+      while (pendingQuery !== undefined) {
+        const { query, waiters } = pendingQuery;
+        pendingQuery = undefined;
+        try {
+          for (let attempt = 0; ; attempt++) {
+            try { await scope.setQuery(query); break; }
+            catch (error) {
+              if (!(error instanceof BridgeError && error.reason === "busy") || attempt >= 8 || disposed) throw error;
+              await delay(10 * 2 ** attempt).promise;
+            }
+          }
+          for (const waiter of waiters) waiter.resolve();
+        } catch (error) { for (const waiter of waiters) waiter.reject(error); }
+      }
+    } finally { sendingQuery = false; }
+  }
+
+  function locate(key: string): Promise<{ readonly index: number | undefined; readonly version: number }> {
+    if (typeof key !== "string" || key.length === 0) return Promise.reject(new TypeError("A key is a nonempty string."));
+    const search = searches.then(async () => {
+      const reply = await admitted(() => scope.request({ kind: "query-index", route: scope.route, member: scope.member, key }), replyBusy);
+      if (!reply.ok) throw replyError(reply.error, scope.route, "The row could not be found.");
+      const index = reply["index"] as number;
+      return { index: index < 0 ? undefined : index, version: reply["version"] as number };
+    });
+    searches = search.catch(() => undefined);
+    return search;
+  }
   current = snapshot();
 
   return disposable<QueryCollection<TRow>>({
@@ -344,17 +409,20 @@ export function createQueryCollection<TRow>(scope: QueryCollectionScope, definit
       notify();
       pump();
     },
-    async setQuery(query) {
-      const normalized = normalizeQuery(query);
-      await scope.setQuery(normalized as unknown as Message);
+    setQuery(query) {
+      let normalized: Message;
+      try { normalized = normalizeQuery(query) as unknown as Message; }
+      catch (error) { return Promise.reject(error); }
+      // One query-set is in flight at a time; a query set meanwhile replaces the one that waits, and the calls it
+      // replaced settle with it, so typing in a search box sends the latest query only.
+      return new Promise<void>((resolve, reject) => {
+        if (pendingQuery) { pendingQuery.query = normalized; pendingQuery.waiters.push({ resolve, reject }); }
+        else pendingQuery = { query: normalized, waiters: [{ resolve, reject }] };
+        void sendQueries();
+      });
     },
-    async indexOf(key) {
-      if (typeof key !== "string" || key.length === 0) throw new TypeError("A key is a nonempty string.");
-      const reply = await scope.request({ kind: "query-index", route: scope.route, member: scope.member, key });
-      if (!reply.ok) throw replyError(reply.error, scope.route, "The row could not be found.");
-      const index = reply["index"] as number;
-      return index < 0 ? undefined : index;
-    },
+    async indexOf(key) { return (await locate(key)).index; },
+    locate,
     row(index) {
       if (!Number.isSafeInteger(index) || index < 0) throw new RangeError("A row index is a non-negative integer.");
       return rowAt(index, state());
