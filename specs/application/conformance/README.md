@@ -145,6 +145,9 @@ A `call` names the client operation in language-neutral terms; the runner maps i
 | `start` | `route`, `member`, `operation`, `input?` | Start an operation with the id `operation`. |
 | `wait`, `status`, `cancel` | `operation` | Wait for the operation's terminal status, read its status, or cancel it. |
 | `register` | `route`, `interaction`, `answer` | Register a handler that answers `{output}`, `cancel`s, `fail`s or `never` answers. |
+| `queryRange` | `route`, `member`, `start`, `count` | Show `count` rows of the query collection from `start`. It resolves with the keys of the range's rows once they are all loaded at the current version. |
+| `setQuery` | `route`, `member`, `value` | Change the query collection's query to `value`. |
+| `indexOf` | `route`, `member`, `value` | Find the position of the row with the key `value`; resolves with it, or `null`. |
 
 Expectations of the client:
 
@@ -177,6 +180,7 @@ Expectations of the producer:
 | `text-splice/1` | The implementation implements the feature [`text-splice/1`](../README.md#features). |
 | `presentation-epoch/1` | The implementation implements the feature [`presentation-epoch/1`](../README.md#presentation-epochs). |
 | `presented/1` | The implementation implements the feature [`presented/1`](../README.md#presented-states-and-window-close). |
+| `query-collections/1` | The implementation implements the feature [`query-collections/1`](../README.md#query-collections). Its scenarios list it in the `default` of both `hello` steps. |
 
 Every `hello` of a scenario that does not require a feature lists `features` as `{"$any":"array","default":["text-splice/1"]}`:
 a runner that writes the `hello` (or its reply) lists `text-splice/1`, and a runner that checks one accepts any list.
@@ -208,6 +212,7 @@ connection before connecting it, answers a request it did not send, expects a ca
 | [`operations`](scenarios/operations) | `watch` with throttled `progress` and the terminal `revision`; `start` ordering; duplicate versus `identity-conflict` by canonical equality; cancel; a declared failure; an unknown operation; a `start` with another build's contract |
 | [`presentations`](scenarios/presentations) | `open` and `close`; a presentation owned by another connection; a reconnect with a new session; an unknown route; presentation epochs (`epoch-*`): the `epoch` of `open` and `snapshot`, a renewal published as a `state`, a scoped command with the current epoch, a second scoped command from the same state that is superseded, an unscoped command without `epoch`, and a connection without the feature; painted states (`presented-*`): a report that completes a wait, and a wait that times out; window close (`closing-*`): an acknowledged close and the client's closed connection, and a close that times out |
 | [`interactions`](scenarios/interactions) | A confirmation answered, and its repeat; registration outcomes |
+| [`query-collections`](scenarios/query-collections) | Query collections (`query-collections/1`): the state member without rows and a range read by one connection; a query change published as a frame with a new version before its reply, and the rows in its order; a query the source rejects (`invalid-input`); the position of a key, and of a key the query excludes; a row that changes in place raises the version and the page loads its range again; the request kinds on a connection without the feature |
 | [`errors`](scenarios/errors) | The protocol-3 `error-reasons`, `domain-failures` and `released` fixtures, converted (`error-reasons` and `released` were removed in 0.13); capacity |
 
 ## Test Views
@@ -314,3 +319,16 @@ Its contract marks `next` and `back` scoped, so a client that uses `presentation
 | `rule` | `rule`, `holds` | sets whether a rule of the `form` View holds, announcing no member change |
 | `renew` | none | renews the root View's route ([presentation epochs](../README.md#presentation-epochs)), as one unit |
 | `waitPresented` | `id`, `timeout` | starts a wait of `timeout` milliseconds until a page painted the root View ([painted states](../README.md#painted-states)), named `id` |
+
+### `catalog`
+
+A query collection ([`query-collections/1`](../README.md#query-collections)). Members:
+
+| Member | Type | Notes |
+| --- | --- | --- |
+| `rows` | query collection of `{id: int32, label: string}`, keyed by `id` | `arrange.model.rows` are the source's rows; its first state already has `total` |
+
+The row source has the fields `id` (sort, `equals`, `range`) and `label` (sort, `equals`, `contains` ignoring case), and
+the custom filter `even`, which keeps rows with an even `id`. Rows are ordered by the sort keys, then by `id`. The
+mutation `reset` replaces the source's rows, as after rows were added or removed (a refresh: a new version and a new
+count); `replaceAt` replaces one row in place (a new version). `expect.model` reads `rows` as the query.

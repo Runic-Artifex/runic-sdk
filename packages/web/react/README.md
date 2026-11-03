@@ -574,3 +574,23 @@ return <div ref={ref} style={{ height: 480, overflow: "auto" }}>
   </div>
 </div>;
 ```
+
+## `useQueryCollection(collection, options)`
+
+Follows a scroll container for a [query collection](https://github.com/Runic-Artifex/runic-sdk/tree/main/packages/web/views#query-collections) (`client.queries.{name}`), whose rows stay in .NET: it
+loads the rows the container shows, with placeholders until they arrive, and lays them out with variable heights
+(`estimateSize` for rows not measured yet). It returns the `QueryViewport` (`items` with `top` and `size`, `totalSize`,
+`total`, `query`, `loading`, `error`), `ref` for the container, `measure(index)` for each row, and `scrollToKey`,
+`scrollToIndex`, `setQuery` and `retry`:
+
+```tsx
+const list = useQueryCollection(client.queries.rows, { estimateSize: 32 });
+return <div ref={list.ref} style={{ height: 480, overflow: "auto" }}>
+  <div style={{ height: list.totalSize, position: "relative" }}>
+    {list.items.map(item => <div key={item.index} ref={list.measure(item.index)} style={{ position: "absolute", top: item.top, width: "100%" }}>
+      {item.row?.label ?? "…"}
+    </div>)}
+  </div>
+</div>;
+```
+

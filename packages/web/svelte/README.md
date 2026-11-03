@@ -556,3 +556,25 @@ initialization and send the range to the ViewModel from an effect:
 Translation helpers moved to
 [`@runic-artifex/translations-svelte`](https://www.npmjs.com/package/@runic-artifex/translations-svelte).
 Import them from there instead of `@runic-artifex/svelte`.
+
+## `useQueryCollection(collection, options)`
+
+Follows a scroll container for a [query collection](https://github.com/Runic-Artifex/runic-sdk/tree/main/packages/web/views#query-collections) (`client.queries.{name}`), whose rows stay in .NET: it
+loads the rows the container shows, with placeholders until they arrive, and lays them out with variable heights. Pass
+getters of the collection and the options. `viewport` is the `QueryViewport` (`items` with `top` and `size`,
+`totalSize`, `total`, `query`, `loading`, `error`); attach `attach` to the container and `measure(index)` to each row.
+It is safe in SvelteKit: on the server, `viewport` stays empty.
+
+```svelte
+<script lang="ts">
+  const list = useQueryCollection(() => view.client?.queries.rows, () => ({ estimateSize: 32 }));
+</script>
+<div {@attach list.attach} style="height: 480px; overflow: auto">
+  <div style="height: {list.viewport.totalSize}px; position: relative">
+    {#each list.viewport.items as item (item.index)}
+      <div {@attach list.measure(item.index)} style="position: absolute; top: {item.top}px; width: 100%">{item.row?.label ?? "…"}</div>
+    {/each}
+  </div>
+</div>
+```
+

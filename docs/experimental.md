@@ -89,7 +89,7 @@ with `ERR_PACKAGE_PATH_NOT_EXPORTED` (Node) or TS2307 (TypeScript).
 
 | Package | Graduated exports | Graduated in |
 |---|---|---|
-| `@runic-artifex/views` | `collectionViewport`, `createCollectionViewportController`, `CollectionViewport`, `CollectionViewportController`, `CollectionViewportOptions`. The viewport keeps a fixed row height; variable heights would be a separate factory. | 0.10.0 |
+| `@runic-artifex/views` | `collectionViewport`, `createCollectionViewportController`, `CollectionViewport`, `CollectionViewportController`, `CollectionViewportOptions`. The viewport keeps a fixed row height; `createQueryViewportController` (0.16) lays out query collections with variable heights. | 0.10.0 |
 | `@runic-artifex/views` | `createLatestOperationController`, `LatestOperationController`, `LatestOperationIntent`, `LatestOperationState`. React, Vue and Svelte `useLatestOperation` and Angular `injectLatestOperation` wrap it, and the [operations package consumer](https://github.com/Runic-Artifex/runic-sdk/tree/main/tests/fixtures/application/operations-consumer) is its sample. | 0.10.0 |
 | `@runic-artifex/views-effect` | `followViewport`, `viewportChanges`, `ViewportRange` | 0.10.0 |
 | `@runic-artifex/react` | `useCollectionViewport`, `CollectionViewportHandle` | 0.10.0 |

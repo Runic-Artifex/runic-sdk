@@ -565,3 +565,26 @@ watch(() => [viewport.value.start, viewport.value.size] as const, ([start, size]
   </div>
 </template>
 ```
+
+## `useQueryCollection(collection, options)`
+
+Follows a scroll container for a [query collection](https://github.com/Runic-Artifex/runic-sdk/tree/main/packages/web/views#query-collections) (`client.queries.{name}`), whose rows stay in .NET: it
+loads the rows the container shows, with placeholders until they arrive, and lays them out with variable heights.
+Pass the collection or a getter (`() => client.value?.queries.rows`) and the options. `viewport` is a ref of the
+`QueryViewport` (`items` with `top` and `size`, `totalSize`, `total`, `query`, `loading`, `error`); bind `attach` to the
+container and `measure` to each row, and call `scrollToKey`, `scrollToIndex`, `setQuery` or `retry`:
+
+```vue
+<script setup lang="ts">
+const list = useQueryCollection(() => client.value?.queries.rows, { estimateSize: 32 });
+</script>
+<template>
+  <div :ref="list.attach" style="height: 480px; overflow: auto">
+    <div :style="{ height: `${list.viewport.value.totalSize}px`, position: 'relative' }">
+      <div v-for="item in list.viewport.value.items" :key="item.index" :ref="el => list.measure(el, item.index)"
+        :style="{ position: 'absolute', top: `${item.top}px`, width: '100%' }">{{ item.row?.label ?? "…" }}</div>
+    </div>
+  </div>
+</template>
+```
+

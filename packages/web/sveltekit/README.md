@@ -90,6 +90,10 @@ A SPA without `desktop` exports `ssr` and `prerender` from `runicSpaPageOptions`
 the same way. A Desktop SPA exports neither: SvelteKit rejects page options with
 the hash router.
 
+
+Large lists work in SvelteKit pages through `@runic-artifex/svelte`'s `useQueryCollection`, which loads the rows a
+container shows from a .NET query collection and renders nothing on the server.
+
 ## Fields
 
 Pages bind inputs with `useField` from `@runic-artifex/svelte` and the generated

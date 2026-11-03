@@ -65,6 +65,10 @@ const program = Effect.gen(function* () {
 | `catchCase(effect, handlers)` | `Effect<A \| …, E \| …, R \| …>` | Handles every `$case` of a declared `[RunicUnion]` failure in the error channel; a missing case is a type error. |
 | `viewportChanges(controller)` | `Stream<CollectionViewport>` | The rows a `createCollectionViewportController` requests, as a stream. |
 | `followViewport(controller, request)` | `Effect<void, E, R>` | Sends each new row range to .NET and interrupts the request for a range the user scrolled past. |
+| `queryCollectionChanges(collection)` | `Stream<QueryCollectionSnapshot<T>>` | The rows a [query collection](https://github.com/Runic-Artifex/runic-sdk/tree/main/packages/web/views#query-collections) shows for its range: the current snapshot, then each change, latest only. |
+| `queryViewportChanges(controller)` | `Stream<QueryViewport<T>>` | The layout of a `createQueryViewportController` with variable row heights, which loads the rows while the stream runs. |
+| `setQuery(collection, query)` | `Effect<void, ViewError>` | Changes a query collection's sort and filter (ViewModel state every presentation shares). |
+| `indexOfKey(collection, key)` | `Effect<number \| undefined, ViewError>` | The position of a key in the current query, to scroll a search result into view. |
 | `createEffectAction(program, { runFork? })` | `EffectAction & AsyncDisposable` | A latest-wins runner with `status`, `pending`, `value`, `error` and `cause`, for any UI framework. |
 | `fromBridgeError(error)` | `ViewError` | Maps a `BridgeError` from plain code. |
 

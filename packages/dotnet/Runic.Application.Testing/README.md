@@ -450,6 +450,24 @@ Publications are delivered off the calling thread, so waits use real time,
 `RunicWindowTestHostOptions.PublicationTimeout` (five seconds by default). A route's
 frames go to its tracker or to `TakePublications`, not both.
 
+### Query collections
+
+A driver reads a `RunicQueryCollection` as a page does: `QueryRowsAsync(vm => vm.Rows, start, count)` returns the
+range's keys and rows (`connectionKey:` reads it as another page), `SetQueryAsync(vm => vm.Rows, query)` changes the
+query and returns the state after it, and `IndexOfAsync(vm => vm.Rows, key)` finds a row. `RunicTestRowSource<TRow, TKey>`
+serves a list through `RunicQueryFields`, waits `Latency` on the host's clock, and records `Loads`, `RowsLoaded`,
+`Counts`, `Searches` and `MaximumConcurrency`, so a test can assert what scrolling and sorting loaded:
+
+```csharp
+var source = new RunicTestRowSource<Order, int>(orders, fields, order => order.Id);
+using var host = RunicWindowTestHost.Create(services, new OrdersViewModel(source, context));
+var rows = await host.Root.QueryRowsAsync(vm => vm.Orders, 500, 40);
+Assert.Equal(1, source.Loads.Count);
+(await host.Root.SetQueryAsync(vm => vm.Orders, new RunicQuery([new RunicSortKey("amount", Descending: true)]))).ThrowIfFailed();
+```
+
+The test connection's `hello` lists `query-collections/1`.
+
 ### Lower level
 
 `host.Transport` is the `InMemoryBridgeTransport`, the window's

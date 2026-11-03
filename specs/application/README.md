@@ -12,7 +12,7 @@ protocol to .NET and TypeScript is in the [language mappings](language-mappings.
 
 | Document | Content |
 | --- | --- |
-| This document | Conventions, transport, host bridge, handshake and features, requests and replies, state and revisions, publication, edits, checked writes, commands and presentation epochs, presentations, presented states and window close, operations, interactions, versions |
+| This document | Conventions, transport, host bridge, handshake and features, requests and replies, state and revisions, publication, edits, checked writes, commands and presentation epochs, content, query collections, presentations, presented states and window close, operations, interactions, versions |
 | [state-changes.md](state-changes.md) | Frames and their changes (`set`, keyed collections, text, text splices), producing and applying them, delivery bounds and recovery |
 | [values.md](values.md) | The JSON profile, wire value types and the canonical form (RFC 8785) |
 | [language-mappings.md](language-mappings.md) | The .NET producer and the TypeScript client |
@@ -221,6 +221,7 @@ reply both list the same string. Features are negotiated per connection, and aga
 | `text-splice/1` | Text members change with splices: [`set` with a splice](#text-splices-in-set), [`write` with a splice](#text-splices-in-write) and [`splice` changes](state-changes.md#text-splices) | 0.14 |
 | `presentation-epoch/1` | A command runs only on the presentation it was issued for: [presentation epochs](#presentation-epochs) | 0.15 |
 | `presented/1` | The page reports that it painted a state, and acknowledges a window close: [presented states and window close](#presented-states-and-window-close) | 0.15 |
+| `query-collections/1` | Each presentation reads the rows of a query collection for its own range, changes its query and finds a key: [query collections](#query-collections) | 0.16 |
 
 ## Requests and replies
 
@@ -338,7 +339,7 @@ The reply to a request that changes state is sent after every push that the prod
 was ready, on any route of the window. A command often changes another route as well, such as its shell, so a client
 cannot know which routes to wait for. The wait is bounded to 5 seconds; after that the producer sends the reply, and the
 pushes follow. Replies to `open`, `snapshot`, `close`, `can`, `status`, `watch`, `unwatch`, `cancel`, `stream`,
-`interactions`, `interaction-reply`, `presented` and `closing-reply` do not wait.
+`interactions`, `interaction-reply`, `presented`, `closing-reply`, `query-rows` and `query-index` do not wait.
 
 A reply is not ordered with the pushes of requests that the producer admitted after it, nor with their replies. When a
 client sends a request before the reply to its previous one arrived, as two keystrokes in a row do, the frame of the
@@ -714,6 +715,83 @@ parent's release, suspends it when no other slot presents it. A suspended object
 checked fields, so its requests answer `released`; only its identity remains. The producer MAY forget the identity
 later, and a forgotten object gets a new id when it is presented again.
 
+## Query collections
+
+With the feature `query-collections/1`, a View can have a **query collection**: a list too large to send, such as
+500,000 database rows, whose rows stay in the producer. The route's state holds only the collection's query, the number
+of rows that match it, and a version; each presentation reads the rows of the range it shows with `query-rows`, so two
+pages that scroll the same list never receive, or move, each other's rows.
+
+**State member.** A query collection's member in state is an object:
+
+```json
+{"query":{"sort":[{"field":"label","descending":true}],"filters":[{"field":"label","op":"contains","value":"9"}]},"total":1200,"version":4}
+```
+
+| Member | Contract |
+| --- | --- |
+| `query` | The collection's sort and filter, in the form below. It is state of the View: every presentation shares it, and a `query-set` of one presentation changes it for all. |
+| `total` | The number of rows that match `query`, or `null` until the producer counted them. |
+| `version` | A non-negative safe integer that increases whenever rows a page loaded may be out of date: after the query changed, after rows were added or removed, and after a row changed in place. A page loads its range again when it increases. |
+
+The member changes like any other value member: in a `state`, or a `set` change in a frame. A `total` that becomes known
+or changes after a count, without a new `version`, is such a change too.
+
+**Query.** `sort` is an array of at most 8 sort keys `{field, descending}`, which order the rows in turn; `filters` an
+array of at most 32 filters, which all apply. `field` is a string of 1 to 128 characters, normally a row member's wire
+name; the producer decides which fields exist. A filter has `field` and `op`:
+
+| `op` | Members | Keeps a row when |
+| --- | --- | --- |
+| `equals` | `value` | the field equals `value`, encoded as the field's wire type |
+| `contains` | `value`, a string | the text field contains `value`; whether case matters is the producer's |
+| `range` | `min?`, `max?` | the field is at least `min` and at most `max`; an absent bound is open |
+| `custom` | `value?` | the producer's own filter named `field` passes with `value` |
+
+A producer writes the query in this canonical form: both arrays present, `descending` present, and `value`, `min` and
+`max` only when they have a value, in the order listed. Two queries are equal when their canonical forms are.
+The producer orders rows by the sort keys and then by row key, so that ranges are stable.
+
+**Requests.** On a connection that uses the feature:
+
+| `kind` | Members | Success reply |
+| --- | --- | --- |
+| `query-rows` | `route`, `member`, `start`, `count` | `version`, `total`, `start`, `keys`, `rows` |
+| `query-set` | `route`, `member`, `query` | `revision` |
+| `query-index` | `route`, `member`, `key` | `version`, `index` |
+
+- **`query-rows`** reads `count` rows from position `start` (both non-negative safe integers; `count` at most 1,000,
+  else `rejected` with `invalid-input`). The reply's `rows` are the rows from `start` in the query's order, encoded as
+  the row type, at most `count` and fewer at the end of the list; `keys` are their keys, which follow the
+  [keyed collection rules](state-changes.md#keyed-collections) (nonempty strings, unique, a lowercase GUID or an `Int32`
+  in decimal). `version` is the version the rows were loaded at, and `total` the count of the rows that match, or
+  `null` when the producer does not know it. A `query-rows` changes nothing, so its reply carries no `revision` and does
+  not wait for pushes. Only the connection that sent it receives the rows.
+- **`query-set`** changes the query. It is a request that changes state: it runs in a window turn, its reply carries
+  `revision`, and the state at that revision has the new query and a new version. A query the producer cannot run, such
+  as one that names a field it does not have, is `rejected` with `invalid-input` and changes nothing. A query equal to
+  the current one changes nothing, and the reply carries the route's last revision.
+- **`query-index`** answers the position of the row whose wire key is `key` in the current query's order, or `-1` when
+  no row that matches the query has it, at `version`. A page uses it to scroll a row into view.
+- A `member` that is not a query collection of the route is `rejected` with `invalid-request`. On a connection that does
+  not use the feature, the three kinds are `invalid-request`. A failure to load is `failed`.
+
+**Producer.** A producer may serve rows from a cache, coalesce requests for the same rows, and bound how many loads run
+at once, as long as every reply's rows are the rows of the query in force at its `version`. It cancels a load when
+the request's connection closes.
+
+**Client.** A client that uses the feature:
+
+- keeps, per presentation and collection, the rows it loaded with their version, and shows a placeholder for a position
+  of its range it has not loaded;
+- sends at most one `query-rows` of a collection at a time, for the positions of its latest range that it has not loaded
+  at the current version, at most 1,000;
+- loads its range again when `version` increases, and discards every row when `query` changes; it shows rows of an older
+  version until their new version arrives;
+- does not send `query-rows` for positions at or after `total` once `total` is known.
+
+Scenarios: [`query-collections`](conformance/scenarios/query-collections).
+
 ## Presentations
 
 A client registers each route it shows with `open`, and ends the registration with `close`:
@@ -1031,6 +1109,9 @@ Requests:
 | `interactions` | `route`, `presentation`, `generation`, `handlers` | `registration` |
 | `interaction-reply` | `route`, `presentation`, `requestId`, `ownerEpoch`, `name`, `contract`, `outcome`, `output?` | `result` |
 | `presented` (`presented/1`) | `route`, `revision` | none |
+| `query-rows` (`query-collections/1`) | `route`, `member`, `start`, `count` | `version`, `total`, `start`, `keys`, `rows` |
+| `query-set` (`query-collections/1`) | `route`, `member`, `query` | `revision` |
+| `query-index` (`query-collections/1`) | `route`, `member`, `key` | `version`, `index` |
 | `closing-reply` (`presented/1`) | none | none |
 | `receive` | none | `messages` |
 
@@ -1070,4 +1151,4 @@ sides must implement are [features](#features), listed in `hello`.
 | 1 | 0.6 | Named routes with a snapshot and a state callback per route; collection delta frames were added in 0.7 without a version change. |
 | 2 | 0.9 | The `domain-failed` error and operation status kind. |
 | 3 | 0.10 | A released View answers `released` instead of `disconnected`; the reply error `reason`; a strict version check ([protocol 3](https://github.com/Runic-Artifex/runic-sdk/blob/v0.12.1/specs/application/README.md)). |
-| 4 | 0.13 | One message channel with `hello`; `set` changes in frames; replies by revision; edit numbers; `open`/`close`; operation `watch` and `progress`; RFC 8785 canonical form; value types named by value; ISO 8601 durations; a language-neutral specification and conformance corpus. 0.14 added, without a version change, `hello` `features` with the first feature `text-splice/1`, and requests held behind the `hello`. 0.15 added, without a version change, the features `presentation-epoch/1` and `presented/1`. |
+| 4 | 0.13 | One message channel with `hello`; `set` changes in frames; replies by revision; edit numbers; `open`/`close`; operation `watch` and `progress`; RFC 8785 canonical form; value types named by value; ISO 8601 durations; a language-neutral specification and conformance corpus. 0.14 added, without a version change, `hello` `features` with the first feature `text-splice/1`, and requests held behind the `hello`. 0.15 added, without a version change, the features `presentation-epoch/1` and `presented/1`. 0.16 added, without a version change, the feature `query-collections/1`. |

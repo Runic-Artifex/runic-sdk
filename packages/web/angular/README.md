@@ -657,3 +657,17 @@ export class RowsPage {
   }
 }
 ```
+
+## Query collections
+
+`injectQueryCollection(element, collection, options)` follows a scroll container for a
+[query collection](https://github.com/Runic-Artifex/runic-sdk/tree/main/packages/web/views#query-collections) (`client.queries.{name}`), whose rows stay in .NET: it loads the rows the container shows,
+with placeholders until they arrive, and lays them out with variable heights. `viewport` is a signal of the
+`QueryViewport` (`items` with `top` and `size`, `totalSize`, `total`, `query`, `loading`, `error`); `observe(element,
+index)` measures a rendered row, and `scrollToKey`, `scrollToIndex`, `setQuery` and `retry` act on the collection.
+
+```ts
+readonly list = injectQueryCollection(viewChild<ElementRef<HTMLElement>>("scroller"),
+  () => this.view.client()?.queries.rows, () => ({ estimateSize: 32 }));
+```
+

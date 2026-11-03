@@ -2011,6 +2011,8 @@ depends on the member:
   whole when the encoding differs from what the page has. The generator reports
   an observable collection of DTO rows that is not a `[RunicCollection]` as
   `RUNICBRIDGE032`.
+- A list too large to hold or send, such as a database table, is a
+  [query collection](#query-collections): each page loads only the rows it shows.
 
 A notification requests a publication unit, and a route starts its units at
 least 8 ms apart: the first change after a pause is published at once, and the
@@ -2021,6 +2023,138 @@ at most about 125 frames a second per route. A setter, command or checked write
 is not delayed: it publishes its change, with any change that waits for the
 interval, before it replies. Wrap a bulk change in a `BridgeSnapshotBatch`
 (below) to publish it as one frame when the batch ends.
+
+## Query collections
+
+A list too large to send, such as 500,000 rows of a database table, stays where it is: expose it as a
+`RunicQueryCollection<TRow, TKey>` over a row source, and each page loads only the rows it shows. The page sorts,
+filters and scrolls it; the ViewModel needs no viewport commands.
+
+```csharp
+public sealed record Order(int Id, string Customer, decimal Amount, DateTime Placed);
+
+public sealed class OrdersViewModel : ObservableObject
+{
+    public OrdersViewModel(Func<ShopContext> database, IRunicModelContext context)
+    {
+        var fields = new RunicQueryFields<Order>()
+            .AddText("customer", order => order.Customer)
+            .Add("amount", order => order.Amount)
+            .Add("placed", order => order.Placed)
+            .AddCustom("mine", (orders, _) => orders.Where(order => order.Customer == Environment.UserName));
+        Orders = new(new RunicQueryableRowSource<Order, int>(() => database().Orders, fields, order => order.Id),
+            order => order.Id, new RunicQueryCollectionOptions { ModelContext = context });
+    }
+
+    /// <summary>Every order, as the page sorts and filters it.</summary>
+    public RunicQueryCollection<Order, int> Orders { get; }
+}
+```
+
+- **State.** The property's member in the page's state is `{ query, total, version }`: the sort and filter, the number
+  of matching rows (`null` until counted), and a version that increases when loaded rows may be out of date. The rows
+  are not state. Each page reads the rows of its range with the generated client's `queries.orders.setRange(start,
+  count)`, and .NET answers that page alone (`query-collections/1`, [protocol](../../../specs/application/README.md#query-collections)).
+  Two CS-WebUI clients or two windows that scroll the same list therefore don't move each other's rows, and a page that
+  scrolls far sends only its own range.
+- **Query.** `RunicQuery` is a list of sort keys and filters: `equals`, `contains`, `range` and `custom`, the escape
+  hatch for a filter the typed model lacks (a full-text search, "rows I own"). The query is ViewModel state that every
+  presentation shares, like any other member: the page changes it with `queries.orders.setQuery(...)`, .NET with
+  `SetQuery`, and the ViewModel reads `Orders.Query` (to export the filtered rows, or to show the filter in a title).
+  A sort one page sets shows on every page of the ViewModel. Give each presentation its own ViewModel for independent
+  queries.
+- **Row source.** `IRunicRowSource<TRow, TKey>` has `CountAsync`, `LoadAsync(query, range)`, which may also return the
+  total, as from `COUNT(*) OVER ()`, `IndexOfAsync(query, key)` and `Validate(query)`. `RunicQueryableRowSource` runs
+  a query over any `IQueryable<T>`: an in-memory list (`rows.AsQueryable()`) or a database table through Entity
+  Framework Core or another LINQ provider. `RunicQueryFields<TRow>` lists the fields a page may use and maps them to
+  `Where` and `OrderBy` expressions that the provider translates; a query that names another field is rejected as
+  invalid input. A source with asynchronous LINQ (`ToListAsync`) or an HTTP API implements the interface itself with
+  `fields.Apply(...)`. The collection orders by the row key last, so a range is stable.
+- **Loading.** The collection reads the source in pages of `PageSize` rows (100), at most `MaximumConcurrentLoads` (4)
+  at a time and never in a model turn. Requests that need the same page share its load, a load that no request waits for
+  any more is cancelled (a page that scrolled past it), a failed page is not kept, and at most `MaximumCachedPages` (64)
+  pages stay cached, least recently used first. Memory therefore stays bounded whatever the list's length:
+  `QueryCollectionTests.ScrollingHalfAMillionRowsKeepsMemoryAndTrafficBoundedAsync` scrolls 500,000 rows in ranges of 40
+  with at most 16 cached pages, and each reply carries only its range. `Statistics` reports what was loaded.
+- **Changes.** Call `Invalidate(key)` after a row changed in place: the cached page that holds it is discarded and the
+  version raised, so pages load their range again, mostly from the cache. Call `Refresh()` after rows were added or
+  removed, which moves the rows after them: every page and the count are taken again. `SetQuery` does the same for a
+  new query. Pass the ViewModel's `ModelContext`, so the collection publishes these changes in its turns.
+- **Scroll to a key.** A page's `scrollToKey(key)` asks .NET for the row's position in the current query
+  (`IndexOfAsync`, a `query-index` request) and scrolls there, for example to bring a search result into view.
+- **WPF.** A WPF View binds `Orders.CreateView()` as an `ItemsControl`'s `ItemsSource` with a virtualizing panel: the
+  list has `Total` items, loads the pages its panel reads, shows `null` for a row until its page arrives, and resets when
+  the version changes. Each View creates its own, as each page has its own range.
+- **Tests.** `RunicViewDriver.QueryRowsAsync`, `SetQueryAsync` and `IndexOfAsync` send what a page sends, also on a second
+  connection, and `RunicTestRowSource` serves rows with latency and records every load, count and search.
+
+The generator reports a query collection with a setter, `[RunicCollection]` or `[RunicAppendOnlyText]`, a key other than
+`string`, `Guid` or `Int32`, or rows that are not DTOs as `RUNICBRIDGE060`.
+
+### DynamicData
+
+The core has no DynamicData dependency. A `SourceCache` is a row source through `RunicQueryableRowSource` over
+`cache.Items.AsQueryable()`, and its changes invalidate the collection:
+
+```csharp
+_changes = cache.Connect().Subscribe(changes =>
+{
+    // Adds and removes move the rows after them; updates stay where they are.
+    if (changes.Adds > 0 || changes.Removes > 0 || changes.Moves > 0) Rows.Refresh();
+    else Rows.Invalidate(changes.Select(change => change.Key));
+});
+```
+
+The [DynamicData example](../../../examples/dynamicdata) shows both: `SortAndVirtualize` over a cache, and a 100,000-row
+query collection with sort, filter and variable row heights.
+
+### Trees
+
+A tree keeps row changes when it is flattened: publish the visible rows, each with its depth, parent key and whether it
+is expanded, in a keyed collection or a query collection, and expand or collapse by inserting or removing the children's
+rows. The page then renders a flat list with indentation, and an expand sends one `add` frame of the children instead of
+a new tree.
+
+```csharp
+public sealed record TreeRow(string Key, string? ParentKey, int Depth, string Label, bool HasChildren, bool Expanded);
+
+public sealed partial class FolderTreeViewModel(IFolders folders) : ObservableObject
+{
+    private readonly ObservableCollection<TreeRow> _rows = [];
+
+    [RunicCollection(nameof(TreeRow.Key))]
+    public ReadOnlyObservableCollection<TreeRow> Rows => field ??= new(_rows);
+
+    // The page sends the row's key; Row resolves it.
+    [RelayCommand, RunicCommandKey(nameof(Row))]
+    private void Toggle(TreeRow row)
+    {
+        var index = _rows.IndexOf(row);
+        if (row.Expanded) Collapse(index);
+        else Expand(index, [.. folders.Children(row.Key).Select(child =>
+            new TreeRow(child.Key, row.Key, row.Depth + 1, child.Name, child.HasChildren, Expanded: false))]);
+    }
+
+    private TreeRow? Row(string key) => _rows.FirstOrDefault(row => row.Key == key);
+
+    private void Expand(int index, IReadOnlyList<TreeRow> children)
+    {
+        _rows[index] = _rows[index] with { Expanded = true };
+        for (var offset = 0; offset < children.Count; offset++) _rows.Insert(index + 1 + offset, children[offset]);
+    }
+
+    // The row's descendants are the rows after it that are deeper.
+    private void Collapse(int index)
+    {
+        _rows[index] = _rows[index] with { Expanded = false };
+        while (index + 1 < _rows.Count && _rows[index + 1].Depth > _rows[index].Depth) _rows.RemoveAt(index + 1);
+    }
+}
+```
+
+For a tree too large to publish, use a query collection whose row source returns the visible rows of the tree in
+depth-first order: keep the expanded keys in the ViewModel, let the source filter rows whose ancestors are all expanded
+(a `custom` filter or a `path` column), and call `Refresh()` after an expand or collapse.
 
 ## Batch synchronous model updates
 
@@ -2596,6 +2730,9 @@ NativeAOT symbols and what to attach to a bug report.
 | 1023 | `BridgeMailboxOverflowed` | Warning | The mailbox of a connection whose transport cannot push to one connection (CS-WebUI) exceeds 1,024 pushes or 4 MiB, so its oldest pushes are dropped. Once per connection. | `Connection`, `Dropped` |
 | 1024 | `BridgeReplyWaitExceeded` | Warning | A setter, checked write, command or operation start waited 5 s for the pushes its window had to deliver before the reply, and replied without them: the page did not take pushes, or code blocked a route's delivery. Once per window. | `Route`, `LimitSeconds`, `Pending` |
 | 1025 | `BridgeCollectionChangedOutsideModelTurn` | Warning | A collection that a Bridge observes changed outside its window's model turn, such as a DynamicData `Bind` without `ObserveOn` the window's scheduler: the change waited for a turn and can race the window. Once per Bridge and field. | `Model`, `Field`, `Route` |
+| 1190 | `BridgeQueryRowsFailed` | Error | A query collection's row source threw while loading a page's range, or its rows could not be encoded. The page's `query-rows` is answered `failed`, and its range shows the error. | `Model`, `Member`, `Route`, `Start`, `End`, `ErrorType` |
+| 1191 | `BridgeQueryIndexFailed` | Error | A query collection's row source threw in `IndexOfAsync`. The page's `query-index` is answered `failed`. | `Model`, `Member`, `Route`, `ErrorType` |
+| 1192 | `BridgeQuerySetFailed` | Error | Changing a query collection's query threw something other than the `ArgumentException` of an invalid query. | `Model`, `Member`, `Route`, `ErrorType` |
 | 1026 | `WindowCloseUnacknowledged` | Debug | A Window's close waited for its pages that use `presented/1` until its timeout or 5 s, and some did not acknowledge it (`RunicWindowCloseResult.PagesAcknowledged` is `false`). | `Pages` |
 | 1033 | `ModelContextReleaseFailed` | Error | A window session's own model context fails to shut down in the background. | `ErrorType` |
 | 1040, 1041 | Retired | | Reported by `ReactiveRoutedRegion<T>`, removed in 0.9; not reused. | |
@@ -2654,7 +2791,7 @@ NativeAOT symbols and what to attach to a bug report.
 as `content12`). A declared failure is an expected outcome, so it is logged at
 Debug, still with its exception; `FailureType` is the failure value's type.
 
-Events 1000-1012, 1018-1026, 1050-1053 and 1100-1102 use the category `Runic.Application.Views`
+Events 1000-1012, 1018-1026, 1050-1053, 1100-1102 and 1190-1192 use the category `Runic.Application.Views`
 (`RunicViewsTelemetry.LogCategory`); the Hot Reload events 1100-1102 use the
 logger of the window session that owns the Bridge. Events 1110-1114 use
 `Runic.Application.Views.Wpf` and the factory of the host's `Services`. Event 1033 here is a window session's

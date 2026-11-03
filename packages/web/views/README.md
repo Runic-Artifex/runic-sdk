@@ -270,6 +270,69 @@ Angular), which follows the container's scroll position and size. The
 format, fallbacks and recovery rules are specified in
 [State changes](https://github.com/Runic-Artifex/runic-sdk/blob/main/specs/application/state-changes.md).
 
+## Query collections
+
+A .NET `RunicQueryCollection<TRow, TKey>` property is a list whose rows stay in .NET, such as a database table
+(`query-collections/1`). Its member in `snapshot` is a `QueryCollectionState`, `{ query, total, version }`, and the
+generated client has one `QueryCollection<TRow>` per collection in `client.queries`. Each one loads the rows of its own
+range, so two pages that scroll the same list don't move each other's rows.
+
+```ts
+const catalog = await connectCatalog();
+const rows = catalog.queries.rows;           // QueryCollection<CatalogRow>
+rows.setRange(500, 40);                      // placeholders now, rows when they arrive
+rows.subscribe(() => render(rows.current));  // { query, total, version, start, count, rows, loading, error }
+await rows.setQuery({ sort: [{ field: "label", descending: true }], filters: [{ field: "label", op: "contains", value: "9" }] });
+const index = await rows.indexOf("4711");    // the key's position in the current query, or undefined
+```
+
+- `current.rows` has one `QueryRow` per position of the range: `status` `loaded` with `key` and `row`, or a placeholder
+  (`loading`, `error`). A row of an older version stays visible, `stale: true`, until its new version arrives.
+  `loading` and `error` summarize the range; `retry()` loads it again after a failure.
+- The collection sends at most one `query-rows` at a time, for the positions of the latest range it has not loaded at
+  the current version (at most 1,000 rows), so fast scrolling sends few requests. It keeps the rows near its range
+  (at least 2,000) and drops the others.
+- `setQuery(query)` changes ViewModel state that every presentation shares, and resolves once the state includes it; a
+  query .NET cannot run rejects with a `BridgeError` of kind `rejected` and reason `invalid-input`. A filter is
+  `equals` (`value`), `contains` (a string `value`), `range` (`min?`, `max?`, inclusive) or `custom` (a filter .NET
+  defines by name, with an optional `value`). Values are wire values: an `Int64` as a decimal string.
+- When the version increases, after a query change or a change of rows in .NET, the collection loads its range again;
+  a new query discards every row it had.
+
+### `createQueryViewportController(collection, options)`
+
+Lays a query collection out in a scroll container with **variable row heights**: rows are placed by their measured
+height, and `estimateSize` (a number, or a function of the index) for rows not measured yet. Sizes live in a Fenwick
+tree, so a list of 500,000 rows finds the row at a scroll offset in O(log n). The controller calls the collection's
+`setRange` for the rows the container shows plus `overscan` (5), and its `current` is a `QueryViewport`: `items` (each
+row of the range with its `top` and `size`), `totalSize` for the spacer, and `total`, `query`, `loading` and `error`.
+
+- `attach(element)` follows the container's scroll position (once per animation frame) and size.
+- `observe(rowElement, index)` measures a rendered row with a `ResizeObserver`; a row above the visible ones that changes
+  height moves `scrollTop` by the difference, so what the user looks at stays in place.
+- `scrollToKey(key, align?)` asks .NET for the key's position (`query-index`) and scrolls to it; it resolves `false` when
+  no row of the current query has the key. `scrollToIndex(index, align?)` scrolls to a position.
+- A new query forgets the measured heights. `createRowSizes(count, estimate)` is the size tree alone, for any list.
+
+The framework packages wrap it as `useQueryCollection` (`injectQueryCollection` in Angular; `queryViewportChanges` in
+`@runic-artifex/views-effect`):
+
+```tsx
+const list = useQueryCollection(catalog.queries.rows, { estimateSize: 32 });
+<div ref={list.ref} style={{ height: 480, overflow: "auto" }}>
+  <div style={{ height: list.totalSize, position: "relative" }}>
+    {list.items.map(item => (
+      <div key={item.key ?? `#${item.index}`} ref={list.measure(item.index)} style={{ position: "absolute", top: item.top, width: "100%" }}>
+        {item.row ? item.row.label : "…"}
+      </div>
+    ))}
+  </div>
+</div>
+```
+
+A one-way view request from .NET (`view-requests/1`) can trigger `scrollToKey` once that feature ships, for example to
+bring a search result into view: the page handles the request by calling `list.scrollToKey(key)`.
+
 ## Framework bindings
 
 The framework packages share framework-neutral controllers, so each
@@ -755,6 +818,19 @@ test("saving clears the dirty flag", async () => {
   const outcome = await saved;
   assert.equal(outcome.ok && outcome.value.savedMessage, "Saved Groceries");
 });
+```
+
+A View with a query collection takes its rows in `queries`, which the mock filters, sorts and serves by range, with
+optional latency (virtual time with `manual` scheduling). `queries.{name}` of the mock shows what the page loaded:
+
+```ts
+const catalog = mockCatalog(bridge, {
+  state: { title: "catalog" },
+  queries: { rows: { rows: rows(100_000), latency: 30, custom: { even: row => row.id % 2 === 0 } } },
+});
+// … scroll the page …
+assert.ok(catalog.queries.rows.loads.every(load => load.count <= 60));
+catalog.queries.rows.setRows(changed); // as Refresh() in .NET: a new version, which the page loads again
 ```
 
 A definition takes:
