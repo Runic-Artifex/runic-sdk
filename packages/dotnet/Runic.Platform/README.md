@@ -217,8 +217,19 @@ save of Save As, and again each time the document is reopened. Reopen with
 keeps the bookmark's access until it is disposed, while a dialog's lease is
 released when its window closes. A path from a launch or a drop becomes a
 document through `CreateAsync(path)` and then `OpenDocumentAsync(bookmark)`.
-On macOS, Runic Desktop also lists the document in Open Recent and the Dock,
-and marks the window's represented file and unsaved changes
+`IDesktopRecentDocuments` lists the document where the desktop offers it for
+reopening: `AddAsync(document.LocalPath)` after open and Save As, and
+`ClearAsync()` for a Clear Recent command. macOS shows it in Open Recent and the
+Dock, Windows in Recent items and the application's Jump List
+(`SHAddToRecentDocs`; clearing removes only the application's Jump List
+entries), and Linux in the recent files of GTK and KDE file choosers
+(`recently-used.xbel`, under the application ID or else the entry assembly's
+name; clearing removes only this application's entries, a write keeps the newest
+500, and a file that is not a bookmark file is left alone and reported as
+`Failed(IOError)`). Runic Desktop registers it for Runic Windows; CS-WebUI and
+serve-only Runic Desktop, by `RunicDesktopHostOptions.ServeOnly` or
+`RUNIC_APPLICATION_SERVE_ONLY=1`, report `Unavailable`. On macOS, Runic Desktop also marks the window's
+represented file and unsaved changes
 ([Document apps on macOS](../Runic.Desktop/README.md#document-apps-on-macos)).
 In the App Sandbox those lists give no access: keep each bookmark with the
 document's `LocalPath`, note that path for the lists, and when Open Recent or the
