@@ -1370,7 +1370,7 @@ export function createMockBridge(options: MockBridgeOptions = {}): MockBridge {
   async function receiveUpload(request: HostUploadRequest): Promise<{ readonly status: number; readonly body: string }> {
     const answer = (status: number, value: unknown) => ({ status, body: JSON.stringify(value) });
     const failure = (status: number, reason: string, message: string) =>
-      answer(status, { ok: false, error: { kind: reason === "released" ? "released" : "rejected", reason, message } });
+      answer(status, { ok: false, error: { kind: reason === "released" ? "released" : reason === "failed" ? "failed" : "rejected", reason, message } });
     const aborted = () => request.signal?.reason ?? new DOMException("The upload was aborted.", "AbortError");
     if (request.signal?.aborted) throw aborted();
     if (!connected || request.token !== `mock-upload-token-${connection.id}` || uploadLimit === undefined)
@@ -1394,7 +1394,8 @@ export function createMockBridge(options: MockBridgeOptions = {}): MockBridge {
     const next = uploadFailures.shift();
     if (next) return failure(next.status, next.reason ?? (next.status === 413 ? "too-large" : "failed"), next.message ?? "The mock refused the upload.");
     request.onProgress?.({ loaded: total, total });
-    const ref: BlobRef = { id: `mock-upload-${uploads.length + 1}`, name: request.name, type: request.type, size: total };
+    // An id of the spec's form (16 to 64 characters).
+    const ref: BlobRef = { id: `mock-upload-${String(uploads.length + 1).padStart(8, "0")}`, name: request.name, type: request.type, size: total };
     uploads.push({ ref, content: request.content });
     return answer(201, { ok: true, upload: ref });
   }

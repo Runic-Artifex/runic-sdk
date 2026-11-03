@@ -36,3 +36,32 @@ public sealed partial class BlobViewModel : ObservableObject
 }
 
 public sealed partial class BlobWindow : RunicWindow<BlobViewModel>;
+
+// The ReactiveUI flavor: a blob property raised with RaiseAndSetIfChanged and a ReactiveCommand that takes an upload.
+public sealed class ReactiveBlobViewModel : ReactiveUI.ReactiveObject
+{
+    private RunicBlob? _preview;
+
+    public ReactiveBlobViewModel(Runic.Navigation.IRunicModelContext modelContext)
+    {
+        var scheduler = Runic.Application.Views.ReactiveUI.ReactiveSchedulers.For(modelContext);
+        AttachCommand = ReactiveUI.ReactiveCommand.CreateFromTask<RunicUpload, string>(async upload =>
+        {
+            await using var stream = await upload.OpenReadAsync();
+            using var reader = new StreamReader(stream, Encoding.UTF8);
+            var text = await reader.ReadToEndAsync();
+            Preview = RunicBlob.FromBytes(Encoding.UTF8.GetBytes(text.ToUpperInvariant()), "text/plain", upload.FileName);
+            return upload.FileName;
+        }, outputScheduler: scheduler);
+    }
+
+    public RunicBlob? Preview
+    {
+        get => _preview;
+        set => ReactiveUI.IReactiveObjectExtensions.RaiseAndSetIfChanged(this, ref _preview, value);
+    }
+
+    public ReactiveUI.ReactiveCommand<RunicUpload, string> AttachCommand { get; }
+}
+
+public sealed partial class ReactiveBlobWindow : RunicWindow<ReactiveBlobViewModel>;

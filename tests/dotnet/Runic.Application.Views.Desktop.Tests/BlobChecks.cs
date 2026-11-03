@@ -93,6 +93,25 @@ internal sealed class BlobChecks
         Check(command.StartsWith("{\"ok\":true", StringComparison.Ordinal), $"The command did not take the upload: {command}");
         var model = (BlobModel)window.DataContext!;
         Check(await model.Attached.Task.WaitAsync(cancellation) == content, "The command read other bytes than the page uploaded.");
+
+        // Clients that go away mid-upload, more of them than the window receives at once: each frees its slot, its bytes
+        // and its partial file, so the next upload is stored.
+        var blobs = BridgeDispatcher.For(host.Transport).Blobs;
+        for (var attempt = 0; attempt < BridgeBlobs.MaximumConcurrentUploads + 2; attempt++)
+        {
+            using var abort = new CancellationTokenSource();
+            using var aborted = new HttpRequestMessage(HttpMethod.Post, uploadUrl) { Content = new StreamContent(new AbortingBody(abort)) };
+            aborted.Content.Headers.ContentLength = 1_000_000;
+            aborted.Headers.Add("Origin", origin);
+            aborted.Headers.Add("X-Runic-Upload-Token", token);
+            try { using var _ = await page.SendAsync(aborted, abort.Token); }
+            catch (Exception error) when (error is OperationCanceledException or HttpRequestException or IOException) { }
+        }
+        await WaitUntil(() => blobs.UploadCounters == (0, 0), cancellation);
+        Check(blobs.UploadFolder is not { } folder || !Directory.EnumerateFileSystemEntries(folder).Any(),
+            "An aborted upload left its partial file.");
+        using var after = await page.SendAsync(Upload(uploadUrl, "after", origin, token), cancellation);
+        Check(after.StatusCode == HttpStatusCode.Created, $"An upload after the aborted ones was refused: {after.StatusCode}");
     }
 
     private static HttpRequestMessage Upload(string url, string content, string origin, string? token)
@@ -106,6 +125,43 @@ internal sealed class BlobChecks
         request.Headers.Add("X-Runic-Upload-Name", Uri.EscapeDataString("notes ä.txt"));
         if (token is not null) request.Headers.Add("X-Runic-Upload-Token", token);
         return request;
+    }
+
+    private static async Task WaitUntil(Func<bool> condition, CancellationToken cancellationToken)
+    {
+        while (!condition()) await Task.Delay(20, cancellationToken);
+    }
+
+    // A request body that sends 64 KiB, then cancels the request, as a page that closes mid-upload.
+    private sealed class AbortingBody(CancellationTokenSource abort) : Stream
+    {
+        private bool _sent;
+        public override bool CanRead => true;
+        public override bool CanSeek => false;
+        public override bool CanWrite => false;
+        public override long Length => throw new NotSupportedException();
+        public override long Position { get => throw new NotSupportedException(); set => throw new NotSupportedException(); }
+
+        public override async ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default)
+        {
+            if (!_sent)
+            {
+                _sent = true;
+                var count = Math.Min(buffer.Length, 65_536);
+                buffer.Span[..count].Fill((byte)'x');
+                return count;
+            }
+            await Task.Delay(50, CancellationToken.None);
+            await abort.CancelAsync();
+            cancellationToken.ThrowIfCancellationRequested();
+            throw new IOException("The page closed.");
+        }
+
+        public override int Read(byte[] buffer, int offset, int count) => ReadAsync(buffer.AsMemory(offset, count)).AsTask().GetAwaiter().GetResult();
+        public override void Flush() { }
+        public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
+        public override void SetLength(long value) => throw new NotSupportedException();
+        public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
     }
 
     private static void Check(bool condition, string message)

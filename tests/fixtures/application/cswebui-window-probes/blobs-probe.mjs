@@ -5,6 +5,8 @@
 // RUNIC_PROBE_EXECUTABLE selects a published probe; otherwise the Release build runs with dotnet.
 import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
+import { request as httpRequest } from "node:http";
+import { networkInterfaces } from "node:os";
 import { fileURLToPath } from "node:url";
 import { launchChromium, pause, tail, waitFor } from "../../../../examples/shared/smoke.mjs";
 
@@ -19,6 +21,18 @@ const detail = async () => `${browser ? await browser.diagnostics() : "browser: 
   `host stdout:\n${tail(output)}\nhost stderr:\n${tail(errors)}`;
 const retry = (condition, label) => waitFor(condition, { timeout: 20_000, label, detail });
 const step = name => console.error(`blobs-probe: ${name}`);
+// One request from outside the page: Node, with the headers given, to address:port. Resolves with the status and the
+// CORS grant, or with { error } when the connection is refused.
+const raw = (address, port, { method = "GET", path = "/", headers = {}, body } = {}) => new Promise(resolve => {
+  const request = httpRequest({ host: address, port, method, path, headers, timeout: 5_000 }, response => {
+    response.resume();
+    response.on("end", () => resolve({ status: response.statusCode, allow: response.headers["access-control-allow-origin"] }));
+  });
+  request.on("error", error => resolve({ error: error.code ?? String(error) }));
+  request.on("timeout", () => request.destroy(new Error("timeout")));
+  if (body !== undefined) request.write(body);
+  request.end();
+});
 const check = (condition, message, value) => {
   if (!condition) throw new Error(`${message}: ${JSON.stringify(value)}`);
 };
@@ -36,7 +50,7 @@ try {
   check(hello.ok === true && hello.features.includes("blobs/1") && hello.blobs?.token?.length === 32, "The hello's upload grant", hello);
   const page = new URL(url);
   const upload = new URL(hello.blobs.upload);
-  check(upload.hostname === "localhost" && upload.port !== page.port && upload.pathname === "/_runic/upload", "The upload URL", hello.blobs);
+  check((upload.hostname === "localhost" || upload.hostname === "127.0.0.1") && upload.port !== page.port && upload.pathname === "/_runic/upload", "The upload URL", hello.blobs);
 
   step("open");
   const opened = await send({ kind: "open", route: "blobProbe", presentation: "p1" });
@@ -75,6 +89,54 @@ try {
   const stored = await post(hello.blobs.token);
   check(stored.status === 201 && stored.body.upload.size === 1_000_000 && stored.body.upload.name === "probe.txt", "The upload", stored);
 
+  // Requests from outside the page are refused: a foreign Host (DNS rebinding), another origin's preflight, upload and
+  // fetch, and a peer of another machine.
+  step("foreign requests");
+  const endpoint = { address: upload.hostname, port: Number(upload.port) };
+  const blobPath = new URL(avatar.url).pathname;
+  const foreignHost = await raw(endpoint.address, endpoint.port, { path: blobPath, headers: { Host: `rebound.example:${endpoint.port}` } });
+  check(foreignHost.status >= 400 && foreignHost.status < 500, "A blob request with a foreign Host", foreignHost);
+  const evil = "http://attacker.example";
+  const preflight = await raw(endpoint.address, endpoint.port, { method: "OPTIONS", path: upload.pathname,
+    headers: { Origin: evil, "Access-Control-Request-Method": "POST", "Access-Control-Request-Headers": "x-runic-upload-token" } });
+  check(preflight.status === 403 && preflight.allow !== evil, "Another origin's preflight", preflight);
+  const crossPost = await raw(endpoint.address, endpoint.port, { method: "POST", path: upload.pathname,
+    headers: { Origin: evil, "X-Runic-Upload-Token": hello.blobs.token, "Content-Type": "text/plain", "Content-Length": "4" }, body: "evil" });
+  check(crossPost.status === 403, "Another origin's upload with the token", crossPost);
+  const crossGet = await raw(endpoint.address, endpoint.port, { path: blobPath, headers: { Origin: evil } });
+  check(crossGet.status === 403 && crossGet.allow !== evil, "Another origin's fetch of a blob", crossGet);
+  const lan = Object.values(networkInterfaces()).flat().find(entry => entry && entry.family === "IPv4" && !entry.internal)?.address;
+  if (lan !== undefined) {
+    const remote = await raw(lan, endpoint.port, { path: blobPath, headers: { Host: `${upload.hostname}:${endpoint.port}` } });
+    check(remote.error !== undefined || remote.status === 403, "A blob request over the machine's network address", remote);
+  }
+
+  // Uploads that the page aborts midway, more than the window receives at once, keep no slot: the next one is stored.
+  step("aborted uploads");
+  const abortedUploads = await browser.evaluate(`(async () => {
+    const outcomes = [];
+    for (let attempt = 0; attempt < 18; attempt++) {
+      outcomes.push(await new Promise(resolve => {
+        const xhr = new XMLHttpRequest();
+        xhr.open("POST", ${JSON.stringify(upload.href)});
+        xhr.withCredentials = true;
+        xhr.setRequestHeader("X-Runic-Upload-Token", ${JSON.stringify(hello.blobs.token)});
+        xhr.upload.onprogress = () => xhr.abort();
+        xhr.onabort = () => resolve("aborted");
+        xhr.onload = () => resolve(xhr.status);
+        xhr.onerror = () => resolve("error");
+        xhr.send(new Blob(["y".repeat(3_000_000)]));
+      }));
+    }
+    return outcomes;
+  })()`);
+  check(abortedUploads.length === 18, "The aborted uploads", abortedUploads);
+  const afterAborts = await retry(async () => {
+    const answer = await post(hello.blobs.token);
+    return answer.status === 201 && answer;
+  }, "an upload after the aborted ones");
+  check(afterAborts.body.upload.size === 1_000_000, "The upload after the aborted ones", afterAborts);
+
   step("attach");
   const attached = await send({ kind: "command", route: "blobProbe", member: "attach", input: stored.body.upload });
   check(attached.ok === true, "The attach command", attached);
@@ -88,7 +150,7 @@ try {
   }, { timeout: 20_000, label: "the probe's exit", detail });
   if (code.code !== 0 || !output.includes("CSWEBUI_BLOBS_OK"))
     throw new Error(`The probe exited with ${code.code}:\n${tail(output)}\n${tail(errors)}`);
-  console.log("CSWEBUI_BLOBS_PAGE_OK|grant|img|fetch|upload|token|claim");
+  console.log("CSWEBUI_BLOBS_PAGE_OK|grant|img|fetch|upload|token|foreign-host|cross-origin|remote|aborted|claim");
 } catch (error) {
   console.error(await detail());
   throw error;

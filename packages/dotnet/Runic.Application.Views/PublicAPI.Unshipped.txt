@@ -5,6 +5,7 @@ Runic.Application.Views.RunicBlob.Disposition.get -> Runic.Application.Views.Run
 Runic.Application.Views.RunicBlob.FileName.get -> string?
 Runic.Application.Views.RunicBlob.Length.get -> long?
 Runic.Application.Views.RunicBlob.OpenReadAsync(System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<System.IO.Stream!>
+Runic.Application.Views.RunicBlob.Release() -> void
 Runic.Application.Views.RunicBlobDisposition
 Runic.Application.Views.RunicBlobDisposition.Attachment = 1 -> Runic.Application.Views.RunicBlobDisposition
 Runic.Application.Views.RunicBlobDisposition.Inline = 0 -> Runic.Application.Views.RunicBlobDisposition

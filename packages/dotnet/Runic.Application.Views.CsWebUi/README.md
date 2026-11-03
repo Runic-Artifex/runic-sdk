@@ -145,8 +145,9 @@ streams it to a loopback endpoint of the window, and a command takes the
 resulting reference as a `RunicUpload` (see
 [Blobs and uploads](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Application.Views/README.md#blobs-and-uploads)).
 `RunicBlob` values, such as images and downloads the ViewModel produces, are
-served from the same endpoint, `http://localhost:{port}/`, another origin than
-the page, which it grants with CORS; a page `Content-Security-Policy` must allow
+served from the same endpoint, `http://localhost:{port}/` (also bound on
+`127.0.0.1`), another origin than the page, which it grants with CORS, and only
+to loopback peers; a page `Content-Security-Policy` must allow
 `http://localhost:*` for `img-src`, `media-src` and `connect-src`. That
 endpoint cannot see WebUI's clients, so a blob URL is bound to the window, not
 to one browser; an upload also needs its connection's token. There is no native menu bar either: the page renders

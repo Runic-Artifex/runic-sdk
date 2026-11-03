@@ -2,6 +2,7 @@ using System.Text;
 using System.Text.Json;
 using Runic.Application.Testing;
 using Runic.Application.Views;
+using Runic.Navigation;
 using TUnit.Core;
 
 namespace Runic.Application.Testing.Tests;
@@ -165,6 +166,38 @@ internal sealed class BlobTests
             Require(claimed && upload.IsClaimed, "An upload was claimed twice.");
         }
         finally { File.Delete(path); }
+    }
+
+    [Test]
+    public async Task AReactiveUiCommandTakesAnUploadAndShowsABlob()
+    {
+        await using var context = new RunicModelContext();
+        var model = new ReactiveBlobViewModel(context);
+        using var contextLease = RunicModelContextRegistry.Shared.Bind(context, model);
+        using var host = new RunicWindowTestHost<ReactiveBlobViewModel>(model,
+            (transport, content, vm) => new ReactiveBlobBridge(transport, vm, content: content),
+            new RunicWindowTestHostOptions { RootRoute = "reactiveBlob", ViewLocator = new TestViewLocator() });
+        var upload = await host.UploadAsync("reactive"u8.ToArray(), "r.txt", "text/plain");
+        var operation = await host.Root.StartAsync(vm => vm.AttachCommand, Wire(upload), "attach-1");
+        Require(operation.Admission == RunicOperationAdmissionKind.Accepted, $"Attach was not accepted: {operation.AdmissionJson}");
+        var completion = await operation.WaitAsync();
+        Require(completion.Kind == RunicOperationStatusKind.Succeeded, $"Attach did not succeed: {completion.Json}");
+        using var state = host.Transport.SnapshotState("reactiveBlob");
+        var preview = state.RootElement.GetProperty("state").GetProperty("preview");
+        var served = await host.ReadBlobAsync(preview.GetProperty("url").GetString()!);
+        Require(Encoding.UTF8.GetString(served.Content) == "REACTIVE" && preview.GetProperty("name").GetString() == "r.txt",
+            $"The ReactiveUI blob was not served: {preview}");
+        var types = File.ReadAllText(Path.Combine(GeneratedTypeScriptDirectory(), "reactiveBlob.ts"));
+        Require(types.Contains("readonly preview: import(\"@runic-artifex/views\").RunicBlob | null;", StringComparison.Ordinal)
+            && types.Contains("upload(content: Blob", StringComparison.Ordinal), $"The ReactiveUI client lacks the blob types:\n{types}");
+    }
+
+    private static string GeneratedTypeScriptDirectory()
+    {
+        for (var directory = new DirectoryInfo(Environment.CurrentDirectory); directory is not null; directory = directory.Parent)
+            if (File.Exists(Path.Combine(directory.FullName, "RunicSdk.Core.slnx")))
+                return Path.Combine(directory.FullName, "tests", "dotnet", "Runic.Application.Testing.Tests", "obj", "bridge-frontend", "generated");
+        throw new InvalidOperationException("Could not locate the Runic SDK workspace root.");
     }
 
     private static JsonElement Avatar(RunicWindowTestHost<BlobViewModel> host)

@@ -118,14 +118,25 @@ uploads"):
   code of an installed browser); CS-WebUI serves it from a loopback listener of
   the window that cannot see WebUI's clients, so there it is a bearer URL of the
   window. Do not put a blob URL where other pages or logs can read it.
-- A blob response is `nosniff`, sandboxed by its `Content-Security-Policy` and
-  never interpreted by the page's origin, so serving untrusted HTML or SVG as a
-  blob does not run it as the application. Cross-site loads (`Sec-Fetch-Site:
-  cross-site`) are refused.
+- A blob response is `nosniff` and carries a sandboxing
+  `Content-Security-Policy` beside the host's own (Runic Desktop's
+  `frame-ancestors` stays in force), so serving untrusted HTML or SVG as a blob
+  does not run it as the application. Cross-site loads (`Sec-Fetch-Site:
+  cross-site`) are refused. CS-WebUI's endpoint also serves loopback peers only,
+  which matters on Windows, where http.sys routes requests by their `Host`.
 - An upload needs the page's origin and a token that only the connection's
-  `hello` received; it is limited per upload and per window, and decodes only
-  for that connection, once. Its bytes, media type and file name are untrusted:
-  validate the content before you use it, and never use `FileName` as a path.
+  `hello` received; it is limited per upload and per window, dropped after 30
+  seconds without data, and decodes only for that connection, once. An upload
+  that fails, also one whose client goes away, frees its slot, its space and its
+  partial file. Its bytes, media type and file name are untrusted: validate the
+  content before you use it, and never use `FileName` as a path.
+- Uploads are stored in a new folder of each window with mode 0700 and a random
+  name. Its base is the temporary directory only when no other user can change
+  entries of it (owned by the user, or sticky as `/tmp`); otherwise a private
+  folder of the user's cache. The host creates each file exclusively and reads
+  it through that handle, never through its path again, so a symbolic link put
+  in its place is never followed. Folders left by a crash are swept by a later
+  run after a day without changes.
 
 ## Framing and Content-Security-Policy
 

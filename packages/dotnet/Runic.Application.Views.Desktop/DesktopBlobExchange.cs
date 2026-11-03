@@ -25,6 +25,7 @@ internal sealed class DesktopBlobExchange(PresentationExchange exchange) : IBrid
     public string? ContentType { set => exchange.ContentType = value; }
     public long? ContentLength { set => exchange.ContentLength = value; }
     public void SetResponseHeader(string name, string value) => exchange.SetResponseHeader(name, value);
+    public void AppendResponseHeader(string name, string value) => exchange.AppendResponseHeader(name, value);
     public Stream ResponseBody => exchange.ResponseBody;
     public CancellationToken RequestAborted => exchange.RequestAborted;
 }

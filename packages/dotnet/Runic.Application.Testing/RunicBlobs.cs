@@ -50,6 +50,8 @@ internal static class RunicBlobs
         public string? ContentType { set { if (value is not null) Headers["Content-Type"] = value; } }
         public long? ContentLength { set { if (value is { } length) Headers["Content-Length"] = length.ToString(System.Globalization.CultureInfo.InvariantCulture); } }
         public void SetResponseHeader(string name, string value) => Headers[name] = value;
+        public void AppendResponseHeader(string name, string value) =>
+            Headers[name] = Headers.TryGetValue(name, out var existing) ? existing + ", " + value : value;
         public Stream ResponseBody => Body;
         public CancellationToken RequestAborted => aborted;
     }

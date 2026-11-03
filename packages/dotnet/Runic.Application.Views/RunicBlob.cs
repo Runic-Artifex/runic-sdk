@@ -113,6 +113,33 @@ public sealed partial class RunicBlob
         return new(open, contentType, length, fileName, disposition);
     }
 
+    /// <summary>
+    /// Stops serving this blob in every Window that serves it now: its URLs answer 404 from now on, whatever still holds
+    /// it. Release a blob that a long-lived View no longer shows, such as a command result the page has downloaded; a
+    /// state property's blob is released when the property changes, and every blob when its View or Window goes away.
+    /// </summary>
+    /// <remarks>If the blob crosses the Bridge again, it gets a new URL.</remarks>
+    public void Release()
+    {
+        BridgeBlobs[] issuers;
+        lock (_issuers) issuers = [.. _issuers];
+        foreach (var issuer in issuers) issuer.Release(this);
+    }
+
+    // The Windows that issued a URL for this blob, for Release; a Window that releases the blob forgets it.
+    private readonly List<BridgeBlobs> _issuers = [];
+
+    internal void IssuedBy(BridgeBlobs blobs)
+    {
+        lock (_issuers)
+            if (!_issuers.Contains(blobs)) _issuers.Add(blobs);
+    }
+
+    internal void Forget(BridgeBlobs blobs)
+    {
+        lock (_issuers) _issuers.Remove(blobs);
+    }
+
     /// <summary>Opens the content, as the host does for each request.</summary>
     /// <param name="cancellationToken">Cancels opening.</param>
     /// <returns>A readable stream that the caller disposes.</returns>

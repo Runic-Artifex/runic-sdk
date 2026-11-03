@@ -30,12 +30,12 @@ test("upload streams through the host bridge's upload and a command takes the re
   });
   const progress: number[] = [];
   const ref = await upload(new File(["hello upload"], "notes.txt"), { type: "text/plain", onProgress: ({ loaded, total }) => progress.push(loaded / total) });
-  assert.deepEqual(ref, { id: "mock-upload-1", name: "notes.txt", type: "text/plain", size: 12 });
+  assert.deepEqual(ref, { id: "mock-upload-00000001", name: "notes.txt", type: "text/plain", size: 12 });
   assert.deepEqual(progress, [0.5, 1]);
   assert.equal(await bridge.uploadContent(ref)?.text(), "hello upload");
   assert.equal(bridge.uploads.length, 1);
   await client.command("attach", bridgeWire.encodeBlobRef(ref));
-  assert.deepEqual(received, { id: "mock-upload-1", name: "notes.txt", type: "text/plain", size: 12 });
+  assert.deepEqual(received, { id: "mock-upload-00000001", name: "notes.txt", type: "text/plain", size: 12 });
   assert.equal(client.snapshot.lastUpload, "notes.txt");
   client.dispose();
 });
@@ -51,6 +51,9 @@ test("upload rejects without a grant, over the limit, at capacity and when abort
   const full = installMockBridge(createMockBridge());
   full.failNextUpload({ status: 507, reason: "capacity", message: "No room." });
   await assert.rejects(upload(new Blob(["x"])), (error: unknown) => error instanceof BridgeError && error.kind === "rejected" && error.reason === "capacity");
+  // A host that could not store the upload answers failed, as the spec's kinds say.
+  full.failNextUpload({ status: 500, reason: "failed" });
+  await assert.rejects(upload(new Blob(["x"])), (error: unknown) => error instanceof BridgeError && error.kind === "failed" && error.reason === "failed");
 
   // Aborted halfway: the mock stops before it stores the upload.
   const halfway = installMockBridge(createMockBridge());

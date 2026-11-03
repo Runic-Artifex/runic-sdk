@@ -23,7 +23,8 @@ namespace Runic.Application.Views;
 /// An upload decodes only on the Window and the page connection that uploaded it, and only until it is claimed: the
 /// first <see cref="OpenReadAsync"/>, <see cref="SaveAsAsync"/> or <see cref="Discard"/> takes it out of the Window, and a
 /// later request that names it is rejected as invalid input. An unclaimed upload is deleted when its connection
-/// closes, when the Window closes, or 10 minutes after it arrived.
+/// closes, when the Window closes, or 10 minutes after it arrived. The host stores uploads in a new folder of the
+/// Window that only the user can access, and reads them through the file it created, never through its path again.
 /// </para>
 /// <para>
 /// Everything about an upload comes from the page and is untrusted: its content, <see cref="ContentType"/> and
@@ -96,7 +97,11 @@ public sealed class RunicUpload
     /// </summary>
     /// <param name="path">The destination's full path.</param>
     /// <param name="overwrite">Whether an existing file is replaced.</param>
-    /// <param name="cancellationToken">Cancels a copy; the upload stays claimed and its content is deleted.</param>
+    /// <param name="cancellationToken">
+    /// Cancels the move before it starts, and a copy from the upload's own handle while it runs; a rename or the
+    /// operating system's copy of a move to another volume is not interrupted once it started. A cancelled copy
+    /// deletes its partial destination. The upload is claimed and its content deleted whether or not it was cancelled.
+    /// </param>
     /// <exception cref="InvalidOperationException">The upload was already claimed, or its Window closed.</exception>
     /// <exception cref="IOException">The destination exists and <paramref name="overwrite"/> is <see langword="false"/>, or the move failed.</exception>
     public async ValueTask SaveAsAsync(string path, bool overwrite = false, CancellationToken cancellationToken = default)

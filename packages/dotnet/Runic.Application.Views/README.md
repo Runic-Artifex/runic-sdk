@@ -2298,11 +2298,21 @@ The page receives `{url, type, size, name}` and uses `url` directly:
   content and answers byte ranges of a seekable stream, which `<video>` and
   `<audio>` need. Create a new `RunicBlob` for new content: a URL's content
   never changes, and the browser caches it as immutable.
-- The URL is a capability of the Window: unguessable, served only to the
+- The URL is a capability of the Window: unguessable, and served only to the
   Window's page (on Runic Desktop and WPF only to the browser client that holds
-  the Window's cookie), and released when the state property no longer holds
-  the blob, when the View is released or when the Window closes. A blob in a
-  collection row or a result is released with its View.
+  the Window's cookie).
+- How long a URL works:
+  - A blob in a state property: until the property holds another value. Set
+    it to `null` or a new blob, and the old URL answers 404.
+  - A blob in a collection row, a command or operation result, or an
+    interaction input: until its View is released (interactions: until the
+    Window closes). A Window keeps at most 1,024 of these; beyond that the
+    least recently sent one is released and event 1208 `BlobEvicted` is
+    logged.
+  - Any blob: until you call `blob.Release()`, which ends its URLs in every
+    Window at once. Release a download or a thumbnail a long-lived View no
+    longer shows. If the blob crosses the Bridge again, it gets a new URL.
+  - Every blob: until the Window closes.
 - The response carries the blob's `ContentType`, `X-Content-Type-Options:
   nosniff` and a sandboxing `Content-Security-Policy`, so an HTML or SVG blob
   opened in the Window runs no script in the application's origin.
@@ -2345,19 +2355,27 @@ await client.attach(ref);
 - `FileName`, `ContentType` and the content are untrusted. `FileName` is
   reduced to a file name without directories or control characters; never use
   it as a path.
+- An upload whose body sends nothing for 30 seconds is dropped (HTTP 408), on
+  every host.
 - Limits: `RunicWindowOptions.MaximumUploadBytes` (per upload, default 256 MiB)
   and `MaximumWindowUploadBytes` (unclaimed uploads of a Window at once, default
   1 GiB), with host defaults `RunicDesktopHostOptions.MaximumUploadBytes` and
   `RunicCsWebUiHostOptions.MaximumUploadBytes`, and
   `WindowContentSessionOptions` for a session you create. The WPF host uses the
-  defaults. Uploads are stored in a per-Window folder below
-  `Path.GetTempPath()/runic-uploads`, readable only by the user on Linux and
-  macOS.
+  defaults.
+- Uploads are stored in a new folder of each Window, `runic-uploads-{random}`
+  with mode 0700, below the temporary directory when no other user can change
+  it (it is the user's own, or sticky such as `/tmp`), otherwise below
+  `$XDG_CACHE_HOME/runic/uploads` (`~/.cache/runic/uploads`). The host reads an
+  upload through the file it created, never through its path again, so a link
+  put in its place is not followed. The folder is deleted when the Window
+  closes; folders left by a crash are deleted by the next run once nothing
+  changed them for a day.
 
 | Host | Where blobs and uploads are served | Bound to |
 | --- | --- | --- |
 | Runic Desktop (Kestrel or the native server), WPF `RunicViewHost` | the Window's surface, `/_runic/blobs/` and `/_runic/upload`, same origin as the page | the Window and its browser client (cookie, and the launch code of an installed browser); an upload also to its connection |
-| CS-WebUI | a loopback listener of each Window, `http://localhost:{port}/`, with CORS for the page's origin | the Window; an upload also to its connection. CS-WebUI's file dialogs are unavailable, so an upload is how a file gets in. A page `Content-Security-Policy` must allow `http://localhost:*` for `img-src`, `media-src` and `connect-src` |
+| CS-WebUI | a loopback listener of each Window, `http://localhost:{port}/` (also bound on `127.0.0.1`; only `127.0.0.1` where `localhost` cannot be bound), with CORS for the page's origin, serving loopback peers only | the Window; an upload also to its connection. CS-WebUI's file dialogs are unavailable, so an upload is how a file gets in. A page `Content-Security-Policy` must allow `http://localhost:*` for `img-src`, `media-src` and `connect-src` |
 | `Runic.Application.Testing` | in memory, `http://runic.test/` | `RunicWindowTestHost.UploadAsync` and `ReadBlobAsync` |
 
 In tests, `RunicBlob.FromBytes` makes blobs, `RunicUpload.FromBytes` makes an
@@ -2727,13 +2745,14 @@ NativeAOT symbols and what to attach to a bug report.
 | 1101 | `HotReloadRestartNotificationFailed` | Warning | A `RunicViewsHotReload.RestartRequired` handler throws. | `ErrorType` |
 | 1102 | `HotReloadRefreshFailed` | Warning | Refreshing a Bridge after a Hot Reload update throws. | `Model`, `ErrorType` |
 | 1200 | `BlobServeFailed` | Warning | A `RunicBlob` could not be opened or streamed to the page; the request fails. | `ErrorType` |
-| 1201 | `UploadRejected` | Information | The window refused an upload: no valid token, too large, no room, or the connection closed. | `Reason`, `Detail` |
-| 1202 | `UploadReceiveFailed` | Warning | An upload could not be written to the window's upload folder. | `ErrorType` |
+| 1201 | `UploadRejected` | Information | The window refused an upload: no valid token, too large, no room, idle for 30 seconds, or the connection closed. | `Reason`, `Detail` |
+| 1202 | `UploadReceiveFailed` | Warning | An upload could not be stored: the client went away, the disk is full, or no private upload folder could be created. Its slot, bytes and partial file are freed. | `ErrorType` |
 | 1203 | `UploadExpired` | Debug | An upload that no command claimed within 10 minutes was deleted. | `Length` |
 | 1204 | `BlobRequestDenied` | Warning | A blob or upload request came from another origin or site than the window's page (CS-WebUI; Runic Desktop reports it as a Desktop diagnostic). | `Request`, `Reason` |
 | 1205 | `BlobsUnavailable` | Warning | A `RunicBlob` crossed the Bridge, but the window's host serves no blobs, so its URL is empty. Once per window. | |
 | 1206 | `BlobCleanupFailed` | Warning | A stored upload could not be deleted. | `ErrorType` |
 | 1207 | `BlobEndpointFailed` | Warning | CS-WebUI could not start a window's blob endpoint; the window opens without blobs and uploads. | `ErrorType` |
+| 1208 | `BlobEvicted` | Warning | A window holds more blobs of collection rows, results and interactions than its limit (1,024), so the least recently sent one's URL was released. Release blobs a View no longer shows with `RunicBlob.Release()`. | `Maximum` |
 | 1110 | `ViewHostFallbackShown` | Warning | A WPF `RunicViewHost` cannot open its web presentation and shows its `Fallback`. | `ErrorType` |
 | 1111 | `ViewHostFallbackFailed` | Error | Showing that fallback throws. | `ErrorType` |
 | 1112 | `ViewHostPresentationChangeFailed` | Error | A `RunicViewHost` presentation change throws outside its open. | `ErrorType` |

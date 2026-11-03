@@ -1067,8 +1067,10 @@ page sends a file as an **upload**, over HTTP to the host, which a request then 
   serves no blobs. It is a **capability**: it contains at least 128 random bits, it is valid only for the window that
   wrote it, and the producer serves it only while a holder keeps it. A state member holds the blobs of its latest
   value: when a later value no longer contains a blob, its URL stops working. A blob in a collection row, a result or
-  another value is held until the route is released. Closing the window releases every URL. One blob of the
-  producer's model has one URL per window, so an unchanged member keeps its encoding.
+  another value is held until the route is released; a producer MAY release the least recently written of these
+  earlier, to bound what a long-lived route holds, and its model MAY release a blob explicitly. Closing the window
+  releases every URL. One blob of the producer's model has one URL per window, so an unchanged member keeps its
+  encoding; a blob written again after it was released gets a new URL.
 - A response to a blob URL has the blob's `type` as `Content-Type`, `X-Content-Type-Options: nosniff`, a
   `Content-Security-Policy` with `sandbox` and `default-src 'none'` (active content such as HTML or SVG never runs in
   the page's origin when it is opened), `Content-Disposition` `inline` or `attachment` with the blob's `name`,
@@ -1087,8 +1089,10 @@ page sends a file as an **upload**, over HTTP to the host, which a request then 
   The host answers `201` with `{"ok": true, "upload": {id, name, type, size}}`, or an error
   `{"ok": false, "error": {kind, reason, message}}`: `403` (`forbidden`, a missing or wrong token or origin), `413`
   (`too-large`, larger than `maximumBytes`), `429` or `507` (`capacity`, the window receives too many uploads at once,
-  or its unclaimed uploads fill its space), `400` (`invalid-request` or `cancelled`) and `410` (`released`, the
-  connection or window closed meanwhile).
+  or its unclaimed uploads fill its space), `408` (`timeout`, the body sent nothing for 30 seconds), `400`
+  (`invalid-request` or `cancelled`), `410` (`released`, the connection or window closed meanwhile) and `500`
+  (`failed`, the host could not store it). An upload that fails in any way, including a client that goes away, keeps
+  none of the window's upload slots or space.
 - An `upload` value names an upload by its `id`. It decodes only in a request of the connection that uploaded it, and
   only while no request claimed it; any other id is `invalid-input`. The producer's model claims an upload when it
   reads it; afterwards the id is invalid. An unclaimed upload is deleted when its connection closes, when the window
@@ -1104,7 +1108,7 @@ names another site. Beyond that:
 | Host | Blob URLs | Uploads |
 | --- | --- | --- |
 | Runic Desktop and WPF | served below the window's surface (`{surface}/_runic/blobs/{token}`, same origin as the page); only to the browser client that holds the window's client cookie, and in an installed browser only to the client bound to its launch code | `{surface}/_runic/upload`; also only from that client |
-| CS-WebUI | a loopback listener of the window (`http://localhost:{port}/_runic/blobs/{token}`), another origin than WebUI's page, which it grants with CORS; it cannot see WebUI's clients, so a URL is bound to the window, not to a connection or browser | the listener's `/_runic/upload`, with CORS for the page's origin only |
+| CS-WebUI | a loopback listener of the window (`http://localhost:{port}/_runic/blobs/{token}`), another origin than WebUI's page, which it grants with CORS; it serves loopback peers only and cannot see WebUI's clients, so a URL is bound to the window, not to a connection or browser | the listener's `/_runic/upload`, with CORS for the page's origin only |
 | Tests (`Runic.Application.Testing`) | served in memory below `http://runic.test/` | simulated with `UploadAsync` |
 
 A blob URL cannot be bound to one connection, because one encoding of a state goes to every connection of the

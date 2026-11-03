@@ -30,6 +30,10 @@ internal sealed class BridgeBlobs : IDisposable
     internal const long DefaultMaximumUploadBytes = 256L * 1_048_576;
     internal const long DefaultMaximumWindowUploadBytes = 1_024L * 1_048_576;
     internal const int MaximumConcurrentUploads = 16;
+    // An upload whose body sends nothing for this long is dropped (408), on every host.
+    internal static readonly TimeSpan IdleTimeout = TimeSpan.FromSeconds(30);
+    // The default of MaximumRetainedBlobs.
+    internal const int DefaultMaximumRetainedBlobs = 1_024;
     internal static readonly TimeSpan UnclaimedLifetime = TimeSpan.FromMinutes(10);
     // The response headers of every blob. Active content (HTML, SVG) never runs in the application's origin.
     internal const string ContentSecurityPolicy = "default-src 'none'; img-src data:; media-src data:; style-src 'unsafe-inline'; sandbox";
@@ -43,10 +47,15 @@ internal sealed class BridgeBlobs : IDisposable
     private readonly Dictionary<string, string> _connectionByToken = new(StringComparer.Ordinal);
     private readonly Dictionary<string, string> _tokenByConnection = new(StringComparer.Ordinal);
     private readonly Dictionary<string, StoredUpload> _uploads = new(StringComparer.Ordinal);
+    // Route-held blobs (collection rows, results, interaction inputs), oldest first, for MaximumRetainedBlobs.
+    private readonly LinkedList<BlobEntry> _retained = new();
+    private readonly object _folderGate = new();
     private BridgeBlobEndpoint? _endpoint;
     private string? _directory;
     private long _storedBytes;
     private int _receiving;
+    // Increments when the Window closes: a store still in flight then changes no counter of the next session.
+    private int _generation;
     private bool _closed;
     private bool _unavailableLogged;
 
@@ -57,8 +66,26 @@ internal sealed class BridgeBlobs : IDisposable
     internal long MaximumUploadBytes { get; private set; } = DefaultMaximumUploadBytes;
     internal long MaximumWindowUploadBytes { get; private set; } = DefaultMaximumWindowUploadBytes;
 
-    // Where the uploads of the Window are stored; tests set a directory of their own.
-    internal string UploadRoot { get; set; } = Path.Combine(Path.GetTempPath(), "runic-uploads");
+    // The bases of the Window's upload folder (BridgeUploadFolder): null for the temporary directory and the user's
+    // cache. Tests set their own.
+    internal string? UploadBase { get; set; }
+    internal string? UploadFallbackBase { get; set; }
+
+    // The most blobs that routes hold without a state member (collection rows, results, interaction inputs) per Window.
+    // Beyond it the least recently written one is released (event 1208).
+    internal int MaximumRetainedBlobs { get; set; } = DefaultMaximumRetainedBlobs;
+
+    // The Window's upload folder, or null before its first upload; for tests.
+    internal string? UploadFolder
+    {
+        get { lock (_folderGate) return _directory; }
+    }
+
+    // The counters of uploads in flight and of their bytes, for tests.
+    internal (int Receiving, long StoredBytes) UploadCounters
+    {
+        get { lock (_gate) return (_receiving, _storedBytes); }
+    }
 
     internal BridgeBlobEndpoint? Endpoint
     {
@@ -108,6 +135,7 @@ internal sealed class BridgeBlobs : IDisposable
                 entry = new BlobEntry(NewToken(), blob);
                 _byBlob.Add(blob, entry);
                 _byToken.Add(entry.Token, entry);
+                blob.IssuedBy(this);
             }
             if (scope.Slot is { } slot) slot.Add(entry);
             else Hold(entry, new Holder(scope.Route, null));
@@ -151,6 +179,11 @@ internal sealed class BridgeBlobs : IDisposable
             {
                 entry.Holders.RemoveWhere(holder => ReferenceEquals(holder.Route, route));
                 if (entry.Holders.Count == 0) Release(entry);
+                else if (entry.Retained is { } node && !entry.Holders.Any(static other => other.Slot is null))
+                {
+                    _retained.Remove(node);
+                    entry.Retained = null;
+                }
             }
             foreach (var holder in _slots.Keys.Where(holder => ReferenceEquals(holder.Route, route)).ToArray())
                 _slots.Remove(holder);
@@ -182,11 +215,46 @@ internal sealed class BridgeBlobs : IDisposable
         entry.Holders.Add(holder);
         if (!_routes.TryGetValue(holder.Route, out var held)) _routes.Add(holder.Route, held = new(ReferenceEqualityComparer.Instance));
         held.Add(entry);
+        if (holder.Slot is not null) return;
+        // A route-held blob is the newest; beyond the cap the oldest one loses its route holders.
+        if (entry.Retained is { } node) _retained.Remove(node);
+        entry.Retained = _retained.AddLast(entry);
+        while (_retained.Count > MaximumRetainedBlobs && _retained.First is { } oldest)
+        {
+            var evicted = oldest.Value;
+            _retained.RemoveFirst();
+            evicted.Retained = null;
+            foreach (var routeHolder in evicted.Holders.Where(static candidate => candidate.Slot is null).ToArray())
+                Unhold(evicted, routeHolder);
+            BlobsLog.BlobEvicted(Logger, MaximumRetainedBlobs);
+        }
+    }
+
+    // Releases a blob's URL in this Window, whatever holds it (RunicBlob.Release).
+    internal void Release(RunicBlob blob)
+    {
+        lock (_gate)
+        {
+            if (!_byBlob.TryGetValue(blob, out var entry)) return;
+            foreach (var holder in entry.Holders.ToArray()) Unhold(entry, holder);
+            foreach (var slot in _slots.Where(pair => Array.IndexOf(pair.Value, entry) >= 0).Select(static pair => pair.Key).ToArray())
+            {
+                var remaining = _slots[slot].Where(candidate => candidate != entry).ToArray();
+                if (remaining.Length == 0) _slots.Remove(slot);
+                else _slots[slot] = remaining;
+            }
+            Release(entry);
+        }
     }
 
     private void Unhold(BlobEntry entry, Holder holder)
     {
         entry.Holders.Remove(holder);
+        if (entry.Retained is { } retained && !entry.Holders.Any(static other => other.Slot is null))
+        {
+            _retained.Remove(retained);
+            entry.Retained = null;
+        }
         if (!entry.Holders.Any(other => ReferenceEquals(other.Route, holder.Route)) &&
             _routes.TryGetValue(holder.Route, out var held))
         {
@@ -198,8 +266,14 @@ internal sealed class BridgeBlobs : IDisposable
 
     private void Release(BlobEntry entry)
     {
+        entry.Blob.Forget(this);
         _byBlob.Remove(entry.Blob);
         _byToken.Remove(entry.Token);
+        if (entry.Retained is { } node)
+        {
+            _retained.Remove(node);
+            entry.Retained = null;
+        }
     }
 
     // ---- Uploads ----
@@ -239,8 +313,8 @@ internal sealed class BridgeBlobs : IDisposable
     {
         lock (_gate)
         {
-            if (!_uploads.TryGetValue(id, out var upload)) return null;
-            if (connection is not null && upload.Connection != connection) return null;
+            // A decode without a connection never gets an upload: the binding to the connection cannot be lost.
+            if (connection is null || !_uploads.TryGetValue(id, out var upload) || upload.Connection != connection) return null;
             return new RunicUpload(upload.Id, upload.FileName, upload.ContentType, upload.Length, upload);
         }
     }
@@ -309,13 +383,17 @@ internal sealed class BridgeBlobs : IDisposable
         await WriteJsonAsync(exchange, 201, body).ConfigureAwait(false);
     }
 
+    // Stores a body as an upload of the connection. Every exit frees its slot, and every exit but a stored upload its
+    // reservation and its file, which is closed before it is deleted. A read that waits longer than IdleTimeout drops
+    // the upload, whatever the host: a body read is bounded by the token and by WaitAsync, so a host stream that
+    // ignores cancellation cannot hold the slot.
     private async Task<StoreOutcome> StoreCoreAsync(Stream body, long? declared, string? fileName, string? contentType,
         string connection, CancellationToken cancellationToken, bool simulated = false)
     {
         var limit = MaximumUploadBytes;
         if (declared > limit)
             return StoreOutcome.Rejected(413, "too-large", $"The upload is larger than the window's limit of {limit} bytes.");
-        string directory;
+        int generation;
         lock (_gate)
         {
             if (_closed) return StoreOutcome.Rejected(410, "released", "The window closed.");
@@ -324,92 +402,132 @@ internal sealed class BridgeBlobs : IDisposable
             if (_storedBytes + (declared ?? 0) > MaximumWindowUploadBytes)
                 return StoreOutcome.Rejected(507, "capacity", "The window's uploads that no command claimed use its whole upload space.");
             _receiving++;
-            directory = _directory ??= CreateDirectory();
+            generation = _generation;
         }
-        var id = RunicUploadIds.Create();
-        var path = Path.Combine(directory, id);
-        long received = 0;
-        var reserved = 0L;
+        long reserved = 0;
+        string? path = null;
+        FileStream? file = null;
+        var kept = false;
+        StoreOutcome outcome;
         try
         {
+            var id = RunicUploadIds.Create();
+            path = Path.Combine(WindowFolder(), id);
+            // CreateNew is O_CREAT | O_EXCL: it never follows a link planted at the path. The handle stays open for the
+            // upload's lifetime and its reads go through it, so a later change of the path cannot redirect them.
             var options = new FileStreamOptions
             {
                 Mode = FileMode.CreateNew,
-                Access = FileAccess.Write,
-                Share = FileShare.None,
+                Access = FileAccess.ReadWrite,
+                Share = FileShare.Delete,
                 Options = FileOptions.Asynchronous,
                 BufferSize = 0,
             };
             if (!OperatingSystem.IsWindows()) options.UnixCreateMode = UnixFileMode.UserRead | UnixFileMode.UserWrite;
-            await using (var file = new FileStream(path, options))
+            file = new FileStream(path, options);
+            using var idle = new CancellationTokenSource(Timeout.InfiniteTimeSpan, TimeProvider);
+            using var reading = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, idle.Token);
+            var buffer = new byte[81_920];
+            long received = 0;
+            outcome = default;
+            while (true)
             {
-                var buffer = new byte[81_920];
-                while (true)
+                idle.CancelAfter(IdleTimeout);
+                int read;
+                try
                 {
-                    var read = await body.ReadAsync(buffer, cancellationToken).ConfigureAwait(false);
-                    if (read == 0) break;
-                    received += read;
-                    if (received > limit)
-                        return Fail(StoreOutcome.Rejected(413, "too-large", $"The upload is larger than the window's limit of {limit} bytes."));
-                    lock (_gate)
+                    read = await body.ReadAsync(buffer, reading.Token).AsTask().WaitAsync(reading.Token).ConfigureAwait(false);
+                }
+                catch (OperationCanceledException) when (idle.IsCancellationRequested && !cancellationToken.IsCancellationRequested)
+                {
+                    outcome = StoreOutcome.Rejected(408, "timeout", $"The upload sent nothing for {IdleTimeout.TotalSeconds:0} seconds.");
+                    break;
+                }
+                idle.CancelAfter(Timeout.InfiniteTimeSpan);
+                if (read == 0) break;
+                received += read;
+                if (received > limit)
+                {
+                    outcome = StoreOutcome.Rejected(413, "too-large", $"The upload is larger than the window's limit of {limit} bytes.");
+                    break;
+                }
+                lock (_gate)
+                {
+                    if (_closed || generation != _generation)
+                        outcome = StoreOutcome.Rejected(410, "released", "The window closed.");
+                    else if (_storedBytes + read > MaximumWindowUploadBytes)
+                        outcome = StoreOutcome.Rejected(507, "capacity", "The window's uploads that no command claimed use its whole upload space.");
+                    else
                     {
-                        if (_closed) return Fail(StoreOutcome.Rejected(410, "released", "The window closed."));
-                        if (_storedBytes + read > MaximumWindowUploadBytes)
-                            return Fail(StoreOutcome.Rejected(507, "capacity", "The window's uploads that no command claimed use its whole upload space."));
                         _storedBytes += read;
                         reserved += read;
                     }
-                    await file.WriteAsync(buffer.AsMemory(0, read), cancellationToken).ConfigureAwait(false);
                 }
+                if (outcome.Reason is not null) break;
+                await file.WriteAsync(buffer.AsMemory(0, read), cancellationToken).ConfigureAwait(false);
             }
-            if (declared is { } expected && expected != received)
-                return Fail(StoreOutcome.Rejected(400, "invalid-request", "The upload ended before its Content-Length."));
-            var type = contentType is { Length: > 0 } && IsMediaType(contentType) ? contentType : "application/octet-stream";
-            var upload = new StoredUpload(this, id, connection, RunicUpload.SanitizeFileName(fileName ?? "upload"), type, received, path);
-            lock (_gate)
+            if (outcome.Reason is null && declared is { } expected && expected != received)
+                outcome = StoreOutcome.Rejected(400, "invalid-request", "The upload ended before its Content-Length.");
+            if (outcome.Reason is null)
             {
-                _receiving--;
-                if (_closed || !simulated && !_tokenByConnection.ContainsKey(connection))
+                await file.FlushAsync(cancellationToken).ConfigureAwait(false);
+                var type = contentType is { Length: > 0 } && IsMediaType(contentType) ? contentType : "application/octet-stream";
+                var upload = new StoredUpload(this, id, connection, RunicUpload.SanitizeFileName(fileName ?? "upload"), type, received, path, file);
+                lock (_gate)
                 {
-                    _storedBytes -= reserved;
-                    upload.Delete(Logger);
-                    return StoreOutcome.Rejected(410, "released", "The connection closed.");
+                    if (_closed || generation != _generation || !simulated && !_tokenByConnection.ContainsKey(connection))
+                        outcome = StoreOutcome.Rejected(410, "released", "The connection closed.");
+                    else
+                    {
+                        _uploads.Add(id, upload);
+                        upload.Expiry = TimeProvider.CreateTimer(static state => ((StoredUpload)state!).Expire(), upload,
+                            UnclaimedLifetime, Timeout.InfiniteTimeSpan);
+                        kept = true;
+                        outcome = StoreOutcome.Stored(upload);
+                    }
                 }
-                _uploads.Add(id, upload);
-                upload.Expiry = TimeProvider.CreateTimer(static state => ((StoredUpload)state!).Expire(), upload,
-                    UnclaimedLifetime, Timeout.InfiniteTimeSpan);
             }
-            return StoreOutcome.Stored(upload);
         }
-        catch (Exception error) when (error is OperationCanceledException or IOException or UnauthorizedAccessException)
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
-            if (error is not OperationCanceledException) BlobsLog.UploadReceiveFailed(Logger, error, error.GetType().Name);
-            return Fail(error is OperationCanceledException
-                ? StoreOutcome.Rejected(400, "cancelled", "The upload was cancelled.")
-                : StoreOutcome.Rejected(500, "failed", "The upload could not be stored."));
+            outcome = StoreOutcome.Rejected(400, "cancelled", "The upload was cancelled.");
         }
-
-        StoreOutcome Fail(StoreOutcome outcome)
+        catch (Exception error)
+        {
+            // A client that went away (HttpListenerException on CS-WebUI, IOException elsewhere), a full disk, or a
+            // host stream that failed in another way: every one frees what the upload took.
+            BlobsLog.UploadReceiveFailed(Logger, error, error.GetType().Name);
+            outcome = StoreOutcome.Rejected(500, "failed", "The upload could not be stored.");
+        }
+        finally
         {
             lock (_gate)
             {
-                _receiving--;
-                _storedBytes -= reserved;
+                if (generation == _generation)
+                {
+                    _receiving--;
+                    if (!kept) _storedBytes -= reserved;
+                }
             }
-            TryDelete(path, Logger);
-            return outcome;
+            if (!kept)
+            {
+                // Closed first: Windows cannot delete a file that is still open.
+                if (file is not null) await file.DisposeAsync().ConfigureAwait(false);
+                if (path is not null && File.Exists(path)) TryDelete(path, Logger);
+            }
         }
+        return outcome;
     }
 
-    private string CreateDirectory()
+    // The Window's upload folder (BridgeUploadFolder), created on first use and again when it was removed, such as by
+    // the sweep of another process.
+    private string WindowFolder()
     {
-        var root = UploadRoot;
-        if (OperatingSystem.IsWindows()) Directory.CreateDirectory(root);
-        else Directory.CreateDirectory(root, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
-        var directory = Path.Combine(root, NewToken());
-        if (OperatingSystem.IsWindows()) Directory.CreateDirectory(directory);
-        else Directory.CreateDirectory(directory, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
-        return directory;
+        lock (_folderGate)
+        {
+            if (_directory is { } existing && BridgeUploadFolder.IsPrivateDirectory(existing)) return existing;
+            return _directory = BridgeUploadFolder.Create(UploadBase, UploadFallbackBase, Logger);
+        }
     }
 
     // Takes an unclaimed upload out of the Window; true when this call took it.
@@ -445,7 +563,8 @@ internal sealed class BridgeBlobs : IDisposable
     internal async Task ServeBlobAsync(string token, IBridgeBlobExchange exchange)
     {
         exchange.SetResponseHeader("X-Content-Type-Options", "nosniff");
-        exchange.SetResponseHeader("Content-Security-Policy", ContentSecurityPolicy);
+        // Appended: a host's own policy, such as Runic Desktop's frame-ancestors, stays in force beside it.
+        exchange.AppendResponseHeader("Content-Security-Policy", ContentSecurityPolicy);
         exchange.SetResponseHeader("Cross-Origin-Resource-Policy", "same-site");
         exchange.SetResponseHeader("Referrer-Policy", "no-referrer");
         if (!IsToken(token) || !TryResolve(token, out var blob))
@@ -607,7 +726,9 @@ internal sealed class BridgeBlobs : IDisposable
             writer.WriteStartObject();
             writer.WriteBoolean("ok", false);
             writer.WriteStartObject("error");
-            writer.WriteString("kind", reason is "released" ? "released" : "rejected");
+            // The kinds of the spec: released for a closed connection or window, failed when the host could not store
+            // the upload, rejected for everything the request itself got wrong.
+            writer.WriteString("kind", reason switch { "released" => "released", "failed" => "failed", _ => "rejected" });
             writer.WriteString("reason", reason);
             writer.WriteString("message", message);
             writer.WriteEndObject();
@@ -644,18 +765,26 @@ internal sealed class BridgeBlobs : IDisposable
         {
             if (_closed) return;
             _closed = true;
+            foreach (var blob in _byBlob.Keys) blob.Forget(this);
             _byBlob.Clear();
             _byToken.Clear();
             _slots.Clear();
             _routes.Clear();
             _connectionByToken.Clear();
             _tokenByConnection.Clear();
+            _retained.Clear();
             uploads = [.. _uploads.Values];
             _uploads.Clear();
+            // Stores in flight belong to this generation and change no counter of a later session.
+            _generation++;
             _storedBytes = 0;
+            _receiving = 0;
+            _unavailableLogged = false;
+        }
+        lock (_folderGate)
+        {
             directory = _directory;
             _directory = null;
-            _unavailableLogged = false;
         }
         foreach (var upload in uploads)
         {
@@ -663,7 +792,7 @@ internal sealed class BridgeBlobs : IDisposable
             upload.Delete(Logger);
         }
         if (directory is null) return;
-        // A claimed upload that is still being read is deleted when its stream closes (DeleteOnClose).
+        // A claimed upload that is still being read keeps its open handle; it is deleted when its stream closes.
         try { Directory.Delete(directory, recursive: true); }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException)
         {
@@ -679,6 +808,8 @@ internal sealed class BridgeBlobs : IDisposable
         internal string Token { get; } = token;
         internal RunicBlob Blob { get; } = blob;
         internal HashSet<Holder> Holders { get; } = [];
+        // Its node in the route-held list, while a route holds it without a state member.
+        internal LinkedListNode<BlobEntry>? Retained { get; set; }
     }
 
     private readonly record struct StoreOutcome(StoredUpload? Upload, int Status, string? Reason, string? Message)
@@ -716,13 +847,16 @@ internal interface IBridgeBlobExchange
     string? ContentType { set; }
     long? ContentLength { set; }
     void SetResponseHeader(string name, string value);
+    // Adds a header beside one of the same name, as a second Content-Security-Policy.
+    void AppendResponseHeader(string name, string value);
     Stream ResponseBody { get; }
     CancellationToken RequestAborted { get; }
 }
 
-// An upload stored in the Window's folder.
+// An upload stored in the Window's folder. The file stays open from its creation until it is deleted, and every read
+// goes through that handle, never through the path (BridgeUploadFolder).
 internal sealed class StoredUpload(BridgeBlobs owner, string id, string connection, string fileName, string contentType,
-    long length, string path) : IRunicUploadContent
+    long length, string path, FileStream file) : IRunicUploadContent
 {
     private int _deleted;
     internal string Id { get; } = id;
@@ -737,23 +871,53 @@ internal sealed class StoredUpload(BridgeBlobs owner, string id, string connecti
 
     public bool TryClaim() => owner.Take(this);
 
-    public Stream OpenRead() => new FileStream(Path, new FileStreamOptions
-    {
-        Mode = FileMode.Open,
-        Access = FileAccess.Read,
-        Share = FileShare.Delete,
-        Options = FileOptions.Asynchronous | FileOptions.SequentialScan | FileOptions.DeleteOnClose,
-    });
+    // A seekable stream of the upload's own handle; disposing it deletes the upload.
+    public Stream OpenRead() => new UploadReadStream(this, file.SafeFileHandle, Length);
 
-    public async ValueTask SaveAsAsync(string path, bool overwrite, CancellationToken cancellationToken)
+    // Renames the file when its path is still the file this upload created and the destination then is a plain file;
+    // otherwise copies the content from the open handle. Either way the upload is deleted afterwards.
+    public async ValueTask SaveAsAsync(string destination, bool overwrite, CancellationToken cancellationToken)
     {
         try
         {
-            await Task.Run(() => File.Move(Path, path, overwrite), cancellationToken).ConfigureAwait(false);
+            if (BridgeUploadFolder.IsPlainFile(Path) && new FileInfo(Path).Length == Length)
+            {
+                // A rename on one volume, a copy otherwise; not cancellable once it started.
+                await Task.Run(() => File.Move(Path, destination, overwrite), cancellationToken).ConfigureAwait(false);
+                if (BridgeUploadFolder.IsPlainFile(destination) && new FileInfo(destination).Length == Length) return;
+                // The path was replaced meanwhile: write what this upload received instead.
+                File.Delete(destination);
+            }
+            await CopyAsync(destination, overwrite, cancellationToken).ConfigureAwait(false);
         }
         finally
         {
-            if (File.Exists(Path)) Delete(owner.Logger);
+            Delete(owner.Logger);
+        }
+    }
+
+    private async Task CopyAsync(string destination, bool overwrite, CancellationToken cancellationToken)
+    {
+        var created = false;
+        try
+        {
+            await using var target = new FileStream(destination, overwrite ? FileMode.Create : FileMode.CreateNew, FileAccess.Write,
+                FileShare.None, 0, FileOptions.Asynchronous);
+            created = true;
+            var buffer = new byte[81_920];
+            for (long offset = 0; offset < Length;)
+            {
+                var read = await RandomAccess.ReadAsync(file.SafeFileHandle, buffer, offset, cancellationToken).ConfigureAwait(false);
+                if (read == 0) break;
+                await target.WriteAsync(buffer.AsMemory(0, read), cancellationToken).ConfigureAwait(false);
+                offset += read;
+            }
+        }
+        catch when (created)
+        {
+            // A cancelled or failed copy leaves no partial destination.
+            BridgeBlobs.TryDelete(destination, owner.Logger);
+            throw;
         }
     }
 
@@ -764,11 +928,76 @@ internal sealed class StoredUpload(BridgeBlobs owner, string id, string connecti
 
     internal void Expire() => owner.Expired(this);
 
+    // Closes the handle, then deletes the path: Windows cannot delete an open file. Deleting a path that was replaced
+    // by a link removes the link, never its target.
     internal void Delete(ILogger logger)
     {
         if (Interlocked.Exchange(ref _deleted, 1) != 0) return;
-        BridgeBlobs.TryDelete(Path, logger);
+        file.Dispose();
+        if (File.Exists(Path) || new FileInfo(Path).LinkTarget is not null) BridgeBlobs.TryDelete(Path, logger);
     }
+
+    // Reads the upload through its handle at a position of its own.
+    private sealed class UploadReadStream(StoredUpload owner, Microsoft.Win32.SafeHandles.SafeFileHandle handle, long length) : Stream
+    {
+        private long _position;
+        private int _disposed;
+
+        public override bool CanRead => Volatile.Read(ref _disposed) == 0;
+        public override bool CanSeek => Volatile.Read(ref _disposed) == 0;
+        public override bool CanWrite => false;
+        public override long Length => length;
+
+        public override long Position
+        {
+            get => _position;
+            set => _position = value >= 0 ? value : throw new ArgumentOutOfRangeException(nameof(value));
+        }
+
+        public override int Read(byte[] buffer, int offset, int count) => Read(buffer.AsSpan(offset, count));
+
+        public override int Read(Span<byte> buffer)
+        {
+            ObjectDisposedException.ThrowIf(_disposed != 0, this);
+            if (_position >= length) return 0;
+            var read = RandomAccess.Read(handle, buffer[..(int)Math.Min(buffer.Length, length - _position)], _position);
+            _position += read;
+            return read;
+        }
+
+        public override async ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default)
+        {
+            ObjectDisposedException.ThrowIf(_disposed != 0, this);
+            if (_position >= length) return 0;
+            var read = await RandomAccess.ReadAsync(handle, buffer[..(int)Math.Min(buffer.Length, length - _position)], _position,
+                cancellationToken).ConfigureAwait(false);
+            _position += read;
+            return read;
+        }
+
+        public override Task<int> ReadAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken) =>
+            ReadAsync(buffer.AsMemory(offset, count), cancellationToken).AsTask();
+
+        public override long Seek(long offset, SeekOrigin origin) => Position = origin switch
+        {
+            SeekOrigin.Begin => offset,
+            SeekOrigin.Current => _position + offset,
+            SeekOrigin.End => length + offset,
+            _ => throw new ArgumentOutOfRangeException(nameof(origin)),
+        };
+
+        public override void Flush() { }
+        public override void SetLength(long value) => throw new NotSupportedException();
+        public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
+
+        protected override void Dispose(bool disposing)
+        {
+            if (Interlocked.Exchange(ref _disposed, 1) == 0) owner.Delete(owner.Logger);
+            base.Dispose(disposing);
+        }
+    }
+
+    private ILogger Logger => owner.Logger;
 }
 
 // The Window, route and holder that the blobs and uploads a route encodes or decodes belong to. ViewModelBridge
@@ -855,4 +1084,8 @@ internal static partial class BlobsLog
     [LoggerMessage(EventId = 1207, EventName = "BlobEndpointFailed", Level = LogLevel.Warning,
         Message = "The window's blob endpoint could not start: {ErrorType}. Blobs and uploads are unavailable.")]
     internal static partial void EndpointFailed(ILogger logger, Exception exception, string errorType);
+
+    [LoggerMessage(EventId = 1208, EventName = "BlobEvicted", Level = LogLevel.Warning,
+        Message = "The window holds more than {Maximum} blobs of collection rows, results and interactions, so the oldest one's URL was released.")]
+    internal static partial void BlobEvicted(ILogger logger, int maximum);
 }
