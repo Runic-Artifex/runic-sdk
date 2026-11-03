@@ -68,10 +68,17 @@ internal sealed class TestingSurfaceTests
     [Test]
     public void AsyncMembersReturnTasksAndTakeTokens()
     {
+        // The platform fakes implement Runic.Platform's interfaces, which set their shape.
+        var platformMembers = Testing.GetExportedTypes()
+            .Where(static type => !type.IsInterface)
+            .SelectMany(static type => type.GetInterfaces()
+                .Where(static contract => contract.Namespace == "Runic.Platform")
+                .SelectMany(contract => type.GetInterfaceMap(contract).TargetMethods))
+            .ToHashSet();
         foreach (var method in Testing.GetExportedTypes()
                      .SelectMany(type => type.GetMethods(BindingFlags.Public | BindingFlags.Instance | BindingFlags.Static | BindingFlags.DeclaredOnly))
                      .Where(method => method.Name.EndsWith("Async", StringComparison.Ordinal)
-                         && typeof(IDisposable) != method.ReturnType))
+                         && typeof(IDisposable) != method.ReturnType && !platformMembers.Contains(method)))
         {
             var name = $"{method.DeclaringType!.Name}.{method.Name}";
             var valueTask = method.ReturnType == typeof(ValueTask) || method.ReturnType.IsGenericType
@@ -81,6 +88,7 @@ internal sealed class TestingSurfaceTests
             Require(valueTask == name is "InMemoryBridgeTransport.BroadcastAsync"
                     or "InMemoryBridgeTransport.SendAsync" or "InMemoryBridgeTransport.RequestAsync"
                     or "RunicServeOnlyApplication.DisposeAsync" or "RunicTestNavigationEntry`1.DisposeAsync"
+                    or "RunicTestPlatform.DisposeAsync" or "RunicTestNotifications.DisposeAsync"
                     or "RunicTestRowSource`2.CountAsync" or "RunicTestRowSource`2.LoadAsync" or "RunicTestRowSource`2.IndexOfAsync",
                 $"{name} returns {method.ReturnType.Name}.");
             var parameters = method.GetParameters();
