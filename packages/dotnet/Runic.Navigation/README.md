@@ -927,6 +927,21 @@ async Task OpenLinksAsync(IEnumerable<Uri> links)
   saves and restores its tabs and opens `document-tabs://documents/2/info`
   links from the command line, a second instance and a notification.
 
+### The window's Back
+
+`navigator.BackAsync()` (since 0.16) goes back where a window's Back button, the
+mouse's Back button or Alt+Left should: in the innermost presented region that
+can. It looks at the regions and selections no entry owns, the most recently
+created first, and in each region at the regions and selections its current
+entry's content owns, the most recently created first, before the region
+itself. Of a selection it follows only the selected region. The first region
+whose current entry is a `PushForResult` entry dismisses it, as a dialog closes
+on Back; otherwise the first region with history goes `BackAsync`. With none,
+the result is `Rejected(NoHistory)`. A web View page maps the mouse and keyboard
+to it with `installBackNavigation()`; see
+[Back and the URL](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Application.Views/README.md#back-and-the-url).
+WPF apps keep `NavigationHost`'s `BrowseBack` for their own region.
+
 ### Presenting regions
 
 A host presents a region's `Current`. In Runic.Application.Views, a get-only

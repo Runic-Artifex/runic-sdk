@@ -55,6 +55,28 @@ their configuration through the `sveltekit()` Vite plugin, Svelte 5.57.1 or
 later, and Node 24.18 or later 24.x, or Node 26. The adapter emits a relocatable page. Use `mode: "spa"` with
 `router: { type: "hash" }` for a Desktop SPA.
 
+**Back and the URL.** `installBackNavigation()` from `@runic-artifex/views`
+works in a SvelteKit page as in any other. Don't call `installNavigationPath()`
+with `router: { type: "hash" }`: SvelteKit's router owns the fragment, and the
+two would fight over it. Let SvelteKit's router drive the .NET path region
+instead (since 0.16):
+
+```ts
+// +layout.svelte
+import { afterNavigate, goto } from "$app/navigation";
+import { onNavigationPath, openNavigationPath } from "@runic-artifex/views";
+
+afterNavigate(({ to }) => {
+  if (to?.url.hash.startsWith("#/") && to.url.hash.length > 2) void openNavigationPath(to.url.hash.slice(2));
+});
+onNavigationPath(({ path, operation }) => {
+  if (path !== null) void goto(`#/${path}`, { replaceState: operation !== "push" });
+});
+```
+
+The page's routes are SvelteKit's; the .NET route map only has to accept the
+paths the page navigates to. Nothing in this package changed for it.
+
 The options depend on the mode, and a field the mode would ignore does not
 type-check:
 

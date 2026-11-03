@@ -629,3 +629,12 @@ watch(() => [viewport.value.start, viewport.value.size] as const, ([start, size]
   </div>
 </template>
 ```
+
+## Back and the URL
+
+The package re-exports `installBackNavigation`, `installNavigationPath`,
+`navigateBack`, `openNavigationPath` and `onNavigationPath` from
+`@runic-artifex/views` (since 0.16). Call the installs once where the page
+starts, before or after mounting: the mouse's Back button and Alt+Left then go
+back in the .NET window, and `#/customers/42` follows its path region. See
+[Back and the URL](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/web/views/README.md#back-and-the-url).
