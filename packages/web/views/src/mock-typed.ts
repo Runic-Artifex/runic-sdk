@@ -133,9 +133,21 @@ export interface MockTypedInteraction<TInput, TOutput> {
     | { readonly kind: "cancelled" | "failed" | "unhandled" }>;
 }
 
+/** A view request (view-requests/1) that the ViewModel raises for the browser to handle. */
+export interface MockTypedViewRequest<TInput> {
+  /** Whether an open client presentation of this View currently registered a handler for it. */
+  readonly handled: boolean;
+  /**
+   * Raises the request, as the ViewModel's `ViewRequest.Raise(input)` does: pushes it to every presentation of this
+   * View that registered a handler, and returns how many it reached. 0 means that none handles it; the request is
+   * not kept or replayed. Inside a command handler or `batch`, it is pushed after their state changes.
+   */
+  raise(input: TInput): number;
+}
+
 /** A client method name a failure can target, such as `save`, `startSave`, `setTitle` or `canSetViewport`. */
 export type MockMethodName<TClient> = Exclude<keyof TClient & string,
-  "snapshot" | "subscribe" | "dispose" | "interactions" | "fieldBaseline" | `recover${string}`>;
+  "snapshot" | "subscribe" | "dispose" | "interactions" | "requests" | "fieldBaseline" | `recover${string}`>;
 
 /** The typed mock of one generated client, created by a generated `mock{Name}()`. */
 export interface MockTypedView<TState, TClient, TKind extends string = string> {
@@ -212,6 +224,11 @@ export interface MockTypedViewSpec {
   /** The View's operation contract, `{view}:{fingerprint}`. */
   readonly contract?: string;
   readonly interactions?: Readonly<Record<string, { readonly encodeInput: (value: unknown) => unknown; readonly decodeOutput: (wire: unknown) => unknown }>>;
+  /**
+   * View requests by name (view-requests/1): `encodeInput` encodes a typed input as its wire value. With `contract`,
+   * a registration of another contract is `unsupported`; without it, any contract of the name is accepted.
+   */
+  readonly requests?: Readonly<Record<string, { readonly encodeInput: (value: unknown) => unknown; readonly contract?: string }>>;
 }
 
 /** The loose shape of a generated mock definition. */
@@ -370,6 +387,8 @@ export function mockTypedView(bridge: MockBridge, spec: MockTypedViewSpec, defin
     operations,
     ...(spec.regions ? { regions } : {}),
     ...(spec.contract ? { contract: spec.contract } : {}),
+    ...(spec.requests ? { requests: Object.fromEntries(Object.entries(spec.requests)
+      .map(([name, request]) => [name, request.contract === undefined ? {} : { contract: request.contract }])) } : {}),
     streams: Object.values(spec.operations ?? {}).filter(plan => plan.stream).map(plan => plan.member),
   });
 
@@ -414,6 +433,13 @@ export function mockTypedView(bridge: MockBridge, spec: MockTypedViewSpec, defin
       },
     };
   }
+  const viewRequests: Record<string, MockTypedViewRequest<unknown>> = {};
+  for (const [name, codec] of Object.entries(spec.requests ?? {})) {
+    viewRequests[name] = {
+      get handled() { return raw.requestHandlers.includes(name); },
+      raise: input => raw.raise(name, codec.encodeInput(input)),
+    };
+  }
   mockBridgeInternals(bridge);
 
   const view: MockTypedView<unknown, unknown> & Record<string, unknown> = {
@@ -446,6 +472,7 @@ export function mockTypedView(bridge: MockBridge, spec: MockTypedViewSpec, defin
     collections,
     operations: operationLog,
     interactions,
+    requests: viewRequests,
   };
   return view;
 }

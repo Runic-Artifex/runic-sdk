@@ -274,6 +274,38 @@ already have. A `RunicViewDriver<T>` has:
   and the text `Texts` (`RunicTextChange`)), or `Failure`. `Revision` names the
   revision of each.
 
+### Several pages of one window
+
+Each driver sends its requests on the transport's test connection,
+`connection-1` of client `client-1`. `host.Root.ForConnection(connectionKey,
+clientKey)` (since 0.16) returns a driver of the same route on another
+connection, as a second browser tab of a multi-client CS-WebUI window. The
+drivers it returns from `View<T>`, and the operations it starts, use that
+connection too. A connection sends its `hello` with its first request, and
+`host.Transport.CloseConnection(key)` closes it as a page that leaves does.
+
+The window's `IRunicConnections` (see
+[Who is connected, and who called](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Application.Views/README.md#who-is-connected-and-who-called))
+then lists the connections, and a command runs with its driver's connection as
+`Caller`. `host.Connections` reads the same list. A window opened with
+`RunicWindowTestHost.Create(services)` binds the `IRunicConnections` of
+`services`, such as the scope the ViewModel took it from:
+
+```csharp
+var bob = host.Root.ForConnection("bob-tab", clientKey: "bob");
+(await host.Root.ExecuteAsync(vm => vm.ClaimCommand)).ThrowIfFailed();
+(await bob.ExecuteAsync(vm => vm.ClaimCommand)).ThrowIfFailed();
+Assert.Equal(["connection-1", "bob-tab"], host.Connections.Current.Select(c => c.ConnectionKey));
+
+host.Transport.CloseConnection("bob-tab");
+await host.Content.ModelContext!.InvokeAsync(() => { }); // Disconnected runs in a model turn
+Assert.Single(host.Connections.Current);
+```
+
+`Connected` and `Disconnected` are raised in a turn of the window's model
+context: a command's reply comes after the `Connected` of its connection, and
+after `CloseConnection` a test awaits a model turn before it reads the list.
+
 ### Navigation
 
 A `NavigationRegion<TContent>` slot is an ordinary content slot, so the same host
@@ -403,7 +435,34 @@ those of the base protocol.
 
 ### Interactions
 
-A test answers a ReactiveUI `Interaction`, such as the question of a
+A test can act as the page: `RunicViewDriver.MountPresentation()` (since 0.16) opens a
+presentation that answers the ViewModel's questions and interactions with the
+handlers the test registers, and receives its view requests:
+
+```csharp
+using var page = await host.Root.MountPresentationAsync();
+page.Handle(vm => vm.ConfirmDiscard, request => request.Title == "Draft");           // a ViewQuestion<,>
+page.Handle<DiscardNoteRequest, bool>(vm => vm.ConfirmLeave, request => true);        // a ReactiveUI Interaction<,>
+(await host.Root.ExecuteAsync(vm => vm.DiscardCommand)).ThrowIfFailed();
+
+var focus = await page.NextViewRequestAsync();
+Assert.Equal(new FocusTarget("title"), focus.Input<FocusTarget>());
+Assert.Empty(page.TakeViewRequests(vm => vm.Focus));
+```
+
+The presentation handles every `ViewRequest<T>` of the ViewModel from the
+moment it opens, so the requests reach it by their delivery; one that
+`Mount()` opened handles none. `Handle` registers one more handler, as the
+generated client's `interactions.<name>.handle` does, and replaces an earlier
+one of the same member; `HandleAsync` takes an asynchronous answer, which is
+cancelled when .NET cancels the request. An answer that throws answers
+`failed`. `RunicViewRequest.Input<T>()` reads the input with System.Text.Json's
+web defaults; `InputJson` is the wire JSON. Pass `clientKey` and
+`connectionKey` to `MountPresentation` to act as one of several pages: a command sent
+on that connection reaches only its presentation. Dispose the presentation to
+stop answering, or call `Unmount()`.
+
+A test can also answer a ReactiveUI `Interaction`, such as the question of a
 `ReactiveLeaveConfirmation.WithInteraction` guard, with a .NET handler on the
 ViewModel. ReactiveUI asks the latest handler first, so a handler the test
 registers answers before a fallback registered in the ViewModel's constructor;
@@ -420,26 +479,26 @@ using var handler = detail.ConfirmDiscard.RegisterHandler(context =>
 });
 ```
 
-This is the supported test path for a question that a web View answers in the
-browser. The host does not run the generated TypeScript client, and a
-driver's `Mount()` opens a presentation without registering any
-interaction handler, so the question never waits for a browser: it goes to
-the .NET handlers. The test still covers everything the ViewModel decides: the
-guard, the prompt's input, and what each answer keeps or discards. With no
-handler that answers, the departure fails closed with ReactiveUI's
-`UnhandledInteractionException`, as in the application.
+A driver's `Mount()` opens a presentation without registering any
+interaction handler, so with only mounted presentations a question never waits
+for a browser: it goes to the .NET handlers. With no handler that answers, the
+departure fails closed with ReactiveUI's `UnhandledInteractionException`, as
+in the application.
 
 The browser's side is tested with the frontend: the generated typed mock's
 `interactions.<name>.request(input)` resolves with the answer of the handler
-the View registered with `interactions.<name>.handle(...)`; see the
+the View registered with `interactions.<name>.handle(...)`, and
+`requests.<name>.raise(input)` calls the View's `requests.<name>.handle(...)`
+handler; see the
 [Testing guide](https://github.com/Runic-Artifex/runic-sdk/tree/main/packages/web/views#testing).
 Which View is asked for which departure, and the fallback when none is
 mounted, are covered by the SDK's own tests and described in
 [Leave confirmation in a web View](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Application.Views.ReactiveUI/README.md#leave-confirmation-in-a-web-view).
 
-CommunityToolkit.Mvvm has no interaction type: a Toolkit guard asks in a
-dialog region, and a test answers it by executing the dialog's command through
-its driver, as in [Navigation](#navigation).
+A CommunityToolkit ViewModel asks the page with a `ViewQuestion<TInput, TOutput>`,
+which `Handle` answers as above; a Toolkit guard that asks in a dialog region
+is answered by executing the dialog's command through its driver, as in
+[Navigation](#navigation).
 
 ### Collections and frames
 

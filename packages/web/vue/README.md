@@ -605,6 +605,44 @@ has the .NET side and which View answers which departure. In a frontend test,
 the generated mock's `interactions.<name>.request(input)` resolves with the
 registered handler's answer; see the [Testing guide](https://github.com/Runic-Artifex/runic-sdk/tree/main/packages/web/views#testing).
 
+## View requests
+
+A `ViewRequest<T>` property of the ViewModel asks the View for a one-way
+presentation action, such as focusing a field or showing a toast, and is
+`client.requests.<name>` on the generated client. Register the page's
+handler in `watchEffect`: `handle((input, { signal }) => …)` returns the function
+that removes it, so pass that to `onCleanup`, and Vue removes the handler when
+the client changes or the component unmounts:
+
+```vue
+<script setup lang="ts">
+import { useTemplateRef, watchEffect } from "vue";
+import { useView } from "@runic-artifex/vue";
+import type { EditPageReference } from "./generated/edit.js";
+
+const props = defineProps<{ page: EditPageReference }>();
+const { client } = useView(() => props.page);
+const name = useTemplateRef<HTMLInputElement>("name");
+watchEffect(onCleanup => {
+  const remove = client.value?.requests.focus.handle(({ member }) => {
+    if (member === "name") name.value?.focus();
+  });
+  if (remove) onCleanup(remove);
+});
+</script>
+
+<template><input ref="name"></template>
+```
+
+`input` is typed from the request's `ViewRequest<T>`. The handler runs once
+the page painted the state the request was raised with, so the field of that
+state is rendered; `signal` aborts when the handler is replaced or removed, the
+client is disposed or the connection is lost. A request is never replayed: one
+raised before the effect ran, or while the page is disconnected, is not
+delivered later. See [View requests](https://github.com/Runic-Artifex/runic-sdk/tree/main/packages/web/views#view-requests) for the rules, and in a frontend
+test raise one with the generated mock's `requests.<name>.raise(input)` (the
+[Testing guide](https://github.com/Runic-Artifex/runic-sdk/tree/main/packages/web/views#testing)).
+
 ## `useCollectionViewport(options)`
 
 Follows a fixed-row-height scroll container and returns `{ viewport, attach }`.

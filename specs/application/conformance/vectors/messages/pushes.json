@@ -343,6 +343,43 @@
       "operation": "read-push",
       "input": {"encoding":"json","value":{"kind":"closing"}},
       "expect": {"result":"valid"}
+    },
+    {
+      "id": "messages.pushes.view-request",
+      "description": "view-requests/1: a one-way request, handled once the page painted the route at the revision.",
+      "operation": "read-push",
+      "input": {"encoding":"json","value":{"kind":"view-request","route":"notes","presentation":"p-1","revision":8,"name":"focus","contract":"Tests.Notes:fp-1:request:Focus","input":{"member":"title"}}},
+      "expect": {"result":"valid"}
+    },
+    {
+      "id": "messages.pushes.view-request-with-null-input",
+      "operation": "read-push",
+      "input": {"encoding":"json","value":{"kind":"view-request","route":"notes","presentation":"p-1","revision":8,"name":"scrollToTop","contract":"Tests.Notes:fp-1:request:ScrollToTop","input":null}},
+      "expect": {"result":"valid"}
+    },
+    {
+      "id": "messages.pushes.view-request-without-a-revision",
+      "operation": "read-push",
+      "input": {"encoding":"json","value":{"kind":"view-request","route":"notes","presentation":"p-1","name":"focus","contract":"Tests.Notes:fp-1:request:Focus","input":{"member":"title"}}},
+      "expect": {"result":"invalid"}
+    },
+    {
+      "id": "messages.pushes.view-request-without-input",
+      "operation": "read-push",
+      "input": {"encoding":"json","value":{"kind":"view-request","route":"notes","presentation":"p-1","revision":8,"name":"focus","contract":"Tests.Notes:fp-1:request:Focus"}},
+      "expect": {"result":"invalid"}
+    },
+    {
+      "id": "messages.pushes.view-request-without-a-presentation",
+      "operation": "read-push",
+      "input": {"encoding":"json","value":{"kind":"view-request","route":"notes","revision":8,"name":"focus","contract":"Tests.Notes:fp-1:request:Focus","input":{"member":"title"}}},
+      "expect": {"result":"invalid"}
+    },
+    {
+      "id": "messages.pushes.view-request-with-a-negative-revision",
+      "operation": "read-push",
+      "input": {"encoding":"json","value":{"kind":"view-request","route":"notes","presentation":"p-1","revision":-1,"name":"focus","contract":"Tests.Notes:fp-1:request:Focus","input":{"member":"title"}}},
+      "expect": {"result":"invalid"}
     }
   ]
 }

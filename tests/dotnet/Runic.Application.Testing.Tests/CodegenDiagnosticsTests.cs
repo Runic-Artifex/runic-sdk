@@ -506,6 +506,33 @@ internal sealed partial class CodegenDiagnosticsTests
                 public sealed partial class PromptWindow : RunicWindow<PromptViewModel>;
                 """, "RUNICBRIDGE011", "public ReactiveUI.Binding.Interaction<string, bool> Confirm",
                 "PromptViewModel.Confirm: interactions are application-owned").ConfigureAwait(false);
+            // RUNICBRIDGE035: a ViewRequest or ViewQuestion is a get-only property, in either MVVM flavor.
+            await RejectAt("SettableViewRequest", """
+                public sealed class FocusViewModel : FixtureModel
+                {
+                    public ViewRequest<string> Focus { get; set; } = new();
+                }
+                public sealed partial class FocusWindow : RunicWindow<FocusViewModel>;
+                """, "RUNICBRIDGE035", "public ViewRequest<string> Focus",
+                "FocusViewModel.Focus: a view request is application-owned and cannot have a public setter.").ConfigureAwait(false);
+            await RejectAt("HiddenViewQuestion", """
+                public sealed class AskViewModel : FixtureModel
+                {
+                    public ViewQuestion<string, bool> Confirm { private get; set; } = new();
+                }
+                public sealed partial class AskWindow : RunicWindow<AskViewModel>;
+                """, "RUNICBRIDGE035", "public ViewQuestion<string, bool> Confirm",
+                "AskViewModel.Confirm: a view question needs a public getter.").ConfigureAwait(false);
+            // A view request's name is a member of the View beside its commands and interactions.
+            await RejectAt("ViewRequestNameCollision", """
+                public sealed class FocusCommandViewModel : FixtureModel
+                {
+                    public ViewRequest<string> Focus { get; } = new();
+                    public IRelayCommand FocusCommand { get; } = new RelayCommand(() => { });
+                }
+                public sealed partial class FocusCommandWindow : RunicWindow<FocusCommandViewModel>;
+                """, "RUNICBRIDGE004", "public sealed class FocusCommandViewModel",
+                "generated view name 'focus' conflicts between FocusCommand and Focus view request").ConfigureAwait(false);
             // RUNICBRIDGE012: a misplaced, repeated or unsupported failure declaration.
             await RejectAt("FailureOnState", """
                 public sealed class StateFailureViewModel : FixtureModel { [RunicFailure(typeof(string))] public string Title { get; set; } = ""; }
@@ -763,6 +790,18 @@ internal sealed partial class CodegenDiagnosticsTests
                 public sealed partial class PlainWindow : RunicWindow<PlainViewModel>;
                 """, "--di-composition", "Fixture.Composition").ConfigureAwait(false);
             var registration = File.ReadAllText(Path.Combine(composition, "RunicBridgeComposition.g.cs"));
+            // View requests and questions need no ReactiveUI adapter, and a request also needs a content session.
+            var toolkitOnly = await GenerateValidAsync(generator, temporaryRoot, "ViewRequestsWithoutAdapter", Preamble + """
+                public sealed class NoteViewModel : FixtureModel
+                {
+                    public ViewRequest<string> Focus { get; } = new();
+                    public ViewQuestion<string, bool> Confirm { get; } = new();
+                }
+                public sealed partial class NoteWindow : RunicWindow<NoteViewModel>;
+                """, "--reactiveui-flavor", "none", "--di-composition", "Fixture.Composition").ConfigureAwait(false);
+            var toolkitRegistration = File.ReadAllText(Path.Combine(toolkitOnly, "RunicBridgeComposition.g.cs"));
+            Require(!toolkitRegistration.Contains("Func<global::Runic.Application.Views.IBridgeTransport, global::Fixture.NoteViewModel, global::System.IDisposable>", StringComparison.Ordinal),
+                $"DI composition registered a transport-only factory for a view request ViewModel.\n{toolkitRegistration}");
             Require(!registration.Contains("Func<global::Runic.Application.Views.IBridgeTransport, global::Fixture.AskViewModel, global::System.IDisposable>", StringComparison.Ordinal)
                 && registration.Contains("Func<global::Runic.Application.Views.IBridgeTransport, global::Runic.Application.Views.WindowContentSession, global::Fixture.AskViewModel, global::System.IDisposable>", StringComparison.Ordinal)
                 && registration.Contains("Func<global::Runic.Application.Views.IBridgeTransport, global::Fixture.PlainViewModel, global::System.IDisposable>", StringComparison.Ordinal),

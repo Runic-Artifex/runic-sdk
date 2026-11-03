@@ -546,8 +546,12 @@ internal sealed partial class NotesViewModel : ConformanceModel
             input => Rows.Add(new((Rows.Count == 0 ? 0 : Rows.Max(row => row.Id)) + 1, (string)input!)));
         RemoveRowCommand = new(_ => true, row => Rows.Remove((ConformanceRow)row!));
         ClearCommand = new(_ => Rows.Count > 0, _ => Rows.ResetTo([]));
-        // Appends "!" to the title without announcing the change.
-        TouchCommand = new(_ => true, _ => _title += "!");
+        // Appends "!" to the title without announcing the change, then asks the page to focus it.
+        TouchCommand = new(_ => true, _ =>
+        {
+            _title += "!";
+            Focus.Raise(new NotesFocus("title"));
+        });
         SaveCommand = new(_ => true, _ =>
         {
             if (Title.Length == 0) throw new RunicFailureException<NotesSaveFailure>(new NotesSaveFailure.TitleRequired());
@@ -651,6 +655,7 @@ internal sealed partial class NotesViewModel : ConformanceModel
             case "assign": Assign(mutation["member"]!.GetValue<string>(), mutation["value"]); break;
             case "progress": OnProgress(mutation); break;
             case "finish": OnFinish(mutation); break;
+            case "raise": OnRaise(mutation); break;
             default: throw new NotSupportedException($"The notes View has no mutation {mutation.ToJsonString()}.");
         }
     }
@@ -676,6 +681,7 @@ internal sealed partial class NotesViewModel : ConformanceModel
     private partial Task ConfirmClearAsync(CancellationToken token);
     partial void OnProgress(JsonObject mutation);
     partial void OnFinish(JsonObject mutation);
+    partial void OnRaise(JsonObject mutation);
     private partial JsonNode? ProvideOperationId(string id);
     internal static partial BridgeInteractionDescriptor<NotesViewModel>[]? CreateInteractions();
 }

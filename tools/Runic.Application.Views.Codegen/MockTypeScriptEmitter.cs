@@ -24,6 +24,7 @@ internal sealed record MockOperation(string Method, string Member, string InputT
     internal string TypeArguments => FailureType is null ? $"{InputType}, {ResultType}" : $"{InputType}, {ResultType}, {FailureType}";
 }
 internal sealed record MockInteraction(string Name, string InputType, string OutputType, string EncodeInput, string DecodeOutput);
+internal sealed record MockViewRequest(string Name, string InputType, string EncodeInput);
 internal sealed record MockCollection(string WireName, string ItemType, string Encode, string Decode, string Key);
 
 internal sealed record MockTypeScriptPlan(
@@ -40,6 +41,7 @@ internal sealed record MockTypeScriptPlan(
     IReadOnlyList<MockCommand> Commands,
     IReadOnlyList<MockOperation> Operations,
     IReadOnlyList<MockInteraction> Interactions,
+    IReadOnlyList<MockViewRequest> Requests,
     IReadOnlyList<MockCollection> Collections,
     string Contract);
 
@@ -136,6 +138,8 @@ internal static class MockTypeScriptEmitter
             members.Add($"  readonly operations: {{ {string.Join(" ", plan.Operations.Select(operation => $"readonly {operation.Method}: readonly {Ref("MockTypedOperation")}<{operation.TypeArguments}>[];"))} }};");
         if (plan.Interactions.Count > 0)
             members.Add($"  readonly interactions: {{ {string.Join(" ", plan.Interactions.Select(interaction => $"readonly {interaction.Name}: {Ref("MockTypedInteraction")}<{interaction.InputType}, {interaction.OutputType}>;"))} }};");
+        if (plan.Requests.Count > 0)
+            members.Add($"  readonly requests: {{ {string.Join(" ", plan.Requests.Select(request => $"readonly {request.Name}: {Ref("MockTypedViewRequest")}<{request.InputType}>;"))} }};");
         var baseType = $"{Ref("MockTypedView")}<{state}, {name}Client, {kinds}>";
         if (members.Count == 0) body.AppendLine($"export interface {name}Mock extends {baseType} {{}}");
         else
@@ -202,6 +206,13 @@ internal static class MockTypeScriptEmitter
                 body.AppendLine($"    {interaction.Name}: {{ encodeInput: (value: unknown) => {Encode(interaction.EncodeInput, interaction.InputType)}, decodeOutput: (wire: unknown) => {BridgeTypeGraph.ArrowBody(interaction.DecodeOutput)} }},");
             body.AppendLine("  },");
         }
+        if (plan.Requests.Count > 0)
+        {
+            body.AppendLine("  requests: {");
+            foreach (var request in plan.Requests)
+                body.AppendLine($"    {request.Name}: {{ encodeInput: (value: unknown) => {Encode(request.EncodeInput, request.InputType)} }},");
+            body.AppendLine("  },");
+        }
         body.AppendLine("};");
         body.AppendLine();
         body.AppendLine($"/**");
@@ -221,6 +232,7 @@ internal static class MockTypeScriptEmitter
         if (plan.Operations.Count > 0) mockImports.AddRange(["type " + Import("MockTypedOperation"), "type " + Import("MockTypedOperationHandler")]);
         if (plan.Collections.Count > 0) mockImports.Add("type " + Import("MockTypedCollection"));
         if (plan.Interactions.Count > 0) mockImports.Add("type " + Import("MockTypedInteraction"));
+        if (plan.Requests.Count > 0) mockImports.Add("type " + Import("MockTypedViewRequest"));
         if (plan.ContentFields.Count > 0) mockImports.Add("type " + Import("MockReference"));
         if (regions.Length > 0) mockImports.AddRange(["type " + Import("MockRegionCollection"), "type " + Import("MockRegionHandler")]);
         var module = new StringBuilder();

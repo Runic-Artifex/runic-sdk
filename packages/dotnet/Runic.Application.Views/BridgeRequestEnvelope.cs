@@ -50,7 +50,7 @@ internal sealed class BridgeRequestEnvelope : IDisposable
     internal static bool IsViewKind(string kind) => kind switch
     {
         "open" or "snapshot" or "close" or "set" or "write" or "command" or "can" or "start" or "status" or "watch"
-            or "unwatch" or "cancel" or "stream" or "interactions" or "interaction-reply" or "region" => true,
+            or "unwatch" or "cancel" or "stream" or "interactions" or "interaction-reply" or "view-requests" or "region" => true,
         _ => false,
     };
 
@@ -170,6 +170,13 @@ internal sealed class BridgeRequestEnvelope : IDisposable
                     ?? Integer(root, "generation", minimum: 0)
                     ?? (root.TryGetProperty("handlers", out var registered)
                         ? Handlers(registered) : "The request has no handlers.");
+            case "view-requests":
+                return Identifier(root, "presentation")
+                    ?? Integer(root, "generation", minimum: 1)
+                    ?? (root.TryGetProperty("requests", out var requests)
+                        ? requests.ValueKind == JsonValueKind.Array && requests.GetArrayLength() > MaximumViewRequests
+                            ? $"The request lists more than {MaximumViewRequests} view requests." : Handlers(requests)
+                        : "The request has no requests.");
             case "interaction-reply":
                 return Identifier(root, "presentation")
                     ?? Identifier(root, "requestId")
@@ -231,6 +238,9 @@ internal sealed class BridgeRequestEnvelope : IDisposable
             ?? Integer(splice, "delete", minimum: 0)
             ?? String(splice, "text");
     }
+
+    // view-requests/1: the view requests one registration lists.
+    internal const int MaximumViewRequests = 64;
 
     private static string? Handlers(JsonElement handlers)
     {
