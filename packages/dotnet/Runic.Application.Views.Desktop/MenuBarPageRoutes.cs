@@ -22,7 +22,8 @@ namespace Runic.Application.Views.Menus;
 // - The pushes are targeted, because `shortcuts` differs per connection. On CS-WebUI they travel through the Views
 //   mailbox. Each push carries the whole state, so a connection receives the latest state, in revision order.
 // - The state follows the bar, the window's placement and the availability of the commands: MenuCommandBinding raises
-//   Changed from CanExecuteChanged. A custom IDesktopMenuCommandTarget without it is asked when the state is built.
+//   Changed from CanExecuteChanged and, for check marks (IRunicMenuCheckedSource), from the ViewModel's PropertyChanged.
+//   A custom IDesktopMenuCommandTarget without it is asked when the state is built.
 
 // The bar a host declares and its application-wide commands: DesktopHost on Runic Desktop, RunicCsWebUiHost's bar on
 // CS-WebUI. MenuBarChanged may be raised on any thread.
@@ -43,8 +44,9 @@ internal interface IMenuBarPageWindow
     // Whether the host matches the items' shortcuts on its own key path.
     bool HostShortcuts { get; }
     event EventHandler? PlacementChanged;
-    // Whether each item can run now, asked as TryExecuteAsync asks. ObjectDisposedException once the window closed.
-    Task<bool[]> CanExecuteAsync(IReadOnlyList<DesktopMenuItem> items, CancellationToken cancellationToken);
+    // Whether each item can run now, asked as TryExecuteAsync asks, and the check mark of each check or radio item (null
+    // for other items). ObjectDisposedException once the window closed.
+    Task<(bool Enabled, bool? Checked)[]> GetStatesAsync(IReadOnlyList<DesktopMenuItem> items, CancellationToken cancellationToken);
     // Runs the item as the native bar does; false when it is disabled or no command can run it now.
     ValueTask<bool> TryExecuteAsync(DesktopMenuItem item, CancellationToken cancellationToken);
     // While the page holds the "app" lease, the host's own matching is suspended.
@@ -218,26 +220,29 @@ internal sealed class MenuBarPageRoutes : IDisposable, IBridgeRouteHandler
         var items = new List<PlannedMenuEntry>();
         CollectItems(plan, items);
         var open = window is { IsOpen: true };
-        bool[] runnable;
+        (bool Enabled, bool? Checked)[] states;
         try
         {
-            runnable = open && items.Count > 0
-                ? await window!.CanExecuteAsync([.. items.Select(static entry => entry.Item!)], _stop.Token).ConfigureAwait(false)
-                : new bool[items.Count];
+            states = open && items.Count > 0
+                ? await window!.GetStatesAsync([.. items.Select(static entry => entry.Item!)], _stop.Token).ConfigureAwait(false)
+                : [.. items.Select(static entry => (false, entry.Item!.IsChecked))];
         }
         catch (ObjectDisposedException)
         {
             open = false;
-            runnable = new bool[items.Count];
+            states = [.. items.Select(static entry => (false, entry.Item!.IsChecked))];
         }
         var enabled = new HashSet<string>(StringComparer.Ordinal);
+        var toggles = new Dictionary<string, bool>(StringComparer.Ordinal);
         var byKey = new Dictionary<string, DesktopMenuItem>(StringComparer.Ordinal);
         for (var index = 0; index < items.Count; index++)
         {
             byKey[items[index].Key] = items[index].Item!;
-            if (runnable[index]) enabled.Add(items[index].Key);
+            if (states[index].Enabled) enabled.Add(items[index].Key);
+            if (items[index].Item!.IsChecked is not null && states[index].Checked is { } isChecked) toggles[items[index].Key] = isChecked;
         }
-        var menusJson = MenuBarPageState.WriteMenus(plan, entry => entry.Enabled && enabled.Contains(entry.Key));
+        var menusJson = MenuBarPageState.WriteMenus(plan, entry => entry.Enabled && enabled.Contains(entry.Key),
+            entry => toggles.TryGetValue(entry.Key, out var isChecked) ? isChecked : entry.Item?.IsChecked);
         var placement = open ? window!.Placement : "none";
         var hostShortcuts = open && window!.HostShortcuts;
         lock (_gate)
@@ -456,12 +461,13 @@ internal sealed class MenuBarPageRoutes : IDisposable, IBridgeRouteHandler
 // The JSON of the in-page menu bar state (specs/desktop/menu-bar-page.md), from a planned bar.
 internal static class MenuBarPageState
 {
-    internal static string WriteMenus(ImmutableArray<PlannedMenuEntry> plan, Func<PlannedMenuEntry, bool> enabled)
+    internal static string WriteMenus(ImmutableArray<PlannedMenuEntry> plan, Func<PlannedMenuEntry, bool> enabled,
+        Func<PlannedMenuEntry, bool?>? isChecked = null)
     {
         var buffer = new ArrayBufferWriter<byte>();
         using (var writer = new Utf8JsonWriter(buffer))
         {
-            WriteEntries(writer, plan, enabled);
+            WriteEntries(writer, plan, enabled, isChecked ?? (static entry => entry.Item?.IsChecked));
         }
         return Encoding.UTF8.GetString(buffer.WrittenSpan);
     }
@@ -508,7 +514,8 @@ internal static class MenuBarPageState
         writer.WriteEndObject();
     }
 
-    private static void WriteEntries(Utf8JsonWriter writer, ImmutableArray<PlannedMenuEntry> entries, Func<PlannedMenuEntry, bool> enabled)
+    private static void WriteEntries(Utf8JsonWriter writer, ImmutableArray<PlannedMenuEntry> entries, Func<PlannedMenuEntry, bool> enabled,
+        Func<PlannedMenuEntry, bool?> isChecked)
     {
         writer.WriteStartArray();
         foreach (var entry in entries)
@@ -533,7 +540,7 @@ internal static class MenuBarPageState
                     });
                     writer.WriteBoolean("enabled", entry.Enabled);
                     writer.WritePropertyName("entries");
-                    WriteEntries(writer, entry.Children, enabled);
+                    WriteEntries(writer, entry.Children, enabled, isChecked);
                     break;
                 default:
                     var item = entry.Item!;
@@ -542,7 +549,8 @@ internal static class MenuBarPageState
                     writer.WriteString("commandId", item.CommandId);
                     if (item.CommandParameter is { } parameter) writer.WriteString("commandParameter", parameter);
                     writer.WriteBoolean("enabled", enabled(entry));
-                    if (item.IsChecked is { } isChecked) writer.WriteBoolean("checked", isChecked);
+                    // The declaration decides whether an item has a check mark; the command path whether it is on.
+                    if (item.IsChecked is not null) writer.WriteBoolean("checked", isChecked(entry) ?? item.IsChecked.Value);
                     if (item.RadioGroup is { } group) writer.WriteString("radioGroup", group);
                     if (entry.Shortcut is { } shortcut)
                     {

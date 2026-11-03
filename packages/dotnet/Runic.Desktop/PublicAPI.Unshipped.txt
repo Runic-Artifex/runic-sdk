@@ -31,3 +31,4 @@ Runic.Desktop.IDesktopActivityWindowHost.Activity.get -> Runic.Desktop.DesktopWi
 Runic.Desktop.IDesktopActivityWindowHost.ActivityChanged -> System.EventHandler?
 Runic.Desktop.IDesktopColorSchemeWindowHost
 Runic.Desktop.IDesktopColorSchemeWindowHost.SetColorSchemeAsync(Runic.Platform.DesktopColorScheme colorScheme, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask
+Runic.Desktop.IDesktopMenuCommandTarget.IsChecked(Runic.Platform.DesktopMenuItem! item) -> bool?

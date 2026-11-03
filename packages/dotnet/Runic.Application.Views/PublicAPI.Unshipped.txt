@@ -50,3 +50,8 @@ Runic.Application.Views.RunicWindowPresentationFeatures.None = 0 -> Runic.Applic
 Runic.Application.Views.RunicWindowPresentationFeatures.PerWindowColorScheme = 128 -> Runic.Application.Views.RunicWindowPresentationFeatures
 Runic.Application.Views.RunicWindowPresentationFeatures.Present = 1 -> Runic.Application.Views.RunicWindowPresentationFeatures
 Runic.Application.Views.RunicWindowPresentationFeatures.Visibility = 4 -> Runic.Application.Views.RunicWindowPresentationFeatures
+Runic.Application.Views.IRunicMenuCheckedSource
+Runic.Application.Views.IRunicMenuCheckedSource.IsMenuItemChecked(string! commandId, string? commandParameter) -> bool?
+Runic.Application.Views.RunicMenu
+static Runic.Application.Views.RunicMenu.Refresh(object! viewModel) -> void
+static Runic.Application.Views.RunicMenu.RefreshAll() -> void
