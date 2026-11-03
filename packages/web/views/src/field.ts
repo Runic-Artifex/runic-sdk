@@ -40,8 +40,9 @@ export interface BridgeFieldConstraints {
   /** `[Range(MaximumIsExclusive = true)]`. */
   readonly maxExclusive?: boolean;
   /**
-   * `[RegularExpression]` when its pattern means the same in JavaScript, which .NET matches against the whole value,
-   * as the HTML `pattern` attribute does.
+   * `[RegularExpression]` when a browser's `pattern` attribute, which compiles it with the `v` flag, reads it as .NET
+   * does; .NET matches it against the whole value, as the attribute does. A pattern with `\d`, `\w` or `\b`, inline
+   * options, lookbehind or a character class the `v` flag rejects is left out.
    */
   readonly pattern?: string;
 }

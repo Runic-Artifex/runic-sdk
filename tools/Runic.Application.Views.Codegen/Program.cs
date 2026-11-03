@@ -1623,16 +1623,35 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
         if (maxLength is not null) parts.Add($"maxLength: {maxLength}");
         if (property.GetCustomAttribute<System.ComponentModel.DataAnnotations.RangeAttribute>(true) is { } range)
         {
-            // Numeric bounds are numbers; bounds of another type (Range(typeof(decimal), "0", "9.99"), dates) are their
-            // invariant text, which is also the form an input's min and max take.
-            static string Bound(object value) => value switch
+            // Numeric bounds are numbers. Decimal bounds (Range(typeof(decimal), "0", "9.99")) are their invariant text,
+            // and date and time bounds their ISO form, the forms an input's min and max take. A bound that does not
+            // read as its type is left out.
+            static string Bound(object value, Type operand)
             {
-                double d when double.IsInfinity(d) || double.IsNaN(d) => "",
-                int or double => Number(value),
-                _ => JsonSerializer.Serialize(Convert.ToString(value, System.Globalization.CultureInfo.InvariantCulture)),
-            };
-            var min = Bound(range.Minimum);
-            var max = Bound(range.Maximum);
+                var invariant = System.Globalization.CultureInfo.InvariantCulture;
+                var text = Convert.ToString(value, invariant) ?? "";
+                const System.Globalization.DateTimeStyles styles = System.Globalization.DateTimeStyles.None;
+                return value switch
+                {
+                    double d when double.IsInfinity(d) || double.IsNaN(d) => "",
+                    int or double => Number(value),
+                    _ when operand == typeof(decimal) => decimal.TryParse(text, System.Globalization.NumberStyles.Number, invariant, out var number)
+                        ? JsonSerializer.Serialize(number.ToString(invariant)) : "",
+                    _ when operand == typeof(DateOnly) => DateOnly.TryParse(text, invariant, styles, out var date)
+                        ? JsonSerializer.Serialize(date.ToString("yyyy-MM-dd", invariant)) : "",
+                    _ when operand == typeof(TimeOnly) => TimeOnly.TryParse(text, invariant, styles, out var time)
+                        ? JsonSerializer.Serialize(time.ToString("HH:mm:ss", invariant)) : "",
+                    _ when operand == typeof(DateTime) => DateTime.TryParse(text, invariant, styles, out var moment)
+                        ? JsonSerializer.Serialize(moment.TimeOfDay == TimeSpan.Zero ? moment.ToString("yyyy-MM-dd", invariant)
+                            : moment.ToString("yyyy-MM-ddTHH:mm:ss", invariant)) : "",
+                    _ when operand == typeof(DateTimeOffset) => DateTimeOffset.TryParse(text, invariant, styles, out var instant)
+                        ? JsonSerializer.Serialize(instant.ToString("yyyy-MM-ddTHH:mm:sszzz", invariant)) : "",
+                    _ when operand == typeof(string) || operand == typeof(int) || operand == typeof(double) => JsonSerializer.Serialize(text),
+                    _ => "",
+                };
+            }
+            var min = Bound(range.Minimum, range.OperandType);
+            var max = Bound(range.Maximum, range.OperandType);
             if (min.Length != 0) parts.Add($"min: {min}");
             if (max.Length != 0) parts.Add($"max: {max}");
             if (range.MinimumIsExclusive) parts.Add("minExclusive: true");
@@ -1640,25 +1659,71 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
         }
         if (property.GetCustomAttribute<System.ComponentModel.DataAnnotations.RegularExpressionAttribute>(true) is { } regex
             && SimplePattern(regex.Pattern))
-            parts.Add($"pattern: {JsonSerializer.Serialize(regex.Pattern)}");
+            // Relaxed escaping keeps + < > & readable; the text is TypeScript, not HTML.
+            parts.Add($"pattern: {JsonSerializer.Serialize(regex.Pattern, new JsonSerializerOptions { Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping })}");
         return parts.Count == 0 ? null : "{ " + string.Join(", ", parts) + " }";
     }
 
-    // A .NET pattern that means the same as a JavaScript one: no inline options, named or balancing groups,
-    // lookbehind, .NET-only anchors or Unicode categories, and no whitespace or comment syntax.
+    // A .NET pattern that a browser's pattern attribute reads the same way. Browsers compile it with the v flag, which
+    // rejects ( ) [ { } / | and a lone - inside a character class, and doubled punctuators such as && or --. Rejected
+    // too: inline options, named and balancing groups, lookbehind, the .NET-only anchors \A \Z \z \G, Unicode
+    // categories (\p, \P), named backreferences (\k), and \d \w \b (Unicode in .NET, ASCII in JavaScript).
     static bool SimplePattern(string pattern)
     {
+        var inClass = false;
+        var classOpen = -1;
+        // In a class: the previous item is one character, which a - can follow to make a range.
+        var single = false;
+        // In a class: the next character ends a range, so it cannot start another.
+        var rangeEnd = false;
         for (var index = 0; index < pattern.Length; index++)
         {
             var character = pattern[index];
             if (character == '\\')
             {
-                if (++index >= pattern.Length || "AZzGpPkK".Contains(pattern[index], StringComparison.Ordinal)) return false;
+                if (++index >= pattern.Length || "AZzGpPkKdDwWbB".Contains(pattern[index], StringComparison.Ordinal)) return false;
+                if (inClass)
+                {
+                    single = !rangeEnd && pattern[index] is not ('s' or 'S');
+                    rangeEnd = false;
+                }
+                continue;
+            }
+            if (inClass)
+            {
+                if (character == '^' && index == classOpen + 1) continue;
+                if (character == ']')
+                {
+                    // []…] is a literal ] in .NET and an empty class in JavaScript.
+                    if (index == classOpen + 1 || index == classOpen + 2 && pattern[classOpen + 1] == '^') return false;
+                    inClass = false;
+                    continue;
+                }
+                if ("()[{}/|".Contains(character, StringComparison.Ordinal)) return false;
+                if (index + 1 < pattern.Length && pattern[index + 1] == character
+                    && "&!#$%*+,.:;<=>?@^`~-".Contains(character, StringComparison.Ordinal)) return false;
+                if (character == '-')
+                {
+                    if (!single || index + 1 >= pattern.Length || pattern[index + 1] == ']') return false;
+                    single = false;
+                    rangeEnd = true;
+                    continue;
+                }
+                single = !rangeEnd;
+                rangeEnd = false;
+                continue;
+            }
+            if (character == '[')
+            {
+                inClass = true;
+                classOpen = index;
+                single = rangeEnd = false;
                 continue;
             }
             if (character == '(' && index + 1 < pattern.Length && pattern[index + 1] == '?'
                 && !(index + 2 < pattern.Length && pattern[index + 2] is ':' or '=' or '!')) return false;
         }
+        if (inClass) return false;
         try { _ = new System.Text.RegularExpressions.Regex(pattern); } catch (ArgumentException) { return false; }
         return true;
     }

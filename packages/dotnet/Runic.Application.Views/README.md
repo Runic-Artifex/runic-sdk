@@ -2181,10 +2181,13 @@ public sealed partial class SignUpViewModel : ObservableValidator, IRunicPending
     [ObservableProperty, CustomValidation(typeof(SignUpViewModel), nameof(ValidateUserName))]
     public partial string UserName { get; set; } = "";
 
-    // CommunityToolkit: the check runs while the name is pending.
-    partial void OnUserNameChanged(string value) => _ = Pending.Track(nameof(UserName), async () =>
+    // CommunityToolkit: the check runs while the name is pending. Each check cancels the previous one of the
+    // same path, so the result of an older name never overwrites that of a newer one.
+    partial void OnUserNameChanged(string value) => _ = Pending.Track(nameof(UserName), async cancellationToken =>
     {
-        _taken = await _users.ExistsAsync(value);
+        var taken = await _users.ExistsAsync(value, cancellationToken);
+        cancellationToken.ThrowIfCancellationRequested();
+        _taken = taken;
         ValidateProperty(UserName, nameof(UserName));
     });
 }
@@ -2201,8 +2204,12 @@ var states = ValidationAsync.ForLatest(this.WhenAnyValue(vm => vm.UserName), Che
 this.ValidationRule(vm => vm.UserName, states);
 ```
 
-`Begin(path)` returns a lease for any other check; overlapping checks of one
-path are counted. WPF binds `Pending[UserName]` or `Pending.HasPending`. In
+`Track(path, cancellationToken => …)` cancels the previous check that it
+started for the path, and a check that ignores its token still does not
+complete after a newer one: its task is cancelled. `Track(path, () => …)`
+does not cancel; overlapping checks of a path are counted, as with
+`Begin(path)`, which returns a lease for any other check. `validation.pending`
+lists the paths sorted; when the limits cut it, `pendingTruncated` is set. WPF binds `Pending[UserName]` or `Pending.HasPending`. In
 tests, `RunicViewState.IsValidating(vm => vm.UserName)` and
 `PendingValidation` read the projection.
 

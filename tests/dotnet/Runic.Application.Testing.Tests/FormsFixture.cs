@@ -27,6 +27,17 @@ public sealed class FormsViewModel : INotifyPropertyChanged
     // Inline options have no JavaScript equivalent in a pattern attribute.
     [RegularExpression("(?i)abc")]
     public string Loose { get; set; } = "abc";
+    // The v flag of a browser's pattern rejects a lone - in a class, and \d is Unicode in .NET but ASCII in JavaScript.
+    [RegularExpression("^[a-z-]+$")]
+    public string Slug { get; set; } = "a";
+    [RegularExpression(@"^\d{5}$")]
+    public string Zip { get; set; } = "12345";
+    [RegularExpression("^[a-z0-9]+(-[a-z0-9]+)*$")]
+    public string Kebab { get; set; } = "a-b";
+    [Range(typeof(DateTime), "2020-01-01", "2030-12-31 12:30")]
+    public DateTime When { get; set; } = new(2026, 1, 1);
+    [Range(typeof(decimal), "0.10", "1e3")]
+    public decimal Rate { get; set; } = 1m;
     public FormsPriority Priority { get; set; }
 
     [RunicIgnore]
@@ -63,3 +74,21 @@ public sealed class PendingFormViewModel : INotifyPropertyChanged, IRunicPending
 }
 
 public sealed partial class PendingFormWindow : RunicWindow<PendingFormViewModel>;
+
+// Pending paths below a list, for the limits and the order of validation.pending.
+public sealed class PendingNestedRow { public string Label { get; set; } = ""; }
+
+public sealed class PendingNestedRoot : IRunicPendingValidation
+{
+    public List<PendingNestedRow> Rows { get; } = [.. Enumerable.Range(0, 300).Select(_ => new PendingNestedRow())];
+    public RunicPendingValidation Pending { get; } = new();
+    IReadOnlyCollection<string> IRunicPendingValidation.PendingMemberPaths => Pending.PendingMemberPaths;
+    event EventHandler? IRunicPendingValidation.PendingChanged { add => Pending.PendingChanged += value; remove => Pending.PendingChanged -= value; }
+
+    internal static readonly Runic.Application.Views.Generated.BridgeDataSubscriptionMember[] Metadata =
+    [
+        new("rows", static owner => ((PendingNestedRoot)owner).Rows, propertyName: nameof(Rows),
+            enumerateValidationChildren: static value => Runic.Application.Views.Generated.BridgeValidation.EnumerateIndexed((System.Collections.IEnumerable)value),
+            children: [new("label", static owner => ((PendingNestedRow)owner).Label, propertyName: nameof(PendingNestedRow.Label))]),
+    ];
+}

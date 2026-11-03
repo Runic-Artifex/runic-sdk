@@ -31,6 +31,12 @@ internal sealed class FormsTests
             ("forms.ts", forms, "    name: \"price\", kind: \"decimal\", constraints: { min: \"0.01\", max: \"999.99\", minExclusive: true },\n"),
             ("forms.ts", forms, "    name: \"code\", kind: \"text\", constraints: { pattern: \"^[A-Z]{3}$\" },\n"),
             ("forms.ts", forms, "    name: \"loose\", kind: \"text\",\n"),
+            ("forms.ts", forms, "    name: \"slug\", kind: \"text\",\n"),
+            ("forms.ts", forms, "    name: \"zip\", kind: \"text\",\n"),
+            ("forms.ts", forms, "    name: \"kebab\", kind: \"text\", constraints: { pattern: \"^[a-z0-9]+(-[a-z0-9]+)*$\" },\n"),
+            ("forms.ts", forms, "    name: \"when\", kind: \"datetime\", constraints: { min: \"2020-01-01\", max: \"2030-12-31T12:30:00\" },\n"),
+            // A bound that does not read as its type (1e3 is not a decimal in Number style) is left out.
+            ("forms.ts", forms, "    name: \"rate\", kind: \"decimal\", constraints: { min: \"0.10\" },\n"),
             ("forms.ts", forms, "    name: \"priority\", kind: \"choice\", choices: [\"Low\", \"Normal\", \"High\"],\n"),
             // C7: an Int64 key is the decimal form of the bigint.
             ("forms.ts", forms, "item => String(item.id))"),
@@ -83,12 +89,12 @@ internal sealed class FormsTests
         // A nested object's own path ("") and an unresolvable one report at the object's path, once.
         using (model.Address.Pending.Begin(nameof(PendingAddress.Postcode)))
         {
-            Require(Pending(await NextValidationAsync(transport)) == "[[\"userName\"],[\"address\",\"postcode\"]]",
+            Require(Pending(await NextValidationAsync(transport)) == "[[\"address\",\"postcode\"],[\"userName\"]]",
                 "A nested object's check was not reported at its path.");
             using var own = model.Address.Pending.Begin();
             using var unknown = model.Address.Pending.Begin("NoSuchMember");
-            var both = await NextValidationAsync(transport, until: value => Pending(value).Contains("[\"address\"]]", StringComparison.Ordinal));
-            Require(Pending(both) == "[[\"userName\"],[\"address\"],[\"address\",\"postcode\"]]" || Pending(both) == "[[\"userName\"],[\"address\",\"postcode\"],[\"address\"]]",
+            var both = await NextValidationAsync(transport, until: value => Pending(value).StartsWith("[[\"address\"],", StringComparison.Ordinal));
+            Require(Pending(both) == "[[\"address\"],[\"address\",\"postcode\"],[\"userName\"]]",
                 $"The object's own and an unresolvable path were not one path at the object: {Pending(both)}");
         }
         check.Dispose();
@@ -117,6 +123,78 @@ internal sealed class FormsTests
                 && view.PendingValidation.Single().SequenceEqual(["userName"]), $"RunicViewState does not read pending: {view}");
         }
         Require(host.Root.Snapshot().PendingValidation.Count == 0, "The check did not end.");
+    }
+
+    [Test]
+    public async Task PendingPathsAreSortedAndTheirOverflowIsFlaggedApartAsync()
+    {
+        var model = new PendingFormViewModel();
+        using var transport = new InMemoryBridgeTransport();
+        using var bridge = new PendingFormBridge(transport, model, "pending");
+        using (transport.SnapshotState("pending")) { }
+        var leases = new List<IDisposable>();
+        // Reported in reverse order: written sorted.
+        leases.Add(model.Pending.Begin(nameof(PendingFormViewModel.UserName)));
+        leases.Add(model.Pending.Begin());
+        var sorted = await NextValidationAsync(transport, until: value => Pending(value).Contains("[]", StringComparison.Ordinal));
+        Require(Pending(sorted) == "[[],[\"userName\"]]", $"Pending paths are not sorted: {Pending(sorted)}");
+        foreach (var lease in leases) lease.Dispose();
+        leases.Clear();
+        {
+            var writer = new System.Buffers.ArrayBufferWriter<byte>();
+            using (var json = new Utf8JsonWriter(writer))
+            {
+                var nested = new PendingNestedRoot();
+                for (var index = 0; index < 300; index++) _ = nested.Pending.Begin($"Rows[{index}].Label");
+                Runic.Application.Views.Generated.BridgeValidation.Write(json, nested, PendingNestedRoot.Metadata);
+            }
+            using var written = JsonDocument.Parse(writer.WrittenMemory);
+            var root = written.RootElement;
+            Require(root.GetProperty("pending").GetArrayLength() == 256 && root.GetProperty("pendingTruncated").GetBoolean()
+                && !root.GetProperty("truncated").GetBoolean(), $"Pending overflow: {root.GetRawText()[..300]}");
+            Require(root.GetProperty("pending")[0].GetRawText() == "[\"rows\",0,\"label\"]" && root.GetProperty("pending")[2].GetRawText() == "[\"rows\",2,\"label\"]",
+                "Indexes are not sorted by value.");
+        }
+    }
+
+    [Test]
+    public async Task ACancellableTrackCancelsTheOlderCheckOfThePathAsync()
+    {
+        var pending = new RunicPendingValidation();
+        var older = new TaskCompletionSource<string>();
+        var results = new List<string>();
+        var first = pending.Track("Name", async cancellationToken =>
+        {
+            // A check that ignores its token: Track still does not report it after a newer one started.
+            var value = await older.Task;
+            results.Add(value);
+            return value;
+        });
+        CancellationToken newerToken = default;
+        var observed = pending.Track("Name", async cancellationToken =>
+        {
+            newerToken = cancellationToken;
+            await Task.Yield();
+            results.Add("newer");
+        });
+        await observed;
+        Require(pending.IsPending("Name"), "The older check still runs, so the path stays pending.");
+        older.SetResult("older");
+        var cancelled = false;
+        try { await first; }
+        catch (OperationCanceledException) { cancelled = true; }
+        Require(cancelled && !newerToken.IsCancellationRequested && !pending.HasPending,
+            $"The older check was not cancelled: {string.Join(", ", results)}");
+        // A cancellable check sees its token cancelled by the next one.
+        var token = new TaskCompletionSource<CancellationToken>();
+        var gate = new TaskCompletionSource();
+        var waiting = pending.Track("Email", async cancellationToken => { token.SetResult(cancellationToken); await gate.Task.WaitAsync(cancellationToken); });
+        var seen = await token.Task;
+        var next = pending.Track("Email", _ => Task.CompletedTask);
+        await next;
+        Require(seen.IsCancellationRequested, "The newer check did not cancel the older one's token.");
+        try { await waiting; } catch (OperationCanceledException) { }
+        Require(!pending.HasPending, "A cancelled check stayed pending.");
     }
 
     [Test]

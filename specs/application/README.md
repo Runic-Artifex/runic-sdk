@@ -604,9 +604,13 @@ progress, such as an asynchronous rule that asks a server whether a name is take
   connection ([members of state values](#features)), and a change of it is published as a `set` of `validation`,
   like a change of `errors`.
 - **Paths.** Paths follow the rules of error paths above: a model reports a pending member path relative to its
-  object, an unresolvable one reports at the object's path, and the limits apply (at most 256 paths, 64 segments,
-  2,048 code units per string segment; anything left out sets `truncated`). Each path appears once, in the order
-  the producer visits the objects; the order of one object's paths is the model's.
+  object, and an unresolvable one reports at the object's path. Each path appears once.
+- **Order.** Paths are sorted segment by segment: a list index before a string segment, indexes by value, strings by
+  UTF-16 code units, and a path before the paths that continue it. So a publication in which the same checks run
+  writes the same `pending`, whatever order the model reports them in.
+- **Limits.** At most 256 paths, 64 segments per path and 2,048 UTF-16 code units per string segment. When the
+  producer leaves out or cuts a path, `validation` has `"pendingTruncated": true`, which is otherwise absent;
+  `truncated` describes `errors` only.
 - **Independent of errors.** A pending path does not set `hasErrors` and is not an error. A member can be pending
   and have errors at once, such as the result of the previous check while the next one runs.
 - **Client.** A client that uses the feature reads `pending` as a list of paths; a member's field is validating

@@ -33,10 +33,13 @@ public interface IRunicPendingValidation
 /// IReadOnlyCollection&lt;string&gt; IRunicPendingValidation.PendingMemberPaths => Pending.PendingMemberPaths;
 /// event EventHandler? IRunicPendingValidation.PendingChanged { add => Pending.PendingChanged += value; remove => Pending.PendingChanged -= value; }
 ///
-/// // CommunityToolkit: check the name when it changes.
-/// partial void OnUserNameChanged(string value) =&gt; _ = Pending.Track(nameof(UserName), async () =&gt;
+/// // CommunityToolkit: check the name when it changes. A newer check cancels the older one, so an older result never
+/// // overwrites a newer one.
+/// partial void OnUserNameChanged(string value) =&gt; _ = Pending.Track(nameof(UserName), async cancellationToken =&gt;
 /// {
-///     NameTaken = await _users.ExistsAsync(value);
+///     var taken = await _users.ExistsAsync(value, cancellationToken);
+///     cancellationToken.ThrowIfCancellationRequested();
+///     NameTaken = taken;
 ///     ValidateProperty(UserName, nameof(UserName));
 /// });
 /// </code>
@@ -54,6 +57,8 @@ public sealed class RunicPendingValidation : IRunicPendingValidation, INotifyPro
 
     private readonly Lock _gate = new();
     private readonly Dictionary<string, int> _counts = new(StringComparer.Ordinal);
+    // The latest cancellable check of each path (Track with a CancellationToken).
+    private readonly Dictionary<string, CancellationTokenSource> _latest = new(StringComparer.Ordinal);
     private string[] _paths = [];
 
     /// <inheritdoc />
@@ -116,6 +121,61 @@ public sealed class RunicPendingValidation : IRunicPendingValidation, INotifyPro
 #pragma warning disable CA2007
         return await validate();
 #pragma warning restore CA2007
+    }
+
+    /// <summary>
+    /// Marks <paramref name="memberPath"/> pending while <paramref name="validate"/> runs, and cancels the check of the
+    /// path that a previous call of this overload started, so an older check cannot finish after a newer one and
+    /// overwrite its result. The returned task is cancelled when a newer check cancelled it.
+    /// </summary>
+    public Task Track(string memberPath, Func<CancellationToken, Task> validate)
+    {
+        ArgumentNullException.ThrowIfNull(validate);
+        return Track<bool>(memberPath, async cancellationToken =>
+        {
+#pragma warning disable CA2007
+            await validate(cancellationToken);
+#pragma warning restore CA2007
+            return true;
+        });
+    }
+
+    /// <summary>
+    /// Marks <paramref name="memberPath"/> pending while <paramref name="validate"/> runs, cancels the previous check
+    /// of the path that this overload started, and returns the check's result. See <see cref="Track(string, Func{CancellationToken, Task})"/>.
+    /// </summary>
+    public async Task<T> Track<T>(string memberPath, Func<CancellationToken, Task<T>> validate)
+    {
+        ArgumentNullException.ThrowIfNull(memberPath);
+        ArgumentNullException.ThrowIfNull(validate);
+        var current = new CancellationTokenSource();
+        CancellationTokenSource? previous;
+        lock (_gate)
+        {
+            _latest.TryGetValue(memberPath, out previous);
+            _latest[memberPath] = current;
+        }
+        // Synchronously, so the new check still starts on the caller's context.
+        try { previous?.Cancel(); }
+        catch (ObjectDisposedException) { } // the previous check just ended
+        using var lease = Begin(memberPath);
+        try
+        {
+#pragma warning disable CA2007
+            var result = await validate(current.Token);
+#pragma warning restore CA2007
+            // A check that ignored its token still does not report after a newer one started.
+            current.Token.ThrowIfCancellationRequested();
+            return result;
+        }
+        finally
+        {
+            lock (_gate)
+            {
+                if (_latest.TryGetValue(memberPath, out var latest) && latest == current) _latest.Remove(memberPath);
+            }
+            current.Dispose();
+        }
     }
 
     private void End(string memberPath)

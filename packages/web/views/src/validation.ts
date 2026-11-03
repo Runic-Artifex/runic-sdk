@@ -22,6 +22,8 @@ export interface BridgeValidationState {
    * 0.16 or later, `validation-pending/1`). Absent when nothing is pending.
    */
   readonly pending?: readonly (readonly (string | number)[])[];
+  /** `true` when the producer left out or cut pending paths because of its limits. Absent otherwise. */
+  readonly pendingTruncated?: boolean;
 }
 
 /** Decodes the `validation` state of a ViewModel with validation. */
@@ -39,5 +41,6 @@ export function decodeBridgeValidation(value: unknown): BridgeValidationState {
       pending: bridgeWire.array(state["pending"], path => bridgeWire.array(path, part =>
         typeof part === "string" ? part : bridgeWire.integer(part, 0, Number.MAX_SAFE_INTEGER))),
     }),
+    ...(state["pendingTruncated"] === undefined ? {} : { pendingTruncated: bridgeWire.boolean(state["pendingTruncated"]) }),
   }));
 }
