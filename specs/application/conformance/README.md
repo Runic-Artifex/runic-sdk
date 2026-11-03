@@ -179,6 +179,7 @@ Expectations of the producer:
 | `presentation-epoch/1` | The implementation implements the feature [`presentation-epoch/1`](../README.md#presentation-epochs). |
 | `presented/1` | The implementation implements the feature [`presented/1`](../README.md#presented-states-and-window-close). |
 | `region-collections/1` | The implementation implements the feature [`region-collections/1`](../README.md#region-collections). |
+| `navigation-path/1` | The implementation implements the feature [`navigation-path/1`](../README.md#navigation-paths). |
 
 Every `hello` of a scenario that does not require a feature lists `features` as `{"$any":"array","default":["text-splice/1"]}`:
 a runner that writes the `hello` (or its reply) lists `text-splice/1`, and a runner that checks one accepts any list.
@@ -187,9 +188,9 @@ always `{"$any":"array","default":[…]}`, also when the scenario requires a fea
 features are in use.
 The strings of those scenarios are shorter than 64 code units, so their frames and requests are the same with and
 without the feature. Neither `presentation-epoch/1` nor `presented/1` is in use in them, so their messages carry no
-`epoch` and no `present` or `closing` push. A scenario that requires `presentation-epoch/1`, `presented/1` or
-`region-collections/1` lists the feature in the `default` of both `hello` steps, beside `text-splice/1`, so it is in use
-whichever runner writes the `hello` or its reply; one that shows the producer without the feature lists only
+`epoch` and no `present` or `closing` push. A scenario that requires `presentation-epoch/1`, `presented/1`,
+`region-collections/1` or `navigation-path/1` lists the feature in the `default` of both `hello` steps, beside
+`text-splice/1`, so it is in use whichever runner writes the `hello` or its reply; one that shows the producer without the feature lists only
 `text-splice/1`.
 
 ### Identifiers
@@ -211,6 +212,7 @@ connection before connecting it, answers a request it did not send, expects a ca
 | [`operations`](scenarios/operations) | `watch` with throttled `progress` and the terminal `revision`; `start` ordering; duplicate versus `identity-conflict` by canonical equality; cancel; a declared failure; an unknown operation; a `start` with another build's contract |
 | [`presentations`](scenarios/presentations) | `open` and `close`; a presentation owned by another connection; a reconnect with a new session; an unknown route; presentation epochs (`epoch-*`): the `epoch` of `open` and `snapshot`, a renewal published as a `state`, a scoped command with the current epoch, a second scoped command from the same state that is superseded, an unscoped command without `epoch`, and a connection without the feature; painted states (`presented-*`): a report that completes a wait, and a wait that times out; window close (`closing-*`): an acknowledged close and the client's closed connection, and a close that times out |
 | [`regions`](scenarios/regions) | Region collections (`region-collections/1`): a select that commits and the frame that carries the selection; a select a departure guard refuses, which publishes nothing; a close of the selected region, which selects the next one, or the previous one after the last; the key of a closed region, which is `unresolved-key`; a close the collection does not allow, which is `unavailable`; a region request on a connection without the feature, which is `invalid-request`; a close of a region whose close is pending, which joins it; a select that supersedes a pending close |
+| [`navigation`](scenarios/navigation) | Navigation paths (`navigation-path/1`): the path in the `hello` reply; an opened route that pushes a page and one that goes back to it, each with its frame, `navigation-path` push and reply; the window's Back without history (`NoHistory`); a route a departure guard refuses, whose reply keeps the path; a route no route matches (`outcome: null`); a window without a path region, whose Back works and whose `open` is `unavailable`; a `navigation` request on a connection without the feature, which is `invalid-request` |
 | [`interactions`](scenarios/interactions) | A confirmation answered, and its repeat; registration outcomes |
 | [`errors`](scenarios/errors) | The protocol-3 `error-reasons`, `domain-failures` and `released` fixtures, converted (`error-reasons` and `released` were removed in 0.13); capacity |
 
@@ -313,6 +315,10 @@ A View with region collections ([region collections](../README.md#region-collect
 | `documents` | region collection of `page` Views; the page may close a region | three regions with the keys `"1"`, `"2"` and `"3"`, which present the `page` Views `one`, `two` and `three` with the ids `00000000000000000000000000000001`, `…02` and `…03`; the first is selected |
 | `pinned` | region collection of `page` Views; the page may not close a region | no regions |
 
+The model value `path` (`boolean`, default `false`), set only by `arrange`, makes the first region of `documents` the
+window's path region ([navigation paths](../README.md#navigation-paths)), with one route: `pages/{title}` names a page
+by its `title`, and opening it pushes a new page with that title. The pages `one`, `two` and `three` therefore have the
+routes `pages/one`, `pages/two` and `pages/three`, and a page opened by a route gets the next id, `…04` for the first.
 The model value `veto` (`boolean`, default `false`) is not a state member; `assign` sets it and publishes nothing.
 While it is `true`, the departure guard of every page refuses, so a `select` that leaves a page and a `close` of a page
 are `Rejected` with the rejection `Guard`. Otherwise a request commits, with the arrival `None`. After a `holdGuard`

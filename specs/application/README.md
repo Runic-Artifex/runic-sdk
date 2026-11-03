@@ -222,6 +222,7 @@ reply both list the same string. Features are negotiated per connection, and aga
 | `presentation-epoch/1` | A command runs only on the presentation it was issued for: [presentation epochs](#presentation-epochs) | 0.15 |
 | `presented/1` | The page reports that it painted a state, and acknowledges a window close: [presented states and window close](#presented-states-and-window-close) | 0.15 |
 | `region-collections/1` | The page selects and closes the regions of a region collection by key: [region collections](#region-collections) | 0.16 |
+| `navigation-path/1` | The window's Back, and its route path kept in the page's URL: [navigation paths](#navigation-paths) | 0.16 |
 
 ## Requests and replies
 
@@ -911,6 +912,71 @@ connection that does not use the feature it is `rejected` with `invalid-request`
 (or the fallback of step 3 above), sends `closing-reply`, and reports that the producer closed the window. When the
 connection then drops, it keeps reporting that the producer closed the window, not a reconnecting or lost connection.
 A new connection reports a connected client again.
+
+## Navigation paths
+
+With the feature `navigation-path/1`, the page can ask the window to go back, as its Back button does, and keep its
+URL in step with the window's **route path**: the route of the current page of one region of the window, its **path
+region**, which the application chooses. A route path is a string of segments separated by `/`, without a leading
+`/`, such as `customers/42/invoices/7`; the application's route map defines which paths exist and what they open.
+
+```json
+{"kind":"hello", …, "features":["navigation-path/1"]}
+{"ok":true, …, "features":["navigation-path/1"],"navigationPath":"customers/42"}
+
+{"kind":"navigation","action":"open","path":"customers/42/invoices/7"}
+{"kind":"navigation-path","path":"customers/42/invoices/7","operation":"push"}
+{"ok":true,"outcome":{"kind":"Committed","rejection":null,"arrival":"None"},"path":"customers/42/invoices/7"}
+
+{"kind":"navigation","action":"back"}
+{"kind":"navigation-path","path":"customers/42","operation":"back"}
+{"ok":true,"outcome":{"kind":"Committed","rejection":null,"arrival":"None"},"path":"customers/42"}
+```
+
+| Message | Members | Meaning |
+| --- | --- | --- |
+| `hello` reply member `navigationPath` | string or `null` | The window's route path when the connection uses the feature and the window has a path region; absent otherwise. `null` when the path region is empty or its page has no route. |
+| request `navigation` | `action`: `"back"` | The window's Back: go back in the innermost presented region that can (below). |
+| request `navigation` | `action`: `"open"`, `path` (a string of at most 2048 characters) | Open the route path in the path region, as a browser's Back, Forward or address bar does (below). |
+| push `navigation-path` | `path` (string or `null`), `operation` (`"push"`, `"back"` or `"replace"`) | To each connection that uses the feature: the path region's current page changed. A window push without a `route`. |
+
+`navigation` names no `route`; one that does, or whose `action` or `path` is missing or invalid, is `rejected` with
+`invalid-request`, and so is `navigation` on a connection that does not use the feature. The producer sends
+`navigationPath` and `navigation-path` only to connections that use the feature.
+
+**Back.** `action: "back"` goes back in the innermost presented region that can: the producer looks at the window's
+regions that no page owns, the most recently created first, and within a region at the regions its current page owns,
+the most recently created first, before the region itself; of a region collection or other selection it follows only
+the selected region. The first region whose current page is a result entry (a dialog) dismisses it; otherwise the
+first region with a page below the current one goes back to it. The request is an ordinary navigation request: the
+departure guards decide, and a refusal is an outcome, not an error. With no such region the outcome is `Rejected`
+with the rejection `NoHistory`. Back works whether or not the window has a path region.
+
+**Open.** `action: "open"` opens `path` in the path region: when the region's history has a page with that route, it
+goes back to the newest such page, and otherwise it pushes the route's page. A path the current page already has
+changes nothing and is `Committed`. A path that no route matches runs no request, and the reply's `outcome` is `null`.
+A window without a path region answers `rejected` with `unavailable`.
+
+**Replies.** The reply is `{ok:true, outcome, path}`. `outcome` is the request's navigation outcome, written as for
+[region collections](#region-collections), or `null`. `path` is the window's route path after the request, and is
+absent for a window without a path region. A page whose URL shows another path than `path` after the reply puts
+`path` back: a refused Back or address bar edit reverts the URL. The reply follows the frames and the
+`navigation-path` push of the change it caused.
+
+**`navigation-path`.** After each change of the path region's current page that changes its route, or its stack, the
+producer pushes the new path, after the frames of the change, with `operation`:
+
+- `push` when one page was pushed on top of the previous stack;
+- `back` when the new stack is the beginning of the previous one;
+- `replace` otherwise, such as a replace or reset.
+
+**Client.** The page may keep its URL and history in step: on `push` it adds a history entry with the path, on `back`
+it moves back to the previous entry when that entry shows the path and replaces the current one otherwise, and on
+`replace` it replaces the current entry. When the user moves through the history or edits the address bar, the page
+sends `open` with the URL's path. A URL that already has a route path when the page loads is a deep link: the page
+sends `open` with it instead of showing `navigationPath`. A client that uses the feature may also map the mouse's Back
+button and keyboard shortcuts for Back to `action: "back"`. How a route path appears in the URL is the client's choice;
+the Runic client uses the fragment, `#/customers/42`.
 
 ## Operations
 
