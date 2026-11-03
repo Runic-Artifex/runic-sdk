@@ -248,9 +248,9 @@ public sealed class RunicCsWebUiHost : IRunicWindowHost
             catch { attachment.Dispose(); throw; }
             // The root ViewModel runs the bar's commands; the window releases them with its routes.
             MenuCommandBinding? menuCommands = null;
-            if (viewModel is IRunicMenuCommandSource menuSource)
+            if (MenuCommandBinding.Binds(viewModel))
             {
-                menuCommands = await MenuCommandBinding.BindAsync(_menuBar, content.ModelContext, menuSource.GetMenuCommand, menuLogger)
+                menuCommands = await MenuCommandBinding.BindViewModelAsync(_menuBar, content.ModelContext, viewModel!, menuLogger)
                     .ConfigureAwait(false);
                 bindings.Add(menuCommands);
             }
