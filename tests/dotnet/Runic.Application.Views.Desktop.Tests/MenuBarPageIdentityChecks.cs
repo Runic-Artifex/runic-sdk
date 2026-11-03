@@ -32,7 +32,7 @@ internal sealed class MenuBarPageIdentityChecks
         using var presentations = session.AttachRootInteractionPresentation(Route);
         var bar = new WebUiMenuBar([new DesktopMenu("File", [new DesktopMenuItem("Focus", "file.focus")])]);
         using var routes = new WebUiMenuBarRoutes(bar, transport, NullLogger.Instance);
-        using var commands = await WebUiMenuCommands.BindAsync(bar, session.ModelContext, model.GetMenuCommand, NullLogger.Instance, session);
+        using var commands = await WebUiMenuCommands.BindAsync(bar, session.ModelContext, model.GetMenuCommand, NullLogger.Instance, window: session);
         routes.Attach(new WebUiMenuBarPageWindow(bar, commands), commands);
 
         // Two browsers show the window; each page handles the request and the question.

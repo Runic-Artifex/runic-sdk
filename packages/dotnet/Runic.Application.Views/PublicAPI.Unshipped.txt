@@ -21,3 +21,8 @@ static Runic.Application.Views.Generated.ViewQuestionDescriptor.Create<TModel, T
 static Runic.Application.Views.Generated.ViewRequestDescriptor.Create<TModel, T>(string! name, string! contract, System.Func<TModel!, Runic.Application.Views.ViewRequest<T>!>! getRequest, System.Func<T, string!>! encodeInput) -> Runic.Application.Views.Generated.BridgeInteractionDescriptor<TModel!>!
 static Runic.Application.Views.RunicInteractionInvocation.EnterWindow(object! viewModel, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.IDisposable!
 static Runic.Application.Views.RunicInteractionInvocation.TryEnterWindow(object! viewModel, out System.IDisposable! scope, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> bool
+Runic.Application.Views.IRunicMenuCheckedSource
+Runic.Application.Views.IRunicMenuCheckedSource.IsMenuItemChecked(string! commandId, string? commandParameter) -> bool?
+Runic.Application.Views.RunicMenu
+static Runic.Application.Views.RunicMenu.Refresh(object! viewModel) -> void
+static Runic.Application.Views.RunicMenu.RefreshAll() -> void

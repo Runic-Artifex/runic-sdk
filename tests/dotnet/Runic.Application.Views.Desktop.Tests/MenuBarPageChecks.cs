@@ -205,6 +205,59 @@ internal sealed class MenuBarPageChecks
         }
     }
 
+    // B3: the page's check marks follow the root ViewModel's IRunicMenuCheckedSource, pushed when it raises PropertyChanged.
+    [Test, NotInParallel(Order = 44)]
+    public async Task PageCheckMarksFollowTheViewModel()
+    {
+        IReadOnlyList<DesktopMenu> bar =
+        [
+            new("View",
+            [
+                new DesktopMenuItem("Word wrap", "view.wrap") { IsChecked = false },
+                new DesktopMenuItem("Small", "view.zoom") { RadioGroup = "zoom", IsChecked = true, CommandParameter = "80" },
+                new DesktopMenuItem("Large", "view.zoom") { RadioGroup = "zoom", IsChecked = false, CommandParameter = "150" },
+            ]),
+        ];
+        var services = new ServiceCollection();
+        services.AddScoped<CheckedMenuViewModel>();
+        services.AddScoped<Func<IBridgeTransport, CheckedMenuViewModel, IDisposable>>(_ => static (_, _) => new NoopAttachment());
+        await using var provider = services.BuildServiceProvider();
+        await using var desktop = await DesktopHost.StartAsync(new DesktopHostOptions
+        {
+            WindowHostFactory = new NativeDispatchFactory { MenuBarPlacement = DesktopMenuBarPlacement.Page }, WaitForConnection = false,
+            MenuBar = bar,
+        });
+        var host = new RunicDesktopHost(provider, desktop, new RunicDesktopHostOptions
+        {
+            SurfaceOptions = new DesktopSurfaceOptions { Content = new DesktopContent.Html("<!doctype html>") },
+            WindowOptions = new DesktopWindowOptions { Browser = BrowserKind.Embedded, MenuBarPresentation = DesktopMenuBarPresentation.Page },
+        });
+        var window = await host.OpenWindowAsync<CheckedMenuWindow>();
+        using var timeout = TestTimeouts.Cancellation(TimeSpan.FromSeconds(20));
+        var cancellation = timeout.Token;
+        try
+        {
+            using var page = await DesktopWireClient.ConnectAsync(RunicDesktopHost.GetSurface(window)!, cancellation);
+            static bool? Checked(JsonObject state, int index) => Items(state).ElementAtOrDefault(index)?["checked"]?.GetValue<bool>();
+            var state = await StateAsync(page, cancellation);
+            while (Checked(state, 0) != true || Checked(state, 1) != false || Checked(state, 2) != true)
+                state = await WaitAsync(page, state, cancellation);
+
+            window.ViewModel.WordWrap = false;
+            window.ViewModel.Zoom = 80;
+            while (Checked(state, 0) != false || Checked(state, 1) != true || Checked(state, 2) != false)
+                state = await WaitAsync(page, state, cancellation);
+        }
+        finally
+        {
+            await window.DisposeAsync();
+        }
+    }
+
+    // The items of the state's first menu.
+    private static IEnumerable<JsonObject> Items(JsonObject state) =>
+        state["menus"]!.AsArray()[0]!["entries"]!.AsArray().Select(static entry => entry!.AsObject()).Where(static entry => entry["kind"]!.GetValue<string>() == "item");
+
     // Completes the hello and watches the bar: the reply's state, and later states as pushes.
     private static async Task<JsonObject> StateAsync(DesktopWireClient page, CancellationToken cancellationToken)
     {

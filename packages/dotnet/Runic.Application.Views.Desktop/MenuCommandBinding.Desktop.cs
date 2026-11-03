@@ -56,8 +56,8 @@ namespace Runic.Application.Views.Desktop
             remove => window.MenuBarPlacementChanged -= value;
         }
 
-        public Task<bool[]> CanExecuteAsync(IReadOnlyList<DesktopMenuItem> items, CancellationToken cancellationToken) =>
-            window.CanExecuteMenuItemsAsync(items, cancellationToken);
+        public Task<(bool Enabled, bool? Checked)[]> GetStatesAsync(IReadOnlyList<DesktopMenuItem> items, CancellationToken cancellationToken) =>
+            window.MenuItemStatesAsync(items, cancellationToken);
 
         // The Window's root ViewModel's command runs with the invoking page's identity; an item it cannot run goes to the
         // application's commands only, which have no page. The Window's own target is never asked on that path: an item

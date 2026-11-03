@@ -248,9 +248,9 @@ public sealed class RunicCsWebUiHost : IRunicWindowHost
             catch { attachment.Dispose(); throw; }
             // The root ViewModel runs the bar's commands; the window releases them with its routes.
             MenuCommandBinding? menuCommands = null;
-            if (viewModel is IRunicMenuCommandSource menuSource)
+            if (MenuCommandBinding.Binds(viewModel))
             {
-                menuCommands = await MenuCommandBinding.BindAsync(_menuBar, content.ModelContext, menuSource.GetMenuCommand, menuLogger, content)
+                menuCommands = await MenuCommandBinding.BindViewModelAsync(_menuBar, content.ModelContext, viewModel!, menuLogger, content)
                     .ConfigureAwait(false);
                 bindings.Add(menuCommands);
             }
@@ -261,6 +261,7 @@ public sealed class RunicCsWebUiHost : IRunicWindowHost
 
             var options = opening.Options;
             var windowName = opening.Window.GetType().Name;
+            var windowType = opening.Window.GetType();
             var native = window;
             var shown = host;
             void Show()
@@ -271,7 +272,7 @@ public sealed class RunicCsWebUiHost : IRunicWindowHost
                 ConfigureWindow?.Invoke(native);
                 // A browser that cannot be found, started or connected fails the open with its reason, logged as
                 // event 2100, instead of WebUI's exception (#265).
-                try { shown.Show(options.StartPage, UseWebView, ShowWindow); }
+                try { shown.Show(options.StartPage, UseWebView, ShowWindow, windowType); }
                 catch (WebUiException error) { throw CsWebUiLog.ShowFailed(scope.ServiceProvider, windowName, error); }
             }
             if (loop is null) Show();

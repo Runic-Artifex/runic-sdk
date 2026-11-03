@@ -22,7 +22,9 @@ namespace Runic.Application.Testing;
 /// Assert.Equal(0, await app.StopAsync());
 /// </code>
 /// The application writes <c>RUNIC_APPLICATION_URL=&lt;url&gt;</c> to standard output for each Window it opens;
-/// <see cref="Url"/> is the first. <see cref="StopAsync"/> writes a line to standard input, which ends serving on
+/// <see cref="Url"/> is the first, <see cref="Urls"/> lists all so far, and <see cref="WaitForWindowUrlAsync(int, TimeSpan, CancellationToken)"/>
+/// waits for a later one, by its position or by the Window type that a 0.16 host names on a
+/// <c>RUNIC_APPLICATION_WINDOW=&lt;url&gt; &lt;type&gt;</c> line. <see cref="StopAsync"/> writes a line to standard input, which ends serving on
 /// every platform, Windows included. When the application has not exited within the timeout, its process tree is
 /// killed. Standard output and standard error are captured for failure messages.
 /// When the test process exits without disposing it, the application is killed on a best-effort basis: on Windows
@@ -33,6 +35,7 @@ namespace Runic.Application.Testing;
 public sealed class RunicServeOnlyApplication : IAsyncDisposable
 {
     private const string UrlPrefix = "RUNIC_APPLICATION_URL=";
+    private const string WindowPrefix = "RUNIC_APPLICATION_WINDOW=";
     private static readonly TimeSpan s_defaultTimeout = TimeSpan.FromSeconds(30);
     // Output readers end when every process holding the pipes has exited; a descendant left running holds them.
     private static readonly TimeSpan s_outputDrainTimeout = TimeSpan.FromSeconds(2);
@@ -50,6 +53,10 @@ public sealed class RunicServeOnlyApplication : IAsyncDisposable
     private readonly Task _reading;
     private readonly object _gate = new();
     private Task? _stopLine;
+    // Every Window's URL and, from a host that names it, its type, in the order the application wrote them.
+    private readonly List<(Uri Url, string? Type)> _windows = [];
+    private TaskCompletionSource _windowsChanged = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    private bool _outputEnded;
     private volatile bool _killed;
 
     static RunicServeOnlyApplication()
@@ -71,6 +78,110 @@ public sealed class RunicServeOnlyApplication : IAsyncDisposable
 
     /// <summary>The URL of the first Window's page, from <c>RUNIC_APPLICATION_URL=</c>.</summary>
     public Uri Url { get; private set; } = null!;
+
+    /// <summary>The URL of each Window's page the application has written so far, in the order it opened them.</summary>
+    /// <remarks>
+    /// The first is <see cref="Url"/>: an invalid first URL fails <see cref="StartAsync(ProcessStartInfo, TimeSpan?, CancellationToken)"/>,
+    /// and a later line with an invalid URL is not listed.
+    /// </remarks>
+    public IReadOnlyList<Uri> Urls
+    {
+        get { lock (_windows) return [.. _windows.Select(static window => window.Url)]; }
+    }
+
+    /// <summary>Waits for the URL of the Window at <paramref name="index"/>, in the order the application opened its Windows.</summary>
+    /// <param name="index">The Window's position from 0; 0 is <see cref="Url"/>.</param>
+    /// <param name="timeout">How long to wait.</param>
+    /// <param name="cancellationToken">Cancels the wait; the application keeps running.</param>
+    /// <returns>The Window's URL.</returns>
+    /// <exception cref="TimeoutException">The application wrote no such URL in time; it keeps running.</exception>
+    /// <exception cref="InvalidOperationException">The application exited first.</exception>
+    [System.Diagnostics.CodeAnalysis.SuppressMessage("ApiDesign", "RS0026:Do not add multiple public overloads with optional parameters",
+        Justification = "The overloads differ in their first parameter's type; only the trailing token is optional, as on every asynchronous member.")]
+    public Task<Uri> WaitForWindowUrlAsync(int index, TimeSpan timeout, CancellationToken cancellationToken = default)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegative(index);
+        return WaitForWindowAsync(windows => index < windows.Count ? windows[index].Url : null,
+            $"a URL for Window {index}", timeout, cancellationToken);
+    }
+
+    /// <summary>Waits for the URL of the first Window of type <paramref name="windowType"/>.</summary>
+    /// <param name="windowType">
+    /// The Window class's full name, such as <c>MyApp.SettingsWindow</c>, or its name without the namespace, such as
+    /// <c>SettingsWindow</c>. A closed generic Window type is named without spaces, by its generic definition and its
+    /// arguments' names without namespaces: <c>MyApp.DocumentWindow`1[Report]</c> or <c>DocumentWindow`1[Report]</c>.
+    /// </param>
+    /// <param name="timeout">How long to wait.</param>
+    /// <param name="cancellationToken">Cancels the wait; the application keeps running.</param>
+    /// <returns>The Window's URL.</returns>
+    /// <remarks>
+    /// The type comes from the <c>RUNIC_APPLICATION_WINDOW=</c> line that Runic Desktop and CS-WebUI write from 0.16
+    /// on; an application on an earlier host never names its Windows, so wait by position there.
+    /// </remarks>
+    /// <exception cref="TimeoutException">The application named no such Window in time; it keeps running.</exception>
+    /// <exception cref="InvalidOperationException">The application exited first.</exception>
+    [System.Diagnostics.CodeAnalysis.SuppressMessage("ApiDesign", "RS0026:Do not add multiple public overloads with optional parameters",
+        Justification = "The overloads differ in their first parameter's type; only the trailing token is optional, as on every asynchronous member.")]
+    public Task<Uri> WaitForWindowUrlAsync(string windowType, TimeSpan timeout, CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(windowType);
+        return WaitForWindowAsync(windows => windows.FirstOrDefault(window => window.Type is { } type && IsType(type, windowType)).Url,
+            $"a Window of type '{windowType}'", timeout, cancellationToken);
+    }
+
+    // RUNIC_APPLICATION_WINDOW=<url> <type>: the URL of a line already read, then the Window type, which hosts write
+    // without spaces (a closed generic type as MyApp.DocumentWindow`1[Report]); later fields are ignored.
+    internal static bool TryParseWindowLine(string line, [System.Diagnostics.CodeAnalysis.NotNullWhen(true)] out Uri? url,
+        [System.Diagnostics.CodeAnalysis.NotNullWhen(true)] out string? type)
+    {
+        url = null;
+        type = null;
+        if (!line.StartsWith(WindowPrefix, StringComparison.Ordinal)) return false;
+        var fields = line[WindowPrefix.Length..].Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        if (fields.Length < 2 || !Uri.TryCreate(fields[0], UriKind.Absolute, out url)) return false;
+        type = fields[1];
+        return true;
+    }
+
+    internal static bool IsType(string fullName, string wanted) =>
+        fullName == wanted || fullName.Length > wanted.Length && fullName.EndsWith(wanted, StringComparison.Ordinal)
+            && fullName[^(wanted.Length + 1)] is '.' or '+';
+
+    private async Task<Uri> WaitForWindowAsync(Func<List<(Uri Url, string? Type)>, Uri?> find, string what, TimeSpan timeout,
+        CancellationToken cancellationToken)
+    {
+        ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(timeout, TimeSpan.Zero, nameof(timeout));
+        using var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        deadline.CancelAfter(timeout);
+        while (true)
+        {
+            Task changed;
+            lock (_windows)
+            {
+                if (find(_windows) is { } url) return url;
+                if (_outputEnded)
+                    throw new InvalidOperationException(Describe($"The application ended its output before it wrote {what}."));
+                changed = _windowsChanged.Task;
+            }
+            try { await changed.WaitAsync(deadline.Token).ConfigureAwait(false); }
+            catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+            {
+                throw new TimeoutException(Describe($"The application did not write {what} within {timeout}."));
+            }
+        }
+    }
+
+    private void WindowsChanged(Action<List<(Uri Url, string? Type)>> change)
+    {
+        TaskCompletionSource changed;
+        lock (_windows)
+        {
+            change(_windows);
+            changed = _windowsChanged;
+            _windowsChanged = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        }
+        changed.TrySetResult();
+    }
 
     /// <summary>The application's process id.</summary>
     public int ProcessId => _process.Id;
@@ -349,11 +460,30 @@ public sealed class RunicServeOnlyApplication : IAsyncDisposable
             while (await _process.StandardOutput.ReadLineAsync().ConfigureAwait(false) is { } line)
             {
                 lock (_output) _output.AppendLine(line);
-                if (line.StartsWith(UrlPrefix, StringComparison.Ordinal)) _url.TrySetResult(line[UrlPrefix.Length..].Trim());
+                if (line.StartsWith(UrlPrefix, StringComparison.Ordinal))
+                {
+                    // The first URL line decides StartAsync: a valid one is Url and Urls[0], listed before Url is set;
+                    // an invalid one fails the start. A later invalid line is not listed.
+                    var url = line[UrlPrefix.Length..].Trim();
+                    if (Uri.TryCreate(url, UriKind.Absolute, out var uri)) WindowsChanged(windows => windows.Add((uri, null)));
+                    _url.TrySetResult(url);
+                }
+                else if (TryParseWindowLine(line, out var uri, out var type))
+                {
+                    WindowsChanged(windows =>
+                    {
+                        var index = windows.FindIndex(window => window.Url == uri && window.Type is null);
+                        if (index >= 0) windows[index] = (uri, type);
+                    });
+                }
             }
         }
         catch (Exception error) when (error is IOException or ObjectDisposedException or InvalidOperationException) { }
-        finally { _url.TrySetResult(null); }
+        finally
+        {
+            _url.TrySetResult(null);
+            WindowsChanged(_ => _outputEnded = true);
+        }
     }
 
     private async Task ReadErrorsAsync()
