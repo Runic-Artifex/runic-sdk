@@ -118,7 +118,7 @@ internal sealed class BridgeTypeGraph
             var chain = leaves[index].Chain;
             source.AppendLine($"    internal static object SetPath{index}(object container, global::System.Text.Json.JsonElement value)");
             source.AppendLine("    {");
-            source.AppendLine($"        var c0 = ({CSharpType(container.NonNullableType)})container;");
+            source.AppendLine($"        var c0 = ({NonNullCSharpType(container)})container;");
             var owners = new BridgeTypeNode[chain.Length];
             owners[0] = container;
             for (var level = 1; level < chain.Length; level++)
@@ -141,9 +141,17 @@ internal sealed class BridgeTypeGraph
         source.Append(withs);
     }
 
+    // A node's C# type with its own nullable annotations and those of its type arguments, as its codec declares it,
+    // but not null itself: the copies of field paths run on objects that the path reached.
+    private static string NonNullCSharpType(BridgeTypeNode node)
+    {
+        var type = CSharpNodeType(node);
+        return node.IsNullable && type.EndsWith('?') ? type[..^1] : type;
+    }
+
     private static void AppendWith(StringBuilder pending, BridgeTypeNode owner, BridgeTypeMember member)
     {
-        var type = CSharpType(owner.NonNullableType);
+        var type = NonNullCSharpType(owner);
         var signature = $"    private static {type} With{owner.Id}_{member.Index}({type} c, {CSharpNodeType(member.Type)} v)";
         var property = member.Property.Name;
         var body = BridgeFieldLeaf.CopyOf(owner).Kind switch
@@ -152,7 +160,7 @@ internal sealed class BridgeTypeGraph
             BridgeFieldCopy.Constructor => $" {{ var copy = new {type}(c); copy.{property} = v; return copy; }}",
             BridgeFieldCopy.Clone => $" {{ var copy = c.Clone(); copy.{property} = v; return copy; }}",
             // Every settable member of the class is on the wire: its codec copies it.
-            BridgeFieldCopy.Wire => $" {{ using var copy = global::Runic.Application.Views.Generated.BridgeFieldPath.ReplaceMember(writer => Write{owner.Id}(writer, c), {JsonSerializer.Serialize(member.WireName)}, writer => Write{member.Type.Id}(writer, v)); return Read{owner.Id}(copy.RootElement); }}",
+            BridgeFieldCopy.Wire => $" {{ using var copy = global::Runic.Application.Views.Generated.BridgeFieldPath.ReplaceMember(writer => Write{owner.Id}(writer, c), {JsonSerializer.Serialize(member.WireName)}, writer => Write{member.Type.Id}(writer, v)); return Read{owner.Id}(copy.RootElement){(owner.IsNullable && !owner.NonNullableType.IsValueType ? "!" : owner.IsNullable ? ".Value" : "")}; }}",
             _ => throw new InvalidOperationException($"{type} cannot be copied."),
         };
         pending.AppendLine(signature + body);
