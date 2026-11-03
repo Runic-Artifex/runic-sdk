@@ -481,8 +481,8 @@ public sealed record DesktopWindowHostOptions
     /// <summary>Gets whether the window blocks its owner, from <see cref="DesktopWindowOptions.Modality"/>.</summary>
     /// <remarks>
     /// With <see cref="DesktopWindowModality.Window"/>, a host reporting <see cref="DesktopWindowCapabilities.Ownership"/>
-    /// makes the owner take no input from before the window is shown until it has closed, and leaves the application's
-    /// other windows usable. Several windows may be modal to one owner at once: the owner takes input again when the last
+    /// makes the owner take no input, and ignore the user's close, while the window is shown (a hidden one does not
+    /// block it), and leaves the application's other windows usable. Several windows may be modal to one owner at once: the owner takes input again when the last
     /// of them closed. It is <see cref="DesktopWindowModality.None"/> when <see cref="OwnerHandle"/> is zero.
     /// </remarks>
     public DesktopWindowModality Modality { get; init; }

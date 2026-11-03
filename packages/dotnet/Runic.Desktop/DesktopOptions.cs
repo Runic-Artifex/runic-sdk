@@ -795,9 +795,10 @@ public sealed record DesktopWindowOptions
     /// An owned window stays above its owner and is not shown in the taskbar on its own: on Windows its owner is the
     /// owner's <c>HWND</c>, on macOS it is a child window of the owner's <c>NSWindow</c> (a sheet when it is
     /// window-modal), and on Linux it is <c>transient_for</c> the owner's GTK window. When the owner is a
-    /// <see cref="DesktopWindow"/> (<see cref="DesktopWindowOwner.FromWindow"/>), closing the owner closes the windows
-    /// it owns without asking them, and hiding or showing the owner with <see cref="DesktopWindow.SetVisibleAsync"/>
-    /// hides or shows them with it.
+    /// <see cref="DesktopWindow"/> (<see cref="DesktopWindowOwner.FromWindow"/>), a close the owner's
+    /// <see cref="ConfirmCloseAsync"/> decides, and a quit, first ask the confirmation of the windows it owns, innermost
+    /// first; any other close of the owner closes them without asking. Hiding or showing the owner with
+    /// <see cref="DesktopWindow.SetVisibleAsync"/> hides or shows them with it.
     /// </para>
     /// <para>
     /// Only the embedded window applies it, on a host whose capabilities include
@@ -813,9 +814,11 @@ public sealed record DesktopWindowOptions
     /// <see cref="DesktopWindowModality.None"/>.
     /// </summary>
     /// <remarks>
-    /// <see cref="DesktopWindowModality.Window"/> needs an <see cref="Owner"/>. The owner then takes no input until this
-    /// window closes: on Windows it is disabled (<c>EnableWindow</c>), on macOS the window is a sheet of the owner, and
-    /// on Linux the owner's GTK window is insensitive. Other windows of the application stay usable.
+    /// <see cref="DesktopWindowModality.Window"/> needs an <see cref="Owner"/>. The owner then takes no input, and ignores
+    /// the user's close, while this window is shown: on Windows it is disabled (<c>EnableWindow</c>), on macOS the window
+    /// is a sheet of the owner (AppKit queues a second sheet of one owner until the first ends), and on Linux the
+    /// owner's GTK window is insensitive. A <see cref="Hidden"/> window blocks its owner from its first show. Other
+    /// windows of the application stay usable.
     /// </remarks>
     public DesktopWindowModality Modality { get; init; }
 

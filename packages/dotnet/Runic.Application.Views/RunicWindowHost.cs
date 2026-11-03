@@ -185,8 +185,9 @@ public sealed record RunicWindowOptions
     /// </summary>
     /// <remarks>
     /// <para>
-    /// On Runic Desktop an owned Window stays above its owner, has no taskbar button of its own, hides and shows with it,
-    /// and closes without asking when the owner closes; see <c>DesktopWindowOptions.Owner</c>. A host that cannot own
+    /// On Runic Desktop an owned Window stays above its owner, has no taskbar button of its own, and hides and shows with
+    /// it. A guarded owner's close asks its owned Windows' guards first, innermost first; any other close of the owner
+    /// closes them without asking. See <c>DesktopWindowOptions.Owner</c>. A host that cannot own
     /// Windows, such as CS-WebUI, a browser fallback or serve-only mode, opens it on its own and logs
     /// <c>WindowOwnerIgnored</c> (event 1180); the owner's <see cref="IRunicWindowPresentation.Features"/> include
     /// <see cref="RunicWindowPresentationFeatures.OwnedWindows"/> where it can. The owner must be open and opened by the
@@ -200,8 +201,10 @@ public sealed record RunicWindowOptions
     /// <see cref="RunicWindowModality.None"/>; <see cref="RunicWindowModality.Window"/> needs an <see cref="Owner"/>.
     /// </summary>
     /// <remarks>
-    /// A window-modal Window keeps the owner from taking input until it closes: on Windows the owner is disabled, on macOS
-    /// the Window is the owner's sheet, and on Linux the owner's GTK window is insensitive. The application's other Windows
+    /// A window-modal Window keeps the owner from taking input, and from being closed by the user, while it is shown: on
+    /// Windows the owner is disabled, on macOS the Window is the owner's sheet (a second one is queued until the first
+    /// ends, and a sheet has no close button, so its page needs a Cancel), and on Linux the owner's GTK window is
+    /// insensitive. The application's other Windows
     /// stay usable. <see cref="IRunicWindowService.ActivateAsync"/> of the owner brings the modal Window forward too.
     /// </remarks>
     public RunicWindowModality Modality { get; init; }

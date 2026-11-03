@@ -150,7 +150,7 @@ public sealed class DesktopSurface : IAsyncDisposable
                         // presentation; an embedded fallback can.
                         var browserFallback = candidate != BrowserKind.Embedded;
                         _engine.SetAllowedPermissions(browserFallback ? DesktopPermissionGrant.None : configured.AllowedPermissions);
-                        _engine.SetCloseConfirmation(browserFallback ? null : configured.ConfirmCloseAsync);
+                        _engine.SetCloseConfirmation(browserFallback ? null : AskingOwnedWindows(configured.ConfirmCloseAsync));
                         if (browserFallback && !withheld)
                         {
                             withheld = true;
@@ -204,6 +204,8 @@ public sealed class DesktopSurface : IAsyncDisposable
                 actualBrowser = FromCompatibilityBrowser(_engine.CurrentBrowser);
             }
             window = new DesktopWindow(this, _engine, requestedBrowser, actualBrowser, fellBack);
+            // The window's own confirmation, which its owner's close asks before its owner's (ConfirmOwnedAsync).
+            if (actualBrowser == BrowserKind.Embedded && _engine.HasCloseConfirmation) window.OwnConfirmation = configured.ConfirmCloseAsync;
             window.InitializeColorScheme(configured.ColorScheme,
                 fromApplication: configured.ColorScheme == DesktopColorScheme.NoPreference && _host.ColorScheme != DesktopColorScheme.NoPreference);
             _window = window;
@@ -357,11 +359,14 @@ public sealed class DesktopSurface : IAsyncDisposable
         return await decision.ConfigureAwait(false);
     }
 
-    // A quit asks the open window's close guard; a window without one closes with the shutdown that follows.
-    internal ValueTask<bool> ConfirmCloseForQuitAsync(CancellationToken cancellationToken) =>
-        Volatile.Read(ref _window) is { IsOpen: true } window && _engine.HasCloseConfirmation
-            ? RequestCloseWindowAsync(window, cancellationToken)
-            : ValueTask.FromResult(true);
+    // A quit asks the open window's close guard, which first asks the windows it owns; a window without one closes with
+    // the shutdown that follows, after the windows it owns were asked. An owned window is asked through its owner.
+    internal async ValueTask<bool> ConfirmCloseForQuitAsync(CancellationToken cancellationToken)
+    {
+        if (Volatile.Read(ref _window) is not { IsOpen: true } window || window.Owner?.Window is not null) return true;
+        if (_engine.HasCloseConfirmation) return await RequestCloseWindowAsync(window, cancellationToken).ConfigureAwait(false);
+        return await window.ConfirmOwnedAsync(cancellationToken).ConfigureAwait(false);
+    }
 
     // Force-closes the current window for a host shutdown. It does not wait for the gate: a window that is still
     // opening checks the shutdown itself once it is published.
@@ -514,7 +519,7 @@ public sealed class DesktopSurface : IAsyncDisposable
         }
         _engine.SetAllowedPermissions(options.AllowedPermissions);
         _engine.SetWebContent(options.WebContent);
-        _engine.SetCloseConfirmation(options.ConfirmCloseAsync);
+        _engine.SetCloseConfirmation(AskingOwnedWindows(options.ConfirmCloseAsync));
         _engine.SetMenuBarPresentation(options.MenuBarPresentation);
         _engine.SetColorScheme(EffectiveColorScheme(options.ColorScheme),
             fromApplication: options.ColorScheme == DesktopColorScheme.NoPreference && _host.ColorScheme != DesktopColorScheme.NoPreference);
@@ -547,6 +552,12 @@ public sealed class DesktopSurface : IAsyncDisposable
     }
 
     internal const string OwnerUnavailableCode = "window-owner-unavailable";
+
+    // A window's close confirmation first asks the windows it owns, innermost first (DesktopWindow.ConfirmOwnedAsync).
+    private Func<CancellationToken, ValueTask<bool>>? AskingOwnedWindows(Func<CancellationToken, ValueTask<bool>>? confirm) =>
+        confirm is null ? null : async cancellationToken =>
+            (Volatile.Read(ref _window) is not { } window || await window.ConfirmOwnedAsync(cancellationToken).ConfigureAwait(false))
+            && await confirm(cancellationToken).ConfigureAwait(false);
 
     // The presentations a window tries in order: the preferred one, then its fallbacks.
     internal static IReadOnlyList<BrowserKind> PresentationChain(DesktopWindowOptions options)
@@ -1609,6 +1620,29 @@ public sealed class DesktopWindow : IAsyncDisposable
                 // Closed meanwhile, or a window that cannot be hidden.
             }
         }
+    }
+
+    // DesktopWindowOptions.ConfirmCloseAsync of this window, when its presentation confirms closes.
+    internal Func<CancellationToken, ValueTask<bool>>? OwnConfirmation { get; set; }
+
+    // Before this window closes on a confirmed close or a quit: the windows it owns are asked, the last opened first and
+    // each one's own windows before it. One that refuses keeps this window open. A window-modal one that agrees closes at
+    // once, so this window's own confirmation never asks while that window blocks it.
+    internal async ValueTask<bool> ConfirmOwnedAsync(CancellationToken cancellationToken)
+    {
+        DesktopWindow[] owned;
+        lock (_ownedGate) owned = [.. _owned.Where(static window => window.IsOpen).Reverse()];
+        foreach (var window in owned)
+        {
+            if (!await window.ConfirmOwnedAsync(cancellationToken).ConfigureAwait(false)) return false;
+            if (window.OwnConfirmation is { } confirm && window.IsOpen && !await confirm(cancellationToken).ConfigureAwait(false)) return false;
+            if (window.Modality == DesktopWindowModality.Window && window.IsOpen)
+            {
+                try { await window.CloseAsync(CancellationToken.None).ConfigureAwait(false); }
+                catch (Exception error) when (error is ObjectDisposedException or InvalidOperationException or DesktopException) { }
+            }
+        }
+        return true;
     }
 
     // The window-modal window that should have the focus instead of this one, if any: the last one opened.

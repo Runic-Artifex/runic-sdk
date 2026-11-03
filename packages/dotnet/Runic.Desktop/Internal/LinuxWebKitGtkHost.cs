@@ -199,6 +199,7 @@ internal sealed partial class LinuxWebKitGtkHost : IWebUiEmbeddedHost
         => InvokeWindowAsync(() =>
         {
             Api.GtkWindowPresent(_window);
+            BlockOwner();
             Api.GtkWidgetGrabFocus(_webView);
         }, cancellationToken);
 
@@ -237,9 +238,12 @@ internal sealed partial class LinuxWebKitGtkHost : IWebUiEmbeddedHost
                 Api.GtkWidgetShowAll(_window);
                 // The global menu keeps showing the bar.
                 if (_globalPlacement && _menuBar != 0) Api.GtkWidgetHide(_menuBar);
+                BlockOwner();
             }
             else
             {
+                // A hidden window-modal window lets its owner take input again, as a macOS sheet that ended does.
+                UnblockOwner();
                 Api.GtkWidgetHide(_window);
             }
         }, cancellationToken);
@@ -456,6 +460,7 @@ internal sealed partial class LinuxWebKitGtkHost : IWebUiEmbeddedHost
         {
             Api.GtkWidgetHide(_window);
         }
+        BlockOwner();
         // The window is realized now, also when hidden, so it has its X11 window.
         StartGlobalMenu(options);
 
@@ -464,8 +469,9 @@ internal sealed partial class LinuxWebKitGtkHost : IWebUiEmbeddedHost
         UpdateActivity();
     }
 
-    // DesktopWindowOptions.Owner: transient for the owner's GtkWindow. A window-modal window makes the owner insensitive
-    // until the last window modal to it closed; gtk_window_set_modal would block every window of the application.
+    // DesktopWindowOptions.Owner: transient for the owner's GtkWindow. A shown window-modal window makes the owner
+    // insensitive (BlockOwner) until the last window modal to it closed or was hidden; gtk_window_set_modal would block
+    // every window of the application.
     private void ApplyOwner(WebUiEmbeddedHostOptions options)
     {
         if (options.OwnerHandle == 0) return;
@@ -474,19 +480,36 @@ internal sealed partial class LinuxWebKitGtkHost : IWebUiEmbeddedHost
         Api.GtkWindowSetDialogHint(_window);
         // Held until the window closed, so the owner can be made sensitive again also after it was destroyed.
         Api.GObjectRef(options.OwnerHandle);
-        _blockedOwner = options.OwnerHandle;
-        if (ModalOwners.Acquire(_blockedOwner)) Api.GtkWidgetSetSensitive(_blockedOwner, false);
+        _modalOwner = options.OwnerHandle;
     }
 
-    private nint _blockedOwner;
+    // The owner of a window-modal window, referenced while it is open, and whether it blocks the owner now.
+    private nint _modalOwner;
+    private bool _blocking;
+
+    // GTK thread only.
+    private void BlockOwner()
+    {
+        if (_modalOwner == 0 || _blocking || _window == 0 || !Api.GtkWidgetGetVisible(_window)) return;
+        _blocking = true;
+        if (ModalOwners.Acquire(_modalOwner)) Api.GtkWidgetSetSensitive(_modalOwner, false);
+    }
+
+    // GTK thread only.
+    private void UnblockOwner()
+    {
+        if (!_blocking) return;
+        _blocking = false;
+        if (ModalOwners.Release(_modalOwner)) Api.GtkWidgetSetSensitive(_modalOwner, true);
+    }
 
     // GTK thread only: the window closed, so the owner it blocked takes input again.
     private void ReleaseOwner()
     {
-        var owner = _blockedOwner;
+        var owner = _modalOwner;
         if (owner == 0) return;
-        _blockedOwner = 0;
-        if (ModalOwners.Release(owner)) Api.GtkWidgetSetSensitive(owner, true);
+        UnblockOwner();
+        _modalOwner = 0;
         Api.GObjectUnref(owner);
     }
 
@@ -608,6 +631,9 @@ internal sealed partial class LinuxWebKitGtkHost : IWebUiEmbeddedHost
     [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
     private static int OnDelete(nint window, nint nativeEvent, nint context)
     {
+        // A window that a window-modal window blocks ignores the window manager's close, as a disabled Win32 window and a
+        // macOS window with a sheet do: the user answers the modal window first.
+        if (ModalOwners.Count(window) > 0) return 1;
         if (GCHandle.FromIntPtr(context).Target is LinuxWebKitGtkHost host && host._options?.CloseRequested is { } requestClose)
         {
             requestClose();

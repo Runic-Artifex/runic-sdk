@@ -509,8 +509,16 @@ Assert.True(shell.IsBlocked);
   Window's `RunicWindowTestHost<TViewModel>`.
 - Each Window has a `RunicTestWindowPresentation` (`Presentation`), the one its
   scope registers or a new one, so activation shows as `PresentCount`.
-- An owned Window closes when its owner closes, and `IsBlocked` is
-  `true` while a window-modal Window it owns is open, as on Runic Desktop.
+- As on Runic Desktop: an owned Window closes when its owner closes, hides and
+  shows with its owner's `SetVisibleAsync`, and an owner's close asks its owned
+  Windows' guards first, innermost first. `IsBlocked` is `true` while a
+  window-modal Window it owns is open. The test host does not pass where the
+  desktop cannot: on a blocked Window `RequestUserCloseAsync()` and its page's
+  commands, operation starts, sets and writes throw `InvalidOperationException`
+  (snapshots still read it); the application's `RequestCloseAsync` still works.
+- `DisposeAsync` of the Window `CreateWindowAsync` returned closes the whole test
+  application; that of an entry of `OpenedWindows` closes only that Window and
+  the Windows it owns.
 - All Windows share one clock (a `FakeTimeProvider` unless the options name
   another) and one id source. Disposing the result closes and releases every
   Window. A command that closes its own Window is cancelled by the close, as on

@@ -380,17 +380,24 @@ public sealed partial class ProjectViewModel(IRunicWindowService windows) : Obse
 Since 0.16, the service also manages the open Windows:
 
 - `Windows` lists every Window that a host opened with these services, through
-  the service or `host.OpenWindowAsync`, in the order they opened, until it
-  closes. `WindowsChanged` reports each open and close; `ObserveWindows()`
-  returns the list now and after each change as a plain `IObservable`, without
-  System.Reactive. The event is raised on the thread that opened the Window or,
-  for a close, on the thread pool, so a ViewModel posts the change to its model
-  context. A handler that throws is logged as event 1181.
+  the service or `host.OpenWindowAsync`, in the order they opened, until its
+  close starts: the application closed it, a close request decided to close it,
+  `CompleteAsync` completed it, or the user closed it. `WindowsChanged` reports
+  each open and close, one change at a time and in order, on a thread-pool
+  thread, each with its own `Windows` list. It is not raised in any Window's
+  model context, so a ViewModel posts what it does to its own.
+  `ObserveWindows()` returns the list now and after each change as a plain
+  `IObservable`, without System.Reactive; `ObserveWindows(context)` delivers each
+  list in a turn of `context`, such as the subscribing ViewModel's
+  `IRunicModelContext`. A handler that throws is logged as event 1181.
 - `FindOrOpenAsync<TWindow, TParameter>(key, parameter, options, activation)`
   brings the open `TWindow` with that key to the front, or opens a new one with
   the key. The key belongs to the Window type and is compared with `Equals`; two
-  calls with the same key at once open one Window, and a closed Window is
-  forgotten. `FindWindow<TWindow>(key)` only looks it up.
+  calls with the same key at once open one Window, and a Window whose close has
+  started is never found, so the next call opens a new one. When the call that
+  opens is cancelled, a call that was waiting for it, and was not cancelled
+  itself, looks again and opens the Window; a failed open fails every waiting
+  call. `FindWindow<TWindow>(key)` only looks it up.
 - `ActivateAsync(window, activation)` shows a hidden Window, restores a
   minimized one and asks for the focus with `IRunicWindowPresentation.PresentAsync`.
   When a window-modal Window blocks it, that Window comes forward after it.
@@ -399,7 +406,9 @@ Since 0.16, the service also manages the open Windows:
   Window's ViewModel takes `IRunicWindowResult<TResult>` and calls
   `CompleteAsync(value)`, which sets the result and closes the Window without
   asking its close guard; the command that called it finishes normally, since
-  the close gives accepted operations up to 5 seconds. A Window that closes
+  the close gives accepted operations up to 5 seconds. A ViewModel that completes
+  in its constructor, before its Window opened, closes the Window once it opened.
+  A Window that closes
   without a result, by the user or the application, returns a result whose
   `HasValue` is `false` (the default value). Cancelling the opener's token closes
   the Window without asking and throws `OperationCanceledException`.
@@ -444,18 +453,29 @@ closes, and needs an owner; the application's other Windows stay usable.
 
 | Host | Owned | Window-modal |
 | --- | --- | --- |
-| Runic Desktop, Windows (WebView2) | The owner's `HWND` is the window's owner: it stays above it and has no taskbar button. | The owner is disabled (`EnableWindow`) until the window closed, and enabled before it is destroyed, so the owner is activated again. |
-| Runic Desktop, macOS (WKWebView) | A child window of the owner's `NSWindow`: it stays above it and moves with it. | A sheet of the owner's `NSWindow`; it ignores the window's position. |
-| Runic Desktop, Linux (GTK 3 and GTK 4) | `transient_for` the owner's GTK window. | The owner's GTK window is insensitive until the window closed. `gtk_window_set_modal` is not used: it would block every window of the application. |
+| Runic Desktop, Windows (WebView2) | The owner's `HWND` is the window's owner: it stays above it and has no taskbar button. | The owner is disabled (`EnableWindow`) while the window is shown, and enabled before it is destroyed, so the owner is activated again. |
+| Runic Desktop, macOS (WKWebView) | A child window of the owner's `NSWindow`: it stays above it and moves with it. | A sheet of the owner's `NSWindow`; it ignores the window's position. A sheet has no title bar, so no close button, and Esc does not close it: give its page a Cancel button (`IRunicWindowContext.RequestCloseAsync`). AppKit shows one sheet of an owner at a time: a second window modal to the same owner is queued and stays invisible until the first ends; `FocusAsync` focuses the visible one. |
+| Runic Desktop, Linux (GTK 3 and GTK 4) | `transient_for` the owner's GTK window. | The owner's GTK window is insensitive while the window is shown. `gtk_window_set_modal` is not used: it would block every window of the application. |
 | WPF | `WpfPlatformServices.ForDesktopWindowOwner(window)` gives a Runic Desktop window a WPF owner. | As on Windows. |
 | CS-WebUI, serve-only mode, a browser fallback | Not available: the Window opens on its own. | Not available. |
 
 On Runic Desktop an owned Window hides and shows with its owner
-(`SetVisibleAsync`), and closes without asking when the owner closes, so a
-pending `OpenForResultAsync` returns no result. On Windows and macOS a blocked
-owner takes no input, its title bar included; on Linux the window manager can
-still close it, and the modal Window then closes with it. Quit asks the guards of owned Windows before those of
-their owners. The owner's `IRunicWindowPresentation.Features` include
+(`SetVisibleAsync`). A window-modal Window blocks its owner while it is shown: one
+opened `Hidden` blocks it from its first show, and hiding it lets the owner take
+input again, as everywhere. Several Windows can be modal to one owner, and a
+modal Window can open its own modal Window; an owner takes input again when the
+last one that blocks it closed or was hidden. A blocked owner takes no input, its
+title bar included, and ignores the user's and the window manager's close on
+every platform (on Linux too), so its own close confirmation never shows behind
+its modal Window.
+
+When a guarded owner closes, by `RequestCloseAsync` or the user, and when the
+application quits, the guards of the Windows it owns are asked first, innermost
+first, the last opened first: one that refuses keeps the owner open with them,
+and a window-modal one that agrees closes before the owner's own guard is asked.
+An owner without a guard, and the application's own close (`CloseAsync`,
+`DisposeAsync`), close its owned Windows without asking, so a pending
+`OpenForResultAsync` returns no result. The owner's `IRunicWindowPresentation.Features` include
 `OwnedWindows` where the host can own Windows. A host that cannot opens the
 Window on its own and logs `WindowOwnerIgnored` (event 1180), as it does for an
 owner that has closed or belongs to another host; `ValidateWindow` on CS-WebUI

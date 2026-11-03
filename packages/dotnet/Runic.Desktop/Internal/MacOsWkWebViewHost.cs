@@ -255,7 +255,9 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
                 // A sheet comes forward with its parent; a hidden one is attached again.
                 Api.SendVoidNint(_parentWindow, "makeKeyAndOrderFront:", 0);
                 if (!_attached) BeginSheet();
-                else Api.SendVoid(_window, "makeKeyWindow");
+                // AppKit shows one sheet of an owner at a time and queues the others: the visible one takes the focus.
+                var visible = Api.SendNint(_parentWindow, "attachedSheet");
+                Api.SendVoid(visible != 0 ? visible : _window, "makeKeyWindow");
             }
             else
             {
@@ -287,12 +289,41 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
         Api.SendVoidNintLong(_parentWindow, "addChildWindow:ordered:", _window, 1);
     }
 
-    // Main thread. Ends the sheet or detaches the child window, before it is hidden or closed.
+    // Main thread. Ends the sheet or detaches the child window, before it is hidden or closed. An owner that closed first
+    // ended and detached it already (DetachOwnedWindows).
     private void DetachFromParent()
     {
         if (_parentWindow == 0 || !_attached) return;
         _attached = false;
-        Api.SendVoidNint(_parentWindow, _sheet ? "endSheet:" : "removeChildWindow:", _window);
+        if (_sheet)
+        {
+            if (Api.Contains(Api.SendNint(_parentWindow, "sheets"), _window)) Api.SendVoidNint(_parentWindow, "endSheet:", _window);
+        }
+        else if (Api.SendNint(_window, "parentWindow") == _parentWindow)
+        {
+            Api.SendVoidNint(_parentWindow, "removeChildWindow:", _window);
+        }
+    }
+
+    // Main thread. The window closes: it ends its sheets, the queued ones included, and detaches its child windows, before
+    // AppKit releases it, so no owned window messages it afterwards.
+    private void DetachOwnedWindows()
+    {
+        var sheets = Api.SendNint(_window, "sheets");
+        for (var count = Api.Count(sheets); count > 0; count--)
+            Api.SendVoidNint(_window, "endSheet:", Api.SendNintUlong(sheets, "objectAtIndex:", (ulong)(count - 1)));
+        var children = Api.SendNint(_window, "childWindows");
+        for (var count = Api.Count(children); count > 0; count--)
+            Api.SendVoidNint(_window, "removeChildWindow:", Api.SendNintUlong(children, "objectAtIndex:", (ulong)(count - 1)));
+    }
+
+    // Main thread. The owned window closed: it leaves its owner and releases the reference it held since it opened.
+    private void ReleaseParent()
+    {
+        DetachFromParent();
+        var parent = _parentWindow;
+        _parentWindow = 0;
+        if (parent != 0) Api.SendVoid(parent, "release");
     }
 
     public ValueTask MinimizeAsync(CancellationToken cancellationToken = default)
@@ -578,6 +609,9 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
         ApplyTrafficLights();
         Navigate(url);
         _parentWindow = options.OwnerHandle;
+        // Held while this window is open: an owner that closes from code first must still answer endSheet: and
+        // removeChildWindow: (ReleaseParent).
+        if (_parentWindow != 0) _ = Api.SendNint(_parentWindow, "retain");
         _sheet = _parentWindow != 0 && options.Modality == DesktopWindowModality.Window;
         if (!options.Hidden)
         {
@@ -1449,8 +1483,9 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
         {
             return;
         }
-        // A window closed another way, such as Quit, leaves its owner too.
-        DetachFromParent();
+        // A window closed another way, such as Quit, leaves its owner too; a closing owner lets go of its windows first.
+        DetachOwnedWindows();
+        ReleaseParent();
         Hosts.TryRemove(_window, out _);
         WebViews.TryRemove(_webView, out _);
         EndDrags();
@@ -2381,6 +2416,16 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
 
         internal void SendVoidNint(nint receiver, string selector, nint value) =>
             ((delegate* unmanaged[Cdecl]<nint, nint, nint, void>)_messageSend)(receiver, Selector(selector), value);
+
+        // -[NSArray count], zero for nil.
+        internal int Count(nint array) => array == 0 ? 0 : (int)SendNint(array, "count");
+
+        // -[NSArray containsObject:], false for nil.
+        internal bool Contains(nint array, nint item) =>
+            array != 0 && ((delegate* unmanaged[Cdecl]<nint, nint, nint, byte>)_messageSend)(array, Selector("containsObject:"), item) != 0;
+
+        internal nint SendNintUlong(nint receiver, string selector, ulong value) =>
+            ((delegate* unmanaged[Cdecl]<nint, nint, ulong, nint>)_messageSend)(receiver, Selector(selector), value);
 
         internal void SendVoidNintNint(nint receiver, string selector, nint first, nint second) =>
             ((delegate* unmanaged[Cdecl]<nint, nint, nint, nint, void>)_messageSend)(receiver, Selector(selector), first, second);

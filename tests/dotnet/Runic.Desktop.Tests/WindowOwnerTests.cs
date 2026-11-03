@@ -123,6 +123,81 @@ public sealed class WindowOwnerTests
         Assert.Contains(diagnostics, static item => item.Code == "window-owner-unavailable");
     }
 
+    // Review 4: an owner's confirmed close asks the windows it owns first, innermost first; a refusal keeps the owner, and a
+    // modal window that agrees closes before the owner is asked. A quit asks an owned window once, through its owner.
+    [Test]
+    public async Task AnOwnersCloseAsksItsWindowsFirst()
+    {
+        var factory = new OwningFactory();
+        await using var host = await DesktopHost.StartAsync(new DesktopHostOptions { WindowHostFactory = factory, WaitForConnection = false });
+        var asked = new System.Collections.Concurrent.ConcurrentQueue<string>();
+        var dialogAllows = false;
+        DesktopWindow? dialog = null;
+        var dialogOpenWhenOwnerAsked = true;
+        DesktopWindow? owner = null;
+        async Task<DesktopWindow> OpenAsync(string name, DesktopWindow? ownedBy, Func<bool> allow)
+        {
+            var surface = await host.CreateSurfaceAsync(new DesktopSurfaceOptions { Content = new DesktopContent.Html(name) });
+            return await surface.OpenWindowAsync(new DesktopWindowOptions
+            {
+                Owner = ownedBy is null ? null : DesktopWindowOwner.FromWindow(ownedBy),
+                Modality = ownedBy is null || name == "palette" ? DesktopWindowModality.None : DesktopWindowModality.Window,
+                ConfirmCloseAsync = _ =>
+                {
+                    asked.Enqueue(name);
+                    if (name == "owner") dialogOpenWhenOwnerAsked = dialog!.IsOpen;
+                    return ValueTask.FromResult(allow());
+                },
+            });
+        }
+        owner = await OpenAsync("owner", null, static () => true);
+        var palette = await OpenAsync("palette", owner, static () => true);
+        dialog = await OpenAsync("dialog", owner, () => Volatile.Read(ref dialogAllows));
+        var nested = await OpenAsync("nested", dialog, static () => true);
+
+        // The nested dialog first, then the dialog, which refuses: the owner stays open and is not asked.
+        Assert.False(await owner.RequestCloseAsync());
+        Assert.Equal(["nested", "dialog"], asked.ToArray());
+        Assert.True(owner.IsOpen && dialog.IsOpen && palette.IsOpen);
+        // The nested dialog agreed, and a modal window that agrees closes at once.
+        await nested.WaitForCloseAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(10));
+
+        // The user's close asks the same way; now the dialog agrees and closes before the owner is asked.
+        Volatile.Write(ref dialogAllows, true);
+        asked.Clear();
+        var hostOfOwner = factory.Hosts[0];
+        hostOfOwner.CloseByUser();
+        await owner.WaitForCloseAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(10));
+        Assert.Equal(["dialog", "palette", "owner"], asked.ToArray());
+        Assert.False(dialogOpenWhenOwnerAsked);
+        await palette.WaitForCloseAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(10));
+    }
+
+    [Test]
+    public async Task AQuitAsksAnOwnedWindowThroughItsOwner()
+    {
+        var factory = new OwningFactory();
+        await using var host = await DesktopHost.StartAsync(new DesktopHostOptions
+        {
+            WindowHostFactory = factory,
+            WaitForConnection = false,
+            HandleShutdownSignals = false,
+        });
+        var asked = new System.Collections.Concurrent.ConcurrentQueue<string>();
+        var ownerSurface = await host.CreateSurfaceAsync(new DesktopSurfaceOptions { Content = new DesktopContent.Html("owner") });
+        var owner = await ownerSurface.OpenWindowAsync();
+        var dialogSurface = await host.CreateSurfaceAsync(new DesktopSurfaceOptions { Content = new DesktopContent.Html("dialog") });
+        var dialog = await dialogSurface.OpenWindowAsync(new DesktopWindowOptions
+        {
+            Owner = DesktopWindowOwner.FromWindow(owner),
+            ConfirmCloseAsync = _ => { asked.Enqueue("dialog"); return ValueTask.FromResult(false); },
+        });
+        Assert.Equal(Internal.DesktopQuitOutcome.Refused, await Internal.DesktopQuitCoordinator.QuitAsync(DesktopQuitSource.Menu, [host]));
+        Assert.Equal(["dialog"], asked.ToArray());
+        Assert.True(owner.IsOpen && dialog.IsOpen);
+        await owner.CloseAsync();
+    }
+
     private sealed class OwningFactory : IDesktopWindowHostFactory
     {
         internal List<OwningHost> Hosts { get; } = [];
@@ -139,8 +214,11 @@ public sealed class WindowOwnerTests
     private sealed class OwningHost(nint handle) : IDesktopWindowHost
     {
         internal const DesktopWindowCapabilities Supported = DesktopWindowCapabilities.NativeHandle | DesktopWindowCapabilities.Focus |
-            DesktopWindowCapabilities.Ownership;
+            DesktopWindowCapabilities.Ownership | DesktopWindowCapabilities.CloseConfirmation;
         public DesktopWindowCapabilities Capabilities => Supported;
+        public bool SupportsCloseConfirmation => true;
+        // The user closes the window: its close confirmation decides.
+        internal void CloseByUser() => Options?.CloseRequested?.Invoke();
         public event EventHandler? Closed;
         public bool IsOpen { get; private set; }
         public nint NativeHandle => IsOpen ? handle : 0;

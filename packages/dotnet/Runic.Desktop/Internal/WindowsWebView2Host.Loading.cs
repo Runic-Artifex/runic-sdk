@@ -97,6 +97,7 @@ internal sealed partial class WindowsWebView2Host
         {
             Native.ShowWindow(_window, maximize ? SwMaximize : SwShow);
         }
+        BlockOwner();
         // A placement saved full-screen opens full-screen on the monitor of its restored bounds.
         if (options.Placement is { FullScreen: true } && !options.Kiosk)
         {

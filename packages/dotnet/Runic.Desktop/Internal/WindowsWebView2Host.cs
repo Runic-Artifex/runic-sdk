@@ -260,6 +260,7 @@ internal sealed partial class WindowsWebView2Host : IWebUiEmbeddedHost
         {
             // A minimized window is restored, as activating it from the taskbar does.
             Native.ShowWindow(_window, Native.IsIconic(_window) ? SwRestore : SwShow);
+            BlockOwner();
             Native.SetForegroundWindow(_window);
             Native.SetFocus(_window);
             _controller!.MoveFocus();
@@ -460,10 +461,13 @@ internal sealed partial class WindowsWebView2Host : IWebUiEmbeddedHost
         {
             // A hidden window that restores a maximized placement opens maximized when it is first shown; a full-screen
             // one keeps covering its monitor.
+            // A hidden window-modal window lets its owner take input again, as a macOS sheet that ended does.
+            if (!visible) ReleaseOwner();
             Native.ShowWindow(_window, !visible ? SwHide : _maximizeWhenShown && !_fullScreen ? SwMaximize : SwShow);
             if (visible)
             {
                 _maximizeWhenShown = false;
+                BlockOwner();
             }
             if (_controller is not null)
             {
@@ -489,8 +493,17 @@ internal sealed partial class WindowsWebView2Host : IWebUiEmbeddedHost
         GC.SuppressFinalize(this);
     }
 
-    // The owner a window-modal window disabled (DesktopWindowOptions.Modality), or zero.
+    // The owner of a window-modal window (DesktopWindowOptions.Modality), or zero, and the owner it disables now, or zero.
+    private nint _modalOwner;
     private nint _blockedOwner;
+
+    // Window thread. A shown window-modal window disables its owner: a hidden one, opened Hidden or hidden later, does not.
+    private void BlockOwner()
+    {
+        if (_modalOwner == 0 || _blockedOwner != 0 || !Native.IsWindowVisible(_window)) return;
+        _blockedOwner = _modalOwner;
+        if (ModalOwners.Acquire(_blockedOwner)) Native.EnableWindow(_blockedOwner, false);
+    }
 
     // Window thread. Enables the owner again before the window is destroyed, so Windows activates the owner rather than
     // another application's window. A deferred destroy (an open menu) and WM_DESTROY call it again, which does nothing.
@@ -703,12 +716,9 @@ internal sealed partial class WindowsWebView2Host : IWebUiEmbeddedHost
             {
                 throw new Win32Exception(Marshal.GetLastWin32Error(), "The WebView2 host window could not be created.");
             }
-            // A window-modal window disables its owner before it shows, until the last window modal to it closed.
-            if (options.OwnerHandle != 0 && options.Modality == DesktopWindowModality.Window)
-            {
-                _blockedOwner = options.OwnerHandle;
-                if (ModalOwners.Acquire(_blockedOwner)) Native.EnableWindow(_blockedOwner, false);
-            }
+            // A window-modal window disables its owner whenever it is shown (BlockOwner), until the last window modal to it
+            // closed or was hidden.
+            _modalOwner = options.OwnerHandle != 0 && options.Modality == DesktopWindowModality.Window ? options.OwnerHandle : 0;
             _provider = WindowsAnnouncementProvider.Create(_window);
             // DesktopWindowOptions.ColorScheme: a dark or light title bar. Without it a Win32 title bar stays light.
             if (WindowsWebView2Host.ImmersiveDarkMode(options.ColorScheme) is { } darkMode)
@@ -751,6 +761,8 @@ internal sealed partial class WindowsWebView2Host : IWebUiEmbeddedHost
         }
         catch (Exception exception)
         {
+            // A failed open never leaves its owner disabled.
+            ReleaseOwner();
             _ready.TrySetException(exception);
             HandleClosed();
         }

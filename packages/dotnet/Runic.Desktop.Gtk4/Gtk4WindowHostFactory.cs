@@ -698,6 +698,12 @@ internal sealed partial class Gtk4WindowHost : IDesktopNativeDispatchWindowHost,
     // one keeps the position as the bounds it restores to, which a move would replace.
     private void Present(Gtk.Window window)
     {
+        try { PresentCore(window); }
+        finally { BlockOwner(window.Handle.DangerousGetHandle()); }
+    }
+
+    private void PresentCore(Gtk.Window window)
+    {
         if (_pendingPosition is not { } position)
         {
             window.Present();
@@ -739,6 +745,8 @@ internal sealed partial class Gtk4WindowHost : IDesktopNativeDispatchWindowHost,
             }
             else
             {
+                // A hidden window-modal window lets its owner take input again, as a macOS sheet that ended does.
+                UnblockOwner();
                 GetWindow().Hide();
             }
         }, cancellationToken));
@@ -1094,6 +1102,12 @@ internal sealed partial class Gtk4WindowHost : IDesktopNativeDispatchWindowHost,
         if (Volatile.Read(ref _forceClose) != 0)
         {
             return false;
+        }
+        // A window that a window-modal window blocks ignores the window manager's close, as a disabled Win32 window and a
+        // macOS window with a sheet do: the user answers the modal window first.
+        if (_window is { } own && ModalOwners.Count(own.Handle.DangerousGetHandle()) > 0)
+        {
+            return true;
         }
 
         if (_options?.CloseRequested is { } closeRequested)
@@ -1863,8 +1877,9 @@ internal sealed partial class Gtk4WindowHost : IDesktopNativeDispatchWindowHost,
         QueueCleanupAfterDestroy();
     }
 
-    // DesktopWindowOptions.Owner: transient for the owner's GtkWindow. A window-modal window makes the owner insensitive
-    // until the last window modal to it closed; gtk_window_set_modal would block every window of the application.
+    // DesktopWindowOptions.Owner: transient for the owner's GtkWindow. A shown window-modal window makes the owner
+    // insensitive (BlockOwner) until the last window modal to it closed or was hidden; gtk_window_set_modal would block
+    // every window of the application.
     private void ApplyOwner(nint window, DesktopWindowHostOptions options)
     {
         if (options.OwnerHandle == 0) return;
@@ -1872,19 +1887,36 @@ internal sealed partial class Gtk4WindowHost : IDesktopNativeDispatchWindowHost,
         if (options.Modality != DesktopWindowModality.Window) return;
         // Held until the window closed, so the owner can be made sensitive again also after it was destroyed.
         _ = GObjectRef(options.OwnerHandle);
-        _blockedOwner = options.OwnerHandle;
-        if (ModalOwners.Acquire(_blockedOwner)) GtkWidgetSetSensitive(_blockedOwner, 0);
+        _modalOwner = options.OwnerHandle;
     }
 
-    private nint _blockedOwner;
+    // The owner of a window-modal window, referenced while it is open, and whether it blocks the owner now.
+    private nint _modalOwner;
+    private bool _blocking;
+
+    // GTK thread: the window is shown.
+    private void BlockOwner(nint window)
+    {
+        if (_modalOwner == 0 || _blocking || window == 0) return;
+        _blocking = true;
+        if (ModalOwners.Acquire(_modalOwner)) GtkWidgetSetSensitive(_modalOwner, 0);
+    }
+
+    // GTK thread.
+    private void UnblockOwner()
+    {
+        if (!_blocking) return;
+        _blocking = false;
+        if (ModalOwners.Release(_modalOwner)) GtkWidgetSetSensitive(_modalOwner, 1);
+    }
 
     // GTK thread: the window closed, so the owner it blocked takes input again.
     private void ReleaseOwner()
     {
-        var owner = _blockedOwner;
+        var owner = _modalOwner;
         if (owner == 0) return;
-        _blockedOwner = 0;
-        if (ModalOwners.Release(owner)) GtkWidgetSetSensitive(owner, 1);
+        UnblockOwner();
+        _modalOwner = 0;
         GObjectUnref(owner);
     }
 

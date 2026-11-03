@@ -16,6 +16,7 @@ internal static partial class OwnerSmoke
         await using var owner = await ownerSurface.OpenWindowAsync(new DesktopWindowOptions { Browser = BrowserKind.Embedded, Width = 520, Height = 400 });
         try
         {
+            await ReviewChecksAsync(host);
             return await RunAsync(ownedSurface, owner);
         }
         finally
@@ -67,6 +68,97 @@ internal static partial class OwnerSmoke
         return 0;
     }
 
+    // A window on a surface of its own.
+    private static async Task<DesktopWindow> OpenAsync(DesktopHost host, string title, DesktopWindow? owner = null, bool hidden = false)
+    {
+        var surface = await host.CreateSurfaceAsync(new DesktopSurfaceOptions { Content = new DesktopContent.Html(Page(title)) });
+        var window = await surface.OpenWindowAsync(new DesktopWindowOptions
+        {
+            Browser = BrowserKind.Embedded,
+            Width = 360,
+            Height = 240,
+            Hidden = hidden,
+            Owner = owner is null ? null : DesktopWindowOwner.FromWindow(owner),
+            Modality = owner is null ? DesktopWindowModality.None : DesktopWindowModality.Window,
+        });
+        // The surface goes with its window.
+        window.Closed += (_, _) => _ = surface.DisposeAsync().AsTask();
+        return window;
+    }
+
+    private static async Task ExpectBlockedAsync(DesktopWindow window, bool blocked, string when)
+    {
+        // GTK and Win32 apply the change on their own threads; AppKit within the call.
+        for (var attempt = 0; attempt < 50 && await OwnerBlockedAsync(window) != blocked; attempt++) await Task.Delay(20);
+        if (await OwnerBlockedAsync(window) != blocked)
+            throw new InvalidOperationException($"{when}, the window is {(blocked ? "not blocked" : "still blocked")}.");
+    }
+
+    // Review of #814: nested modal windows, two modal windows on one owner, Hidden + Modal, a blocked owner and the window
+    // manager's close, and an owner disposed while its modal window is open.
+    private static async Task ReviewChecksAsync(DesktopHost host)
+    {
+        // A dialog that opens its own dialog: each blocks its owner, and closing the inner one unblocks only the middle.
+        var root = await OpenAsync(host, "root");
+        var middle = await OpenAsync(host, "middle", root);
+        var inner = await OpenAsync(host, "inner", middle);
+        await ExpectBlockedAsync(root, true, "With a nested modal window open, the root");
+        await ExpectBlockedAsync(middle, true, "With its own modal window open, the middle window");
+        await inner.CloseAsync();
+        await ExpectBlockedAsync(middle, false, "After the inner modal window closed, the middle window");
+        await ExpectBlockedAsync(root, true, "After the inner modal window closed, the root");
+        await middle.CloseAsync();
+        await ExpectBlockedAsync(root, false, "After both modal windows closed, the root");
+        Console.WriteLine("PASS owner: nested modal windows block and unblock their own owners.");
+
+        // Two modal windows on one owner: the owner takes input again when the last one closed. AppKit queues the second
+        // sheet behind the first.
+        var first = await OpenAsync(host, "first", root);
+        var second = await OpenAsync(host, "second", root);
+        if (OperatingSystem.IsMacOS())
+        {
+            nint shown = 0;
+            await root.InvokeNativeAsync(handle => shown = Send(handle, Sel("attachedSheet")));
+            if (shown != first.NativeHandle) throw new InvalidOperationException("The first sheet is not the one AppKit shows.");
+        }
+        await first.CloseAsync();
+        await ExpectBlockedAsync(root, true, "With one of two modal windows still open, the owner");
+        await second.CloseAsync();
+        await ExpectBlockedAsync(root, false, "After both modal windows closed, the owner");
+        Console.WriteLine("PASS owner: two modal windows on one owner; it takes input again after the last one.");
+
+        // Hidden + Modal: the owner is blocked from the first show, and again usable while the modal window is hidden.
+        var hidden = await OpenAsync(host, "hidden", root, hidden: true);
+        await ExpectBlockedAsync(root, false, "With a hidden modal window, the owner");
+        await hidden.ShowAsync();
+        await ExpectBlockedAsync(root, true, "Once the hidden modal window was shown, the owner");
+        await hidden.HideAsync();
+        await ExpectBlockedAsync(root, false, "With the modal window hidden again, the owner");
+        await hidden.FocusAsync();
+        await ExpectBlockedAsync(root, true, "With the modal window focused, the owner");
+        Console.WriteLine("PASS owner: a Hidden modal window blocks its owner only while it is shown.");
+
+        // GTK: the window manager's close of a blocked owner is ignored, as on Windows and macOS.
+        if (OperatingSystem.IsLinux())
+        {
+            await root.InvokeNativeAsync(handle => GtkWindowClose(handle));
+            await Task.Delay(500);
+            if (!root.IsOpen) throw new InvalidOperationException("The window manager closed an owner that a modal window blocks.");
+            // The same close does close a window that nothing blocks.
+            var free = await OpenAsync(host, "free");
+            await free.InvokeNativeAsync(handle => GtkWindowClose(handle));
+            await free.WaitForCloseAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(10));
+            Console.WriteLine("PASS owner: a blocked GTK owner ignores the window manager's close.");
+        }
+        await hidden.CloseAsync();
+
+        // An owner disposed while its modal window (on macOS its sheet) is open: the modal window closes with it.
+        var orphan = await OpenAsync(host, "orphan", root);
+        await root.DisposeAsync();
+        await orphan.WaitForCloseAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(15));
+        Console.WriteLine("PASS owner: disposing an owner closes its open modal window.");
+    }
+
     // On the owned window's native thread: its native owner, and whether the owner is blocked.
     private static async Task<(nint Parent, bool Blocked)> ReadAsync(DesktopWindow owned, nint owner, DesktopWindowModality modality)
     {
@@ -110,6 +202,7 @@ internal static partial class OwnerSmoke
         $"<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"><script src=\"webui.js\"></script><title>{title}</title></head><body><main><h1>{title}</h1></main></body></html>";
 
     [LibraryImport("libgtk-3.so.0", EntryPoint = "gtk_window_get_transient_for")] private static partial nint GtkWindowGetTransientFor(nint window);
+    [LibraryImport("libgtk-3.so.0", EntryPoint = "gtk_window_close")] private static partial void GtkWindowClose(nint window);
     [LibraryImport("libgtk-3.so.0", EntryPoint = "gtk_widget_get_sensitive")] private static partial int GtkWidgetGetSensitive(nint widget);
     [LibraryImport("user32.dll", EntryPoint = "GetWindow")] private static partial nint GetWindow(nint window, uint command);
     [LibraryImport("user32.dll", EntryPoint = "IsWindowEnabled")]
