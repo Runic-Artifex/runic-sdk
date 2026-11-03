@@ -170,6 +170,11 @@
       "id": "RUNICBRIDGE034",
       "severity": "warning",
       "title": "A [RunicPresentationScoped] declaration reaches no Bridge command"
+    },
+    {
+      "id": "RUNICBRIDGE060",
+      "severity": "error",
+      "title": "A RunicQueryCollection member has an unsupported shape"
     }
   ]
 }

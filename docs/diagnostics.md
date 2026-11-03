@@ -80,6 +80,7 @@ and severities are open.
 | [`RUNICBRIDGE032`](#runicbridge032) | Warning | Generator | An observable collection of DTO rows is not a `[RunicCollection]` |
 | [`RUNICBRIDGE033`](#runicbridge033) | Warning | Build targets | The .NET SDK or Bun is older than this release supports |
 | [`RUNICBRIDGE034`](#runicbridge034) | Warning | Generator | A `[RunicPresentationScoped]` declaration reaches no Bridge command |
+| [`RUNICBRIDGE060`](#runicbridge060) | Error | Generator | A `RunicQueryCollection` member has an unsupported shape |
 
 ### RUNICBRIDGE001
 
@@ -618,6 +619,19 @@ generated client sends no presentation epoch for anything it would have scoped.
 **Fix:** put the attribute on the command property, or on the `[RelayCommand]`
 method whose command the Bridge exposes. See
 [Commands scoped to their presentation](../packages/dotnet/Runic.Application.Views/README.md#commands-scoped-to-their-page).
+
+### RUNICBRIDGE060
+
+An error from the Bridge generator (since 0.16). A `RunicQueryCollection<TRow, TKey>`
+ViewModel property cannot be bridged: it has a public setter, it also carries
+`[RunicCollection]` or `[RunicAppendOnlyText]`, its key is not a `string`,
+`Guid` or `Int32`, or its rows are not DTOs. RUNICBRIDGE061 to RUNICBRIDGE064
+are reserved for query collections.
+
+**Fix:** expose the collection as a get-only property of DTO rows with a
+supported key, and remove the other collection attributes; the page changes
+the query with `setQuery`. See
+[Query collections](../packages/dotnet/Runic.Application.Views/README.md#query-collections).
 
 ## dotnet runic
 

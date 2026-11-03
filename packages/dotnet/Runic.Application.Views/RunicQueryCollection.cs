@@ -418,11 +418,11 @@ public sealed class RunicQueryCollection<TRow, TKey> : INotifyPropertyChanged, I
         }
     }
 
-    private static void Release(Page page)
+    private void Release(Page page)
     {
         page.Waiters--;
-        // Nobody waits for a page that left the cache: stop its load.
-        if (page.Waiters == 0 && !page.Cached) page.TryCancel();
+        // Nobody waits for the page any more, as after a page scrolled past it: stop its load, and forget it.
+        if (page.Waiters == 0 && !page.Task.IsCompleted) Remove(page, cancelUnwaited: true);
     }
 
     private void Remove(Page page, bool cancelUnwaited)

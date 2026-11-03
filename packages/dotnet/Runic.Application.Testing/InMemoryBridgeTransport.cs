@@ -232,6 +232,10 @@ public sealed class InMemoryBridgeTransport : IBridgeConnectionTransport, IDispo
                 writer.WriteString("name", "Runic.Application.Testing");
                 writer.WriteString("version", "1.0.0");
                 writer.WriteEndObject();
+                // The request kinds of query collections (RunicViewDriver.QueryRowsAsync); no feature changes a push.
+                writer.WriteStartArray("features");
+                writer.WriteStringValue("query-collections/1");
+                writer.WriteEndArray();
                 writer.WriteEndObject();
             }), connectionKey, clientKey, CancellationToken.None).ConfigureAwait(false);
             // A test may have sent the connection's hello itself.

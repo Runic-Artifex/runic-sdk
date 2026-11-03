@@ -34,6 +34,12 @@ export interface BetaTag {
   readonly label: string;
 }
 
+export interface CatalogRow {
+  readonly id: number;
+  readonly label: string;
+  readonly size: number;
+}
+
 export interface CodegenDerivedOfString {
   readonly inherited: string;
   readonly own: string;

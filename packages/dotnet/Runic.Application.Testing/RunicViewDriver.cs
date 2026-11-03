@@ -27,7 +27,7 @@ namespace Runic.Application.Testing;
 /// (await editor.ExecuteAsync(vm => vm.RenameCommand, new RenameInput("Groceries", Pinned: true))).ThrowIfFailed();
 /// </code>
 /// </example>
-public sealed class RunicViewDriver<TModel> where TModel : class
+public sealed partial class RunicViewDriver<TModel> where TModel : class
 {
     private readonly RunicPublicationLog _publications;
     private readonly InMemoryBridgeTransport _transport;

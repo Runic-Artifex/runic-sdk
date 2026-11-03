@@ -1,1 +1,55 @@
 #nullable enable
+override Runic.Application.Testing.RunicQueryRows.Equals(object? obj) -> bool
+override Runic.Application.Testing.RunicQueryRows.GetHashCode() -> int
+override Runic.Application.Testing.RunicQueryRows.ToString() -> string!
+~override Runic.Application.Testing.RunicRowLoad.Equals(object obj) -> bool
+override Runic.Application.Testing.RunicRowLoad.GetHashCode() -> int
+~override Runic.Application.Testing.RunicRowLoad.ToString() -> string
+Runic.Application.Testing.RunicQueryRows
+Runic.Application.Testing.RunicQueryRows.<Clone>$() -> Runic.Application.Testing.RunicQueryRows!
+Runic.Application.Testing.RunicQueryRows.Deconstruct(out long Version, out int? Total, out int Start, out System.Collections.Generic.IReadOnlyList<string!>! Keys, out System.Collections.Generic.IReadOnlyList<System.Text.Json.JsonElement>! Rows) -> void
+Runic.Application.Testing.RunicQueryRows.Equals(Runic.Application.Testing.RunicQueryRows? other) -> bool
+Runic.Application.Testing.RunicQueryRows.Keys.get -> System.Collections.Generic.IReadOnlyList<string!>!
+Runic.Application.Testing.RunicQueryRows.Keys.init -> void
+Runic.Application.Testing.RunicQueryRows.Rows.get -> System.Collections.Generic.IReadOnlyList<System.Text.Json.JsonElement>!
+Runic.Application.Testing.RunicQueryRows.Rows.init -> void
+Runic.Application.Testing.RunicQueryRows.RunicQueryRows(long Version, int? Total, int Start, System.Collections.Generic.IReadOnlyList<string!>! Keys, System.Collections.Generic.IReadOnlyList<System.Text.Json.JsonElement>! Rows) -> void
+Runic.Application.Testing.RunicQueryRows.Start.get -> int
+Runic.Application.Testing.RunicQueryRows.Start.init -> void
+Runic.Application.Testing.RunicQueryRows.Total.get -> int?
+Runic.Application.Testing.RunicQueryRows.Total.init -> void
+Runic.Application.Testing.RunicQueryRows.Version.get -> long
+Runic.Application.Testing.RunicQueryRows.Version.init -> void
+Runic.Application.Testing.RunicRowLoad
+Runic.Application.Testing.RunicRowLoad.Deconstruct(out Runic.Application.Views.RunicQuery! Query, out Runic.Application.Views.RunicRowRange Range, out int Returned) -> void
+Runic.Application.Testing.RunicRowLoad.Equals(Runic.Application.Testing.RunicRowLoad other) -> bool
+Runic.Application.Testing.RunicRowLoad.Query.get -> Runic.Application.Views.RunicQuery!
+Runic.Application.Testing.RunicRowLoad.Query.init -> void
+Runic.Application.Testing.RunicRowLoad.Range.get -> Runic.Application.Views.RunicRowRange
+Runic.Application.Testing.RunicRowLoad.Range.init -> void
+Runic.Application.Testing.RunicRowLoad.Returned.get -> int
+Runic.Application.Testing.RunicRowLoad.Returned.init -> void
+Runic.Application.Testing.RunicRowLoad.RunicRowLoad(Runic.Application.Views.RunicQuery! Query, Runic.Application.Views.RunicRowRange Range, int Returned) -> void
+Runic.Application.Testing.RunicRowLoad.RunicRowLoad() -> void
+Runic.Application.Testing.RunicTestRowSource<TRow, TKey>
+Runic.Application.Testing.RunicTestRowSource<TRow, TKey>.CountAsync(Runic.Application.Views.RunicQuery! query, System.Threading.CancellationToken cancellationToken) -> System.Threading.Tasks.ValueTask<int>
+Runic.Application.Testing.RunicTestRowSource<TRow, TKey>.Counts.get -> int
+Runic.Application.Testing.RunicTestRowSource<TRow, TKey>.FailNext(System.Exception! failure) -> void
+Runic.Application.Testing.RunicTestRowSource<TRow, TKey>.IndexOfAsync(Runic.Application.Views.RunicQuery! query, TKey key, System.Threading.CancellationToken cancellationToken) -> System.Threading.Tasks.ValueTask<int>
+Runic.Application.Testing.RunicTestRowSource<TRow, TKey>.Latency.get -> System.TimeSpan
+Runic.Application.Testing.RunicTestRowSource<TRow, TKey>.Latency.set -> void
+Runic.Application.Testing.RunicTestRowSource<TRow, TKey>.LoadAsync(Runic.Application.Views.RunicQuery! query, Runic.Application.Views.RunicRowRange range, System.Threading.CancellationToken cancellationToken) -> System.Threading.Tasks.ValueTask<Runic.Application.Views.RunicRowPage<TRow>!>
+Runic.Application.Testing.RunicTestRowSource<TRow, TKey>.Loads.get -> System.Collections.Generic.IReadOnlyList<Runic.Application.Testing.RunicRowLoad>!
+Runic.Application.Testing.RunicTestRowSource<TRow, TKey>.MaximumConcurrency.get -> int
+Runic.Application.Testing.RunicTestRowSource<TRow, TKey>.RowsLoaded.get -> long
+Runic.Application.Testing.RunicTestRowSource<TRow, TKey>.RunicTestRowSource(System.Collections.Generic.IEnumerable<TRow>! rows, Runic.Application.Views.RunicQueryFields<TRow>! fields, System.Linq.Expressions.Expression<System.Func<TRow, TKey>!>! key, System.TimeProvider? timeProvider = null) -> void
+Runic.Application.Testing.RunicTestRowSource<TRow, TKey>.Searches.get -> int
+Runic.Application.Testing.RunicTestRowSource<TRow, TKey>.SetRows(System.Collections.Generic.IEnumerable<TRow>! rows) -> void
+Runic.Application.Testing.RunicTestRowSource<TRow, TKey>.Validate(Runic.Application.Views.RunicQuery! query) -> void
+Runic.Application.Testing.RunicViewDriver<TModel>.IndexOfAsync<TRow, TKey>(System.Linq.Expressions.Expression<System.Func<TModel!, Runic.Application.Views.RunicQueryCollection<TRow, TKey>!>!>! collection, string! key, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<int>!
+Runic.Application.Testing.RunicViewDriver<TModel>.QueryRowsAsync<TRow, TKey>(System.Linq.Expressions.Expression<System.Func<TModel!, Runic.Application.Views.RunicQueryCollection<TRow, TKey>!>!>! collection, int start, int count, string? connectionKey = null, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<Runic.Application.Testing.RunicQueryRows!>!
+Runic.Application.Testing.RunicViewDriver<TModel>.SetQueryAsync<TRow, TKey>(System.Linq.Expressions.Expression<System.Func<TModel!, Runic.Application.Views.RunicQueryCollection<TRow, TKey>!>!>! collection, Runic.Application.Views.RunicQuery! query, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<Runic.Application.Testing.RunicCallReply<TModel!>!>!
+static Runic.Application.Testing.RunicQueryRows.operator !=(Runic.Application.Testing.RunicQueryRows? left, Runic.Application.Testing.RunicQueryRows? right) -> bool
+static Runic.Application.Testing.RunicQueryRows.operator ==(Runic.Application.Testing.RunicQueryRows? left, Runic.Application.Testing.RunicQueryRows? right) -> bool
+static Runic.Application.Testing.RunicRowLoad.operator !=(Runic.Application.Testing.RunicRowLoad left, Runic.Application.Testing.RunicRowLoad right) -> bool
+static Runic.Application.Testing.RunicRowLoad.operator ==(Runic.Application.Testing.RunicRowLoad left, Runic.Application.Testing.RunicRowLoad right) -> bool
