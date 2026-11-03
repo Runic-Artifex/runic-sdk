@@ -305,6 +305,12 @@ remove a binding before its window closes, so the binding stays while the
 window's request handler changes, and a request while none is served gets the
 `released` reply. Dispose the transport before the `WebUiWindow`. The trusted
 client key is WebUI's client id, and the connection key `clientId:connectionId`.
+WebUI reuses connection slots, and without its authentication cookie every
+client id is 0, so a reloaded page or another browser can get the key of a
+connection that just closed. The window therefore gives a connection whose key
+was used before a new key, `clientId:connectionId#n`, unique for the window's
+lifetime: a command, question or push of a closed connection never reaches
+the connection that reused its slot (since 0.16).
 
 - `BroadcastAsync` writes a push to every client of the window with WebUI's
   `SendRaw`.

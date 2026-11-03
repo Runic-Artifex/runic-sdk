@@ -32,6 +32,8 @@ internal sealed class BridgeDispatcher : IBridgeRequestHandler
     internal const long MaximumMailboxBytes = 4 * 1_048_576;
     // Sessions of closed connections, which a hello cannot reuse.
     private const int RetainedClosedSessions = 4_096;
+    // Transport keys whose use count a dispatcher keeps.
+    internal const int RetainedTransportKeys = 65_536;
     // The features of this producer (specs/application/README.md, "Features").
     internal const string TextSpliceFeature = "text-splice/1";
     internal const string PresentationEpochFeature = "presentation-epoch/1";
@@ -47,7 +49,15 @@ internal sealed class BridgeDispatcher : IBridgeRequestHandler
     private readonly object _gate = new();
     private readonly IBridgeTransport _transport;
     private readonly IBridgeConnectionTransport? _targeted;
+    // Open connections by the key their transport reports, and by their own key, which is unique for the dispatcher's
+    // lifetime (Connect).
     private readonly Dictionary<string, BridgeConnection> _connections = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, BridgeConnection> _byKey = new(StringComparer.Ordinal);
+    // The last generation each transport key had, so a reused transport key gets a new connection key. At most
+    // RetainedTransportKeys, oldest first; a transport whose keys never repeat (IBridgeUniqueConnectionKeys) needs none.
+    private readonly Dictionary<string, long> _transportKeyUses = new(StringComparer.Ordinal);
+    private readonly Queue<string> _transportKeyOrder = new();
+    private readonly bool _transportKeysUnique;
     private readonly HashSet<string> _closedSessions = new(StringComparer.Ordinal);
     private readonly Queue<string> _closedSessionOrder = new();
     private readonly Dictionary<string, IBridgeRouteHandler> _routes = new(StringComparer.Ordinal);
@@ -69,6 +79,7 @@ internal sealed class BridgeDispatcher : IBridgeRequestHandler
     {
         _transport = transport;
         _targeted = transport as IBridgeConnectionTransport;
+        _transportKeysUnique = transport is IBridgeUniqueConnectionKeys;
         // A closing window can still attach content while accepted work drains, after its host disposed the
         // transport. Its dispatcher serves nothing then.
         try { _ = transport.Serve(this); }
@@ -160,10 +171,12 @@ internal sealed class BridgeDispatcher : IBridgeRequestHandler
     }
 
     // The connection, if it is open and completed its hello.
+    // The open connection with this connection key (BridgeConnection.Key, not the transport's key), if it completed its
+    // hello. A key of a closed connection never finds a later connection, also when the transport reused its key.
     internal BridgeConnection? FindConnection(string connectionKey)
     {
         lock (_gate)
-            return _connections.TryGetValue(connectionKey, out var connection) && connection.HelloCompleted ? connection : null;
+            return _byKey.TryGetValue(connectionKey, out var connection) && connection.HelloCompleted ? connection : null;
     }
 
     // Whether every connection that completed its hello uses text-splice/1, so a frame may carry splices.
@@ -241,10 +254,10 @@ internal sealed class BridgeDispatcher : IBridgeRequestHandler
         BridgeConnection? connection;
         lock (_gate)
         {
-            if (!_connections.TryGetValue(connectionKey, out connection) || !connection.HelloCompleted) return false;
+            if (!_byKey.TryGetValue(connectionKey, out connection) || !connection.HelloCompleted) return false;
             if (_targeted is null) return Enqueue(connection, message);
         }
-        try { return await _targeted.SendAsync(connectionKey, message, cancellationToken).ConfigureAwait(false); }
+        try { return await _targeted.SendAsync(connection.TransportKey, message, cancellationToken).ConfigureAwait(false); }
         catch (ObjectDisposedException) { return false; }
     }
 
@@ -457,6 +470,7 @@ internal sealed class BridgeDispatcher : IBridgeRequestHandler
         lock (_gate)
         {
             if (!_connections.Remove(connectionKey, out var connection)) return;
+            _byKey.Remove(connection.Key);
             connection.IsOpen = false;
             if (connection.HelloCompleted && !connection.UsesTextSplice) _connectionsWithoutTextSplice--;
             if (connection.HelloCompleted && connection.UsesPresentationEpoch) _connectionsWithPresentationEpoch--;
@@ -474,7 +488,7 @@ internal sealed class BridgeDispatcher : IBridgeRequestHandler
         RefuseHeld(refusedHeld);
         foreach (var observer in observers)
         {
-            try { observer(connectionKey); }
+            try { observer(refusedHeld.Key); }
             catch (Exception error)
             {
                 ViewsLog.RequestFailed(_logger, error, error.GetType().FullName ?? error.GetType().Name);
@@ -487,10 +501,39 @@ internal sealed class BridgeDispatcher : IBridgeRequestHandler
         lock (_gate)
         {
             if (_connections.TryGetValue(request.ConnectionKey, out var connection)) return connection;
-            connection = new BridgeConnection(request.ConnectionKey, request.ClientKey);
+            connection = new BridgeConnection(NewConnectionKey(request.ConnectionKey), request.ClientKey, request.ConnectionKey);
             _connections.Add(request.ConnectionKey, connection);
+            _byKey.Add(connection.Key, connection);
             return connection;
         }
+    }
+
+    // The key of a new connection with this transport key, unique for the dispatcher's lifetime: the transport key the
+    // first time, then "{transportKey}#{n}". A transport may reuse a key once its connection closed, as CS-WebUI reuses
+    // WebUI's connection slots and, without its cookie, client id 0. Interactions, view requests, operation watches and
+    // IRunicConnections select a page by this key, so work that a closed connection's command still runs never reaches
+    // the page that got its transport key next. The caller holds _gate.
+    private string NewConnectionKey(string transportKey)
+    {
+        if (_transportKeysUnique) return transportKey;
+        if (!_transportKeyUses.TryGetValue(transportKey, out var uses))
+        {
+            _transportKeyOrder.Enqueue(transportKey);
+            while (_transportKeyOrder.Count > RetainedTransportKeys) _transportKeyUses.Remove(_transportKeyOrder.Dequeue());
+        }
+        // uses is the last generation this transport key had; generations only grow, so no key is handed out twice.
+        if (uses == 0 && !_byKey.ContainsKey(transportKey))
+        {
+            _transportKeyUses[transportKey] = 1;
+            return transportKey;
+        }
+        // A generated key never names an open connection, also when a transport's own keys look like one.
+        var generation = Math.Max(uses, 1);
+        string key;
+        do key = string.Create(System.Globalization.CultureInfo.InvariantCulture, $"{transportKey}#{++generation}");
+        while (_byKey.ContainsKey(key) || _transportKeyUses.ContainsKey(key));
+        _transportKeyUses[transportKey] = generation;
+        return key;
     }
 
     private byte[] Hello(BridgeConnection connection, JsonElement root)
@@ -699,9 +742,13 @@ internal sealed class BridgeDispatcher : IBridgeRequestHandler
 }
 
 // One connection of a window, from its first request until the transport reports it closed.
-internal sealed class BridgeConnection(string key, string clientKey)
+internal sealed class BridgeConnection(string key, string clientKey, string? transportKey = null)
 {
+    // The connection's key, unique among the dispatcher's connections for its lifetime: what selects the connection's
+    // presentations and identifies it to application code. The transport's key unless the transport reused it.
     internal string Key { get; } = key;
+    // The key the transport reports the connection with, which its targeted pushes and close name.
+    internal string TransportKey { get; } = transportKey ?? key;
     internal string ClientKey { get; } = clientKey;
     // The session the hello named.
     internal string? Session { get; set; }

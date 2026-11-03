@@ -48,6 +48,11 @@ public sealed class RunicInteractionInvocation
     /// <summary>The trusted browser client identity, if the invocation came from one.</summary>
     public string? ClientKey { get; }
     /// <summary>The trusted transport connection identity, if the invocation came from one.</summary>
+    /// <remarks>
+    /// The window gives each connection a key that is unique for its lifetime: the transport's key, or, when the transport
+    /// reused the key of a closed connection, that key with a <c>#n</c> suffix. A command that runs on after its
+    /// connection closed therefore never reaches the connection that reused its transport key.
+    /// </remarks>
     public string? ConnectionKey { get; }
     /// <summary>The generated command that started the invocation, if any.</summary>
     public string? CommandName { get; }
