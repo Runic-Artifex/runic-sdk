@@ -696,7 +696,8 @@ public sealed class DesktopHost : IAsyncDisposable
     // Asks each window's close guard in turn; a window whose guard agrees closes. False when one keeps its window.
     internal async Task<bool> RequestWindowsCloseAsync()
     {
-        foreach (var surface in _surfaces.Values.ToArray())
+        // Owned windows are asked before their owners, as a dialog is answered before the window it blocks.
+        foreach (var surface in _surfaces.Values.OrderByDescending(static surface => OwnerDepth(surface.CurrentWindow)).ToArray())
         {
             if (IsShutdownRequested) return true;
             try
@@ -713,6 +714,13 @@ public sealed class DesktopHost : IAsyncDisposable
             }
         }
         return true;
+    }
+
+    private static int OwnerDepth(DesktopWindow? window)
+    {
+        var depth = 0;
+        for (var owner = window?.Owner?.Window; owner is not null && depth < 64; owner = owner.Owner?.Window) depth++;
+        return depth;
     }
 
     private async Task ShutdownAsync()

@@ -112,6 +112,9 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
     private Runic.Platform.DesktopLayoutDirection _layoutDirection;
     private string? _language;
     private MacOSWindowOptions _macOS = new();
+    // The next embedded window's owner (DesktopWindowOptions.Owner, resolved to its native handle) and modality.
+    private nint _ownerHandle;
+    private DesktopWindowModality _modality;
     private bool _hidden;
     private bool _resizable = true;
     private bool _frameless;
@@ -1435,6 +1438,9 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
         _layoutDirection = Runic.Platform.DesktopLayoutDirection.Default;
         _language = null;
         _macOS = new();
+        _ownerHandle = 0;
+        _openedOwnerHandle = 0;
+        _modality = DesktopWindowModality.None;
     }
 
     // The monitor, native direction and web language of the next embedded window (DesktopWindowOptions).
@@ -1501,6 +1507,18 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
 
     // The macOS title bar of the next embedded window (DesktopWindowOptions.MacOS).
     internal void SetMacOS(MacOSWindowOptions macOS) => _macOS = macOS;
+
+    // The owner handle the current embedded window received, or zero.
+    private nint _openedOwnerHandle;
+
+    internal nint OpenedOwnerHandle => _openedOwnerHandle;
+
+    // The owner and modality of the next embedded window (DesktopWindowOptions.Owner and Modality).
+    internal void SetOwner(nint ownerHandle, DesktopWindowModality modality)
+    {
+        _ownerHandle = ownerHandle;
+        _modality = ownerHandle == 0 ? DesktopWindowModality.None : modality;
+    }
 
     // Where the next embedded window shows the menu bar (DesktopWindowOptions.MenuBarPresentation).
     internal void SetMenuBarPresentation(DesktopMenuBarPresentation presentation) => _menuBarPresentation = presentation;
@@ -2029,6 +2047,10 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
 
     private WebUiEmbeddedHostOptions CreateEmbeddedHostOptions()
     {
+        // Only a host that can own windows receives the owner; the others open the window on its own.
+        var ownerHandle = _embeddedHost is { } ownedHost && ownedHost.Capabilities.HasFlag(DesktopWindowCapabilities.Ownership)
+            ? _ownerHandle
+            : 0;
         string? profilePath = null;
         _configuredProfilePath = _profileConfigured ? _profilePath : null;
         if (_profileConfigured)
@@ -2082,6 +2104,8 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
             LayoutDirection = _layoutDirection,
             Language = _language,
             MacOS = _macOS,
+            OwnerHandle = _openedOwnerHandle = ownerHandle,
+            Modality = ownerHandle == 0 ? DesktopWindowModality.None : _modality,
             SpellChecking = _spellChecking,
             SpellCheckingLanguages = _openedSpellCheckingLanguages = MenuHost?.SpellCheckingLanguages ?? [],
         };

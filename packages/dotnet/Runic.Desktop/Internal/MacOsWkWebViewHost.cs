@@ -115,7 +115,8 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
         DesktopWindowCapabilities.Resize | DesktopWindowCapabilities.Move | DesktopWindowCapabilities.Announcements |
         DesktopWindowCapabilities.State | DesktopWindowCapabilities.MenuBar | DesktopWindowCapabilities.ContextMenu |
         DesktopWindowCapabilities.FullScreen | DesktopWindowCapabilities.MonitorPlacement | DesktopWindowCapabilities.FileDrag |
-        DesktopWindowCapabilities.Activity | DesktopWindowCapabilities.ColorScheme | DesktopWindowCapabilities.PerWindowColorScheme;
+        DesktopWindowCapabilities.Activity | DesktopWindowCapabilities.ColorScheme | DesktopWindowCapabilities.PerWindowColorScheme |
+        DesktopWindowCapabilities.Ownership;
     public DesktopWindowCapabilities Capabilities => KnownCapabilities |
         (WebViewClass != 0 ? DesktopWindowCapabilities.FileDrop : DesktopWindowCapabilities.None);
 
@@ -249,9 +250,50 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
     public ValueTask FocusAsync(CancellationToken cancellationToken = default)
         => InvokeAsync(() =>
         {
-            Api.SendVoidNint(_window, "makeKeyAndOrderFront:", 0);
+            if (_sheet)
+            {
+                // A sheet comes forward with its parent; a hidden one is attached again.
+                Api.SendVoidNint(_parentWindow, "makeKeyAndOrderFront:", 0);
+                if (!_attached) BeginSheet();
+                else Api.SendVoid(_window, "makeKeyWindow");
+            }
+            else
+            {
+                Api.SendVoidNint(_window, "makeKeyAndOrderFront:", 0);
+                AttachToParent();
+            }
             Api.SendVoidBool(_application, "activateIgnoringOtherApps:", true);
         }, cancellationToken);
+
+    // DesktopWindowOptions.Owner: the owner's NSWindow. An owned window is its child window, ordered above it and moving
+    // with it; a window-modal one is its sheet, which blocks the owner until it ends.
+    private nint _parentWindow;
+    private bool _sheet;
+    private bool _attached;
+
+    // Main thread. Shows a window-modal window as the owner's sheet.
+    private void BeginSheet()
+    {
+        if (_parentWindow == 0 || _attached) return;
+        _attached = true;
+        Api.SendVoidNintNint(_parentWindow, "beginSheet:completionHandler:", _window, 0);
+    }
+
+    // Main thread. Makes a shown owned window the owner's child window (NSWindowAbove).
+    private void AttachToParent()
+    {
+        if (_parentWindow == 0 || _sheet || _attached) return;
+        _attached = true;
+        Api.SendVoidNintLong(_parentWindow, "addChildWindow:ordered:", _window, 1);
+    }
+
+    // Main thread. Ends the sheet or detaches the child window, before it is hidden or closed.
+    private void DetachFromParent()
+    {
+        if (_parentWindow == 0 || !_attached) return;
+        _attached = false;
+        Api.SendVoidNint(_parentWindow, _sheet ? "endSheet:" : "removeChildWindow:", _window);
+    }
 
     public ValueTask MinimizeAsync(CancellationToken cancellationToken = default)
         => InvokeAsync(() => Api.SendVoidNint(_window, "miniaturize:", 0), cancellationToken);
@@ -292,12 +334,19 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
     public ValueTask SetVisibleAsync(bool visible, CancellationToken cancellationToken = default)
         => InvokeAsync(() =>
         {
-            if (visible)
+            if (visible && _sheet)
+            {
+                BeginSheet();
+            }
+            else if (visible)
             {
                 Api.SendVoidNint(_window, "makeKeyAndOrderFront:", 0);
+                AttachToParent();
             }
             else
             {
+                // A sheet or child window leaves its owner first, so the owner shown again does not bring it back.
+                DetachFromParent();
                 Api.SendVoidNint(_window, "orderOut:", 0);
             }
             // Ordering a window out sends no delegate notification but an occlusion change, which may come later.
@@ -376,7 +425,11 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
     {
         if (IsOpen)
         {
-            await InvokeAsync(() => Api.SendVoid(_window, "close"), cancellationToken).ConfigureAwait(false);
+            await InvokeAsync(() =>
+            {
+                DetachFromParent();
+                Api.SendVoid(_window, "close");
+            }, cancellationToken).ConfigureAwait(false);
             await _closed.Task.WaitAsync(cancellationToken).ConfigureAwait(false);
         }
     }
@@ -524,9 +577,19 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
         Volatile.Write(ref _isOpen, 1);
         ApplyTrafficLights();
         Navigate(url);
+        _parentWindow = options.OwnerHandle;
+        _sheet = _parentWindow != 0 && options.Modality == DesktopWindowModality.Window;
         if (!options.Hidden)
         {
-            Api.SendVoidNint(_window, "makeKeyAndOrderFront:", 0);
+            if (_sheet)
+            {
+                BeginSheet();
+            }
+            else
+            {
+                Api.SendVoidNint(_window, "makeKeyAndOrderFront:", 0);
+                AttachToParent();
+            }
             Api.SendVoidBool(_application, "activateIgnoringOtherApps:", true);
         }
         if (options.Kiosk)
@@ -1386,6 +1449,8 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
         {
             return;
         }
+        // A window closed another way, such as Quit, leaves its owner too.
+        DetachFromParent();
         Hosts.TryRemove(_window, out _);
         WebViews.TryRemove(_webView, out _);
         EndDrags();
@@ -2316,6 +2381,12 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
 
         internal void SendVoidNint(nint receiver, string selector, nint value) =>
             ((delegate* unmanaged[Cdecl]<nint, nint, nint, void>)_messageSend)(receiver, Selector(selector), value);
+
+        internal void SendVoidNintNint(nint receiver, string selector, nint first, nint second) =>
+            ((delegate* unmanaged[Cdecl]<nint, nint, nint, nint, void>)_messageSend)(receiver, Selector(selector), first, second);
+
+        internal void SendVoidNintLong(nint receiver, string selector, nint first, long second) =>
+            ((delegate* unmanaged[Cdecl]<nint, nint, nint, long, void>)_messageSend)(receiver, Selector(selector), first, second);
 
         internal void SendVoidBool(nint receiver, string selector, bool value) =>
             ((delegate* unmanaged[Cdecl]<nint, nint, byte, void>)_messageSend)(receiver, Selector(selector), value ? (byte)1 : (byte)0);

@@ -45,7 +45,8 @@ internal sealed partial class LinuxWebKitGtkHost : IWebUiEmbeddedHost
     internal const DesktopWindowCapabilities KnownCapabilities = DesktopWindowCapabilities.NativeHandle | DesktopWindowCapabilities.Focus |
         DesktopWindowCapabilities.Minimize | DesktopWindowCapabilities.Maximize |
         DesktopWindowCapabilities.Resize | DesktopWindowCapabilities.Move | DesktopWindowCapabilities.Announcements |
-        DesktopWindowCapabilities.MenuBar | DesktopWindowCapabilities.ContextMenu | DesktopWindowCapabilities.FileDrag;
+        DesktopWindowCapabilities.MenuBar | DesktopWindowCapabilities.ContextMenu | DesktopWindowCapabilities.FileDrag |
+        DesktopWindowCapabilities.Ownership;
 
     // Full screen needs gtk_window_unfullscreen; placing on a monitor also a position, which Wayland does not give.
     public DesktopWindowCapabilities Capabilities => KnownCapabilities |
@@ -438,6 +439,7 @@ internal sealed partial class LinuxWebKitGtkHost : IWebUiEmbeddedHost
             // Before mapping, so the window manager maps it maximized and keeps the restored size.
             Api.GtkWindowMaximize(_window);
         }
+        ApplyOwner(options);
         Api.GtkWidgetShowAll(_window);
         if (options.Kiosk)
         {
@@ -458,6 +460,32 @@ internal sealed partial class LinuxWebKitGtkHost : IWebUiEmbeddedHost
         Volatile.Write(ref _isOpen, 1);
         UpdateState();
         UpdateActivity();
+    }
+
+    // DesktopWindowOptions.Owner: transient for the owner's GtkWindow. A window-modal window makes the owner insensitive
+    // until the last window modal to it closed; gtk_window_set_modal would block every window of the application.
+    private void ApplyOwner(WebUiEmbeddedHostOptions options)
+    {
+        if (options.OwnerHandle == 0) return;
+        Api.GtkWindowSetTransientFor(_window, options.OwnerHandle);
+        if (options.Modality != DesktopWindowModality.Window) return;
+        Api.GtkWindowSetDialogHint(_window);
+        // Held until the window closed, so the owner can be made sensitive again also after it was destroyed.
+        Api.GObjectRef(options.OwnerHandle);
+        _blockedOwner = options.OwnerHandle;
+        if (ModalOwners.Acquire(_blockedOwner)) Api.GtkWidgetSetSensitive(_blockedOwner, false);
+    }
+
+    private nint _blockedOwner;
+
+    // GTK thread only: the window closed, so the owner it blocked takes input again.
+    private void ReleaseOwner()
+    {
+        var owner = _blockedOwner;
+        if (owner == 0) return;
+        _blockedOwner = 0;
+        if (ModalOwners.Release(owner)) Api.GtkWidgetSetSensitive(owner, true);
+        Api.GObjectUnref(owner);
     }
 
     // GTK thread only. Reads the window after GTK has processed its configure and state events.
@@ -554,6 +582,7 @@ internal sealed partial class LinuxWebKitGtkHost : IWebUiEmbeddedHost
         // WebKitGTK's GTK 3 backend can drop its internal key-binding widget before the
         // container's disposal enumerates children. Destroy children while the
         // WebView still exposes them, so GTK releases their native resources.
+        ReleaseOwner();
         ReleaseMenus();
         Api.DestroyWebViewChildren(_webView);
         if (_downloadContext != 0)
@@ -1197,6 +1226,10 @@ internal sealed partial class LinuxWebKitGtkHost : IWebUiEmbeddedHost
                 GtkWindowSetResizablePointer = Required(_gtk, "gtk_window_set_resizable");
                 GtkWidgetDestroyPointer = Required(_gtk, "gtk_widget_destroy");
                 GtkWindowPresentPointer = Required(_gtk, "gtk_window_present");
+                GtkWindowSetTransientForPointer = Required(_gtk, "gtk_window_set_transient_for");
+                GtkWindowSetTypeHintPointer = Optional(_gtk, "gtk_window_set_type_hint");
+                GtkWidgetSetSensitivePointer = Required(_gtk, "gtk_widget_set_sensitive");
+                GtkWidgetGetSensitivePointer = Required(_gtk, "gtk_widget_get_sensitive");
                 GtkWindowIconifyPointer = Required(_gtk, "gtk_window_iconify");
                 GtkWindowMaximizePointer = Required(_gtk, "gtk_window_maximize");
                 GtkWindowUnmaximizePointer = Required(_gtk, "gtk_window_unmaximize");
@@ -1627,6 +1660,10 @@ internal sealed partial class LinuxWebKitGtkHost : IWebUiEmbeddedHost
         private nint GtkWindowNewPointer { get; }
         private nint GtkWidgetShowAllPointer { get; }
         private nint GtkWidgetHidePointer { get; }
+        private nint GtkWindowSetTransientForPointer { get; }
+        private nint GtkWindowSetTypeHintPointer { get; }
+        private nint GtkWidgetSetSensitivePointer { get; }
+        private nint GtkWidgetGetSensitivePointer { get; }
         private nint GtkContainerAddPointer { get; }
         private nint GtkWindowSetDefaultSizePointer { get; }
         private nint GtkWidgetSetSizeRequestPointer { get; }
@@ -1808,6 +1845,16 @@ internal sealed partial class LinuxWebKitGtkHost : IWebUiEmbeddedHost
         internal nint GtkWindowNew() => ((delegate* unmanaged[Cdecl]<int, nint>)GtkWindowNewPointer)(0);
         internal void GtkWidgetShowAll(nint widget) => ((delegate* unmanaged[Cdecl]<nint, void>)GtkWidgetShowAllPointer)(widget);
         internal void GtkWidgetHide(nint widget) => ((delegate* unmanaged[Cdecl]<nint, void>)GtkWidgetHidePointer)(widget);
+        internal void GtkWindowSetTransientFor(nint window, nint parent) => ((delegate* unmanaged[Cdecl]<nint, nint, void>)GtkWindowSetTransientForPointer)(window, parent);
+        // GDK_WINDOW_TYPE_HINT_DIALOG, before the window is mapped.
+        internal void GtkWindowSetDialogHint(nint window)
+        {
+            if (GtkWindowSetTypeHintPointer != 0) ((delegate* unmanaged[Cdecl]<nint, int, void>)GtkWindowSetTypeHintPointer)(window, 1);
+        }
+        internal void GtkWidgetSetSensitive(nint widget, bool sensitive) => ((delegate* unmanaged[Cdecl]<nint, int, void>)GtkWidgetSetSensitivePointer)(widget, sensitive ? 1 : 0);
+        internal bool GtkWidgetGetSensitive(nint widget) => ((delegate* unmanaged[Cdecl]<nint, int>)GtkWidgetGetSensitivePointer)(widget) != 0;
+        internal void GObjectRef(nint instance) => ((delegate* unmanaged[Cdecl]<nint, nint>)GObjectRefPointer)(instance);
+        internal void GObjectUnref(nint instance) => ((delegate* unmanaged[Cdecl]<nint, void>)GObjectUnrefPointer)(instance);
         internal void GtkContainerAdd(nint container, nint widget) => ((delegate* unmanaged[Cdecl]<nint, nint, void>)GtkContainerAddPointer)(container, widget);
         internal void GtkWindowSetDefaultSize(nint window, int width, int height) => ((delegate* unmanaged[Cdecl]<nint, int, int, void>)GtkWindowSetDefaultSizePointer)(window, width, height);
         internal void GtkWidgetSetSizeRequest(nint widget, int width, int height) => ((delegate* unmanaged[Cdecl]<nint, int, int, void>)GtkWidgetSetSizeRequestPointer)(widget, width, height);

@@ -426,7 +426,8 @@ internal sealed partial class Gtk4WindowHost : IDesktopNativeDispatchWindowHost,
         DesktopWindowCapabilities.Maximize | DesktopWindowCapabilities.Resize |
         DesktopWindowCapabilities.CloseConfirmation | DesktopWindowCapabilities.State | DesktopWindowCapabilities.FileDrop |
         DesktopWindowCapabilities.FullScreen | DesktopWindowCapabilities.MenuBar | DesktopWindowCapabilities.ContextMenu |
-        DesktopWindowCapabilities.FileDrag | DesktopWindowCapabilities.Activity | DesktopWindowCapabilities.ColorScheme;
+        DesktopWindowCapabilities.FileDrag | DesktopWindowCapabilities.Activity | DesktopWindowCapabilities.ColorScheme |
+        DesktopWindowCapabilities.Ownership;
     private DesktopWindowState? _state;
     private DesktopWindowActivity? _activity;
     // GTK thread only: the X11 position of the window while neither maximized nor full-screen, a position to apply
@@ -940,6 +941,7 @@ internal sealed partial class Gtk4WindowHost : IDesktopNativeDispatchWindowHost,
                 // Before presenting, so the window maps maximized and keeps the restored default size.
                 window.Maximize();
             }
+            ApplyOwner(window.Handle.DangerousGetHandle(), options);
             if (!options.Hidden)
             {
                 Present(window);
@@ -1855,8 +1857,52 @@ internal sealed partial class Gtk4WindowHost : IDesktopNativeDispatchWindowHost,
 
     private void OnDestroyed()
     {
+        ReleaseOwner();
         QueueCleanupAfterDestroy();
     }
+
+    // DesktopWindowOptions.Owner: transient for the owner's GtkWindow. A window-modal window makes the owner insensitive
+    // until the last window modal to it closed; gtk_window_set_modal would block every window of the application.
+    private void ApplyOwner(nint window, DesktopWindowHostOptions options)
+    {
+        if (options.OwnerHandle == 0) return;
+        GtkWindowSetTransientFor(window, options.OwnerHandle);
+        if (options.Modality != DesktopWindowModality.Window) return;
+        // Held until the window closed, so the owner can be made sensitive again also after it was destroyed.
+        _ = GObjectRef(options.OwnerHandle);
+        _blockedOwner = options.OwnerHandle;
+        if (ModalOwners.Acquire(_blockedOwner)) GtkWidgetSetSensitive(_blockedOwner, 0);
+    }
+
+    private nint _blockedOwner;
+
+    // GTK thread: the window closed, so the owner it blocked takes input again.
+    private void ReleaseOwner()
+    {
+        var owner = _blockedOwner;
+        if (owner == 0) return;
+        _blockedOwner = 0;
+        if (ModalOwners.Release(owner)) GtkWidgetSetSensitive(owner, 1);
+        GObjectUnref(owner);
+    }
+
+    [System.Runtime.InteropServices.LibraryImport("libgtk-4.so.1", EntryPoint = "gtk_window_set_transient_for")]
+    private static partial void GtkWindowSetTransientFor(nint window, nint parent);
+
+    [System.Runtime.InteropServices.LibraryImport("libgtk-4.so.1", EntryPoint = "gtk_widget_set_sensitive")]
+    private static partial void GtkWidgetSetSensitive(nint widget, int sensitive);
+
+    [System.Runtime.InteropServices.LibraryImport("libgtk-4.so.1", EntryPoint = "gtk_widget_get_sensitive")]
+    private static partial int GtkWidgetGetSensitive(nint widget);
+
+    // The owner's sensitivity, for the GTK 4 smoke. GTK thread.
+    internal static bool IsSensitive(nint widget) => GtkWidgetGetSensitive(widget) != 0;
+
+    [System.Runtime.InteropServices.LibraryImport("libgobject-2.0.so.0", EntryPoint = "g_object_ref")]
+    private static partial nint GObjectRef(nint instance);
+
+    [System.Runtime.InteropServices.LibraryImport("libgobject-2.0.so.0", EntryPoint = "g_object_unref")]
+    private static partial void GObjectUnref(nint instance);
 
     // close-request and destroy on the window, connected through GObject rather than as GirCore events: a GirCore
     // handler that has run keeps a reference to the window, so a window closed through its close request (the title

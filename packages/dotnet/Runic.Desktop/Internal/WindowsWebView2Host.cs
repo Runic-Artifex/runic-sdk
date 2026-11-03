@@ -107,7 +107,7 @@ internal sealed partial class WindowsWebView2Host : IWebUiEmbeddedHost
         DesktopWindowCapabilities.State | DesktopWindowCapabilities.FileDrop |
         DesktopWindowCapabilities.FullScreen | DesktopWindowCapabilities.MonitorPlacement |
         DesktopWindowCapabilities.MenuBar | DesktopWindowCapabilities.ContextMenu | DesktopWindowCapabilities.FileDrag |
-        DesktopWindowCapabilities.Activity | DesktopWindowCapabilities.ColorScheme |
+        DesktopWindowCapabilities.Activity | DesktopWindowCapabilities.ColorScheme | DesktopWindowCapabilities.Ownership |
         // Per window for a generated profile; WebUiWindow removes it for a ProfilePath the application configured.
         DesktopWindowCapabilities.PerWindowColorScheme;
     // A frameless or kiosk window has no frame for a menu bar.
@@ -489,12 +489,30 @@ internal sealed partial class WindowsWebView2Host : IWebUiEmbeddedHost
         GC.SuppressFinalize(this);
     }
 
+    // The owner a window-modal window disabled (DesktopWindowOptions.Modality), or zero.
+    private nint _blockedOwner;
+
+    // Window thread. Enables the owner again before the window is destroyed, so Windows activates the owner rather than
+    // another application's window. A deferred destroy (an open menu) and WM_DESTROY call it again, which does nothing.
+    private void ReleaseOwner()
+    {
+        var owner = _blockedOwner;
+        if (owner == 0) return;
+        _blockedOwner = 0;
+        if (ModalOwners.Release(owner) && Native.IsWindow(owner)) Native.EnableWindow(owner, true);
+    }
+
     private async Task CloseCoreAsync(CancellationToken cancellationToken)
     {
         if (IsOpen)
         {
             // An open menu closes first; the window goes once the menu's loop returned.
-            await InvokeAsync(() => { if (!DeferDestroyForMenu()) Native.DestroyWindow(_window); }, cancellationToken).ConfigureAwait(false);
+            await InvokeAsync(() =>
+            {
+                if (DeferDestroyForMenu()) return;
+                ReleaseOwner();
+                Native.DestroyWindow(_window);
+            }, cancellationToken).ConfigureAwait(false);
             await _closed.Task.WaitAsync(cancellationToken).ConfigureAwait(false);
         }
         else
@@ -676,13 +694,20 @@ internal sealed partial class WindowsWebView2Host : IWebUiEmbeddedHost
                 y,
                 width,
                 height,
-                0,
+                // DesktopWindowOptions.Owner: an owned window stays above its owner and has no taskbar button.
+                options.OwnerHandle,
                 0,
                 Native.GetModuleHandle(null),
                 GCHandle.ToIntPtr(_selfHandle));
             if (_window == 0)
             {
                 throw new Win32Exception(Marshal.GetLastWin32Error(), "The WebView2 host window could not be created.");
+            }
+            // A window-modal window disables its owner before it shows, until the last window modal to it closed.
+            if (options.OwnerHandle != 0 && options.Modality == DesktopWindowModality.Window)
+            {
+                _blockedOwner = options.OwnerHandle;
+                if (ModalOwners.Acquire(_blockedOwner)) Native.EnableWindow(_blockedOwner, false);
             }
             _provider = WindowsAnnouncementProvider.Create(_window);
             // DesktopWindowOptions.ColorScheme: a dark or light title bar. Without it a Win32 title bar stays light.
@@ -955,6 +980,7 @@ internal sealed partial class WindowsWebView2Host : IWebUiEmbeddedHost
                     requestClose();
                     return 0;
                 }
+                host?.ReleaseOwner();
                 Native.DestroyWindow(window);
                 return 0;
             case WmCommand when host is not null && lParam == 0 && (wParam >> 16) == 0:
@@ -977,6 +1003,7 @@ internal sealed partial class WindowsWebView2Host : IWebUiEmbeddedHost
             case WmGetObject when (int)lParam == WindowsAnnouncementProvider.RootObjectId && host is { _provider: not 0 }:
                 return WindowsAnnouncementProvider.Return(window, wParam, lParam, host._provider);
             case WmDestroy:
+                host?.ReleaseOwner();
                 if (host is { _provider: not 0 and var provider })
                 {
                     host._provider = 0;
@@ -1170,6 +1197,14 @@ internal sealed partial class WindowsWebView2Host : IWebUiEmbeddedHost
 
         [LibraryImport("user32.dll", EntryPoint = "DefWindowProcW")]
         internal static partial nint DefWindowProc(nint window, uint message, nuint wParam, nint lParam);
+
+        [LibraryImport("user32.dll", EntryPoint = "EnableWindow")]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        internal static partial bool EnableWindow(nint window, [MarshalAs(UnmanagedType.Bool)] bool enable);
+
+        [LibraryImport("user32.dll", EntryPoint = "IsWindow")]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        internal static partial bool IsWindow(nint window);
 
         [LibraryImport("user32.dll", EntryPoint = "DestroyWindow")]
         [return: MarshalAs(UnmanagedType.Bool)]

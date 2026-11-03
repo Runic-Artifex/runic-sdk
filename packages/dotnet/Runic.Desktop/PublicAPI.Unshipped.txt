@@ -1,33 +1,52 @@
 #nullable enable
+override Runic.Desktop.DesktopWindowActivity.Equals(object? obj) -> bool
+override Runic.Desktop.DesktopWindowActivity.GetHashCode() -> int
+override Runic.Desktop.DesktopWindowActivity.ToString() -> string!
 Runic.Desktop.DesktopHost.ColorScheme.get -> Runic.Platform.DesktopColorScheme
 Runic.Desktop.DesktopHost.SetColorSchemeAsync(Runic.Platform.DesktopColorScheme colorScheme, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask
-Runic.Desktop.DesktopWindow.Activity.get -> Runic.Desktop.DesktopWindowActivity?
-Runic.Desktop.DesktopWindow.ActivityChanged -> System.EventHandler<Runic.Desktop.DesktopWindowActivityChangedEventArgs!>?
-Runic.Desktop.DesktopWindow.ColorScheme.get -> Runic.Platform.DesktopColorScheme
-Runic.Desktop.DesktopWindow.SetColorSchemeAsync(Runic.Platform.DesktopColorScheme colorScheme, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask
 Runic.Desktop.DesktopWindowActivity
+Runic.Desktop.DesktopWindowActivityChangedEventArgs
+Runic.Desktop.DesktopWindowActivityChangedEventArgs.Activity.get -> Runic.Desktop.DesktopWindowActivity!
+Runic.Desktop.DesktopWindowActivityChangedEventArgs.DesktopWindowActivityChangedEventArgs(Runic.Desktop.DesktopWindowActivity! activity) -> void
+Runic.Desktop.DesktopWindow.ActivityChanged -> System.EventHandler<Runic.Desktop.DesktopWindowActivityChangedEventArgs!>?
 Runic.Desktop.DesktopWindowActivity.<Clone>$() -> Runic.Desktop.DesktopWindowActivity!
 Runic.Desktop.DesktopWindowActivity.DesktopWindowActivity() -> void
 Runic.Desktop.DesktopWindowActivity.Equals(Runic.Desktop.DesktopWindowActivity? other) -> bool
-override Runic.Desktop.DesktopWindowActivity.Equals(object? obj) -> bool
-override Runic.Desktop.DesktopWindowActivity.GetHashCode() -> int
+Runic.Desktop.DesktopWindow.Activity.get -> Runic.Desktop.DesktopWindowActivity?
 Runic.Desktop.DesktopWindowActivity.IsActive.get -> bool
 Runic.Desktop.DesktopWindowActivity.IsActive.init -> void
 Runic.Desktop.DesktopWindowActivity.IsMinimized.get -> bool
 Runic.Desktop.DesktopWindowActivity.IsMinimized.init -> void
 Runic.Desktop.DesktopWindowActivity.IsVisible.get -> bool
 Runic.Desktop.DesktopWindowActivity.IsVisible.init -> void
-override Runic.Desktop.DesktopWindowActivity.ToString() -> string!
-static Runic.Desktop.DesktopWindowActivity.operator !=(Runic.Desktop.DesktopWindowActivity? left, Runic.Desktop.DesktopWindowActivity? right) -> bool
-static Runic.Desktop.DesktopWindowActivity.operator ==(Runic.Desktop.DesktopWindowActivity? left, Runic.Desktop.DesktopWindowActivity? right) -> bool
-Runic.Desktop.DesktopWindowActivityChangedEventArgs
-Runic.Desktop.DesktopWindowActivityChangedEventArgs.Activity.get -> Runic.Desktop.DesktopWindowActivity!
-Runic.Desktop.DesktopWindowActivityChangedEventArgs.DesktopWindowActivityChangedEventArgs(Runic.Desktop.DesktopWindowActivity! activity) -> void
 Runic.Desktop.DesktopWindowCapabilities.Activity = 65536 -> Runic.Desktop.DesktopWindowCapabilities
 Runic.Desktop.DesktopWindowCapabilities.ColorScheme = 131072 -> Runic.Desktop.DesktopWindowCapabilities
+Runic.Desktop.DesktopWindowCapabilities.Ownership = 524288 -> Runic.Desktop.DesktopWindowCapabilities
 Runic.Desktop.DesktopWindowCapabilities.PerWindowColorScheme = 262144 -> Runic.Desktop.DesktopWindowCapabilities
+Runic.Desktop.DesktopWindow.ColorScheme.get -> Runic.Platform.DesktopColorScheme
+Runic.Desktop.DesktopWindowHostOptions.Modality.get -> Runic.Desktop.DesktopWindowModality
+Runic.Desktop.DesktopWindowHostOptions.Modality.init -> void
+Runic.Desktop.DesktopWindowHostOptions.OwnerHandle.get -> nint
+Runic.Desktop.DesktopWindowHostOptions.OwnerHandle.init -> void
+Runic.Desktop.DesktopWindowModality
+Runic.Desktop.DesktopWindow.Modality.get -> Runic.Desktop.DesktopWindowModality
+Runic.Desktop.DesktopWindowModality.None = 0 -> Runic.Desktop.DesktopWindowModality
+Runic.Desktop.DesktopWindowModality.Window = 1 -> Runic.Desktop.DesktopWindowModality
+Runic.Desktop.DesktopWindowOptions.Modality.get -> Runic.Desktop.DesktopWindowModality
+Runic.Desktop.DesktopWindowOptions.Modality.init -> void
+Runic.Desktop.DesktopWindowOptions.Owner.get -> Runic.Desktop.DesktopWindowOwner?
+Runic.Desktop.DesktopWindowOptions.Owner.init -> void
+Runic.Desktop.DesktopWindow.OwnedWindows.get -> System.Collections.Generic.IReadOnlyList<Runic.Desktop.DesktopWindow!>!
+Runic.Desktop.DesktopWindowOwner
+Runic.Desktop.DesktopWindow.Owner.get -> Runic.Desktop.DesktopWindowOwner?
+Runic.Desktop.DesktopWindowOwner.Window.get -> Runic.Desktop.DesktopWindow?
+Runic.Desktop.DesktopWindow.SetColorSchemeAsync(Runic.Platform.DesktopColorScheme colorScheme, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask
 Runic.Desktop.IDesktopActivityWindowHost
-Runic.Desktop.IDesktopActivityWindowHost.Activity.get -> Runic.Desktop.DesktopWindowActivity?
 Runic.Desktop.IDesktopActivityWindowHost.ActivityChanged -> System.EventHandler?
+Runic.Desktop.IDesktopActivityWindowHost.Activity.get -> Runic.Desktop.DesktopWindowActivity?
 Runic.Desktop.IDesktopColorSchemeWindowHost
 Runic.Desktop.IDesktopColorSchemeWindowHost.SetColorSchemeAsync(Runic.Platform.DesktopColorScheme colorScheme, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask
+static Runic.Desktop.DesktopWindowActivity.operator !=(Runic.Desktop.DesktopWindowActivity? left, Runic.Desktop.DesktopWindowActivity? right) -> bool
+static Runic.Desktop.DesktopWindowActivity.operator ==(Runic.Desktop.DesktopWindowActivity? left, Runic.Desktop.DesktopWindowActivity? right) -> bool
+static Runic.Desktop.DesktopWindowOwner.FromNativeHandle(nint handle) -> Runic.Desktop.DesktopWindowOwner!
+static Runic.Desktop.DesktopWindowOwner.FromWindow(Runic.Desktop.DesktopWindow! window) -> Runic.Desktop.DesktopWindowOwner!
