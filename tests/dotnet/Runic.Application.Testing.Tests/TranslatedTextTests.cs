@@ -198,6 +198,85 @@ public sealed class TranslatedTextTests
         Require(host.Content.Locale == "en", "IRunicWindowLocale did not set the open Window's locale.");
     }
 
+    // The state the page test resolves with the real Translations ESM (packages/web/views/test/translated-text.esm.test.ts):
+    // the producer's wire output, kept as a fixture. RUNIC_UPDATE_GOLDEN=1 writes it again.
+    [Test]
+    public void TheProducersReferencesAreThePageFixture()
+    {
+        using var host = new RunicWindowTestHost<TranslatedCatalogViewModel>(new TranslatedCatalogViewModel(),
+            (transport, content, vm) => new TranslatedCatalogBridge(transport, vm, content: content),
+            new RunicWindowTestHostOptions { RootRoute = "translatedCatalog" });
+        using var snapshot = host.RawSnapshot();
+        var state = snapshot.RootElement.GetProperty("state").GetRawText();
+        var path = Path.Combine(WorkspaceRoot(), "packages", "web", "views", "test", "fixtures", "translations", "producer-state.json");
+        if (Environment.GetEnvironmentVariable("RUNIC_UPDATE_GOLDEN") == "1") File.WriteAllText(path, state + "\n");
+        var expected = File.ReadAllText(path).TrimEnd();
+        Require(state == expected, $"The producer's state differs from {path}. Review it and run with RUNIC_UPDATE_GOLDEN=1.\n{state}");
+    }
+
+    [Test]
+    public void TheShapeFollowsTheTranslationsReaders()
+    {
+        // Version 1 takes a null fallback as none; a later version reads; arguments are required.
+        var v1 = RunicTextReference.Parse("""{"version":1,"catalog":"c","contractFingerprint":"f","key":"k","arguments":{},"fallbackText":null}""");
+        Require(v1.Version == 1 && v1.FallbackText is null && v1.ToString() == "k", "A version 1 null fallback was not read as none.");
+        var v3 = RunicTextReference.Parse("""{"version":3,"catalog":"c","contractFingerprint":"f","key":"k","arguments":{},"fallbackText":"F"}""");
+        Require(v3.Version == 3 && v3.FallbackText == "F", "A later transport version was refused.");
+        foreach (var invalid in new[]
+        {
+            """{"version":2,"catalog":"c","contractFingerprint":"f","key":"k"}""",
+            """{"version":2,"catalog":"c","contractFingerprint":"f","key":"k","arguments":{},"fallbackText":null}""",
+            """{"version":0,"catalog":"c","contractFingerprint":"f","key":"k","arguments":{}}""",
+            """{"version":2.0,"catalog":"c","contractFingerprint":"f","key":"k","arguments":{}}""",
+        })
+        {
+            var thrown = false;
+            try { _ = RunicTextReference.Parse(invalid); } catch (JsonException) { thrown = true; }
+            Require(thrown, $"{invalid} was read as a text reference.");
+        }
+    }
+
+    [Test]
+    public void AnOversizedTextLeavesItsErrorWithTheMessageAndIsLogged()
+    {
+        var huge = RunicTextReference.Parse("{\"version\":2,\"catalog\":\"c\",\"contractFingerprint\":\"f\",\"key\":\"big\",\"arguments\":{},\"fallbackText\":\""
+            + new string('x', 20_000) + "\"}");
+        var model = new ErrorsOnlyModel(new RunicValidationMessage("Too big.") { Text = huge });
+        using var buffer = new MemoryStream();
+        var logger = new CapturingLogger();
+        using (BridgeSnapshotPublication.Enter(static () => false, logger))
+        using (var writer = new Utf8JsonWriter(buffer)) BridgeValidation.Write(writer, model, []);
+        using var document = JsonDocument.Parse(buffer.ToArray());
+        var error = document.RootElement.GetProperty("errors")[0];
+        Require(!error.TryGetProperty("text", out _) && error.GetProperty("message").GetString() == "Too big.",
+            "An oversized text was written into its error.");
+        Require(!document.RootElement.GetProperty("truncated").GetBoolean(), "An oversized text set truncated.");
+        Require(logger.Events.SequenceEqual([1171]), $"The oversized text was not logged as 1171: {string.Join(", ", logger.Events)}");
+    }
+
+    private sealed class ErrorsOnlyModel(object error) : System.ComponentModel.INotifyDataErrorInfo
+    {
+        public bool HasErrors => true;
+        public event EventHandler<System.ComponentModel.DataErrorsChangedEventArgs>? ErrorsChanged { add { } remove { } }
+        public System.Collections.IEnumerable GetErrors(string? propertyName) => propertyName is null ? new[] { error } : Array.Empty<object>();
+    }
+
+    private sealed class CapturingLogger : Microsoft.Extensions.Logging.ILogger
+    {
+        public List<int> Events { get; } = [];
+        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+        public bool IsEnabled(Microsoft.Extensions.Logging.LogLevel logLevel) => true;
+        public void Log<TState>(Microsoft.Extensions.Logging.LogLevel logLevel, Microsoft.Extensions.Logging.EventId eventId, TState state,
+            Exception? exception, Func<TState, Exception?, string> formatter) => Events.Add(eventId.Id);
+    }
+
+    private static string WorkspaceRoot()
+    {
+        for (var directory = new DirectoryInfo(Environment.CurrentDirectory); directory is not null; directory = directory.Parent)
+            if (File.Exists(Path.Combine(directory.FullName, "RunicSdk.Core.slnx"))) return directory.FullName;
+        throw new InvalidOperationException("Could not locate the Runic SDK workspace root.");
+    }
+
     [Test]
     public void TheHelloListsTheFeature()
     {
@@ -231,13 +310,13 @@ public sealed class TranslatedTextTests
             "A version 1 reference was refused.");
         foreach (var invalid in new[]
         {
-            "[]", "\"k\"", """{"version":3,"catalog":"c","contractFingerprint":"f","key":"k"}""",
-            """{"version":2,"catalog":"c","contractFingerprint":"f","key":""}""",
-            """{"version":2,"contractFingerprint":"f","key":"k"}""",
+            "[]", "\"k\"", """{"version":0,"catalog":"c","contractFingerprint":"f","key":"k","arguments":{}}""",
+            """{"version":2,"catalog":"c","contractFingerprint":"f","key":"","arguments":{}}""",
+            """{"version":2,"contractFingerprint":"f","key":"k","arguments":{}}""",
             """{"version":2,"catalog":"c","contractFingerprint":"f","key":"k","arguments":[]}""",
-            """{"version":2,"catalog":"c","contractFingerprint":"f","key":"k","fallbackText":1}""",
-            """{"version":2,"catalog":"c","contractFingerprint":"f","key":"k"} {}""",
-            "{\"version\":2,\"catalog\":\"c\",\"contractFingerprint\":\"f\",\"key\":\"k\",\"fallbackText\":\"" + new string('x', 300_000) + "\"}",
+            """{"version":2,"catalog":"c","contractFingerprint":"f","key":"k","arguments":{},"fallbackText":1}""",
+            """{"version":2,"catalog":"c","contractFingerprint":"f","key":"k","arguments":{}} {}""",
+            "{\"version\":2,\"catalog\":\"c\",\"contractFingerprint\":\"f\",\"key\":\"k\",\"arguments\":{},\"fallbackText\":\"" + new string('x', 300_000) + "\"}",
         })
         {
             var thrown = false;

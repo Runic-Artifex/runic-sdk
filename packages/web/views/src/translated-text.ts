@@ -166,12 +166,16 @@ export function textVersion(): number {
   return channel().version;
 }
 
-/** @internal The page runtime reports the window's locale that the producer pushed. */
+/**
+ * @internal The page runtime reports the window's locale that the producer pushed. Every push is applied to the
+ * Translations runtime, also one that repeats the last value: the page may have changed its runtime's locale itself
+ * since, and a push after a reconnect restores the window's. Listeners hear only changes.
+ */
 export function reportWindowLocale(locale: string | null): void {
   const state = channel();
+  if (locale !== null && state.translations) followWindowLocale(state.translations, locale);
   if (state.windowLocale === locale) return;
   state.windowLocale = locale;
-  if (locale !== null && state.translations) followWindowLocale(state.translations, locale);
   for (const listener of [...state.localeListeners]) {
     try { listener(locale); } catch (error) { reportBridgeError(error); }
   }

@@ -71,7 +71,7 @@ test("the text-reference decoder accepts a reference and rejects other values", 
   assert.equal(bridgeWire.textReference(titleTooLong), titleTooLong);
   assert.deepEqual(bridgeWire.textReference({ version: 1, catalog: "c", contractFingerprint: "f", key: "k", arguments: { n: "1" } }),
     { version: 1, catalog: "c", contractFingerprint: "f", key: "k", arguments: { n: "1" } });
-  for (const value of [null, "text", [], { ...saved, version: 3 }, { ...saved, key: "" }, { ...saved, catalog: 1 },
+  for (const value of [null, "text", [], { ...saved, version: 0 }, { ...saved, key: "" }, { ...saved, catalog: 1 },
     { ...saved, arguments: [] }, { ...saved, fallbackText: 1 }, { ...saved, arguments: { bad: Number.NaN } }])
     assert.throws(() => bridgeWire.textReference(value), JSON.stringify(value));
   assert.throws(() => bridgeWire.textReference({ ...saved, fallbackText: "x".repeat(300_000) }), RangeError);
@@ -195,4 +195,82 @@ test("the runtime applies the window's locale that the mock producer pushes, aft
   assert.equal(resolveText(client.snapshot.status), "Saved.");
   assert.equal(bridge.windowLocale, "en");
   assert.throws(() => bridge.setWindowLocale("not a tag"), RangeError);
+});
+
+test("the shape follows the Translations readers: arguments required, a null fallback only in version 1, any later version", () => {
+  const v1 = bridgeWire.textReference({ version: 1, catalog: "c", contractFingerprint: "f", key: "k", arguments: {}, fallbackText: null });
+  assert.equal(resolveText(v1, "message"), "message", "a version 1 null fallback is none");
+  assert.equal(resolveText(v1), "k");
+  assert.equal(bridgeWire.textReference({ ...saved, version: 3 }).version, 3);
+  for (const value of [{ version: 2, catalog: "c", contractFingerprint: "f", key: "k" }, { ...saved, fallbackText: null },
+    { ...saved, version: 0 }, { ...saved, version: 2.5 }])
+    assert.throws(() => bridgeWire.textReference(value), JSON.stringify(value));
+});
+
+test("a later transport version decodes with the rest of the state and shows its fallback text", async () => {
+  const bridge = createMockBridge();
+  installMockBridge(bridge);
+  producer = undefined;
+  const future = { ...saved, version: 3, fallbackText: "Saved (v3)." };
+  bridge.view("status", { state: { status: future, count: 2 } });
+  const client = await connectView<{ readonly status: TextReference; readonly count: number }>({
+    contract: "Tests.Status:fp-3", route: "status", members: { status: bridgeWire.textReference, count: (value: unknown) => bridgeWire.integer(value, 0, 10) },
+  });
+  producer = bridge;
+  cleanup.push(() => { client.dispose(); });
+  assert.equal(client.snapshot.count, 2);
+  // A runtime that does not read the version formats nothing, as resolveTextReference reports it.
+  cleanup.push(configureTranslatedText({ ...translations(), resolve: reference => reference.version > 2 ? undefined : "translated" }));
+  assert.equal(resolveText(client.snapshot.status), "Saved (v3).");
+});
+
+test("a push that repeats the window's locale after a reconnect restores a locale the page changed itself", async () => {
+  const bridge = createMockBridge();
+  installMockBridge(bridge);
+  producer = undefined;
+  bridge.view("status", { state: { status: saved } });
+  bridge.setWindowLocale("de");
+  const runtime = translations();
+  cleanup.push(configureTranslatedText(runtime));
+  const client = await connectView<{ readonly status: TextReference }>({
+    contract: "Tests.Status:fp-4", route: "status", members: { status: bridgeWire.textReference },
+  });
+  producer = bridge;
+  cleanup.push(() => { client.dispose(); });
+  await bridge.flush();
+  assert.equal(runtime.getLocale(), "de");
+  runtime.setLocale!("fr");
+  assert.equal(runtime.getLocale(), "en", "the test runtime has no fr, so it shows en");
+  const locales: (string | null)[] = [];
+  cleanup.push(onWindowLocale(locale => { locales.push(locale); }));
+  bridge.disconnect();
+  bridge.reconnect();
+  await bridge.flush();
+  assert.equal(runtime.getLocale(), "de", "the replayed de was applied");
+  assert.deepEqual(locales, [], "the window's locale did not change, so its listeners heard nothing");
+});
+
+test("number fields follow the window's locale, but not while the user edits a draft", async () => {
+  await reportWindowLocale("de");
+  type State = { readonly amount: number };
+  let state: State = { amount: 1.5 };
+  const written: number[] = [];
+  const field = createFieldController<State, object, number>({
+    name: "amount", kind: "number", read: current => current.amount,
+    write: async (_client, value) => { written.push(value); state = { amount: value }; field.setSource({ state, client: {} }); },
+  }, { commit: "pause" });
+  field.setSource({ state, client: {} });
+  const stop = field.subscribe(() => {});
+  assert.equal(field.current.text, "1,5");
+  field.inputText("2,5");
+  await field.commit();
+  assert.deepEqual(written, [2.5], "1,5-style text is read in the window's locale");
+  // A draft keeps the locale it was typed in.
+  field.inputText("3,");
+  await reportWindowLocale("en");
+  assert.equal(field.current.text, "3,");
+  field.reset();
+  assert.equal(field.current.text, "2.5", "without the draft, the text follows the window's locale");
+  stop();
+  field.dispose();
 });

@@ -23,10 +23,11 @@ namespace Runic.Application.Views;
 /// var text = RunicTextReference.Create(reference, TranslationReferenceJsonContext.Default.TranslationReference);
 /// </code>
 /// <para>
-/// Reading checks the shape of the reference: an object with a <c>version</c> of 1 or 2, a <c>catalog</c>, a
-/// <c>contractFingerprint</c> and a nonempty <c>key</c>, an <c>arguments</c> object when present and a string
-/// <c>fallbackText</c> when present, at most 256 KiB of UTF-8. The Translations runtime that shows it checks the rest
-/// against its catalog, and shows the fallback text when the reference does not match.
+/// Reading checks the shape of the reference, as the Translations readers do: an object with an integer
+/// <c>version</c> of at least 1, a <c>catalog</c>, a <c>contractFingerprint</c>, a nonempty <c>key</c>, an
+/// <c>arguments</c> object and, when present, a string <c>fallbackText</c> (or <see langword="null"/> in version 1), at
+/// most 256 KiB of UTF-8. A later version is accepted: the Translations runtime that shows the reference reports a
+/// version it does not read, and shows the fallback text, as it does for a reference that does not match its catalog.
 /// </para>
 /// </remarks>
 public sealed class RunicTextReference : IEquatable<RunicTextReference>
@@ -47,7 +48,7 @@ public sealed class RunicTextReference : IEquatable<RunicTextReference>
         FallbackText = fallbackText;
     }
 
-    /// <summary>The transport version: 1 or 2.</summary>
+    /// <summary>The transport version: 1, 2, or a later one that the page's Translations runtime may not read.</summary>
     public int Version { get; }
 
     /// <summary>The catalog id.</summary>
@@ -91,19 +92,24 @@ public sealed class RunicTextReference : IEquatable<RunicTextReference>
     public static RunicTextReference Read(JsonElement value)
     {
         if (value.ValueKind != JsonValueKind.Object) throw new JsonException("A text reference is a JSON object.");
+        // Any later transport version is carried as it is: the page's Translations runtime reports a version it does not
+        // read and shows the fallback text, so the rest of the state still decodes. An integer token, as the
+        // Translations readers require (2.0 is not a version).
         var version = value.TryGetProperty("version", out var versionElement) && versionElement.ValueKind == JsonValueKind.Number
-            && versionElement.TryGetInt32(out var number) && number is 1 or 2
-            ? number : throw new JsonException("A text reference's version is 1 or 2.");
+            && versionElement.TryGetInt32(out var number) && number >= 1
+            && versionElement.GetRawText() == number.ToString(System.Globalization.CultureInfo.InvariantCulture)
+            ? number : throw new JsonException("A text reference's version is an integer of at least 1.");
         var catalog = RequiredString(value, "catalog");
         var contractFingerprint = RequiredString(value, "contractFingerprint");
         var key = RequiredString(value, "key");
         if (key.Length == 0) throw new JsonException("A text reference's key is not empty.");
-        if (value.TryGetProperty("arguments", out var arguments) && arguments.ValueKind != JsonValueKind.Object)
-            throw new JsonException("A text reference's arguments are an object.");
+        if (!value.TryGetProperty("arguments", out var arguments) || arguments.ValueKind != JsonValueKind.Object)
+            throw new JsonException("A text reference has an arguments object.");
         string? fallbackText = null;
-        if (value.TryGetProperty("fallbackText", out var fallback))
+        // Version 1 readers take a null fallback as none; later versions leave the member out instead.
+        if (value.TryGetProperty("fallbackText", out var fallback) && !(version == 1 && fallback.ValueKind == JsonValueKind.Null))
             fallbackText = fallback.ValueKind == JsonValueKind.String ? fallback.GetString()
-                : throw new JsonException("A text reference's fallbackText is a string.");
+                : throw new JsonException("A text reference's fallbackText is a string (or null in version 1).");
 
         var buffer = new ArrayBufferWriter<byte>(256);
         using (var writer = new Utf8JsonWriter(buffer, BridgeJsonEncoder.WriterOptions)) value.WriteTo(writer);

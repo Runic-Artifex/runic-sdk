@@ -634,7 +634,8 @@ translate the reference.
 - **Presence.** `text` is present when the model gives the error a reference, and absent otherwise. It is part of the
   `validation` value on every connection ([members of state values](#features)); a client without the feature
   ignores it.
-- **Limits.** A reference of more than 16 KiB of UTF-8 is left out of its error, which sets `truncated`.
+- **Limits.** A reference of more than 16 KiB of UTF-8 is left out of its error, which keeps its message; the
+  producer logs it. `truncated` is not set: the error is complete.
 - **Client.** A client that reads an error with a `text` that is not a text reference ignores the member and shows
   the message.
 - `{name}Errors` keeps the messages.
@@ -913,9 +914,15 @@ The **window's locale** is the language the application chose for the window, or
   reaches the page.
 - **The application owns it.** Only the application sets the window's locale; a page that offers a language switch
   asks the application, for example with a command. Every page of the window therefore shows one language, and the
-  application can keep the choice with its settings.
-- **Client.** A client that uses the feature applies the last `locale` push: it sets the locale of the page's
-  Translations runtime, so the page's own messages follow, and formats references in it. It applies a `locale` push
+  application can keep the choice with its settings. A page that changes its runtime's locale itself is set back by
+  the next push, at the latest after a reconnect.
+- **Number fields.** A client's number field without a locale of its own reads and writes its text in the window's
+  locale, and formats it again when the locale changes, except while the user edits a draft. Dates and times keep
+  the ISO forms of the browser's inputs.
+- **Client.** A client that uses the feature applies every `locale` push: it sets the locale of the page's
+  Translations runtime, also when the push repeats the last value, since the page may have changed its runtime's
+  locale itself meanwhile, and formats references in it. It reports a change of the window's locale only when the
+  value differs. It applies a `locale` push
   whatever the features it has read so far, since the push may come before the `hello` reply. On `null` it keeps
   the language it shows. Without a window locale, the page formats references in its own language. A `locale` push
   whose `locale` is neither a tag nor `null` is invalid and ignored. A client without the feature ignores the push

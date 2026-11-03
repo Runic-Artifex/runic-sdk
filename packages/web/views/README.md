@@ -1168,7 +1168,12 @@ subscribeText(() => { status.textContent = resolveText(editor.snapshot.status); 
 `resolveText(value, fallback)` formats a reference in the window's language, or
 shows its `fallbackText`, then `fallback`, then its key; a string shows as it
 is. For a validation error: `resolveText(error.text, error.message)`. Field
-errors already show translated messages and update on a language switch.
+errors already show translated messages and update on a language switch,
+and number fields without their own `locale` read and show their text in the
+window's locale, except while the user edits a draft. A language switch on the
+page calls the application's command; a locale the page sets itself is set back
+by the next `locale` push. Under server rendering, configure the runtime in the
+browser only, or resolve with the request's locale.
 `windowLocale()` and `onWindowLocale` read the window's locale. The framework
 packages wrap this as `useText` (React, Vue, Svelte), `injectText` and the
 `runicText` pipe (Angular) and `texts` (Effect). The mock bridge's

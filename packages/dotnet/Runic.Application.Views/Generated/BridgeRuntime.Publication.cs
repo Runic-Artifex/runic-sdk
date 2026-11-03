@@ -468,7 +468,7 @@ public partial class ViewModelBridge<T>
         var writer = message.Writer;
         List<(string Name, long Start, long End)>? compared = updateBaselines ? new(_stateMembers.Length) : null;
         long stateStart, stateEnd;
-        using (BridgeSnapshotPublication.Enter(() => IsInactive))
+        using (BridgeSnapshotPublication.Enter(() => IsInactive, _logger))
         {
             CheckCollectionKeys();
             writer.WriteNumber("revision", _revision);
@@ -531,7 +531,7 @@ public partial class ViewModelBridge<T>
     private List<(string Name, byte[] Value)> WriteChangedMembers()
     {
         var changed = new List<(string Name, byte[] Value)>();
-        using (BridgeSnapshotPublication.Enter(() => IsInactive))
+        using (BridgeSnapshotPublication.Enter(() => IsInactive, _logger))
         {
             foreach (var member in _stateMembers)
             {
@@ -557,7 +557,7 @@ public partial class ViewModelBridge<T>
     // The encoding of one member.
     private byte[] WriteMember(string name)
     {
-        using (BridgeSnapshotPublication.Enter(() => IsInactive))
+        using (BridgeSnapshotPublication.Enter(() => IsInactive, _logger))
             foreach (var member in _stateMembers)
                 if (member.Name == name) return WriteValue(writer => member.Write(writer, _vm));
         throw new InvalidOperationException($"{ModelName} has no state member '{name}'.");

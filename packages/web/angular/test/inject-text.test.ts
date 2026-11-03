@@ -64,8 +64,22 @@ describe("RunicTextPipe", () => {
     runtime.setLocale("de");
     expect(marked).toBe(2);
     expect(pipe.transform(tooLong)).toBe("Der Titel ist zu lang.");
-    pipe.ngOnDestroy();
+    // Unchanged value, fallback and language: the last text, without formatting again.
+    let resolved = 0;
+    cleanup.push(configureTranslatedText({ ...runtime, resolve: (reference, language) => { resolved++; return runtime.resolve(reference, language); } }));
+    const first = pipe.transform(tooLong);
+    pipe.transform(tooLong);
+    pipe.transform(tooLong);
+    expect(resolved).toBe(1);
+    expect(pipe.transform(tooLong)).toBe(first);
+    pipe.transform(tooLong, "other");
+    expect(resolved).toBe(2);
     runtime.setLocale("en");
-    expect(marked).toBe(2);
+    pipe.transform(tooLong, "other");
+    expect(resolved).toBe(3);
+    marked = 0;
+    pipe.ngOnDestroy();
+    runtime.setLocale("de");
+    expect(marked).toBe(0);
   });
 });

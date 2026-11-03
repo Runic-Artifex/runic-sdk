@@ -161,3 +161,37 @@ internal sealed class TranslatedValidationText(TranslationReference reference) :
     IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
     public string ToSingleLine(string? separator) => _message;
 }
+
+// translation-text/1: references of the catalog in packages/web/views/test/fixtures/translations, whose state the page
+// test (translated-text.esm.test.ts) resolves with the real generated Translations ESM.
+public sealed class TranslatedCatalogViewModel : INotifyPropertyChanged, INotifyDataErrorInfo
+{
+    internal const string Fingerprint = "sha256:7f0e763ef590d9331b0b2b6650705885fcb0409e0e28dd70805ca74df2c1fb93";
+
+    private static TranslationReference Reference(string key, Dictionary<string, TranslationReferenceArgument> arguments,
+        string? fallback) => new("notes", Fingerprint, key, arguments, fallback);
+
+    private static readonly TranslationReference TitleTooLong = Reference("title_too_long",
+        new() { ["max"] = new(TextArgumentType.Int, "8") }, "Title must be at most 8 characters.");
+
+    public TranslationReference Saved { get; } = Reference("saved", new() { ["title"] = new(TextArgumentType.String, "Atlas") }, "Saved Atlas.");
+    public TranslationReference Changed { get; } = Reference("changed", new() { ["packages"] = new(["firefox", "gimp"]) }, "Changed firefox, gimp");
+    public TranslationReference Failed { get; } = Reference("failed", new()
+    {
+        ["step"] = new(Reference("steps_build", new() { ["name"] = new(TextArgumentType.String, "gimp") }, "Building gimp")),
+    }, "Building gimp failed");
+    // A later transport version than the page's runtime reads: the page shows its fallback text.
+    public RunicTextReference Future { get; } = RunicTextReference.Parse(
+        """{"version":3,"catalog":"notes","contractFingerprint":"sha256:7f0e763ef590d9331b0b2b6650705885fcb0409e0e28dd70805ca74df2c1fb93","key":"saved","arguments":{"title":{"type":"string","value":"Atlas"},"tone":{"type":"emphasis","value":"strong"}},"fallbackText":"Saved Atlas (v3)."}""");
+    public string Title { get; set; } = "much too long";
+
+    public bool HasErrors => true;
+    public IEnumerable GetErrors(string? propertyName) => propertyName == nameof(Title)
+        ? new[] { new RunicValidationMessage(TitleTooLong.FallbackText!, "title-too-long") { Text = TranslatedText.Text(TitleTooLong) } }
+        : Array.Empty<RunicValidationMessage>();
+
+    public event PropertyChangedEventHandler? PropertyChanged { add { } remove { } }
+    public event EventHandler<DataErrorsChangedEventArgs>? ErrorsChanged { add { } remove { } }
+}
+
+public sealed partial class TranslatedCatalogWindow : RunicWindow<TranslatedCatalogViewModel>;

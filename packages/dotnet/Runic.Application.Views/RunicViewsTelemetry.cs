@@ -379,6 +379,12 @@ internal static partial class ViewsLog
     [LoggerMessage(EventId = 1170, EventName = "WindowLocaleChanged", Level = LogLevel.Debug,
         Message = "The window's locale is now {Locale}.")]
     internal static partial void WindowLocaleChanged(ILogger logger, string? locale);
+
+    // translation-text/1: a validation message's text reference is larger than an error carries; the error shows its
+    // message.
+    [LoggerMessage(EventId = 1171, EventName = "ValidationTextTooLarge", Level = LogLevel.Warning,
+        Message = "The text reference {Key} of a validation message has {Bytes} bytes, more than the {Limit} an error carries, so the page shows the message.")]
+    internal static partial void ValidationTextTooLarge(ILogger logger, string key, int bytes, int limit);
 }
 
 // Without an ILoggerFactory the runtime keeps its earlier System.Diagnostics.Trace

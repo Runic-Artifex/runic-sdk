@@ -2,7 +2,7 @@ import {
   assertInInjectionContext, ChangeDetectorRef, computed, DestroyRef, inject, Injector, Pipe, PLATFORM_ID, signal,
   type OnDestroy, type PipeTransform, type Signal,
 } from "@angular/core";
-import { onWindowLocale, resolveText, subscribeText, windowLocale, type TextReference } from "@runic-artifex/views";
+import { onWindowLocale, resolveText, subscribeText, textVersion, windowLocale, type TextReference } from "@runic-artifex/views";
 
 export interface InjectTextOptions {
   /** Required outside an injection context. */
@@ -58,15 +58,23 @@ export function injectWindowLocale({ injector: provided }: InjectTextOptions = {
 /**
  * Shows a text reference in the window's language in a template, and marks the view for check when the language
  * changes: `{{ error.text | runicText: error.message }}`, `{{ state.status | runicText }}`. A string shows as it is;
- * `null` and `undefined` show the fallback argument.
+ * `null` and `undefined` show the fallback argument. The pipe is impure so that it sees a language switch; it formats
+ * again only when the value, the fallback or the language changed, and returns its last text otherwise.
  */
 @Pipe({ name: "runicText", standalone: true, pure: false })
 export class RunicTextPipe implements PipeTransform, OnDestroy {
   private readonly changes = inject(ChangeDetectorRef);
   private readonly stop = subscribeText(() => this.changes.markForCheck());
 
+  private last: { value: unknown; fallback: string | undefined; version: number; text: string } | undefined;
+
   transform(value: TextReference | string | null | undefined, fallback?: string): string {
-    return resolveText(value, fallback);
+    const version = textVersion();
+    const last = this.last;
+    if (last && last.value === value && last.fallback === fallback && last.version === version) return last.text;
+    const text = resolveText(value, fallback);
+    this.last = { value, fallback, version, text };
+    return text;
   }
 
   ngOnDestroy(): void {

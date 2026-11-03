@@ -414,7 +414,10 @@ public static class BridgeValidation
             if (member.Children.Count > 0) Visit(value, member.Children);
         }
 
-        // The text references of the reader's entries that name members, by member and message.
+        // The text references of the reader's entries that name members, by member and message. GetErrors(member) of
+        // such an object returns only strings, so a message is matched to its entry by its text: two entries of one
+        // member with the same message but different references share the last one's text, and a formatter that
+        // changes the message in GetErrors(member) leaves the error without its text.
         private static Dictionary<(string Member, string Message), RunicTextReference>? MemberTexts(IEnumerable entries)
         {
             Dictionary<(string, string), RunicTextReference>? texts = null;
@@ -624,7 +627,9 @@ public static class BridgeValidation
             if (!string.IsNullOrEmpty(severity)) _writer.WriteString("severity", Limit(severity));
             // translation-text/1: the message as a text reference, which a page shows in the window's language. It is
             // part of the state whatever the connections' features; a client without the feature ignores it.
-            if (text is { Utf8Json.Length: > MaximumTextBytes }) _truncated = true;
+            // A text reference too large for an error is left out and logged; the error keeps its message, and the
+            // projection is complete, so truncated is not set.
+            if (text is { Utf8Json.Length: > MaximumTextBytes }) ViewsLog.ValidationTextTooLarge(BridgeSnapshotPublication.Logger, text.Key, text.Utf8Json.Length, MaximumTextBytes);
             else if (text is not null)
             {
                 _writer.WritePropertyName("text");

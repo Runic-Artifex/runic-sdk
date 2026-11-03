@@ -558,7 +558,10 @@ export class AppMenuBar {
 the window's language, and the `runicText` pipe does the same in templates; both
 follow a language switch. Connect the page's Translations runtime once with
 `configureTranslatedText` ([Translated text](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Application.Views/README.md#translated-text)).
-`injectWindowLocale()` reads the window's locale.
+`injectWindowLocale()` reads the window's locale. The pipe formats again only
+when its value, fallback or the language changed. Under server rendering, call
+`configureTranslatedText` behind `isPlatformBrowser`, or render on the server
+with `resolveTextReference` and the request's locale.
 
 ```ts
 @Component({
