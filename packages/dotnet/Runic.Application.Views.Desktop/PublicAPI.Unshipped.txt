@@ -1,2 +1,3 @@
 #nullable enable
 static Runic.Application.Views.Desktop.DesktopPlatformServices.CreatePowerEvents() -> Runic.Platform.IDesktopPowerEvents!
+static Runic.Application.Views.Desktop.DesktopPlatformServices.CreateRecentDocuments() -> Runic.Platform.IDesktopRecentDocuments!

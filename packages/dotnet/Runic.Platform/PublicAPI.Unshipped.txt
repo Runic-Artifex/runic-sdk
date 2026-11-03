@@ -1,4 +1,9 @@
 #nullable enable
+Runic.Platform.DesktopRecentDocuments
+Runic.Platform.IDesktopRecentDocuments
+Runic.Platform.IDesktopRecentDocuments.AddAsync(string! path, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Platform.PlatformResult<Runic.Platform.PlatformUnit>!>
+Runic.Platform.IDesktopRecentDocuments.ClearAsync(System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Platform.PlatformResult<Runic.Platform.PlatformUnit>!>
+static Runic.Platform.DesktopRecentDocuments.Unavailable(Runic.Platform.PlatformUnavailableReason reason) -> Runic.Platform.IDesktopRecentDocuments!
 Runic.Platform.DesktopPowerEvent
 Runic.Platform.DesktopPowerEvent.<Clone>$() -> Runic.Platform.DesktopPowerEvent!
 Runic.Platform.DesktopPowerEvent.Deconstruct(out Runic.Platform.DesktopPowerEventKind Kind, out Runic.Platform.DesktopPowerState! State) -> void
