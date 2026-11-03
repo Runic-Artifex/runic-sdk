@@ -322,6 +322,10 @@ public abstract class RunicWindow<TViewModel> : RunicView<TViewModel>, IRunicWin
         try
         {
             cancellationToken.ThrowIfCancellationRequested();
+            // field-flush/1: the pages write their field drafts first, so the guard sees the user's last input. Inside a
+            // model turn the drafts could not be written, so a close the model itself requests is decided as it is.
+            if (content?.ModelContext is not { IsExecuting: true })
+                await Runic.Navigation.RunicDraftFlush.FlushAsync(cancellationToken).ConfigureAwait(false);
             if (content?.ModelContext is { IsExecuting: false } context)
             {
                 var decision = await context.InvokeAsync(() => CanCloseAsync(cancellationToken).AsTask(), cancellationToken)

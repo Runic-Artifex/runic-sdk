@@ -226,6 +226,7 @@ reply both list the same string. Features are negotiated per connection, and aga
 | `presentation-epoch/1` | A command runs only on the presentation it was issued for: [presentation epochs](#presentation-epochs) | 0.15 |
 | `presented/1` | The page reports that it painted a state, and acknowledges a window close: [presented states and window close](#presented-states-and-window-close) | 0.15 |
 | `validation-pending/1` | `validation` reports the paths whose validation is in progress: [`pending`](#pending) | 0.16 |
+| `field-flush/1` | The producer asks the pages to write their field drafts before a departure is decided: [field flush](#field-flush) | 0.16 |
 
 ## Requests and replies
 
@@ -860,10 +861,41 @@ push or wait again, and reports the first close's result.
 **`closing-reply`.** The reply is `{ok:true}`, also without a pending `closing`: the request is idempotent. On a
 connection that does not use the feature it is `rejected` with `invalid-request`.
 
-**Client.** On `closing`, a client that uses the feature delivers its pending notifications, waits one animation frame
-(or the fallback of step 3 above), sends `closing-reply`, and reports that the producer closed the window. When the
-connection then drops, it keeps reporting that the producer closed the window, not a reconnecting or lost connection.
-A new connection reports a connected client again.
+**Client.** On `closing`, a client that uses the feature delivers its pending notifications, writes the field drafts
+it has not sent yet (such as an input that waits for a pause before it is written) and waits for those writes for at
+most 2 seconds, waits one animation frame (or the fallback of step 3 above), sends `closing-reply`, and reports that
+the producer closed the window. `closing` comes after the close was decided, so these writes reach the model but no
+departure guard: a guard that must see them needs [field flush](#field-flush). When the connection then drops, it
+keeps reporting that the producer closed the window, not a reconnecting or lost connection. A new connection reports a
+connected client again.
+
+### Field flush
+
+With the feature `field-flush/1`, the producer asks the pages to write their field drafts before it decides a
+departure, so a departure guard that reads the model (such as whether it has unsaved changes) sees the user's last
+input, also when the page has not sent it yet.
+
+```json
+{"kind":"flush","id":"flush-7"}
+{"kind":"flush-reply","id":"flush-7"}
+{"ok":true}
+```
+
+**When.** Before the producer asks a departure guard of a departure that the page did not start through a request it
+sends after its drafts: a navigation the model starts (from a menu, a shortcut or a command), a close the application
+requests (`RequestCloseAsync`), and the window's close button when the window guards its close. The producer pushes
+`flush` with an `id` of its choice, unique in the window, to each connection that uses the feature, and waits until
+each of them replied `flush-reply` with that `id` or closed, for at most 1 second. A connection without the feature
+gets no push, and a flush without such connections completes at once. Then the producer asks the guards, on the
+model's state at that point, whether or not every page answered.
+
+**`flush-reply`.** `{kind:"flush-reply", id}`; the reply is `{ok:true}`, also for an `id` no flush waits for. On a
+connection that does not use the feature it is `rejected` with `invalid-request`.
+
+**Client.** On `flush`, a client that uses the feature writes every field draft it has not sent yet, waits for those
+writes for at most 800 milliseconds, and sends `flush-reply` with the push's `id`. A client also writes its drafts on
+its own when the user may be about to leave without a request of its own: on a key with Ctrl, Cmd or Alt before the
+page handles it, and when the page's window loses focus, as when a native menu opens.
 
 ## Operations
 
@@ -1063,6 +1095,7 @@ Requests:
 | `interaction-reply` | `route`, `presentation`, `requestId`, `ownerEpoch`, `name`, `contract`, `outcome`, `output?` | `result` |
 | `presented` (`presented/1`) | `route`, `revision` | none |
 | `closing-reply` (`presented/1`) | none | none |
+| `flush-reply` (`field-flush/1`) | `id` | none |
 | `receive` | none | `messages` |
 
 Every failure reply is `{ok:false, error, revision?, released?}`, and a `hello` reply also carries `protocol` and
@@ -1080,6 +1113,7 @@ Pushes:
 | `interaction-cancelled` | `route`, `presentation`, `requestId`, `ownerEpoch`, `message` | the presentation's connection |
 | `present` (`presented/1`) | `route`, `revision` | while a wait is pending, each connection that uses `presented/1` and has an open presentation of the route |
 | `closing` (`presented/1`) | none | each connection that uses `presented/1` |
+| `flush` (`field-flush/1`) | `id` | each connection that uses `field-flush/1`, before a departure is decided ([field flush](#field-flush)) |
 
 ## Versions and compatibility
 

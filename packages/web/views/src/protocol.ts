@@ -11,6 +11,8 @@ export type Message = Readonly<Record<string, unknown>>;
 export const presentationEpochFeature = "presentation-epoch/1";
 /** `presented/1` (specs/application/README.md, "Presented states and window close"): `present` asks the page to report a painted revision; `closing` a close. */
 export const presentedFeature = "presented/1";
+/** `field-flush/1` (specs/application/README.md, "Field flush"): `flush` asks the page to write its field drafts before a departure is decided. */
+export const fieldFlushFeature = "field-flush/1";
 
 /** A reply as the runtime reads it. Members beyond `ok`, `error`, `revision` and `released` depend on the request. */
 export type Reply = Message & {
@@ -46,7 +48,9 @@ export type Push =
   /** presented/1: report `presented` once the page painted `route` at `revision` or later. */
   | Message & { readonly kind: "present"; readonly route: string; readonly revision: number }
   /** presented/1: the application closes the window; the only push without a route, for window-level handlers. */
-  | Message & { readonly kind: "closing"; readonly route?: undefined };
+  | Message & { readonly kind: "closing"; readonly route?: undefined }
+  /** field-flush/1: write the page's field drafts, then answer `flush-reply` with `id`; a window-level push. */
+  | Message & { readonly kind: "flush"; readonly id: string; readonly route?: undefined };
 
 /** The kinds of {@link Push}; a client ignores other kinds. */
 export type PushKind = Push["kind"];
@@ -121,6 +125,7 @@ const replyMembers: Readonly<Record<string, (reply: Message) => boolean>> = {
   "menu-bar-unwatch": () => true,
   presented: () => true,
   "closing-reply": () => true,
+  "flush-reply": () => true,
 };
 
 /**
@@ -182,7 +187,7 @@ function invalidChanges(changes: unknown): string | undefined {
   return undefined;
 }
 
-const pushKinds = new Set(["state", "frame", "failure", "operation", "interaction", "interaction-cancelled", "menu-bar", "present", "closing"]);
+const pushKinds = new Set(["state", "frame", "failure", "operation", "interaction", "interaction-cancelled", "menu-bar", "present", "closing", "flush"]);
 
 /** The epoch of a reply or `state` push, when it carries one that is a safe integer (presentation-epoch/1). */
 export function epochOf(message: Message): number | undefined {
@@ -202,6 +207,7 @@ export function readPush(text: unknown): PushReading {
   if (!pushKinds.has(kind)) return { result: "ignored" };
   // `closing` is about the window: a route it names is ignored, like any member a client does not need.
   if (kind === "closing") return { result: "valid", push: push as Push };
+  if (kind === "flush") return isString(push["id"]) ? { result: "valid", push: push as Push } : invalid("The flush push has no id.");
   if (route === undefined) return invalid("The push has no route.");
   switch (kind) {
     case "state":

@@ -1,0 +1,175 @@
+{
+  "format": "runic.views.scenario/1",
+  "id": "presentations.flush-a-reply-completes-the-flush.v1",
+  "contract": {
+    "id": "runic.views",
+    "version": 4
+  },
+  "set": "presentations",
+  "roles": [
+    "producer",
+    "client"
+  ],
+  "description": "With field-flush/1, a flush that the producer starts before a departure guard pushes flush with an id; the client writes its field drafts and replies flush-reply with that id, which completes the flush.",
+  "view": "wizard",
+  "requires": [
+    "presented/1"
+  ],
+  "ids": {
+    "c1": {
+      "kind": "connection"
+    },
+    "hello-c1": {
+      "kind": "request"
+    },
+    "session": {
+      "kind": "wire",
+      "value": "s-1"
+    },
+    "open-wizard": {
+      "kind": "call"
+    },
+    "open-wizard-request": {
+      "kind": "request"
+    },
+    "presentation": {
+      "kind": "wire",
+      "value": "p-1"
+    },
+    "flush": {
+      "kind": "flush"
+    },
+    "flushId": {
+      "kind": "provided"
+    },
+    "flush-reply-request": {
+      "kind": "request"
+    }
+  },
+  "arrange": {
+    "model": {}
+  },
+  "steps": [
+    {
+      "connect": "c1"
+    },
+    {
+      "send": {
+        "kind": "hello",
+        "protocol": 4,
+        "session": {
+          "$id": "session"
+        },
+        "client": {
+          "name": {
+            "$any": "string",
+            "default": "conformance-client"
+          },
+          "version": {
+            "$any": "string",
+            "default": "1.0.0"
+          }
+        },
+        "features": {
+          "$any": "array",
+          "default": [
+            "text-splice/1",
+            "field-flush/1"
+          ]
+        }
+      },
+      "id": "hello-c1"
+    },
+    {
+      "receive": {
+        "ok": true,
+        "protocol": 4,
+        "implementation": {
+          "name": {
+            "$any": "string",
+            "default": "conformance-producer"
+          },
+          "version": {
+            "$any": "string",
+            "default": "1.0.0"
+          }
+        },
+        "features": {
+          "$any": "array",
+          "default": [
+            "text-splice/1",
+            "field-flush/1"
+          ]
+        }
+      },
+      "replyTo": "hello-c1"
+    },
+    {
+      "call": {
+        "id": "open-wizard",
+        "op": "open",
+        "route": "wizard"
+      }
+    },
+    {
+      "send": {
+        "kind": "open",
+        "route": "wizard",
+        "presentation": {
+          "$id": "presentation"
+        }
+      },
+      "id": "open-wizard-request"
+    },
+    {
+      "receive": {
+        "ok": true,
+        "revision": 0,
+        "state": {
+          "page": 1,
+          "canNext": true,
+          "canBack": false,
+          "canPing": true
+        },
+        "presentation": "ok"
+      },
+      "replyTo": "open-wizard-request"
+    },
+    {
+      "flushFields": {
+        "id": "flush"
+      }
+    },
+    {
+      "receive": {
+        "kind": "flush",
+        "id": {
+          "$id": "flushId"
+        }
+      }
+    },
+    {
+      "send": {
+        "kind": "flush-reply",
+        "id": {
+          "$id": "flushId"
+        }
+      },
+      "id": "flush-reply-request"
+    },
+    {
+      "receive": {
+        "ok": true
+      },
+      "replyTo": "flush-reply-request"
+    },
+    {
+      "expect": {
+        "flushed": {
+          "id": "flush",
+          "answered": true
+        }
+      }
+    }
+  ]
+}

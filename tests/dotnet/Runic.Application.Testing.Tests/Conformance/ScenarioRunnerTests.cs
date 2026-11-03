@@ -146,6 +146,8 @@ public sealed class ScenarioRunnerTests
             public JsonNode? Provide(string id) => null;
             public Task<bool> Wait(string id) => throw new NotSupportedException();
             public Task<RunicWindowCloseResult> CloseAsync(TimeSpan timeout) => throw new NotSupportedException();
+
+            public Task<bool> FlushFieldsAsync() => throw new NotSupportedException();
             public void Dispose() => serving.Dispose();
         }
 

@@ -919,11 +919,30 @@ Forward `IsDirty` as a ViewModel property (raise it when the session's
 `IsDirty` changes) so that WPF bindings and generated web clients see it, or
 observe it with ReactiveUI's `WhenAnyValue(vm => vm.Session.IsDirty)`.
 `Accept()` takes the current values, `Revert()` restores the baseline, and
-`Refresh()` compares again for a session without an owner. A web page's own
+`Refresh()` compares again for a session without an owner. After an
+asynchronous save, accept what the save wrote, `Accept(submitted)`: plain
+`Accept()` after the `await` would also take what the user typed while the
+save ran as saved, so a leave confirmation would no longer protect it.
+A snapshot must compare by value. One that holds a mutable object (a `List<T>`,
+a mutable class) is the same instance in the baseline and the current
+snapshot, so it never becomes dirty: capture a copy and pass an
+`IEqualityComparer<T>` that compares its contents, or capture immutable values. A web page's own
 drafts are not in the session until the page writes them: its form controller
-(`createFormController`, `useForm`, `injectForm`) counts them as dirty, writes
-them before `submit` runs a command, and the page writes them before it
-acknowledges a window close. The
+(`createFormController`, `useForm`, `injectForm`) counts them as dirty and writes
+them before `submit` runs a command.
+
+### Drafts before departures
+
+`RunicDraftFlush` lets presentations write the drafts they hold before a
+departure is decided. The navigator awaits `RunicDraftFlush.FlushAsync` before
+it asks the departure guards of a transition that has any, and a Runic Window
+before its close guard. `Runic.Application.Views` registers each window whose
+pages use `field-flush/1`: it asks them to write their field drafts and waits
+up to 1 second. A guard that reads `IsDirty` therefore sees what the user typed
+last, also for a navigation that a menu, a shortcut or the model starts.
+Register a flush of your own for other presentations with
+`RunicDraftFlush.Register(cancellationToken => …)`. A flush must not wait for the
+model context's turn, and one that fails does not decide the departure. The
 [WPF hybrid editor](../../../examples/wpf-hybrid-editor/README.md) uses it.
 
 ### Guards for a whole region

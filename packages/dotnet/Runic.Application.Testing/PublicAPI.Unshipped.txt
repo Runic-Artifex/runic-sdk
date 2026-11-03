@@ -1,3 +1,5 @@
 #nullable enable
 Runic.Application.Testing.RunicViewState<TModel>.IsValidating<TValue>(System.Linq.Expressions.Expression<System.Func<TModel!, TValue>!>! property) -> bool
 Runic.Application.Testing.RunicViewState<TModel>.PendingValidation.get -> System.Collections.Generic.IReadOnlyList<System.Collections.Generic.IReadOnlyList<object!>!>!
+Runic.Application.Testing.InMemoryBridgeTransport.FieldFlush.get -> System.Func<string!, System.Threading.Tasks.ValueTask>?
+Runic.Application.Testing.InMemoryBridgeTransport.FieldFlush.set -> void

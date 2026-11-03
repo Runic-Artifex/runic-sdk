@@ -60,6 +60,7 @@ internal static class BridgeMessages
             writer.WriteStringValue(BridgeDispatcher.PresentationEpochFeature);
             writer.WriteStringValue(BridgeDispatcher.PresentedFeature);
             writer.WriteStringValue(BridgeDispatcher.ValidationPendingFeature);
+            writer.WriteStringValue(BridgeDispatcher.FieldFlushFeature);
             writer.WriteEndArray();
             writer.WriteEndObject();
         });

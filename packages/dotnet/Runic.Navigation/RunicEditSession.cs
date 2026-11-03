@@ -9,16 +9,28 @@ namespace Runic.Navigation;
 /// <c>new LeaveConfirmation(() =&gt; session.IsDirty, confirm, session.Revert)</c>.
 /// </summary>
 /// <typeparam name="T">
-/// A snapshot of the edited values with value equality, such as a record or a tuple:
-/// <c>(Title, Body)</c> or <c>NoteDraft(Title, Body)</c>.
+/// A snapshot of the edited values with value equality, such as a record or a tuple of immutable values:
+/// <c>(Title, Body)</c> or <c>NoteDraft(Title, Body)</c>. A snapshot that holds a mutable object, such as a
+/// <c>List&lt;string&gt;</c> or a mutable class, never becomes dirty: the baseline and the current snapshot hold the
+/// same instance, so a change of it is a change of both. Capture a copy (<c>[.. Tags]</c>) and pass a structural
+/// <c>comparer</c>, or capture immutable values (<c>ImmutableArray&lt;string&gt;</c> with a comparer that compares its items).
 /// </typeparam>
 /// <example>
 /// <code>
 /// Session = new RunicEditSession&lt;(string Title, string Body)&gt;(this,
 ///     capture: () =&gt; (Title, Body),
 ///     restore: saved =&gt; (Title, Body) = saved);
-/// // Bind or forward Session.IsDirty; after a save: Session.Accept().
+///
+/// async Task SaveAsync(CancellationToken token)
+/// {
+///     var submitted = (Title, Body);         // what this save writes
+///     await _store.SaveAsync(submitted, token);
+///     Session.Accept(submitted);             // not Accept(): see below
+/// }
 /// </code>
+/// After an <c>await</c>, use <see cref="Accept(T)"/> with the values the save wrote. The user may have typed while
+/// the save ran, and <see cref="Accept()"/> would take those edits as saved, so they would no longer be dirty and a
+/// leave confirmation would let them be lost. <c>Accept(submitted)</c> keeps them dirty.
 /// </example>
 /// <remarks>
 /// With an owner, the session compares again whenever the owner raises <see cref="INotifyPropertyChanged.PropertyChanged"/>,

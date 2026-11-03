@@ -4,7 +4,7 @@ import { viewsVersion } from "./version.js";
 import { applySplice, producerSplices, textSpliceFeature } from "./text.js";
 import { insertRows } from "./collections.js";
 import { flushNotifications } from "./notifications.js";
-import { presentationEpochFeature, presentedFeature } from "./protocol.js";
+import { fieldFlushFeature, presentationEpochFeature, presentedFeature } from "./protocol.js";
 import { validationPendingFeature } from "./validation.js";
 
 /** A View's wire state: one member per state member, by wire name, encoded as on the wire. */
@@ -357,6 +357,13 @@ export interface MockBridge extends RunicBridgeClient {
    * connection returns the first result. The connection stays open: call `disconnect()` to end it as a host does.
    */
   closeWindow(timeout?: number): Promise<boolean>;
+  /**
+   * Asks the page to write its field drafts before a departure, as the application does before it asks a departure
+   * guard (field-flush/1): pushes `flush` and resolves with whether the page answered `flush-reply` within `timeout`
+   * milliseconds (default 1000; virtual time with `manual` scheduling). `true` at once when the connection does not
+   * use the feature, which the application then skips.
+   */
+  flushFields(timeout?: number): Promise<boolean>;
   /** Resolves after `milliseconds` of virtual time, for handlers that model latency. */
   sleep(milliseconds: number): Promise<void>;
   /**
@@ -378,7 +385,7 @@ const realSetTimeout = globalThis.setTimeout.bind(globalThis);
 const yieldToEventLoop = () => new Promise<void>(resolve => { realSetTimeout(resolve, 0); });
 const maximumRounds = 10_000;
 const mockImplementation = { name: "@runic-artifex/views/mock", version: viewsVersion };
-const mockFeatures: readonly string[] = [textSpliceFeature, presentationEpochFeature, presentedFeature, validationPendingFeature];
+const mockFeatures: readonly string[] = [textSpliceFeature, presentationEpochFeature, presentedFeature, validationPendingFeature, fieldFlushFeature];
 
 const upperFirst = (value: string) => value.charAt(0).toUpperCase() + value.slice(1);
 const isRecord = (value: unknown): value is Record<string, unknown> => value !== null && typeof value === "object" && !Array.isArray(value);
@@ -513,12 +520,14 @@ interface Connection {
   readonly pending: Set<(error: Error) => void>;
   /** presented/1: the window's close on this connection, and how it ends. */
   closing?: { readonly result: Promise<boolean>; finish(acknowledged: boolean): void };
+  /** field-flush/1: the flushes waiting for flush-reply, by id. */
+  flushes: Map<string, (answered: boolean) => void>;
 }
 
 interface Task { readonly due: number; readonly sequence: number; readonly run: () => void }
 
 const newConnection = (id: number): Connection =>
-  ({ id, session: undefined, edits: new Map(), editTexts: new Map(), features: new Set(), held: [], pending: new Set() });
+  ({ id, session: undefined, edits: new Map(), editTexts: new Map(), features: new Set(), held: [], pending: new Set(), flushes: new Map() });
 
 export function createMockBridge(options: MockBridgeOptions = {}): MockBridge {
   const manual = options.scheduling === "manual";
@@ -746,6 +755,25 @@ export function createMockBridge(options: MockBridgeOptions = {}): MockBridge {
     });
     owner.closing = { result, finish };
     pushMessage({ kind: "closing" });
+    return result;
+  }
+
+  let flushes = 0;
+  function flushFields(timeout: number): Promise<boolean> {
+    const owner = connection;
+    if (!connected || owner.session === undefined || !owner.features.has(fieldFlushFeature)) return Promise.resolve(true);
+    const id = `flush-${++flushes}`;
+    const result = new Promise<boolean>(resolve => {
+      let stop = () => {};
+      const finish = (answered: boolean) => {
+        if (!owner.flushes.delete(id)) return;
+        stop();
+        resolve(answered);
+      };
+      owner.flushes.set(id, finish);
+      stop = timeoutAfter(timeout, () => finish(false));
+    });
+    pushMessage({ kind: "flush", id });
     return result;
   }
 
@@ -1171,6 +1199,12 @@ export function createMockBridge(options: MockBridgeOptions = {}): MockBridge {
       connection.closing?.finish(true);
       return ok();
     }
+    if (kind === "flush-reply") {
+      if (!connection.features.has(fieldFlushFeature)) return invalidRequest("flush-reply needs the feature field-flush/1.");
+      if (typeof message["id"] !== "string") return invalidRequest("The flush-reply has no id.");
+      connection.flushes.get(message["id"])?.(true);
+      return ok();
+    }
     if (kind === "presented" && (!connection.features.has(presentedFeature) || !isSafe(message["revision"])))
       return invalidRequest("presented needs the feature presented/1 and a revision.");
     if (kind === "command" && connection.features.has(presentationEpochFeature) && Object.hasOwn(message, "epoch") && !isSafe(message["epoch"]))
@@ -1456,6 +1490,7 @@ export function createMockBridge(options: MockBridgeOptions = {}): MockBridge {
       return new Promise<void>(resolve => { schedule(now + milliseconds, resolve); });
     },
     closeWindow: (timeout = 5_000) => closeWindow(timeout),
+    flushFields: (timeout = 1_000) => flushFields(timeout),
     flush,
     async flushUntil<T>(promise: Promise<T>): Promise<T> {
       let settled = false;

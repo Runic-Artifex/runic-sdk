@@ -5,7 +5,7 @@ export { injectCommand, type CommandHandle, type InjectCommandOptions } from "./
 export { injectOperation, type InjectOperationOptions, type OperationHandle } from "./inject-operation.js";
 export { injectField, type FieldHandle, type FieldView, type InjectFieldOptions } from "./inject-field.js";
 export { injectForm, type FormFieldHandle, type FormHandle, type InjectFormOptions } from "./inject-form.js";
-export { commitAllFields, type FormState, type FormSubmitResult } from "@runic-artifex/views";
+export { commitAllFields, type FormState, type FormSubmitOptions, type FormSubmitResult } from "@runic-artifex/views";
 export { injectTextField, type InjectTextFieldOptions, type TextFieldHandle, type TextFieldView } from "./inject-text-field.js";
 export {
   injectLatestOperation,

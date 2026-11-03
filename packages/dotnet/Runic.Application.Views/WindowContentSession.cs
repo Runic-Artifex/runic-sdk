@@ -411,6 +411,9 @@ public sealed class WindowContentSession : IDisposable
         return new(result.Drained, result.RemainingRunningOperations, result.Remaining) { PagesAcknowledged = acknowledged };
     }
 
+    // field-flush/1: asks the window's pages to write their field drafts; true when every page answered.
+    internal Task<bool> FlushFieldsAsync() => BridgeDispatcher.For(_transport).FlushFieldsAsync();
+
     // How long a close waits at most for its pages' closing-reply (presented/1).
     internal static readonly TimeSpan CloseAcknowledgementLimit = TimeSpan.FromSeconds(5);
 

@@ -108,6 +108,10 @@ internal sealed class BridgeRequestEnvelope : IDisposable
             // closing-reply (presented/1) has no members.
             case "closing-reply":
                 return null;
+            // flush-reply (field-flush/1): the id of the flush it answers.
+            case "flush-reply":
+                return root.TryGetProperty("id", out var flushId) && flushId.ValueKind == JsonValueKind.String
+                    && IsIdentifier(flushId.GetString()!) ? null : "The flush-reply's id is not an identifier.";
         }
 
         if (root.TryGetProperty("route", out var routeElement))

@@ -81,7 +81,9 @@ export {
   type FormField,
   type FormFieldController,
   type FormFields,
+  type FormFieldState,
   type FormOptions,
+  type FormSubmitOptions,
   type FormState,
   type FormSubmitResult,
 } from "./form-controller.js";

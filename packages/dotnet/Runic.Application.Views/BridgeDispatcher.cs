@@ -39,6 +39,10 @@ internal sealed class BridgeDispatcher : IBridgeRequestHandler
     // validation-pending/1: validation may carry pending paths. The producer writes them in the route's state for
     // every connection (state is one value per route); a client without the feature ignores the member.
     internal const string ValidationPendingFeature = "validation-pending/1";
+    // field-flush/1: the producer asks the pages to write their field drafts (flush) before a departure is decided.
+    internal const string FieldFlushFeature = "field-flush/1";
+    // How long a flush waits at most for the pages' flush-reply.
+    internal static readonly TimeSpan FieldFlushLimit = TimeSpan.FromSeconds(1);
     internal const int MaximumFeatures = 64;
     internal const int MaximumFeatureLength = 64;
     // A request that arrives before its connection's hello waits this long for it, and at most this many wait.
@@ -63,6 +67,12 @@ internal sealed class BridgeDispatcher : IBridgeRequestHandler
     private int _connectionsWithPresentationEpoch;
     // The window's close (BeginClosing): the connections whose closing-reply is outstanding, and its completion.
     private int _closingPending;
+    // field-flush/1: the flushes waiting for flush-reply, by id, with the connections still to answer; and the
+    // registration with RunicDraftFlush while a connection uses the feature.
+    private readonly Dictionary<string, (TaskCompletionSource Completion, HashSet<string> Waiting)> _flushes = new(StringComparer.Ordinal);
+    private int _connectionsWithFieldFlush;
+    private IDisposable? _draftFlush;
+    private long _nextFlush;
     private TaskCompletionSource? _closing;
     private int _maximumInputBytes = WindowContentSessionOptions.DefaultMaximumInputBytes;
     private ILogger _logger = TraceFallbackLogger.Instance;
@@ -393,6 +403,7 @@ internal sealed class BridgeDispatcher : IBridgeRequestHandler
             {
                 if (envelope.Kind == "receive") return Receive(connection, cancellationToken);
                 if (envelope.Kind == "closing-reply") return Reply(ClosingReply(connection));
+                if (envelope.Kind == "flush-reply") return Reply(FlushReply(connection, envelope));
                 if (envelope.Kind == "presented") return Presented(connection, envelope);
                 // presentation-epoch/1: on a connection that uses it, a command's epoch is a non-negative safe integer;
                 // elsewhere the member is ignored.
@@ -438,6 +449,61 @@ internal sealed class BridgeDispatcher : IBridgeRequestHandler
         return BridgeMessages.Ok.ToArray();
     }
 
+    // field-flush/1: pushes flush to every connection that uses the feature and completes when each answered
+    // flush-reply or closed (true), or after FieldFlushLimit (false). A window without such a connection completes at
+    // once with true.
+    internal async Task<bool> FlushFieldsAsync(CancellationToken cancellationToken = default)
+    {
+        string id;
+        Task flushed;
+        List<string> targets = [];
+        lock (_gate)
+        {
+            foreach (var connection in _connections.Values)
+                if (connection.HelloCompleted && connection.UsesFieldFlush && connection.IsOpen) targets.Add(connection.Key);
+            if (targets.Count == 0) return true;
+            id = "flush-" + (++_nextFlush).ToString(System.Globalization.CultureInfo.InvariantCulture);
+            var completion = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            _flushes[id] = (completion, new HashSet<string>(targets, StringComparer.Ordinal));
+            flushed = completion.Task;
+        }
+        var push = System.Text.Encoding.UTF8.GetBytes($$"""{"kind":"flush","id":"{{id}}"}""");
+        foreach (var target in targets) BridgeTargetedPushes.For(_transport).Send(target, push);
+        // Real time, whatever the window's TimeProvider: a departure waits for the user's pages, not for a test clock.
+        try
+        {
+            await flushed.WaitAsync(FieldFlushLimit, TimeProvider.System, cancellationToken).ConfigureAwait(false);
+            return true;
+        }
+        catch (TimeoutException)
+        {
+            int unanswered;
+            lock (_gate) unanswered = _flushes.TryGetValue(id, out var flush) ? flush.Waiting.Count : 0;
+            ViewsLog.FieldFlushUnanswered(_logger, unanswered);
+            return false;
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { return false; }
+        finally { lock (_gate) _flushes.Remove(id); }
+    }
+
+    // flush-reply (field-flush/1): the page wrote its drafts. An id that no flush waits for answers ok as well.
+    private byte[] FlushReply(BridgeConnection connection, BridgeRequestEnvelope envelope)
+    {
+        if (!connection.UsesFieldFlush)
+            return BridgeMessages.Rejected("invalid-request", "The connection does not use field-flush/1.");
+        if (!envelope.Root.TryGetProperty("id", out var idElement) || idElement.ValueKind != JsonValueKind.String)
+            return BridgeMessages.Rejected("invalid-request", "The flush-reply has no id.");
+        lock (_gate)
+            if (_flushes.TryGetValue(idElement.GetString()!, out var flush)) FlushSettled(flush, connection.Key);
+        return BridgeMessages.Ok.ToArray();
+    }
+
+    // A connection answered a flush or closed; the gate is held.
+    private static void FlushSettled((TaskCompletionSource Completion, HashSet<string> Waiting) flush, string connectionKey)
+    {
+        if (flush.Waiting.Remove(connectionKey) && flush.Waiting.Count == 0) flush.Completion.TrySetResult();
+    }
+
     // presented (presented/1): the page painted the route at the revision. The route's handler completes its waits.
     private ValueTask<ReadOnlyMemory<byte>> Presented(BridgeConnection connection, BridgeRequestEnvelope envelope)
     {
@@ -463,6 +529,12 @@ internal sealed class BridgeDispatcher : IBridgeRequestHandler
             connection.IsOpen = false;
             if (connection.HelloCompleted && !connection.UsesTextSplice) _connectionsWithoutTextSplice--;
             if (connection.HelloCompleted && connection.UsesPresentationEpoch) _connectionsWithPresentationEpoch--;
+            if (connection.HelloCompleted && connection.UsesFieldFlush && --_connectionsWithFieldFlush == 0)
+            {
+                _draftFlush?.Dispose();
+                _draftFlush = null;
+            }
+            foreach (var flush in _flushes.Values) FlushSettled(flush, connectionKey);
             // A closed connection counts as one that acknowledged the window's close.
             ClosingSettled(connection);
             refusedHeld = connection;
@@ -533,7 +605,7 @@ internal sealed class BridgeDispatcher : IBridgeRequestHandler
         if (!root.TryGetProperty("client", out var client) || client.ValueKind != JsonValueKind.Object
             || !TryReadName(client, "name", 128, out var clientName) || !TryReadName(client, "version", 64, out var clientVersion))
             return BridgeMessages.Rejected("invalid-request", "The hello's client is not {name, version}.", hello: true);
-        if (!TryReadFeatures(root, out var usesTextSplice, out var usesPresentationEpoch, out var usesPresented))
+        if (!TryReadFeatures(root, out var usesTextSplice, out var usesPresentationEpoch, out var usesPresented, out var usesFieldFlush))
             return BridgeMessages.Rejected("invalid-request",
                 $"The hello's features are not an array of at most {MaximumFeatures} strings of at most {MaximumFeatureLength} characters.", hello: true);
         var session = sessionElement.GetString()!;
@@ -552,7 +624,10 @@ internal sealed class BridgeDispatcher : IBridgeRequestHandler
             connection.UsesTextSplice = usesTextSplice;
             connection.UsesPresentationEpoch = usesPresentationEpoch;
             connection.UsesPresented = usesPresented;
+            connection.UsesFieldFlush = usesFieldFlush;
             connection.HelloCompleted = true;
+            if (usesFieldFlush && _connectionsWithFieldFlush++ == 0)
+                _draftFlush = Runic.Navigation.RunicDraftFlush.Register(cancellationToken => new(FlushFieldsAsync(cancellationToken)));
             if (!usesTextSplice) _connectionsWithoutTextSplice++;
             if (usesPresentationEpoch) _connectionsWithPresentationEpoch++;
             if (connection.Held.Count > 0) drain = connection.Draining = true;
@@ -565,9 +640,9 @@ internal sealed class BridgeDispatcher : IBridgeRequestHandler
 
     // The client's features: absent, or an array of strings. A feature this producer does not implement is ignored.
     private static bool TryReadFeatures(JsonElement root, out bool usesTextSplice, out bool usesPresentationEpoch,
-        out bool usesPresented)
+        out bool usesPresented, out bool usesFieldFlush)
     {
-        usesTextSplice = usesPresentationEpoch = usesPresented = false;
+        usesTextSplice = usesPresentationEpoch = usesPresented = usesFieldFlush = false;
         if (!root.TryGetProperty("features", out var features)) return true;
         if (features.ValueKind != JsonValueKind.Array || features.GetArrayLength() > MaximumFeatures) return false;
         foreach (var feature in features.EnumerateArray())
@@ -578,6 +653,7 @@ internal sealed class BridgeDispatcher : IBridgeRequestHandler
             if (name == TextSpliceFeature) usesTextSplice = true;
             else if (name == PresentationEpochFeature) usesPresentationEpoch = true;
             else if (name == PresentedFeature) usesPresented = true;
+            else if (name == FieldFlushFeature) usesFieldFlush = true;
         }
         return true;
     }
@@ -716,6 +792,8 @@ internal sealed class BridgeConnection(string key, string clientKey)
     // Whether the connection uses presentation-epoch/1 and presented/1.
     internal bool UsesPresentationEpoch { get; set; }
     internal bool UsesPresented { get; set; }
+    // Whether the connection uses field-flush/1.
+    internal bool UsesFieldFlush { get; set; }
     // Whether the window's closing push waits for this connection's closing-reply; the dispatcher's gate guards it.
     internal bool ClosingPending { get; set; }
     // Requests that wait for the hello, in arrival order, and whether the dispatcher is admitting them.

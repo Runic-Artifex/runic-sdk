@@ -50,7 +50,7 @@
         "additionalProperties": false,
         "required": ["kind"],
         "properties": {
-          "kind": { "enum": ["connection", "wire", "provided", "call", "request", "wait", "close"] },
+          "kind": { "enum": ["connection", "wire", "provided", "call", "request", "wait", "close", "flush"] },
           "value": { "type": "string", "minLength": 1, "maxLength": 128 }
         },
         "if": { "properties": { "kind": { "const": "wire" } } },
@@ -149,6 +149,20 @@
         {
           "required": ["delivery"],
           "properties": { "delivery": { "enum": ["hold", "release"] } },
+          "additionalProperties": false,
+          "patternProperties": { "^(note)$": true }
+        },
+        {
+          "required": ["flushFields"],
+          "properties": {
+            "flushFields": {
+              "description": "Producer: asks the pages to write their field drafts (field-flush/1), as before a departure guard.",
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["id"],
+              "properties": { "id": { "$ref": "#/$defs/name" } }
+            }
+          },
           "additionalProperties": false,
           "patternProperties": { "^(note)$": true }
         },
@@ -394,6 +408,13 @@
           "additionalProperties": false,
           "required": ["id", "result"],
           "properties": { "id": { "$ref": "#/$defs/name" }, "result": { "enum": [true, false, "pending"] } }
+        },
+        "flushed": {
+          "description": "Producer: the flush of a flushFields step completed; whether every page that uses field-flush/1 answered it.",
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["id", "answered"],
+          "properties": { "id": { "$ref": "#/$defs/name" }, "answered": { "type": "boolean" } }
         },
         "closed": {
           "description": "Producer: the close of a closeWindow step completed; whether every page acknowledged it.",

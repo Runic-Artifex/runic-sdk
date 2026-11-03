@@ -275,6 +275,55 @@ internal sealed class FormsTests
     }
 
     [Test]
+    public async Task AFieldFlushWritesThePagesDraftsBeforeADepartureIsDecidedAsync()
+    {
+        var model = new PendingFormViewModel();
+        using var host = new RunicWindowTestHost<PendingFormViewModel>(model,
+            (transport, content, vm) => new PendingFormBridge(transport, vm, content: content),
+            new RunicWindowTestHostOptions { RootRoute = "pendingForm", ViewLocator = new TestViewLocator() });
+        var flushed = 0;
+        host.Transport.FieldFlush = async _ =>
+        {
+            flushed++;
+            await host.Root.SetAsync(vm => vm.UserName, "typed before leaving");
+        };
+        // The page connects; its hello lists field-flush/1, which the window lists too.
+        using (var hello = JsonDocument.Parse(host.Transport.Request("""{"kind":"hello","protocol":4,"session":"probe","client":{"name":"probe","version":"1"},"features":["field-flush/1"]}""", "probe-connection")))
+            Require(hello.RootElement.GetProperty("features").EnumerateArray().Any(feature => feature.GetString() == "field-flush/1"),
+                "The window does not list field-flush/1.");
+        host.Transport.CloseConnection("probe-connection");
+        _ = host.Root.Snapshot();
+
+        // A departure that .NET starts flushes first: the guard reads the draft.
+        await Runic.Navigation.RunicDraftFlush.FlushAsync();
+        Require(flushed >= 1 && model.UserName == "typed before leaving", "The flush did not write the page's draft.");
+        var flush = host.Transport.Messages.Last(message => message.Kind == "flush");
+        Require(flush.ConnectionKey == InMemoryBridgeTransport.DefaultConnectionKey && flush.Json.Contains("\"id\":\"flush-", StringComparison.Ordinal),
+            $"The flush push: {flush.Json}");
+
+        // A page that never answers delays the decision by at most a second.
+        host.Transport.FieldFlush = _ => new ValueTask(Task.Delay(TimeSpan.FromSeconds(30)));
+        var watch = System.Diagnostics.Stopwatch.StartNew();
+        await Runic.Navigation.RunicDraftFlush.FlushAsync();
+        Require(watch.Elapsed < TimeSpan.FromSeconds(10), $"An unanswered flush waited {watch.Elapsed}.");
+    }
+
+    [Test]
+    public async Task APageWithoutTheFeatureIsNotAskedAsync()
+    {
+        var model = new PendingFormViewModel();
+        using var host = new RunicWindowTestHost<PendingFormViewModel>(model,
+            (transport, content, vm) => new PendingFormBridge(transport, vm, content: content),
+            new RunicWindowTestHostOptions { RootRoute = "pendingForm", ViewLocator = new TestViewLocator() });
+        _ = host.Root.Snapshot();
+        await Runic.Navigation.RunicDraftFlush.FlushAsync();
+        Require(!host.Transport.Messages.Any(message => message.Kind == "flush"), "A page without field-flush/1 got a flush.");
+        // flush-reply without the feature is invalid.
+        using var reply = JsonDocument.Parse(host.Transport.Request("""{"kind":"flush-reply","id":"flush-1"}"""));
+        Require(reply.RootElement.GetProperty("error").GetProperty("reason").GetString() == "invalid-request", reply.RootElement.GetRawText());
+    }
+
+    [Test]
     public void AnEditSessionWorksWithReactiveUI()
     {
         var model = new ReactiveEditor();

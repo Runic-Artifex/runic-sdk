@@ -1,4 +1,5 @@
 using System.Text;
+using System.Text.Json;
 using Runic.Application.Views;
 
 namespace Runic.Application.Testing;
@@ -80,6 +81,15 @@ public sealed class InMemoryBridgeTransport : IBridgeConnectionTransport, IDispo
         return ValueTask.CompletedTask;
     }
 
+    /// <summary>
+    /// The field drafts of the test's pages (<c>field-flush/1</c>). When it is set before a connection's first request,
+    /// the connection lists <c>field-flush/1</c> in its hello and answers each <c>flush</c> push as a page does: it
+    /// awaits this function with the connection's key, in which the test writes what the page would (for example
+    /// <c>driver.Set(vm =&gt; vm.Title, "typed")</c>), and then sends <c>flush-reply</c>. A departure that the window
+    /// starts, such as a navigation with a departure guard or <c>RequestCloseAsync</c>, waits for it up to 1 second.
+    /// </summary>
+    public Func<string, ValueTask>? FieldFlush { get; set; }
+
     /// <summary>Records a push to one open connection.</summary>
     public ValueTask<bool> SendAsync(string connectionKey, ReadOnlyMemory<byte> message, CancellationToken cancellationToken = default)
     {
@@ -87,8 +97,29 @@ public sealed class InMemoryBridgeTransport : IBridgeConnectionTransport, IDispo
         cancellationToken.ThrowIfCancellationRequested();
         lock (_gate)
             if (_disposed || !_connections.Contains(connectionKey)) return ValueTask.FromResult(false);
-        Record(new(Encoding.UTF8.GetString(message.Span), connectionKey));
+        var json = Encoding.UTF8.GetString(message.Span);
+        Record(new(json, connectionKey));
+        if (FieldFlush is { } flush && RunicViewPublication.HeaderOf(json).Kind == "flush") _ = AnswerFlushAsync(flush, json, connectionKey);
         return ValueTask.FromResult(true);
+    }
+
+    // field-flush/1: the page writes its drafts, then answers the flush.
+    private async Task AnswerFlushAsync(Func<string, ValueTask> flush, string json, string connectionKey)
+    {
+        await Task.Yield();
+        string id;
+        using (var push = JsonDocument.Parse(json)) id = push.RootElement.GetProperty("id").GetString()!;
+        try { await flush(connectionKey).ConfigureAwait(false); }
+        finally
+        {
+            await RequestAsync(RunicJson.Write(writer =>
+            {
+                writer.WriteStartObject();
+                writer.WriteString("kind", "flush-reply");
+                writer.WriteString("id", id);
+                writer.WriteEndObject();
+            }), connectionKey, null, CancellationToken.None).ConfigureAwait(false);
+        }
     }
 
     /// <summary>Sends one request on a connection and blocks the calling thread until its reply.</summary>
@@ -232,6 +263,12 @@ public sealed class InMemoryBridgeTransport : IBridgeConnectionTransport, IDispo
                 writer.WriteString("name", "Runic.Application.Testing");
                 writer.WriteString("version", "1.0.0");
                 writer.WriteEndObject();
+                if (FieldFlush is not null)
+                {
+                    writer.WriteStartArray("features");
+                    writer.WriteStringValue("field-flush/1");
+                    writer.WriteEndArray();
+                }
                 writer.WriteEndObject();
             }), connectionKey, clientKey, CancellationToken.None).ConfigureAwait(false);
             // A test may have sent the connection's hello itself.

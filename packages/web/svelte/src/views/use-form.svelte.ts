@@ -6,6 +6,7 @@ import {
   type FormField,
   type FormFields,
   type FormState,
+  type FormSubmitOptions,
   type FormSubmitResult,
 } from "@runic-artifex/views";
 
@@ -20,7 +21,7 @@ export interface UseFormOptions {
 /** A form bound by {@link useForm}: its state, read reactively, and its actions. */
 export interface FormHandle extends FormState {
   /** Commits every field, waits for their writes and runs `command` unless a field's write or text failed. */
-  submit<T>(command: () => T | PromiseLike<T>): Promise<FormSubmitResult<T>>;
+  submit<T>(command: () => T | PromiseLike<T>, options?: FormSubmitOptions): Promise<FormSubmitResult<T>>;
   /** Commits every field and resolves once their writes settled. */
   commit(): Promise<FormState>;
   /** Resets every field. */
@@ -46,10 +47,11 @@ export function useForm(fields: () => FormFields<FormFieldHandle>, options: UseF
     get pending() { return state.pending; },
     get valid() { return state.valid; },
     get submitting() { return state.submitting; },
-    async submit<T>(command: () => T | PromiseLike<T>): Promise<FormSubmitResult<T>> {
+    async submit<T>(command: () => T | PromiseLike<T>, submitOptions: FormSubmitOptions = {}): Promise<FormSubmitResult<T>> {
       if (submitting) return { status: "busy" };
       submitting = true;
-      try { return await submitFields(formFieldList(fields()), command); }
+      const list = formFieldList(fields());
+      try { return await submitFields(list, command, submitOptions, index => list[index]!); }
       finally { submitting = false; }
     },
     async commit(): Promise<FormState> {

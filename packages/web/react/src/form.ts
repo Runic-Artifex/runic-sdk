@@ -7,6 +7,7 @@ import {
   type FormField,
   type FormFields,
   type FormState,
+  type FormSubmitOptions,
   type FormSubmitResult,
 } from "@runic-artifex/views";
 
@@ -25,7 +26,7 @@ export type FormHandle = FormState & {
    * `onClick={() => form.submit(() => editor.client!.save())}`. While it runs `submitting` is true and another `submit`
    * resolves `busy`.
    */
-  submit<T>(command: () => T | PromiseLike<T>): Promise<FormSubmitResult<T>>;
+  submit<T>(command: () => T | PromiseLike<T>, options?: FormSubmitOptions): Promise<FormSubmitResult<T>>;
   /** Commits every field and resolves once their writes settled, with the fields' state then. */
   commit(): Promise<FormState>;
   /** Resets every field. */
@@ -52,11 +53,12 @@ export function useForm(fields: FormFields<FormFieldHandle>, options: UseFormOpt
   const dirty = useRef(options.dirty === true);
   dirty.current = options.dirty === true;
   const actions = useMemo(() => ({
-    async submit<T>(command: () => T | PromiseLike<T>): Promise<FormSubmitResult<T>> {
+    async submit<T>(command: () => T | PromiseLike<T>, submitOptions: FormSubmitOptions = {}): Promise<FormSubmitResult<T>> {
       if (busy.current) return { status: "busy" };
       busy.current = true;
       setSubmitting(true);
-      try { return await submitFields(latest.current, command); }
+      // The handles of the latest render are the fields' state now.
+      try { return await submitFields(latest.current, command, submitOptions, index => latest.current[index]!); }
       finally {
         busy.current = false;
         setSubmitting(false);

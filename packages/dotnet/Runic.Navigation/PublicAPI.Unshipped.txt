@@ -10,3 +10,6 @@ Runic.Navigation.RunicEditSession<T>.PropertyChanged -> System.ComponentModel.Pr
 Runic.Navigation.RunicEditSession<T>.Refresh() -> void
 Runic.Navigation.RunicEditSession<T>.Revert() -> void
 Runic.Navigation.RunicEditSession<T>.RunicEditSession(System.ComponentModel.INotifyPropertyChanged? owner, System.Func<T>! capture, System.Action<T>! restore, System.Collections.Generic.IEqualityComparer<T>? comparer = null) -> void
+Runic.Navigation.RunicDraftFlush
+static Runic.Navigation.RunicDraftFlush.FlushAsync(System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask
+static Runic.Navigation.RunicDraftFlush.Register(System.Func<System.Threading.CancellationToken, System.Threading.Tasks.ValueTask>! flush) -> System.IDisposable!

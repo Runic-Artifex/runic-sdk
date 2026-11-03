@@ -48,6 +48,9 @@ internal interface IConformanceWindow : IDisposable
     Task<bool> Wait(string id);
 
     Task<RunicWindowCloseResult> CloseAsync(TimeSpan timeout);
+
+    // field-flush/1: asks the pages to write their field drafts, as before a departure guard; whether every page answered.
+    Task<bool> FlushFieldsAsync();
 }
 
 // What the runner gives the window: its transport (the ScenarioTransport), its virtual clock and its input limit
@@ -158,6 +161,8 @@ internal sealed class DotNetConformanceViews : IConformanceViews
         public Task<bool> Wait(string id) => _waits[id];
 
         public Task<RunicWindowCloseResult> CloseAsync(TimeSpan timeout) => _session.DrainAsync(timeout).AsTask();
+
+        public Task<bool> FlushFieldsAsync() => _session.FlushFieldsAsync();
 
         public void Dispose()
         {

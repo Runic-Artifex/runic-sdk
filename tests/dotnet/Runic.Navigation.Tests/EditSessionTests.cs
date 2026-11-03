@@ -67,6 +67,45 @@ internal sealed partial class NavigationTests
     }
 
     [Test]
+    public void AMutableSnapshotNeedsACopyAndAStructuralComparer()
+    {
+        var tags = new List<string> { "a" };
+        // The same instance in the baseline and now: never dirty.
+        var shared = new RunicEditSession<List<string>>(null, () => tags, saved => { });
+        tags.Add("b");
+        shared.Refresh();
+        Require(!shared.IsDirty, "A shared mutable snapshot became dirty.");
+        // A copy and a comparer of its items.
+        var copied = new RunicEditSession<List<string>>(null, () => [.. tags], saved => { tags.Clear(); tags.AddRange(saved); }, new ItemsComparer());
+        tags.Add("c");
+        copied.Refresh();
+        Require(copied.IsDirty, "A copied snapshot with a structural comparer did not become dirty.");
+        copied.Revert();
+        Require(!copied.IsDirty && tags.SequenceEqual(["a", "b"]), "Revert did not restore the copy.");
+    }
+
+    private sealed class ItemsComparer : IEqualityComparer<List<string>>
+    {
+        public bool Equals(List<string>? left, List<string>? right) => left is null ? right is null : right is not null && left.SequenceEqual(right);
+        public int GetHashCode(List<string> value) => value.Count;
+    }
+
+    [Test]
+    public async Task AcceptingWhatASaveWroteKeepsEditsMadeDuringTheSaveDirtyAsync()
+    {
+        var note = new EditedNote();
+        using var session = new RunicEditSession<(string, string)>(note, () => (note.Title, note.Body), saved => (note.Title, note.Body) = saved);
+        note.Title = "Saved";
+        var submitted = (note.Title, note.Body);
+        var store = new TaskCompletionSource();
+        var save = Task.Run(async () => { await store.Task; session.Accept(submitted); });
+        note.Title = "Typed during the save";
+        store.SetResult();
+        await save;
+        Require(session.IsDirty && session.Baseline == ("Saved", ""), "Accept(submitted) took the edit made during the save as saved.");
+    }
+
+    [Test]
     public async Task EditSessionDrivesALeaveConfirmationAsync()
     {
         await using var fixture = new Fixture();
@@ -85,5 +124,32 @@ internal sealed partial class NavigationTests
         note.Title = "Unsaved";
         Require(await Wait(region.BackAsync()) is NavigationResult<Page>.Committed && prompts == 1, "A dirty session did not ask.");
         Require(note.Title == "Old" && !session.IsDirty, "The confirmed departure did not revert the session.");
+    }
+
+    [Test]
+    public async Task PresentationsWriteTheirDraftsBeforeDepartureGuardsAsync()
+    {
+        await using var fixture = new Fixture();
+        var region = fixture.Navigator.CreateRegion<Page>(fixture.Root, NavigationTarget.Borrow(new Page("home")));
+        var note = new EditedNote();
+        using var session = new RunicEditSession<string>(note, () => note.Title, title => note.Title = title);
+        // A presentation whose user typed into a field that has not written yet: the flush writes it.
+        var typed = "Typed, not yet written";
+        using var registration = RunicDraftFlush.Register(async _ =>
+        {
+            await Task.Yield();
+            await fixture.Context.InvokeAsync(() => { if (typed is not null) note.Title = typed; typed = null; });
+        });
+        var prompts = 0;
+        var leave = new LeaveConfirmation(() => session.IsDirty, (_, _) => { prompts++; return ValueTask.FromResult(false); });
+        var edited = new Page("edited") { Guard = leave.CanDepartAsync };
+        await Wait(region.PushAsync(NavigationTarget.Own(edited)));
+        Require(await Wait(region.BackAsync()) is NavigationResult<Page>.Rejected { Reason: NavigationRejection.Guard } && prompts == 1,
+            "The guard did not see the draft that the presentation wrote first.");
+
+        // A flush that fails does not decide the departure.
+        using var failing = RunicDraftFlush.Register(_ => throw new InvalidOperationException("The page is gone."));
+        session.Revert();
+        Require(await Wait(region.BackAsync()) is NavigationResult<Page>.Committed && prompts == 1, "A failing flush blocked the departure.");
     }
 }

@@ -204,12 +204,35 @@ function sameMessages(left: readonly string[], right: readonly string[]): boolea
 
 function invalid(message: string): FieldError { return new FieldError("invalid-text", message); }
 
-// The page's fields that hold a draft, shared by every copy of this package, so a window close can write them first.
+// The page's fields, shared by every copy of this package, so a flush or a window close can write their drafts first.
+// The page holds them weakly: a controller that is dropped without dispose() leaves the set once it is collected.
 interface LiveField { readonly hasDraft: () => boolean; readonly commit: () => Promise<unknown> }
-const liveFieldsKey = Symbol.for("runic.views.fields");
-function liveFields(): Set<LiveField> {
-  const page = globalThis as unknown as Record<symbol, Set<LiveField> | undefined>;
+interface LiveFieldRef { deref(): LiveField | undefined }
+const liveFieldsKey = Symbol.for("runic.views.fields/2");
+function liveFieldRefs(): Set<LiveFieldRef> {
+  const page = globalThis as unknown as Record<symbol, Set<LiveFieldRef> | undefined>;
   return page[liveFieldsKey] ??= new Set();
+}
+const weakRef = (globalThis as { readonly WeakRef?: new (target: LiveField) => LiveFieldRef }).WeakRef;
+function addLiveField(field: LiveField): LiveFieldRef {
+  const ref = weakRef === undefined ? { deref: () => field } : new weakRef(field);
+  liveFieldRefs().add(ref);
+  return ref;
+}
+function liveFields(): LiveField[] {
+  const refs = liveFieldRefs();
+  const fields: LiveField[] = [];
+  for (const ref of refs) {
+    const field = ref.deref();
+    if (field === undefined) refs.delete(ref);
+    else fields.push(field);
+  }
+  return fields;
+}
+
+/** The number of fields the page holds; for tests. */
+export function liveFieldCount(): number {
+  return liveFields().length;
 }
 
 /**
@@ -224,7 +247,7 @@ export function commitAllFields(): Promise<void> {
 
 /** Commits the page's fields that hold a draft, or returns `undefined` when none does. */
 export function commitDrafts(): Promise<void> | undefined {
-  const drafts = [...liveFields()].filter(field => field.hasDraft());
+  const drafts = liveFields().filter(field => field.hasDraft());
   if (drafts.length === 0) return undefined;
   return Promise.all(drafts.map(field => field.commit().catch(() => undefined))).then(() => undefined);
 }
@@ -293,10 +316,12 @@ export function createFieldController<TState, TClient, TValue>(
   let idleWaiters: ((state: FieldState<TValue>) => void)[] = [];
   const empty = (kind === "text" || kind === undefined ? "" : undefined) as TValue;
   const live: LiveField = {
-    hasDraft: () => draft !== undefined || queued !== undefined || inFlight !== 0 || typedInvalid,
+    // A draft not sent yet: a pause that has not ended, or a value that waits for the write in flight. A write in
+    // flight is on its way already, and a text that does not parse has nothing to write.
+    hasDraft: () => !composing && (unsent || queued !== undefined),
     commit: () => controller.commit(),
   };
-  liveFields().add(live);
+  const liveRef = addLiveField(live);
   let current: FieldState<TValue> = Object.freeze({
     value: empty, text: "", editing: false, error: undefined, errors: noMessages, conflict: undefined, validating: false,
   });
@@ -542,7 +567,7 @@ export function createFieldController<TState, TClient, TValue>(
     dispose() {
       if (disposed) return;
       disposed = true;
-      liveFields().delete(live);
+      liveFieldRefs().delete(liveRef);
       listeners.clear();
       cancelTimer();
       resolveIdle();

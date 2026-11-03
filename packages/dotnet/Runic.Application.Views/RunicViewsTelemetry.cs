@@ -266,6 +266,10 @@ internal static partial class ViewsLog
         Message = "The window closed before {Pages} of its pages acknowledged the close.")]
     internal static partial void CloseUnacknowledged(ILogger logger, int pages);
 
+    [LoggerMessage(EventId = 1140, EventName = "FieldFlushUnanswered", Level = LogLevel.Debug,
+        Message = "A departure was decided before {Pages} of the window's pages answered the field flush.")]
+    internal static partial void FieldFlushUnanswered(ILogger logger, int pages);
+
     [LoggerMessage(EventId = 1010, EventName = "BridgeSnapshotCaptureFailed", Level = LogLevel.Error,
         Message = "Bridge snapshot capture for {Model} on route {Route} failed with {ErrorType}.")]
     internal static partial void SnapshotCaptureFailed(ILogger logger, Exception? exception, string model, string route, string errorType);

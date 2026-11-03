@@ -286,7 +286,7 @@ async function run(scenario: Scenario): Promise<void> {
       }
       if ("disconnect" in step) { host.disconnect(); await idle(); continue; }
       // The producer's mutations (including presented/1's `renew` and `waitPresented`), its transport and its close.
-      if ("mutate" in step || "delivery" in step || "closeWindow" in step) continue;
+      if ("mutate" in step || "delivery" in step || "closeWindow" in step || "flushFields" in step) continue;
       if ("advance" in step) { await advance(step["advance"]); continue; }
       if ("call" in step) {
         const call = step["call"];

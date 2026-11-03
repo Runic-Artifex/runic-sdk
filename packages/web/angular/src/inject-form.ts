@@ -6,6 +6,7 @@ import {
   type FormField,
   type FormFields,
   type FormState,
+  type FormSubmitOptions,
   type FormSubmitResult,
 } from "@runic-artifex/views";
 
@@ -33,7 +34,7 @@ export interface FormHandle {
   readonly valid: Signal<boolean>;
   readonly submitting: Signal<boolean>;
   /** Commits every field, waits for their writes and runs `command` unless a field's write or text failed. */
-  submit<T>(command: () => T | PromiseLike<T>): Promise<FormSubmitResult<T>>;
+  submit<T>(command: () => T | PromiseLike<T>, options?: FormSubmitOptions): Promise<FormSubmitResult<T>>;
   /** Commits every field and resolves once their writes settled. */
   commit(): Promise<FormState>;
   /** Resets every field. */
@@ -63,10 +64,14 @@ export function injectForm(fields: FormFields<FormFieldHandle>, options: InjectF
     pending: computed(() => state().pending),
     valid: computed(() => state().valid),
     submitting: computed(() => state().submitting),
-    async submit<T>(command: () => T | PromiseLike<T>): Promise<FormSubmitResult<T>> {
+    async submit<T>(command: () => T | PromiseLike<T>, submitOptions: FormSubmitOptions = {}): Promise<FormSubmitResult<T>> {
       if (submitting()) return { status: "busy" };
       submitting.set(true);
-      try { return await submitFields(list, command); }
+      const read = (index: number) => {
+        const field = list[index]!;
+        return { editing: field.editing(), error: field.error(), validating: field.validating() };
+      };
+      try { return await submitFields(list, command, submitOptions, read); }
       finally { submitting.set(false); }
     },
     async commit(): Promise<FormState> {

@@ -525,16 +525,32 @@ save.onclick = async () => {
   computes), or a field holds a draft that is not written yet, such as a `commit: "pause"` draft.
 - `editing`: a field holds a draft. `validating`: a field's validation is in progress. `pending`: either, or a
   `submit` runs. `valid`: no field has `errors` or an `error`.
-- `submit(command)`: commits every field, waits for their writes and runs `command`, unless a field's write or text
-  failed (`{ status: "field-failed", error }`). It resolves `{ status: "submitted", result }`; a second `submit`
-  while one runs resolves `{ status: "busy" }`. A command that throws rejects.
+- `submit(command, options?)`: writes a draft that a transport failure kept again (`retry`), commits every field,
+  waits for their writes and runs `command`. It does not run the command when a field's value did not reach the View
+  (`{ status: "field-failed", error }`): a text that does not parse, a `rejected` or `conflict` checked write, or a
+  transport failure of this submit's writes. A `committed-with-error` write reached the View and does not block, and
+  neither does an earlier failure that left no draft. It resolves `{ status: "submitted", result }`; a second
+  `submit` while one runs resolves `{ status: "busy" }`. A command that throws rejects.
+- `waitForValidation: true` (or a number of milliseconds; `true` is 10 seconds) waits until no field is `validating`
+  before the command runs, and resolves `{ status: "validating" }` without running it when a check still runs then.
+  By default `submit` does not wait; .NET validates in any case.
 - `commit()` writes every field; `reset()` resets every field.
 
 React, Vue and Svelte have `useForm(fields, options?)` and Angular `injectForm(fields, options?)` over their field
-handles. `commitAllFields()` writes every draft of the page; the runtime calls it before it acknowledges a window close
-(`presented/1`), so a `commit: "pause"` draft is not lost when the application closes the window. Call it before a
-departure the page does not start through `submit`, such as a host command that navigates away; a departure guard in
-.NET sees the ViewModel's state, which does not include a draft the page has not written.
+handles. `commitAllFields()` writes every draft of the page that has not been sent, such as a `commit: "pause"` draft.
+
+A departure guard in .NET reads the ViewModel, which does not include a draft the page has not written. The page
+writes its drafts before each kind of departure:
+
+| Departure | Drafts are written |
+| --- | --- |
+| A command the page sends through `submit` | before the command (`submit` commits every field first) |
+| A navigation or close that .NET starts (a menu, a shortcut, the model, `RequestCloseAsync`, the close button of a window with `GuardClose`) | before the guards are asked: the host pushes `flush` (`field-flush/1`, a 0.16 host and page) and waits up to 1 second for the page's `flush-reply` |
+| A key with Ctrl, Cmd or Alt, and the window losing focus (a native menu opens) | at once, also with hosts and pages without `field-flush/1` |
+| The application closes the window | before `closing-reply` (`presented/1`), within 2 seconds; this is after the close was decided, so it reaches the model, not a close guard |
+
+A page that starts a departure with a plain command (not `submit`) calls `await commitAllFields()` first. Fields
+are held weakly: a controller that a page drops without `dispose()` stops being written once it is collected.
 
 `createTextFieldController({ read, write, … })` is the string case for a hand-written `read` and `write`, such as a
 command; `injectTextField` and `useTextField` wrap it.

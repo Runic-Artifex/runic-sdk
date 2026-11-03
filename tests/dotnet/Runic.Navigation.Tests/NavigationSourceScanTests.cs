@@ -35,6 +35,11 @@ internal sealed class NavigationSourceScanTests
             "Completion: adapts a hook's ValueTask to ValueTask<bool>; the engine awaits that through the helper"),
         ("RunicModelContext.cs", "task.ContinueWith(static (completed, state) => Complete(completed, (TaskCompletionSource<T>)state!), _completion,", 1,
             "the hook scheduler: completes its own source, created with RunContinuationsAsynchronously, from the hook's task; no engine work continues there"),
+        // RunicDraftFlush runs the presentations' flushes; the engine awaits FlushAsync through the helper.
+        ("RunicDraftFlush.cs", "await Task.WhenAll(running).ConfigureAwait(false);", 1,
+            "the presentations' flushes, which the navigator awaits through AfterUserCode; no engine work continues here"),
+        ("RunicDraftFlush.cs", "try { await flush(cancellationToken).ConfigureAwait(false); }", 1,
+            "a presentation's flush, whose failure it swallows; the navigator awaits FlushAsync through AfterUserCode"),
         // LeaveConfirmation is a guard: user code the engine calls, not engine code. It keeps the
         // caller's context so that a confirm delegate started on the UI thread stays on it.
         ("LeaveConfirmation.cs", "await dialogs.PushForResult<bool>(dialog(), cancellationToken: cancellationToken).Completion", 1,
