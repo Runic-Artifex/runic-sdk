@@ -652,6 +652,13 @@ function tabs(bridge: MockBridge) {
   });
   return { view, model };
 }
+// Waits until the mock asked its guard `count` times, as a producer runner's model expectation waits.
+async function untilAsks(model: { readonly asks: number }, count: number): Promise<void> {
+  for (let waited = 0; model.asks < count; waited++) {
+    assert.ok(waited < 1000, `the guard was asked ${model.asks} times, not ${count}`);
+    await new Promise(resolve => setTimeout(resolve, 1));
+  }
+}
 const regionRequest = (action: string, key: string, member = "documents") => ({ kind: "region", route: "tabs", member, action, key });
 
 test("region-collections/1: select and close commit after their frame, a veto publishes nothing", async () => {
@@ -699,8 +706,8 @@ test("region-collections/1: a close of a region whose close is pending joins it,
   const committed = { kind: "Committed", rejection: null, arrival: "None" };
   model.holdGuard();
   const close = raw.send(regionRequest("close", "3"));
+  await untilAsks(model, 1);
   const again = raw.send(regionRequest("close", "3"));
-  await new Promise(resolve => setTimeout(resolve, 5));
   model.settleGuard(true);
   assert.deepEqual(await Promise.all([close, again]), [{ ok: true, revision: view.revision, outcome: committed }, { ok: true, revision: view.revision, outcome: committed }]);
   assert.equal(model.asks, 1);
@@ -708,7 +715,7 @@ test("region-collections/1: a close of a region whose close is pending joins it,
 
   model.holdGuard();
   const superseded = raw.send(regionRequest("close", "2"));
-  await new Promise(resolve => setTimeout(resolve, 5));
+  await untilAsks(model, 2);
   assert.deepEqual(await raw.send(regionRequest("select", "2")), { ok: true, revision: view.revision, outcome: committed });
   assert.deepEqual((await superseded)["outcome"], { kind: "Superseded", rejection: null, arrival: "None" });
   model.settleGuard(true);
