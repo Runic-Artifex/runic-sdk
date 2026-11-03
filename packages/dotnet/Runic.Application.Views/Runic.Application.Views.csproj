@@ -20,6 +20,7 @@
     <InternalsVisibleTo Include="Runic.Application.Views.Desktop" />
     <InternalsVisibleTo Include="Runic.Application.Views.CsWebUi" />
     <!-- The test host serves a window's blobs and simulated uploads (blobs/1, BridgeBlobs). -->
+    <!-- RunicTestWindowPresentation is delivered through the same RunicWindowPresentation as a host's. -->
     <InternalsVisibleTo Include="Runic.Application.Testing" />
     <InternalsVisibleTo Include="Runic.Application.Views.Desktop.Tests" />
     <!-- tests/benchmarks sets the window's minimum unit interval (BridgeDispatcher) to measure the units themselves. -->

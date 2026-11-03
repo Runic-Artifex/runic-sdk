@@ -11,7 +11,7 @@ using Runic.Platform.Runtime;
 namespace Runic.Application.Views.Wpf;
 
 /// <summary>Native platform services for the application's own WPF windows.</summary>
-public static class WpfPlatformServices
+public static partial class WpfPlatformServices
 {
     /// <summary>Creates the platform services of a WPF window: file dialogs, clipboard, launcher, screen-reader announcements, message boxes, taskbar badge and progress, and drags owned by it.</summary>
     /// <param name="window">The window, on its own thread.</param>

@@ -1,4 +1,102 @@
 #nullable enable
+Runic.Application.Testing.RunicTestPresentation<TModel>
+Runic.Application.Testing.RunicTestPresentation<TModel>.ClientKey.get -> string?
+Runic.Application.Testing.RunicTestPresentation<TModel>.ConnectionKey.get -> string?
+Runic.Application.Testing.RunicTestPresentation<TModel>.Dispose() -> void
+Runic.Application.Testing.RunicTestPresentation<TModel>.Handle<TInput, TOutput>(System.Linq.Expressions.Expression<System.Func<TModel!, object?>!>! interaction, System.Func<TInput, TOutput>! answer) -> Runic.Application.Testing.RunicTestPresentation<TModel!>!
+Runic.Application.Testing.RunicTestPresentation<TModel>.Handle<TInput, TOutput>(System.Linq.Expressions.Expression<System.Func<TModel!, Runic.Application.Views.ViewQuestion<TInput, TOutput>!>!>! question, System.Func<TInput, TOutput>! answer) -> Runic.Application.Testing.RunicTestPresentation<TModel!>!
+Runic.Application.Testing.RunicTestPresentation<TModel>.HandleAsync<TInput, TOutput>(System.Linq.Expressions.Expression<System.Func<TModel!, object?>!>! interaction, System.Func<TInput, System.Threading.CancellationToken, System.Threading.Tasks.ValueTask<TOutput>>! answer, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<Runic.Application.Testing.RunicTestPresentation<TModel!>!>!
+Runic.Application.Testing.RunicTestPresentation<TModel>.Id.get -> string!
+Runic.Application.Testing.RunicTestPresentation<TModel>.NextViewRequestAsync(System.TimeSpan? timeout = null, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<Runic.Application.Testing.RunicViewRequest!>!
+Runic.Application.Testing.RunicTestPresentation<TModel>.Route.get -> string!
+Runic.Application.Testing.RunicTestPresentation<TModel>.TakeViewRequests(System.Linq.Expressions.Expression<System.Func<TModel!, object?>!>? request = null) -> System.Collections.Generic.IReadOnlyList<Runic.Application.Testing.RunicViewRequest!>!
+Runic.Application.Testing.RunicTestPresentation<TModel>.Unmount() -> void
+Runic.Application.Testing.RunicTestPresentation<TModel>.UnmountAsync(System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task!
+Runic.Application.Testing.RunicViewDriver<TModel>.MountPresentation(string? presentation = null, string? clientKey = null, string? connectionKey = null) -> Runic.Application.Testing.RunicTestPresentation<TModel!>!
+Runic.Application.Testing.RunicViewDriver<TModel>.MountPresentationAsync(string? presentation = null, string? clientKey = null, string? connectionKey = null, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<Runic.Application.Testing.RunicTestPresentation<TModel!>!>!
+Runic.Application.Testing.RunicViewRequest
+Runic.Application.Testing.RunicViewRequest.InputJson.get -> string!
+Runic.Application.Testing.RunicViewRequest.Input<T>() -> T
+Runic.Application.Testing.RunicViewRequest.Name.get -> string!
+Runic.Application.Testing.RunicViewRequest.Presentation.get -> string!
+Runic.Application.Testing.RunicViewRequest.Revision.get -> long
+Runic.Application.Testing.RunicViewRequest.Route.get -> string!
+Runic.Application.Testing.RunicViewRequest.RunicViewRequest(string! Name, string! Route, string! Presentation, long Revision, string! InputJson) -> void
+override Runic.Application.Testing.RunicViewRequest.Equals(object? obj) -> bool
+override Runic.Application.Testing.RunicViewRequest.GetHashCode() -> int
+override Runic.Application.Testing.RunicViewRequest.ToString() -> string!
+Runic.Application.Testing.RunicViewRequest.<Clone>$() -> Runic.Application.Testing.RunicViewRequest!
+Runic.Application.Testing.RunicViewRequest.Deconstruct(out string! Name, out string! Route, out string! Presentation, out long Revision, out string! InputJson) -> void
+Runic.Application.Testing.RunicViewRequest.Equals(Runic.Application.Testing.RunicViewRequest? other) -> bool
+Runic.Application.Testing.RunicViewRequest.InputJson.init -> void
+Runic.Application.Testing.RunicViewRequest.Name.init -> void
+Runic.Application.Testing.RunicViewRequest.Presentation.init -> void
+Runic.Application.Testing.RunicViewRequest.Revision.init -> void
+Runic.Application.Testing.RunicViewRequest.Route.init -> void
+static Runic.Application.Testing.RunicViewRequest.operator !=(Runic.Application.Testing.RunicViewRequest? left, Runic.Application.Testing.RunicViewRequest? right) -> bool
+static Runic.Application.Testing.RunicViewRequest.operator ==(Runic.Application.Testing.RunicViewRequest? left, Runic.Application.Testing.RunicViewRequest? right) -> bool
+Runic.Application.Testing.RunicViewDriver<TModel>.ClientKey.get -> string!
+Runic.Application.Testing.RunicViewDriver<TModel>.ConnectionKey.get -> string!
+Runic.Application.Testing.RunicViewDriver<TModel>.ForConnection(string! connectionKey, string? clientKey = null) -> Runic.Application.Testing.RunicViewDriver<TModel!>!
+Runic.Application.Testing.RunicWindowTestHost<TViewModel>.Connections.get -> Runic.Application.Views.IRunicConnections!
+Runic.Application.Testing.RunicTestWindowPresentation
+Runic.Application.Testing.RunicTestWindowPresentation.Activity.get -> Runic.Application.Views.RunicWindowActivity!
+Runic.Application.Testing.RunicTestWindowPresentation.ActivityChanged -> System.EventHandler<Runic.Application.Views.RunicWindowActivityChangedEventArgs!>?
+Runic.Application.Testing.RunicTestWindowPresentation.ClearRequests() -> void
+Runic.Application.Testing.RunicTestWindowPresentation.ColorScheme.get -> Runic.Platform.DesktopColorScheme
+Runic.Application.Testing.RunicTestWindowPresentation.Features.get -> Runic.Application.Views.RunicWindowPresentationFeatures
+Runic.Application.Testing.RunicTestWindowPresentation.Features.set -> void
+Runic.Application.Testing.RunicTestWindowPresentation.IsActive.get -> bool
+Runic.Application.Testing.RunicTestWindowPresentation.IsDocumentEdited.get -> bool
+Runic.Application.Testing.RunicTestWindowPresentation.IsFullScreen.get -> bool
+Runic.Application.Testing.RunicTestWindowPresentation.IsMinimized.get -> bool
+Runic.Application.Testing.RunicTestWindowPresentation.IsVisible.get -> bool
+Runic.Application.Testing.RunicTestWindowPresentation.MinimizeAsync(System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Platform.PlatformResult<Runic.Platform.PlatformUnit>!>
+Runic.Application.Testing.RunicTestWindowPresentation.PresentAsync(Runic.Platform.DesktopActivationContext? activation = null, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Platform.PlatformResult<Runic.Platform.PlatformUnit>!>
+Runic.Application.Testing.RunicTestWindowPresentation.PresentCount.get -> int
+Runic.Application.Testing.RunicTestWindowPresentation.PropertyChanged -> System.ComponentModel.PropertyChangedEventHandler?
+Runic.Application.Testing.RunicTestWindowPresentation.Requests.get -> System.Collections.Generic.IReadOnlyList<Runic.Application.Testing.RunicWindowPresentationRequest!>!
+Runic.Application.Testing.RunicTestWindowPresentation.Respond.get -> System.Func<Runic.Application.Testing.RunicWindowPresentationRequest!, Runic.Platform.PlatformResult<Runic.Platform.PlatformUnit>?>?
+Runic.Application.Testing.RunicTestWindowPresentation.Respond.set -> void
+Runic.Application.Testing.RunicTestWindowPresentation.RunicTestWindowPresentation() -> void
+Runic.Application.Testing.RunicTestWindowPresentation.RunicTestWindowPresentation(Runic.Application.Views.RunicWindowPresentationFeatures features, Runic.Application.Views.RunicWindowActivity! activity) -> void
+Runic.Application.Testing.RunicTestWindowPresentation.SetActive(bool active) -> void
+Runic.Application.Testing.RunicTestWindowPresentation.SetActivity(Runic.Application.Views.RunicWindowActivity! activity) -> void
+Runic.Application.Testing.RunicTestWindowPresentation.SetColorSchemeAsync(Runic.Platform.DesktopColorScheme colorScheme, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Platform.PlatformResult<Runic.Platform.PlatformUnit>!>
+Runic.Application.Testing.RunicTestWindowPresentation.SetDocumentEditedAsync(bool edited, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Platform.PlatformResult<Runic.Platform.PlatformUnit>!>
+Runic.Application.Testing.RunicTestWindowPresentation.SetFullScreenAsync(bool fullScreen, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Platform.PlatformResult<Runic.Platform.PlatformUnit>!>
+Runic.Application.Testing.RunicTestWindowPresentation.SetVisibleAsync(bool visible, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Platform.PlatformResult<Runic.Platform.PlatformUnit>!>
+Runic.Application.Testing.RunicTestWindowPresentationServiceCollectionExtensions
+static Runic.Application.Testing.RunicTestWindowPresentationServiceCollectionExtensions.AddRunicTestWindowPresentation(this Microsoft.Extensions.DependencyInjection.IServiceCollection! services, bool immediate = false) -> Microsoft.Extensions.DependencyInjection.IServiceCollection!
+Runic.Application.Testing.RunicWindowPresentationRequest
+Runic.Application.Testing.RunicWindowPresentationRequest.<Clone>$() -> Runic.Application.Testing.RunicWindowPresentationRequest!
+Runic.Application.Testing.RunicWindowPresentationRequest.Activation.get -> Runic.Platform.DesktopActivationContext?
+Runic.Application.Testing.RunicWindowPresentationRequest.Activation.init -> void
+Runic.Application.Testing.RunicWindowPresentationRequest.ColorScheme.get -> Runic.Platform.DesktopColorScheme?
+Runic.Application.Testing.RunicWindowPresentationRequest.ColorScheme.init -> void
+Runic.Application.Testing.RunicWindowPresentationRequest.Deconstruct(out Runic.Application.Testing.RunicWindowPresentationRequestKind Kind) -> void
+Runic.Application.Testing.RunicWindowPresentationRequest.Equals(Runic.Application.Testing.RunicWindowPresentationRequest? other) -> bool
+override Runic.Application.Testing.RunicWindowPresentationRequest.Equals(object? obj) -> bool
+override Runic.Application.Testing.RunicWindowPresentationRequest.GetHashCode() -> int
+Runic.Application.Testing.RunicWindowPresentationRequest.Kind.get -> Runic.Application.Testing.RunicWindowPresentationRequestKind
+Runic.Application.Testing.RunicWindowPresentationRequest.Kind.init -> void
+Runic.Application.Testing.RunicWindowPresentationRequest.RunicWindowPresentationRequest(Runic.Application.Testing.RunicWindowPresentationRequestKind Kind) -> void
+override Runic.Application.Testing.RunicWindowPresentationRequest.ToString() -> string!
+Runic.Application.Testing.RunicWindowPresentationRequest.Value.get -> bool?
+Runic.Application.Testing.RunicWindowPresentationRequest.Value.init -> void
+static Runic.Application.Testing.RunicWindowPresentationRequest.operator !=(Runic.Application.Testing.RunicWindowPresentationRequest? left, Runic.Application.Testing.RunicWindowPresentationRequest? right) -> bool
+static Runic.Application.Testing.RunicWindowPresentationRequest.operator ==(Runic.Application.Testing.RunicWindowPresentationRequest? left, Runic.Application.Testing.RunicWindowPresentationRequest? right) -> bool
+Runic.Application.Testing.RunicWindowPresentationRequestKind
+Runic.Application.Testing.RunicWindowPresentationRequestKind.Minimize = 1 -> Runic.Application.Testing.RunicWindowPresentationRequestKind
+Runic.Application.Testing.RunicWindowPresentationRequestKind.Present = 0 -> Runic.Application.Testing.RunicWindowPresentationRequestKind
+Runic.Application.Testing.RunicWindowPresentationRequestKind.SetColorScheme = 5 -> Runic.Application.Testing.RunicWindowPresentationRequestKind
+Runic.Application.Testing.RunicWindowPresentationRequestKind.SetDocumentEdited = 4 -> Runic.Application.Testing.RunicWindowPresentationRequestKind
+Runic.Application.Testing.RunicWindowPresentationRequestKind.SetFullScreen = 3 -> Runic.Application.Testing.RunicWindowPresentationRequestKind
+Runic.Application.Testing.RunicWindowPresentationRequestKind.SetVisible = 2 -> Runic.Application.Testing.RunicWindowPresentationRequestKind
+Runic.Application.Testing.RunicWindowTestHost<TViewModel>.FlushWindowPresentationAsync(System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task!
+Runic.Application.Testing.RunicWindowTestHost<TViewModel>.Presentation.get -> Runic.Application.Testing.RunicTestWindowPresentation?
+Runic.Application.Testing.RunicWindowTestHost<TViewModel>.SetWindowActivityAsync(Runic.Application.Views.RunicWindowActivity! activity, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task!
+const Runic.Application.Testing.RunicTestWindowPresentation.AllFeatures = Runic.Application.Views.RunicWindowPresentationFeatures.Present | Runic.Application.Views.RunicWindowPresentationFeatures.Minimize | Runic.Application.Views.RunicWindowPresentationFeatures.Visibility | Runic.Application.Views.RunicWindowPresentationFeatures.FullScreen | Runic.Application.Views.RunicWindowPresentationFeatures.DocumentEdited | Runic.Application.Views.RunicWindowPresentationFeatures.ColorScheme | Runic.Application.Views.RunicWindowPresentationFeatures.Activity | Runic.Application.Views.RunicWindowPresentationFeatures.PerWindowColorScheme -> Runic.Application.Views.RunicWindowPresentationFeatures
 Runic.Application.Testing.RunicServeOnlyApplication.Urls.get -> System.Collections.Generic.IReadOnlyList<System.Uri!>!
 Runic.Application.Testing.RunicServeOnlyApplication.WaitForWindowUrlAsync(int index, System.TimeSpan timeout, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<System.Uri!>!
 Runic.Application.Testing.RunicServeOnlyApplication.WaitForWindowUrlAsync(string! windowType, System.TimeSpan timeout, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<System.Uri!>!
@@ -343,46 +441,6 @@ static Runic.Application.Testing.RunicRowLoad.operator !=(Runic.Application.Test
 static Runic.Application.Testing.RunicRowLoad.operator ==(Runic.Application.Testing.RunicRowLoad left, Runic.Application.Testing.RunicRowLoad right) -> bool
 ~override Runic.Application.Testing.RunicRowLoad.Equals(object obj) -> bool
 ~override Runic.Application.Testing.RunicRowLoad.ToString() -> string
-Runic.Application.Testing.RunicTestPresentation<TModel>
-Runic.Application.Testing.RunicTestPresentation<TModel>.ClientKey.get -> string?
-Runic.Application.Testing.RunicTestPresentation<TModel>.ConnectionKey.get -> string?
-Runic.Application.Testing.RunicTestPresentation<TModel>.Dispose() -> void
-Runic.Application.Testing.RunicTestPresentation<TModel>.Handle<TInput, TOutput>(System.Linq.Expressions.Expression<System.Func<TModel!, object?>!>! interaction, System.Func<TInput, TOutput>! answer) -> Runic.Application.Testing.RunicTestPresentation<TModel!>!
-Runic.Application.Testing.RunicTestPresentation<TModel>.Handle<TInput, TOutput>(System.Linq.Expressions.Expression<System.Func<TModel!, Runic.Application.Views.ViewQuestion<TInput, TOutput>!>!>! question, System.Func<TInput, TOutput>! answer) -> Runic.Application.Testing.RunicTestPresentation<TModel!>!
-Runic.Application.Testing.RunicTestPresentation<TModel>.HandleAsync<TInput, TOutput>(System.Linq.Expressions.Expression<System.Func<TModel!, object?>!>! interaction, System.Func<TInput, System.Threading.CancellationToken, System.Threading.Tasks.ValueTask<TOutput>>! answer, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<Runic.Application.Testing.RunicTestPresentation<TModel!>!>!
-Runic.Application.Testing.RunicTestPresentation<TModel>.Id.get -> string!
-Runic.Application.Testing.RunicTestPresentation<TModel>.NextViewRequestAsync(System.TimeSpan? timeout = null, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<Runic.Application.Testing.RunicViewRequest!>!
-Runic.Application.Testing.RunicTestPresentation<TModel>.Route.get -> string!
-Runic.Application.Testing.RunicTestPresentation<TModel>.TakeViewRequests(System.Linq.Expressions.Expression<System.Func<TModel!, object?>!>? request = null) -> System.Collections.Generic.IReadOnlyList<Runic.Application.Testing.RunicViewRequest!>!
-Runic.Application.Testing.RunicTestPresentation<TModel>.Unmount() -> void
-Runic.Application.Testing.RunicTestPresentation<TModel>.UnmountAsync(System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task!
-Runic.Application.Testing.RunicViewDriver<TModel>.MountPresentation(string? presentation = null, string? clientKey = null, string? connectionKey = null) -> Runic.Application.Testing.RunicTestPresentation<TModel!>!
-Runic.Application.Testing.RunicViewDriver<TModel>.MountPresentationAsync(string? presentation = null, string? clientKey = null, string? connectionKey = null, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<Runic.Application.Testing.RunicTestPresentation<TModel!>!>!
-Runic.Application.Testing.RunicViewRequest
-Runic.Application.Testing.RunicViewRequest.InputJson.get -> string!
-Runic.Application.Testing.RunicViewRequest.Input<T>() -> T
-Runic.Application.Testing.RunicViewRequest.Name.get -> string!
-Runic.Application.Testing.RunicViewRequest.Presentation.get -> string!
-Runic.Application.Testing.RunicViewRequest.Revision.get -> long
-Runic.Application.Testing.RunicViewRequest.Route.get -> string!
-Runic.Application.Testing.RunicViewRequest.RunicViewRequest(string! Name, string! Route, string! Presentation, long Revision, string! InputJson) -> void
-override Runic.Application.Testing.RunicViewRequest.Equals(object? obj) -> bool
-override Runic.Application.Testing.RunicViewRequest.GetHashCode() -> int
-override Runic.Application.Testing.RunicViewRequest.ToString() -> string!
-Runic.Application.Testing.RunicViewRequest.<Clone>$() -> Runic.Application.Testing.RunicViewRequest!
-Runic.Application.Testing.RunicViewRequest.Deconstruct(out string! Name, out string! Route, out string! Presentation, out long Revision, out string! InputJson) -> void
-Runic.Application.Testing.RunicViewRequest.Equals(Runic.Application.Testing.RunicViewRequest? other) -> bool
-Runic.Application.Testing.RunicViewRequest.InputJson.init -> void
-Runic.Application.Testing.RunicViewRequest.Name.init -> void
-Runic.Application.Testing.RunicViewRequest.Presentation.init -> void
-Runic.Application.Testing.RunicViewRequest.Revision.init -> void
-Runic.Application.Testing.RunicViewRequest.Route.init -> void
-static Runic.Application.Testing.RunicViewRequest.operator !=(Runic.Application.Testing.RunicViewRequest? left, Runic.Application.Testing.RunicViewRequest? right) -> bool
-static Runic.Application.Testing.RunicViewRequest.operator ==(Runic.Application.Testing.RunicViewRequest? left, Runic.Application.Testing.RunicViewRequest? right) -> bool
-Runic.Application.Testing.RunicViewDriver<TModel>.ClientKey.get -> string!
-Runic.Application.Testing.RunicViewDriver<TModel>.ConnectionKey.get -> string!
-Runic.Application.Testing.RunicViewDriver<TModel>.ForConnection(string! connectionKey, string? clientKey = null) -> Runic.Application.Testing.RunicViewDriver<TModel!>!
-Runic.Application.Testing.RunicWindowTestHost<TViewModel>.Connections.get -> Runic.Application.Views.IRunicConnections!
 override Runic.Application.Testing.RunicRegionCollectionState.Equals(object? obj) -> bool
 override Runic.Application.Testing.RunicRegionCollectionState.GetHashCode() -> int
 override Runic.Application.Testing.RunicRegionCollectionState.ToString() -> string!

@@ -14,8 +14,13 @@ public sealed class CounterViewModel : ReactiveObject, IDisposable
     public static int Disposals => Volatile.Read(ref _disposals);
 
     // No scheduler argument: AddRunicReactiveModelContext makes ReactiveUI deliver the
-    // command's notifications on the window's model context.
-    public CounterViewModel() => IncrementCommand = ReactiveCommand.Create(() => { Count++; });
+    // command's notifications on the window's model context. IRunicWindowPresentation is this Window as it appears on
+    // the desktop, on every host: hiding it leaves the application in the status area, and the icon presents it again.
+    public CounterViewModel(IRunicWindowPresentation window)
+    {
+        IncrementCommand = ReactiveCommand.Create(() => { Count++; });
+        HideCommand = ReactiveCommand.CreateFromTask(async token => { await window.SetVisibleAsync(false, token); });
+    }
 
     public int Count
     {
@@ -25,9 +30,12 @@ public sealed class CounterViewModel : ReactiveObject, IDisposable
 
     public ReactiveCommand<RxVoid, RxVoid> IncrementCommand { get; }
 
+    public ReactiveCommand<RxVoid, RxVoid> HideCommand { get; }
+
     public void Dispose()
     {
         IncrementCommand.Dispose();
+        HideCommand.Dispose();
         Interlocked.Increment(ref _disposals);
     }
 }

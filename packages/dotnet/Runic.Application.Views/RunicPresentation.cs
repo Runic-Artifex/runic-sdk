@@ -56,6 +56,9 @@ public interface IRunicWindow : IRunicView, IAsyncDisposable
     /// <inheritdoc cref="RunicWindow{TViewModel}.Services"/>
     IServiceProvider Services { get; }
 
+    /// <inheritdoc cref="RunicWindow{TViewModel}.Presentation"/>
+    IRunicWindowPresentation Presentation { get; }
+
     internal ValueTask OpenAsync(IRunicWindowHost host, RunicWindowOptions options, object? parameter, CancellationToken cancellationToken);
 
     internal RunicWindowValidationResult Validate(IRunicWindowHost host, RunicWindowOptions options);
@@ -93,6 +96,25 @@ public abstract class RunicWindow<TViewModel> : RunicView<TViewModel>, IRunicWin
 
     /// <summary>Creates a window whose ViewModel is assigned when it opens.</summary>
     protected RunicWindow() { }
+
+    private readonly RunicWindowPresentation _presentation = new();
+
+    /// <summary>
+    /// The Window as it appears on the desktop: bring it to the front, minimize, hide or show it, and read whether it
+    /// is active, from code outside its scope, such as a status icon's handler. Its ViewModel takes the same object as
+    /// <see cref="IRunicWindowPresentation"/>.
+    /// </summary>
+    /// <remarks>
+    /// Readable before the Window opens and after it closes; its requests then report
+    /// <see cref="Runic.Platform.PlatformUnavailableReason.OwnerUnavailable"/> or
+    /// <see cref="Runic.Platform.PlatformUnavailableReason.OwnerClosed"/>.
+    /// </remarks>
+    public IRunicWindowPresentation Presentation => _presentation;
+
+    // The host's presentation of the open window (RunicWindowOpening.UsePresentation).
+    internal void AttachPresentation(IRunicWindowPresentation presentation) =>
+        _presentation.Attach(presentation, () => Volatile.Read(ref _content)?.ModelContext,
+            () => Volatile.Read(ref _content)?.Logger ?? TraceFallbackLogger.Instance);
 
     /// <summary>The window's scoped root ViewModel.</summary>
     /// <exception cref="InvalidOperationException">The window has not opened.</exception>
@@ -253,6 +275,7 @@ public abstract class RunicWindow<TViewModel> : RunicView<TViewModel>, IRunicWin
             CloseWithoutAsking();
             await host.DisposeAsync().ConfigureAwait(false);
         }
+        _presentation.Close();
         GC.SuppressFinalize(this);
     }
 
