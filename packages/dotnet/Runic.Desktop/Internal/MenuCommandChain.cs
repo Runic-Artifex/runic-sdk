@@ -6,7 +6,8 @@ namespace Runic.Desktop.Internal;
 
 // The one command path of a menu item, for the native bar, a global menu, shortcuts, the page and
 // DesktopWindow.TryExecuteMenuItemAsync: the declaration, then the window's target, then the application's, each asked
-// CanExecute before Execute. A target that throws is logged (event 3014) and counts as unable to run the item.
+// CanExecute before Execute. A target that throws is logged (event 3014) and counts as unable to run the item. The
+// check mark of a check or radio item comes from the same targets (IsChecked).
 // Callers run it on the window's UI thread.
 internal sealed class MenuCommandChain(Func<IDesktopMenuCommandTarget?> application, ILogger? logger) : IDesktopMenuCommandTarget
 {
@@ -35,6 +36,31 @@ internal sealed class MenuCommandChain(Func<IDesktopMenuCommandTarget?> applicat
     public void Execute(DesktopMenuItem item) => _ = TryExecute(item);
 
     internal bool TryExecute(DesktopMenuItem item) => !_shortcutsSuspended && TryExecute(item, Window, application(), logger);
+
+    public bool? IsChecked(DesktopMenuItem item) => IsChecked(item, Window, application(), logger);
+
+    // The check mark of a check or radio item: the first non-null answer, the window's before the application's, else
+    // the declaration. Null for an item declared without one. A target that throws is
+    // logged and keeps the declaration.
+    internal static bool? IsChecked(DesktopMenuItem item, IDesktopMenuCommandTarget? window, IDesktopMenuCommandTarget? application,
+        ILogger? logger)
+    {
+        ArgumentNullException.ThrowIfNull(item);
+        if (item.IsChecked is not { } declared) return null;
+        foreach (var target in (ReadOnlySpan<IDesktopMenuCommandTarget?>)[window, ReferenceEquals(application, window) ? null : application])
+        {
+            if (target is null) continue;
+            try
+            {
+                if (target.IsChecked(item) is { } answer) return answer;
+            }
+            catch (Exception error) when (error is not OutOfMemoryException)
+            {
+                Report(logger, error, "IsChecked", item);
+            }
+        }
+        return declared;
+    }
 
     internal static bool CanExecute(DesktopMenuItem item, IDesktopMenuCommandTarget? window, IDesktopMenuCommandTarget? application,
         ILogger? logger)

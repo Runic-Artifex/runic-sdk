@@ -11,3 +11,8 @@ Runic.Application.Views.Generated.PropertyDescriptor<T>.RegionCollection.init ->
 Runic.Application.Views.Generated.PropertyDescriptor<T>.RegionClose.get -> bool
 Runic.Application.Views.Generated.PropertyDescriptor<T>.RegionClose.init -> void
 static Runic.Application.Views.RunicPresentation.SyncNavigationPath(Runic.Navigation.NavigationRegion! region, Runic.Navigation.INavigationRouteMap? routes = null) -> System.IDisposable!
+Runic.Application.Views.IRunicMenuCheckedSource
+Runic.Application.Views.IRunicMenuCheckedSource.IsMenuItemChecked(string! commandId, string? commandParameter) -> bool?
+Runic.Application.Views.RunicMenu
+static Runic.Application.Views.RunicMenu.Refresh(object! viewModel) -> void
+static Runic.Application.Views.RunicMenu.RefreshAll() -> void

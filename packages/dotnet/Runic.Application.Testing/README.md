@@ -763,6 +763,24 @@ or environment variables to the `ProcessStartInfo` before starting it;
 arguments, working directory and environment and leaves the `ProcessStartInfo`
 unchanged, so it can start the application again.
 
+An application that opens more than one Window writes a URL for each.
+`Urls` lists those written so far, in the order the Windows opened, and
+`WaitForWindowUrlAsync` waits for one, by its position or by its Window type:
+
+```csharp
+var settings = await app.WaitForWindowUrlAsync("SettingsWindow", TimeSpan.FromSeconds(10));
+var second = await app.WaitForWindowUrlAsync(1, TimeSpan.FromSeconds(10));
+```
+
+The type is the Window class's full name or its name without the namespace,
+as the host names it on its `RUNIC_APPLICATION_WINDOW=` line from 0.16 on.
+A closed generic Window type has no spaces there: its generic definition's
+name with its arguments' names without namespaces, such as
+``DocumentWindow`1[Report]``.
+A wait that runs out throws `TimeoutException` and leaves the application
+running. A wait on an application that has exited throws
+`InvalidOperationException`.
+
 `StopAsync` writes a line to standard input, which ends serving on every
 platform, and returns the exit code. When the application has not exited within
 its `timeout` (30 seconds), its process tree is killed and `TimeoutException`
