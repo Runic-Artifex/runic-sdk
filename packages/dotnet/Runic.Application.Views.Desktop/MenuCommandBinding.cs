@@ -1,4 +1,6 @@
 using System.Collections.Concurrent;
+using System.Diagnostics.CodeAnalysis;
+using System.Runtime.CompilerServices;
 using System.Windows.Input;
 using Microsoft.Extensions.Logging;
 using Runic.Navigation;
@@ -106,22 +108,50 @@ internal sealed partial class MenuCommandBinding : IDisposable
         }
     }
 
-    // The command runs in the invoking page's command invocation, which ends when Execute returns, so work that runs on
-    // after it has no page identity; without a page it runs in the Window's scope, which names no page and flows with the
-    // command's asynchronous work. The page's identity is the one its transport authenticated, never one the request
-    // claims.
+    // The command runs in the invoking page's command invocation, or without a page in the Window's scope, which names no
+    // page and flows with the command's asynchronous work. A page's invocation ends when Execute returns, unless the
+    // command is a CommunityToolkit IAsyncRelayCommand that started a task: then it ends with that task, so the command
+    // asks the clicking page also after its first await. The page's identity is the one its transport authenticated,
+    // never one the request claims.
     private void ExecuteInWindow(Entry entry, BridgeConnection? invoker)
     {
         using var scope = _window is null ? null
             : invoker is not null
                 ? RunicInteractionInvocation.Enter(_window, MenuBarPageRoutes.Route, invoker.ClientKey, invoker.Key, entry.CommandId)
                 : RunicInteractionInvocation.EnterWindowScope(_window, CancellationToken.None);
-        ExecuteNow(entry.Command, entry.Parameter);
+        var before = invoker is null ? null : ExecutionTask(entry.Command);
+        if (!entry.Command.CanExecute(entry.Parameter)) return;
+        entry.Command.Execute(entry.Parameter);
+        // A task that this Execute started: another reference than before, still running.
+        if (invoker is not null && scope is not null && ExecutionTask(entry.Command) is { IsCompleted: false } task
+            && !ReferenceEquals(task, before))
+        {
+            // The command reports its own failure; the continuation only observes it.
+            _ = task.ContinueWith(static completed => _ = completed.Exception, CancellationToken.None,
+                TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
+            scope.EndAfter(task);
+        }
     }
 
-    private static void ExecuteNow(ICommand command, string? parameter)
+    // CommunityToolkit.Mvvm's IAsyncRelayCommand.ExecutionTask, read by name because Runic references no MVVM library. A
+    // trimmed or AOT application whose command lost the property's metadata reads null, and the invocation ends when
+    // Execute returns, as for any other command.
+    private static readonly ConditionalWeakTable<Type, PropertyInfoHolder> ExecutionTaskProperties = new();
+
+    private sealed class PropertyInfoHolder(System.Reflection.PropertyInfo? property)
     {
-        if (command.CanExecute(parameter)) command.Execute(parameter);
+        public System.Reflection.PropertyInfo? Property { get; } = property;
+    }
+
+    [UnconditionalSuppressMessage("Trimming", "IL2070", Justification = "Without the interface's metadata the property reads null, and the command keeps the behaviour of other commands.")]
+    [UnconditionalSuppressMessage("Trimming", "IL2075", Justification = "Without the interface's metadata the property reads null, and the command keeps the behaviour of other commands.")]
+    private static Task? ExecutionTask(ICommand command)
+    {
+        var holder = ExecutionTaskProperties.GetValue(command.GetType(), static type =>
+            new PropertyInfoHolder(type.GetInterface("CommunityToolkit.Mvvm.Input.IAsyncRelayCommand")?.GetProperty("ExecutionTask")));
+        if (holder.Property is not { } property) return null;
+        try { return property.GetValue(command) as Task; }
+        catch (Exception) { return null; }
     }
 
     private void OnMenuBarChanged(object? sender, EventArgs eventArgs) => _ = RebindAsync();

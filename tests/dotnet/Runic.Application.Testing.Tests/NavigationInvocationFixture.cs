@@ -34,8 +34,15 @@ public sealed partial class SyncBackShellViewModel : ObservableObject, IAsyncDis
 // A page that asks before it leaves.
 public sealed class SyncBackGuardedPage(SyncBackShellViewModel shell) : INavigationDepartureGuard
 {
-    public ValueTask<bool> CanDepartAsync(NavigationDeparture departure, CancellationToken cancellationToken) =>
-        new(shell.ConfirmLeave.AskAsync("Leave the page?", cancellationToken));
+    // The answers the guard got, in order.
+    public System.Collections.Concurrent.ConcurrentQueue<bool> Answers { get; } = new();
+
+    public async ValueTask<bool> CanDepartAsync(NavigationDeparture departure, CancellationToken cancellationToken)
+    {
+        var answer = await shell.ConfirmLeave.AskAsync("Leave the page?", cancellationToken);
+        Answers.Enqueue(answer);
+        return answer;
+    }
 }
 
 public sealed partial class SyncBackShellWindow : RunicWindow<SyncBackShellViewModel>;

@@ -657,14 +657,17 @@ Window's page connections and tells a command which one invoked it:
 - **A page's invocation ends with its command.** An invocation with a
   connection identity, a page's command, operation or in-page menu click,
   ends when the work that entered it does: a bridged command or operation
-  when its task completes, an in-page menu click and a command the Bridge
-  runs synchronously when `Execute` returns. Work it started that runs on
-  after that, such as a timer, `Task.Run` or a background loop, has no
-  invocation: its `Caller` is `null`, and its questions and view requests
-  follow the rules outside a scope instead of reaching the page. Such work
-  enters `RunicInteractionInvocation.EnterWindow(viewModel)` to reach the
-  window's page. An async command that a page's in-page menu click runs asks
-  that page before its first `await`, or is a bridged command instead.
+  when its task completes, and a command the Bridge runs synchronously when
+  `Execute` returns. An in-page menu click ends with the command's task when
+  the command is a CommunityToolkit `IAsyncRelayCommand` (Runic reads its
+  `ExecutionTask`), and otherwise when `Execute` returns: an async
+  ReactiveCommand, or another `ICommand` that starts work it does not return,
+  asks the clicking page before its first `await`. Work a command started
+  that runs on after that, such as a timer, `Task.Run` or a background loop,
+  has no invocation: its `Caller` is `null`, and its questions and view
+  requests follow the rules outside a scope instead of reaching the page.
+  Such work enters `RunicInteractionInvocation.EnterWindow(viewModel)` to
+  reach the window's page.
 - **The window scope does not end.** A native menu-bar command, a host
   shortcut, the window's close decision and `EnterWindow` name no page, so
   their scope flows with the work they start: an async native-menu command

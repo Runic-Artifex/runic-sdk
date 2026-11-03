@@ -70,7 +70,8 @@ public sealed class RunicInteractionInvocation
     /// <summary>The invocation scope on the current asynchronous flow, or <see langword="null"/>.</summary>
     /// <remarks>
     /// An invocation with a connection identity ends with the work that entered it: a bridged command or operation when its
-    /// task completes, an in-page menu click or a synchronous command when <c>Execute</c> returns. An ended invocation is
+    /// task completes, a synchronous command when <c>Execute</c> returns, and an in-page menu click when its command's
+    /// task completes for a CommunityToolkit <c>IAsyncRelayCommand</c>, or when <c>Execute</c> returns otherwise. An ended invocation is
     /// no invocation: work it started and that runs on, such as a timer, <see cref="Task.Run(Action)"/> or a background
     /// loop, reads <see langword="null"/> here, so its interactions and view requests follow the rules outside a scope
     /// and <c>IRunicConnections.Caller</c> is <see langword="null"/>. A navigation that an invocation starts runs its
@@ -120,6 +121,8 @@ public sealed class RunicInteractionInvocation
     // started reaches that page, also after the command ended. Registered once, before any window session exists.
     internal static void FlowIntoNavigation()
     {
+        // Not locked: two sessions created at once may both register, which is harmless, since both write the same two
+        // stateless delegates; the flag only saves the writes after the first window.
         if (NavigationFlowRegistered) return;
         Runic.Navigation.NavigationInvocationFlow.Capture = static () => Current;
         Runic.Navigation.NavigationInvocationFlow.Enter = static captured =>

@@ -1052,8 +1052,10 @@ public sealed class RunicNavigator : IAsyncDisposable, IDisposable
         }
 
         var result = BackCallerResult(transition!, backCaller);
-        // The invocation of the flow that starts the transition, which its phases run in (NavigationInvocationFlow).
-        transition!.Invocation = NavigationInvocationFlow.Capture?.Invoke();
+        // The invocation of the flow that starts the transition, which its phases run in (NavigationInvocationFlow). A
+        // detached transition, such as the Back of a result request whose caller cancelled, runs for no one: the flow
+        // that admits it is whoever cancelled the caller's token, possibly another page's command.
+        transition!.Invocation = runDetached ? null : NavigationInvocationFlow.Capture?.Invoke();
         foreach (var earlier in superseded) StartOverrunTimer(earlier);
         Cancel(superseded);
         if (changes != NavigationRegionChanges.None) Notify(region, changes);

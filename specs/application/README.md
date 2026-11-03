@@ -1035,7 +1035,8 @@ connection identity: only a request the transport authenticated enters a command
 two connections of a window one connection identity, also when its transport reuses the key of a connection that
 closed (CS-WebUI reuses WebUI's connection slots), so a command that runs on after its connection closed never reaches
 the connection that came next. A command invocation lasts until its command ends: until an asynchronous command's or
-operation's task completes, or until a synchronous command or an in-page menu item returns. Work that the command
+operation's task completes, or until a synchronous command or an in-page menu item returns (an in-page menu item
+whose command reports a task, such as CommunityToolkit's `IAsyncRelayCommand`, lasts until that task completes). Work that the command
 started and that runs on after it, such as a timer, is outside both scopes. A navigation that work in a scope starts
 runs its hooks, such as the departing page's leave guard, in that scope until the navigation ends. The window scope,
 which names no connection, does not end: work that it starts stays in it. A request ends

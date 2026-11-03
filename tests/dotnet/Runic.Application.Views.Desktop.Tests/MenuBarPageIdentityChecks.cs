@@ -80,6 +80,50 @@ internal sealed class MenuBarPageIdentityChecks
             "Page a received the command of page b's click.");
     }
 
+    // An async CommunityToolkit command that a page's in-page menu click runs keeps that page's identity until its task
+    // ends: its question after an await reaches the page that clicked, in a window two browsers share.
+    [Test]
+    public async Task AnAsyncInPageMenuCommandAsksTheClickingPageAfterAnAwait()
+    {
+        using var transport = new InMemoryBridgeTransport();
+        using var session = new WindowContentSession(transport, new WindowContentSessionOptions { IncludeFailureDetail = false });
+        var model = new IdentityViewModel();
+        using var bridge = new IdentityBridge(transport, model, session);
+        using var presentations = session.AttachRootInteractionPresentation(Route);
+        var bar = new WebUiMenuBar([new DesktopMenu("File", [new DesktopMenuItem("Later", "file.later")])]);
+        using var routes = new WebUiMenuBarRoutes(bar, transport, NullLogger.Instance);
+        using var commands = await WebUiMenuCommands.BindAsync(bar, session.ModelContext, model.GetMenuCommand, NullLogger.Instance, session);
+        routes.Attach(new WebUiMenuBarPageWindow(bar, commands), commands);
+        foreach (var (connection, client, presentation) in new[] { ("connection-a", "client-a", "page-a"), ("connection-b", "client-b", "page-b") })
+        {
+            Send(transport, $$$"""{"kind":"hello","protocol":4,"session":"s-{{{connection}}}","client":{"name":"t","version":"1"}}""", connection, client);
+            var opened = Send(transport, $$"""{"kind":"open","route":"{{Route}}","presentation":"{{presentation}}","handlers":[{"name":"confirm","contract":"{{ConfirmContract}}"}]}""", connection, client);
+            Require(opened["registration"]?.GetValue<string>() == "ok", $"The page did not open: {opened}");
+        }
+
+        var (revision, key) = await EnabledItemAsync(transport, "connection-b", "client-b", "file.later");
+        var invoked = Send(transport, JsonSerializer.Serialize(new Dictionary<string, object>
+        {
+            ["kind"] = "menu-bar-invoke", ["route"] = "runic.menu-bar", ["revision"] = revision, ["key"] = key,
+        }), "connection-b", "client-b");
+        Require(invoked["result"]?.GetValue<string>() == "executed", $"The page's click did not run the item: {invoked}");
+        var question = await NextPushAsync(transport, "interaction");
+        Require(question.Connection == "connection-b" && question.Json["presentation"]!.GetValue<string>() == "page-b"
+            && question.Json["input"]!.GetValue<string>() == "Later?",
+            $"The async command's question after an await did not reach the page that clicked: {question.Json}");
+        Send(transport, JsonSerializer.Serialize(new Dictionary<string, object>
+        {
+            ["kind"] = "interaction-reply", ["route"] = Route, ["presentation"] = "page-b",
+            ["requestId"] = question.Json["requestId"]!.GetValue<string>(), ["ownerEpoch"] = question.Json["ownerEpoch"]!.GetValue<long>(),
+            ["name"] = "confirm", ["contract"] = ConfirmContract, ["outcome"] = "answered", ["output"] = true,
+        }), "connection-b", "client-b");
+        Require(await model.LaterAnswered.Task.WaitScaledAsync(TimeSpan.FromSeconds(5)), "Page b's answer did not reach the command.");
+        // Once the task ended, the invocation ended with it.
+        var deadline = DateTime.UtcNow.AddSeconds(5);
+        while (model.LaterInvocation is not { IsEnded: true } && DateTime.UtcNow < deadline) await Task.Delay(10);
+        Require(model.LaterInvocation is { IsEnded: true }, "The command's invocation outlived its task.");
+    }
+
     // The native menu bar and host shortcuts run in the window scope, which names no page: it flows with the command's
     // asynchronous work, so an async command that asks after its first await still reaches the window's one page.
     [Test]
@@ -178,8 +222,25 @@ internal sealed class MenuBarPageIdentityChecks
             AskedAfterAwait.TrySetResult(await Confirm.AskAsync("Ask after an await?"));
         });
 
-        public ICommand? GetMenuCommand(string commandId) =>
-            commandId == "file.focus" ? FocusCommand : commandId == "file.ask" ? AskCommand : null;
+        public TaskCompletionSource<bool> LaterAnswered { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public RunicInteractionInvocation? LaterInvocation { get; private set; }
+
+        // A CommunityToolkit async command: ICommand.Execute returns at its first await, its ExecutionTask runs on.
+        public ICommand LaterCommand => _later ??= new CommunityToolkit.Mvvm.Input.AsyncRelayCommand(async () =>
+        {
+            LaterInvocation = RunicInteractionInvocation.Current;
+            await Task.Delay(20);
+            LaterAnswered.TrySetResult(await Confirm.AskAsync("Later?"));
+        });
+        private ICommand? _later;
+
+        public ICommand? GetMenuCommand(string commandId) => commandId switch
+        {
+            "file.focus" => FocusCommand,
+            "file.ask" => AskCommand,
+            "file.later" => LaterCommand,
+            _ => null,
+        };
     }
 
     private sealed class MenuCommand(Func<Task> execute) : ICommand
