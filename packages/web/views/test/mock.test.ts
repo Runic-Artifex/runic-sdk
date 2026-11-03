@@ -247,8 +247,10 @@ test("an expired operation reports expired, as a producer does after its retenti
   assert.deepEqual(await operation.status(), { contract, requestId: "request-1", kind: "expired" });
   assert.deepEqual(await operation.wait(), { contract, requestId: "request-1", kind: "expired" });
   assert.equal((await operation.cancel()).kind, "expired");
+  // On the page's connection, which uses request-session/1, a request names the session of its hello.
+  const session = bridge.calls.find(call => call.kind === "hello")!.message["session"];
   const raw = async (message: Record<string, unknown>) => JSON.parse(await bridge.request(JSON.stringify({
-    route: "notes", member: "save", operation: "request-1", contract, ...message }))) as Record<string, any>;
+    route: "notes", member: "save", operation: "request-1", contract, session, ...message }))) as Record<string, any>;
   assert.deepEqual((await raw({ kind: "stream", cursor: 0 }))["page"], { kind: "expired", cursor: 0, completed: true, items: [] });
   // The id stays reserved: repeating the start answers expired, and other input is still an identity conflict.
   assert.deepEqual(await raw({ kind: "start" }), { ok: true, revision: notes.revision, admission: "expired" });

@@ -1,0 +1,279 @@
+{
+  "format": "runic.views.scenario/1",
+  "id": "request-sessions.a-hello-of-another-session-replaces-the-connection.v1",
+  "contract": {
+    "id": "runic.views",
+    "version": 4
+  },
+  "set": "request-sessions",
+  "roles": [
+    "producer"
+  ],
+  "description": "A hello with another session on a connection that uses request-session/1, as from a page that got a closed connection's transport key before its close was reported, closes the old connection and opens a new one: the old session's requests are no-hello, and the old presentation is released.",
+  "view": "notes",
+  "requires": [
+    "request-session/1"
+  ],
+  "ids": {
+    "c1": {
+      "kind": "connection"
+    },
+    "hello-c1": {
+      "kind": "request"
+    },
+    "session": {
+      "kind": "wire",
+      "value": "s-1"
+    },
+    "session2": {
+      "kind": "wire",
+      "value": "s-2"
+    },
+    "hello-again": {
+      "kind": "request"
+    },
+    "presentation": {
+      "kind": "wire",
+      "value": "p-1"
+    },
+    "open-request": {
+      "kind": "request"
+    },
+    "old": {
+      "kind": "request"
+    },
+    "reopen": {
+      "kind": "request"
+    }
+  },
+  "arrange": {
+    "model": {}
+  },
+  "steps": [
+    {
+      "connect": "c1"
+    },
+    {
+      "send": {
+        "kind": "hello",
+        "protocol": 4,
+        "session": {
+          "$id": "session"
+        },
+        "client": {
+          "name": {
+            "$any": "string",
+            "default": "conformance-client"
+          },
+          "version": {
+            "$any": "string",
+            "default": "1.0.0"
+          }
+        },
+        "features": {
+          "$any": "array",
+          "default": [
+            "text-splice/1",
+            "request-session/1"
+          ]
+        }
+      },
+      "id": "hello-c1"
+    },
+    {
+      "receive": {
+        "ok": true,
+        "protocol": 4,
+        "implementation": {
+          "name": {
+            "$any": "string",
+            "default": "conformance-producer"
+          },
+          "version": {
+            "$any": "string",
+            "default": "1.0.0"
+          }
+        },
+        "features": {
+          "$any": "array",
+          "default": [
+            "text-splice/1",
+            "request-session/1"
+          ]
+        }
+      },
+      "replyTo": "hello-c1"
+    },
+    {
+      "send": {
+        "kind": "open",
+        "route": "notes",
+        "presentation": {
+          "$id": "presentation"
+        },
+        "session": {
+          "$id": "session"
+        }
+      },
+      "id": "open-request"
+    },
+    {
+      "receive": {
+        "ok": true,
+        "revision": 0,
+        "state": {
+          "title": "",
+          "note": "",
+          "priority": "Normal",
+          "due": null,
+          "elapsed": "PT0S",
+          "rows": [],
+          "count": 0,
+          "summary": "rows: 0",
+          "detail": {
+            "kind": "detail",
+            "id": "0123456789abcdef0123456789abcdef"
+          },
+          "canClear": false,
+          "canTouch": true,
+          "canSave": true,
+          "canConfirmClear": false,
+          "isSlowImportExecuting": false,
+          "isConfirmClearExecuting": false
+        },
+        "fields": {
+          "note": {
+            "version": 0
+          }
+        },
+        "presentation": "ok"
+      },
+      "replyTo": "open-request"
+    },
+    {
+      "send": {
+        "kind": "hello",
+        "protocol": 4,
+        "session": {
+          "$id": "session2"
+        },
+        "client": {
+          "name": {
+            "$any": "string",
+            "default": "conformance-client"
+          },
+          "version": {
+            "$any": "string",
+            "default": "1.0.0"
+          }
+        },
+        "features": {
+          "$any": "array",
+          "default": [
+            "text-splice/1",
+            "request-session/1"
+          ]
+        }
+      },
+      "id": "hello-again"
+    },
+    {
+      "receive": {
+        "ok": true,
+        "protocol": 4,
+        "implementation": {
+          "name": {
+            "$any": "string",
+            "default": "conformance-producer"
+          },
+          "version": {
+            "$any": "string",
+            "default": "1.0.0"
+          }
+        },
+        "features": {
+          "$any": "array",
+          "default": [
+            "text-splice/1",
+            "request-session/1"
+          ]
+        }
+      },
+      "replyTo": "hello-again"
+    },
+    {
+      "send": {
+        "kind": "close",
+        "route": "notes",
+        "presentation": {
+          "$id": "presentation"
+        },
+        "session": {
+          "$id": "session"
+        }
+      },
+      "id": "old"
+    },
+    {
+      "receive": {
+        "ok": false,
+        "error": {
+          "kind": "rejected",
+          "reason": "no-hello",
+          "message": {
+            "$any": "string",
+            "default": "…"
+          }
+        }
+      },
+      "replyTo": "old"
+    },
+    {
+      "send": {
+        "kind": "open",
+        "route": "notes",
+        "presentation": {
+          "$id": "presentation"
+        },
+        "session": {
+          "$id": "session2"
+        }
+      },
+      "id": "reopen",
+      "note": "The replaced connection's presentation was released, so the new page opens the id again."
+    },
+    {
+      "receive": {
+        "ok": true,
+        "revision": 0,
+        "state": {
+          "title": "",
+          "note": "",
+          "priority": "Normal",
+          "due": null,
+          "elapsed": "PT0S",
+          "rows": [],
+          "count": 0,
+          "summary": "rows: 0",
+          "detail": {
+            "kind": "detail",
+            "id": "0123456789abcdef0123456789abcdef"
+          },
+          "canClear": false,
+          "canTouch": true,
+          "canSave": true,
+          "canConfirmClear": false,
+          "isSlowImportExecuting": false,
+          "isConfirmClearExecuting": false
+        },
+        "fields": {
+          "note": {
+            "version": 0
+          }
+        },
+        "presentation": "ok"
+      },
+      "replyTo": "reopen"
+    }
+  ]
+}

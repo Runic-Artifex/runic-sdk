@@ -116,6 +116,10 @@ A host script whose transport has a [mailbox](#receive) runs the connection's `r
 - A `no-hello` after the connection's loop already received a successful reply means that the transport replaced the
   connection without the host script seeing it close. The host script reports the connection lost (`false`, and
   rejects the connection's unsettled requests) and then the new connection (`true`), whose loop starts paused.
+- On a connection that uses [`request-session/1`](#request-sessions), its `receive` names the session of the `hello`
+  the page sent on the connection, which the host script reads from that request, and names none before it. A new
+  page that got the key of a connection whose close the producer has not learned yet therefore never receives that
+  connection's pushes.
 
 #### Shared globals
 
@@ -161,7 +165,8 @@ Producer rules:
   The producer logs this once per connection, naming both versions.
 - A `hello` without a valid `protocol`, `session` or `client`, or whose `features` is present but not an array of at
   most 64 strings of at most 64 characters each, is `rejected` with `invalid-request`. So is a second `hello` on a
-  connection that already completed one.
+  connection that already completed one, except a `hello` with another session on a connection that uses
+  [`request-session/1`](#request-sessions), which replaces the connection.
 - A `hello` whose session a closed connection used is `released`.
 - A `hello` whose session another open connection uses is `rejected` with `invalid-request`.
 - A successful reply lists every feature the producer implements, whether or not the request listed it.
@@ -212,7 +217,9 @@ reply both list the same string. Features are negotiated per connection, and aga
 - **Members of broadcasts.** One exception: a member that a feature adds to a push sent to every connection, and that
   a receiver without the feature ignores as an unknown member, is sent while at least one connection of the window
   that completed its `hello` uses the feature. It is then sent to every connection, since a broadcast has one
-  encoding. `epoch` in `state` ([presentation epochs](#presentation-epochs)) is the only such member.
+  encoding. `epoch` in `state` ([presentation epochs](#presentation-epochs)) is the only such member. A second
+  exception: a client that implements [`request-session/1`](#request-sessions) sends `session` with every request,
+  also before the `hello`'s reply tells it whether the feature is in use; a producer without the feature ignores it.
 - A feature never changes the meaning of a message of the base protocol, so a client and a producer of one protocol
   version always connect, whatever features they implement.
 
@@ -221,6 +228,38 @@ reply both list the same string. Features are negotiated per connection, and aga
 | `text-splice/1` | Text members change with splices: [`set` with a splice](#text-splices-in-set), [`write` with a splice](#text-splices-in-write) and [`splice` changes](state-changes.md#text-splices) | 0.14 |
 | `presentation-epoch/1` | A command runs only on the presentation it was issued for: [presentation epochs](#presentation-epochs) | 0.15 |
 | `presented/1` | The page reports that it painted a state, and acknowledges a window close: [presented states and window close](#presented-states-and-window-close) | 0.15 |
+| `request-session/1` | Every request names the session of its connection's `hello`, so another page that got the connection's transport key never acts for it: [request sessions](#request-sessions) | 0.16 |
+
+### Request sessions
+
+With the feature `request-session/1`, a request acts for its connection only when it names the connection's session.
+The feature exists for transports that give a connection's key to a new page before they report the old connection
+closed: CS-WebUI keys a connection by WebUI's client id and connection slot, WebUI frees a slot when its socket closes
+and reports the close later, on another thread, and without WebUI's cookie every client id is 0. A new page, from the
+same browser or another one, can therefore send requests with the key of a connection the producer still holds open,
+including a `receive` that would drain that connection's mailbox.
+
+- **Client.** It sends `session`, the session of the connection's `hello`, as a member of every other request of the
+  connection, also of the requests it sends before the `hello`'s reply. The session is random for each connection
+  (`@runic-artifex/views` uses `crypto.randomUUID`, or 122 random bits from `crypto.getRandomValues`), and the
+  producer never sends it to any page, so another page cannot name it. A [mailbox host script](#mailbox-host-scripts)
+  reads the session from the `hello` the page sends and names it in its `receive`; before that `hello`, its `receive`
+  names none.
+- **Producer.** On a connection whose `hello` listed the feature, a request other than `hello` that names another
+  session, or none, is answered `rejected` with the reason `no-hello` and does not act for the connection: it reads
+  and changes nothing, its mailbox included. A request held before the `hello` is checked when it is admitted.
+- **Replacement.** A `hello` with another session on such a connection, after its `hello` succeeded, comes from a new
+  page. The producer first checks it as it checks every `hello` (protocol, session, client, features, and a session
+  that no open or closed connection used); a `hello` that fails is answered as a second `hello` of the old connection
+  and replaces nothing. A valid one closes the connection as if the transport had reported it closed (its
+  presentations, operation watches, pending interactions and mailbox are released) and is handled on a new connection
+  with a new identity. The transport's next report that the key closed is the old connection's, and the producer
+  ignores it. A transport whose keys never repeat, such as Runic Desktop's, gives every new page a new key, so there a
+  second `hello` is `invalid-request` and nothing is replaced.
+- **Without the feature** nothing changes: a second `hello` is `invalid-request`, and a request acts for the
+  connection whatever it names. A page and a producer of 0.15 keep that behaviour, so on CS-WebUI a new page can still
+  drain the mailbox of a 0.15 page whose close is not reported yet; both sides need the feature.
+- The `no-hello` answer makes the new page's client send the request again after its own `hello` ([Handshake](#handshake)).
 
 ## Requests and replies
 
@@ -988,7 +1027,10 @@ connection. Two scopes exist:
 - The window's close decision (a user's close or a close the application requests) reaches the single presentation of
   the window that registered the handler, from any connection. With none or several, it asks nothing.
 
-Work outside both scopes, such as navigation that application code starts, never reaches the page. A request ends
+Work outside both scopes, such as navigation that application code starts, never reaches the page. A producer MUST
+NOT give two connections of a window one connection identity, also when its transport reuses the key of a connection
+that closed (CS-WebUI reuses WebUI's connection slots), so a command that runs on after its connection closed never
+reaches the connection that came next. A request ends
 when its scope ends, its presentation closes or its connection closes, or the window closes; the waiting interaction
 then fails. Interactions time out after two minutes by default (at most ten). A window holds at most 32 pending
 requests and 8 per presentation.
@@ -1002,7 +1044,8 @@ changes. How the .NET producer implements turns is in the [language mappings](la
 
 ## `receive`
 
-A host script on a transport without targeted pushes sends `{"kind":"receive"}`. The producer answers
+A host script on a transport without targeted pushes sends `{"kind":"receive"}`, with the `session` of the page's
+`hello` on a connection that uses [`request-session/1`](#request-sessions). The producer answers
 `{"ok":true,"messages":[…]}` with the connection's queued targeted pushes, in order, as soon as at least one is queued,
 or with an empty list after 25 seconds. The host script delivers each message to its push listeners and sends the next
 `receive`. At most one `receive` per connection is pending; another one answers at once with an empty list. Clients
@@ -1035,7 +1078,7 @@ Requests:
 | `receive` | none | `messages` |
 
 Every failure reply is `{ok:false, error, revision?, released?}`, and a `hello` reply also carries `protocol` and
-`implementation`.
+`implementation`. With [`request-session/1`](#request-sessions), every request but `hello` also carries `session`.
 
 Pushes:
 

@@ -255,14 +255,14 @@ public sealed class ModelContextTests
         string? suppressedScope = "not-run";
         string? leakedScope = "not-run";
 
-        using (RunicInteractionInvocation.Enter(session, route, "client-a", "connection-a", commandName: "first"))
+        using (RunicInteractionInvocation.Enter(session, route, "client-a", BridgeDispatcher.For(transport).ConnectionKeyOf("connection-a") ?? "connection-a", commandName: "first"))
             scheduler.Schedule(() =>
             {
                 Require(context.IsExecuting, "A scheduled interaction did not execute on its model context.");
                 observedScopes.Add(RunicInteractionInvocation.Current?.CommandName);
                 firstAnswer = model.Confirm.Handle("first");
             });
-        using (RunicInteractionInvocation.Enter(session, route, "client-b", "connection-b", commandName: "second"))
+        using (RunicInteractionInvocation.Enter(session, route, "client-b", BridgeDispatcher.For(transport).ConnectionKeyOf("connection-b") ?? "connection-b", commandName: "second"))
             scheduler.Schedule(() =>
             {
                 Require(context.IsExecuting, "A batched scheduled interaction did not execute on its model context.");
@@ -270,7 +270,7 @@ public sealed class ModelContextTests
                 secondAnswer = model.Confirm.Handle("second");
             });
         using (ExecutionContext.SuppressFlow())
-        using (RunicInteractionInvocation.Enter(session, route, "client-a", "connection-a", commandName: "suppressed"))
+        using (RunicInteractionInvocation.Enter(session, route, "client-a", BridgeDispatcher.For(transport).ConnectionKeyOf("connection-a") ?? "connection-a", commandName: "suppressed"))
             scheduler.Schedule(() => suppressedScope = RunicInteractionInvocation.Current?.CommandName);
         scheduler.Schedule(() => leakedScope = RunicInteractionInvocation.Current?.CommandName);
         releaseDrain.Set();

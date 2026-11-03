@@ -63,6 +63,11 @@ public interface IBridgeConnectionTransport : IBridgeTransport
     /// <summary>Sends one push to the connection <paramref name="connectionKey"/>.</summary>
     /// <param name="connectionKey">The connection's key, as the transport supplied it in <see cref="BridgeRequest.ConnectionKey"/>.</param>
     /// <param name="message">The push, one JSON object as UTF-8. It is valid until the returned task completes.</param>
+    /// <remarks>
+    /// The window looks up the open connection and calls this with its transport key outside its own lock, so a send can
+    /// be in flight while the connection closes. A transport must not give that key to a new connection while a send to
+    /// it is in flight: complete or fail the send first, so the push never reaches the connection that came next.
+    /// </remarks>
     /// <param name="cancellationToken">Stops waiting for the send; the push may still be delivered.</param>
     /// <returns><see langword="true"/> when the transport handed the push to the connection; <see langword="false"/> when the connection is not open.</returns>
     ValueTask<bool> SendAsync(string connectionKey, ReadOnlyMemory<byte> message, CancellationToken cancellationToken = default);
@@ -83,7 +88,9 @@ public interface IBridgeRequestHandler
     /// <param name="connectionKey">The connection's key.</param>
     /// <remarks>
     /// The window releases the connection's session, presentations, watches and edit numbers. A transport reports each
-    /// closed connection once; reporting an unknown or closed connection again does nothing.
+    /// closed connection once; reporting an unknown or closed connection again does nothing. A transport may report a
+    /// later connection with the key of one it reported closed: the window treats it as a new connection, with a
+    /// connection identity of its own.
     /// </remarks>
     void ConnectionClosed(string connectionKey);
 }
@@ -118,3 +125,7 @@ public sealed class BridgeRequest
     /// <summary>The trusted identity of the connection that carried the request.</summary>
     public string ConnectionKey { get; }
 }
+
+// A transport that never reports two connections with one key while it serves a dispatcher, such as Runic Desktop's, whose
+// key is a per-window counter. Its dispatcher uses the keys as they are and does not count their uses.
+internal interface IBridgeUniqueConnectionKeys;
