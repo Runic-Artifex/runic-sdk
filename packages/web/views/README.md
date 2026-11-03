@@ -389,7 +389,22 @@ EditorFields.step;  // { name: "step", kind: "number", integer: true, … }
 | `choice` | enums (`choices` lists the names) | `string` | the name |
 | `value` | objects, lists, unions | the value | none |
 
-`nullable` marks nullable members. `read` and `write` are the member and its setter; `checked` and `baseline` its
+`nullable` marks nullable members. Each C# enum also has a value list beside its type, in declaration order and
+without aliases, which `choices` repeats: `export const LayoutValues = ["List", "Grid"] as const`, for a `<select>`.
+
+`constraints` carries the member's DataAnnotations, so a page can mirror them on its input; .NET still validates:
+
+| Attribute | `constraints` |
+| --- | --- |
+| `[Required]` | `required: true` |
+| `[MinLength]`, `[MaxLength]`, `[StringLength]` | `minLength`, `maxLength` |
+| `[Range]` | `min`, `max` (numbers, or the invariant text of other bounds such as decimals), `minExclusive`, `maxExclusive` |
+| `[RegularExpression]` | `pattern`, when the .NET pattern means the same in JavaScript (no inline options, named groups, lookbehind or `\A`/`\Z`) |
+
+```tsx
+const { maxLength, required } = EditorFields.title.constraints ?? {};
+<input {...title.inputProps} maxLength={maxLength} required={required} />
+``` `read` and `write` are the member and its setter; `checked` and `baseline` its
 checked write and `fieldBaseline`. A View with validation adds `errors(state)`: the member's messages from
 `{name}Errors`, or from `validation` at the member's path, followed by the messages below it, such as those of an
 object's members.

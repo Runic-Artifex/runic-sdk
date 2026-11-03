@@ -1,0 +1,41 @@
+using System.Collections.ObjectModel;
+using System.ComponentModel;
+using System.ComponentModel.DataAnnotations;
+using Runic.Application.Views;
+
+namespace Runic.Application.Testing.Tests;
+
+// 0.16 forms (C8, C7): an enum's value list, DataAnnotations on field descriptors and Int64 collection keys.
+public enum FormsPriority { Low, Normal, High, Urgent = High }
+
+public sealed record FormsRow(long Id, string Label);
+
+public sealed class FormsViewModel : INotifyPropertyChanged
+{
+    public FormsViewModel() => Rows = new(Items);
+
+    [Required, StringLength(40, MinimumLength = 2)]
+    public string Name { get; set; } = "";
+    [MaxLength(8)]
+    public string Tag { get; set; } = "";
+    [Range(1, 10)]
+    public int Quantity { get; set; } = 1;
+    [Range(typeof(decimal), "0.01", "999.99", MinimumIsExclusive = true)]
+    public decimal Price { get; set; } = 1m;
+    [RegularExpression("^[A-Z]{3}$")]
+    public string Code { get; set; } = "ABC";
+    // Inline options have no JavaScript equivalent in a pattern attribute.
+    [RegularExpression("(?i)abc")]
+    public string Loose { get; set; } = "abc";
+    public FormsPriority Priority { get; set; }
+
+    [RunicIgnore]
+    public ObservableCollection<FormsRow> Items { get; } = [];
+    [RunicCollection(nameof(FormsRow.Id))]
+    public ReadOnlyObservableCollection<FormsRow> Rows { get; }
+
+    public event PropertyChangedEventHandler? PropertyChanged;
+    internal void Raise(string name) => PropertyChanged?.Invoke(this, new(name));
+}
+
+public sealed partial class FormsWindow : RunicWindow<FormsViewModel>;

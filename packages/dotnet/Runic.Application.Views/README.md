@@ -2003,7 +2003,8 @@ and [`@runic-artifex/views`](https://github.com/Runic-Artifex/runic-sdk/tree/mai
 A route publishes each change of its state as a frame. What a frame costs
 depends on the member:
 
-- A `[RunicCollection(nameof(Row.Id))]` list publishes only the rows that were
+- A `[RunicCollection(nameof(Row.Id))]` list (the key a `string`, `Guid`, `int` or
+  `long` row property) publishes only the rows that were
   added, removed, moved or replaced, and a row's own property change replaces
   that row. Use it for any list that can grow beyond a few dozen rows or
   changes often.

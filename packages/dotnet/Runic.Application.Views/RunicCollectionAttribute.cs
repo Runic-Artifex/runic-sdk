@@ -12,7 +12,7 @@ namespace Runic.Application.Views;
 [AttributeUsage(AttributeTargets.Property)]
 public sealed class RunicCollectionAttribute(string keyProperty) : Attribute
 {
-    /// <summary>The item property containing a string, Guid or Int32 key.</summary>
+    /// <summary>The item property containing a string, Guid, Int32 or Int64 (<see langword="long"/>) key.</summary>
     public string KeyProperty { get; } = keyProperty;
 }
 

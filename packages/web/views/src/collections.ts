@@ -6,7 +6,7 @@ import { applyText } from "./text.js";
 export interface BridgeCollectionDefinition {
   /** Decodes one row; throws for an invalid one. */
   readonly decode: (wire: unknown) => unknown;
-  /** The row's key: the string, the normal form of a `uuid`, or the decimal form of an `int32` key field. */
+  /** The row's key: the string, the normal form of a `uuid`, or the decimal form of an `int32` or `int64` key field. */
   readonly key: (item: unknown) => string;
   /** An append-only text field (`defineText`) rather than a keyed collection. */
   readonly text?: { readonly nullable: boolean };

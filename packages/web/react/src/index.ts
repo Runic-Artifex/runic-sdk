@@ -570,6 +570,7 @@ export function useField<TClient extends ViewClient, TValue>(
     ...field.integer === undefined ? {} : { integer: field.integer },
     ...field.choices === undefined ? {} : { choices: field.choices },
     ...field.offset === undefined ? {} : { offset: field.offset },
+    ...field.constraints === undefined ? {} : { constraints: field.constraints },
     read: state => latest.current.read(state),
     write: (client, value) => latest.current.write(client, value),
     ...field.checked === undefined ? {} : { checked: (client, value, write) => latest.current.checked!(client, value, write) },
@@ -657,6 +658,7 @@ export { onBridgeConnection, type BridgeConnectionOptions, type BridgeConnection
 export {
   FieldError,
   type BridgeField,
+  type BridgeFieldConstraints,
   type BridgeFieldKind,
   type FieldBaseline,
   type FieldDefinition,

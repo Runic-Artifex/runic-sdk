@@ -6,6 +6,7 @@ import { pageEditor, type EditorPageReference, pageEditorCompact, type EditorCom
 import { pagePreview, type PreviewPageReference } from "./preview.js";
 import type { DiscardNoteRequest, DocumentPane, NavigationArrivalState, NavigationOutcome, NavigationOutcomeKind, NavigationRejection, SaveFailure } from "./types.js";
 export type { DiscardNoteRequest, DocumentPane, NavigationArrivalState, NavigationOutcome, NavigationOutcomeKind, NavigationRejection, SaveFailure } from "./types.js";
+export { DocumentPaneValues, NavigationArrivalStateValues, NavigationOutcomeKindValues, NavigationRejectionValues } from "./types.js";
 
 export interface DocumentState {
   readonly currentPane: EditorPageReference | PreviewPageReference | null;

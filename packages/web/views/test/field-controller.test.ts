@@ -538,3 +538,10 @@ test("parse and format options replace the kind's text form (C1)", () => {
   assert.equal((controller.current.error as FieldError).message, "Enter a percentage.");
   assert.equal(controller.current.text, "lots");
 });
+
+test("a descriptor's constraints are the controller's (C8)", () => {
+  const constraints = { required: true, maxLength: 40 } as const;
+  const controller = createFieldController({ ...title, constraints });
+  assert.equal(controller.field.constraints, constraints);
+  assert.equal(createFieldController(title).field.constraints, undefined);
+});

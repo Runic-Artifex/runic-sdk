@@ -5,6 +5,7 @@ import type { MockBridge, MockTypedView, MockCommandHandler, MockTypedOperation,
 import type { DocumentClient, DocumentState } from "./document.js";
 import type { DocumentPane } from "./types.js";
 export type { DocumentPane } from "./types.js";
+export { DocumentPaneValues } from "./types.js";
 
 /** The state of a mock Document: the client state, with content as `{ kind, id }` and command state optional. */
 export type DocumentMockState = Omit<DocumentState, "canShowEditor" | "isShowEditorExecuting" | "canShowPreview" | "isShowPreviewExecuting" | "currentPane"> & Partial<Pick<DocumentState, "canShowEditor" | "isShowEditorExecuting" | "canShowPreview" | "isShowPreviewExecuting">> & {

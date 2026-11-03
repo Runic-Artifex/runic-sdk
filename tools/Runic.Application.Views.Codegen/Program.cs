@@ -386,11 +386,12 @@ static void WarnObservableCollectionsWithoutKeys(Type model, IReadOnlyDictionary
             || graph.Root.Element is not { Kind: BridgeWireKind.Dto } row) continue;
         var key = row.Members.Select(member => member.Property)
             .FirstOrDefault(member => member.Name is "Id" or "Key"
-                && (member.PropertyType == typeof(string) || member.PropertyType == typeof(Guid) || member.PropertyType == typeof(int)));
+                && (member.PropertyType == typeof(string) || member.PropertyType == typeof(Guid) || member.PropertyType == typeof(int)
+                    || member.PropertyType == typeof(long)));
         Diagnostics.Warn(BridgeDiagnosticCodes.CollectionWithoutKey,
             $"{model.Name}.{property.Name}: an observable collection of {row.NonNullableType.Name} rows that is not a [RunicCollection] "
             + "publishes every change by encoding and sending the whole list. Declare "
-            + (key is null ? $"[RunicCollection(nameof({row.NonNullableType.Name}.Key))] with a string, Guid or Int32 key property of the rows"
+            + (key is null ? $"[RunicCollection(nameof({row.NonNullableType.Name}.Key))] with a string, Guid, Int32 or Int64 key property of the rows"
                 : $"[RunicCollection(nameof({row.NonNullableType.Name}.{key.Name}))]")
             + $" to publish row changes, or suppress {BridgeDiagnosticCodes.CollectionWithoutKey} with NoWarn for a list that stays small.",
             property);
@@ -735,9 +736,10 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
             throw new BridgeDiagnosticException(BridgeDiagnosticCodes.Collection,
                 $"{model.Name}.{property.Name}: RunicCollection requires a nonnullable, read-only collection of nonnullable DTO rows.", property);
         var key = item.Members.SingleOrDefault(member => member.Property.Name == attribute.KeyProperty);
-        if (key is null || key.Type.IsNullable || key.Type.NonNullableType != typeof(string) && key.Type.NonNullableType != typeof(Guid) && key.Type.NonNullableType != typeof(int))
+        if (key is null || key.Type.IsNullable || key.Type.NonNullableType != typeof(string) && key.Type.NonNullableType != typeof(Guid) && key.Type.NonNullableType != typeof(int)
+            && key.Type.NonNullableType != typeof(long))
             throw new BridgeDiagnosticException(BridgeDiagnosticCodes.Collection,
-                $"{model.Name}.{property.Name}: the collection key '{attribute.KeyProperty}' must name a nonnullable string, Guid or Int32 row property.", property);
+                $"{model.Name}.{property.Name}: the collection key '{attribute.KeyProperty}' must name a nonnullable string, Guid, Int32 or Int64 row property.", property);
         incrementalCollections.Add(property, key.Property);
     }
     WarnObservableCollectionsWithoutKeys(model, valueProperties, incrementalCollections);
@@ -1578,6 +1580,7 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
             if (root.Kind is BridgeWireKind.Int8 or BridgeWireKind.UInt8 or BridgeWireKind.Int16 or BridgeWireKind.UInt16
                 or BridgeWireKind.Int32 or BridgeWireKind.UInt32) traits += ", integer: true";
             if (root.Kind == BridgeWireKind.DateTimeOffset) traits += ", offset: true";
+            if (FieldConstraints(property) is { } constraints) traits += $", constraints: {constraints}";
             if (root.Kind == BridgeWireKind.Enum)
             {
                 // The names .NET writes: the first declared name of each value, as the enum codec does.
@@ -1596,6 +1599,63 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
             ts.AppendLine("  },");
         }
         ts.AppendLine("};");
+    }
+
+    // C8: the DataAnnotations a page can mirror on its input (`required`, `maxlength`, `min`, `max`, `pattern`). They
+    // describe the C# validation; .NET still validates.
+    static string? FieldConstraints(PropertyInfo property)
+    {
+        var parts = new List<string>();
+        static string Number(object value) => Convert.ToString(value, System.Globalization.CultureInfo.InvariantCulture)!;
+        if (property.GetCustomAttribute<System.ComponentModel.DataAnnotations.RequiredAttribute>(true) is not null) parts.Add("required: true");
+        var stringLength = property.GetCustomAttribute<System.ComponentModel.DataAnnotations.StringLengthAttribute>(true);
+        var minLength = property.GetCustomAttribute<System.ComponentModel.DataAnnotations.MinLengthAttribute>(true)?.Length;
+        if (stringLength is { MinimumLength: > 0 } && (minLength is null || stringLength.MinimumLength > minLength)) minLength = stringLength.MinimumLength;
+        if (minLength is > 0) parts.Add($"minLength: {minLength}");
+        var maxLength = property.GetCustomAttribute<System.ComponentModel.DataAnnotations.MaxLengthAttribute>(true)?.Length;
+        if (maxLength is <= 0) maxLength = null; // [MaxLength] without a length allows the most the store does.
+        if (stringLength is not null && (maxLength is null || stringLength.MaximumLength < maxLength)) maxLength = stringLength.MaximumLength;
+        if (maxLength is not null) parts.Add($"maxLength: {maxLength}");
+        if (property.GetCustomAttribute<System.ComponentModel.DataAnnotations.RangeAttribute>(true) is { } range)
+        {
+            // Numeric bounds are numbers; bounds of another type (Range(typeof(decimal), "0", "9.99"), dates) are their
+            // invariant text, which is also the form an input's min and max take.
+            static string Bound(object value) => value switch
+            {
+                double d when double.IsInfinity(d) || double.IsNaN(d) => "",
+                int or double => Number(value),
+                _ => JsonSerializer.Serialize(Convert.ToString(value, System.Globalization.CultureInfo.InvariantCulture)),
+            };
+            var min = Bound(range.Minimum);
+            var max = Bound(range.Maximum);
+            if (min.Length != 0) parts.Add($"min: {min}");
+            if (max.Length != 0) parts.Add($"max: {max}");
+            if (range.MinimumIsExclusive) parts.Add("minExclusive: true");
+            if (range.MaximumIsExclusive) parts.Add("maxExclusive: true");
+        }
+        if (property.GetCustomAttribute<System.ComponentModel.DataAnnotations.RegularExpressionAttribute>(true) is { } regex
+            && SimplePattern(regex.Pattern))
+            parts.Add($"pattern: {JsonSerializer.Serialize(regex.Pattern)}");
+        return parts.Count == 0 ? null : "{ " + string.Join(", ", parts) + " }";
+    }
+
+    // A .NET pattern that means the same as a JavaScript one: no inline options, named or balancing groups,
+    // lookbehind, .NET-only anchors or Unicode categories, and no whitespace or comment syntax.
+    static bool SimplePattern(string pattern)
+    {
+        for (var index = 0; index < pattern.Length; index++)
+        {
+            var character = pattern[index];
+            if (character == '\\')
+            {
+                if (++index >= pattern.Length || "AZzGpPkK".Contains(pattern[index], StringComparison.Ordinal)) return false;
+                continue;
+            }
+            if (character == '(' && index + 1 < pattern.Length && pattern[index + 1] == '?'
+                && !(index + 2 < pattern.Length && pattern[index + 2] is ':' or '=' or '!')) return false;
+        }
+        try { _ = new System.Text.RegularExpressions.Regex(pattern); } catch (ArgumentException) { return false; }
+        return true;
     }
 
     string TsPropertyType(PropertyInfo property) => valueProperties.TryGetValue(property, out var graph)
@@ -2182,9 +2242,11 @@ static class TypeScriptModules
         foreach (var (path, text) in Pending)
         {
             var used = TypeScriptNamedTypes.Used(text);
+            var values = TypeScriptNamedTypes.UsedValues(text);
             var imports = used.Count == 0 ? ""
                 : $"import type {{ {string.Join(", ", used)} }} from \"./{TypeScriptNamedTypes.ModuleName}.js\";{Environment.NewLine}"
-                  + $"export type {{ {string.Join(", ", used)} }} from \"./{TypeScriptNamedTypes.ModuleName}.js\";";
+                  + $"export type {{ {string.Join(", ", used)} }} from \"./{TypeScriptNamedTypes.ModuleName}.js\";"
+                  + (values.Count == 0 ? "" : $"{Environment.NewLine}export {{ {string.Join(", ", values)} }} from \"./{TypeScriptNamedTypes.ModuleName}.js\";");
             var resolved = TypeScriptNamedTypes.Resolve(text)
                 .Replace(NamedTypeImports + Environment.NewLine, imports.Length == 0 ? "" : imports + Environment.NewLine, StringComparison.Ordinal);
             WriteFile(path, resolved);
