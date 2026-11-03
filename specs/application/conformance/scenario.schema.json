@@ -15,7 +15,7 @@
       "required": ["id", "version"],
       "properties": { "id": { "const": "runic.views" }, "version": { "const": 4 } }
     },
-    "set": { "enum": ["handshake", "state-changes", "replies", "edits", "operations", "presentations", "regions", "interactions", "errors"] },
+    "set": { "enum": ["handshake", "state-changes", "replies", "edits", "operations", "presentations", "regions", "navigation", "interactions", "errors"] },
     "roles": {
       "type": "array",
       "minItems": 1,
@@ -32,7 +32,7 @@
     "requires": {
       "type": "array",
       "uniqueItems": true,
-      "items": { "enum": ["held-delivery", "virtual-clock", "text-splice/1", "presentation-epoch/1", "presented/1", "region-collections/1"] }
+      "items": { "enum": ["held-delivery", "virtual-clock", "text-splice/1", "presentation-epoch/1", "presented/1", "region-collections/1", "navigation-path/1"] }
     },
     "options": {
       "type": "object",

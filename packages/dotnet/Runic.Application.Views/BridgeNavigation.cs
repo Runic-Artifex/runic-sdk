@@ -10,8 +10,8 @@ namespace Runic.Application.Views;
 // - navigation {action:"back"} runs RunicNavigator.BackAsync: the innermost presented region that can go back.
 // - navigation {action:"open", path} opens the route path in the window's path region (RunicPresentation.SyncNavigationPath)
 //   with NavigationRouteOpen.BackToOrPush, so a browser's Back and Forward and its address bar go through the guards.
-// - navigation-path {path, operation} is pushed to each connection that uses the feature after its hello and whenever the
-//   path region's current route changes, so the page keeps its URL in step.
+// - the hello reply carries navigationPath, and navigation-path {path, operation} is pushed to each connection that uses
+//   the feature whenever the path region's current route changes, so the page keeps its URL in step.
 //
 // Replies carry the request's outcome and the path after it: a page whose URL differs from it reverts its URL.
 internal static class BridgeNavigation
@@ -47,7 +47,10 @@ internal static class BridgeNavigation
         {
             outcome = new NavigationOutcome(NavigationOutcomeKind.Rejected, NavigationRejection.Cancelled);
         }
-        // The path push of a commit goes out before the reply, so the page sees its URL confirmed first.
+        // The path push of a commit goes out before the reply, so the page sees its URL confirmed first: it is posted as
+        // a turn after the commit's, so a turn of the model context runs after it.
+        try { await navigator.ModelContext.InvokeAsync(static () => { }, CancellationToken.None).ConfigureAwait(false); }
+        catch (ObjectDisposedException) { }
         await BridgeTargetedPushes.For(dispatcher.Transport).WhenSent().ConfigureAwait(false);
         return BridgeMessages.Write(writer =>
         {
@@ -60,11 +63,13 @@ internal static class BridgeNavigation
         });
     }
 
-    // After a connection's hello with the feature: its first navigation-path push.
-    public static void Greeted(BridgeDispatcher dispatcher, string connectionKey)
+    // The window's route path for a hello reply: false without a path region.
+    public static bool TryGetPath(BridgeDispatcher dispatcher, out string? path)
     {
-        if (dispatcher.Navigator is not { } navigator || NavigationPathSync.For(navigator) is not { } sync) return;
-        BridgeTargetedPushes.For(dispatcher.Transport).Send(connectionKey, Push(sync.CurrentPath(), "replace"));
+        path = null;
+        if (dispatcher.Navigator is not { } navigator || NavigationPathSync.For(navigator) is not { } sync) return false;
+        path = sync.CurrentPath();
+        return true;
     }
 
     public static byte[] Push(string? path, string operation) => BridgeMessages.Write(writer =>
@@ -168,6 +173,12 @@ internal sealed class NavigationPathSync : IDisposable
             _stack = stack;
             _path = path = read;
         }
+        // Sent in the next turn, once the commit's frames were handed to their deliveries, so the push follows them.
+        if (!Region.Navigator.ModelContext.TryPost(() => Send(path, operation))) Send(path, operation);
+    }
+
+    private void Send(string? path, string operation)
+    {
         if (NavigationPresentationBinding.BoundSession(Region.Navigator) is not { IsDisposed: false } session) return;
         var dispatcher = BridgeDispatcher.For(session.Transport);
         var pushes = BridgeTargetedPushes.For(session.Transport);

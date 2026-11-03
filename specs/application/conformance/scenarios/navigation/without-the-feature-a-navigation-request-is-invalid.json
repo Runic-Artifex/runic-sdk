@@ -1,0 +1,24 @@
+{
+  "format": "runic.views.scenario/1",
+  "id": "navigation.without-the-feature-a-navigation-request-is-invalid.v1",
+  "contract": {"id":"runic.views","version":4},
+  "set": "navigation",
+  "roles": ["producer"],
+  "description": "On a connection that does not use navigation-path/1, the producer pushes no path and a navigation request is invalid-request.",
+  "view": "tabs",
+  "requires": ["navigation-path/1"],
+  "ids": {
+    "c1": {"kind":"connection"},
+    "hello-c1": {"kind":"request"},
+    "session": {"kind":"wire","value":"s-1"},
+    "back": {"kind":"request"}
+  },
+  "arrange": {"model":{"path":true}},
+  "steps": [
+    {"connect":"c1"},
+    {"send":{"kind":"hello","protocol":4,"session":{"$id":"session"},"client":{"name":{"$any":"string","default":"conformance-client"},"version":{"$any":"string","default":"1.0.0"}},"features":{"$any":"array","default":["text-splice/1"]}},"id":"hello-c1"},
+    {"receive":{"ok":true,"protocol":4,"implementation":{"name":{"$any":"string","default":"conformance-producer"},"version":{"$any":"string","default":"1.0.0"}},"features":{"$any":"array","default":["text-splice/1"]}},"replyTo":"hello-c1"},
+    {"send":{"kind":"navigation","action":"back"},"id":"back"},
+    {"receive":{"ok":false,"error":{"kind":"rejected","reason":"invalid-request","message":{"$any":"string","default":"…"}}},"replyTo":"back"}
+  ]
+}

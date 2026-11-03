@@ -1,0 +1,24 @@
+{
+  "format": "runic.views.scenario/1",
+  "id": "navigation.a-refused-route-keeps-the-path.v1",
+  "contract": {"id":"runic.views","version":4},
+  "set": "navigation",
+  "roles": ["producer"],
+  "description": "While veto is set, the page's departure guard refuses: opening pages/four is Rejected with Guard, nothing is pushed, and the reply's path is the current one, which the page's URL reverts to.",
+  "view": "tabs",
+  "requires": ["navigation-path/1"],
+  "ids": {
+    "c1": {"kind":"connection"},
+    "hello-c1": {"kind":"request"},
+    "session": {"kind":"wire","value":"s-1"},
+    "open-four": {"kind":"request"}
+  },
+  "arrange": {"model":{"path":true,"veto":true}},
+  "steps": [
+    {"connect":"c1"},
+    {"send":{"kind":"hello","protocol":4,"session":{"$id":"session"},"client":{"name":{"$any":"string","default":"conformance-client"},"version":{"$any":"string","default":"1.0.0"}},"features":{"$any":"array","default":["text-splice/1","navigation-path/1"]}},"id":"hello-c1"},
+    {"receive":{"ok":true,"protocol":4,"implementation":{"name":{"$any":"string","default":"conformance-producer"},"version":{"$any":"string","default":"1.0.0"}},"features":{"$any":"array","default":["text-splice/1","navigation-path/1"]},"navigationPath":"pages/one"},"replyTo":"hello-c1"},
+    {"send":{"kind":"navigation","action":"open","path":"pages/four"},"id":"open-four"},
+    {"receive":{"ok":true,"outcome":{"kind":"Rejected","rejection":"Guard","arrival":"None"},"path":"pages/one"},"replyTo":"open-four"}
+  ]
+}

@@ -393,6 +393,8 @@ const requestRules = {
   // README.md, "Presented states and window close" (presented/1).
   presented: m => isRoute(m.route) && isSafe(m.revision),
   "closing-reply": () => true,
+  // README.md, "Navigation paths" (navigation-path/1): the window's Back, or a route path to open; no route.
+  navigation: m => m.route === undefined && (m.action === "back" || (m.action === "open" && typeof m.path === "string" && m.path.length <= 2048)),
 };
 
 export function readRequest(text, limits = {}) {
@@ -455,6 +457,8 @@ const pushRules = {
   // presented/1. closing is the first push without a route.
   present: m => isRoute(m.route) && isSafe(m.revision),
   closing: () => true,
+  // navigation-path/1: the window's route path, a push without a route.
+  "navigation-path": m => (m.path === null || typeof m.path === "string") && ["push", "back", "replace"].includes(m.operation),
 };
 export function readPush(text) {
   let message;
@@ -486,6 +490,9 @@ const replyRules = {
   receive: m => Array.isArray(m.messages) && m.messages.every(isObject),
   presented: () => true,
   "closing-reply": () => true,
+  // navigation-path/1: the outcome (null when no route matched) and, with a path region, the path after it.
+  navigation: m => (m.outcome === null || (isObject(m.outcome) && typeof m.outcome.kind === "string"))
+    && (m.path === undefined || m.path === null || typeof m.path === "string"),
 };
 export function readReply(request, text) {
   let message;
@@ -721,7 +728,7 @@ test("every scenario is self-contained and names its file", () => {
     for (const problem of scenarioProblems(scenario)) failures.push(`${name(path)}: ${problem}`);
   }
   assert.deepEqual(failures, []);
-  for (const set of ["handshake", "state-changes", "replies", "edits", "operations", "presentations", "regions", "interactions", "errors"])
+  for (const set of ["handshake", "state-changes", "replies", "edits", "operations", "presentations", "regions", "navigation", "interactions", "errors"])
     assert.ok([...ids].some(id => id.startsWith(`${set}.`)), `no ${set} scenario`);
 });
 

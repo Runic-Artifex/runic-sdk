@@ -1,0 +1,34 @@
+{
+  "format": "runic.views.scenario/1",
+  "id": "navigation.a-route-opens-in-the-path-region-and-its-path-is-pushed.v1",
+  "contract": {"id":"runic.views","version":4},
+  "set": "navigation",
+  "roles": ["producer"],
+  "description": "The first documents region is the window's path region, whose page one has the route pages/one. The hello reply carries its path. Opening pages/four pushes a new page (operation push), opening pages/one goes back to it (operation back); each reply carries the Committed outcome and the path after it, and follows the frame of the region and the path push. The page's other route never opened, but the documents member is published. The window's Back then finds no region with history and is Rejected with NoHistory.",
+  "view": "tabs",
+  "requires": ["navigation-path/1"],
+  "ids": {
+    "c1": {"kind":"connection"},
+    "hello-c1": {"kind":"request"},
+    "session": {"kind":"wire","value":"s-1"},
+    "open-four": {"kind":"request"},
+    "open-one": {"kind":"request"},
+    "back": {"kind":"request"}
+  },
+  "arrange": {"model":{"path":true}},
+  "steps": [
+    {"connect":"c1"},
+    {"send":{"kind":"hello","protocol":4,"session":{"$id":"session"},"client":{"name":{"$any":"string","default":"conformance-client"},"version":{"$any":"string","default":"1.0.0"}},"features":{"$any":"array","default":["text-splice/1","navigation-path/1"]}},"id":"hello-c1"},
+    {"receive":{"ok":true,"protocol":4,"implementation":{"name":{"$any":"string","default":"conformance-producer"},"version":{"$any":"string","default":"1.0.0"}},"features":{"$any":"array","default":["text-splice/1","navigation-path/1"]},"navigationPath":"pages/one"},"replyTo":"hello-c1"},
+    {"send":{"kind":"navigation","action":"open","path":"pages/four"},"id":"open-four"},
+    {"receive":{"kind":"frame","route":"tabs","baseRevision":0,"revision":{"$any":"number","default":2},"changes":[{"field":"documents","kind":"set","value":{"regions":[{"key":"1","content":{"kind":"page","id":"00000000000000000000000000000004"}},{"key":"2","content":{"kind":"page","id":"00000000000000000000000000000002"}},{"key":"3","content":{"kind":"page","id":"00000000000000000000000000000003"}}],"selected":0}}]}},
+    {"receive":{"kind":"navigation-path","path":"pages/four","operation":"push"}},
+    {"receive":{"ok":true,"outcome":{"kind":"Committed","rejection":null,"arrival":"None"},"path":"pages/four"},"replyTo":"open-four"},
+    {"send":{"kind":"navigation","action":"open","path":"pages/one"},"id":"open-one","note":"A browser Back to the previous URL."},
+    {"receive":{"kind":"frame","route":"tabs","baseRevision":{"$any":"number","default":2},"revision":{"$any":"number","default":4},"changes":[{"field":"documents","kind":"set","value":{"regions":[{"key":"1","content":{"kind":"page","id":"00000000000000000000000000000001"}},{"key":"2","content":{"kind":"page","id":"00000000000000000000000000000002"}},{"key":"3","content":{"kind":"page","id":"00000000000000000000000000000003"}}],"selected":0}}]}},
+    {"receive":{"kind":"navigation-path","path":"pages/one","operation":"back"}},
+    {"receive":{"ok":true,"outcome":{"kind":"Committed","rejection":null,"arrival":"None"},"path":"pages/one"},"replyTo":"open-one"},
+    {"send":{"kind":"navigation","action":"back"},"id":"back","note":"The mouse's Back button: no presented region can go back."},
+    {"receive":{"ok":true,"outcome":{"kind":"Rejected","rejection":"NoHistory","arrival":"None"},"path":"pages/one"},"replyTo":"back"}
+  ]
+}

@@ -1,0 +1,24 @@
+{
+  "format": "runic.views.scenario/1",
+  "id": "navigation.an-unmatched-route-navigates-nowhere.v1",
+  "contract": {"id":"runic.views","version":4},
+  "set": "navigation",
+  "roles": ["producer"],
+  "description": "A path that no route matches runs no request: the reply's outcome is null and its path the current one.",
+  "view": "tabs",
+  "requires": ["navigation-path/1"],
+  "ids": {
+    "c1": {"kind":"connection"},
+    "hello-c1": {"kind":"request"},
+    "session": {"kind":"wire","value":"s-1"},
+    "open-settings": {"kind":"request"}
+  },
+  "arrange": {"model":{"path":true}},
+  "steps": [
+    {"connect":"c1"},
+    {"send":{"kind":"hello","protocol":4,"session":{"$id":"session"},"client":{"name":{"$any":"string","default":"conformance-client"},"version":{"$any":"string","default":"1.0.0"}},"features":{"$any":"array","default":["text-splice/1","navigation-path/1"]}},"id":"hello-c1"},
+    {"receive":{"ok":true,"protocol":4,"implementation":{"name":{"$any":"string","default":"conformance-producer"},"version":{"$any":"string","default":"1.0.0"}},"features":{"$any":"array","default":["text-splice/1","navigation-path/1"]},"navigationPath":"pages/one"},"replyTo":"hello-c1"},
+    {"send":{"kind":"navigation","action":"open","path":"settings/7"},"id":"open-settings"},
+    {"receive":{"ok":true,"outcome":null,"path":"pages/one"},"replyTo":"open-settings"}
+  ]
+}

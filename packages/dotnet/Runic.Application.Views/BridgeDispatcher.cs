@@ -586,9 +586,9 @@ internal sealed class BridgeDispatcher : IBridgeRequestHandler
         }
         // A page that connects to a closing window is told so, after its hello reply.
         if (closing) BridgeTargetedPushes.For(_transport).Send(connection.Key, ClosingPush());
-        // navigation-path/1: the page learns the window's route path after its hello reply.
-        if (usesNavigationPath) BridgeNavigation.Greeted(this, connection.Key);
-        return BridgeMessages.Hello();
+        // navigation-path/1: the reply tells the page the window's route path, when the window has a path region.
+        return usesNavigationPath && BridgeNavigation.TryGetPath(this, out var path) ? BridgeMessages.Hello(path, navigationPath: true)
+            : BridgeMessages.Hello();
     }
 
     // The client's features: absent, or an array of strings. A feature this producer does not implement is ignored.

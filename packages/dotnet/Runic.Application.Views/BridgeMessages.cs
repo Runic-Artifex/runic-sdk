@@ -48,7 +48,7 @@ internal static class BridgeMessages
     internal static byte[] Rejected(string reason, string message, bool hello = false) =>
         Failure("rejected", reason, message, hello);
 
-    internal static byte[] Hello() =>
+    internal static byte[] Hello(string? path = null, bool navigationPath = false) =>
         Write(writer =>
         {
             writer.WriteStartObject();
@@ -62,6 +62,12 @@ internal static class BridgeMessages
             writer.WriteStringValue(BridgeDispatcher.RegionCollectionsFeature);
             writer.WriteStringValue(BridgeDispatcher.NavigationPathFeature);
             writer.WriteEndArray();
+            // navigation-path/1: the window's route path, on a connection that uses the feature in a window with a path region.
+            if (navigationPath)
+            {
+                if (path is null) writer.WriteNull("navigationPath");
+                else writer.WriteString("navigationPath", path);
+            }
             writer.WriteEndObject();
         });
 

@@ -21,13 +21,12 @@ internal sealed class NavigationPathBridgeTests
         var refused = await host.NavigateBackAsync().WaitScaledAsync(Timeout);
         Require(refused is { Succeeded: true, Outcome.Rejection: NavigationRejection.NoHistory, HasPath: true, Path: "home" },
             $"Back with no history: {refused.Json}");
-        await Until(() => host.NavigationPathPushes is [("home", "replace")], "The hello's first path push did not arrive.");
 
         // An address bar or Forward opens a route: pushed, and the page is told to push its history.
         var opened = await host.OpenNavigationPathAsync("editors/a").WaitScaledAsync(Timeout);
         Require(opened is { Outcome.Kind: NavigationOutcomeKind.Committed, Path: "editors/a" } && window.Shell.Main.Current is NavEditorViewModel { Title: "a" },
             $"editors/a did not open: {opened.Json}");
-        Require(host.NavigationPathPushes[^1] == new RunicNavigationPathPush("editors/a", "push"), $"The push was {host.NavigationPathPushes[^1]}.");
+        await Until(() => host.NavigationPathPushes is [("editors/a", "push")], $"The push was {string.Join(", ", host.NavigationPathPushes)}.");
         await host.OpenNavigationPathAsync("editors/b").WaitScaledAsync(Timeout);
 
         // A browser Back opens the previous route: the region goes back to it.
