@@ -1,1 +1,12 @@
 #nullable enable
+Runic.Application.Views.RunicRegionCollectionAttribute
+Runic.Application.Views.RunicRegionCollectionAttribute.ContentType.get -> System.Type!
+Runic.Application.Views.RunicRegionCollectionAttribute.PageCanClose.get -> bool
+Runic.Application.Views.RunicRegionCollectionAttribute.PageCanClose.set -> void
+Runic.Application.Views.RunicRegionCollectionAttribute.RunicRegionCollectionAttribute(System.Type! contentType) -> void
+Runic.Application.Views.Generated.BridgeRegionCollections
+static Runic.Application.Views.Generated.BridgeRegionCollections.Key(Runic.Navigation.NavigationRegion! region) -> string!
+Runic.Application.Views.Generated.PropertyDescriptor<T>.RegionCollection.get -> bool
+Runic.Application.Views.Generated.PropertyDescriptor<T>.RegionCollection.init -> void
+Runic.Application.Views.Generated.PropertyDescriptor<T>.RegionClose.get -> bool
+Runic.Application.Views.Generated.PropertyDescriptor<T>.RegionClose.init -> void

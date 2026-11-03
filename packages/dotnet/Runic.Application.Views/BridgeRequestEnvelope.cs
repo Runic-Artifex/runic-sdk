@@ -50,7 +50,7 @@ internal sealed class BridgeRequestEnvelope : IDisposable
     internal static bool IsViewKind(string kind) => kind switch
     {
         "open" or "snapshot" or "close" or "set" or "write" or "command" or "can" or "start" or "status" or "watch"
-            or "unwatch" or "cancel" or "stream" or "interactions" or "interaction-reply" => true,
+            or "unwatch" or "cancel" or "stream" or "interactions" or "interaction-reply" or "region" => true,
         _ => false,
     };
 
@@ -150,6 +150,12 @@ internal sealed class BridgeRequestEnvelope : IDisposable
                 return ReadMember(root);
             case "can":
                 return ReadMember(root);
+            // region (region-collections/1): select or close the region of a region collection that a key names.
+            case "region":
+                return ReadMember(root)
+                    ?? String(root, "key")
+                    ?? (String(root, "action") ?? (root.GetProperty("action").GetString() is "select" or "close"
+                        ? null : "The region request's action is not select or close."));
             case "start":
             case "status":
             case "watch":

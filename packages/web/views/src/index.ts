@@ -86,6 +86,16 @@ export {
   type CollectionViewportOptions,
 } from "./viewport.js";
 
+export {
+  regionCollectionsFeature,
+  regionEntries,
+  selectedRegion,
+  type RegionCollection,
+  type RegionEntry,
+  type RegionOutcome,
+  type RegionSlot,
+} from "./regions.js";
+
 /**
  * A generated content reference: a View presented in a content slot, such as a ViewModel slot of .NET
  * `PageReference`. Generated `{Name}PageReference` types satisfy it.

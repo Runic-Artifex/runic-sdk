@@ -232,6 +232,11 @@ public sealed class InMemoryBridgeTransport : IBridgeConnectionTransport, IDispo
                 writer.WriteString("name", "Runic.Application.Testing");
                 writer.WriteString("version", "1.0.0");
                 writer.WriteEndObject();
+                // The drivers' region requests (SelectRegionAsync, CloseRegionAsync) need region-collections/1. The
+                // feature adds a request kind only, so the window's other messages are those of the base protocol.
+                writer.WriteStartArray("features");
+                writer.WriteStringValue("region-collections/1");
+                writer.WriteEndArray();
                 writer.WriteEndObject();
             }), connectionKey, clientKey, CancellationToken.None).ConfigureAwait(false);
             // A test may have sent the connection's hello itself.

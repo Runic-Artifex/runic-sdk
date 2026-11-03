@@ -1,1 +1,35 @@
 #nullable enable
+Runic.Application.Testing.RunicCallReply<TModel>.RegionOutcome.get -> Runic.Navigation.NavigationOutcome?
+Runic.Application.Testing.RunicRegionCollectionState
+Runic.Application.Testing.RunicRegionCollectionState.Keys.get -> System.Collections.Generic.IReadOnlyList<string!>!
+Runic.Application.Testing.RunicRegionCollectionState.Regions.get -> System.Collections.Generic.IReadOnlyList<Runic.Application.Testing.RunicRegionSlot!>!
+Runic.Application.Testing.RunicRegionCollectionState.Regions.init -> void
+Runic.Application.Testing.RunicRegionCollectionState.RunicRegionCollectionState(System.Collections.Generic.IReadOnlyList<Runic.Application.Testing.RunicRegionSlot!>! Regions, int? Selected) -> void
+Runic.Application.Testing.RunicRegionCollectionState.Selected.get -> int?
+Runic.Application.Testing.RunicRegionCollectionState.Selected.init -> void
+Runic.Application.Testing.RunicRegionCollectionState.SelectedRegion.get -> Runic.Application.Testing.RunicRegionSlot?
+Runic.Application.Testing.RunicRegionSlot
+Runic.Application.Testing.RunicRegionSlot.Content.get -> Runic.Application.Views.PageReference?
+Runic.Application.Testing.RunicRegionSlot.Content.init -> void
+Runic.Application.Testing.RunicRegionSlot.Key.get -> string!
+Runic.Application.Testing.RunicRegionSlot.Key.init -> void
+Runic.Application.Testing.RunicRegionSlot.RunicRegionSlot(string! Key, Runic.Application.Views.PageReference? Content) -> void
+Runic.Application.Testing.RunicViewDriver<TModel>.CloseRegionAsync(System.Linq.Expressions.Expression<System.Func<TModel!, object?>!>! collection, string! key, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<Runic.Application.Testing.RunicCallReply<TModel!>!>!
+Runic.Application.Testing.RunicViewDriver<TModel>.SelectRegionAsync(System.Linq.Expressions.Expression<System.Func<TModel!, object?>!>! collection, string! key, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<Runic.Application.Testing.RunicCallReply<TModel!>!>!
+Runic.Application.Testing.RunicViewState<TModel>.Regions(System.Linq.Expressions.Expression<System.Func<TModel!, object?>!>! collection) -> Runic.Application.Testing.RunicRegionCollectionState!
+override Runic.Application.Testing.RunicRegionCollectionState.Equals(object? obj) -> bool
+override Runic.Application.Testing.RunicRegionCollectionState.GetHashCode() -> int
+override Runic.Application.Testing.RunicRegionCollectionState.ToString() -> string!
+override Runic.Application.Testing.RunicRegionSlot.Equals(object? obj) -> bool
+override Runic.Application.Testing.RunicRegionSlot.GetHashCode() -> int
+override Runic.Application.Testing.RunicRegionSlot.ToString() -> string!
+Runic.Application.Testing.RunicRegionCollectionState.<Clone>$() -> Runic.Application.Testing.RunicRegionCollectionState!
+Runic.Application.Testing.RunicRegionCollectionState.Deconstruct(out System.Collections.Generic.IReadOnlyList<Runic.Application.Testing.RunicRegionSlot!>! Regions, out int? Selected) -> void
+Runic.Application.Testing.RunicRegionCollectionState.Equals(Runic.Application.Testing.RunicRegionCollectionState? other) -> bool
+Runic.Application.Testing.RunicRegionSlot.<Clone>$() -> Runic.Application.Testing.RunicRegionSlot!
+Runic.Application.Testing.RunicRegionSlot.Deconstruct(out string! Key, out Runic.Application.Views.PageReference? Content) -> void
+Runic.Application.Testing.RunicRegionSlot.Equals(Runic.Application.Testing.RunicRegionSlot? other) -> bool
+static Runic.Application.Testing.RunicRegionCollectionState.operator !=(Runic.Application.Testing.RunicRegionCollectionState? left, Runic.Application.Testing.RunicRegionCollectionState? right) -> bool
+static Runic.Application.Testing.RunicRegionCollectionState.operator ==(Runic.Application.Testing.RunicRegionCollectionState? left, Runic.Application.Testing.RunicRegionCollectionState? right) -> bool
+static Runic.Application.Testing.RunicRegionSlot.operator !=(Runic.Application.Testing.RunicRegionSlot? left, Runic.Application.Testing.RunicRegionSlot? right) -> bool
+static Runic.Application.Testing.RunicRegionSlot.operator ==(Runic.Application.Testing.RunicRegionSlot? left, Runic.Application.Testing.RunicRegionSlot? right) -> bool

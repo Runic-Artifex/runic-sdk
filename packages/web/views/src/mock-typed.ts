@@ -1,5 +1,6 @@
 import type { BridgeErrorKind, BridgeFailureDetail } from "./errors.js";
 import type { BridgeOutcomeFailure } from "./controller.js";
+import type { RegionOutcome } from "./regions.js";
 import {
   mockBridgeInternals,
   mockFailure,
@@ -24,6 +25,32 @@ export interface MockReference<TKind extends string = string> {
   readonly kind: TKind;
   readonly id: string;
 }
+
+/** A region collection in a mock state (region-collections/1): each region's content as a {@link MockReference}. */
+export interface MockRegionCollection<R extends MockReference = MockReference> {
+  readonly regions: readonly { readonly key: string; readonly content: R | null }[];
+  readonly selected: number | null;
+}
+
+/** A page's request to select or close the region with `key`; `index` is its position in the collection. */
+export interface MockRegionRequest {
+  readonly action: "select" | "close";
+  readonly key: string;
+  readonly index: number;
+}
+
+/**
+ * What a region handler decides: the request's `outcome` (`Committed` by default) and more state changes. Without
+ * `outcome`, or with a `Committed` one, the mock applies the selection or close itself, as .NET does after the
+ * departure guards agreed; with another outcome, such as a guard's veto, it changes only `state`.
+ */
+export interface MockRegionResult<TState> {
+  readonly outcome?: RegionOutcome;
+  readonly state?: Patch<TState>;
+}
+
+/** Decides a region request of a mock region collection, standing in for its departure guards. */
+export type MockRegionHandler<TState> = (state: TState, request: MockRegionRequest) => Awaitable<MockRegionResult<TState> | void>;
 
 type Patch<TState> = Partial<{ -readonly [K in keyof TState]: TState[K] }>;
 type Awaitable<T> = T | Promise<T>;
@@ -162,6 +189,8 @@ export interface MockTypedViewSpec {
   readonly texts?: readonly string[];
   /** Keyed collections by wire name: a row codec and its key. */
   readonly collections?: Readonly<Record<string, FieldCodec & { key(item: never): string }>>;
+  /** Region collections by wire name (region-collections/1): whether the page can close a region. */
+  readonly regions?: Readonly<Record<string, { readonly close: boolean }>>;
   /**
    * Setters by client method (`setTitle`): the member's wire name, and the client method of its checked write
    * (`writeTitle`) when it has one.
@@ -205,6 +234,8 @@ export interface MockTypedViewDefinition {
    */
   readonly resolveKey?: object;
   readonly operations?: object;
+  /** Region handlers by wire name (region-collections/1). */
+  readonly regions?: object;
 }
 
 const upperFirst = (value: string) => value.charAt(0).toUpperCase() + value.slice(1);

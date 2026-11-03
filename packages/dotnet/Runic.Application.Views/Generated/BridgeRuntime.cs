@@ -56,7 +56,8 @@ public sealed class PropertyDescriptor<T>
     /// Returns the sub-object the Bridge observes for this property. The Bridge subscribes when it is created and
     /// again when the ViewModel reports a change, and publishes when the sub-object changes. A
     /// <see cref="NavigationRegion{TContent}"/> publishes when its <c>Current</c> changes and binds the window session as
-    /// its navigator's presentation; a <see cref="NavigationSelection"/> publishes when its <c>SelectedIndex</c> changes;
+    /// its navigator's presentation; a <see cref="NavigationSelection"/> publishes when its <c>SelectedIndex</c> changes,
+    /// and for a <see cref="RegionCollection"/> also when its regions or their <c>Current</c> change;
     /// another <see cref="INotifyPropertyChanged"/> publishes on every change.
     /// </param>
     public PropertyDescriptor(string name, string wireName, Func<T, object?> getter, Action<T, JsonElement>? setter, Func<T, object?> observe)
@@ -85,6 +86,14 @@ public sealed class PropertyDescriptor<T>
     /// value; <see langword="null"/> for a read-only property. It throws like the setter.
     /// </summary>
     public Action<T, string>? TextSetter { get; init; }
+    /// <summary>
+    /// Whether the property is a region collection (<see cref="RunicRegionCollectionAttribute"/>): its observed
+    /// sub-object is a <see cref="NavigationSelection"/> whose regions and their content the Bridge observes, and whose
+    /// regions the page selects with <c>region</c> requests (<c>region-collections/1</c>).
+    /// </summary>
+    public bool RegionCollection { get; init; }
+    /// <summary>Whether a <c>region</c> request of a <see cref="RegionCollection"/> property may close a region.</summary>
+    public bool RegionClose { get; init; }
     /// <summary>Whether the browser may write the property.</summary>
     public bool CanWrite => _setter is not null;
     /// <summary>Reads the property value from <paramref name="vm"/>.</summary>
@@ -754,6 +763,8 @@ public partial class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBr
             var subscription = next switch
             {
                 NavigationRegion region => NavigationPresentationBinding.Observe(region, _content, ScheduleUnit),
+                NavigationSelection selection when property.RegionCollection =>
+                    NavigationPresentationBinding.ObserveCollection(selection, _content, ScheduleUnit),
                 NavigationSelection selection => NavigationPresentationBinding.Observe(selection, ScheduleUnit),
                 INotifyPropertyChanged notifying => new SubObjectSubscription(notifying, ScheduleUnit),
                 _ => null,
@@ -766,7 +777,14 @@ public partial class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBr
     {
         List<NavigationRegion> regions = [];
         foreach (var property in _properties)
-            if (property.Observe?.Invoke(_vm) is NavigationRegion region && !regions.Contains(region)) regions.Add(region);
+        {
+            var observed = property.Observe?.Invoke(_vm);
+            if (observed is NavigationRegion region && !regions.Contains(region)) regions.Add(region);
+            // A region collection's regions, in order (region-collections/1).
+            else if (property.RegionCollection && observed is NavigationSelection selection)
+                foreach (var member in selection.Regions)
+                    if (!regions.Contains(member)) regions.Add(member);
+        }
         return regions;
     });
 

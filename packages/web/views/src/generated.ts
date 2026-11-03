@@ -29,3 +29,4 @@ export {
   type InteractionSession,
 } from "./interactions.js";
 export { bridgeOperations, type BridgeOperations, type OperationScope } from "./operations.js";
+export { regionCollection } from "./regions.js";

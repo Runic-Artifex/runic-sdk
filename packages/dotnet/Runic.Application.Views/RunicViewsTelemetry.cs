@@ -361,6 +361,17 @@ internal static partial class ViewsLog
         Message = "{Window} guards its close, but {Presentation} cannot keep its window open, so a user close does not ask CanCloseAsync.")]
     internal static partial void WindowCloseGuardUnavailable(ILogger logger, string window, string presentation);
 
+    // region-collections/1: SelectAsync or RemoveAsync of a region collection threw for a page's region request.
+    [LoggerMessage(EventId = 1210, EventName = "BridgeRegionRequestFailed", Level = LogLevel.Error,
+        Message = "A region request of {Model}.{Member} on route {Route} failed with {ErrorType}.")]
+    internal static partial void RegionRequestFailed(ILogger logger, Exception exception, string model, string member, string route, string errorType);
+
+    // region-collections/1: a page's region request named a key that the collection no longer has, such as a tab that
+    // closed before the request arrived. The request is rejected with unresolved-key.
+    [LoggerMessage(EventId = 1211, EventName = "BridgeRegionRequestUnresolved", Level = LogLevel.Debug,
+        Message = "A region request of {Model}.{Member} on route {Route} named the key {Key}, which no region of the collection has.")]
+    internal static partial void RegionRequestUnresolved(ILogger logger, string model, string member, string route, string key);
+
     // Hot Reload applied an edit that changed a generated Bridge contract. The message is the IDE line that
     // RunicViewsHotReload also writes to standard error.
     [LoggerMessage(EventId = 1100, EventName = "HotReloadRestartRequired", Level = LogLevel.Error,

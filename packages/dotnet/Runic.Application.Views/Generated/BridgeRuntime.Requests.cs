@@ -25,6 +25,7 @@ public partial class ViewModelBridge<T>
                 "write" => owner.WriteAsync(request, cancellationToken),
                 "command" => owner.CommandAsync(request, cancellationToken),
                 "can" => owner.CanAsync(request, cancellationToken),
+                "region" => owner.RegionAsync(request, cancellationToken),
                 _ => owner.HandleOperationAsync(request, cancellationToken),
             };
     }

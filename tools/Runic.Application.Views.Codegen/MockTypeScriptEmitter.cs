@@ -9,7 +9,10 @@ using static TypeScriptModuleBindings;
 // scheduling and protocol live in @runic-artifex/views/mock. Setters, commands
 // and operations name the member their requests address.
 internal sealed record MockValueField(string WireName, BridgeTypeGraph Graph);
-internal sealed record MockContentField(string WireName, string ReferenceType, bool IsCollection, bool IsNullable);
+// RegionCollection: a region collection (region-collections/1), whose content references are inside its regions; Close
+// says whether the page can close a region.
+internal sealed record MockContentField(string WireName, string ReferenceType, bool IsCollection, bool IsNullable,
+    bool IsRegionCollection = false, bool Close = false);
 // CheckedMethod: the client method of the member's checked write, if it has one.
 internal sealed record MockSetter(string Method, string WireName, string ValueType, string? CheckedMethod);
 // DecodeInput decodes `wire`. KeyName: the key parameter of a [RunicCommandKey] command, whose InputType is the key's.
@@ -60,7 +63,9 @@ internal static class MockTypeScriptEmitter
         {
             body.AppendLine(" & {");
             foreach (var field in plan.ContentFields)
-                body.AppendLine($"  readonly {Key(field.WireName)}: {(field.IsCollection ? $"readonly ({field.ReferenceType})[]" : field.ReferenceType)}{(field.IsNullable ? " | null" : "")};");
+                body.AppendLine(field.IsRegionCollection
+                    ? $"  readonly {Key(field.WireName)}: {Ref("MockRegionCollection")}<{field.ReferenceType}>;"
+                    : $"  readonly {Key(field.WireName)}: {(field.IsCollection ? $"readonly ({field.ReferenceType})[]" : field.ReferenceType)}{(field.IsNullable ? " | null" : "")};");
             body.Append('}');
         }
         body.AppendLine(";");
@@ -102,6 +107,15 @@ internal static class MockTypeScriptEmitter
             body.AppendLine("  readonly resolveKey?: {");
             foreach (var command in keyed)
                 body.AppendLine($"    readonly {command.Method}?: (state: {state}, {command.KeyName}: {command.InputType}) => boolean;");
+            body.AppendLine("  };");
+        }
+        var regions = plan.ContentFields.Where(field => field.IsRegionCollection).ToArray();
+        if (regions.Length > 0)
+        {
+            body.AppendLine("  /** Region requests (region-collections/1); without a handler, a select or close commits. */");
+            body.AppendLine("  readonly regions?: {");
+            foreach (var field in regions)
+                body.AppendLine($"    readonly {Key(field.WireName)}?: {Ref("MockRegionHandler")}<{state}>;");
             body.AppendLine("  };");
         }
         if (plan.Operations.Count > 0)
@@ -158,6 +172,8 @@ internal static class MockTypeScriptEmitter
                 body.AppendLine($"    {Key(collection.WireName)}: {{ encode: (value: unknown) => {Encode(collection.Encode, collection.ItemType)}, decode: (wire: unknown) => {BridgeTypeGraph.ArrowBody(collection.Decode)}, key: (item: {collection.ItemType}) => {collection.Key} }},");
             body.AppendLine("  },");
         }
+        if (regions.Length > 0)
+            body.AppendLine($"  regions: {{ {string.Join(", ", regions.Select(field => $"{Key(field.WireName)}: {{ close: {(field.Close ? "true" : "false")} }}"))} }},");
         if (plan.Setters.Count > 0)
         {
             body.AppendLine("  setters: {");
@@ -206,6 +222,7 @@ internal static class MockTypeScriptEmitter
         if (plan.Collections.Count > 0) mockImports.Add("type " + Import("MockTypedCollection"));
         if (plan.Interactions.Count > 0) mockImports.Add("type " + Import("MockTypedInteraction"));
         if (plan.ContentFields.Count > 0) mockImports.Add("type " + Import("MockReference"));
+        if (regions.Length > 0) mockImports.AddRange(["type " + Import("MockRegionCollection"), "type " + Import("MockRegionHandler")]);
         var module = new StringBuilder();
         module.AppendLine(GeneratedOutput.Header);
         if (text.Contains("bridgeWire.", StringComparison.Ordinal))

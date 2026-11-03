@@ -17,6 +17,7 @@ import { deferNotification, flushNotifications, nextFrame } from "./notification
 import type { BridgeCollections } from "./collections.js";
 import type { BridgeInteractionContext, BridgeInteractions, InteractionSession, InteractionSurface } from "./interactions.js";
 import type { BridgeOperationCodec, BridgeOperationRuntimeHandle, BridgeOperations, OperationScope } from "./operations.js";
+import { regionCollectionsFeature, regionOutcome, type RegionOutcome } from "./regions.js";
 
 /** The framework-neutral surface every generated client shares. */
 export interface ViewClient<TState = unknown> {
@@ -140,6 +141,11 @@ export interface ViewConnection<TState> extends ViewClient<TState> {
   commandOutcome<TFailure>(member: string, decodeFailure: (value: unknown) => TFailure, input?: unknown): Promise<BridgeOutcome<TState, TFailure>>;
   /** Asks whether a command is available for `input` without running it. */
   can(member: string, input?: unknown): Promise<boolean>;
+  /**
+   * Selects or closes the region with `key` of the region collection `member` (`region-collections/1`). Resolves with
+   * the request's outcome once the route's state includes it; a vetoed request resolves too, with its outcome.
+   */
+  region(member: string, action: "select" | "close", key: string): Promise<RegionOutcome>;
   /** A checked write of `member`; `decode` decodes the field values of the receipt. */
   write<T>(member: string, request: BridgeFieldWriteRequest, decode: (value: unknown) => T): Promise<FieldWriteReceipt<T>>;
   /** The value and version of a checked field in the producer's state, which a `write` call is based on. */
@@ -917,6 +923,22 @@ async function connectRoute<TState>(options: ViewConnectOptions<TState>): Promis
         return bridgeSuccess(current());
       });
     },
+    region: (member, action, key) => observed(route, async () => {
+      assertConnected();
+      if (runtime.features?.has(regionCollectionsFeature) !== true)
+        throw new BridgeError("failed", "The .NET host does not implement region-collections/1. Use the Runic packages of one release.", { route });
+      await ready();
+      const reply = await request({ kind: "region", route, member, action, key });
+      if (!reply.ok) return failure(reply, action === "select" ? "The region could not be selected." : "The region could not be closed.");
+      await settled(reply);
+      if (reply["outcome"] === undefined) {
+        // A close can release the route that asked for it; such a reply without an outcome reports the release.
+        if (reply.released === true) throw new BridgeError("released", "This View was released.", { route });
+        throw new BridgeError("failed", "The Bridge returned a region reply without an outcome.", { route });
+      }
+      try { return regionOutcome(reply["outcome"]); }
+      catch (cause) { throw new BridgeError("failed", `The Bridge returned an invalid region outcome: ${errorMessage(cause)}`, { cause, route }); }
+    }),
     can: (member, input) => observed(route, async () => {
       const reply = await request({ kind: "can", route, member, ...(input === undefined ? {} : { input }) });
       if (!reply.ok) throw replyError(reply.error, route, "The command availability could not be read.");
