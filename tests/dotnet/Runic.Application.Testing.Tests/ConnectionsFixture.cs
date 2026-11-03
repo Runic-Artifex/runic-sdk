@@ -62,9 +62,9 @@ public sealed partial class ConnectionsViewModel : ObservableObject, IDisposable
         HoldDone.TrySetResult((_connections.Caller, _drafts.TryGetCaller(out _)));
     }
 
-    // Work the command starts and that outlives it: it reads its caller and raises a view request after the command ended.
+    // Work the command starts and that outlives it: it reads its caller and asks the page after the command ended.
     internal TaskCompletionSource BackgroundGate { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
-    internal Task<(RunicConnection? Caller, RunicConnection? InCommand)>? Background { get; private set; }
+    internal Task<(RunicConnection? Caller, RunicConnection? InCommand, bool Answer)>? Background { get; private set; }
 
     [RelayCommand]
     private void StartBackground()
@@ -73,17 +73,16 @@ public sealed partial class ConnectionsViewModel : ObservableObject, IDisposable
         Background = Task.Run(async () =>
         {
             await BackgroundGate.Task.ConfigureAwait(false);
-            Focus.Raise(new ConnectionsFocus("title"));
-            return (_connections.Caller, inCommand);
+            var answer = await Confirm.AskAsync(true).ConfigureAwait(false);
+            return (_connections.Caller, inCommand, answer);
         });
     }
 
-    public ViewRequest<ConnectionsFocus> Focus { get; } = new();
+    // A page answers true; without a single page to ask, the .NET fallback answers false.
+    public ViewQuestion<bool, bool> Confirm { get; } = new((_, _) => ValueTask.FromResult(false));
 
     public void Dispose() => _drafts.Dispose();
 }
-
-public sealed record ConnectionsFocus(string Member);
 
 public sealed class ConnectionDraft(RunicConnection connection) : IDisposable
 {

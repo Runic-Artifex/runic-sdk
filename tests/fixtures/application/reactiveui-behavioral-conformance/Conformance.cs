@@ -148,11 +148,14 @@ internal sealed class ConformanceTests
         await ConformanceRequests.OpenAsync(transport, route, presentation, name, contract);
 
         Task<JsonDocument> Wait() => ConformanceRequests.NextPushAsync(transport, "interaction");
-        // The Back starts where a bridged command of the editor would, inside its invocation.
+        // The Back starts where a bridged command of the editor would, inside its invocation, which lasts until the
+        // command's awaited Back completes.
         Task<NavigationResult<object>> Close()
         {
-            using (RunicInteractionInvocation.Enter(session, route, "client", "connection"))
-                return region.BackAsync().AsTask();
+            using var scope = RunicInteractionInvocation.Enter(session, route, "client", "connection");
+            var back = region.BackAsync().AsTask();
+            scope.EndAfter(back);
+            return back;
         }
 
         // Superseded: the browser receives the question, then a cancellation of the same request.

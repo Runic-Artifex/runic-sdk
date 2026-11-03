@@ -197,25 +197,33 @@ public sealed class ModelContextTests
         Require(drainStarted.Wait(TestTimeouts.Scale(TimeSpan.FromSeconds(5))), "The direct-post batch barrier did not start.");
 
         var observed = new List<string?>();
-        using (RunicInteractionInvocation.Enter(session, "direct", "client-a", "connection-a", commandName: "first"))
+        // The commands still run when their posted turns do, as an awaited command does (its invocation ends with its task).
+        var commandsRunning = new TaskCompletionSource();
+        using (Running(session, "direct", "client-a", "connection-a", "first", commandsRunning.Task))
             Require(context.TryPost(() =>
             {
                 Require(context.IsExecuting, "A direct post did not execute on its model context.");
                 observed.Add(RunicInteractionInvocation.Current?.CommandName);
             }), "The first scoped direct post was rejected.");
-        using (RunicInteractionInvocation.Enter(session, "direct", "client-b", "connection-b", commandName: "second"))
+        using (Running(session, "direct", "client-b", "connection-b", "second", commandsRunning.Task))
             Require(context.TryPost(() => observed.Add(RunicInteractionInvocation.Current?.CommandName)),
                 "The second scoped direct post was rejected.");
         using (ExecutionContext.SuppressFlow())
-        using (RunicInteractionInvocation.Enter(session, "direct", "client-a", "connection-a", commandName: "suppressed"))
+        using (Running(session, "direct", "client-a", "connection-a", "suppressed", commandsRunning.Task))
             Require(context.TryPost(() => observed.Add(RunicInteractionInvocation.Current?.CommandName)),
                 "The suppressed direct post was rejected.");
+        // A scope that ended before its posted turn runs, as a synchronous command that started later work: that work
+        // runs in no invocation.
+        using (RunicInteractionInvocation.Enter(session, "direct", "client-a", "connection-a", commandName: "ended"))
+            Require(context.TryPost(() => observed.Add(RunicInteractionInvocation.Current?.CommandName)),
+                "The ended direct post was rejected.");
         Require(context.TryPost(() => observed.Add(RunicInteractionInvocation.Current?.CommandName)),
             "The unscoped direct post was rejected.");
         releaseDrain.Set();
         await context.InvokeAsync(() => { });
-        Require(observed.SequenceEqual(["first", "second", null, null]),
-            "Queued model turns crossed, ignored suppression of, or leaked their ambient invocation scopes.");
+        commandsRunning.SetResult();
+        Require(observed.SequenceEqual(["first", "second", null, null, null]),
+            "Queued model turns crossed, ignored suppression of, leaked or outlived their ambient invocation scopes.");
     }
 
     [Test]
@@ -255,14 +263,16 @@ public sealed class ModelContextTests
         string? suppressedScope = "not-run";
         string? leakedScope = "not-run";
 
-        using (RunicInteractionInvocation.Enter(session, route, "client-a", "connection-a", commandName: "first"))
+        // The commands still run when their scheduled work does, as awaited commands do.
+        var commandsRunning = new TaskCompletionSource();
+        using (Running(session, route, "client-a", "connection-a", "first", commandsRunning.Task))
             scheduler.Schedule(() =>
             {
                 Require(context.IsExecuting, "A scheduled interaction did not execute on its model context.");
                 observedScopes.Add(RunicInteractionInvocation.Current?.CommandName);
                 firstAnswer = model.Confirm.Handle("first");
             });
-        using (RunicInteractionInvocation.Enter(session, route, "client-b", "connection-b", commandName: "second"))
+        using (Running(session, route, "client-b", "connection-b", "second", commandsRunning.Task))
             scheduler.Schedule(() =>
             {
                 Require(context.IsExecuting, "A batched scheduled interaction did not execute on its model context.");
@@ -270,7 +280,7 @@ public sealed class ModelContextTests
                 secondAnswer = model.Confirm.Handle("second");
             });
         using (ExecutionContext.SuppressFlow())
-        using (RunicInteractionInvocation.Enter(session, route, "client-a", "connection-a", commandName: "suppressed"))
+        using (Running(session, route, "client-a", "connection-a", "suppressed", commandsRunning.Task))
             scheduler.Schedule(() => suppressedScope = RunicInteractionInvocation.Current?.CommandName);
         scheduler.Schedule(() => leakedScope = RunicInteractionInvocation.Current?.CommandName);
         releaseDrain.Set();
@@ -291,6 +301,16 @@ public sealed class ModelContextTests
             "Scheduled work did not retain its own trusted invocation scope.");
         Require(suppressedScope is null, "ExecutionContext.SuppressFlow was ignored for scheduled work.");
         Require(leakedScope is null, "A completed scheduled callback leaked its interaction scope into the next turn.");
+        commandsRunning.SetResult();
+    }
+
+    // A command invocation that lasts until running completes, as the Bridge enters one for an awaited command.
+    private static IDisposable Running(WindowContentSession session, string route, string clientKey, string connectionKey,
+        string commandName, Task running)
+    {
+        var scope = RunicInteractionInvocation.Enter(session, route, clientKey, connectionKey, commandName: commandName);
+        scope.EndAfter(running);
+        return scope;
     }
 
     // The first interaction push to a connection, read from the transport's messages without taking them.

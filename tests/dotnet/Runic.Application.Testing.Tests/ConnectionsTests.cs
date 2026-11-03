@@ -155,27 +155,25 @@ internal sealed class ConnectionsTests
         await using var window = await new TestWindowHost(provider).OpenWindowAsync<ConnectionsWindow>();
         var host = ((TestWindow<ConnectionsViewModel>)window.Host).Host;
         var vm = window.ViewModel;
-        using var alicePage = await host.Root.MountPresentationAsync(clientKey: Alice.ClientKey, connectionKey: Alice.ConnectionKey);
-        using var bobPage = await host.Root.MountPresentationAsync(clientKey: Bob.ClientKey, connectionKey: Bob.ConnectionKey);
+        using var alicePage = (await host.Root.MountPresentationAsync(clientKey: Alice.ClientKey, connectionKey: Alice.ConnectionKey))
+            .Handle(model => model.Confirm, _ => true);
+        using var bobPage = (await host.Root.MountPresentationAsync(clientKey: Bob.ClientKey, connectionKey: Bob.ConnectionKey))
+            .Handle(model => model.Confirm, _ => true);
         (await host.Root.ForConnection(Bob.ConnectionKey, Bob.ClientKey).ExecuteAsync(model => model.StartBackgroundCommand)).ThrowIfFailed();
 
-        // The command ended; its background work runs on.
+        // The command ended; its background work runs on. Outside a scope, a question with two pages that handle it asks
+        // neither and uses its fallback, instead of asking the page whose command ended.
         vm.BackgroundGate.SetResult();
-        var (caller, inCommand) = await vm.Background!.WaitScaledAsync(TimeSpan.FromSeconds(5));
+        var (caller, inCommand, answer) = await vm.Background!.WaitScaledAsync(TimeSpan.FromSeconds(5));
         Require(inCommand == Bob && caller is null, $"Work that outlived its command kept the caller {caller}.");
-        await Turn(host);
-        await Turn(host);
-        await BridgeTargetedPushes.For(host.Transport).WhenSent().WaitScaledAsync(TimeSpan.FromSeconds(5));
-        // Outside a scope, a Drop request with two presentations goes to neither, not to the page whose command ended.
-        Require(bobPage.TakeViewRequests().Count == 0 && alicePage.TakeViewRequests().Count == 0,
-            "A request raised after the command ended still reached the command's page.");
+        Require(!answer, "A question asked after the command ended still reached the command's page.");
 
         // EnterWindow inside such work is the documented way to reach the window's page.
         bobPage.Unmount();
+        bool windowAnswer;
         using (RunicInteractionInvocation.EnterWindow(vm))
-            vm.Focus.Raise(new ConnectionsFocus("window"));
-        var request = await alicePage.NextViewRequestAsync(TimeSpan.FromSeconds(5));
-        Require(request.Input<ConnectionsFocus>().Member == "window", "The window scope did not reach the window's single page.");
+            windowAnswer = await vm.Confirm.AskAsync(true).WaitScaledAsync(TimeSpan.FromSeconds(5));
+        Require(windowAnswer, "The window scope did not ask the window's single page.");
     }
 
     [Test]
