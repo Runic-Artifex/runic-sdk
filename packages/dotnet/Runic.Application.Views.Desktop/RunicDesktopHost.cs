@@ -106,6 +106,8 @@ public sealed class RunicDesktopHost : IRunicWindowHost
                 "MaximumInputBytes must be between 1 024 and 67 108 864 bytes.");
         _maximumInputBytes = options.MaximumInputBytes;
         _serveOnly = options.ServeOnly;
+        // Serve-only services decide on first use (DesktopServeOnlyState).
+        DesktopServeOnlyState.RecordFor(services, options.ServeOnly);
     }
 
     private readonly bool _serveOnly;
