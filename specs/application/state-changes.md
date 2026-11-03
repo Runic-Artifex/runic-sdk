@@ -48,8 +48,8 @@ Every change has `field`, the wire name of a state member, and `kind`.
 ### Keyed collections
 
 A **keyed collection** is a member whose value is an array of rows (objects), each with a **key**: a row field that
-the contract names. The row field is a `string`, `uuid` or `int32`; its key is the string itself, the normal form of
-the `uuid`, or the decimal form of the `int32`. Keys are nonempty and unique within the field, and rows are never
+the contract names. The row field is a `string`, `uuid`, `int32` or `int64`; its key is the string itself, the normal
+form of the `uuid`, or the decimal form of the `int32` or `int64` (its normal form, which is also its JSON string). Keys are nonempty and unique within the field, and rows are never
 `null`.
 
 The indexed changes have all six members:

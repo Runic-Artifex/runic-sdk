@@ -21,6 +21,33 @@ import type { BridgeValidationState } from "./validation.js";
 export type BridgeFieldKind = "text" | "number" | "decimal" | "bigint" | "boolean" | "date" | "time" | "datetime" | "choice" | "value";
 
 /**
+ * The C# validation attributes of a member (DataAnnotations), which a page can mirror on its input, such as
+ * `maxlength` and `required`. They describe the .NET validation, which still runs; the field does not enforce them.
+ */
+export interface BridgeFieldConstraints {
+  /** `[Required]`. */
+  readonly required?: boolean;
+  /** `[MinLength]`, or the minimum of `[StringLength]`. */
+  readonly minLength?: number;
+  /** `[MaxLength]` or `[StringLength]`. */
+  readonly maxLength?: number;
+  /** The minimum of `[Range]`: a number for numeric bounds, otherwise the bound's invariant text (`"0.01"`, a date). */
+  readonly min?: number | string;
+  /** The maximum of `[Range]`, like `min`. */
+  readonly max?: number | string;
+  /** `[Range(MinimumIsExclusive = true)]`. */
+  readonly minExclusive?: boolean;
+  /** `[Range(MaximumIsExclusive = true)]`. */
+  readonly maxExclusive?: boolean;
+  /**
+   * `[RegularExpression]` when a browser's `pattern` attribute, which compiles it with the `v` flag, reads it as .NET
+   * does; .NET matches it against the whole value, as the attribute does. A pattern with `\d`, `\w` or `\b`, inline
+   * options, lookbehind or a character class the `v` flag rejects is left out.
+   */
+  readonly pattern?: string;
+}
+
+/**
  * A generated descriptor of one settable View member, such as `EditorFields.title`: how a field reads it from the
  * View's state, writes it, and finds its validation messages. The framework bindings' `useField` / `injectField`
  * and `createFieldController` take it.
@@ -35,6 +62,8 @@ export interface BridgeField<TClient, TState, TValue> {
   readonly integer?: boolean;
   /** A `datetime` member whose values carry an offset (`DateTimeOffset`): a local text gets the page's offset. */
   readonly offset?: boolean;
+  /** The member's DataAnnotations, when it has any the page can mirror. */
+  readonly constraints?: BridgeFieldConstraints;
   /** A `choice` member's values, in declaration order. */
   readonly choices?: readonly TValue[];
   /** Reads the member from the View's state. */

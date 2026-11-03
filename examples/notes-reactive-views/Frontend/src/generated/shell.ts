@@ -8,6 +8,7 @@ import { pagePinnedTask, type PinnedTaskPageReference } from "./pinnedTask.js";
 import { pagePinnedNote, type PinnedNotePageReference } from "./pinnedNote.js";
 import type { NavigationArrivalState, NavigationOutcome, NavigationOutcomeKind, NavigationRejection } from "./types.js";
 export type { NavigationArrivalState, NavigationOutcome, NavigationOutcomeKind, NavigationRejection } from "./types.js";
+export { NavigationArrivalStateValues, NavigationOutcomeKindValues, NavigationRejectionValues } from "./types.js";
 
 export interface ShellState {
   readonly main: DocumentPageReference | HomePageReference | null;

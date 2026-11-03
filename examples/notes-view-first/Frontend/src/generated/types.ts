@@ -6,6 +6,8 @@
  * - `Preview`: The rendered note.
  */
 export type DocumentPane = "Editor" | "Preview";
+/** The values of {@link DocumentPane} that .NET writes, in declaration order. */
+export const DocumentPaneValues = ["Editor", "Preview"] as const satisfies readonly DocumentPane[];
 
 /** Why a note could not be saved. */
 export type SaveFailure =
