@@ -450,6 +450,70 @@ Publications are delivered off the calling thread, so waits use real time,
 `RunicWindowTestHostOptions.PublicationTimeout` (five seconds by default). A route's
 frames go to its tracker or to `TakePublications`, not both.
 
+### Platform services
+
+A ViewModel that shows a file dialog, a message box or a context menu, or uses
+the clipboard, takes `IFileDialogs`, `IDesktopMessageBoxes`, `IDesktopClipboard`
+or `IWindowPlatformServices` in its constructor. `services.AddRunicTestPlatform()`
+registers scripted, recording fakes for them: one `RunicTestPlatform` per window
+scope and one `RunicTestNotifications` for the application. It replaces the
+registrations of `AddRunicPlatformServices()` whether it runs before or after
+it. `RunicWindowTestHost.Create` returns the scope's platform as `Platform`:
+
+```csharp
+services.AddRunicTestPlatform();
+await using var scope = provider.CreateAsyncScope();
+using var host = RunicWindowTestHost.Create<EditorViewModel>(scope.ServiceProvider);
+
+host.Platform!.FileDialogs.EnqueueOpen("notes.txt", "Hello");
+var saved = host.Platform.FileDialogs.EnqueueSave("notes-copy.txt");
+host.Platform.MessageBoxes.EnqueueAnswer("save");
+
+(await host.Root.ExecuteAsync(vm => vm.OpenCommand)).ThrowIfFailed();
+(await host.Root.ExecuteAsync(vm => vm.SaveAsCommand)).ThrowIfFailed();
+
+Assert.Equal("Hello", saved.ReadAllText());
+Assert.Equal("Import notes", host.Platform.FileDialogs.Calls[0].OpenOptions?.Title);
+```
+
+Each fake takes the next queued response and records the call:
+
+- **File dialogs.** `EnqueueOpen(file)` answers an open-file or open-document
+  dialog, `EnqueueOpenFiles(...)` an open-files dialog, `EnqueueSave(name)` a
+  save dialog, `EnqueueOpenDirectory(path)` a directory dialog, and
+  `EnqueueDismissed()`, `EnqueueUnavailable(reason)` and `EnqueueFailed(code)` any
+  dialog. A dialog with an empty queue is dismissed; a response for another kind
+  of dialog throws `InvalidOperationException` from the dialog call. `Calls`
+  lists each dialog with its options and outcome.
+- **Files and leases.** A `RunicTestFile` is in memory. Its leases follow the
+  real rules: a read lease is consumed once, a save lease has one open write
+  transaction at a time (`ResourceBusy` otherwise), a commit happens once, and
+  it reports `NotCommitted(Conflict)` when the file no longer holds what the
+  application last saw. `file.Write(...)` or `file.Delete()` acts as another
+  writer; `file.EnqueueCommitResult(...)` scripts a failed or uncertain commit,
+  and `EnqueueCommitResult(new FileCommitResult.CommitUnknown(code), applied: true)`
+  an uncertain one whose write landed, as a real lease can report;
+  `file.WriteUnavailable` acts as a read-only grant. `ReadAllText()`,
+  `ReadAllBytes()` and `CommittedWrites` show what the application saved.
+- **Message boxes.** `EnqueueAnswer(buttonId)` chooses a button. An unscripted
+  box is answered as Esc would be: with its cancel button, or `null`.
+- **Context menus.** `ContextMenus.EnqueueChoice(commandId)` chooses an item of
+  `ShowContextMenuAsync`; a disabled item throws, since the user could not
+  choose it. An unscripted menu is dismissed.
+- **Clipboard.** `Clipboard.SetText(...)` or `SetContent(...)` is what another
+  application copied; `Content` and `Writes` are what the application copied.
+  Writes, limits and watches follow the real clipboard.
+- **Notifications.** `Shown`, `Current` and `Removed` record the application's
+  notifications, and `Activate(id, actionId)` raises `Activated`.
+- **Launcher and announcements.** `Launches` and `Announcements` record files and
+  URIs handed to native applications and screen-reader announcements.
+
+The fakes check their arguments with the real services' rules. Disposing the host
+closes the platform, as closing a window does: every service then reports
+`OwnerClosed`, file leases are released and clipboard watches end. Monitors, the
+menu bar, taskbar badges and progress, and drags report `BackendUnavailable`. A
+ViewModel built by the test can take a `new RunicTestPlatform()` directly.
+
 ### Lower level
 
 `host.Transport` is the `InMemoryBridgeTransport`, the window's
@@ -692,3 +756,68 @@ browser. A test in TypeScript can follow the same protocol, described in the
 [Runic.Application.Views.Desktop automation](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Application.Views.Desktop/README.md#automation)
 section: start the application with `RUNIC_APPLICATION_SERVE_ONLY=1`, read the
 `RUNIC_APPLICATION_URL=` line, and write a line to its standard input to stop it.
+
+### Platform services in a browser test
+
+The application in a serve-only browser test runs in its own process, so a test
+scripts its platform fakes through files. The application opts in from a test
+build: call `services.AddRunicServeOnlyTestPlatform()` after its own
+`AddRunicPlatformServices()`. It does nothing unless the process runs with both
+`RUNIC_APPLICATION_SERVE_ONLY=1` and `RUNIC_TEST_PLATFORM_DIRECTORY` set. Then
+it registers the fakes only when the build opted in as well: the application's
+entry assembly must carry `[assembly: RunicServeOnlyTestPlatform]`, or the call
+throws `InvalidOperationException`. It also throws when the directory is
+missing or, outside Windows, when users other than its owner can write to it
+(`RunicServeOnlyTestPlatform.Create()` makes it `0700`). When the fakes are
+active, the first window logs warning 1158 `ServeOnlyTestPlatformActive` in the
+category `Runic.Application.Testing`. Production builds must not reference this
+package, so keep the call, the attribute and the reference behind a test-only
+build, for example:
+
+```xml
+<ItemGroup Condition="'$(Configuration)' == 'E2E'">
+  <PackageReference Include="Runic.Application.Testing" />
+</ItemGroup>
+<PropertyGroup Condition="'$(Configuration)' == 'E2E'">
+  <DefineConstants>$(DefineConstants);RUNIC_E2E</DefineConstants>
+</PropertyGroup>
+<ItemGroup Condition="'$(Configuration)' == 'E2E'">
+  <!-- The build-time opt-in that AddRunicServeOnlyTestPlatform checks at run time. -->
+  <AssemblyAttribute Include="Runic.Application.Testing.RunicServeOnlyTestPlatformAttribute" />
+</ItemGroup>
+```
+
+```csharp
+services.AddRunicPlatformServices();
+#if RUNIC_E2E
+services.AddRunicServeOnlyTestPlatform();
+#endif
+```
+
+The test creates a `RunicServeOnlyTestPlatform`, which owns a temporary directory,
+points the application at it and queues responses before the page action:
+
+```csharp
+using var platform = RunicServeOnlyTestPlatform.Create();
+var start = platform.Configure(RunicServeOnlyApplication.CreateStartInfo(appPath));
+await using var app = await RunicServeOnlyApplication.StartAsync(start);
+await page.GotoAsync(app.Url.ToString());
+
+platform.EnqueueSaveFile("report.csv");
+await page.GetByRole(AriaRole.Button, new() { Name = "Export" }).ClickAsync();
+var commit = await platform.WaitForEventAsync(e => e.Operation == "commit");
+Assert.Equal("a,b\n", commit.GetText("content"));
+```
+
+`EnqueueOpenFile`, `EnqueueSaveFile`, `EnqueueOpenDirectory`,
+`EnqueueFileDialogDismissed`, `EnqueueMessageBoxAnswer`,
+`EnqueueContextMenuChoice` and `SetClipboard` script the fakes. `ReadEvents()`
+and `WaitForEventAsync(match)` return each call the application made, such as
+`fileDialogs.saveFile` with its `title`, `fileDialogs.commit` with the file and
+its base64 `content`, `clipboard.write`, `messageBoxes.show` with the `button`
+chosen and `notifications.show`. Every window of the application shares one
+platform, since the script is one queue; closing a window does not close it.
+A scripted line that the application cannot apply, such as malformed JSON or an
+unknown service, does not fail the application's call: it is recorded as a
+`script.error` event with the `message`, and `WaitForEventAsync` then throws
+`InvalidOperationException` with that message.

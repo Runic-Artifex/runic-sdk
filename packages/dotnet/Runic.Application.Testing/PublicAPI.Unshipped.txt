@@ -2,3 +2,266 @@
 Runic.Application.Testing.RunicServeOnlyApplication.Urls.get -> System.Collections.Generic.IReadOnlyList<System.Uri!>!
 Runic.Application.Testing.RunicServeOnlyApplication.WaitForWindowUrlAsync(int index, System.TimeSpan timeout, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<System.Uri!>!
 Runic.Application.Testing.RunicServeOnlyApplication.WaitForWindowUrlAsync(string! windowType, System.TimeSpan timeout, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<System.Uri!>!
+const Runic.Application.Testing.RunicTestPlatformServiceCollectionExtensions.DirectoryEnvironmentVariable = "RUNIC_TEST_PLATFORM_DIRECTORY" -> string!
+override Runic.Application.Testing.RunicAnnouncementCall.Equals(object? obj) -> bool
+override Runic.Application.Testing.RunicAnnouncementCall.GetHashCode() -> int
+override Runic.Application.Testing.RunicAnnouncementCall.ToString() -> string!
+override Runic.Application.Testing.RunicContextMenuCall.Equals(object? obj) -> bool
+override Runic.Application.Testing.RunicContextMenuCall.GetHashCode() -> int
+override Runic.Application.Testing.RunicContextMenuCall.ToString() -> string!
+override Runic.Application.Testing.RunicFileDialogCall.Equals(object? obj) -> bool
+override Runic.Application.Testing.RunicFileDialogCall.GetHashCode() -> int
+override Runic.Application.Testing.RunicFileDialogCall.ToString() -> string!
+override Runic.Application.Testing.RunicLaunchCall.Equals(object? obj) -> bool
+override Runic.Application.Testing.RunicLaunchCall.GetHashCode() -> int
+override Runic.Application.Testing.RunicLaunchCall.ToString() -> string!
+override Runic.Application.Testing.RunicMessageBoxCall.Equals(object? obj) -> bool
+override Runic.Application.Testing.RunicMessageBoxCall.GetHashCode() -> int
+override Runic.Application.Testing.RunicMessageBoxCall.ToString() -> string!
+override Runic.Application.Testing.RunicTestPlatformEvent.Equals(object? obj) -> bool
+override Runic.Application.Testing.RunicTestPlatformEvent.GetHashCode() -> int
+override Runic.Application.Testing.RunicTestPlatformEvent.ToString() -> string!
+Runic.Application.Testing.RunicAnnouncementCall
+Runic.Application.Testing.RunicAnnouncementCall.<Clone>$() -> Runic.Application.Testing.RunicAnnouncementCall!
+Runic.Application.Testing.RunicAnnouncementCall.Deconstruct(out string! Message, out Runic.Platform.PlatformAnnouncementPriority Priority) -> void
+Runic.Application.Testing.RunicAnnouncementCall.Equals(Runic.Application.Testing.RunicAnnouncementCall? other) -> bool
+Runic.Application.Testing.RunicAnnouncementCall.Message.get -> string!
+Runic.Application.Testing.RunicAnnouncementCall.Message.init -> void
+Runic.Application.Testing.RunicAnnouncementCall.Priority.get -> Runic.Platform.PlatformAnnouncementPriority
+Runic.Application.Testing.RunicAnnouncementCall.Priority.init -> void
+Runic.Application.Testing.RunicAnnouncementCall.RunicAnnouncementCall(string! Message, Runic.Platform.PlatformAnnouncementPriority Priority) -> void
+Runic.Application.Testing.RunicContextMenuCall
+Runic.Application.Testing.RunicContextMenuCall.Chosen.get -> Runic.Platform.DesktopMenuItem?
+Runic.Application.Testing.RunicContextMenuCall.Chosen.init -> void
+Runic.Application.Testing.RunicContextMenuCall.<Clone>$() -> Runic.Application.Testing.RunicContextMenuCall!
+Runic.Application.Testing.RunicContextMenuCall.Deconstruct(out System.Collections.Immutable.ImmutableArray<Runic.Platform.DesktopMenuEntry!> Items, out Runic.Platform.DesktopContextMenuOptions? Options, out Runic.Application.Testing.RunicTestOutcome Outcome, out Runic.Platform.DesktopMenuItem? Chosen, out bool Scripted) -> void
+Runic.Application.Testing.RunicContextMenuCall.Equals(Runic.Application.Testing.RunicContextMenuCall? other) -> bool
+Runic.Application.Testing.RunicContextMenuCall.Items.get -> System.Collections.Immutable.ImmutableArray<Runic.Platform.DesktopMenuEntry!>
+Runic.Application.Testing.RunicContextMenuCall.Items.init -> void
+Runic.Application.Testing.RunicContextMenuCall.Options.get -> Runic.Platform.DesktopContextMenuOptions?
+Runic.Application.Testing.RunicContextMenuCall.Options.init -> void
+Runic.Application.Testing.RunicContextMenuCall.Outcome.get -> Runic.Application.Testing.RunicTestOutcome
+Runic.Application.Testing.RunicContextMenuCall.Outcome.init -> void
+Runic.Application.Testing.RunicContextMenuCall.RunicContextMenuCall(System.Collections.Immutable.ImmutableArray<Runic.Platform.DesktopMenuEntry!> Items, Runic.Platform.DesktopContextMenuOptions? Options, Runic.Application.Testing.RunicTestOutcome Outcome, Runic.Platform.DesktopMenuItem? Chosen, bool Scripted) -> void
+Runic.Application.Testing.RunicContextMenuCall.Scripted.get -> bool
+Runic.Application.Testing.RunicContextMenuCall.Scripted.init -> void
+Runic.Application.Testing.RunicFileDialogCall
+Runic.Application.Testing.RunicFileDialogCall.<Clone>$() -> Runic.Application.Testing.RunicFileDialogCall!
+Runic.Application.Testing.RunicFileDialogCall.Deconstruct(out Runic.Application.Testing.RunicFileDialogKind Kind, out Runic.Application.Testing.RunicTestOutcome Outcome) -> void
+Runic.Application.Testing.RunicFileDialogCall.Directories.get -> System.Collections.Immutable.ImmutableArray<string!>
+Runic.Application.Testing.RunicFileDialogCall.Directories.init -> void
+Runic.Application.Testing.RunicFileDialogCall.DirectoryOptions.get -> Runic.Platform.OpenDirectoryOptions?
+Runic.Application.Testing.RunicFileDialogCall.DirectoryOptions.init -> void
+Runic.Application.Testing.RunicFileDialogCall.Equals(Runic.Application.Testing.RunicFileDialogCall? other) -> bool
+Runic.Application.Testing.RunicFileDialogCall.Files.get -> System.Collections.Immutable.ImmutableArray<Runic.Application.Testing.RunicTestFile!>
+Runic.Application.Testing.RunicFileDialogCall.Files.init -> void
+Runic.Application.Testing.RunicFileDialogCall.Kind.get -> Runic.Application.Testing.RunicFileDialogKind
+Runic.Application.Testing.RunicFileDialogCall.Kind.init -> void
+Runic.Application.Testing.RunicFileDialogCall.OpenOptions.get -> Runic.Platform.OpenFileOptions?
+Runic.Application.Testing.RunicFileDialogCall.OpenOptions.init -> void
+Runic.Application.Testing.RunicFileDialogCall.Outcome.get -> Runic.Application.Testing.RunicTestOutcome
+Runic.Application.Testing.RunicFileDialogCall.Outcome.init -> void
+Runic.Application.Testing.RunicFileDialogCall.RunicFileDialogCall(Runic.Application.Testing.RunicFileDialogKind Kind, Runic.Application.Testing.RunicTestOutcome Outcome) -> void
+Runic.Application.Testing.RunicFileDialogCall.SaveOptions.get -> Runic.Platform.SaveFileOptions?
+Runic.Application.Testing.RunicFileDialogCall.SaveOptions.init -> void
+Runic.Application.Testing.RunicFileDialogCall.Scripted.get -> bool
+Runic.Application.Testing.RunicFileDialogCall.Scripted.init -> void
+Runic.Application.Testing.RunicFileDialogKind
+Runic.Application.Testing.RunicFileDialogKind.OpenDirectories = 6 -> Runic.Application.Testing.RunicFileDialogKind
+Runic.Application.Testing.RunicFileDialogKind.OpenDirectory = 5 -> Runic.Application.Testing.RunicFileDialogKind
+Runic.Application.Testing.RunicFileDialogKind.OpenDocument = 2 -> Runic.Application.Testing.RunicFileDialogKind
+Runic.Application.Testing.RunicFileDialogKind.OpenFile = 0 -> Runic.Application.Testing.RunicFileDialogKind
+Runic.Application.Testing.RunicFileDialogKind.OpenFiles = 1 -> Runic.Application.Testing.RunicFileDialogKind
+Runic.Application.Testing.RunicFileDialogKind.SaveDocument = 4 -> Runic.Application.Testing.RunicFileDialogKind
+Runic.Application.Testing.RunicFileDialogKind.SaveFile = 3 -> Runic.Application.Testing.RunicFileDialogKind
+Runic.Application.Testing.RunicLaunchCall
+Runic.Application.Testing.RunicLaunchCall.<Clone>$() -> Runic.Application.Testing.RunicLaunchCall!
+Runic.Application.Testing.RunicLaunchCall.Deconstruct(out string? Path, out System.Uri? Uri, out Runic.Platform.DesktopFileOperation Operation) -> void
+Runic.Application.Testing.RunicLaunchCall.Equals(Runic.Application.Testing.RunicLaunchCall? other) -> bool
+Runic.Application.Testing.RunicLaunchCall.Operation.get -> Runic.Platform.DesktopFileOperation
+Runic.Application.Testing.RunicLaunchCall.Operation.init -> void
+Runic.Application.Testing.RunicLaunchCall.Path.get -> string?
+Runic.Application.Testing.RunicLaunchCall.Path.init -> void
+Runic.Application.Testing.RunicLaunchCall.RunicLaunchCall(string? Path, System.Uri? Uri, Runic.Platform.DesktopFileOperation Operation) -> void
+Runic.Application.Testing.RunicLaunchCall.Uri.get -> System.Uri?
+Runic.Application.Testing.RunicLaunchCall.Uri.init -> void
+Runic.Application.Testing.RunicMessageBoxCall
+Runic.Application.Testing.RunicMessageBoxCall.Answer.get -> Runic.Platform.DesktopMessageBoxButton?
+Runic.Application.Testing.RunicMessageBoxCall.Answer.init -> void
+Runic.Application.Testing.RunicMessageBoxCall.<Clone>$() -> Runic.Application.Testing.RunicMessageBoxCall!
+Runic.Application.Testing.RunicMessageBoxCall.Deconstruct(out Runic.Platform.DesktopMessageBox! MessageBox, out Runic.Application.Testing.RunicTestOutcome Outcome, out Runic.Platform.DesktopMessageBoxButton? Answer, out bool Scripted) -> void
+Runic.Application.Testing.RunicMessageBoxCall.Equals(Runic.Application.Testing.RunicMessageBoxCall? other) -> bool
+Runic.Application.Testing.RunicMessageBoxCall.MessageBox.get -> Runic.Platform.DesktopMessageBox!
+Runic.Application.Testing.RunicMessageBoxCall.MessageBox.init -> void
+Runic.Application.Testing.RunicMessageBoxCall.Outcome.get -> Runic.Application.Testing.RunicTestOutcome
+Runic.Application.Testing.RunicMessageBoxCall.Outcome.init -> void
+Runic.Application.Testing.RunicMessageBoxCall.RunicMessageBoxCall(Runic.Platform.DesktopMessageBox! MessageBox, Runic.Application.Testing.RunicTestOutcome Outcome, Runic.Platform.DesktopMessageBoxButton? Answer, bool Scripted) -> void
+Runic.Application.Testing.RunicMessageBoxCall.Scripted.get -> bool
+Runic.Application.Testing.RunicMessageBoxCall.Scripted.init -> void
+Runic.Application.Testing.RunicServeOnlyTestPlatform
+Runic.Application.Testing.RunicServeOnlyTestPlatform.Configure(System.Diagnostics.ProcessStartInfo! startInfo) -> System.Diagnostics.ProcessStartInfo!
+Runic.Application.Testing.RunicServeOnlyTestPlatform.Directory.get -> string!
+Runic.Application.Testing.RunicServeOnlyTestPlatform.Dispose() -> void
+Runic.Application.Testing.RunicServeOnlyTestPlatform.EnqueueContextMenuChoice(string! commandId, string? commandParameter = null) -> void
+Runic.Application.Testing.RunicServeOnlyTestPlatform.EnqueueContextMenuDismissed() -> void
+Runic.Application.Testing.RunicServeOnlyTestPlatform.EnqueueFileDialogDismissed() -> void
+Runic.Application.Testing.RunicServeOnlyTestPlatform.EnqueueFileDialogFailed(Runic.Platform.PlatformFailureCode code) -> void
+Runic.Application.Testing.RunicServeOnlyTestPlatform.EnqueueFileDialogUnavailable(Runic.Platform.PlatformUnavailableReason reason) -> void
+Runic.Application.Testing.RunicServeOnlyTestPlatform.EnqueueMessageBoxAnswer(string? buttonId) -> void
+Runic.Application.Testing.RunicServeOnlyTestPlatform.EnqueueOpenDirectory(params string![]! paths) -> void
+Runic.Application.Testing.RunicServeOnlyTestPlatform.EnqueueOpenFile(string! name, string! text) -> void
+Runic.Application.Testing.RunicServeOnlyTestPlatform.EnqueueOpenFile(string! name, System.ReadOnlySpan<byte> content) -> void
+Runic.Application.Testing.RunicServeOnlyTestPlatform.EnqueueSaveFile(string! name) -> void
+Runic.Application.Testing.RunicServeOnlyTestPlatform.ReadEvents() -> System.Collections.Generic.IReadOnlyList<Runic.Application.Testing.RunicTestPlatformEvent!>!
+Runic.Application.Testing.RunicServeOnlyTestPlatform.SetClipboard(Runic.Platform.DesktopClipboardContent? content) -> void
+Runic.Application.Testing.RunicServeOnlyTestPlatform.SetClipboardText(string! text) -> void
+Runic.Application.Testing.RunicServeOnlyTestPlatform.WaitForEventAsync(System.Func<Runic.Application.Testing.RunicTestPlatformEvent!, bool>! match, System.TimeSpan? timeout = null, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<Runic.Application.Testing.RunicTestPlatformEvent!>!
+Runic.Application.Testing.RunicTestClipboard
+Runic.Application.Testing.RunicTestClipboard.Content.get -> Runic.Platform.DesktopClipboardContent?
+Runic.Application.Testing.RunicTestClipboard.GetFormatsAsync(System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Platform.PlatformResult<Runic.Platform.DesktopClipboardFormats>!>
+Runic.Application.Testing.RunicTestClipboard.ReadFilesAsync(int maximumCount, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Platform.PlatformResult<System.Collections.Immutable.ImmutableArray<string!>>!>
+Runic.Application.Testing.RunicTestClipboard.ReadHtmlAsync(int maximumCharacters, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Platform.PlatformResult<string?>!>
+Runic.Application.Testing.RunicTestClipboard.ReadImageAsync(int maximumBytes, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Platform.PlatformResult<byte[]?>!>
+Runic.Application.Testing.RunicTestClipboard.ReadRtfAsync(int maximumCharacters, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Platform.PlatformResult<string?>!>
+Runic.Application.Testing.RunicTestClipboard.ReadTextAsync(int maximumCharacters, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Platform.PlatformResult<string?>!>
+Runic.Application.Testing.RunicTestClipboard.SetContent(Runic.Platform.DesktopClipboardContent? content) -> void
+Runic.Application.Testing.RunicTestClipboard.SetText(string! text) -> void
+Runic.Application.Testing.RunicTestClipboard.UnavailableReason.get -> Runic.Platform.PlatformUnavailableReason?
+Runic.Application.Testing.RunicTestClipboard.UnavailableReason.set -> void
+Runic.Application.Testing.RunicTestClipboard.WatchAsync(System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Collections.Generic.IAsyncEnumerable<Runic.Platform.PlatformResult<Runic.Platform.DesktopClipboardFormats>!>!
+Runic.Application.Testing.RunicTestClipboard.WriteAsync(Runic.Platform.DesktopClipboardContent! content, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Platform.PlatformResult<Runic.Platform.PlatformUnit>!>
+Runic.Application.Testing.RunicTestClipboard.Writes.get -> System.Collections.Generic.IReadOnlyList<Runic.Platform.DesktopClipboardContent!>!
+Runic.Application.Testing.RunicTestClipboard.WriteTextAsync(string! text, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Platform.PlatformResult<Runic.Platform.PlatformUnit>!>
+Runic.Application.Testing.RunicTestContextMenus
+Runic.Application.Testing.RunicTestContextMenus.Calls.get -> System.Collections.Generic.IReadOnlyList<Runic.Application.Testing.RunicContextMenuCall!>!
+Runic.Application.Testing.RunicTestContextMenus.EnqueueChoice(string! commandId, string? commandParameter = null) -> void
+Runic.Application.Testing.RunicTestContextMenus.EnqueueDismissed() -> void
+Runic.Application.Testing.RunicTestContextMenus.UnavailableReason.get -> Runic.Platform.PlatformUnavailableReason?
+Runic.Application.Testing.RunicTestContextMenus.UnavailableReason.set -> void
+Runic.Application.Testing.RunicTestFile
+Runic.Application.Testing.RunicTestFile.CommittedWrites.get -> System.Collections.Generic.IReadOnlyList<System.Collections.Immutable.ImmutableArray<byte>>!
+Runic.Application.Testing.RunicTestFile.Delete() -> void
+Runic.Application.Testing.RunicTestFileDialogs
+Runic.Application.Testing.RunicTestFileDialogs.Calls.get -> System.Collections.Generic.IReadOnlyList<Runic.Application.Testing.RunicFileDialogCall!>!
+Runic.Application.Testing.RunicTestFileDialogs.EnqueueDismissed() -> void
+Runic.Application.Testing.RunicTestFileDialogs.EnqueueFailed(Runic.Platform.PlatformFailureCode code) -> void
+Runic.Application.Testing.RunicTestFileDialogs.EnqueueOpenDirectory(params string![]! paths) -> void
+Runic.Application.Testing.RunicTestFileDialogs.EnqueueOpenFiles(params Runic.Application.Testing.RunicTestFile![]! files) -> void
+Runic.Application.Testing.RunicTestFileDialogs.EnqueueOpen(Runic.Application.Testing.RunicTestFile! file) -> Runic.Application.Testing.RunicTestFile!
+Runic.Application.Testing.RunicTestFileDialogs.EnqueueOpen(Runic.Application.Testing.RunicTestFile! file, Runic.Platform.FileDialogFilter? selectedFilter) -> Runic.Application.Testing.RunicTestFile!
+Runic.Application.Testing.RunicTestFileDialogs.EnqueueOpen(string! name, string! text) -> Runic.Application.Testing.RunicTestFile!
+Runic.Application.Testing.RunicTestFileDialogs.EnqueueOpen(string! name, System.ReadOnlySpan<byte> content) -> Runic.Application.Testing.RunicTestFile!
+Runic.Application.Testing.RunicTestFileDialogs.EnqueueSave(Runic.Application.Testing.RunicTestFile! file) -> Runic.Application.Testing.RunicTestFile!
+Runic.Application.Testing.RunicTestFileDialogs.EnqueueSave(Runic.Application.Testing.RunicTestFile! file, Runic.Platform.FileDialogFilter? selectedFilter) -> Runic.Application.Testing.RunicTestFile!
+Runic.Application.Testing.RunicTestFileDialogs.EnqueueSave(string! name) -> Runic.Application.Testing.RunicTestFile!
+Runic.Application.Testing.RunicTestFileDialogs.EnqueueUnavailable(Runic.Platform.PlatformUnavailableReason reason) -> void
+Runic.Application.Testing.RunicTestFileDialogs.OpenDirectoriesAsync(Runic.Platform.OpenDirectoryOptions! options, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Platform.PickerResult<Runic.Platform.IDirectoryLeaseList!>!>
+Runic.Application.Testing.RunicTestFileDialogs.OpenDirectoryAsync(Runic.Platform.OpenDirectoryOptions! options, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Platform.PickerResult<Runic.Platform.IDirectoryLease!>!>
+Runic.Application.Testing.RunicTestFileDialogs.OpenDocumentAsync(Runic.Platform.OpenFileOptions! options, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Platform.PickerResult<Runic.Platform.IDocumentFileLease!>!>
+Runic.Application.Testing.RunicTestFileDialogs.OpenFileAsync(Runic.Platform.OpenFileOptions! options, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Platform.PickerResult<Runic.Platform.IReadFileLease!>!>
+Runic.Application.Testing.RunicTestFileDialogs.OpenFilesAsync(Runic.Platform.OpenFileOptions! options, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Platform.PickerResult<Runic.Platform.IReadFileLeaseList!>!>
+Runic.Application.Testing.RunicTestFileDialogs.Pending.get -> int
+Runic.Application.Testing.RunicTestFileDialogs.SaveDocumentAsync(Runic.Platform.SaveFileOptions! options, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Platform.PickerResult<Runic.Platform.IDocumentFileLease!>!>
+Runic.Application.Testing.RunicTestFileDialogs.SaveFileAsync(Runic.Platform.SaveFileOptions! options, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Platform.PickerResult<Runic.Platform.ISaveFileLease!>!>
+Runic.Application.Testing.RunicTestFile.DisplayName.get -> string!
+Runic.Application.Testing.RunicTestFile.EnqueueCommitResult(Runic.Platform.FileCommitResult! result) -> void
+Runic.Application.Testing.RunicTestFile.Exists.get -> bool
+Runic.Application.Testing.RunicTestFile.LocalPath.get -> string!
+Runic.Application.Testing.RunicTestFile.ReadAllBytes() -> byte[]!
+Runic.Application.Testing.RunicTestFile.ReadAllText() -> string!
+Runic.Application.Testing.RunicTestFile.RunicTestFile(string! name, System.ReadOnlySpan<byte> content) -> void
+Runic.Application.Testing.RunicTestFile.Write(System.ReadOnlySpan<byte> content) -> void
+Runic.Application.Testing.RunicTestFile.WriteText(string! text) -> void
+Runic.Application.Testing.RunicTestFile.WriteUnavailable.get -> Runic.Platform.PlatformUnavailableReason?
+Runic.Application.Testing.RunicTestFile.WriteUnavailable.set -> void
+Runic.Application.Testing.RunicTestMessageBoxes
+Runic.Application.Testing.RunicTestMessageBoxes.Calls.get -> System.Collections.Generic.IReadOnlyList<Runic.Application.Testing.RunicMessageBoxCall!>!
+Runic.Application.Testing.RunicTestMessageBoxes.EnqueueAnswer(string? buttonId) -> void
+Runic.Application.Testing.RunicTestMessageBoxes.EnqueueFailed(Runic.Platform.PlatformFailureCode code) -> void
+Runic.Application.Testing.RunicTestMessageBoxes.EnqueueUnavailable(Runic.Platform.PlatformUnavailableReason reason) -> void
+Runic.Application.Testing.RunicTestMessageBoxes.Pending.get -> int
+Runic.Application.Testing.RunicTestMessageBoxes.ShowAsync(Runic.Platform.DesktopMessageBox! messageBox, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Platform.PlatformResult<Runic.Platform.DesktopMessageBoxButton?>!>
+Runic.Application.Testing.RunicTestNotifications
+Runic.Application.Testing.RunicTestNotifications.Activated -> System.EventHandler<Runic.Platform.DesktopNotificationActivation!>?
+Runic.Application.Testing.RunicTestNotifications.Activate(string! notificationId, string? actionId = null, bool trusted = true) -> Runic.Platform.DesktopNotificationActivation!
+Runic.Application.Testing.RunicTestNotifications.Current.get -> System.Collections.Generic.IReadOnlyList<Runic.Platform.DesktopNotification!>!
+Runic.Application.Testing.RunicTestNotifications.DisposeAsync() -> System.Threading.Tasks.ValueTask
+Runic.Application.Testing.RunicTestNotifications.PermissionRequests.get -> int
+Runic.Application.Testing.RunicTestNotifications.PermissionResult.get -> Runic.Platform.PlatformResult<Runic.Platform.PlatformUnit>!
+Runic.Application.Testing.RunicTestNotifications.PermissionResult.set -> void
+Runic.Application.Testing.RunicTestNotifications.RemoveAsync(string! id, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Platform.PlatformResult<Runic.Platform.PlatformUnit>!>
+Runic.Application.Testing.RunicTestNotifications.Removed.get -> System.Collections.Generic.IReadOnlyList<string!>!
+Runic.Application.Testing.RunicTestNotifications.RequestPermissionAsync(System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Platform.PlatformResult<Runic.Platform.PlatformUnit>!>
+Runic.Application.Testing.RunicTestNotifications.RunicTestNotifications() -> void
+Runic.Application.Testing.RunicTestNotifications.ShowAsync(Runic.Platform.DesktopNotification! notification, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Platform.PlatformResult<Runic.Platform.PlatformUnit>!>
+Runic.Application.Testing.RunicTestNotifications.Shown.get -> System.Collections.Generic.IReadOnlyList<Runic.Platform.DesktopNotification!>!
+Runic.Application.Testing.RunicTestNotifications.Status.get -> Runic.Platform.CapabilityStatus!
+Runic.Application.Testing.RunicTestNotifications.UnavailableReason.get -> Runic.Platform.PlatformUnavailableReason?
+Runic.Application.Testing.RunicTestNotifications.UnavailableReason.set -> void
+Runic.Application.Testing.RunicTestOutcome
+Runic.Application.Testing.RunicTestOutcome.Dismissed = 1 -> Runic.Application.Testing.RunicTestOutcome
+Runic.Application.Testing.RunicTestOutcome.Failed = 3 -> Runic.Application.Testing.RunicTestOutcome
+Runic.Application.Testing.RunicTestOutcome.Selected = 0 -> Runic.Application.Testing.RunicTestOutcome
+Runic.Application.Testing.RunicTestOutcome.Unavailable = 2 -> Runic.Application.Testing.RunicTestOutcome
+Runic.Application.Testing.RunicTestPlatform
+Runic.Application.Testing.RunicTestPlatform.AnnounceAsync(string! message, Runic.Platform.PlatformAnnouncementPriority priority = Runic.Platform.PlatformAnnouncementPriority.Polite, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Platform.PlatformResult<Runic.Platform.PlatformUnit>!>
+Runic.Application.Testing.RunicTestPlatform.Announcements.get -> System.Collections.Generic.IReadOnlyList<Runic.Application.Testing.RunicAnnouncementCall!>!
+Runic.Application.Testing.RunicTestPlatform.Clipboard.get -> Runic.Application.Testing.RunicTestClipboard!
+Runic.Application.Testing.RunicTestPlatform.Close() -> void
+Runic.Application.Testing.RunicTestPlatform.ContextMenus.get -> Runic.Application.Testing.RunicTestContextMenus!
+Runic.Application.Testing.RunicTestPlatform.DisposeAsync() -> System.Threading.Tasks.ValueTask
+Runic.Application.Testing.RunicTestPlatform.Dispose() -> void
+Runic.Application.Testing.RunicTestPlatformEvent
+Runic.Application.Testing.RunicTestPlatformEvent.<Clone>$() -> Runic.Application.Testing.RunicTestPlatformEvent!
+Runic.Application.Testing.RunicTestPlatformEvent.Deconstruct(out long Sequence, out string! Service, out string! Operation, out System.Collections.Generic.IReadOnlyDictionary<string!, string!>! Values) -> void
+Runic.Application.Testing.RunicTestPlatformEvent.Equals(Runic.Application.Testing.RunicTestPlatformEvent? other) -> bool
+Runic.Application.Testing.RunicTestPlatformEvent.GetBytes(string! name) -> byte[]?
+Runic.Application.Testing.RunicTestPlatformEvent.Get(string! name) -> string?
+Runic.Application.Testing.RunicTestPlatformEvent.GetText(string! name) -> string?
+Runic.Application.Testing.RunicTestPlatformEvent.Operation.get -> string!
+Runic.Application.Testing.RunicTestPlatformEvent.Operation.init -> void
+Runic.Application.Testing.RunicTestPlatformEvent.RunicTestPlatformEvent(long Sequence, string! Service, string! Operation, System.Collections.Generic.IReadOnlyDictionary<string!, string!>! Values) -> void
+Runic.Application.Testing.RunicTestPlatformEvent.Sequence.get -> long
+Runic.Application.Testing.RunicTestPlatformEvent.Sequence.init -> void
+Runic.Application.Testing.RunicTestPlatformEvent.Service.get -> string!
+Runic.Application.Testing.RunicTestPlatformEvent.Service.init -> void
+Runic.Application.Testing.RunicTestPlatformEvent.Values.get -> System.Collections.Generic.IReadOnlyDictionary<string!, string!>!
+Runic.Application.Testing.RunicTestPlatformEvent.Values.init -> void
+Runic.Application.Testing.RunicTestPlatform.FileDialogs.get -> Runic.Application.Testing.RunicTestFileDialogs!
+Runic.Application.Testing.RunicTestPlatform.GetSnapshot() -> Runic.Platform.CapabilitySnapshot!
+Runic.Application.Testing.RunicTestPlatform.IsClosed.get -> bool
+Runic.Application.Testing.RunicTestPlatform.LaunchAsync(string! path, Runic.Platform.DesktopFileOperation operation = Runic.Platform.DesktopFileOperation.Open, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Platform.PlatformResult<Runic.Platform.PlatformUnit>!>
+Runic.Application.Testing.RunicTestPlatform.Launches.get -> System.Collections.Generic.IReadOnlyList<Runic.Application.Testing.RunicLaunchCall!>!
+Runic.Application.Testing.RunicTestPlatform.LaunchResult.get -> Runic.Platform.PlatformResult<Runic.Platform.PlatformUnit>!
+Runic.Application.Testing.RunicTestPlatform.LaunchResult.set -> void
+Runic.Application.Testing.RunicTestPlatform.LaunchUriAsync(System.Uri! uri, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Platform.PlatformResult<Runic.Platform.PlatformUnit>!>
+Runic.Application.Testing.RunicTestPlatform.MessageBoxes.get -> Runic.Application.Testing.RunicTestMessageBoxes!
+Runic.Application.Testing.RunicTestPlatform.Notifications.get -> Runic.Application.Testing.RunicTestNotifications!
+Runic.Application.Testing.RunicTestPlatform.RunicTestPlatform(Runic.Application.Testing.RunicTestNotifications! notifications) -> void
+Runic.Application.Testing.RunicTestPlatform.RunicTestPlatform() -> void
+Runic.Application.Testing.RunicTestPlatformServiceCollectionExtensions
+Runic.Application.Testing.RunicTestPlatform.SetBadgeAsync(Runic.Platform.DesktopBadge? badge, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Platform.PlatformResult<Runic.Platform.PlatformUnit>!>
+Runic.Application.Testing.RunicTestPlatform.SetProgressAsync(Runic.Platform.DesktopProgress? progress, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Platform.PlatformResult<Runic.Platform.PlatformUnit>!>
+Runic.Application.Testing.RunicTestPlatform.ShowContextMenuAsync(System.Collections.Immutable.ImmutableArray<Runic.Platform.DesktopMenuEntry!> items, Runic.Platform.DesktopContextMenuOptions? options = null, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Platform.PlatformResult<Runic.Platform.DesktopMenuItem?>!>
+Runic.Application.Testing.RunicTestPlatform.StartDragAsync(Runic.Platform.DesktopDragData! data, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Platform.PlatformResult<Runic.Platform.DesktopDragEffects>!>
+Runic.Application.Testing.RunicWindowTestHost<TViewModel>.Platform.get -> Runic.Application.Testing.RunicTestPlatform?
+static Runic.Application.Testing.RunicAnnouncementCall.operator !=(Runic.Application.Testing.RunicAnnouncementCall? left, Runic.Application.Testing.RunicAnnouncementCall? right) -> bool
+static Runic.Application.Testing.RunicAnnouncementCall.operator ==(Runic.Application.Testing.RunicAnnouncementCall? left, Runic.Application.Testing.RunicAnnouncementCall? right) -> bool
+static Runic.Application.Testing.RunicContextMenuCall.operator !=(Runic.Application.Testing.RunicContextMenuCall? left, Runic.Application.Testing.RunicContextMenuCall? right) -> bool
+static Runic.Application.Testing.RunicContextMenuCall.operator ==(Runic.Application.Testing.RunicContextMenuCall? left, Runic.Application.Testing.RunicContextMenuCall? right) -> bool
+static Runic.Application.Testing.RunicFileDialogCall.operator !=(Runic.Application.Testing.RunicFileDialogCall? left, Runic.Application.Testing.RunicFileDialogCall? right) -> bool
+static Runic.Application.Testing.RunicFileDialogCall.operator ==(Runic.Application.Testing.RunicFileDialogCall? left, Runic.Application.Testing.RunicFileDialogCall? right) -> bool
+static Runic.Application.Testing.RunicLaunchCall.operator !=(Runic.Application.Testing.RunicLaunchCall? left, Runic.Application.Testing.RunicLaunchCall? right) -> bool
+static Runic.Application.Testing.RunicLaunchCall.operator ==(Runic.Application.Testing.RunicLaunchCall? left, Runic.Application.Testing.RunicLaunchCall? right) -> bool
+static Runic.Application.Testing.RunicMessageBoxCall.operator !=(Runic.Application.Testing.RunicMessageBoxCall? left, Runic.Application.Testing.RunicMessageBoxCall? right) -> bool
+static Runic.Application.Testing.RunicMessageBoxCall.operator ==(Runic.Application.Testing.RunicMessageBoxCall? left, Runic.Application.Testing.RunicMessageBoxCall? right) -> bool
+static Runic.Application.Testing.RunicServeOnlyTestPlatform.Create() -> Runic.Application.Testing.RunicServeOnlyTestPlatform!
+static Runic.Application.Testing.RunicTestFile.FromText(string! name, string! text) -> Runic.Application.Testing.RunicTestFile!
+static Runic.Application.Testing.RunicTestFile.Missing(string! name) -> Runic.Application.Testing.RunicTestFile!
+static Runic.Application.Testing.RunicTestPlatformEvent.operator !=(Runic.Application.Testing.RunicTestPlatformEvent? left, Runic.Application.Testing.RunicTestPlatformEvent? right) -> bool
+static Runic.Application.Testing.RunicTestPlatformEvent.operator ==(Runic.Application.Testing.RunicTestPlatformEvent? left, Runic.Application.Testing.RunicTestPlatformEvent? right) -> bool
+static Runic.Application.Testing.RunicTestPlatformServiceCollectionExtensions.AddRunicServeOnlyTestPlatform(this Microsoft.Extensions.DependencyInjection.IServiceCollection! services) -> Microsoft.Extensions.DependencyInjection.IServiceCollection!
+static Runic.Application.Testing.RunicTestPlatformServiceCollectionExtensions.AddRunicTestPlatform(this Microsoft.Extensions.DependencyInjection.IServiceCollection! services) -> Microsoft.Extensions.DependencyInjection.IServiceCollection!
+Runic.Application.Testing.RunicTestFile.EnqueueCommitResult(Runic.Platform.FileCommitResult! result, bool applied) -> void
+Runic.Application.Testing.RunicServeOnlyTestPlatformAttribute
+Runic.Application.Testing.RunicServeOnlyTestPlatformAttribute.RunicServeOnlyTestPlatformAttribute() -> void
