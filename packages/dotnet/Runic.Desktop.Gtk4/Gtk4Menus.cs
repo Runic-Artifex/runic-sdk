@@ -248,7 +248,7 @@ internal sealed partial class Gtk4WindowHost : IDesktopMenuWindowHost
             {
                 action.SetEnabled(entry.Enabled && entry.Item is { } item && commands is not null && commands.CanExecute(item));
                 if (entry is not { Kind: PlannedMenuKind.Check or PlannedMenuKind.Radio, Item: { } toggle }) continue;
-                var isChecked = (commands is not null ? commands.IsChecked(toggle) : toggle.IsChecked) == true;
+                var isChecked = ((commands is not null ? commands.IsChecked(toggle) : null) ?? toggle.IsChecked) == true;
                 if (entry.Kind == PlannedMenuKind.Check)
                     action.SetState(GLib.Variant.NewBoolean(isChecked));
                 else
@@ -440,7 +440,7 @@ internal sealed partial class Gtk4WindowHost : IDesktopMenuWindowHost
 
         public bool CanExecute(DesktopMenuItem item) => host.MenuCommands is { } commands && commands.CanExecute(item);
 
-        public bool? IsChecked(DesktopMenuItem item) => host.MenuCommands is { } commands ? commands.IsChecked(item) : item.IsChecked;
+        public bool? IsChecked(DesktopMenuItem item) => (host.MenuCommands is { } commands ? commands.IsChecked(item) : null) ?? item.IsChecked;
 
         public void Execute(DesktopMenuItem item) => host.RunMenuItem(item);
 

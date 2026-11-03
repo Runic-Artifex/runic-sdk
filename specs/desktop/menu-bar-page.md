@@ -118,8 +118,8 @@ of unknown kinds and reads an unknown `placement` as `none`, `shortcuts` as `hos
 | `shortcut`, `shortcutText`, `ariaKeyShortcuts` | | when declared and not reserved | |
 
 - `checked` is present when the item declares `IsChecked`, and its value is the window's
-  command path's answer: the window's `MenuCommands.IsChecked(item)`, then
-  `DesktopHost.MenuCommands`, else the declaration. A Runic Window's root ViewModel
+  command path's answer: the first non-null `IsChecked(item)` of the window's
+  `MenuCommands`, then `DesktopHost.MenuCommands`, else the declaration. A Runic Window's root ViewModel
   answers through `IRunicMenuCheckedSource`, and the host pushes a new state when the
   answer changes. Each radio item carries its own value; a page shows them as given.
 - `key` is stable while the declaration keeps the entry at its position with the same

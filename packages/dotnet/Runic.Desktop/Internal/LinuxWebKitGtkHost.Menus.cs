@@ -258,7 +258,7 @@ internal sealed partial class LinuxWebKitGtkHost
         }
     }
 
-    private bool? IsMenuItemChecked(DesktopMenuItem item) => MenuCommands is { } commands ? commands.IsChecked(item) : item.IsChecked;
+    private bool? IsMenuItemChecked(DesktopMenuItem item) => (MenuCommands is { } commands ? commands.IsChecked(item) : null) ?? item.IsChecked;
 
     private bool CanExecuteMenuItem(DesktopMenuItem item) => MenuCommands is { } commands && commands.CanExecute(item);
 

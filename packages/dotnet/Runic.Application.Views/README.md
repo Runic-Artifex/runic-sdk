@@ -688,7 +688,9 @@ new DesktopMenu("View",
 Check marks follow the ViewModel when it also implements
 `IRunicMenuCheckedSource`. The host asks it for each item declared with
 `IsChecked`, in the model turn, when the Window opens, after `SetMenuBar` and
-whenever the ViewModel raises `PropertyChanged`; `null` keeps the declaration.
+in the turn after the root ViewModel raises `PropertyChanged` (one read for any
+number of changes in a turn). `null` leaves the item to the application's commands
+and then to its declaration.
 Each Window answers for its own bar, so the native bar follows the key window,
 and the page's bar and a Linux global menu show the same marks:
 
@@ -708,7 +710,11 @@ public sealed partial class EditorViewModel : ObservableObject, IRunicMenuComman
 ```
 
 ReactiveUI ViewModels raise `PropertyChanged` from `RaiseAndSetIfChanged` the
-same way. A custom `IDesktopMenuCommandTarget` overrides `IsChecked(item)`.
+same way. Only the root ViewModel's `PropertyChanged` is followed: when a mark
+depends on a child ViewModel or on state outside the ViewModels, call
+`RunicMenu.Refresh(rootViewModel)` (or `RunicMenu.RefreshAll()`) after it changed.
+A custom `IDesktopMenuCommandTarget` overrides `IsChecked(item)` and returns `null`
+for items it has no answer for.
 
 A failure is logged as event 2004, `DesktopMenuCommandFailed` (2102,
 `CsWebUiMenuCommandFailed`, on CS-WebUI). An id the

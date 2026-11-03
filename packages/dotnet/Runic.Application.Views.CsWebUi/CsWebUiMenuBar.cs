@@ -105,7 +105,7 @@ namespace Runic.Application.Views.CsWebUi
         {
             var result = new (bool Enabled, bool? Checked)[items.Count];
             for (var index = 0; index < items.Count; index++)
-                result[index] = (CanExecute(items[index]), commands is not null ? commands.IsChecked(items[index]) : items[index].IsChecked);
+                result[index] = (CanExecute(items[index]), (commands is not null ? commands.IsChecked(items[index]) : null) ?? items[index].IsChecked);
             return Task.FromResult(result);
         }
 

@@ -843,9 +843,10 @@ that no target can run is disabled. An item or menu declared with
 items too. An item declared with `IsChecked` is a check item whose mark
 follows the target's `IsChecked(item)`, asked where `CanExecute` is: as a menu
 opens (macOS, Win32, GTK 3 and 4, a desktop's global menu) and when an in-page
-bar's state is built. The default answers the declaration; the key window's
-target answers first, and the application's when the window's answer is the
-declaration, so marks follow the front window without `SetMenuBar`. Items with the same `RadioGroup` in
+bar's state is built. The key window's target is asked first and the
+application's next; the first non-null answer decides, also one equal to the
+declaration, and the default `null` leaves the item to the declaration. Marks
+therefore follow the front window without `SetMenuBar`. Items with the same `RadioGroup` in
 one menu are radio items, of which one is checked (`DesktopHost.Validate`
 reports `menu-radio-checked` for more); macOS shows them with the check mark.
 `AccessKey` is a letter or digit that Windows and Linux underline and open with

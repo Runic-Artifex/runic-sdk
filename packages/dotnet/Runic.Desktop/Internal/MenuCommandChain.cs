@@ -39,8 +39,8 @@ internal sealed class MenuCommandChain(Func<IDesktopMenuCommandTarget?> applicat
 
     public bool? IsChecked(DesktopMenuItem item) => IsChecked(item, Window, application(), logger);
 
-    // The check mark of a check or radio item: the first target whose answer differs from the declaration, the window's
-    // before the application's, else the declaration. Null for an item declared without one. A target that throws is
+    // The check mark of a check or radio item: the first non-null answer, the window's before the application's, else
+    // the declaration. Null for an item declared without one. A target that throws is
     // logged and keeps the declaration.
     internal static bool? IsChecked(DesktopMenuItem item, IDesktopMenuCommandTarget? window, IDesktopMenuCommandTarget? application,
         ILogger? logger)
@@ -52,7 +52,7 @@ internal sealed class MenuCommandChain(Func<IDesktopMenuCommandTarget?> applicat
             if (target is null) continue;
             try
             {
-                if (target.IsChecked(item) is { } answer && answer != declared) return answer;
+                if (target.IsChecked(item) is { } answer) return answer;
             }
             catch (Exception error) when (error is not OutOfMemoryException)
             {
