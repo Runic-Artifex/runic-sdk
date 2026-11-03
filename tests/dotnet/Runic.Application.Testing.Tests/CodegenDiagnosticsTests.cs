@@ -492,6 +492,25 @@ internal sealed partial class CodegenDiagnosticsTests
                 public sealed partial class PayloadFailureWindow : RunicWindow<PayloadFailureViewModel>;
                 """, "RUNICBRIDGE003", "public object Value", "PayloadFailureViewModel.SaveCommand.failure.value").ConfigureAwait(false);
             await RejectKeyDiagnosticsAsync((name, members, code, declaration, expected) => RejectAt(name, members, code, declaration, expected)).ConfigureAwait(false);
+            // query-collections/1: RUNICBRIDGE060 at the query collection property.
+            await RejectAt("QuerySetter", """
+                public sealed record QueryRow(int Id, string Label);
+                public sealed class QuerySetterViewModel : FixtureModel { public RunicQueryCollection<QueryRow, int> Rows { get; set; } = null!; }
+                public sealed partial class QuerySetterWindow : RunicWindow<QuerySetterViewModel>;
+                """, "RUNICBRIDGE060", "public RunicQueryCollection<QueryRow, int> Rows",
+                "QuerySetterViewModel.Rows: a RunicQueryCollection must be get-only").ConfigureAwait(false);
+            await RejectAt("QueryKey", """
+                public sealed record QueryRow(long Id, string Label);
+                public sealed class QueryKeyViewModel : FixtureModel { public RunicQueryCollection<QueryRow, long> Rows { get; } = null!; }
+                public sealed partial class QueryKeyWindow : RunicWindow<QueryKeyViewModel>;
+                """, "RUNICBRIDGE060", "public RunicQueryCollection<QueryRow, long> Rows",
+                "QueryKeyViewModel.Rows: a RunicQueryCollection key is a string, Guid or Int32, not Int64.").ConfigureAwait(false);
+            await RejectAt("QueryAttributes", """
+                public sealed record QueryRow(int Id, string Label);
+                public sealed class QueryAttributesViewModel : FixtureModel { [RunicCollection("Id")] public RunicQueryCollection<QueryRow, int> Rows { get; } = null!; }
+                public sealed partial class QueryAttributesWindow : RunicWindow<QueryAttributesViewModel>;
+                """, "RUNICBRIDGE060", "public RunicQueryCollection<QueryRow, int> Rows",
+                "QueryAttributesViewModel.Rows: a RunicQueryCollection has its own keys").ConfigureAwait(false);
             await Reject("ObjectValue", """
                 public sealed class ObjectViewModel : FixtureModel { public object Value { get; } = new(); }
                 public sealed partial class ObjectWindow : RunicWindow<ObjectViewModel>;

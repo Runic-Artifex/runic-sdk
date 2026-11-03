@@ -103,9 +103,13 @@ export interface QueryCollection<TRow> {
   dispose(): void;
 }
 
-/** How a generated client decodes a query collection's rows. Generated code is its only intended caller. */
+/**
+ * How a generated client decodes a query collection's rows, and the factory of its collections, which the generated
+ * client passes in so a View without query collections does not bundle them. Generated code is its only intended caller.
+ */
 export interface QueryCollectionDefinition<TRow> {
   readonly decode: (wire: unknown) => TRow;
+  readonly create: (scope: QueryCollectionScope, definition: QueryCollectionDefinition<TRow>) => QueryCollection<TRow> & Disposable;
 }
 
 /** The connection a query collection uses. Internal to the runtime. */
@@ -127,7 +131,7 @@ export const maximumQueryRange = 1_000;
 
 /** Describes a query collection's rows for `connectView`. Generated modules call it; application code does not. */
 export function defineQueryCollection<TRow>(decode: (wire: unknown) => TRow): QueryCollectionDefinition<TRow> {
-  return { decode };
+  return { decode, create: createQueryCollection };
 }
 
 const isRecord = (value: unknown): value is Readonly<Record<string, unknown>> =>

@@ -17,7 +17,7 @@ import { deferNotification, flushNotifications, nextFrame } from "./notification
 import type { BridgeCollections } from "./collections.js";
 import type { BridgeInteractionContext, BridgeInteractions, InteractionSession, InteractionSurface } from "./interactions.js";
 import type { BridgeOperationCodec, BridgeOperationRuntimeHandle, BridgeOperations, OperationScope } from "./operations.js";
-import { createQueryCollection, type QueryCollection, type QueryCollectionDefinition, type QueryCollectionState } from "./query.js";
+import type { QueryCollection, QueryCollectionDefinition, QueryCollectionState } from "./query.js";
 
 /** The framework-neutral surface every generated client shares. */
 export interface ViewClient<TState = unknown> {
@@ -995,7 +995,7 @@ async function connectRoute<TState>(options: ViewConnectOptions<TState>): Promis
         if (features !== undefined && features.size > 0 && !features.has(queryCollectionsFeature))
           throw new BridgeError("failed", `The .NET host does not implement ${queryCollectionsFeature}; use the Runic packages of one release.`, { route });
       };
-      const collection = createQueryCollection<TRow>({
+      const collection = definition.create({
         route, member,
         state: () => (isObject(lease.current) ? lease.current[member] : undefined) as QueryCollectionState | undefined,
         onState: observer => { lease.observers.add(observer); return () => { lease.observers.delete(observer); }; },
