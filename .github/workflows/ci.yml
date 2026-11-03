@@ -865,6 +865,11 @@ jobs:
         if: runner.os == 'Linux'
         timeout-minutes: 5
         run: GDK_BACKEND=x11 xvfb-run -a dotnet tests/native/Runic.Desktop.WebViewSmoke/bin/Release/net10.0/Runic.Desktop.WebViewSmoke.dll --web-content
+      # B2: DesktopHost.SetColorSchemeAsync sets GTK's prefer-dark setting, and the page's prefers-color-scheme follows.
+      - name: Exercise the run-time color scheme in the GTK 3 window
+        if: runner.os == 'Linux'
+        timeout-minutes: 5
+        run: GDK_BACKEND=x11 xvfb-run -a dotnet tests/native/Runic.Desktop.WebViewSmoke/bin/Release/net10.0/Runic.Desktop.WebViewSmoke.dll --color-scheme
       - name: Check the WebKitGTK keyboard script in Chromium
         if: runner.os == 'Linux'
         timeout-minutes: 5
@@ -1027,7 +1032,8 @@ jobs:
           RUNIC_TEST_DISPLAY_SCALING: "1"
         run: dotnet tests/native/Runic.Desktop.WebViewSmoke/bin/Release/net10.0/Runic.Desktop.WebViewSmoke.dll --monitors
       # DesktopWindowOptions.ColorScheme: for Dark and Light the page's prefers-color-scheme follows, and so does the
-      # window (NSWindow.effectiveAppearance on macOS, the DWM dark title bar on Windows).
+      # window (NSWindow.effectiveAppearance on macOS, the DWM dark title bar on Windows); B2: also when an open window
+      # switches with DesktopWindow and DesktopHost.SetColorSchemeAsync.
       - name: Apply the window color scheme on Windows and macOS
         if: runner.os != 'Linux'
         timeout-minutes: 4
@@ -1487,6 +1493,7 @@ jobs:
             GDK_BACKEND=x11 xvfb-run -a ./artifacts/views-probes-aot/CsWebUiWindowProbes${{ matrix.extension }} --probe-missing-bridge
             GDK_BACKEND=x11 xvfb-run -a ./artifacts/views-probes-aot/CsWebUiWindowProbes${{ matrix.extension }} --probe-show-failure
             GDK_BACKEND=x11 xvfb-run -a ./artifacts/views-probes-aot/CsWebUiWindowProbes${{ matrix.extension }} --probe-embedded-assets
+            GDK_BACKEND=x11 xvfb-run -a ./artifacts/views-probes-aot/CsWebUiWindowProbes${{ matrix.extension }} --probe-presentation
             GDK_BACKEND=x11 RUNIC_PROBE_EXECUTABLE="$(node -p 'require("node:path").resolve("artifacts/views-probes-aot/CsWebUiWindowProbes${{ matrix.extension }}")')" xvfb-run -a node tests/fixtures/application/cswebui-window-probes/menu-bar-probe.mjs
             GDK_BACKEND=x11 RUNIC_FIRST_WINDOW_EXECUTABLE="$(node -p 'require("node:path").resolve("artifacts/views-aot/FirstWindow${{ matrix.extension }}")')" xvfb-run -a node examples/first-window/browser-smoke.mjs
           else
@@ -1496,6 +1503,7 @@ jobs:
             ./artifacts/views-probes-aot/CsWebUiWindowProbes${{ matrix.extension }} --probe-missing-bridge
             ./artifacts/views-probes-aot/CsWebUiWindowProbes${{ matrix.extension }} --probe-show-failure
             ./artifacts/views-probes-aot/CsWebUiWindowProbes${{ matrix.extension }} --probe-embedded-assets
+            ./artifacts/views-probes-aot/CsWebUiWindowProbes${{ matrix.extension }} --probe-presentation
             RUNIC_PROBE_EXECUTABLE="$(node -p 'require("node:path").resolve("artifacts/views-probes-aot/CsWebUiWindowProbes${{ matrix.extension }}")')" node tests/fixtures/application/cswebui-window-probes/menu-bar-probe.mjs
             RUNIC_FIRST_WINDOW_EXECUTABLE="$(node -p 'require("node:path").resolve("artifacts/views-aot/FirstWindow${{ matrix.extension }}")')" node examples/first-window/browser-smoke.mjs
           fi

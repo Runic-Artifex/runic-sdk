@@ -84,11 +84,12 @@ internal sealed class TestingSurfaceTests
             var valueTask = method.ReturnType == typeof(ValueTask) || method.ReturnType.IsGenericType
                 && method.ReturnType.GetGenericTypeDefinition() == typeof(ValueTask<>);
             // ValueTask where a Bridge interface or IAsyncDisposable sets the shape.
-            // InMemoryBridgeTransport.RequestAsync returns what the window's IBridgeRequestHandler.HandleAsync does.
-            Require(valueTask == name is "InMemoryBridgeTransport.BroadcastAsync"
+            // InMemoryBridgeTransport.RequestAsync returns what the window's IBridgeRequestHandler.HandleAsync does, and
+            // RunicTestWindowPresentation implements IRunicWindowPresentation.
+            Require(valueTask == (method.DeclaringType == typeof(RunicTestWindowPresentation) || name is "InMemoryBridgeTransport.BroadcastAsync"
                     or "InMemoryBridgeTransport.SendAsync" or "InMemoryBridgeTransport.RequestAsync"
                     or "RunicServeOnlyApplication.DisposeAsync" or "RunicTestNavigationEntry`1.DisposeAsync"
-                    or "RunicTestPlatform.DisposeAsync" or "RunicTestNotifications.DisposeAsync",
+                    or "RunicTestPlatform.DisposeAsync" or "RunicTestNotifications.DisposeAsync"),
                 $"{name} returns {method.ReturnType.Name}.");
             var parameters = method.GetParameters();
             Require(parameters.Length > 0 && parameters[^1].ParameterType == typeof(CancellationToken) || name.EndsWith(".DisposeAsync", StringComparison.Ordinal),

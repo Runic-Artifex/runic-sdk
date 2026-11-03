@@ -8,13 +8,22 @@ namespace Runic.Desktop.Internal;
 
 internal sealed partial class WindowsWebView2Host : IWebUiEmbeddedHost
 {
-    // DWMWA_USE_IMMERSIVE_DARK_MODE (Windows 10 20H1 and later).
+    // DWMWA_USE_IMMERSIVE_DARK_MODE (Windows 10 20H1 and later), and its number before 20H1 (builds 1809 to 1909).
     internal const int DwmUseImmersiveDarkMode = 20;
+    internal const int DwmUseImmersiveDarkModeBefore20H1 = 19;
+
+    // The title bar's dark mode, on every Windows 10 build that has one; an older build keeps its light title bar.
+    internal static void SetImmersiveDarkMode(nint window, int darkMode)
+    {
+        if (Native.DwmSetWindowAttribute(window, DwmUseImmersiveDarkMode, ref darkMode, sizeof(int)) < 0)
+            _ = Native.DwmSetWindowAttribute(window, DwmUseImmersiveDarkModeBefore20H1, ref darkMode, sizeof(int));
+    }
     private const uint WmAppDispatch = 0x8001;
     private const uint WmClose = 0x0010;
     private const uint WmDestroy = 0x0002;
     private const uint WmGetObject = 0x003D;
     private const uint WmSize = 0x0005;
+    private const uint WmActivate = 0x0006;
     private const uint WmDpiChanged = 0x02E0;
     private const uint WmGetMinMaxInfo = 0x0024;
     private const uint WmNcCreate = 0x0081;
@@ -97,7 +106,10 @@ internal sealed partial class WindowsWebView2Host : IWebUiEmbeddedHost
         DesktopWindowCapabilities.Resize | DesktopWindowCapabilities.Move | DesktopWindowCapabilities.Announcements |
         DesktopWindowCapabilities.State | DesktopWindowCapabilities.FileDrop |
         DesktopWindowCapabilities.FullScreen | DesktopWindowCapabilities.MonitorPlacement |
-        DesktopWindowCapabilities.MenuBar | DesktopWindowCapabilities.ContextMenu | DesktopWindowCapabilities.FileDrag;
+        DesktopWindowCapabilities.MenuBar | DesktopWindowCapabilities.ContextMenu | DesktopWindowCapabilities.FileDrag |
+        DesktopWindowCapabilities.Activity | DesktopWindowCapabilities.ColorScheme |
+        // Per window for a generated profile; WebUiWindow removes it for a ProfilePath the application configured.
+        DesktopWindowCapabilities.PerWindowColorScheme;
     // A frameless or kiosk window has no frame for a menu bar.
     public DesktopWindowCapabilities Capabilities => _options is { Frameless: true } or { Kiosk: true }
         ? KnownCapabilities & ~DesktopWindowCapabilities.MenuBar
@@ -108,6 +120,51 @@ internal sealed partial class WindowsWebView2Host : IWebUiEmbeddedHost
     public event EventHandler<DesktopFileDropEventArgs>? FilesDropped;
 
     public event EventHandler? StateChanged;
+
+    private DesktopWindowActivity? _activity;
+    // Window thread only: whether the last WM_ACTIVATE activated the window.
+    private bool _activated;
+
+    public DesktopWindowActivity? Activity => Volatile.Read(ref _activity);
+
+    public event EventHandler? ActivityChanged;
+
+    // Window thread only: after WM_ACTIVATE and every show, hide, minimize and restore (WM_WINDOWPOSCHANGED).
+    private void UpdateActivity()
+    {
+        if (_window == 0) return;
+        var minimized = Native.IsIconic(_window);
+        var visible = Native.IsWindowVisible(_window);
+        var activity = new DesktopWindowActivity
+        {
+            IsActive = _activated && visible && !minimized,
+            IsMinimized = minimized,
+            IsVisible = visible && !minimized,
+        };
+        if (Equals(activity, Volatile.Read(ref _activity))) return;
+        Volatile.Write(ref _activity, activity);
+        try
+        {
+            ActivityChanged?.Invoke(this, EventArgs.Empty);
+        }
+        catch
+        {
+            // Never unwind through the window procedure.
+        }
+    }
+
+    // DesktopWindow.SetColorSchemeAsync: the profile's preferred color scheme, which the page's prefers-color-scheme
+    // follows, and the title bar's dark mode. NoPreference returns the profile to Auto, which follows the system, and
+    // gives the title bar the system's apps theme as it is now: a later change of the theme does not reach it.
+    public ValueTask SetColorSchemeAsync(Runic.Platform.DesktopColorScheme colorScheme, CancellationToken cancellationToken = default)
+        => InvokeAsync(() =>
+        {
+            SetImmersiveDarkMode(_window, ImmersiveDarkMode(colorScheme) ?? (SystemUsesDarkTheme() ? 1 : 0));
+            // The non-client area repaints with the new mode only after a frame change.
+            Native.SetWindowPos(_window, 0, 0, 0, 0, 0, SwpNoMove | SwpNoSize | SwpNoZOrder | SwpNoActivate | SwpFrameChanged);
+            _controller?.SetPreferredColorScheme(colorScheme, followSystem: true);
+            if (_options is { } options) _options = options with { ColorScheme = colorScheme };
+        }, cancellationToken);
     public bool SupportsDocumentStartScript => true;
     public bool SupportsNativeDispatch => true;
     public bool CheckNativeAccess() => ReferenceEquals(Thread.CurrentThread, _thread);
@@ -201,7 +258,8 @@ internal sealed partial class WindowsWebView2Host : IWebUiEmbeddedHost
     public ValueTask FocusAsync(CancellationToken cancellationToken = default)
         => InvokeAsync(() =>
         {
-            Native.ShowWindow(_window, SwShow);
+            // A minimized window is restored, as activating it from the taskbar does.
+            Native.ShowWindow(_window, Native.IsIconic(_window) ? SwRestore : SwShow);
             Native.SetForegroundWindow(_window);
             Native.SetFocus(_window);
             _controller!.MoveFocus();
@@ -630,7 +688,7 @@ internal sealed partial class WindowsWebView2Host : IWebUiEmbeddedHost
             // DesktopWindowOptions.ColorScheme: a dark or light title bar. Without it a Win32 title bar stays light.
             if (WindowsWebView2Host.ImmersiveDarkMode(options.ColorScheme) is { } darkMode)
             {
-                _ = Native.DwmSetWindowAttribute(_window, DwmUseImmersiveDarkMode, ref darkMode, sizeof(int));
+                SetImmersiveDarkMode(_window, darkMode);
             }
 
             width = ScaleForWindow(logicalWidth, _window);
@@ -861,8 +919,16 @@ internal sealed partial class WindowsWebView2Host : IWebUiEmbeddedHost
                     host._controller.Bounds = host.ClientBounds();
                 }
                 return 0;
+            case WmActivate:
+                if (host is not null)
+                {
+                    host._activated = (wParam & 0xFFFF) != 0;
+                    host.UpdateActivity();
+                }
+                return Native.DefWindowProc(window, message, wParam, lParam);
             case WmWindowPosChanged:
                 host?.UpdateState();
+                host?.UpdateActivity();
                 // DefWindowProc sends WM_SIZE and WM_MOVE from this message.
                 return Native.DefWindowProc(window, message, wParam, lParam);
             case WmDpiChanged:

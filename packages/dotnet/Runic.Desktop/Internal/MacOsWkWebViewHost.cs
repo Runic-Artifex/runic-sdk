@@ -54,6 +54,9 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
         internal static DesktopStandardMenuTitles Titles = MacOsMainMenu.English;
         // The logger of menu command failures (event 3014) while no key window's command path has one.
         internal static Microsoft.Extensions.Logging.ILogger? MenuLogger;
+        // DesktopHost.SetColorSchemeAsync, and whether NSApp.appearance was set from it.
+        internal static int ColorScheme;
+        internal static bool ColorSchemeApplied;
     }
 
     internal static void SetStandardMenuTitles(DesktopStandardMenuTitles titles) => Volatile.Write(ref HostSettings.Titles, titles);
@@ -111,7 +114,8 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
         DesktopWindowCapabilities.Minimize | DesktopWindowCapabilities.Maximize |
         DesktopWindowCapabilities.Resize | DesktopWindowCapabilities.Move | DesktopWindowCapabilities.Announcements |
         DesktopWindowCapabilities.State | DesktopWindowCapabilities.MenuBar | DesktopWindowCapabilities.ContextMenu |
-        DesktopWindowCapabilities.FullScreen | DesktopWindowCapabilities.MonitorPlacement | DesktopWindowCapabilities.FileDrag;
+        DesktopWindowCapabilities.FullScreen | DesktopWindowCapabilities.MonitorPlacement | DesktopWindowCapabilities.FileDrag |
+        DesktopWindowCapabilities.Activity | DesktopWindowCapabilities.ColorScheme | DesktopWindowCapabilities.PerWindowColorScheme;
     public DesktopWindowCapabilities Capabilities => KnownCapabilities |
         (WebViewClass != 0 ? DesktopWindowCapabilities.FileDrop : DesktopWindowCapabilities.None);
 
@@ -120,6 +124,61 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
     public event EventHandler<DesktopFileDropEventArgs>? FilesDropped;
 
     public event EventHandler? StateChanged;
+
+    private DesktopWindowActivity? _activity;
+
+    public DesktopWindowActivity? Activity => Volatile.Read(ref _activity);
+
+    public event EventHandler? ActivityChanged;
+
+    // Main thread only: after the window became or resigned key, was miniaturized or restored, was ordered in or out,
+    // or its occlusion changed, as when the application is hidden.
+    private void UpdateActivity()
+    {
+        if (_window == 0) return;
+        var minimized = Api.SendBool(_window, "isMiniaturized");
+        var activity = new DesktopWindowActivity
+        {
+            IsActive = !minimized && Api.SendBool(_window, "isKeyWindow"),
+            IsMinimized = minimized,
+            IsVisible = !minimized && Api.SendBool(_window, "isVisible"),
+        };
+        if (Equals(activity, Volatile.Read(ref _activity))) return;
+        Volatile.Write(ref _activity, activity);
+        try
+        {
+            ActivityChanged?.Invoke(this, EventArgs.Empty);
+        }
+        catch
+        {
+            // Never unwind through AppKit.
+        }
+    }
+
+    // DesktopWindow.SetColorSchemeAsync: the window's appearance, which its web view and the page's prefers-color-scheme
+    // follow; nil for NoPreference, so the window inherits NSApp.appearance and with it the application's scheme.
+    public ValueTask SetColorSchemeAsync(DesktopColorScheme colorScheme, CancellationToken cancellationToken = default)
+        => InvokeAsync(() => Api.SendVoidNint(_window, "setAppearance:", Api.NamedAppearance(colorScheme)), cancellationToken);
+
+    // DesktopHost.SetColorSchemeAsync: NSApp.appearance, which menus, alerts and windows without their own appearance
+    // follow. Applied now while AppKit runs, else when the first window launches the application.
+    internal static ValueTask SetApplicationColorSchemeAsync(DesktopColorScheme colorScheme, CancellationToken cancellationToken)
+    {
+        Volatile.Write(ref HostSettings.ColorScheme, (int)colorScheme);
+        if (!OperatingSystem.IsMacOS() || !Api.IsAvailable || Api.SharedApplicationIfCreated() == 0) return ValueTask.CompletedTask;
+        if (!IsMainThread && !DesktopEventLoop.IsRunning) return ValueTask.CompletedTask;
+        return InvokeOnMainAsync(static () => ApplyApplicationAppearance(Api.SharedApplicationIfCreated()), cancellationToken);
+    }
+
+    // Main thread only.
+    private static void ApplyApplicationAppearance(nint application)
+    {
+        var scheme = (DesktopColorScheme)Volatile.Read(ref HostSettings.ColorScheme);
+        // A host that never set a scheme leaves NSApp.appearance to the application.
+        if (application == 0 || (scheme == DesktopColorScheme.NoPreference && !HostSettings.ColorSchemeApplied)) return;
+        HostSettings.ColorSchemeApplied = true;
+        Api.SendVoidNint(application, "setAppearance:", Api.NamedAppearance(scheme));
+    }
     public bool SupportsDocumentStartScript => true;
     public bool SupportsNativeDispatch => true;
     public bool CheckNativeAccess() => IsMainThread;
@@ -241,6 +300,8 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
             {
                 Api.SendVoidNint(_window, "orderOut:", 0);
             }
+            // Ordering a window out sends no delegate notification but an occlusion change, which may come later.
+            UpdateActivity();
         }, cancellationToken);
 
     public ValueTask BeginMoveAsync(CancellationToken cancellationToken = default)
@@ -358,6 +419,7 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
         }
         // DesktopEventLoop.Run's AppKit loop sends finishLaunching once; without it, the first window does.
         MacOsApplication.EnsureLaunched(_application);
+        ApplyApplicationAppearance(_application);
         InstallMainMenu(_application);
         ApplyMenuBar(_application);
 
@@ -485,6 +547,7 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
             }
         }
         UpdateState();
+        UpdateActivity();
     }
 
     // Keeps a restored window on a screen that exists now: the frame, title bar included, moves into the visible
@@ -629,6 +692,19 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
     }
 
     [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
+    private static void WindowActivityChanged(nint self, nint selector, nint notification)
+    {
+        try
+        {
+            if (Hosts.TryGetValue(Api.SendNint(notification, "object"), out var host) && host.IsOpen) host.UpdateActivity();
+        }
+        catch
+        {
+            // Never unwind through AppKit.
+        }
+    }
+
+    [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
     private static void WindowGeometryChanged(nint self, nint selector, nint notification)
     {
         try
@@ -637,6 +713,8 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
             if (Hosts.TryGetValue(window, out var host) && host.IsOpen)
             {
                 host.UpdateState();
+                // windowDidDeminiaturize: restores the activity too.
+                host.UpdateActivity();
                 // AppKit lays the title bar out again after a resize.
                 host.ApplyTrafficLights();
             }
@@ -1395,6 +1473,10 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
         foreach (var selector in (string[])["windowDidMove:", "windowDidResize:", "windowDidDeminiaturize:", "windowDidChangeScreen:"])
         {
             Api.AddMethod(type, selector, (nint)(delegate* unmanaged[Cdecl]<nint, nint, nint, void>)&WindowGeometryChanged, "v@:@");
+        }
+        foreach (var selector in (string[])["windowDidBecomeKey:", "windowDidResignKey:", "windowDidMiniaturize:", "windowDidChangeOcclusionState:"])
+        {
+            Api.AddMethod(type, selector, (nint)(delegate* unmanaged[Cdecl]<nint, nint, nint, void>)&WindowActivityChanged, "v@:@");
         }
         // The frame changes during the full-screen animation; the restorable bounds must not follow it.
         foreach (var selector in (string[])["windowWillEnterFullScreen:", "windowWillExitFullScreen:"])

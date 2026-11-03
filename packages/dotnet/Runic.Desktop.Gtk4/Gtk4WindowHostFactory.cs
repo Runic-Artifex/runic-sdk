@@ -419,15 +419,16 @@ internal static class Gtk4Runtime
 
 [SupportedOSPlatform("linux")]
 internal sealed partial class Gtk4WindowHost : IDesktopNativeDispatchWindowHost, IDesktopWindowStateHost, IDesktopFileDropWindowHost,
-    IDesktopPlacementWindowHost
+    IDesktopPlacementWindowHost, IDesktopActivityWindowHost, IDesktopColorSchemeWindowHost
 {
     internal const DesktopWindowCapabilities SupportedCapabilities = DesktopWindowCapabilities.NativeHandle |
         DesktopWindowCapabilities.Focus | DesktopWindowCapabilities.Minimize |
         DesktopWindowCapabilities.Maximize | DesktopWindowCapabilities.Resize |
         DesktopWindowCapabilities.CloseConfirmation | DesktopWindowCapabilities.State | DesktopWindowCapabilities.FileDrop |
         DesktopWindowCapabilities.FullScreen | DesktopWindowCapabilities.MenuBar | DesktopWindowCapabilities.ContextMenu |
-        DesktopWindowCapabilities.FileDrag;
+        DesktopWindowCapabilities.FileDrag | DesktopWindowCapabilities.Activity | DesktopWindowCapabilities.ColorScheme;
     private DesktopWindowState? _state;
+    private DesktopWindowActivity? _activity;
     // GTK thread only: the X11 position of the window while neither maximized nor full-screen, a position to apply
     // when a hidden window is first shown, and the X event connection that reports moves.
     private (int X, int Y)? _normalPosition;
@@ -473,6 +474,57 @@ internal sealed partial class Gtk4WindowHost : IDesktopNativeDispatchWindowHost,
     public event EventHandler<DesktopFileDropEventArgs>? FilesDropped;
 
     public DesktopWindowState? State => Volatile.Read(ref _state);
+
+    public DesktopWindowActivity? Activity => Volatile.Read(ref _activity);
+
+    public event EventHandler? ActivityChanged;
+
+    // GTK's application-wide prefer-dark setting, or libadwaita's style manager (GtkColorScheme): every window follows.
+    public ValueTask SetColorSchemeAsync(Runic.Platform.DesktopColorScheme colorScheme, CancellationToken cancellationToken = default) =>
+        new(Gtk4Dispatcher.Instance.InvokeAsync(() =>
+        {
+            GetWindow();
+            Runic.Desktop.Internal.GtkColorScheme.Apply(GtkSettingsGetDefault(), colorScheme, GtkSettingsResetProperty.Value);
+        }, cancellationToken));
+
+    // GTK thread only: after the window gained or lost the focus (notify::is-active), was shown or hidden
+    // (notify::visible), or its surface was minimized, restored or suspended (GdkToplevel's notify::state). Wayland
+    // compositors report no minimized state; GTK 4.12 and later report a window the compositor stopped showing, such
+    // as a minimized one, as suspended, which counts as not visible here.
+    private void UpdateActivity()
+    {
+        if (_window is not { } window || !IsOpen) return;
+        var surface = window.GetSurface();
+        var state = surface is null ? 0 : ToplevelGetState(surface.Handle.DangerousGetHandle());
+        var minimized = (state & GdkToplevelStateMinimized) != 0;
+        var hidden = minimized || (state & GdkToplevelStateSuspended) != 0;
+        // A hidden window is never active: GTK can keep is-active set on a window it just unmapped.
+        var visible = !hidden && window.GetVisible();
+        var activity = new DesktopWindowActivity
+        {
+            IsActive = visible && window.IsActive,
+            IsMinimized = minimized,
+            IsVisible = visible,
+        };
+        if (Equals(activity, Volatile.Read(ref _activity))) return;
+        Volatile.Write(ref _activity, activity);
+        ActivityChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    private const int GdkToplevelStateMinimized = 1 << 0;
+    // GTK 4.12.
+    private const int GdkToplevelStateSuspended = 1 << 16;
+
+    // GTK 4's gtk_settings_reset_property, for GtkColorScheme.
+    private static readonly Lazy<nint> GtkSettingsResetProperty = new(static () =>
+        System.Runtime.InteropServices.NativeLibrary.TryLoad("libgtk-4.so.1", out var gtk)
+        && System.Runtime.InteropServices.NativeLibrary.TryGetExport(gtk, "gtk_settings_reset_property", out var reset) ? reset : 0);
+
+    [System.Runtime.InteropServices.LibraryImport("libgtk-4.so.1", EntryPoint = "gdk_toplevel_get_state")]
+    private static partial int ToplevelGetState(nint toplevel);
+
+    [System.Runtime.InteropServices.LibraryImport("libgtk-4.so.1", EntryPoint = "gtk_settings_get_default")]
+    private static partial nint GtkSettingsGetDefault();
 
     public bool SupportsCloseConfirmation => true;
 
@@ -915,6 +967,7 @@ internal sealed partial class Gtk4WindowHost : IDesktopNativeDispatchWindowHost,
             registered = true;
             Volatile.Write(ref _isOpen, 1);
             UpdateState();
+            UpdateActivity();
             // The window is realized, also when hidden, so it has its X11 surface.
             StartGlobalMenu(options, window);
         }
@@ -1738,6 +1791,7 @@ internal sealed partial class Gtk4WindowHost : IDesktopNativeDispatchWindowHost,
                 try
                 {
                     UpdateState();
+                    UpdateActivity();
                 }
                 catch
                 {
@@ -1754,7 +1808,7 @@ internal sealed partial class Gtk4WindowHost : IDesktopNativeDispatchWindowHost,
         internal static void Connect(Gtk4WindowHost host, Gtk.ApplicationWindow window)
         {
             var native = window.Handle.DangerousGetHandle();
-            foreach (var property in (string[])["default-width", "default-height", "maximized", "fullscreened"])
+            foreach (var property in (string[])["default-width", "default-height", "maximized", "fullscreened", "is-active", "visible"])
             {
                 ConnectNotify(host, native, property);
             }
@@ -1764,6 +1818,8 @@ internal sealed partial class Gtk4WindowHost : IDesktopNativeDispatchWindowHost,
                 var nativeSurface = surface.Handle.DangerousGetHandle();
                 ConnectNotify(host, nativeSurface, "width");
                 ConnectNotify(host, nativeSurface, "height");
+                // GdkToplevel's state: minimized and restored.
+                ConnectNotify(host, nativeSurface, "state");
             }
         }
 

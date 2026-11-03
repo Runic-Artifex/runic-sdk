@@ -462,6 +462,9 @@ public sealed class RunicDesktopHost : IRunicWindowHost
             // RunicWindow.RequestCloseAsync joins the decision of the native close button.
             if (confirmsClose) opening.UseCloseRequest(presentation.RequestCloseAsync);
             owner.SetPresentation(presentation);
+            // IRunicWindowPresentation of the Window's scope follows this window from now on.
+            var nativeOwner = (IDesktopNativeOwnerSource)owner;
+            opening.UsePresentation(new DesktopWindowPresentation(presentation, () => nativeOwner.NativeOwnerOrNull) { Present = Present });
             MenuCommandBinding? menu = null;
             if (MenuCommandBinding.Binds(viewModel))
             {

@@ -3,14 +3,15 @@
 An application that starts without a window: only its icon in the desktop's
 status area. A click on the icon, or **Open window** in its menu, opens the
 counter from [First Window on Runic Desktop](../first-window-desktop/README.md);
-closing the window leaves the application running, and **Quit** ends it.
+closing the window, or its **Hide to the status icon** button, leaves the
+application running, and **Quit** ends it.
 **Start at login** starts it again after the next login, and launching it while
 it runs brings the counter forward instead of starting a second copy.
 
 | File | What it does |
 | --- | --- |
 | [`Program.cs`](Program.cs) | Claims the single instance, takes `IDesktopStatusIcon` and `IDesktopLoginStartup` from `AddRunicPlatformServices(id)`, shows the icon, and opens, reuses or presents the Window as activations and launches arrive. |
-| [`CounterViewModel.cs`](CounterViewModel.cs), [`CounterWindow.cs`](CounterWindow.cs) | The counter Window, unchanged from First Window on Runic Desktop. |
+| [`CounterViewModel.cs`](CounterViewModel.cs), [`CounterWindow.cs`](CounterWindow.cs) | The counter Window from First Window on Runic Desktop, with a Hide command that hides it through `IRunicWindowPresentation`. |
 
 ```sh
 dotnet run --project examples/status-icon -c Release
@@ -19,7 +20,10 @@ dotnet run --project examples/status-icon -c Release
 `ApplicationInstance.ClaimAsync` makes the first launch the primary instance. A
 later launch forwards its arguments, working directory and activation token, and
 exits; the primary instance raises `IApplicationInstance.Launched`, and
-`DesktopPlatformServices.PresentAsync` brings the open Window forward with that token.
+`window.Presentation.PresentAsync(context)` brings the open Window forward with
+that token, showing it again when its Hide command hid it. The ViewModel takes
+the same `IRunicWindowPresentation` from its scope (`AddRunicWindowService()`),
+so neither names Runic Desktop's types.
 Without an open Window, `RunicDesktopHost.OpenWindowAsync(options, context)`
 opens one and presents it with the token, so that Wayland compositors such as
 KWin give it focus.
