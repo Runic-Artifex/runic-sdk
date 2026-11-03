@@ -65,10 +65,12 @@ internal sealed class BridgeBlobs : IDisposable
         get { lock (_gate) return _endpoint; }
     }
 
+    // A window session starts on the dispatcher, also one whose transport served an earlier session.
     internal void Configure(long? maximumUploadBytes, long? maximumWindowUploadBytes)
     {
         MaximumUploadBytes = maximumUploadBytes ?? DefaultMaximumUploadBytes;
         MaximumWindowUploadBytes = maximumWindowUploadBytes ?? DefaultMaximumWindowUploadBytes;
+        lock (_gate) _closed = false;
     }
 
     // The host serves this Window's blobs and uploads at the endpoint from now on.

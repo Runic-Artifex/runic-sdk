@@ -335,6 +335,12 @@ internal sealed partial class CodegenDiagnosticsTests
                 public sealed class CountLogViewModel : FixtureModel { [RunicAppendOnlyText] public int Count => 0; }
                 public sealed partial class CountLogWindow : RunicWindow<CountLogViewModel>;
                 """, "RUNICBRIDGE008", "public int Count", "CountLogViewModel.Count: RunicAppendOnlyText requires a read-only string state property.").ConfigureAwait(false);
+            // blobs/1: a RunicBlob only goes to the page; a command takes a RunicUpload instead.
+            await RejectAt("BlobInput", """
+                public sealed class BlobInputViewModel : FixtureModel { public IRelayCommand<RunicBlob> AttachCommand { get; } = new RelayCommand<RunicBlob>(_ => { }); }
+                public sealed partial class BlobInputWindow : RunicWindow<BlobInputViewModel>;
+                """, "RUNICBRIDGE065", "public IRelayCommand<RunicBlob> AttachCommand",
+                "A RunicBlob only goes to the page", "Take a RunicUpload").ConfigureAwait(false);
             // A nested DTO member points at the DTO property, not the ViewModel.
             await RejectAt("NestedValue", """
                 public sealed class Row

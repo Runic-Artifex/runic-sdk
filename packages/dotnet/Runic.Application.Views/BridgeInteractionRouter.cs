@@ -240,7 +240,9 @@ public sealed class BridgeInteractionRouter : IDisposable
         string inputJson;
         try
         {
-            inputJson = encodeInput(input);
+            // blobs/1: a blob in an interaction's input is held until the window closes.
+            using (BridgeBlobScope.Enter(BridgeDispatcher.For(_transport).Blobs, this, null))
+                inputJson = encodeInput(input);
             ValidateJsonPayload(inputJson);
         }
         catch (Exception error) when (error is JsonException or ArgumentException or FormatException or InvalidOperationException)
@@ -423,7 +425,12 @@ public sealed class BridgeInteractionRouter : IDisposable
             // The generated decoder is application code: run it outside the
             // router gate, and fail the waiting interaction with a typed
             // error instead of leaving it pending until its timeout.
-            try { request.CompleteOutput(request.Decode(reply.Output!.Value)); }
+            try
+            {
+                // blobs/1: an upload in the output decodes only for the connection that answered.
+                using var blobs = BridgeBlobScope.Enter(BridgeDispatcher.For(_transport).Blobs, this, connectionKey);
+                request.CompleteOutput(request.Decode(reply.Output!.Value));
+            }
             catch (Exception error)
             {
                 request.CompleteException(new RunicInteractionOutputException(

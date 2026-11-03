@@ -106,6 +106,27 @@ content. A `DesktopSurfaceOptions.Resources` handler receives decoded request
 paths that can contain `..`; map them to known files, never to the file system
 unchecked.
 
+## Blobs and uploads
+
+A `RunicBlob` crosses as a capability URL and a `RunicUpload` as an upload over
+HTTP (Views feature `blobs/1`, `specs/application/README.md`, "Blobs and
+uploads"):
+
+- A blob URL carries 192 random bits, is served only for its window and only
+  while a state member, the View or the window holds it. On a Desktop surface it
+  is also served only to the window's browser client (its cookie, and the launch
+  code of an installed browser); CS-WebUI serves it from a loopback listener of
+  the window that cannot see WebUI's clients, so there it is a bearer URL of the
+  window. Do not put a blob URL where other pages or logs can read it.
+- A blob response is `nosniff`, sandboxed by its `Content-Security-Policy` and
+  never interpreted by the page's origin, so serving untrusted HTML or SVG as a
+  blob does not run it as the application. Cross-site loads (`Sec-Fetch-Site:
+  cross-site`) are refused.
+- An upload needs the page's origin and a token that only the connection's
+  `hello` received; it is limited per upload and per window, and decodes only
+  for that connection, once. Its bytes, media type and file name are untrusted:
+  validate the content before you use it, and never use `FileName` as a path.
+
 ## Framing and Content-Security-Policy
 
 Since 0.11.0 every Runic Desktop surface response sends
