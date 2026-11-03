@@ -57,6 +57,9 @@ public sealed class RunicInteractionInvocation
     /// <remarks>
     /// The key the window's transport authenticated for the request, never a value in its JSON. A Window's
     /// <see cref="IRunicConnections.Caller"/> reads it.
+    /// The window gives each connection a key that is unique for its lifetime: the transport's key, or, when the transport
+    /// reused the key of a closed connection, that key with a <c>#n</c> suffix. A command that runs on after its
+    /// connection closed therefore never reaches the connection that reused its transport key.
     /// </remarks>
     public string? ConnectionKey { get; }
     /// <summary>The generated command that started the invocation, if any.</summary>

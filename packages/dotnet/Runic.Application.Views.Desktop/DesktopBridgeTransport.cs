@@ -21,7 +21,7 @@ namespace Runic.Application.Views.Desktop;
 /// accepted operations have drained.
 /// </para>
 /// </remarks>
-public sealed class DesktopBridgeTransport : IBridgeConnectionTransport, IDisposable
+public sealed class DesktopBridgeTransport : IBridgeConnectionTransport, IBridgeUniqueConnectionKeys, IDisposable
 {
     // The capability that runic-desktop-views.js calls with one request.
     internal const string RequestCapability = "__runicViews";
@@ -142,7 +142,8 @@ public sealed class DesktopBridgeTransport : IBridgeConnectionTransport, IDispos
 
     // PresentationSession.Id is WebUiEvent.ConnectionId, allocated for an authenticated WebSocket connection. It is
     // deliberately not the engine's private session GUID. Desktop has one browser client for a connection, so the
-    // trusted client and connection identities are the same value; reconnecting receives a different key.
+    // trusted client and connection identities are the same value; reconnecting receives a different key. The id is a
+    // counter of the window's engine that never repeats, so the transport declares IBridgeUniqueConnectionKeys.
     private static async ValueTask<PresentationResult> HandleAsync(IBridgeRequestHandler handler,
         PresentationInvocation invocation, CancellationToken cancellationToken)
     {

@@ -83,7 +83,9 @@ public interface IBridgeRequestHandler
     /// <param name="connectionKey">The connection's key.</param>
     /// <remarks>
     /// The window releases the connection's session, presentations, watches and edit numbers. A transport reports each
-    /// closed connection once; reporting an unknown or closed connection again does nothing.
+    /// closed connection once; reporting an unknown or closed connection again does nothing. A transport may report a
+    /// later connection with the key of one it reported closed: the window treats it as a new connection, with a
+    /// connection identity of its own.
     /// </remarks>
     void ConnectionClosed(string connectionKey);
 }
@@ -118,3 +120,7 @@ public sealed class BridgeRequest
     /// <summary>The trusted identity of the connection that carried the request.</summary>
     public string ConnectionKey { get; }
 }
+
+// A transport that never reports two connections with one key while it serves a dispatcher, such as Runic Desktop's, whose
+// key is a per-window counter. Its dispatcher uses the keys as they are and does not count their uses.
+internal interface IBridgeUniqueConnectionKeys;
