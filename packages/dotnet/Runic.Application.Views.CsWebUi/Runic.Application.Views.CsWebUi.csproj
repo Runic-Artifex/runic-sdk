@@ -13,6 +13,10 @@
     <PackageReadmeFile>README.md</PackageReadmeFile>
   </PropertyGroup>
   <ItemGroup>
+    <!-- The CS-WebUI probes check CsWebUiWindowPresentation through its seams, without a browser window. -->
+    <InternalsVisibleTo Include="CsWebUiWindowProbes" />
+  </ItemGroup>
+  <ItemGroup>
     <PackageReference Include="CsWebUi" />
     <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" />
     <ProjectReference Include="../Runic.Application.Views/Runic.Application.Views.csproj" />

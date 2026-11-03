@@ -34,8 +34,10 @@ switch (args.SingleOrDefault())
     case "--probe-embedded-assets":
         await ProbeEmbeddedAssetsAsync();
         break;
+    case "--probe-presentation":
+        return await ProbePresentationAsync();
     default:
-        Console.Error.WriteLine("Usage: CsWebUiWindowProbes --probe-factory-failure | --probe-window-close | --probe-close-guard | --probe-missing-bridge | --probe-show-failure | --probe-platform-services | --probe-menu-bar | --probe-embedded-assets");
+        Console.Error.WriteLine("Usage: CsWebUiWindowProbes --probe-factory-failure | --probe-window-close | --probe-close-guard | --probe-missing-bridge | --probe-show-failure | --probe-platform-services | --probe-menu-bar | --probe-embedded-assets | --probe-presentation");
         return 2;
 }
 WebUiApplication.Clean();
@@ -129,6 +131,82 @@ static int ProbeWindowClose()
     });
     if (result != 7) throw new InvalidOperationException($"Run returned {result} instead of the application's result.");
     Console.WriteLine("FIRST_WINDOW_CLOSE_OK");
+    return 0;
+}
+
+// B1: IRunicWindowPresentation on CS-WebUI. A serve-only Window has no window, so it reports the owner unavailable and
+// counts as active; once released it reports the owner closed. CsWebUiWindowPresentation itself is checked through its
+// seams: it presents a shown window, minimizes only a WebView window, reports no activity and reports a closed one.
+static async Task<int> ProbePresentationAsync()
+{
+    static void Check(bool condition, string message)
+    {
+        if (!condition) throw new InvalidOperationException(message);
+    }
+    var services = new ServiceCollection();
+    services.AddScoped<ProbeViewModel>();
+    services.AddRunicViews();
+    services.AddRunicWindowService();
+    using (var provider = services.BuildServiceProvider(new ServiceProviderOptions { ValidateScopes = true }))
+    {
+        var result = RunicCsWebUiHost.Run(provider, async host =>
+        {
+            var window = await host.OpenWindowAsync<ProbeWindow>();
+            var presentation = window.Services.GetRequiredService<IRunicWindowPresentation>();
+            Check(ReferenceEquals(presentation, window.Presentation), "The scope and the Window hold different presentations.");
+            Check(presentation.Features == RunicWindowPresentationFeatures.None, $"A serve-only Window reported {presentation.Features}.");
+            Check(presentation.Activity == RunicWindowActivity.Assumed, "A serve-only Window does not count as active.");
+            Check(await presentation.PresentAsync() is Runic.Platform.PlatformResult<Runic.Platform.PlatformUnit>.Unavailable
+                { Reason: Runic.Platform.PlatformUnavailableReason.OwnerUnavailable }, "A serve-only Window was presented.");
+            await window.DisposeAsync();
+            Check(await presentation.MinimizeAsync() is Runic.Platform.PlatformResult<Runic.Platform.PlatformUnit>.Unavailable
+                { Reason: Runic.Platform.PlatformUnavailableReason.OwnerClosed }, "A released Window did not report the owner closed.");
+            Check(presentation.Activity == RunicWindowActivity.Closed, $"A released Window reported {presentation.Activity}.");
+            return 7;
+        });
+        Check(result == 7, $"Run returned {result}.");
+    }
+
+    using var native = new WebUiWindow();
+    var shown = true;
+    int focused = 0, minimized = 0;
+    var browser = new CsWebUiWindowPresentation(native, webView: false)
+    {
+        IsShown = () => shown, Focus = () => focused++, Minimize = () => minimized++,
+    };
+    Check(browser.Features == RunicWindowPresentationFeatures.Present, $"A browser window reported {browser.Features}.");
+    Check(browser.Activity == RunicWindowActivity.Assumed && browser.IsActive && browser.IsVisible, "A browser window does not count as active.");
+    Check(await browser.PresentAsync() is Runic.Platform.PlatformResult<Runic.Platform.PlatformUnit>.Success && focused == 1,
+        "Presenting did not focus the WebUI window.");
+    Check(await browser.MinimizeAsync() is Runic.Platform.PlatformResult<Runic.Platform.PlatformUnit>.Unavailable
+        { Reason: Runic.Platform.PlatformUnavailableReason.BackendUnavailable } && minimized == 0, "A browser window was minimized.");
+    foreach (var request in new Func<ValueTask<Runic.Platform.PlatformResult<Runic.Platform.PlatformUnit>>>[]
+             {
+                 () => browser.SetVisibleAsync(false), () => browser.SetFullScreenAsync(true), () => browser.SetDocumentEditedAsync(true),
+                 () => browser.SetColorSchemeAsync(Runic.Platform.DesktopColorScheme.Dark),
+             })
+        Check(await request() is Runic.Platform.PlatformResult<Runic.Platform.PlatformUnit>.Unavailable
+            { Reason: Runic.Platform.PlatformUnavailableReason.BackendUnavailable }, "WebUI reported a request it cannot do.");
+    var rejected = false;
+    try { await browser.SetColorSchemeAsync((Runic.Platform.DesktopColorScheme)9); }
+    catch (ArgumentOutOfRangeException) { rejected = true; }
+    Check(rejected, "An undefined color scheme was accepted.");
+
+    var webView = new CsWebUiWindowPresentation(native, webView: true)
+    {
+        IsShown = () => shown, Focus = () => throw new ObjectDisposedException("window"), Minimize = () => minimized++,
+    };
+    Check(webView.Features == (RunicWindowPresentationFeatures.Present | RunicWindowPresentationFeatures.Minimize),
+        $"A WebView window reported {webView.Features}.");
+    Check(await webView.MinimizeAsync() is Runic.Platform.PlatformResult<Runic.Platform.PlatformUnit>.Success && minimized == 1,
+        "A WebView window was not minimized.");
+    Check(await webView.PresentAsync() is Runic.Platform.PlatformResult<Runic.Platform.PlatformUnit>.Unavailable
+        { Reason: Runic.Platform.PlatformUnavailableReason.OwnerClosed }, "A disposed WebUI window did not report the owner closed.");
+    shown = false;
+    Check(webView.Features == RunicWindowPresentationFeatures.None, "A closed WebUI window reported features.");
+    Check(await browser.PresentAsync() is Runic.Platform.PlatformResult<Runic.Platform.PlatformUnit>.Unavailable
+        { Reason: Runic.Platform.PlatformUnavailableReason.OwnerClosed } && focused == 1, "A closed WebUI window was presented.");
+    Console.WriteLine("CSWEBUI_PRESENTATION_OK");
     return 0;
 }
 

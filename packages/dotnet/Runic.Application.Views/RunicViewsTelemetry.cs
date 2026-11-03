@@ -390,6 +390,10 @@ internal static partial class ViewsLog
     [LoggerMessage(EventId = 1102, EventName = "HotReloadRefreshFailed", Level = LogLevel.Warning,
         Message = "Refreshing {Model} after a Hot Reload update failed with {ErrorType}.")]
     internal static partial void HotReloadRefreshFailed(ILogger logger, Exception exception, string model, string errorType);
+
+    [LoggerMessage(EventId = 1130, EventName = "WindowPresentationHandlerFailed", Level = LogLevel.Error,
+        Message = "An IRunicWindowPresentation.{Handler} handler failed with {ErrorType}.")]
+    internal static partial void WindowPresentationHandlerFailed(ILogger logger, Exception exception, string handler, string errorType);
 }
 
 // Without an ILoggerFactory the runtime keeps its earlier System.Diagnostics.Trace
