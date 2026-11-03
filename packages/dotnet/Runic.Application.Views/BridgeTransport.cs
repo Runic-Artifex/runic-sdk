@@ -63,6 +63,11 @@ public interface IBridgeConnectionTransport : IBridgeTransport
     /// <summary>Sends one push to the connection <paramref name="connectionKey"/>.</summary>
     /// <param name="connectionKey">The connection's key, as the transport supplied it in <see cref="BridgeRequest.ConnectionKey"/>.</param>
     /// <param name="message">The push, one JSON object as UTF-8. It is valid until the returned task completes.</param>
+    /// <remarks>
+    /// The window looks up the open connection and calls this with its transport key outside its own lock, so a send can
+    /// be in flight while the connection closes. A transport must not give that key to a new connection while a send to
+    /// it is in flight: complete or fail the send first, so the push never reaches the connection that came next.
+    /// </remarks>
     /// <param name="cancellationToken">Stops waiting for the send; the push may still be delivered.</param>
     /// <returns><see langword="true"/> when the transport handed the push to the connection; <see langword="false"/> when the connection is not open.</returns>
     ValueTask<bool> SendAsync(string connectionKey, ReadOnlyMemory<byte> message, CancellationToken cancellationToken = default);

@@ -475,6 +475,39 @@ test("runic-cswebui.js drains the mailbox in order with one pending receive", as
   expect(webui.receives().length).toBe(3);
 });
 
+// request-session/1: WebUI can give a closed connection's slot to a new page
+// before .NET learned of the close, so the receive names the session of the
+// hello this page sent on its connection, and names none before that hello.
+test("runic-cswebui.js names the session of the page's hello in its receive", async () => {
+  const webui = fakeCsWebUi();
+  const bridge = loadCsWebUi(webui).__runicBridge;
+  const stop = bridge.onMessage(() => {});
+  expect(webui.receives().length).toBe(1);
+  const hello = '{"kind":"hello","protocol":4,"session":"s-page","client":{"name":"t","version":"1"},"features":["request-session/1"]}';
+  const greeting = bridge.request(hello);
+  webui.answer(webui.open(receiveRequest)[0], noHello);
+  webui.answer(webui.open(hello)[0], '{"ok":true}');
+  await greeting;
+  await settle();
+  const named = webui.calls.filter(call => call.message === '{"kind":"receive","session":"s-page"}');
+  expect(named.length).toBe(1);
+  webui.answer(named[0], '{"ok":true,"messages":[]}');
+  await settle();
+  expect(webui.calls.filter(call => call.message === '{"kind":"receive","session":"s-page"}').length).toBe(2);
+
+  // A new connection starts without a session until its own hello.
+  webui.online = false;
+  await poll();
+  const sentBefore = webui.calls.length;
+  webui.online = true;
+  await poll();
+  await settle();
+  const after = webui.calls.slice(sentBefore).filter(call => call.message.startsWith('{"kind":"receive"'));
+  expect(after.length).toBeGreaterThan(0);
+  expect(after.every(call => call.message === receiveRequest)).toBe(true);
+  stop();
+});
+
 test("runic-cswebui.js pauses the mailbox until a request settles after no-hello", async () => {
   const webui = fakeCsWebUi();
   const bridge = loadCsWebUi(webui).__runicBridge;

@@ -214,8 +214,9 @@
   // so an awaited reply or a receive would wait forever. Each connection holds
   // the rejections of the calls sent on it until they settle, and the lost
   // transition rejects the rest. A call sent while WebUI reconnects belongs to
-  // the next connection. A connection also holds the state of its receive loop.
-  const nextConnection = () => ({ calls: new Set(), settled: 0, receiving: false, paused: false, received: false });
+  // the next connection. A connection also holds the state of its receive loop,
+  // and the session of the hello the page sent on it.
+  const nextConnection = () => ({ calls: new Set(), settled: 0, receiving: false, paused: false, received: false, session: undefined });
   let connection = nextConnection();
   let unsettled = 0;
   // The connection a call sent now joins. The script may not have seen the
@@ -268,7 +269,26 @@
   // A receive rejected because its connection was lost ends that connection's
   // loop; the next connection starts a new one when the script sees it open or
   // when a request settles on it. A receive rejected otherwise is a failure.
+  // With request-session/1 (specs/application/README.md, "Request sessions") a
+  // request acts for the connection only when it names the session of the
+  // connection's hello. WebUI reuses a closed connection's slot, and can give it
+  // to this page before .NET learned of the close, so a receive of this page
+  // never drains another page's mailbox: it names this page's session, which
+  // the script reads from the hello the page sends, and before that hello it
+  // names none and is answered no-hello.
   const receiveRequest = '{"kind":"receive"}';
+  const receiveMessage = joined =>
+    joined.session === undefined ? receiveRequest : JSON.stringify({ kind: "receive", session: joined.session });
+  // The session of a hello the page sends; the runtime writes kind first.
+  function helloSession(message) {
+    if (typeof message !== "string" || !message.startsWith('{"kind":"hello"')) return undefined;
+    try {
+      const session = JSON.parse(message).session;
+      return typeof session === "string" ? session : undefined;
+    } catch {
+      return undefined;
+    }
+  }
   // .NET writes a receive reply as this prefix, the queued messages, each as
   // the JSON text it was queued with, separated by commas, and "]}"
   // (BridgeMessages.Receive). The listeners get each message's text, so the
@@ -318,7 +338,7 @@
       if (loop.settled !== since) receive();
       else loop.paused = true;
     };
-    send(loop, "__runicViews", [receiveRequest]).then(text => {
+    send(loop, "__runicViews", [receiveMessage(loop)]).then(text => {
       loop.receiving = false;
       if (loop !== connection) return;
       const texts = messageTexts(text);
@@ -379,6 +399,8 @@
       if (!window.webui) return Promise.reject(new Error("CS-WebUI is unavailable."));
       window.webui.allowNavigation?.(true);
       const joined = currentConnection();
+      const session = helloSession(message);
+      if (session !== undefined) joined.session = session;
       const reply = send(joined, "__runicViews", [message]);
       const settled = () => requestSettled(joined);
       reply.then(settled, settled);
