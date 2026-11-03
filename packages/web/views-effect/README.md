@@ -190,6 +190,29 @@ stream receives it as an ordinary state; the stream does not fail. Read
 failures of that re-read are reported through `onBridgeDiagnostic` from
 `@runic-artifex/views`.
 
+### View requests
+
+`client.requests.<name>.handle(handler)` of a generated client registers the
+handler of a ViewModel's `ViewRequest<T>` and returns the function that removes
+it, so `Effect.acquireRelease` keeps it for the scope that connected the client:
+
+```ts
+const program = Effect.gen(function* () {
+  const editor = yield* connect(connectEditor);
+  yield* Effect.acquireRelease(
+    Effect.sync(() => editor.requests.focus.handle(({ member }) => focusField(member))),
+    remove => Effect.sync(remove),
+  );
+  yield* Effect.never;
+}).pipe(Effect.scoped);
+```
+
+The handler is a plain function: it runs once the page painted the state the
+request was raised with, and its `signal` aborts when it is removed, the client
+is disposed or the connection is lost. To run an Effect from it, fork it with
+the runtime the application uses. A request is never replayed; see
+[View requests](https://github.com/Runic-Artifex/runic-sdk/tree/main/packages/web/views#view-requests).
+
 ## Framework helpers
 
 Bindings keep rendering state with `useView` and its equivalents; Effect runs

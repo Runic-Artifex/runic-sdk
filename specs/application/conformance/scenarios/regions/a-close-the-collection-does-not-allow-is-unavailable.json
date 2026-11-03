@@ -1,0 +1,34 @@
+{
+  "format": "runic.views.scenario/1",
+  "id": "regions.a-close-the-collection-does-not-allow-is-unavailable.v1",
+  "contract": {"id":"runic.views","version":4},
+  "set": "regions",
+  "roles": ["producer","client"],
+  "description": "pinned does not let the page close a region: a close is rejected with unavailable, whatever its key, and runs nothing.",
+  "view": "tabs",
+  "requires": ["region-collections/1"],
+  "ids": {
+    "c1": {"kind":"connection"},
+    "hello-c1": {"kind":"request"},
+    "session": {"kind":"wire","value":"s-1"},
+    "open-tabs": {"kind":"call"},
+    "open-tabs-request": {"kind":"request"},
+    "presentation": {"kind":"wire","value":"p-1"},
+    "close": {"kind":"call"},
+    "close-request": {"kind":"request"}
+  },
+  "arrange": {"model":{}},
+  "steps": [
+    {"connect":"c1"},
+    {"send":{"kind":"hello","protocol":4,"session":{"$id":"session"},"client":{"name":{"$any":"string","default":"conformance-client"},"version":{"$any":"string","default":"1.0.0"}},"features":{"$any":"array","default":["text-splice/1","region-collections/1"]}},"id":"hello-c1"},
+    {"receive":{"ok":true,"protocol":4,"implementation":{"name":{"$any":"string","default":"conformance-producer"},"version":{"$any":"string","default":"1.0.0"}},"features":{"$any":"array","default":["text-splice/1","region-collections/1"]}},"replyTo":"hello-c1"},
+    {"call":{"id":"open-tabs","op":"open","route":"tabs"}},
+    {"send":{"kind":"open","route":"tabs","presentation":{"$id":"presentation"}},"id":"open-tabs-request"},
+    {"receive":{"ok":true,"revision":0,"state":{"documents":{"regions":[{"key":"1","content":{"kind":"page","id":"00000000000000000000000000000001"}},{"key":"2","content":{"kind":"page","id":"00000000000000000000000000000002"}},{"key":"3","content":{"kind":"page","id":"00000000000000000000000000000003"}}],"selected":0},"pinned":{"regions":[],"selected":null}},"presentation":"ok"},"replyTo":"open-tabs-request"},
+    {"call":{"id":"close","op":"region","route":"tabs","member":"pinned","action":"close","key":"1"}},
+    {"send":{"kind":"region","route":"tabs","member":"pinned","action":"close","key":"1"},"id":"close-request"},
+    {"receive":{"ok":false,"error":{"kind":"rejected","reason":"unavailable","message":{"$any":"string","default":"…"}}},"replyTo":"close-request"},
+    {"expect":{"call":{"id":"close","rejected":{"kind":"rejected","reason":"unavailable"}}}},
+    {"expect":{"diagnostics":["rejected"]}}
+  ]
+}

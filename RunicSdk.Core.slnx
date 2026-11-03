@@ -9,6 +9,8 @@
     <Project Path="examples/notes-view-first/NotesViewFirst.csproj" />
     <Project Path="examples/notes-view-first/Tests/NotesViewFirst.Tests.csproj" />
     <Project Path="examples/notes-reactive-views/NotesReactiveViews.csproj" />
+    <Project Path="examples/document-tabs/DocumentTabs.csproj" />
+    <Project Path="examples/document-tabs/Tests/DocumentTabs.Tests.csproj" />
     <Project Path="examples/query-collections/QueryCollectionsExample.csproj" />
     <Project Path="examples/wpf-navigation/NotesNavigation/NotesNavigation.csproj" />
     <Project Path="examples/wpf-navigation/Tests/NotesNavigation.Tests.csproj" />

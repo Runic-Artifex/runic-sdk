@@ -34,7 +34,7 @@ internal sealed class InteractionFixture
 
         // A normal application handler remains the fallback when no mounted
         // browser is actively waiting.
-        using (RunicInteractionInvocation.Enter(session, route, "client-a", "connection-a"))
+        using (RunicInteractionInvocation.Enter(session, route, "client-a", BridgeDispatcher.For(transport).ConnectionKeyOf("connection-a") ?? "connection-a"))
             Require(await model.ConfirmDelete.Handle("headless"),
                 "The browser adapter did not fall through to the .NET interaction handler.");
 
@@ -42,7 +42,7 @@ internal sealed class InteractionFixture
         {
             alreadyCancelled.Cancel();
             Task<bool> cancelledBeforeAdmission;
-            using (RunicInteractionInvocation.Enter(session, route, "client-a", "connection-a",
+            using (RunicInteractionInvocation.Enter(session, route, "client-a", BridgeDispatcher.For(transport).ConnectionKeyOf("connection-a") ?? "connection-a",
                 cancellationToken: alreadyCancelled.Token))
                 cancelledBeforeAdmission = model.ConfirmDelete.Handle("cancelled-before-admission");
             Require(await ThrowsAsync<OperationCanceledException>(async () => _ = await cancelledBeforeAdmission),
@@ -56,7 +56,7 @@ internal sealed class InteractionFixture
             "The root interaction presentation did not open with its handlers.");
 
         Task<bool> answer;
-        using (RunicInteractionInvocation.Enter(session, route, "client-a", "connection-a"))
+        using (RunicInteractionInvocation.Enter(session, route, "client-a", BridgeDispatcher.For(transport).ConnectionKeyOf("connection-a") ?? "connection-a"))
             answer = model.ConfirmDelete.Handle("browser");
         using var request = await pushes.NextAsync("connection-a", "interaction");
         var root = request.RootElement;
@@ -88,7 +88,7 @@ internal sealed class InteractionFixture
             "The interaction registration was rejected.");
         Task<bool> firstQueued;
         Task<bool> secondQueued;
-        using (RunicInteractionInvocation.Enter(session, route, "client-a", "connection-a"))
+        using (RunicInteractionInvocation.Enter(session, route, "client-a", BridgeDispatcher.For(transport).ConnectionKeyOf("connection-a") ?? "connection-a"))
         {
             firstQueued = session.Interactions.TryRequest(route, "confirmDelete", "testing.confirmDelete.v1",
                 "first", static value => JsonSerializer.Serialize(value), static value => value.GetBoolean())!;
@@ -105,7 +105,7 @@ internal sealed class InteractionFixture
         // An answer the generated decoder rejects settles the request with a
         // typed error immediately, whichever exception the decoder throws.
         Task<bool> undecodable;
-        using (RunicInteractionInvocation.Enter(session, route, "client-a", "connection-a"))
+        using (RunicInteractionInvocation.Enter(session, route, "client-a", BridgeDispatcher.For(transport).ConnectionKeyOf("connection-a") ?? "connection-a"))
             undecodable = session.Interactions.TryRequest(route, "confirmDelete", "testing.confirmDelete.v1",
                 "undecodable", static value => JsonSerializer.Serialize(value),
                 static value => value.GetProperty("confirmed").GetBoolean())!;
@@ -119,7 +119,7 @@ internal sealed class InteractionFixture
         // The command's cancellation reaches a handler already processing a prompt as interaction-cancelled.
         using var commandCancellation = new CancellationTokenSource();
         Task<bool> cancelledByCommand;
-        using (RunicInteractionInvocation.Enter(session, route, "client-a", "connection-a", cancellationToken: commandCancellation.Token))
+        using (RunicInteractionInvocation.Enter(session, route, "client-a", BridgeDispatcher.For(transport).ConnectionKeyOf("connection-a") ?? "connection-a", cancellationToken: commandCancellation.Token))
             cancelledByCommand = session.Interactions.TryRequest(route, "confirmDelete", "testing.confirmDelete.v1",
                 "cancel-through-control", static value => JsonSerializer.Serialize(value), static value => value.GetBoolean())!;
         using (var pending = await pushes.NextAsync("connection-a", "interaction"))
@@ -133,7 +133,7 @@ internal sealed class InteractionFixture
             "Command cancellation did not cancel the selected browser interaction.");
 
         Task<bool> cancelled;
-        using (RunicInteractionInvocation.Enter(session, route, "client-a", "connection-a"))
+        using (RunicInteractionInvocation.Enter(session, route, "client-a", BridgeDispatcher.For(transport).ConnectionKeyOf("connection-a") ?? "connection-a"))
             cancelled = model.ConfirmDelete.Handle("cancel");
         (await pushes.NextAsync("connection-a", "interaction")).Dispose();
         using (var closed = JsonDocument.Parse(transport.Close(route, "present-a", "connection-a", "client-a")))
@@ -146,7 +146,7 @@ internal sealed class InteractionFixture
         RequireOpen(transport.Open(route, "present-b", "connection-b", "client-a", Handlers()),
             "The replacement interaction presentation did not open.");
         Task<bool> disconnected;
-        using (RunicInteractionInvocation.Enter(session, route, "client-a", "connection-b"))
+        using (RunicInteractionInvocation.Enter(session, route, "client-a", BridgeDispatcher.For(transport).ConnectionKeyOf("connection-b") ?? "connection-b"))
             disconnected = model.ConfirmDelete.Handle("disconnect");
         (await pushes.NextAsync("connection-b", "interaction")).Dispose();
         transport.CloseConnection("connection-b");
@@ -156,7 +156,7 @@ internal sealed class InteractionFixture
         RequireOpen(transport.Open(route, "present-c", "connection-c", "client-a", Handlers()),
             "The restarted interaction presentation did not open.");
         Task<bool> restarted;
-        using (RunicInteractionInvocation.Enter(session, route, "client-a", "connection-c"))
+        using (RunicInteractionInvocation.Enter(session, route, "client-a", BridgeDispatcher.For(transport).ConnectionKeyOf("connection-c") ?? "connection-c"))
             restarted = session.Interactions.TryRequest(route, "confirmDelete", "testing.confirmDelete.v1", "restart",
                 static value => JsonSerializer.Serialize(value), static value => value.GetBoolean())!;
         using (var restartWire = await pushes.NextAsync("connection-c", "interaction"))

@@ -40,11 +40,42 @@
     return Promise.resolve(typeof name === "string" && name.endsWith("Snapshot") ? snapshotReply : releasedReply);
   };
 
+  // request-session/1 (specs/application/README.md, "Request sessions"): every
+  // request names the session of its connection's hello. The page's runtime
+  // adds it to its own requests; a request that other page code sends through
+  // __runicBridge.request without one gets the session of the hello this page
+  // sent last, so it still acts for this page.
+  function withSession(message, session) {
+    if (session === undefined || typeof message !== "string") return message;
+    const named = `"session":${JSON.stringify(session)}}`;
+    if (message.endsWith(named)) return message;
+    let parsed;
+    try { parsed = JSON.parse(message); } catch { return message; }
+    if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed) || "session" in parsed) return message;
+    return JSON.stringify({ ...parsed, session });
+  }
+
+  // The session of a hello the page sends; the runtime writes kind first. A new
+  // connection's first request is its hello, which replaces it.
+  let session;
+  function helloSession(message) {
+    if (typeof message !== "string" || !message.startsWith('{"kind":"hello"')) return undefined;
+    try {
+      const value = JSON.parse(message).session;
+      return typeof value === "string" ? value : undefined;
+    } catch {
+      return undefined;
+    }
+  }
+
   globalThis.__runicBridge = {
     isConnected: connected,
     request: message => {
       if (!globalThis.webui) return Promise.reject(new Error("Runic Desktop is unavailable."));
       globalThis.webui.allowNavigation?.(true);
+      const hello = helloSession(message);
+      if (hello !== undefined) session = hello;
+      else message = withSession(message, session);
       const host = views();
       return typeof host?.request === "function"
         ? host.request("__runicViews", message)

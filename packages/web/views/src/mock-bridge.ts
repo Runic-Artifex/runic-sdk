@@ -4,7 +4,8 @@ import { viewsVersion } from "./version.js";
 import { applySplice, producerSplices, textSpliceFeature } from "./text.js";
 import { insertRows } from "./collections.js";
 import { flushNotifications } from "./notifications.js";
-import { presentationEpochFeature, presentedFeature, queryCollectionsFeature } from "./protocol.js";
+import { clientErrorsFeature, presentationEpochFeature, presentedFeature, queryCollectionsFeature, requestSessionFeature, viewRequestsFeature } from "./protocol.js";
+import { regionCollectionsFeature, type RegionOutcome } from "./regions.js";
 import { evaluateMockQuery, type MockQueryCollection, type MockQueryLoad, type MockQuerySource } from "./mock-query.js";
 import { normalizeQuery, type QueryCollectionQuery } from "./query.js";
 
@@ -239,6 +240,51 @@ export interface MockViewDefinition {
   readonly streams?: readonly string[];
   /** The View's operation contract, `{view}:{fingerprint}`. Defaults to `mock.{route}:mock`. */
   readonly contract?: string;
+  /**
+   * The View's view requests by name (view-requests/1), such as `{ focus: {} }`. A registration that names another
+   * request, or a contract other than a `contract` given here, is `unsupported`, as a producer answers it. Generated
+   * typed mocks fill it in.
+   */
+  readonly requests?: Readonly<Record<string, { readonly contract?: string }>>;
+  /**
+   * Region collections by member wire name (region-collections/1). The member's state value is
+   * `{ regions: [{ key, content }], selected }`; `region` requests select or close its regions by key.
+   */
+  readonly regions?: Readonly<Record<string, MockRegionDefinition>>;
+}
+
+/**
+ * A page's request to select or close the region with `key`; `index` is its position in the collection. `signal`
+ * aborts when a later request of the collection supersedes this one while it is decided.
+ */
+export interface MockRegionRequest {
+  readonly action: "select" | "close";
+  readonly key: string;
+  readonly index: number;
+  readonly signal: AbortSignal;
+}
+
+/**
+ * What a region collection decides about a request: its `outcome` (`Committed` by default) and more state changes.
+ * Without `outcome`, or with a `Committed` one, the mock applies the selection or close itself; with another outcome,
+ * such as a departure guard's veto, it changes only `state`.
+ */
+export interface MockRegionDecision {
+  readonly outcome?: RegionOutcome;
+  readonly state?: MockState;
+}
+
+/** A region collection of a mock View (region-collections/1). */
+export interface MockRegionDefinition {
+  /** Whether the page can close a region; a `close` of a collection without it is `unavailable`. */
+  readonly close: boolean;
+  /**
+   * Decides a request whose key names a region, standing in for the departure guards. Without it, every request
+   * commits. A thrown error answers the request `failed`. While a decision is pending, a `close` of the same region
+   * joins it and is answered with its outcome, and any other request of the collection supersedes it: the pending
+   * request, and the closes that joined it, answer `Superseded`, and their decision is ignored.
+   */
+  readonly decide?: (state: MockState, request: MockRegionRequest) => MockRegionDecision | void | Promise<MockRegionDecision | void>;
 }
 
 /** How the browser answered an interaction request. */
@@ -295,6 +341,16 @@ export interface MockView {
   readonly interactionHandlers: readonly string[];
   /** Pushes an interaction request to the presentation that handles it, as a producer does. */
   interact(name: string, input: unknown, options?: MockInteractionOptions): Promise<MockInteractionReply>;
+  /** View request names (view-requests/1) that an open presentation of this route on the connection registered. */
+  readonly requestHandlers: readonly string[];
+  /**
+   * Raises a view request (view-requests/1), as a ViewModel's `ViewRequest.Raise` does: pushes `view-request` with
+   * the route's current revision and `input` (the wire value) to every presentation of this route on the connection
+   * that registered `name`, and returns how many it pushed to. 0 means that no presentation handles it; the request is
+   * not kept for a later registration. The mock runs no command scope or delivery rule: every registered
+   * presentation of the route receives it.
+   */
+  raise(name: string, input: unknown): number;
   /**
    * The route's presentation epoch (presentation-epoch/1): the revision of its first state, then of each renewal. On a
    * connection that uses the feature, `open` and `snapshot` replies and `state` pushes carry it, and a `command` that
@@ -338,6 +394,8 @@ export type MockInterceptor = (request: MockCall) =>
 export interface MockBridge extends RunicBridgeClient {
   /** Every request in order, including `hello` and rejected ones. */
   readonly calls: readonly MockCall[];
+  /** client-errors/1: the error reports the page sent with `installErrorReporting`, in order. */
+  readonly clientErrors: readonly MockClientError[];
   /** The virtual time in milliseconds, which only `advance()` moves. */
   readonly now: number;
   /** Queued requests, replies, pushes and timers that are due now or later. */
@@ -379,6 +437,19 @@ export interface MockBridge extends RunicBridgeClient {
   advance(milliseconds: number): Promise<void>;
 }
 
+/** A `client-error` request the mock producer received (client-errors/1). */
+export interface MockClientError {
+  readonly kind: "client-error";
+  readonly source: string;
+  readonly message: string;
+  readonly name?: string;
+  readonly stack?: string;
+  readonly url?: string;
+  readonly route?: string;
+  /** Reports the page counted but did not send since the previous one. */
+  readonly dropped?: number;
+}
+
 /** Creates a mock producer. Install it with {@link installMockBridge}. */
 /* ------------------------------------------------------------------ internals */
 
@@ -387,11 +458,33 @@ const realSetTimeout = globalThis.setTimeout.bind(globalThis);
 const yieldToEventLoop = () => new Promise<void>(resolve => { realSetTimeout(resolve, 0); });
 const maximumRounds = 10_000;
 const mockImplementation = { name: "@runic-artifex/views/mock", version: viewsVersion };
-const mockFeatures: readonly string[] = [textSpliceFeature, presentationEpochFeature, presentedFeature, queryCollectionsFeature];
+const mockFeatures: readonly string[] = [textSpliceFeature, presentationEpochFeature, presentedFeature, viewRequestsFeature, requestSessionFeature, regionCollectionsFeature, clientErrorsFeature, queryCollectionsFeature];
 
 const upperFirst = (value: string) => value.charAt(0).toUpperCase() + value.slice(1);
 const isRecord = (value: unknown): value is Record<string, unknown> => value !== null && typeof value === "object" && !Array.isArray(value);
 const isSafe = (value: unknown): value is number => typeof value === "number" && Number.isSafeInteger(value) && value >= 0;
+
+interface RegionCollectionValue { readonly regions: readonly { readonly key: string; readonly content: unknown }[]; readonly selected: number | null }
+
+/** The regions of a region collection member's state value; none when it is not one. */
+const regionsOf = (value: unknown): RegionCollectionValue["regions"] =>
+  isRecord(value) && Array.isArray(value["regions"]) ? value["regions"] as RegionCollectionValue["regions"] : [];
+
+/**
+ * A committed region request (README "Region collections"): a select changes `selected`; a close removes the region,
+ * and when it was selected, the next region becomes selected, or the previous one when it was the last, or none.
+ */
+function regionCommitted(value: unknown, action: "select" | "close", key: string): unknown {
+  const regions = regionsOf(value);
+  const index = regions.findIndex(region => region.key === key);
+  if (index < 0) return value;
+  if (action === "select") return { ...(value as object), selected: index };
+  const selected = (value as RegionCollectionValue).selected;
+  const kept = regions.filter((_, at) => at !== index);
+  const next = kept.length === 0 || selected === null ? null
+    : selected === index ? Math.min(index, kept.length - 1) : selected > index ? selected - 1 : selected;
+  return { ...(value as object), regions: kept, selected: next };
+}
 
 /**
  * The canonical form of a JSON value (RFC 8785) in JavaScript: scalars and member names as `JSON.stringify` writes
@@ -469,6 +562,9 @@ interface Presentation {
   readonly connection: number;
   handlers: { readonly name: string; readonly contract: string }[];
   generation: number;
+  /** view-requests/1: the registered view requests and their generation (0 before the first registration). */
+  requests: { readonly name: string; readonly contract: string }[];
+  requestGeneration: number;
 }
 
 /** The mock's state of one View route. */
@@ -498,9 +594,21 @@ interface MockRegisteredView {
   running: number;
   /** presented/1: the pending waits of `waitPresented`. */
   readonly presentWaits: Set<PresentWait>;
+  /** view-requests/1: requests raised inside `batch` or a command handler, pushed after its changes. */
+  readonly raised: { readonly name: string; readonly input: unknown }[];
+  /** region-collections/1: the request of each region collection whose decision is pending. */
+  readonly regionRequests: Map<string, PendingRegionRequest>;
   /** The query collections (query-collections/1): rows, loads, and the ordered rows of the current version. */
   readonly queries: Map<string, MockQueryRecord>;
   handle: MockView;
+}
+
+interface PendingRegionRequest {
+  readonly action: "select" | "close";
+  readonly key: string;
+  supersede(): void;
+  /** Settles once the request's effects are published. */
+  readonly result: Promise<{ readonly outcome: RegionOutcome } | { readonly error: unknown }>;
 }
 
 interface MockQueryRecord {
@@ -560,6 +668,7 @@ export function createMockBridge(options: MockBridgeOptions = {}): MockBridge {
   const messageListeners = new Set<(message: string) => void>();
   const closedSessions = new Set<string>();
   const calls: MockCall[] = [];
+  const clientErrors: MockClientError[] = [];
   // Pushes that follow a request's reply, such as the `present` of a wait to a presentation that just opened.
   const afterReply = new WeakMap<MockCall, () => void>();
   const tasks: Task[] = [];
@@ -1112,6 +1221,65 @@ export function createMockBridge(options: MockBridgeOptions = {}): MockBridge {
     return request.reply.promise;
   }
 
+  /* ------------------------------------------------------------- view requests */
+
+  /** A `view-requests` registration, with the outcomes of a producer (specs/application/README.md, "View requests"). */
+  function registerRequests(view: MockRegisteredView, message: Record<string, unknown>): Reply {
+    const listed = message["requests"];
+    const generation = message["generation"];
+    if (typeof message["presentation"] !== "string" || !isSafe(generation) || generation === 0 || !Array.isArray(listed) || listed.length > 64
+      || listed.some(item => !isRecord(item) || typeof item["name"] !== "string" || item["name"].length === 0 || typeof item["contract"] !== "string"))
+      return invalidRequest("The view-requests request is invalid.");
+    const requests = listed as Presentation["requests"];
+    const presentation = view.presentations.get(message["presentation"]);
+    if (!presentation || presentation.connection !== connection.id) return ok({ registration: "ignored" });
+    const known = view.definition.requests ?? {};
+    if (requests.some(request => !Object.hasOwn(known, request.name)
+      || known[request.name]!.contract !== undefined && known[request.name]!.contract !== request.contract))
+      return ok({ registration: "unsupported" });
+    const identities = (items: Presentation["requests"]) => new Set(items.map(item => canonicalJson([item.name, item.contract])));
+    const next = identities(requests);
+    const current = identities(presentation.requests);
+    if (generation < presentation.requestGeneration || generation === presentation.requestGeneration
+      && (next.size !== current.size || [...next].some(item => !current.has(item))))
+      return ok({ registration: "stale" });
+    presentation.requestGeneration = generation;
+    presentation.requests = requests.map(request => ({ name: request.name, contract: request.contract }));
+    return ok({ registration: "ok" });
+  }
+
+  /** The presentations of the route on the connection that registered `name`, with the contract they registered. */
+  function requestTargets(view: MockRegisteredView, name: string): { readonly presentation: string; readonly contract: string }[] {
+    if (!connected || connection.session === undefined || !connection.features.has(viewRequestsFeature)) return [];
+    return [...view.presentations.values()].filter(item => item.connection === connection.id).flatMap(item => {
+      const request = item.requests.find(entry => entry.name === name);
+      return request ? [{ presentation: item.id, contract: request.contract }] : [];
+    });
+  }
+
+  /**
+   * Raises a view request. Inside `batch` or a command handler it is pushed after their changes are published, so its
+   * revision includes them, as a producer publishes what is pending before it pushes the request.
+   */
+  function raise(view: MockRegisteredView, name: string, input: unknown): number {
+    const targets = requestTargets(view, name);
+    if (targets.length === 0) return 0;
+    if (view.batching || view.running > 0) view.raised.push({ name, input });
+    else pushRequest(view, name, input);
+    return targets.length;
+  }
+
+  function pushRequest(view: MockRegisteredView, name: string, input: unknown): void {
+    for (const target of requestTargets(view, name))
+      pushMessage({ kind: "view-request", route: view.route, presentation: target.presentation, revision: view.revision, name, contract: target.contract, input });
+  }
+
+  /** Pushes the requests raised inside a batch or command handler, once it published its changes. */
+  function pushRaised(view: MockRegisteredView): void {
+    if (view.batching || view.running > 0) return;
+    for (const request of view.raised.splice(0)) pushRequest(view, request.name, request.input);
+  }
+
   /* ------------------------------------------------------------ requests */
 
   function available(view: MockRegisteredView, member: string, input: unknown): boolean {
@@ -1232,7 +1400,7 @@ export function createMockBridge(options: MockBridgeOptions = {}): MockBridge {
     return reply;
   }
 
-  async function answer(message: Record<string, unknown>, call: MockCall): Promise<Reply> {
+  async function answer(message: Record<string, unknown>, call: MockCall, session: unknown): Promise<Reply> {
     for (const interceptor of [...interceptors]) {
       const reply = await interceptor(call);
       if (reply === undefined) continue;
@@ -1266,6 +1434,8 @@ export function createMockBridge(options: MockBridgeOptions = {}): MockBridge {
       return ok({ ...identity, features: mockFeatures });
     }
     if (connection.session === undefined) return noHello();
+    // request-session/1: a request of another page, which names another session or none, never acts for this one.
+    if (connection.features.has(requestSessionFeature) && session !== connection.session) return noHello();
     if (kind === "receive") return ok({ messages: [] });
     if (kind === "closing-reply") {
       if (!connection.features.has(presentedFeature)) return invalidRequest("closing-reply needs the feature presented/1.");
@@ -1273,10 +1443,23 @@ export function createMockBridge(options: MockBridgeOptions = {}): MockBridge {
       connection.closing?.finish(true);
       return ok();
     }
+    if (kind === "view-requests" && !connection.features.has(viewRequestsFeature))
+      return invalidRequest("view-requests needs the feature view-requests/1.");
+    if (kind === "client-error") {
+      // client-errors/1: the producer logs the report; the mock records it in clientErrors.
+      if (!connection.features.has(clientErrorsFeature) || typeof message["source"] !== "string" || typeof message["message"] !== "string")
+        return invalidRequest("client-error needs the feature client-errors/1, a source and a message.");
+      clientErrors.push(message as unknown as MockClientError);
+      return ok();
+    }
     if (kind === "presented" && (!connection.features.has(presentedFeature) || !isSafe(message["revision"])))
       return invalidRequest("presented needs the feature presented/1 and a revision.");
     if (kind === "command" && connection.features.has(presentationEpochFeature) && Object.hasOwn(message, "epoch") && !isSafe(message["epoch"]))
       return invalidRequest("The command's epoch is not a non-negative safe integer.");
+    // region-collections/1: a region request is a request kind only on a connection that uses the feature.
+    if (kind === "region" && (typeof message["member"] !== "string" || typeof message["key"] !== "string"
+      || (message["action"] !== "select" && message["action"] !== "close") || !connection.features.has(regionCollectionsFeature)))
+      return invalidRequest("A region request needs the feature region-collections/1, a member, a key and the action select or close.");
     const route = message["route"];
     if (typeof route !== "string") return invalidRequest("The request has no route.");
     const view = views.get(route);
@@ -1298,7 +1481,7 @@ export function createMockBridge(options: MockBridgeOptions = {}): MockBridge {
         }
         if (existing && existing.connection !== connection.id) return ok({ ...state(), presentation: "ignored" });
         const handlers = Array.isArray(message["handlers"]) ? message["handlers"] as Presentation["handlers"] : undefined;
-        view.presentations.set(id, existing ?? { id, connection: connection.id, handlers: handlers ?? [], generation: 0 });
+        view.presentations.set(id, existing ?? { id, connection: connection.id, handlers: handlers ?? [], generation: 0, requests: [], requestGeneration: 0 });
         // presented/1: a wait that is pending reaches a presentation that opens, after the open reply.
         if (view.presentWaits.size !== 0) afterReply.set(call, () => offerPresent(view));
         return ok({ ...state(), presentation: "ok", ...(handlers === undefined ? {} : { registration: "ok" }) });
@@ -1356,12 +1539,48 @@ export function createMockBridge(options: MockBridgeOptions = {}): MockBridge {
           view.running--;
           if (isRecord(patch)) commit(view, { ...view.state, ...patch });
           else publishRenewal(view);
+          pushRaised(view);
         } catch (error) {
           view.running--;
           publishRenewal(view);
+          pushRaised(view);
           return errorReply(view, error, true);
         }
         return ok({ revision: view.revision });
+      }
+      case "region": {
+        const action = message["action"] as "select" | "close";
+        const key = message["key"] as string;
+        const collection = view.definition.regions?.[member!];
+        if (!collection) return invalidRequest(`${route} has no region collection ${member!}.`);
+        if (action === "close" && !collection.close)
+          return failed("rejected", `${member!} does not let the page close a region.`, { reason: "unavailable" });
+        const index = regionsOf(view.state[member!]).findIndex(region => region.key === key);
+        if (index < 0) return failed("rejected", `${member!} has no region with this key.`, { reason: "unresolved-key" });
+        const settled = (result: Awaited<PendingRegionRequest["result"]>) =>
+          "error" in result ? errorReply(view, result.error, true) : ok({ revision: view.revision, outcome: result.outcome });
+        const pending = view.regionRequests.get(member!);
+        // A close of a region whose close is pending joins it, without asking again.
+        if (pending && action === "close" && pending.action === "close" && pending.key === key) return settled(await pending.result);
+        pending?.supersede();
+        const controller = new AbortController();
+        let supersede = () => {};
+        const superseded = new Promise<"superseded">(resolve => { supersede = () => { controller.abort(); resolve("superseded"); }; });
+        const decide = async (): Promise<Awaited<PendingRegionRequest["result"]>> => {
+          let decision: MockRegionDecision | void | "superseded";
+          try { decision = await Promise.race([collection.decide?.(view.state, { action, key, index, signal: controller.signal }), superseded]); }
+          catch (error) { return { error }; }
+          finally { if (view.regionRequests.get(member!) === entry) view.regionRequests.delete(member!); }
+          if (decision === "superseded") return { outcome: { kind: "Superseded", rejection: null, arrival: "None" } };
+          const outcome: RegionOutcome = decision?.outcome ?? { kind: "Committed", rejection: null, arrival: "None" };
+          const next = { ...view.state, ...(decision?.state ?? {}) };
+          if (outcome.kind === "Committed") next[member!] = regionCommitted(next[member!], action, key);
+          commit(view, next);
+          return { outcome };
+        };
+        const entry: PendingRegionRequest = { action, key, supersede: () => supersede(), result: Promise.resolve().then(decide) };
+        view.regionRequests.set(member!, entry);
+        return settled(await entry.result);
       }
       case "presented": {
         const reported = message["revision"] as number;
@@ -1388,6 +1607,7 @@ export function createMockBridge(options: MockBridgeOptions = {}): MockBridge {
           }
         return ok({ registration: "ok" });
       }
+      case "view-requests": return registerRequests(view, message);
       case "query-rows": case "query-set": case "query-index":
         return queryRequest(view, kind, member, message);
       case "interaction-reply": {
@@ -1405,7 +1625,8 @@ export function createMockBridge(options: MockBridgeOptions = {}): MockBridge {
 
   // Requests that change state are admitted one at a time, as a window's turns: each runs once the previous one
   // has answered. Reads, operation observation and interaction replies are not held, so a command that waits for
-  // an interaction can receive its reply.
+  // an interaction can receive its reply. Region requests are not held either: a later one joins or supersedes the
+  // pending one of its collection.
   let turn: Promise<unknown> = Promise.resolve();
   const turnKinds = new Set(["set", "write", "command", "start"]);
   function admitted(kind: string, run: () => Promise<Reply>): Promise<Reply> {
@@ -1432,6 +1653,7 @@ export function createMockBridge(options: MockBridgeOptions = {}): MockBridge {
 
   const bridge: MockBridge = {
     calls,
+    clientErrors,
     get now() { return now; },
     get pending() { return tasks.length; },
     isConnected: () => connected,
@@ -1442,6 +1664,13 @@ export function createMockBridge(options: MockBridgeOptions = {}): MockBridge {
         if (!isRecord(parsed)) throw new TypeError("A request is a JSON object.");
         message = parsed;
       } catch (error) { return Promise.reject(error); }
+      // The session a request names (request-session/1) is checked against its connection's hello, and is not part of
+      // the recorded message, which tests compare with the request they expect.
+      const session = message["kind"] === "hello" ? undefined : message["session"];
+      if (message["kind"] !== "hello" && "session" in message) {
+        const { session: _, ...rest } = message;
+        message = rest;
+      }
       const call: MockCall = {
         kind: typeof message["kind"] === "string" ? message["kind"] : "",
         ...(typeof message["route"] === "string" ? { route: message["route"] } : {}),
@@ -1457,7 +1686,7 @@ export function createMockBridge(options: MockBridgeOptions = {}): MockBridge {
         const settle = (run: () => void) => toPage(() => { owner.pending.delete(drop); run(); });
         toProducer(() => {
           if (connection !== owner) return;
-          const run = () => admitted(call.kind, () => answer(message, call)).then(
+          const run = () => admitted(call.kind, () => answer(message, call, session)).then(
             reply => { settle(() => resolve(JSON.stringify(reply))); afterReply.get(call)?.(); },
             error => settle(() => reject(error)));
           // A request that arrives before the hello waits for it, up to 5 seconds, and is then admitted in arrival
@@ -1487,7 +1716,7 @@ export function createMockBridge(options: MockBridgeOptions = {}): MockBridge {
         route, definition, contract: definition.contract ?? `mock.${route}:mock`, fieldVersions: new Map(), presentations: new Map(),
         requests: new Map(), writes: new Map(), batching: false, pending: [], state, published: state, revision, textChanged: new Map(),
         // The first state begins the route's first epoch.
-        epoch: revision, renewing: false, running: 0, presentWaits: new Set(), queries: new Map(),
+        epoch: revision, renewing: false, running: 0, presentWaits: new Set(), raised: [], regionRequests: new Map(), queries: new Map(),
         handle: undefined as unknown as MockView,
       };
       for (const [member, source] of Object.entries(definition.queries ?? {})) registerQuery(view, member, source, state);
@@ -1515,6 +1744,7 @@ export function createMockBridge(options: MockBridgeOptions = {}): MockBridge {
           finally {
             view.batching = false;
             publish(view);
+            pushRaised(view);
           }
         },
         failNext(match, failure, times = 1) { bridge.failNext({ route, ...match }, failure, times); },
@@ -1525,6 +1755,11 @@ export function createMockBridge(options: MockBridgeOptions = {}): MockBridge {
             .flatMap(item => item.handlers.map(handler => handler.name)))];
         },
         interact: (name, input, options) => interact(view, name, input, options),
+        get requestHandlers() {
+          return [...new Set([...view.presentations.values()].filter(item => item.connection === connection.id)
+            .flatMap(item => item.requests.map(request => request.name)))];
+        },
+        raise: (name, input) => raise(view, name, input),
         get epoch() { return view.epoch; },
         renew() {
           view.renewing = true;

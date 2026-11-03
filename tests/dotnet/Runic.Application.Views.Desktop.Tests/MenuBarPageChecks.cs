@@ -14,8 +14,8 @@ using static DesktopChecks;
 
 // B10 PR 4: the in-page menu bar (specs/desktop/menu-bar-page.md, protocol 2). A Page window's bar state reaches the page
 // through the reserved Views route runic.menu-bar, which pushes each new state to a watching connection, follows
-// CanExecute, and the page's invoke runs the item through DesktopWindow.TryExecuteMenuItemAsync: the window's commands,
-// then the application's.
+// CanExecute, and the page's invoke runs the item with the page's identity: the window's commands as that page's command
+// invocation, then, through DesktopWindow.TryExecuteMenuItemAsync, the application's.
 internal sealed class MenuBarPageChecks
 {
     private static readonly IReadOnlyList<DesktopMenu> Bar =
@@ -106,6 +106,18 @@ internal sealed class MenuBarPageChecks
             revision = state["revision"]!.GetValue<long>();
             Require(await InvokeAsync(page, revision, key, cancellation) == "executed", "The page could not run Save.");
             await viewModel.Save.Executed.Task.WaitAsync(cancellation);
+            // The page's click runs the Window's command as that page's command invocation (A2), not in the window scope.
+            Require(viewModel.SaveScope is { ConnectionKey: not null, ClientKey: not null, Route: "runic.menu-bar" },
+                "The page's click did not run with the page's identity.");
+            // An item the page's own commands do not run, as when Save became runnable only after the page checked, asks
+            // the application's commands only: the Window's target would run it without the page's identity.
+            var saves = 0;
+            viewModel.Save.Ran += () => saves++;
+            var pageWindow = new DesktopMenuBarPageWindow(presentation, DesktopMenuBarPresentation.Page, commands: null);
+            Require(!await pageWindow.TryExecuteAsync((DesktopMenuItem)Bar[0].Items[1], new BridgeConnection("page", "page-client"), cancellation),
+                "A page's click fell back to the Window's own target.");
+            await Task.Delay(100, cancellation);
+            Require(saves == 0, "The Window's own target ran a page's click without its identity.");
             // The application's command runs through the same path as the native bar: the window's target cannot run it.
             var newKey = Item(state, "file.new")!["key"]!.GetValue<string>();
             Require(await InvokeAsync(page, revision, newKey, cancellation) == "executed", "The application's command did not run.");

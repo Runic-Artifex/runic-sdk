@@ -22,6 +22,20 @@ public static class RunicViewsTelemetry
 
     /// <summary>The category of the Views runtime's log entries.</summary>
     public const string LogCategory = "Runic.Application.Views";
+
+    /// <summary>
+    /// The category of the errors that pages report with <c>installErrorReporting()</c> of <c>@runic-artifex/views</c>
+    /// (Views protocol 4 feature <c>client-errors/1</c>): event 1150 <c>PageError</c>, 1151 <c>PageErrorsSuppressed</c> and
+    /// 1152 <c>WindowPageErrorsSuppressed</c>.
+    /// </summary>
+    /// <remarks>
+    /// A separate category, so an application can route, filter or forward page errors, for example to a crash reporter,
+    /// apart from the runtime's own entries. The reports come from the page and are untrusted: Runic caps their texts,
+    /// removes control and bidirectional formatting characters and URL queries, starts every stack line with
+    /// <c>"    | "</c>, and logs at most 10 per connection and 30 per window a minute. A page's text still reaches the
+    /// log: a plain-text sink shows it as part of the entry, and a reader must not take it for the host's own output.
+    /// </remarks>
+    public const string PageLogCategory = "Runic.Application.Views.Page";
 }
 
 // Tags carry generated contract names and exception types only, never argument,
@@ -285,6 +299,22 @@ internal static partial class ViewsLog
         Message = "The window closed before {Pages} of its pages acknowledged the close.")]
     internal static partial void CloseUnacknowledged(ILogger logger, int pages);
 
+    [LoggerMessage(EventId = 1120, EventName = "ViewRequestDropped", Level = LogLevel.Debug,
+        Message = "The view request {Name} was dropped: {Reason}.")]
+    internal static partial void ViewRequestDropped(ILogger logger, string name, string reason);
+
+    [LoggerMessage(EventId = 1121, EventName = "ViewRequestKept", Level = LogLevel.Debug,
+        Message = "The view request {Name} is kept for the next presentation that handles it.")]
+    internal static partial void ViewRequestKept(ILogger logger, string name);
+
+    [LoggerMessage(EventId = 1230, EventName = "ConnectionHandlerFailed", Level = LogLevel.Error,
+        Message = "A handler of IRunicConnections.{Event} threw {ErrorType}; the other handlers still ran.")]
+    internal static partial void ConnectionHandlerFailed(ILogger logger, Exception? exception, string @event, string errorType);
+
+    [LoggerMessage(EventId = 1231, EventName = "ConnectionStateDisposeFailed", Level = LogLevel.Error,
+        Message = "Disposing the {ValueType} of a connection in a RunicConnectionState threw {ErrorType}; the other values were still disposed.")]
+    internal static partial void ConnectionStateDisposeFailed(ILogger logger, Exception? exception, string valueType, string errorType);
+
     [LoggerMessage(EventId = 1010, EventName = "BridgeSnapshotCaptureFailed", Level = LogLevel.Error,
         Message = "Bridge snapshot capture for {Model} on route {Route} failed with {ErrorType}.")]
     internal static partial void SnapshotCaptureFailed(ILogger logger, Exception? exception, string model, string route, string errorType);
@@ -380,6 +410,17 @@ internal static partial class ViewsLog
         Message = "{Window} guards its close, but {Presentation} cannot keep its window open, so a user close does not ask CanCloseAsync.")]
     internal static partial void WindowCloseGuardUnavailable(ILogger logger, string window, string presentation);
 
+    // region-collections/1: SelectAsync or RemoveAsync of a region collection threw for a page's region request.
+    [LoggerMessage(EventId = 1210, EventName = "BridgeRegionRequestFailed", Level = LogLevel.Error,
+        Message = "A region request of {Model}.{Member} on route {Route} failed with {ErrorType}.")]
+    internal static partial void RegionRequestFailed(ILogger logger, Exception exception, string model, string member, string route, string errorType);
+
+    // region-collections/1: a page's region request named a key that the collection no longer has, such as a tab that
+    // closed before the request arrived. The request is rejected with unresolved-key.
+    [LoggerMessage(EventId = 1211, EventName = "BridgeRegionRequestUnresolved", Level = LogLevel.Debug,
+        Message = "A region request of {Model}.{Member} on route {Route} named the key {Key}, which no region of the collection has.")]
+    internal static partial void RegionRequestUnresolved(ILogger logger, string model, string member, string route, string key);
+
     // Hot Reload applied an edit that changed a generated Bridge contract. The message is the IDE line that
     // RunicViewsHotReload also writes to standard error.
     [LoggerMessage(EventId = 1100, EventName = "HotReloadRestartRequired", Level = LogLevel.Error,
@@ -393,6 +434,22 @@ internal static partial class ViewsLog
     [LoggerMessage(EventId = 1102, EventName = "HotReloadRefreshFailed", Level = LogLevel.Warning,
         Message = "Refreshing {Model} after a Hot Reload update failed with {ErrorType}.")]
     internal static partial void HotReloadRefreshFailed(ILogger logger, Exception exception, string model, string errorType);
+
+    // client-errors/1, in the category RunicViewsTelemetry.PageLogCategory. Every value comes from the page, capped and
+    // without control or bidirectional formatting characters (BridgeClientErrors); the stack keeps its line breaks,
+    // each line starting with "    | ", and comes last.
+    [LoggerMessage(EventId = 1150, EventName = "PageError", Level = LogLevel.Error,
+        Message = "The page at {PageUrl} reported an {Source}: {ErrorName}: {ErrorMessage} (route {Route}, {Dropped} more not reported, client {Client})\n{ErrorStack}")]
+    internal static partial void PageError(ILogger logger, string source, string errorName, string errorMessage, string pageUrl,
+        string route, long dropped, string client, string errorStack);
+
+    [LoggerMessage(EventId = 1151, EventName = "PageErrorsSuppressed", Level = LogLevel.Warning,
+        Message = "A page reports more than {Limit} errors a minute; further reports this minute are counted, and the count is logged with the next report.")]
+    internal static partial void PageErrorsSuppressed(ILogger logger, int limit);
+
+    [LoggerMessage(EventId = 1152, EventName = "WindowPageErrorsSuppressed", Level = LogLevel.Warning,
+        Message = "A window's pages report more than {Limit} errors a minute across their connections; further reports this minute are counted, and the count is logged with the next report.")]
+    internal static partial void WindowPageErrorsSuppressed(ILogger logger, int limit);
 }
 
 // Without an ILoggerFactory the runtime keeps its earlier System.Diagnostics.Trace

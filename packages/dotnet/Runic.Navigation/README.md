@@ -729,6 +729,10 @@ var result = await page.Tabs.SelectAsync(page.Reports); // a guarded switch
   selected without being asked.
 - A request on behalf of a page in a region that isn't selected
   (`NavigationRequestOptions.Requester`) is rejected as `NotCurrent`.
+- Runic Views presents a selection whose regions change at run time as a
+  [region collection](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Application.Views/README.md#region-collections)
+  (since 0.16): the page selects and closes tabs by key, through `SelectAsync`
+  and `RemoveAsync`.
 - Own the regions and the selection by a page entry, not by the window's
   ViewModel: then a window close, which clears the window's regions, asks
   every tab in one transition.

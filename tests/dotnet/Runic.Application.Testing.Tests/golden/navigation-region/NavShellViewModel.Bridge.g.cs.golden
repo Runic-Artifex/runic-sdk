@@ -77,6 +77,15 @@ internal sealed class NavShellBridge : global::Runic.Application.Views.Generated
                             writer.WriteEndObject();
                             break;
                         }
+                        case global::Runic.Application.Testing.Tests.NavTabbedPageViewModel page:
+                        {
+                            var reference = content.Present(vm, "Main", "navTabbedPage", page, (transport, current, route) => content.AttachPresentation<global::Runic.Application.Testing.Tests.NavTabbedPageView, global::Runic.Application.Testing.Tests.NavTabbedPageViewModel>(current, route, (presentationTransport, presentationModel, presentationRoute) => new global::Runic.Application.Views.Generated.Bridges.NavTabbedPageBridge(presentationTransport, presentationModel, presentationRoute, content)));
+                            writer.WriteStartObject();
+                            writer.WriteString("kind", reference.Kind);
+                            writer.WriteString("id", reference.Id);
+                            writer.WriteEndObject();
+                            break;
+                        }
                         default: { var unregistered = vm.Main?.Current!; throw new global::System.NotSupportedException($"The navigation region NavShellViewModel.Main cannot present {unregistered.GetType().FullName}: the Bridge generator found no Runic View for it. Declare one in the project that generates this Bridge, for example 'public sealed partial class {(unregistered.GetType().Name.EndsWith("ViewModel", global::System.StringComparison.Ordinal) ? unregistered.GetType().Name[..^9] : unregistered.GetType().Name)}View : RunicView<{unregistered.GetType().Name}>;', and rebuild."); }
                     }
                 }

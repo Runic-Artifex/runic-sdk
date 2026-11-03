@@ -1,5 +1,6 @@
 import type { BridgeErrorKind, BridgeFailureDetail } from "./errors.js";
 import type { BridgeOutcomeFailure } from "./controller.js";
+import type { RegionOutcome } from "./regions.js";
 import {
   mockBridgeInternals,
   mockFailure,
@@ -14,6 +15,8 @@ import {
   type MockOperation,
   type MockOperationHandler,
   type MockOperationKind,
+  type MockRegionDefinition,
+  type MockRegionRequest,
   type MockSetter,
   type MockState,
   type MockView,
@@ -26,6 +29,27 @@ export interface MockReference<TKind extends string = string> {
   readonly kind: TKind;
   readonly id: string;
 }
+
+/** A region collection in a mock state (region-collections/1): each region's content as a {@link MockReference}. */
+export interface MockRegionCollection<R extends MockReference = MockReference> {
+  readonly regions: readonly { readonly key: string; readonly content: R | null }[];
+  readonly selected: number | null;
+}
+
+export type { MockRegionRequest };
+
+/**
+ * What a region handler decides: the request's `outcome` (`Committed` by default) and more state changes. Without
+ * `outcome`, or with a `Committed` one, the mock applies the selection or close itself, as .NET does after the
+ * departure guards agreed; with another outcome, such as a guard's veto, it changes only `state`.
+ */
+export interface MockRegionResult<TState> {
+  readonly outcome?: RegionOutcome;
+  readonly state?: Patch<TState>;
+}
+
+/** Decides a region request of a mock region collection, standing in for its departure guards. */
+export type MockRegionHandler<TState> = (state: TState, request: MockRegionRequest) => Awaitable<MockRegionResult<TState> | void>;
 
 type Patch<TState> = Partial<{ -readonly [K in keyof TState]: TState[K] }>;
 type Awaitable<T> = T | Promise<T>;
@@ -146,9 +170,21 @@ export interface MockTypedInteraction<TInput, TOutput> {
     | { readonly kind: "cancelled" | "failed" | "unhandled" }>;
 }
 
+/** A view request (view-requests/1) that the ViewModel raises for the browser to handle. */
+export interface MockTypedViewRequest<TInput> {
+  /** Whether an open client presentation of this View currently registered a handler for it. */
+  readonly handled: boolean;
+  /**
+   * Raises the request, as the ViewModel's `ViewRequest.Raise(input)` does: pushes it to every presentation of this
+   * View that registered a handler, and returns how many it reached. 0 means that none handles it; the request is
+   * not kept or replayed. Inside a command handler or `batch`, it is pushed after their state changes.
+   */
+  raise(input: TInput): number;
+}
+
 /** A client method name a failure can target, such as `save`, `startSave`, `setTitle` or `canSetViewport`. */
 export type MockMethodName<TClient> = Exclude<keyof TClient & string,
-  "snapshot" | "subscribe" | "dispose" | "interactions" | "fieldBaseline" | `recover${string}`>;
+  "snapshot" | "subscribe" | "dispose" | "interactions" | "requests" | "fieldBaseline" | `recover${string}`>;
 
 /** The typed mock of one generated client, created by a generated `mock{Name}()`. */
 export interface MockTypedView<TState, TClient, TKind extends string = string> {
@@ -199,6 +235,8 @@ export interface MockTypedViewSpec {
   readonly texts?: readonly string[];
   /** Keyed collections by wire name: a row codec and its key. */
   readonly collections?: Readonly<Record<string, FieldCodec & { key(item: never): string }>>;
+  /** Region collections by wire name (region-collections/1): whether the page can close a region. */
+  readonly regions?: Readonly<Record<string, { readonly close: boolean }>>;
   /** Query collections by wire name: a row codec and, when the generator found one, its key. */
   readonly queries?: Readonly<Record<string, FieldCodec & { key?(item: never): string }>>;
   /**
@@ -225,6 +263,11 @@ export interface MockTypedViewSpec {
   /** The View's operation contract, `{view}:{fingerprint}`. */
   readonly contract?: string;
   readonly interactions?: Readonly<Record<string, { readonly encodeInput: (value: unknown) => unknown; readonly decodeOutput: (wire: unknown) => unknown }>>;
+  /**
+   * View requests by name (view-requests/1): `encodeInput` encodes a typed input as its wire value. With `contract`,
+   * a registration of another contract is `unsupported`; without it, any contract of the name is accepted.
+   */
+  readonly requests?: Readonly<Record<string, { readonly encodeInput: (value: unknown) => unknown; readonly contract?: string }>>;
 }
 
 /** The loose shape of a generated mock definition. */
@@ -244,6 +287,8 @@ export interface MockTypedViewDefinition {
    */
   readonly resolveKey?: object;
   readonly operations?: object;
+  /** Region handlers by wire name (region-collections/1). */
+  readonly regions?: object;
   /** Query collections by wire name; the generated definition types them as {@link MockTypedQuerySource}. */
   readonly queries?: object;
 }
@@ -318,6 +363,21 @@ export function mockTypedView(bridge: MockBridge, spec: MockTypedViewSpec, defin
       catch (error) { throw encodedFailure(error, command.encodeFailure); }
     };
   }
+  // region-collections/1: a handler decides with the decoded state; its state changes are encoded.
+  const regions: Record<string, MockRegionDefinition> = {};
+  for (const [field, plan] of Object.entries(spec.regions ?? {})) {
+    const handler = handlersOf(definition.regions, field) as MockRegionHandler<unknown> | undefined;
+    regions[field] = {
+      close: plan.close,
+      ...(handler ? {
+        decide: async (state: MockState, request: MockRegionRequest) => {
+          const result = await handler(decode(state), request);
+          if (!result) return undefined;
+          return { ...(result.outcome ? { outcome: result.outcome } : {}), ...(result.state ? { state: encode(result.state) } : {}) };
+        },
+      } : {}),
+    };
+  }
   const operations: Record<string, MockOperationHandler | "manual"> = {};
   const wrapOperation = (method: string) => (raw: MockOperation): MockTypedOperation<unknown, unknown, unknown> => {
     const plan = spec.operations![method]!;
@@ -380,7 +440,10 @@ export function mockTypedView(bridge: MockBridge, spec: MockTypedViewSpec, defin
       }];
     })) } : {}),
     operations,
+    ...(spec.regions ? { regions } : {}),
     ...(spec.contract ? { contract: spec.contract } : {}),
+    ...(spec.requests ? { requests: Object.fromEntries(Object.entries(spec.requests)
+      .map(([name, request]) => [name, request.contract === undefined ? {} : { contract: request.contract }])) } : {}),
     streams: Object.values(spec.operations ?? {}).filter(plan => plan.stream).map(plan => plan.member),
   });
 
@@ -395,6 +458,11 @@ export function mockTypedView(bridge: MockBridge, spec: MockTypedViewSpec, defin
     requests.set(`can${upperFirst(method)}`, { kind: "can", member: command.member });
   }
   for (const [method, plan] of Object.entries(spec.operations ?? {})) requests.set(`start${upperFirst(method)}`, { kind: "start", member: plan.member });
+  // A failure of select{Name} or close{Name} answers the next region request of the member, whatever its action.
+  for (const [field, plan] of Object.entries(spec.regions ?? {})) {
+    requests.set(`select${upperFirst(field)}`, { kind: "region", member: field });
+    if (plan.close) requests.set(`close${upperFirst(field)}`, { kind: "region", member: field });
+  }
 
   const collections: Record<string, MockTypedCollection<unknown>> = {};
   for (const [field, codec] of Object.entries(spec.collections ?? {})) {
@@ -434,6 +502,13 @@ export function mockTypedView(bridge: MockBridge, spec: MockTypedViewSpec, defin
       },
     };
   }
+  const viewRequests: Record<string, MockTypedViewRequest<unknown>> = {};
+  for (const [name, codec] of Object.entries(spec.requests ?? {})) {
+    viewRequests[name] = {
+      get handled() { return raw.requestHandlers.includes(name); },
+      raise: input => raw.raise(name, codec.encodeInput(input)),
+    };
+  }
   mockBridgeInternals(bridge);
 
   const view: MockTypedView<unknown, unknown> & Record<string, unknown> = {
@@ -467,6 +542,7 @@ export function mockTypedView(bridge: MockBridge, spec: MockTypedViewSpec, defin
     queries,
     operations: operationLog,
     interactions,
+    requests: viewRequests,
   };
   return view;
 }

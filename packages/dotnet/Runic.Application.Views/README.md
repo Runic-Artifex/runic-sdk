@@ -627,6 +627,155 @@ public sealed partial class EditorViewModel(IRunicWindowContext window) : Observ
   `true` or `false` after the application's services, or opens the Window and
   lets its guards decide.
 
+### Who is connected, and who called
+
+A Window's page can be open more than once: a CS-WebUI window with WebUI's
+`MultiClient` configuration is shared by every browser that reaches it, and
+any page gets a new connection when it reloads. `IRunicConnections` (since
+0.16), which `AddRunicWindowService()` registers per scope, lists the
+Window's page connections and tells a command which one invoked it:
+
+- `Current` lists the connections that completed their `hello`, in the order
+  they connected, until the transport reports them closed. Each is a
+  `RunicConnection(ConnectionKey, ClientKey)` with opaque keys: compare and
+  store them, but do not parse them or show them to users.
+- `Connected` and `Disconnected` are plain .NET events, raised in a turn of
+  the Window's model context, as a command body runs, so a handler may change
+  state the page sees. `Current` changes in the same turn. The turn runs in no
+  command's invocation, so a handler has no `Caller`. A connection the Window
+  already had when the service was bound is reported with `Connected` too; one
+  that closes before its `Connected` turn runs is never reported. Once a
+  closing Window's model context takes no more turns, `Current` still follows
+  the connections but no event is raised, and closing the Window raises no
+  `Disconnected`. A handler that throws is logged as event 1230
+  `ConnectionHandlerFailed`, and the other handlers still run.
+- `Caller` is the connection whose command, operation or in-page menu click
+  of this Window runs on the current asynchronous flow, and `null` elsewhere:
+  in the window scope (`RunicInteractionInvocation.EnterWindow`), or when the
+  command belongs to another Window. It stays the same through the command's
+  `await`s, also after its connection closed, until the command ends.
+- **A page's invocation ends with its command.** An invocation with a
+  connection identity, a page's command, operation or in-page menu click,
+  ends when the work that entered it does: a bridged command or operation
+  when its task completes, and a command the Bridge runs synchronously when
+  `Execute` returns. An in-page menu click ends with the command's task when
+  the command is a CommunityToolkit `IAsyncRelayCommand` (Runic reads its
+  `ExecutionTask`), and otherwise when `Execute` returns: an async
+  ReactiveCommand, or another `ICommand` that starts work it does not return,
+  asks the clicking page before its first `await`. Work a command started
+  that runs on after that, such as a timer, `Task.Run` or a background loop,
+  has no invocation: its `Caller` is `null`, and its questions and view
+  requests follow the rules outside a scope instead of reaching the page.
+  Such work enters `RunicInteractionInvocation.EnterWindow(viewModel)` to
+  reach the window's page.
+- **The window scope does not end.** A native menu-bar command, a host
+  shortcut, the window's close decision and `EnterWindow` name no page, so
+  their scope flows with the work they start: an async native-menu command
+  that asks after an `await` still reaches the window's one page.
+- **A navigation keeps the identity that started it.** A navigation runs its
+  leave guards and other hooks in an invocation with the identity of the
+  code that started it, until the navigation ends: a guard of a Back that a
+  synchronous command starts without awaiting it (`_ = Main.BackAsync()`)
+  still asks the page that clicked.
+- A connection key is never reused within a Window: the window gives every
+  connection its own key (`0:1#2` on CS-WebUI), and a command of a closed
+  page never reaches the page that took its slot.
+- `connections.WhenChanged()` is an `IObservable<IReadOnlyList<RunicConnection>>`
+  that emits `Current` when subscribed and after each change. It needs no
+  System.Reactive and works with both ReactiveUI flavors.
+
+`OpenWindowAsync` binds the service to the Window it opens when the
+Window's Bridge attaches, on Runic Desktop and on CS-WebUI. A Runic Desktop
+window has one page connection, and a new one after each reload; a native
+menu bar or host shortcut has no page, so its command has no `Caller`. A WPF
+`RunicViewHost` creates no Window scope, so the service it would resolve from
+the application's provider lists nothing and raises nothing; there,
+`RunicInteractionInvocation.Current` still names the page's connection during
+a command.
+
+"Who else is viewing", with CommunityToolkit.Mvvm. Each page's claims live in
+a `RunicConnectionState`, so they go when the page disconnects:
+
+```csharp
+public sealed partial class BoardViewModel : ObservableObject, IDisposable
+{
+    private readonly IRunicConnections _connections;
+    // The cards each page claimed; removed with the page.
+    private readonly RunicConnectionState<HashSet<string>> _claims;
+
+    public BoardViewModel(IRunicConnections connections)
+    {
+        _connections = connections;
+        _claims = new(connections, _ => []);
+        connections.Connected += (_, _) => Viewers = connections.Current.Count;
+        connections.Disconnected += (_, _) => Viewers = connections.Current.Count;
+    }
+
+    // "3 people are viewing this board"
+    [ObservableProperty]
+    public partial int Viewers { get; private set; }
+
+    [RelayCommand]
+    private void Claim(string cardId)
+    {
+        // The page that clicked, as the transport authenticated it.
+        if (_claims.TryGetCaller(out var claimed)) claimed.Add(cardId);
+    }
+
+    public void Dispose() => _claims.Dispose();
+}
+```
+
+Do not broadcast connection keys, or claims tied to them, in state that every
+page sees together with other users' data unless the application's own
+sign-in decided who may see whom: a viewer count says nothing about anyone, a
+list of keys and what each page did does.
+
+With ReactiveUI:
+
+```csharp
+_viewers = connections.WhenChanged().Select(list => list.Count).ToProperty(this, vm => vm.Viewers);
+```
+
+**Per-connection state.** `RunicConnectionState<T>` keeps one value per
+connection, such as a draft, a selection or a cursor that each page keeps for
+itself. It creates a value on first use, only for a connection that `Current`
+lists, with the Window's own `RunicConnection` (a `RunicConnection` whose
+client key is not the connection's gets nothing). It removes the value,
+disposing an `IDisposable` one, when the connection's `Disconnected` is
+raised, and disposes the rest when it is disposed; a `Dispose` that throws is
+logged as event 1231 `ConnectionStateDisposeFailed` and the others still run.
+Its factory runs under its lock and must not call `TryGet` of the same state.
+Dispose it with the ViewModel:
+
+```csharp
+// In a ViewModel whose primary constructor takes IRunicConnections connections:
+private readonly RunicConnectionState<Draft> _drafts = new(connections, _ => new Draft());
+
+[RelayCommand]
+private void Type(string text)
+{
+    if (_drafts.TryGetCaller(out var draft)) draft.Text = text;
+}
+```
+
+**Trust.** Only the Bridge runtime sets the caller: it enters
+`RunicInteractionInvocation` with the identity that the Window's transport
+authenticated for the request, never values in the request's JSON, and
+application code cannot enter one with an identity.
+`RunicInteractionInvocation.Current?.ConnectionKey` and `ClientKey` are the
+same values, for code that has no `IRunicConnections`. The keys tell pages
+apart; they do not say who the user is. On CS-WebUI every client that reaches
+the window's server can connect, so an application that shares a window with
+`MultiClient` authenticates its users itself and maps a connection to a user
+after its own sign-in; see the
+[CS-WebUI security notes](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Application.Views.CsWebUi/README.md#security).
+
+In tests, `RunicWindowTestHost.Connections` lists the test connections and
+`host.Root.ForConnection("bob-tab", clientKey: "bob")` drives the Window as a
+second page; see
+[Runic.Application.Testing](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Application.Testing/README.md#several-pages-of-one-window).
+
 ### What the page sees of a close
 
 Every close of a Window (`CloseAsync`, `RequestCloseAsync` once it decided,
@@ -674,7 +823,13 @@ The host asks once for each id when the Window opens, and again after
 while its declared `IsEnabled` and its command's `CanExecute(parameter)` are
 `true`, following `CanExecuteChanged`, and runs `Execute(parameter)` in the
 model turn, where `parameter` is the item's `CommandParameter` (`null` for
-none). One command can therefore serve several items, such as one per zoom
+none). An item that a page clicks in its in-page menu bar runs as a command
+of that page: its questions, interactions and view requests reach only that
+page. One that the native bar or a host shortcut runs has no page and runs in
+the window's interaction scope, so it reaches the one page presentation of the
+Window that handles it, as during a close decision (see
+[Asking the page](#asking-the-page-view-requests-and-questions)).
+One command can therefore serve several items, such as one per zoom
 level in a radio group:
 
 ```csharp
@@ -1873,6 +2028,125 @@ next timer. It returns `false` at the timeout, which runs on the window's
 `TimeProvider`, also when no page uses the `presented/1` feature. Only waits ask
 the page to report, so an idle or typing page sends nothing extra.
 
+## Asking the page: view requests and questions
+
+A ViewModel reaches its web View in two ways, in both MVVM flavors (since
+0.16):
+
+- a **view request**, `ViewRequest<T>`, is one-way: focus a field, scroll a row
+  into view, scroll to the top, show a toast. The ViewModel raises it and
+  carries on; nothing waits for the page.
+- a **view question**, `ViewQuestion<TInput, TOutput>`, waits for the page's
+  answer, such as a confirmation. It is the flavor-neutral counterpart of a
+  ReactiveUI `Interaction<TInput, TOutput>`, so a CommunityToolkit ViewModel can
+  ask the page too.
+
+Expose both as get-only properties:
+
+```csharp
+public sealed record FocusTarget(string Field);
+public sealed record DiscardRequest(string Title);
+
+public sealed partial class EditorViewModel : ObservableObject
+{
+    public ViewRequest<FocusTarget> Focus { get; } = new(ViewRequestDelivery.NextMounted);
+    public ViewRequest<string> Toast { get; } = new(ViewRequestDelivery.Broadcast);
+    public ViewQuestion<DiscardRequest, bool> ConfirmDiscard { get; } = new((_, _) => ValueTask.FromResult(false));
+
+    [RelayCommand]
+    private void AddItem()
+    {
+        var item = new Item();
+        Items.Add(item);
+        Focus.Raise(new FocusTarget($"item-{item.Id}"));
+    }
+
+    [RelayCommand]
+    private async Task DiscardAsync(CancellationToken token)
+    {
+        if (await ConfirmDiscard.AskAsync(new DiscardRequest(Title), token)) Reset();
+    }
+}
+```
+
+The page handles them with the generated client, while the component that
+owns the field is mounted:
+
+```ts
+const stopFocus = editor.requests.focus.handle(({ field }) => document.getElementById(field)?.focus());
+const stopConfirm = editor.interactions.confirmDiscard.handle(({ title }, { signal }) => confirmDialog(`Discard ${title}?`, signal));
+```
+
+`Raise` publishes what the ViewModel changed before it, and the page runs the
+handler once it has rendered that state, so the new item's element exists
+when `focus` runs. A request is not state: a snapshot or a reconnect never
+repeats it, it needs no reset, and it never reaches another window.
+`Drop` and `NextMounted` requests that a command raises reach only the page
+that invoked it; a `Broadcast` reaches every connection of the window, as a
+state change does. Each request declares where it goes with `ViewRequestDelivery`:
+
+| Delivery | Inside a command a page invoked | Elsewhere (window scope, timer, startup) | With no such presentation, or several |
+| --- | --- | --- | --- |
+| `Drop` (default) | that page's presentation that handles it | the window's one presentation that handles it | dropped, logged at Debug as event 1120 |
+| `NextMounted` | the same | the same | kept, the latest one wins, for the next presentation of the window that handles it (event 1121) |
+| `Broadcast` | every presentation of the window that handles it, on every connection | the same | dropped |
+
+`Drop` is the default because most requests only make sense for what the
+user is looking at now: a focus or a scroll that arrives after the user moved
+on is worse than none. Use `NextMounted` for a request about a page that is
+about to appear, such as focusing the first field of an item that a command
+opens. A request raised outside a command for a ViewModel that several windows
+present is dropped. A `NextMounted` request a command keeps waits for that
+page and is gone when its connection closes, also when the command raised it
+on a ViewModel that nothing presents yet, such as an item it opens. One raised
+outside any scope before any window presents the ViewModel waits for the
+first window that does; one raised in a window's scope waits for that window. "The one
+presentation" counts every route of the window that presents the ViewModel,
+so a ViewModel shown in two panes has two. `Raise` never waits: outside the
+model's turn it publishes and sends in the next turn. An input that does not fit the window's input limit makes
+`Raise` throw `ArgumentException`.
+
+`AskAsync` asks the page in the same scopes as an interaction (see
+[Leave confirmation in a web View](../Runic.Application.Views.ReactiveUI/README.md#leave-confirmation-in-a-web-view)
+for the table). When no page can answer it runs the fallback, or fails with
+`RunicInteractionUnhandledException` when there is none. The page's
+cancellation, its presentation closing, a timeout (by default two minutes, at
+most ten, set with the constructor's `timeout`) and the caller's token fail it
+as interactions do.
+
+**Work that no page started.** A timer, a notification's `Activated` handler
+or other background work of a window enters the window scope explicitly, so
+its questions and interactions reach the window's one presentation that
+handles them, as during a close decision:
+
+```csharp
+using (RunicInteractionInvocation.EnterWindow(viewModel))
+    if (await ConfirmReload.AskAsync(path)) await ReloadAsync();
+```
+
+`EnterWindow` finds the one window that presents the ViewModel and enters no
+scope when none or several do, or when a command that a page of that window
+invoked is current: that command keeps reaching only its own page.
+`TryEnterWindow(viewModel, out var scope)` returns whether it entered the
+scope. It never carries a page's identity: only a command that a page's
+transport delivered can reach that page's presentation alone. A menu item a
+page clicks in its in-page menu bar runs as that page's command; one that the
+native bar or a host shortcut runs is in the window scope
+([Menu bar commands](#menu-bar-commands)).
+
+**Fallbacks that no longer answer (since 0.16).** A .NET handler or fallback
+that used to answer a question asked by a command on another route of the
+window, or by a menu-bar command, is now skipped while a page has a handler
+mounted for it, also a 0.15 page on a 0.16 host, since interaction handlers
+are not a new feature. Remove such a fallback, or keep it for when no page is
+mounted.
+
+Pages and hosts of earlier releases keep working: the producer sends requests
+only to pages that list the protocol feature `view-requests/1`, and a page of
+this release registers no request handlers with an earlier host. Tests answer and
+collect both through `RunicViewDriver.MountPresentation()`; see
+[Runic.Application.Testing](../Runic.Application.Testing/README.md#interactions).
+
 ## Operation results and parameterised queries
 
 What a call gives the page back depends on the command:
@@ -2578,8 +2852,112 @@ function CustomersPage({ view, state }: { view: CustomersPageClient; state: Cust
 
 Don't move the highlighted tab before the command settles: `state.tabs`
 changes only when the switch commits, so the tab bar shows the kept tab after
-a veto. The tab set is static; Runic Views presents no collection of region
-slots.
+a veto. This tab set is static: each tab is a slot property. For tabs that
+open and close at run time, use a region collection.
+
+### Region collections
+
+Since 0.16, mark a get-only `NavigationSelection` property with
+`[RunicRegionCollection(typeof(TContent))]` to present every region of the
+selection, such as document tabs that each keep their own back stack. The
+ViewModel adds regions with `Add`; the page selects and closes them by key
+(feature `region-collections/1`):
+
+```csharp
+public sealed partial class EditorWindowViewModel(RunicNavigator navigator) : ObservableObject
+{
+    [RunicRegionCollection(typeof(IDocumentPage))]
+    public NavigationSelection Documents { get; } = navigator.CreateSelection(this, []);
+
+    [RelayCommand]
+    private async Task<NavigationOutcome> OpenAsync(string path)
+    {
+        var tab = navigator.CreateRegion<IDocumentPage>(this, NavigationTarget.Create<DocumentViewModel, string>(path));
+        Documents.Add(tab);
+        return (await Documents.SelectAsync(tab)).Outcome;
+    }
+}
+```
+
+The generated state member and client methods:
+
+```ts
+readonly documents: RegionCollection<DocumentPageReference | DocumentInfoPageReference>;
+// { regions: readonly { key: string; content: R | null }[]; selected: number | null }
+selectDocuments(key: string): Promise<RegionOutcome>;
+closeDocuments(key: string): Promise<RegionOutcome>;
+```
+
+- Each region is `{ key, content }`. `key` stays the same while the region
+  exists and is never reused in the window, so frameworks keep each tab's
+  component by it. `content` is the region's `Current`, or `null` while the
+  region is empty; a push inside a tab changes `content` and keeps `key`.
+- `selected` is the index of `Selected`, or `null` without regions. It changes
+  only when a switch commits.
+- `select{Name}(key)` calls `SelectAsync`, so the current page of the tab left
+  is asked as `Retain`. `close{Name}(key)` calls `RemoveAsync`, so every page of
+  the tab is asked as `Retire`; a committed close selects the next tab. Both
+  resolve with the request's `NavigationOutcome` once the state includes it. A
+  veto resolves too, with `kind: "Rejected"` and `rejection: "Guard"`.
+- A key of a tab that closed meanwhile rejects with reason `unresolved-key`.
+  Keys are unique in the collection and never reused for another of its
+  regions; two collections can share a key.
+- **Concurrent requests.** A close of a tab whose close is still pending,
+  from the same page or another one, joins it: the guards are asked once, and
+  every close resolves with the same outcome. A select while a close is
+  pending is a later request of the selection, so it supersedes the close
+  (`NavigationAdmission.Supersede`): the close resolves `Superseded`, its
+  guards' cancellation token is cancelled, so a guard that shows a prompt
+  should close it, and the tab stays. A guard that ignores the token holds the
+  select until it returns.
+- `select{Name}` and `close{Name}` wait for the connection's `hello` after a
+  reconnect, and carry no presentation epoch: the key names the tab, whatever
+  state the page showed.
+- `PageCanClose = false` generates no `close{Name}`; a page's close is then
+  `unavailable`. Close such tabs from the ViewModel.
+- Content that no region presents any more is pruned, like the items of a
+  ViewModel collection.
+- **Window close.** A guarded window close (`GuardClose`) removes the
+  collection's tabs one by one with `RemoveAsync`. The first tab that refuses
+  keeps the window open; the tabs before it are closed, not left empty. To ask
+  every tab in one decision, own the tabs and the selection by a page entry in
+  a region slot: the close's clear of that slot retires every tab in one
+  transition, and closes none when one refuses.
+- Without the attribute, a `NavigationSelection` stays a selection slot whose
+  value is `SelectedIndex`. Only Views with a region collection get a new
+  contract fingerprint.
+- `RUNICBRIDGE070` reports the attribute on another property type, a setter,
+  `typeof(object)` or a content type without a View. `RUNICBRIDGE071` reports a
+  `select{Name}` or `close{Name}` method that collides with another client
+  member.
+
+Each framework adapter renders the regions with `RegionOutlets`, one
+`ViewOutlet` per region keyed by `key`. By default it keeps every region
+mounted and hides all but the selected one (`hidden` and an inline
+`display: none`), which keeps each tab's DOM. In both modes the Bridge
+presents every tab's content, so every tab's route stays live and keeps
+receiving state; `mode: "selected"` only unmounts the hidden components.
+`panelProps(entry)` adds attributes to each panel, such as `role="tabpanel"`
+and an `id` for the tab's `aria-controls`; the adapters' READMEs show a tab
+bar with roles and focus handling. A tab bar uses `regionEntries(state.documents)`:
+
+```tsx
+<nav>
+  {regionEntries(state.documents).map(tab => (
+    <span key={tab.key}>
+      <button aria-pressed={tab.selected} onClick={() => void view.selectDocuments(tab.key)}>Tab {tab.index + 1}</button>
+      <button onClick={() => void view.closeDocuments(tab.key)}>×</button>
+    </span>
+  ))}
+</nav>
+<RegionOutlets collection={state.documents} registry={pages} />
+```
+
+In tests, `state.Regions(vm => vm.Documents)` reads the collection, and
+`driver.SelectRegionAsync(vm => vm.Documents, key)` and `CloseRegionAsync`
+send the page's requests; the reply's `RegionOutcome` is the outcome. The
+[document tabs example](https://github.com/Runic-Artifex/runic-sdk/tree/main/examples/document-tabs)
+uses all of it.
 
 ### Navigation command results
 
@@ -2751,6 +3129,54 @@ the application body that `RunicDesktopHost.Run` rethrows. The
 shows how to log it from `AppDomain.UnhandledException`, capture a dump, keep
 NativeAOT symbols and what to attach to a bug report.
 
+### Page errors
+
+An error in the page, such as a `TypeError` in a click handler or a promise
+nothing awaited, stays in the web view's console unless the page reports it.
+Call `installErrorReporting()` of `@runic-artifex/views` once when the page
+starts, before the first View connects:
+
+```ts
+import { installErrorReporting } from "@runic-artifex/views";
+
+installErrorReporting({
+  // Optional: remove application data from messages before they leave the page.
+  redact: report => ({ ...report, message: report.message.replace(/\d{12,19}/g, "[number]") }),
+});
+```
+
+The page then reports uncaught errors (`window.onerror`), unhandled promise
+rejections and the errors the Views runtime catches, such as a subscriber that
+threw, to the .NET host. The host logs each one as event 1150 `PageError` in
+the category `Runic.Application.Views.Page`
+(`RunicViewsTelemetry.PageLogCategory`), with the stack last. That is where a
+crash reporter or log forwarder that reads `ILogger` picks it up, beside the
+host's own errors; filter or route the category on its own, for example
+`builder.AddFilter(RunicViewsTelemetry.PageLogCategory, LogLevel.Error)`.
+
+Reports are bounded and redacted before they leave the page: the message is
+cut at 1024 characters and the stack at 30 lines and 4096 characters, every
+URL loses its query and fragment, and `redact` can change or drop a report. At
+most 10 reports go out per minute (`maxReportsPerMinute`); repeats of one error
+within the minute are counted, and the count arrives as `Dropped`. The host
+treats a report as untrusted input: it cuts texts again (message and URL at
+2048 characters, stack at 8192, never between the halves of a surrogate pair),
+removes control characters and the bidirectional embeddings, overrides and
+isolates (U+202A-U+202E, U+2066-U+2069), and starts every stack line with
+`    | `, so in a plain-text sink a page's text stays inside its entry and
+cannot pass for a line the host wrote. The text itself still comes from the
+page: read it as the page's claim. The host logs at most 10 reports per
+connection and 30 per window a minute, so a page that reloads or reconnects
+gets no fresh budget, and logs event 1151 `PageErrorsSuppressed` or 1152
+`WindowPageErrorsSuppressed` once when it starts counting.
+
+Reporting is a Views protocol 4 feature, `client-errors/1`
+([page errors](https://github.com/Runic-Artifex/runic-sdk/blob/main/specs/application/README.md#page-errors)):
+a page and host of 0.16 or later use it, and with an earlier host the page
+drops its reports. The returned function removes the reporter. Errors still
+reach the console and `onBridgeDiagnostic` as before. Page errors carry no
+trace id; correlate them with the host's spans by time and route.
+
 | Event ID | Name | Level | Logged when | Properties |
 | --- | --- | --- | --- | --- |
 | 1000 | `BridgeCommandFailed` | Error | A command throws. | `Model`, `Member`, `Route`, `ErrorType` |
@@ -2801,7 +3227,16 @@ NativeAOT symbols and what to attach to a bug report.
 | 1111 | `ViewHostFallbackFailed` | Error | Showing that fallback throws. | `ErrorType` |
 | 1112 | `ViewHostPresentationChangeFailed` | Error | A `RunicViewHost` presentation change throws outside its open. | `ErrorType` |
 | 1113 | `ViewHostCleanupFailed` | Error | Releasing a `RunicViewHost` presentation throws. | `ErrorType` |
+| 1120 | `ViewRequestDropped` | Debug | A `ViewRequest<T>` found no single presentation to deliver to, or several windows present its ViewModel, and was dropped ([Asking the page](#asking-the-page-view-requests-and-questions)). | `Name`, `Reason` |
+| 1121 | `ViewRequestKept` | Debug | A `NextMounted` view request found no single presentation and is kept for the next one that handles it. | `Name` |
 | 1114 | `ChildViewCleanupFailed` | Error | A `WpfBridgeView` fails to release after its presentation closed. | `ErrorType` |
+| 1150 | `PageError` | Error | A page that called `installErrorReporting()` reports an uncaught error, unhandled rejection or runtime-caught error (`client-errors/1`). Category `Runic.Application.Views.Page`; see [page errors](#page-errors). | `Source`, `ErrorName`, `ErrorMessage`, `PageUrl`, `Route`, `Dropped`, `Client`, `ErrorStack` |
+| 1151 | `PageErrorsSuppressed` | Warning | A page's connection reports more than 10 errors in a minute; the rest of the minute is counted into `Dropped` of the next 1150. Category `Runic.Application.Views.Page`. | `Limit` |
+| 1152 | `WindowPageErrorsSuppressed` | Warning | A window's pages report more than 30 errors in a minute across their connections, such as a page in a reload loop; the rest of the minute is counted into `Dropped` of the next 1150. Category `Runic.Application.Views.Page`. | `Limit` |
+| 1210 | `BridgeRegionRequestFailed` | Error | `SelectAsync` or `RemoveAsync` of a region collection threw for a page's `select{Name}` or `close{Name}`; the call fails. | `Model`, `Member`, `Route`, `ErrorType` |
+| 1211 | `BridgeRegionRequestUnresolved` | Debug | A page's `select{Name}` or `close{Name}` named a key that the region collection no longer has, such as a tab that closed meanwhile; the call rejects with `unresolved-key`. | `Model`, `Member`, `Route`, `Key` |
+| 1230 | `ConnectionHandlerFailed` | Error | A handler of `IRunicConnections.Connected` or `Disconnected` throws; the other handlers still run ([Who is connected, and who called](#who-is-connected-and-who-called)). | `Event`, `ErrorType` |
+| 1231 | `ConnectionStateDisposeFailed` | Error | A value of a `RunicConnectionState<T>` throws from `Dispose`, on its connection's disconnect or the state's disposal; the other values are still disposed. | `ValueType`, `ErrorType` |
 | 2000 | `DesktopSnapshotDeliveryFailed` | Error | Runic Desktop cannot deliver a push to a page. | `ErrorType` |
 | 2002 | `DesktopWindowCloseAfterOpen` | Warning | `RUNIC_APPLICATION_CLOSE_AFTER_OPEN=1` closed a Desktop window right after it opened. | `Variable` |
 | 2003 | `DesktopPortalDiagnostic` | Warning or Debug | On Linux, xdg-desktop-portal reports a diagnostic for the portal services `AddRunicPlatformServices()` registers (notifications, status icon, login startup and inhibition): Warning for a rejected identity, an unavailable portal or a denied request, Debug for an accepted request or registration. | `Code`, `DiagnosticMessage`, `Remediation` |
@@ -2840,7 +3275,7 @@ NativeAOT symbols and what to attach to a bug report.
 as `content12`). A declared failure is an expected outcome, so it is logged at
 Debug, still with its exception; `FailureType` is the failure value's type.
 
-Events 1000-1012, 1018-1026, 1050-1053, 1100-1102 and 1190-1193 use the category `Runic.Application.Views`
+Events 1000-1012, 1018-1026, 1050-1053, 1100-1102, 1190-1193 and 1210-1211 use the category `Runic.Application.Views`
 (`RunicViewsTelemetry.LogCategory`); the Hot Reload events 1100-1102 use the
 logger of the window session that owns the Bridge. Events 1110-1114 use
 `Runic.Application.Views.Wpf` and the factory of the host's `Services`. Event 1033 here is a window session's

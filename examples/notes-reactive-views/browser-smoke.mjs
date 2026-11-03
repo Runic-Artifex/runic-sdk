@@ -334,7 +334,8 @@ try {
     const call = webui.call;
     const probe = '{"kind":"snapshot","route":"__runicLostProbe"}';
     webui.call = function (name, ...args) {
-      if (args[0] === probe) return new Promise(() => {});
+      // The host script adds the page's session (request-session/1), so the probe is matched by its route.
+      if (typeof args[0] === "string" && args[0].includes('"route":"__runicLostProbe"')) return new Promise(() => {});
       return call.call(this, name, ...args);
     };
     window.__runicLostProbe = window.__runicBridge.request(probe).then(() => "resolved", error => error.message);

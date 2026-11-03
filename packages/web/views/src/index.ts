@@ -17,6 +17,7 @@ export { bridgeFailure, bridgeSuccess, isBridgeOutcome, matchCase, type BridgeOu
 export type { BridgeValidationMessage, BridgeValidationState } from "./validation.js";
 export { waitForBridge, type RunicBridgeClient, type WaitForBridgeOptions } from "./transport.js";
 export { onBridgeConnection, type BridgeConnectionOptions, type BridgeConnectionState } from "./connection-state.js";
+export { installErrorReporting, type ClientErrorReport, type ClientErrorSource, type ErrorReportingOptions } from "./error-reporting.js";
 export {
   createCommandController,
   createViewController,
@@ -59,6 +60,7 @@ export type {
   BridgeStreamOperation,
 } from "./operations.js";
 export type { BridgeInteractionContext, InteractionSurface } from "./interactions.js";
+export type { BridgeViewRequestContext, BridgeViewRequestHandler, ViewRequestSurface } from "./requests.js";
 export {
   createFieldController,
   FieldError,
@@ -108,6 +110,16 @@ export {
   type RowSizeEstimate,
   type RowSizes,
 } from "./query-viewport.js";
+
+export {
+  regionCollectionsFeature,
+  regionEntries,
+  selectedRegion,
+  type RegionCollection,
+  type RegionEntry,
+  type RegionOutcome,
+  type RegionSlot,
+} from "./regions.js";
 
 /**
  * A generated content reference: a View presented in a content slot, such as a ViewModel slot of .NET

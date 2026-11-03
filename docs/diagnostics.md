@@ -80,7 +80,10 @@ and severities are open.
 | [`RUNICBRIDGE032`](#runicbridge032) | Warning | Generator | An observable collection of DTO rows is not a `[RunicCollection]` |
 | [`RUNICBRIDGE033`](#runicbridge033) | Warning | Build targets | The .NET SDK or Bun is older than this release supports |
 | [`RUNICBRIDGE034`](#runicbridge034) | Warning | Generator | A `[RunicPresentationScoped]` declaration reaches no Bridge command |
+| [`RUNICBRIDGE035`](#runicbridge035) | Error | Generator | A `ViewRequest` or `ViewQuestion` member is not a get-only property |
 | [`RUNICBRIDGE060`](#runicbridge060) | Error | Generator | A `RunicQueryCollection` member has an unsupported shape |
+| [`RUNICBRIDGE070`](#runicbridge070) | Error | Generator | A `[RunicRegionCollection]` is not on a get-only NavigationSelection property, or its content type is unsupported |
+| [`RUNICBRIDGE071`](#runicbridge071) | Error | Generator | A region collection's select or close client method collides with another client member |
 
 ### RUNICBRIDGE001
 
@@ -116,8 +119,8 @@ A `NavigationResult<T>` holds .NET content: return its `Outcome`, a
 ### RUNICBRIDGE004
 
 Two generated names collide: ViewModel names, presentation kinds, state wire
-names, the reserved `validation` field, interactions, client members, or
-generated files (including a hand-written `types.ts`). Since 0.13 (Views
+names, the reserved `validation` field, interactions, view requests, client
+members, or generated files (including a hand-written `types.ts`). Since 0.13 (Views
 protocol 4) requests name their kind and member, so host route names no longer
 collide, and a state member may be named `revision`. A
 generated TypeScript module that declares one name twice would collide too.
@@ -620,6 +623,17 @@ generated client sends no presentation epoch for anything it would have scoped.
 method whose command the Bridge exposes. See
 [Commands scoped to their presentation](../packages/dotnet/Runic.Application.Views/README.md#commands-scoped-to-their-page).
 
+### RUNICBRIDGE035
+
+A `ViewRequest<T>` or `ViewQuestion<TInput, TOutput>` member of a ViewModel
+(since 0.16) has no public getter or has a public setter. The generated Bridge
+attaches the instance it reads when the ViewModel is presented, so a replaced
+instance would never reach the page.
+
+**Fix:** expose the member as a get-only property, such as
+`public ViewRequest<FocusTarget> Focus { get; } = new();`. See
+[View requests](../specs/application/README.md#view-requests).
+
 ### RUNICBRIDGE060
 
 An error from the Bridge generator (since 0.16). A `RunicQueryCollection<TRow, TKey>`
@@ -633,6 +647,34 @@ supported key, and remove the other collection attributes; the page changes
 the query with `setQuery`. See
 [Query collections](../packages/dotnet/Runic.Application.Views/README.md#query-collections).
 
+### RUNICBRIDGE070
+
+An error from the Bridge generator (since 0.16). `[RunicRegionCollection]` is
+on a property that is not a `NavigationSelection`, the property has a public
+setter, the attribute's content type is `object`, or no ViewModel with a
+registered View is assignable to the content type, so the region collection
+could present nothing.
+
+**Fix:** put the attribute on a get-only `NavigationSelection` property, which
+its `Add`, `SelectAsync` and `RemoveAsync` change rather than the web view.
+Name an interface or base class that the regions' ViewModels share as the
+content type, and register a View for at least one ViewModel that implements
+it. See
+[Region collections](../packages/dotnet/Runic.Application.Views/README.md#region-collections).
+
+### RUNICBRIDGE071
+
+An error from the Bridge generator (since 0.16). The generated client method
+`select{Property}` or `close{Property}` of a region collection has the name of
+another member of the generated client: a command's method or its `can…`,
+`start…` or `recover…` method, a `set…` or `write…` method of a property, or
+`snapshot`, `subscribe`, `dispose`, `interactions` or `fieldBaseline`. Without
+`PageCanClose`, the collection has no `close…` method, so only its `select…`
+method can collide.
+
+**Fix:** rename the region collection property or the other member, such as a
+`SelectDocuments` command beside a `Documents` region collection. See
+[Region collections](../packages/dotnet/Runic.Application.Views/README.md#region-collections).
 ## dotnet runic
 
 `dotnet runic` reports these codes as the fault of a failed command, except

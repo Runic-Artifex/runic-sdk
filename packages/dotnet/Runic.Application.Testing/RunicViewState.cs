@@ -61,6 +61,18 @@ public sealed class RunicViewState<TModel> where TModel : class
     public IReadOnlyList<PageReference> References(Expression<Func<TModel, object?>> property) =>
         Get(property) is { ValueKind: JsonValueKind.Array } items ? items.EnumerateArray().Select(ReferenceOf).ToArray() : [];
 
+    /// <summary>The regions and selected index of a <see cref="RunicRegionCollectionAttribute"/> region collection.</summary>
+    /// <param name="collection">The region collection property, such as <c>vm => vm.Documents</c>.</param>
+    public RunicRegionCollectionState Regions(Expression<Func<TModel, object?>> collection)
+    {
+        var value = Get(collection);
+        var regions = value.GetProperty("regions").EnumerateArray().Select(region => new RunicRegionSlot(
+            region.GetProperty("key").GetString()!,
+            region.GetProperty("content") is { ValueKind: JsonValueKind.Object } content ? ReferenceOf(content) : null)).ToArray();
+        var selected = value.GetProperty("selected");
+        return new(regions, selected.ValueKind == JsonValueKind.Number ? selected.GetInt32() : null);
+    }
+
     /// <summary>The row keys of a <see cref="RunicCollectionAttribute"/> collection, in order.</summary>
     public IReadOnlyList<string> Keys(Expression<Func<TModel, object?>> collection)
     {

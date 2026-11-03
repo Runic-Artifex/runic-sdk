@@ -23,6 +23,8 @@ export {
   type MockOperationHandler,
   type MockOperationKind,
   type MockOperationOutcome,
+  type MockRegionDecision,
+  type MockRegionDefinition,
   type MockRequestMatch,
   type MockScheduling,
   type MockSetter,
@@ -34,6 +36,10 @@ export type {
   MockCommandHandler,
   MockFailureOf,
   MockReference,
+  MockRegionCollection,
+  MockRegionHandler,
+  MockRegionRequest,
+  MockRegionResult,
   MockSetterHandler,
   MockTypedCollection,
   MockTypedInteraction,
@@ -43,6 +49,7 @@ export type {
   MockTypedQueryCollection,
   MockTypedQuerySource,
   MockTypedView,
+  MockTypedViewRequest,
 } from "./mock-typed.js";
 export type { MockQueryCollection, MockQueryLoad, MockQuerySource } from "./mock-query.js";
 export { installMockMenuBar, type MockMenuBar, type MockMenuBarOptions } from "./mock-menu-bar.js";

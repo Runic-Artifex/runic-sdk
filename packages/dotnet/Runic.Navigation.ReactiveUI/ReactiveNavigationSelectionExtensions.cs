@@ -79,6 +79,57 @@ public static class ReactiveNavigationSelectionExtensions
     }
 
     /// <summary>
+    /// Observes the selection's <see cref="NavigationSelection.Regions"/>, such as document tabs that are opened with
+    /// <see cref="NavigationSelection.Add"/> and closed with <see cref="NavigationSelection.RemoveAsync"/>. Each
+    /// subscription receives the current regions and then each new list: <see cref="NavigationSelection.Regions"/> is an
+    /// immutable snapshot that an add or a committed removal replaces.
+    /// </summary>
+    /// <remarks>The sequence never completes; dispose the subscription to stop observing.</remarks>
+    public static IObservable<IReadOnlyList<NavigationRegion>> WhenRegionsChanged(this NavigationSelection selection)
+    {
+        ArgumentNullException.ThrowIfNull(selection);
+        return new SelectionObservable<IReadOnlyList<NavigationRegion>>(selection, static selection => selection.Regions,
+            nameof(NavigationSelection.Regions), ReactiveNavigationRegionExtensions.Same<IReadOnlyList<NavigationRegion>>.Instance);
+    }
+
+    /// <summary>
+    /// Creates a command that closes the region of its parameter through <see cref="NavigationSelection.RemoveAsync"/>, such
+    /// as a document tab's close button, and outputs the <see cref="NavigationResult{TContent}.Outcome"/>. Every entry of
+    /// the region is asked to retire first, so a guard's veto keeps the tab and is the output
+    /// <see cref="NavigationOutcomeKind.Rejected"/>. For a selection that admits requests with
+    /// <see cref="NavigationAdmission.RejectWhileBusy"/>, it can't execute while <see cref="NavigationSelection.IsBusy"/> is
+    /// <see langword="true"/>.
+    /// </summary>
+    /// <remarks>
+    /// A rejected, superseded or failed removal is an outcome, not an exception, so <c>ThrownExceptions</c> reports only
+    /// defects and cancellation. A region that is not in <see cref="NavigationSelection.Regions"/> when the command
+    /// executes is such a defect: the execution fails with <see cref="ArgumentException"/>. The command observes the
+    /// selection through a <c>PropertyChanged</c> handler until the command is disposed.
+    /// </remarks>
+    /// <param name="selection">The selection.</param>
+    /// <param name="canExecute">
+    /// An additional condition for the command, combined with the selection's condition, as in
+    /// <see cref="CreateSelectCommand"/>.
+    /// </param>
+    /// <param name="outputScheduler">
+    /// The scheduler of the command's output and <c>IsExecuting</c>, or <see langword="null"/> for ReactiveUI's main-thread
+    /// scheduler.
+    /// </param>
+    public static ReactiveCommand<NavigationRegion, NavigationOutcome> CreateCloseCommand(this NavigationSelection selection,
+        IObservable<bool>? canExecute = null, FlavorScheduler? outputScheduler = null)
+    {
+        ArgumentNullException.ThrowIfNull(selection);
+        IObservable<bool> available = new SelectionObservable<bool>(selection,
+            static selection => !(selection.Admission == NavigationAdmission.RejectWhileBusy && selection.IsBusy),
+            null, EqualityComparer<bool>.Default);
+        return ReactiveCommand.CreateFromTask<NavigationRegion, NavigationOutcome>(
+            async (region, cancellationToken) =>
+                (await selection.RemoveAsync(region, cancellationToken: cancellationToken)).Outcome,
+            canExecute is null ? available : new ReactiveNavigationRegionExtensions.BothTrue(available, canExecute),
+            outputScheduler);
+    }
+
+    /// <summary>
     /// Creates a command that selects the region at the command's parameter, an index in
     /// <see cref="NavigationSelection.Regions"/>, through <see cref="NavigationSelection.SelectAsync"/>, and outputs the
     /// <see cref="NavigationResult{TContent}.Outcome"/>, a <see cref="NavigationOutcome"/> that a Runic View can receive. A
