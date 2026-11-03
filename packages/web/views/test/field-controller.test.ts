@@ -418,3 +418,123 @@ test("with notifications paced by animation frames, a settled write drops the dr
     host.cancelAnimationFrame = saved.cancel;
   }
 });
+
+test("locale-aware text forms (C1): numbers, decimals and whole numbers read and show the locale's separators", () => {
+  const field = <T>(definition: Partial<BridgeField<Client, State, T>>, options: Parameters<typeof createFieldController<State, Client, T>>[1] = {}) => {
+    const values: unknown[] = [];
+    let shown = undefined as T;
+    const controller = createFieldController<State, Client, T>({ read: () => shown, write: (_client, value) => { values.push(value); return Promise.resolve(); }, ...definition }, { coalesce: false, ...options });
+    controller.setSource({ state: { title: "", step: 0, titleErrors: [] }, client: fakeClient({ title: "", step: 0, titleErrors: [] }) });
+    return {
+      parse(text: string): unknown {
+        values.length = 0;
+        controller.inputText(text);
+        return controller.current.error instanceof FieldError ? controller.current.error.kind : values[0];
+      },
+      show(value: T) { shown = value; controller.reset(); return controller.current.text; },
+      controller,
+    };
+  };
+  const german = field<number>({ kind: "number" }, { locale: "de-DE" });
+  assert.equal(german.parse("1,5"), 1.5);
+  assert.equal(german.parse("1.234,5"), 1234.5);
+  assert.equal(german.parse("1.5"), "invalid-text", "a group separator that does not separate thousands is not ignored");
+  assert.equal(german.parse("-0,25"), -0.25);
+  assert.equal(german.show(1234.5), "1234,5", "no grouping while editing");
+  assert.equal(german.controller.format(-0.5), "-0,5");
+  const invariant = field<number>({ kind: "number" });
+  assert.equal(invariant.parse("1,5"), "invalid-text");
+  assert.equal(invariant.parse("0x10"), "invalid-text", "only decimal numbers");
+  assert.equal(invariant.show(1.5), "1.5");
+  const french = field<number>({ kind: "number" }, { locale: "fr-FR" });
+  assert.equal(french.parse("1 234,5"), 1234.5);
+  assert.equal(french.parse("1 234,5"), 1234.5, "a plain space for the narrow no-break space");
+  assert.equal(french.parse("2.5"), 2.5, "a `.` where it is not the group separator");
+  const arabic = field<number>({ kind: "number" }, { locale: "ar-EG" });
+  assert.equal(arabic.parse(arabic.controller.format(12.5)), 12.5, "locale digits round-trip");
+
+  const price = field<string>({ kind: "decimal" }, { locale: "de-DE" });
+  assert.equal(price.parse("1.234,50"), "1234.50", "exact, trailing zeros kept");
+  assert.equal(price.parse("-0,00"), "0.00", "negative zero loses its sign");
+  assert.equal(price.parse("007,5"), "7.5");
+  assert.equal(price.parse("0,1234567890123456789012345678"), "0.1234567890123456789012345678");
+  assert.equal(price.parse("0,12345678901234567890123456789"), "invalid-text", "at most 28 digits after the point");
+  assert.equal(price.parse("79228162514264337593543950336"), "invalid-text", "below 2^96");
+  assert.equal(price.parse("abc"), "invalid-text");
+  assert.equal(price.parse(""), "invalid-text");
+  assert.equal(price.show("1234.50"), "1234,50");
+  const scaled = field<string>({ kind: "decimal" }, { scale: 2 });
+  assert.equal(scaled.parse("1.25"), "1.25");
+  assert.equal(scaled.parse("1.255"), "invalid-text");
+  assert.equal(field<number>({ kind: "number" }, { scale: 1 }).parse("1.25"), "invalid-text");
+  assert.equal(field<string | null>({ kind: "decimal", nullable: true }).parse(" "), null);
+  assert.equal(field<bigint>({ kind: "bigint" }, { locale: "en-US" }).parse("9,007,199,254,740,993"), 9007199254740993n);
+  assert.throws(() => createFieldController({ read: () => "", write: async () => undefined }, { scale: -1 }), RangeError);
+});
+
+test("date, time and datetime fields read and show the forms of native date inputs (C1)", () => {
+  const field = <T>(definition: Partial<BridgeField<Client, State, T>>, initial: T) => {
+    const values: unknown[] = [];
+    let shown = initial;
+    const controller = createFieldController<State, Client, T>({ read: () => shown, write: (_client, value) => { values.push(value); return Promise.resolve(); }, ...definition }, { coalesce: false });
+    controller.setSource({ state: { title: "", step: 0, titleErrors: [] }, client: fakeClient({ title: "", step: 0, titleErrors: [] }) });
+    return {
+      parse(text: string): unknown {
+        values.length = 0;
+        controller.inputText(text);
+        return controller.current.error instanceof FieldError ? controller.current.error.kind : values[0];
+      },
+      show(value: T) { shown = value; controller.reset(); return controller.current.text; },
+    };
+  };
+  const date = field<string>({ kind: "date" }, "2026-11-03");
+  assert.equal(date.show("2026-11-03"), "2026-11-03");
+  assert.equal(date.parse("2024-02-29"), "2024-02-29");
+  assert.equal(date.parse("2026-02-29"), "invalid-text");
+  assert.equal(date.parse("03.11.2026"), "invalid-text");
+  assert.equal(field<string | null>({ kind: "date", nullable: true }, null).parse(""), null);
+
+  const time = field<string>({ kind: "time" }, "10:30:00");
+  assert.equal(time.show("10:30:00"), "10:30", "zero seconds are not shown, as in <input type=time>");
+  assert.equal(time.show("10:30:05.5"), "10:30:05.5");
+  assert.equal(time.parse("09:15"), "09:15:00");
+  assert.equal(time.parse("09:15:30.1200"), "09:15:30.12");
+  assert.equal(time.parse("24:00"), "invalid-text");
+
+  const local = field<string>({ kind: "datetime" }, "2026-11-03T10:30:00");
+  assert.equal(local.show("2026-11-03T10:30:00"), "2026-11-03T10:30");
+  assert.equal(local.parse("2026-11-03T11:45"), "2026-11-03T11:45:00");
+  assert.equal(local.parse("2026-11-03T11:45+02:00"), "2026-11-03T11:45:00+02:00", "an offset typed is kept");
+  assert.equal(local.parse("2026-11-03T11:45+15:00"), "invalid-text");
+
+  // The page's local time for an instant with an offset, as datetime-local shows it.
+  const instant = new Date(Date.UTC(2026, 10, 3, 9, 30, 0));
+  const localText = `${instant.getFullYear()}-${String(instant.getMonth() + 1).padStart(2, "0")}-${String(instant.getDate()).padStart(2, "0")}T${String(instant.getHours()).padStart(2, "0")}:${String(instant.getMinutes()).padStart(2, "0")}`;
+  const offset = field<string>({ kind: "datetime", offset: true }, "2026-11-03T09:30:00Z");
+  assert.equal(offset.show("2026-11-03T09:30:00Z"), localText);
+  const minutes = -instant.getTimezoneOffset();
+  const zone = minutes === 0 ? "Z" : `${minutes < 0 ? "-" : "+"}${String(Math.floor(Math.abs(minutes) / 60)).padStart(2, "0")}:${String(Math.abs(minutes) % 60).padStart(2, "0")}`;
+  assert.equal(offset.parse(localText), `${localText}:00${zone}`, "a local text gets the page's offset");
+  assert.equal(offset.parse("2026-11-03T09:30:00+00:00"), "2026-11-03T09:30:00Z", "offset-date-time writes a zero offset as Z");
+  const utc = field<string>({ kind: "datetime" }, "2026-11-03T09:30:00Z");
+  assert.equal(utc.show("2026-11-03T09:30:00Z"), localText);
+  assert.equal(utc.parse(localText), "2026-11-03T09:30:00Z", "a DateTime in UTC stays in UTC");
+});
+
+test("parse and format options replace the kind's text form (C1)", () => {
+  const values: unknown[] = [];
+  const controller = createFieldController<State, Client, number>({ kind: "number", read: state => state.step, write: (_client, value) => { values.push(value); return Promise.resolve(); } }, {
+    coalesce: false,
+    format: value => `${value} %`,
+    parse: text => { const value = Number(text.replace("%", "").trim()); if (!Number.isFinite(value)) throw new Error("Enter a percentage."); return value; },
+  });
+  controller.setSource({ state: { title: "", step: 25, titleErrors: [] }, client: fakeClient({ title: "", step: 25, titleErrors: [] }) });
+  assert.equal(controller.current.text, "25 %");
+  controller.inputText("30 %");
+  assert.deepEqual(values, [30]);
+  controller.inputText("lots");
+  assert.ok(controller.current.error instanceof FieldError);
+  assert.equal((controller.current.error as FieldError).kind, "invalid-text");
+  assert.equal((controller.current.error as FieldError).message, "Enter a percentage.");
+  assert.equal(controller.current.text, "lots");
+});

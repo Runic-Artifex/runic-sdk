@@ -2,44 +2,12 @@
 import { clock, randomId } from "./clock.js";
 import type { FieldBaseline, FieldWriteReceipt } from "./connection.js";
 import type { BridgeField, BridgeFieldKind } from "./field.js";
+import { FieldError } from "./field-error.js";
+import { kindFormatter, kindParser, type FieldTextParser } from "./field-text.js";
 import { disposable } from "./lifetime.js";
 import { reportBridgeError } from "./transport.js";
 
-/**
- * Why a field's write or text did not take effect (`FieldState.error`):
- *
- * - `rejected`: the checked write's setter refused the value; the field is unchanged and the draft is kept;
- * - `conflict`: another writer changed the field since the draft started; `current` is its value and version, the
- *   draft is kept and nothing is written until `retry()` or `reset()`;
- * - `committed-with-error`: the value was committed, then the setter or its validation failed; `current` is the
- *   committed field;
- * - `invalid-text`: the text typed into the field is not a value of its kind, such as `1e` for a number; nothing is
- *   written.
- *
- * Open: a later release may add kinds.
- */
-export type FieldErrorKind = "rejected" | "conflict" | "committed-with-error" | "invalid-text";
-
-const fieldErrorBrand = Symbol.for("runic.views.FieldError");
-
-/** A checked write's receipt that is not a plain success, or a text that does not parse. See {@link FieldErrorKind}. */
-export class FieldError extends Error {
-  /** The producer's field after the write: the incoming value of a `conflict`, the committed one of `committed-with-error`. */
-  readonly current?: FieldBaseline<unknown>;
-
-  constructor(readonly kind: FieldErrorKind, message: string, current?: FieldBaseline<unknown>) {
-    super(message);
-    this.name = "FieldError";
-    if (current !== undefined) this.current = current;
-    Object.defineProperty(this, fieldErrorBrand, { value: true });
-  }
-
-  static [Symbol.hasInstance](value: unknown): boolean {
-    return this === FieldError
-      ? typeof value === "object" && value !== null && (value as Record<symbol, unknown>)[fieldErrorBrand] === true
-      : Function.prototype[Symbol.hasInstance].call(this, value);
-  }
-}
+export { FieldError, type FieldErrorKind } from "./field-error.js";
 
 /** What a field shows. */
 export interface FieldState<TValue> {
@@ -85,7 +53,9 @@ export type FieldDefinition<TClient, TState, TValue> =
 /** When a field writes what the user typed. */
 export type FieldCommit = "input" | "pause";
 
-export interface FieldOptions {
+// `any` by default, so options written without a value type, as before 0.16, fit every field.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export interface FieldOptions<TValue = any> {
   /**
    * `input` (the default) writes each input, in order. `pause` writes the draft `delay` milliseconds after the last
    * input and at once on `commit()`, which the framework bindings call when the element loses focus; text that was
@@ -112,6 +82,27 @@ export interface FieldOptions {
    * can correct it. With `false` the field shows the View's value again and sets `error`.
    */
   readonly keepDraftOnError?: boolean;
+  /**
+   * The locale of the text of `number`, `decimal` and `bigint` fields, as `Intl.NumberFormat` takes it, such as
+   * `"de-DE"` or `navigator.languages`: the text shows the locale's decimal separator and digits (`1,5`), and reads
+   * them and its group separators (`1.234,5`). Without it the text is the invariant form (`1.5`), which
+   * `<input type="number">` needs. Dates and times always use the ISO forms of `<input type="date">`, `"time"` and
+   * `"datetime-local"`; pass `format` and `parse` to show them otherwise.
+   */
+  readonly locale?: string | readonly string[];
+  /**
+   * The most digits a `number` or `decimal` text may have after the decimal separator; more is an `invalid-text`
+   * error. A `decimal` allows at most 28 in any case.
+   */
+  readonly scale?: number;
+  /**
+   * Reads the text the user typed into a value, replacing the kind's parser. Throw to reject it: a thrown
+   * {@link FieldError} is the field's `error`, any other error becomes an `invalid-text` `FieldError` with its message.
+   * `previous` is the value the field shows.
+   */
+  readonly parse?: (text: string, previous: TValue) => TValue;
+  /** Writes a value as the field's text, replacing the kind's formatter. Pair it with `parse`, which must read it back. */
+  readonly format?: (value: TValue) => string;
 }
 
 /**
@@ -123,7 +114,16 @@ export interface FieldOptions {
 export interface FieldController<TState, TClient, TValue> {
   readonly current: FieldState<TValue>;
   /** The definition's `kind`, `nullable`, `integer` and `choices`, for bindings that wire an element. */
-  readonly field: { readonly kind: BridgeFieldKind | undefined; readonly nullable: boolean; readonly integer: boolean; readonly choices: readonly TValue[] | undefined };
+  readonly field: {
+    readonly kind: BridgeFieldKind | undefined;
+    readonly nullable: boolean;
+    readonly integer: boolean;
+    readonly choices: readonly TValue[] | undefined;
+    /** A `datetime` member that requires an offset (`DateTimeOffset`). */
+    readonly offset: boolean;
+  };
+  /** The text the field shows for `value` when no draft exists: the `format` option, or the kind's form. */
+  format(value: TValue): string;
   /** Calls `listener` after each change of `current`, until the returned function is called. */
   subscribe(listener: () => void): () => void;
   /**
@@ -195,46 +195,7 @@ function sameMessages(left: readonly string[], right: readonly string[]): boolea
   return left === right || left.length === right.length && left.every((message, index) => message === right[index]);
 }
 
-function format(value: unknown): string {
-  switch (typeof value) {
-    case "string": return value;
-    case "number": case "bigint": case "boolean": return String(value);
-    default: return "";
-  }
-}
-
 function invalid(message: string): FieldError { return new FieldError("invalid-text", message); }
-
-function parser<TValue>(kind: BridgeFieldKind | undefined, nullable: boolean, integer: boolean,
-  choices: readonly TValue[] | undefined): (text: string) => TValue {
-  const empty = (text: string) => text.trim().length === 0;
-  switch (kind) {
-    case "number": return text => {
-      if (empty(text)) { if (nullable) return null as TValue; throw invalid("Enter a number."); }
-      const value = Number(text.trim());
-      if (!Number.isFinite(value)) throw invalid(`${text.trim()} is not a number.`);
-      if (integer && !Number.isSafeInteger(value)) throw invalid(`${text.trim()} is not a whole number.`);
-      return value as TValue;
-    };
-    case "bigint": return text => {
-      if (empty(text)) { if (nullable) return null as TValue; throw invalid("Enter a whole number."); }
-      if (!/^[+-]?\d+$/.test(text.trim())) throw invalid(`${text.trim()} is not a whole number.`);
-      return BigInt(text.trim()) as TValue;
-    };
-    case "boolean": return text => {
-      if (text === "true" || text === "false") return (text === "true") as TValue;
-      if (nullable && empty(text)) return null as TValue;
-      throw invalid(`${text} is not true or false.`);
-    };
-    case "choice": return text => {
-      if (nullable && text.length === 0) return null as TValue;
-      if (choices === undefined || choices.includes(text as TValue)) return text as TValue;
-      throw invalid(`${text} is not one of ${choices.join(", ")}.`);
-    };
-    case "value": return () => { throw invalid("This field has no text form."); };
-    default: return text => text as TValue;
-  }
-}
 
 /**
  * Creates a {@link FieldController} for a generated {@link BridgeField}, such as `EditorFields.title`, or any
@@ -249,7 +210,7 @@ function parser<TValue>(kind: BridgeFieldKind | undefined, nullable: boolean, in
  */
 export function createFieldController<TState, TClient, TValue>(
   definition: FieldDefinition<TClient, TState, TValue>,
-  options: FieldOptions = {},
+  options: FieldOptions<TValue> = {},
 ): FieldController<TState, TClient, TValue> & Disposable {
   const checked = options.checked === true;
   if (checked && (typeof definition.checked !== "function" || typeof definition.baseline !== "function"))
@@ -262,8 +223,19 @@ export function createFieldController<TState, TClient, TValue>(
   const keepDraftOnError = options.keepDraftOnError !== false;
   const kind = definition.kind;
   const nullable = definition.nullable === true;
-  const parse = parser<TValue>(kind, nullable, definition.integer === true, definition.choices);
-  const field = Object.freeze({ kind, nullable, integer: definition.integer === true, choices: definition.choices });
+  const scale = options.scale;
+  if (scale !== undefined && (!Number.isSafeInteger(scale) || scale < 0)) throw new RangeError("scale must be a non-negative integer.");
+  const traits = {
+    kind, nullable, integer: definition.integer === true, choices: definition.choices, offset: definition.offset === true,
+    scale, locale: options.locale,
+  };
+  const kindParse: FieldTextParser<TValue> = options.parse ?? kindParser<TValue>(traits);
+  const parse = (text: string): TValue => {
+    try { return kindParse(text, current.value); }
+    catch (failure) { throw failure instanceof FieldError ? failure : invalid(failure instanceof Error ? failure.message : String(failure)); }
+  };
+  const format: (value: TValue) => string = options.format ?? kindFormatter<TValue>(traits);
+  const field = Object.freeze({ kind, nullable, integer: traits.integer, choices: definition.choices, offset: traits.offset });
   const listeners = new Set<() => void>();
   let source: FieldSource<TState, TClient> | undefined;
   let draft: { readonly value: TValue } | undefined;
@@ -474,6 +446,7 @@ export function createFieldController<TState, TClient, TValue>(
   return disposable({
     get current() { return current; },
     field,
+    format,
     subscribe(listener: () => void) {
       if (disposed) return () => {};
       listeners.add(listener);
