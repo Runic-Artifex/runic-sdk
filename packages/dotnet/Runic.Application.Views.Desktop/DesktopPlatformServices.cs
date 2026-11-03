@@ -747,13 +747,36 @@ public static partial class DesktopPlatformServices
     /// loading GTK. The same as <c>DesktopHost.NoteRecentDocumentAsync</c> and <c>ClearRecentDocumentsAsync</c>, with
     /// their outcome. It needs no window. Under <c>RUNIC_APPLICATION_SERVE_ONLY=1</c>, whose Windows are shown in a
     /// browser that may run on another computer, every request reports
-    /// <see cref="PlatformUnavailableReason.BackendUnavailable"/>.
+    /// <see cref="PlatformUnavailableReason.BackendUnavailable"/>. The instance that
+    /// <see cref="DesktopPlatformServiceCollectionExtensions.AddRunicPlatformServices(IServiceCollection)"/> registers decides
+    /// on first use, so <c>RunicDesktopHostOptions.ServeOnly</c> of the host built on that provider counts too, and it
+    /// names the application by its application ID on Linux when one is given.
     /// <see cref="DesktopPlatformServiceCollectionExtensions.AddRunicPlatformServices(IServiceCollection)"/> registers
     /// one instance for the application.
     /// </remarks>
     public static IDesktopRecentDocuments CreateRecentDocuments() => RunicDesktopHost.ServeOnlyRequested
         ? DesktopRecentDocuments.Unavailable(PlatformUnavailableReason.BackendUnavailable)
         : Runic.Desktop.Internal.RecentDocuments.Shared;
+
+    // AddRunicPlatformServices: decided on first use, once a RunicDesktopHost recorded RunicDesktopHostOptions.ServeOnly;
+    // the application ID, when given, names the application in Linux's recently-used.xbel.
+    internal static IDesktopRecentDocuments CreateRecentDocuments(DesktopServeOnlyState serveOnly, string? applicationId) =>
+        new LazyRecentDocuments(() => serveOnly.Choose<IDesktopRecentDocuments>(
+            () => applicationId is null ? Runic.Desktop.Internal.RecentDocuments.Shared : new Runic.Desktop.Internal.RecentDocuments(null, applicationId),
+            DesktopRecentDocuments.Unavailable));
+
+    private sealed class LazyRecentDocuments(Func<IDesktopRecentDocuments> create) : IDesktopRecentDocuments, IDesktopServiceStatus
+    {
+        private readonly Lazy<IDesktopRecentDocuments> _inner = new(create);
+
+        public CapabilityStatus Status => DesktopServiceStatus.Get(_inner.Value);
+
+        public ValueTask<PlatformResult<PlatformUnit>> AddAsync(string path, CancellationToken cancellationToken = default) =>
+            _inner.Value.AddAsync(path, cancellationToken);
+
+        public ValueTask<PlatformResult<PlatformUnit>> ClearAsync(CancellationToken cancellationToken = default) =>
+            _inner.Value.ClearAsync(cancellationToken);
+    }
 
     /// <summary>Creates the computer's network status for the operating system: online, metered and captive portal.</summary>
     /// <returns>Application-scoped network status that the caller disposes at shutdown.</returns>
@@ -1876,7 +1899,7 @@ public static class DesktopPlatformServiceCollectionExtensions
     /// <see cref="DesktopPlatformServices.CreateNotifications(string?)"/>, <see cref="DesktopPlatformServices.CreateStatusIcon(string?)"/>,
     /// <see cref="DesktopPlatformServices.CreateGlobalShortcuts(string?)"/>, <see cref="DesktopPlatformServices.CreateLoginStartup(string?)"/>, <see cref="DesktopPlatformServices.CreateInhibition(string?)"/>,
     /// <see cref="DesktopPlatformServices.CreateSecretStore()"/>, <see cref="DesktopPlatformServices.CreateTrash()"/>,
-    /// <see cref="DesktopPlatformServices.CreateFileTransfers()"/>, <see cref="DesktopPlatformServices.CreateVolumes"/>, <see cref="DesktopPlatformServices.CreateNetworkStatus"/>, <see cref="DesktopPlatformServices.CreateRecentDocuments"/>, <see cref="DesktopPlatformServices.CreateApplications()"/>
+    /// <see cref="DesktopPlatformServices.CreateFileTransfers()"/>, <see cref="DesktopPlatformServices.CreateVolumes"/>, <see cref="DesktopPlatformServices.CreateNetworkStatus"/>, <see cref="DesktopPlatformServices.CreateRecentDocuments()"/>, <see cref="DesktopPlatformServices.CreateApplications()"/>
     /// and <see cref="DesktopPlatformServices.CreateThumbnails()"/> when first resolved, and disposed with the service provider. Without an application ID, Linux notifications
     /// use the identity the desktop portal infers and Windows notifications report
     /// <see cref="PlatformUnavailableReason.ProviderNotConfigured"/>; pass the ID to
@@ -1942,7 +1965,7 @@ public static class DesktopPlatformServiceCollectionExtensions
                 provider.GetService<ILoggerFactory>()?.CreateLogger(DesktopBridgeTransport.LogCategory)));
         services.TryAddSingleton(static _ => DesktopPlatformServices.CreateVolumes());
         services.TryAddSingleton(static _ => DesktopPlatformServices.CreateNetworkStatus());
-        services.TryAddSingleton(static _ => DesktopPlatformServices.CreateRecentDocuments());
+        services.TryAddSingleton(provider => DesktopPlatformServices.CreateRecentDocuments(provider.GetRequiredService<DesktopServeOnlyState>(), applicationId));
         services.TryAddSingleton(static provider => DesktopPlatformServices.CreateApplications(
             provider.GetService<ILoggerFactory>()?.CreateLogger(DesktopBridgeTransport.LogCategory)));
         services.TryAddSingleton(static provider => DesktopPlatformServices.CreateThumbnails(

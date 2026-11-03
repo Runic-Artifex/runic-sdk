@@ -468,7 +468,10 @@ The same Window and `async host => ...` body run on CS-WebUI with
   Open Recent and the Dock on macOS, Recent items and the Jump List on Windows,
   and `recently-used.xbel` on Linux, the same lists as
   `DesktopHost.NoteRecentDocumentAsync`, with each outcome as a `PlatformResult`.
-  Under `RUNIC_APPLICATION_SERVE_ONLY=1` it reports `Unavailable`; see
+  It decides on first use: once a `RunicDesktopHost` with `ServeOnly` was built on
+  the provider, or under `RUNIC_APPLICATION_SERVE_ONLY=1`, it reports `Unavailable`.
+  With `AddRunicPlatformServices(applicationId)` Linux names the application by its
+  ID; see
   [Document apps](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Platform/README.md#document-apps).
 - `AddRunicPlatformServices()` also registers `IApplicationPlatformServices`, the
   one instance of `DesktopPlatformServices.ForApplication()`: the application's

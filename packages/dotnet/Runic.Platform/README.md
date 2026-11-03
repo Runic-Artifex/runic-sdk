@@ -223,9 +223,12 @@ reopening: `AddAsync(document.LocalPath)` after open and Save As, and
 Dock, Windows in Recent items and the application's Jump List
 (`SHAddToRecentDocs`; clearing removes only the application's Jump List
 entries), and Linux in the recent files of GTK and KDE file choosers
-(`recently-used.xbel`; clearing removes only this application's entries). Runic
-Desktop registers it for Runic Windows; CS-WebUI and serve-only Runic Desktop
-report `Unavailable`. On macOS, Runic Desktop also marks the window's
+(`recently-used.xbel`, under the application ID or else the entry assembly's
+name; clearing removes only this application's entries, a write keeps the newest
+500, and a file that is not a bookmark file is left alone and reported as
+`Failed(IOError)`). Runic Desktop registers it for Runic Windows; CS-WebUI and
+serve-only Runic Desktop, by `RunicDesktopHostOptions.ServeOnly` or
+`RUNIC_APPLICATION_SERVE_ONLY=1`, report `Unavailable`. On macOS, Runic Desktop also marks the window's
 represented file and unsaved changes
 ([Document apps on macOS](../Runic.Desktop/README.md#document-apps-on-macos)).
 In the App Sandbox those lists give no access: keep each bookmark with the

@@ -29,14 +29,15 @@ public sealed class RecentDocumentsTests
         try
         {
             var recent = new RecentDocuments(file);
-            var path = Root + "Notes/plan #1 ü.md";
+            var path = Root + "Notes/../Notes/plan #1 ü.md";
             Assert.True((await recent.AddAsync(path)).Succeeded);
             var bookmark = Assert.Single(Bookmarks(file));
-            Assert.Equal(RecentDocuments.Xbel.FileUri(path), (string?)bookmark.Attribute("href"));
+            // The path is made absolute first.
+            Assert.Equal(RecentDocuments.Xbel.FileUri(Path.GetFullPath(path)), (string?)bookmark.Attribute("href"));
             Assert.NotNull(bookmark.Attribute("added"));
             Assert.Equal("text/markdown", (string?)bookmark.Descendants(Mime + "mime-type").Single().Attribute("type"));
             var application = bookmark.Descendants(Bookmark + "application").Single();
-            Assert.Equal(RecentDocuments.Xbel.ApplicationName, (string?)application.Attribute("name"));
+            Assert.Equal(recent.ApplicationName, (string?)application.Attribute("name"));
             Assert.Equal("1", (string?)application.Attribute("count"));
             Assert.EndsWith(" %u'", (string?)application.Attribute("exec"));
 
@@ -61,7 +62,7 @@ public sealed class RecentDocumentsTests
         Directory.CreateDirectory(Path.GetDirectoryName(file)!);
         try
         {
-            var name = RecentDocuments.Xbel.ApplicationName;
+            var name = new RecentDocuments(file).ApplicationName;
             await File.WriteAllTextAsync(file, $"""
                 <?xml version="1.0" encoding="UTF-8"?>
                 <xbel version="1.0" xmlns:bookmark="{Bookmark.NamespaceName}" xmlns:mime="{Mime.NamespaceName}">
@@ -97,7 +98,7 @@ public sealed class RecentDocumentsTests
     }
 
     [Test]
-    public async Task AMissingOrBrokenFileStartsANewList()
+    public async Task AMissingFileStartsANewListAndABrokenOneIsLeftAlone()
     {
         var file = TemporaryFile();
         try
@@ -105,15 +106,115 @@ public sealed class RecentDocumentsTests
             var recent = new RecentDocuments(file);
             Assert.True((await recent.ClearAsync()).Succeeded);
             Assert.False(File.Exists(file));
-            Directory.CreateDirectory(Path.GetDirectoryName(file)!);
-            await File.WriteAllTextAsync(file, "not xml <");
             Assert.True((await recent.AddAsync(Root + "a.txt")).Succeeded);
             Assert.Single(Bookmarks(file));
             Assert.Equal("xbel", XDocument.Load(file).Root!.Name.LocalName);
+
+            // Other applications' history in a file that does not parse, or is no bookmark file, is never replaced.
+            foreach (var broken in (string[])["not xml <", "<?xml version=\"1.0\"?><bookmarks><bookmark href=\"file:///x\"/></bookmarks>"])
+            {
+                await File.WriteAllTextAsync(file, broken);
+                var added = await recent.AddAsync(Root + "b.txt");
+                Assert.True(added is PlatformResult<PlatformUnit>.Failed { Code: PlatformFailureCode.IOError, Diagnostic.Domain: "xbel" }, $"{added}");
+                Assert.True((await recent.ClearAsync()) is PlatformResult<PlatformUnit>.Failed { Code: PlatformFailureCode.IOError });
+                Assert.Equal(broken, await File.ReadAllTextAsync(file));
+            }
         }
         finally
         {
             Directory.Delete(Path.GetDirectoryName(file)!, recursive: true);
+        }
+    }
+
+    // The application's identity: its ID when given, else the entry assembly's name (also under `dotnet app.dll`, which
+    // is not "dotnet"); exec is g_shell_quote of the shell-quoted command and " %u". Clearing removes only this name.
+    [Test]
+    public async Task TheApplicationIsNamedByItsIdOrAssemblyAndQuotedAsGLibDoes()
+    {
+        Assert.Equal("'a'\\''b c'", RecentDocuments.Xbel.ShellQuote("a'b c"));
+        var current = RecentDocuments.Xbel.Application.Current(null);
+        Assert.Equal(System.Reflection.Assembly.GetEntryAssembly()!.GetName().Name, current.Name);
+        Assert.NotEqual("dotnet", current.Name);
+        // g_shell_quote of "'<process>' %u": the inner quote opens as '\''.
+        Assert.StartsWith("''\\''", current.Exec);
+        Assert.EndsWith(" %u'", current.Exec);
+        Assert.Equal("org.example.Notes", RecentDocuments.Xbel.Application.Current("org.example.Notes").Name);
+
+        var file = TemporaryFile();
+        try
+        {
+            var mine = new RecentDocuments(file, "org.example.Notes");
+            var other = new RecentDocuments(file, "org.example.Other");
+            Assert.True((await mine.AddAsync(Root + "mine.txt")).Succeeded);
+            Assert.True((await other.AddAsync(Root + "theirs.txt")).Succeeded);
+            Assert.True((await other.AddAsync(Root + "mine.txt")).Succeeded);
+            Assert.True((await mine.ClearAsync()).Succeeded);
+            var left = Bookmarks(file);
+            Assert.Equal(2, left.Length);
+            Assert.All(left, bookmark => Assert.Equal(["org.example.Other"], Applications(bookmark)));
+        }
+        finally
+        {
+            Directory.Delete(Path.GetDirectoryName(file)!, recursive: true);
+        }
+    }
+
+    // The file keeps the newest MaximumBookmarks bookmarks.
+    [Test]
+    public async Task WritesKeepTheNewestBookmarks()
+    {
+        var file = TemporaryFile();
+        Directory.CreateDirectory(Path.GetDirectoryName(file)!);
+        try
+        {
+            var old = string.Concat(Enumerable.Range(0, RecentDocuments.Xbel.MaximumBookmarks + 20).Select(index =>
+                $"<bookmark href=\"file:///home/me/old{index}.txt\" added=\"2020-01-01T00:00:00Z\" modified=\"2020-01-01T00:00:00Z\" " +
+                $"visited=\"{new DateTime(2021, 1, 1, 0, 0, 0, DateTimeKind.Utc).AddMinutes(index):yyyy-MM-ddTHH:mm:ssZ}\"/>"));
+            await File.WriteAllTextAsync(file, $"<?xml version=\"1.0\"?><xbel version=\"1.0\">{old}</xbel>");
+            Assert.True((await new RecentDocuments(file).AddAsync(Root + "new.txt")).Succeeded);
+            var hrefs = Bookmarks(file).Select(static bookmark => (string)bookmark.Attribute("href")!).ToList();
+            Assert.Equal(RecentDocuments.Xbel.MaximumBookmarks, hrefs.Count);
+            Assert.Contains(RecentDocuments.Xbel.FileUri(Path.GetFullPath(Root + "new.txt")), hrefs);
+            Assert.DoesNotContain("file:///home/me/old20.txt", hrefs);
+            Assert.Contains("file:///home/me/old21.txt", hrefs);
+        }
+        finally
+        {
+            Directory.Delete(Path.GetDirectoryName(file)!, recursive: true);
+        }
+    }
+
+    // Windows CI: SHAddToRecentDocs, on its STA thread, puts a shortcut into the Recent items folder.
+    [Test]
+    public async Task WindowsAddsAShortcutToRecentItems()
+    {
+        if (!OperatingSystem.IsWindows() || Environment.GetEnvironmentVariable("GITHUB_ACTIONS") != "true") return;
+        using (var explorer = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced"))
+        {
+            if (explorer?.GetValue("Start_TrackDocs") is 0)
+            {
+                Console.WriteLine("Recent items are off on this runner (Start_TrackDocs = 0); the shortcut check is skipped.");
+                return;
+            }
+        }
+        var directory = Path.Combine(Path.GetTempPath(), "runic-recent-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(directory);
+        var document = Path.Combine(directory, "runic-recent-check.txt");
+        await File.WriteAllTextAsync(document, "recent");
+        var shortcut = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Recent), "runic-recent-check.txt.lnk");
+        try
+        {
+            Assert.True((await new RecentDocuments(null).AddAsync(document)).Succeeded);
+            for (var waited = 0; !File.Exists(shortcut); waited += 100)
+            {
+                if (waited > 10_000) throw new InvalidOperationException($"SHAddToRecentDocs did not create {shortcut}.");
+                await Task.Delay(100);
+            }
+        }
+        finally
+        {
+            if (File.Exists(shortcut)) File.Delete(shortcut);
+            Directory.Delete(directory, recursive: true);
         }
     }
 

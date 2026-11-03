@@ -14,9 +14,12 @@ namespace Runic.Platform;
 /// note the path while the document's lease is open. Windows: <c>SHAddToRecentDocs</c>, which also fills the Recent
 /// category of the application's Jump List where the application is registered for the file type, and
 /// <see cref="ClearAsync"/> removes the application's Jump List destinations without touching other applications'.
-/// Linux: the freedesktop.org <c>recently-used.xbel</c> file that GTK and KDE read, with this application as the
-/// document's application; <see cref="ClearAsync"/> removes this application from every entry and the entries only it
-/// had. Inside Flatpak that file is the application's own. Hosts without a desktop, such as CS-WebUI and serve-only
+/// Linux: the freedesktop.org <c>recently-used.xbel</c> file that GTK and KDE read, written on the thread pool, with this
+/// application, named by its application ID or else its entry assembly, as the document's application;
+/// <see cref="ClearAsync"/> removes this application from every entry and the entries only it had. A write keeps the
+/// newest 500 entries, and a file that is not a bookmark file is left as it is and reported as
+/// <see cref="PlatformFailureCode.IOError"/>. Inside Flatpak that file is the application's own. A path is made
+/// absolute before it is noted. Hosts without a desktop, such as CS-WebUI and serve-only
 /// Runic Desktop, report <see cref="PlatformResult{T}.Unavailable"/>.
 /// </para>
 /// </remarks>
