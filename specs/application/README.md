@@ -250,9 +250,13 @@ including a `receive` that would drain that connection's mailbox.
   session, or none, is answered `rejected` with the reason `no-hello` and does not act for the connection: it reads
   and changes nothing, its mailbox included. A request held before the `hello` is checked when it is admitted.
 - **Replacement.** A `hello` with another session on such a connection, after its `hello` succeeded, comes from a new
-  page. The producer closes the connection as if the transport had reported it closed (its presentations, operation
-  watches, pending interactions and mailbox are released) and handles the `hello` on a new connection with a new
-  identity. The transport's next report that the key closed is the old connection's, and the producer ignores it.
+  page. The producer first checks it as it checks every `hello` (protocol, session, client, features, and a session
+  that no open or closed connection used); a `hello` that fails is answered as a second `hello` of the old connection
+  and replaces nothing. A valid one closes the connection as if the transport had reported it closed (its
+  presentations, operation watches, pending interactions and mailbox are released) and is handled on a new connection
+  with a new identity. The transport's next report that the key closed is the old connection's, and the producer
+  ignores it. A transport whose keys never repeat, such as Runic Desktop's, gives every new page a new key, so there a
+  second `hello` is `invalid-request` and nothing is replaced.
 - **Without the feature** nothing changes: a second `hello` is `invalid-request`, and a request acts for the
   connection whatever it names. A page and a producer of 0.15 keep that behaviour, so on CS-WebUI a new page can still
   drain the mailbox of a 0.15 page whose close is not reported yet; both sides need the feature.

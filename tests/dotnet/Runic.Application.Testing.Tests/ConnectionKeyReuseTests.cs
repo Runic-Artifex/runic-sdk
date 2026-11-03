@@ -131,6 +131,58 @@ internal sealed class ConnectionKeyReuseTests
         Require(received["messages"]!.AsArray().Count == 0, $"Bob's receive returned Alice's pushes: {received}");
     }
 
+    // On a transport whose keys never repeat, a hello of another session is not a new page: it stays invalid-request,
+    // and the transport's one close of the key still closes the connection.
+    [Test]
+    public async Task ATransportWithUniqueKeysNeverReplacesAConnectionAsync()
+    {
+        using var transport = new UniqueKeysTransport();
+        using var window = new ReuseWindow(transport, (json, key, client, token) => transport.RequestAsync(json, key));
+        await window.HelloAsync("s-page", "7");
+        var page = window.Open("7")!;
+        Require(page.Key == "7", $"A transport with unique keys got a suffixed key: {page.Key}");
+        var second = JsonNode.Parse(await window.RequestAsync(Hello("s-other"), "7"))!;
+        Require(second["error"]?["reason"]?.GetValue<string>() == "invalid-request", $"A second hello was answered {second}.");
+        Require(ReferenceEquals(window.Open("7"), page) && page.IsOpen, "A second hello replaced the connection.");
+        Require(Ok(await window.RequestAsync(new JsonObject { ["kind"] = "receive", ["session"] = "s-page" }, "7")),
+            "The page's own request no longer ran.");
+        ((IBridgeRequestHandler)window.Dispatcher).ConnectionClosed("7");
+        Require(!page.IsOpen && window.Dispatcher.FindConnection("7") is null, "The transport's one close did not close the connection.");
+    }
+
+    // A new-session hello that would fail is checked before it replaces anything: the old connection stays.
+    [Test]
+    public async Task AnInvalidHelloOfAnotherSessionReplacesNothingAsync()
+    {
+        using var transport = new InMemoryBridgeTransport();
+        using var window = new ReuseWindow(transport, transport.RequestAsync);
+        await window.HelloAsync("s-alice");
+        var alice = window.Open()!;
+        var invalid = new[]
+        {
+            Hello("s-bob", client: new JsonObject { ["name"] = "" }),
+            Hello("s-bob", protocol: 3),
+            Hello("s-alice-2", features: new JsonArray(1)),
+            Hello("not an identifier!"),
+        };
+        foreach (var hello in invalid)
+        {
+            var reply = JsonNode.Parse(await window.RequestAsync(hello))!;
+            Require(reply["ok"]?.GetValue<bool>() == false && window.Open() is { } open && ReferenceEquals(open, alice) && alice.IsOpen,
+                $"An invalid hello replaced the connection: {hello.ToJsonString()} answered {reply}.");
+        }
+        // A valid one does.
+        await window.HelloAsync("s-bob");
+        Require(!alice.IsOpen && window.Open() is { } bob && bob.Session == "s-bob", "A valid hello of another session did not replace it.");
+    }
+
+    private static JsonObject Hello(string session, JsonObject? client = null, int protocol = 4, JsonNode? features = null) => new()
+    {
+        ["kind"] = "hello", ["protocol"] = protocol, ["session"] = session,
+        ["client"] = client ?? new JsonObject { ["name"] = "t", ["version"] = "1" },
+        ["features"] = features ?? new JsonArray("request-session/1"),
+    };
+
     [Test]
     public async Task EveryConnectionOfAReusingTransportGetsAKeyNoOtherConnectionHadAsync()
     {
@@ -239,7 +291,7 @@ internal sealed class ConnectionKeyReuseTests
     }
 
     // A transport without targeted pushes, as CS-WebUI's: pushes to one connection wait in its mailbox for receive.
-    private sealed class MailboxTransport : IBridgeTransport, IDisposable
+    private class MailboxTransport : IBridgeTransport, IDisposable
     {
         private IBridgeRequestHandler? _handler;
 
@@ -258,6 +310,9 @@ internal sealed class ConnectionKeyReuseTests
 
         public void Dispose() { }
     }
+
+    // A transport whose keys never repeat, as Runic Desktop's: a new page always gets a new key.
+    private sealed class UniqueKeysTransport : MailboxTransport, IBridgeUniqueConnectionKeys;
 
     private static void Require(bool condition, string message)
     {
