@@ -296,7 +296,9 @@ public sealed class Gtk4ProfileTests
             DesktopWindowCapabilities.Move | DesktopWindowCapabilities.Announcements;
         const DesktopWindowCapabilities placement = DesktopWindowCapabilities.FullScreen | DesktopWindowCapabilities.MonitorPlacement;
         // Activity and the run-time color scheme: WebView2 and WKWebView without conditions; GTK 3 once GTK has loaded.
-        const DesktopWindowCapabilities presentation = DesktopWindowCapabilities.Activity | DesktopWindowCapabilities.ColorScheme;
+        // WebView2 and WKWebView switch each window alone; WebView2 loses that for a configured ProfilePath (WebUiWindow).
+        const DesktopWindowCapabilities presentation = DesktopWindowCapabilities.Activity | DesktopWindowCapabilities.ColorScheme |
+            DesktopWindowCapabilities.PerWindowColorScheme;
         if (OperatingSystem.IsWindows())
             Assert.Equal(known | DesktopWindowCapabilities.State | DesktopWindowCapabilities.FileDrop | DesktopWindowCapabilities.MenuBar |
                 DesktopWindowCapabilities.ContextMenu | placement | DesktopWindowCapabilities.FileDrag | presentation,

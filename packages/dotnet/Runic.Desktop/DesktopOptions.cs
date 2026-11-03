@@ -609,6 +609,14 @@ public enum DesktopWindowCapabilities
     /// The window changes its light or dark appearance while it is open (<see cref="DesktopWindow.SetColorSchemeAsync"/>).
     /// </summary>
     ColorScheme = 1 << 17,
+
+    /// <summary>
+    /// <see cref="DesktopWindow.SetColorSchemeAsync"/> changes this window only. Without it, but with
+    /// <see cref="ColorScheme"/>, the scheme is shared: on Linux by every GTK window of the process, on Windows by the
+    /// windows that share a WebView2 profile (<see cref="DesktopWindowOptions.ProfilePath"/>), and a call changes all of
+    /// them.
+    /// </summary>
+    PerWindowColorScheme = 1 << 18,
 }
 
 /// <summary>How urgently a screen reader speaks an announcement (<see cref="DesktopWindow.AnnounceAsync"/>).</summary>

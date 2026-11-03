@@ -204,7 +204,8 @@ public sealed class DesktopSurface : IAsyncDisposable
                 actualBrowser = FromCompatibilityBrowser(_engine.CurrentBrowser);
             }
             window = new DesktopWindow(this, _engine, requestedBrowser, actualBrowser, fellBack);
-            window.InitializeColorScheme(configured.ColorScheme);
+            window.InitializeColorScheme(configured.ColorScheme,
+                fromApplication: configured.ColorScheme == DesktopColorScheme.NoPreference && _host.ColorScheme != DesktopColorScheme.NoPreference);
             _window = window;
         }
         finally
@@ -366,19 +367,27 @@ public sealed class DesktopSurface : IAsyncDisposable
         own != DesktopColorScheme.NoPreference ? own : _host.ColorScheme;
 
     // DesktopHost.SetColorSchemeAsync: the current embedded window follows the application's scheme unless it has its
-    // own; the next window opens with it (ApplyWindowOptions).
-    internal async ValueTask ApplyApplicationColorSchemeAsync(CancellationToken cancellationToken)
+    // own and it is its alone; the next window opens with it (ApplyWindowOptions). Returns the shared scope it set.
+    internal async ValueTask<string?> ApplyApplicationColorSchemeAsync(bool shared, CancellationToken cancellationToken)
     {
-        if (Volatile.Read(ref _window) is not { IsOpen: true } window) return;
+        if (Volatile.Read(ref _window) is not { IsOpen: true } window) return null;
         try
         {
-            await window.ApplyApplicationColorSchemeAsync(cancellationToken).ConfigureAwait(false);
+            return await window.ApplyApplicationColorSchemeAsync(shared, cancellationToken).ConfigureAwait(false);
         }
         catch (Exception error) when (error is InvalidOperationException or ObjectDisposedException && !window.IsOpen)
         {
             // The window closed meanwhile.
+            return null;
         }
     }
+
+    // The current window, for the shared color schemes.
+    internal DesktopWindow? CurrentWindow => Volatile.Read(ref _window);
+
+    internal DesktopColorScheme SharedColorScheme(string scope) => _host.SharedColorScheme(scope);
+
+    internal void SharedColorSchemeApplied(string scope, DesktopColorScheme colorScheme) => _host.SharedColorSchemeApplied(scope, colorScheme);
 
     // DesktopHost.SetSpellCheckingLanguagesAsync: the current embedded window applies them; a window that is opening
     // applies them once it is open (WebUiWindow), and one that closes meanwhile needs none.
@@ -990,14 +999,29 @@ public sealed class DesktopWindow : IAsyncDisposable
         }
     }
 
-    private DesktopColorScheme? _colorScheme;
+    // The window's own scheme (DesktopWindowOptions.ColorScheme or its last SetColorSchemeAsync), and the one it shows.
+    private DesktopColorScheme _ownColorScheme;
+    private DesktopColorScheme _colorScheme;
+    private string? _colorSchemeScope;
 
     /// <summary>
-    /// Gets the window's own light or dark appearance: <see cref="DesktopWindowOptions.ColorScheme"/>, or the scheme of the
-    /// last <see cref="SetColorSchemeAsync"/>. <see cref="DesktopColorScheme.NoPreference"/> follows
-    /// <see cref="DesktopHost.ColorScheme"/>, the application's.
+    /// Gets the light or dark appearance the window shows now, as Runic set it: its own scheme
+    /// (<see cref="DesktopWindowOptions.ColorScheme"/> or its last <see cref="SetColorSchemeAsync"/>), else the
+    /// application's (<see cref="DesktopHost.ColorScheme"/>); <see cref="DesktopColorScheme.NoPreference"/> when it
+    /// follows the system.
     /// </summary>
-    public DesktopColorScheme ColorScheme => _colorScheme ?? DesktopColorScheme.NoPreference;
+    /// <remarks>
+    /// Without <see cref="DesktopWindowCapabilities.PerWindowColorScheme"/> the scheme is shared, by every GTK window of
+    /// the process or by the windows of one WebView2 profile, and this is the last scheme set for all of them, whichever
+    /// window or the application set it. An installed browser reports <see cref="DesktopColorScheme.NoPreference"/>.
+    /// </remarks>
+    public DesktopColorScheme ColorScheme => _colorScheme;
+
+    // Raised after ColorScheme changed, on the thread that changed it; Runic.Application.Views.Desktop reports it.
+    internal event Action? ColorSchemeChanged;
+
+    // What this window's scheme belongs to: null for the window alone, else the key the windows sharing it have in common.
+    internal string? ColorSchemeScope => _colorSchemeScope;
 
     /// <summary>Changes the window's light or dark appearance while it is open, for example when the user picks a theme.</summary>
     /// <param name="colorScheme">
@@ -1015,10 +1039,14 @@ public sealed class DesktopWindow : IAsyncDisposable
     /// <c>NSWindow.appearance</c>.
     /// </para>
     /// <para>
-    /// The GTK windows on Linux share one scheme: GTK's <c>gtk-application-prefer-dark-theme</c> setting, and the
-    /// libadwaita style manager when the application uses libadwaita, belong to the process, so a call changes every
-    /// window of the application. WebView2 keeps the preferred color scheme per profile, so windows that share a
-    /// <see cref="DesktopWindowOptions.ProfilePath"/> share it too.
+    /// Without <see cref="DesktopWindowCapabilities.PerWindowColorScheme"/> the scheme is not this window's alone, and the
+    /// call changes every window that shares it: on Linux every GTK window of the application (GTK's settings, or the
+    /// libadwaita style manager, belong to the process), on Windows every window that shares the WebView2 profile of a
+    /// <see cref="DesktopWindowOptions.ProfilePath"/>. <see cref="ColorScheme"/> of each of them reports it. The next
+    /// <see cref="DesktopHost.SetColorSchemeAsync"/> sets the application's scheme for all of them again.
+    /// </para>
+    /// <para>
+    /// <see cref="ColorScheme"/> changes only once the window applied the scheme; a call that fails leaves it as it was.
     /// </para>
     /// </remarks>
     /// <exception cref="ArgumentOutOfRangeException"><paramref name="colorScheme"/> is not a defined value.</exception>
@@ -1028,22 +1056,63 @@ public sealed class DesktopWindow : IAsyncDisposable
     public ValueTask SetColorSchemeAsync(DesktopColorScheme colorScheme, CancellationToken cancellationToken = default)
     {
         if (!Enum.IsDefined(colorScheme)) throw new ArgumentOutOfRangeException(nameof(colorScheme));
-        return _surface.RunWindowOperationAsync(this, DesktopWindowCapabilities.ColorScheme, () =>
+        return _surface.RunWindowOperationAsync(this, DesktopWindowCapabilities.ColorScheme, async () =>
         {
-            _colorScheme = colorScheme;
-            return _engine.SetEmbeddedColorSchemeAsync(_surface.EffectiveColorScheme(colorScheme), cancellationToken);
+            var effective = _surface.EffectiveColorScheme(colorScheme);
+            await _engine.SetEmbeddedColorSchemeAsync(effective, cancellationToken).ConfigureAwait(false);
+            _ownColorScheme = colorScheme;
+            if (_colorSchemeScope is { } scope) _surface.SharedColorSchemeApplied(scope, effective);
+            else ShowsColorScheme(effective);
         }, cancellationToken);
     }
 
-    // The window's own scheme as it opened (DesktopWindowOptions.ColorScheme).
-    internal void InitializeColorScheme(DesktopColorScheme colorScheme) => _colorScheme ??= colorScheme;
+    // When the window opened: its own scheme (DesktopWindowOptions.ColorScheme), what it shares the scheme with, and
+    // the scheme it shows. A shared scheme is what the window's open set for every window sharing it, else the last one.
+    internal void InitializeColorScheme(DesktopColorScheme own, bool fromApplication)
+    {
+        _ownColorScheme = own;
+        // Before the surface publishes the window, so Capabilities, which needs that, cannot tell yet.
+        if (Browser != BrowserKind.Embedded || (_engine.WindowCapabilities & DesktopWindowCapabilities.ColorScheme) == 0) return;
+        var effective = _surface.EffectiveColorScheme(own);
+        _colorSchemeScope = _engine.EmbeddedColorSchemeScope;
+        if (_colorSchemeScope is not { } scope)
+        {
+            _colorScheme = effective;
+            return;
+        }
+        // WebView2 sets the profile's scheme when it opens with one; GTK takes only the application's, pushed once open.
+        var applied = scope.StartsWith("profile:", StringComparison.Ordinal) ? effective != DesktopColorScheme.NoPreference : fromApplication;
+        if (applied)
+        {
+            _colorScheme = effective;
+            _surface.SharedColorSchemeApplied(scope, effective);
+        }
+        else
+        {
+            _colorScheme = _surface.SharedColorScheme(scope);
+        }
+    }
 
-    // DesktopHost.SetColorSchemeAsync: a window without its own scheme follows the application's.
-    internal ValueTask ApplyApplicationColorSchemeAsync(CancellationToken cancellationToken) =>
-        IsOpen && Browser == BrowserKind.Embedded && (Capabilities & DesktopWindowCapabilities.ColorScheme) != 0
-            ? _surface.RunWindowOperationAsync(this, DesktopWindowCapabilities.ColorScheme,
-                () => _engine.SetEmbeddedColorSchemeAsync(_surface.EffectiveColorScheme(ColorScheme), cancellationToken), cancellationToken)
-            : ValueTask.CompletedTask;
+    internal void ShowsColorScheme(DesktopColorScheme colorScheme)
+    {
+        if (_colorScheme == colorScheme) return;
+        _colorScheme = colorScheme;
+        ColorSchemeChanged?.Invoke();
+    }
+
+    // DesktopHost.SetColorSchemeAsync, in two passes: first the windows whose scheme is their own, which keep theirs or
+    // follow the application's; then the shared ones, which all take the application's last, so it wins whatever order
+    // the windows come in. Returns the scope it set, if any.
+    internal async ValueTask<string?> ApplyApplicationColorSchemeAsync(bool shared, CancellationToken cancellationToken)
+    {
+        if (!IsOpen || Browser != BrowserKind.Embedded || (Capabilities & DesktopWindowCapabilities.ColorScheme) == 0) return null;
+        if ((_colorSchemeScope is not null) != shared) return null;
+        var effective = shared ? _surface.EffectiveColorScheme(DesktopColorScheme.NoPreference) : _surface.EffectiveColorScheme(_ownColorScheme);
+        await _surface.RunWindowOperationAsync(this, DesktopWindowCapabilities.ColorScheme,
+            () => _engine.SetEmbeddedColorSchemeAsync(effective, cancellationToken), cancellationToken).ConfigureAwait(false);
+        if (!shared) ShowsColorScheme(effective);
+        return _colorSchemeScope;
+    }
 
     private IDesktopMenuCommandTarget? _menuCommands;
 

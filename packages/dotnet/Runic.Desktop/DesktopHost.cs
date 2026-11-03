@@ -231,10 +231,34 @@ public sealed class DesktopHost : IAsyncDisposable
         cancellationToken.ThrowIfCancellationRequested();
         Volatile.Write(ref _colorScheme, (int)colorScheme);
         if (OperatingSystem.IsMacOS()) await Internal.MacOsWkWebViewHost.SetApplicationColorSchemeAsync(colorScheme, cancellationToken).ConfigureAwait(false);
-        foreach (var surface in _surfaces.Values.ToArray())
+        var surfaces = _surfaces.Values.ToArray();
+        // The windows whose scheme is their own first; then the shared schemes, so the application's is applied last
+        // and wins over any window's own, whatever order the windows come in.
+        foreach (var surface in surfaces)
         {
-            await surface.ApplyApplicationColorSchemeAsync(cancellationToken).ConfigureAwait(false);
+            await surface.ApplyApplicationColorSchemeAsync(shared: false, cancellationToken).ConfigureAwait(false);
         }
+        foreach (var surface in surfaces)
+        {
+            if (await surface.ApplyApplicationColorSchemeAsync(shared: true, cancellationToken).ConfigureAwait(false) is { } scope)
+                SharedColorSchemeApplied(scope, colorScheme);
+        }
+    }
+
+    // The last scheme applied to each shared scope (DesktopWindow.ColorSchemeScope): GTK's process, a WebView2 profile.
+    private readonly Dictionary<string, DesktopColorScheme> _sharedColorSchemes = new(StringComparer.Ordinal);
+
+    internal DesktopColorScheme SharedColorScheme(string scope)
+    {
+        lock (_sharedColorSchemes) return _sharedColorSchemes.GetValueOrDefault(scope);
+    }
+
+    // A scheme was applied to a shared scope: every open window that shares it shows it now.
+    internal void SharedColorSchemeApplied(string scope, DesktopColorScheme colorScheme)
+    {
+        lock (_sharedColorSchemes) _sharedColorSchemes[scope] = colorScheme;
+        foreach (var surface in _surfaces.Values.ToArray())
+            if (surface.CurrentWindow is { ColorSchemeScope: var windowScope } window && windowScope == scope) window.ShowsColorScheme(colorScheme);
     }
 
     /// <summary>

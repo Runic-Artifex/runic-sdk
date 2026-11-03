@@ -25,6 +25,7 @@ Runic.Desktop.DesktopWindowActivityChangedEventArgs.Activity.get -> Runic.Deskto
 Runic.Desktop.DesktopWindowActivityChangedEventArgs.DesktopWindowActivityChangedEventArgs(Runic.Desktop.DesktopWindowActivity! activity) -> void
 Runic.Desktop.DesktopWindowCapabilities.Activity = 65536 -> Runic.Desktop.DesktopWindowCapabilities
 Runic.Desktop.DesktopWindowCapabilities.ColorScheme = 131072 -> Runic.Desktop.DesktopWindowCapabilities
+Runic.Desktop.DesktopWindowCapabilities.PerWindowColorScheme = 262144 -> Runic.Desktop.DesktopWindowCapabilities
 Runic.Desktop.IDesktopActivityWindowHost
 Runic.Desktop.IDesktopActivityWindowHost.Activity.get -> Runic.Desktop.DesktopWindowActivity?
 Runic.Desktop.IDesktopActivityWindowHost.ActivityChanged -> System.EventHandler?

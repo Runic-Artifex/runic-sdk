@@ -25,7 +25,11 @@ internal sealed class DesktopWindowPresentation : IRunicWindowPresentation
         _owner = owner;
         _activity = Convert(window.Activity);
         window.ActivityChanged += OnActivityChanged;
+        // Also a change another window or the application made to a shared scheme.
+        window.ColorSchemeChanged += OnColorSchemeChanged;
     }
+
+    private void OnColorSchemeChanged() => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(ColorScheme)));
 
     public event PropertyChangedEventHandler? PropertyChanged;
 
@@ -46,6 +50,8 @@ internal sealed class DesktopWindowPresentation : IRunicWindowPresentation
         if (capabilities.HasFlag(DesktopWindowCapabilities.Visibility)) features |= RunicWindowPresentationFeatures.Visibility;
         if (capabilities.HasFlag(DesktopWindowCapabilities.FullScreen)) features |= RunicWindowPresentationFeatures.FullScreen;
         if (capabilities.HasFlag(DesktopWindowCapabilities.ColorScheme)) features |= RunicWindowPresentationFeatures.ColorScheme;
+        if (capabilities.HasFlag(DesktopWindowCapabilities.ColorScheme | DesktopWindowCapabilities.PerWindowColorScheme))
+            features |= RunicWindowPresentationFeatures.PerWindowColorScheme;
         if (capabilities.HasFlag(DesktopWindowCapabilities.Activity)) features |= RunicWindowPresentationFeatures.Activity;
         // NSWindow.documentEdited: only the macOS window shows it; elsewhere DesktopWindow accepts it and does nothing.
         if (macOS && capabilities.HasFlag(DesktopWindowCapabilities.NativeHandle)) features |= RunicWindowPresentationFeatures.DocumentEdited;
@@ -79,7 +85,11 @@ internal sealed class DesktopWindowPresentation : IRunicWindowPresentation
         }
         // DesktopWindow raises its events one at a time, so the changes keep their order.
         ActivityChanged?.Invoke(this, new RunicWindowActivityChangedEventArgs(previous, activity));
-        if (!_window.IsOpen) _window.ActivityChanged -= OnActivityChanged;
+        if (!_window.IsOpen)
+        {
+            _window.ActivityChanged -= OnActivityChanged;
+            _window.ColorSchemeChanged -= OnColorSchemeChanged;
+        }
     }
 
     public async ValueTask<PlatformResult<PlatformUnit>> PresentAsync(DesktopActivationContext? activation = null,
@@ -115,12 +125,9 @@ internal sealed class DesktopWindowPresentation : IRunicWindowPresentation
     public async ValueTask<PlatformResult<PlatformUnit>> SetColorSchemeAsync(DesktopColorScheme colorScheme, CancellationToken cancellationToken = default)
     {
         if (!Enum.IsDefined(colorScheme)) throw new ArgumentOutOfRangeException(nameof(colorScheme));
-        var previous = _window.ColorScheme;
-        var result = await Request(RunicWindowPresentationFeatures.ColorScheme,
+        // DesktopWindow.ColorSchemeChanged reports the change.
+        return await Request(RunicWindowPresentationFeatures.ColorScheme,
             () => _window.SetColorSchemeAsync(colorScheme, cancellationToken), cancellationToken).ConfigureAwait(false);
-        if (result is PlatformResult<PlatformUnit>.Success && previous != _window.ColorScheme)
-            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(ColorScheme)));
-        return result;
     }
 
     private ValueTask<PlatformResult<PlatformUnit>> Request(RunicWindowPresentationFeatures feature, Func<ValueTask> request,

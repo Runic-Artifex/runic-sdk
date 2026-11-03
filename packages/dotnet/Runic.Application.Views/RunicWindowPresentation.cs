@@ -70,9 +70,11 @@ public interface IRunicWindowPresentation : INotifyPropertyChanged
     bool IsVisible { get; }
 
     /// <summary>
-    /// Gets the Window's own light or dark appearance, from the last <see cref="SetColorSchemeAsync"/> or the host's
-    /// window options; <see cref="DesktopColorScheme.NoPreference"/> follows the application's, and that the system's.
+    /// Gets the light or dark appearance the Window shows now, as Runic set it: its own scheme, the application's, or
+    /// the last one set for every Window that shares it (<see cref="RunicWindowPresentationFeatures.PerWindowColorScheme"/>);
+    /// <see cref="DesktopColorScheme.NoPreference"/> when it follows the system.
     /// </summary>
+    /// <remarks><see cref="INotifyPropertyChanged.PropertyChanged"/> reports a change, also one that another Window or the application made.</remarks>
     DesktopColorScheme ColorScheme { get; }
 
     /// <summary>Occurs after <see cref="Activity"/> has changed, in a turn of the Window's model context.</summary>
@@ -133,8 +135,16 @@ public interface IRunicWindowPresentation : INotifyPropertyChanged
     /// <param name="cancellationToken">Cancels before the request reaches the window.</param>
     /// <returns><see cref="PlatformResult{T}.Success"/> once the window and its page show the scheme.</returns>
     /// <remarks>
-    /// The page's <c>prefers-color-scheme</c> follows. On Linux the GTK windows share one scheme, so the call changes every
-    /// window of the application; on Runic Desktop, <c>DesktopHost.SetColorSchemeAsync</c> switches the whole application.
+    /// <para>
+    /// The page's <c>prefers-color-scheme</c> follows. Where <see cref="Features"/> lacks
+    /// <see cref="RunicWindowPresentationFeatures.PerWindowColorScheme"/>, the scheme is not this Window's alone: on
+    /// Linux the GTK windows share one scheme for the whole process, and on Windows the windows that share a WebView2
+    /// profile share its scheme, so the call changes all of them and <see cref="ColorScheme"/> of each reports it.
+    /// </para>
+    /// <para>
+    /// On Runic Desktop, <c>DesktopHost.SetColorSchemeAsync</c> switches the whole application; on such a shared scheme
+    /// it wins over the Windows' own, whatever order they were set in.
+    /// </para>
     /// </remarks>
     /// <exception cref="ArgumentOutOfRangeException"><paramref name="colorScheme"/> is not a defined value.</exception>
     ValueTask<PlatformResult<PlatformUnit>> SetColorSchemeAsync(DesktopColorScheme colorScheme, CancellationToken cancellationToken = default);
@@ -171,6 +181,14 @@ public enum RunicWindowPresentationFeatures
     /// visible (<see cref="RunicWindowActivity.Assumed"/>).
     /// </summary>
     Activity = 1 << 6,
+
+    /// <summary>
+    /// <see cref="IRunicWindowPresentation.SetColorSchemeAsync"/> changes this Window only. Without it, but with
+    /// <see cref="ColorScheme"/>, the scheme belongs to more than this Window and a call changes all of them: on Linux
+    /// every GTK window of the application, on Windows every window that shares the WebView2 profile
+    /// (<c>DesktopWindowOptions.ProfilePath</c>).
+    /// </summary>
+    PerWindowColorScheme = 1 << 7,
 }
 
 /// <summary>Whether a Window is active, minimized and visible, for <see cref="IRunicWindowPresentation.Activity"/>.</summary>
@@ -241,9 +259,24 @@ public static class RunicWindowPresentationExtensions
 
 // The presentation of one Window, which its scope and IRunicWindow.Presentation share. The host attaches its own
 // presentation once the native window exists (RunicWindowOpening.UsePresentation); this one forwards requests to it,
-// and raises its changes in the Window's model turns.
-internal sealed class RunicWindowPresentation : IRunicWindowPresentation
+// and raises its changes in the Window's model turns. Runic.Application.Testing wraps its recording fake in it, so a
+// test sees the same delivery, OwnerClosed and handler isolation as an application.
+internal sealed class RunicWindowPresentation : IRunicWindowPresentation, IDisposable
 {
+    // A presentation attached to backend at once, for the test fake.
+    internal static RunicWindowPresentation Wrap(IRunicWindowPresentation backend, Func<IRunicModelContext?> context, Func<ILogger> logger)
+    {
+        var presentation = new RunicWindowPresentation();
+        presentation.Attach(backend, context, logger);
+        return presentation;
+    }
+
+    // The scope that resolved it releases it, after its Window closed.
+    public void Dispose() => Close();
+
+    // Changes waiting to be applied outside a model context, one at a time.
+    private readonly Queue<Action> _serial = new();
+    private bool _applying;
     private static readonly PlatformResult<PlatformUnit> NotOpen =
         new PlatformResult<PlatformUnit>.Unavailable(PlatformUnavailableReason.OwnerUnavailable);
     private static readonly PlatformResult<PlatformUnit> Closed =
@@ -305,8 +338,9 @@ internal sealed class RunicWindowPresentation : IRunicWindowPresentation
         {
             backend.ActivityChanged -= OnBackendActivityChanged;
             backend.PropertyChanged -= OnBackendPropertyChanged;
-            Deliver(RunicWindowActivity.Closed);
         }
+        // Also for a Window whose host attached no presentation, such as a serve-only one.
+        Deliver(RunicWindowActivity.Closed);
     }
 
     public ValueTask<PlatformResult<PlatformUnit>> PresentAsync(DesktopActivationContext? activation = null, CancellationToken cancellationToken = default) =>
@@ -375,10 +409,32 @@ internal sealed class RunicWindowPresentation : IRunicWindowPresentation
         }
     });
 
+    // Always a turn of its own after the current one, also when the host reports the change from inside a turn, as a
+    // request a command made completes. Without a model context, or once it closed, changes are applied in order on
+    // the reporting thread, and a change a handler causes waits for that handler instead of running inside it.
     private void InTurn(Action change)
     {
         var context = _context?.Invoke();
-        if (context is null || context.IsExecuting || !context.TryPost(change)) change();
+        if (context is not null && context.TryPost(change)) return;
+        lock (_serial)
+        {
+            _serial.Enqueue(change);
+            if (_applying) return;
+            _applying = true;
+        }
+        while (true)
+        {
+            Action next;
+            lock (_serial)
+            {
+                if (!_serial.TryDequeue(out next!))
+                {
+                    _applying = false;
+                    return;
+                }
+            }
+            next();
+        }
     }
 
     private void Raise(string property)

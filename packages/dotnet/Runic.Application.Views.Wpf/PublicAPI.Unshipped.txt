@@ -1,2 +1,2 @@
 #nullable enable
-static Runic.Application.Views.Wpf.WpfPlatformServices.ForWindowPresentation(System.Windows.Window! window) -> Runic.Application.Views.IRunicWindowPresentation!
+static Runic.Application.Views.Wpf.WpfPlatformServices.ForWindowPresentation(System.Windows.Window! window, Microsoft.Extensions.Logging.ILoggerFactory? loggerFactory = null) -> Runic.Application.Views.IRunicWindowPresentation!

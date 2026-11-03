@@ -6,52 +6,52 @@ namespace Runic.Desktop.Internal;
 // DesktopHost and DesktopWindow.SetColorSchemeAsync on GTK 3 and GTK 4 (Runic.Desktop.Gtk4 links this file). GTK has no
 // per-window scheme: the settings below, or with libadwaita its style manager, belong to the process. WebKitGTK's
 // prefers-color-scheme follows gtk-application-prefer-dark-theme, which the libadwaita style manager sets too, and with
-// GTK 4.20 or later gtk-interface-color-scheme. NoPreference returns each setting to what it was before Runic first
-// changed it. GTK thread only.
+// GTK 4.20 or later gtk-interface-color-scheme. NoPreference undoes Runic's value with gtk_settings_reset_property
+// (GTK 3.20 and GTK 4), so the settings follow the desktop's again, also when it changes later. GTK thread only.
 internal static unsafe partial class GtkColorScheme
 {
     private const string PreferDark = "gtk-application-prefer-dark-theme";
     // GTK 4.20: GtkInterfaceColorScheme UNSUPPORTED, DEFAULT, DARK, LIGHT.
     private const string InterfaceScheme = "gtk-interface-color-scheme";
-    private const int InterfaceDefault = 1, InterfaceDark = 2, InterfaceLight = 3;
+    private const int InterfaceDark = 2, InterfaceLight = 3;
     private const nint GTypeBoolean = 5 << 2;
     private const int GValueSize = 24;
     // AdwColorScheme: DEFAULT, FORCE_LIGHT, PREFER_LIGHT, PREFER_DARK, FORCE_DARK.
     private const int AdwDefault = 0, AdwForceLight = 1, AdwForceDark = 4;
 
-    // The settings before Runic changed them: -1 until the first change.
+    // The settings before Runic changed them, for a GTK older than 3.20 without gtk_settings_reset_property: -1 until
+    // the first change.
     private static int s_original = -1;
-    private static int s_originalInterface = -1;
 
-    // Applies the scheme to the GtkSettings of the default display. Returns false when it could not.
-    internal static bool Apply(nint settings, DesktopColorScheme colorScheme)
+    // Applies the scheme to the GtkSettings of the default display. resetProperty is gtk_settings_reset_property of the
+    // loaded GTK, or 0. Returns false when it could not.
+    internal static bool Apply(nint settings, DesktopColorScheme colorScheme, nint resetProperty)
     {
         // libadwaita warns about the GTK setting and replaces it: its style manager decides, and sets the setting.
+        // Its DEFAULT follows the desktop.
         if (TryApplyLibadwaita(colorScheme)) return true;
         if (settings == 0) return false;
         var applied = false;
+        var follow = colorScheme == DesktopColorScheme.NoPreference;
         if (FindProperty(*(nint*)settings, InterfaceScheme) is not 0 and var pspec)
         {
-            if (s_originalInterface < 0) s_originalInterface = GetEnum(settings, InterfaceScheme, pspec);
-            SetEnum(settings, InterfaceScheme, pspec, colorScheme switch
-            {
-                DesktopColorScheme.Dark => InterfaceDark,
-                DesktopColorScheme.Light => InterfaceLight,
-                // UNSUPPORTED is GTK's own value before the platform reported one; DEFAULT asks the platform again.
-                _ => s_originalInterface == 0 ? InterfaceDefault : s_originalInterface,
-            });
+            // GTK 4.20 has gtk_settings_reset_property.
+            if (follow) Reset(settings, InterfaceScheme, resetProperty);
+            else SetEnum(settings, InterfaceScheme, pspec, colorScheme == DesktopColorScheme.Dark ? InterfaceDark : InterfaceLight);
             applied = true;
         }
         if (!HasProperty(settings, PreferDark)) return applied;
-        if (s_original < 0) s_original = GetBoolean(settings, PreferDark) ? 1 : 0;
-        var dark = colorScheme switch
-        {
-            DesktopColorScheme.Dark => true,
-            DesktopColorScheme.Light => false,
-            _ => s_original == 1,
-        };
-        SetBoolean(settings, PreferDark, dark);
+        if (!follow && s_original < 0 && resetProperty == 0) s_original = GetBoolean(settings, PreferDark) ? 1 : 0;
+        if (follow && resetProperty != 0) Reset(settings, PreferDark, resetProperty);
+        else if (!follow || s_original >= 0) SetBoolean(settings, PreferDark, follow ? s_original == 1 : colorScheme == DesktopColorScheme.Dark);
         return true;
+    }
+
+    private static void Reset(nint settings, string name, nint resetProperty)
+    {
+        if (resetProperty == 0) return;
+        var bytes = System.Text.Encoding.UTF8.GetBytes(name + "\0");
+        fixed (byte* text = bytes) ((delegate* unmanaged[Cdecl]<nint, byte*, void>)resetProperty)(settings, text);
     }
 
     // Only a libadwaita that the application already loaded and initialized (adw_init): loading it here would give the
@@ -88,19 +88,6 @@ internal static unsafe partial class GtkColorScheme
 
     // GParamSpec.value_type, after the type instance, the name and the flags.
     private static nint ValueType(nint pspec) => *(nint*)(pspec + 3 * sizeof(nint));
-
-    private static int GetEnum(nint instance, string name, nint pspec)
-    {
-        var value = stackalloc byte[GValueSize];
-        new Span<byte>(value, GValueSize).Clear();
-        InitValue((nint)value, ValueType(pspec));
-        try
-        {
-            GetProperty(instance, name, (nint)value);
-            return GetValueEnum((nint)value);
-        }
-        finally { UnsetValue((nint)value); }
-    }
 
     private static void SetEnum(nint instance, string name, nint pspec, int number)
     {
@@ -150,7 +137,6 @@ internal static unsafe partial class GtkColorScheme
     [LibraryImport("libgobject-2.0.so.0", EntryPoint = "g_value_unset")] private static partial void UnsetValue(nint value);
     [LibraryImport("libgobject-2.0.so.0", EntryPoint = "g_value_get_boolean")] private static partial int GetValueBoolean(nint value);
     [LibraryImport("libgobject-2.0.so.0", EntryPoint = "g_value_set_boolean")] private static partial void SetValueBoolean(nint value, int on);
-    [LibraryImport("libgobject-2.0.so.0", EntryPoint = "g_value_get_enum")] private static partial int GetValueEnum(nint value);
     [LibraryImport("libgobject-2.0.so.0", EntryPoint = "g_value_set_enum")] private static partial void SetValueEnum(nint value, int number);
     [LibraryImport("libgobject-2.0.so.0", EntryPoint = "g_object_get_property", StringMarshalling = StringMarshalling.Utf8)] private static partial void GetProperty(nint instance, string name, nint value);
     [LibraryImport("libgobject-2.0.so.0", EntryPoint = "g_object_set_property", StringMarshalling = StringMarshalling.Utf8)] private static partial void SetProperty(nint instance, string name, nint value);

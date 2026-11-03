@@ -310,22 +310,39 @@ restores the window nor reports a refusal.
 
 ## The window's presentation for its ViewModels
 
-`WpfPlatformServices.ForWindowPresentation(window)` gives the ViewModels a WPF
-window shows the same `IRunicWindowPresentation` a Runic Window's ViewModel takes
-on Runic Desktop. Register it with the window's other services, on the UI thread:
+`WpfPlatformServices.ForWindowPresentation(window, loggerFactory)` gives the
+ViewModels a WPF window shows the same `IRunicWindowPresentation` a Runic
+Window's ViewModel takes on Runic Desktop. It belongs to one window, and a
+second call with the window returns the same one. Call it on the UI thread and
+hand it to that window's ViewModels:
 
 ```csharp
-services.AddSingleton(WpfPlatformServices.ForWindowPresentation(mainWindow));
+// One window: a singleton is that window's.
+services.AddSingleton(WpfPlatformServices.ForWindowPresentation(mainWindow, loggerFactory));
+
+// Several windows: one per window, for the ViewModels of that window only.
+var editor = new EditorWindow();
+editor.DataContext = new EditorViewModel(WpfPlatformServices.ForWindowPresentation(editor, loggerFactory));
 ```
+
+A singleton registration in an application with several windows would give
+every ViewModel the first window's presentation; create one per window, for
+example in the window's own DI scope or where the window is created.
 
 `PresentAsync` is `WpfPlatformServices.PresentAsync`; `MinimizeAsync` minimizes
 the window, `SetVisibleAsync` calls `Show()` and `Hide()`, and full screen hides
 the window's frame and maximizes it, and leaving restores the frame and state it
-had. `SetColorSchemeAsync` sets the title bar's dark mode and the page's
-`prefers-color-scheme` of every `RunicViewHost` in the window; the application's
-WPF controls keep the theme the application gives them. `SetDocumentEditedAsync`
-reports `Unavailable(BackendUnavailable)`, as on Windows generally. `IsActive`,
-`IsMinimized` and `IsVisible` follow `Activated`, `Deactivated`, `StateChanged`
-and `IsVisibleChanged`, and the changes are raised on the window's dispatcher,
-the ViewModels' thread in WPF. Once the window closes, requests report
-`OwnerClosed`.
+had. `SetColorSchemeAsync` sets the title bar's dark mode, once the window has a
+handle if it has none yet, and the page's `prefers-color-scheme` of every
+`RunicViewHost` in the window, including one added later or still starting; the
+application's WPF controls keep the theme the application gives them.
+`NoPreference` gives the title bar the system's apps theme as it is at the time
+of the call. `SetDocumentEditedAsync` reports `Unavailable(BackendUnavailable)`,
+as on Windows generally. `IsActive`, `IsMinimized` and `IsVisible` follow
+`Activated`, `Deactivated`, `StateChanged` and `IsVisibleChanged`, and the
+changes are raised on the window's dispatcher, the ViewModels' thread in WPF. A
+handler that throws is logged as event 1130 (`WindowPresentationHandlerFailed`,
+category `Runic.Application.Views.Wpf`, or `Trace` without a logger factory)
+and does not stop the others; a change that a handler causes, such as restoring
+the window from an `ActivityChanged` handler, is raised after that handler
+returns. Once the window closes, requests report `OwnerClosed`.

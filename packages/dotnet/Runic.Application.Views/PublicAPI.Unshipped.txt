@@ -47,5 +47,6 @@ Runic.Application.Views.RunicWindowPresentationFeatures.DocumentEdited = 16 -> R
 Runic.Application.Views.RunicWindowPresentationFeatures.FullScreen = 8 -> Runic.Application.Views.RunicWindowPresentationFeatures
 Runic.Application.Views.RunicWindowPresentationFeatures.Minimize = 2 -> Runic.Application.Views.RunicWindowPresentationFeatures
 Runic.Application.Views.RunicWindowPresentationFeatures.None = 0 -> Runic.Application.Views.RunicWindowPresentationFeatures
+Runic.Application.Views.RunicWindowPresentationFeatures.PerWindowColorScheme = 128 -> Runic.Application.Views.RunicWindowPresentationFeatures
 Runic.Application.Views.RunicWindowPresentationFeatures.Present = 1 -> Runic.Application.Views.RunicWindowPresentationFeatures
 Runic.Application.Views.RunicWindowPresentationFeatures.Visibility = 4 -> Runic.Application.Views.RunicWindowPresentationFeatures

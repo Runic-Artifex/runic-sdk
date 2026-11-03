@@ -564,11 +564,13 @@ static async Task ExerciseVisibilityAndClosedAsync(DesktopHost host)
     for (var waited = 0; window.Activity is not { IsVisible: true } && waited < 5000; waited += 20) await Task.Delay(20);
     if (window.Activity is not { IsVisible: true } || !window.Capabilities.HasFlag(DesktopWindowCapabilities.Activity))
         throw new InvalidOperationException($"The shown GTK 4 window reported {window.Activity}.");
-    // B2: the application's scheme sets GTK's prefer-dark setting, which WebKitGTK's prefers-color-scheme follows.
-    foreach (var scheme in new[] { DesktopColorScheme.Dark, DesktopColorScheme.Light })
+    // B2: the application's scheme sets GTK's color-scheme settings, which WebKitGTK's prefers-color-scheme follows, and
+    // NoPreference resets them, so the page shows the desktop's scheme again: the one it had before.
+    var system = await surface.ExecuteJavaScriptAsync("return String(matchMedia('(prefers-color-scheme: dark)').matches);");
+    foreach (var scheme in new[] { DesktopColorScheme.Dark, DesktopColorScheme.Light, DesktopColorScheme.NoPreference })
     {
         await host.SetColorSchemeAsync(scheme);
-        var expected = scheme == DesktopColorScheme.Dark ? "true" : "false";
+        var expected = scheme == DesktopColorScheme.NoPreference ? system : scheme == DesktopColorScheme.Dark ? "true" : "false";
         var dark = "";
         for (var waited = 0; dark != expected && waited < 5000; waited += 100)
         {
@@ -578,7 +580,6 @@ static async Task ExerciseVisibilityAndClosedAsync(DesktopHost host)
         if (dark != expected)
             throw new InvalidOperationException($"With the application's scheme {scheme} the GTK 4 page's prefers-color-scheme: dark is {dark}.");
     }
-    await host.SetColorSchemeAsync(DesktopColorScheme.NoPreference);
     // A permission request reaches the window's permission-request handler, which denies it without a grant; the
     // handler must not keep the view from being released when the window closes.
     await surface.ExecuteJavaScriptAsync("Notification.requestPermission().then(result => window.__permission = result); return 'asked';");

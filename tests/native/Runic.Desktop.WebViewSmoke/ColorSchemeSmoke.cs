@@ -92,6 +92,7 @@ internal static partial class ColorSchemeSmoke
         if (!window.Capabilities.HasFlag(DesktopWindowCapabilities.ColorScheme))
             throw new InvalidOperationException("The GTK window did not advertise its color scheme.");
         await surface.ExecuteJavaScriptAsync("return document.readyState;", StepTimeout);
+        var system = await surface.ExecuteJavaScriptAsync("return String(matchMedia('(prefers-color-scheme: dark)').matches);", StepTimeout);
         foreach (var scheme in new[] { DesktopColorScheme.Dark, DesktopColorScheme.Light, DesktopColorScheme.Dark })
         {
             await host.SetColorSchemeAsync(scheme);
@@ -99,8 +100,12 @@ internal static partial class ColorSchemeSmoke
         }
         await window.SetColorSchemeAsync(DesktopColorScheme.Light);
         await ExpectPageAsync(surface, DesktopColorScheme.Light, "after DesktopWindow.SetColorSchemeAsync");
+        if (window.Capabilities.HasFlag(DesktopWindowCapabilities.PerWindowColorScheme) || window.ColorScheme != DesktopColorScheme.Light)
+            throw new InvalidOperationException($"The GTK window reported a scheme of its own, or {window.ColorScheme}.");
+        // NoPreference resets GTK's settings, so the page follows the desktop again: here the scheme it had before.
         await host.SetColorSchemeAsync(DesktopColorScheme.NoPreference);
-        Console.WriteLine("PASS color scheme: the GTK window's page switched with the application's scheme.");
+        await ExpectPageAsync(surface, system == "true" ? DesktopColorScheme.Dark : DesktopColorScheme.Light, "after NoPreference");
+        Console.WriteLine("PASS color scheme: the GTK window's page switched with the application's scheme and returned to the system's.");
         Console.WriteLine("COLOR SCHEME DONE");
         return 0;
     }

@@ -74,9 +74,12 @@ warning. `DesktopHost.SetColorSchemeAsync` and `DesktopWindow.SetColorSchemeAsyn
 switch every window of the application while it runs: the host implements
 `IDesktopColorSchemeWindowHost` with GTK's `gtk-interface-color-scheme` (GTK 4.20
 or later) and `gtk-application-prefer-dark-theme` settings, or the libadwaita
-style manager when the application has initialized libadwaita. It implements
+style manager when the application has initialized libadwaita; `NoPreference`
+resets the GTK settings, so they follow the desktop again. The scheme belongs to
+the process, so the host does not report `PerWindowColorScheme`. It implements
 `IDesktopActivityWindowHost` from `notify::is-active`, `notify::visible` and the
-surface's minimized state. It supports independent minimum dimensions.
+surface's minimized state; on Wayland, which reports no minimized state, a
+surface the compositor suspended (GTK 4.12 and later) counts as not visible. It supports independent minimum dimensions.
 Runic.Application.Views.Desktop's `services.AddRunicPlatformServices()` selects the
 GTK 4 window services when the process runs this backend: portal-first file dialogs,
 parented through `Runic.Platform.Linux.Gtk4`, so KDE uses its own picker.

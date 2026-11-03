@@ -484,21 +484,25 @@ internal sealed partial class Gtk4WindowHost : IDesktopNativeDispatchWindowHost,
         new(Gtk4Dispatcher.Instance.InvokeAsync(() =>
         {
             GetWindow();
-            Runic.Desktop.Internal.GtkColorScheme.Apply(GtkSettingsGetDefault(), colorScheme);
+            Runic.Desktop.Internal.GtkColorScheme.Apply(GtkSettingsGetDefault(), colorScheme, GtkSettingsResetProperty.Value);
         }, cancellationToken));
 
     // GTK thread only: after the window gained or lost the focus (notify::is-active), was shown or hidden
-    // (notify::visible), or its surface was minimized or restored (GdkToplevel's notify::state).
+    // (notify::visible), or its surface was minimized, restored or suspended (GdkToplevel's notify::state). Wayland
+    // compositors report no minimized state; GTK 4.12 and later report a window the compositor stopped showing, such
+    // as a minimized one, as suspended, which counts as not visible here.
     private void UpdateActivity()
     {
         if (_window is not { } window || !IsOpen) return;
         var surface = window.GetSurface();
-        var minimized = surface is not null && (ToplevelGetState(surface.Handle.DangerousGetHandle()) & GdkToplevelStateMinimized) != 0;
+        var state = surface is null ? 0 : ToplevelGetState(surface.Handle.DangerousGetHandle());
+        var minimized = (state & GdkToplevelStateMinimized) != 0;
+        var hidden = minimized || (state & GdkToplevelStateSuspended) != 0;
         var activity = new DesktopWindowActivity
         {
-            IsActive = !minimized && window.IsActive,
+            IsActive = !hidden && window.IsActive,
             IsMinimized = minimized,
-            IsVisible = !minimized && window.GetVisible(),
+            IsVisible = !hidden && window.GetVisible(),
         };
         if (Equals(activity, Volatile.Read(ref _activity))) return;
         Volatile.Write(ref _activity, activity);
@@ -506,6 +510,13 @@ internal sealed partial class Gtk4WindowHost : IDesktopNativeDispatchWindowHost,
     }
 
     private const int GdkToplevelStateMinimized = 1 << 0;
+    // GTK 4.12.
+    private const int GdkToplevelStateSuspended = 1 << 16;
+
+    // GTK 4's gtk_settings_reset_property, for GtkColorScheme.
+    private static readonly Lazy<nint> GtkSettingsResetProperty = new(static () =>
+        System.Runtime.InteropServices.NativeLibrary.TryLoad("libgtk-4.so.1", out var gtk)
+        && System.Runtime.InteropServices.NativeLibrary.TryGetExport(gtk, "gtk_settings_reset_property", out var reset) ? reset : 0);
 
     [System.Runtime.InteropServices.LibraryImport("libgtk-4.so.1", EntryPoint = "gdk_toplevel_get_state")]
     private static partial int ToplevelGetState(nint toplevel);

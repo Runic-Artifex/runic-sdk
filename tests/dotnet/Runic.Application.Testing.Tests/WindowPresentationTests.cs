@@ -1,5 +1,6 @@
 using System.ComponentModel;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Runic.Application.Views;
 using Runic.Application.Views.ReactiveUI;
 using Runic.Platform;
@@ -112,7 +113,8 @@ internal sealed class WindowPresentationTests
         await using var scope = provider.CreateAsyncScope();
         using var host = RunicWindowTestHost.Create<WindowPresentationViewModel>(scope.ServiceProvider);
         var fake = host.Presentation ?? throw new InvalidOperationException("The host has no recording presentation.");
-        Require(ReferenceEquals(fake, host.ViewModel.Window), "The ViewModel received another presentation.");
+        // The ViewModel gets the per-Window presentation an application gets, with the fake as its host.
+        Require(host.ViewModel.Window is not RunicTestWindowPresentation, "The ViewModel received the fake itself.");
 
         await host.SetWindowActivityAsync(new RunicWindowActivity(IsActive: false, IsMinimized: false, IsVisible: true));
         var change = host.ViewModel.Changes is [var single] ? single : throw new InvalidOperationException("Expected one change.");
@@ -134,23 +136,139 @@ internal sealed class WindowPresentationTests
         Require(fake.Requests.Count == 6 && fake.PresentCount == 2, $"Recorded {fake.Requests.Count} requests.");
         fake.ClearRequests();
         Require(fake.Requests.Count == 0, "The requests were not cleared.");
+
+        // Once the scope ends, the Window's presentation reports the owner closed, as an application's does.
+        var presentation = host.ViewModel.Window;
+        await scope.DisposeAsync();
+        Require(await presentation.PresentAsync() is PlatformResult<PlatformUnit>.Unavailable { Reason: PlatformUnavailableReason.OwnerClosed },
+            "The fake's presentation did not report the owner closed after its scope.");
     }
 
-    // Opens Windows on RunicWindowTestHost, as TestWindowHost does, and gives each the presentation of its native window.
+    [Test]
+    public async Task TheFakeShowsWithoutRestoringAndPostsItsChangesAfterTheRequestAsync()
+    {
+        var services = Services();
+        services.AddRunicTestWindowPresentation();
+        await using var provider = services.BuildServiceProvider();
+        await using var scope = provider.CreateAsyncScope();
+        using var host = RunicWindowTestHost.Create<WindowPresentationViewModel>(scope.ServiceProvider);
+        var fake = host.Presentation!;
+        var window = host.ViewModel.Window;
+        await fake.SetVisibleAsync(false);
+        await fake.MinimizeAsync();
+        await fake.SetVisibleAsync(true);
+        // SW_SHOW: shown again, still minimized.
+        Require(fake.Activity == new RunicWindowActivity(IsActive: false, IsMinimized: true, IsVisible: false), $"Showing restored the fake: {fake.Activity}.");
+        await fake.PresentAsync();
+        Require(fake.Activity == new RunicWindowActivity(true, false, true), $"Presenting did not restore the fake: {fake.Activity}.");
+
+        // A request made in a turn, as a command makes it: the ViewModel sees the change in a later turn, not inside it.
+        var context = scope.ServiceProvider.GetRequiredService<Runic.Navigation.IRunicModelContext>();
+        var seenInside = true;
+        await context.InvokeAsync(() =>
+        {
+            _ = fake.SetVisibleAsync(false).AsTask();
+            seenInside = !window.IsVisible;
+        });
+        Require(!seenInside, "The change reached the ViewModel inside the request's turn.");
+        await host.FlushWindowPresentationAsync();
+        Require(!window.IsVisible, "The change did not reach the ViewModel after the request.");
+
+        // immediate: true is the fake itself, which raises at once.
+        await using var immediateProvider = Services().AddRunicTestWindowPresentation(immediate: true).BuildServiceProvider();
+        await using var immediateScope = immediateProvider.CreateAsyncScope();
+        var immediate = immediateScope.ServiceProvider.GetRequiredService<IRunicWindowPresentation>();
+        Require(immediate is RunicTestWindowPresentation, "immediate: true did not register the fake itself.");
+    }
+
+    [Test]
+    public async Task HandlerFailuresAreLoggedAndNestedChangesWaitAsync()
+    {
+        var log = new LogCapture();
+        var services = Services();
+        services.AddSingleton<ILoggerFactory>(log);
+        await using var provider = services.BuildServiceProvider();
+        var backend = new RunicTestWindowPresentation();
+        await using var window = await new PresentingHost(provider, backend).OpenWindowAsync<WindowPresentationWindow>();
+        var presentation = window.Presentation;
+        List<string> order = [];
+        presentation.ActivityChanged += (_, _) => throw new InvalidOperationException("handler failure");
+        presentation.ActivityChanged += (_, e) =>
+        {
+            lock (order) order.Add($"start {e.Activity.IsActive}");
+            // A change a handler causes runs after this handler, in a turn of its own.
+            if (!e.Activity.IsActive) backend.SetActive(true);
+            lock (order) order.Add($"end {e.Activity.IsActive}");
+        };
+        backend.SetActive(false);
+        await WaitUntilAsync(() => { lock (order) return order.Count == 4; });
+        lock (order) Require(order.SequenceEqual(["start False", "end False", "start True", "end True"]), $"Order: {string.Join(", ", order)}");
+        Require(log.Events.Count(static id => id == 1130) == 2, $"Logged: {string.Join(", ", log.Events)}");
+
+        // The fake by itself queues a change its own handlers cause in the same way.
+        var direct = new RunicTestWindowPresentation();
+        List<bool> seen = [];
+        direct.ActivityChanged += (_, e) =>
+        {
+            seen.Add(e.Activity.IsActive);
+            if (!e.Activity.IsActive) direct.SetActive(true);
+            seen.Add(e.Activity.IsActive);
+        };
+        direct.SetActive(false);
+        Require(seen.SequenceEqual([false, false, true, true]), $"The fake raised re-entrantly: {string.Join(", ", seen)}");
+    }
+
+    [Test]
+    public async Task AWindowWithoutAHostPresentationReportsItClosedAsync()
+    {
+        await using var provider = Services().BuildServiceProvider();
+        var window = await new TestWindowHost(provider).OpenWindowAsync<WindowPresentationWindow>();
+        var presentation = window.Presentation;
+        await window.DisposeAsync();
+        await WaitUntilAsync(() => presentation.Activity == RunicWindowActivity.Closed);
+        Require(await presentation.PresentAsync() is PlatformResult<PlatformUnit>.Unavailable { Reason: PlatformUnavailableReason.OwnerClosed },
+            "A released Window without a host presentation did not report the owner closed.");
+    }
+
+    private sealed class LogCapture : ILoggerFactory
+    {
+        private readonly List<int> _events = [];
+        public IReadOnlyList<int> Events { get { lock (_events) return [.. _events]; } }
+        public ILogger CreateLogger(string categoryName) => new Logger(this);
+        public void AddProvider(ILoggerProvider provider) { }
+        public void Dispose() { }
+
+        private sealed class Logger(LogCapture owner) : ILogger
+        {
+            public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+            public bool IsEnabled(LogLevel logLevel) => true;
+            public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter)
+            {
+                lock (owner._events) owner._events.Add(eventId.Id);
+            }
+        }
+    }
+
+    // Opens Windows on RunicWindowTestHost, as TestWindowHost does, with the application's logger factory, and gives each
+    // the presentation of its native window.
     private sealed class PresentingHost(IServiceProvider services, IRunicWindowPresentation presentation) : IRunicWindowHost
     {
-        private readonly TestWindowHost _inner = new(services);
-
-        public IServiceProvider Services => _inner.Services;
+        public IServiceProvider Services { get; } = services;
 
         public IReadOnlyList<RunicWindowDiagnostic> Validate(RunicWindowOptions options) => [];
 
-        public async ValueTask<IBridgeWindow> OpenAsync<TViewModel>(RunicWindowOpening<TViewModel> opening, CancellationToken cancellationToken)
+        public ValueTask<IBridgeWindow> OpenAsync<TViewModel>(RunicWindowOpening<TViewModel> opening, CancellationToken cancellationToken)
             where TViewModel : class
         {
-            var window = await _inner.OpenAsync(opening, cancellationToken);
+            var host = new RunicWindowTestHost<TViewModel>(opening.ViewModel,
+                (transport, content, _) => opening.AttachBridge(transport, content),
+                new RunicWindowTestHostOptions
+                {
+                    ModelContext = opening.Scope.ServiceProvider.GetRequiredService<Runic.Navigation.IRunicModelContext>(),
+                    LoggerFactory = opening.Scope.ServiceProvider.GetService<ILoggerFactory>(),
+                });
             opening.UsePresentation(presentation);
-            return window;
+            return ValueTask.FromResult<IBridgeWindow>(new TestWindow<TViewModel>(opening.Scope, host, opening.CloseGuard));
         }
     }
 

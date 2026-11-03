@@ -557,23 +557,40 @@ A window shows its own scheme (`DesktopWindowOptions.ColorScheme`, or its last
 shows the application's (`DesktopHost.ColorScheme`), and that, by default, the
 system's. Windows that open later follow the application's scheme too. The
 page's `prefers-color-scheme` and form controls change at once, without a
-reload.
+reload. `DesktopWindow.ColorScheme` reports the scheme the window shows now,
+and changes only once the window applied it: a switch that fails leaves it.
 
 | Window host | What a switch sets |
 | --- | --- |
-| Windows, WebView2 | The profile's preferred color scheme and the title bar's dark mode; `NoPreference` returns both to the system's app mode |
+| Windows, WebView2 | The profile's preferred color scheme and the title bar's dark mode (`DWMWA_USE_IMMERSIVE_DARK_MODE`, attribute 19 on Windows 10 1809 to 1909). `NoPreference` returns the profile to the system's scheme and gives the title bar the system's apps theme as it is at the time of the call; a later change of the system's theme does not reach the title bar |
 | macOS, WKWebView | `NSWindow.appearance`; the application's scheme also sets `NSApp.appearance`, which menus, alerts and panels follow |
 | Linux, GTK 3 | GTK's `gtk-application-prefer-dark-theme` setting, which WebKitGTK's `prefers-color-scheme` follows |
 | Linux, GTK 4 | GTK's `gtk-interface-color-scheme` (GTK 4.20 or later) and `gtk-application-prefer-dark-theme`; the libadwaita style manager instead when the application has initialized libadwaita |
 | WPF `RunicWebView` | The child WebView2's preferred color scheme |
 | Installed browsers | Nothing: `DesktopWindow.SetColorSchemeAsync` throws `DesktopException` (`window-capability-unavailable`), and the application's scheme skips them |
 
-The GTK settings belong to the process, so on Linux every window of the
-application shows the scheme of the last switch, whether it came from
-`DesktopHost` or from one window; `NoPreference` restores the settings as they
-were before the first switch. A GTK theme without a dark variant keeps its own
-colors in the window's frame, though the page still follows. A custom window
-host switches by implementing `IDesktopColorSchemeWindowHost`.
+Some schemes are not a window's own. A window reports
+`DesktopWindowCapabilities.PerWindowColorScheme` when its scheme is; without
+it, the scheme is shared:
+
+- **Linux.** GTK's settings, and the libadwaita style manager, belong to the
+  process, so every GTK window shares one scheme.
+- **Windows, a configured `ProfilePath`.** WebView2 keeps the preferred color
+  scheme per profile, so the windows that share a `DesktopWindowOptions.ProfilePath`
+  share it. A window without one gets a profile of its own and keeps its own scheme.
+
+`DesktopWindow.SetColorSchemeAsync` on a shared scheme changes every window
+that shares it, and `ColorScheme` of each reports the change.
+`DesktopHost.SetColorSchemeAsync` first switches the windows whose scheme is
+their own, then applies the application's scheme to every shared one, so the
+application's scheme wins whatever order the windows are in. On Linux
+`NoPreference` resets GTK's settings (`gtk_settings_reset_property`, GTK 3.20
+and GTK 4), so they follow the desktop again, also when the user changes it
+later. A GTK theme without a dark variant keeps its own colors in the window's
+frame, though the page still follows. A custom window host switches by
+implementing `IDesktopColorSchemeWindowHost`, and reports
+`PerWindowColorScheme` when the scheme is the window's alone; Runic treats the
+windows of a configured `ProfilePath` as sharing it.
 
 Runic Windows reach the same switch host-neutrally through
 `IRunicWindowPresentation.SetColorSchemeAsync` (Runic.Application.Views).
@@ -717,7 +734,10 @@ iconified state on Linux (GTK 3 and GTK 4). The event runs on the thread pool,
 never concurrently, and changes that arrive while a handler runs are combined;
 a handler that throws is logged as event 3040, `WindowActivityHandlerFailed`.
 A minimized or hidden window is neither active nor visible, and a closed one
-reports itself inactive and hidden in a last event. An installed browser, and
+reports itself inactive and hidden in a last event. Wayland compositors do not
+report that a window was minimized: the GTK 4 window (GTK 4.12 and later)
+reports a window the compositor stopped showing as not visible, and the GTK 3
+window on Wayland only reports that it lost the focus. An installed browser, and
 a custom window host without `IDesktopActivityWindowHost`, report `null`.
 
 `DesktopWindow.FocusAsync` restores a minimized window on Windows before it
@@ -1765,7 +1785,7 @@ The optional interfaces each add one feature:
 | `IDesktopDragSourceWindowHost` | `DesktopWindow.StartDragAsync`, with data the application checked ([Dragging files out](#dragging-files-out)) | `DesktopWindowCapabilities.FileDrag` |
 | `IDesktopSpellCheckingWindowHost` | `DesktopHost.SetSpellCheckingLanguagesAsync` in an open window; apply `DesktopWindowHostOptions.SpellCheckingLanguages` when opening ([Spell checking](#spell-checking)) | — |
 | `IDesktopActivityWindowHost` | `DesktopWindow.Activity` and `ActivityChanged` ([Window activity](#window-activity)) | `DesktopWindowCapabilities.Activity` |
-| `IDesktopColorSchemeWindowHost` | `DesktopWindow` and `DesktopHost.SetColorSchemeAsync` in an open window ([Light and dark windows](#light-and-dark-windows)) | `DesktopWindowCapabilities.ColorScheme` |
+| `IDesktopColorSchemeWindowHost` | `DesktopWindow` and `DesktopHost.SetColorSchemeAsync` in an open window ([Light and dark windows](#light-and-dark-windows)) | `DesktopWindowCapabilities.ColorScheme`, and `PerWindowColorScheme` when the scheme is the window's alone |
 | `IDesktopEventLoopWindowHostFactory` | A toolkit loop on the process main thread | — |
 | `ILinuxDesktopWindowHostFactory` | The Linux toolkit the factory loads | `Backend` |
 

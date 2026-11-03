@@ -692,22 +692,40 @@ public InboxViewModel(IRunicWindowPresentation window)
 - Where the host reports no activity (no `RunicWindowPresentationFeatures.Activity`),
   the Window counts as active and visible (`RunicWindowActivity.Assumed`), so
   work that pauses while it is inactive keeps running. A closed Window reports
-  `RunicWindowActivity.Closed`.
+  `RunicWindowActivity.Closed`. Unknown counts as active, so check
+  `Features.HasFlag(RunicWindowPresentationFeatures.Activity)` before you rely
+  on `IsActive == true`: code that notifies only while the Window is inactive
+  never notifies on CS-WebUI or in an installed browser, and should notify
+  there whatever `IsActive` says.
+- On Linux a minimized window is only a hint: Wayland compositors do not tell
+  an application that its window was minimized. A GTK 4 window (GTK 4.12 and
+  later) reports itself not visible once the compositor stops showing it; a
+  GTK 3 window on Wayland stays visible and only loses the focus.
+- The color scheme is not every Window's own. Without
+  `RunicWindowPresentationFeatures.PerWindowColorScheme` it is shared, and
+  `SetColorSchemeAsync` changes every Window that shares it: on Linux every GTK
+  window of the application, on Windows the windows that share a WebView2
+  profile (`DesktopWindowOptions.ProfilePath`). `ColorScheme` reports what each
+  Window shows, also after another Window or the application changed it, and
+  raises `PropertyChanged`. On Runic Desktop the application's scheme
+  (`DesktopHost.SetColorSchemeAsync`) is applied to a shared scheme last, so it
+  wins over the Windows' own, whatever order they are in.
 - Code outside the scope, such as a status icon's handler, reads the same
   object from `IRunicWindow.Presentation`:
   `await window.Presentation.PresentAsync(launch.PlatformContext)`.
 - Tests register `RunicTestWindowPresentation` with
   `AddRunicTestWindowPresentation()` from Runic.Application.Testing. It
-  records each request and lets the test change the activity.
+  records each request and lets the test change the activity, and reaches the
+  ViewModel through the same per-Window presentation as a host's.
 - This is not a ViewModel activation hook (the I-142 proposal, which was
   dropped): it reports the native window, not whether a View currently shows
   the ViewModel. Use the View lifetime hooks for that.
 
 | Host | Present | Minimize | Hide and show | Full screen | Document edited | Color scheme | Activity |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| Runic Desktop, WebView2 | Yes | Yes | Yes | Yes | No | Yes | Yes |
+| Runic Desktop, WebView2 | Yes | Yes | Yes | Yes | No | Yes; shared by the windows of a configured `ProfilePath` | Yes |
 | Runic Desktop, WKWebView | Yes | Yes | Yes | Yes | Yes | Yes | Yes |
-| Runic Desktop, WebKitGTK (GTK 3, GTK 4) | Yes | Yes | Yes | Yes | No | Yes, for every window of the application | Yes |
+| Runic Desktop, WebKitGTK (GTK 3, GTK 4) | Yes | Yes | Yes | Yes | No | Yes, shared by every window of the application | Yes; minimized only on X11 |
 | Runic Desktop, an installed browser after a fallback | No | No | No | No | No | No | No |
 | WPF, `WpfPlatformServices.ForWindowPresentation(window)` | Yes | Yes | Yes | Yes | No | Title bar and the pages of `RunicViewHost`s | Yes |
 | CS-WebUI | Yes | WebView only | No | No | No | No | No |
@@ -2749,7 +2767,8 @@ Debug, still with its exception; `FailureType` is the failure value's type.
 Events 1000-1012, 1018-1026, 1050-1053, 1100-1102 and 1130 use the category `Runic.Application.Views`
 (`RunicViewsTelemetry.LogCategory`); event 1130 uses the logger of the Window's session; the Hot Reload events 1100-1102 use the
 logger of the window session that owns the Bridge. Events 1110-1114 use
-`Runic.Application.Views.Wpf` and the factory of the host's `Services`. Event 1033 here is a window session's
+`Runic.Application.Views.Wpf` and the factory of the host's `Services`; so does event 1130 of
+`WpfPlatformServices.ForWindowPresentation`, with the factory passed to it. Event 1033 here is a window session's
 own model context failing to shut down, and uses the session's logger.
 Events 1013 and 1014 use the logger passed to `new AcceptedWorkScope(logger)`,
 or `Trace` without one.

@@ -164,6 +164,12 @@ public sealed class DesktopWindowStateChangedEventArgs : EventArgs
 /// <see cref="DesktopWindowOptions.Hidden"/>) is not visible. A minimized window is neither active nor, on most
 /// platforms, visible. Use the values to pause work the user cannot see, such as polling or animations.
 /// </para>
+/// <para>
+/// On Wayland the compositor does not tell an application that its window was minimized. The GTK 4 window reports a
+/// window the compositor stopped showing (GTK 4.12 and later, <c>GDK_TOPLEVEL_STATE_SUSPENDED</c>), such as a minimized
+/// one, as not visible, but not as minimized; the GTK 3 window learns nothing, so a minimized window there stays visible
+/// and only loses the focus. Treat <see cref="IsMinimized"/> as a hint on Linux.
+/// </para>
 /// </remarks>
 public sealed record DesktopWindowActivity
 {

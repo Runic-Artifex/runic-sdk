@@ -115,7 +115,7 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
         DesktopWindowCapabilities.Resize | DesktopWindowCapabilities.Move | DesktopWindowCapabilities.Announcements |
         DesktopWindowCapabilities.State | DesktopWindowCapabilities.MenuBar | DesktopWindowCapabilities.ContextMenu |
         DesktopWindowCapabilities.FullScreen | DesktopWindowCapabilities.MonitorPlacement | DesktopWindowCapabilities.FileDrag |
-        DesktopWindowCapabilities.Activity | DesktopWindowCapabilities.ColorScheme;
+        DesktopWindowCapabilities.Activity | DesktopWindowCapabilities.ColorScheme | DesktopWindowCapabilities.PerWindowColorScheme;
     public DesktopWindowCapabilities Capabilities => KnownCapabilities |
         (WebViewClass != 0 ? DesktopWindowCapabilities.FileDrop : DesktopWindowCapabilities.None);
 
@@ -145,7 +145,14 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
         };
         if (Equals(activity, Volatile.Read(ref _activity))) return;
         Volatile.Write(ref _activity, activity);
-        ActivityChanged?.Invoke(this, EventArgs.Empty);
+        try
+        {
+            ActivityChanged?.Invoke(this, EventArgs.Empty);
+        }
+        catch
+        {
+            // Never unwind through AppKit.
+        }
     }
 
     // DesktopWindow.SetColorSchemeAsync: the window's appearance, which its web view and the page's prefers-color-scheme

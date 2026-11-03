@@ -189,7 +189,23 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
 
     /// <summary>Gets the native embedded-window handle, or zero outside WebView mode.</summary>
     public nint NativeWindowHandle => _embeddedHost?.NativeHandle ?? 0;
-    internal DesktopWindowCapabilities WindowCapabilities => _embeddedHost?.Capabilities ?? DesktopWindowCapabilities.None;
+    internal DesktopWindowCapabilities WindowCapabilities => _embeddedHost is { } host
+        ? SharedProfile(host) is null ? host.Capabilities : host.Capabilities & ~DesktopWindowCapabilities.PerWindowColorScheme
+        : DesktopWindowCapabilities.None;
+
+    // The ProfilePath the current window opened with, when the application configured one: windows that share it share
+    // WebView2's preferred color scheme. A generated profile belongs to one window.
+    private string? _configuredProfilePath;
+
+    private string? SharedProfile(IWebUiEmbeddedHost host) =>
+        host is WindowsWebView2Host or DesktopWindowHostAdapter ? _configuredProfilePath : null;
+
+    // What the current window's color scheme belongs to: null for the window alone, else a key that the windows sharing
+    // it have in common (DesktopHost tracks the scheme of each).
+    internal string? EmbeddedColorSchemeScope => _embeddedHost is not { } host
+        || (WindowCapabilities & DesktopWindowCapabilities.PerWindowColorScheme) != 0
+        ? null
+        : SharedProfile(host) is { } profile ? "profile:" + profile.ToUpperInvariant() : "process";
 
     internal bool SupportsNativeDispatch => _embeddedHost?.SupportsNativeDispatch == true;
     internal bool CheckNativeAccess() => _embeddedHost?.CheckNativeAccess() == true;
@@ -2014,6 +2030,7 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
     private WebUiEmbeddedHostOptions CreateEmbeddedHostOptions()
     {
         string? profilePath = null;
+        _configuredProfilePath = _profileConfigured ? _profilePath : null;
         if (_profileConfigured)
         {
             profilePath = _profilePath;

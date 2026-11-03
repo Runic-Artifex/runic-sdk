@@ -60,6 +60,12 @@ internal sealed class WindowPresentationChecks
             && factory.Hosts[0].Schemes.SequenceEqual([DesktopColorScheme.Dark]), "The color scheme did not reach the window.");
         Require(presentation.ColorScheme == DesktopColorScheme.Dark, "The presentation does not report the window's scheme.");
         await WaitUntilAsync(() => { lock (schemes) return schemes.Contains(nameof(IRunicWindowPresentation.ColorScheme)); });
+        // The fake host's scheme belongs to the process, as GTK's does: the application's scheme reaches the presentation too.
+        Require(!presentation.Features.HasFlag(RunicWindowPresentationFeatures.PerWindowColorScheme), "A shared scheme was reported per window.");
+        lock (schemes) schemes.Clear();
+        await desktop.SetColorSchemeAsync(DesktopColorScheme.Light);
+        Require(presentation.ColorScheme == DesktopColorScheme.Light, $"The application's scheme was not reported: {presentation.ColorScheme}.");
+        await WaitUntilAsync(() => { lock (schemes) return schemes.Contains(nameof(IRunicWindowPresentation.ColorScheme)); });
 
         await DesktopPlatformServices.GetDesktopWindow(window)!.CloseAsync();
         await window.WaitForCloseAsync();
@@ -106,6 +112,10 @@ internal sealed class WindowPresentationChecks
         Require(DesktopWindowPresentation.FeaturesOf(DesktopWindowCapabilities.NativeHandle | DesktopWindowCapabilities.FullScreen, open: true, macOS: true)
             == (RunicWindowPresentationFeatures.FullScreen | RunicWindowPresentationFeatures.DocumentEdited), "macOS features are wrong.");
         Require(DesktopWindowPresentation.Convert(null) == RunicWindowActivity.Assumed, "No activity is not assumed active.");
+        Require(DesktopWindowPresentation.FeaturesOf(DesktopWindowCapabilities.ColorScheme | DesktopWindowCapabilities.PerWindowColorScheme, open: true, macOS: false)
+            == (RunicWindowPresentationFeatures.ColorScheme | RunicWindowPresentationFeatures.PerWindowColorScheme), "A per-window scheme was not reported.");
+        Require(DesktopWindowPresentation.FeaturesOf(DesktopWindowCapabilities.PerWindowColorScheme, open: true, macOS: false)
+            == RunicWindowPresentationFeatures.None, "A per-window flag without color schemes was reported.");
     }
 
     private static ServiceProvider CreateProvider()

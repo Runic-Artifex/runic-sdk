@@ -97,18 +97,17 @@ public sealed class RunicWindowTestHost<TViewModel> : IDisposable where TViewMod
     public IServiceProvider? Services { get; internal init; }
 
     /// <summary>
-    /// The window's recording presentation: the <see cref="RunicTestWindowPresentation"/> that <see cref="Services"/>
-    /// resolve as <see cref="IRunicWindowPresentation"/>, as
-    /// <see cref="RunicTestWindowPresentationServiceCollectionExtensions.AddRunicTestWindowPresentation"/> registers it, or
-    /// <see langword="null"/> when they resolve none or another one.
+    /// The window's recording presentation: the <see cref="RunicTestWindowPresentation"/> that
+    /// <see cref="RunicTestWindowPresentationServiceCollectionExtensions.AddRunicTestWindowPresentation"/> registered in
+    /// <see cref="Services"/>, or <see langword="null"/> without one.
     /// </summary>
     public RunicTestWindowPresentation? Presentation =>
-        Services?.GetService(typeof(IRunicWindowPresentation)) as RunicTestWindowPresentation;
+        Services?.GetService(typeof(RunicTestWindowPresentation)) as RunicTestWindowPresentation;
 
     /// <summary>
-    /// Changes the activity of <see cref="Presentation"/> in a turn of the window's model context, as a real host
-    /// reports a window that gains or loses the focus, is minimized or hidden, so the ViewModel's handlers run as they
-    /// would in the application.
+    /// Changes the activity of <see cref="Presentation"/>, as a real window reports that it gained or lost the focus,
+    /// was minimized or hidden, and waits until the ViewModel received the change in a turn of the window's model
+    /// context.
     /// </summary>
     /// <param name="activity">The new activity, such as <c>new RunicWindowActivity(IsActive: false, IsMinimized: false, IsVisible: true)</c>.</param>
     /// <param name="cancellationToken">Cancels waiting for the turn.</param>
@@ -119,10 +118,22 @@ public sealed class RunicWindowTestHost<TViewModel> : IDisposable where TViewMod
         var presentation = Presentation ?? throw new InvalidOperationException(
             "The window's services resolve no RunicTestWindowPresentation. Call services.AddRunicTestWindowPresentation() " +
             "and create the host with RunicWindowTestHost.Create(scope.ServiceProvider).");
-        if (Content.ModelContext is { IsExecuting: false } context)
-            await context.InvokeAsync(() => presentation.SetActivity(activity), cancellationToken).ConfigureAwait(false);
-        else
-            presentation.SetActivity(activity);
+        presentation.SetActivity(activity);
+        await FlushWindowPresentationAsync(cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Waits until the changes that <see cref="Presentation"/> reported so far, such as those of a command's
+    /// <c>SetVisibleAsync</c>, reached the ViewModel: the window's presentation applies them in later turns of its
+    /// model context.
+    /// </summary>
+    /// <param name="cancellationToken">Cancels waiting for the turn.</param>
+    /// <remarks>Call it outside a model turn; without a model context it returns at once.</remarks>
+    public async Task FlushWindowPresentationAsync(CancellationToken cancellationToken = default)
+    {
+        // Turns run in order, so a turn queued now runs after the changes queued before it.
+        if (Content.ModelContext is { } context)
+            await context.InvokeAsync(static () => { }, cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>

@@ -428,10 +428,17 @@ its driver, as in [Navigation](#navigation).
 
 A ViewModel that takes `IRunicWindowPresentation` presents, hides or minimizes
 its Window and reacts to its activity. `AddRunicTestWindowPresentation()`
-registers a recording `RunicTestWindowPresentation` per scope, in place of the
-real one, so the application's own registration method runs unchanged.
-`host.Presentation` returns it, and `host.SetWindowActivityAsync` changes the
-activity in a turn of the window's model context, as a real window does:
+registers a recording `RunicTestWindowPresentation` per scope as the host of the
+scope's presentation, in place of the real one, so the application's own
+registration method runs unchanged. The ViewModel gets the same per-Window
+presentation an application does, with the fake as its host: a change reaches
+the ViewModel in a turn of the window's model context after the request that
+caused it completed, a handler that throws is logged (event 1130) without
+stopping the others, and once the scope is disposed requests report
+`OwnerClosed`. `host.Presentation` returns the fake;
+`host.SetWindowActivityAsync` changes its activity and waits until the
+ViewModel received it, and `host.FlushWindowPresentationAsync` waits for the
+changes a command's requests caused:
 
 ```csharp
 await using var services = new ServiceCollection().AddInbox().AddRunicTestWindowPresentation().BuildServiceProvider();
@@ -446,14 +453,21 @@ await host.SetWindowActivityAsync(new RunicWindowActivity(IsActive: false, IsMin
 Assert.Equal(TimeSpan.FromMinutes(1), host.ViewModel.PollInterval);
 ```
 
-The fake behaves like a window that obeys: `PresentAsync` makes it active and
-visible, `MinimizeAsync` minimizes it, `SetVisibleAsync(false)` hides it, and
-`IsFullScreen`, `IsDocumentEdited` and `ColorScheme` follow their requests.
-`PresentCount` counts the presentations. Set `Features` to test a host that
-cannot do something (the request then reports `BackendUnavailable` and changes
-nothing), and `Respond` to answer with another result, such as a desktop that
-refuses the focus. A ViewModel built by hand takes a `new RunicTestWindowPresentation()`,
-whose `SetActivity` raises the changes on the calling thread.
+The fake behaves like a desktop window: `PresentAsync` shows, restores and
+activates it, `MinimizeAsync` minimizes it, `SetVisibleAsync(false)` hides it,
+and `SetVisibleAsync(true)` shows it again without restoring it, so a minimized
+window stays minimized, as Win32's `SW_SHOW` leaves it. `IsFullScreen`,
+`IsDocumentEdited` and `ColorScheme` follow their requests, and `PresentCount`
+counts the presentations. Set `Features` to test a host that cannot do
+something (the request then reports `BackendUnavailable` and changes nothing),
+and `Respond` to answer with another result, such as a desktop that refuses the
+focus.
+
+`AddRunicTestWindowPresentation(immediate: true)` makes the fake itself the
+scope's presentation, and a ViewModel built by hand can take a
+`new RunicTestWindowPresentation()`. Used directly, the fake raises its changes
+at once on the calling thread, inside the request, and keeps answering after
+the scope ends; a change its own handlers cause is still raised after them.
 
 ### Collections and frames
 

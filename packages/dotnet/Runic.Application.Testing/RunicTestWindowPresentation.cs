@@ -1,7 +1,9 @@
 using System.ComponentModel;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Logging;
 using Runic.Application.Views;
+using Runic.Navigation;
 using Runic.Platform;
 
 namespace Runic.Application.Testing;
@@ -13,10 +15,15 @@ namespace Runic.Application.Testing;
 /// </summary>
 /// <remarks>
 /// <para>
-/// Register it for the window's scope with <see cref="RunicTestWindowPresentationServiceCollectionExtensions.AddRunicTestWindowPresentation"/>,
-/// or pass one to a ViewModel built by hand. <see cref="RunicWindowTestHost{TViewModel}.Presentation"/> returns the one
-/// the host's services resolve, and <see cref="RunicWindowTestHost{TViewModel}.SetWindowActivityAsync"/> changes its
-/// activity in a turn of the window's model context, as a real host does:
+/// Register it for the window's scope with <see cref="RunicTestWindowPresentationServiceCollectionExtensions.AddRunicTestWindowPresentation"/>.
+/// The scope's <see cref="IRunicWindowPresentation"/> is then the same per-Window presentation an application gets,
+/// with this fake as its host: changes reach the ViewModel in a turn of the window's model context after the request
+/// that caused them completed, a handler that throws is logged (event 1130) without stopping the others, and once the
+/// scope is disposed requests report <see cref="PlatformUnavailableReason.OwnerClosed"/>.
+/// <see cref="RunicWindowTestHost{TViewModel}.Presentation"/> returns the fake,
+/// <see cref="RunicWindowTestHost{TViewModel}.SetWindowActivityAsync"/> changes its activity and waits until the
+/// ViewModel received it, and <see cref="RunicWindowTestHost{TViewModel}.FlushWindowPresentationAsync"/> waits for the
+/// changes a command's requests caused:
 /// <code>
 /// await using var services = new ServiceCollection().AddRunicViews().AddScoped&lt;InboxViewModel&gt;()
 ///     .AddRunicTestWindowPresentation().BuildServiceProvider();
@@ -28,10 +35,17 @@ namespace Runic.Application.Testing;
 /// </code>
 /// </para>
 /// <para>
-/// A request whose feature is not in <see cref="Features"/> reports <see cref="PlatformUnavailableReason.BackendUnavailable"/>
-/// without changing anything; <see cref="Respond"/> chooses another result. A successful
-/// <see cref="PresentAsync"/> makes the window active and visible, <see cref="MinimizeAsync"/> minimizes it, and
-/// <see cref="SetVisibleAsync"/> with <see langword="false"/> hides it. Changes are raised on the calling thread.
+/// It behaves as a desktop window does: a successful <see cref="PresentAsync"/> shows, restores and activates it,
+/// <see cref="MinimizeAsync"/> minimizes it, <see cref="SetVisibleAsync"/> with <see langword="false"/> hides it, and
+/// with <see langword="true"/> shows it again without restoring it, so a minimized window stays minimized, as Win32's
+/// <c>SW_SHOW</c> leaves it. A request whose feature is not in <see cref="Features"/> reports
+/// <see cref="PlatformUnavailableReason.BackendUnavailable"/> without changing anything; <see cref="Respond"/> chooses
+/// another result.
+/// </para>
+/// <para>
+/// Used directly, as a ViewModel built by hand takes it or as <c>AddRunicTestWindowPresentation(immediate: true)</c>
+/// registers it, the fake raises its changes on the calling thread at once, inside the request, and keeps answering
+/// after the scope ends. A change that a handler causes is raised after that handler returns, not inside it.
 /// </para>
 /// </remarks>
 public sealed class RunicTestWindowPresentation : IRunicWindowPresentation
@@ -40,14 +54,20 @@ public sealed class RunicTestWindowPresentation : IRunicWindowPresentation
     public const RunicWindowPresentationFeatures AllFeatures = RunicWindowPresentationFeatures.Present |
         RunicWindowPresentationFeatures.Minimize | RunicWindowPresentationFeatures.Visibility |
         RunicWindowPresentationFeatures.FullScreen | RunicWindowPresentationFeatures.DocumentEdited |
-        RunicWindowPresentationFeatures.ColorScheme | RunicWindowPresentationFeatures.Activity;
+        RunicWindowPresentationFeatures.ColorScheme | RunicWindowPresentationFeatures.PerWindowColorScheme |
+        RunicWindowPresentationFeatures.Activity;
 
     private static readonly PlatformResult<PlatformUnit> Done = new PlatformResult<PlatformUnit>.Success(new PlatformUnit());
     private static readonly PlatformResult<PlatformUnit> Unsupported = new PlatformResult<PlatformUnit>.Unavailable(PlatformUnavailableReason.BackendUnavailable);
 
     private readonly object _gate = new();
     private readonly List<RunicWindowPresentationRequest> _requests = [];
+    private readonly Queue<Action> _raises = new();
+    private bool _raising;
     private RunicWindowActivity _activity;
+    // The window's own state, from which the activity follows: hidden and minimized are independent, as on the desktop.
+    private bool _hidden;
+    private bool _minimized;
     private DesktopColorScheme _colorScheme;
 
     /// <summary>Creates a window that is active and visible, with every feature.</summary>
@@ -63,6 +83,8 @@ public sealed class RunicTestWindowPresentation : IRunicWindowPresentation
         ArgumentNullException.ThrowIfNull(activity);
         Features = features;
         _activity = activity;
+        _minimized = activity.IsMinimized;
+        _hidden = !activity.IsVisible && !activity.IsMinimized;
     }
 
     /// <inheritdoc />
@@ -123,6 +145,16 @@ public sealed class RunicTestWindowPresentation : IRunicWindowPresentation
     public void SetActivity(RunicWindowActivity activity)
     {
         ArgumentNullException.ThrowIfNull(activity);
+        lock (_gate)
+        {
+            _minimized = activity.IsMinimized;
+            _hidden = !activity.IsVisible && !activity.IsMinimized;
+        }
+        Change(activity);
+    }
+
+    private void Change(RunicWindowActivity activity)
+    {
         RunicWindowActivity previous;
         lock (_gate)
         {
@@ -130,11 +162,14 @@ public sealed class RunicTestWindowPresentation : IRunicWindowPresentation
             if (Equals(previous, activity)) return;
             Volatile.Write(ref _activity, activity);
         }
-        if (previous.IsActive != activity.IsActive) Raise(nameof(IsActive));
-        if (previous.IsMinimized != activity.IsMinimized) Raise(nameof(IsMinimized));
-        if (previous.IsVisible != activity.IsVisible) Raise(nameof(IsVisible));
-        Raise(nameof(Activity));
-        ActivityChanged?.Invoke(this, new RunicWindowActivityChangedEventArgs(previous, activity));
+        RaiseInOrder(() =>
+        {
+            if (previous.IsActive != activity.IsActive) Raise(nameof(IsActive));
+            if (previous.IsMinimized != activity.IsMinimized) Raise(nameof(IsMinimized));
+            if (previous.IsVisible != activity.IsVisible) Raise(nameof(IsVisible));
+            Raise(nameof(Activity));
+            ActivityChanged?.Invoke(this, new RunicWindowActivityChangedEventArgs(previous, activity));
+        });
     }
 
     /// <summary>Makes the window active and visible, or inactive and still visible, as switching to another window does.</summary>
@@ -152,19 +187,19 @@ public sealed class RunicTestWindowPresentation : IRunicWindowPresentation
     /// <inheritdoc />
     public ValueTask<PlatformResult<PlatformUnit>> PresentAsync(DesktopActivationContext? activation = null, CancellationToken cancellationToken = default) =>
         Request(new RunicWindowPresentationRequest(RunicWindowPresentationRequestKind.Present) { Activation = activation },
-            RunicWindowPresentationFeatures.Present, () => SetActivity(new RunicWindowActivity(true, false, true)), cancellationToken);
+            RunicWindowPresentationFeatures.Present, () => Apply(hidden: false, minimized: false, active: true), cancellationToken);
 
     /// <inheritdoc />
     public ValueTask<PlatformResult<PlatformUnit>> MinimizeAsync(CancellationToken cancellationToken = default) =>
         Request(new RunicWindowPresentationRequest(RunicWindowPresentationRequestKind.Minimize), RunicWindowPresentationFeatures.Minimize,
-            () => SetActivity(new RunicWindowActivity(false, true, false)), cancellationToken);
+            () => Apply(_hidden, minimized: true, active: false), cancellationToken);
 
     /// <inheritdoc />
     public ValueTask<PlatformResult<PlatformUnit>> SetVisibleAsync(bool visible, CancellationToken cancellationToken = default) =>
         Request(new RunicWindowPresentationRequest(RunicWindowPresentationRequestKind.SetVisible) { Value = visible },
             RunicWindowPresentationFeatures.Visibility,
-            () => SetActivity(visible ? Activity with { IsMinimized = false, IsVisible = true } : new RunicWindowActivity(false, false, false)),
-            cancellationToken);
+            // Showing neither restores nor activates the window.
+            () => Apply(hidden: !visible, _minimized, active: visible && Activity.IsActive), cancellationToken);
 
     /// <inheritdoc />
     public ValueTask<PlatformResult<PlatformUnit>> SetFullScreenAsync(bool fullScreen, CancellationToken cancellationToken = default) =>
@@ -185,8 +220,14 @@ public sealed class RunicTestWindowPresentation : IRunicWindowPresentation
             {
                 if (_colorScheme == colorScheme) return;
                 _colorScheme = colorScheme;
-                Raise(nameof(ColorScheme));
+                RaiseInOrder(() => Raise(nameof(ColorScheme)));
             }, cancellationToken);
+    }
+
+    private void Apply(bool hidden, bool minimized, bool active)
+    {
+        lock (_gate) (_hidden, _minimized) = (hidden, minimized);
+        Change(new RunicWindowActivity(IsActive: active && !hidden && !minimized, IsMinimized: minimized, IsVisible: !hidden && !minimized));
     }
 
     private ValueTask<PlatformResult<PlatformUnit>> Request(RunicWindowPresentationRequest request, RunicWindowPresentationFeatures feature,
@@ -197,6 +238,30 @@ public sealed class RunicTestWindowPresentation : IRunicWindowPresentation
         var result = (Features & feature) == 0 ? Unsupported : Respond?.Invoke(request) ?? Done;
         if (result is PlatformResult<PlatformUnit>.Success) apply();
         return ValueTask.FromResult(result);
+    }
+
+    // A change that a handler causes is raised once the handlers of the current one returned.
+    private void RaiseInOrder(Action raise)
+    {
+        lock (_raises)
+        {
+            _raises.Enqueue(raise);
+            if (_raising) return;
+            _raising = true;
+        }
+        while (true)
+        {
+            Action next;
+            lock (_raises)
+            {
+                if (!_raises.TryDequeue(out next!))
+                {
+                    _raising = false;
+                    return;
+                }
+            }
+            next();
+        }
     }
 
     private void Raise(string property) => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(property));
@@ -242,18 +307,33 @@ public enum RunicWindowPresentationRequestKind
 public static class RunicTestWindowPresentationServiceCollectionExtensions
 {
     /// <summary>
-    /// Registers a <see cref="RunicTestWindowPresentation"/> per scope as the scope's <see cref="IRunicWindowPresentation"/>,
-    /// replacing the registration of <c>AddRunicWindowService()</c>, so the application's own registration method can
-    /// run unchanged in the test.
+    /// Registers a <see cref="RunicTestWindowPresentation"/> per scope as the host of the scope's
+    /// <see cref="IRunicWindowPresentation"/>, replacing the registration of <c>AddRunicWindowService()</c>, so the
+    /// application's own registration method can run unchanged in the test.
     /// </summary>
     /// <param name="services">The test's services.</param>
+    /// <param name="immediate">
+    /// <see langword="false"/>, the default, delivers the fake's changes as an application's Window does: in a turn of
+    /// the scope's model context after the request completed, with handler failures logged, and
+    /// <see cref="PlatformUnavailableReason.OwnerClosed"/> once the scope is disposed. <see langword="true"/> makes the
+    /// fake itself the scope's presentation, which raises its changes at once on the calling thread.
+    /// </param>
     /// <returns><paramref name="services"/>.</returns>
-    public static IServiceCollection AddRunicTestWindowPresentation(this IServiceCollection services)
+    public static IServiceCollection AddRunicTestWindowPresentation(this IServiceCollection services, bool immediate = false)
     {
         ArgumentNullException.ThrowIfNull(services);
         services.RemoveAll<IRunicWindowPresentation>();
         services.TryAddScoped<RunicTestWindowPresentation>();
-        services.AddScoped<IRunicWindowPresentation>(static provider => provider.GetRequiredService<RunicTestWindowPresentation>());
+        if (immediate)
+            services.AddScoped<IRunicWindowPresentation>(static provider => provider.GetRequiredService<RunicTestWindowPresentation>());
+        else
+            services.AddScoped<IRunicWindowPresentation>(static provider =>
+            {
+                // Read now: the scope that closes the presentation is disposed by then.
+                var context = provider.GetService<IRunicModelContext>();
+                var logger = provider.GetService<ILoggerFactory>()?.CreateLogger(RunicViewsTelemetry.LogCategory) ?? TraceFallbackLogger.Instance;
+                return RunicWindowPresentation.Wrap(provider.GetRequiredService<RunicTestWindowPresentation>(), () => context, () => logger);
+            });
         return services;
     }
 }

@@ -69,7 +69,9 @@ internal sealed partial class LinuxWebKitGtkHost : IWebUiEmbeddedHost
     public event EventHandler? ActivityChanged;
 
     // GTK thread only: after the window gained or lost the focus (notify::is-active), was shown or hidden
-    // (notify::visible), or was iconified or restored (window-state-event).
+    // (notify::visible), or was iconified or restored (window-state-event). On Wayland GTK 3 learns nothing of a
+    // minimize, since xdg-shell reports no minimized state, so a minimized window there stays visible and only loses
+    // the focus.
     private void UpdateActivity()
     {
         Volatile.Write(ref _activityUpdateQueued, 0);
@@ -113,7 +115,7 @@ internal sealed partial class LinuxWebKitGtkHost : IWebUiEmbeddedHost
 
     // GTK's application-wide prefer-dark setting (GtkColorScheme): every window of the process follows it.
     public ValueTask SetColorSchemeAsync(Runic.Platform.DesktopColorScheme colorScheme, CancellationToken cancellationToken = default)
-        => InvokeWindowAsync(() => GtkColorScheme.Apply(Api.GtkSettingsGetDefault(), colorScheme), cancellationToken);
+        => InvokeWindowAsync(() => GtkColorScheme.Apply(Api.GtkSettingsGetDefault(), colorScheme, Api.GtkSettingsResetPropertyPointer), cancellationToken);
     public bool SupportsDocumentStartScript => true;
     public bool SupportsNativeDispatch => true;
     public bool CheckNativeAccess() => Dispatcher.CheckAccess;
@@ -1202,6 +1204,8 @@ internal sealed partial class LinuxWebKitGtkHost : IWebUiEmbeddedHost
                 GtkWindowIsActivePointer = Required(_gtk, "gtk_window_is_active");
                 GtkWidgetGetVisiblePointer = Required(_gtk, "gtk_widget_get_visible");
                 GtkSettingsGetDefaultPointer = Required(_gtk, "gtk_settings_get_default");
+                // GTK 3.20: NoPreference returns the color scheme settings to the desktop's.
+                GtkSettingsResetPropertyPointer = Optional(_gtk, "gtk_settings_reset_property");
                 GtkWindowFullscreenPointer = Required(_gtk, "gtk_window_fullscreen");
                 GtkWidgetGrabFocusPointer = Required(_gtk, "gtk_widget_grab_focus");
                 GtkWindowGetFocusPointer = Required(_gtk, "gtk_window_get_focus");
@@ -1642,6 +1646,7 @@ internal sealed partial class LinuxWebKitGtkHost : IWebUiEmbeddedHost
         private nint GtkWindowIsActivePointer { get; }
         private nint GtkWidgetGetVisiblePointer { get; }
         private nint GtkSettingsGetDefaultPointer { get; }
+        internal nint GtkSettingsResetPropertyPointer { get; }
         private nint GtkWindowFullscreenPointer { get; }
         private nint GtkWidgetGrabFocusPointer { get; }
         private nint GtkWindowGetFocusPointer { get; }
