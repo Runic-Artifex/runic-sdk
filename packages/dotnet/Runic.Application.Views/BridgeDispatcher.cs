@@ -53,6 +53,8 @@ internal sealed class BridgeDispatcher : IBridgeRequestHandler
     private readonly Queue<string> _closedSessionOrder = new();
     private readonly Dictionary<string, IBridgeRouteHandler> _routes = new(StringComparer.Ordinal);
     private readonly List<Action<string>> _closedObservers = [];
+    // Observers of connections that complete their hello (IRunicConnections), in the order the hellos completed.
+    private readonly List<Action<BridgeConnection>> _openedObservers = [];
     // Answers status, watch, unwatch, cancel and stream of a route nothing serves, for an operation the window knows.
     private Func<BridgeRouteRequest, ReadOnlyMemory<byte>?>? _releasedOperations;
     // Connections that completed their hello without text-splice/1: while there is one, frames carry no splices.
@@ -160,7 +162,40 @@ internal sealed class BridgeDispatcher : IBridgeRequestHandler
         return new ObserverLease(this, observer);
     }
 
-    // The connection, if it is open and completed its hello.
+    // Calls opened with each connection that completes its hello and closed with the key of each connection that closes,
+    // until the lease is disposed, and returns the connections that completed their hello before, under the same lock,
+    // so an observer misses none and sees none twice. The calls come after the dispatcher's own bookkeeping, outside its
+    // lock: opened before the connection's hello reply and before the requests that waited for the hello are admitted.
+    internal IDisposable ObserveConnections(Action<BridgeConnection> opened, Action<string> closed,
+        out IReadOnlyList<BridgeConnection> current)
+    {
+        ArgumentNullException.ThrowIfNull(opened);
+        ArgumentNullException.ThrowIfNull(closed);
+        lock (_gate)
+        {
+            current = [.. _connections.Values.Where(static connection => connection.HelloCompleted && connection.IsOpen)];
+            _openedObservers.Add(opened);
+            _closedObservers.Add(closed);
+        }
+        return new ConnectionObserverLease(this, opened, closed);
+    }
+
+    private sealed class ConnectionObserverLease(BridgeDispatcher owner, Action<BridgeConnection> opened, Action<string> closed)
+        : IDisposable
+    {
+        private BridgeDispatcher? _owner = owner;
+
+        public void Dispose()
+        {
+            if (Interlocked.Exchange(ref _owner, null) is not { } dispatcher) return;
+            lock (dispatcher._gate)
+            {
+                dispatcher._openedObservers.Remove(opened);
+                dispatcher._closedObservers.Remove(closed);
+            }
+        }
+    }
+
     // The handler of a route this window serves, or null.
     internal IBridgeRouteHandler? FindRoute(string route)
     {
@@ -505,16 +540,27 @@ internal sealed class BridgeDispatcher : IBridgeRequestHandler
 
     private byte[] Hello(BridgeConnection connection, JsonElement root)
     {
-        var reply = HelloCore(connection, root, out var drain);
+        var reply = HelloCore(connection, root, out var drain, out var opened);
+        // Observers learn of the connection before its hello reply and its held requests, so a command it sends finds it.
+        foreach (var observer in opened)
+        {
+            try { observer(connection); }
+            catch (Exception error)
+            {
+                ViewsLog.RequestFailed(_logger, error, error.GetType().FullName ?? error.GetType().Name);
+            }
+        }
         // Requests that waited for a hello that failed answer no-hello; after one that succeeded they are admitted.
         if (drain) _ = Task.Run(() => DrainHeld(connection));
         else if (!connection.HelloCompleted) RefuseHeld(connection);
         return reply;
     }
 
-    private byte[] HelloCore(BridgeConnection connection, JsonElement root, out bool drain)
+    private byte[] HelloCore(BridgeConnection connection, JsonElement root, out bool drain,
+        out Action<BridgeConnection>[] opened)
     {
         drain = false;
+        opened = [];
         // The protocol first: a hello of another version is refused with protocol-mismatch whatever its other members.
         if (!root.TryGetProperty("protocol", out var protocolElement)
             || !BridgeRequestEnvelope.TryReadInteger(protocolElement, out var protocol) || protocol < 0)
@@ -565,6 +611,7 @@ internal sealed class BridgeDispatcher : IBridgeRequestHandler
             if (usesPresentationEpoch) _connectionsWithPresentationEpoch++;
             if (connection.Held.Count > 0) drain = connection.Draining = true;
             closing = usesPresented && _closing is not null;
+            opened = [.. _openedObservers];
         }
         // A page that connects to a closing window is told so, after its hello reply.
         if (closing) BridgeTargetedPushes.For(_transport).Send(connection.Key, ClosingPush());

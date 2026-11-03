@@ -35,3 +35,7 @@ Runic.Application.Testing.RunicViewRequest.Revision.init -> void
 Runic.Application.Testing.RunicViewRequest.Route.init -> void
 static Runic.Application.Testing.RunicViewRequest.operator !=(Runic.Application.Testing.RunicViewRequest? left, Runic.Application.Testing.RunicViewRequest? right) -> bool
 static Runic.Application.Testing.RunicViewRequest.operator ==(Runic.Application.Testing.RunicViewRequest? left, Runic.Application.Testing.RunicViewRequest? right) -> bool
+Runic.Application.Testing.RunicViewDriver<TModel>.ClientKey.get -> string!
+Runic.Application.Testing.RunicViewDriver<TModel>.ConnectionKey.get -> string!
+Runic.Application.Testing.RunicViewDriver<TModel>.ForConnection(string! connectionKey, string? clientKey = null) -> Runic.Application.Testing.RunicViewDriver<TModel!>!
+Runic.Application.Testing.RunicWindowTestHost<TViewModel>.Connections.get -> Runic.Application.Views.IRunicConnections!

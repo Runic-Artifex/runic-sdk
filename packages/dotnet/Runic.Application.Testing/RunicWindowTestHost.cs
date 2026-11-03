@@ -78,7 +78,21 @@ public sealed class RunicWindowTestHost<TViewModel> : IDisposable where TViewMod
         catch { Transport.Dispose(); throw; }
         Publications = new RunicPublicationLog(Transport, publicationTimeout);
         Root = new RunicViewDriver<TViewModel>(Publications, Transport, rootRoute, null, NextId);
+        _connections.Bind(Content);
     }
+
+    private readonly RunicConnections _connections = new();
+
+    /// <summary>
+    /// The window's page connections, as the window scope's <see cref="IRunicConnections"/> reports them: each test
+    /// connection that sent its <c>hello</c>, such as the one of <see cref="Root"/> and those of
+    /// <see cref="RunicViewDriver{TModel}.ForConnection"/>, until <see cref="InMemoryBridgeTransport.CloseConnection"/>.
+    /// </summary>
+    /// <remarks>
+    /// Changes arrive in a turn of the window's model context; await a command's reply or the model context before
+    /// reading <see cref="IRunicConnections.Current"/>.
+    /// </remarks>
+    public IRunicConnections Connections => _connections;
 
     /// <summary>The root ViewModel.</summary>
     public TViewModel ViewModel { get; }
@@ -133,6 +147,7 @@ public sealed class RunicWindowTestHost<TViewModel> : IDisposable where TViewMod
     {
         if (_disposed) return;
         _disposed = true;
+        _connections.Dispose();
         try { _attachment.Dispose(); }
         finally
         {

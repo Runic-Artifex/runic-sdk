@@ -48,8 +48,16 @@ public sealed class RunicInteractionInvocation
     /// </summary>
     public string Route { get; }
     /// <summary>The trusted browser client identity, if the invocation came from one.</summary>
+    /// <remarks>
+    /// The key the window's transport authenticated for the request, never a value in its JSON. A Window's
+    /// <see cref="IRunicConnections.Caller"/> reads it.
+    /// </remarks>
     public string? ClientKey { get; }
     /// <summary>The trusted transport connection identity, if the invocation came from one.</summary>
+    /// <remarks>
+    /// The key the window's transport authenticated for the request, never a value in its JSON. A Window's
+    /// <see cref="IRunicConnections.Caller"/> reads it.
+    /// </remarks>
     public string? ConnectionKey { get; }
     /// <summary>The generated command that started the invocation, if any.</summary>
     public string? CommandName { get; }

@@ -627,6 +627,111 @@ public sealed partial class EditorViewModel(IRunicWindowContext window) : Observ
   `true` or `false` after the application's services, or opens the Window and
   lets its guards decide.
 
+### Who is connected, and who called
+
+A Window's page can be open more than once: a CS-WebUI window with WebUI's
+`MultiClient` configuration is shared by every browser that reaches it, and
+any page gets a new connection when it reloads. `IRunicConnections` (since
+0.16), which `AddRunicWindowService()` registers per scope, lists the
+Window's page connections and tells a command which one invoked it:
+
+- `Current` lists the connections that completed their `hello`, in the order
+  they connected, until the transport reports them closed. Each is a
+  `RunicConnection(ConnectionKey, ClientKey)` with opaque keys: compare and
+  store them, but do not parse them or show them to users.
+- `Connected` and `Disconnected` are plain .NET events, raised in a turn of
+  the Window's model context, as a command body runs, so a handler may change
+  state the page sees. `Current` changes in the same turn. A connection the
+  Window already had when the service was bound is reported with `Connected`
+  too. Closing the Window raises no `Disconnected`. A handler that throws is
+  logged as event 1230 `ConnectionHandlerFailed`, and the other handlers still
+  run.
+- `Caller` is the connection whose command, operation or in-page menu click
+  of this Window runs on the current asynchronous flow, and `null` elsewhere:
+  in a timer, in the window scope (`RunicInteractionInvocation.EnterWindow`),
+  or when the command belongs to another Window. It stays the same through the
+  command's `await`s.
+- `connections.WhenChanged()` is an `IObservable<IReadOnlyList<RunicConnection>>`
+  that emits `Current` when subscribed and after each change. It needs no
+  System.Reactive and works with both ReactiveUI flavors.
+
+`OpenWindowAsync` binds the service to the Window it opens when the
+Window's Bridge attaches, on Runic Desktop and on CS-WebUI. A Runic Desktop
+window has one page connection, and a new one after each reload; a native
+menu bar or host shortcut has no page, so its command has no `Caller`. A WPF
+`RunicViewHost` creates no Window scope, so the service it would resolve from
+the application's provider lists nothing and raises nothing; there,
+`RunicInteractionInvocation.Current` still names the page's connection during
+a command.
+
+"Who else is viewing", with CommunityToolkit.Mvvm:
+
+```csharp
+public sealed partial class BoardViewModel : ObservableObject
+{
+    private readonly IRunicConnections _connections;
+    private readonly Dictionary<string, string> _claims = [];
+
+    public BoardViewModel(IRunicConnections connections)
+    {
+        _connections = connections;
+        connections.Connected += (_, _) => Viewers = connections.Current.Count;
+        connections.Disconnected += (_, _) => Viewers = connections.Current.Count;
+    }
+
+    // "3 people are viewing this board"
+    [ObservableProperty]
+    public partial int Viewers { get; private set; }
+
+    [RelayCommand]
+    private void Claim(string cardId)
+    {
+        // The browser that clicked, as the transport authenticated it.
+        if (_connections.Caller is { } caller) _claims[cardId] = caller.ConnectionKey;
+    }
+}
+```
+
+With ReactiveUI:
+
+```csharp
+_viewers = connections.WhenChanged().Select(list => list.Count).ToProperty(this, vm => vm.Viewers);
+```
+
+**Per-connection state.** `RunicConnectionState<T>` keeps one value per
+connection, such as a draft, a selection or a cursor that each page keeps for
+itself. It creates a value on first use, only for an open connection, and
+removes it, disposing an `IDisposable` value, when the connection's
+`Disconnected` is raised. Dispose it with the ViewModel:
+
+```csharp
+// In a ViewModel whose primary constructor takes IRunicConnections connections:
+private readonly RunicConnectionState<Draft> _drafts = new(connections, _ => new Draft());
+
+[RelayCommand]
+private void Type(string text)
+{
+    if (_drafts.TryGetCaller(out var draft)) draft.Text = text;
+}
+```
+
+**Trust.** Only the Bridge runtime sets the caller: it enters
+`RunicInteractionInvocation` with the identity that the Window's transport
+authenticated for the request, never values in the request's JSON, and
+application code cannot enter one with an identity.
+`RunicInteractionInvocation.Current?.ConnectionKey` and `ClientKey` are the
+same values, for code that has no `IRunicConnections`. The keys tell pages
+apart; they do not say who the user is. On CS-WebUI every client that reaches
+the window's server can connect, so an application that shares a window with
+`MultiClient` authenticates its users itself and maps a connection to a user
+after its own sign-in; see the
+[CS-WebUI security notes](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Application.Views.CsWebUi/README.md#security).
+
+In tests, `RunicWindowTestHost.Connections` lists the test connections and
+`host.Root.ForConnection("bob-tab", clientKey: "bob")` drives the Window as a
+second page; see
+[Runic.Application.Testing](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Application.Testing/README.md#several-pages-of-one-window).
+
 ### What the page sees of a close
 
 Every close of a Window (`CloseAsync`, `RequestCloseAsync` once it decided,
@@ -2743,6 +2848,7 @@ NativeAOT symbols and what to attach to a bug report.
 | 1120 | `ViewRequestDropped` | Debug | A `ViewRequest<T>` found no single presentation to deliver to, or several windows present its ViewModel, and was dropped ([Asking the page](#asking-the-page-view-requests-and-questions)). | `Name`, `Reason` |
 | 1121 | `ViewRequestKept` | Debug | A `NextMounted` view request found no single presentation and is kept for the next one that handles it. | `Name` |
 | 1114 | `ChildViewCleanupFailed` | Error | A `WpfBridgeView` fails to release after its presentation closed. | `ErrorType` |
+| 1230 | `ConnectionHandlerFailed` | Error | A handler of `IRunicConnections.Connected` or `Disconnected` throws; the other handlers still run ([Who is connected, and who called](#who-is-connected-and-who-called)). | `Event`, `ErrorType` |
 | 2000 | `DesktopSnapshotDeliveryFailed` | Error | Runic Desktop cannot deliver a push to a page. | `ErrorType` |
 | 2002 | `DesktopWindowCloseAfterOpen` | Warning | `RUNIC_APPLICATION_CLOSE_AFTER_OPEN=1` closed a Desktop window right after it opened. | `Variable` |
 | 2003 | `DesktopPortalDiagnostic` | Warning or Debug | On Linux, xdg-desktop-portal reports a diagnostic for the portal services `AddRunicPlatformServices()` registers (notifications, status icon, login startup and inhibition): Warning for a rejected identity, an unavailable portal or a denied request, Debug for an accepted request or registration. | `Code`, `DiagnosticMessage`, `Remediation` |

@@ -274,6 +274,10 @@ internal static partial class ViewsLog
         Message = "The view request {Name} is kept for the next presentation that handles it.")]
     internal static partial void ViewRequestKept(ILogger logger, string name);
 
+    [LoggerMessage(EventId = 1230, EventName = "ConnectionHandlerFailed", Level = LogLevel.Error,
+        Message = "A handler of IRunicConnections.{Event} threw {ErrorType}; the other handlers still ran.")]
+    internal static partial void ConnectionHandlerFailed(ILogger logger, Exception? exception, string @event, string errorType);
+
     [LoggerMessage(EventId = 1010, EventName = "BridgeSnapshotCaptureFailed", Level = LogLevel.Error,
         Message = "Bridge snapshot capture for {Model} on route {Route} failed with {ErrorType}.")]
     internal static partial void SnapshotCaptureFailed(ILogger logger, Exception? exception, string model, string route, string errorType);

@@ -512,6 +512,11 @@ The same Window and `async host => ...` body run on CS-WebUI with
   `SendAsync` to one connection, both as raw data to `__runicViewsPush`. A
   connection is one authenticated WebSocket; its Desktop connection id is
   both its connection and its client key, so a reconnect is a new connection.
+  A Window's `IRunicConnections` (since 0.16) therefore lists the page's one
+  connection, a new one after each reload, and its `Caller` is that connection
+  during a page's command or in-page menu click, and `null` for the native menu
+  bar and host shortcuts
+  ([Who is connected, and who called](../Runic.Application.Views/README.md#who-is-connected-and-who-called)).
   The requests of one connection are admitted in the order the page sent
   them. Disposing the transport removes the capability and stops pushes; the
   surface stays open. The per-route `Bind`, `BindAsync`, `Publish`,

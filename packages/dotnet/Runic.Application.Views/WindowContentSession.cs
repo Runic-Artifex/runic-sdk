@@ -199,6 +199,9 @@ public sealed class WindowContentSession : IDisposable
     // logger factory this is the Trace fallback.
     internal ILogger Logger { get; }
 
+    // The request dispatcher of the window's transport, which owns its connections.
+    internal BridgeDispatcher Dispatcher => BridgeDispatcher.For(_transport);
+
     internal bool HasLogger { get; }
 
     // Generated Bridges remain in this assembly through their host-neutral

@@ -27,8 +27,10 @@ internal sealed class MenuBarPageIdentityChecks
     {
         using var transport = new InMemoryBridgeTransport();
         using var session = new WindowContentSession(transport, new WindowContentSessionOptions { IncludeFailureDetail = false });
-        var model = new IdentityViewModel();
+        using var connections = new RunicConnections();
+        var model = new IdentityViewModel { Connections = connections };
         using var bridge = new IdentityBridge(transport, model, session);
+        connections.Bind(session);
         using var presentations = session.AttachRootInteractionPresentation(Route);
         var bar = new WebUiMenuBar([new DesktopMenu("File", [new DesktopMenuItem("Focus", "file.focus")])]);
         using var routes = new WebUiMenuBarRoutes(bar, transport, NullLogger.Instance);
@@ -66,6 +68,10 @@ internal sealed class MenuBarPageIdentityChecks
             ["name"] = "confirm", ["contract"] = ConfirmContract, ["outcome"] = "answered", ["output"] = true,
         }), "connection-b", "client-b");
         Require(await model.Answered.Task.WaitScaledAsync(TimeSpan.FromSeconds(5)), "Page b's answer did not reach the ViewModel.");
+        // IRunicConnections lists both browsers, and the command knows that page b clicked (D4).
+        Require(model.Caller == new RunicConnection("connection-b", "client-b"), $"The menu command's caller was {model.Caller}.");
+        Require(connections.Current.SequenceEqual([new RunicConnection("connection-a", "client-a"), new RunicConnection("connection-b", "client-b")]),
+            $"The window did not list both browsers: {string.Join(", ", connections.Current)}");
         Require(transport.TakeMessages().All(message => message.ConnectionKey != "connection-a" || message.Kind is not ("view-request" or "interaction")),
             "Page a received the command of page b's click.");
     }
@@ -112,6 +118,7 @@ internal sealed class MenuBarPageIdentityChecks
     {
         public IdentityViewModel() => FocusCommand = new MenuCommand(async () =>
         {
+            Caller = Connections?.Caller;
             Focus.Raise(new IdentityFocus("title"));
             Answered.TrySetResult(await Confirm.AskAsync("Focus?"));
         });
@@ -119,6 +126,8 @@ internal sealed class MenuBarPageIdentityChecks
         public ViewRequest<IdentityFocus> Focus { get; } = new();
         public ViewQuestion<string, bool> Confirm { get; } = new((_, _) => ValueTask.FromResult(false));
         public ICommand FocusCommand { get; }
+        public IRunicConnections? Connections { get; init; }
+        public RunicConnection? Caller { get; private set; }
         public TaskCompletionSource<bool> Answered { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
         public event PropertyChangedEventHandler? PropertyChanged { add { } remove { } }
