@@ -102,7 +102,7 @@ public sealed class ClientErrorTests
 
         time.Advance(TimeSpan.FromMinutes(1));
         window.Transport.Request("""{"kind":"client-error","source":"error","message":"later"}""", "c-1");
-        var later = window.Log.Entries.Last();
+        var later = window.Log.Entries[^1];
         Require(later.EventId == 1150 && later.Values["Dropped"] is 10L, $"The window's suppressed reports were not counted with the next one: {later.Message}");
     }
 
@@ -120,7 +120,7 @@ public sealed class ClientErrorTests
 
         time.Advance(TimeSpan.FromMinutes(1));
         window.Transport.Request("""{"kind":"client-error","source":"error","message":"later","dropped":1}""");
-        var later = window.Log.Entries.Last();
+        var later = window.Log.Entries[^1];
         Require(later.EventId == 1150 && later.Values["Dropped"] is 4L, $"The suppressed reports were not counted with the next one: {later.Message}");
     }
 
