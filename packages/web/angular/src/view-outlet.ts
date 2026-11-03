@@ -93,7 +93,7 @@ const outletAttributes = new Set(["hidden", "style", "data-region-key"]);
 
 // Sets the attributes of the latest panelProps result on its element and removes the ones it no longer returns.
 @Directive({ selector: "[runicRegionPanel]", standalone: true })
-class RegionPanel {
+export class RegionPanel {
   readonly attributes = input<RegionPanelAttributes | undefined>(undefined, { alias: "runicRegionPanel" });
 
   constructor() {
