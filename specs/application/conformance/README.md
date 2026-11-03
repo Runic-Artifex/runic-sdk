@@ -130,6 +130,12 @@ Messages are compared **by JSON value**, never by bytes or member order, with th
   `{"$rows": [start, count, width?]}` expands to `count` rows of the `list` View with ids from `start` and the label
   `"row {id}"`, padded with `.` to `width` characters. `{"$adds": [start, count, width?]}` expands to one `add` change
   per such row, at the index equal to its id.
+- **Sessions.** A client that implements [`request-session/1`](../README.md#request-sessions) names the session of
+  its connection's `hello` in every request. A client runner requires that a request's `session`, when present, is
+  the session of the connection's `hello`, and then compares the request without it unless the step's message lists
+  `session`. The scenarios of `request-sessions` list it; the others leave it out, so they hold for clients with and
+  without the feature. A producer runner sends what the step lists, so only a scenario whose `hello` lists the
+  feature sends `session`.
 - Failure detail is off in every scenario.
 
 ### Calls
@@ -182,6 +188,7 @@ Expectations of the producer:
 | `presentation-epoch/1` | The implementation implements the feature [`presentation-epoch/1`](../README.md#presentation-epochs). |
 | `presented/1` | The implementation implements the feature [`presented/1`](../README.md#presented-states-and-window-close). |
 | `view-requests/1` | The implementation implements the feature [`view-requests/1`](../README.md#view-requests). |
+| `request-session/1` | The implementation implements the feature [`request-session/1`](../README.md#request-sessions). |
 
 Every `hello` of a scenario that does not require a feature lists `features` as `{"$any":"array","default":["text-splice/1"]}`:
 a runner that writes the `hello` (or its reply) lists `text-splice/1`, and a runner that checks one accepts any list.
@@ -214,6 +221,7 @@ connection before connecting it, answers a request it did not send, expects a ca
 | [`presentations`](scenarios/presentations) | `open` and `close`; a presentation owned by another connection; a reconnect with a new session; an unknown route; presentation epochs (`epoch-*`): the `epoch` of `open` and `snapshot`, a renewal published as a `state`, a scoped command with the current epoch, a second scoped command from the same state that is superseded, an unscoped command without `epoch`, and a connection without the feature; painted states (`presented-*`): a report that completes a wait, and a wait that times out; window close (`closing-*`): an acknowledged close and the client's closed connection, and a close that times out |
 | [`interactions`](scenarios/interactions) | A confirmation answered, and its repeat; registration outcomes |
 | [`view-requests`](scenarios/view-requests) | A command's request reaches the invoking presentation after its state; a request outside a command reaches the single presentation, and is dropped with none or several; `next-mounted` keeps the latest request for the next registration; `broadcast` reaches every presentation; registration outcomes; a connection without the feature |
+| [`request-sessions`](scenarios/request-sessions) | `request-session/1`: a request that names another session or none is `no-hello` and does not act; a `hello` with another session replaces the connection and releases its presentation; the client names its session in every request |
 | [`errors`](scenarios/errors) | The protocol-3 `error-reasons`, `domain-failures` and `released` fixtures, converted (`error-reasons` and `released` were removed in 0.13); capacity |
 
 ## Test Views

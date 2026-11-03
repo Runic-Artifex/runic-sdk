@@ -69,8 +69,12 @@ internal sealed class MenuBarPageIdentityChecks
         }), "connection-b", "client-b");
         Require(await model.Answered.Task.WaitScaledAsync(TimeSpan.FromSeconds(5)), "Page b's answer did not reach the ViewModel.");
         // IRunicConnections lists both browsers, and the command knows that page b clicked (D4).
-        Require(model.Caller == new RunicConnection("connection-b", "client-b"), $"The menu command's caller was {model.Caller}.");
-        Require(connections.Current.SequenceEqual([new RunicConnection("connection-a", "client-a"), new RunicConnection("connection-b", "client-b")]),
+        // The window's own keys of the two connections, which no later connection reuses.
+        var dispatcher = session.Dispatcher;
+        var pageA = new RunicConnection(dispatcher.ConnectionKeyOf("connection-a")!, "client-a");
+        var pageB = new RunicConnection(dispatcher.ConnectionKeyOf("connection-b")!, "client-b");
+        Require(model.Caller == pageB, $"The menu command's caller was {model.Caller}.");
+        Require(connections.Current.SequenceEqual([pageA, pageB]),
             $"The window did not list both browsers: {string.Join(", ", connections.Current)}");
         Require(transport.TakeMessages().All(message => message.ConnectionKey != "connection-a" || message.Kind is not ("view-request" or "interaction")),
             "Page a received the command of page b's click.");

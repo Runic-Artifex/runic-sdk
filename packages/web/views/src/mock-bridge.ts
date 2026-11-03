@@ -4,7 +4,7 @@ import { viewsVersion } from "./version.js";
 import { applySplice, producerSplices, textSpliceFeature } from "./text.js";
 import { insertRows } from "./collections.js";
 import { flushNotifications } from "./notifications.js";
-import { presentationEpochFeature, presentedFeature, viewRequestsFeature } from "./protocol.js";
+import { presentationEpochFeature, presentedFeature, requestSessionFeature, viewRequestsFeature } from "./protocol.js";
 
 /** A View's wire state: one member per state member, by wire name, encoded as on the wire. */
 export type MockState = Record<string, unknown>;
@@ -393,7 +393,7 @@ const realSetTimeout = globalThis.setTimeout.bind(globalThis);
 const yieldToEventLoop = () => new Promise<void>(resolve => { realSetTimeout(resolve, 0); });
 const maximumRounds = 10_000;
 const mockImplementation = { name: "@runic-artifex/views/mock", version: viewsVersion };
-const mockFeatures: readonly string[] = [textSpliceFeature, presentationEpochFeature, presentedFeature, viewRequestsFeature];
+const mockFeatures: readonly string[] = [textSpliceFeature, presentationEpochFeature, presentedFeature, viewRequestsFeature, requestSessionFeature];
 
 const upperFirst = (value: string) => value.charAt(0).toUpperCase() + value.slice(1);
 const isRecord = (value: unknown): value is Record<string, unknown> => value !== null && typeof value === "object" && !Array.isArray(value);
@@ -1209,7 +1209,7 @@ export function createMockBridge(options: MockBridgeOptions = {}): MockBridge {
     return reply;
   }
 
-  async function answer(message: Record<string, unknown>, call: MockCall): Promise<Reply> {
+  async function answer(message: Record<string, unknown>, call: MockCall, session: unknown): Promise<Reply> {
     for (const interceptor of [...interceptors]) {
       const reply = await interceptor(call);
       if (reply === undefined) continue;
@@ -1243,6 +1243,8 @@ export function createMockBridge(options: MockBridgeOptions = {}): MockBridge {
       return ok({ ...identity, features: mockFeatures });
     }
     if (connection.session === undefined) return noHello();
+    // request-session/1: a request of another page, which names another session or none, never acts for this one.
+    if (connection.features.has(requestSessionFeature) && session !== connection.session) return noHello();
     if (kind === "receive") return ok({ messages: [] });
     if (kind === "closing-reply") {
       if (!connection.features.has(presentedFeature)) return invalidRequest("closing-reply needs the feature presented/1.");
@@ -1422,6 +1424,13 @@ export function createMockBridge(options: MockBridgeOptions = {}): MockBridge {
         if (!isRecord(parsed)) throw new TypeError("A request is a JSON object.");
         message = parsed;
       } catch (error) { return Promise.reject(error); }
+      // The session a request names (request-session/1) is checked against its connection's hello, and is not part of
+      // the recorded message, which tests compare with the request they expect.
+      const session = message["kind"] === "hello" ? undefined : message["session"];
+      if (message["kind"] !== "hello" && "session" in message) {
+        const { session: _, ...rest } = message;
+        message = rest;
+      }
       const call: MockCall = {
         kind: typeof message["kind"] === "string" ? message["kind"] : "",
         ...(typeof message["route"] === "string" ? { route: message["route"] } : {}),
@@ -1437,7 +1446,7 @@ export function createMockBridge(options: MockBridgeOptions = {}): MockBridge {
         const settle = (run: () => void) => toPage(() => { owner.pending.delete(drop); run(); });
         toProducer(() => {
           if (connection !== owner) return;
-          const run = () => admitted(call.kind, () => answer(message, call)).then(
+          const run = () => admitted(call.kind, () => answer(message, call, session)).then(
             reply => { settle(() => resolve(JSON.stringify(reply))); afterReply.get(call)?.(); },
             error => settle(() => reject(error)));
           // A request that arrives before the hello waits for it, up to 5 seconds, and is then admitted in arrival

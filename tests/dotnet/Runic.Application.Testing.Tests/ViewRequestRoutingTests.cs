@@ -27,7 +27,7 @@ public sealed class ViewRequestRoutingTests
         window.OpenAndRegister("p-1", "connection-1", "focus");
         window.OpenAndRegister("p-2", "connection-2", "focus");
         var opened = window.Revision();
-        using (RunicInteractionInvocation.Enter(window.Session, Route, "client-1", "connection-1"))
+        using (RunicInteractionInvocation.Enter(window.Session, Route, "client-1", window.Session.Dispatcher.ConnectionKeyOf("connection-1")!))
         {
             await window.InTurnAsync(() => window.Model.Title = "changed");
             window.Model.Focus.Raise(new FocusTarget("title"));
@@ -65,9 +65,9 @@ public sealed class ViewRequestRoutingTests
 
         // A page's command keeps its own scope: EnterWindow does not widen it to another page.
         window.OpenAndRegister("p-2", "connection-2", "focus");
-        using (RunicInteractionInvocation.Enter(window.Session, Route, "client-2", "connection-2"))
+        using (RunicInteractionInvocation.Enter(window.Session, Route, "client-2", window.Session.Dispatcher.ConnectionKeyOf("connection-2")!))
         {
-            Require(!RunicInteractionInvocation.TryEnterWindow(window.Model, out var kept) && RunicInteractionInvocation.Current?.ConnectionKey == "connection-2",
+            Require(!RunicInteractionInvocation.TryEnterWindow(window.Model, out var kept) && RunicInteractionInvocation.Current?.ConnectionKey == window.Session.Dispatcher.ConnectionKeyOf("connection-2"),
                 "EnterWindow replaced the invoking command's scope.");
             using (kept) window.Model.Focus.Raise(new FocusTarget("command"));
         }
@@ -98,7 +98,7 @@ public sealed class ViewRequestRoutingTests
 
         // A request raised in a command waits for a presentation of the invoking client and connection.
         window.Register("p-1", "connection-1", 3);
-        using (RunicInteractionInvocation.Enter(window.Session, Route, "client-3", "connection-3"))
+        using (RunicInteractionInvocation.Enter(window.Session, Route, "client-3", window.Session.Dispatcher.ConnectionKeyOf("connection-3")!))
             window.Model.Reveal.Raise(3);
         window.Register("p-1", "connection-1", 4, "reveal");
         Require((await window.RequestsAsync()).Count == 0, "A request kept in a command reached another connection.");
@@ -125,7 +125,7 @@ public sealed class ViewRequestRoutingTests
         window.OpenAndRegister("p-1", "connection-1", "toast");
         window.OpenAndRegister("p-2", "connection-2", "toast");
         window.Open("p-3", "connection-2");
-        using (RunicInteractionInvocation.Enter(window.Session, Route, "client-1", "connection-1"))
+        using (RunicInteractionInvocation.Enter(window.Session, Route, "client-1", window.Session.Dispatcher.ConnectionKeyOf("connection-1")!))
             window.Model.Toast.Raise("Saved");
         var pushes = await window.RequestsAsync();
         Require(pushes.Select(push => push.Json["presentation"]!.GetValue<string>()).Order().SequenceEqual(["p-1", "p-2"]),
@@ -184,7 +184,7 @@ public sealed class ViewRequestRoutingTests
 
         // The shell's command on another route of the window, on the same connection.
         Task<bool> asked;
-        using (RunicInteractionInvocation.Enter(window.Session, "shell", "client-1", "connection-1"))
+        using (RunicInteractionInvocation.Enter(window.Session, "shell", "client-1", window.Session.Dispatcher.ConnectionKeyOf("connection-1")!))
             asked = window.Model.Confirm.Handle("Close the note?");
         var push = await window.NextPushAsync("interaction");
         Require(push.Connection == "connection-1" && push.Json["route"]!.GetValue<string>() == Route,
@@ -193,7 +193,7 @@ public sealed class ViewRequestRoutingTests
         Require(await asked.WaitScaledAsync(TimeSpan.FromSeconds(5)), "The answer did not complete the interaction.");
 
         // Another connection's command never reaches it, and falls back.
-        using (RunicInteractionInvocation.Enter(window.Session, "shell", "client-2", "connection-2"))
+        using (RunicInteractionInvocation.Enter(window.Session, "shell", "client-2", window.Session.Dispatcher.ConnectionKeyOf("connection-2")!))
             Require(!await window.Model.Confirm.Handle("Other?").WaitScaledAsync(TimeSpan.FromSeconds(5)),
                 "Another connection's command did not fall back.");
 
@@ -235,14 +235,14 @@ public sealed class ViewRequestRoutingTests
 
         window.Open("p-1", "connection-1", handlers: """[{"name":"ask","contract":"testing.ask"}]""");
         Task<bool> asked;
-        using (RunicInteractionInvocation.Enter(window.Session, Route, "client-1", "connection-1"))
+        using (RunicInteractionInvocation.Enter(window.Session, Route, "client-1", window.Session.Dispatcher.ConnectionKeyOf("connection-1")!))
             asked = question.AskAsync("Page?");
         window.Answer((await window.NextPushAsync("interaction")).Json, "true");
         Require(await asked.WaitScaledAsync(TimeSpan.FromSeconds(5)), "The page's answer did not complete the question.");
 
         using var cancellation = new CancellationTokenSource();
         Task<bool> cancelled;
-        using (RunicInteractionInvocation.Enter(window.Session, Route, "client-1", "connection-1"))
+        using (RunicInteractionInvocation.Enter(window.Session, Route, "client-1", window.Session.Dispatcher.ConnectionKeyOf("connection-1")!))
             cancelled = question.AskAsync("Cancel?", cancellation.Token);
         _ = await window.NextPushAsync("interaction");
         cancellation.Cancel();
@@ -287,7 +287,7 @@ public sealed class ViewRequestRoutingTests
 
         // A command still reaches its own page, preferring its own route.
         Task<bool> own;
-        using (RunicInteractionInvocation.Enter(window.Session, "requests-compact", "client-2", "connection-2"))
+        using (RunicInteractionInvocation.Enter(window.Session, "requests-compact", "client-2", window.Session.Dispatcher.ConnectionKeyOf("connection-2")!))
             own = window.Model.Confirm.Handle("Mine?");
         var push = await window.NextPushAsync("interaction");
         Require(push.Connection == "connection-2" && push.Json["route"]!.GetValue<string>() == "requests-compact",
@@ -361,7 +361,7 @@ public sealed class ViewRequestRoutingTests
     {
         using var window = new RequestWindow();
         window.Open("p-3", "connection-3");
-        using (RunicInteractionInvocation.Enter(window.Session, Route, "client-3", "connection-3"))
+        using (RunicInteractionInvocation.Enter(window.Session, Route, "client-3", window.Session.Dispatcher.ConnectionKeyOf("connection-3")!))
             window.Model.Reveal.Raise(9);
         // The page reloads: its next connection, of the same client, registers the request.
         window.CloseConnection("connection-3");
@@ -379,7 +379,7 @@ public sealed class ViewRequestRoutingTests
         // new item does.
         using var window = new RequestWindow(beforeAttach: (session, model) =>
         {
-            using (RunicInteractionInvocation.Enter(session, "shell", "client-1", "connection-1")) model.Reveal.Raise(5);
+            using (RunicInteractionInvocation.Enter(session, "shell", "client-1", session.Dispatcher.ConnectionKeyOf("connection-1")!)) model.Reveal.Raise(5);
         });
         // Another page presents it first: the request is not its.
         window.OpenAndRegister("p-2", "connection-2", "reveal");
@@ -395,7 +395,7 @@ public sealed class ViewRequestRoutingTests
     {
         using var window = new RequestWindow(beforeAttach: (session, model) =>
         {
-            using (RunicInteractionInvocation.Enter(session, "shell", "client-1", "connection-1")) model.Reveal.Raise(5);
+            using (RunicInteractionInvocation.Enter(session, "shell", "client-1", session.Dispatcher.ConnectionKeyOf("connection-1")!)) model.Reveal.Raise(5);
         });
         // The page reloads before it presents the ViewModel: neither its next connection nor another page gets it.
         window.CloseConnection("connection-1");
@@ -437,13 +437,14 @@ public sealed class ViewRequestRoutingTests
                 IncludeFailureDetail = false,
                 MaximumInputBytes = maximumInputBytes,
             });
+            // The pages connect first, so a command of one of them names its connection.
+            Hello("connection-1", "client-1");
+            Hello("connection-2", "client-2");
+            Hello("connection-3", "client-3");
             // Work of the window before any route presents the ViewModel, such as a command of another route.
             beforeAttach?.Invoke(Session, Model);
             _bridge = new RequestBridge(Transport, Model, Session);
             _rootPresentations = Session.AttachRootInteractionPresentation(Route);
-            Hello("connection-1", "client-1");
-            Hello("connection-2", "client-2");
-            Hello("connection-3", "client-3");
         }
 
         private readonly IDisposable _rootPresentations;

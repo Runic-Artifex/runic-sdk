@@ -13,7 +13,7 @@ const members = { page: (value: unknown) => bridgeWire.integer(value, 0, 1000), 
 const runtimeKey = Symbol.for("runic.views.generated-client-runtime");
 const host = globalThis as unknown as Record<string | symbol, unknown>;
 const tick = (ms = 0) => new Promise(resolve => setTimeout(resolve, ms));
-const allFeatures = ["text-splice/1", "presentation-epoch/1", "presented/1", "view-requests/1"];
+const allFeatures = ["text-splice/1", "presentation-epoch/1", "presented/1", "view-requests/1", "request-session/1"];
 
 interface Sent { readonly message: Record<string, unknown>; resolve(reply: object): void }
 
@@ -26,6 +26,7 @@ function installBridge(features: readonly string[] = allFeatures) {
   const connection = new Set<(connected: boolean) => void>();
   let connected = true;
   let revision = 1;
+  let hello: string | undefined;
   const sent: Sent[] = [];
   const epoch = (value: number) => features.includes("presentation-epoch/1") ? { epoch: value } : {};
   const bridge: RunicBridgeClient = {
@@ -33,8 +34,11 @@ function installBridge(features: readonly string[] = allFeatures) {
     onConnectionChange(report) { connection.add(report); report(connected); return () => { connection.delete(report); }; },
     onMessage(next) { listeners.add(next); return () => { listeners.delete(next); }; },
     request(text) {
-      const message = JSON.parse(text) as Record<string, unknown>;
+      const { session, ...message } = JSON.parse(text) as Record<string, unknown>;
       if (!connected) return Promise.reject(new Error("disconnected"));
+      // request-session/1: every request names the session of the connection's hello.
+      if (message["kind"] === "hello") hello = session as string;
+      else assert.equal(session, hello, `${String(message["kind"])} does not name the session of its hello`);
       switch (message["kind"]) {
         case "hello": return Promise.resolve(JSON.stringify({ ok: true, protocol: 4, implementation: { name: "test", version: "0" }, features }));
         case "open": return Promise.resolve(JSON.stringify({ ok: true, presentation: "ok", revision, ...epoch(1), state: { page: 1, title: "start" } }));

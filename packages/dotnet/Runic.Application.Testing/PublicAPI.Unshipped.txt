@@ -302,3 +302,4 @@ static Runic.Application.Testing.RunicTestPlatformServiceCollectionExtensions.Ad
 Runic.Application.Testing.RunicTestFile.EnqueueCommitResult(Runic.Platform.FileCommitResult! result, bool applied) -> void
 Runic.Application.Testing.RunicServeOnlyTestPlatformAttribute
 Runic.Application.Testing.RunicServeOnlyTestPlatformAttribute.RunicServeOnlyTestPlatformAttribute() -> void
+Runic.Application.Testing.RunicViewDriver<TModel>.Connection.get -> Runic.Application.Views.RunicConnection?

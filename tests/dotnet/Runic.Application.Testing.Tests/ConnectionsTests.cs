@@ -13,8 +13,12 @@ namespace Runic.Application.Testing.Tests;
 // authenticated for the running command, and RunicConnectionState keeps a value per connection until it disconnects.
 internal sealed class ConnectionsTests
 {
+    // The transport's keys of two pages. The window gives each connection a key of its own (the driver's Connection).
     private static readonly RunicConnection Alice = new(InMemoryBridgeTransport.DefaultConnectionKey, InMemoryBridgeTransport.DefaultClientKey);
     private static readonly RunicConnection Bob = new("connection-bob", "client-bob");
+
+    private static RunicConnection Own<T>(RunicViewDriver<T> driver) where T : class =>
+        driver.Connection ?? throw new InvalidOperationException($"{driver.ConnectionKey} is not open.");
 
     private static ServiceProvider Provider()
     {
@@ -50,47 +54,51 @@ internal sealed class ConnectionsTests
         (await bob.ExecuteAsync(model => model.TouchCommand)).ThrowIfFailed();
         (await bob.ExecuteAsync(model => model.TouchLaterCommand)).ThrowIfFailed();
         (await alice.ExecuteAsync(model => model.TouchLaterCommand)).ThrowIfFailed();
+        var a = Own(alice);
+        var b = Own(bob);
+        Require(a.ConnectionKey.StartsWith(Alice.ConnectionKey + "#", StringComparison.Ordinal) && a.ClientKey == Alice.ClientKey,
+            $"The window's key of the connection is {a.ConnectionKey}.");
 
-        Require(vm.Callers.SequenceEqual([Alice, Bob, Bob, Alice]),
+        Require(vm.Callers.SequenceEqual([a, b, b, a]),
             $"The commands did not run with their connections as callers: {string.Join(", ", vm.Callers)}");
-        Require(connections.Current.SequenceEqual([Alice, Bob]) && host.Connections.Current.SequenceEqual([Alice, Bob]),
+        Require(connections.Current.SequenceEqual([a, b]) && host.Connections.Current.SequenceEqual([a, b]),
             $"The window did not list both connections in connection order: {string.Join(", ", connections.Current)}");
         Require(vm.Viewers == 2 && (await alice.SnapshotAsync()).Read(model => model.Viewers) == 2,
             "Connected did not run in a model turn whose change the page sees.");
         Require(connections.Caller is null, "The test's own flow, outside a command, has a caller.");
-        Require(changes.Count == 3 && changes[0].Count == 0 && changes[2].SequenceEqual([Alice, Bob]),
+        Require(changes.Count == 3 && changes[0].Count == 0 && changes[2].SequenceEqual([a, b]),
             $"WhenChanged did not emit the list on subscribe and after each change: {changes.Count}");
 
         // Each connection keeps its own draft; a disconnect removes and disposes it.
         (await alice.ExecuteAsync<string>(model => model.TypeCommand, "alice's")).ThrowIfFailed();
         (await bob.ExecuteAsync<string>(model => model.TypeCommand, "bob's")).ThrowIfFailed();
         var drafts = vm.Drafts.Values;
-        Require(drafts.Count == 2 && drafts[Alice.ConnectionKey].Text == "alice's" && drafts[Bob.ConnectionKey].Text == "bob's",
+        Require(drafts.Count == 2 && drafts[a.ConnectionKey].Text == "alice's" && drafts[b.ConnectionKey].Text == "bob's",
             "The drafts were not kept per caller.");
-        var bobsDraft = drafts[Bob.ConnectionKey];
+        var bobsDraft = drafts[b.ConnectionKey];
 
         host.Transport.CloseConnection(Bob.ConnectionKey);
         await host.Content.ModelContext!.InvokeAsync(static () => { });
-        Require(connections.Current.SequenceEqual([Alice]) && vm.Viewers == 1 && vm.Left.SequenceEqual([Bob]),
+        Require(connections.Current.SequenceEqual([a]) && vm.Viewers == 1 && vm.Left.SequenceEqual([b]) && bob.Connection is null,
             "Disconnected did not remove the closed connection.");
-        Require(bobsDraft.Disposed && !vm.Drafts.Values.ContainsKey(Bob.ConnectionKey) && !vm.Drafts.TryGet(Bob, out _),
+        Require(bobsDraft.Disposed && !vm.Drafts.Values.ContainsKey(b.ConnectionKey) && !vm.Drafts.TryGet(b, out _),
             "The closed connection's draft was not removed, or a new one was created for it.");
-        Require(vm.Drafts.TryGet(Alice, out var alicesDraft) && alicesDraft.Text == "alice's", "The open connection lost its draft.");
-        Require(changes.Count == 4 && changes[3].SequenceEqual([Alice]), "WhenChanged did not emit the disconnect.");
+        Require(vm.Drafts.TryGet(a, out var alicesDraft) && alicesDraft.Text == "alice's", "The open connection lost its draft.");
+        Require(changes.Count == 4 && changes[3].SequenceEqual([a]), "WhenChanged did not emit the disconnect.");
 
         // A reconnect is a new connection with an empty draft.
         var again = host.Root.ForConnection("connection-bob-2", Bob.ClientKey);
         (await again.ExecuteAsync(model => model.TouchCommand)).ThrowIfFailed();
-        Require(vm.Callers[^1] == new RunicConnection("connection-bob-2", Bob.ClientKey) && connections.Current.Count == 2
-            && !vm.Drafts.Values.ContainsKey("connection-bob-2"), "A reconnect was not a new connection.");
+        Require(vm.Callers[^1] == Own(again) && connections.Current.Count == 2
+            && !vm.Drafts.Values.ContainsKey(Own(again).ConnectionKey), "A reconnect was not a new connection.");
 
         // A transport that reuses Bob's closed key, as CS-WebUI reuses WebUI's slots: the window gives it a new key.
         var reused = host.Root.ForConnection(Bob.ConnectionKey, Bob.ClientKey);
         (await reused.ExecuteAsync(model => model.TouchCommand)).ThrowIfFailed();
-        var reusedConnection = new RunicConnection(Bob.ConnectionKey + "#2", Bob.ClientKey);
-        Require(vm.Callers[^1] == reusedConnection && connections.Current.Contains(reusedConnection) && !connections.Current.Contains(Bob),
-            $"The reused transport key did not get a new connection key: {vm.Callers[^1]}");
-        Require(!vm.Drafts.TryGet(Bob, out _), "The closed connection's key reached the connection that reused it.");
+        var reusedConnection = Own(reused);
+        Require(reusedConnection != b && vm.Callers[^1] == reusedConnection && connections.Current.Contains(reusedConnection)
+            && !connections.Current.Contains(b), $"The reused transport key did not get a new connection key: {vm.Callers[^1]}");
+        Require(!vm.Drafts.TryGet(b, out _), "The closed connection's key reached the connection that reused it.");
     }
 
     [Test]
@@ -108,7 +116,7 @@ internal sealed class ConnectionsTests
         var release = new TaskCompletionSource();
         var busy = host.Content.ModelContext!.InvokeAsync(() => release.Task.Wait());
         host.Transport.Request(Hello("s-early"), "connection-early", "client-early");
-        var early = new RunicConnection("connection-early", "client-early");
+        var early = new RunicConnection(host.Content.Dispatcher.ConnectionKeyOf("connection-early")!, "client-early");
         Require(!vm.Drafts.TryGet(early, out _), "A value was created for a connection before its Connected turn.");
         host.Transport.CloseConnection("connection-early");
         release.SetResult();
@@ -127,7 +135,8 @@ internal sealed class ConnectionsTests
         var vm = window.ViewModel;
         var bob = host.Root.ForConnection(Bob.ConnectionKey, Bob.ClientKey);
         (await bob.ExecuteAsync<string>(model => model.TypeCommand, "bob's")).ThrowIfFailed();
-        var bobsDraft = vm.Drafts.Values[Bob.ConnectionKey];
+        var b = Own(bob);
+        var bobsDraft = vm.Drafts.Values[b.ConnectionKey];
 
         var hold = bob.ExecuteAsync(model => model.HoldCommand);
         await vm.HoldStarted.Task.WaitScaledAsync(TimeSpan.FromSeconds(5));
@@ -136,12 +145,12 @@ internal sealed class ConnectionsTests
         // Another page gets Bob's transport key while his command still awaits.
         var next = host.Root.ForConnection(Bob.ConnectionKey, Bob.ClientKey);
         (await next.ExecuteAsync(model => model.TouchCommand)).ThrowIfFailed();
-        var nextConnection = new RunicConnection(Bob.ConnectionKey + "#2", Bob.ClientKey);
-        Require(vm.Callers[^1] == nextConnection, $"The page that reused the key was {vm.Callers[^1]}.");
+        var nextConnection = Own(next);
+        Require(nextConnection != b && vm.Callers[^1] == nextConnection, $"The page that reused the key was {vm.Callers[^1]}.");
 
         vm.HoldGate.SetResult();
         var (caller, hasDraft) = await vm.HoldDone.Task.WaitScaledAsync(TimeSpan.FromSeconds(5));
-        Require(caller == Bob, $"The resumed command's caller was {caller}, not its own closed connection.");
+        Require(caller == b, $"The resumed command's caller was {caller}, not its own closed connection.");
         Require(!hasDraft && bobsDraft.Disposed && !vm.Drafts.Values.ContainsKey(nextConnection.ConnectionKey),
             "The resumed command got a draft for its closed connection, or the next page's.");
         try { await hold.WaitScaledAsync(TimeSpan.FromSeconds(5)); }
@@ -159,13 +168,14 @@ internal sealed class ConnectionsTests
             .Handle(model => model.Confirm, _ => true);
         using var bobPage = (await host.Root.MountPresentationAsync(clientKey: Bob.ClientKey, connectionKey: Bob.ConnectionKey))
             .Handle(model => model.Confirm, _ => true);
-        (await host.Root.ForConnection(Bob.ConnectionKey, Bob.ClientKey).ExecuteAsync(model => model.StartBackgroundCommand)).ThrowIfFailed();
+        var bob = host.Root.ForConnection(Bob.ConnectionKey, Bob.ClientKey);
+        (await bob.ExecuteAsync(model => model.StartBackgroundCommand)).ThrowIfFailed();
 
         // The command ended; its background work runs on. Outside a scope, a question with two pages that handle it asks
         // neither and uses its fallback, instead of asking the page whose command ended.
         vm.BackgroundGate.SetResult();
         var (caller, inCommand, answer) = await vm.Background!.WaitScaledAsync(TimeSpan.FromSeconds(5));
-        Require(inCommand == Bob && caller is null, $"Work that outlived its command kept the caller {caller}.");
+        Require(inCommand == Own(bob) && caller is null, $"Work that outlived its command kept the caller {caller}.");
         Require(!answer, "A question asked after the command ended still reached the command's page.");
 
         // EnterWindow inside such work is the documented way to reach the window's page.
@@ -196,12 +206,12 @@ internal sealed class ConnectionsTests
         };
 
         // A page connects while the reporting thread runs in another page's live invocation; its handlers run in neither.
-        using (RunicInteractionInvocation.Enter(host.Content, host.RootRoute, Alice.ClientKey, Alice.ConnectionKey))
+        using (RunicInteractionInvocation.Enter(host.Content, host.RootRoute, Alice.ClientKey, "connection-reporting"))
         {
             host.Transport.Request(Hello("s-carol"), "connection-carol", "client-carol");
             await Turn(host);
         }
-        var carol = new RunicConnection("connection-carol", "client-carol");
+        var carol = new RunicConnection(host.Content.Dispatcher.ConnectionKeyOf("connection-carol")!, "client-carol");
         Require(handlerRan && vm.Connections.Current.SequenceEqual([carol]) && vm.Viewers == 1,
             "The handlers after a throwing one did not run.");
         Require(handlerInvocation is null && handlerCaller is null, "A Connected handler ran in the reporting thread's invocation.");
@@ -216,16 +226,18 @@ internal sealed class ConnectionsTests
 
         // Disposal on disconnect and on Dispose; one throwing value does not stop the others.
         (await host.Root.ExecuteAsync<string>(model => model.TypeCommand, "alice's")).ThrowIfFailed();
+        var a = Own(host.Root);
         var bob = host.Root.ForConnection(Bob.ConnectionKey, Bob.ClientKey);
         (await bob.ExecuteAsync<string>(model => model.TypeCommand, "bob's")).ThrowIfFailed();
+        var b = Own(bob);
         var drafts = vm.Drafts.Values;
         foreach (var draft in drafts.Values) draft.ThrowOnDispose = true;
         host.Transport.CloseConnection(Bob.ConnectionKey);
         await Turn(host);
-        Require(drafts[Bob.ConnectionKey].Disposed && !vm.Drafts.Values.ContainsKey(Bob.ConnectionKey) && vm.Left.SequenceEqual([Bob]),
+        Require(drafts[b.ConnectionKey].Disposed && !vm.Drafts.Values.ContainsKey(b.ConnectionKey) && vm.Left.SequenceEqual([b]),
             "The disconnected connection's draft was not disposed and removed.");
         vm.Dispose();
-        Require(drafts[Alice.ConnectionKey].Disposed && drafts[carol.ConnectionKey].Disposed && vm.Drafts.Values.Count == 0,
+        Require(drafts[a.ConnectionKey].Disposed && drafts[carol.ConnectionKey].Disposed && vm.Drafts.Values.Count == 0,
             "A throwing Dispose stopped the others.");
         Require(logs.Entries.Count(entry => entry.EventId.Id == 1231) == 3, "The throwing disposals were not logged as event 1231.");
     }
@@ -242,7 +254,7 @@ internal sealed class ConnectionsTests
         connections.Connected += (_, _) => raised++;
         connections.Disconnected += (_, _) => raised++;
         transport.Request(Hello("s-late"), "connection-late", "client-late");
-        Require(connections.Current.SequenceEqual([new RunicConnection("connection-late", "client-late")]) && raised == 0,
+        Require(connections.Current.SequenceEqual([new RunicConnection(session.Dispatcher.ConnectionKeyOf("connection-late")!, "client-late")]) && raised == 0,
             "A window whose context takes no turns did not follow its connection, or raised an event outside a turn.");
         transport.CloseConnection("connection-late");
         Require(connections.Current.Count == 0 && raised == 0, "The close was not followed, or raised an event outside a turn.");
@@ -293,14 +305,16 @@ internal sealed class ConnectionsTests
         var firstHost = ((TestWindow<ConnectionsViewModel>)first.Host).Host;
         var secondHost = ((TestWindow<ConnectionsViewModel>)second.Host).Host;
         (await firstHost.Root.ExecuteAsync(model => model.TouchCommand)).ThrowIfFailed();
-        (await secondHost.Root.ForConnection(Bob.ConnectionKey, Bob.ClientKey).ExecuteAsync(model => model.TouchCommand)).ThrowIfFailed();
-        Require(first.ViewModel.Connections.Current.SequenceEqual([Alice]) && second.ViewModel.Connections.Current.SequenceEqual([Bob]),
+        var secondBob = secondHost.Root.ForConnection(Bob.ConnectionKey, Bob.ClientKey);
+        (await secondBob.ExecuteAsync(model => model.TouchCommand)).ThrowIfFailed();
+        var a = Own(firstHost.Root);
+        Require(first.ViewModel.Connections.Current.SequenceEqual([a]) && second.ViewModel.Connections.Current.SequenceEqual([Own(secondBob)]),
             "A window listed another window's connection.");
 
         // A command of the first window that reads the second window's connections has no caller there.
-        using (RunicInteractionInvocation.Enter(firstHost.Content, firstHost.RootRoute, Alice.ClientKey, Alice.ConnectionKey))
+        using (RunicInteractionInvocation.Enter(firstHost.Content, firstHost.RootRoute, a.ClientKey, a.ConnectionKey))
         {
-            Require(first.ViewModel.Connections.Caller == Alice, "The window's own command had no caller.");
+            Require(first.ViewModel.Connections.Caller == a, "The window's own command had no caller.");
             Require(second.ViewModel.Connections.Caller is null, "Another window's command was reported as a caller.");
         }
         // The window scope and code that enters a window carry no identity.
@@ -327,9 +341,10 @@ internal sealed class ConnectionsTests
         host.Connections.Connected += (_, _) => seen++;
         (await host.Root.ExecuteAsync(model => model.TouchCommand)).ThrowIfFailed();
         await host.Content.ModelContext!.InvokeAsync(static () => { });
-        Require(seen == 1 && host.Connections.Current.SequenceEqual([Alice]), "A throwing handler stopped the others.");
+        var a = Own(host.Root);
+        Require(seen == 1 && host.Connections.Current.SequenceEqual([a]), "A throwing handler stopped the others.");
         // RunicWindowTestHost.Create binds the IRunicConnections of the services it was given.
-        Require(unbound.Current.SequenceEqual([Alice]) && host.ViewModel.Callers.SequenceEqual([Alice]),
+        Require(unbound.Current.SequenceEqual([a]) && host.ViewModel.Callers.SequenceEqual([a]),
             "Create did not bind the services' IRunicConnections to the test window.");
     }
 

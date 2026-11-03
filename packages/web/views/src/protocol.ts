@@ -9,6 +9,11 @@ export type Message = Readonly<Record<string, unknown>>;
  * route's epoch, and a `command` may carry the epoch it was issued for; a stale one is `superseded`.
  */
 export const presentationEpochFeature = "presentation-epoch/1";
+/**
+ * request-session/1 (specs/application/README.md, "Request sessions"): every request names the session of its
+ * connection's `hello`, so a request of another page never acts for this connection.
+ */
+export const requestSessionFeature = "request-session/1";
 /** `presented/1` (specs/application/README.md, "Presented states and window close"): `present` asks the page to report a painted revision; `closing` a close. */
 export const presentedFeature = "presented/1";
 /** `view-requests/1` (specs/application/README.md, "View requests"): the producer pushes one-way `view-request`s to presentations that registered handlers. */

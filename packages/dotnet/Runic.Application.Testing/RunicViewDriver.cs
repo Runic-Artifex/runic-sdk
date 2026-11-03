@@ -61,6 +61,18 @@ public sealed class RunicViewDriver<TModel> where TModel : class
     public string ClientKey => _clientKey ?? InMemoryBridgeTransport.DefaultClientKey;
 
     /// <summary>
+    /// The window's own connection for this driver's connection, as <see cref="IRunicConnections"/> reports it, while it is
+    /// open; <see langword="null"/> before its first request and after it closed.
+    /// </summary>
+    /// <remarks>
+    /// The window gives each connection a key of its own, which no later connection reuses: on this transport, whose keys
+    /// can repeat, it is <see cref="ConnectionKey"/> with a <c>#n</c> suffix. Compare a command's
+    /// <see cref="IRunicConnections.Caller"/> with it.
+    /// </remarks>
+    public RunicConnection? Connection =>
+        BridgeDispatcher.For(_transport).ConnectionKeyOf(_connectionKey) is { } key ? new RunicConnection(key, ClientKey) : null;
+
+    /// <summary>
     /// Returns a driver of this route whose requests, and the drivers and operations it returns, use another page
     /// connection, as a second browser tab of a multi-client window does.
     /// </summary>

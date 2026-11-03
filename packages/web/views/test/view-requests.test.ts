@@ -35,6 +35,7 @@ function installBridge(features: readonly string[] = allFeatures) {
   const connection = new Set<(connected: boolean) => void>();
   let connected = true;
   let revision = 1;
+  let hello: string | undefined;
   const sent: Record<string, unknown>[] = [];
   const state = { registration: "ok" };
   const bridge: RunicBridgeClient = {
@@ -42,8 +43,11 @@ function installBridge(features: readonly string[] = allFeatures) {
     onConnectionChange(report) { connection.add(report); report(connected); return () => { connection.delete(report); }; },
     onMessage(next) { listeners.add(next); return () => { listeners.delete(next); }; },
     request(text) {
-      const message = JSON.parse(text) as Record<string, unknown>;
+      const { session, ...message } = JSON.parse(text) as Record<string, unknown>;
       if (!connected) return Promise.reject(new Error("disconnected"));
+      // request-session/1: every request names the session of its connection's hello.
+      if (message["kind"] === "hello") hello = session as string;
+      else assert.equal(session, hello, `${String(message["kind"])} does not name the session of its hello`);
       sent.push(message);
       const reply = (value: object) => Promise.resolve(JSON.stringify(value));
       switch (message["kind"]) {

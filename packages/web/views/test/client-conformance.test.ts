@@ -79,7 +79,7 @@ const modelOf = (route: string) => route.startsWith("content") ? models["detail"
 
 /* ------------------------------------------------------------------ the scripted host */
 
-interface Connection { readonly name: string; readonly sent: { message: Json; text: string; resolve(text: string): void; reject(error: Error): void }[] }
+interface Connection { readonly name: string; session?: string; readonly sent: { message: Json; text: string; resolve(text: string): void; reject(error: Error): void }[] }
 
 class ScriptedHost {
   connected = false;
@@ -402,6 +402,18 @@ async function run(scenario: Scenario): Promise<void> {
         for (let wait = 0; connection.sent.length === 0 && wait < 50; wait++) await new Promise(resolve => setTimeout(resolve, 2));
         const sent = connection.sent.shift();
         assert.ok(sent, `${scenario.id} ${at}: the client sent no request; expected ${JSON.stringify(step["send"])}`);
+        // request-session/1 (conformance README, "Comparing messages"): a client names the session of its connection's
+        // hello in every request, also before the hello's reply. Checked here, and compared as a member only where the
+        // scenario lists it.
+        const sentMessage = sent.message as Record<string, Json>;
+        if (sentMessage["kind"] === "hello") connection.session = sentMessage["session"] as string;
+        else if (Object.hasOwn(sentMessage, "session")) {
+          assert.equal(sentMessage["session"], connection.session, `${scenario.id} ${at}: the request names another session than its hello`);
+          if (!Object.hasOwn(step["send"] as Record<string, Json>, "session")) {
+            const { session: _, ...rest } = sentMessage;
+            sent.message = rest as Json;
+          }
+        }
         const problem = matches(sent.message, step["send"], ids);
         assert.equal(problem, undefined, `${scenario.id} ${at}: ${problem}\n  sent ${sent.text}`);
         requests.set(step["id"], sent);
