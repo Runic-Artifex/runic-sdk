@@ -87,3 +87,8 @@ with JIT and NativeAOT.
 
 `--treenode-filter "/*/*/*/*[Category=NativeNetwork]"` reads and watches the runner's
 connectivity hint without asserting its state. CI runs it with JIT and NativeAOT.
+
+`--treenode-filter "/*/*/*/*[Category=NativePower]"` reads the runner's power status and
+starts three power event watches, whose hidden window registers for power, suspend and
+session notifications and unregisters, without asserting the state. CI runs it with JIT
+and NativeAOT.

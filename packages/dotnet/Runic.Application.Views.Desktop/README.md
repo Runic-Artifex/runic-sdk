@@ -463,6 +463,13 @@ The same Window and `async host => ...` body run on CS-WebUI with
   boxes: task dialogs on Windows, also for a WPF window, sheets on macOS and GTK
   message or alert dialogs on Linux; see
   [Message boxes](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Platform/README.md#message-boxes).
+- `AddRunicPlatformServices()` also registers `IDesktopPowerEvents`, one singleton
+  created by `DesktopPlatformServices.CreatePowerEvents()`: sleep, wake, session
+  lock and battery events from `WM_POWERBROADCAST` and WTS on Windows, `NSWorkspace`
+  and IOKit on macOS, and logind and UPower on Linux. It decides on first use: once a
+  `RunicDesktopHost` with `ServeOnly` was built on the provider, or under
+  `RUNIC_APPLICATION_SERVE_ONLY=1`, it reports `Unavailable` and opens no watches; see
+  [Power events](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Platform/README.md#power-events).
 - `AddRunicPlatformServices()` also registers `IDesktopRecentDocuments`, the
   application's recent documents (`DesktopPlatformServices.CreateRecentDocuments()`):
   Open Recent and the Dock on macOS, Recent items and the Jump List on Windows,

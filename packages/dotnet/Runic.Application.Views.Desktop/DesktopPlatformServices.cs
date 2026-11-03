@@ -739,6 +739,74 @@ public static partial class DesktopPlatformServices
     [MethodImpl(MethodImplOptions.NoInlining)]
     private static IDesktopVolumes CreateWindowsVolumes() => WindowsPlatformProvider.CreateVolumes();
 
+    /// <summary>Creates the computer's sleep, wake, session lock and battery events.</summary>
+    /// <remarks>
+    /// Windows follows <c>WM_POWERBROADCAST</c> and <c>WTSRegisterSessionNotification</c> on a hidden window of its own,
+    /// macOS <c>NSWorkspace</c>'s sleep and wake notifications, the screen lock notifications and IOKit's power source,
+    /// and Linux logind's <c>PrepareForSleep</c> and session lock, UPower's <c>OnBattery</c> and the power-saver
+    /// profile on the system bus, with either toolkit and without loading GTK. It needs no window. Under
+    /// <c>RUNIC_APPLICATION_SERVE_ONLY=1</c>, whose Windows are shown in a browser that may run on another computer,
+    /// it reports <see cref="PlatformUnavailableReason.BackendUnavailable"/>.
+    /// <see cref="DesktopPlatformServiceCollectionExtensions.AddRunicPlatformServices(IServiceCollection)"/> registers
+    /// one instance for the application, which decides on first use, so <c>RunicDesktopHostOptions.ServeOnly</c> of the
+    /// host built on that provider counts too and a headless server opens no system bus watches.
+    /// </remarks>
+    public static IDesktopPowerEvents CreatePowerEvents()
+    {
+        if (RunicDesktopHost.ServeOnlyRequested) return DesktopPowerEvents.Unavailable(PlatformUnavailableReason.BackendUnavailable);
+        IDesktopPowerEvents? events = null;
+        if (OperatingSystem.IsWindowsVersionAtLeast(8)) events = Optional(CreateWindowsPowerEvents);
+#if RUNIC_PORTABLE_PLATFORMS
+        else if (OperatingSystem.IsMacOS()) events = CreateMacOSPowerEvents();
+        else if (OperatingSystem.IsLinux()) events = CreatePortalPowerEvents();
+#endif
+        return events ?? DesktopPowerEvents.Unavailable(PlatformUnavailableReason.ProviderNotConfigured);
+    }
+
+    // AddRunicPlatformServices: decided on first use, once a RunicDesktopHost recorded RunicDesktopHostOptions.ServeOnly.
+    internal static IDesktopPowerEvents CreatePowerEvents(DesktopServeOnlyState serveOnly) =>
+        new LazyPowerEvents(() => serveOnly.Choose(CreatePowerEvents, DesktopPowerEvents.Unavailable));
+
+    private sealed class LazyPowerEvents(Func<IDesktopPowerEvents> create) : IDesktopPowerEvents, IDesktopServiceStatus
+    {
+        private readonly Lazy<IDesktopPowerEvents> _inner = new(create);
+        private volatile bool _disposed;
+
+        public CapabilityStatus Status => DesktopServiceStatus.Get(_inner.Value);
+
+        public ValueTask<PlatformResult<DesktopPowerState>> ReadAsync(CancellationToken cancellationToken = default)
+        {
+            ObjectDisposedException.ThrowIf(_disposed, this);
+            return _inner.Value.ReadAsync(cancellationToken);
+        }
+
+        public IAsyncEnumerable<PlatformResult<DesktopPowerEvent>> WatchAsync(CancellationToken cancellationToken = default)
+        {
+            ObjectDisposedException.ThrowIf(_disposed, this);
+            return _inner.Value.WatchAsync(cancellationToken);
+        }
+
+        public ValueTask DisposeAsync()
+        {
+            _disposed = true;
+            return _inner.IsValueCreated ? _inner.Value.DisposeAsync() : ValueTask.CompletedTask;
+        }
+    }
+
+    [SupportedOSPlatform("windows")]
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static IDesktopPowerEvents CreateWindowsPowerEvents() => WindowsPlatformProvider.CreatePowerEvents();
+
+#if RUNIC_PORTABLE_PLATFORMS
+    [SupportedOSPlatform("macos")]
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static IDesktopPowerEvents CreateMacOSPowerEvents() => MacOSPlatformProvider.CreatePowerEvents();
+
+    [SupportedOSPlatform("linux")]
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static IDesktopPowerEvents CreatePortalPowerEvents() => PortalApplication.Inferred.CreatePowerEvents();
+#endif
+
     /// <summary>Creates the application's recent documents, which the desktop lists for reopening.</summary>
     /// <remarks>
     /// macOS adds them to Open Recent and the Dock menu (<c>NSDocumentController</c>, on the main thread that Runic
@@ -1883,7 +1951,7 @@ public static class DesktopPlatformServiceCollectionExtensions
     /// <see cref="IApplicationPlatformServices"/> (<see cref="DesktopPlatformServices.ForApplication"/>), <see cref="IDesktopSettings"/>, <see cref="IDesktopNotifications"/>,
     /// <see cref="IDesktopStatusIcon"/>, <see cref="IDesktopGlobalShortcuts"/>, <see cref="IDesktopLoginStartup"/>, <see cref="IDesktopInhibition"/>,
     /// <see cref="IDesktopSecretStore"/>, <see cref="IDesktopTrash"/>, <see cref="IDesktopFileTransfers"/>,
-    /// <see cref="IDesktopVolumes"/>, <see cref="IDesktopNetworkStatus"/>, <see cref="IDesktopRecentDocuments"/>, <see cref="IDesktopApplications"/>,
+    /// <see cref="IDesktopVolumes"/>, <see cref="IDesktopNetworkStatus"/>, <see cref="IDesktopPowerEvents"/>, <see cref="IDesktopRecentDocuments"/>, <see cref="IDesktopApplications"/>,
     /// <see cref="IDesktopThumbnails"/> and <see cref="IDesktopFileBookmarks"/> for the application, without an application ID.
     /// </summary>
     /// <remarks>
@@ -1899,7 +1967,7 @@ public static class DesktopPlatformServiceCollectionExtensions
     /// <see cref="DesktopPlatformServices.CreateNotifications(string?)"/>, <see cref="DesktopPlatformServices.CreateStatusIcon(string?)"/>,
     /// <see cref="DesktopPlatformServices.CreateGlobalShortcuts(string?)"/>, <see cref="DesktopPlatformServices.CreateLoginStartup(string?)"/>, <see cref="DesktopPlatformServices.CreateInhibition(string?)"/>,
     /// <see cref="DesktopPlatformServices.CreateSecretStore()"/>, <see cref="DesktopPlatformServices.CreateTrash()"/>,
-    /// <see cref="DesktopPlatformServices.CreateFileTransfers()"/>, <see cref="DesktopPlatformServices.CreateVolumes"/>, <see cref="DesktopPlatformServices.CreateNetworkStatus"/>, <see cref="DesktopPlatformServices.CreateRecentDocuments()"/>, <see cref="DesktopPlatformServices.CreateApplications()"/>
+    /// <see cref="DesktopPlatformServices.CreateFileTransfers()"/>, <see cref="DesktopPlatformServices.CreateVolumes"/>, <see cref="DesktopPlatformServices.CreateNetworkStatus"/>, <see cref="DesktopPlatformServices.CreatePowerEvents()"/>, <see cref="DesktopPlatformServices.CreateRecentDocuments()"/>, <see cref="DesktopPlatformServices.CreateApplications()"/>
     /// and <see cref="DesktopPlatformServices.CreateThumbnails()"/> when first resolved, and disposed with the service provider. Without an application ID, Linux notifications
     /// use the identity the desktop portal infers and Windows notifications report
     /// <see cref="PlatformUnavailableReason.ProviderNotConfigured"/>; pass the ID to
@@ -1965,6 +2033,7 @@ public static class DesktopPlatformServiceCollectionExtensions
                 provider.GetService<ILoggerFactory>()?.CreateLogger(DesktopBridgeTransport.LogCategory)));
         services.TryAddSingleton(static _ => DesktopPlatformServices.CreateVolumes());
         services.TryAddSingleton(static _ => DesktopPlatformServices.CreateNetworkStatus());
+        services.TryAddSingleton(static provider => DesktopPlatformServices.CreatePowerEvents(provider.GetRequiredService<DesktopServeOnlyState>()));
         services.TryAddSingleton(provider => DesktopPlatformServices.CreateRecentDocuments(provider.GetRequiredService<DesktopServeOnlyState>(), applicationId));
         services.TryAddSingleton(static provider => DesktopPlatformServices.CreateApplications(
             provider.GetService<ILoggerFactory>()?.CreateLogger(DesktopBridgeTransport.LogCategory)));

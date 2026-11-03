@@ -4,3 +4,43 @@ Runic.Platform.IDesktopRecentDocuments
 Runic.Platform.IDesktopRecentDocuments.AddAsync(string! path, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Platform.PlatformResult<Runic.Platform.PlatformUnit>!>
 Runic.Platform.IDesktopRecentDocuments.ClearAsync(System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Platform.PlatformResult<Runic.Platform.PlatformUnit>!>
 static Runic.Platform.DesktopRecentDocuments.Unavailable(Runic.Platform.PlatformUnavailableReason reason) -> Runic.Platform.IDesktopRecentDocuments!
+Runic.Platform.DesktopPowerEvent
+Runic.Platform.DesktopPowerEvent.<Clone>$() -> Runic.Platform.DesktopPowerEvent!
+Runic.Platform.DesktopPowerEvent.Deconstruct(out Runic.Platform.DesktopPowerEventKind Kind, out Runic.Platform.DesktopPowerState! State) -> void
+Runic.Platform.DesktopPowerEvent.DesktopPowerEvent(Runic.Platform.DesktopPowerEventKind Kind, Runic.Platform.DesktopPowerState! State) -> void
+Runic.Platform.DesktopPowerEvent.Equals(Runic.Platform.DesktopPowerEvent? other) -> bool
+Runic.Platform.DesktopPowerEvent.Kind.get -> Runic.Platform.DesktopPowerEventKind
+Runic.Platform.DesktopPowerEvent.Kind.init -> void
+Runic.Platform.DesktopPowerEvent.State.get -> Runic.Platform.DesktopPowerState!
+Runic.Platform.DesktopPowerEvent.State.init -> void
+Runic.Platform.DesktopPowerEventKind
+Runic.Platform.DesktopPowerEventKind.Locked = 3 -> Runic.Platform.DesktopPowerEventKind
+Runic.Platform.DesktopPowerEventKind.Resumed = 2 -> Runic.Platform.DesktopPowerEventKind
+Runic.Platform.DesktopPowerEventKind.StateChanged = 0 -> Runic.Platform.DesktopPowerEventKind
+Runic.Platform.DesktopPowerEventKind.Suspending = 1 -> Runic.Platform.DesktopPowerEventKind
+Runic.Platform.DesktopPowerEventKind.Unlocked = 4 -> Runic.Platform.DesktopPowerEventKind
+Runic.Platform.DesktopPowerEvents
+Runic.Platform.DesktopPowerState
+Runic.Platform.DesktopPowerState.<Clone>$() -> Runic.Platform.DesktopPowerState!
+Runic.Platform.DesktopPowerState.DesktopPowerState() -> void
+Runic.Platform.DesktopPowerState.Equals(Runic.Platform.DesktopPowerState? other) -> bool
+Runic.Platform.DesktopPowerState.IsLocked.get -> bool?
+Runic.Platform.DesktopPowerState.IsLocked.init -> void
+Runic.Platform.DesktopPowerState.IsLowPower.get -> bool?
+Runic.Platform.DesktopPowerState.IsLowPower.init -> void
+Runic.Platform.DesktopPowerState.IsOnBattery.get -> bool?
+Runic.Platform.DesktopPowerState.IsOnBattery.init -> void
+Runic.Platform.IDesktopPowerEvents
+Runic.Platform.IDesktopPowerEvents.ReadAsync(System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Platform.PlatformResult<Runic.Platform.DesktopPowerState!>!>
+Runic.Platform.IDesktopPowerEvents.WatchAsync(System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Collections.Generic.IAsyncEnumerable<Runic.Platform.PlatformResult<Runic.Platform.DesktopPowerEvent!>!>!
+override Runic.Platform.DesktopPowerEvent.Equals(object? obj) -> bool
+override Runic.Platform.DesktopPowerEvent.GetHashCode() -> int
+override Runic.Platform.DesktopPowerEvent.ToString() -> string!
+override Runic.Platform.DesktopPowerState.Equals(object? obj) -> bool
+override Runic.Platform.DesktopPowerState.GetHashCode() -> int
+override Runic.Platform.DesktopPowerState.ToString() -> string!
+static Runic.Platform.DesktopPowerEvent.operator !=(Runic.Platform.DesktopPowerEvent? left, Runic.Platform.DesktopPowerEvent? right) -> bool
+static Runic.Platform.DesktopPowerEvent.operator ==(Runic.Platform.DesktopPowerEvent? left, Runic.Platform.DesktopPowerEvent? right) -> bool
+static Runic.Platform.DesktopPowerEvents.Unavailable(Runic.Platform.PlatformUnavailableReason reason) -> Runic.Platform.IDesktopPowerEvents!
+static Runic.Platform.DesktopPowerState.operator !=(Runic.Platform.DesktopPowerState? left, Runic.Platform.DesktopPowerState? right) -> bool
+static Runic.Platform.DesktopPowerState.operator ==(Runic.Platform.DesktopPowerState? left, Runic.Platform.DesktopPowerState? right) -> bool
