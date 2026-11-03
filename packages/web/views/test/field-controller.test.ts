@@ -102,7 +102,7 @@ test("a checked write is based on the value and version the draft started from, 
   client.set({ title: "Draft 12" });
   client.calls[1]!.resolve({ kind: "applied", snapshot: { value: "Draft 12", version: 6 } });
   await flush();
-  assert.deepEqual(controller.current, { value: "Draft 12", text: "Draft 12", editing: false, error: undefined, errors: [], conflict: undefined });
+  assert.deepEqual(controller.current, { value: "Draft 12", text: "Draft 12", editing: false, error: undefined, errors: [], conflict: undefined, validating: false });
   // The next draft starts from the state's version again.
   client.versions.title = 9;
   controller.inputText("Next");
@@ -149,7 +149,7 @@ test("a conflict keeps the draft and writes nothing until retry or reset", async
   client.set({ title: "Again" });
   controller.reset();
   controller.setSource({ state: client.snapshot, client });
-  assert.deepEqual(controller.current, { value: "Again", text: "Again", editing: false, error: undefined, errors: [], conflict: undefined });
+  assert.deepEqual(controller.current, { value: "Again", text: "Again", editing: false, error: undefined, errors: [], conflict: undefined, validating: false });
 });
 
 test("a conflict whose incoming value is the value sent is an applied write", async () => {
@@ -158,7 +158,7 @@ test("a conflict whose incoming value is the value sent is an applied write", as
   client.set({ title: "Same" });
   client.calls[0]!.resolve({ kind: "conflict", incoming: { value: "Same", version: 4 }, message: "Changed." });
   await flush();
-  assert.deepEqual(controller.current, { value: "Same", text: "Same", editing: false, error: undefined, errors: [], conflict: undefined });
+  assert.deepEqual(controller.current, { value: "Same", text: "Same", editing: false, error: undefined, errors: [], conflict: undefined, validating: false });
 });
 
 test("committed-with-error drops the draft and reports the error; applied.validation is errors without a state source", async () => {
@@ -341,7 +341,7 @@ test("a checked field against the mock bridge: applied, then a conflict with ano
   controller.inputText("b");
   controller.commit();
   await until(() => !controller.current.editing);
-  assert.deepEqual(controller.current, { value: "b", text: "b", editing: false, error: undefined, errors: [], conflict: undefined });
+  assert.deepEqual(controller.current, { value: "b", text: "b", editing: false, error: undefined, errors: [], conflict: undefined, validating: false });
   // Another writer changes the field after the draft started: the write conflicts and keeps the draft.
   controller.inputText("c");
   await view.set("title", "other");
@@ -350,7 +350,7 @@ test("a checked field against the mock bridge: applied, then a conflict with ano
   assert.equal(controller.current.value, "c");
   assert.equal((controller.current.conflict as FieldBaseline<string> | undefined)?.value, "other");
   controller.reset();
-  assert.deepEqual(controller.current, { value: "other", text: "other", editing: false, error: undefined, errors: [], conflict: undefined });
+  assert.deepEqual(controller.current, { value: "other", text: "other", editing: false, error: undefined, errors: [], conflict: undefined, validating: false });
   controller.dispose();
   view.dispose();
 });
@@ -407,7 +407,7 @@ test("with notifications paced by animation frames, a settled write drops the dr
     controller.inputText("b ");
     const state = await controller.commit();
     // The producer trimmed the value; the field shows it without waiting for an animation frame.
-    assert.deepEqual(state, { value: "b", text: "b", editing: false, error: undefined, errors: [], conflict: undefined });
+    assert.deepEqual(state, { value: "b", text: "b", editing: false, error: undefined, errors: [], conflict: undefined, validating: false });
     assert.equal(controller.current, state);
     for (const frame of frames.splice(0)) frame();
     assert.deepEqual(controller.current, state);

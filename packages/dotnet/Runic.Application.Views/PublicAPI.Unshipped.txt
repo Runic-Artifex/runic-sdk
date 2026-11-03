@@ -1,1 +1,17 @@
 #nullable enable
+Runic.Application.Views.IRunicPendingValidation
+Runic.Application.Views.IRunicPendingValidation.PendingChanged -> System.EventHandler?
+Runic.Application.Views.IRunicPendingValidation.PendingMemberPaths.get -> System.Collections.Generic.IReadOnlyCollection<string!>!
+Runic.Application.Views.RunicPendingValidation
+Runic.Application.Views.RunicPendingValidation.Begin(string! memberPath = "") -> System.IDisposable!
+Runic.Application.Views.RunicPendingValidationExtensions
+Runic.Application.Views.RunicPendingValidation.HasPending.get -> bool
+Runic.Application.Views.RunicPendingValidation.IsPending(string! memberPath = "") -> bool
+Runic.Application.Views.RunicPendingValidation.PendingChanged -> System.EventHandler?
+Runic.Application.Views.RunicPendingValidation.PendingMemberPaths.get -> System.Collections.Generic.IReadOnlyCollection<string!>!
+Runic.Application.Views.RunicPendingValidation.PropertyChanged -> System.ComponentModel.PropertyChangedEventHandler?
+Runic.Application.Views.RunicPendingValidation.RunicPendingValidation() -> void
+Runic.Application.Views.RunicPendingValidation.this[string! memberPath].get -> bool
+Runic.Application.Views.RunicPendingValidation.Track(string! memberPath, System.Func<System.Threading.Tasks.Task!>! validate) -> System.Threading.Tasks.Task!
+Runic.Application.Views.RunicPendingValidation.Track<T>(string! memberPath, System.Func<System.Threading.Tasks.Task<T>!>! validate) -> System.Threading.Tasks.Task<T>!
+static Runic.Application.Views.RunicPendingValidationExtensions.TrackPending<T>(this System.IObservable<T>! states, Runic.Application.Views.RunicPendingValidation! pending, string! memberPath, System.Func<T, bool>! isPending) -> System.IObservable<T>!

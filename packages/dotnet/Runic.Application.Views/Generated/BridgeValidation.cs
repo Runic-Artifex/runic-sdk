@@ -100,7 +100,81 @@ public static class BridgeValidation
         writer.WriteBoolean("truncated", collector.Truncated);
         writer.WritePropertyName("errors");
         writer.WriteRawValue(bytes.WrittenSpan, skipInputValidation: true);
+        // validation-pending/1: the paths whose validation is in progress, only when there are any, so a View
+        // without pending validation writes the same validation as before.
+        if (collector.Pending.Count > 0)
+        {
+            writer.WriteStartArray("pending");
+            foreach (var path in collector.Pending)
+            {
+                writer.WriteStartArray();
+                foreach (var segment in path)
+                {
+                    if (segment is int index) writer.WriteNumberValue(index);
+                    else writer.WriteStringValue((string)segment);
+                }
+                writer.WriteEndArray();
+            }
+            writer.WriteEndArray();
+        }
         writer.WriteEndObject();
+    }
+
+    /// <summary>
+    /// Calls <paramref name="changed"/> whenever the validation in progress of <paramref name="owner"/> changes, until
+    /// the result is disposed, or returns <see langword="null"/> when it is no <see cref="IRunicPendingValidation"/>.
+    /// </summary>
+    internal static IDisposable? ObservePending(object owner, Action changed)
+    {
+        ArgumentNullException.ThrowIfNull(owner);
+        ArgumentNullException.ThrowIfNull(changed);
+        if (owner is not IRunicPendingValidation pending) return null;
+        return new PendingObserver(pending, changed);
+    }
+
+    /// <summary>
+    /// Observes an object's validation with <paramref name="observe"/> (a ReactiveUI.Validation context, from generated
+    /// code) and its validation in progress (<see cref="IRunicPendingValidation"/>).
+    /// </summary>
+    internal static Func<object, Action, IDisposable?> ObserveWithPending(Func<object, Action, IDisposable?>? observe) =>
+        (owner, changed) =>
+        {
+            var validation = observe?.Invoke(owner, changed);
+            var pending = ObservePending(owner, changed);
+            return validation is null ? pending : pending is null ? validation : new Both(validation, pending);
+        };
+
+    private sealed class PendingObserver : IDisposable
+    {
+        private readonly IRunicPendingValidation _source;
+        private readonly Action _changed;
+        private int _disposed;
+
+        internal PendingObserver(IRunicPendingValidation source, Action changed)
+        {
+            _source = source;
+            _changed = changed;
+            source.PendingChanged += OnChanged;
+        }
+
+        private void OnChanged(object? sender, EventArgs e)
+        {
+            if (Volatile.Read(ref _disposed) == 0) _changed();
+        }
+
+        public void Dispose()
+        {
+            if (Interlocked.Exchange(ref _disposed, 1) == 0) _source.PendingChanged -= OnChanged;
+        }
+    }
+
+    private sealed class Both(IDisposable first, IDisposable second) : IDisposable
+    {
+        public void Dispose()
+        {
+            first.Dispose();
+            second.Dispose();
+        }
     }
 
     /// <summary>
@@ -206,8 +280,11 @@ public static class BridgeValidation
         private int _errors;
         private bool _hasErrors;
         private bool _truncated;
+        private readonly List<object[]> _pending = [];
+        private readonly HashSet<string> _pendingKeys = new(StringComparer.Ordinal);
 
         internal bool HasErrors => _hasErrors;
+        internal List<object[]> Pending => _pending;
         internal bool Truncated => _truncated;
 
         internal void Visit(object? owner, IReadOnlyList<BridgeDataSubscriptionMember> members)
@@ -237,6 +314,7 @@ public static class BridgeValidation
                     AddErrors(objectErrors ?? errors.GetErrors(null), nodePath, node, skipPresentedMembers: true);
                 }
                 else AddErrors(objectErrors, nodePath, node, skipPresentedMembers: false);
+                if (owner is IRunicPendingValidation pending) AddPending(pending.PendingMemberPaths, node);
 
                 foreach (var member in members)
                 {
@@ -435,6 +513,22 @@ public static class BridgeValidation
             pathSegment = null!;
             value = null;
             return false;
+        }
+
+        // validation-pending/1: each path once, resolved as an error's member path; at most MaximumErrors paths.
+        private void AddPending(IReadOnlyCollection<string> memberPaths, Node node)
+        {
+            foreach (var memberPath in memberPaths)
+            {
+                var path = ResolveMemberPath(memberPath, node) ?? node.Path;
+                if (path.Count > MaximumPathSegments) { _truncated = true; continue; }
+                var segments = path.Select(segment => segment is string text ? (object)Limit(text) : segment).ToArray();
+                var key = string.Join('\u0000', segments.Select(segment => segment is int index
+                    ? "#" + index.ToString(System.Globalization.CultureInfo.InvariantCulture) : "$" + (string)segment));
+                if (!_pendingKeys.Add(key)) continue;
+                if (_pending.Count >= MaximumErrors) { _truncated = true; return; }
+                _pending.Add(segments);
+            }
         }
 
         private void WriteError(IReadOnlyList<object> path, string message, string? code, string? severity)

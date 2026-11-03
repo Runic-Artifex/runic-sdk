@@ -213,6 +213,10 @@ reply both list the same string. Features are negotiated per connection, and aga
   a receiver without the feature ignores as an unknown member, is sent while at least one connection of the window
   that completed its `hello` uses the feature. It is then sent to every connection, since a broadcast has one
   encoding. `epoch` in `state` ([presentation epochs](#presentation-epochs)) is the only such member.
+- **Members of state values.** A member that a feature adds to a value of the route's state is part of that value
+  whatever the connections' features: the state is one value per route, which the producer compares across
+  publications. A reader without the feature ignores it as a member its type does not define
+  ([values](values.md#composite-values)). `pending` in [`validation`](#validation) is the only such member.
 - A feature never changes the meaning of a message of the base protocol, so a client and a producer of one protocol
   version always connect, whatever features they implement.
 
@@ -221,6 +225,7 @@ reply both list the same string. Features are negotiated per connection, and aga
 | `text-splice/1` | Text members change with splices: [`set` with a splice](#text-splices-in-set), [`write` with a splice](#text-splices-in-write) and [`splice` changes](state-changes.md#text-splices) | 0.14 |
 | `presentation-epoch/1` | A command runs only on the presentation it was issued for: [presentation epochs](#presentation-epochs) | 0.15 |
 | `presented/1` | The page reports that it painted a state, and acknowledges a window close: [presented states and window close](#presented-states-and-window-close) | 0.15 |
+| `validation-pending/1` | `validation` reports the paths whose validation is in progress: [`pending`](#pending) | 0.16 |
 
 ## Requests and replies
 
@@ -584,6 +589,28 @@ each value member `name`, the state member `{name}Errors`.
   segments per path and at most 2,048 UTF-16 code units per message, code, severity and string segment, cutting the
   value at that length. When it leaves anything out or cuts anything, `truncated` is true. An object reached again
   inside its own path (a cycle) is not visited again and does not set `truncated`.
+
+### `pending`
+
+With the feature `validation-pending/1`, `validation` may have a member `pending`: the paths whose validation is in
+progress, such as an asynchronous rule that asks a server whether a name is taken. A page shows them as "checking…".
+
+```json
+{"hasErrors":false,"truncated":false,"errors":[],"pending":[["user-name"],["items",0,"label"]]}
+```
+
+- **Presence.** `pending` is present exactly when at least one path is pending, so a View with no validation in
+  progress has the same `validation` as without the feature. It is part of the `validation` value on every
+  connection ([members of state values](#features)), and a change of it is published as a `set` of `validation`,
+  like a change of `errors`.
+- **Paths.** Paths follow the rules of error paths above: a model reports a pending member path relative to its
+  object, an unresolvable one reports at the object's path, and the limits apply (at most 256 paths, 64 segments,
+  2,048 code units per string segment; anything left out sets `truncated`). Each path appears once, in the order
+  the producer visits the objects; the order of one object's paths is the model's.
+- **Independent of errors.** A pending path does not set `hasErrors` and is not an error. A member can be pending
+  and have errors at once, such as the result of the previous check while the next one runs.
+- **Client.** A client that uses the feature reads `pending` as a list of paths; a member's field is validating
+  while a path starts with the member's wire name. A client without it ignores the member.
 
 ### `{name}Errors`
 

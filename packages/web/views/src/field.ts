@@ -78,10 +78,25 @@ export interface BridgeField<TClient, TState, TValue> {
    * those of the values below it, such as the members of an object it holds.
    */
   errors?(state: TState): readonly string[];
+  /**
+   * Whether the member's validation is in progress in a state, present when the View has validation: an
+   * asynchronous rule of the member, or of a value below it, is still checking (`validation-pending/1`).
+   */
+  validating?(state: TState): boolean;
 }
 
 const noMessages: readonly string[] = Object.freeze([]);
 const cache = new WeakMap<object, Map<string, { readonly own: readonly string[] | undefined; readonly messages: readonly string[] }>>();
+
+/**
+ * Whether the validation of the member `name`, or of a value below it, is in progress in `validation` (generated code
+ * calls it for `BridgeField.validating`): a `validation.pending` path starts with `[name]`. `false` for a producer
+ * before 0.16, which reports no pending validation.
+ */
+export function fieldValidating(validation: BridgeValidationState | undefined, name: string): boolean {
+  const pending = validation?.pending;
+  return pending !== undefined && pending.some(path => path.length > 0 && path[0] === name);
+}
 
 /**
  * The validation messages of the member `name` (generated code calls it for `BridgeField.errors`): the member's own

@@ -2160,6 +2160,52 @@ property invalid.
 Use `[RunicIgnore]` on validation-only DTO properties such as a computed
 `HasErrors`; their values are represented by the validation projection.
 
+### Validation in progress
+
+An asynchronous rule, such as one that asks a server whether a user name is
+taken, can report that it is still checking. Implement `IRunicPendingValidation`
+on the ViewModel, or on a DTO of its state, usually by delegating to a
+`RunicPendingValidation`. The Bridge then reports the pending member paths in
+`validation.pending` (the `validation-pending/1` feature), and the page's field
+shows `validating`. Paths are relative CLR property paths, as in
+`RunicValidationMessage.MemberPaths`, and `""` is the object itself. A pending
+path is not an error: it does not set `hasErrors`.
+
+```csharp
+public sealed partial class SignUpViewModel : ObservableValidator, IRunicPendingValidation
+{
+    public RunicPendingValidation Pending { get; } = new();
+    IReadOnlyCollection<string> IRunicPendingValidation.PendingMemberPaths => Pending.PendingMemberPaths;
+    event EventHandler? IRunicPendingValidation.PendingChanged { add => Pending.PendingChanged += value; remove => Pending.PendingChanged -= value; }
+
+    [ObservableProperty, CustomValidation(typeof(SignUpViewModel), nameof(ValidateUserName))]
+    public partial string UserName { get; set; } = "";
+
+    // CommunityToolkit: the check runs while the name is pending.
+    partial void OnUserNameChanged(string value) => _ = Pending.Track(nameof(UserName), async () =>
+    {
+        _taken = await _users.ExistsAsync(value);
+        ValidateProperty(UserName, nameof(UserName));
+    });
+}
+```
+
+With ReactiveUI.Validation, `TrackPending` follows a rule's state stream and
+marks the member pending while the state is the one the rule starts each check
+with:
+
+```csharp
+var checking = new ValidationState(true, "Checking…");
+var states = ValidationAsync.ForLatest(this.WhenAnyValue(vm => vm.UserName), CheckUserNameAsync, checking, scheduler)
+    .TrackPending(Pending, nameof(UserName), state => ReferenceEquals(state, checking));
+this.ValidationRule(vm => vm.UserName, states);
+```
+
+`Begin(path)` returns a lease for any other check; overlapping checks of one
+path are counted. WPF binds `Pending[UserName]` or `Pending.HasPending`. In
+tests, `RunicViewState.IsValidating(vm => vm.UserName)` and
+`PendingValidation` read the projection.
+
 ## Shared DTO exclusions
 
 Public readable DTO properties are part of the Bridge contract, including

@@ -576,6 +576,7 @@ export function useField<TClient extends ViewClient, TValue>(
     ...field.checked === undefined ? {} : { checked: (client, value, write) => latest.current.checked!(client, value, write) },
     ...field.baseline === undefined ? {} : { baseline: client => latest.current.baseline!(client) },
     ...field.errors === undefined ? {} : { errors: state => latest.current.errors!(state) },
+    ...field.validating === undefined ? {} : { validating: state => latest.current.validating!(state) },
   }, options));
   const { state, client } = view;
   useEffect(() => {
@@ -603,6 +604,7 @@ export function useField<TClient extends ViewClient, TValue>(
   const text = Object.is(value, current.value) ? current.text : controller.format(value);
   const errors = field.errors === undefined ? current.errors : state === undefined ? noFieldErrors : field.errors(state);
   const invalid = errors.length > 0 || current.error !== undefined;
+  const validating = field.validating === undefined ? current.validating : state !== undefined && field.validating(state);
   const inputProps = kind === "boolean"
     ? { checked: value === true, onChange: actions.onCheck, onBlur: actions.onBlur, "aria-invalid": invalid }
     : {
@@ -610,7 +612,7 @@ export function useField<TClient extends ViewClient, TValue>(
       onCompositionEnd: actions.onCompositionEnd, onBlur: actions.onBlur, "aria-invalid": invalid,
     };
   return {
-    value, text, editing: current.editing, error: current.error, errors, conflict: current.conflict,
+    value, text, editing: current.editing, error: current.error, errors, conflict: current.conflict, validating,
     inputProps: inputProps as FieldInputProps<TValue>,
     input: actions.input, commit: actions.commit, retry: actions.retry, reset: actions.reset,
   };

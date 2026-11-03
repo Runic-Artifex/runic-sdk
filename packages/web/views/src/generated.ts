@@ -9,7 +9,7 @@
 // only the decoders a module calls.
 
 export { decodeBridgeValidation } from "./validation.js";
-export { fieldErrors } from "./field.js";
+export { fieldErrors, fieldValidating } from "./field.js";
 export { disposable } from "./lifetime.js";
 export {
   connectView,

@@ -39,3 +39,27 @@ public sealed class FormsViewModel : INotifyPropertyChanged
 }
 
 public sealed partial class FormsWindow : RunicWindow<FormsViewModel>;
+
+// C3: a ViewModel whose asynchronous checks report validation in progress, on itself and on a nested DTO.
+public sealed class PendingAddress : IRunicPendingValidation
+{
+    public string Postcode { get; set; } = "";
+    [RunicIgnore]
+    public RunicPendingValidation Pending { get; } = new();
+    IReadOnlyCollection<string> IRunicPendingValidation.PendingMemberPaths => Pending.PendingMemberPaths;
+    event EventHandler? IRunicPendingValidation.PendingChanged { add => Pending.PendingChanged += value; remove => Pending.PendingChanged -= value; }
+}
+
+public sealed class PendingFormViewModel : INotifyPropertyChanged, IRunicPendingValidation
+{
+    public string UserName { get; set; } = "";
+    public PendingAddress Address { get; } = new();
+    [RunicIgnore]
+    public RunicPendingValidation Pending { get; } = new();
+    IReadOnlyCollection<string> IRunicPendingValidation.PendingMemberPaths => Pending.PendingMemberPaths;
+    event EventHandler? IRunicPendingValidation.PendingChanged { add => Pending.PendingChanged += value; remove => Pending.PendingChanged -= value; }
+    public event PropertyChangedEventHandler? PropertyChanged;
+    internal void Raise(string name) => PropertyChanged?.Invoke(this, new(name));
+}
+
+public sealed partial class PendingFormWindow : RunicWindow<PendingFormViewModel>;

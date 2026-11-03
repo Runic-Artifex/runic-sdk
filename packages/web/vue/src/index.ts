@@ -411,6 +411,8 @@ export interface FieldHandle<TValue> {
   readonly errors: readonly string[];
   /** The producer's field while a checked write's `conflict` keeps the draft; `undefined` otherwise. */
   readonly conflict: FieldBaseline<TValue> | undefined;
+  /** The member's validation is in progress, such as an asynchronous rule that is still checking: show "checking…". */
+  readonly validating: boolean;
   /** The user changed the value. */
   input(value: TValue): void;
   /**
@@ -478,6 +480,7 @@ export function useField<TClient extends ViewClient, TValue>(
     error: computed(() => current.value.error),
     errors: computed(() => current.value.errors),
     conflict: computed(() => current.value.conflict),
+    validating: computed(() => current.value.validating),
     input: (value: TValue) => controller.input(value),
     commit: () => controller.commit(),
     retry: () => controller.retry(),

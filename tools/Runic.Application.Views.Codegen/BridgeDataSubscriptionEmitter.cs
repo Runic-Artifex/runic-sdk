@@ -62,7 +62,7 @@ internal static class BridgeDataSubscriptionEmitter
             return CollectionElementChildren(node.Value!);
         if (node.Kind is BridgeWireKind.Dto)
             return node.Members.Where(member => typeof(INotifyPropertyChanged).IsAssignableFrom(node.NonNullableType) ||
-                typeof(INotifyDataErrorInfo).IsAssignableFrom(node.NonNullableType) || MayNotify(member.Type, []))
+                typeof(INotifyDataErrorInfo).IsAssignableFrom(node.NonNullableType) || ReportsPending(node) || MayNotify(member.Type, []))
                 .Select(member => new Child(member.WireName, member.Property.Name,
                 $"static owner => (({BridgeTypeGraph.CSharpType(node.NonNullableType)})owner).{member.Property.Name}", member.Type)).ToList();
         if (node.Kind is BridgeWireKind.Union)
@@ -77,10 +77,14 @@ internal static class BridgeDataSubscriptionEmitter
         if (node.Kind is BridgeWireKind.Array or BridgeWireKind.List or BridgeWireKind.StringDictionary ||
             node.Kind is BridgeWireKind.Dto && !node.NonNullableType.IsSealed ||
             typeof(INotifyPropertyChanged).IsAssignableFrom(node.NonNullableType) ||
-            typeof(INotifyDataErrorInfo).IsAssignableFrom(node.NonNullableType)) return true;
+            typeof(INotifyDataErrorInfo).IsAssignableFrom(node.NonNullableType) || ReportsPending(node)) return true;
         return node.Members.Any(member => MayNotify(member.Type, visited)) ||
             node.Cases.Any(@case => MayNotify(@case.Type, visited));
     }
+
+    // C3: an object that reports validation in progress is observed, and its members resolve its pending paths.
+    private static bool ReportsPending(BridgeTypeNode node) =>
+        typeof(Runic.Application.Views.IRunicPendingValidation).IsAssignableFrom(node.NonNullableType);
 
     // A collection member's metadata describes one element, not the
     // collection itself. For nested collections, retain that intermediate

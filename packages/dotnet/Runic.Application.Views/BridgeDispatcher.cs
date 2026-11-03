@@ -36,6 +36,9 @@ internal sealed class BridgeDispatcher : IBridgeRequestHandler
     internal const string TextSpliceFeature = "text-splice/1";
     internal const string PresentationEpochFeature = "presentation-epoch/1";
     internal const string PresentedFeature = "presented/1";
+    // validation-pending/1: validation may carry pending paths. The producer writes them in the route's state for
+    // every connection (state is one value per route); a client without the feature ignores the member.
+    internal const string ValidationPendingFeature = "validation-pending/1";
     internal const int MaximumFeatures = 64;
     internal const int MaximumFeatureLength = 64;
     // A request that arrives before its connection's hello waits this long for it, and at most this many wait.

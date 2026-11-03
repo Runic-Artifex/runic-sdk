@@ -447,6 +447,9 @@ save.onclick = async () => { await commitFields(title, body); await editor.save(
 - `error`: why the latest write or text failed: a `BridgeError`, or a `FieldError` (below);
 - `errors`: the member's validation messages (`[]` when valid);
 - `conflict`: the producer's `{value, version}` while a checked write's conflict keeps the draft.
+- `validating`: the member's validation is in progress, such as an asynchronous rule that is still checking: show
+  "checking…" (`validation-pending/1`, a .NET ViewModel with `IRunicPendingValidation`). Generated descriptors of a
+  View with validation have `validating(state)`, which reads `validation.pending`.
 
 `input(value)` takes a value, `inputText(text)` the text of an input, parsed for the field's kind: `-` or `1e` in a
 number field stay the draft with a `FieldError` of kind `invalid-text`, and nothing is written until the text parses.

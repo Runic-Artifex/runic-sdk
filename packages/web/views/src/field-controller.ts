@@ -33,6 +33,11 @@ export interface FieldState<TValue> {
   readonly errors: readonly string[];
   /** The producer's field while a checked write's `conflict` keeps the draft; `undefined` otherwise. */
   readonly conflict: FieldBaseline<TValue> | undefined;
+  /**
+   * The member's validation is in progress in the View's state, such as an asynchronous rule that is still checking
+   * (`validating(state)` of the definition, `validation-pending/1`); show "checking…". `false` without one.
+   */
+  readonly validating: boolean;
 }
 
 /** The View a field reads and writes: its latest state and the client to write with. */
@@ -263,7 +268,7 @@ export function createFieldController<TState, TClient, TValue>(
   let idleWaiters: ((state: FieldState<TValue>) => void)[] = [];
   const empty = (kind === "text" || kind === undefined ? "" : undefined) as TValue;
   let current: FieldState<TValue> = Object.freeze({
-    value: empty, text: "", editing: false, error: undefined, errors: noMessages, conflict: undefined,
+    value: empty, text: "", editing: false, error: undefined, errors: noMessages, conflict: undefined, validating: false,
   });
 
   const viewValue = (): TValue => source === undefined ? empty : definition.read(source.state);
@@ -277,12 +282,14 @@ export function createFieldController<TState, TClient, TValue>(
     const errors = definition.errors !== undefined
       ? source === undefined ? noMessages : definition.errors(source.state)
       : receiptErrors;
+    const validating = definition.validating !== undefined && source !== undefined && definition.validating(source.state) === true;
     const next: FieldState<TValue> = {
       value, text: textOf(value), editing: draft !== undefined || typedInvalid, error,
-      errors: sameMessages(errors, current.errors) ? current.errors : errors, conflict,
+      errors: sameMessages(errors, current.errors) ? current.errors : errors, conflict, validating,
     };
     if (Object.is(next.value, current.value) && next.text === current.text && next.editing === current.editing
-      && Object.is(next.error, current.error) && next.errors === current.errors && next.conflict === current.conflict) return;
+      && Object.is(next.error, current.error) && next.errors === current.errors && next.conflict === current.conflict
+      && next.validating === current.validating) return;
     current = Object.freeze(next);
     if (!notify || disposed) return;
     for (const listener of [...listeners]) {

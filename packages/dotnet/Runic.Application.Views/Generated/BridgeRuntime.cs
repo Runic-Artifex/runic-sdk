@@ -531,7 +531,7 @@ public partial class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBr
             if (dataSubscriptions is { Length: > 0 })
                 bindings.Add(_dataSubscriptions = new BridgeDataSubscriptions(vm, dataSubscriptions, OnNestedChanged, TryPublishCollection, TryPublishItem,
                     rootObservedExternally: true, incrementalCollectionNames: _incrementalCollections.Select(descriptor => descriptor.Name).ToHashSet(StringComparer.Ordinal),
-                    observeValidation: validationReader?.Observe, collectionChangedOutsideTurn: WarnIfOutsideModelTurn));
+                    observeValidation: BridgeValidation.ObserveWithPending(validationReader?.Observe), collectionChangedOutsideTurn: WarnIfOutsideModelTurn));
             // Register the per-window observer before this Bridge subscribes
             // its publisher. A synchronous setter then advances the
             // field version before any published state can describe the value.
@@ -575,6 +575,8 @@ public partial class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBr
             // A rule that names no member changes neither ErrorsChanged nor a property (ReactiveValidationObject
             // raises ErrorsChanged only for the members its rules named before), so its changes are observed here.
             if (validationReader?.Observe(_vm, ScheduleUnit) is { } validation) bindings.Add(validation);
+            // validation-pending/1: a check that starts or ends changes only validation.pending.
+            if (BridgeValidation.ObservePending(_vm, ScheduleUnit) is { } pendingValidation) bindings.Add(pendingValidation);
             foreach (var command in _commands)
             {
                 var value = command.Get(_vm);

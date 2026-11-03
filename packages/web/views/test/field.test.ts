@@ -41,3 +41,32 @@ test("the same inputs return the same array", () => {
   assert.equal(fieldErrors(validation, "title", titleErrors), titleErrors);
   assert.equal(fieldErrors(undefined, "title", titleErrors), titleErrors);
 });
+
+test("validation-pending/1: pending paths decode, and fieldValidating finds a member's (C3)", async () => {
+  const { decodeBridgeValidation, fieldValidating } = await import("../dist/generated.js");
+  const { createFieldController } = await import("../dist/index.js");
+  const decoded = decodeBridgeValidation({ hasErrors: false, truncated: false, errors: [], pending: [["user-name"], ["items", 0, "label"], []] });
+  assert.deepEqual(decoded.pending, [["user-name"], ["items", 0, "label"], []]);
+  assert.equal("pending" in decodeBridgeValidation({ hasErrors: false, truncated: false, errors: [] }), false, "absent stays absent");
+  assert.throws(() => decodeBridgeValidation({ hasErrors: false, truncated: false, errors: [], pending: [[-1]] }));
+  assert.equal(fieldValidating(decoded, "user-name"), true);
+  assert.equal(fieldValidating(decoded, "items"), true, "a value below the member");
+  assert.equal(fieldValidating(decoded, "title"), false, "the object's own path is no member's");
+  assert.equal(fieldValidating(undefined, "user-name"), false);
+  assert.equal(fieldValidating({ hasErrors: false, truncated: false, errors: [] }, "user-name"), false);
+
+  type State = { readonly name: string; readonly validation: BridgeValidationState };
+  const states: State[] = [];
+  const controller = createFieldController<State, object, string>({
+    kind: "text", read: state => state.name, write: async () => undefined,
+    validating: state => fieldValidating(state.validation, "name"),
+  });
+  const notified: boolean[] = [];
+  controller.subscribe(() => notified.push(controller.current.validating));
+  controller.setSource({ state: { name: "a", validation: { hasErrors: false, truncated: false, errors: [], pending: [["name"]] } }, client: {} });
+  assert.equal(controller.current.validating, true);
+  controller.setSource({ state: { name: "a", validation: { hasErrors: false, truncated: false, errors: [] } }, client: {} });
+  assert.equal(controller.current.validating, false);
+  assert.deepEqual(notified, [], "setSource does not notify");
+  void states;
+});

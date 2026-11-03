@@ -10,13 +10,24 @@ namespace Runic.Application.Testing.Tests.Conformance;
 // The form View (specs/application/conformance/README.md, "Test Views"): a ReactiveValidationObject with a rule of
 // name and the approval rule, which names no member. The ValidationContext is read and observed as the generated
 // Bridge of such a ViewModel does.
-internal sealed class FormViewModel : ReactiveValidationObject, IConformanceModel
+internal sealed class FormViewModel : ReactiveValidationObject, IConformanceModel, IRunicPendingValidation
 {
     internal const string NameTooLong = "Name must be at most 8 characters.";
     internal const string ApprovalRequired = "Approval is required.";
 
     private readonly ValidationSignal _shortName = new(true);
     private readonly ValidationSignal _approval = new(true);
+    // validation-pending/1: the asynchronous check of name, which check mutations start and end.
+    private readonly RunicPendingValidation _pending = new();
+    private IDisposable? _nameCheck;
+
+    IReadOnlyCollection<string> IRunicPendingValidation.PendingMemberPaths => _pending.PendingMemberPaths;
+
+    event EventHandler? IRunicPendingValidation.PendingChanged
+    {
+        add => _pending.PendingChanged += value;
+        remove => _pending.PendingChanged -= value;
+    }
 
     internal FormViewModel()
     {
@@ -55,6 +66,14 @@ internal sealed class FormViewModel : ReactiveValidationObject, IConformanceMode
                 break;
             case "rule" when mutation["rule"]!.GetValue<string>() == "approval":
                 _approval.Value = mutation["holds"]!.GetValue<bool>();
+                break;
+            case "check" when mutation["member"]!.GetValue<string>() == "name":
+                if (mutation["running"]!.GetValue<bool>()) _nameCheck ??= _pending.Begin(nameof(Name));
+                else
+                {
+                    _nameCheck?.Dispose();
+                    _nameCheck = null;
+                }
                 break;
             default:
                 throw new NotSupportedException($"The form View has no mutation {mutation.ToJsonString()}.");

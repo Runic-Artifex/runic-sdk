@@ -234,6 +234,11 @@
           "additionalProperties": false
         },
         {
+          "properties": { "op": { "const": "check" }, "member": { "type": "string" }, "running": { "type": "boolean" } },
+          "required": ["op", "member", "running"],
+          "additionalProperties": false
+        },
+        {
           "properties": { "op": { "const": "renew" } },
           "required": ["op"],
           "additionalProperties": false
