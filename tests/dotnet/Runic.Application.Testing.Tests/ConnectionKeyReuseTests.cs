@@ -42,8 +42,9 @@ internal sealed class ConnectionKeyReuseTests
         // Another browser gets the same WebUI slot and client id 0.
         window.Hello(Slot, "s-bob");
         Require(window.Dispatcher.FindConnection(Slot) is null, "The closed connection's key found the connection that reused its slot.");
-        var bob = window.Dispatcher.FindConnection(Slot + "#2")!;
-        Require(bob is { TransportKey: Slot } && bob.Key != alice.Key, $"The reused slot did not get a new connection key: {bob?.Key}");
+        var bob = window.Dispatcher.FindConnection(Slot + "#2")
+            ?? throw new InvalidOperationException("The reused slot did not get a new connection key.");
+        Require(bob.TransportKey == Slot && bob.Key != alice.Key, $"The reused slot's connection has the wrong keys: {bob.Key}");
         window.Mount("bob-page", bob);
 
         gate.SetResult();
