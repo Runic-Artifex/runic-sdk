@@ -98,11 +98,16 @@ public readonly struct RunicWindowResult<TResult> : IEquatable<RunicWindowResult
 public interface IRunicWindowResult<in TResult>
 {
     /// <summary>
-    /// Completes the Window with <paramref name="result"/> and closes it without asking its close guard, as
+    /// Completes the Window with <paramref name="result"/> and starts closing it without asking its close guard, as
     /// <see cref="IRunicWindow.CloseAsync"/> does: the application has decided.
     /// </summary>
+    /// <remarks>
+    /// It returns once the result is set; the opener receives it when the Window has closed. The close lets accepted
+    /// operations, such as the command that called this method, finish for up to 5 seconds, so that command completes
+    /// normally; operations still running then are cancelled.
+    /// </remarks>
     /// <param name="result">The result the opener receives.</param>
-    /// <param name="cancellationToken">Stops waiting for the close; the result is set either way.</param>
+    /// <param name="cancellationToken">Cancels the request before the result is set.</param>
     /// <returns>
     /// <see langword="true"/> when this call set the result; <see langword="false"/> when the Window already completed or
     /// closed, and the result is dropped.
@@ -205,7 +210,11 @@ internal sealed class RunicWindowResultHolder
 
 internal sealed class ScopedWindowResult<TResult>(RunicWindowResultHolder holder) : IRunicWindowResult<TResult>
 {
-    public async ValueTask<bool> CompleteAsync(TResult result, CancellationToken cancellationToken = default)
+    // Accepted operations of the completed Window, such as the command that completed it, finish within this before the
+    // Window closes anyway.
+    internal static readonly TimeSpan CloseTimeout = TimeSpan.FromSeconds(5);
+
+    public ValueTask<bool> CompleteAsync(TResult result, CancellationToken cancellationToken = default)
     {
         var slot = holder.Slot ?? throw new InvalidOperationException(
             $"IRunicWindowResult<{typeof(TResult).Name}> was resolved in a scope whose Window was not opened for a result. Open it " +
@@ -213,14 +222,18 @@ internal sealed class ScopedWindowResult<TResult>(RunicWindowResultHolder holder
         if (!slot.ResultType.IsAssignableFrom(typeof(TResult)) && !(result is not null && slot.ResultType.IsInstanceOfType(result)))
             throw new InvalidOperationException(
                 $"The Window was opened for a {slot.ResultType.Name} result, not a {typeof(TResult).Name}.");
-        if (!slot.TryComplete(result)) return false;
-        if (slot.Window is { } window)
-        {
-            // A Window that is closing or released already (ObjectDisposedException is an InvalidOperationException).
-            try { _ = await window.CloseAsync(TimeSpan.Zero, cancellationToken).ConfigureAwait(false); }
-            catch (InvalidOperationException) { }
-        }
-        return true;
+        cancellationToken.ThrowIfCancellationRequested();
+        if (!slot.TryComplete(result)) return ValueTask.FromResult(false);
+        // Not awaited: the command that completes the Window is one of the operations its close waits for.
+        if (slot.Window is { } window) _ = CloseAsync(window);
+        return ValueTask.FromResult(true);
+    }
+
+    private static async Task CloseAsync(IRunicWindow window)
+    {
+        // A Window that is closing or released already (ObjectDisposedException is an InvalidOperationException).
+        try { _ = await window.CloseAsync(CloseTimeout, CancellationToken.None).ConfigureAwait(false); }
+        catch (InvalidOperationException) { }
     }
 }
 

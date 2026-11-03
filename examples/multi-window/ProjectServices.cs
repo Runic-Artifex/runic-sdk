@@ -21,10 +21,12 @@ public static class ProjectServices
         // Command failures that are not declared reach the console: the generated Bridge logs them.
         services.AddLogging(logging => logging.AddSimpleConsole().SetMinimumLevel(LogLevel.Warning));
         services.AddScoped<ProjectViewModel>();
+        services.AddScoped<DocumentViewModel>();
+        services.AddScoped<AccountViewModel>();
         services.AddRunicViews();
         // The per-Window dialogs and clipboard, and IDesktopSettings for the desktop's appearance.
         services.AddRunicPlatformServices();
-        // IRunicWindowService, which ProjectViewModel uses to open more Windows.
+        // IRunicWindowService, which ProjectViewModel uses to open more Windows, find open documents and ask for an account.
         services.AddRunicWindowService();
         return services;
     }
