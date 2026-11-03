@@ -347,8 +347,7 @@ public sealed partial class ProjectViewModel(IRunicWindowService windows) : Obse
   once the Window closes, so a command doesn't need to keep it. Keep the
   returned Window to wait for it or to close it; disposing it earlier is safe.
   A release failure is logged as event 1051.
-- Runic has no owned or modal Windows, so there is no owner parameter. The new
-  Window's ViewModel is resolved from DI like the first one's. To give it input
+- The new Window's ViewModel is resolved from DI like the first one's. To give it input
   of its own, pass a parameter (since 0.14): `OpenWindowAsync<TWindow, TParameter>(parameter, options)`
   hands it to the new Window's scope, where the ViewModel, or a scoped service
   it uses, takes `IRunicWindowParameter<TParameter>`. Each Window gets its own,
@@ -370,9 +369,99 @@ public sealed partial class ProjectViewModel(IRunicWindowService windows) : Obse
   A test that builds such a ViewModel by hand passes
   `new RunicWindowParameter<PartRequest>(request)`.
 - A test registers a fake that records the requested Window types after the
-  application's services. The parameter overload has a default implementation
-  that throws `NotSupportedException`, so a fake overrides it only when the
-  application uses it.
+  application's services. The parameter overload, and the members below (since
+  0.16), have default implementations that throw `NotSupportedException`, so a
+  fake overrides only what the application uses. To run the real service, open
+  the first Window with `RunicWindowTestHost.CreateWindowAsync<TWindow>(services)`
+  from Runic.Application.Testing, which opens every Window headless.
+
+#### Finding, activating and opening Windows for a result
+
+Since 0.16, the service also manages the open Windows:
+
+- `Windows` lists every Window that a host opened with these services, through
+  the service or `host.OpenWindowAsync`, in the order they opened, until it
+  closes. `WindowsChanged` reports each open and close; `ObserveWindows()`
+  returns the list now and after each change as a plain `IObservable`, without
+  System.Reactive. The event is raised on the thread that opened the Window or,
+  for a close, on the thread pool, so a ViewModel posts the change to its model
+  context. A handler that throws is logged as event 1181.
+- `FindOrOpenAsync<TWindow, TParameter>(key, parameter, options, activation)`
+  brings the open `TWindow` with that key to the front, or opens a new one with
+  the key. The key belongs to the Window type and is compared with `Equals`; two
+  calls with the same key at once open one Window, and a closed Window is
+  forgotten. `FindWindow<TWindow>(key)` only looks it up.
+- `ActivateAsync(window, activation)` shows a hidden Window, restores a
+  minimized one and asks for the focus with `IRunicWindowPresentation.PresentAsync`.
+  When a window-modal Window blocks it, that Window comes forward after it.
+- `OpenForResultAsync<TWindow, TParameter, TResult>(parameter, options)` opens a
+  Window and returns its `RunicWindowResult<TResult>` once it closed. The
+  Window's ViewModel takes `IRunicWindowResult<TResult>` and calls
+  `CompleteAsync(value)`, which sets the result and closes the Window without
+  asking its close guard; the command that called it finishes normally, since
+  the close gives accepted operations up to 5 seconds. A Window that closes
+  without a result, by the user or the application, returns a result whose
+  `HasValue` is `false` (the default value). Cancelling the opener's token closes
+  the Window without asking and throws `OperationCanceledException`.
+
+```csharp
+public sealed partial class ShellViewModel(IRunicWindowService windows, IRunicWindowContext window) : ObservableObject
+{
+    [ObservableProperty] private string _account = "Household";
+
+    // Open the document in a Window of its own, or bring the open one to the front.
+    [RelayCommand]
+    private async Task OpenDocumentAsync(string path) =>
+        await windows.FindOrOpenAsync<DocumentWindow, DocumentRequest>(path, new DocumentRequest(path));
+
+    // A dialog over this Window that returns the account chosen, if any.
+    [RelayCommand]
+    private async Task ChooseAccountAsync(CancellationToken cancellationToken)
+    {
+        var chosen = await windows.OpenForResultAsync<AccountWindow, AccountRequest, string>(new AccountRequest(Account),
+            new RunicWindowOptions { Owner = window.Window, Modality = RunicWindowModality.Window }, cancellationToken);
+        if (chosen.TryGetValue(out var account)) Account = account;
+    }
+}
+
+public sealed partial class AccountViewModel(IRunicWindowResult<string> result) : ObservableObject
+{
+    [RelayCommand]
+    private async Task ChooseAsync(string account) => await result.CompleteAsync(account);
+}
+```
+
+With ReactiveUI the commands are `ReactiveCommand.CreateFromTask` with the same
+bodies, as in the
+[multi-window example](https://github.com/Runic-Artifex/runic-sdk/tree/main/examples/multi-window).
+
+#### Owned and window-modal Windows
+
+`RunicWindowOptions.Owner` names the open Window a new Window belongs to; a
+ViewModel names its own with `IRunicWindowContext.Window`. `Modality =
+RunicWindowModality.Window` makes the owner take no input until the new Window
+closes, and needs an owner; the application's other Windows stay usable.
+
+| Host | Owned | Window-modal |
+| --- | --- | --- |
+| Runic Desktop, Windows (WebView2) | The owner's `HWND` is the window's owner: it stays above it and has no taskbar button. | The owner is disabled (`EnableWindow`) until the window closed, and enabled before it is destroyed, so the owner is activated again. |
+| Runic Desktop, macOS (WKWebView) | A child window of the owner's `NSWindow`: it stays above it and moves with it. | A sheet of the owner's `NSWindow`; it ignores the window's position. |
+| Runic Desktop, Linux (GTK 3 and GTK 4) | `transient_for` the owner's GTK window. | The owner's GTK window is insensitive until the window closed. `gtk_window_set_modal` is not used: it would block every window of the application. |
+| WPF | `WpfPlatformServices.ForDesktopWindowOwner(window)` gives a Runic Desktop window a WPF owner. | As on Windows. |
+| CS-WebUI, serve-only mode, a browser fallback | Not available: the Window opens on its own. | Not available. |
+
+On Runic Desktop an owned Window hides and shows with its owner
+(`SetVisibleAsync`), and closes without asking when the owner closes, so a
+pending `OpenForResultAsync` returns no result. On Windows and macOS a blocked
+owner takes no input, its title bar included; on Linux the window manager can
+still close it, and the modal Window then closes with it. Quit asks the guards of owned Windows before those of
+their owners. The owner's `IRunicWindowPresentation.Features` include
+`OwnedWindows` where the host can own Windows. A host that cannot opens the
+Window on its own and logs `WindowOwnerIgnored` (event 1180), as it does for an
+owner that has closed or belongs to another host; `ValidateWindow` on CS-WebUI
+reports `window-owner-unsupported`.
+
+
 
 #### Windows from another service provider
 
@@ -2725,6 +2814,8 @@ NativeAOT symbols and what to attach to a bug report.
 | 1113 | `ViewHostCleanupFailed` | Error | Releasing a `RunicViewHost` presentation throws. | `ErrorType` |
 | 1114 | `ChildViewCleanupFailed` | Error | A `WpfBridgeView` fails to release after its presentation closed. | `ErrorType` |
 | 1130 | `WindowPresentationHandlerFailed` | Error | An `IRunicWindowPresentation.ActivityChanged` or `PropertyChanged` handler threw; later handlers and changes still run. | `Handler`, `ErrorType` |
+| 1180 | `WindowOwnerIgnored` | Warning | A Window opens without its `RunicWindowOptions.Owner`: the host cannot own Windows (CS-WebUI, serve-only mode, a browser), or the owner has closed or belongs to another host. | `Window`, `Owner`, `Reason` |
+| 1181 | `WindowsChangedHandlerFailed` | Error | An `IRunicWindowService.WindowsChanged` handler threw; later handlers still run. | `ErrorType` |
 | 2000 | `DesktopSnapshotDeliveryFailed` | Error | Runic Desktop cannot deliver a push to a page. | `ErrorType` |
 | 2002 | `DesktopWindowCloseAfterOpen` | Warning | `RUNIC_APPLICATION_CLOSE_AFTER_OPEN=1` closed a Desktop window right after it opened. | `Variable` |
 | 2003 | `DesktopPortalDiagnostic` | Warning or Debug | On Linux, xdg-desktop-portal reports a diagnostic for the portal services `AddRunicPlatformServices()` registers (notifications, status icon, login startup and inhibition): Warning for a rejected identity, an unavailable portal or a denied request, Debug for an accepted request or registration. | `Code`, `DiagnosticMessage`, `Remediation` |
@@ -2764,7 +2855,7 @@ NativeAOT symbols and what to attach to a bug report.
 as `content12`). A declared failure is an expected outcome, so it is logged at
 Debug, still with its exception; `FailureType` is the failure value's type.
 
-Events 1000-1012, 1018-1026, 1050-1053, 1100-1102 and 1130 use the category `Runic.Application.Views`
+Events 1000-1012, 1018-1026, 1050-1053, 1100-1102, 1130 and 1180-1181 use the category `Runic.Application.Views`
 (`RunicViewsTelemetry.LogCategory`); event 1130 uses the logger of the Window's session; the Hot Reload events 1100-1102 use the
 logger of the window session that owns the Bridge. Events 1110-1114 use
 `Runic.Application.Views.Wpf` and the factory of the host's `Services`; so does event 1130 of

@@ -153,6 +153,13 @@ visible (`RunicWindowActivity.Assumed`). A Window served under
 `RUNIC_APPLICATION_SERVE_ONLY=1` has no window, and its requests report
 `Unavailable(OwnerUnavailable)`.
 
+CS-WebUI cannot own windows (B6, since 0.16): `Features` lacks `OwnedWindows`,
+and a Window opened with `RunicWindowOptions.Owner` or `Modality` opens on its
+own and logs `WindowOwnerIgnored` (event 1180). `ValidateWindow` reports the
+warning `window-owner-unsupported` (`RunicCsWebUiHost.OwnerUnsupportedCode`).
+`IRunicWindowService.FindOrOpenAsync`, `ActivateAsync` and `OpenForResultAsync`
+work as on Runic Desktop, with the activation this host has.
+
 When WebUI cannot show a window, because it finds no browser, the selected
 browser does not exist or does not start, or the page does not connect within
 the connection timeout, `OpenWindowAsync` throws a

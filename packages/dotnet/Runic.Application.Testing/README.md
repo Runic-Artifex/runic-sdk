@@ -469,6 +469,53 @@ scope's presentation, and a ViewModel built by hand can take a
 at once on the calling thread, inside the request, and keeps answering after
 the scope ends; a change its own handlers cause is still raised after them.
 
+### Windows and their close decision
+
+`RunicWindowTestHost.Create` drives one ViewModel. To test a Window, its close
+guard and the Windows its ViewModels open, open it with
+`RunicWindowTestHost.CreateWindowAsync<TWindow>(services)` (since 0.16). It
+opens a real `RunicWindow` headless, as a host does: in a new scope of the
+application's root services, with its parameter, result and close guard, and with
+the application's own `IRunicWindowService` (`AddRunicWindowService()`), so
+`FindOrOpenAsync`, `ActivateAsync` and `OpenForResultAsync` open test Windows
+too.
+
+```csharp
+await using var services = new ServiceCollection().AddMyApplication().BuildServiceProvider();
+await using var shell = await RunicWindowTestHost.CreateWindowAsync<ShellWindow>(services);
+
+// A guarded editor keeps unsaved changes.
+(await shell.Root<ShellViewModel>().ExecuteAsync(vm => vm.OpenDocumentCommand, "\"notes.md\"")).ThrowIfFailed();
+var editor = shell.OpenedWindows.Single();
+Assert.Equal("notes.md", editor.Key);
+Assert.False(await editor.RequestUserCloseAsync());
+
+// A modal dialog that returns a value.
+var choosing = shell.Root<ShellViewModel>().ExecuteAsync(vm => vm.ChooseAccountCommand);
+var dialog = await shell.WaitForOpenedWindowAsync<AccountWindow>();
+Assert.True(shell.IsBlocked);
+(await dialog.Root<AccountViewModel>().ExecuteAsync(vm => vm.ChooseCommand, "\"Savings\"")).ThrowIfFailed();
+(await choosing).ThrowIfFailed();
+```
+
+- `RequestUserCloseAsync()` is the user's close button: a Window with
+  `GuardClose` asks `CanCloseAsync`, and the result tells whether it closed. It
+  shares one decision with `IRunicWindow.RequestCloseAsync`, as on Runic Desktop.
+- `OpenedWindows` lists the Windows opened after this one, including closed
+  ones, each with `Window`, `ViewModel`, `Parameter`, `Key`, `Owner`,
+  `Modality`, `IsOpen` and its `Root<TViewModel>()` driver;
+  `WaitForOpenedWindowAsync<TWindow>()` waits for one, for example a dialog
+  whose command is still waiting for its result. `Host<TViewModel>()` is the
+  Window's `RunicWindowTestHost<TViewModel>`.
+- Each Window has a `RunicTestWindowPresentation` (`Presentation`), the one its
+  scope registers or a new one, so activation shows as `PresentCount`.
+- An owned Window closes when its owner closes, and `IsBlocked` is
+  `true` while a window-modal Window it owns is open, as on Runic Desktop.
+- All Windows share one clock (a `FakeTimeProvider` unless the options name
+  another) and one id source. Disposing the result closes and releases every
+  Window. A command that closes its own Window is cancelled by the close, as on
+  every host, so don't assert its reply.
+
 ### Collections and frames
 
 `Track()` follows a route from a snapshot through its pushes, as the generated
