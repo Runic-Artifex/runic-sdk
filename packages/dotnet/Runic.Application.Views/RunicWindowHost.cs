@@ -272,6 +272,9 @@ public sealed class RunicWindowOpening<TViewModel> where TViewModel : class
         _attach = attach;
     }
 
+    // The key of IRunicWindowService.FindOrOpenAsync, for the test host.
+    internal object? Key { get; init; }
+
     /// <summary>The Window's DI scope. The host owns it from <see cref="IRunicWindowHost.OpenAsync{TViewModel}"/> on.</summary>
     public AsyncServiceScope Scope { get; }
 
@@ -442,7 +445,7 @@ internal static class RunicWindowOpening
             }
             var viewModel = scope.ServiceProvider.GetRequiredService<TViewModel>();
             window.DataContext = viewModel;
-            opening = new RunicWindowOpening<TViewModel>(scope, viewModel, window, options, attachWithContent, attach);
+            opening = new RunicWindowOpening<TViewModel>(scope, viewModel, window, options, attachWithContent, attach) { Key = request.Key };
         }
         catch
         {

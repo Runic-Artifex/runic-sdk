@@ -97,12 +97,16 @@ public sealed class RunicWindowTestHost<TViewModel> : IDisposable where TViewMod
     public IServiceProvider? Services { get; internal init; }
 
     /// <summary>
-    /// The window's recording presentation: the <see cref="RunicTestWindowPresentation"/> that
+    /// The window's recording presentation: the <see cref="RunicTestWindowPresentation"/> of a Window that
+    /// <see cref="RunicWindowTestHost.CreateWindowAsync{TWindow}"/> opened, else the one that
     /// <see cref="RunicTestWindowPresentationServiceCollectionExtensions.AddRunicTestWindowPresentation"/> registered in
     /// <see cref="Services"/>, or <see langword="null"/> without one.
     /// </summary>
-    public RunicTestWindowPresentation? Presentation =>
+    public RunicTestWindowPresentation? Presentation => WindowPresentation ??
         Services?.GetService(typeof(RunicTestWindowPresentation)) as RunicTestWindowPresentation;
+
+    // The presentation of a Window that RunicWindowTestHost.CreateWindowAsync opened.
+    internal RunicTestWindowPresentation? WindowPresentation { get; init; }
 
     /// <summary>
     /// Changes the activity of <see cref="Presentation"/>, as a real window reports that it gained or lost the focus,

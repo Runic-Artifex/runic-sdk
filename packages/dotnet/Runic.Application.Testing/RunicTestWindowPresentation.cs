@@ -55,7 +55,7 @@ public sealed class RunicTestWindowPresentation : IRunicWindowPresentation
         RunicWindowPresentationFeatures.Minimize | RunicWindowPresentationFeatures.Visibility |
         RunicWindowPresentationFeatures.FullScreen | RunicWindowPresentationFeatures.DocumentEdited |
         RunicWindowPresentationFeatures.ColorScheme | RunicWindowPresentationFeatures.PerWindowColorScheme |
-        RunicWindowPresentationFeatures.Activity;
+        RunicWindowPresentationFeatures.Activity | RunicWindowPresentationFeatures.OwnedWindows;
 
     private static readonly PlatformResult<PlatformUnit> Done = new PlatformResult<PlatformUnit>.Success(new PlatformUnit());
     private static readonly PlatformResult<PlatformUnit> Unsupported = new PlatformResult<PlatformUnit>.Unavailable(PlatformUnavailableReason.BackendUnavailable);

@@ -56,4 +56,23 @@ Runic.Application.Testing.RunicWindowPresentationRequestKind.SetVisible = 2 -> R
 Runic.Application.Testing.RunicWindowTestHost<TViewModel>.FlushWindowPresentationAsync(System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task!
 Runic.Application.Testing.RunicWindowTestHost<TViewModel>.Presentation.get -> Runic.Application.Testing.RunicTestWindowPresentation?
 Runic.Application.Testing.RunicWindowTestHost<TViewModel>.SetWindowActivityAsync(Runic.Application.Views.RunicWindowActivity! activity, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task!
-const Runic.Application.Testing.RunicTestWindowPresentation.AllFeatures = Runic.Application.Views.RunicWindowPresentationFeatures.Present | Runic.Application.Views.RunicWindowPresentationFeatures.Minimize | Runic.Application.Views.RunicWindowPresentationFeatures.Visibility | Runic.Application.Views.RunicWindowPresentationFeatures.FullScreen | Runic.Application.Views.RunicWindowPresentationFeatures.DocumentEdited | Runic.Application.Views.RunicWindowPresentationFeatures.ColorScheme | Runic.Application.Views.RunicWindowPresentationFeatures.Activity | Runic.Application.Views.RunicWindowPresentationFeatures.PerWindowColorScheme -> Runic.Application.Views.RunicWindowPresentationFeatures
+const Runic.Application.Testing.RunicTestWindowPresentation.AllFeatures = Runic.Application.Views.RunicWindowPresentationFeatures.Present | Runic.Application.Views.RunicWindowPresentationFeatures.Minimize | Runic.Application.Views.RunicWindowPresentationFeatures.Visibility | Runic.Application.Views.RunicWindowPresentationFeatures.FullScreen | Runic.Application.Views.RunicWindowPresentationFeatures.DocumentEdited | Runic.Application.Views.RunicWindowPresentationFeatures.ColorScheme | Runic.Application.Views.RunicWindowPresentationFeatures.Activity | Runic.Application.Views.RunicWindowPresentationFeatures.PerWindowColorScheme | Runic.Application.Views.RunicWindowPresentationFeatures.OwnedWindows -> Runic.Application.Views.RunicWindowPresentationFeatures
+Runic.Application.Testing.RunicTestWindow
+Runic.Application.Testing.RunicTestWindow.DisposeAsync() -> System.Threading.Tasks.ValueTask
+Runic.Application.Testing.RunicTestWindow.Host<TViewModel>() -> Runic.Application.Testing.RunicWindowTestHost<TViewModel!>!
+Runic.Application.Testing.RunicTestWindow.IsBlocked.get -> bool
+Runic.Application.Testing.RunicTestWindow.IsOpen.get -> bool
+Runic.Application.Testing.RunicTestWindow.Key.get -> object?
+Runic.Application.Testing.RunicTestWindow.Modality.get -> Runic.Application.Views.RunicWindowModality
+Runic.Application.Testing.RunicTestWindow.OpenedWindows.get -> System.Collections.Generic.IReadOnlyList<Runic.Application.Testing.RunicTestWindow!>!
+Runic.Application.Testing.RunicTestWindow.Options.get -> Runic.Application.Views.RunicWindowOptions!
+Runic.Application.Testing.RunicTestWindow.Owner.get -> Runic.Application.Testing.RunicTestWindow?
+Runic.Application.Testing.RunicTestWindow.Parameter.get -> object?
+Runic.Application.Testing.RunicTestWindow.Presentation.get -> Runic.Application.Testing.RunicTestWindowPresentation!
+Runic.Application.Testing.RunicTestWindow.RequestUserCloseAsync(System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<bool>!
+Runic.Application.Testing.RunicTestWindow.Root<TViewModel>() -> Runic.Application.Testing.RunicViewDriver<TViewModel!>!
+Runic.Application.Testing.RunicTestWindow.Services.get -> System.IServiceProvider!
+Runic.Application.Testing.RunicTestWindow.ViewModel.get -> object!
+Runic.Application.Testing.RunicTestWindow.WaitForOpenedWindowAsync<TWindow>(System.TimeSpan? timeout = null, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<Runic.Application.Testing.RunicTestWindow!>!
+Runic.Application.Testing.RunicTestWindow.Window.get -> Runic.Application.Views.IRunicWindow!
+static Runic.Application.Testing.RunicWindowTestHost.CreateWindowAsync<TWindow>(System.IServiceProvider! services, Runic.Application.Views.RunicWindowOptions? options = null, Runic.Application.Testing.RunicWindowTestHostOptions? hostOptions = null, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<Runic.Application.Testing.RunicTestWindow!>!

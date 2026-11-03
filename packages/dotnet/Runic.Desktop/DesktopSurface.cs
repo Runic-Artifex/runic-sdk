@@ -204,15 +204,15 @@ public sealed class DesktopSurface : IAsyncDisposable
                 actualBrowser = FromCompatibilityBrowser(_engine.CurrentBrowser);
             }
             window = new DesktopWindow(this, _engine, requestedBrowser, actualBrowser, fellBack);
-            // An embedded window that received its owner: it closes, hides and shows with a DesktopWindow owner.
+            window.InitializeColorScheme(configured.ColorScheme,
+                fromApplication: configured.ColorScheme == DesktopColorScheme.NoPreference && _host.ColorScheme != DesktopColorScheme.NoPreference);
+            _window = window;
+            // Once published, so the window reports itself open. An embedded window that received its owner: it closes, hides and shows with a DesktopWindow owner.
             if (actualBrowser == BrowserKind.Embedded && configured.Owner is { } owner && _engine.OpenedOwnerHandle != 0 &&
                 window.Capabilities.HasFlag(DesktopWindowCapabilities.Ownership))
             {
                 window.AttachOwner(owner, configured.Modality);
             }
-            window.InitializeColorScheme(configured.ColorScheme,
-                fromApplication: configured.ColorScheme == DesktopColorScheme.NoPreference && _host.ColorScheme != DesktopColorScheme.NoPreference);
-            _window = window;
         }
         finally
         {

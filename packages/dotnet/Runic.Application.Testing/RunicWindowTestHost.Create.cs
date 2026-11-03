@@ -86,6 +86,55 @@ public static class RunicWindowTestHost
         return Create(services, viewModel, options, loggerFactory);
     }
 
+    /// <summary>
+    /// Opens <typeparamref name="TWindow"/> headless, as a host opens it: in a new scope of <paramref name="services"/>,
+    /// with its close guard, and with the application's <see cref="IRunicWindowService"/> bound to the test, so the
+    /// Windows its ViewModels open, find, activate and open for a result are test Windows too.
+    /// </summary>
+    /// <remarks>
+    /// <code>
+    /// await using var services = new ServiceCollection().AddMyApplication().BuildServiceProvider();
+    /// var editor = await RunicWindowTestHost.CreateWindowAsync&lt;EditorWindow&gt;(services);
+    /// await editor.Root&lt;EditorViewModel&gt;().SetAsync(x =&gt; x.Text, "unsaved");
+    /// Assert.False(await editor.RequestUserCloseAsync());   // CanCloseAsync kept it open
+    /// </code>
+    /// <para>
+    /// <paramref name="services"/> is the application's root provider, built with its own registration method: the
+    /// Windows' ViewModels, the generated <c>AddRunicViews()</c> and <c>AddRunicWindowService()</c>. Each Window opens
+    /// in its own scope, which the test host releases when the Window is released. Every Window shares one clock (a
+    /// <see cref="Microsoft.Extensions.Time.Testing.FakeTimeProvider"/> unless <paramref name="hostOptions"/> name another)
+    /// and one id source. Each Window gets a <see cref="RunicTestWindowPresentation"/>, or the one its scope registers.
+    /// </para>
+    /// <para>
+    /// Dispose the result to close and release every Window. <see cref="RunicTestWindow.OpenedWindows"/> lists the
+    /// Windows opened after it and <see cref="RunicTestWindow.WaitForOpenedWindowAsync{TWindow}"/> waits for one.
+    /// </para>
+    /// </remarks>
+    /// <param name="services">The application's root services.</param>
+    /// <param name="options">The Window's options, as for <c>OpenWindowAsync</c>.</param>
+    /// <param name="hostOptions">The clock, id source, View locator, model context and logger factory of every Window.</param>
+    /// <param name="cancellationToken">Cancels opening.</param>
+    /// <returns>The open Window.</returns>
+    /// <exception cref="RunicWindowConfigurationException">The Window's ViewModel or Bridge is not registered.</exception>
+    public static async Task<RunicTestWindow> CreateWindowAsync<TWindow>(IServiceProvider services, RunicWindowOptions? options = null,
+        RunicWindowTestHostOptions? hostOptions = null, CancellationToken cancellationToken = default)
+        where TWindow : class, IRunicWindow, new()
+    {
+        ArgumentNullException.ThrowIfNull(services);
+        var application = new RunicTestWindowApplication(services, hostOptions ?? new RunicWindowTestHostOptions());
+        try
+        {
+            var window = await RunicWindowHostExtensions.OpenWindowAsync<TWindow>(application, options, cancellationToken)
+                .ConfigureAwait(false);
+            return application.Find(window);
+        }
+        catch
+        {
+            await application.DisposeAsync().ConfigureAwait(false);
+            throw;
+        }
+    }
+
     private static RunicWindowTestHost<TViewModel> Create<TViewModel>(IServiceProvider services, TViewModel viewModel,
         RunicWindowTestHostOptions options, ILoggerFactory? loggerFactory) where TViewModel : class
     {

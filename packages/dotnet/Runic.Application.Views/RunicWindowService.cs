@@ -252,6 +252,8 @@ internal sealed class RunicWindowParameter
             throw new InvalidOperationException("The Window's scope already has a parameter.");
     }
 
+    internal object? Peek() => Volatile.Read(ref _value);
+
     internal TParameter Get<TParameter>() where TParameter : class => Volatile.Read(ref _value) switch
     {
         TParameter value => value,
