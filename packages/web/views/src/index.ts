@@ -60,6 +60,7 @@ export type {
 } from "./operations.js";
 export type { BridgeInteractionContext, InteractionSurface } from "./interactions.js";
 export {
+  commitAllFields,
   createFieldController,
   FieldError,
   type FieldCommit,
@@ -71,6 +72,19 @@ export {
   type FieldState,
 } from "./field-controller.js";
 export { attachField, bindField, commitFields, type BoundField, type FieldElement } from "./dom-field.js";
+export {
+  createFormController,
+  formFieldList,
+  formStateOf,
+  submitFields,
+  type FormController,
+  type FormField,
+  type FormFieldController,
+  type FormFields,
+  type FormOptions,
+  type FormState,
+  type FormSubmitResult,
+} from "./form-controller.js";
 export {
   createTextFieldController,
   type TextFieldController,

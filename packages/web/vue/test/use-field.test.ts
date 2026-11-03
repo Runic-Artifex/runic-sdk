@@ -3,7 +3,7 @@
 import { createApp, defineComponent, effectScope, h, nextTick, vModelCheckbox, vModelText, withDirectives } from "vue";
 import { describe, expect, expectTypeOf, test } from "vitest";
 import type { FieldWriteOptions, FieldWriteReceipt } from "@runic-artifex/views";
-import { FieldError, useField, useView, type BridgeField, type FieldHandle, type FieldState } from "../dist/index.js";
+import { FieldError, useField, useForm, useView, type BridgeField, type FieldHandle, type FieldState, type FormHandle } from "../dist/index.js";
 
 type State = { readonly title: string; readonly step: number; readonly done: boolean; readonly titleErrors: readonly string[] };
 type Call = { readonly member: string; readonly value: unknown; readonly checked: boolean; resolve(result?: unknown): void };
@@ -190,6 +190,35 @@ describe("useField", () => {
     client.apply("titleErrors", []);
     await nextTick();
     expect(field.errors).toEqual([]);
+    scope.stop();
+  });
+
+  test("useForm: a pause draft makes the form dirty, and submit writes it before the command", async () => {
+    const client = fakeClient({ title: "Old", step: 1 });
+    const scope = effectScope();
+    const { title, form } = scope.run(() => {
+      const view = useView(client);
+      const title = useField(view, Fields.title, { commit: "pause", delay: 60_000 });
+      const step = useField(view, Fields.step);
+      return { title, form: useForm({ title, step }, { dirty: false }) };
+    })!;
+    await nextTick();
+    expect(form).toMatchObject({ dirty: false, pending: false, valid: true, submitting: false });
+    title.input("New");
+    await nextTick();
+    expect(form).toMatchObject({ dirty: true, editing: true, pending: true });
+    expect(client.calls).toEqual([]);
+    const order: string[] = [];
+    const result = form.submit(() => { order.push(`save sees ${client.snapshot.title}`); return "saved"; });
+    await nextTick();
+    expect(form.submitting).toBe(true);
+    expect(await form.submit(() => "again")).toEqual({ status: "busy" });
+    expect(client.calls.map(call => call.value)).toEqual(["New"]);
+    client.calls[0]!.resolve();
+    expect(await result).toEqual({ status: "submitted", result: "saved" });
+    expect(order).toEqual(["save sees New"]);
+    await settle();
+    expect(form).toMatchObject({ dirty: false, submitting: false, pending: false });
     scope.stop();
   });
 

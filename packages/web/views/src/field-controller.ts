@@ -204,6 +204,31 @@ function sameMessages(left: readonly string[], right: readonly string[]): boolea
 
 function invalid(message: string): FieldError { return new FieldError("invalid-text", message); }
 
+// The page's fields that hold a draft, shared by every copy of this package, so a window close can write them first.
+interface LiveField { readonly hasDraft: () => boolean; readonly commit: () => Promise<unknown> }
+const liveFieldsKey = Symbol.for("runic.views.fields");
+function liveFields(): Set<LiveField> {
+  const page = globalThis as unknown as Record<symbol, Set<LiveField> | undefined>;
+  return page[liveFieldsKey] ??= new Set();
+}
+
+/**
+ * Commits every field of the page that holds a draft, such as a `commit: "pause"` draft not written yet, and resolves
+ * once their writes settled. The runtime calls it when the application closes the window (`presented/1`), before it
+ * acknowledges the close; call it before a departure that the page does not start itself, such as before a host
+ * command that navigates. It never rejects.
+ */
+export function commitAllFields(): Promise<void> {
+  return commitDrafts() ?? Promise.resolve();
+}
+
+/** Commits the page's fields that hold a draft, or returns `undefined` when none does. */
+export function commitDrafts(): Promise<void> | undefined {
+  const drafts = [...liveFields()].filter(field => field.hasDraft());
+  if (drafts.length === 0) return undefined;
+  return Promise.all(drafts.map(field => field.commit().catch(() => undefined))).then(() => undefined);
+}
+
 /**
  * Creates a {@link FieldController} for a generated {@link BridgeField}, such as `EditorFields.title`, or any
  * definition with `read` and `write`. A `using` declaration disposes it where the engine has `Symbol.dispose`.
@@ -267,6 +292,11 @@ export function createFieldController<TState, TClient, TValue>(
   // commit() calls waiting for the field's writes.
   let idleWaiters: ((state: FieldState<TValue>) => void)[] = [];
   const empty = (kind === "text" || kind === undefined ? "" : undefined) as TValue;
+  const live: LiveField = {
+    hasDraft: () => draft !== undefined || queued !== undefined || inFlight !== 0 || typedInvalid,
+    commit: () => controller.commit(),
+  };
+  liveFields().add(live);
   let current: FieldState<TValue> = Object.freeze({
     value: empty, text: "", editing: false, error: undefined, errors: noMessages, conflict: undefined, validating: false,
   });
@@ -453,7 +483,7 @@ export function createFieldController<TState, TClient, TValue>(
     update();
   }
 
-  return disposable({
+  const controller: FieldController<TState, TClient, TValue> & Disposable = disposable({
     get current() { return current; },
     field,
     format,
@@ -512,6 +542,7 @@ export function createFieldController<TState, TClient, TValue>(
     dispose() {
       if (disposed) return;
       disposed = true;
+      liveFields().delete(live);
       listeners.clear();
       cancelTimer();
       resolveIdle();
@@ -534,4 +565,5 @@ export function createFieldController<TState, TClient, TValue>(
       else send();
     },
   });
+  return controller;
 }

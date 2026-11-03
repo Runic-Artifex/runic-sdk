@@ -6,6 +6,8 @@ import type { FieldState, FieldWriteOptions, FieldWriteReceipt } from "@runic-ar
 import {
   FieldError,
   useField,
+  useForm,
+  type FormHandle,
   useView,
   type BridgeField,
   type FieldCheckboxProps,
@@ -188,6 +190,35 @@ describe("useField", () => {
     await act(async () => { client.apply("step", 0.5); });
     // Without a draft the text of the state being rendered uses the field's format.
     expect(field!).toMatchObject({ value: 0.5, text: "0,5" });
+  });
+
+  test("useForm: a pause draft makes the form dirty, and submit writes it before the command (C2)", async () => {
+    const client = fakeClient({ title: "Old", step: 1 });
+    let form: FormHandle | undefined;
+    let title: FieldHandle<string> | undefined;
+    function Editor(): ReactNode {
+      const view = useView(client);
+      title = useField(view, Fields.title, { commit: "pause", delay: 60_000 });
+      const step = useField(view, Fields.step);
+      form = useForm({ title, step }, { dirty: false });
+      return createElement("input", { id: "title", ...title.inputProps });
+    }
+    await mount(createElement(Editor));
+    expect(form!).toMatchObject({ dirty: false, pending: false, valid: true, submitting: false });
+    await act(async () => { title!.inputProps.onChange(change("New")); });
+    expect(form!).toMatchObject({ dirty: true, editing: true, pending: true });
+    expect(client.calls).toEqual([]);
+    let result: Promise<unknown> | undefined;
+    const order: string[] = [];
+    await act(async () => { result = form!.submit(() => { order.push(`save after ${client.calls.length}`); return "saved"; }); });
+    expect(form!.submitting).toBe(true);
+    expect(await form!.submit(() => "again")).toEqual({ status: "busy" });
+    expect(client.calls.map(call => call.value)).toEqual(["New"]);
+    await act(async () => { client.calls[0]!.resolve(); });
+    await act(async () => { expect(await result).toEqual({ status: "submitted", result: "saved" }); });
+    expect(order).toEqual(["save after 1"]);
+    await settle();
+    expect(form!).toMatchObject({ dirty: false, submitting: false, pending: false });
   });
 
   test("a boolean field binds a checkbox", async () => {

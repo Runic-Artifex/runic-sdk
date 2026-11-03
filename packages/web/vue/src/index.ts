@@ -512,6 +512,8 @@ export function useBridgeConnection(options: BridgeConnectionOptions = {}): Brid
 }
 
 export { useCollectionViewport, type CollectionViewportHandle } from "./viewport.js";
+export { useForm, type FormFieldHandle, type FormHandle, type UseFormOptions } from "./form.js";
+export { commitAllFields, type FormState, type FormSubmitResult } from "@runic-artifex/views";
 export { onBridgeConnection, type BridgeConnectionOptions, type BridgeConnectionState } from "@runic-artifex/views";
 export {
   FieldError,

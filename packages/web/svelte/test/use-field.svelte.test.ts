@@ -3,7 +3,7 @@
 import { flushSync, mount, unmount } from "svelte";
 import { describe, expect, expectTypeOf, test, vi } from "vitest";
 import type { FieldState, FieldWriteOptions, FieldWriteReceipt } from "@runic-artifex/views";
-import { FieldError, useField, type BridgeField, type FieldHandle } from "../src/views/index.js";
+import { FieldError, useField, useForm, type BridgeField, type FieldHandle, type FormHandle } from "../src/views/index.js";
 import FieldOwner from "./fixtures/FieldOwner.svelte";
 
 type State = { readonly title: string; readonly step: number; readonly done: boolean; readonly titleErrors: readonly string[] };
@@ -226,6 +226,30 @@ describe("useField", () => {
     expect(field.value).toBe("x");
     field.text = "y";
     expect(client.calls.map(call => call.value)).toEqual(["y"]);
+    destroy();
+  });
+
+  test("useForm: a pause draft makes the form dirty, and submit writes it before the command", async () => {
+    const client = fakeClient({ title: "Old", step: 1 });
+    const { title, step, element, destroy } = form(client, { commit: "pause", delay: 60_000 });
+    let formHandle!: FormHandle;
+    const dispose = $effect.root(() => { formHandle = useForm(() => ({ title, step }), { dirty: () => false }); });
+    expect(formHandle).toMatchObject({ dirty: false, pending: false, valid: true, submitting: false });
+    type(element("title"), "New");
+    expect(formHandle).toMatchObject({ dirty: true, editing: true, pending: true });
+    expect(client.calls).toEqual([]);
+    const order: string[] = [];
+    const result = formHandle.submit(() => { order.push(`save sees ${client.snapshot.title}`); return "saved"; });
+    flushSync();
+    expect(formHandle.submitting).toBe(true);
+    expect(await formHandle.submit(() => "again")).toEqual({ status: "busy" });
+    expect(client.calls.map(call => call.value)).toEqual(["New"]);
+    client.calls[0]!.resolve();
+    expect(await result).toEqual({ status: "submitted", result: "saved" });
+    expect(order).toEqual(["save sees New"]);
+    await settle();
+    expect(formHandle).toMatchObject({ dirty: false, submitting: false, pending: false });
+    dispose();
     destroy();
   });
 });

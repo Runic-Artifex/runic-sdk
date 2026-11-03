@@ -239,6 +239,17 @@ with a `FieldError`. `errors` follows the member's validation in the View's stat
 }
 ```
 
+### Forms: `injectForm(fields, options?)`
+
+Signals over `injectField` handles (`dirty`, `editing`, `validating`, `pending`, `valid`, `submitting`, `state`), and a
+`submit` that writes every field before its command (`createFormController` in `@runic-artifex/views`). It needs no
+injection context.
+
+```ts
+readonly form = injectForm({ title: this.title, step: this.step }, { dirty: computed(() => this.editor.state()?.isDirty === true) });
+// <button [disabled]="!form.valid() || form.submitting()" (click)="form.submit(() => editor.client()!.save())">Save</button>
+```
+
 ### `[runicField]` and Reactive Forms
 
 `@runic-artifex/angular/forms` needs `@angular/forms` (an optional peer; the main

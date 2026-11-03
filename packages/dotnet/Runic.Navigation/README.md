@@ -897,6 +897,35 @@ closes. It takes `askOnRetain` like the constructor. The dialog region must
 not be the guarded region, one of its ancestors or one of its descendants:
 that push would be `Rejected(Reentrant)`.
 
+### Edit sessions
+
+`RunicEditSession<T>` keeps a form's saved baseline and tells whether the
+edited values differ from it, for ReactiveUI, CommunityToolkit and WPF
+ViewModels alike. `T` is a snapshot with value equality, such as a tuple or a
+record. With the ViewModel as its owner it compares again on each
+`PropertyChanged`, and raises its own change of `IsDirty`:
+
+```csharp
+_session = new RunicEditSession<(string Title, string Body)>(this,
+    capture: () => (Title, Body),
+    restore: saved => (Title, Body) = saved);
+_leave = new LeaveConfirmation(() => _session.IsDirty, ConfirmAsync, _session.Revert);
+
+// After a save: what it wrote is the new baseline; edits made meanwhile stay dirty.
+_session.Accept((saved.Title, saved.Body));
+```
+
+Forward `IsDirty` as a ViewModel property (raise it when the session's
+`IsDirty` changes) so that WPF bindings and generated web clients see it, or
+observe it with ReactiveUI's `WhenAnyValue(vm => vm.Session.IsDirty)`.
+`Accept()` takes the current values, `Revert()` restores the baseline, and
+`Refresh()` compares again for a session without an owner. A web page's own
+drafts are not in the session until the page writes them: its form controller
+(`createFormController`, `useForm`, `injectForm`) counts them as dirty, writes
+them before `submit` runs a command, and the page writes them before it
+acknowledges a window close. The
+[WPF hybrid editor](../../../examples/wpf-hybrid-editor/README.md) uses it.
+
 ### Guards for a whole region
 
 An entry's guard answers for its own content. A guard that answers for a

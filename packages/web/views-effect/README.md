@@ -255,6 +255,10 @@ A program that needs services runs through your runtime:
 `ManagedRuntime`. Helpers based on `effect/reactivity` atoms will follow when
 that module is stable.
 
+Fields and forms need no Effect wrapper: use `createFieldController` and `createFormController` from
+`@runic-artifex/views`, and run a form's `submit` inside an action, such as
+`createEffectAction(() => Effect.promise(() => form.submit(() => editor.save())))`.
+
 ## Testing
 
 `@runic-artifex/views/mock` serves generated clients without .NET, and the

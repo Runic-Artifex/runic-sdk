@@ -202,6 +202,17 @@ or text failed (a `BridgeError` or a `FieldError`, whose `kind` is `rejected`, `
 [field controller](https://github.com/Runic-Artifex/runic-sdk/tree/main/packages/web/views#fields) for the receipts
 and text forms.
 
+### Forms: `useForm(fields, options?)`
+
+One state over a component's field handles, and a `submit` that writes every field before its command
+(`createFormController` in `@runic-artifex/views`). `dirty` counts drafts not written yet and the `dirty` option, such
+as the View's `isDirty`; `pending` is true while a draft, a check (`validating`) or a submit runs.
+
+```tsx
+const form = useForm({ title, step }, { dirty: editor.state?.isDirty });
+<button disabled={!form.valid || form.submitting} onClick={() => form.submit(() => editor.client!.save())}>Save</button>
+```
+
 ### Text inputs: `useTextField(view, read, write, options?)`
 
 Binds a controlled text input to a member through the framework-neutral

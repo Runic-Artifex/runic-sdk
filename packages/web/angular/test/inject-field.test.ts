@@ -1,10 +1,10 @@
 import "@angular/compiler";
-import { Injector, type Signal } from "@angular/core";
+import { Injector, signal, type Signal } from "@angular/core";
 import { TestBed } from "@angular/core/testing";
 import { BrowserTestingModule, platformBrowserTesting } from "@angular/platform-browser/testing";
 import { afterEach, beforeAll, describe, expect, expectTypeOf, test, vi } from "vitest";
 import { FieldError, type FieldBaseline, type FieldState } from "@runic-artifex/views";
-import { injectField, type FieldHandle } from "../dist/esm/index.js";
+import { injectField, injectForm, type FieldHandle } from "../dist/esm/index.js";
 import { checkedTitle, FakeEditor, Fields, settle, viewOf } from "./fields.js";
 
 beforeAll(() => {
@@ -145,5 +145,46 @@ describe("injectField", () => {
     const editor = new FakeEditor();
     expect(() => injectField(viewOf(editor), Fields.title)).toThrow();
     expect(() => injectField(viewOf(editor), Fields.title, { injector: TestBed.inject(Injector) })).not.toThrow();
+  });
+
+  test("injectForm: a pause draft makes the form dirty, and submit writes it before the command", async () => {
+    const editor = new FakeEditor({ title: "Old", count: 1 });
+    const view = viewOf(editor);
+    // The title's write waits until the test releases it, as the fake client of the other tests does.
+    const releases: Array<() => void> = [];
+    const held = {
+      ...Fields.title,
+      write: (client: FakeEditor, value: string) => new Promise<void>(resolve => {
+        client.written.push(value);
+        releases.push(() => { client.apply({ title: value }); resolve(); });
+      }),
+    };
+    const title = TestBed.runInInjectionContext(() => injectField(view, held, { commit: "pause", delay: 60_000 }));
+    const count = TestBed.runInInjectionContext(() => injectField(view, Fields.count));
+    const form = injectForm({ title, count }, { dirty: signal(false) });
+    TestBed.tick();
+    expect(form.dirty()).toBe(false);
+    expect(form.pending()).toBe(false);
+    expect(form.valid()).toBe(true);
+    expect(form.submitting()).toBe(false);
+    title.inputText("New");
+    TestBed.tick();
+    expect(form.dirty()).toBe(true);
+    expect(form.editing()).toBe(true);
+    expect(form.pending()).toBe(true);
+    expect(editor.written).toEqual([]);
+    const order: string[] = [];
+    const result = form.submit(() => { order.push(`save sees ${editor.snapshot.title}`); return "saved"; });
+    expect(form.submitting()).toBe(true);
+    expect(await form.submit(() => "again")).toEqual({ status: "busy" });
+    expect(editor.written).toEqual(["New"]);
+    releases[0]!();
+    expect(await result).toEqual({ status: "submitted", result: "saved" });
+    expect(order).toEqual(["save sees New"]);
+    await settle();
+    TestBed.tick();
+    expect(form.dirty()).toBe(false);
+    expect(form.submitting()).toBe(false);
+    expect(form.pending()).toBe(false);
   });
 });

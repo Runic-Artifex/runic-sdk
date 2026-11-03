@@ -494,6 +494,35 @@ Receipts of checked writes, also when `write` of a text field calls one:
 | `conflict` | The draft stays; `conflict` and `error.current` are the producer's field, `error` is a `FieldError` `conflict`. Nothing is written until `retry()` writes the draft over the producer's value or `reset()` takes it. A conflict whose incoming value is the value sent is a success. |
 | `committed-with-error` | The value was committed and the draft is dropped; `error` is a `FieldError` `committed-with-error`. |
 
+### Forms
+
+`createFormController(fields, options?)` combines field controllers into one state, and its `submit` writes every
+field before it runs a command, so Save never runs before the last keystroke reached .NET:
+
+```ts
+const form = createFormController({ title, body }, { dirty: () => editor.snapshot.isDirty });
+form.current; // { dirty, editing, validating, pending, valid, submitting }
+save.onclick = async () => {
+  const result = await form.submit(() => editor.save());
+  if (result.status === "field-failed") show(result.error);
+};
+```
+
+- `dirty`: the `dirty` option reports unsaved changes (such as the View's `isDirty`, which a .NET `RunicEditSession`
+  computes), or a field holds a draft that is not written yet, such as a `commit: "pause"` draft.
+- `editing`: a field holds a draft. `validating`: a field's validation is in progress. `pending`: either, or a
+  `submit` runs. `valid`: no field has `errors` or an `error`.
+- `submit(command)`: commits every field, waits for their writes and runs `command`, unless a field's write or text
+  failed (`{ status: "field-failed", error }`). It resolves `{ status: "submitted", result }`; a second `submit`
+  while one runs resolves `{ status: "busy" }`. A command that throws rejects.
+- `commit()` writes every field; `reset()` resets every field.
+
+React, Vue and Svelte have `useForm(fields, options?)` and Angular `injectForm(fields, options?)` over their field
+handles. `commitAllFields()` writes every draft of the page; the runtime calls it before it acknowledges a window close
+(`presented/1`), so a `commit: "pause"` draft is not lost when the application closes the window. Call it before a
+departure the page does not start through `submit`, such as a host command that navigates away; a departure guard in
+.NET sees the ViewModel's state, which does not include a draft the page has not written.
+
 `createTextFieldController({ read, write, … })` is the string case for a hand-written `read` and `write`, such as a
 command; `injectTextField` and `useTextField` wrap it.
 

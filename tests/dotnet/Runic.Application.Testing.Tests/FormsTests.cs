@@ -1,4 +1,5 @@
 using System.Text.Json;
+using ReactiveUI;
 using Runic.Application.Testing;
 using Runic.Application.Views;
 using TUnit.Core;
@@ -193,6 +194,31 @@ internal sealed class FormsTests
             await Task.Delay(5);
         }
         throw new InvalidOperationException($"The bridge did not publish validation (line {line}): {string.Join("\n", seen)}");
+    }
+
+    [Test]
+    public void AnEditSessionWorksWithReactiveUI()
+    {
+        var model = new ReactiveEditor();
+        using var session = new Runic.Navigation.RunicEditSession<string>(model, () => model.Title, title => model.Title = title);
+        var dirty = new List<bool>();
+        using var subscription = session.WhenAnyValue(s => s.IsDirty).Subscribe(new BoolObserver(dirty.Add));
+        model.Title = "Changed";
+        session.Revert();
+        Require(dirty.SequenceEqual([false, true, false]) && model.Title == "", $"WhenAnyValue saw {string.Join(", ", dirty)}.");
+    }
+
+    private sealed class BoolObserver(Action<bool> next) : IObserver<bool>
+    {
+        public void OnNext(bool value) => next(value);
+        public void OnError(Exception error) => throw error;
+        public void OnCompleted() { }
+    }
+
+    private sealed class ReactiveEditor : ReactiveObject
+    {
+        private string _title = "";
+        public string Title { get => _title; set => this.RaiseAndSetIfChanged(ref _title, value); }
     }
 
     private static string GeneratedTypeScriptDirectory()

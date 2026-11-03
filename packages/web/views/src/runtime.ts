@@ -2,7 +2,7 @@
 // every generated module and every copy of this package through `runic.views.generated-client-runtime`. It owns
 // the connection (`hello` per connection, its features, and the requests sent with it), the only `onMessage`
 // listener, which dispatches pushes by kind and route, the page's edit numbers and the reconnect of open routes.
-import { randomId } from "./clock.js";
+import { clock, randomId } from "./clock.js";
 import { emitBridgeDiagnostic, suppressErrorDiagnostic } from "./diagnostics.js";
 import { BridgeError } from "./errors.js";
 import {
@@ -14,8 +14,20 @@ import { textSpliceFeature } from "./text.js";
 import { validationPendingFeature } from "./validation.js";
 import { reportWindowClosed } from "./connection-state.js";
 import { flushNotifications, nextFrame } from "./notifications.js";
+import { commitDrafts } from "./field-controller.js";
 
 /** The features this runtime implements and lists in `hello` (specs/application/README.md, "Features"). */
+// How long a window close waits for the page's field drafts to be written, within the host's 5-second limit.
+const closingFlushLimit = 2_000;
+
+// Resolves when `promise` settles or after `milliseconds`, whichever is first.
+function firstOf(promise: Promise<unknown>, milliseconds: number): Promise<void> {
+  return new Promise(resolve => {
+    const timer = clock.set(resolve, milliseconds);
+    void promise.finally(() => { clock.clear(timer); resolve(); });
+  });
+}
+
 export const clientFeatures: readonly string[] = [textSpliceFeature, presentationEpochFeature, presentedFeature, validationPendingFeature];
 
 /** A push handler, registered per push kind and route. */
@@ -137,6 +149,12 @@ function createRuntime(bridge: RunicBridgeClient): SharedRuntime {
     if (!features.has(presentedFeature)) return;
     const current = connection;
     flushNotifications();
+    // Drafts that wait, such as commit: "pause" ones, are written before the close is acknowledged (C2).
+    const drafts = commitDrafts();
+    if (drafts !== undefined) {
+      await firstOf(drafts, closingFlushLimit);
+      flushNotifications();
+    }
     await nextFrame();
     // A new connection is a new window session: its producer did not close it.
     if (disposed || connection !== current) return;
