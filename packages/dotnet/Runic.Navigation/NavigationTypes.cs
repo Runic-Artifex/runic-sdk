@@ -902,6 +902,13 @@ internal abstract class NavigationTargetCore
 
     public virtual bool HasInput => false;
 
+    // The input of an input target, boxed; null without input.
+    public virtual object? InputValue => null;
+
+    // The route and the map that created this target (INavigationRouteMap), or null. Set once, before the request.
+    public string? Route { get; set; }
+    public object? RouteMap { get; set; }
+
     // The target's content type, for messages.
     public abstract Type ContentType { get; }
 
@@ -933,6 +940,8 @@ internal abstract class InputNavigationTargetCore<TInput>(TInput input) : Naviga
     public override NavigationOwnership Ownership => NavigationOwnership.Owned;
     public override object? Instance => null;
     public override bool HasInput => true;
+    public TInput Input => input;
+    public override object? InputValue => input;
 
     public override bool InitializesWithInput(object content) => content is INavigationInitialize<TInput>;
 

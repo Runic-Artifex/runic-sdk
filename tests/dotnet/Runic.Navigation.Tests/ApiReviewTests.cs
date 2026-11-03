@@ -133,7 +133,7 @@ internal sealed partial class NavigationTests
             "NavigationSelection can be created or derived from outside Runic.Navigation.");
         var members = type.GetMembers(BindingFlags.Public | BindingFlags.Instance | BindingFlags.Static | BindingFlags.DeclaredOnly)
             .Where(member => member is not MethodInfo { IsSpecialName: true }).Select(member => member.Name).Order(StringComparer.Ordinal);
-        Require(members.SequenceEqual(["Add", "Admission", "IsBusy", "IsTransitioning", "Navigator", "PropertyChanged", "Regions", "RemoveAsync",
+        Require(members.SequenceEqual(["Add", "Admission", "GetPath", "IsBusy", "IsTransitioning", "Navigator", "PropertyChanged", "Regions", "RemoveAsync", "RestoreAsync",
                 "SelectAsync", "Selected", "SelectedIndex", "ToString", "WhenIdleAsync"]),
             $"NavigationSelection has the members {string.Join(", ", members)}.");
         Require(type.GetProperty(nameof(NavigationSelection.Regions))?.PropertyType == typeof(IReadOnlyList<NavigationRegion>)

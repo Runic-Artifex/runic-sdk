@@ -218,6 +218,55 @@ public abstract class NavigationRegion : INotifyPropertyChanged
             cancellationToken));
     }
 
+    /// <summary>
+    /// Gets the region's entries, and the regions and selections below them, as a serializable path, like
+    /// <see cref="RunicNavigator.GetPath"/> does for the whole navigator.
+    /// </summary>
+    /// <param name="routes">The route map, or <see langword="null"/> for the <see cref="INavigationRouteMap"/> of the navigator's services.</param>
+    /// <exception cref="InvalidOperationException">No route map was passed or registered.</exception>
+    public NavigationRegionPath GetPath(INavigationRouteMap? routes = null) =>
+        Core.Navigator.GetRegionPath(Core, Core.Navigator.RouteMap(routes));
+
+    /// <summary>
+    /// Rebuilds <paramref name="path"/> in this region with guarded navigation requests, as
+    /// <see cref="RunicNavigator.RestoreAsync"/> does for each region; what can't be restored is reported, not thrown.
+    /// </summary>
+    /// <param name="path">The region's path, such as one <see cref="GetPath"/> returned.</param>
+    /// <param name="routes">The route map, or <see langword="null"/> for the <see cref="INavigationRouteMap"/> of the navigator's services.</param>
+    /// <param name="cancellationToken">Cancels the requests not yet committed; the restore then stops.</param>
+    /// <exception cref="InvalidOperationException">No route map was passed or registered.</exception>
+    /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> was cancelled.</exception>
+    public ValueTask<NavigationRestoreResult> RestoreAsync(NavigationRegionPath path, INavigationRouteMap? routes = null,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(path);
+        return new(Core.Navigator.RestoreRegionAsync(this, path, routes, cancellationToken));
+    }
+
+    /// <summary>
+    /// Opens a route path, such as one from a deep link (<see cref="NavigationRouteLinks.TryGetRoute"/>), a notification or
+    /// an address bar, in this region: the route map creates the target, and <paramref name="mode"/> decides the request.
+    /// </summary>
+    /// <remarks>
+    /// The route is untrusted input: only the map's routes open, with typed parameters, and an unmatched route returns
+    /// <see langword="null"/> (log event 1221) without navigating. The requests are ordinary ones, guarded and returned as a
+    /// <see cref="NavigationResult{TContent}"/>; when the route is already where <paramref name="mode"/> would put it, the
+    /// result is <see cref="NavigationResult{TContent}.Committed"/> with the current entry and nothing changes.
+    /// </remarks>
+    /// <param name="route">The route path, with or without a leading <c>/</c>.</param>
+    /// <param name="mode">How to open it; <see cref="NavigationRouteOpen.Push"/> by default.</param>
+    /// <param name="routes">The route map, or <see langword="null"/> for the <see cref="INavigationRouteMap"/> of the navigator's services.</param>
+    /// <param name="options">The options of the requests.</param>
+    /// <param name="cancellationToken">Cancels the requests before they commit.</param>
+    /// <returns>The result of the last request, or <see langword="null"/> when no route matches.</returns>
+    /// <exception cref="InvalidOperationException">No route map was passed or registered.</exception>
+    public ValueTask<NavigationResult<object>?> OpenRouteAsync(string route, NavigationRouteOpen mode = NavigationRouteOpen.Push,
+        INavigationRouteMap? routes = null, NavigationRequestOptions? options = null, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(route);
+        return new(Core.Navigator.OpenRouteAsync(this, route, mode, routes, options, cancellationToken));
+    }
+
     private protected abstract Type ContentTypeCore { get; }
 
     private protected abstract NavigationEntry? CurrentEntryCore { get; }
