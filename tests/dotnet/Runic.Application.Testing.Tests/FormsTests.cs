@@ -30,6 +30,12 @@ internal sealed class FormsTests
             ("forms.ts", forms, "    name: \"price\", kind: \"decimal\", constraints: { min: \"0.01\", max: \"999.99\", minExclusive: true },\n"),
             ("forms.ts", forms, "    name: \"code\", kind: \"text\", constraints: { pattern: \"^[A-Z]{3}$\" },\n"),
             ("forms.ts", forms, "    name: \"loose\", kind: \"text\",\n"),
+            ("forms.ts", forms, "    name: \"slug\", kind: \"text\",\n"),
+            ("forms.ts", forms, "    name: \"zip\", kind: \"text\",\n"),
+            ("forms.ts", forms, "    name: \"kebab\", kind: \"text\", constraints: { pattern: \"^[a-z0-9]+(-[a-z0-9]+)*$\" },\n"),
+            ("forms.ts", forms, "    name: \"when\", kind: \"datetime\", constraints: { min: \"2020-01-01\", max: \"2030-12-31T12:30:00\" },\n"),
+            // A bound that does not read as its type (1e3 is not a decimal in Number style) is left out.
+            ("forms.ts", forms, "    name: \"rate\", kind: \"decimal\", constraints: { min: \"0.10\" },\n"),
             ("forms.ts", forms, "    name: \"priority\", kind: \"choice\", choices: [\"Low\", \"Normal\", \"High\"],\n"),
             // C7: an Int64 key is the decimal form of the bigint.
             ("forms.ts", forms, "item => String(item.id))"),

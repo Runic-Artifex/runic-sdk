@@ -107,6 +107,16 @@ function localize(text: string, symbols: NumberSymbols): string {
   return result;
 }
 
+/**
+ * The digits after the decimal point of an invariant number text once it is written without an exponent and without
+ * trailing zeros: `1.50e2` (150) has none, `1e-7` has 7, `2.50` has 1.
+ */
+function fractionDigits(plain: string): number {
+  const [mantissa = "", exponent = "0"] = plain.toLowerCase().split("e");
+  const fraction = (mantissa.split(".")[1] ?? "").replace(/0+$/, "");
+  return Math.max(0, fraction.length - Number(exponent));
+}
+
 const twoPow96 = 2n ** 96n;
 
 /** Reads an invariant decimal text into the `decimal` wire form; trailing zeros are kept, as they are on the wire. */
@@ -161,6 +171,39 @@ function localOffset(year: number, month: number, day: number, hours: number, mi
   return -date.getTimezoneOffset();
 }
 
+/** A local date and time read as if it were UTC, in milliseconds since the epoch. */
+function utcMilliseconds(year: number, month: number, day: number, hours: number, minutes: number, seconds: number): number {
+  const date = new Date(0);
+  date.setUTCFullYear(year, month - 1, day);
+  date.setUTCHours(hours, minutes, seconds, 0);
+  return date.getTime();
+}
+
+/** The page's offsets, in minutes, at which a local date and time (read as UTC, `asUtc`) exists: two in a DST overlap. */
+function localOffsets(asUtc: number): number[] {
+  const probed = new Set<number>();
+  for (let hours = -15; hours <= 15; hours += 3) probed.add(-new Date(asUtc + hours * 3_600_000).getTimezoneOffset());
+  return [...probed].filter(offset => -new Date(asUtc - offset * 60_000).getTimezoneOffset() === offset);
+}
+
+/** The offset of a date-time value in minutes, or `undefined` without one. */
+function offsetOf(value: unknown): number | undefined {
+  if (typeof value !== "string") return undefined;
+  const zone = /(Z|[+-]\d{2}:\d{2})$/.exec(value)?.[1];
+  if (zone === undefined || !value.includes("T")) return undefined;
+  return zone === "Z" ? 0 : (zone[0] === "-" ? -1 : 1) * (Number(zone.slice(1, 3)) * 60 + Number(zone.slice(4, 6)));
+}
+
+/** The instant of a date-time value with an offset, in milliseconds since the epoch. */
+function instantOf(value: string): number | undefined {
+  const match = dateTimePattern.exec(value);
+  const offset = offsetOf(value);
+  if (match === null || offset === undefined) return undefined;
+  const [year, month, day] = match[1]!.split("-").map(Number) as [number, number, number];
+  const [hours, minutes, seconds] = match[2]!.split(":").map(part => Math.trunc(Number(part))) as [number, number, number?];
+  return utcMilliseconds(year, month, day, hours, minutes, seconds ?? 0) - offset * 60_000;
+}
+
 function offsetText(minutes: number): string {
   if (minutes === 0) return "Z";
   const sign = minutes < 0 ? "-" : "+";
@@ -205,7 +248,7 @@ export function kindParser<TValue>(traits: FieldTextTraits<TValue>): FieldTextPa
       const value = Number(plain);
       if (!Number.isFinite(value)) throw invalid(`${shown} is not a number.`);
       if (integer && !Number.isSafeInteger(value)) throw invalid(`${shown} is not a whole number.`);
-      if (scale !== undefined && /^[^e]*\.(\d+)/i.test(plain) && plain.replace(/e.*$/i, "").split(".")[1]!.length > scale)
+      if (scale !== undefined && fractionDigits(plain) > scale)
         throw invalid(`${shown} has more than ${scale} digits after the decimal separator.`);
       return value as TValue;
     };
@@ -240,9 +283,13 @@ export function kindParser<TValue>(traits: FieldTextTraits<TValue>): FieldTextPa
       if (empty(text)) return required("Enter a time.");
       return normalTime(text.trim(), text.trim()).text as TValue;
     };
-    case "datetime": return (text, previous) => {
+    case "datetime": {
+      const shownText = kindFormatter(traits);
+      return (text, previous) => {
       if (empty(text)) return required("Enter a date and time.");
       const shown = text.trim();
+      // The text the field shows for its value means that value, with its offset and fraction.
+      if (typeof previous === "string" && previous.length !== 0 && shownText(previous) === shown) return previous;
       const match = dateTimePattern.exec(shown);
       if (match === null) throw invalid(`${shown} is not a date and time (YYYY-MM-DDThh:mm).`);
       const { year, month, day } = checkDate(match[1]!, shown);
@@ -257,16 +304,29 @@ export function kindParser<TValue>(traits: FieldTextTraits<TValue>): FieldTextPa
         // A local date and time, as `<input type="datetime-local">` reports it: the page's offset at that time, or
         // UTC when the value it replaces is in UTC.
         const utc = typeof previous === "string" && previous.endsWith("Z") && !traits.offset;
-        zone = utc ? "Z" : offsetText(localOffset(year, month, day, time.hours, time.minutes, time.seconds));
+        const asUtc = utcMilliseconds(year, month, day, time.hours, time.minutes, time.seconds);
+        const candidates = localOffsets(asUtc);
+        const previousOffset = offsetOf(previous);
+        let chosen = localOffset(year, month, day, time.hours, time.minutes, time.seconds);
+        if (candidates.length > 1 && previousOffset !== undefined) {
+          // A local time that occurs twice (a DST overlap): the offset of the value it replaces when that is one of
+          // them, and for a UTC value the instant nearest it, so an edit does not move the value by an hour.
+          if (!utc && candidates.includes(previousOffset)) chosen = previousOffset;
+          else if (utc) {
+            const before = instantOf(previous as string);
+            if (before !== undefined)
+              chosen = candidates.reduce((best, offset) => Math.abs(asUtc - offset * 60_000 - before) < Math.abs(asUtc - best * 60_000 - before) ? offset : best);
+          }
+        }
         if (utc) {
-          const date = new Date(0);
-          date.setFullYear(year, month - 1, day);
-          date.setHours(time.hours, time.minutes, time.seconds, 0);
+          const date = new Date(asUtc - chosen * 60_000);
           return `${pad(date.getUTCFullYear(), 4)}-${pad(date.getUTCMonth() + 1)}-${pad(date.getUTCDate())}T${pad(date.getUTCHours())}:${pad(date.getUTCMinutes())}:${pad(date.getUTCSeconds())}${time.fraction.length === 0 ? "" : "." + time.fraction}Z` as TValue;
         }
+        zone = offsetText(chosen);
       }
       return `${match[1]}T${time.text}${zone ?? ""}` as TValue;
-    };
+      };
+    }
     case "value": return () => { throw invalid("This field has no text form."); };
     default: return text => text as TValue;
   }
