@@ -260,7 +260,13 @@ internal sealed class BlobStoreChecks
     [Test]
     public async Task OnWindowsTheWindowFolderGrantsOnlyTheUserSystemAndAdministrators()
     {
-        if (!OperatingSystem.IsWindows()) return;
+        if (OperatingSystem.IsWindows()) await CheckWindowsFolderAclAsync();
+    }
+
+    // The platform analyzer does not carry an IsWindows guard into lambdas, so the check lives in a Windows-only method.
+    [System.Runtime.Versioning.SupportedOSPlatform("windows")]
+    private static async Task CheckWindowsFolderAclAsync()
+    {
         using var work = new Work();
         using var blobs = Blobs(work.Directory("base", Private), null);
         await Store(blobs, "content");
