@@ -1939,6 +1939,7 @@ public static class DesktopPlatformServiceCollectionExtensions
 
     private static IServiceCollection AddPlatformServices(this IServiceCollection services, string? applicationId)
     {
+        services.TryAddSingleton<DesktopServeOnlyState>();
         services.TryAddSingleton(static _ => DesktopPlatformServices.ForApplication());
         services.TryAddSingleton(static _ => DesktopPlatformServices.CreateSettings());
         services.TryAddSingleton(provider => DesktopPlatformServices.CreateNotifications(applicationId,
