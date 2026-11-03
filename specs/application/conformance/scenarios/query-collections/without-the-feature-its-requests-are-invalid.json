@@ -1,0 +1,114 @@
+{
+  "format": "runic.views.scenario/1",
+  "id": "query-collections.without-the-feature-its-requests-are-invalid.v1",
+  "contract": {
+    "id": "runic.views",
+    "version": 4
+  },
+  "set": "query-collections",
+  "roles": [
+    "producer"
+  ],
+  "description": "On a connection whose hello does not list query-collections/1, its request kinds are invalid-request.",
+  "view": "catalog",
+  "requires": [
+    "query-collections/1"
+  ],
+  "ids": {
+    "c1": {
+      "kind": "connection"
+    },
+    "hello-c1": {
+      "kind": "request"
+    },
+    "session": {
+      "kind": "wire",
+      "value": "s-1"
+    },
+    "rows-request": {
+      "kind": "request"
+    }
+  },
+  "arrange": {
+    "model": {
+      "rows": [
+        {
+          "$rows": [
+            1,
+            5
+          ]
+        }
+      ]
+    }
+  },
+  "steps": [
+    {
+      "connect": "c1"
+    },
+    {
+      "send": {
+        "kind": "hello",
+        "protocol": 4,
+        "session": {
+          "$id": "session"
+        },
+        "client": {
+          "name": "conformance-client",
+          "version": "1.0.0"
+        },
+        "features": [
+          "text-splice/1"
+        ]
+      },
+      "id": "hello-c1"
+    },
+    {
+      "receive": {
+        "ok": true,
+        "protocol": 4,
+        "implementation": {
+          "name": {
+            "$any": "string",
+            "default": "conformance-producer"
+          },
+          "version": {
+            "$any": "string",
+            "default": "1.0.0"
+          }
+        },
+        "features": {
+          "$any": "array",
+          "default": [
+            "text-splice/1",
+            "query-collections/1"
+          ]
+        }
+      },
+      "replyTo": "hello-c1"
+    },
+    {
+      "send": {
+        "kind": "query-rows",
+        "route": "catalog",
+        "member": "rows",
+        "start": 0,
+        "count": 2
+      },
+      "id": "rows-request"
+    },
+    {
+      "receive": {
+        "ok": false,
+        "error": {
+          "kind": "rejected",
+          "reason": "invalid-request",
+          "message": {
+            "$any": "string",
+            "default": "…"
+          }
+        }
+      },
+      "replyTo": "rows-request"
+    }
+  ]
+}

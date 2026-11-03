@@ -80,7 +80,21 @@ public sealed class RunicWindowTestHost<TViewModel> : IDisposable where TViewMod
         catch { Transport.Dispose(); throw; }
         Publications = new RunicPublicationLog(Transport, publicationTimeout);
         Root = new RunicViewDriver<TViewModel>(Publications, Transport, rootRoute, null, NextId);
+        _connections.Bind(Content);
     }
+
+    private readonly RunicConnections _connections = new();
+
+    /// <summary>
+    /// The window's page connections, as the window scope's <see cref="IRunicConnections"/> reports them: each test
+    /// connection that sent its <c>hello</c>, such as the one of <see cref="Root"/> and those of
+    /// <see cref="RunicViewDriver{TModel}.ForConnection"/>, until <see cref="InMemoryBridgeTransport.CloseConnection"/>.
+    /// </summary>
+    /// <remarks>
+    /// Changes arrive in a turn of the window's model context; await a command's reply or the model context before
+    /// reading <see cref="IRunicConnections.Current"/>.
+    /// </remarks>
+    public IRunicConnections Connections => _connections;
 
     /// <summary>The root ViewModel.</summary>
     public TViewModel ViewModel { get; }
@@ -131,7 +145,11 @@ public sealed class RunicWindowTestHost<TViewModel> : IDisposable where TViewMod
     /// <param name="content">The uploaded bytes.</param>
     /// <param name="fileName">The file name the page reports.</param>
     /// <param name="contentType">The media type the page reports.</param>
-    /// <param name="connectionKey">The connection that uploads; a command decodes the upload only on it.</param>
+    /// <param name="connectionKey">
+    /// The connection that uploads, by its transport key, as <see cref="RunicViewDriver{TModel}.ConnectionKey"/>; a command
+    /// decodes the upload only on that connection. As a page has its connection's upload token only after its
+    /// <c>hello</c>, the connection sends its <c>hello</c> first if it has not yet.
+    /// </param>
     /// <param name="cancellationToken">Cancels storing.</param>
     /// <exception cref="InvalidOperationException">The window refused the upload, for example over its limit.</exception>
     public async Task<RunicUpload> UploadAsync(ReadOnlyMemory<byte> content, string fileName = "upload",
@@ -141,7 +159,12 @@ public sealed class RunicWindowTestHost<TViewModel> : IDisposable where TViewMod
         ArgumentNullException.ThrowIfNull(fileName);
         ArgumentException.ThrowIfNullOrEmpty(connectionKey);
         using var stream = new MemoryStream(content.ToArray(), writable: false);
-        return await Blobs.StoreAsync(stream, fileName, contentType, connectionKey, cancellationToken).ConfigureAwait(false);
+        // The window keys uploads by its own key of the connection ("{transport key}#n" on this transport), as it keys the
+        // upload token that the connection's hello grants.
+        await Transport.EnsureHelloAsync(connectionKey, cancellationToken: cancellationToken).ConfigureAwait(false);
+        var connection = BridgeDispatcher.For(Transport).ConnectionKeyOf(connectionKey)
+            ?? throw new InvalidOperationException($"The connection {connectionKey} closed before its upload.");
+        return await Blobs.StoreAsync(stream, fileName, contentType, connection, cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -184,6 +207,7 @@ public sealed class RunicWindowTestHost<TViewModel> : IDisposable where TViewMod
     {
         if (_disposed) return;
         _disposed = true;
+        _connections.Dispose();
         try { _attachment.Dispose(); }
         finally
         {

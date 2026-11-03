@@ -1,0 +1,168 @@
+{
+  "format": "runic.views.scenario/1",
+  "id": "query-collections.an-unknown-filter-op-is-invalid-input.v1",
+  "contract": {
+    "id": "runic.views",
+    "version": 4
+  },
+  "set": "query-collections",
+  "roles": [
+    "producer"
+  ],
+  "description": "A filter op the producer does not know is invalid-input, like any query it cannot run, so a later release can add operators without a new feature version.",
+  "view": "catalog",
+  "requires": [
+    "query-collections/1"
+  ],
+  "ids": {
+    "c1": {
+      "kind": "connection"
+    },
+    "hello-c1": {
+      "kind": "request"
+    },
+    "session": {
+      "kind": "wire",
+      "value": "s-1"
+    },
+    "open-request": {
+      "kind": "request"
+    },
+    "presentation": {
+      "kind": "wire",
+      "value": "p-1"
+    },
+    "near-request": {
+      "kind": "request"
+    }
+  },
+  "arrange": {
+    "model": {
+      "rows": [
+        {
+          "$rows": [
+            1,
+            5
+          ]
+        }
+      ]
+    }
+  },
+  "steps": [
+    {
+      "connect": "c1"
+    },
+    {
+      "send": {
+        "kind": "hello",
+        "protocol": 4,
+        "session": {
+          "$id": "session"
+        },
+        "client": {
+          "name": "conformance-client",
+          "version": "1.0.0"
+        },
+        "features": [
+          "text-splice/1",
+          "query-collections/1"
+        ]
+      },
+      "id": "hello-c1"
+    },
+    {
+      "receive": {
+        "ok": true,
+        "protocol": 4,
+        "implementation": {
+          "name": {
+            "$any": "string",
+            "default": "conformance-producer"
+          },
+          "version": {
+            "$any": "string",
+            "default": "1.0.0"
+          }
+        },
+        "features": {
+          "$any": "array",
+          "default": [
+            "text-splice/1",
+            "query-collections/1"
+          ]
+        }
+      },
+      "replyTo": "hello-c1"
+    },
+    {
+      "send": {
+        "kind": "open",
+        "route": "catalog",
+        "presentation": {
+          "$id": "presentation"
+        }
+      },
+      "id": "open-request"
+    },
+    {
+      "receive": {
+        "ok": true,
+        "revision": 0,
+        "state": {
+          "rows": {
+            "query": {
+              "sort": [],
+              "filters": []
+            },
+            "total": 5,
+            "version": 0
+          }
+        },
+        "presentation": "ok"
+      },
+      "replyTo": "open-request"
+    },
+    {
+      "send": {
+        "kind": "query-set",
+        "route": "catalog",
+        "member": "rows",
+        "query": {
+          "sort": [],
+          "filters": [
+            {
+              "field": "id",
+              "op": "near",
+              "value": 3
+            }
+          ]
+        }
+      },
+      "id": "near-request"
+    },
+    {
+      "receive": {
+        "ok": false,
+        "error": {
+          "kind": "rejected",
+          "reason": "invalid-input",
+          "message": {
+            "$any": "string",
+            "default": "…"
+          }
+        }
+      },
+      "replyTo": "near-request"
+    },
+    {
+      "expect": {
+        "model": {
+          "rows": {
+            "sort": [],
+            "filters": []
+          }
+        }
+      }
+    }
+  ]
+}

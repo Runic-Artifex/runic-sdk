@@ -38,8 +38,10 @@ internal sealed record BridgeMvvmConvention(
 internal static class BridgeMvvmConventions
 {
     // ReactiveUI is the primary MVVM path and CommunityToolkit is supported
-    // (D018.9). Their names do not overlap, so the order is not significant.
-    internal static readonly BridgeMvvmConvention[] All = [ReactiveUIConventions.Descriptor, CommunityToolkitConventions.Descriptor];
+    // (D018.9); the Runic View members work with either. Their names do not
+    // overlap, so the order is not significant.
+    internal static readonly BridgeMvvmConvention[] All =
+        [ReactiveUIConventions.Descriptor, CommunityToolkitConventions.Descriptor, RunicViewConventions.Descriptor];
 
     private static readonly HashSet<string> FrameworkBaseTypes = Names(convention => convention.FrameworkBaseTypes);
     private static readonly HashSet<string> TypedCommandContracts = Names(convention => convention.TypedCommandContracts);

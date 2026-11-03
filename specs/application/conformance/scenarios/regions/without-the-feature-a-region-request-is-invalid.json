@@ -1,0 +1,31 @@
+{
+  "format": "runic.views.scenario/1",
+  "id": "regions.without-the-feature-a-region-request-is-invalid.v1",
+  "contract": {"id":"runic.views","version":4},
+  "set": "regions",
+  "roles": ["producer"],
+  "description": "On a connection that does not use region-collections/1, a region request is invalid-request and runs nothing.",
+  "view": "tabs",
+  "requires": ["region-collections/1"],
+  "ids": {
+    "c1": {"kind":"connection"},
+    "hello-c1": {"kind":"request"},
+    "session": {"kind":"wire","value":"s-1"},
+    "open-tabs-request": {"kind":"request"},
+    "presentation": {"kind":"wire","value":"p-1"},
+    "select-request": {"kind":"request"},
+    "snapshot-request": {"kind":"request"}
+  },
+  "arrange": {"model":{}},
+  "steps": [
+    {"connect":"c1"},
+    {"send":{"kind":"hello","protocol":4,"session":{"$id":"session"},"client":{"name":{"$any":"string","default":"conformance-client"},"version":{"$any":"string","default":"1.0.0"}},"features":{"$any":"array","default":["text-splice/1"]}},"id":"hello-c1"},
+    {"receive":{"ok":true,"protocol":4,"implementation":{"name":{"$any":"string","default":"conformance-producer"},"version":{"$any":"string","default":"1.0.0"}},"features":{"$any":"array","default":["text-splice/1"]}},"replyTo":"hello-c1"},
+    {"send":{"kind":"open","route":"tabs","presentation":{"$id":"presentation"}},"id":"open-tabs-request"},
+    {"receive":{"ok":true,"revision":0,"state":{"documents":{"regions":[{"key":"1","content":{"kind":"page","id":"00000000000000000000000000000001"}},{"key":"2","content":{"kind":"page","id":"00000000000000000000000000000002"}},{"key":"3","content":{"kind":"page","id":"00000000000000000000000000000003"}}],"selected":0},"pinned":{"regions":[],"selected":null}},"presentation":"ok"},"replyTo":"open-tabs-request"},
+    {"send":{"kind":"region","route":"tabs","member":"documents","action":"select","key":"2"},"id":"select-request"},
+    {"receive":{"ok":false,"error":{"kind":"rejected","reason":"invalid-request","message":{"$any":"string","default":"…"}}},"replyTo":"select-request"},
+    {"send":{"kind":"snapshot","route":"tabs"},"id":"snapshot-request","note":"The first region stays selected."},
+    {"receive":{"ok":true,"revision":0,"state":{"documents":{"regions":[{"key":"1","content":{"kind":"page","id":"00000000000000000000000000000001"}},{"key":"2","content":{"kind":"page","id":"00000000000000000000000000000002"}},{"key":"3","content":{"kind":"page","id":"00000000000000000000000000000003"}}],"selected":0},"pinned":{"regions":[],"selected":null}}},"replyTo":"snapshot-request"}
+  ]
+}

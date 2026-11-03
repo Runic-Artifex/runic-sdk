@@ -1,0 +1,248 @@
+{
+  "format": "runic.views.scenario/1",
+  "id": "query-collections.a-query-the-source-rejects-is-invalid-input.v1",
+  "contract": {
+    "id": "runic.views",
+    "version": 4
+  },
+  "set": "query-collections",
+  "roles": [
+    "producer",
+    "client"
+  ],
+  "description": "A query that names a field the row source does not have is rejected with invalid-input and changes nothing.",
+  "view": "catalog",
+  "requires": [
+    "query-collections/1"
+  ],
+  "ids": {
+    "c1": {
+      "kind": "connection"
+    },
+    "hello-c1": {
+      "kind": "request"
+    },
+    "session": {
+      "kind": "wire",
+      "value": "s-1"
+    },
+    "open-catalog": {
+      "kind": "call"
+    },
+    "open-catalog-request": {
+      "kind": "request"
+    },
+    "presentation": {
+      "kind": "wire",
+      "value": "p-1"
+    },
+    "sort": {
+      "kind": "call"
+    },
+    "sort-request": {
+      "kind": "request"
+    }
+  },
+  "arrange": {
+    "model": {
+      "rows": [
+        {
+          "$rows": [
+            1,
+            5
+          ]
+        }
+      ]
+    }
+  },
+  "steps": [
+    {
+      "connect": "c1"
+    },
+    {
+      "send": {
+        "kind": "hello",
+        "protocol": 4,
+        "session": {
+          "$id": "session"
+        },
+        "client": {
+          "name": {
+            "$any": "string",
+            "default": "conformance-client"
+          },
+          "version": {
+            "$any": "string",
+            "default": "1.0.0"
+          }
+        },
+        "features": {
+          "$any": "array",
+          "default": [
+            "text-splice/1",
+            "query-collections/1"
+          ]
+        }
+      },
+      "id": "hello-c1"
+    },
+    {
+      "receive": {
+        "ok": true,
+        "protocol": 4,
+        "implementation": {
+          "name": {
+            "$any": "string",
+            "default": "conformance-producer"
+          },
+          "version": {
+            "$any": "string",
+            "default": "1.0.0"
+          }
+        },
+        "features": {
+          "$any": "array",
+          "default": [
+            "text-splice/1",
+            "query-collections/1"
+          ]
+        }
+      },
+      "replyTo": "hello-c1"
+    },
+    {
+      "call": {
+        "id": "open-catalog",
+        "op": "open",
+        "route": "catalog"
+      }
+    },
+    {
+      "send": {
+        "kind": "open",
+        "route": "catalog",
+        "presentation": {
+          "$id": "presentation"
+        }
+      },
+      "id": "open-catalog-request"
+    },
+    {
+      "receive": {
+        "ok": true,
+        "revision": 0,
+        "state": {
+          "rows": {
+            "query": {
+              "sort": [],
+              "filters": []
+            },
+            "total": 5,
+            "version": 0
+          }
+        },
+        "presentation": "ok"
+      },
+      "replyTo": "open-catalog-request"
+    },
+    {
+      "expect": {
+        "call": {
+          "id": "open-catalog",
+          "resolved": null
+        }
+      }
+    },
+    {
+      "call": {
+        "id": "sort",
+        "op": "setQuery",
+        "route": "catalog",
+        "member": "rows",
+        "value": {
+          "sort": [
+            {
+              "field": "owner"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "send": {
+        "kind": "query-set",
+        "route": "catalog",
+        "member": "rows",
+        "query": {
+          "sort": [
+            {
+              "field": "owner",
+              "descending": false
+            }
+          ],
+          "filters": []
+        }
+      },
+      "id": "sort-request"
+    },
+    {
+      "receive": {
+        "ok": false,
+        "error": {
+          "kind": "rejected",
+          "reason": "invalid-input",
+          "message": {
+            "$any": "string",
+            "default": "…"
+          }
+        }
+      },
+      "replyTo": "sort-request"
+    },
+    {
+      "expect": {
+        "call": {
+          "id": "sort",
+          "rejected": {
+            "kind": "rejected",
+            "reason": "invalid-input"
+          }
+        }
+      }
+    },
+    {
+      "expect": {
+        "state": {
+          "route": "catalog",
+          "value": {
+            "rows": {
+              "query": {
+                "sort": [],
+                "filters": []
+              },
+              "total": 5,
+              "version": 0
+            }
+          }
+        }
+      }
+    },
+    {
+      "expect": {
+        "model": {
+          "rows": {
+            "sort": [],
+            "filters": []
+          }
+        }
+      }
+    },
+    {
+      "expect": {
+        "diagnostics": [
+          "rejected"
+        ]
+      }
+    }
+  ]
+}

@@ -1,4 +1,12 @@
-export { ViewOutlet, RunicViewOutlet, type ViewOutletMissingContext, type ViewRegistry } from "./view-outlet.js";
+export {
+  ViewOutlet,
+  RegionOutlets,
+  RunicViewOutlet,
+  type RegionOutletsMode,
+  type RegionPanelAttributes,
+  type ViewOutletMissingContext,
+  type ViewRegistry,
+} from "./view-outlet.js";
 export { injectView, type InjectViewOptions, type ViewHandle } from "./inject-view.js";
 export { injectViewResource, type InjectViewResourceOptions, type ViewResource } from "./inject-view-resource.js";
 export { injectCommand, type CommandHandle, type InjectCommandOptions } from "./inject-command.js";
@@ -11,10 +19,19 @@ export {
   type LatestOperationHandle,
 } from "./inject-latest-operation.js";
 export { injectCollectionViewport, type InjectCollectionViewportOptions } from "./inject-collection-viewport.js";
+export { injectQueryCollection, type InjectQueryCollectionOptions, type QueryCollectionHandle } from "./inject-query-collection.js";
 export { injectBridgeConnection, type BridgeConnectionHandle, type InjectBridgeConnectionOptions } from "./inject-bridge-connection.js";
 export { onBridgeConnection, type BridgeConnectionOptions, type BridgeConnectionState } from "@runic-artifex/views";
 // blobs/1: uploads from the page and the blob values of state.
 export { upload, type BlobRef, type RunicBlob, type UploadOptions, type UploadProgress } from "@runic-artifex/views";
+export {
+  regionEntries,
+  selectedRegion,
+  type RegionCollection,
+  type RegionEntry,
+  type RegionOutcome,
+  type RegionSlot,
+} from "@runic-artifex/views";
 export {
   injectMenuBar,
   type InjectMenuBarOptions,

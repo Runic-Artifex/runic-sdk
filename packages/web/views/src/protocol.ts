@@ -9,8 +9,22 @@ export type Message = Readonly<Record<string, unknown>>;
  * route's epoch, and a `command` may carry the epoch it was issued for; a stale one is `superseded`.
  */
 export const presentationEpochFeature = "presentation-epoch/1";
+/**
+ * request-session/1 (specs/application/README.md, "Request sessions"): every request names the session of its
+ * connection's `hello`, so a request of another page never acts for this connection.
+ */
+export const requestSessionFeature = "request-session/1";
 /** `presented/1` (specs/application/README.md, "Presented states and window close"): `present` asks the page to report a painted revision; `closing` a close. */
 export const presentedFeature = "presented/1";
+/** `view-requests/1` (specs/application/README.md, "View requests"): the producer pushes one-way `view-request`s to presentations that registered handlers. */
+export const viewRequestsFeature = "view-requests/1";
+/** `client-errors/1` (specs/application/README.md, "Page errors"): the page reports its errors with `client-error` requests. */
+export const clientErrorsFeature = "client-errors/1";
+/**
+ * `query-collections/1` (specs/application/README.md, "Query collections"): a page reads the rows of a query collection
+ * for its own range (`query-rows`), changes its query (`query-set`) and finds a key's position (`query-index`).
+ */
+export const queryCollectionsFeature = "query-collections/1";
 
 /** A reply as the runtime reads it. Members beyond `ok`, `error`, `revision` and `released` depend on the request. */
 export type Reply = Message & {
@@ -43,6 +57,9 @@ export type Push =
   | Message & { readonly kind: "interaction-cancelled"; readonly route: string; readonly presentation: string; readonly requestId: string;
     readonly ownerEpoch: number; readonly message?: string }
   | Message & { readonly kind: "menu-bar"; readonly route: string; readonly state: Message }
+  /** view-requests/1: a one-way request for a presentation, handled once the page painted `route` at `revision`. */
+  | Message & { readonly kind: "view-request"; readonly route: string; readonly presentation: string; readonly revision: number;
+    readonly name: string; readonly contract: string; readonly input: unknown }
   /** presented/1: report `presented` once the page painted `route` at `revision` or later. */
   | Message & { readonly kind: "present"; readonly route: string; readonly revision: number }
   /** presented/1: the application closes the window; the only push without a route, for window-level handlers. */
@@ -104,6 +121,8 @@ const replyMembers: Readonly<Record<string, (reply: Message) => boolean>> = {
   write: reply => isSafe(reply["revision"]) && isObject(reply["receipt"]),
   command: reply => isSafe(reply["revision"]) && (reply["superseded"] === undefined || typeof reply["superseded"] === "boolean"),
   can: reply => typeof reply["value"] === "boolean",
+  // region-collections/1: a region request that settled carries its outcome.
+  region: reply => isSafe(reply["revision"]) && isObject(reply["outcome"]) && isString(reply["outcome"]["kind"]),
   start: reply => isSafe(reply["revision"]) && isString(reply["admission"])
     && (reply["admission"] !== "accepted" && reply["admission"] !== "duplicate" || validStatus(reply["status"]))
     && (reply["status"] === undefined || validStatus(reply["status"])),
@@ -114,6 +133,7 @@ const replyMembers: Readonly<Record<string, (reply: Message) => boolean>> = {
   stream: reply => isObject(reply["page"]),
   interactions: reply => isString(reply["registration"]),
   "interaction-reply": reply => isString(reply["result"]),
+  "view-requests": reply => isString(reply["registration"]),
   receive: reply => Array.isArray(reply["messages"]),
   "menu-bar-watch": reply => isObject(reply["state"]),
   "menu-bar-shortcuts": reply => isObject(reply["state"]),
@@ -121,6 +141,11 @@ const replyMembers: Readonly<Record<string, (reply: Message) => boolean>> = {
   "menu-bar-unwatch": () => true,
   presented: () => true,
   "closing-reply": () => true,
+  "query-rows": reply => isSafe(reply["version"]) && (reply["total"] === null || isSafe(reply["total"])) && isSafe(reply["start"])
+    && Array.isArray(reply["keys"]) && Array.isArray(reply["rows"]) && reply["keys"].length === reply["rows"].length
+    && reply["keys"].every(key => isString(key) && key.length > 0),
+  "query-set": reply => isSafe(reply["revision"]),
+  "query-index": reply => isSafe(reply["version"]) && Number.isSafeInteger(reply["index"]) && (reply["index"] as number) >= -1,
 };
 
 /**
@@ -182,7 +207,8 @@ function invalidChanges(changes: unknown): string | undefined {
   return undefined;
 }
 
-const pushKinds = new Set(["state", "frame", "failure", "operation", "interaction", "interaction-cancelled", "menu-bar", "present", "closing"]);
+const pushKinds = new Set(["state", "frame", "failure", "operation", "interaction", "interaction-cancelled", "menu-bar", "present", "closing",
+  "view-request"]);
 
 /** The epoch of a reply or `state` push, when it carries one that is a safe integer (presentation-epoch/1). */
 export function epochOf(message: Message): number | undefined {
@@ -192,7 +218,7 @@ export function epochOf(message: Message): number | undefined {
 
 const offsetDateTime = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,7})?(?:Z|[+-]\d{2}:\d{2})$/;
 
-/** Reads one push (specs/application, "Publication", "Operations", "Interactions"). */
+/** Reads one push (specs/application, "Publication", "Operations", "Interactions", "View requests"). */
 export function readPush(text: unknown): PushReading {
   const push = parseMessage(text);
   if (!push || !isString(push["kind"])) return { result: "invalid", reason: "The push is not a JSON object with a kind." };
@@ -234,6 +260,10 @@ export function readPush(text: unknown): PushReading {
       break;
     case "present":
       if (!isSafe(push["revision"])) return invalid("The present push has no revision.");
+      break;
+    case "view-request":
+      if (!isString(push["presentation"]) || !isSafe(push["revision"]) || !isString(push["name"]) || !isString(push["contract"]) || !has(push, "input"))
+        return invalid("The view request push is invalid.");
       break;
   }
   return { result: "valid", push: push as Push };

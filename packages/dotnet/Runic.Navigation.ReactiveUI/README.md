@@ -9,7 +9,7 @@ host, so it works in a WPF or console app. It provides, in the
 `WhenIsTransitioningChanged()`, `WhenIsBusyChanged()` and `CreateBackCommand()` for
 `NavigationRegion<TContent>` (in `ReactiveNavigationRegionExtensions`);
 `WhenSelectedChanged()`, `WhenSelectedIndexChanged()`, `WhenIsTransitioningChanged()`,
-`WhenIsBusyChanged()` and `CreateSelectCommand()` for a `NavigationSelection` (in
+`WhenIsBusyChanged()`, `WhenRegionsChanged()`, `CreateSelectCommand()` and `CreateCloseCommand()` for a `NavigationSelection` (in
 `ReactiveNavigationSelectionExtensions`); `WhenNavigatedTo()`,
 `WhenNavigatedFrom()`, `CreateCompleteCommand()`, `CreateDismissCommand()` and
 `CreateCloseCommand()` for an entry's `NavigationEntryContext` (in
@@ -293,6 +293,15 @@ Tabs.WhenSelectedIndexChanged()    // int, -1 without regions, on the commit tur
   `ArgumentOutOfRangeException` on `ThrownExceptions` and selects nothing. The
   `canExecute` and `outputScheduler` parameters and the command's lifetime are
   those of `CreateBackCommand()`.
+- For tabs that open and close at run time (since 0.16), `WhenRegionsChanged()`
+  emits `Regions` on subscription and each new list after an `Add` or a
+  committed `RemoveAsync`. `CreateCloseCommand()` takes the region as its
+  parameter and outputs the `NavigationOutcome` of `RemoveAsync`: every page of
+  the tab is asked as `Retire`, and a veto is the output `Rejected` (`Guard`). A
+  region that is not in `Regions` fails the execution with `ArgumentException`.
+  A Runic View closes tabs by key through a
+  [region collection](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Application.Views/README.md#region-collections)
+  instead.
 
 ## Entry lifecycle and result commands
 

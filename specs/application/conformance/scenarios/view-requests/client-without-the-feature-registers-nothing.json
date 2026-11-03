@@ -1,0 +1,215 @@
+{
+  "format": "runic.views.scenario/1",
+  "id": "view-requests.client-without-the-feature-registers-nothing.v1",
+  "contract": {
+    "id": "runic.views",
+    "version": 4
+  },
+  "set": "view-requests",
+  "roles": [
+    "client"
+  ],
+  "description": "On a connection that does not use view-requests/1 the client handles view requests locally and sends no view-requests registration.",
+  "view": "notes",
+  "ids": {
+    "c1": {
+      "kind": "connection"
+    },
+    "hello-c1": {
+      "kind": "request"
+    },
+    "session": {
+      "kind": "wire",
+      "value": "s-1"
+    },
+    "open-notes": {
+      "kind": "call"
+    },
+    "open-notes-request": {
+      "kind": "request"
+    },
+    "presentation": {
+      "kind": "wire",
+      "value": "p-1"
+    },
+    "handle-focus": {
+      "kind": "call"
+    },
+    "touch": {
+      "kind": "call"
+    },
+    "touch-request": {
+      "kind": "request"
+    }
+  },
+  "arrange": {
+    "model": {}
+  },
+  "steps": [
+    {
+      "connect": "c1"
+    },
+    {
+      "send": {
+        "kind": "hello",
+        "protocol": 4,
+        "session": {
+          "$id": "session"
+        },
+        "client": {
+          "name": {
+            "$any": "string",
+            "default": "conformance-client"
+          },
+          "version": {
+            "$any": "string",
+            "default": "1.0.0"
+          }
+        },
+        "features": {
+          "$any": "array",
+          "default": [
+            "text-splice/1"
+          ]
+        }
+      },
+      "id": "hello-c1"
+    },
+    {
+      "receive": {
+        "ok": true,
+        "protocol": 4,
+        "implementation": {
+          "name": {
+            "$any": "string",
+            "default": "conformance-producer"
+          },
+          "version": {
+            "$any": "string",
+            "default": "1.0.0"
+          }
+        },
+        "features": {
+          "$any": "array",
+          "default": [
+            "text-splice/1"
+          ]
+        }
+      },
+      "replyTo": "hello-c1"
+    },
+    {
+      "call": {
+        "id": "open-notes",
+        "op": "open",
+        "route": "notes"
+      }
+    },
+    {
+      "send": {
+        "kind": "open",
+        "route": "notes",
+        "presentation": {
+          "$id": "presentation"
+        }
+      },
+      "id": "open-notes-request"
+    },
+    {
+      "receive": {
+        "ok": true,
+        "revision": 0,
+        "state": {
+          "title": "",
+          "note": "",
+          "priority": "Normal",
+          "due": null,
+          "elapsed": "PT0S",
+          "rows": [],
+          "count": 0,
+          "summary": "rows: 0",
+          "detail": {
+            "kind": "detail",
+            "id": "0123456789abcdef0123456789abcdef"
+          },
+          "canClear": false,
+          "canTouch": true,
+          "canSave": true,
+          "canConfirmClear": false,
+          "isSlowImportExecuting": false,
+          "isConfirmClearExecuting": false
+        },
+        "fields": {
+          "note": {
+            "version": 0
+          }
+        },
+        "presentation": "ok"
+      },
+      "replyTo": "open-notes-request"
+    },
+    {
+      "call": {
+        "id": "handle-focus",
+        "op": "handle",
+        "route": "notes",
+        "request": "focus"
+      }
+    },
+    {
+      "call": {
+        "id": "touch",
+        "op": "command",
+        "route": "notes",
+        "member": "touch"
+      }
+    },
+    {
+      "send": {
+        "kind": "command",
+        "route": "notes",
+        "member": "touch"
+      },
+      "id": "touch-request"
+    },
+    {
+      "receive": {
+        "kind": "frame",
+        "route": "notes",
+        "baseRevision": 0,
+        "revision": 1,
+        "changes": [
+          {
+            "field": "title",
+            "kind": "set",
+            "value": "!"
+          }
+        ]
+      }
+    },
+    {
+      "receive": {
+        "ok": true,
+        "revision": 1
+      },
+      "replyTo": "touch-request"
+    },
+    {
+      "expect": {
+        "call": {
+          "id": "touch",
+          "resolved": null
+        }
+      }
+    },
+    {
+      "expect": {
+        "requests": {
+          "route": "notes",
+          "request": "focus",
+          "inputs": []
+        }
+      }
+    }
+  ]
+}

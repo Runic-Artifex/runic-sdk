@@ -269,6 +269,8 @@ public sealed class RunicWindowOpening<TViewModel> where TViewModel : class
             ? _attachWithContent(transport, content, ViewModel)
             : _attach!(transport, ViewModel);
         Window.AttachedBridge(content, bridge);
+        // IRunicConnections in this scope follows this Window's page connections.
+        (Scope.ServiceProvider.GetService(typeof(RunicConnections)) as RunicConnections)?.Bind(content);
         return bridge;
     }
 

@@ -1,0 +1,297 @@
+{
+  "format": "runic.views.scenario/1",
+  "id": "view-requests.registration-outcomes.v1",
+  "contract": {
+    "id": "runic.views",
+    "version": 4
+  },
+  "set": "view-requests",
+  "roles": [
+    "producer"
+  ],
+  "description": "view-requests answers unsupported for an unknown request, ok, stale for a lower generation and ignored for a presentation that is not open; generation 0 is invalid.",
+  "view": "notes",
+  "requires": [
+    "view-requests/1"
+  ],
+  "ids": {
+    "c1": {
+      "kind": "connection"
+    },
+    "hello-c1": {
+      "kind": "request"
+    },
+    "session": {
+      "kind": "wire",
+      "value": "s-1"
+    },
+    "open-request": {
+      "kind": "request"
+    },
+    "presentation": {
+      "kind": "wire",
+      "value": "p-1"
+    },
+    "presentation2": {
+      "kind": "wire",
+      "value": "p-2"
+    },
+    "unknown": {
+      "kind": "request"
+    },
+    "register": {
+      "kind": "request"
+    },
+    "focusContract": {
+      "kind": "provided"
+    },
+    "toastContract": {
+      "kind": "provided"
+    },
+    "older": {
+      "kind": "request"
+    },
+    "not-open": {
+      "kind": "request"
+    },
+    "zero": {
+      "kind": "request"
+    }
+  },
+  "arrange": {
+    "model": {}
+  },
+  "steps": [
+    {
+      "connect": "c1"
+    },
+    {
+      "send": {
+        "kind": "hello",
+        "protocol": 4,
+        "session": {
+          "$id": "session"
+        },
+        "client": {
+          "name": {
+            "$any": "string",
+            "default": "conformance-client"
+          },
+          "version": {
+            "$any": "string",
+            "default": "1.0.0"
+          }
+        },
+        "features": {
+          "$any": "array",
+          "default": [
+            "text-splice/1",
+            "view-requests/1"
+          ]
+        }
+      },
+      "id": "hello-c1"
+    },
+    {
+      "receive": {
+        "ok": true,
+        "protocol": 4,
+        "implementation": {
+          "name": {
+            "$any": "string",
+            "default": "conformance-producer"
+          },
+          "version": {
+            "$any": "string",
+            "default": "1.0.0"
+          }
+        },
+        "features": {
+          "$any": "array",
+          "default": [
+            "text-splice/1",
+            "view-requests/1"
+          ]
+        }
+      },
+      "replyTo": "hello-c1"
+    },
+    {
+      "send": {
+        "kind": "open",
+        "route": "notes",
+        "presentation": {
+          "$id": "presentation"
+        }
+      },
+      "id": "open-request"
+    },
+    {
+      "receive": {
+        "ok": true,
+        "revision": 0,
+        "state": {
+          "title": "",
+          "note": "",
+          "priority": "Normal",
+          "due": null,
+          "elapsed": "PT0S",
+          "rows": [],
+          "count": 0,
+          "summary": "rows: 0",
+          "detail": {
+            "kind": "detail",
+            "id": "0123456789abcdef0123456789abcdef"
+          },
+          "canClear": false,
+          "canTouch": true,
+          "canSave": true,
+          "canConfirmClear": false,
+          "isSlowImportExecuting": false,
+          "isConfirmClearExecuting": false
+        },
+        "fields": {
+          "note": {
+            "version": 0
+          }
+        },
+        "presentation": "ok"
+      },
+      "replyTo": "open-request"
+    },
+    {
+      "send": {
+        "kind": "view-requests",
+        "route": "notes",
+        "presentation": {
+          "$id": "presentation"
+        },
+        "generation": 1,
+        "requests": [
+          {
+            "name": "unknown",
+            "contract": "none"
+          }
+        ]
+      },
+      "id": "unknown"
+    },
+    {
+      "receive": {
+        "ok": true,
+        "registration": "unsupported"
+      },
+      "replyTo": "unknown"
+    },
+    {
+      "send": {
+        "kind": "view-requests",
+        "route": "notes",
+        "presentation": {
+          "$id": "presentation"
+        },
+        "generation": 2,
+        "requests": [
+          {
+            "name": "focus",
+            "contract": {
+              "$id": "focusContract"
+            }
+          },
+          {
+            "name": "toast",
+            "contract": {
+              "$id": "toastContract"
+            }
+          }
+        ]
+      },
+      "id": "register"
+    },
+    {
+      "receive": {
+        "ok": true,
+        "registration": "ok"
+      },
+      "replyTo": "register"
+    },
+    {
+      "send": {
+        "kind": "view-requests",
+        "route": "notes",
+        "presentation": {
+          "$id": "presentation"
+        },
+        "generation": 1,
+        "requests": [
+          {
+            "name": "focus",
+            "contract": {
+              "$id": "focusContract"
+            }
+          }
+        ]
+      },
+      "id": "older"
+    },
+    {
+      "receive": {
+        "ok": true,
+        "registration": "stale"
+      },
+      "replyTo": "older"
+    },
+    {
+      "send": {
+        "kind": "view-requests",
+        "route": "notes",
+        "presentation": {
+          "$id": "presentation2"
+        },
+        "generation": 3,
+        "requests": [
+          {
+            "name": "focus",
+            "contract": {
+              "$id": "focusContract"
+            }
+          }
+        ]
+      },
+      "id": "not-open"
+    },
+    {
+      "receive": {
+        "ok": true,
+        "registration": "ignored"
+      },
+      "replyTo": "not-open"
+    },
+    {
+      "send": {
+        "kind": "view-requests",
+        "route": "notes",
+        "presentation": {
+          "$id": "presentation"
+        },
+        "generation": 0,
+        "requests": []
+      },
+      "id": "zero"
+    },
+    {
+      "receive": {
+        "ok": false,
+        "error": {
+          "kind": "rejected",
+          "reason": "invalid-request",
+          "message": {
+            "$any": "string",
+            "default": "…"
+          }
+        }
+      },
+      "replyTo": "zero"
+    }
+  ]
+}

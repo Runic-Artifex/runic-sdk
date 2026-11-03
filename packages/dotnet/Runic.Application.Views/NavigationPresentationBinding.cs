@@ -45,6 +45,17 @@ internal static class NavigationPresentationBinding
         return new Subscription(selection, handler);
     }
 
+    // A Bridge region collection (region-collections/1) presents every region of the selection and the selected index.
+    // It binds the window session, as a region slot does, and republishes when the selection's regions or selected index
+    // change, or when the Current of one of its regions changes. It follows the regions that Add and RemoveAsync change.
+    public static IDisposable ObserveCollection(NavigationSelection selection, WindowContentSession? session, Action changed)
+    {
+        ArgumentNullException.ThrowIfNull(selection);
+        ArgumentNullException.ThrowIfNull(changed);
+        if (session is not null) Bind(selection.Navigator, session);
+        return new CollectionSubscription(selection, changed);
+    }
+
     /// <exception cref="InvalidOperationException">
     /// The session uses a different model context, or another live session is already bound.
     /// </exception>
@@ -128,6 +139,75 @@ internal static class NavigationPresentationBinding
             }
             Detach();
             Session.UnlinkDisposal(this);
+        }
+    }
+
+    // Observes a selection and the Current of each of its regions. The selection raises its changes in model turns, so
+    // the regions are resubscribed in the turn that changed them; the lock only orders that against Dispose.
+    private sealed class CollectionSubscription : IDisposable
+    {
+        private readonly NavigationSelection _selection;
+        private readonly Action _changed;
+        private readonly PropertyChangedEventHandler _selectionHandler;
+        private readonly PropertyChangedEventHandler _regionHandler;
+        private readonly object _gate = new();
+        private IReadOnlyList<NavigationRegion> _regions = [];
+        private bool _disposed;
+
+        public CollectionSubscription(NavigationSelection selection, Action changed)
+        {
+            _selection = selection;
+            _changed = changed;
+            _regionHandler = (_, args) =>
+            {
+                if (string.IsNullOrEmpty(args.PropertyName) || args.PropertyName == nameof(NavigationRegion.Current)) _changed();
+            };
+            _selectionHandler = (_, args) =>
+            {
+                if (string.IsNullOrEmpty(args.PropertyName) || args.PropertyName == nameof(NavigationSelection.Regions))
+                {
+                    Follow();
+                    _changed();
+                }
+                else if (args.PropertyName == nameof(NavigationSelection.SelectedIndex)) _changed();
+            };
+            selection.PropertyChanged += _selectionHandler;
+            Follow();
+        }
+
+        // Subscribes the regions the selection has now and unsubscribes the ones it no longer has.
+        private void Follow()
+        {
+            lock (_gate)
+            {
+                if (_disposed) return;
+                var next = _selection.Regions;
+                if (ReferenceEquals(next, _regions)) return;
+                foreach (var region in _regions)
+                    if (!Contains(next, region)) region.PropertyChanged -= _regionHandler;
+                foreach (var region in next)
+                    if (!Contains(_regions, region)) region.PropertyChanged += _regionHandler;
+                _regions = next;
+            }
+        }
+
+        private static bool Contains(IReadOnlyList<NavigationRegion> regions, NavigationRegion region)
+        {
+            foreach (var candidate in regions)
+                if (ReferenceEquals(candidate, region)) return true;
+            return false;
+        }
+
+        public void Dispose()
+        {
+            lock (_gate)
+            {
+                if (_disposed) return;
+                _disposed = true;
+                _selection.PropertyChanged -= _selectionHandler;
+                foreach (var region in _regions) region.PropertyChanged -= _regionHandler;
+                _regions = [];
+            }
         }
     }
 

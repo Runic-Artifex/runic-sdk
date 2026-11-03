@@ -234,6 +234,51 @@
       "request": "closing-reply",
       "input": {"encoding":"json","value":{"ok":true}},
       "expect": {"result":"valid"}
+    },
+    {
+      "id": "messages.replies.view-requests",
+      "operation": "read-reply",
+      "request": "view-requests",
+      "input": {"encoding":"json","value":{"ok":true,"registration":"ok"}},
+      "expect": {"result":"valid"}
+    },
+    {
+      "id": "messages.replies.view-requests-without-a-registration",
+      "operation": "read-reply",
+      "request": "view-requests",
+      "input": {"encoding":"json","value":{"ok":true}},
+      "expect": {"result":"invalid"}
+    },
+    {
+      "id": "messages.replies.region",
+      "description": "region-collections/1: the outcome of a region request that settled.",
+      "operation": "read-reply",
+      "request": "region",
+      "input": {"encoding":"json","value":{"ok":true,"revision":44,"outcome":{"kind":"Rejected","rejection":"Guard","arrival":"None"}}},
+      "expect": {"result":"valid"}
+    },
+    {
+      "id": "messages.replies.region-with-an-unknown-outcome-kind",
+      "description": "The outcome's kinds are an open set.",
+      "operation": "read-reply",
+      "request": "region",
+      "input": {"encoding":"json","value":{"ok":true,"revision":44,"outcome":{"kind":"Deferred","rejection":null,"arrival":"None"}}},
+      "expect": {"result":"valid"}
+    },
+    {
+      "id": "messages.replies.region-released",
+      "description": "A close that released the route that sent it keeps its outcome.",
+      "operation": "read-reply",
+      "request": "region",
+      "input": {"encoding":"json","value":{"ok":true,"released":true,"outcome":{"kind":"Committed","rejection":null,"arrival":"None"}}},
+      "expect": {"result":"valid"}
+    },
+    {
+      "id": "messages.replies.region-without-an-outcome",
+      "operation": "read-reply",
+      "request": "region",
+      "input": {"encoding":"json","value":{"ok":true,"revision":44}},
+      "expect": {"result":"invalid"}
     }
   ]
 }

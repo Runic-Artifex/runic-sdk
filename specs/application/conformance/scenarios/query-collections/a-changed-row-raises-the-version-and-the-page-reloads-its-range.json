@@ -1,0 +1,303 @@
+{
+  "format": "runic.views.scenario/1",
+  "id": "query-collections.a-changed-row-raises-the-version-and-the-page-reloads-its-range.v1",
+  "contract": {
+    "id": "runic.views",
+    "version": 4
+  },
+  "set": "query-collections",
+  "roles": [
+    "producer",
+    "client"
+  ],
+  "description": "When a row changes in place, the producer raises the version in a frame; a presentation that shows a range loads it again.",
+  "view": "catalog",
+  "requires": [
+    "query-collections/1"
+  ],
+  "ids": {
+    "c1": {
+      "kind": "connection"
+    },
+    "hello-c1": {
+      "kind": "request"
+    },
+    "session": {
+      "kind": "wire",
+      "value": "s-1"
+    },
+    "open-catalog": {
+      "kind": "call"
+    },
+    "open-catalog-request": {
+      "kind": "request"
+    },
+    "presentation": {
+      "kind": "wire",
+      "value": "p-1"
+    },
+    "range": {
+      "kind": "call"
+    },
+    "rows-request": {
+      "kind": "request"
+    },
+    "reload-request": {
+      "kind": "request"
+    }
+  },
+  "arrange": {
+    "model": {
+      "rows": [
+        {
+          "$rows": [
+            1,
+            5
+          ]
+        }
+      ]
+    }
+  },
+  "steps": [
+    {
+      "connect": "c1"
+    },
+    {
+      "send": {
+        "kind": "hello",
+        "protocol": 4,
+        "session": {
+          "$id": "session"
+        },
+        "client": {
+          "name": {
+            "$any": "string",
+            "default": "conformance-client"
+          },
+          "version": {
+            "$any": "string",
+            "default": "1.0.0"
+          }
+        },
+        "features": {
+          "$any": "array",
+          "default": [
+            "text-splice/1",
+            "query-collections/1"
+          ]
+        }
+      },
+      "id": "hello-c1"
+    },
+    {
+      "receive": {
+        "ok": true,
+        "protocol": 4,
+        "implementation": {
+          "name": {
+            "$any": "string",
+            "default": "conformance-producer"
+          },
+          "version": {
+            "$any": "string",
+            "default": "1.0.0"
+          }
+        },
+        "features": {
+          "$any": "array",
+          "default": [
+            "text-splice/1",
+            "query-collections/1"
+          ]
+        }
+      },
+      "replyTo": "hello-c1"
+    },
+    {
+      "call": {
+        "id": "open-catalog",
+        "op": "open",
+        "route": "catalog"
+      }
+    },
+    {
+      "send": {
+        "kind": "open",
+        "route": "catalog",
+        "presentation": {
+          "$id": "presentation"
+        }
+      },
+      "id": "open-catalog-request"
+    },
+    {
+      "receive": {
+        "ok": true,
+        "revision": 0,
+        "state": {
+          "rows": {
+            "query": {
+              "sort": [],
+              "filters": []
+            },
+            "total": 5,
+            "version": 0
+          }
+        },
+        "presentation": "ok"
+      },
+      "replyTo": "open-catalog-request"
+    },
+    {
+      "expect": {
+        "call": {
+          "id": "open-catalog",
+          "resolved": null
+        }
+      }
+    },
+    {
+      "call": {
+        "id": "range",
+        "op": "queryRange",
+        "route": "catalog",
+        "member": "rows",
+        "start": 1,
+        "count": 2
+      }
+    },
+    {
+      "send": {
+        "kind": "query-rows",
+        "route": "catalog",
+        "member": "rows",
+        "start": 1,
+        "count": 2
+      },
+      "id": "rows-request"
+    },
+    {
+      "receive": {
+        "ok": true,
+        "version": 0,
+        "total": 5,
+        "start": 1,
+        "keys": [
+          "2",
+          "3"
+        ],
+        "rows": [
+          {
+            "id": 2,
+            "label": "row 2"
+          },
+          {
+            "id": 3,
+            "label": "row 3"
+          }
+        ]
+      },
+      "replyTo": "rows-request"
+    },
+    {
+      "expect": {
+        "call": {
+          "id": "range",
+          "resolved": [
+            "2",
+            "3"
+          ]
+        }
+      }
+    },
+    {
+      "mutate": [
+        {
+          "op": "replaceAt",
+          "index": 2,
+          "item": {
+            "id": 3,
+            "label": "changed"
+          }
+        }
+      ]
+    },
+    {
+      "receive": {
+        "kind": "frame",
+        "route": "catalog",
+        "baseRevision": 0,
+        "revision": 1,
+        "changes": [
+          {
+            "field": "rows",
+            "kind": "set",
+            "value": {
+              "query": {
+                "sort": [],
+                "filters": []
+              },
+              "total": 5,
+              "version": 1
+            }
+          }
+        ]
+      }
+    },
+    {
+      "send": {
+        "kind": "query-rows",
+        "route": "catalog",
+        "member": "rows",
+        "start": 1,
+        "count": 2
+      },
+      "id": "reload-request"
+    },
+    {
+      "receive": {
+        "ok": true,
+        "version": 1,
+        "total": 5,
+        "start": 1,
+        "keys": [
+          "2",
+          "3"
+        ],
+        "rows": [
+          {
+            "id": 2,
+            "label": "row 2"
+          },
+          {
+            "id": 3,
+            "label": "changed"
+          }
+        ]
+      },
+      "replyTo": "reload-request"
+    },
+    {
+      "expect": {
+        "state": {
+          "route": "catalog",
+          "value": {
+            "rows": {
+              "query": {
+                "sort": [],
+                "filters": []
+              },
+              "total": 5,
+              "version": 1
+            }
+          }
+        }
+      }
+    },
+    {
+      "expect": {
+        "diagnostics": []
+      }
+    }
+  ]
+}

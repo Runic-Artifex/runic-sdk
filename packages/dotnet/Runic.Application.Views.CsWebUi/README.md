@@ -315,6 +315,21 @@ remove a binding before its window closes, so the binding stays while the
 window's request handler changes, and a request while none is served gets the
 `released` reply. Dispose the transport before the `WebUiWindow`. The trusted
 client key is WebUI's client id, and the connection key `clientId:connectionId`.
+WebUI reuses connection slots, and without its authentication cookie every
+client id is 0, so a reloaded page or another browser can get the key of a
+connection that just closed, even before WebUI reports that close. Since 0.16:
+
+- The window gives every connection its own key, `clientId:connectionId#n`,
+  with a counter that never repeats, so a command, question or push of a
+  closed connection never reaches the connection that reused its slot.
+- With `request-session/1`, which pages and hosts of 0.16 use, every request
+  names the random session of its page's `hello`. A request of another page,
+  including the `receive` that `runic-cswebui.js` sends as soon as its socket
+  opens, is answered `no-hello` and never touches the old connection or its
+  mailbox, and the new page's `hello` closes the old connection at once
+  ([request sessions](https://github.com/Runic-Artifex/runic-sdk/blob/main/specs/application/README.md#request-sessions)).
+  A page of 0.15, which sends no session, is not protected this way while its
+  close is not reported.
 
 - `BroadcastAsync` writes a push to every client of the window with WebUI's
   `SendRaw`.
@@ -331,6 +346,28 @@ client key is WebUI's client id, and the connection key `clientId:connectionId`.
   does not keep their order either: a request may be admitted before one the
   page sent earlier. Edits carry their own numbers, so a later edit still wins,
   and a broadcast and a mailbox push are not ordered relative to each other.
+
+### Several clients
+
+With WebUI's `MultiClient` configuration, every browser that reaches the
+window's server shares the window: they see one ViewModel, and broadcasts
+reach them all. `IRunicConnections` (since 0.16), which
+`AddRunicWindowService()` registers per Window scope, lists the window's
+connections and raises `Connected` and `Disconnected` in a model turn. Its
+`Caller`, read in a command, an operation or an in-page menu click, is the
+connection that sent it. The keys are the trusted keys above (WebUI's client
+id, and `clientId:connectionId`), never values the page sends; a reload is a
+new connection. See
+[Who is connected, and who called](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Application.Views/README.md#who-is-connected-and-who-called)
+for the API, `RunicConnectionState<T>` for a value per connection, and a
+"who else is viewing" example.
+
+A connection key says which page sent a request, not who the user is: WebUI
+admits every client that reaches the server (see [Security](#security)).
+`MultiClient` needs the application's own authentication, for example a
+sign-in command that maps the caller's `ConnectionKey` to a user the
+application checked, kept in a `RunicConnectionState<T>` so it goes when the
+page disconnects.
 
 ## Security
 
@@ -351,7 +388,10 @@ decisions:
   process. Use it for test harnesses on machines you control.
 - **Multiple clients.**
   `WebUiApplication.SetConfiguration(WebUiConfiguration.MultiClient, true)` lets
-  every client that reaches the server share the window.
+  every client that reaches the server share the window. `IRunicConnections`
+  then lists each client's connection and tells a command which one invoked it
+  ([Several clients](#several-clients)), but its keys only tell pages apart:
+  authenticate users in the application before you act on who they are.
 - **Your own WebUI build.** A library from `CSWEBUI_NATIVE_LIBRARY` or
   `WebUiNativeLibrary.SetLibraryPath` must include WebUI commit `efac0e24d`:
   with an older WebUI, Bridge calls that arrive together can run with each

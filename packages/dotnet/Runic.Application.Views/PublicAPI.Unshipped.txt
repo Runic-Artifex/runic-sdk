@@ -38,3 +38,222 @@ Runic.Application.Views.IRunicMenuCheckedSource.IsMenuItemChecked(string! comman
 Runic.Application.Views.RunicMenu
 static Runic.Application.Views.RunicMenu.Refresh(object! viewModel) -> void
 static Runic.Application.Views.RunicMenu.RefreshAll() -> void
+const Runic.Application.Views.RunicQueryCollectionOptions.MaximumRangeCount = 1000 -> int
+const Runic.Application.Views.RunicQuery.MaximumFieldLength = 128 -> int
+const Runic.Application.Views.RunicQuery.MaximumFilters = 32 -> int
+const Runic.Application.Views.RunicQuery.MaximumSortKeys = 8 -> int
+~override Runic.Application.Views.RunicQueryCollectionStatistics.Equals(object obj) -> bool
+override Runic.Application.Views.RunicQueryCollectionStatistics.GetHashCode() -> int
+~override Runic.Application.Views.RunicQueryCollectionStatistics.ToString() -> string
+override Runic.Application.Views.RunicQuery.Equals(object? obj) -> bool
+override Runic.Application.Views.RunicQuery.GetHashCode() -> int
+override Runic.Application.Views.RunicQuery.ToString() -> string!
+override Runic.Application.Views.RunicRowPage<TRow>.Equals(object? obj) -> bool
+override Runic.Application.Views.RunicRowPage<TRow>.GetHashCode() -> int
+override Runic.Application.Views.RunicRowPage<TRow>.ToString() -> string!
+~override Runic.Application.Views.RunicRowRange.Equals(object obj) -> bool
+override Runic.Application.Views.RunicRowRange.GetHashCode() -> int
+~override Runic.Application.Views.RunicRowRange.ToString() -> string
+~override Runic.Application.Views.RunicSortKey.Equals(object obj) -> bool
+override Runic.Application.Views.RunicSortKey.GetHashCode() -> int
+~override Runic.Application.Views.RunicSortKey.ToString() -> string
+Runic.Application.Views.Generated.BridgeQueryWire
+Runic.Application.Views.Generated.PropertyDescriptor<T>.QueryRowWriter.get -> System.Action<System.Text.Json.Utf8JsonWriter!, object?>?
+Runic.Application.Views.Generated.PropertyDescriptor<T>.QueryRowWriter.init -> void
+Runic.Application.Views.IRunicRowSource<TRow, TKey>
+Runic.Application.Views.IRunicRowSource<TRow, TKey>.CountAsync(Runic.Application.Views.RunicQuery! query, System.Threading.CancellationToken cancellationToken) -> System.Threading.Tasks.ValueTask<int>
+Runic.Application.Views.IRunicRowSource<TRow, TKey>.IndexOfAsync(Runic.Application.Views.RunicQuery! query, TKey key, System.Threading.CancellationToken cancellationToken) -> System.Threading.Tasks.ValueTask<int>
+Runic.Application.Views.IRunicRowSource<TRow, TKey>.LoadAsync(Runic.Application.Views.RunicQuery! query, Runic.Application.Views.RunicRowRange range, System.Threading.CancellationToken cancellationToken) -> System.Threading.Tasks.ValueTask<Runic.Application.Views.RunicRowPage<TRow>!>
+Runic.Application.Views.IRunicRowSource<TRow, TKey>.Validate(Runic.Application.Views.RunicQuery! query) -> void
+Runic.Application.Views.RunicFilter
+Runic.Application.Views.RunicFilter.Field.get -> string!
+Runic.Application.Views.RunicFilter.Maximum.get -> System.Text.Json.JsonElement
+Runic.Application.Views.RunicFilter.Minimum.get -> System.Text.Json.JsonElement
+Runic.Application.Views.RunicFilterOperator
+Runic.Application.Views.RunicFilterOperator.Contains = 1 -> Runic.Application.Views.RunicFilterOperator
+Runic.Application.Views.RunicFilterOperator.Custom = 3 -> Runic.Application.Views.RunicFilterOperator
+Runic.Application.Views.RunicFilterOperator.Equal = 0 -> Runic.Application.Views.RunicFilterOperator
+Runic.Application.Views.RunicFilter.Operator.get -> Runic.Application.Views.RunicFilterOperator
+Runic.Application.Views.RunicFilterOperator.Range = 2 -> Runic.Application.Views.RunicFilterOperator
+Runic.Application.Views.RunicFilter.Value.get -> System.Text.Json.JsonElement
+Runic.Application.Views.RunicQuery
+Runic.Application.Views.RunicQueryableRowSource<TRow, TKey>
+Runic.Application.Views.RunicQueryableRowSource<TRow, TKey>.CountAsync(Runic.Application.Views.RunicQuery! query, System.Threading.CancellationToken cancellationToken) -> System.Threading.Tasks.ValueTask<int>
+Runic.Application.Views.RunicQueryableRowSource<TRow, TKey>.IndexOfAsync(Runic.Application.Views.RunicQuery! query, TKey key, System.Threading.CancellationToken cancellationToken) -> System.Threading.Tasks.ValueTask<int>
+Runic.Application.Views.RunicQueryableRowSource<TRow, TKey>.LoadAsync(Runic.Application.Views.RunicQuery! query, Runic.Application.Views.RunicRowRange range, System.Threading.CancellationToken cancellationToken) -> System.Threading.Tasks.ValueTask<Runic.Application.Views.RunicRowPage<TRow>!>
+Runic.Application.Views.RunicQueryableRowSource<TRow, TKey>.RunicQueryableRowSource(System.Func<System.Linq.IQueryable<TRow>!>! rows, Runic.Application.Views.RunicQueryFields<TRow>! fields, System.Linq.Expressions.Expression<System.Func<TRow, TKey>!>! key) -> void
+Runic.Application.Views.RunicQueryableRowSource<TRow, TKey>.Validate(Runic.Application.Views.RunicQuery! query) -> void
+Runic.Application.Views.RunicQueryCollectionOptions
+Runic.Application.Views.RunicQueryCollectionOptions.MaximumCachedPages.get -> int
+Runic.Application.Views.RunicQueryCollectionOptions.MaximumCachedPages.init -> void
+Runic.Application.Views.RunicQueryCollectionOptions.MaximumConcurrentLoads.get -> int
+Runic.Application.Views.RunicQueryCollectionOptions.MaximumConcurrentLoads.init -> void
+Runic.Application.Views.RunicQueryCollectionOptions.ModelContext.get -> Runic.Navigation.IRunicModelContext?
+Runic.Application.Views.RunicQueryCollectionOptions.ModelContext.init -> void
+Runic.Application.Views.RunicQueryCollectionOptions.PageSize.get -> int
+Runic.Application.Views.RunicQueryCollectionOptions.PageSize.init -> void
+Runic.Application.Views.RunicQueryCollectionOptions.Query.get -> Runic.Application.Views.RunicQuery?
+Runic.Application.Views.RunicQueryCollectionOptions.Query.init -> void
+Runic.Application.Views.RunicQueryCollectionOptions.RunicQueryCollectionOptions() -> void
+Runic.Application.Views.RunicQueryCollectionStatistics
+Runic.Application.Views.RunicQueryCollectionStatistics.CachedPages.get -> int
+Runic.Application.Views.RunicQueryCollectionStatistics.CachedPages.init -> void
+Runic.Application.Views.RunicQueryCollectionStatistics.CachedRows.get -> int
+Runic.Application.Views.RunicQueryCollectionStatistics.CachedRows.init -> void
+Runic.Application.Views.RunicQueryCollectionStatistics.Counts.get -> long
+Runic.Application.Views.RunicQueryCollectionStatistics.Counts.init -> void
+Runic.Application.Views.RunicQueryCollectionStatistics.Deconstruct(out int CachedPages, out int CachedRows, out long PageLoads, out long RowsLoaded, out long Counts) -> void
+Runic.Application.Views.RunicQueryCollectionStatistics.Equals(Runic.Application.Views.RunicQueryCollectionStatistics other) -> bool
+Runic.Application.Views.RunicQueryCollectionStatistics.PageLoads.get -> long
+Runic.Application.Views.RunicQueryCollectionStatistics.PageLoads.init -> void
+Runic.Application.Views.RunicQueryCollectionStatistics.RowsLoaded.get -> long
+Runic.Application.Views.RunicQueryCollectionStatistics.RowsLoaded.init -> void
+Runic.Application.Views.RunicQueryCollectionStatistics.RunicQueryCollectionStatistics(int CachedPages, int CachedRows, long PageLoads, long RowsLoaded, long Counts) -> void
+Runic.Application.Views.RunicQueryCollectionStatistics.RunicQueryCollectionStatistics() -> void
+Runic.Application.Views.RunicQueryCollection<TRow, TKey>
+Runic.Application.Views.RunicQueryCollection<TRow, TKey>.CreateView(System.Threading.SynchronizationContext? context = null) -> Runic.Application.Views.RunicQueryCollectionView<TRow>!
+Runic.Application.Views.RunicQueryCollection<TRow, TKey>.Dispose() -> void
+Runic.Application.Views.RunicQueryCollection<TRow, TKey>.IndexOfAsync(TKey key, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<int>
+Runic.Application.Views.RunicQueryCollection<TRow, TKey>.Invalidate(System.Collections.Generic.IEnumerable<TKey>! keys) -> void
+Runic.Application.Views.RunicQueryCollection<TRow, TKey>.Invalidate(TKey key) -> void
+Runic.Application.Views.RunicQueryCollection<TRow, TKey>.LoadAsync(Runic.Application.Views.RunicRowRange range, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<System.Collections.Generic.IReadOnlyList<TRow>!>
+Runic.Application.Views.RunicQueryCollection<TRow, TKey>.PropertyChanged -> System.ComponentModel.PropertyChangedEventHandler?
+Runic.Application.Views.RunicQueryCollection<TRow, TKey>.Query.get -> Runic.Application.Views.RunicQuery!
+Runic.Application.Views.RunicQueryCollection<TRow, TKey>.Refresh() -> void
+Runic.Application.Views.RunicQueryCollection<TRow, TKey>.RunicQueryCollection(Runic.Application.Views.IRunicRowSource<TRow, TKey>! source, System.Func<TRow, TKey>! key, Runic.Application.Views.RunicQueryCollectionOptions? options = null) -> void
+Runic.Application.Views.RunicQueryCollection<TRow, TKey>.SetQuery(Runic.Application.Views.RunicQuery! query) -> void
+Runic.Application.Views.RunicQueryCollection<TRow, TKey>.Statistics.get -> Runic.Application.Views.RunicQueryCollectionStatistics
+Runic.Application.Views.RunicQueryCollection<TRow, TKey>.Total.get -> int?
+Runic.Application.Views.RunicQueryCollection<TRow, TKey>.Version.get -> long
+Runic.Application.Views.RunicQueryCollectionView<TRow>
+Runic.Application.Views.RunicQueryCollectionView<TRow>.CollectionChanged -> System.Collections.Specialized.NotifyCollectionChangedEventHandler?
+Runic.Application.Views.RunicQueryCollectionView<TRow>.Count.get -> int
+Runic.Application.Views.RunicQueryCollectionView<TRow>.Dispose() -> void
+Runic.Application.Views.RunicQueryCollectionView<TRow>.GetEnumerator() -> System.Collections.Generic.IEnumerator<TRow?>!
+Runic.Application.Views.RunicQueryCollectionView<TRow>.PropertyChanged -> System.ComponentModel.PropertyChangedEventHandler?
+Runic.Application.Views.RunicQueryCollectionView<TRow>.this[int index].get -> TRow?
+Runic.Application.Views.RunicQuery.Equals(Runic.Application.Views.RunicQuery? other) -> bool
+Runic.Application.Views.RunicQueryFields<TRow>
+Runic.Application.Views.RunicQueryFields<TRow>.AddCustom(string! name, System.Func<System.Linq.IQueryable<TRow>!, System.Text.Json.JsonElement, System.Linq.IQueryable<TRow>!>! apply) -> Runic.Application.Views.RunicQueryFields<TRow>!
+Runic.Application.Views.RunicQueryFields<TRow>.AddText(string! name, System.Linq.Expressions.Expression<System.Func<TRow, string?>!>! selector, bool ignoreCase = true) -> Runic.Application.Views.RunicQueryFields<TRow>!
+Runic.Application.Views.RunicQueryFields<TRow>.Add<TValue>(string! name, System.Linq.Expressions.Expression<System.Func<TRow, TValue>!>! selector) -> Runic.Application.Views.RunicQueryFields<TRow>!
+Runic.Application.Views.RunicQueryFields<TRow>.Apply<TKey>(System.Linq.IQueryable<TRow>! rows, Runic.Application.Views.RunicQuery! query, System.Linq.Expressions.Expression<System.Func<TRow, TKey>!>! key) -> System.Linq.IOrderedQueryable<TRow>!
+Runic.Application.Views.RunicQueryFields<TRow>.Filter(System.Linq.IQueryable<TRow>! rows, Runic.Application.Views.RunicQuery! query) -> System.Linq.IQueryable<TRow>!
+Runic.Application.Views.RunicQueryFields<TRow>.RunicQueryFields() -> void
+Runic.Application.Views.RunicQueryFields<TRow>.Sort<TKey>(System.Linq.IQueryable<TRow>! rows, Runic.Application.Views.RunicQuery! query, System.Linq.Expressions.Expression<System.Func<TRow, TKey>!>! key) -> System.Linq.IOrderedQueryable<TRow>!
+Runic.Application.Views.RunicQueryFields<TRow>.Validate(Runic.Application.Views.RunicQuery! query) -> void
+Runic.Application.Views.RunicQuery.Filters.get -> System.Collections.Generic.IReadOnlyList<Runic.Application.Views.RunicFilter!>!
+Runic.Application.Views.RunicQuery.RunicQuery(System.Collections.Generic.IEnumerable<Runic.Application.Views.RunicSortKey>? sort = null, System.Collections.Generic.IEnumerable<Runic.Application.Views.RunicFilter!>? filters = null) -> void
+Runic.Application.Views.RunicQuery.Sort.get -> System.Collections.Generic.IReadOnlyList<Runic.Application.Views.RunicSortKey>!
+Runic.Application.Views.RunicQuery.WithFilters(params System.Collections.Generic.IEnumerable<Runic.Application.Views.RunicFilter!>! filters) -> Runic.Application.Views.RunicQuery!
+Runic.Application.Views.RunicQuery.WithSort(params System.Collections.Generic.IEnumerable<Runic.Application.Views.RunicSortKey>! sort) -> Runic.Application.Views.RunicQuery!
+Runic.Application.Views.RunicRowPage<TRow>
+Runic.Application.Views.RunicRowPage<TRow>.<Clone>$() -> Runic.Application.Views.RunicRowPage<TRow>!
+Runic.Application.Views.RunicRowPage<TRow>.Deconstruct(out System.Collections.Generic.IReadOnlyList<TRow>! Rows, out int? Total) -> void
+Runic.Application.Views.RunicRowPage<TRow>.Equals(Runic.Application.Views.RunicRowPage<TRow>? other) -> bool
+Runic.Application.Views.RunicRowPage<TRow>.Rows.get -> System.Collections.Generic.IReadOnlyList<TRow>!
+Runic.Application.Views.RunicRowPage<TRow>.Rows.init -> void
+Runic.Application.Views.RunicRowPage<TRow>.RunicRowPage(System.Collections.Generic.IReadOnlyList<TRow>! Rows, int? Total = null) -> void
+Runic.Application.Views.RunicRowPage<TRow>.Total.get -> int?
+Runic.Application.Views.RunicRowPage<TRow>.Total.init -> void
+Runic.Application.Views.RunicRowRange
+Runic.Application.Views.RunicRowRange.Count.get -> int
+Runic.Application.Views.RunicRowRange.Count.init -> void
+Runic.Application.Views.RunicRowRange.Deconstruct(out int Start, out int Count) -> void
+Runic.Application.Views.RunicRowRange.End.get -> int
+Runic.Application.Views.RunicRowRange.Equals(Runic.Application.Views.RunicRowRange other) -> bool
+Runic.Application.Views.RunicRowRange.RunicRowRange(int Start, int Count) -> void
+Runic.Application.Views.RunicRowRange.RunicRowRange() -> void
+Runic.Application.Views.RunicRowRange.Start.get -> int
+Runic.Application.Views.RunicRowRange.Start.init -> void
+Runic.Application.Views.RunicSortKey
+Runic.Application.Views.RunicSortKey.Deconstruct(out string! Field, out bool Descending) -> void
+Runic.Application.Views.RunicSortKey.Descending.get -> bool
+Runic.Application.Views.RunicSortKey.Descending.init -> void
+Runic.Application.Views.RunicSortKey.Equals(Runic.Application.Views.RunicSortKey other) -> bool
+Runic.Application.Views.RunicSortKey.Field.get -> string!
+Runic.Application.Views.RunicSortKey.Field.init -> void
+Runic.Application.Views.RunicSortKey.RunicSortKey(string! Field, bool Descending = false) -> void
+Runic.Application.Views.RunicSortKey.RunicSortKey() -> void
+static Runic.Application.Views.Generated.BridgeQueryWire.WriteState(System.Text.Json.Utf8JsonWriter! writer, object? collection) -> void
+static Runic.Application.Views.RunicFilter.Contains(string! field, string! text) -> Runic.Application.Views.RunicFilter!
+static Runic.Application.Views.RunicFilter.Custom(string! name, System.Text.Json.JsonElement value = default(System.Text.Json.JsonElement)) -> Runic.Application.Views.RunicFilter!
+static Runic.Application.Views.RunicFilter.Equal(string! field, bool value) -> Runic.Application.Views.RunicFilter!
+static Runic.Application.Views.RunicFilter.Equal(string! field, double value) -> Runic.Application.Views.RunicFilter!
+static Runic.Application.Views.RunicFilter.Equal(string! field, string? value) -> Runic.Application.Views.RunicFilter!
+static Runic.Application.Views.RunicFilter.Equal(string! field, System.Text.Json.JsonElement value) -> Runic.Application.Views.RunicFilter!
+static Runic.Application.Views.RunicFilter.Range(string! field, double? minimum, double? maximum) -> Runic.Application.Views.RunicFilter!
+static Runic.Application.Views.RunicFilter.Range(string! field, System.Text.Json.JsonElement minimum, System.Text.Json.JsonElement maximum) -> Runic.Application.Views.RunicFilter!
+static Runic.Application.Views.RunicQueryCollectionStatistics.operator !=(Runic.Application.Views.RunicQueryCollectionStatistics left, Runic.Application.Views.RunicQueryCollectionStatistics right) -> bool
+static Runic.Application.Views.RunicQueryCollectionStatistics.operator ==(Runic.Application.Views.RunicQueryCollectionStatistics left, Runic.Application.Views.RunicQueryCollectionStatistics right) -> bool
+static Runic.Application.Views.RunicQuery.Empty.get -> Runic.Application.Views.RunicQuery!
+static Runic.Application.Views.RunicRowPage<TRow>.operator !=(Runic.Application.Views.RunicRowPage<TRow>? left, Runic.Application.Views.RunicRowPage<TRow>? right) -> bool
+static Runic.Application.Views.RunicRowPage<TRow>.operator ==(Runic.Application.Views.RunicRowPage<TRow>? left, Runic.Application.Views.RunicRowPage<TRow>? right) -> bool
+static Runic.Application.Views.RunicRowRange.operator !=(Runic.Application.Views.RunicRowRange left, Runic.Application.Views.RunicRowRange right) -> bool
+static Runic.Application.Views.RunicRowRange.operator ==(Runic.Application.Views.RunicRowRange left, Runic.Application.Views.RunicRowRange right) -> bool
+static Runic.Application.Views.RunicSortKey.operator !=(Runic.Application.Views.RunicSortKey left, Runic.Application.Views.RunicSortKey right) -> bool
+static Runic.Application.Views.RunicSortKey.operator ==(Runic.Application.Views.RunicSortKey left, Runic.Application.Views.RunicSortKey right) -> bool
+Runic.Application.Views.Generated.ViewQuestionDescriptor
+Runic.Application.Views.Generated.ViewRequestDescriptor
+Runic.Application.Views.RunicInteractionUnhandledException
+Runic.Application.Views.RunicInteractionUnhandledException.RunicInteractionUnhandledException() -> void
+Runic.Application.Views.RunicInteractionUnhandledException.RunicInteractionUnhandledException(string! message) -> void
+Runic.Application.Views.RunicInteractionUnhandledException.RunicInteractionUnhandledException(string! message, System.Exception! innerException) -> void
+Runic.Application.Views.ViewQuestion<TInput, TOutput>
+Runic.Application.Views.ViewQuestion<TInput, TOutput>.AskAsync(TInput input, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<TOutput>!
+Runic.Application.Views.ViewQuestion<TInput, TOutput>.Timeout.get -> System.TimeSpan?
+Runic.Application.Views.ViewQuestion<TInput, TOutput>.ViewQuestion(System.Func<TInput, System.Threading.CancellationToken, System.Threading.Tasks.ValueTask<TOutput>>? fallback = null, System.TimeSpan? timeout = null) -> void
+Runic.Application.Views.ViewRequest<T>
+Runic.Application.Views.ViewRequest<T>.Delivery.get -> Runic.Application.Views.ViewRequestDelivery
+Runic.Application.Views.ViewRequest<T>.Raise(T input) -> void
+Runic.Application.Views.ViewRequest<T>.ViewRequest(Runic.Application.Views.ViewRequestDelivery delivery = Runic.Application.Views.ViewRequestDelivery.Drop) -> void
+Runic.Application.Views.ViewRequestDelivery
+Runic.Application.Views.ViewRequestDelivery.Broadcast = 2 -> Runic.Application.Views.ViewRequestDelivery
+Runic.Application.Views.ViewRequestDelivery.Drop = 0 -> Runic.Application.Views.ViewRequestDelivery
+Runic.Application.Views.ViewRequestDelivery.NextMounted = 1 -> Runic.Application.Views.ViewRequestDelivery
+static Runic.Application.Views.Generated.ViewQuestionDescriptor.Create<TModel, TInput, TOutput>(string! name, string! contract, System.Func<TModel!, Runic.Application.Views.ViewQuestion<TInput, TOutput>!>! getQuestion, System.Func<TInput, string!>! encodeInput, System.Func<System.Text.Json.JsonElement, TOutput>! decodeOutput) -> Runic.Application.Views.Generated.BridgeInteractionDescriptor<TModel!>!
+static Runic.Application.Views.Generated.ViewRequestDescriptor.Create<TModel, T>(string! name, string! contract, System.Func<TModel!, Runic.Application.Views.ViewRequest<T>!>! getRequest, System.Func<T, string!>! encodeInput) -> Runic.Application.Views.Generated.BridgeInteractionDescriptor<TModel!>!
+static Runic.Application.Views.RunicInteractionInvocation.EnterWindow(object! viewModel, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.IDisposable!
+static Runic.Application.Views.RunicInteractionInvocation.TryEnterWindow(object! viewModel, out System.IDisposable! scope, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> bool
+Runic.Application.Views.IRunicConnections
+Runic.Application.Views.IRunicConnections.Caller.get -> Runic.Application.Views.RunicConnection?
+Runic.Application.Views.IRunicConnections.Connected -> System.EventHandler<Runic.Application.Views.RunicConnectionEventArgs!>?
+Runic.Application.Views.IRunicConnections.Current.get -> System.Collections.Generic.IReadOnlyList<Runic.Application.Views.RunicConnection!>!
+Runic.Application.Views.IRunicConnections.Disconnected -> System.EventHandler<Runic.Application.Views.RunicConnectionEventArgs!>?
+Runic.Application.Views.RunicConnection
+Runic.Application.Views.RunicConnection.<Clone>$() -> Runic.Application.Views.RunicConnection!
+Runic.Application.Views.RunicConnection.ClientKey.get -> string!
+Runic.Application.Views.RunicConnection.ClientKey.init -> void
+Runic.Application.Views.RunicConnection.ConnectionKey.get -> string!
+Runic.Application.Views.RunicConnection.ConnectionKey.init -> void
+Runic.Application.Views.RunicConnection.Deconstruct(out string! ConnectionKey, out string! ClientKey) -> void
+Runic.Application.Views.RunicConnection.Equals(Runic.Application.Views.RunicConnection? other) -> bool
+override Runic.Application.Views.RunicConnection.Equals(object? obj) -> bool
+override Runic.Application.Views.RunicConnection.GetHashCode() -> int
+Runic.Application.Views.RunicConnection.RunicConnection(string! ConnectionKey, string! ClientKey) -> void
+override Runic.Application.Views.RunicConnection.ToString() -> string!
+static Runic.Application.Views.RunicConnection.operator !=(Runic.Application.Views.RunicConnection? left, Runic.Application.Views.RunicConnection? right) -> bool
+static Runic.Application.Views.RunicConnection.operator ==(Runic.Application.Views.RunicConnection? left, Runic.Application.Views.RunicConnection? right) -> bool
+Runic.Application.Views.RunicConnectionEventArgs
+Runic.Application.Views.RunicConnectionEventArgs.Connection.get -> Runic.Application.Views.RunicConnection!
+Runic.Application.Views.RunicConnectionEventArgs.RunicConnectionEventArgs(Runic.Application.Views.RunicConnection! connection) -> void
+Runic.Application.Views.RunicConnectionState<T>
+Runic.Application.Views.RunicConnectionState<T>.Dispose() -> void
+Runic.Application.Views.RunicConnectionState<T>.RunicConnectionState(Runic.Application.Views.IRunicConnections! connections, System.Func<Runic.Application.Views.RunicConnection!, T>! create) -> void
+Runic.Application.Views.RunicConnectionState<T>.TryGet(Runic.Application.Views.RunicConnection! connection, out T value) -> bool
+Runic.Application.Views.RunicConnectionState<T>.TryGetCaller(out T value) -> bool
+Runic.Application.Views.RunicConnectionState<T>.Values.get -> System.Collections.Generic.IReadOnlyDictionary<string!, T>!
+Runic.Application.Views.RunicConnectionsExtensions
+static Runic.Application.Views.RunicConnectionsExtensions.WhenChanged(this Runic.Application.Views.IRunicConnections! connections) -> System.IObservable<System.Collections.Generic.IReadOnlyList<Runic.Application.Views.RunicConnection!>!>!
+Runic.Application.Views.RunicRegionCollectionAttribute
+Runic.Application.Views.RunicRegionCollectionAttribute.ContentType.get -> System.Type!
+Runic.Application.Views.RunicRegionCollectionAttribute.PageCanClose.get -> bool
+Runic.Application.Views.RunicRegionCollectionAttribute.PageCanClose.set -> void
+Runic.Application.Views.RunicRegionCollectionAttribute.RunicRegionCollectionAttribute(System.Type! contentType) -> void
+Runic.Application.Views.Generated.BridgeRegionCollections
+static Runic.Application.Views.Generated.BridgeRegionCollections.Key(Runic.Navigation.NavigationRegion! region) -> string!
+Runic.Application.Views.Generated.PropertyDescriptor<T>.RegionCollection.get -> bool
+Runic.Application.Views.Generated.PropertyDescriptor<T>.RegionCollection.init -> void
+Runic.Application.Views.Generated.PropertyDescriptor<T>.RegionClose.get -> bool
+Runic.Application.Views.Generated.PropertyDescriptor<T>.RegionClose.init -> void
+const Runic.Application.Views.RunicViewsTelemetry.PageLogCategory = "Runic.Application.Views.Page" -> string!
