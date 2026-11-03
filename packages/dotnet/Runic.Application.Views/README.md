@@ -2467,6 +2467,11 @@ closeDocuments(key: string): Promise<RegionOutcome>;
   every tab in one decision, own the tabs and the selection by a page entry in
   a region slot: the close's clear of that slot retires every tab in one
   transition, and closes none when one refuses.
+- **Restart (since 0.16).** Keys don't survive a restart. A saved
+  [navigation path](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Navigation/README.md#routes-saved-paths-and-deep-links)
+  records the tabs by position, each with its own back stack, and the selected
+  tab. `RestoreAsync` creates the tabs it needs with
+  `NavigationSelectionOptions.RestoreRegion`, restores their pages and adds them.
 - Without the attribute, a `NavigationSelection` stays a selection slot whose
   value is `SelectedIndex`. Only Views with a region collection get a new
   contract fingerprint.

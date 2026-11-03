@@ -156,6 +156,9 @@ registered scheme and, with `IncludeFiles`, existing files. Linux desktop entrie
 (`"app.exe" "%1"`) pass them that way. The instance's own `Launched` handlers
 still receive every launch. See the
 [opening files and URLs design](https://github.com/Runic-Artifex/runic-sdk/blob/main/specs/platform/open-activation.md).
+To open a URL's page in a window, read its route with
+`NavigationRouteLinks.TryGetRoute` and open it with `OpenRouteAsync`; see
+[Routes, saved paths and deep links](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Navigation/README.md#routes-saved-paths-and-deep-links).
 
 ## File transfers
 
