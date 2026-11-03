@@ -225,7 +225,16 @@ public sealed class NavigationRouteMapBuilder
     /// <summary>Builds the map. The builder can be used again; later routes don't change a built map.</summary>
     public NavigationRouteMap Build() => new([.. _routes]);
 
-    private static NavigationRouteTemplate Parse(string template, int? parameters)
+    private NavigationRouteTemplate Parse(string template, int? parameters)
+    {
+        ArgumentNullException.ThrowIfNull(template);
+        var trimmed = template.Trim('/');
+        if (_routes.Any(route => string.Equals(route.Template.Text, trimmed, StringComparison.OrdinalIgnoreCase)))
+            throw new ArgumentException($"The route template '{template}' is registered twice.", nameof(template));
+        return ParseTemplate(template, parameters);
+    }
+
+    private static NavigationRouteTemplate ParseTemplate(string template, int? parameters)
     {
         ArgumentNullException.ThrowIfNull(template);
         var parsed = NavigationRouteTemplate.Parse(template);
@@ -243,20 +252,33 @@ public sealed class NavigationRouteMapBuilder
 public static class NavigationRouteServiceCollectionExtensions
 {
     /// <summary>
-    /// Registers the route map that <paramref name="configure"/> declares as the singleton <see cref="INavigationRouteMap"/>
-    /// and <see cref="NavigationRouteMap"/>, which <see cref="RunicNavigator.GetPath"/>, <see cref="RunicNavigator.RestoreAsync"/>
-    /// and <see cref="NavigationRegion.OpenRouteAsync"/> resolve from the navigator's services. A map registered earlier stays.
+    /// Adds the routes that <paramref name="configure"/> declares to the singleton <see cref="INavigationRouteMap"/> and
+    /// <see cref="NavigationRouteMap"/>, which <see cref="RunicNavigator.GetPath"/>, <see cref="RunicNavigator.RestoreAsync"/>
+    /// and <see cref="NavigationRegion.OpenRouteAsync"/> resolve from the navigator's services. Every call adds to one map, in
+    /// call order, so features can register their own routes.
     /// </summary>
+    /// <exception cref="ArgumentException">A template is registered twice, also by two calls.</exception>
     public static IServiceCollection AddRunicNavigationRoutes(this IServiceCollection services, Action<NavigationRouteMapBuilder> configure)
     {
         ArgumentNullException.ThrowIfNull(services);
         ArgumentNullException.ThrowIfNull(configure);
-        var builder = new NavigationRouteMapBuilder();
-        configure(builder);
-        var map = builder.Build();
-        services.TryAddSingleton(map);
-        services.TryAddSingleton<INavigationRouteMap>(provider => provider.GetRequiredService<NavigationRouteMap>());
+        // Every call adds its routes to one builder, in call order; the map is built from all of them.
+        if (services.FirstOrDefault(static service => service.ServiceType == typeof(RouteRegistrations))?.ImplementationInstance
+            is not RouteRegistrations registrations)
+        {
+            registrations = new RouteRegistrations();
+            services.AddSingleton(registrations);
+            services.TryAddSingleton(static provider => provider.GetRequiredService<RouteRegistrations>().Builder.Build());
+            services.TryAddSingleton<INavigationRouteMap>(static provider => provider.GetRequiredService<NavigationRouteMap>());
+        }
+        configure(registrations.Builder);
         return services;
+    }
+
+    // The routes of every AddRunicNavigationRoutes call of a service collection.
+    private sealed class RouteRegistrations
+    {
+        public NavigationRouteMapBuilder Builder { get; } = new();
     }
 }
 
@@ -338,10 +360,21 @@ public static class NavigationRouteLinks
     /// <c>myapp://invoice/7</c> or <c>myapp:invoice/7</c>, its host and path (<c>invoice/7</c>); for an <c>https</c> URL of
     /// one of <paramref name="webLinkHosts"/>, its path. The query and the fragment are dropped.
     /// </summary>
-    /// <returns><see langword="false"/> for any other URI, or one with user information or an empty route.</returns>
+    /// <returns>
+    /// <see langword="false"/> for any other URI, or one with user information, an empty route, a route longer than 2048
+    /// characters or a control character.
+    /// </returns>
     /// <remarks>
+    /// <para>
     /// The URI is untrusted input: the route still has to match a route of the map, and the page it opens should confirm
     /// anything destructive. Schemes and hosts are compared without regard to case.
+    /// </para>
+    /// <para>
+    /// <see cref="Uri"/> normalizes the host of <c>myapp://Invoice/7</c>: it is lowercased and converted to its IDN
+    /// (punycode) form. A route whose first segment is a string parameter, such as <c>{customer}/orders</c>, therefore
+    /// receives that segment lowercased and possibly as <c>xn--…</c>. Put such parameters after a literal first segment,
+    /// or use <c>myapp:customer/…</c> without <c>//</c>.
+    /// </para>
     /// </remarks>
     public static bool TryGetRoute(Uri uri, IEnumerable<string> schemes, [NotNullWhen(true)] out string? route,
         IEnumerable<string>? webLinkHosts = null)
@@ -363,7 +396,7 @@ public static class NavigationRouteLinks
             raw = uri.AbsolutePath;
         else return false;
         raw = raw.Trim('/');
-        if (raw.Length == 0) return false;
+        if (raw.Length == 0 || !NavigationRouteTemplate.TrySplit(raw, out _)) return false;
         route = raw;
         return true;
     }
@@ -459,12 +492,36 @@ internal sealed class NavigationRouteTemplate
         return new NavigationRouteTemplate(trimmed, segments, [.. parameters]);
     }
 
-    // The route path's segments, still percent-encoded; false for an empty path or an empty segment.
+    // The longest route path a map accepts, as the navigation-path/1 wire does.
+    public const int MaximumLength = 2048;
+
+    // The route path's segments, still percent-encoded; false for an empty path or an empty segment, a path longer than
+    // MaximumLength, or one with a control character (NUL included), also percent-encoded.
     public static bool TrySplit(string route, out string[] segments)
     {
+        segments = [];
+        if (!IsAcceptable(route)) return false;
         var trimmed = route.Trim('/');
         segments = trimmed.Length == 0 ? [] : trimmed.Split('/');
         return segments.Length > 0 && Array.TrueForAll(segments, static segment => segment.Length > 0);
+    }
+
+    // A route path within MaximumLength and without control characters.
+    public static bool IsAcceptable(string route)
+    {
+        if (route.Length > MaximumLength) return false;
+        for (var index = 0; index < route.Length; index++)
+        {
+            var c = route[index];
+            if (char.IsControl(c)) return false;
+            // A percent-encoded control character: %00 to %1F and %7F.
+            if (c == '%' && index + 2 < route.Length && char.IsAsciiHexDigit(route[index + 1]) && char.IsAsciiHexDigit(route[index + 2]))
+            {
+                var value = Convert.ToInt32(route.Substring(index + 1, 2), 16);
+                if (value < 0x20 || value == 0x7f) return false;
+            }
+        }
+        return true;
     }
 
     public bool TryMatch(string[] segments, out NavigationRouteValues values)
@@ -483,6 +540,8 @@ internal sealed class NavigationRouteTemplate
             string text;
             try { text = Uri.UnescapeDataString(segments[index]); }
             catch (UriFormatException) { return false; }
+            // A decoded value is arbitrary text, but never a control character such as NUL.
+            if (text.Any(char.IsControl)) return false;
             if (!TryParse(text, parameter!.Type, out var value)) return false;
             matched.SetValue(parameter.Name, value);
         }

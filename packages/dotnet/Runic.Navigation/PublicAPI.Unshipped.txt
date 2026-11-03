@@ -52,7 +52,6 @@ Runic.Navigation.NavigationRegionPath.Entries.init -> void
 Runic.Navigation.NavigationRegionPath.Equals(Runic.Navigation.NavigationRegionPath? other) -> bool
 Runic.Navigation.NavigationRegionPath.NavigationRegionPath(System.Collections.Generic.IReadOnlyList<Runic.Navigation.NavigationEntryPath!>! Entries) -> void
 Runic.Navigation.NavigationRegionPath.ToJson() -> string!
-Runic.Navigation.NavigationRegion.RestoreAsync(Runic.Navigation.NavigationRegionPath! path, Runic.Navigation.INavigationRouteMap? routes = null, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Navigation.NavigationRestoreResult!>
 Runic.Navigation.NavigationRestoreIssue
 Runic.Navigation.NavigationRestoreIssue.<Clone>$() -> Runic.Navigation.NavigationRestoreIssue!
 Runic.Navigation.NavigationRestoreIssue.Deconstruct(out Runic.Navigation.NavigationRestoreIssueKind Kind, out string! Location, out string? Route, out Runic.Navigation.NavigationOutcome? Outcome) -> void
@@ -109,9 +108,7 @@ Runic.Navigation.NavigationSelectionPath.Regions.get -> System.Collections.Gener
 Runic.Navigation.NavigationSelectionPath.Regions.init -> void
 Runic.Navigation.NavigationSelectionPath.Selected.get -> int
 Runic.Navigation.NavigationSelectionPath.Selected.init -> void
-Runic.Navigation.NavigationSelection.RestoreAsync(Runic.Navigation.NavigationSelectionPath! path, Runic.Navigation.INavigationRouteMap? routes = null, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Navigation.NavigationRestoreResult!>
 Runic.Navigation.RunicNavigator.GetPath(Runic.Navigation.INavigationRouteMap? routes = null) -> Runic.Navigation.NavigationPath!
-Runic.Navigation.RunicNavigator.RestoreAsync(Runic.Navigation.NavigationPath! path, Runic.Navigation.INavigationRouteMap? routes = null, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Navigation.NavigationRestoreResult!>
 static Runic.Navigation.NavigationEntryPath.operator !=(Runic.Navigation.NavigationEntryPath? left, Runic.Navigation.NavigationEntryPath? right) -> bool
 static Runic.Navigation.NavigationEntryPath.operator ==(Runic.Navigation.NavigationEntryPath? left, Runic.Navigation.NavigationEntryPath? right) -> bool
 static Runic.Navigation.NavigationPath.Empty.get -> Runic.Navigation.NavigationPath!
@@ -148,3 +145,29 @@ Runic.Navigation.NavigationRouteValues.Set(string! name, string! value) -> Runic
 Runic.Navigation.NavigationRouteValues.Set(string! name, System.Guid value) -> Runic.Navigation.NavigationRouteValues!
 Runic.Navigation.NavigationRouteValues.this[string! name].get -> object!
 Runic.Navigation.NavigationRouteValues.TryGetValue(string! name, out object! value) -> bool
+override Runic.Navigation.NavigationRestoreOptions.Equals(object? obj) -> bool
+override Runic.Navigation.NavigationRestoreOptions.GetHashCode() -> int
+override Runic.Navigation.NavigationRestoreOptions.ToString() -> string!
+Runic.Navigation.NavigationRegion.RestoreAsync(Runic.Navigation.NavigationRegionPath! path, Runic.Navigation.NavigationRestoreOptions? options = null, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Navigation.NavigationRestoreResult!>
+Runic.Navigation.NavigationRestoreIssueKind.AboveUnmapped = 5 -> Runic.Navigation.NavigationRestoreIssueKind
+Runic.Navigation.NavigationRestoreIssueKind.LimitExceeded = 6 -> Runic.Navigation.NavigationRestoreIssueKind
+Runic.Navigation.NavigationRestoreOptions
+Runic.Navigation.NavigationRestoreOptions.<Clone>$() -> Runic.Navigation.NavigationRestoreOptions!
+Runic.Navigation.NavigationRestoreOptions.Equals(Runic.Navigation.NavigationRestoreOptions? other) -> bool
+Runic.Navigation.NavigationRestoreOptions.MaximumEntriesPerRegion.get -> int
+Runic.Navigation.NavigationRestoreOptions.MaximumEntriesPerRegion.init -> void
+Runic.Navigation.NavigationRestoreOptions.MaximumRegionsPerSelection.get -> int
+Runic.Navigation.NavigationRestoreOptions.MaximumRegionsPerSelection.init -> void
+Runic.Navigation.NavigationRestoreOptions.NavigationRestoreOptions() -> void
+Runic.Navigation.NavigationRestoreOptions.Routes.get -> Runic.Navigation.INavigationRouteMap?
+Runic.Navigation.NavigationRestoreOptions.Routes.init -> void
+Runic.Navigation.NavigationRestoreOptions.UnmappedEntries.get -> Runic.Navigation.NavigationUnmappedEntries
+Runic.Navigation.NavigationRestoreOptions.UnmappedEntries.init -> void
+Runic.Navigation.NavigationSelection.RestoreAsync(Runic.Navigation.NavigationSelectionPath! path, Runic.Navigation.NavigationRestoreOptions? options = null, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Navigation.NavigationRestoreResult!>
+Runic.Navigation.NavigationUnmappedEntries
+Runic.Navigation.NavigationUnmappedEntries.Skip = 1 -> Runic.Navigation.NavigationUnmappedEntries
+Runic.Navigation.NavigationUnmappedEntries.Stop = 0 -> Runic.Navigation.NavigationUnmappedEntries
+Runic.Navigation.RunicNavigator.DiscardRegionAsync(Runic.Navigation.NavigationRegion! region) -> System.Threading.Tasks.ValueTask
+Runic.Navigation.RunicNavigator.RestoreAsync(Runic.Navigation.NavigationPath! path, Runic.Navigation.NavigationRestoreOptions? options = null, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Navigation.NavigationRestoreResult!>
+static Runic.Navigation.NavigationRestoreOptions.operator !=(Runic.Navigation.NavigationRestoreOptions? left, Runic.Navigation.NavigationRestoreOptions? right) -> bool
+static Runic.Navigation.NavigationRestoreOptions.operator ==(Runic.Navigation.NavigationRestoreOptions? left, Runic.Navigation.NavigationRestoreOptions? right) -> bool

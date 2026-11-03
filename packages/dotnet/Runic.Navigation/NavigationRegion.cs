@@ -232,15 +232,15 @@ public abstract class NavigationRegion : INotifyPropertyChanged
     /// <see cref="RunicNavigator.RestoreAsync"/> does for each region; what can't be restored is reported, not thrown.
     /// </summary>
     /// <param name="path">The region's path, such as one <see cref="GetPath"/> returned.</param>
-    /// <param name="routes">The route map, or <see langword="null"/> for the <see cref="INavigationRouteMap"/> of the navigator's services.</param>
+    /// <param name="options">The route map, what an unmapped entry does, and the bounds; the defaults without it.</param>
     /// <param name="cancellationToken">Cancels the requests not yet committed; the restore then stops.</param>
     /// <exception cref="InvalidOperationException">No route map was passed or registered.</exception>
     /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> was cancelled.</exception>
-    public ValueTask<NavigationRestoreResult> RestoreAsync(NavigationRegionPath path, INavigationRouteMap? routes = null,
+    public ValueTask<NavigationRestoreResult> RestoreAsync(NavigationRegionPath path, NavigationRestoreOptions? options = null,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(path);
-        return new(Core.Navigator.RestoreRegionAsync(this, path, routes, cancellationToken));
+        return new(Core.Navigator.RestoreRegionAsync(this, path, options, cancellationToken));
     }
 
     /// <summary>

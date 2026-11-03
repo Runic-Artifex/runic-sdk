@@ -165,21 +165,112 @@ internal sealed partial class NavigationTests
                 new NavigationSelectionPath([], -1),
             ]);
         var result = await Wait(app.Navigator.RestoreAsync(path));
+        // By default a region stops at its first unmapped entry: Customer 5 is not pushed directly above Customers.
         Require(result.Issues.Select(issue => (issue.Kind, issue.Location, issue.Route)).SequenceEqual([
                 (NavigationRestoreIssueKind.UnmappedRoute, "regions[0]/entries[2]", (string?)"gone/7"),
+                (NavigationRestoreIssueKind.AboveUnmapped, "regions[0]/entries[3..]", null),
                 (NavigationRestoreIssueKind.MissingRegion, "regions[1]", null),
                 (NavigationRestoreIssueKind.MissingSelection, "selections[1]", null),
             ]),
             $"The issues were {string.Join("; ", result.Issues)}.");
-        Require(Names(app.Main) == "home,customers,customer 5" && app.Documents.Tabs.Regions is [{ Current: DocumentPage { Id: 9 } }],
+        Require(Names(app.Main) == "home,customers" && app.Documents.Tabs.Regions is [{ Current: DocumentPage { Id: 9 } }],
             "The parts that could be restored were not.");
-        Require(app.Logs.Count(1220) == 3 && app.Logs.Has(1220, LogLevel.Information), "The left-out parts were not logged as event 1220.");
+        Require(app.Logs.Count(1220) == 4 && app.Logs.Has(1220, LogLevel.Information), "The left-out parts were not logged as event 1220.");
+
+        // Skip leaves out only the unmapped entry.
+        result = await Wait(app.Main.RestoreAsync(path.Regions[0], new NavigationRestoreOptions { UnmappedEntries = NavigationUnmappedEntries.Skip }));
+        Require(result.Issues is [{ Kind: NavigationRestoreIssueKind.UnmappedRoute }] && Names(app.Main) == "home,customers,customer 5",
+            $"Skip did not restore the entries above the unmapped one: {Names(app.Main)}, {string.Join("; ", result.Issues)}.");
 
         // Without RestoreRegion, tabs beyond the selection's regions are left out.
         var bare = app.Navigator.CreateSelection(app.Root, []);
         result = await Wait(bare.RestoreAsync(new NavigationSelectionPath([new NavigationRegionPath([new("documents/1")])], 0)));
         Require(result.Issues is [{ Kind: NavigationRestoreIssueKind.MissingSelectionRegion, Location: "regions[0]" }] && bare.Regions.Count == 0,
             $"A tab was restored without RestoreRegion: {result}.");
+    }
+
+    // A tab that RestoreRegion created but that nothing could be restored into is discarded, so the next GetPath doesn't
+    // record it as an extra root region and the next start doesn't report MissingRegion.
+    [Test]
+    public async Task AbandonedRestoredTabsAreDiscardedAsync()
+    {
+        await using var app = new RoutedApp();
+        var before = app.Navigator.GetPath().ToJson();
+        var path = new NavigationPath([], [new NavigationSelectionPath([
+            new NavigationRegionPath([new("gone/1")]),
+            new NavigationRegionPath([new("documents/2")]),
+        ], 1)]);
+        var result = await Wait(app.Navigator.RestoreAsync(path));
+        Require(result.Issues is [{ Kind: NavigationRestoreIssueKind.UnmappedRoute, Location: "selections[0]/regions[0]/entries[0]" }]
+                && app.Documents.Tabs.Regions is [{ Current: DocumentPage { Id: 2 } }],
+            $"The restore reported {string.Join("; ", result.Issues)}.");
+        var saved = app.Navigator.GetPath();
+        Require(saved.Regions.Count == 1 && saved.Selections is [{ Regions.Count: 1 }],
+            $"The abandoned tab is still recorded: {saved.ToJson()} (before: {before}).");
+        await using var restarted = new RoutedApp();
+        var again = await Wait(restarted.Navigator.RestoreAsync(NavigationPath.FromJson(saved.ToJson())));
+        Require(again.IsComplete, $"The next start reported {string.Join("; ", again.Issues)}.");
+
+        // A tab the application abandons itself goes the same way.
+        var tab = app.Navigator.CreateRegion<IRoutePage>(app.Documents);
+        await Wait(tab.PushAsync<DocumentPage, int>(5));
+        await Wait(app.Navigator.DiscardRegionAsync(tab));
+        Require(tab.Current is null && app.Navigator.GetPath().Regions.Count == 1, "A discarded region kept its entries or stayed a root region.");
+        Require(Throws<InvalidOperationException>(() => _ = app.Navigator.DiscardRegionAsync(app.Documents.Tabs.Regions[0]).AsTask()),
+            "A tab of a selection was discarded.");
+    }
+
+    // Restores are bounded: entries and tabs beyond the caps are reported, not pushed.
+    [Test]
+    public async Task RestoresAreBoundedAsync()
+    {
+        await using var app = new RoutedApp();
+        var options = new NavigationRestoreOptions { MaximumEntriesPerRegion = 3, MaximumRegionsPerSelection = 1 };
+        var path = new NavigationPath(
+            [new NavigationRegionPath([new(null), new("customers"), new("customers/1"), new("customers/2"), new("customers/3")])],
+            [new NavigationSelectionPath([new NavigationRegionPath([new("documents/1")]), new NavigationRegionPath([new("documents/2")])], 0)]);
+        var result = await Wait(app.Navigator.RestoreAsync(path, options));
+        Require(result.Issues.Select(issue => (issue.Kind, issue.Location)).SequenceEqual([
+                (NavigationRestoreIssueKind.LimitExceeded, "regions[0]/entries[3..]"),
+                (NavigationRestoreIssueKind.LimitExceeded, "selections[0]/regions[1..]"),
+            ]) && Names(app.Main) == "home,customers,customer 1" && app.Documents.Tabs.Regions.Count == 1,
+            $"The caps did not hold: {Names(app.Main)}, {string.Join("; ", result.Issues)}.");
+        Require(Throws<ArgumentOutOfRangeException>(() => _ = app.Navigator.RestoreAsync(path, new NavigationRestoreOptions { MaximumEntriesPerRegion = 0 }).AsTask()),
+            "A cap of 0 was accepted.");
+    }
+
+    // Route paths are bounded and free of control characters, from the map, OpenRouteAsync and links alike.
+    [Test]
+    public async Task RoutePathsRejectControlCharactersAndLongPathsAsync()
+    {
+        await using var app = new RoutedApp();
+        var map = app.Map;
+        foreach (var bad in new[] { "notes/a%00b", "notes/a\u0000b", "notes/line%0Abreak", "notes/" + new string('a', 2048), "notes/tab\tx", "notes/%7F" })
+        {
+            Require(map.CreateTarget(app.Main, bad) is null && !map.TryMatch(bad, out _, out _), $"'{bad[..Math.Min(bad.Length, 20)]}' matched.");
+            Require(await Wait(app.Main.OpenRouteAsync(bad)) is null, "OpenRouteAsync opened a rejected route.");
+        }
+        Require(map.CreateTarget(app.Main, "notes/caf%C3%A9 %26 co") is not null, "Arbitrary text in a string parameter was refused.");
+        Require(!NavigationRouteLinks.TryGetRoute(new Uri("myapp:notes/a%00b"), ["myapp"], out _)
+                && !NavigationRouteLinks.TryGetRoute(new Uri("myapp:notes/" + new string('a', 2100)), ["myapp"], out _),
+            "A link with a NUL or a long route gave a route.");
+    }
+
+    // Every AddRunicNavigationRoutes call adds to one map; a template registered twice throws.
+    [Test]
+    public void RouteRegistrationsCollectIntoOneMap()
+    {
+        var services = new ServiceCollection()
+            .AddRunicNavigationRoutes(routes => routes.Map<CustomersPage>("customers"))
+            .AddRunicNavigationRoutes(routes => routes.Map<OverviewPage>("overview"));
+        using var provider = services.BuildServiceProvider();
+        var map = provider.GetRequiredService<NavigationRouteMap>();
+        Require(map.Templates.SequenceEqual(["customers", "overview"]) && ReferenceEquals(provider.GetRequiredService<INavigationRouteMap>(), map),
+            $"The calls were not collected: {string.Join(", ", map.Templates)}.");
+        Require(Throws<ArgumentException>(() => services.AddRunicNavigationRoutes(routes => routes.Map<OverviewPage>("Overview/"))),
+            "A template registered by two calls was accepted.");
+        Require(Throws<ArgumentException>(() => new NavigationRouteMapBuilder().Map<CustomersPage>("customers").Map<OverviewPage>("customers")),
+            "A template registered twice was accepted.");
     }
 
     [Test]

@@ -23,6 +23,8 @@ public sealed partial class DocumentsViewModel : ObservableObject
     private readonly NavigationStateFile _state;
     private readonly object _saving = new();
     private int _saveRequested;
+    // Set while RestoreNavigationAsync runs: the partly restored tabs are no state to save.
+    private int _restoring;
 
     public DocumentsViewModel(RunicNavigator navigator, DocumentStore store, NavigationRouteMap routes, NavigationStateFile state)
     {
@@ -90,8 +92,9 @@ public sealed partial class DocumentsViewModel : ObservableObject
     {
         lock (_saving)
         {
-            // A closing window's navigator retires its tabs; that is not a state to reopen.
-            if (_navigator.IsClosed) return;
+            // A closing window's navigator retires its tabs, and a restore builds them up one by one: neither is a state
+            // to reopen.
+            if (_navigator.IsClosed || Volatile.Read(ref _restoring) > 0) return;
             _state.Write(_navigator.GetPath(_routes));
         }
     }
@@ -99,6 +102,7 @@ public sealed partial class DocumentsViewModel : ObservableObject
     // Navigation changes are raised in model turns: save shortly after, on the thread pool, once for a burst of them.
     private void RequestSave()
     {
+        if (Volatile.Read(ref _restoring) > 0) return;
         if (Interlocked.Exchange(ref _saveRequested, 1) == 0)
             _ = Task.Run(async () =>
             {
@@ -108,20 +112,41 @@ public sealed partial class DocumentsViewModel : ObservableObject
             });
     }
 
-    /// <summary>Reopens the tabs <see cref="SaveNavigation"/> saved, through the pages' guards and hooks.</summary>
+    /// <summary>
+    /// Reopens the tabs <see cref="SaveNavigation"/> saved, through the pages' guards and hooks. Nothing is saved while it
+    /// runs: a page that is no longer there, or a guard that refuses, would otherwise overwrite the saved tabs with the
+    /// part restored so far. A complete restore is saved once at the end; after an incomplete one, the file keeps the saved
+    /// tabs until the user changes something.
+    /// </summary>
     public async Task<NavigationRestoreResult> RestoreNavigationAsync()
     {
         var path = _state.Read();
-        return path is null ? new NavigationRestoreResult([]) : await _navigator.RestoreAsync(path, _routes);
+        if (path is null) return new NavigationRestoreResult([]);
+        Interlocked.Increment(ref _restoring);
+        NavigationRestoreResult result;
+        try { result = await _navigator.RestoreAsync(path, new NavigationRestoreOptions { Routes = _routes }); }
+        finally { Interlocked.Decrement(ref _restoring); }
+        if (result.IsComplete) SaveNavigation();
+        return result;
     }
 
     private async Task<bool> OpenTabAsync(string route)
     {
         var tab = _navigator.CreateRegion<IDocumentPage>(this);
-        // The tab owns its pages: closing the tab disposes them.
-        var opened = await tab.OpenRouteAsync(route, NavigationRouteOpen.Stack, _routes);
-        if (opened?.IsCommitted != true) return false;
-        await _navigator.ModelContext.InvokeAsync(() => Documents.Add(tab));
+        var added = false;
+        try
+        {
+            // The tab owns its pages: closing the tab disposes them.
+            var opened = await tab.OpenRouteAsync(route, NavigationRouteOpen.Stack, _routes);
+            if (opened?.IsCommitted != true) return false;
+            await _navigator.ModelContext.InvokeAsync(() => Documents.Add(tab));
+            added = true;
+        }
+        finally
+        {
+            // A tab that isn't added would stay one of this ViewModel's regions, and GetPath would save it.
+            if (!added) await _navigator.DiscardRegionAsync(tab);
+        }
         return (await Documents.SelectAsync(tab)).IsCommitted;
     }
 

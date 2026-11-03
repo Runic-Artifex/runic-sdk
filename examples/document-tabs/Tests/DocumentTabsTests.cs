@@ -144,6 +144,23 @@ public sealed class DocumentTabsTests : IAsyncDisposable
     }
 
     [Test]
+    public async Task A_restore_that_leaves_a_tab_out_keeps_the_saved_file()
+    {
+        // Saved by another version: the first tab's page no longer has a route.
+        var saved = """{"version":1,"regions":[],"selections":[{"selected":1,"regions":[{"entries":[{"route":"documents/1/removed","regions":[],"selections":[]}]},{"entries":[{"route":"documents/2","regions":[],"selections":[]}]}]}]}""";
+        await File.WriteAllTextAsync(_stateFile, saved);
+
+        var restored = await _host.ViewModel.RestoreNavigationAsync();
+        await Assert.That(restored.Issues.Select(issue => issue.Kind)).IsEquivalentTo([NavigationRestoreIssueKind.UnmappedRoute]);
+        await Assert.That((await TabsAsync()).Regions.Count).IsEqualTo(1);
+        // Nothing was saved while it ran or after it, so the left-out tab is still in the file.
+        await Task.Delay(300);
+        await Assert.That(await File.ReadAllTextAsync(_stateFile)).IsEqualTo(saved);
+        // The abandoned tab is no region of the window's.
+        await Assert.That(Navigator.GetPath().Regions.Count).IsEqualTo(0);
+    }
+
+    [Test]
     public async Task The_saved_path_restores_exactly_in_a_new_window()
     {
         var tabs = await OpenAsync(2);

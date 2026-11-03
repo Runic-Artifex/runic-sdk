@@ -54,9 +54,13 @@ public sealed partial class RunicNavigator
     /// <para>
     /// Restoring fails softly: what can't be restored is left out and reported in
     /// <see cref="NavigationRestoreResult.Issues"/> (log event 1220), and the rest is restored. An entry whose route no
-    /// route matches is left out with the regions below it; the entries above it are still pushed. A request that does not
-    /// commit, because a guard refused or the request failed, stops that region; its sibling regions are still restored.
-    /// Regions and selections that the owner has but the path doesn't name, and tabs beyond the path's, are left as they are.
+    /// route matches stops its region by default, so the region keeps the entries below it and none above it
+    /// (<see cref="NavigationRestoreOptions.UnmappedEntries"/>). A request that does not commit, because a guard refused or
+    /// the request failed, stops that region; its sibling regions are still restored. Entries and tabs beyond
+    /// <see cref="NavigationRestoreOptions.MaximumEntriesPerRegion"/> and <see cref="NavigationRestoreOptions.MaximumRegionsPerSelection"/>
+    /// are left out. Regions and selections that the owner has but the path doesn't name, and tabs beyond the path's, are
+    /// left as they are. A tab that <see cref="NavigationSelectionOptions.RestoreRegion"/> created and that nothing could be
+    /// restored into is discarded (<see cref="DiscardRegionAsync(NavigationRegion)"/>).
     /// </para>
     /// <para>
     /// Call it once the window's regions exist, such as after the window opened. Don't call it from a navigation hook of this
@@ -64,21 +68,23 @@ public sealed partial class RunicNavigator
     /// </para>
     /// </remarks>
     /// <param name="path">The path to rebuild.</param>
-    /// <param name="routes">The route map, or <see langword="null"/> for the <see cref="INavigationRouteMap"/> of <see cref="Services"/>.</param>
+    /// <param name="options">The route map, what an unmapped entry does, and the bounds; the defaults without it.</param>
     /// <param name="cancellationToken">Cancels the requests not yet committed; the restore then stops.</param>
-    /// <exception cref="InvalidOperationException"><paramref name="routes"/> is null and <see cref="Services"/> has no <see cref="INavigationRouteMap"/>.</exception>
+    /// <exception cref="InvalidOperationException">No route map was passed in <paramref name="options"/> or registered in <see cref="Services"/>.</exception>
+    /// <exception cref="ArgumentOutOfRangeException">A bound of <paramref name="options"/> is less than 1.</exception>
     /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> was cancelled.</exception>
-    public ValueTask<NavigationRestoreResult> RestoreAsync(NavigationPath path, INavigationRouteMap? routes = null,
+    public ValueTask<NavigationRestoreResult> RestoreAsync(NavigationPath path, NavigationRestoreOptions? options = null,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(path);
-        return new(RestoreRootAsync(path, routes, cancellationToken));
+        options = NavigationRestoreOptions.Check(options);
+        return new(RestoreRootAsync(path, options, cancellationToken));
     }
 
-    private async Task<NavigationRestoreResult> RestoreRootAsync(NavigationPath path, INavigationRouteMap? routes,
+    private async Task<NavigationRestoreResult> RestoreRootAsync(NavigationPath path, NavigationRestoreOptions options,
         CancellationToken cancellationToken)
     {
-        var restore = new PathRestore(this, RouteMap(routes), cancellationToken);
+        var restore = new PathRestore(this, RouteMap(options.Routes), cancellationToken) { Limits = options };
         NavigationRegion[] regions;
         NavigationSelection[] selections;
         lock (Gate) (regions, selections) = RootChildrenLocked();
@@ -106,17 +112,19 @@ public sealed partial class RunicNavigator
     }
 
     internal async Task<NavigationRestoreResult> RestoreRegionAsync(NavigationRegion region, NavigationRegionPath path,
-        INavigationRouteMap? routes, CancellationToken cancellationToken)
+        NavigationRestoreOptions? options, CancellationToken cancellationToken)
     {
-        var restore = new PathRestore(this, RouteMap(routes), cancellationToken);
+        options = NavigationRestoreOptions.Check(options);
+        var restore = new PathRestore(this, RouteMap(options.Routes), cancellationToken) { Limits = options };
         await this.AfterUserCode(restore.RegionAsync(region, path, ""));
         return restore.Result();
     }
 
     internal async Task<NavigationRestoreResult> RestoreSelectionAsync(NavigationSelection selection, NavigationSelectionPath path,
-        INavigationRouteMap? routes, CancellationToken cancellationToken)
+        NavigationRestoreOptions? options, CancellationToken cancellationToken)
     {
-        var restore = new PathRestore(this, RouteMap(routes), cancellationToken);
+        options = NavigationRestoreOptions.Check(options);
+        var restore = new PathRestore(this, RouteMap(options.Routes), cancellationToken) { Limits = options };
         await this.AfterUserCode(restore.SelectionAsync(selection, path, ""));
         return restore.Result();
     }
@@ -190,6 +198,38 @@ public sealed partial class RunicNavigator
             throw new InvalidOperationException(
                 $"The route map created a {target.ContentType.Name} target for a region of {region.ContentType.Name}.");
         return NavigationResults.MapTask<object>(region.Core.Start(operation, target, backTo, options, cancellationToken));
+    }
+
+    // A region that a restore or a route opening created for a tab and then abandoned, because nothing could be restored
+    // into it or Add refused it: it closes without asking guards (it was never presented), its entries retire, and it
+    // leaves its owner, so it is no root region of a later GetPath.
+    internal async Task DiscardRegionAsync(NavigationRegionCore region)
+    {
+        foreach (var entry in await this.AfterUserCode(CloseRegionAsync(region)))
+            await this.AfterUserCode(RetireAsync(entry, null));
+        lock (Gate)
+            if (_regionsByOwner.TryGetValue(region.Owner, out var owned))
+            {
+                owned.Remove(region);
+                if (owned.Count == 0) _regionsByOwner.Remove(region.Owner);
+            }
+    }
+
+    /// <summary>
+    /// Closes <paramref name="region"/> without asking its guards and retires its entries, for a region the application
+    /// created for a tab and then didn't add to its selection, such as one whose first page a guard or an unmatched link
+    /// kept out. It is no longer one of its owner's regions, so <see cref="GetPath"/> doesn't record it.
+    /// </summary>
+    /// <remarks>Only for a region that is in no selection and that no page presents.</remarks>
+    /// <exception cref="InvalidOperationException">The region is in a selection.</exception>
+    public ValueTask DiscardRegionAsync(NavigationRegion region)
+    {
+        ArgumentNullException.ThrowIfNull(region);
+        if (!ReferenceEquals(region.Navigator, this)) throw new ArgumentException($"{region} belongs to another navigator.", nameof(region));
+        lock (Gate)
+            if (region.Core.Selection is not null)
+                throw new InvalidOperationException($"{region} is in a selection: remove it with NavigationSelection.RemoveAsync.");
+        return new(DiscardRegionAsync(region.Core));
     }
 
     // ---- Snapshot (under the gate) ------------------------------------------------------------------------------------
@@ -309,6 +349,8 @@ public sealed partial class RunicNavigator
 
         public NavigationRequestOptions? Options { get; init; }
 
+        public NavigationRestoreOptions Limits { get; init; } = NavigationRestoreOptions.Default;
+
         // The result of the last request made, for OpenRouteAsync.
         public NavigationResult<object>? LastResult { get; private set; }
 
@@ -334,8 +376,10 @@ public sealed partial class RunicNavigator
         public async Task SelectionAsync(NavigationSelection selection, NavigationSelectionPath path, string location)
         {
             // The live region each saved region was restored into, by the saved index.
-            var restored = new NavigationRegion?[path.Regions.Count];
-            for (var index = 0; index < path.Regions.Count; index++)
+            var count = Math.Min(path.Regions.Count, Limits.MaximumRegionsPerSelection);
+            if (count < path.Regions.Count) Issue(NavigationRestoreIssueKind.LimitExceeded, $"{location}regions[{count}..]");
+            var restored = new NavigationRegion?[count];
+            for (var index = 0; index < count; index++)
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 var at = $"{location}regions[{index}]";
@@ -353,16 +397,27 @@ public sealed partial class RunicNavigator
                     Issue(NavigationRestoreIssueKind.MissingSelectionRegion, at);
                     continue;
                 }
-                await this.AfterUserCode(RegionAsync(created, path.Regions[index], at + "/"));
-                if (created.Core.Stack.Length == 0) continue; // nothing was restored into it, so no empty tab is added
+                var added = false;
                 try
                 {
-                    await this.AfterUserCode(navigator.ModelContext.InvokeAsync(() => selection.Add(created), cancellationToken));
-                    restored[index] = created;
+                    await this.AfterUserCode(RegionAsync(created, path.Regions[index], at + "/"));
+                    // Nothing was restored into it, so no empty tab is added.
+                    if (created.Core.Stack.Length == 0) continue;
+                    try
+                    {
+                        await this.AfterUserCode(navigator.ModelContext.InvokeAsync(() => selection.Add(created), cancellationToken));
+                        restored[index] = created;
+                        added = true;
+                    }
+                    catch (Exception error) when (error is ArgumentException or ObjectDisposedException)
+                    {
+                        Issue(NavigationRestoreIssueKind.MissingSelectionRegion, at);
+                    }
                 }
-                catch (Exception error) when (error is ArgumentException or ObjectDisposedException)
+                finally
                 {
-                    Issue(NavigationRestoreIssueKind.MissingSelectionRegion, at);
+                    // A tab that isn't added would stay a root region of the owner: GetPath would record it.
+                    if (!added) await this.AfterUserCode(navigator.DiscardRegionAsync(created.Core));
                 }
             }
             if (path.Selected >= 0 && path.Selected < restored.Length && restored[path.Selected] is { } target
@@ -377,17 +432,29 @@ public sealed partial class RunicNavigator
         {
             cancellationToken.ThrowIfCancellationRequested();
             var stack = region.Core.Stack;
-            var saved = path.Entries;
+            IReadOnlyList<NavigationEntryPath> saved = path.Entries;
+            if (saved.Count > Limits.MaximumEntriesPerRegion)
+            {
+                Issue(NavigationRestoreIssueKind.LimitExceeded, $"{location}entries[{Limits.MaximumEntriesPerRegion}..]");
+                saved = [.. saved.Take(Limits.MaximumEntriesPerRegion)];
+            }
             var kept = 0;
             while (kept < saved.Count && kept < stack.Length && SameEntry(saved[kept].Route, RouteOf(routes, stack[kept]), kept)) kept++;
 
-            // The targets of the entries to push, in order; the saved entries no route matches are left out.
+            // The targets of the entries to push, in order. An entry no route matches stops the region (the default) or is
+            // left out (NavigationUnmappedEntries.Skip).
             List<(int Index, NavigationTargetCore Target)> targets = [];
             for (var index = kept; index < saved.Count; index++)
             {
                 if (saved[index].Route is { } route && routes.CreateTarget(region, route) is NavigationTargetCore target)
+                {
                     targets.Add((index, target));
-                else Issue(NavigationRestoreIssueKind.UnmappedRoute, $"{location}entries[{index}]", saved[index].Route);
+                    continue;
+                }
+                Issue(NavigationRestoreIssueKind.UnmappedRoute, $"{location}entries[{index}]", saved[index].Route);
+                if (Limits.UnmappedEntries == NavigationUnmappedEntries.Skip) continue;
+                if (index + 1 < saved.Count) Issue(NavigationRestoreIssueKind.AboveUnmapped, $"{location}entries[{index + 1}..]");
+                break;
             }
 
             var next = 0;
