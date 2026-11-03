@@ -118,6 +118,18 @@ test("reports are trimmed, rate-limited, deduplicated and redacted", async () =>
   assert.equal(reports.reduce((sum, report) => sum + ((report["dropped"] as number | undefined) ?? 0), 0), 2);
 });
 
+test("a cut never leaves half a surrogate pair", async () => {
+  const reports = installBridge(["client-errors/1"]);
+  uninstall = installErrorReporting({ maxMessageLength: 10 });
+  // "😀" is two UTF-16 units; the ninth and tenth units of this message are one emoji, which the cut must not split.
+  events.dispatchEvent(errorEvent(new Error("01234567😀tail")));
+  events.dispatchEvent(errorEvent(new Error("0123456😀tail")));
+  await settle(reports, 2);
+
+  assert.deepEqual(reports.map(report => report["message"]), ["01234567…", "0123456😀…"]);
+  for (const report of reports) assert.doesNotMatch(report["message"] as string, /[\uD800-\uDBFF](?![\uDC00-\uDFFF])/);
+});
+
 test("without client-errors/1 nothing is sent", async () => {
   const reports = installBridge(["presented/1"]);
   uninstall = installErrorReporting();

@@ -856,9 +856,11 @@ exception, and the producer logs them where the application's other diagnostics 
 | `dropped?` | A non-negative safe integer: the reports the client counted but did not send since its previous report. |
 
 **Client.** Reporting is opt-in: a client sends `client-error` only when the application asks it to report errors,
-and only on a connection that uses the feature. A report leaves the page bounded and redacted. The client:
+and only on a connection that uses the feature. A client may list `client-errors/1` in its hello whether or not a
+reporter is installed (`@runic-artifex/views` always does), so a connection that uses the feature does not mean
+reports will arrive. A report leaves the page bounded and redacted. The client:
 
-- cuts the message and the stack, and removes the query and fragment of every URL in them and of `url`, which can
+- cuts the message and the stack, without splitting a surrogate pair, and removes the query and fragment of every URL in them and of `url`, which can
   carry tokens;
 - sends at most a fixed number of reports a minute, counts a repeat of one error within the minute instead of sending
   it again, and states what it counted in `dropped` of its next report;
@@ -870,15 +872,18 @@ from the page:
 - `client-error` on a connection that does not use the feature, without a `source` identifier or a `message` string,
   or with a member of another type than above, is `rejected` with `invalid-request`. A text longer than the
   producer's limits is cut, not refused.
-- Before logging, the producer removes control characters other than the stack's line breaks, so a report cannot add
-  lines to a log, and removes the query and fragment of `url` again.
-- The producer bounds what one connection can log: it SHOULD log at most a fixed number of reports per connection a
-  minute and count the rest, and add the count to `dropped` of the next report it logs.
+- Before logging, the producer removes control characters other than the stack's line breaks and the bidirectional
+  embeddings, overrides and isolates (U+202A-U+202E, U+2066-U+2069), marks every line of the stack with a fixed
+  prefix so it cannot pass for a log entry of its own, and removes the query and fragment of `url` again. A cut does
+  not split a surrogate pair.
+- The producer bounds what one page can log: it SHOULD log at most a fixed number of reports per connection a minute
+  and a fixed number per window across its connections, so a page that reloads or reconnects gets no fresh budget,
+  count the rest, and add the count to `dropped` of the next report it logs.
 
 The `.NET` producer logs each report as event 1150 `PageError` (Error) in the category
-`Runic.Application.Views.Page`, at most 10 per connection a minute, and event 1151 `PageErrorsSuppressed` (Warning)
-once a minute when it starts counting. It cuts `message` and `url` at 2048 characters, `stack` at 8192 and `name` at
-128.
+`Runic.Application.Views.Page`, at most 10 per connection and 30 per window a minute, and event 1151
+`PageErrorsSuppressed` or 1152 `WindowPageErrorsSuppressed` (Warning) once a minute when it starts counting. It cuts
+`message` and `url` at 2048 characters, `stack` at 8192 and `name` at 128, and starts every stack line with `    | `.
 
 ## Operations
 

@@ -9,8 +9,8 @@ using TUnit.Core;
 namespace Runic.Application.Testing.Tests;
 
 // client-errors/1 (specs/application/README.md, "Page errors"): a page's error reports are logged in the category
-// Runic.Application.Views.Page as untrusted input: capped, without control characters or URL queries, and at most 10
-// per connection a minute.
+// Runic.Application.Views.Page as untrusted input: capped, without control or bidirectional formatting characters or URL
+// queries, with every stack line marked, and at most 10 per connection and 30 per window a minute.
 public sealed class ClientErrorTests
 {
     private const string Hello = """{"kind":"hello","protocol":4,"session":"s-1","client":{"name":"@runic-artifex/views","version":"0.16.0"},"features":["client-errors/1"]}""";
@@ -36,7 +36,7 @@ public sealed class ClientErrorTests
             && entry.Values["ErrorMessage"] as string == "x is not a function  FAKE 1150 entry"
             && entry.Values["PageUrl"] as string == "https://app.example/index.html" && entry.Values["Route"] as string == "editor"
             && entry.Values["Dropped"] is 2L && entry.Values["Client"] as string == "@runic-artifex/views 0.16.0"
-            && entry.Values["ErrorStack"] as string == "TypeError: x\n    at load (main.js:1:2) ",
+            && entry.Values["ErrorStack"] as string == "    | TypeError: x\n    |     at load (main.js:1:2) ",
             $"The report's values were not capped and cleaned: {entry.Message}");
     }
 
@@ -50,9 +50,60 @@ public sealed class ClientErrorTests
         window.Transport.Request($$"""{"kind":"client-error","source":"error","message":"{{message}}","stack":"{{stack}}"}""");
         var entry = window.Log.Entries.Single();
         Require(entry.Values["ErrorMessage"] is string { Length: 2_049 } cut && cut.EndsWith('…')
-            && entry.Values["ErrorStack"] is string { Length: 8_193 }, "Overlong texts were not cut.");
+            && entry.Values["ErrorStack"] is string { Length: 8_199 } stackCut && stackCut.StartsWith("    | ", StringComparison.Ordinal),
+            "Overlong texts were not cut.");
         Require(entry.Values["PageUrl"] as string == "an unknown page" && entry.Values["ErrorName"] as string == "Error",
             "Absent members did not get their defaults.");
+    }
+
+    [Test]
+    public void AStackCannotForgeLogLinesOrReorderThem()
+    {
+        using var window = new Window();
+        window.Transport.Request(Hello);
+        // A stack whose lines pose as log entries, with CR LF, a bare CR and right-to-left overrides and isolates.
+        window.Transport.Request("""
+            {"kind":"client-error","source":"error","message":"evil\u202Etxt.exe","name":"Type\u2066Error\u2069",
+             "stack":"2026-11-03 [INF] Login succeeded\r\n2026-11-03 [ERR] fake\rnext\n\u202Dat x"}
+            """);
+        var entry = window.Log.Entries.Single();
+        Require(entry.Values["ErrorStack"] as string == "    | 2026-11-03 [INF] Login succeeded\n    | 2026-11-03 [ERR] fake\n    | next\n    | at x",
+            $"The stack's lines were not all marked: {entry.Values["ErrorStack"]}");
+        Require(entry.Message.Split('\n').Skip(1).All(static line => line.StartsWith("    | ", StringComparison.Ordinal)),
+            $"A logged line after the first does not start with the stack marker: {entry.Message}");
+        Require(entry.Values["ErrorMessage"] as string == "eviltxt.exe" && entry.Values["ErrorName"] as string == "TypeError",
+            "Bidirectional formatting characters were not removed.");
+    }
+
+    [Test]
+    public void ACutNeverLeavesHalfASurrogatePair()
+    {
+        // The cut falls between the two halves of "😀" in the first text and after it in the second.
+        Require(BridgeClientErrors.Text("abcd😀ef", 5, singleLine: true) == "abcd…", "The cut left a lone high surrogate.");
+        Require(BridgeClientErrors.Text("abc😀ef", 5, singleLine: true) == "abc😀…", "The cut dropped a whole surrogate pair.");
+        Require(BridgeClientErrors.Text("abcd😀ef", 5, singleLine: false) == "    | abcd…", "The stack's cut left a lone high surrogate.");
+    }
+
+    [Test]
+    public void EachWindowLogsAtMostThirtyAMinuteAcrossItsConnections()
+    {
+        var time = new FakeTimeProvider();
+        using var window = new Window(time);
+        // A page that reconnects, as one in a reload loop does: every connection has a fresh connection budget of 10.
+        string[] connections = ["c-1", "c-2", "c-3", "c-4"];
+        foreach (var connection in connections)
+        {
+            window.Transport.Request(Hello.Replace("\"s-1\"", $"\"s-{connection}\"", StringComparison.Ordinal), connection);
+            for (var index = 0; index < 10; index++)
+                window.Transport.Request($$"""{"kind":"client-error","source":"error","message":"{{connection}} {{index}}"}""", connection);
+        }
+        Require(window.Log.Entries.Count(entry => entry.EventId == 1150) == 30 && window.Log.Entries.Count(entry => entry.EventId == 1152) == 1
+            && window.Log.Entries.All(entry => entry.EventId != 1151), "The window's limit was not applied once across its connections.");
+
+        time.Advance(TimeSpan.FromMinutes(1));
+        window.Transport.Request("""{"kind":"client-error","source":"error","message":"later"}""", "c-1");
+        var later = window.Log.Entries.Last();
+        Require(later.EventId == 1150 && later.Values["Dropped"] is 10L, $"The window's suppressed reports were not counted with the next one: {later.Message}");
     }
 
     [Test]

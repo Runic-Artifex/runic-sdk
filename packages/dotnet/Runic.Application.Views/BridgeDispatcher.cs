@@ -66,6 +66,8 @@ internal sealed class BridgeDispatcher : IBridgeRequestHandler
     private ILogger _logger = TraceFallbackLogger.Instance;
     // client-errors/1: the category of the errors pages report.
     private ILogger _pageLogger = TraceFallbackLogger.Instance;
+    // client-errors/1: the window's limit across its connections, so a page that reconnects keeps its budget.
+    private readonly BridgeClientErrors.Limit _clientErrors = new();
     private TimeProvider _timeProvider = TimeProvider.System;
 
     private BridgeDispatcher(IBridgeTransport transport)
@@ -446,7 +448,7 @@ internal sealed class BridgeDispatcher : IBridgeRequestHandler
     {
         if (!connection.UsesClientErrors)
             return BridgeMessages.Rejected("invalid-request", "The connection does not use client-errors/1.");
-        BridgeClientErrors.Report(connection, envelope.Root, _pageLogger, _timeProvider);
+        BridgeClientErrors.Report(connection, _clientErrors, envelope.Root, _pageLogger, _timeProvider);
         return BridgeMessages.Ok.ToArray();
     }
 
@@ -730,11 +732,10 @@ internal sealed class BridgeConnection(string key, string clientKey)
     // Whether the connection uses presentation-epoch/1 and presented/1.
     internal bool UsesPresentationEpoch { get; set; }
     internal bool UsesPresented { get; set; }
-    // client-errors/1: whether the page may report errors, and its limit (BridgeClientErrors), guarded by the connection.
+    // client-errors/1: whether the page may report errors, and the connection's limit (BridgeClientErrors), which the
+    // window's limit guards.
     internal bool UsesClientErrors { get; set; }
-    internal DateTimeOffset? ClientErrorWindow { get; set; }
-    internal int ClientErrorsLogged { get; set; }
-    internal long ClientErrorsSuppressed { get; set; }
+    internal BridgeClientErrors.Limit ClientErrors { get; } = new();
     // Whether the window's closing push waits for this connection's closing-reply; the dispatcher's gate guards it.
     internal bool ClosingPending { get; set; }
     // Requests that wait for the hello, in arrival order, and whether the dispatcher is admitting them.

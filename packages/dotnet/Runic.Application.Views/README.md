@@ -2600,9 +2600,15 @@ URL loses its query and fragment, and `redact` can change or drop a report. At
 most 10 reports go out per minute (`maxReportsPerMinute`); repeats of one error
 within the minute are counted, and the count arrives as `Dropped`. The host
 treats a report as untrusted input: it cuts texts again (message and URL at
-2048 characters, stack at 8192), removes control characters so a report cannot
-forge log lines, and logs at most 10 reports per connection a minute, logging
-event 1151 `PageErrorsSuppressed` once when it starts counting.
+2048 characters, stack at 8192, never between the halves of a surrogate pair),
+removes control characters and the bidirectional embeddings, overrides and
+isolates (U+202A-U+202E, U+2066-U+2069), and starts every stack line with
+`    | `, so in a plain-text sink a page's text stays inside its entry and
+cannot pass for a line the host wrote. The text itself still comes from the
+page: read it as the page's claim. The host logs at most 10 reports per
+connection and 30 per window a minute, so a page that reloads or reconnects
+gets no fresh budget, and logs event 1151 `PageErrorsSuppressed` or 1152
+`WindowPageErrorsSuppressed` once when it starts counting.
 
 Reporting is a Views protocol 4 feature, `client-errors/1`
 ([page errors](https://github.com/Runic-Artifex/runic-sdk/blob/main/specs/application/README.md#page-errors)):
@@ -2660,6 +2666,7 @@ trace id; correlate them with the host's spans by time and route.
 | 1114 | `ChildViewCleanupFailed` | Error | A `WpfBridgeView` fails to release after its presentation closed. | `ErrorType` |
 | 1150 | `PageError` | Error | A page that called `installErrorReporting()` reports an uncaught error, unhandled rejection or runtime-caught error (`client-errors/1`). Category `Runic.Application.Views.Page`; see [page errors](#page-errors). | `Source`, `ErrorName`, `ErrorMessage`, `PageUrl`, `Route`, `Dropped`, `Client`, `ErrorStack` |
 | 1151 | `PageErrorsSuppressed` | Warning | A page's connection reports more than 10 errors in a minute; the rest of the minute is counted into `Dropped` of the next 1150. Category `Runic.Application.Views.Page`. | `Limit` |
+| 1152 | `WindowPageErrorsSuppressed` | Warning | A window's pages report more than 30 errors in a minute across their connections, such as a page in a reload loop; the rest of the minute is counted into `Dropped` of the next 1150. Category `Runic.Application.Views.Page`. | `Limit` |
 | 2000 | `DesktopSnapshotDeliveryFailed` | Error | Runic Desktop cannot deliver a push to a page. | `ErrorType` |
 | 2002 | `DesktopWindowCloseAfterOpen` | Warning | `RUNIC_APPLICATION_CLOSE_AFTER_OPEN=1` closed a Desktop window right after it opened. | `Variable` |
 | 2003 | `DesktopPortalDiagnostic` | Warning or Debug | On Linux, xdg-desktop-portal reports a diagnostic for the portal services `AddRunicPlatformServices()` registers (notifications, status icon, login startup and inhibition): Warning for a rejected identity, an unavailable portal or a denied request, Debug for an accepted request or registration. | `Code`, `DiagnosticMessage`, `Remediation` |

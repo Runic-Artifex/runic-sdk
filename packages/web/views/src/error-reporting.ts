@@ -191,8 +191,13 @@ function positive(value: number | undefined, fallback: number): number {
   return typeof value === "number" && Number.isFinite(value) && value >= 1 ? Math.floor(value) : fallback;
 }
 
+// Cuts text to at most maximum UTF-16 units, the last one "…", without leaving half a surrogate pair before it.
 function trim(text: string, maximum: number): string {
-  return text.length <= maximum ? text : `${text.slice(0, maximum - 1)}…`;
+  if (text.length <= maximum) return text;
+  let end = maximum - 1;
+  const last = text.charCodeAt(end - 1);
+  if (last >= 0xd800 && last <= 0xdbff) end--;
+  return `${text.slice(0, end)}…`;
 }
 
 function describe(value: unknown): string {
