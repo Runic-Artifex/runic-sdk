@@ -1,2 +1,7 @@
 #nullable enable
 const Runic.Application.Views.RunicViewsTelemetry.PageLogCategory = "Runic.Application.Views.Page" -> string!
+Runic.Application.Views.IRunicMenuCheckedSource
+Runic.Application.Views.IRunicMenuCheckedSource.IsMenuItemChecked(string! commandId, string? commandParameter) -> bool?
+Runic.Application.Views.RunicMenu
+static Runic.Application.Views.RunicMenu.Refresh(object! viewModel) -> void
+static Runic.Application.Views.RunicMenu.RefreshAll() -> void

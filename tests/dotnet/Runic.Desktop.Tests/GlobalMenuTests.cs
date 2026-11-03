@@ -85,6 +85,9 @@ public sealed class GlobalMenuTests
         Assert.Equal("radio", Value(small, "toggle-type").GetString());
         Assert.Equal(0, Value(small, "toggle-state").GetInt32());
         Assert.Equal(1, Value(LinuxGlobalMenu.Describe(view.Children[3], true), "toggle-state").GetInt32());
+        // B3: the toggle state the window's command path answers.
+        Assert.Equal(0, Value(LinuxGlobalMenu.Describe(view.Children[0], true, toggled: false), "toggle-state").GetInt32());
+        Assert.Equal(1, Value(LinuxGlobalMenu.Describe(view.Children[2], true, toggled: true), "toggle-state").GetInt32());
     }
 
     [Test, Explicit, Category("DBus")]
@@ -159,6 +162,14 @@ public sealed class GlobalMenuTests
             }
             Assert.False((await CallAsync(client, menu, "AboutToShow", DBusValue.From(tools.Id)))[0].GetBoolean());
             Assert.Equal([true, false], (await LayoutAsync(client, menu)).Children[2].Children.Select(static item => item.Enabled));
+
+            // B3: IsChecked is asked again before a submenu opens, so check and radio items follow the window's state.
+            window.Checked["view.wrap"] = false;
+            window.Checked["view.zoom:0.8"] = true;
+            window.Checked["view.zoom:1.5"] = false;
+            Assert.True((await CallAsync(client, menu, "AboutToShow", DBusValue.From(root.Children[1].Id)))[0].GetBoolean());
+            var toggled = (await LayoutAsync(client, menu)).Children[1].Children;
+            Assert.Equal([0, 1, 0], new[] { toggled[0], toggled[2], toggled[3] }.Select(static item => item.ToggleState));
             var group = await CallAsync(client, menu, "AboutToShowGroup", DBusValue.Array("i", [DBusValue.From(tools.Id), DBusValue.From(99999)]));
             Assert.Empty(group[0].GetItems());
             Assert.Equal([99999], group[1].GetItems().Select(static id => id.GetInt32()));
@@ -436,6 +447,12 @@ public sealed class GlobalMenuTests
         }
 
         public bool CanExecute(DesktopMenuItem item) => _allowed.ContainsKey(item.CommandId);
+
+        // Check marks by "id" or "id:parameter"; the declaration otherwise.
+        internal ConcurrentDictionary<string, bool> Checked { get; } = new(StringComparer.Ordinal);
+
+        public bool? IsChecked(DesktopMenuItem item) =>
+            Checked.TryGetValue(item.CommandParameter is { } parameter ? item.CommandId + ":" + parameter : item.CommandId, out var value) ? value : item.IsChecked;
 
         public void Execute(DesktopMenuItem item)
         {

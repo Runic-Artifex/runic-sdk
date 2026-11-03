@@ -151,6 +151,32 @@ internal sealed partial class MessageBoxTests
         Console.WriteLine("PASS native Windows network status: read, watched and unregistered");
     }
 
+    // B4: the runner's power status and session lock, read and watched without asserting what they are: the hidden
+    // window starts, registers and unregisters. Sleep, wake and lock need a person: the PR's manual checks.
+    [Test, Explicit, Category("NativePower")]
+    public async Task NativePowerAsync()
+    {
+        await using var events = WindowsPlatformProvider.CreatePowerEvents();
+        var read = await events.ReadAsync().AsTask().WaitScaledAsync(Wait);
+        Console.WriteLine($"ReadAsync: {read}");
+        Check(read is PlatformResult<DesktopPowerState>.Success { Value: { IsOnBattery: not null, IsLowPower: not null } }, "GetSystemPowerStatus reads");
+        for (int index = 0; index < 3; index++)
+        {
+            using var cancel = TestTimeouts.Cancellation(Wait);
+            await using var watch = events.WatchAsync(cancel.Token).GetAsyncEnumerator(cancel.Token);
+            Check(await watch.MoveNextAsync(), "the watch reports");
+            Console.WriteLine($"WatchAsync first: {watch.Current}");
+            Check(watch.Current is PlatformResult<DesktopPowerEvent>.Success { Value.Kind: DesktopPowerEventKind.StateChanged }, "the watch's initial state");
+            cancel.Cancel();
+            try { await watch.MoveNextAsync(); throw new InvalidOperationException("A cancelled watch continued."); }
+            catch (OperationCanceledException) { }
+        }
+        // Each watch's window released its registrations in WM_DESTROY, while the window was still valid.
+        var (teardowns, late) = WindowsPowerEvents.Teardowns;
+        Check(teardowns >= 3 && late == 0, $"teardowns {teardowns}, after the window was gone {late}");
+        Console.WriteLine("PASS native Windows power events: read, watched and unregistered");
+    }
+
     // Shows a box on the owner and answers it with drive, which runs on the test thread once the dialog exists.
     private static async Task<(nint Dialog, PlatformResult<DesktopMessageBoxButton?> Result)> ShowAsync(ThreadOwner owner, DesktopMessageBox box, Action<nint> drive)
     {
