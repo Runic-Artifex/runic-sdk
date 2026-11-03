@@ -169,8 +169,8 @@ reported by `OpenWindowAsync` as above. `ShowWindow` and serve-only mode skip
 the check.
 
 Set `RUNIC_APPLICATION_SERVE_ONLY=1` to start the local server without opening
-anything. Each window then writes `RUNIC_APPLICATION_URL=<url>` to
-standard output, ignoring `UseWebView` and `ShowWindow`, and keeps serving
+anything. Each window then writes `RUNIC_APPLICATION_URL=<url>` and
+`RUNIC_APPLICATION_WINDOW=<url> <Window type>` to standard output, ignoring `UseWebView` and `ShowWindow`, and keeps serving
 until a line is read from standard input or the process ends, so a test
 harness or remote browser can drive the unchanged application. Write the line
 on Windows too; the
@@ -305,6 +305,21 @@ remove a binding before its window closes, so the binding stays while the
 window's request handler changes, and a request while none is served gets the
 `released` reply. Dispose the transport before the `WebUiWindow`. The trusted
 client key is WebUI's client id, and the connection key `clientId:connectionId`.
+WebUI reuses connection slots, and without its authentication cookie every
+client id is 0, so a reloaded page or another browser can get the key of a
+connection that just closed, even before WebUI reports that close. Since 0.16:
+
+- The window gives every connection its own key, `clientId:connectionId#n`,
+  with a counter that never repeats, so a command, question or push of a
+  closed connection never reaches the connection that reused its slot.
+- With `request-session/1`, which pages and hosts of 0.16 use, every request
+  names the random session of its page's `hello`. A request of another page,
+  including the `receive` that `runic-cswebui.js` sends as soon as its socket
+  opens, is answered `no-hello` and never touches the old connection or its
+  mailbox, and the new page's `hello` closes the old connection at once
+  ([request sessions](https://github.com/Runic-Artifex/runic-sdk/blob/main/specs/application/README.md#request-sessions)).
+  A page of 0.15, which sends no session, is not protected this way while its
+  close is not reported.
 
 - `BroadcastAsync` writes a push to every client of the window with WebUI's
   `SendRaw`.

@@ -16,7 +16,7 @@ internal sealed partial class WindowsWebView2Host
     private const uint WmExitMenuLoop = 0x0212;
     private const nuint ScKeyMenu = 0xF100;
     private const nuint MsgfMenu = 2;
-    private const uint MfByCommand = 0x0, MfGrayed = 0x1;
+    private const uint MfByCommand = 0x0, MfGrayed = 0x1, MfChecked = 0x8;
     private const uint TpmRightButton = 0x0002, TpmRightAlign = 0x0008, TpmReturnCommand = 0x0100, TpmLayoutRtl = 0x8000;
     private const int SmMenuDropAlignment = 40;
 
@@ -146,7 +146,8 @@ internal sealed partial class WindowsWebView2Host
         }
     }
 
-    // WM_INITMENUPOPUP: a popup of the bar is about to open, so its items follow their commands, as on macOS.
+    // WM_INITMENUPOPUP: a popup of the bar is about to open, so its items follow their commands, as on macOS: enabled
+    // with CanExecute, and check and radio items checked with IsChecked.
     private void InitializePopup(nint popup)
     {
         if (!_barPopups.TryGetValue(popup, out var entries)) return;
@@ -156,6 +157,8 @@ internal sealed partial class WindowsWebView2Host
             if (entry.Item is not { } item) continue;
             var enabled = entry.Planned.Enabled && commands is not null && commands.CanExecute(item);
             _ = Native.EnableMenuItem(popup, entry.Id, MfByCommand | (enabled ? 0 : MfGrayed));
+            if (item.IsChecked is { } declared)
+                _ = Native.CheckMenuItem(popup, entry.Id, MfByCommand | ((commands?.IsChecked(item) ?? declared) ? MfChecked : 0));
         }
     }
 
@@ -480,6 +483,9 @@ internal sealed partial class WindowsWebView2Host
 
         [LibraryImport("user32.dll")]
         internal static partial int EnableMenuItem(nint menu, uint item, uint flags);
+
+        [LibraryImport("user32.dll")]
+        internal static partial uint CheckMenuItem(nint menu, uint item, uint flags);
 
         [LibraryImport("user32.dll")]
         internal static partial int TrackPopupMenuEx(nint menu, uint flags, int x, int y, nint window, nint parameters);

@@ -146,11 +146,14 @@ public sealed class InteractionProtocolTests
         public InMemoryBridgeTransport Transport { get; } = new();
         public WindowContentSession Session { get; }
 
-        public BridgeConnection Connection(string key = "connection-1") => BridgeDispatcher.For(Transport).FindConnection(key)!;
+        public BridgeConnection Connection(string key = "connection-1") => BridgeDispatcher.For(Transport).FindConnection(Key(key))!;
+
+        // The window's key of the connection the transport reports with this key.
+        public string Key(string transportKey) => BridgeDispatcher.For(Transport).ConnectionKeyOf(transportKey)!;
 
         // As an open of the presentation on connection-1 does.
         public void Open(string presentation) =>
-            Session.Interactions.OnPresentationMounted(Route, presentation, "client-1", "connection-1");
+            Session.Interactions.OnPresentationMounted(Route, presentation, "client-1", Key("connection-1"));
 
         public string Register(string presentation, long generation, params (string Name, string Contract)[] handlers) =>
             Register(presentation, generation, "connection-1", handlers);
@@ -172,7 +175,7 @@ public sealed class InteractionProtocolTests
         // Asks the interaction as a command invoked on connection-1 does.
         public Task<bool> Ask(string question)
         {
-            using (RunicInteractionInvocation.Enter(Session, Route, "client-1", "connection-1"))
+            using (RunicInteractionInvocation.Enter(Session, Route, "client-1", Key("connection-1")))
                 return Session.Interactions.TryRequest<string, bool>(Route, "confirm", Contract, question,
                     static input => JsonSerializer.Serialize(input), static output => output.GetProperty("accepted").GetBoolean())
                     ?? throw new InvalidOperationException("The interaction did not reach the presentation.");

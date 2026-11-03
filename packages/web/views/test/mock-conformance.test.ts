@@ -491,9 +491,23 @@ test("an operation start with a known id is a duplicate for a canonically equal 
 
 /* ------------------------------------------------------------------ presentation-epoch/1 and presented/1 */
 
-const features = ["text-splice/1", "presentation-epoch/1", "presented/1"];
-const helloWith = (raw: RawClient, list: readonly string[] = features) =>
+const features = ["text-splice/1", "presentation-epoch/1", "presented/1", "request-session/1"];
+// The raw client sends no session with its requests, so it lists every feature but request-session/1.
+const helloWith = (raw: RawClient, list: readonly string[] = features.filter(feature => feature !== "request-session/1")) =>
   raw.send({ kind: "hello", protocol: 4, session: `session-${++sessions}`, client, features: list });
+
+test("request-session/1: a request that names another session or none does not act for the connection", async () => {
+  const { bridge, raw } = await connected();
+  bridge.view("notes", { state: { title: "a" } });
+  const hello = await raw.send({ kind: "hello", protocol: 4, session: "s-page", client, features: ["request-session/1"] });
+  assert.ok((hello["features"] as string[]).includes("request-session/1"));
+  assert.deepEqual(errorOf(await raw.send({ kind: "snapshot", route: "notes" })), { kind: "rejected", reason: "no-hello" });
+  assert.deepEqual(errorOf(await raw.send({ kind: "receive", session: "s-other" })), { kind: "rejected", reason: "no-hello" });
+  assert.equal((await raw.send({ kind: "snapshot", route: "notes", session: "s-page" })).ok, true);
+  // The recorded call is the request without its session.
+  assert.equal("session" in bridge.calls.at(-1)!.message, false);
+  raw.done();
+});
 
 function wizard(bridge: MockBridge) {
   const view = bridge.view("wizard", {

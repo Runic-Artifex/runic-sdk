@@ -1,0 +1,227 @@
+{
+  "format": "runic.views.scenario/1",
+  "id": "request-sessions.another-session-or-none-is-no-hello.v1",
+  "contract": {
+    "id": "runic.views",
+    "version": 4
+  },
+  "set": "request-sessions",
+  "roles": [
+    "producer"
+  ],
+  "description": "On a connection that uses request-session/1, a request that names another session than the connection's hello, or none, is answered no-hello and does not act for the connection; one that names it runs.",
+  "view": "notes",
+  "requires": [
+    "request-session/1"
+  ],
+  "ids": {
+    "c1": {
+      "kind": "connection"
+    },
+    "hello-c1": {
+      "kind": "request"
+    },
+    "session": {
+      "kind": "wire",
+      "value": "s-1"
+    },
+    "other": {
+      "kind": "wire",
+      "value": "s-2"
+    },
+    "presentation": {
+      "kind": "wire",
+      "value": "p-1"
+    },
+    "open-request": {
+      "kind": "request"
+    },
+    "without": {
+      "kind": "request"
+    },
+    "another": {
+      "kind": "request"
+    },
+    "close-request": {
+      "kind": "request"
+    }
+  },
+  "arrange": {
+    "model": {}
+  },
+  "steps": [
+    {
+      "connect": "c1"
+    },
+    {
+      "send": {
+        "kind": "hello",
+        "protocol": 4,
+        "session": {
+          "$id": "session"
+        },
+        "client": {
+          "name": {
+            "$any": "string",
+            "default": "conformance-client"
+          },
+          "version": {
+            "$any": "string",
+            "default": "1.0.0"
+          }
+        },
+        "features": {
+          "$any": "array",
+          "default": [
+            "text-splice/1",
+            "request-session/1"
+          ]
+        }
+      },
+      "id": "hello-c1"
+    },
+    {
+      "receive": {
+        "ok": true,
+        "protocol": 4,
+        "implementation": {
+          "name": {
+            "$any": "string",
+            "default": "conformance-producer"
+          },
+          "version": {
+            "$any": "string",
+            "default": "1.0.0"
+          }
+        },
+        "features": {
+          "$any": "array",
+          "default": [
+            "text-splice/1",
+            "request-session/1"
+          ]
+        }
+      },
+      "replyTo": "hello-c1"
+    },
+    {
+      "send": {
+        "kind": "open",
+        "route": "notes",
+        "presentation": {
+          "$id": "presentation"
+        },
+        "session": {
+          "$id": "session"
+        }
+      },
+      "id": "open-request"
+    },
+    {
+      "receive": {
+        "ok": true,
+        "revision": 0,
+        "state": {
+          "title": "",
+          "note": "",
+          "priority": "Normal",
+          "due": null,
+          "elapsed": "PT0S",
+          "rows": [],
+          "count": 0,
+          "summary": "rows: 0",
+          "detail": {
+            "kind": "detail",
+            "id": "0123456789abcdef0123456789abcdef"
+          },
+          "canClear": false,
+          "canTouch": true,
+          "canSave": true,
+          "canConfirmClear": false,
+          "isSlowImportExecuting": false,
+          "isConfirmClearExecuting": false
+        },
+        "fields": {
+          "note": {
+            "version": 0
+          }
+        },
+        "presentation": "ok"
+      },
+      "replyTo": "open-request"
+    },
+    {
+      "send": {
+        "kind": "close",
+        "route": "notes",
+        "presentation": {
+          "$id": "presentation"
+        }
+      },
+      "id": "without",
+      "note": "No session: another page's request."
+    },
+    {
+      "receive": {
+        "ok": false,
+        "error": {
+          "kind": "rejected",
+          "reason": "no-hello",
+          "message": {
+            "$any": "string",
+            "default": "…"
+          }
+        }
+      },
+      "replyTo": "without"
+    },
+    {
+      "send": {
+        "kind": "close",
+        "route": "notes",
+        "presentation": {
+          "$id": "presentation"
+        },
+        "session": {
+          "$id": "other"
+        }
+      },
+      "id": "another"
+    },
+    {
+      "receive": {
+        "ok": false,
+        "error": {
+          "kind": "rejected",
+          "reason": "no-hello",
+          "message": {
+            "$any": "string",
+            "default": "…"
+          }
+        }
+      },
+      "replyTo": "another"
+    },
+    {
+      "send": {
+        "kind": "close",
+        "route": "notes",
+        "presentation": {
+          "$id": "presentation"
+        },
+        "session": {
+          "$id": "session"
+        }
+      },
+      "id": "close-request",
+      "note": "The presentation is still open: the refused closes did not act."
+    },
+    {
+      "receive": {
+        "ok": true,
+        "presentation": "ok"
+      },
+      "replyTo": "close-request"
+    }
+  ]
+}

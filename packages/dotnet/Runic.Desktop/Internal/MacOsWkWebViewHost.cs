@@ -930,6 +930,11 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
         ? chain.CanExecute(item)
         : MenuCommandChain.CanExecute(item, null, Volatile.Read(ref s_applicationMenuCommands), Volatile.Read(ref HostSettings.MenuLogger));
 
+    // The check mark of a declared check or radio item, from the same command path.
+    internal static bool? IsMenuCommandChecked(DesktopMenuItem item) => KeyWindowCommands() is { } chain
+        ? chain.IsChecked(item)
+        : MenuCommandChain.IsChecked(item, null, Volatile.Read(ref s_applicationMenuCommands), Volatile.Read(ref HostSettings.MenuLogger));
+
     internal static bool ExecuteMenuCommand(DesktopMenuItem item) => KeyWindowCommands() is { } chain
         ? chain.TryExecute(item)
         : MenuCommandChain.TryExecute(item, null, Volatile.Read(ref s_applicationMenuCommands), Volatile.Read(ref HostSettings.MenuLogger));
@@ -947,14 +952,19 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
         }
     }
 
-    // AppKit asks before it shows a menu or answers a key equivalent. Only the declared items depend on a command.
+    // AppKit asks before it shows a menu or answers a key equivalent. Only the declared items depend on a command. A check
+    // or radio item also takes its check mark from the key window's command path here, so it follows the front window.
     [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
     private static byte ValidateMenuItem(nint self, nint selector, nint item)
     {
         try
         {
             if (!Api.HasAction(item, MenuCommandAction)) return 1;
-            return Declared(item) is { Enabled: true } declared && (declared.Entry is not DesktopMenuItem menuItem || CanExecuteMenuCommand(menuItem))
+            if (Declared(item) is not { } declared) return 0;
+            if (declared.Entry is DesktopMenuItem { IsChecked: not null } toggle)
+                // NSControlStateValueOn and Off.
+                Api.SendVoidNint(item, "setState:", IsMenuCommandChecked(toggle) == true ? 1 : 0);
+            return declared.Enabled && (declared.Entry is not DesktopMenuItem menuItem || CanExecuteMenuCommand(menuItem))
                 ? (byte)1 : (byte)0;
         }
         catch
@@ -1061,7 +1071,7 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
                     items.Add(item);
                     Api.SendVoidNint(native, "setTag:", items.Count);
                     Api.SendVoidBool(native, "setEnabled:", enabled && item.IsEnabled && MenuCommandChain.CanExecute(item, null, application, logger));
-                    if (item.IsChecked is { } isChecked) Api.SendVoidNint(native, "setState:", isChecked ? 1 : 0);
+                    if (MenuCommandChain.IsChecked(item, null, application, logger) is { } isChecked) Api.SendVoidNint(native, "setState:", isChecked ? 1 : 0);
                     Api.SendVoidNint(menu, "addItem:", native);
                     Api.SendVoid(native, "release");
                     break;

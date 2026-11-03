@@ -509,7 +509,9 @@ test("the mock Bridge answers declared failures for commands, operations and str
   });
   const client = await connect();
   // The raw reply on the client's connection: the declared failure with the revision, and no detail.
-  const saved = JSON.parse(await bridge.request(JSON.stringify({ kind: "command", route: "editor", member: "save" }))) as Record<string, unknown>;
+  // The page's connection uses request-session/1: a request names the session of its hello.
+  const session = bridge.calls.find(call => call.kind === "hello")!.message["session"];
+  const saved = JSON.parse(await bridge.request(JSON.stringify({ kind: "command", route: "editor", member: "save", session }))) as Record<string, unknown>;
   assert.deepEqual(saved, { ok: false, revision: editor.revision,
     error: { kind: "domain-failed", message: "Save failed.", failure: { $case: "titleRequired" } } });
   // The mock names itself and this release in every hello reply, as a producer does.

@@ -31,7 +31,7 @@ public sealed class BridgeDispatcherTests
     {
         using var window = new Window();
         var reply = Parse(window.Transport.Request(Hello.Replace("}}", """},"features":["unknown/2","text-splice/1","Not a feature"]}""", StringComparison.Ordinal)));
-        Require(reply.GetProperty("features").EnumerateArray().Select(feature => feature.GetString()).SequenceEqual(["text-splice/1", "presentation-epoch/1", "presented/1"]),
+        Require(reply.GetProperty("features").EnumerateArray().Select(feature => feature.GetString()).SequenceEqual(["text-splice/1", "presentation-epoch/1", "presented/1", "request-session/1"]),
             $"The hello reply lists {reply}.");
         foreach (var features in new[] { "\"text-splice/1\"", "[1]", "[\"" + new string('a', 65) + "\"]",
             "[" + string.Join(",", Enumerable.Repeat("\"x\"", 65)) + "]" })
@@ -51,7 +51,8 @@ public sealed class BridgeDispatcherTests
         Require(!first.IsCompleted && !second.IsCompleted && handler.Requests.Count == 0, "A request ran before the hello.");
         Require(Parse(window.Transport.Request(Hello)).GetProperty("ok").GetBoolean(), "The hello failed.");
         Require(await first == """{"ok":true}""" && await second == """{"ok":true}""", "A held request was not answered by its route.");
-        Require(handler.Requests.SequenceEqual(["set notes title connection-1 client-1", "command notes save connection-1 client-1"]),
+        var key = window.Dispatcher.ConnectionKeyOf(InMemoryBridgeTransport.DefaultConnectionKey);
+        Require(handler.Requests.SequenceEqual([$"set notes title {key} client-1", $"command notes save {key} client-1"]),
             $"The held requests ran as [{string.Join(", ", handler.Requests)}].");
     }
 
@@ -146,8 +147,11 @@ public sealed class BridgeDispatcherTests
         RequireError(window.Transport.Request(Hello, "connection-2"), "rejected", "invalid-request");
         var closed = new List<string>();
         using var observer = window.Dispatcher.OnConnectionClosed(closed.Add);
+        var key = window.Dispatcher.ConnectionKeyOf(InMemoryBridgeTransport.DefaultConnectionKey)!;
         window.Transport.CloseConnection();
-        Require(closed.SequenceEqual([InMemoryBridgeTransport.DefaultConnectionKey]), "The closed connection was not reported.");
+        // Observers learn the window's own key of the connection, which no later connection reuses.
+        Require(closed.SequenceEqual([key]) && key.StartsWith(InMemoryBridgeTransport.DefaultConnectionKey + "#", StringComparison.Ordinal),
+            "The closed connection was not reported.");
         RequireError(window.Transport.Request(Hello, "connection-3"), "released", null);
         // A connection key can be reused by a new connection, as CS-WebUI reuses its slots: it starts without a hello.
         RequireError(window.Transport.Request("""{"kind":"receive"}"""), "rejected", "no-hello");
@@ -186,7 +190,7 @@ public sealed class BridgeDispatcherTests
         Require(Throws<InvalidOperationException>(() => window.Dispatcher.RegisterRoute("notes", handler)), "A route was served twice.");
         Require(window.Transport.Request("""{"kind":"set","route":"notes","member":"title","value":"x","edit":3}""") == """{"ok":true}""",
             "The route's reply was not returned.");
-        Require(handler.Requests.SequenceEqual(["set notes title connection-1 client-1"]), $"The route received [{string.Join(", ", handler.Requests)}].");
+        Require(handler.Requests.SequenceEqual([$"set notes title {window.Dispatcher.ConnectionKeyOf("connection-1")} client-1"]), $"The route received [{string.Join(", ", handler.Requests)}].");
         // A View route receives only the View request kinds; a reserved route receives every kind.
         RequireError(window.Transport.Request("""{"kind":"menu-bar-watch","route":"notes"}"""), "rejected", "invalid-request");
         using (window.Dispatcher.RegisterRoute("runic.test", handler))
@@ -206,7 +210,8 @@ public sealed class BridgeDispatcherTests
         window.Transport.Request(Hello);
         Require(await window.Transport.RequestAsync("""{"kind":"receive"}""") == """{"ok":true,"messages":[]}""",
             "A receive on a transport with targeted pushes did not answer at once.");
-        Require(await window.Dispatcher.SendAsync(InMemoryBridgeTransport.DefaultConnectionKey, """{"kind":"operation"}"""u8.ToArray()),
+        Require(await window.Dispatcher.SendAsync(window.Dispatcher.ConnectionKeyOf(InMemoryBridgeTransport.DefaultConnectionKey)!,
+                """{"kind":"operation"}"""u8.ToArray()),
             "The targeted push was not sent.");
         Require(window.Transport.TakeMessages().Single() == new RunicBridgeMessage("""{"kind":"operation"}""", InMemoryBridgeTransport.DefaultConnectionKey),
             "The targeted push was not recorded for its connection.");
@@ -221,9 +226,10 @@ public sealed class BridgeDispatcherTests
         var dispatcher = BridgeDispatcher.For(transport);
         Require(dispatcher.UsesMailbox, "A transport without targeted pushes does not use the mailbox.");
         await transport.RequestAsync(Hello, "c1");
+        var c1 = dispatcher.ConnectionKeyOf("c1")!;
 
         // Queued pushes are answered at once, in order.
-        Require(await dispatcher.SendAsync("c1", """{"n":1}"""u8.ToArray()) && await dispatcher.SendAsync("c1", """{"n":2}"""u8.ToArray()),
+        Require(await dispatcher.SendAsync(c1, """{"n":1}"""u8.ToArray()) && await dispatcher.SendAsync(c1, """{"n":2}"""u8.ToArray()),
             "The mailbox refused a push.");
         Require(await transport.RequestAsync("""{"kind":"receive"}""", "c1") == """{"ok":true,"messages":[{"n":1},{"n":2}]}""",
             "The queued pushes were not answered in order.");
@@ -233,7 +239,7 @@ public sealed class BridgeDispatcherTests
         Require(!pending.IsCompleted, "An empty mailbox answered at once.");
         Require(await transport.RequestAsync("""{"kind":"receive"}""", "c1") == """{"ok":true,"messages":[]}""",
             "A second pending receive did not answer at once.");
-        await dispatcher.SendAsync("c1", """{"n":3}"""u8.ToArray());
+        await dispatcher.SendAsync(c1, """{"n":3}"""u8.ToArray());
         Require(await pending.WaitScaledAsync(TimeSpan.FromSeconds(5)) == """{"ok":true,"messages":[{"n":3}]}""",
             "The pending receive did not answer with the queued push.");
 
@@ -248,12 +254,12 @@ public sealed class BridgeDispatcherTests
 
         // Another connection's pushes stay in its own mailbox; closing a connection ends its pending receive.
         await transport.RequestAsync(Hello.Replace("s-1", "s-2", StringComparison.Ordinal), "c2");
-        await dispatcher.SendAsync("c2", """{"n":4}"""u8.ToArray());
+        await dispatcher.SendAsync(dispatcher.ConnectionKeyOf("c2")!, """{"n":4}"""u8.ToArray());
         pending = transport.RequestAsync("""{"kind":"receive"}""", "c1").AsTask();
         transport.Close("c1");
         Require(await pending.WaitScaledAsync(TimeSpan.FromSeconds(5)) == """{"ok":true,"messages":[]}""",
             "Closing the connection did not end its pending receive.");
-        Require(!await dispatcher.SendAsync("c1", "{}"u8.ToArray()), "A closed connection accepted a push.");
+        Require(!await dispatcher.SendAsync(c1, "{}"u8.ToArray()), "A closed connection accepted a push.");
         Require(await transport.RequestAsync("""{"kind":"receive"}""", "c2") == """{"ok":true,"messages":[{"n":4}]}""",
             "The other connection's push was lost.");
     }
@@ -266,8 +272,9 @@ public sealed class BridgeDispatcherTests
         using var session = new WindowContentSession(transport, new WindowContentSessionOptions { LoggerFactory = log.Factory });
         var dispatcher = BridgeDispatcher.For(transport);
         await transport.RequestAsync(Hello, "c1");
+        var c1 = dispatcher.ConnectionKeyOf("c1")!;
         for (var index = 0; index < BridgeDispatcher.MaximumMailboxMessages + 2; index++)
-            await dispatcher.SendAsync("c1", Encoding.UTF8.GetBytes($$"""{"n":{{index}}}"""));
+            await dispatcher.SendAsync(c1, Encoding.UTF8.GetBytes($$"""{"n":{{index}}}"""));
         var messages = Parse(await transport.RequestAsync("""{"kind":"receive"}""", "c1")).GetProperty("messages");
         Require(messages.GetArrayLength() == BridgeDispatcher.MaximumMailboxMessages && messages[0].GetProperty("n").GetInt32() == 2,
             $"The mailbox kept {messages.GetArrayLength()} pushes from {messages[0]}.");
@@ -282,10 +289,11 @@ public sealed class BridgeDispatcherTests
         using var session = new WindowContentSession(transport);
         transport.Request(Hello, "c1");
         var released = new List<string>();
+        var key = BridgeDispatcher.For(transport).ConnectionKeyOf("c1");
         using var observer = BridgeDispatcher.For(transport).OnConnectionClosed(released.Add);
         transport.CloseConnection("c1");
         transport.CloseConnection("c1");
-        Require(released.SequenceEqual(["c1"]), $"The close was reported as [{string.Join(", ", released)}].");
+        Require(released.SequenceEqual([key!]), $"The close was reported as [{string.Join(", ", released)}].");
     }
 
     private static JsonElement Parse(string json) => JsonDocument.Parse(json).RootElement.Clone();

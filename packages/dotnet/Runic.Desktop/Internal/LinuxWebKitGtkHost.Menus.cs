@@ -9,8 +9,8 @@ namespace Runic.Desktop.Internal;
 // - The bar is a GtkMenuBar above the web view in a vertical GtkBox, for the Native presentation of a decorated
 //   window. Items show their shortcut with gtk_accel_label_set_accel and no accel group, so a shortcut never runs
 //   before the page has seen the key: the unhandled-key handler matches it (GtkMenuShortcuts).
-// - Each submenu asks CanExecute when it is shown. Check and radio items show the declared state; a click runs the
-//   command from the next main-loop iteration and puts the declared state back, which SetMenuBar then changes.
+// - Each submenu asks CanExecute and IsChecked when it is shown. A click runs the command from the next main-loop
+//   iteration and puts the target's state back, which the command then changes.
 // - A context menu is a GtkMenu attached to the web view and popped up with the last button or key press on the view
 //   as its trigger event, because a Wayland popup grab needs the serial of a recent input event.
 internal sealed partial class LinuxWebKitGtkHost
@@ -174,11 +174,13 @@ internal sealed partial class LinuxWebKitGtkHost
             if (GCHandle.FromIntPtr(context).Target is LinuxWebKitGtkHost { IsOpen: true, _barWidgets: { } widgets } host
                 && widgets.Menus.TryGetValue(menu, out var leaves))
             {
-                // As AppKit validates items: enabled while the declaration and a target's CanExecute allow it.
+                // As AppKit validates items: enabled while the declaration and a target's CanExecute allow it, and
+                // check and radio items checked as the target's IsChecked answers.
                 foreach (var (widget, entry) in leaves)
                 {
                     MenuApi.WidgetSetSensitive(widget, entry.Enabled && entry.Item is { } item && host.CanExecuteMenuItem(item));
                 }
+                host.ShowToggleStates(widgets, leaves);
             }
         }
         catch
@@ -221,24 +223,32 @@ internal sealed partial class LinuxWebKitGtkHost
     private static bool IsUncheckedRadio(Gtk3MenuWidgets? widgets, nint widget) =>
         widgets is not null && widgets.Radios.Contains(widget) && !MenuApi.CheckMenuItemGetActive(widget);
 
-    // A click toggled the item; the declaration decides what the bar shows.
+    // A click toggled the item; the target's state decides what the bar shows.
     private void RestoreToggles(Gtk3MenuWidgets widgets)
     {
         if (!ReferenceEquals(widgets, _barWidgets)) return;
+        ShowToggleStates(widgets, null);
+    }
+
+    // Sets the check and radio items of the bar, or of one of its menus, to IsChecked of the window's command path.
+    private void ShowToggleStates(Gtk3MenuWidgets widgets, List<(nint Widget, PlannedMenuEntry Entry)>? menu)
+    {
+        HashSet<nint>? only = menu is null ? null : [.. menu.Select(static leaf => leaf.Widget)];
         _menuSignalsMuted = true;
         try
         {
             foreach (var (widget, entry, radio) in widgets.Toggles)
             {
-                var declared = entry.Item?.IsChecked == true;
+                if (only is not null && !only.Contains(widget)) continue;
+                var state = entry.Item is { } item && IsMenuItemChecked(item) == true;
                 if (radio)
                 {
-                    // Checking the declared item unchecks the rest of its GTK group.
-                    if (declared && !MenuApi.CheckMenuItemGetActive(widget)) MenuApi.CheckMenuItemSetActive(widget, true);
+                    // Checking an item unchecks the rest of its GTK group, which keeps one item checked.
+                    if (state && !MenuApi.CheckMenuItemGetActive(widget)) MenuApi.CheckMenuItemSetActive(widget, true);
                 }
-                else if (MenuApi.CheckMenuItemGetActive(widget) != declared)
+                else if (MenuApi.CheckMenuItemGetActive(widget) != state)
                 {
-                    MenuApi.CheckMenuItemSetActive(widget, declared);
+                    MenuApi.CheckMenuItemSetActive(widget, state);
                 }
             }
         }
@@ -247,6 +257,8 @@ internal sealed partial class LinuxWebKitGtkHost
             _menuSignalsMuted = false;
         }
     }
+
+    private bool? IsMenuItemChecked(DesktopMenuItem item) => (MenuCommands is { } commands ? commands.IsChecked(item) : null) ?? item.IsChecked;
 
     private bool CanExecuteMenuItem(DesktopMenuItem item) => MenuCommands is { } commands && commands.CanExecute(item);
 
