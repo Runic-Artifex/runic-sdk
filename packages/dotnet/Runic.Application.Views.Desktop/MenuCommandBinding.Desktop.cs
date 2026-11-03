@@ -55,8 +55,8 @@ namespace Runic.Application.Views.Desktop
             remove => window.MenuBarPlacementChanged -= value;
         }
 
-        public Task<bool[]> CanExecuteAsync(IReadOnlyList<DesktopMenuItem> items, CancellationToken cancellationToken) =>
-            window.CanExecuteMenuItemsAsync(items, cancellationToken);
+        public Task<(bool Enabled, bool? Checked)[]> GetStatesAsync(IReadOnlyList<DesktopMenuItem> items, CancellationToken cancellationToken) =>
+            window.MenuItemStatesAsync(items, cancellationToken);
 
         public ValueTask<bool> TryExecuteAsync(DesktopMenuItem item, CancellationToken cancellationToken) =>
             window.TryExecuteMenuItemAsync(item, cancellationToken);

@@ -20,6 +20,9 @@ internal interface ILinuxGlobalMenuWindow
     // Runs the item through the window's command path, which asks CanExecute first.
     void Execute(DesktopMenuItem item);
 
+    // The check mark of a check or radio item from the window's command path; the declaration by default.
+    bool? IsChecked(DesktopMenuItem item) => item.IsChecked;
+
     // The bar went into the desktop's global menu (true) or came back into the window (false).
     void PlacementChanged(bool global);
 
@@ -43,8 +46,8 @@ internal interface ILinuxGlobalMenuWindow
 // - The registrar's owner decides the placement: kded owns it only while a global menu view exists, also on Wayland,
 //   where KWin advertises its appmenu global unconditionally. The owner is watched, so the bar moves when one appears or
 //   goes away, and an X11 window registers again with a new owner.
-// - enabled is the declaration and CanExecute, read on the GTK thread when the layout is built and again when a client
-//   is about to show a submenu. A click runs the item on the GTK thread through the window's command path.
+// - enabled is the declaration and CanExecute, and toggle-state is IsChecked, read on the GTK thread when the layout is
+//   built and again when a client is about to show a submenu. A click runs the item on the GTK thread through the window's command path.
 internal sealed class LinuxGlobalMenu : IDBusMenuOwner, IAsyncDisposable
 {
     internal const string RegistrarName = "com.canonical.AppMenu.Registrar";
@@ -123,21 +126,28 @@ internal sealed class LinuxGlobalMenu : IDBusMenuOwner, IAsyncDisposable
     {
         var id = _ids[entry.Key];
         ImmutableArray<int> children = entry.Kind == PlannedMenuKind.Menu ? [.. entry.Children.Select(child => Add(nodes, child))] : [];
-        nodes[id] = new DBusMenuNode(id, Describe(entry, Available(entry)), children, entry);
+        nodes[id] = new DBusMenuNode(id, Describe(entry, Available(entry), Checked(entry)), children, entry);
         return id;
     }
 
     private bool Available(PlannedMenuEntry entry) =>
         entry.Enabled && (entry.Item is not { } item || _window.CanExecute(item));
 
-    // The dbusmenu properties of a planned entry with its availability.
-    internal static ImmutableArray<KeyValuePair<string, DBusValue>> Describe(PlannedMenuEntry entry, bool enabled) => entry.Kind switch
+    private static bool IsToggled(DBusMenuNode node) => node["toggle-state"] is { } state && state.Equals(DBusValue.From(1));
+
+    private bool Checked(PlannedMenuEntry entry) => entry.Item is { IsChecked: not null } item && _window.IsChecked(item) == true;
+
+    // The dbusmenu properties of a planned entry with its availability and check mark.
+    internal static ImmutableArray<KeyValuePair<string, DBusValue>> Describe(PlannedMenuEntry entry, bool enabled) =>
+        Describe(entry, enabled, entry.Item?.IsChecked == true);
+
+    internal static ImmutableArray<KeyValuePair<string, DBusValue>> Describe(PlannedMenuEntry entry, bool enabled, bool toggled) => entry.Kind switch
     {
         PlannedMenuKind.Separator => DBusMenuNode.Describe(separator: true),
         PlannedMenuKind.Menu => DBusMenuNode.Describe(label: entry.MnemonicLabel, enabled: enabled, submenu: true),
         _ => DBusMenuNode.Describe(label: entry.MnemonicLabel, enabled: enabled,
             toggleType: entry.Kind switch { PlannedMenuKind.Check => "checkmark", PlannedMenuKind.Radio => "radio", _ => null },
-            toggled: entry.Item?.IsChecked == true, shortcut: entry.Shortcut?.DBusMenu ?? default),
+            toggled: toggled, shortcut: entry.Shortcut?.DBusMenu ?? default),
     };
 
     public DBusMenuLayout Layout
@@ -170,7 +180,7 @@ internal sealed class LinuxGlobalMenu : IDBusMenuOwner, IAsyncDisposable
     }
 
     // As AppKit validates items and the in-window bars ask when a menu opens: the entries of the submenu with their
-    // CanExecute now. Changed entries are sent with ItemsPropertiesUpdated, and the caller reads the layout again.
+    // CanExecute and IsChecked now. Changed entries are sent with ItemsPropertiesUpdated, and the caller reads the layout again.
     public async ValueTask<bool> AboutToShowAsync(DBusMenuNode node)
     {
         if (_stopped.IsCancellationRequested) return false;
@@ -185,7 +195,9 @@ internal sealed class LinuxGlobalMenu : IDBusMenuOwner, IAsyncDisposable
                 {
                     if (!layout.Nodes.TryGetValue(id, out var child) || child.Source is not PlannedMenuEntry { Item: not null } entry) continue;
                     var enabled = Available(entry);
-                    if ((child["enabled"] is null) != enabled) changed.Add(child with { Properties = Describe(entry, enabled) });
+                    var toggled = Checked(entry);
+                    if ((child["enabled"] is null) != enabled || IsToggled(child) != toggled)
+                        changed.Add(child with { Properties = Describe(entry, enabled, toggled) });
                 }
             }, _stopped.Token).ConfigureAwait(false);
         }
