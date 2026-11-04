@@ -116,7 +116,8 @@
           "Microsoft.Extensions.DependencyInjection.Abstractions": "[10.0.14, )",
           "Runic.Application.Views": "[0.16.0, )",
           "Runic.Assets": "[0.16.0, )",
-          "Runic.Platform": "[0.16.0, )"
+          "Runic.Platform": "[0.16.0, )",
+          "Runic.Platform.Runtime": "[0.16.0, )"
         }
       },
       "runic.application.views.desktop": {

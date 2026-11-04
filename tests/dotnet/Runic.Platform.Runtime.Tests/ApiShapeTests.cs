@@ -149,6 +149,29 @@ internal sealed class ApiShapeTests
             catch (PlatformNotSupportedException) { }
 #pragma warning restore CA1416
         }
+        // File dialogs without an owner window, for hosts without a native window such as CS-WebUI: one parameterless
+        // factory per platform, which throws elsewhere.
+        CheckUnownedFileDialogs(typeof(Windows.WindowsPlatformProvider), "CreateUnownedFileDialogs");
+        CheckUnownedFileDialogs(typeof(MacOS.MacOSPlatformProvider), "CreateUnownedFileDialogs");
+        CheckUnownedFileDialogs(typeof(Linux.Portal.PortalApplication), "CreateUnparentedFileDialogs");
+#pragma warning disable CA1416 // The case checks the wrong-OS behaviour that the annotation documents.
+        if (!OperatingSystem.IsWindows())
+        {
+            try { _ = Windows.WindowsPlatformProvider.CreateUnownedFileDialogs(); throw new InvalidOperationException("The Windows dialogs must throw off Windows."); }
+            catch (PlatformNotSupportedException) { }
+        }
+        if (!OperatingSystem.IsMacOS())
+        {
+            try { _ = MacOS.MacOSPlatformProvider.CreateUnownedFileDialogs(); throw new InvalidOperationException("The macOS panels must throw off macOS."); }
+            catch (PlatformNotSupportedException) { }
+        }
+#pragma warning restore CA1416
+    }
+
+    private static void CheckUnownedFileDialogs([DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicMethods)] Type provider, string name)
+    {
+        var factory = provider.GetMethod(name, BindingFlags.Public | BindingFlags.Static | BindingFlags.Instance, Type.EmptyTypes);
+        Check(factory?.ReturnType == typeof(IPickerBackend), $"{provider.Name}.{name}() returns IPickerBackend");
     }
 
     // Every provider offers the same application-scoped services, and no window service: Runic's hosts create those.

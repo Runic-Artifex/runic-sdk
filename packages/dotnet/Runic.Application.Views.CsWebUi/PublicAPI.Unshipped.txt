@@ -1,1 +1,2 @@
 #nullable enable
+static Runic.Application.Views.CsWebUi.CsWebUiPlatformServiceCollectionExtensions.AddRunicPlatformServices(this Microsoft.Extensions.DependencyInjection.IServiceCollection! services, Runic.Platform.Runtime.IPickerBackend! unownedFileDialogs) -> Microsoft.Extensions.DependencyInjection.IServiceCollection!

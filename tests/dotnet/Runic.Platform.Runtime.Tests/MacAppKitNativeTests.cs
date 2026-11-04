@@ -15,7 +15,7 @@ internal sealed partial class MacAppKitNativeTests
 {
     private static readonly TimeSpan Step = TimeSpan.FromSeconds(15);
 
-    [Test, Explicit, Category("NativeAppKit"), DisplayName("native AppKit: status item, login item, window presentation, message boxes and the Dock tile"), Timeout(180_000)]
+    [Test, Explicit, Category("NativeAppKit"), DisplayName("native AppKit: status item, login item, window presentation, unowned panels, message boxes and the Dock tile"), Timeout(180_000)]
     public async Task NativeAppKitAsync(CancellationToken cancellationToken)
     {
         if (!OperatingSystem.IsMacOS()) throw new PlatformNotSupportedException("The AppKit checks need macOS.");
@@ -25,6 +25,7 @@ internal sealed partial class MacAppKitNativeTests
         await LoginItemAsync();
         await PresentationAsync(cancellationToken);
         await FilterChoiceAsync();
+        await UnownedPanelsAsync();
         await MessageBoxesAsync(cancellationToken);
         await GlobalShortcutsAsync();
         await DockTileAsync(cancellationToken);
@@ -166,6 +167,31 @@ internal sealed partial class MacAppKitNativeTests
         Require(observed is [(3, "Images"), (1, "Text"), (2, "Text"), (0, "All files")],
             "Unexpected filter pop-up: " + string.Join(", ", observed.Select(static item => $"{item.Count} {item.Selected}")));
         Pass("the filter pop-up keeps filters with the same name and swaps the panel's types for the chosen filter");
+    }
+
+    // File panels without a window (MacOSPlatformProvider.CreateUnownedFileDialogs), as a CS-WebUI application shows them:
+    // under an AppKit event loop a panel of its own (beginWithCompletionHandler:), and without one a modal panel (runModal),
+    // forced here inside the Desktop event loop. Cancellation reaches both through the main queue (cancel:). Choosing in a
+    // shown panel, and a CS-WebUI process with browser windows, stay manual checks.
+    [System.Runtime.Versioning.SupportedOSPlatform("macos")]
+    private static async Task UnownedPanelsAsync()
+    {
+        var dialogs = MacOSPlatformProvider.CreateUnownedFileDialogs();
+        Require(dialogs.IsAvailable && dialogs.SupportsDirectorySelection && dialogs.SupportsMultipleSelection, "The unowned panels are available.");
+        foreach (bool modal in new[] { false, true })
+        {
+            var picker = new MacOsFilePicker(MacApplicationOwner.Shared) { ForceModal = modal };
+            using var cancel = new CancellationTokenSource();
+            var pending = ((INativeDirectoryPicker)picker).SelectDirectoryAsync(
+                new NativeFileDialogRequest(false, null) { Title = "Runic unowned panel" }, cancel.Token).AsTask();
+            await picker.Shown.Task.WaitScaledAsync(Step);
+            // Let the panel, or its modal loop, start before cancelling it.
+            await Task.Delay(250);
+            cancel.Cancel();
+            var selection = await pending.WaitScaledAsync(Step);
+            Require(selection is null, $"A cancelled {(modal ? "modal" : "")} unowned panel selected {selection}.");
+        }
+        Pass("unowned file panels show without a window, also modally, and cancellation closes them");
     }
 
     // The event loop's [NSApp run] launches the application while the tests already run; the status item's requests give

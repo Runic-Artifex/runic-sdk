@@ -10,6 +10,8 @@ namespace Runic.Platform.MacOS;
 internal sealed partial class MacOsFilePicker(INativeWindowOwner owner) : INativeFilePicker, INativeDirectoryPicker
 {
     internal TaskCompletionSource Shown { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    // Tests show an unowned panel modally (runModal) inside the Desktop event loop, as a process without one does.
+    internal bool ForceModal { get; init; }
     private static readonly Lazy<bool> Sandboxed = new(IsSandboxed);
     private static readonly MacFileBookmarks Bookmarks = new();
     // A sandbox grants the selected URL only, never sibling staging: such a selection saves through the item
@@ -97,6 +99,9 @@ internal sealed partial class MacOsFilePicker(INativeWindowOwner owner) : INativ
         Task cancellation = Task.CompletedTask;
         try
         {
+            // Registered before the panel is queued: a modal panel (runModal) returns from OnOwnerAsync only when it closes.
+            // A cancellation that arrives before the panel exists messages nil, and the panel's block then throws.
+            registration = cancellationToken.Register(() => cancellation = CancelAsync());
             await OnOwnerAsync(owner, window =>
             {
                 cancellationToken.ThrowIfCancellationRequested();
@@ -131,7 +136,7 @@ internal sealed partial class MacOsFilePicker(INativeWindowOwner owner) : INativ
                     try { SendArg(panel, Sel("setDirectoryURL:"), FileUrl(GetClass("NSURL"), Sel("fileURLWithPath:isDirectory:"), path, 1)); }
                     finally { Send(path, Sel("release")); }
                 }
-                nint block = CompletionBlock.Create(response =>
+                Action<long> complete = response =>
                 {
                     using var pool = new AutoreleasePool();
                     List<MacOsSecurityAccess> acquired = [];
@@ -169,21 +174,31 @@ internal sealed partial class MacOsFilePicker(INativeWindowOwner owner) : INativ
                     }
                     catch (Exception error) { result.TrySetException(error); }
                     finally { foreach (var access in acquired) access.DisposeAsync().AsTask().GetAwaiter().GetResult(); }
-                });
+                };
+                if (window == 0)
+                {
+                    // Without a window (MacApplicationOwner): a panel of its own, in front of the application's windows.
+                    nint application = Send(GetClass("NSApplication"), Sel("sharedApplication"));
+                    SendArg(application, Sel("activateIgnoringOtherApps:"), 1);
+                    if (ForceModal || !HasEventLoop(application))
+                    {
+                        // No AppKit event loop delivers the panel's events, as in a CS-WebUI process with browser windows
+                        // whose host only serves the main dispatch queue: the panel runs its own modal loop, which also
+                        // runs the main queue, so a cancellation queued there ends it (cancel:).
+                        Shown.TrySetResult();
+                        complete((long)Send(panel, Sel("runModal")));
+                        return;
+                    }
+                }
+                nint block = CompletionBlock.Create(complete);
                 try
                 {
                     if (window != 0) BeginSheet(panel, Sel("beginSheetModalForWindow:completionHandler:"), window, block);
-                    else
-                    {
-                        // Without a window (MacApplicationOwner): a panel of its own, in front of the application's windows.
-                        SendArg(Send(GetClass("NSApplication"), Sel("sharedApplication")), Sel("activateIgnoringOtherApps:"), 1);
-                        SendArg(panel, Sel("beginWithCompletionHandler:"), block);
-                    }
+                    else SendArg(panel, Sel("beginWithCompletionHandler:"), block);
                 }
                 finally { CompletionBlock.Release(block); }
                 Shown.TrySetResult();
             }, cancellationToken).ConfigureAwait(false);
-            registration = cancellationToken.Register(() => cancellation = CancelAsync());
             async Task CancelAsync()
             {
                 try
@@ -211,6 +226,11 @@ internal sealed partial class MacOsFilePicker(INativeWindowOwner owner) : INativ
                 }).ConfigureAwait(false);
         }
     }
+
+    // Whether an AppKit event loop delivers a panel's events: Runic Desktop's, whose delegate is NSApp's, or [NSApp run],
+    // such as WebUI's for its WKWebView windows.
+    private static bool HasEventLoop(nint application) =>
+        MacOpenEvents.LifecycleOwner() != 0 || SendBool(application, Sel("isRunning")) != 0;
 
     private static string ReadExactPath(nint bytes)
     {

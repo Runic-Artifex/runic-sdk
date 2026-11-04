@@ -1,4 +1,5 @@
 using CsWebUi;
+using CsWebUi.Native;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Runic.Application.Views;
@@ -157,7 +158,9 @@ public sealed class RunicCsWebUiHost : IRunicWindowHost
         ArgumentNullException.ThrowIfNull(options);
         ArgumentNullException.ThrowIfNull(application);
         var host = new RunicCsWebUiHost(services, options);
-        var loop = new MainThreadLoop();
+        // On macOS the main thread also serves the main dispatch queue, which AppKit work without a window needs, such as
+        // unowned file panels; WebUI's WKWebView windows run AppKit's own loop while they are shown.
+        var loop = new MainThreadLoop(serveMainQueue: OperatingSystem.IsMacOS(), serveWhileWaiting: OperatingSystem.IsMacOS() && !options.UseWebView);
         host._loop = loop;
         try
         {
@@ -383,9 +386,14 @@ public sealed class RunicCsWebUiHost : IRunicWindowHost
         }
     }
 
-    // The process main thread: shows windows while idle, then waits in WebUiApplication.Wait while any is shown.
-    private sealed class MainThreadLoop
+    // The process main thread: shows windows while idle, then waits in WebUiApplication.Wait while any is shown. With
+    // serveMainQueue it runs the macOS main dispatch queue while idle, and with serveWhileWaiting also while windows are
+    // shown, polling WebUI's wait instead of blocking in it.
+    private sealed class MainThreadLoop(bool serveMainQueue = false, bool serveWhileWaiting = false)
     {
+        // How long the main run loop runs per slice while nothing else wakes it.
+        private const double ServeSeconds = 0.05;
+
         private readonly object _gate = new();
         private readonly Queue<(Action Show, TaskCompletionSource<Task> Done)> _pending = new();
         // Set when the application posts a window or finishes; guarded by _gate.
@@ -414,18 +422,53 @@ public sealed class RunicCsWebUiHost : IRunicWindowHost
                 lock (_gate) _waiting = wait = _shown > 0;
                 if (!wait)
                 {
-                    // Wakes when the application posts a window or finishes.
-                    lock (_gate)
-                    {
-                        while (!_signaled) Monitor.Wait(_gate);
-                        _signaled = false;
-                    }
+                    WaitForSignal();
                     continue;
                 }
-                try { WebUiApplication.Wait(); }
+                try { WaitForWebUi(); }
                 finally { WebUiClosed(); }
             }
         }
+
+        // Wakes when the application posts a window or finishes.
+        private void WaitForSignal()
+        {
+            while (true)
+            {
+                lock (_gate)
+                {
+                    if (_signaled)
+                    {
+                        _signaled = false;
+                        return;
+                    }
+                    if (!serveMainQueue)
+                    {
+                        Monitor.Wait(_gate);
+                        continue;
+                    }
+                }
+                // A run loop that cannot wait returns at once: wait on the gate for the slice instead of spinning.
+                if (!ServeMainQueue())
+                    lock (_gate)
+                        if (!_signaled) Monitor.Wait(_gate, TimeSpan.FromSeconds(ServeSeconds));
+            }
+        }
+
+        // Returns once every shown window has closed, or WebUI exits.
+        private void WaitForWebUi()
+        {
+            if (!serveWhileWaiting)
+            {
+                WebUiApplication.Wait();
+                return;
+            }
+            // WebUI's non-blocking wait reports whether a window is still shown, as its blocking wait does for browser windows.
+            while (WebUiNative.WaitAsync() != 0)
+                if (!ServeMainQueue()) Thread.Sleep(TimeSpan.FromSeconds(ServeSeconds));
+        }
+
+        private static bool ServeMainQueue() => OperatingSystem.IsMacOS() && CsWebUiMacMainQueue.Serve(ServeSeconds);
 
         // On the main thread while it is idle, as WebUI expects; inline while it waits for shown windows.
         // Returns the task that completes when WebUI reports this window closed.

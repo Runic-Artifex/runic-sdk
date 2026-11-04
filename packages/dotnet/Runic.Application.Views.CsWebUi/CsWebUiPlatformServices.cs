@@ -3,6 +3,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Runic.Application.Views;
 using Runic.Platform;
+using Runic.Platform.Runtime;
 
 namespace Runic.Application.Views.CsWebUi;
 
@@ -81,5 +82,95 @@ public static class CsWebUiPlatformServiceCollectionExtensions
         services.TryAddScoped(static provider => provider.GetRequiredService<IWindowPlatformServices>().FileLauncher);
         services.TryAddScoped(static provider => provider.GetRequiredService<IWindowPlatformServices>().MessageBoxes);
         return services;
+    }
+
+    /// <summary>
+    /// Registers the same services as <see cref="AddRunicPlatformServices(IServiceCollection)"/>, with file dialogs
+    /// without an owner window: each window's <see cref="IFileDialogs"/> shows <paramref name="unownedFileDialogs"/>
+    /// for <see cref="OwnerPolicy.PreferOwner"/>.
+    /// </summary>
+    /// <param name="services">The application's services.</param>
+    /// <param name="unownedFileDialogs">
+    /// The platform's dialogs without a parent window: <c>WindowsPlatformProvider.CreateUnownedFileDialogs()</c>
+    /// (Runic.Platform.Windows), <c>MacOSPlatformProvider.CreateUnownedFileDialogs()</c> (Runic.Platform.MacOS) or
+    /// <c>new PortalApplication("org.example.Notes").CreateUnparentedFileDialogs()</c> (Runic.Platform.Linux.Portal).
+    /// </param>
+    /// <returns><paramref name="services"/>.</returns>
+    /// <remarks>
+    /// <para>
+    /// CS-WebUI windows have no native owner, so the dialogs open on their own, in front of the application, as
+    /// Runic Desktop's do for a window without native dispatch. A request with <see cref="OwnerPolicy.RequireOwner"/>,
+    /// the default of the options, still reports <see cref="PlatformUnavailableReason.OwnerUnavailable"/>: ask for
+    /// <c>new OpenDirectoryOptions(OwnerPolicy.PreferOwner)</c> where a dialog of its own is acceptable. The capability
+    /// snapshot reports <see cref="PlatformCapabilityIds.DialogsUnowned"/> and the file capabilities available, and
+    /// <see cref="PlatformCapabilityIds.DialogsOwned"/> unavailable (<see cref="PlatformUnavailableReason.OwnerUnavailable"/>),
+    /// so a ViewModel that runs on both hosts can tell them apart. Every other window service reports
+    /// <see cref="PlatformUnavailableReason.OwnerUnavailable"/>, as before.
+    /// </para>
+    /// <para>
+    /// Each window's dialogs show one at a time: a second request while one is shown reports
+    /// <see cref="PlatformFailureCode.ResourceBusy"/>. Closing the window, which disposes its service scope, closes a
+    /// shown dialog, releases the leases the window still holds and reports
+    /// <see cref="PlatformUnavailableReason.OwnerClosed"/> from then on. On macOS the panels need the main thread, which
+    /// <see cref="RunicCsWebUiHost.Run(IServiceProvider, Func{RunicCsWebUiHost, Task{int}})"/> serves while the application
+    /// runs; a host created with its constructor leaves the main thread to the application.
+    /// </para>
+    /// <para>
+    /// A Window served under <c>RUNIC_APPLICATION_SERVE_ONLY=1</c> may be shown by a browser on another computer, so
+    /// its services report <see cref="PlatformUnavailableReason.OwnerUnavailable"/> without these dialogs, as on Runic
+    /// Desktop. An existing <see cref="IWindowPlatformServices"/> registration is kept, and ignores these dialogs.
+    /// </para>
+    /// </remarks>
+    /// <example><code>
+    /// if (OperatingSystem.IsWindowsVersionAtLeast(8))
+    ///     services.AddRunicPlatformServices(WindowsPlatformProvider.CreateUnownedFileDialogs());
+    /// else if (OperatingSystem.IsMacOS())
+    ///     services.AddRunicPlatformServices(MacOSPlatformProvider.CreateUnownedFileDialogs());
+    /// else if (OperatingSystem.IsLinux())
+    ///     services.AddRunicPlatformServices(new PortalApplication().CreateUnparentedFileDialogs());
+    /// else
+    ///     services.AddRunicPlatformServices();
+    /// </code></example>
+    /// <exception cref="ArgumentNullException"><paramref name="services"/> or <paramref name="unownedFileDialogs"/> is
+    /// <see langword="null"/>.</exception>
+    public static IServiceCollection AddRunicPlatformServices(this IServiceCollection services, IPickerBackend unownedFileDialogs)
+    {
+        ArgumentNullException.ThrowIfNull(services);
+        ArgumentNullException.ThrowIfNull(unownedFileDialogs);
+        // A Window served under serve-only mode may be shown by a browser on another computer: no dialogs on this one.
+        services.TryAddScoped<IWindowPlatformServices>(_ => Environment.GetEnvironmentVariable(ServeOnlyEnvironmentVariable) == "1"
+            ? WindowPlatformServices.Unavailable(PlatformUnavailableReason.OwnerUnavailable)
+            : new UnownedWindowPlatformServices(unownedFileDialogs));
+        return services.AddRunicPlatformServices();
+    }
+
+    private const string ServeOnlyEnvironmentVariable = "RUNIC_APPLICATION_SERVE_ONLY";
+
+    // A CS-WebUI window's services with unowned file dialogs: the dialogs for OwnerPolicy.PreferOwner, every other service
+    // unavailable for the missing owner. Disposing the window's scope closes a shown dialog and releases its leases.
+    internal sealed class UnownedWindowPlatformServices : IWindowPlatformServices, IAsyncDisposable
+    {
+        private static readonly IWindowPlatformServices NoOwner = WindowPlatformServices.Unavailable(PlatformUnavailableReason.OwnerUnavailable);
+        private readonly PresentationLifetime _lifetime = new(static () => false);
+        private readonly PresentationFiles _files;
+
+        public UnownedWindowPlatformServices(IPickerBackend unowned) => _files = new PresentationFiles(_lifetime, backend: null, unowned);
+
+        public IFileDialogs FileDialogs => _files;
+        public ITextClipboard Clipboard => NoOwner.Clipboard;
+        public IDesktopFileLauncher FileLauncher => NoOwner.FileLauncher;
+        public IDesktopMonitors Monitors => NoOwner.Monitors;
+        public IDesktopMessageBoxes MessageBoxes => NoOwner.MessageBoxes;
+
+        public CapabilitySnapshot GetSnapshot() =>
+            new(_lifetime.Generation, NoOwner.GetSnapshot().Statuses.SetItems(_files.GetSnapshot().Statuses));
+
+        public ValueTask<PlatformResult<PlatformUnit>> SetBadgeAsync(DesktopBadge? badge, CancellationToken cancellationToken = default) =>
+            NoOwner.SetBadgeAsync(badge, cancellationToken);
+
+        public ValueTask<PlatformResult<PlatformUnit>> SetProgressAsync(DesktopProgress? progress, CancellationToken cancellationToken = default) =>
+            NoOwner.SetProgressAsync(progress, cancellationToken);
+
+        public ValueTask DisposeAsync() => _lifetime.DisposeAsync();
     }
 }

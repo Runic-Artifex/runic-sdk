@@ -138,7 +138,47 @@ such as `WindowsPlatformProvider.CreateSettings()` or
 `new PortalApplication("org.example.Notes").CreateInhibition()`, before
 it to use one on CS-WebUI. The
 [Runic.Platform guide](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Platform/README.md#hosts-without-a-native-owner)
-lists each service's result on both hosts. A root ViewModel that implements `IRunicFileDropTarget` is
+lists each service's result on both hosts.
+
+File dialogs need no owner window on the user's own desktop. Pass a provider's
+unowned dialogs to `AddRunicPlatformServices`, and each window's `IFileDialogs`
+shows them for `OwnerPolicy.PreferOwner`, as Runic Desktop does for a window
+without native dispatch:
+
+```csharp
+if (OperatingSystem.IsWindowsVersionAtLeast(8))
+    services.AddRunicPlatformServices(WindowsPlatformProvider.CreateUnownedFileDialogs());
+else if (OperatingSystem.IsMacOS())
+    services.AddRunicPlatformServices(MacOSPlatformProvider.CreateUnownedFileDialogs());
+else if (OperatingSystem.IsLinux())
+    services.AddRunicPlatformServices(new PortalApplication("org.example.Notes").CreateUnparentedFileDialogs());
+else
+    services.AddRunicPlatformServices();
+
+// In a ViewModel that takes IFileDialogs:
+if (await files.OpenDirectoryAsync(new(OwnerPolicy.PreferOwner) { Title = "Open workspace" })
+    is PickerResult<IDirectoryLease>.Selected(var folder))
+    Open(folder.LocalPath); // the lease keeps access until it or the window is disposed
+```
+
+The application references the provider packages it passes (Runic.Platform.Windows,
+Runic.Platform.MacOS, Runic.Platform.Linux.Portal); this package still selects
+none. Open, multiple, directory, document and save selection work as on Runic
+Desktop, with the request's title, filters, initial directory and suggested name;
+the buttons are the platform's own. Cancellation closes a shown dialog. A
+`RequireOwner` request, the options' default, still reports `OwnerUnavailable`,
+and the capabilities report `platform.dialogs.unowned` available and
+`platform.dialogs.owned` unavailable. A window shows one dialog at a time
+(`ResourceBusy` otherwise); closing it closes its dialog and releases its leases.
+A Window served under `RUNIC_APPLICATION_SERVE_ONLY=1` gets no dialogs, because its
+browser may run on another computer. Windows shows the dialog on an STA thread of
+the application's own. macOS shows AppKit panels on the main thread: `Run` serves
+the main dispatch queue while idle and while browser windows are shown, and a
+panel then runs modally until it closes; with `UseWebView`, WebUI's own AppKit
+loop shows it without blocking. A host created with its constructor leaves the
+main thread to the application, which must serve the main queue for the panels.
+
+A root ViewModel that implements `IRunicFileDropTarget` is
 never called here: a browser window reports no dropped paths, so the page only
 gets HTML5 `File` objects. To bring one into .NET, upload it: `client.upload(file)`
 streams it to a loopback endpoint of the window, and a command takes the

@@ -192,8 +192,40 @@ public static class MacOSPlatformProvider
         return new MacMessageBoxes(MacApplicationOwner.Shared, unowned: true);
     }
 
-    // AppKit file panels without a window, for a presentation without a native owner: shown as panels of their own.
-    internal static IPickerBackend CreateUnownedFileDialogs()
+    /// <summary>Creates the application's file dialogs without an owner window: <c>NSOpenPanel</c> and <c>NSSavePanel</c>
+    /// shown as panels of their own, in front of the application's windows.</summary>
+    /// <remarks>
+    /// <para>
+    /// For a presentation without a native window, such as a CS-WebUI browser window or a menu-bar-only application.
+    /// Prefer a window's <see cref="IFileDialogs"/> while it has one, so the panel is a sheet on it. Pass the result to
+    /// <c>services.AddRunicPlatformServices(...)</c> of Runic.Application.Views.CsWebUi to make the window services'
+    /// <see cref="IFileDialogs"/> show these panels for <see cref="OwnerPolicy.PreferOwner"/>, or call it directly.
+    /// </para>
+    /// <para>
+    /// AppKit panels run on the main thread; call from any thread. Runic queues each panel to the main dispatch queue,
+    /// so the main thread must serve it: Runic Desktop's event loop does, and so does <c>RunicCsWebUiHost.Run</c>. While
+    /// AppKit's event loop runs (<c>[NSApp run]</c>, such as under Runic Desktop or a CS-WebUI WKWebView window) the
+    /// panel is shown without blocking it (<c>beginWithCompletionHandler:</c>); otherwise, such as in a CS-WebUI process
+    /// whose windows are browser windows, the panel runs its own modal loop (<c>runModal</c>) until it closes. A
+    /// process whose activation policy allows no UI, such as one outside an application bundle, becomes an accessory
+    /// application (no Dock icon) for the panel.
+    /// </para>
+    /// <para>
+    /// Titles, filters, the initial directory, the suggested name and <see cref="OpenFileOptions.ShowFilterChoice"/>
+    /// behave as for an owned panel: the title is the panel's message, and the buttons are AppKit's own, in the user's
+    /// language. Cancellation closes a shown panel and throws <see cref="OperationCanceledException"/>; a dismissed
+    /// panel reports <see cref="PickerResult{T}.Dismissed"/>. Open, multiple, directory, document and save selection
+    /// are all available, and saves replace the file atomically. In the App Sandbox the selection carries its
+    /// security-scoped access until the lease is disposed.
+    /// </para>
+    /// <para>
+    /// A lease from the backend directly is the caller's to dispose. Through a window's <see cref="IFileDialogs"/> a
+    /// second dialog while one is shown reports <see cref="PlatformFailureCode.ResourceBusy"/>, and closing the window
+    /// closes a shown panel and releases what is left. The backend itself needs no disposal.
+    /// </para>
+    /// </remarks>
+    /// <exception cref="PlatformNotSupportedException">Not macOS.</exception>
+    public static IPickerBackend CreateUnownedFileDialogs()
     {
         if (!OperatingSystem.IsMacOS()) throw new PlatformNotSupportedException("AppKit requires macOS.");
         return new NativePickerBackend(MacApplicationOwner.Shared, new MacOsFilePicker(MacApplicationOwner.Shared));

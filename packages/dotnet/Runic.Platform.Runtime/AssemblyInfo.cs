@@ -8,6 +8,9 @@ using System.Runtime.CompilerServices;
 [assembly: InternalsVisibleTo("Runic.Platform.Linux.Portal")]
 [assembly: InternalsVisibleTo("Runic.Platform.Linux.Gtk4")]
 [assembly: InternalsVisibleTo("Runic.Application.Views.Desktop")]
+// The CS-WebUI window services wrap unowned file dialogs in a window's presentation (PresentationFiles); packing pins the
+// exact version.
+[assembly: InternalsVisibleTo("Runic.Application.Views.CsWebUi")]
 [assembly: InternalsVisibleTo("Runic.Platform.Runtime.Tests")]
 [assembly: InternalsVisibleTo("Runic.Platform.Linux.Tests")]
 [assembly: InternalsVisibleTo("Runic.Platform.Linux.Portal.Tests")]

@@ -567,7 +567,7 @@ either.
 
 | Service | Desktop window with a native owner | Desktop window without one, or outside a window scope | CS-WebUI |
 | --- | --- | --- | --- |
-| `IWindowPlatformServices`, `IFileDialogs`, `ITextClipboard`, `IDesktopClipboard`, `IDesktopFileLauncher` | Native provider; `OwnerClosed` after the window closes | `Unavailable(OwnerUnavailable)`; an installed browser after a fallback shows unowned file dialogs for `OwnerPolicy.PreferOwner` (below) | `Unavailable(OwnerUnavailable)` |
+| `IWindowPlatformServices`, `IFileDialogs`, `ITextClipboard`, `IDesktopClipboard`, `IDesktopFileLauncher` | Native provider; `OwnerClosed` after the window closes | `Unavailable(OwnerUnavailable)`; an installed browser after a fallback shows unowned file dialogs for `OwnerPolicy.PreferOwner` (below) | `Unavailable(OwnerUnavailable)`; with a provider's unowned file dialogs passed to `AddRunicPlatformServices(...)`, `IFileDialogs` shows them for `OwnerPolicy.PreferOwner` (below) |
 | Badges and progress, `IWindowPlatformServices.SetBadgeAsync` and `SetProgressAsync` | The taskbar button (Windows, also a WPF window's), the Dock tile (macOS) or the Unity launcher entry (GTK 3 and GTK 4, with an application ID) | `Unavailable(OwnerUnavailable)` | `Unavailable(OwnerUnavailable)` |
 | `IDesktopMessageBoxes`, `IWindowPlatformServices.MessageBoxes` | Task dialogs (Windows, also a WPF window's), sheets (macOS), GTK 3 message dialogs and GTK 4 alert dialogs | `Unavailable(OwnerUnavailable)` | `Unavailable(OwnerUnavailable)` |
 | `IDesktopMonitors`, `IWindowPlatformServices.Monitors` | The host's monitors (Windows, macOS, GTK 3 and GTK 4; a WPF window's on Windows) | `Unavailable(OwnerUnavailable)` | `Unavailable(OwnerUnavailable)` |
@@ -589,8 +589,20 @@ default, still reports `OwnerUnavailable` there. The capabilities tell the two
 apart: `platform.dialogs.owned` is available for owned dialogs and
 `platform.dialogs.unowned` while `PreferOwner` shows unowned ones, and the other
 file capabilities then describe the unowned dialogs. An unowned dialog is not
-modal: disable what must wait for it. A Window served under serve-only mode or on
-CS-WebUI has no unowned dialogs, as its browser may run on another computer.
+modal: disable what must wait for it. A Window served under serve-only mode has no
+unowned dialogs, as its browser may run on another computer.
+
+CS-WebUI selects no native provider, so its windows show unowned dialogs only when
+the application passes a provider's to `AddRunicPlatformServices`:
+`WindowsPlatformProvider.CreateUnownedFileDialogs()` (the Common Item Dialog on the
+application's own STA thread), `MacOSPlatformProvider.CreateUnownedFileDialogs()`
+(AppKit panels on the main thread, which `RunicCsWebUiHost.Run` serves) or
+`new PortalApplication().CreateUnparentedFileDialogs()` (the xdg-desktop-portal
+FileChooser without a parent). The same `PreferOwner` rules, capabilities and
+window lifetime apply; see
+[Runic.Application.Views.CsWebUi](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Application.Views.CsWebUi/README.md).
+An application without any window can call one of these factories directly; it
+then disposes the leases itself.
 
 ```csharp
 var options = new OpenFileOptions(OwnerPolicy.PreferOwner) { Title = "Import backup", Filters = [backups] };
