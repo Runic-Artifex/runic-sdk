@@ -16,13 +16,16 @@ export { onBridgeDiagnostic, type BridgeDiagnostic, type BridgeDiagnosticCode, t
 export { bridgeFailure, bridgeSuccess, isBridgeOutcome, matchCase, type BridgeOutcome } from "./outcome.js";
 export type { BridgeValidationMessage, BridgeValidationState } from "./validation.js";
 export {
+  configureFieldErrorText,
   configureTranslatedText,
+  fieldErrorText,
   onWindowLocale,
   resolveText,
   subscribeText,
   textLocale,
   textVersion,
   windowLocale,
+  type FieldErrorText,
   type TextReference,
   type TextTranslations,
 } from "./translated-text.js";
@@ -90,7 +93,11 @@ export {
   type FieldCommit,
   type FieldController,
   type FieldDefinition,
+  type FieldErrorArguments,
+  type FieldErrorDetail,
+  type FieldErrorExpected,
   type FieldErrorKind,
+  type FieldErrorReason,
   type FieldOptions,
   type FieldSource,
   type FieldState,

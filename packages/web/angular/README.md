@@ -230,7 +230,10 @@ A checked write's receipt is read: `rejected` keeps the draft with a `FieldError
 `rejected`; `conflict` keeps the draft, sets `conflict` to the producer's
 `{ value, version }` and writes nothing until `retry()` (write the draft over it) or
 `reset()` (take the producer's value); `committed-with-error` keeps the committed value
-with a `FieldError`. `errors` follows the member's validation in the View's state:
+with a `FieldError`. A text that does not parse is a `FieldError` `invalid-text` with a `reason` and `arguments`:
+`{{ title.error() | runicText }}` shows your text for it after `configureFieldErrorText`, in the window's language
+([Translating field errors](https://github.com/Runic-Artifex/runic-sdk/tree/main/packages/web/views#translating-field-errors)).
+`errors` follows the member's validation in the View's state:
 
 ```html
 @if (title.conflict(); as theirs) {

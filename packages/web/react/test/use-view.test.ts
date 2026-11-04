@@ -253,8 +253,8 @@ describe("useView options", () => {
 
   test("the root entry keeps every earlier export and adds useBridgeConnection and useMenuBar (0.11), useField, FieldError and useViewState (0.14), upload (0.16)", () => {
     expect(Object.keys(root_).sort()).toEqual([
-      "FieldError", "RegionOutlets", "ViewOutlet", "commitAllFields", "configureTranslatedText",
-      "installBackNavigation", "installNavigationPath", "navigateBack", "onBridgeConnection", "onNavigationPath",
+      "FieldError", "RegionOutlets", "ViewOutlet", "commitAllFields", "configureFieldErrorText", "configureTranslatedText",
+      "fieldErrorText", "installBackNavigation", "installNavigationPath", "navigateBack", "onBridgeConnection", "onNavigationPath",
       "openNavigationPath", "regionEntries", "resolveText", "retrySuspenseView", "selectedRegion", "upload",
       "useBridgeConnection", "useCollectionViewport", "useCommand", "useField", "useForm", "useLatestOperation",
       "useMenuBar", "useOperation", "useQueryCollection", "useSuspenseView", "useText", "useTextField", "useView",

@@ -1,5 +1,5 @@
 import {
-  isBridgeOutcome, onBridgeConnection, resolveText, subscribeText, type BridgeConnectionOptions, type BridgeConnectionState, type BridgeOperation, type BridgeOperationStatusOf, type BridgeOutcome, type BridgeOutcomeFailure, type TextReference,
+  isBridgeOutcome, onBridgeConnection, resolveText, subscribeText, type BridgeConnectionOptions, type BridgeConnectionState, type BridgeOperation, type BridgeOperationStatusOf, type BridgeOutcome, type BridgeOutcomeFailure, type FieldError, type TextReference,
   type CollectionViewport, type CollectionViewportController, type ViewClient, type ViewConnector,
   type QueryCollection, type QueryCollectionSnapshot, type QueryViewport, type QueryViewportController, type RunicQuery,
   upload as uploadBlob, type BlobRef, type UploadOptions,
@@ -115,13 +115,14 @@ export function textChanges(): Stream.Stream<void> {
 
 /**
  * A text reference that a ViewModel produced, in the window's language (`resolveText`): its text now, then its text
- * after each language switch. A string is its own text; `null` and `undefined` are `fallback`.
+ * after each language switch. A string is its own text; `null` and `undefined` are `fallback`. A field's `FieldError`
+ * is the application's text for it (`configureFieldErrorText`), or its English message.
  *
  * ```ts
  * yield* Effect.forkScoped(Stream.runForEach(texts(state.status), text => Effect.sync(() => { status.textContent = text; })));
  * ```
  */
-export function texts(value: TextReference | string | null | undefined, fallback?: string): Stream.Stream<string> {
+export function texts(value: TextReference | FieldError | string | null | undefined, fallback?: string): Stream.Stream<string> {
   return Stream.concat(Stream.make(undefined), textChanges()).pipe(Stream.map(() => resolveText(value, fallback)));
 }
 

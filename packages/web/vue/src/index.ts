@@ -42,6 +42,7 @@ import {
   type OperationControllerOptions,
   type OperationState,
   type PageReference,
+  type FieldError,
   type TextReference,
   regionEntries,
   type RegionCollection,
@@ -578,7 +579,8 @@ export function useBridgeConnection(options: BridgeConnectionOptions = {}): Brid
  * language (`resolveText`), as a computed ref that follows a language switch until the effect scope stops. `source` and
  * `fallback` may be refs or getters: `useText(() => view.state.value?.status)`. A string shows as it is; `null` and
  * `undefined` show `fallback`. Configure the page's Translations runtime once with `configureTranslatedText`; without
- * one, a reference shows its fallback text.
+ * one, a reference shows its fallback text. A field's `FieldError` shows the application's text for it
+ * (`configureFieldErrorText`), or its English message: `useText(() => title.error)`.
  *
  * ```vue
  * const status = useText(() => view.state.value?.status);
@@ -586,7 +588,7 @@ export function useBridgeConnection(options: BridgeConnectionOptions = {}): Brid
  * ```
  */
 export function useText(
-  source: MaybeRefOrGetter<TextReference | string | null | undefined>,
+  source: MaybeRefOrGetter<TextReference | FieldError | string | null | undefined>,
   fallback?: MaybeRefOrGetter<string | undefined>,
 ): ComputedRef<string> {
   const version = shallowRef(0);
@@ -608,7 +610,8 @@ export { useCollectionViewport, type CollectionViewportHandle } from "./viewport
 export { useForm, type FormFieldHandle, type FormHandle, type UseFormOptions } from "./form.js";
 export { commitAllFields, type FormState, type FormSubmitOptions, type FormSubmitResult } from "@runic-artifex/views";
 export {
-  configureTranslatedText, resolveText, windowLocale, type TextReference, type TextTranslations,
+  configureFieldErrorText, configureTranslatedText, fieldErrorText, resolveText, windowLocale, type FieldErrorArguments,
+  type FieldErrorReason, type FieldErrorText, type TextReference, type TextTranslations,
 } from "@runic-artifex/views";
 export { useQueryCollection, type QueryCollectionHandle } from "./query.js";
 export { onBridgeConnection, type BridgeConnectionOptions, type BridgeConnectionState } from "@runic-artifex/views";

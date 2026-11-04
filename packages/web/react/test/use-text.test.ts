@@ -4,7 +4,9 @@ import * as React from "react";
 import { createElement, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, test } from "vitest";
-import { configureTranslatedText, useText, useWindowLocale, type TextReference } from "../dist/index.js";
+import {
+  configureFieldErrorText, configureTranslatedText, FieldError, useText, useWindowLocale, type TextReference,
+} from "../dist/index.js";
 // A Translations runtime of two locales, as a generated transport.js and locale source would be.
 function fakeTranslations() {
   const catalog: Record<string, Record<string, string>> = {
@@ -40,7 +42,7 @@ async function mount(element: ReactNode): Promise<HTMLElement> {
   return container;
 }
 
-function Status({ value, fallback }: { readonly value: TextReference | string | null | undefined; readonly fallback?: string }) {
+function Status({ value, fallback }: { readonly value: TextReference | FieldError | string | null | undefined; readonly fallback?: string }) {
   const text = useText(value, fallback);
   const locale = useWindowLocale();
   return createElement("p", { lang: locale ?? undefined }, text);
@@ -63,5 +65,21 @@ describe("useText", () => {
     expect(container.textContent).toBe("plainInvalid value.");
     expect(container.querySelector("p")!.getAttribute("lang")).toBeNull();
     void saved;
+  });
+
+  test("renders a field error with the application's text, in the text locale", async () => {
+    const error = new FieldError("invalid-text", "1e is not a number.", undefined,
+      { reason: "not-a-number", arguments: { text: "1e" } });
+    const container = await mount(createElement(Status, { value: error }));
+    expect(container.textContent).toBe("1e is not a number.");
+    const runtime = fakeTranslations();
+    await act(async () => {
+      cleanup.push(configureTranslatedText(runtime));
+      cleanup.push(configureFieldErrorText((shown, locale) => shown.reason === "not-a-number" && locale === "de"
+        ? `${shown.arguments.text} ist keine Zahl.` : undefined));
+    });
+    expect(container.textContent).toBe("1e is not a number.");
+    await act(async () => { runtime.setLocale("de"); });
+    expect(container.textContent).toBe("1e ist keine Zahl.");
   });
 });

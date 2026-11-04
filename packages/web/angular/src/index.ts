@@ -25,7 +25,8 @@ export { injectQueryCollection, type InjectQueryCollectionOptions, type QueryCol
 export { injectBridgeConnection, type BridgeConnectionHandle, type InjectBridgeConnectionOptions } from "./inject-bridge-connection.js";
 export { injectText, injectWindowLocale, RunicTextPipe, type InjectTextOptions } from "./inject-text.js";
 export {
-  configureTranslatedText, resolveText, windowLocale, type TextReference, type TextTranslations,
+  configureFieldErrorText, configureTranslatedText, fieldErrorText, resolveText, windowLocale, type FieldErrorArguments,
+  type FieldErrorReason, type FieldErrorText, type TextReference, type TextTranslations,
 } from "@runic-artifex/views";
 export { onBridgeConnection, type BridgeConnectionOptions, type BridgeConnectionState } from "@runic-artifex/views";
 // blobs/1: uploads from the page and the blob values of state.
