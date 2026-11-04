@@ -747,7 +747,24 @@ Window's page connections and tells a command which one invoked it:
 - `Current` lists the connections that completed their `hello`, in the order
   they connected, until the transport reports them closed. Each is a
   `RunicConnection(ConnectionKey, ClientKey)` with opaque keys: compare and
-  store them, but do not parse them or show them to users.
+  store them, but do not parse them or show them to users. Two connections
+  are equal when their keys are.
+- `RunicConnection.Languages` (since 0.17, the `hello` feature
+  `client-languages/1`) lists the languages the page's browser prefers, its
+  `navigator.languages`, most preferred first; empty for a page that reports
+  none. A Window still shows one language to all of its connections
+  ([translated text](#translated-text)): use the languages to choose it, for
+  example when the first browser connects to a CS-WebUI window, not to
+  translate per connection. The page reports them, so treat them as a
+  preference, never as an identity.
+
+  ```csharp
+  connections.Connected += (_, e) =>
+  {
+      if (connections.Current.Count == 1 && Negotiate(e.Connection.Languages, ["en", "de"]) is { } language)
+          windowLocale.Locale = language;
+  };
+  ```
 - `Connected` and `Disconnected` are plain .NET events, raised in a turn of
   the Window's model context, as a command body runs, so a handler may change
   state the page sees. `Current` changes in the same turn. The turn runs in no

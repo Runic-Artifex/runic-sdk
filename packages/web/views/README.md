@@ -1507,7 +1507,11 @@ browser only, or resolve with the request's locale.
 `windowLocale()` and `onWindowLocale` read the window's locale. The framework
 packages wrap this as `useText` (React, Vue, Svelte), `injectText` and the
 `runicText` pipe (Angular) and `texts` (Effect). The mock bridge's
-`setWindowLocale(locale)` pushes a locale in page tests. See
+`setWindowLocale(locale)` pushes a locale in page tests. Every `hello` also
+reports the browser's `navigator.languages` (`client-languages/1`, a .NET host
+of 0.17 or later), so the application can choose the window's language from
+`RunicConnection.Languages`; the mock bridge's `clientLanguages` shows what the
+page reported. See
 [Translated text](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Application.Views/README.md#translated-text) for the .NET side.
 
 ## Connection state

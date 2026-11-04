@@ -386,6 +386,14 @@ sign-in command that maps the caller's `ConnectionKey` to a user the
 application checked, kept in a `RunicConnectionState<T>` so it goes when the
 page disconnects.
 
+**One language per window.** A shared window shows one language to every
+browser: the window's locale, which the application sets
+(`IRunicWindowLocale`). Each connection reports
+its browser's preferred languages (`RunicConnection.Languages`, since 0.17),
+so the application can choose the window's language from them, for example
+when the first browser connects. A page that offers a language switch asks
+the application with a command, which switches the window for everyone.
+
 ## Security
 
 This host adds no admission of its own. Runic Desktop checks the `Origin` of

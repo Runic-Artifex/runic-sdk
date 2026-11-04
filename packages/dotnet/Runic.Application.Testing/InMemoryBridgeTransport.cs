@@ -165,6 +165,29 @@ public sealed class InMemoryBridgeTransport : IBridgeConnectionTransport, IDispo
         return Encoding.UTF8.GetString(reply.Span);
     }
 
+    /// <summary>
+    /// Sets the languages a test connection reports in its <c>hello</c> (feature <c>client-languages/1</c>), as a
+    /// browser reports its <c>navigator.languages</c>. Set them before the connection's first request; the window then
+    /// lists them as the connection's <see cref="RunicConnection.Languages"/>. A connection without languages set reports
+    /// none.
+    /// </summary>
+    /// <remarks>
+    /// <code>
+    /// host.Transport.SetLanguages("bob-tab", ["de-CH", "de", "en"]);
+    /// var bob = host.Root.ForConnection("bob-tab", clientKey: "bob");
+    /// </code>
+    /// </remarks>
+    /// <param name="connectionKey">The connection.</param>
+    /// <param name="languages">BCP 47 tags, most preferred first; at most 16.</param>
+    public void SetLanguages(string connectionKey, IReadOnlyList<string> languages)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(connectionKey);
+        ArgumentNullException.ThrowIfNull(languages);
+        lock (_gate) _languages[connectionKey] = [.. languages];
+    }
+
+    private readonly Dictionary<string, string[]> _languages = new(StringComparer.Ordinal);
+
     /// <summary>Closes a connection, as a page that reloads or loses its connection does, and reports it to the window.</summary>
     /// <param name="connectionKey">The connection to close.</param>
     public void CloseConnection(string connectionKey = DefaultConnectionKey)
@@ -258,8 +281,10 @@ public sealed class InMemoryBridgeTransport : IBridgeConnectionTransport, IDispo
         TaskCompletionSource? hello = null;
         Task pending;
         int session = 0;
+        string[] languages = [];
         lock (_gate)
         {
+            if (_languages.TryGetValue(connectionKey, out var set)) languages = set;
             if (!_greeted.TryGetValue(connectionKey, out pending!))
             {
                 hello = new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -299,6 +324,11 @@ public sealed class InMemoryBridgeTransport : IBridgeConnectionTransport, IDispo
                 // The host's Back and route path requests (NavigateBackAsync, OpenNavigationPathAsync). A window without a
                 // path region pushes nothing for it.
                 writer.WriteStringValue("navigation-path/1");
+                // client-languages/1: the languages SetLanguages gave the connection, none by default.
+                writer.WriteStringValue("client-languages/1");
+                writer.WriteEndArray();
+                writer.WriteStartArray("languages");
+                foreach (var language in languages) writer.WriteStringValue(language);
                 writer.WriteEndArray();
                 writer.WriteEndObject();
             }), connectionKey, clientKey, CancellationToken.None).ConfigureAwait(false);

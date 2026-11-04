@@ -1,0 +1,22 @@
+{
+  "format": "runic.views.scenario/1",
+  "id": "handshake.client-languages-are-reported-on-the-connection.v1",
+  "contract": {"id":"runic.views","version":4},
+  "set": "handshake",
+  "roles": ["producer","client"],
+  "description": "With client-languages/1, the hello's languages are the connection's languages: the language tags in order, each once without regard to case, without other strings. A client sends its browser's languages.",
+  "view": "notes",
+  "requires": ["client-languages/1"],
+  "ids": {
+    "c1": {"kind":"connection"},
+    "hello-c1": {"kind":"request"},
+    "session": {"kind":"wire","value":"s-1"}
+  },
+  "arrange": {"model":{}},
+  "steps": [
+    {"connect":"c1"},
+    {"send":{"kind":"hello","protocol":4,"session":{"$id":"session"},"client":{"name":{"$any":"string","default":"conformance-client"},"version":{"$any":"string","default":"1.0.0"}},"features":{"$any":"array","default":["text-splice/1","client-languages/1"]},"languages":{"$any":"array","default":["de-CH","de","DE","de_CH","en"]}},"id":"hello-c1"},
+    {"receive":{"ok":true,"protocol":4,"implementation":{"name":{"$any":"string","default":"conformance-producer"},"version":{"$any":"string","default":"1.0.0"}},"features":{"$any":"array","default":["text-splice/1","client-languages/1"]}},"replyTo":"hello-c1"},
+    {"expect":{"languages":{"connection":"c1","value":["de-CH","de","en"]}}}
+  ]
+}

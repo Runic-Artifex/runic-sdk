@@ -71,6 +71,7 @@ internal static class BridgeMessages
             writer.WriteStringValue(BridgeDispatcher.FieldPathsFeature);
             writer.WriteStringValue(BridgeDispatcher.TranslationTextFeature);
             writer.WriteStringValue(BridgeDispatcher.NavigationPathFeature);
+            writer.WriteStringValue(BridgeDispatcher.ClientLanguagesFeature);
             writer.WriteEndArray();
             if (grant is not null)
             {

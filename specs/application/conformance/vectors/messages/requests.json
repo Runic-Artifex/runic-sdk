@@ -319,6 +319,27 @@
       "expect": {"result":"valid"}
     },
     {
+      "id": "messages.requests.hello-with-client-languages",
+      "description": "client-languages/1: the page's languages; strings that are not language tags are ignored.",
+      "operation": "read-request",
+      "input": {"encoding":"json","value":{"kind":"hello","protocol":4,"session":"s-1","client":{"name":"test-client","version":"1.0.0"},"features":["client-languages/1"],"languages":["de-CH","de","x_y","en"]}},
+      "expect": {"result":"valid"}
+    },
+    {
+      "id": "messages.requests.hello-with-client-languages-not-an-array",
+      "description": "client-languages/1: languages that are not an array of strings are invalid.",
+      "operation": "read-request",
+      "input": {"encoding":"json","value":{"kind":"hello","protocol":4,"session":"s-1","client":{"name":"test-client","version":"1.0.0"},"features":["client-languages/1"],"languages":["de",1]}},
+      "expect": {"result":"invalid","error":{"kind":"rejected","reason":"invalid-request"}}
+    },
+    {
+      "id": "messages.requests.hello-with-languages-without-the-feature",
+      "description": "Without client-languages/1, languages is an unknown member and is ignored.",
+      "operation": "read-request",
+      "input": {"encoding":"json","value":{"kind":"hello","protocol":4,"session":"s-1","client":{"name":"test-client","version":"1.0.0"},"languages":7}},
+      "expect": {"result":"valid"}
+    },
+    {
       "id": "messages.requests.hello-with-features",
       "description": "Features the producer does not implement are ignored.",
       "operation": "read-request",

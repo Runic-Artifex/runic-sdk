@@ -1,1 +1,2 @@
 #nullable enable
+Runic.Application.Testing.InMemoryBridgeTransport.SetLanguages(string! connectionKey, System.Collections.Generic.IReadOnlyList<string!>! languages) -> void

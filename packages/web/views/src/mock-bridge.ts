@@ -5,6 +5,7 @@ import { applySplice, producerSplices, textSpliceFeature } from "./text.js";
 import { insertRows } from "./collections.js";
 import { flushNotifications } from "./notifications.js";
 import { translationTextFeature, validationPendingFeature } from "./validation.js";
+import { clientLanguagesFeature } from "./client-languages.js";
 import { clientErrorsFeature, fieldFlushFeature, fieldPathsFeature, presentationEpochFeature, presentedFeature, queryCollectionsFeature, requestSessionFeature, viewRequestsFeature } from "./protocol.js";
 import { regionCollectionsFeature, type RegionOutcome } from "./regions.js";
 import { navigationPathFeature } from "./navigation-feature.js";
@@ -501,6 +502,11 @@ export interface MockBridge extends RunicBridgeClient {
   setWindowLocale(locale: string | null): void;
   /** The window's locale that {@link MockBridge.setWindowLocale} set, or `null`. */
   readonly windowLocale: string | null;
+  /**
+   * client-languages/1: the languages the page's last `hello` reported (its browser's `navigator.languages`), as a .NET
+   * producer reports them on `RunicConnection.Languages`; `[]` before a `hello` that uses the feature.
+   */
+  readonly clientLanguages: readonly string[];
   /** Resolves after `milliseconds` of virtual time, for handlers that model latency. */
   sleep(milliseconds: number): Promise<void>;
   /**
@@ -549,7 +555,7 @@ const mockImplementation = { name: "@runic-artifex/views/mock", version: viewsVe
 const mockFeatures: readonly string[] = [
   textSpliceFeature, presentationEpochFeature, presentedFeature, viewRequestsFeature, requestSessionFeature, regionCollectionsFeature,
   clientErrorsFeature, queryCollectionsFeature, blobsFeature, validationPendingFeature, fieldFlushFeature, fieldPathsFeature,
-  translationTextFeature, navigationPathFeature,
+  translationTextFeature, navigationPathFeature, clientLanguagesFeature,
 ];
 const defaultUploadBytes = 256 * 1_048_576;
 
@@ -1061,6 +1067,8 @@ export function createMockBridge(options: MockBridgeOptions = {}): MockBridge {
 
   // translation-text/1: the window's locale (setWindowLocale).
   let windowLocale: string | null = null;
+  // client-languages/1: the languages of the last hello that used the feature.
+  let reportedLanguages: readonly string[] = [];
 
   function closeWindow(timeout: number): Promise<boolean> {
     const owner = connection;
@@ -1651,9 +1659,21 @@ export function createMockBridge(options: MockBridgeOptions = {}): MockBridge {
       if (listed !== undefined && (!Array.isArray(listed) || listed.length > 64
         || listed.some(feature => typeof feature !== "string" || feature.length > 64)))
         return refuseHeld({ ...invalidRequest("The hello's features are not an array of at most 64 strings."), ...identity });
+      const usesLanguages = (listed as string[] | undefined ?? []).includes(clientLanguagesFeature);
+      const languages = message["languages"];
+      if (usesLanguages && languages !== undefined && (!Array.isArray(languages) || languages.length > 16
+        || languages.some(language => typeof language !== "string")))
+        return refuseHeld({ ...invalidRequest("The hello's languages are not an array of at most 16 strings."), ...identity });
       if (closedSessions.has(message["session"])) return refuseHeld({ ...released(), ...identity });
       connection.session = message["session"];
       connection.features = new Set((listed as string[] | undefined ?? []).filter(feature => mockFeatures.includes(feature)));
+      if (usesLanguages) {
+        const tags: string[] = [];
+        for (const language of (languages as string[] | undefined) ?? [])
+          if (/^[A-Za-z][A-Za-z0-9]*(-[A-Za-z0-9]+)*$/.test(language) && language.length <= 64
+            && !tags.some(tag => tag.toLowerCase() === language.toLowerCase())) tags.push(language);
+        reportedLanguages = Object.freeze(tags);
+      }
       // translation-text/1: a page that connects to a window with a locale is told it.
       if (windowLocale !== null && connection.features.has(translationTextFeature)) pushMessage({ kind: "locale", locale: windowLocale });
       // Requests that waited for the hello are admitted in the order they arrived.
@@ -2106,6 +2126,7 @@ export function createMockBridge(options: MockBridgeOptions = {}): MockBridge {
         pushMessage({ kind: "locale", locale });
     },
     get windowLocale() { return windowLocale; },
+    get clientLanguages() { return reportedLanguages; },
     flush,
     async flushUntil<T>(promise: Promise<T>): Promise<T> {
       let settled = false;

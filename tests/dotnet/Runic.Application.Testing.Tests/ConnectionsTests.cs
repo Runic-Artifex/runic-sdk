@@ -31,6 +31,30 @@ internal sealed class ConnectionsTests
         return services.BuildServiceProvider(new ServiceProviderOptions { ValidateScopes = true });
     }
 
+    // client-languages/1: a connection lists the languages its hello reported, and compares by its keys only.
+    [Test]
+    public async Task AConnectionListsTheLanguagesItsPageReportedAsync()
+    {
+        await using var provider = Provider();
+        await using var window = await new TestWindowHost(provider).OpenWindowAsync<ConnectionsWindow>();
+        var host = ((TestWindow<ConnectionsViewModel>)window.Host).Host;
+        var connections = window.Services.GetRequiredService<IRunicConnections>();
+        host.Transport.SetLanguages(Bob.ConnectionKey, ["de-CH", "de", "DE", "not a tag", "en"]);
+        var bob = host.Root.ForConnection(Bob.ConnectionKey, Bob.ClientKey);
+        (await host.Root.ExecuteAsync(model => model.TouchCommand)).ThrowIfFailed();
+        (await bob.ExecuteAsync(model => model.TouchCommand)).ThrowIfFailed();
+        var alice = Own(host.Root);
+        var listed = Own(bob);
+        Require(alice.Languages.Count == 0, $"A page that reported no languages lists [{string.Join(", ", alice.Languages)}].");
+        Require(listed.Languages.SequenceEqual(["de-CH", "de", "en"]),
+            $"The connection lists [{string.Join(", ", listed.Languages)}], not the language tags of its hello once each.");
+        Require(connections.Current.Single(connection => connection.Equals(listed)).Languages.Count == 3,
+            "IRunicConnections did not list the languages.");
+        Require(listed.Equals(new RunicConnection(listed.ConnectionKey, listed.ClientKey))
+            && listed.GetHashCode() == new RunicConnection(listed.ConnectionKey, listed.ClientKey).GetHashCode(),
+            "Two connections with the same keys are not equal.");
+    }
+
     [Test]
     public async Task TwoConnectionsAreListedAndEachCommandRunsWithItsOwnCallerAsync()
     {

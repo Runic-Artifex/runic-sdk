@@ -14,7 +14,30 @@ namespace Runic.Application.Views;
 /// </remarks>
 /// <param name="ConnectionKey">The connection's key, unique among the Window's connections.</param>
 /// <param name="ClientKey">The browser client's key. Several connections can share one, as a page's reconnects do.</param>
-public sealed record RunicConnection(string ConnectionKey, string ClientKey);
+public sealed record RunicConnection(string ConnectionKey, string ClientKey)
+{
+    /// <summary>
+    /// The languages the page's browser prefers, most preferred first, as BCP 47 tags such as <c>de-CH</c>: its
+    /// <c>navigator.languages</c>, which the page reports in its <c>hello</c> (feature <c>client-languages/1</c>, a page
+    /// of 0.17 or later). Empty when the page reports none.
+    /// </summary>
+    /// <remarks>
+    /// The page reports them; the transport does not check them, so treat them as a preference, never as an identity.
+    /// A Window shows one language for all of its connections (<see cref="IRunicWindowLocale"/>): use the languages to
+    /// choose it, for example from the first connection of a CS-WebUI window, not to translate per connection.
+    /// </remarks>
+    public IReadOnlyList<string> Languages { get; init; } = [];
+
+    /// <summary>Whether <paramref name="other"/> is the same connection: both keys are equal.</summary>
+    /// <param name="other">The connection to compare.</param>
+    /// <returns><see langword="true"/> when both keys are equal.</returns>
+    public bool Equals(RunicConnection? other) =>
+        other is not null && string.Equals(ConnectionKey, other.ConnectionKey, StringComparison.Ordinal)
+        && string.Equals(ClientKey, other.ClientKey, StringComparison.Ordinal);
+
+    /// <inheritdoc />
+    public override int GetHashCode() => HashCode.Combine(ConnectionKey, ClientKey);
+}
 
 /// <summary>The connection that <see cref="IRunicConnections.Connected"/> or <see cref="IRunicConnections.Disconnected"/> reports.</summary>
 /// <param name="connection">The connection.</param>
@@ -197,7 +220,7 @@ internal sealed class RunicConnections : IRunicConnections, IDisposable
         {
             // A connection that closed before this turn is not reported: its Closed turn found nothing to remove.
             if (!connection.IsOpen || Find(connection.Key) is not null) return null;
-            var added = new RunicConnection(connection.Key, connection.ClientKey);
+            var added = new RunicConnection(connection.Key, connection.ClientKey) { Languages = connection.Languages };
             Volatile.Write(ref _current, [.. Volatile.Read(ref _current), added]);
             return raise => { if (raise) Raise(Connected, added, "Connected"); };
         });

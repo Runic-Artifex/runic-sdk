@@ -1,1 +1,3 @@
 #nullable enable
+Runic.Application.Views.RunicConnection.Languages.get -> System.Collections.Generic.IReadOnlyList<string!>!
+Runic.Application.Views.RunicConnection.Languages.init -> void

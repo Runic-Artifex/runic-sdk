@@ -58,6 +58,9 @@ internal sealed class BridgeDispatcher : IBridgeRequestHandler
     internal const string QueryCollectionsFeature = "query-collections/1";
     internal const string BlobsFeature = BridgeBlobs.Feature;
     internal const string NavigationPathFeature = "navigation-path/1";
+    // client-languages/1: the hello lists the page's languages (navigator.languages), at most this many.
+    internal const string ClientLanguagesFeature = "client-languages/1";
+    internal const int MaximumClientLanguages = 16;
     internal const int MaximumFeatures = 64;
     internal const int MaximumFeatureLength = 64;
     // A request that arrives before its connection's hello waits this long for it, and at most this many wait.
@@ -871,7 +874,8 @@ internal sealed class BridgeDispatcher : IBridgeRequestHandler
             return false;
         if (!root.TryGetProperty("client", out var client) || client.ValueKind != JsonValueKind.Object
             || !TryReadName(client, "name", 128, out _) || !TryReadName(client, "version", 64, out _)
-            || !TryReadFeatures(root, out _, out _, out _, out _, out _, out _, out _, out _, out _, out _, out _, out _, out _))
+            || !TryReadFeatures(root, out _, out _, out _, out _, out _, out _, out _, out _, out _, out _, out _, out _, out _, out var usesLanguages)
+            || !TryReadLanguages(root, usesLanguages, out _))
             return false;
         var session = sessionElement.GetString()!;
         lock (_gate)
@@ -910,9 +914,12 @@ internal sealed class BridgeDispatcher : IBridgeRequestHandler
             return BridgeMessages.Rejected("invalid-request", "The hello's client is not {name, version}.", hello: true);
         if (!TryReadFeatures(root, out var usesTextSplice, out var usesPresentationEpoch, out var usesPresented, out var usesViewRequests,
                 out var usesRequestSession, out var usesRegionCollections, out var usesClientErrors, out var usesQueryCollections, out var usesBlobs,
-                out var usesFieldFlush, out var usesFieldPaths, out var usesTranslationText, out var usesNavigationPath))
+                out var usesFieldFlush, out var usesFieldPaths, out var usesTranslationText, out var usesNavigationPath, out var usesClientLanguages))
             return BridgeMessages.Rejected("invalid-request",
                 $"The hello's features are not an array of at most {MaximumFeatures} strings of at most {MaximumFeatureLength} characters.", hello: true);
+        if (!TryReadLanguages(root, usesClientLanguages, out var languages))
+            return BridgeMessages.Rejected("invalid-request",
+                $"The hello's languages are not an array of at most {MaximumClientLanguages} strings.", hello: true);
         var session = sessionElement.GetString()!;
         bool closing;
         lock (_gate)
@@ -938,6 +945,7 @@ internal sealed class BridgeDispatcher : IBridgeRequestHandler
             connection.UsesFieldPaths = usesFieldPaths;
             connection.UsesTranslationText = usesTranslationText;
             connection.UsesNavigationPath = usesNavigationPath;
+            connection.Languages = languages;
             connection.HelloCompleted = true;
             if (!usesTextSplice) _connectionsWithoutTextSplice++;
             if (usesPresentationEpoch) _connectionsWithPresentationEpoch++;
@@ -963,11 +971,11 @@ internal sealed class BridgeDispatcher : IBridgeRequestHandler
     private static bool TryReadFeatures(JsonElement root, out bool usesTextSplice, out bool usesPresentationEpoch,
         out bool usesPresented, out bool usesViewRequests, out bool usesRequestSession, out bool usesRegionCollections, out bool usesClientErrors,
         out bool usesQueryCollections, out bool usesBlobs, out bool usesFieldFlush, out bool usesFieldPaths, out bool usesTranslationText,
-        out bool usesNavigationPath)
+        out bool usesNavigationPath, out bool usesClientLanguages)
     {
         usesRequestSession = false;
         usesTextSplice = usesPresentationEpoch = usesPresented = usesViewRequests = usesRegionCollections = usesClientErrors = usesQueryCollections = usesBlobs = false;
-        usesFieldFlush = usesFieldPaths = usesTranslationText = usesNavigationPath = false;
+        usesFieldFlush = usesFieldPaths = usesTranslationText = usesNavigationPath = usesClientLanguages = false;
         if (!root.TryGetProperty("features", out var features)) return true;
         if (features.ValueKind != JsonValueKind.Array || features.GetArrayLength() > MaximumFeatures) return false;
         foreach (var feature in features.EnumerateArray())
@@ -988,7 +996,27 @@ internal sealed class BridgeDispatcher : IBridgeRequestHandler
             else if (name == FieldPathsFeature) usesFieldPaths = true;
             else if (name == TranslationTextFeature) usesTranslationText = true;
             else if (name == NavigationPathFeature) usesNavigationPath = true;
+            else if (name == ClientLanguagesFeature) usesClientLanguages = true;
         }
+        return true;
+    }
+
+    // client-languages/1: the hello's languages, absent or an array of at most MaximumClientLanguages strings. The
+    // language tags among them are kept, each once, in their order; other strings are ignored. Without the feature the
+    // member is ignored.
+    private static bool TryReadLanguages(JsonElement root, bool usesClientLanguages, out IReadOnlyList<string> languages)
+    {
+        languages = [];
+        if (!usesClientLanguages || !root.TryGetProperty("languages", out var element)) return true;
+        if (element.ValueKind != JsonValueKind.Array || element.GetArrayLength() > MaximumClientLanguages) return false;
+        List<string> tags = [];
+        foreach (var item in element.EnumerateArray())
+        {
+            if (item.ValueKind != JsonValueKind.String) return false;
+            var tag = item.GetString()!;
+            if (IsLocale(tag) && !tags.Contains(tag, StringComparer.OrdinalIgnoreCase)) tags.Add(tag);
+        }
+        languages = tags;
         return true;
     }
 
@@ -1171,6 +1199,8 @@ internal sealed class BridgeConnection(string key, string clientKey, string? tra
     }
     // navigation-path/1: the connection receives navigation-path pushes and may send navigation requests.
     internal bool UsesNavigationPath { get; set; }
+    // client-languages/1: the page's languages, most preferred first; empty without the feature.
+    internal IReadOnlyList<string> Languages { get; set; } = [];
     // Whether the window's closing push waits for this connection's closing-reply; the dispatcher's gate guards it.
     internal bool ClosingPending { get; set; }
     // Requests that wait for the hello, in arrival order, and whether the dispatcher is admitting them.

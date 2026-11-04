@@ -156,6 +156,7 @@ The first request on each connection is `hello`:
 | `session` | An identifier the client chooses for this connection. A client MUST send a new session for each connection. |
 | `client`, `implementation` | `{name, version}`: the name of the client or producer implementation (1 to 128 characters) and its version (1 to 64 characters, SemVer without build metadata recommended). They are informational. |
 | `features` | Optional: the [features](#features) the sender implements, in the request and in a successful reply. Absent means none. |
+| `languages` | Optional, in the request, with [`client-languages/1`](#client-languages): the page's preferred languages. |
 
 Producer rules:
 
@@ -244,6 +245,7 @@ reply both list the same string. Features are negotiated per connection, and aga
 | `field-paths/1` | A checked write names a path below its member, such as a member of an object or a cell of a keyed collection's row: [field paths](#field-paths) | 0.16 |
 | `translation-text/1` | The window's locale, and the [`text`](#text) of validation errors: [translated text](#translated-text) | 0.16 |
 | `navigation-path/1` | The window's Back, and its route path kept in the page's URL: [navigation paths](#navigation-paths) | 0.16 |
+| `client-languages/1` | The page reports its browser's preferred languages in `hello`: [client languages](#client-languages) | 0.17 |
 
 ### Request sessions
 
@@ -1267,6 +1269,36 @@ The **window's locale** is the language the application chose for the window, or
   whose arguments no longer match, shows its `fallbackText`; the page chooses what to show without one. The text is
   plain: a page shows it as text, never as markup.
 
+## Client languages
+
+With the feature `client-languages/1`, the page tells the producer which languages its browser prefers, so the
+application can choose the window's locale for a page it has not seen before, such as a browser that connects to a
+CS-WebUI window:
+
+```json
+{"kind":"hello", …, "features":["client-languages/1","translation-text/1"],"languages":["de-CH","de","en"]}
+```
+
+| Member | Value |
+| --- | --- |
+| `languages` | A member of the `hello` request: an array of at most 16 strings, most preferred first. |
+
+- **Client.** A client that implements the feature lists it and sends `languages` in every `hello`: the browser's
+  `navigator.languages`, or `[navigator.language]` where the list is missing, without strings that are not language
+  tags (1 to 64 ASCII letters, digits and `-`, starting with a letter, without an empty subtag), each once
+  (compared without case), at most the first 16. A page that knows no language sends `[]`. Like `session` in
+  [`request-session/1`](#request-sessions), the member is sent before the reply tells whether the feature is in use;
+  a producer without the feature ignores it.
+- **Producer.** On a `hello` that lists the feature, a `languages` that is present but is not an array of at most 16
+  strings is `rejected` with `invalid-request`, as an invalid `features` is. The producer keeps the language tags of
+  the array, in their order, each once (compared without case), and ignores its other strings; absent means none. It
+  reports them as the connection's languages to the application, for the connection's lifetime. Without the feature
+  in the `hello`, the member is ignored.
+- **One language per window.** The languages are a preference the page reports, not a request. The window keeps one
+  locale for all of its connections ([translated text](#translated-text)), which only the application sets: it may
+  choose it from the languages of a connection, for example the first one of a window, but no connection is shown
+  another language than the window's. The producer pushes nothing for this feature.
+
 ## Page errors
 
 With the feature `client-errors/1`, a page reports the errors it cannot show to the application, such as an uncaught
@@ -1787,4 +1819,4 @@ sides must implement are [features](#features), listed in `hello`.
 | 1 | 0.6 | Named routes with a snapshot and a state callback per route; collection delta frames were added in 0.7 without a version change. |
 | 2 | 0.9 | The `domain-failed` error and operation status kind. |
 | 3 | 0.10 | A released View answers `released` instead of `disconnected`; the reply error `reason`; a strict version check ([protocol 3](https://github.com/Runic-Artifex/runic-sdk/blob/v0.12.1/specs/application/README.md)). |
-| 4 | 0.13 | One message channel with `hello`; `set` changes in frames; replies by revision; edit numbers; `open`/`close`; operation `watch` and `progress`; RFC 8785 canonical form; value types named by value; ISO 8601 durations; a language-neutral specification and conformance corpus. 0.14 added, without a version change, `hello` `features` with the first feature `text-splice/1`, and requests held behind the `hello`. 0.15 added, without a version change, the features `presentation-epoch/1` and `presented/1`, and 0.16 the features `view-requests/1`, `region-collections/1`, `query-collections/1`, `validation-pending/1` and `translation-text/1`, and the value type `text-reference`. |
+| 4 | 0.13 | One message channel with `hello`; `set` changes in frames; replies by revision; edit numbers; `open`/`close`; operation `watch` and `progress`; RFC 8785 canonical form; value types named by value; ISO 8601 durations; a language-neutral specification and conformance corpus. 0.14 added, without a version change, `hello` `features` with the first feature `text-splice/1`, and requests held behind the `hello`. 0.15 added, without a version change, the features `presentation-epoch/1` and `presented/1`, and 0.16 the features `view-requests/1`, `region-collections/1`, `query-collections/1`, `validation-pending/1` and `translation-text/1`, and the value type `text-reference`, and 0.17 the feature `client-languages/1`. |
