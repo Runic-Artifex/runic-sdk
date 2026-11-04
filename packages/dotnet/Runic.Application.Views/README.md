@@ -1713,7 +1713,7 @@ generator, such as a CommunityToolkit `[ObservableProperty]`, points at its
 a link to its entry in the [diagnostics catalog](https://github.com/Runic-Artifex/runic-sdk/blob/main/docs/diagnostics.md#bridge-code-generator)
 for the release you use.
 
-`RUNICBRIDGE013`, `015`, `019`, `020`, `028`, `029`, `030`, `031`, `032`, `033` and `034` are warnings; the generator's
+`RUNICBRIDGE013`, `015`, `019`, `020`, `028`, `029`, `030`, `031`, `032`, `033`, `034` and `053` are warnings; the generator's
 (`013`, `020`, `028`, `031` and `032`) repeat on builds that reuse the cached generation. Every other
 code fails the build. The
 [diagnostics catalog](https://github.com/Runic-Artifex/runic-sdk/blob/main/docs/diagnostics.md#bridge-code-generator)
@@ -2055,7 +2055,9 @@ shared code or the Vite configuration reads as a
 
 - **Translations.** The page can import the app's `t()` and its message
   tables through the alias, and take the locale from `navigator.language`,
-  which usually follows the system language (`LANG` on Linux). Include the
+  which usually follows the system language (`LANG` on Linux), or from the
+  window's locale that the application sets, which also translates the text the
+  ViewModels produce; see [Translated text](#translated-text). Include the
   message tables in `RunicApplicationFrontendInput`, so an edited translation
   rebuilds the page.
 - **Hosts.** The page loads `runic-views.js`, so it needs no host-specific
@@ -2116,6 +2118,96 @@ Each field retains at most 64 receipts within a default 256 KiB encoded-value
 and receipt-metadata budget. Evicted or oversized receipts leave bounded
 request-ID tombstones; reconcile authoritative state before issuing a new ID.
 The write may have succeeded even when its receipt could not be retained.
+
+## Editable rows and nested fields
+
+Since 0.16 a page edits the members of an object and the cells of a keyed
+collection's rows one field at a time, with drafts, conflicts and validation,
+and without a command per cell (`field-paths/1`,
+[field paths](../../../specs/application/README.md#field-paths)):
+
+```csharp
+public sealed record Address(string Street, string PostalCode, string City);
+public sealed record InvoiceLine(int Id, string Product, int Quantity, decimal Price);
+
+public sealed partial class InvoiceViewModel : ObservableObject
+{
+    [ObservableProperty]
+    public partial Address Address { get; set; } = new("", "", "");
+
+    [RunicCollection(nameof(InvoiceLine.Id))]
+    public ObservableCollection<InvoiceLine> Lines { get; } = [];
+
+    [RunicRowEditor]
+    internal void UpdateLine(int id, InvoiceLine line)
+    {
+        if (line.Quantity > 10_000) throw new ArgumentException("At most 10,000 per line.");
+        Lines[Lines.IndexOf(Lines.Single(existing => existing.Id == id))] = line;
+        OnPropertyChanged(nameof(Total));
+    }
+}
+```
+
+```ts
+const street = useField(invoice, InvoiceFields.address.street, { commit: "pause" });
+const quantity = useField(invoice, InvoiceFields.lines.at(line.id).quantity, { commit: "pause" });
+```
+
+- **Object members.** A settable member whose value is a DTO, such as
+  `Address`, also has a field for each of its members, down to three objects
+  deep: `InvoiceFields.address.street`, `InvoiceFields.address.geo.lat`. A
+  write copies the member's value with that one member changed and assigns the
+  copy with the setter, so the setter's validation, normalization and change
+  notification run as for a whole value. An object on the path that is `null`
+  rejects the write.
+- **Copies.** The generated copy keeps what the page does not see, such as a
+  `[RunicIgnore]` database id: a record or struct is copied with `with`, a
+  sealed class with its copy constructor or `Clone()`, and a sealed class whose
+  settable members are all on the wire through its codec. A class that is not
+  sealed, or one with hidden settable members and no copy constructor or
+  `Clone()`, cannot be copied exactly and has no fields below it; as rows it is
+  `RUNICBRIDGE052`, as an object inside a row warning `RUNICBRIDGE053`.
+  `[RunicNoField]` leaves a member of a row or object without a field.
+- **Rows.** A `[RunicCollection]` with a `[RunicRowEditor]` method has a field
+  for each row member except the key: `InvoiceFields.lines.at(key).quantity`.
+  The method takes the row's key and the row with the one cell changed, and
+  optionally a `RunicRowEdit` with the changed cell (`Path`), the row before the
+  edit (`Previous`) and the page's `ConnectionKey`; it replaces the row
+  (`Lines[index] = line`), may normalize it and updates what depends on it. Throw to refuse the change: the page keeps its draft and shows
+  the message. Without a collection name the attribute finds the collection by
+  its row type; `[RunicRowEditor(nameof(Lines))]` names it. A collection without
+  a row editor stays read-only for the page. `RUNICBRIDGE050` and `RUNICBRIDGE051`
+  report editors that match no collection, several, or have another signature.
+- **Conflicts.** Each field path is a checked field with its own version: the
+  revision at which a publication last changed it. A write that is based on an
+  older state of the cell than the cell's last change is a `conflict`, also when
+  the value changed back, and keeps the page's draft until the user retries or
+  resets it. A change of another cell of the same row, or another member of the
+  same object, is not a conflict. A write of a row that was removed is rejected,
+  and a row removed and added again under its key is a new row. With
+  `[RunicRowEditor(Conflicts = RunicRowConflicts.Row)]` any change of the row
+  after the page's state is a conflict instead, so a price typed for a line
+  whose product another user changed meanwhile is not applied.
+- **Receipts.** An editor that removes the row is `rejected`; one that changes
+  the row and then throws is `committed-with-error`.
+- **Cost.** The window keeps a digest of each field path's value per row. A
+  publication compares only the rows its changes carry; a reset of the
+  collection or a full state compares every row. `[RunicRowEditor]` does not
+  apply to query collections yet (`RUNICBRIDGE050`).
+- **Validation.** A field's `errors` are the `validation` messages at its path
+  and below: a cell's path names its row by index, such as
+  `["lines", 2, "quantity"]`, which the generated descriptor finds from the row's
+  key. Rows report their messages as any DTO does: an `INotifyDataErrorInfo`
+  row (an immutable record whose `GetErrors` reads its own values), or a
+  `RunicValidationMessage` of the ViewModel with the member path
+  `Lines[2].Quantity`. A nested `ReactiveValidationObject` reports its rules at
+  its members' paths, such as `["address", "street"]`.
+- **Tests.** `RunicViewDriver.WritePathAsync(vm => vm.Lines, ["7", "quantity"], 3)`
+  writes a cell as the page does; pass `expectedVersion` to write from an older
+  state and observe a `RunicFieldWriteReceiptKind.Conflict`.
+
+The [invoice grid example](../../../examples/invoice-grid/README.md) edits an
+address and the cells of an invoice's lines this way.
 
 ## Commands whose parameter has no wire form
 
@@ -2833,6 +2925,235 @@ property invalid.
 
 Use `[RunicIgnore]` on validation-only DTO properties such as a computed
 `HasErrors`; their values are represented by the validation projection.
+
+### Field drafts before departures
+
+A web page may hold what the user typed for a moment before it writes it, such
+as a field with `commit: "pause"`. With `field-flush/1` (0.16 hosts and pages),
+the window asks its pages to write those drafts before it asks a departure guard:
+before the guards of a navigation of the window's model context
+(`RunicDraftFlush`, which the navigator awaits), and before the close guard of a
+Window with `GuardClose`, from `RequestCloseAsync` (also inside a model turn, such
+as a native menu's command) or the close button. It asks only its own pages,
+waits up to 1 second (event 1140 when a page does not answer) and then decides
+on the ViewModel's state. A disposed window is asked nothing, and a page that a
+push cannot reach does not delay the decision. In tests, set
+`InMemoryBridgeTransport.FieldFlush` to write what a page would; the mock bridge
+has `flushFields()`.
+
+### Validation in progress
+
+An asynchronous rule, such as one that asks a server whether a user name is
+taken, can report that it is still checking. Implement `IRunicPendingValidation`
+on the ViewModel, or on a DTO of its state, usually by delegating to a
+`RunicPendingValidation`. The Bridge then reports the pending member paths in
+`validation.pending` (the `validation-pending/1` feature), and the page's field
+shows `validating`. Paths are relative CLR property paths, as in
+`RunicValidationMessage.MemberPaths`, and `""` is the object itself. A pending
+path is not an error: it does not set `hasErrors`.
+
+```csharp
+public sealed partial class SignUpViewModel : ObservableValidator, IRunicPendingValidation
+{
+    public RunicPendingValidation Pending { get; } = new();
+    IReadOnlyCollection<string> IRunicPendingValidation.PendingMemberPaths => Pending.PendingMemberPaths;
+    event EventHandler? IRunicPendingValidation.PendingChanged { add => Pending.PendingChanged += value; remove => Pending.PendingChanged -= value; }
+
+    [ObservableProperty, CustomValidation(typeof(SignUpViewModel), nameof(ValidateUserName))]
+    public partial string UserName { get; set; } = "";
+
+    // CommunityToolkit: the check runs while the name is pending. Each check cancels the previous one of the
+    // same path, so the result of an older name never overwrites that of a newer one.
+    partial void OnUserNameChanged(string value) => _ = Pending.Track(nameof(UserName), async cancellationToken =>
+    {
+        var taken = await _users.ExistsAsync(value, cancellationToken);
+        cancellationToken.ThrowIfCancellationRequested();
+        _taken = taken;
+        ValidateProperty(UserName, nameof(UserName));
+    });
+}
+```
+
+With ReactiveUI.Validation, `TrackPending` follows a rule's state stream and
+marks the member pending while the state is the one the rule starts each check
+with:
+
+```csharp
+var checking = new ValidationState(true, "Checking…");
+var states = ValidationAsync.ForLatest(this.WhenAnyValue(vm => vm.UserName), CheckUserNameAsync, checking, scheduler)
+    .TrackPending(Pending, nameof(UserName), state => ReferenceEquals(state, checking));
+this.ValidationRule(vm => vm.UserName, states);
+```
+
+`Track(path, cancellationToken => …)` cancels the previous check that it
+started for the path, and a check that ignores its token still does not
+complete after a newer one: its task is cancelled. `Track(path, () => …)`
+does not cancel; overlapping checks of a path are counted, as with
+`Begin(path)`, which returns a lease for any other check. `validation.pending`
+lists the paths sorted; when the limits cut it, `pendingTruncated` is set. WPF binds `Pending[UserName]` or `Pending.HasPending`. In
+tests, `RunicViewState.IsValidating(vm => vm.UserName)` and
+`PendingValidation` read the projection.
+
+## Translated text
+
+Text that a ViewModel produces, such as a status line or a validation
+message, can follow the window's language without a call per string. The
+ViewModel produces a text reference of
+[Runic Translations](https://github.com/Runic-Artifex/runic-translations-sdk/blob/v0.8.0/docs/guides/translations/transport.md)
+(a message key, typed arguments and a fallback text) instead of a sentence, and
+the page formats it with its Translations runtime (the `translation-text/1`
+feature). When the language changes, the page formats the references it has
+again.
+
+**Values.** A member, DTO member, command input or result of type
+`Runic.Translations.TranslationReference` crosses the Bridge as the reference's
+transport JSON, and is a `TextReference` in TypeScript. The Views packages do
+not depend on Runic Translations: the generator recognizes the type by name, and
+the generated code, compiled into your application, calls its serializer. Add
+the `Runic.Translations` package and the generated catalog to the .NET project
+as the [Translations guide](https://github.com/Runic-Artifex/runic-translations-sdk/blob/v0.8.0/docs/guides/translations/runic-desktop.md#strings-outside-the-views)
+shows. `RunicTextReference` holds a reference's JSON where Views code needs one:
+
+```csharp
+public partial class EditorViewModel : ObservableObject
+{
+    [ObservableProperty]
+    public partial TranslationReference Status { get; set; } = NotesText.Ready();
+
+    [RelayCommand]
+    private async Task SaveAsync()
+    {
+        await _store.SaveAsync(Title);
+        Status = NotesText.Saved(Title);
+    }
+}
+
+// NotesText.Saved: a reference with a fallback for a page that cannot translate it.
+public static TranslationReference Saved(string title) => new(NotesTextCatalog.CatalogId,
+    NotesTextCatalog.ContractFingerprint, "saved",
+    new Dictionary<string, TranslationReferenceArgument> { ["title"] = new(TextArgumentType.String, title) },
+    $"Saved {title}.");
+```
+
+**Validation messages.** Give a validation message a reference, and the page
+shows the error's `text` in the window's language, with the message as the
+fallback. `{name}Errors` keeps the messages.
+
+- `RunicValidationMessage`: set `Text = RunicTextReference.Create(reference,
+  TranslationReferenceJsonContext.Default.TranslationReference)`.
+- DataAnnotations and CommunityToolkit `ObservableValidator`: return a
+  `RunicValidationResult(message, text, memberNames)` from a
+  `[CustomValidation]` method or a `ValidationAttribute`. The built-in
+  attributes have no reference; their messages stay as they are.
+- ReactiveUI.Validation: pass a rule a state whose `IValidationText` also
+  implements `IRunicTextReferenceSource`, or add a component that implements
+  it:
+
+  ```csharp
+  sealed class TranslatedText(TranslationReference reference) : IValidationText, IRunicTextReferenceSource
+  {
+      private readonly string _message = reference.FallbackText ?? reference.Key;
+      public RunicTextReference? Text { get; } =
+          RunicTextReference.Create(reference, TranslationReferenceJsonContext.Default.TranslationReference);
+      public int Count => 1;
+      public string this[int index] => _message;
+      public IEnumerator<string> GetEnumerator() { yield return _message; }
+      IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
+      public string ToSingleLine(string? separator) => _message;
+  }
+
+  this.ValidationRule(vm => vm.Title, this.WhenAnyValue(vm => vm.Title).Select(title => title.Length <= 80
+      ? ValidationState.Valid : new ValidationState(false, new TranslatedText(NotesText.TitleTooLong(80)))));
+  ```
+
+- Any other entry of `GetErrors` can implement `IRunicTextReferenceSource`.
+
+**The window's language.** The application owns the window's locale: take
+`IRunicWindowLocale` in the ViewModel's constructor and set `Locale`, for
+example from the application's settings, before the window opens, and again
+from a language switch command. A language switch on the page must call that
+command: a page that sets its Translations runtime's locale itself is set back
+to the window's locale by the next push, at the latest when it reconnects. The window's pages follow it: each sets the
+locale of its Translations runtime, so the page's own messages switch too, and
+formats the references again. `null`, the default, leaves each page in its own
+language. A Window that the application creates itself sets
+`WindowContentSession.Locale`. The service raises `PropertyChanged`, so C# text,
+such as a tray menu, can follow with the generated C# catalog's
+`ITranslationManager`.
+
+```csharp
+public partial class ShellViewModel(IRunicWindowLocale locale, AppSettings settings) : ObservableObject
+{
+    public void Initialize() => locale.Locale = settings.Language;   // "de", "pt-BR" or null
+
+    [RelayCommand]
+    private void SwitchLanguage(string language)
+    {
+        locale.Locale = language;
+        settings.Language = language;
+    }
+}
+```
+
+**The page.** Connect the page's Translations runtime once, in `main.ts`, with
+`configureTranslatedText` from `@runic-artifex/views`. With the generated ESM of
+Runic Translations and its Vite plugin:
+
+```ts
+import { configureTranslatedText } from "@runic-artifex/views";
+import { m } from "virtual:runic-translations/app/messages";
+import { configureLocaleResolver, createLocaleSource } from "virtual:runic-translations/app/runtime";
+import { resolveTextReference } from "virtual:runic-translations/app/transport";
+
+const locale = createLocaleSource({ initialLocale: navigator.language });
+configureLocaleResolver(locale.getLocale);
+configureTranslatedText({
+  ...locale,
+  resolve: (reference, language) => resolveTextReference(reference, m, { locale: language }).text,
+});
+```
+
+Then show references with the framework's helper. Field errors
+(`useField(...).errors`, `injectField`, `createFieldController`) already show
+validation messages in the window's language. A `number`, `decimal`,
+`bigint`, `date`, `time` or `datetime` field without its own `locale` option
+shows and reads its text in the window's locale (`1,5`, `03.11.2026, 21:30` in
+`de`; `11/03/2026, 9:30 PM` in `en-US`), and formats it again when the locale
+changes, but not while the user edits a draft. Dates and times also accept the
+ISO form, and the ViewModel still receives the invariant and ISO values. Use a
+text input for such a field (`inputmode="decimal"` for numbers):
+`<input type="number">`, `type="date"`, `type="time"` and `datetime-local` take
+only the invariant and ISO forms, so a field bound to one of them takes
+`locale: null`.
+
+**Server rendering.** `configureTranslatedText` configures the page's runtime,
+which is shared by everything on the page. Under SvelteKit or Angular server
+rendering, call it in the browser only (in `onMount`, a `+layout.ts` with
+`export const ssr = false`, or behind `isPlatformBrowser`), or render on the
+server with `resolveTextReference(reference, m, { locale })` and the request's
+locale instead of the shared configuration. The server has no window locale.
+
+| Framework | Status line | Validation error |
+| --- | --- | --- |
+| React | `useText(view.state?.status)` | `useText(error.text, error.message)` |
+| Vue | `useText(() => view.state.value?.status)` | `useText(() => error.text, () => error.message)` |
+| Svelte | `useText(() => view.state?.status).current` | `useText(() => error.text, () => error.message).current` |
+| Angular | `{{ state.status \| runicText }}` or `injectText(() => …)` | `{{ error.text \| runicText: error.message }}` |
+| Effect | `texts(state.status)` | `texts(error.text, error.message)` |
+| None | `resolveText(state.status)` with `subscribeText` | `resolveText(error.text, error.message)` |
+
+A reference that the page cannot translate, such as one of another catalog,
+whose arguments no longer match, or of a later Translations transport version
+than the page's runtime reads, shows its fallback text. Without a configured
+runtime, every reference shows its fallback text. The text is plain: render it
+as text, never as HTML. `useWindowLocale()` (`injectWindowLocale()`,
+`windowLocale()`) reads the window's locale, for example for `lang`.
+
+**Tests.** `RunicViewState.Read(vm => vm.Status)` reads a `TranslationReference`
+or `RunicTextReference` member, and `RunicWindowTestHost.Create(services)` binds
+`IRunicWindowLocale` of the services' scope to the window, so
+`host.Content.Locale` shows what the ViewModel set. In page tests, the mock
+bridge's `setWindowLocale("de")` pushes a locale as the application does.
 
 ## Shared DTO exclusions
 
@@ -3563,6 +3884,7 @@ trace id; correlate them with the host's spans by time and route.
 | 1193 | `QueryCollectionWithoutModelContext` | Warning | A query collection raised a property change outside any model or synchronization context, on the thread its load completed on: it was used without a Bridge and without `RunicQueryCollectionOptions.ModelContext`. Once per collection. | `Row` |
 | 1192 | `BridgeQuerySetFailed` | Error | Changing a query collection's query threw something other than the `ArgumentException` of an invalid query. | `Model`, `Member`, `Route`, `ErrorType` |
 | 1026 | `WindowCloseUnacknowledged` | Debug | A Window's close waited for its pages that use `presented/1` until its timeout or 5 s, and some did not acknowledge it (`RunicWindowCloseResult.PagesAcknowledged` is `false`). | `Pages` |
+| 1140 | `FieldFlushUnanswered` | Debug | Before a departure guard or a close guard, the window asked its pages that use `field-flush/1` to write their field drafts, and some did not answer within 1 s; the departure is decided on the state as it is. | `Pages` |
 | 1033 | `ModelContextReleaseFailed` | Error | A window session's own model context fails to shut down in the background. | `ErrorType` |
 | 1040, 1041 | Retired | | Reported by `ReactiveRoutedRegion<T>`, removed in 0.9; not reused. | |
 | 1042 | `ReactiveCommandFailed` | Error | A bridged ReactiveUI command reports on `ThrownExceptions` an exception that no Bridge call received, while a generated Bridge presents it, or a command or object observed with `ObserveBridgeExceptions(logger)` reports one; declared `RunicFailureException`s and cancellations are not logged. An exception raised in a Bridge call's flow, such as by a plain `Execute` in a wrapper command, is held until the outermost Bridge call in that flow ends, and not logged if a call received it or an exception wrapping it. Still logged when hand-written code receives and handles it from a plain `Execute`; never when it ran the command with `RunAsync`. A streamed operation holds nothing. Also logged after the Bridge detached, with its logger, for an execution that a Bridge call or `RunAsync` stopped awaiting when it was cancelled, such as an operation that a retiring navigation entry cancels. | `Source` (`Model.Command` for the Bridge; the command expression or `sourceName` for `ObserveBridgeExceptions`), `ErrorType` |
@@ -3597,6 +3919,8 @@ trace id; correlate them with the host's spans by time and route.
 | 1150 | `PageError` | Error | A page that called `installErrorReporting()` reports an uncaught error, unhandled rejection or runtime-caught error (`client-errors/1`). Category `Runic.Application.Views.Page`; see [page errors](#page-errors). | `Source`, `ErrorName`, `ErrorMessage`, `PageUrl`, `Route`, `Dropped`, `Client`, `ErrorStack` |
 | 1151 | `PageErrorsSuppressed` | Warning | A page's connection reports more than 10 errors in a minute; the rest of the minute is counted into `Dropped` of the next 1150. Category `Runic.Application.Views.Page`. | `Limit` |
 | 1152 | `WindowPageErrorsSuppressed` | Warning | A window's pages report more than 30 errors in a minute across their connections, such as a page in a reload loop; the rest of the minute is counted into `Dropped` of the next 1150. Category `Runic.Application.Views.Page`. | `Limit` |
+| 1170 | `WindowLocaleChanged` | Debug | The application set the window's locale (`IRunicWindowLocale`, `WindowContentSession.Locale`), which pages with `translation-text/1` follow. | `Locale` |
+| 1171 | `ValidationTextTooLarge` | Warning | A validation message's text reference is larger than 16 KiB, so its error carries only the message. | `Key`, `Bytes`, `Limit` |
 | 1180 | `WindowOwnerIgnored` | Warning | A Window opens without its `RunicWindowOptions.Owner`: the host cannot own Windows (CS-WebUI, serve-only mode, a browser), or the owner has closed or belongs to another host. | `Window`, `Owner`, `Reason` |
 | 1181 | `WindowsChangedHandlerFailed` | Error | An `IRunicWindowService.WindowsChanged` handler threw; later handlers still run. | `ErrorType` |
 | 1210 | `BridgeRegionRequestFailed` | Error | `SelectAsync` or `RemoveAsync` of a region collection threw for a page's `select{Name}` or `close{Name}`; the call fails. | `Model`, `Member`, `Route`, `ErrorType` |
@@ -3642,7 +3966,7 @@ trace id; correlate them with the host's spans by time and route.
 as `content12`). A declared failure is an expected outcome, so it is logged at
 Debug, still with its exception; `FailureType` is the failure value's type.
 
-Events 1000-1012, 1018-1026, 1050-1053, 1100-1102, 1130, 1180-1181, 1190-1193 and 1210-1211 use the category `Runic.Application.Views`
+Events 1000-1012, 1018-1026, 1050-1053, 1100-1102, 1130, 1140, 1180-1181, 1190-1193 and 1210-1211 use the category `Runic.Application.Views`
 (`RunicViewsTelemetry.LogCategory`); event 1130 uses the logger of the Window's session; the Hot Reload events 1100-1102 use the
 logger of the window session that owns the Bridge. Events 1110-1114 use
 `Runic.Application.Views.Wpf` and the factory of the host's `Services`; so does event 1130 of

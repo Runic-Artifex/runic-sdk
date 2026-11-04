@@ -70,6 +70,9 @@ The indexed changes have all six members:
 | `replace` | first replaced row | equal to `index` | keys of the old rows | the new rows, as many as `keys` | Replaces `keys.length` rows at `index` with `items`. New rows may have other keys. |
 | `move` | final position after removal | first moved row | keys of the moved rows | `[]` | Removes `keys.length` rows at `oldIndex`, then inserts them at `index`. |
 
+With `field-paths/1`, a page may also write one cell of a row ([field paths](README.md#field-paths)). The producer
+replaces the row with one of the same key, which a frame reports as a `replace` like any other change of the row.
+
 ### `text`
 
 An **append-only text field** is a member whose value is a string (or `null`, when the contract declares it

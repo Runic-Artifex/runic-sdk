@@ -15,6 +15,17 @@ export { describeBridgeError, isBridgeError } from "./describe-error.js";
 export { onBridgeDiagnostic, type BridgeDiagnostic, type BridgeDiagnosticCode, type BridgeDiagnosticListener } from "./diagnostics.js";
 export { bridgeFailure, bridgeSuccess, isBridgeOutcome, matchCase, type BridgeOutcome } from "./outcome.js";
 export type { BridgeValidationMessage, BridgeValidationState } from "./validation.js";
+export {
+  configureTranslatedText,
+  onWindowLocale,
+  resolveText,
+  subscribeText,
+  textLocale,
+  textVersion,
+  windowLocale,
+  type TextReference,
+  type TextTranslations,
+} from "./translated-text.js";
 export { waitForBridge, type RunicBridgeClient, type WaitForBridgeOptions } from "./transport.js";
 export {
   blobsFeature,
@@ -44,6 +55,7 @@ export {
 } from "./controller.js";
 export type { BridgeConnectOptions, FieldBaseline, FieldWriteOptions, FieldWriteReceipt, ViewClient } from "./connection.js";
 export type { BridgeField, BridgeFieldConstraints, BridgeFieldKind } from "./field.js";
+export { fieldErrorsAt, fieldValidatingAt, type BridgeRowFields } from "./field-paths.js";
 export {
   createLatestOperationController,
   createOperationController,
@@ -72,6 +84,7 @@ export type {
 export type { BridgeInteractionContext, InteractionSurface } from "./interactions.js";
 export type { BridgeViewRequestContext, BridgeViewRequestHandler, ViewRequestSurface } from "./requests.js";
 export {
+  commitAllFields,
   createFieldController,
   FieldError,
   type FieldCommit,
@@ -83,6 +96,21 @@ export {
   type FieldState,
 } from "./field-controller.js";
 export { attachField, bindField, commitFields, type BoundField, type FieldElement } from "./dom-field.js";
+export {
+  createFormController,
+  formFieldList,
+  formStateOf,
+  submitFields,
+  type FormController,
+  type FormField,
+  type FormFieldController,
+  type FormFields,
+  type FormFieldState,
+  type FormOptions,
+  type FormSubmitOptions,
+  type FormState,
+  type FormSubmitResult,
+} from "./form-controller.js";
 export {
   createTextFieldController,
   type TextFieldController,

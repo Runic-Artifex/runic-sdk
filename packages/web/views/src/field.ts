@@ -1,5 +1,6 @@
 import type { FieldBaseline, FieldWriteOptions, FieldWriteReceipt } from "./connection.js";
 import type { BridgeValidationState } from "./validation.js";
+import { resolveText, textVersion } from "./translated-text.js";
 
 /**
  * How a field's value is edited, which selects its text form and input wiring:
@@ -66,6 +67,11 @@ export interface BridgeField<TClient, TState, TValue> {
   readonly constraints?: BridgeFieldConstraints;
   /** A `choice` member's values, in declaration order. */
   readonly choices?: readonly TValue[];
+  /**
+   * The field has no setter, only its checked write: a field path below a member (`field-paths/1`), such as
+   * `InvoiceFields.address.street`. A field controller then always writes it checked, as with `checked: true`.
+   */
+  readonly checkedOnly?: boolean;
   /** Reads the member from the View's state. */
   read(state: TState): TValue;
   /** Writes the member with its generated setter (an edit, last writer wins). */
@@ -79,30 +85,56 @@ export interface BridgeField<TClient, TState, TValue> {
    * those of the values below it, such as the members of an object it holds.
    */
   errors?(state: TState): readonly string[];
+  /**
+   * Whether the member's validation is in progress in a state, present when the View has validation: an
+   * asynchronous rule of the member, or of a value below it, is still checking (`validation-pending/1`).
+   */
+  validating?(state: TState): boolean;
 }
 
 const noMessages: readonly string[] = Object.freeze([]);
-const cache = new WeakMap<object, Map<string, { readonly own: readonly string[] | undefined; readonly messages: readonly string[] }>>();
+const cache = new WeakMap<object, Map<string, {
+  readonly own: readonly string[] | undefined; readonly messages: readonly string[]; readonly translated: boolean; readonly version: number;
+}>>();
+
+/**
+ * Whether the validation of the member `name`, or of a value below it, is in progress in `validation` (generated code
+ * calls it for `BridgeField.validating`): a `validation.pending` path starts with `[name]`. `false` for a producer
+ * before 0.16, which reports no pending validation.
+ */
+export function fieldValidating(validation: BridgeValidationState | undefined, name: string): boolean {
+  const pending = validation?.pending;
+  return pending !== undefined && pending.some(path => path.length > 0 && path[0] === name);
+}
 
 /**
  * The validation messages of the member `name` (generated code calls it for `BridgeField.errors`): the member's own
- * messages, `own` (its `{name}Errors`) when the View has them and otherwise the `validation` messages at `[name]`,
- * followed by the `validation` messages whose path continues below `[name]`, in `validation` order. Returns the same
- * array for the same inputs, so a framework can compare it by identity.
+ * messages, `own` (its `{name}Errors`) when the View has them and none of the `validation` messages at `[name]` has
+ * a text reference, and otherwise the `validation` messages at `[name]`,
+ * followed by the `validation` messages whose path continues below `[name]`, in `validation` order. A message with a
+ * text reference is shown in the window's language (`resolveText(error.text, error.message)`, `translation-text/1`).
+ * Returns the same array for the same inputs and language, so a framework can compare it by identity.
  */
 export function fieldErrors(validation: BridgeValidationState | undefined, name: string, own?: readonly string[]): readonly string[] {
   if (validation === undefined) return own ?? noMessages;
   let byName = cache.get(validation);
   const cached = byName?.get(name);
-  if (cached !== undefined && cached.own === own) return cached.messages;
-  const messages: string[] = own === undefined ? [] : [...own];
+  const version = textVersion();
+  if (cached !== undefined && cached.own === own && (!cached.translated || cached.version === version)) return cached.messages;
+  // `{name}Errors` carries plain messages: the `validation` messages at `[name]` stand for them when one has a text.
+  const ownText = own !== undefined && validation.errors.some(error =>
+    error.text !== undefined && error.path.length === 1 && error.path[0] === name);
+  const useOwn = own !== undefined && !ownText;
+  let translated = false;
+  const messages: string[] = useOwn ? [...own] : [];
   for (const error of validation.errors) {
     if (error.path.length === 0 || error.path[0] !== name) continue;
-    if (error.path.length === 1 && own !== undefined) continue;
-    messages.push(error.message);
+    if (error.path.length === 1 && useOwn) continue;
+    if (error.text !== undefined) translated = true;
+    messages.push(error.text === undefined ? error.message : resolveText(error.text, error.message));
   }
-  const result = messages.length === 0 ? noMessages : own !== undefined && messages.length === own.length ? own : Object.freeze(messages);
+  const result = messages.length === 0 ? noMessages : useOwn && messages.length === own.length ? own : Object.freeze(messages);
   if (byName === undefined) cache.set(validation, byName = new Map());
-  byName.set(name, { own, messages: result });
+  byName.set(name, { own, messages: result, translated, version });
   return result;
 }

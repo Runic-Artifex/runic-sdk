@@ -56,6 +56,11 @@ internal static class RunicWireValue
             WriteWithCodec(writer, value, codec);
             return;
         }
+        if (IsTextReference(runtime))
+        {
+            WriteTextReference(writer, value);
+            return;
+        }
         switch (value)
         {
             case JsonElement element: element.WriteTo(writer); return;
@@ -109,6 +114,41 @@ internal static class RunicWireValue
             Write(writer, member, property.PropertyType, property, depth + 1);
         }
         writer.WriteEndObject();
+    }
+
+    // translation-text/1: a RunicTextReference, or a Runic.Translations.TranslationReference, which the Views packages
+    // know by name only.
+    internal static bool IsTextReference(Type type) => type == typeof(RunicTextReference)
+        || type.FullName == "Runic.Translations.TranslationReference" && type.Assembly.GetName().Name == "Runic.Translations";
+
+    private static void WriteTextReference(Utf8JsonWriter writer, object value)
+    {
+        if (value is RunicTextReference reference)
+        {
+            reference.WriteTo(writer);
+            return;
+        }
+        // TranslationReferenceJsonContext.Default.TranslationReference, as the generated Bridge writes it.
+        var context = value.GetType().Assembly.GetType("Runic.Translations.TranslationReferenceJsonContext")
+            ?.GetProperty("Default", BindingFlags.Public | BindingFlags.Static)?.GetValue(null);
+        var typeInfo = context?.GetType().GetProperty("TranslationReference")?.GetValue(context)
+            as System.Text.Json.Serialization.Metadata.JsonTypeInfo
+            ?? throw new NotSupportedException("Runic.Translations has no TranslationReferenceJsonContext.");
+        JsonSerializer.Serialize(writer, value, typeInfo);
+    }
+
+    // Reads a text reference of the type: RunicTextReference.Read, or TranslationReference.Parse(string).
+    internal static object ReadTextReference(JsonElement value, Type type)
+    {
+        if (type == typeof(RunicTextReference)) return RunicTextReference.Read(value);
+        var parse = type.GetMethod("Parse", BindingFlags.Public | BindingFlags.Static, [typeof(string)])
+            ?? throw new NotSupportedException($"{type.FullName} has no Parse(string).");
+        try { return parse.Invoke(null, [value.GetRawText()])!; }
+        catch (TargetInvocationException error) when (error.InnerException is not null)
+        {
+            System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(error.InnerException).Throw();
+            throw;
+        }
     }
 
     // IRunicCodec<T>.Write(writer, value), a static member of the codec type.

@@ -279,8 +279,9 @@ public static class RunicWindowServiceCollectionExtensions
 {
     /// <summary>
     /// Registers <see cref="IRunicWindowService"/> as a singleton, and <see cref="IRunicWindowContext"/>,
-    /// <see cref="IRunicConnections"/>, <see cref="IRunicWindowPresentation"/>, <see cref="IRunicWindowParameter{TParameter}"/> and
-    /// <see cref="IRunicWindowResult{TResult}"/> per scope. Existing registrations are kept.
+    /// <see cref="IRunicWindowLocale"/>, <see cref="IRunicConnections"/>, <see cref="IRunicWindowPresentation"/>,
+    /// <see cref="IRunicWindowParameter{TParameter}"/> and <see cref="IRunicWindowResult{TResult}"/> per scope. Existing
+    /// registrations are kept.
     /// </summary>
     /// <remarks>
     /// The window service follows the host, such as <c>RunicDesktopHost</c> or <c>RunicCsWebUiHost</c>, that most
@@ -299,6 +300,7 @@ public static class RunicWindowServiceCollectionExtensions
         services.TryAddScoped(static _ => new RunicConnections());
         services.TryAddScoped<IRunicConnections>(static provider => provider.GetRequiredService<RunicConnections>());
         services.TryAddScoped<IRunicWindowPresentation>(static provider => provider.GetRequiredService<RunicWindowContext>().Presentation);
+        services.TryAddScoped<IRunicWindowLocale>(static provider => provider.GetRequiredService<RunicWindowContext>());
         services.TryAddScoped(static _ => new RunicWindowParameter());
         services.TryAddScoped(typeof(IRunicWindowParameter<>), typeof(ScopedWindowParameter<>));
         RunicWindowResultRegistration.Add(services);

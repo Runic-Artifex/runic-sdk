@@ -49,7 +49,7 @@ const members: BridgeMemberDecoders<AccountState> = {
   canCancel: (wire: unknown) => bridgeWire.boolean(wire),
   isCancelExecuting: (wire: unknown) => bridgeWire.boolean(wire),
 };
-const bridgeContract = "MultiWindow.AccountViewModel:D8094948CBDEDDADAA5C521635742234E0411B63A78A65B40436EE7355CECCF1";
+const bridgeContract = "MultiWindow.AccountViewModel:D8B0EE2D6A7EEE67F0CC318417F2956798445BC2EFF641B23FEE42A73EE5835A";
 const chooseOperation: BridgeOperationCodec<void> = { decode: value => undefined };
 const cancelOperation: BridgeOperationCodec<void> = { decode: value => undefined };
 

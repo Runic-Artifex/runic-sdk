@@ -3,7 +3,7 @@
 import assert from "node:assert/strict";
 import { readdirSync, readFileSync } from "node:fs";
 import { test } from "node:test";
-import { BridgeError, isBridgeOutcome, onBridgeConnection, onBridgeDiagnostic, type BridgeConnectionState } from "../dist/index.js";
+import { BridgeError, isBridgeOutcome, onBridgeConnection, onBridgeDiagnostic, windowLocale, type BridgeConnectionState } from "../dist/index.js";
 import {
   bridgeOperations, connectView, decodeQueryCollectionState, defineCollection, defineCollections, defineInteractions, defineQueryCollection, defineRequests,
   defineText, regionCollection, type ViewConnection,
@@ -76,6 +76,16 @@ const models: Record<string, ViewModel> = {
   detail: { members: { lastAction: wire.string, canDismiss: wire.boolean }, texts: ["lastAction"] },
   form: { members: { name: wire.string, nameErrors: value => wire.array(value, wire.string), validation: decodeBridgeValidation }, texts: ["name"] },
   wizard: { members: { page: int32, canNext: wire.boolean, canBack: wire.boolean, canPing: wire.boolean }, scopedCommands: ["next", "back"] },
+  invoice: {
+    members: {
+      address: value => wire.object(value, item => ({ street: wire.string(item["street"]), city: wire.string(item["city"]) })),
+      lines: value => wire.array(value, line => wire.object(line, item => ({ id: int32(item["id"]), label: wire.string(item["label"]), quantity: int32(item["quantity"]) }))),
+    },
+    checkedFields: ["address"],
+    collections: defineCollections({ lines: defineCollection(
+      (value: unknown) => wire.object(value, item => ({ id: int32(item["id"]), label: wire.string(item["label"]), quantity: int32(item["quantity"]) })),
+      item => String(item.id)) }),
+  },
   // region-collections/1: the regions present page Views.
   tabs: { members: { documents: value => regionCollection(value, reference), pinned: value => regionCollection(value, reference) } },
   catalog: { members: { rows: decodeQueryCollectionState } },
@@ -321,7 +331,7 @@ async function run(scenario: Scenario): Promise<void> {
       }
       if ("disconnect" in step) { host.disconnect(); await idle(); continue; }
       // The producer's mutations (including presented/1's `renew` and `waitPresented`), its transport and its close.
-      if ("mutate" in step || "delivery" in step || "closeWindow" in step) continue;
+      if ("mutate" in step || "delivery" in step || "closeWindow" in step || "flushFields" in step || "setLocale" in step) continue;
       if ("advance" in step) { await advance(step["advance"]); continue; }
       if ("call" in step) {
         const call = step["call"];
@@ -374,6 +384,7 @@ async function run(scenario: Scenario): Promise<void> {
           case "close": track(call.id, async () => { client(route).dispose(); return null; }); break;
           case "set": track(call.id, async () => { await client(route).set(call.member, call.value); return null; }); break;
           case "write": track(call.id, () => client(route).write(call.member, {
+            ...call.path === undefined ? {} : { path: call.path },
             requestId: call.requestId, expectedVersion: call.baseline.version, expectedValue: call.baseline.value, value: call.value,
           }, value => value)); break;
           case "can": track(call.id, () => client(route).can(call.member, call.input)); break;
@@ -494,6 +505,8 @@ async function run(scenario: Scenario): Promise<void> {
         if (expect["notifications"])
           assert.equal(notifications.get(expect["notifications"].route) ?? 0, expect["notifications"].count, `${scenario.id} ${at}: notifications`);
         if (expect["connection"] !== undefined) assert.equal(connectionState, expect["connection"], `${scenario.id} ${at}: connection`);
+        // translation-text/1: the window's locale the client reports.
+        if ("locale" in expect) assert.equal(windowLocale(), expect["locale"], `${scenario.id} ${at}: locale`);
         if (expect["requests"]) {
           // A handler runs once the page painted the request's revision: wait for it as for a receive step.
           const { route, request, inputs } = expect["requests"];

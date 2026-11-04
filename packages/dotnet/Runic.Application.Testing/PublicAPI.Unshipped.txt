@@ -1,4 +1,10 @@
 #nullable enable
+Runic.Application.Testing.RunicViewState<TModel>.IsValidating<TValue>(System.Linq.Expressions.Expression<System.Func<TModel!, TValue>!>! property) -> bool
+Runic.Application.Testing.RunicViewState<TModel>.PendingValidation.get -> System.Collections.Generic.IReadOnlyList<System.Collections.Generic.IReadOnlyList<object!>!>!
+Runic.Application.Testing.InMemoryBridgeTransport.FieldFlush.get -> System.Func<string!, System.Threading.Tasks.ValueTask>?
+Runic.Application.Testing.InMemoryBridgeTransport.FieldFlush.set -> void
+Runic.Application.Testing.RunicViewDriver<TModel>.WritePath<TValue>(System.Linq.Expressions.Expression<System.Func<TModel!, object?>!>! member, System.Collections.Generic.IReadOnlyList<string!>! path, TValue value, long? expectedVersion = null) -> Runic.Application.Testing.RunicFieldWriteReceipt<TModel!>!
+Runic.Application.Testing.RunicViewDriver<TModel>.WritePathAsync<TValue>(System.Linq.Expressions.Expression<System.Func<TModel!, object?>!>! member, System.Collections.Generic.IReadOnlyList<string!>! path, TValue value, long? expectedVersion = null, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<Runic.Application.Testing.RunicFieldWriteReceipt<TModel!>!>!
 Runic.Application.Testing.RunicTestPresentation<TModel>
 Runic.Application.Testing.RunicTestPresentation<TModel>.ClientKey.get -> string?
 Runic.Application.Testing.RunicTestPresentation<TModel>.ConnectionKey.get -> string?

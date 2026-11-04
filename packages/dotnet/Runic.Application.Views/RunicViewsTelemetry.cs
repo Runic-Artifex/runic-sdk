@@ -307,6 +307,10 @@ internal static partial class ViewsLog
         Message = "The view request {Name} is kept for the next presentation that handles it.")]
     internal static partial void ViewRequestKept(ILogger logger, string name);
 
+    [LoggerMessage(EventId = 1140, EventName = "FieldFlushUnanswered", Level = LogLevel.Debug,
+        Message = "A departure was decided before {Pages} of the window's pages answered the field flush.")]
+    internal static partial void FieldFlushUnanswered(ILogger logger, int pages);
+
     [LoggerMessage(EventId = 1230, EventName = "ConnectionHandlerFailed", Level = LogLevel.Error,
         Message = "A handler of IRunicConnections.{Event} threw {ErrorType}; the other handlers still ran.")]
     internal static partial void ConnectionHandlerFailed(ILogger logger, Exception? exception, string @event, string errorType);
@@ -454,6 +458,17 @@ internal static partial class ViewsLog
     [LoggerMessage(EventId = 1152, EventName = "WindowPageErrorsSuppressed", Level = LogLevel.Warning,
         Message = "A window's pages report more than {Limit} errors a minute across their connections; further reports this minute are counted, and the count is logged with the next report.")]
     internal static partial void WindowPageErrorsSuppressed(ILogger logger, int limit);
+
+    // translation-text/1: the application set the window's locale, which its pages follow (null: they keep their own).
+    [LoggerMessage(EventId = 1170, EventName = "WindowLocaleChanged", Level = LogLevel.Debug,
+        Message = "The window's locale is now {Locale}.")]
+    internal static partial void WindowLocaleChanged(ILogger logger, string? locale);
+
+    // translation-text/1: a validation message's text reference is larger than an error carries; the error shows its
+    // message.
+    [LoggerMessage(EventId = 1171, EventName = "ValidationTextTooLarge", Level = LogLevel.Warning,
+        Message = "The text reference {Key} of a validation message has {Bytes} bytes, more than the {Limit} an error carries, so the page shows the message.")]
+    internal static partial void ValidationTextTooLarge(ILogger logger, string key, int bytes, int limit);
 
     // RunicWindowOptions.Owner that the host cannot apply: the Window opens on its own.
     [LoggerMessage(EventId = 1180, EventName = "WindowOwnerIgnored", Level = LogLevel.Warning,

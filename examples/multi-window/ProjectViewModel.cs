@@ -1,32 +1,59 @@
+using System.Collections;
+using System.ComponentModel;
 using ReactiveUI;
 using ReactiveUI.Primitives;
 using Runic.Application.Views;
 using Runic.Navigation;
 using Runic.Platform;
+using Runic.Translations;
 
 namespace MultiWindow;
 
 // The root ViewModel of each Window. The singletons it takes are shared by every Window; IRunicModelContext is this
 // Window's own. The commands take no scheduler: AddRunicReactiveModelContext delivers their notifications on the
 // model context of the Window that runs them.
-public sealed class ProjectViewModel : ReactiveObject, IDisposable
+//
+// The status line and the title's validation message are text references (Runic.Translations), which the page shows
+// in the Window's language. The ViewModel sets the language with IRunicWindowLocale, from the app's settings.
+public sealed class ProjectViewModel : ReactiveObject, INotifyDataErrorInfo, IDisposable
 {
+    public const int MaximumTitleLength = 40;
+
     private readonly ProjectService _project;
     private readonly IRunicModelContext _context;
     private readonly CancellationTokenSource _stop = new();
     private string _title;
     private string _theme;
     private string _desktopScheme = nameof(DesktopColorScheme.NoPreference);
+    private string _language;
+    private string _draft = "";
+    private TranslationReference _status = ProjectText.Ready();
     private string _account = "Household";
 
     public ProjectViewModel(ProjectService project, SettingsStore settings, IDesktopSettings desktop,
-        IRunicWindowService windows, IRunicWindowContext window, IRunicModelContext context)
+        IRunicWindowService windows, IRunicWindowContext window, IRunicModelContext context, IRunicWindowLocale locale)
     {
         _project = project;
         _context = context;
         _title = project.Title;
         _theme = settings.Load().Theme;
-        RenameCommand = ReactiveCommand.Create<string>(project.Rename);
+        // The Window's pages show text references in this language from their first state on.
+        _language = settings.Load().Language;
+        locale.Locale = _language;
+        RenameCommand = ReactiveCommand.Create<string>(title =>
+        {
+            project.Rename(title);
+            Status = ProjectText.Renamed(title);
+            Draft = "";
+        });
+        // Switches this Window's language and saves it, so new Windows start in it. The page asks for it; the
+        // ViewModel owns it.
+        ChooseLanguageCommand = ReactiveCommand.Create<string>(language =>
+        {
+            settings.Save(settings.Load() with { Language = language });
+            locale.Locale = language;
+            Language = language;
+        });
         // Opens another Window on the same project, in its own scope. The service releases it when it closes.
         NewWindowCommand = ReactiveCommand.CreateFromTask(async token =>
         {
@@ -71,9 +98,43 @@ public sealed class ProjectViewModel : ReactiveObject, IDisposable
     // The desktop's preference, which "system" follows: NoPreference, Light or Dark.
     public string DesktopScheme { get => _desktopScheme; private set => this.RaiseAndSetIfChanged(ref _desktopScheme, value); }
 
+    // The app setting: "en" or "de".
+    public string Language { get => _language; private set => this.RaiseAndSetIfChanged(ref _language, value); }
+
+    // What the last command did, in the Window's language.
+    public TranslationReference Status { get => _status; private set => this.RaiseAndSetIfChanged(ref _status, value); }
+
+    // The title being typed, validated as the user types.
+    public string Draft
+    {
+        get => _draft;
+        set
+        {
+            this.RaiseAndSetIfChanged(ref _draft, value);
+            ErrorsChanged?.Invoke(this, new(nameof(Draft)));
+        }
+    }
+
+    [RunicIgnore]
+    public bool HasErrors => _draft.Length > MaximumTitleLength;
+
+    public event EventHandler<DataErrorsChangedEventArgs>? ErrorsChanged;
+
+    // The message stays the fallback; its text reference shows in the Window's language.
+    public IEnumerable GetErrors(string? propertyName) => propertyName == nameof(Draft) && HasErrors
+        ? new[]
+        {
+            new RunicValidationMessage(ProjectText.TitleTooLong(MaximumTitleLength).FallbackText!, "title-too-long")
+            {
+                Text = ProjectText.Text(ProjectText.TitleTooLong(MaximumTitleLength)),
+            },
+        }
+        : Array.Empty<RunicValidationMessage>();
+
     public ReactiveCommand<string, RxVoid> RenameCommand { get; }
     public ReactiveCommand<RxVoid, RxVoid> NewWindowCommand { get; }
     public ReactiveCommand<string, RxVoid> ChooseThemeCommand { get; }
+    public ReactiveCommand<string, RxVoid> ChooseLanguageCommand { get; }
     public ReactiveCommand<string, RxVoid> OpenDocumentCommand { get; }
     public ReactiveCommand<RxVoid, RxVoid> ChooseAccountCommand { get; }
 

@@ -81,6 +81,10 @@ and severities are open.
 | [`RUNICBRIDGE033`](#runicbridge033) | Warning | Build targets | The .NET SDK or Bun is older than this release supports |
 | [`RUNICBRIDGE034`](#runicbridge034) | Warning | Generator | A `[RunicPresentationScoped]` declaration reaches no Bridge command |
 | [`RUNICBRIDGE035`](#runicbridge035) | Error | Generator | A `ViewRequest` or `ViewQuestion` member is not a get-only property |
+| [`RUNICBRIDGE050`](#runicbridge050) | Error | Generator | A `[RunicRowEditor]` method matches no single keyed collection or has an unsupported signature |
+| [`RUNICBRIDGE051`](#runicbridge051) | Error | Generator | A keyed collection has more than one `[RunicRowEditor]` method |
+| [`RUNICBRIDGE052`](#runicbridge052) | Error | Generator | The rows of a `[RunicRowEditor]` collection cannot be copied with one cell changed |
+| [`RUNICBRIDGE053`](#runicbridge053) | Warning | Generator | An object inside an editable row cannot be copied, so it has no fields below it |
 | [`RUNICBRIDGE060`](#runicbridge060) | Error | Generator | A `RunicQueryCollection` member has an unsupported shape |
 | [`RUNICBRIDGE065`](#runicbridge065) | Error | Generator | A RunicBlob is read from the page: a command input, an interaction result or a checked field |
 | [`RUNICBRIDGE070`](#runicbridge070) | Error | Generator | A `[RunicRegionCollection]` is not on a get-only NavigationSelection property, or its content type is unsupported |
@@ -634,6 +638,56 @@ instance would never reach the page.
 **Fix:** expose the member as a get-only property, such as
 `public ViewRequest<FocusTarget> Focus { get; } = new();`. See
 [View requests](../specs/application/README.md#view-requests).
+
+### RUNICBRIDGE050
+
+An error from the Bridge generator (since 0.16). A `[RunicRowEditor]` method
+must edit exactly one `[RunicCollection]` property of its ViewModel and have the
+shape `void UpdateLine(TKey key, TRow row)`, optionally with a third parameter
+`RunicRowEdit edit`: a public or internal instance method whose first parameter
+is the collection's key type and whose second is its row type. A query
+collection's rows cannot be edited yet. Without a collection name the attribute finds the collection by
+the row type, so two collections of one row type need the name.
+
+**Fix:** name the collection, as in `[RunicRowEditor(nameof(Lines))]`, put the
+attribute on a collection that has `[RunicCollection]`, or change the method's
+parameters and return type. See
+[Editable rows and nested fields](../packages/dotnet/Runic.Application.Views/README.md#editable-rows-and-nested-fields).
+
+### RUNICBRIDGE051
+
+An error from the Bridge generator (since 0.16). Two `[RunicRowEditor]` methods
+edit the same collection, so the Bridge cannot tell which one applies a cell's
+change.
+
+**Fix:** keep one row editor per collection. See
+[Editable rows and nested fields](../packages/dotnet/Runic.Application.Views/README.md#editable-rows-and-nested-fields).
+
+### RUNICBRIDGE052
+
+An error from the Bridge generator (since 0.16). A cell write copies the row with
+the one cell changed and passes the copy to the row editor. The copy must keep
+everything the row holds, also what the page does not see, such as a
+`[RunicIgnore]` database id, and a derived row's own members. The generator
+copies a record or a struct with `with`, and a sealed class with its copy
+constructor, its `Clone()` method, or, when every settable member is on the
+wire, through its codec. A class that is not sealed, or a sealed class with
+settable members the page does not see and no copy constructor or `Clone()`,
+cannot be copied exactly.
+
+**Fix:** make the row type a record, or seal it and add a copy constructor
+(`public InvoiceLine(InvoiceLine other)`) or a `Clone()` method. See
+[Editable rows and nested fields](../packages/dotnet/Runic.Application.Views/README.md#editable-rows-and-nested-fields).
+
+### RUNICBRIDGE053
+
+A warning from the Bridge generator (since 0.16). An object member inside an
+editable row, such as a line's `Product`, cannot be copied exactly for the
+reasons of [`RUNICBRIDGE052`](#runicbridge052), so its members get no fields of
+their own. The member itself is still a field: a write replaces its whole value.
+
+**Fix:** make its type a record, or seal it and add a copy constructor or a
+`Clone()` method, or mark the member `[RunicNoField]`.
 
 ### RUNICBRIDGE060
 

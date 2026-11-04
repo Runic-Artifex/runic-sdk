@@ -50,3 +50,70 @@ public sealed class FormsViewModel : INotifyPropertyChanged
 }
 
 public sealed partial class FormsWindow : RunicWindow<FormsViewModel>;
+
+// C3: a ViewModel whose asynchronous checks report validation in progress, on itself and on a nested DTO.
+public sealed class PendingAddress : IRunicPendingValidation
+{
+    public string Postcode { get; set; } = "";
+    [RunicIgnore]
+    public RunicPendingValidation Pending { get; } = new();
+    IReadOnlyCollection<string> IRunicPendingValidation.PendingMemberPaths => Pending.PendingMemberPaths;
+    event EventHandler? IRunicPendingValidation.PendingChanged { add => Pending.PendingChanged += value; remove => Pending.PendingChanged -= value; }
+}
+
+public sealed class PendingFormViewModel : INotifyPropertyChanged, IRunicPendingValidation
+{
+    public string UserName { get; set; } = "";
+    public PendingAddress Address { get; } = new();
+    [RunicIgnore]
+    public RunicPendingValidation Pending { get; } = new();
+    IReadOnlyCollection<string> IRunicPendingValidation.PendingMemberPaths => Pending.PendingMemberPaths;
+    event EventHandler? IRunicPendingValidation.PendingChanged { add => Pending.PendingChanged += value; remove => Pending.PendingChanged -= value; }
+    public event PropertyChangedEventHandler? PropertyChanged;
+    internal void Raise(string name) => PropertyChanged?.Invoke(this, new(name));
+}
+
+public sealed partial class PendingFormWindow : RunicWindow<PendingFormViewModel>;
+
+// Pending paths below a list, for the limits and the order of validation.pending.
+public sealed class PendingNestedRow { public string Label { get; set; } = ""; }
+
+public sealed class PendingNestedRoot : IRunicPendingValidation
+{
+    public List<PendingNestedRow> Rows { get; } = [.. Enumerable.Range(0, 300).Select(_ => new PendingNestedRow())];
+    public RunicPendingValidation Pending { get; } = new();
+    IReadOnlyCollection<string> IRunicPendingValidation.PendingMemberPaths => Pending.PendingMemberPaths;
+    event EventHandler? IRunicPendingValidation.PendingChanged { add => Pending.PendingChanged += value; remove => Pending.PendingChanged -= value; }
+
+    internal static readonly Runic.Application.Views.Generated.BridgeDataSubscriptionMember[] Metadata =
+    [
+        new("rows", static owner => ((PendingNestedRoot)owner).Rows, propertyName: nameof(Rows),
+            enumerateValidationChildren: static value => Runic.Application.Views.Generated.BridgeValidation.EnumerateIndexed((System.Collections.IEnumerable)value),
+            children: [new("label", static owner => ((PendingNestedRow)owner).Label, propertyName: nameof(PendingNestedRow.Label))]),
+    ];
+}
+
+// A guarded Window whose close guard records the draft it sees (field-flush/1 before the close guard).
+public sealed class GuardedFormViewModel : INotifyPropertyChanged
+{
+    private string _draft = "";
+    public string Draft { get => _draft; set { _draft = value; PropertyChanged?.Invoke(this, new(nameof(Draft))); } }
+    public event PropertyChangedEventHandler? PropertyChanged;
+}
+
+public sealed partial class GuardedFormWindow : RunicWindow<GuardedFormViewModel>
+{
+    public GuardedFormWindow() => GuardClose = true;
+
+    [RunicIgnore]
+    public string? SeenByGuard { get; private set; }
+
+    [RunicIgnore]
+    public bool Allow { get; set; }
+
+    protected override ValueTask<bool> CanCloseAsync(CancellationToken cancellationToken)
+    {
+        SeenByGuard = ViewModel.Draft;
+        return ValueTask.FromResult(Allow);
+    }
+}

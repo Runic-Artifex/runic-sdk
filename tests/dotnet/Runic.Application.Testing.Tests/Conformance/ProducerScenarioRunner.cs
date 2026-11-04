@@ -26,6 +26,8 @@ internal sealed class ProducerScenarioRunner
     private readonly Dictionary<string, string?> _requestRoutes = new(StringComparer.Ordinal);
     // The closes the closeWindow steps started, by id.
     private readonly Dictionary<string, Task<RunicWindowCloseResult>> _closes = new(StringComparer.Ordinal);
+    // The flushes the flushFields steps started, by id (field-flush/1).
+    private readonly Dictionary<string, Task<bool>> _flushes = new(StringComparer.Ordinal);
     private ScenarioConnection? _first;
 
     private ProducerScenarioRunner(ConformanceScenario scenario, ScenarioTransport transport)
@@ -92,6 +94,13 @@ internal sealed class ProducerScenarioRunner
                 if (mutation?["op"]?.GetValue<string>() == "waitPresented") _messages.Id(mutation["id"]!.GetValue<string>(), "wait");
             await window.MutateAsync(mutations, step["units"]?.GetValue<string>() == "each").ConfigureAwait(false);
         }
+        else if (step["flushFields"] is JsonObject flushStep)
+        {
+            var id = flushStep["id"]!.GetValue<string>();
+            _messages.Id(id, "flush");
+            if (_flushes.ContainsKey(id)) throw new ScenarioFailure($"The flush {id} was started before.");
+            _flushes.Add(id, window.FlushFieldsAsync());
+        }
         else if (step["closeWindow"] is JsonObject close)
         {
             var id = close["id"]!.GetValue<string>();
@@ -99,6 +108,8 @@ internal sealed class ProducerScenarioRunner
             if (_closes.ContainsKey(id)) throw new ScenarioFailure($"The close {id} was started before.");
             _closes.Add(id, window.CloseAsync(TimeSpan.FromMilliseconds(close["timeout"]!.GetValue<int>())));
         }
+        // translation-text/1: the window's locale, as WindowContentSession.Locale sets it.
+        else if (step.ContainsKey("setLocale")) BridgeDispatcher.For(_transport).SetLocale(step["setLocale"]?.GetValue<string>());
         else if (step["expect"] is JsonObject expect)
         {
             // The model, waits and closes are the producer's; state, call, operation, diagnostics, notifications and
@@ -106,6 +117,7 @@ internal sealed class ProducerScenarioRunner
             if (expect["model"] is JsonObject model) await ExpectModelAsync(model, window).ConfigureAwait(false);
             if (expect["presented"] is JsonObject presented) await ExpectPresentedAsync(presented, window).ConfigureAwait(false);
             if (expect["closed"] is JsonObject closed) await ExpectClosedAsync(closed).ConfigureAwait(false);
+            if (expect["flushed"] is JsonObject flushed) await ExpectFlushedAsync(flushed).ConfigureAwait(false);
         }
         else if (!step.ContainsKey("call")) throw new ScenarioFailure("The step has no action a producer runner knows.");
     }
@@ -143,6 +155,19 @@ internal sealed class ProducerScenarioRunner
         try { result = await wait.WaitAsync(ReceiveTimeout).ConfigureAwait(false); }
         catch (TimeoutException) { throw new ScenarioFailure($"The wait {id} did not complete within {ReceiveTimeout.TotalSeconds} s."); }
         if (result != expected.GetValue<bool>()) throw new ScenarioFailure($"The wait {id} completed with {result}, expected {expected.GetValue<bool>()}.");
+    }
+
+    // expect.flushed: the flush of a flushFields step completed, and whether every page answered it.
+    private async Task ExpectFlushedAsync(JsonObject flushed)
+    {
+        var id = flushed["id"]!.GetValue<string>();
+        _messages.Id(id, "flush");
+        if (!_flushes.TryGetValue(id, out var flush)) throw new ScenarioFailure($"The flush {id} was not started.");
+        bool answered;
+        try { answered = await flush.WaitAsync(ReceiveTimeout).ConfigureAwait(false); }
+        catch (TimeoutException) { throw new ScenarioFailure($"The flush {id} did not complete within {ReceiveTimeout.TotalSeconds} s."); }
+        if (answered != flushed["answered"]!.GetValue<bool>())
+            throw new ScenarioFailure($"The flush {id} completed with answered {answered}, expected {flushed["answered"]}.");
     }
 
     // expect.closed: the close of a closeWindow step completed, and whether every page acknowledged it.

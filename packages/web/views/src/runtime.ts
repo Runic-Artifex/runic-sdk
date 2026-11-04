@@ -2,22 +2,77 @@
 // every generated module and every copy of this package through `runic.views.generated-client-runtime`. It owns
 // the connection (`hello` per connection, its features, and the requests sent with it), the only `onMessage`
 // listener, which dispatches pushes by kind and route, the page's edit numbers and the reconnect of open routes.
-import { randomId } from "./clock.js";
+import { clock, randomId } from "./clock.js";
 import { emitBridgeDiagnostic, suppressErrorDiagnostic } from "./diagnostics.js";
 import { BridgeError } from "./errors.js";
 import {
-  clientErrorsFeature, invalidResponse, presentationEpochFeature, presentedFeature, queryCollectionsFeature, readPush, viewRequestsFeature, requestSessionFeature, readReply, replyError, type Message, type Push, type PushReading, type Reply,
+  clientErrorsFeature, fieldFlushFeature, fieldPathsFeature, invalidResponse, presentationEpochFeature, presentedFeature, queryCollectionsFeature, readPush,
+  viewRequestsFeature, requestSessionFeature, readReply, replyError, type Message, type Push, type PushReading, type Reply,
 } from "./protocol.js";
 import { hostCallbacks, protocolMismatchError, reportBridgeError, reportProtocolMismatch, type RunicBridgeClient } from "./transport.js";
 import { bridgeProtocol, clientName, runicProducerName, viewsVersion } from "./version.js";
 import { textSpliceFeature } from "./text.js";
+import { translationTextFeature, validationPendingFeature } from "./validation.js";
+import { reportWindowLocale } from "./translated-text.js";
 import { regionCollectionsFeature } from "./regions.js";
 import { reportWindowClosed } from "./connection-state.js";
 import { flushNotifications, nextFrame } from "./notifications.js";
+import { commitAllFields, commitDrafts } from "./field-controller.js";
 import { blobsFeature, readBlobGrant, type BlobGrant } from "./blob-wire.js";
 
 /** The features this runtime implements and lists in `hello` (specs/application/README.md, "Features"). */
-export const clientFeatures: readonly string[] = [textSpliceFeature, presentationEpochFeature, presentedFeature, viewRequestsFeature, requestSessionFeature, regionCollectionsFeature, clientErrorsFeature, queryCollectionsFeature, blobsFeature];
+// How long a window close waits for the page's field drafts to be written, within the host's 5-second limit.
+const closingFlushLimit = 2_000;
+// How long a flush (field-flush/1) waits for the drafts' writes before it answers, within the host's 1-second limit.
+const flushLimit = 800;
+
+/**
+ * Writes the page's field drafts when the user may be about to leave without the page knowing: a keyboard shortcut
+ * (a key with Ctrl, Cmd or Alt that produces no character, seen before the page's own handlers) or the window losing
+ * focus, as when a native menu opens. It helps hosts and pages without field-flush/1 too. Returns the function that removes the listeners.
+ */
+function flushOnDeparture(): () => void {
+  const page = globalThis as { readonly addEventListener?: (type: string, listener: (event: unknown) => void, options?: boolean) => void;
+    readonly removeEventListener?: (type: string, listener: (event: unknown) => void, options?: boolean) => void };
+  if (typeof page.addEventListener !== "function" || typeof page.removeEventListener !== "function") return () => {};
+  const keydown = (event: unknown) => {
+    const key = event as {
+      readonly ctrlKey?: boolean; readonly metaKey?: boolean; readonly altKey?: boolean; readonly key?: unknown;
+      readonly getModifierState?: (modifier: string) => boolean;
+    };
+    if (key.ctrlKey !== true && key.metaKey !== true && key.altKey !== true) return;
+    // Typing, not a shortcut: AltGr (which Windows reports as Ctrl and Alt) and macOS Option produce characters such
+    // as @ € { [ \ | on many layouts, and a key that produces a character without Ctrl or Cmd is text too.
+    if (typeof key.getModifierState === "function" && key.getModifierState("AltGraph")) return;
+    const character = typeof key.key === "string" && [...key.key].length === 1;
+    if (character && (key.metaKey !== true && key.ctrlKey !== true || key.ctrlKey === true && key.altKey === true && key.metaKey !== true)) return;
+    void commitAllFields();
+  };
+  const blur = (event: unknown) => {
+    // The window's own blur, not one of an element inside it.
+    if ((event as { readonly target?: unknown }).target === globalThis) void commitAllFields();
+  };
+  page.addEventListener("keydown", keydown, true);
+  page.addEventListener("blur", blur, true);
+  return () => {
+    page.removeEventListener!("keydown", keydown, true);
+    page.removeEventListener!("blur", blur, true);
+  };
+}
+
+// Resolves when `promise` settles or after `milliseconds`, whichever is first.
+function firstOf(promise: Promise<unknown>, milliseconds: number): Promise<void> {
+  return new Promise(resolve => {
+    const timer = clock.set(resolve, milliseconds);
+    void promise.finally(() => { clock.clear(timer); resolve(); });
+  });
+}
+
+export const clientFeatures: readonly string[] = [
+  textSpliceFeature, presentationEpochFeature, presentedFeature, viewRequestsFeature, requestSessionFeature, regionCollectionsFeature,
+  clientErrorsFeature, queryCollectionsFeature, blobsFeature, validationPendingFeature, fieldFlushFeature, fieldPathsFeature,
+  translationTextFeature,
+];
 
 /** A push handler, registered per push kind and route. */
 export type PushHandler = (push: Push) => void;
@@ -152,10 +207,29 @@ function createRuntime(bridge: RunicBridgeClient): SharedRuntime {
    * presented/1 (specs/application/README.md, "Window close"): the application closes the window. The page delivers what it has, lets one frame
    * render it, acknowledges with `closing-reply` and reports `closed`, which a following drop does not change.
    */
+  /**
+   * field-flush/1 (specs/application/README.md, "Field flush"): the application is about to decide a departure. The
+   * page writes its field drafts, waits for their writes up to `flushLimit`, and answers `flush-reply`.
+   */
+  async function flush(id: string): Promise<void> {
+    if (!features.has(fieldFlushFeature)) return;
+    const current = connection;
+    const drafts = commitDrafts();
+    if (drafts !== undefined) await firstOf(drafts, flushLimit);
+    if (disposed || connection !== current || !connected) return;
+    await runtime.request({ kind: "flush-reply", id }).catch(() => undefined);
+  }
+
   async function closing(): Promise<void> {
     if (!features.has(presentedFeature)) return;
     const current = connection;
     flushNotifications();
+    // Drafts that wait, such as commit: "pause" ones, are written before the close is acknowledged (C2).
+    const drafts = commitDrafts();
+    if (drafts !== undefined) {
+      await firstOf(drafts, closingFlushLimit);
+      flushNotifications();
+    }
     await nextFrame();
     // A new connection is a new window session: its producer did not close it.
     if (disposed || connection !== current) return;
@@ -303,6 +377,9 @@ function createRuntime(bridge: RunicBridgeClient): SharedRuntime {
       stopMessages();
       stopConnection();
       stopClosing();
+      stopFlush();
+      stopFallback();
+      stopLocale();
       connected = false;
       reportWindowClosed(false);
       for (const listener of [...connectionListeners]) {
@@ -313,6 +390,13 @@ function createRuntime(bridge: RunicBridgeClient): SharedRuntime {
   };
 
   const stopClosing = add(windowHandlers, "closing", () => { void closing(); });
+  const stopFlush = add(windowHandlers, "flush", push => { void flush((push as { readonly id: string }).id); });
+  const stopFallback = flushOnDeparture();
+  // translation-text/1: the producer sends `locale` only to connections that list the feature, also right after the
+  // hello, before its reply may have arrived, so it is applied whatever the features read so far.
+  const stopLocale = add(windowHandlers, "locale", push => {
+    reportWindowLocale((push as Extract<Push, { kind: "locale" }>).locale);
+  });
   // A closed window of an earlier Bridge does not close this one.
   reportWindowClosed(false);
   const stopMessages = bridge.onMessage(message => dispatch(message));

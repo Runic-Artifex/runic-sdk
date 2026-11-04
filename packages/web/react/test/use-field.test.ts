@@ -6,6 +6,8 @@ import type { FieldState, FieldWriteOptions, FieldWriteReceipt } from "@runic-ar
 import {
   FieldError,
   useField,
+  useForm,
+  type FormHandle,
   useView,
   type BridgeField,
   type FieldCheckboxProps,
@@ -84,6 +86,23 @@ const change = (value: string) => ({ currentTarget: { value } });
 const settle = () => act(async () => { for (let i = 0; i < 10; i++) await Promise.resolve(); });
 
 describe("useField", () => {
+  test("a field path (checkedOnly) writes with its checked write, without the checked option", async () => {
+    const client = fakeClient({ title: "saved" });
+    let field: FieldHandle<string> | undefined;
+    // As InvoiceFields.lines.at(key).quantity: no setter of its own, only the checked write.
+    const cell = descriptor<"title", string>("title", "text", { checkedOnly: true });
+    function Editor(): ReactNode {
+      field = useField(useView(client), cell);
+      return createElement("input", field.inputProps);
+    }
+    await mount(createElement(Editor));
+    await act(async () => { field!.inputProps.onChange(change("typed")); });
+    expect(client.calls.map(call => call.checked)).toEqual([true]);
+    await act(async () => { client.calls[0]!.resolve({ kind: "applied", snapshot: { value: "typed", version: 2 } }); });
+    await settle();
+    expect(field!).toMatchObject({ value: "typed", editing: false, error: undefined });
+  });
+
   test("a text field in pause mode keeps typing and composition as the draft and writes on blur", async () => {
     const client = fakeClient({ title: "saved" });
     let field: FieldHandle<string> | undefined;
@@ -188,6 +207,59 @@ describe("useField", () => {
     await act(async () => { client.apply("step", 0.5); });
     // Without a draft the text of the state being rendered uses the field's format.
     expect(field!).toMatchObject({ value: 0.5, text: "0,5" });
+  });
+
+  test("useForm: a pause draft makes the form dirty, and submit writes it before the command (C2)", async () => {
+    const client = fakeClient({ title: "Old", step: 1 });
+    let form: FormHandle | undefined;
+    let title: FieldHandle<string> | undefined;
+    function Editor(): ReactNode {
+      const view = useView(client);
+      title = useField(view, Fields.title, { commit: "pause", delay: 60_000 });
+      const step = useField(view, Fields.step);
+      form = useForm({ title, step }, { dirty: false });
+      return createElement("input", { id: "title", ...title.inputProps });
+    }
+    await mount(createElement(Editor));
+    expect(form!).toMatchObject({ dirty: false, pending: false, valid: true, submitting: false });
+    await act(async () => { title!.inputProps.onChange(change("New")); });
+    expect(form!).toMatchObject({ dirty: true, editing: true, pending: true });
+    expect(client.calls).toEqual([]);
+    let result: Promise<unknown> | undefined;
+    const order: string[] = [];
+    await act(async () => { result = form!.submit(() => { order.push(`save after ${client.calls.length}`); return "saved"; }); });
+    expect(form!.submitting).toBe(true);
+    expect(await form!.submit(() => "again")).toEqual({ status: "busy" });
+    expect(client.calls.map(call => call.value)).toEqual(["New"]);
+    await act(async () => { client.calls[0]!.resolve(); });
+    await act(async () => { expect(await result).toEqual({ status: "submitted", result: "saved" }); });
+    expect(order).toEqual(["save after 1"]);
+    await settle();
+    expect(form!).toMatchObject({ dirty: false, submitting: false, pending: false });
+  });
+
+  test("a date field in a locale shows and reads the locale's numeric form and the ISO form (E5)", async () => {
+    const client = fakeClient({ title: "2026-11-03" });
+    let field: FieldHandle<string> | undefined;
+    function Editor(): ReactNode {
+      field = useField(useView(client), descriptor<"title", string>("title", "date"), { locale: "en-US" });
+      return createElement("input", { id: "due", ...field.inputProps });
+    }
+    await mount(createElement(Editor));
+    expect(field!).toMatchObject({ value: "2026-11-03", text: "11/03/2026" });
+    expect(document.querySelector<HTMLInputElement>("#due")!.value).toBe("11/03/2026");
+    await act(async () => { field!.inputProps.onChange(change("12/24/2026")); });
+    expect(client.calls.map(call => call.value)).toEqual(["2026-12-24"]);
+    await act(async () => { client.calls[0]!.resolve(); });
+    await settle();
+    await act(async () => { field!.inputProps.onChange(change("2026-12-25")); });
+    expect(client.calls.map(call => call.value)).toEqual(["2026-12-24", "2026-12-25"]);
+    await act(async () => { client.calls[1]!.resolve(); });
+    await settle();
+    // The text typed still means the value, so it stays, as `1.` does in a number field.
+    expect(field!).toMatchObject({ value: "2026-12-25", text: "2026-12-25" });
+    await act(async () => { client.apply("title", "2027-01-31"); });
+    expect(field!).toMatchObject({ value: "2027-01-31", text: "01/31/2027" });
   });
 
   test("a boolean field binds a checkbox", async () => {

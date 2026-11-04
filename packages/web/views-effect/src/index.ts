@@ -29,6 +29,8 @@ export {
   queryViewportChanges,
   setQuery,
   states,
+  textChanges,
+  texts,
   upload,
   viewportChanges,
   type CommandValue,

@@ -36,6 +36,20 @@ internal sealed class BridgeDispatcher : IBridgeRequestHandler
     internal const string TextSpliceFeature = "text-splice/1";
     internal const string PresentationEpochFeature = "presentation-epoch/1";
     internal const string PresentedFeature = "presented/1";
+    // validation-pending/1: validation may carry pending paths. The producer writes them in the route's state for
+    // every connection (state is one value per route); a client without the feature ignores the member.
+    internal const string ValidationPendingFeature = "validation-pending/1";
+    // field-flush/1: the producer asks the pages to write their field drafts (flush) before a departure is decided.
+    internal const string FieldFlushFeature = "field-flush/1";
+    // field-paths/1: a checked write may name a path below its member: a nested member or a keyed collection's row cell.
+    internal const string FieldPathsFeature = "field-paths/1";
+    // How long a flush waits at most for the pages' flush-reply.
+    internal static readonly TimeSpan FieldFlushLimit = TimeSpan.FromSeconds(1);
+    // translation-text/1: the window's locale, pushed to the connections that use the feature (SetLocale), and the text
+    // of validation errors, which is part of the route's state like pending.
+    internal const string TranslationTextFeature = "translation-text/1";
+    // The longest locale tag the window pushes (BCP 47 tags are far shorter).
+    internal const int MaximumLocaleLength = 64;
     internal const string ViewRequestsFeature = "view-requests/1";
     // Every request names the session of its connection's hello (specs/application/README.md, "Request sessions").
     internal const string RequestSessionFeature = "request-session/1";
@@ -79,7 +93,14 @@ internal sealed class BridgeDispatcher : IBridgeRequestHandler
     private int _connectionsWithPresentationEpoch;
     // The window's close (BeginClosing): the connections whose closing-reply is outstanding, and its completion.
     private int _closingPending;
+    // field-flush/1: the flushes waiting for flush-reply, by id, with the connections still to answer.
+    private readonly Dictionary<string, (TaskCompletionSource Completion, HashSet<string> Waiting)> _flushes = new(StringComparer.Ordinal);
+    private long _nextFlush;
     private TaskCompletionSource? _closing;
+    // translation-text/1: the window's locale, or null when the page keeps its own. Pushes of it are queued under
+    // _localeGate, so a connection that completes its hello while the locale changes receives the last value last.
+    private readonly object _localeGate = new();
+    private string? _locale;
     private int _maximumInputBytes = WindowContentSessionOptions.DefaultMaximumInputBytes;
     private ILogger _logger = TraceFallbackLogger.Instance;
     // client-errors/1: the category of the errors pages report.
@@ -286,6 +307,56 @@ internal sealed class BridgeDispatcher : IBridgeRequestHandler
 
     private static byte[] ClosingPush() => """{"kind":"closing"}"""u8.ToArray();
 
+    // translation-text/1: the window's locale, or null when the page keeps its own.
+    internal string? Locale
+    {
+        get { lock (_localeGate) return _locale; }
+    }
+
+    // Sets the window's locale and pushes it to every connection that uses translation-text/1. False when it did not
+    // change.
+    internal bool SetLocale(string? locale)
+    {
+        if (locale is not null && !IsLocale(locale))
+            throw new ArgumentException(
+                $"'{locale}' is not a locale tag: use 1 to {MaximumLocaleLength} letters, digits and '-', such as \"de\" or \"pt-BR\".",
+                nameof(locale));
+        lock (_localeGate)
+        {
+            if (string.Equals(_locale, locale, StringComparison.Ordinal)) return false;
+            _locale = locale;
+            List<string> targets = [];
+            lock (_gate)
+                foreach (var connection in _connections.Values)
+                    if (connection.HelloCompleted && connection.UsesTranslationText && connection.IsOpen) targets.Add(connection.Key);
+            var push = LocalePush(locale);
+            foreach (var target in targets) BridgeTargetedPushes.For(_transport).Send(target, push);
+        }
+        ViewsLog.WindowLocaleChanged(_logger, locale);
+        return true;
+    }
+
+    // A locale tag: letters, digits and '-', starting with a letter, without an empty subtag.
+    internal static bool IsLocale(string value)
+    {
+        if (value.Length is 0 or > MaximumLocaleLength || !char.IsAsciiLetter(value[0]) || value[^1] == '-') return false;
+        for (var index = 0; index < value.Length; index++)
+        {
+            var character = value[index];
+            if (character == '-' ? value[index - 1] == '-' : !char.IsAsciiLetterOrDigit(character)) return false;
+        }
+        return true;
+    }
+
+    private static byte[] LocalePush(string? locale) => BridgeMessages.Write(writer =>
+    {
+        writer.WriteStartObject();
+        writer.WriteString("kind", "locale");
+        if (locale is null) writer.WriteNull("locale");
+        else writer.WriteString("locale", locale);
+        writer.WriteEndObject();
+    });
+
     // A connection that acknowledged the window's close or closed; the gate is held.
     private void ClosingSettled(BridgeConnection connection)
     {
@@ -471,6 +542,7 @@ internal sealed class BridgeDispatcher : IBridgeRequestHandler
                 if (!SessionMatches(connection, envelope)) return Reply(NoHello(connection, envelope.Kind));
                 if (envelope.Kind == "receive") return Receive(connection, cancellationToken);
                 if (envelope.Kind == "closing-reply") return Reply(ClosingReply(connection));
+                if (envelope.Kind == "flush-reply") return Reply(FlushReply(connection, envelope));
                 if (envelope.Kind == "presented") return Presented(connection, envelope);
                 if (envelope.Kind == "client-error") return Reply(ClientError(connection, envelope));
                 // view-requests/1: a presentation registers its view request handlers only on a connection that uses it.
@@ -526,6 +598,82 @@ internal sealed class BridgeDispatcher : IBridgeRequestHandler
         return BridgeMessages.Ok.ToArray();
     }
 
+    // field-flush/1: pushes flush to every connection that uses the feature and completes when each answered
+    // flush-reply or closed (true), or after FieldFlushLimit (false). A window without such a connection completes at
+    // once with true.
+    internal async Task<bool> FlushFieldsAsync(CancellationToken cancellationToken = default)
+    {
+        string id;
+        Task flushed;
+        List<string> targets = [];
+        lock (_gate)
+        {
+            foreach (var connection in _connections.Values)
+                if (connection.HelloCompleted && connection.UsesFieldFlush && connection.IsOpen) targets.Add(connection.Key);
+            if (targets.Count == 0) return true;
+            id = "flush-" + (++_nextFlush).ToString(System.Globalization.CultureInfo.InvariantCulture);
+            var completion = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            _flushes[id] = (completion, new HashSet<string>(targets, StringComparer.Ordinal));
+            flushed = completion.Task;
+        }
+        var push = System.Text.Encoding.UTF8.GetBytes($$"""{"kind":"flush","id":"{{id}}"}""");
+        foreach (var target in targets) _ = SendFlushAsync(id, target, push);
+        // Real time, whatever the window's TimeProvider: a departure waits for the user's pages, not for a test clock.
+        try
+        {
+            await flushed.WaitAsync(FieldFlushLimit, TimeProvider.System, cancellationToken).ConfigureAwait(false);
+            return true;
+        }
+        catch (TimeoutException)
+        {
+            int unanswered;
+            lock (_gate) unanswered = _flushes.TryGetValue(id, out var flush) ? flush.Waiting.Count : 0;
+            ViewsLog.FieldFlushUnanswered(_logger, unanswered);
+            return false;
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { return false; }
+        finally { lock (_gate) _flushes.Remove(id); }
+    }
+
+    // Sends one connection its flush. A connection the push does not reach cannot answer it: it counts as settled.
+    // Sent directly rather than in the targeted pushes' order: a flush follows no frame.
+    private async Task SendFlushAsync(string id, string connectionKey, byte[] push)
+    {
+        bool sent;
+        try { sent = await SendAsync(connectionKey, push).ConfigureAwait(false); }
+#pragma warning disable CA1031 // A failed send is an unreachable page, not a failed departure.
+        catch (Exception) { sent = false; }
+#pragma warning restore CA1031
+        if (sent) return;
+        lock (_gate)
+            if (_flushes.TryGetValue(id, out var flush)) FlushSettled(flush, connectionKey);
+    }
+
+    // The window stops serving its pages (its session is disposed): flushes in progress complete at once.
+    internal void SettleFlushes()
+    {
+        lock (_gate)
+            foreach (var flush in _flushes.Values) flush.Completion.TrySetResult();
+    }
+
+    // flush-reply (field-flush/1): the page wrote its drafts. An id that no flush waits for answers ok as well.
+    private byte[] FlushReply(BridgeConnection connection, BridgeRequestEnvelope envelope)
+    {
+        if (!connection.UsesFieldFlush)
+            return BridgeMessages.Rejected("invalid-request", "The connection does not use field-flush/1.");
+        if (!envelope.Root.TryGetProperty("id", out var idElement) || idElement.ValueKind != JsonValueKind.String)
+            return BridgeMessages.Rejected("invalid-request", "The flush-reply has no id.");
+        lock (_gate)
+            if (_flushes.TryGetValue(idElement.GetString()!, out var flush)) FlushSettled(flush, connection.Key);
+        return BridgeMessages.Ok.ToArray();
+    }
+
+    // A connection answered a flush or closed; the gate is held.
+    private static void FlushSettled((TaskCompletionSource Completion, HashSet<string> Waiting) flush, string connectionKey)
+    {
+        if (flush.Waiting.Remove(connectionKey) && flush.Waiting.Count == 0) flush.Completion.TrySetResult();
+    }
+
     // client-error (client-errors/1): the page reports an error, which the window logs; the reply is ok also when the
     // connection's limit suppressed it.
     private byte[] ClientError(BridgeConnection connection, BridgeRequestEnvelope envelope)
@@ -579,6 +727,8 @@ internal sealed class BridgeDispatcher : IBridgeRequestHandler
         connection.IsOpen = false;
         if (connection.HelloCompleted && !connection.UsesTextSplice) _connectionsWithoutTextSplice--;
         if (connection.HelloCompleted && connection.UsesPresentationEpoch) _connectionsWithPresentationEpoch--;
+        // field-flush/1: a closed connection cannot answer a flush; it counts as settled.
+        foreach (var flush in _flushes.Values) FlushSettled(flush, connection.Key);
         // A closed connection counts as one that acknowledged the window's close.
         ClosingSettled(connection);
         if (connection.Session is { } session) RetainClosedSession(session);
@@ -699,7 +849,7 @@ internal sealed class BridgeDispatcher : IBridgeRequestHandler
             return false;
         if (!root.TryGetProperty("client", out var client) || client.ValueKind != JsonValueKind.Object
             || !TryReadName(client, "name", 128, out _) || !TryReadName(client, "version", 64, out _)
-            || !TryReadFeatures(root, out _, out _, out _, out _, out _, out _, out _, out _, out _))
+            || !TryReadFeatures(root, out _, out _, out _, out _, out _, out _, out _, out _, out _, out _, out _, out _))
             return false;
         var session = sessionElement.GetString()!;
         lock (_gate)
@@ -737,7 +887,8 @@ internal sealed class BridgeDispatcher : IBridgeRequestHandler
             || !TryReadName(client, "name", 128, out var clientName) || !TryReadName(client, "version", 64, out var clientVersion))
             return BridgeMessages.Rejected("invalid-request", "The hello's client is not {name, version}.", hello: true);
         if (!TryReadFeatures(root, out var usesTextSplice, out var usesPresentationEpoch, out var usesPresented, out var usesViewRequests,
-                out var usesRequestSession, out var usesRegionCollections, out var usesClientErrors, out var usesQueryCollections, out var usesBlobs))
+                out var usesRequestSession, out var usesRegionCollections, out var usesClientErrors, out var usesQueryCollections, out var usesBlobs,
+                out var usesFieldFlush, out var usesFieldPaths, out var usesTranslationText))
             return BridgeMessages.Rejected("invalid-request",
                 $"The hello's features are not an array of at most {MaximumFeatures} strings of at most {MaximumFeatureLength} characters.", hello: true);
         var session = sessionElement.GetString()!;
@@ -761,6 +912,9 @@ internal sealed class BridgeDispatcher : IBridgeRequestHandler
             connection.UsesRegionCollections = usesRegionCollections;
             connection.UsesClientErrors = usesClientErrors;
             connection.UsesQueryCollections = usesQueryCollections;
+            connection.UsesFieldFlush = usesFieldFlush;
+            connection.UsesFieldPaths = usesFieldPaths;
+            connection.UsesTranslationText = usesTranslationText;
             connection.HelloCompleted = true;
             if (!usesTextSplice) _connectionsWithoutTextSplice++;
             if (usesPresentationEpoch) _connectionsWithPresentationEpoch++;
@@ -770,6 +924,11 @@ internal sealed class BridgeDispatcher : IBridgeRequestHandler
         }
         // A page that connects to a closing window is told so, after its hello reply.
         if (closing) BridgeTargetedPushes.For(_transport).Send(connection.Key, ClosingPush());
+        // translation-text/1: a page that connects to a window with a locale is told it, after its hello reply. Under the
+        // locale gate, so a change that raced the hello is queued after this push.
+        if (usesTranslationText)
+            lock (_localeGate)
+                if (_locale is not null) BridgeTargetedPushes.For(_transport).Send(connection.Key, LocalePush(_locale));
         // blobs/1: the connection's upload grant, when the host takes uploads.
         return BridgeMessages.Hello(usesBlobs ? Blobs.Grant(connection.Key) : null);
     }
@@ -777,10 +936,11 @@ internal sealed class BridgeDispatcher : IBridgeRequestHandler
     // The client's features: absent, or an array of strings. A feature this producer does not implement is ignored.
     private static bool TryReadFeatures(JsonElement root, out bool usesTextSplice, out bool usesPresentationEpoch,
         out bool usesPresented, out bool usesViewRequests, out bool usesRequestSession, out bool usesRegionCollections, out bool usesClientErrors,
-        out bool usesQueryCollections, out bool usesBlobs)
+        out bool usesQueryCollections, out bool usesBlobs, out bool usesFieldFlush, out bool usesFieldPaths, out bool usesTranslationText)
     {
         usesRequestSession = false;
         usesTextSplice = usesPresentationEpoch = usesPresented = usesViewRequests = usesRegionCollections = usesClientErrors = usesQueryCollections = usesBlobs = false;
+        usesFieldFlush = usesFieldPaths = usesTranslationText = false;
         if (!root.TryGetProperty("features", out var features)) return true;
         if (features.ValueKind != JsonValueKind.Array || features.GetArrayLength() > MaximumFeatures) return false;
         foreach (var feature in features.EnumerateArray())
@@ -797,6 +957,9 @@ internal sealed class BridgeDispatcher : IBridgeRequestHandler
             else if (name == ClientErrorsFeature) usesClientErrors = true;
             else if (name == QueryCollectionsFeature) usesQueryCollections = true;
             else if (name == BlobsFeature) usesBlobs = true;
+            else if (name == FieldFlushFeature) usesFieldFlush = true;
+            else if (name == FieldPathsFeature) usesFieldPaths = true;
+            else if (name == TranslationTextFeature) usesTranslationText = true;
         }
         return true;
     }
@@ -940,6 +1103,11 @@ internal sealed class BridgeConnection(string key, string clientKey, string? tra
     // Whether the connection uses presentation-epoch/1 and presented/1.
     internal bool UsesPresentationEpoch { get; set; }
     internal bool UsesPresented { get; set; }
+    // Whether the connection uses field-flush/1.
+    internal bool UsesFieldFlush { get; set; }
+    // Whether the connection uses field-paths/1.
+    internal bool UsesFieldPaths { get; set; }
+    internal bool UsesTranslationText { get; set; }
     // Whether the connection uses view-requests/1.
     internal bool UsesViewRequests { get; set; }
     // Whether the connection uses request-session/1: every later request must name Session.

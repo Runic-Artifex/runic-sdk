@@ -6,6 +6,7 @@ import { FieldError } from "./field-error.js";
 import { kindFormatter, kindParser, type FieldTextParser } from "./field-text.js";
 import { disposable } from "./lifetime.js";
 import { reportBridgeError } from "./transport.js";
+import { subscribeText, windowLocale } from "./translated-text.js";
 
 export { FieldError, type FieldErrorKind } from "./field-error.js";
 
@@ -33,6 +34,11 @@ export interface FieldState<TValue> {
   readonly errors: readonly string[];
   /** The producer's field while a checked write's `conflict` keeps the draft; `undefined` otherwise. */
   readonly conflict: FieldBaseline<TValue> | undefined;
+  /**
+   * The member's validation is in progress in the View's state, such as an asynchronous rule that is still checking
+   * (`validating(state)` of the definition, `validation-pending/1`); show "checking…". `false` without one.
+   */
+  readonly validating: boolean;
 }
 
 /** The View a field reads and writes: its latest state and the client to write with. */
@@ -83,13 +89,21 @@ export interface FieldOptions<TValue = any> {
    */
   readonly keepDraftOnError?: boolean;
   /**
-   * The locale of the text of `number`, `decimal` and `bigint` fields, as `Intl.NumberFormat` takes it, such as
-   * `"de-DE"` or `navigator.languages`: the text shows the locale's decimal separator and digits (`1,5`), and reads
-   * them and its group separators (`1.234,5`). Without it the text is the invariant form (`1.5`), which
-   * `<input type="number">` needs. Dates and times always use the ISO forms of `<input type="date">`, `"time"` and
-   * `"datetime-local"`; pass `format` and `parse` to show them otherwise.
+   * The locale of the text of `number`, `decimal`, `bigint`, `date`, `time` and `datetime` fields, as `Intl` takes
+   * it, such as `"de-DE"` or `navigator.languages`. Numbers show the locale's decimal separator and digits (`1,5`),
+   * and read them and its group separators (`1.234,5`). Dates and times show the locale's numeric form in the
+   * Gregorian calendar with a four-digit year and its hour cycle (`23.11.2026, 21:45` in `de`, `11/23/2026, 9:45 PM`
+   * in `en-US`), and read that form and the ISO form (`2026-11-23`, `21:45`).
+   *
+   * Without it, the window's locale when the application sets one (`IRunicWindowLocale`, `translation-text/1`). A
+   * change of the window's locale formats the text again, but not while the field has a draft; the draft keeps the
+   * locale it was typed in, and the text follows once it is written. `null`, or no locale at all, is the invariant
+   * form (`1.5`) and the ISO forms that `<input type="number">`, `"date"`, `"time"` and `"datetime-local"` take,
+   * which the browser shows in its own language: pass `null` for a field bound to one of those inputs (`bindField`
+   * does for them), and use a text input (`inputmode="decimal"` for numbers) for a field that follows the locale.
+   * `format` and `parse` replace the kind's text form in any locale.
    */
-  readonly locale?: string | readonly string[];
+  readonly locale?: string | readonly string[] | null;
   /**
    * The most digits a `number` or `decimal` text may have after the decimal separator; more is an `invalid-text`
    * error. A `decimal` allows at most 28 in any case.
@@ -199,6 +213,54 @@ function sameMessages(left: readonly string[], right: readonly string[]): boolea
 
 function invalid(message: string): FieldError { return new FieldError("invalid-text", message); }
 
+// The page's fields, shared by every copy of this package, so a flush or a window close can write their drafts first.
+// The page holds them weakly: a controller that is dropped without dispose() leaves the set once it is collected.
+interface LiveField { readonly hasDraft: () => boolean; readonly commit: () => Promise<unknown> }
+interface LiveFieldRef { deref(): LiveField | undefined }
+const liveFieldsKey = Symbol.for("runic.views.fields/2");
+function liveFieldRefs(): Set<LiveFieldRef> {
+  const page = globalThis as unknown as Record<symbol, Set<LiveFieldRef> | undefined>;
+  return page[liveFieldsKey] ??= new Set();
+}
+const weakRef = (globalThis as { readonly WeakRef?: new (target: LiveField) => LiveFieldRef }).WeakRef;
+function addLiveField(field: LiveField): LiveFieldRef {
+  const ref = weakRef === undefined ? { deref: () => field } : new weakRef(field);
+  liveFieldRefs().add(ref);
+  return ref;
+}
+function liveFields(): LiveField[] {
+  const refs = liveFieldRefs();
+  const fields: LiveField[] = [];
+  for (const ref of refs) {
+    const field = ref.deref();
+    if (field === undefined) refs.delete(ref);
+    else fields.push(field);
+  }
+  return fields;
+}
+
+/** The number of fields the page holds; for tests. */
+export function liveFieldCount(): number {
+  return liveFields().length;
+}
+
+/**
+ * Commits every field of the page that holds a draft, such as a `commit: "pause"` draft not written yet, and resolves
+ * once their writes settled. The runtime calls it when the application closes the window (`presented/1`), before it
+ * acknowledges the close; call it before a departure that the page does not start itself, such as before a host
+ * command that navigates. It never rejects.
+ */
+export function commitAllFields(): Promise<void> {
+  return commitDrafts() ?? Promise.resolve();
+}
+
+/** Commits the page's fields that hold a draft, or returns `undefined` when none does. */
+export function commitDrafts(): Promise<void> | undefined {
+  const drafts = liveFields().filter(field => field.hasDraft());
+  if (drafts.length === 0) return undefined;
+  return Promise.all(drafts.map(field => field.commit().catch(() => undefined))).then(() => undefined);
+}
+
 /**
  * Creates a {@link FieldController} for a generated {@link BridgeField}, such as `EditorFields.title`, or any
  * definition with `read` and `write`. A `using` declaration disposes it where the engine has `Symbol.dispose`.
@@ -214,7 +276,7 @@ export function createFieldController<TState, TClient, TValue>(
   definition: FieldDefinition<TClient, TState, TValue>,
   options: FieldOptions<TValue> = {},
 ): FieldController<TState, TClient, TValue> & Disposable {
-  const checked = options.checked === true;
+  const checked = options.checked === true || definition.checkedOnly === true;
   if (checked && (typeof definition.checked !== "function" || typeof definition.baseline !== "function"))
     throw new TypeError("A checked field needs the member's checked write and baseline; use a generated field descriptor.");
   const pause = options.commit === "pause";
@@ -227,9 +289,14 @@ export function createFieldController<TState, TClient, TValue>(
   const nullable = definition.nullable === true;
   const scale = options.scale;
   if (scale !== undefined && (!Number.isSafeInteger(scale) || scale < 0)) throw new RangeError("scale must be a non-negative integer.");
+  // The locale of number, date and time texts: the field's own, none for `null`, or the window's, which the field
+  // follows when it has no draft.
+  const fieldLocale = (): string | readonly string[] | undefined =>
+    options.locale === null ? undefined : options.locale ?? windowLocale() ?? undefined;
+  let textLocale = fieldLocale();
   const traits = {
     kind, nullable, integer: definition.integer === true, choices: definition.choices, offset: definition.offset === true,
-    scale, locale: options.locale,
+    scale, get locale() { return textLocale; },
   };
   const kindParse: FieldTextParser<TValue> = options.parse ?? kindParser<TValue>(traits);
   const parse = (text: string): TValue => {
@@ -259,11 +326,19 @@ export function createFieldController<TState, TClient, TValue>(
   // checked: the field's value and version that the next write is checked against.
   let baseline: FieldBaseline<TValue> | undefined;
   let disposed = false;
+  let stopText: (() => void) | undefined;
   // commit() calls waiting for the field's writes.
   let idleWaiters: ((state: FieldState<TValue>) => void)[] = [];
   const empty = (kind === "text" || kind === undefined ? "" : undefined) as TValue;
+  const live: LiveField = {
+    // A draft not sent yet: a pause that has not ended, or a value that waits for the write in flight. A write in
+    // flight is on its way already, and a text that does not parse has nothing to write.
+    hasDraft: () => !composing && (unsent || queued !== undefined),
+    commit: () => controller.commit(),
+  };
+  const liveRef = addLiveField(live);
   let current: FieldState<TValue> = Object.freeze({
-    value: empty, text: "", editing: false, error: undefined, errors: noMessages, conflict: undefined,
+    value: empty, text: "", editing: false, error: undefined, errors: noMessages, conflict: undefined, validating: false,
   });
 
   const viewValue = (): TValue => source === undefined ? empty : definition.read(source.state);
@@ -272,17 +347,28 @@ export function createFieldController<TState, TClient, TValue>(
     if (typedInvalid) return typed;
     try { return same(parse(typed), value) ? typed : format(value); } catch { return format(value); }
   }
+  // Takes the window's locale when it changed and the user is not editing: a draft keeps the locale it was typed in.
+  function followLocale(): void {
+    if (options.locale !== undefined || draft !== undefined || typedInvalid) return;
+    const next = fieldLocale();
+    if (next === textLocale) return;
+    textLocale = next;
+    typed = undefined;
+  }
   function update(notify = true): void {
+    followLocale();
     const value = draft === undefined ? viewValue() : draft.value;
     const errors = definition.errors !== undefined
       ? source === undefined ? noMessages : definition.errors(source.state)
       : receiptErrors;
+    const validating = definition.validating !== undefined && source !== undefined && definition.validating(source.state) === true;
     const next: FieldState<TValue> = {
       value, text: textOf(value), editing: draft !== undefined || typedInvalid, error,
-      errors: sameMessages(errors, current.errors) ? current.errors : errors, conflict,
+      errors: sameMessages(errors, current.errors) ? current.errors : errors, conflict, validating,
     };
     if (Object.is(next.value, current.value) && next.text === current.text && next.editing === current.editing
-      && Object.is(next.error, current.error) && next.errors === current.errors && next.conflict === current.conflict) return;
+      && Object.is(next.error, current.error) && next.errors === current.errors && next.conflict === current.conflict
+      && next.validating === current.validating) return;
     current = Object.freeze(next);
     if (!notify || disposed) return;
     for (const listener of [...listeners]) {
@@ -446,14 +532,19 @@ export function createFieldController<TState, TClient, TValue>(
     update();
   }
 
-  return disposable({
+  const controller: FieldController<TState, TClient, TValue> & Disposable = disposable({
     get current() { return current; },
     field,
     format,
     subscribe(listener: () => void) {
       if (disposed) return () => {};
       listeners.add(listener);
-      return () => { listeners.delete(listener); };
+      // translation-text/1: messages with a text reference follow the window's language while someone listens.
+      stopText ??= subscribeText(() => { if (!disposed) update(); });
+      return () => {
+        listeners.delete(listener);
+        if (listeners.size === 0) { stopText?.(); stopText = undefined; }
+      };
     },
     setSource(next: FieldSource<TState, TClient> | undefined) {
       source = next;
@@ -505,7 +596,10 @@ export function createFieldController<TState, TClient, TValue>(
     dispose() {
       if (disposed) return;
       disposed = true;
+      liveFieldRefs().delete(liveRef);
       listeners.clear();
+      stopText?.();
+      stopText = undefined;
       cancelTimer();
       resolveIdle();
       // The last value the user typed is not lost with the field.
@@ -527,4 +621,5 @@ export function createFieldController<TState, TClient, TValue>(
       else send();
     },
   });
+  return controller;
 }

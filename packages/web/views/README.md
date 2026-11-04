@@ -507,9 +507,9 @@ EditorFields.step;  // { name: "step", kind: "number", integer: true, … }
 | `decimal` | `decimal` | `string`, exact (`"1234.50"`) | as `number`; at most 28 digits after the point |
 | `bigint` | `long`, `ulong`, `BigInteger` | `bigint` | as `number` |
 | `boolean` | `bool` | `boolean` | `true` or `false` (bind a checkbox) |
-| `date` | `DateOnly` | `string` `YYYY-MM-DD` | the same, as `<input type="date">` |
-| `time` | `TimeOnly` | `string` `hh:mm:ss[.f]` | `hh:mm` when the seconds are zero, as `<input type="time">` |
-| `datetime` | `DateTime`, `DateTimeOffset` (`offset: true`) | `string` (`2026-11-03T09:30:00+01:00`) | the page's local date and time, as `<input type="datetime-local">` |
+| `date` | `DateOnly` | `string` `YYYY-MM-DD` | the same, as `<input type="date">`, or in the locale's form (`03.11.2026`) |
+| `time` | `TimeOnly` | `string` `hh:mm:ss[.f]` | `hh:mm` when the seconds are zero, as `<input type="time">`, or in the locale's form (`9:30 PM`) |
+| `datetime` | `DateTime`, `DateTimeOffset` (`offset: true`) | `string` (`2026-11-03T09:30:00+01:00`) | the page's local date and time, as `<input type="datetime-local">`, or in the locale's form |
 | `choice` | enums (`choices` lists the names) | `string` | the name |
 | `value` | objects, lists, unions | the value | none |
 
@@ -571,6 +571,9 @@ save.onclick = async () => { await commitFields(title, body); await editor.save(
 - `error`: why the latest write or text failed: a `BridgeError`, or a `FieldError` (below);
 - `errors`: the member's validation messages (`[]` when valid);
 - `conflict`: the producer's `{value, version}` while a checked write's conflict keeps the draft.
+- `validating`: the member's validation is in progress, such as an asynchronous rule that is still checking: show
+  "checking…" (`validation-pending/1`, a .NET ViewModel with `IRunicPendingValidation`). Generated descriptors of a
+  View with validation have `validating(state)`, which reads `validation.pending`.
 
 `input(value)` takes a value, `inputText(text)` the text of an input, parsed for the field's kind: `-` or `1e` in a
 number field stay the draft with a `FieldError` of kind `invalid-text`, and nothing is written until the text parses.
@@ -605,13 +608,25 @@ Options:
   draft.
 - `locale` (such as `"de-DE"` or `navigator.languages`) shows `number`, `decimal` and `bigint` text with the locale's
   decimal separator and digits (`1,5`) and reads them, with group separators between thousands (`1.234,5`; `1.5` is
-  not 15 in German). Without it the text is the invariant form (`1.5`), which `<input type="number">` needs; use
-  `locale` with `<input inputmode="decimal">`. Text is never grouped while it is edited.
+  not 15 in German). Text is never grouped while it is edited. It shows `date`, `time` and `datetime` text in the
+  locale's numeric form, in the Gregorian calendar with a four-digit year and two-digit days and months
+  (`03.11.2026` in `de`, `11/03/2026` in `en-US`, `2026/11/03` in `ja`), and times in its hour cycle
+  (`21:30`, `9:30 PM`), with seconds when they are not zero. It reads that form in the locale's order of day, month
+  and year, with any of `. / -` or the locale's own separators, a day period (`PM`, or `am`/`pm`) and the locale's
+  digits, and always the ISO form too (`2026-11-03`, `21:30`, `2026-11-03T21:30`). A two-digit year, a time with
+  a day period and an hour above 12, and a date that does not exist are `invalid-text`. A time without a day period
+  is read as 0–23 in every locale.
+- Without `locale`, these fields follow the window's locale when the application sets one (`IRunicWindowLocale`,
+  [Translated text](#translated-text)), and otherwise use the invariant form (`1.5`) and the ISO forms.
+  `<input type="number">`, `"date"`, `"time"` and `"datetime-local"` take only those forms and show them in the
+  browser's language: give a field bound to one of them `locale: null`, which keeps those forms whatever the window's
+  locale (`bindField` does that for such an input), and bind a field that follows the locale to a text input
+  (`<input inputmode="decimal">` for numbers).
 - `scale` limits the digits after the decimal separator of a `number` or `decimal` value: of the number the text
   means, so `1.50e2` has none and `1e-7` has 7. A `decimal` keeps its trailing zeros (`1.50` has 2); a `number` has
   none.
-- `parse(text, previous)` and `format(value)` replace the kind's text form, such as for a percentage or a date shown
-  in the user's locale. A `parse` that throws keeps the text as the draft with an `invalid-text` `FieldError` carrying
+- `parse(text, previous)` and `format(value)` replace the kind's text form, such as for a percentage or a date with
+  the month's name. A `parse` that throws keeps the text as the draft with an `invalid-text` `FieldError` carrying
   the thrown message. The controller's `format(value)` returns the text of a value as the field shows it.
 
 ```ts
@@ -627,6 +642,77 @@ Receipts of checked writes, also when `write` of a text field calls one:
 | `rejected` | The draft stays; `error` is a `FieldError` `rejected` with the setter's message. The next input writes again. |
 | `conflict` | The draft stays; `conflict` and `error.current` are the producer's field, `error` is a `FieldError` `conflict`. Nothing is written until `retry()` writes the draft over the producer's value or `reset()` takes it. A conflict whose incoming value is the value sent is a success. |
 | `committed-with-error` | The value was committed and the draft is dropped; `error` is a `FieldError` `committed-with-error`. |
+
+#### Fields below a member and row cells
+
+With a 0.16 host (`field-paths/1`), `{View}Fields` also describes the members of an object member and the cells of
+the rows of a collection that .NET makes editable (`[RunicRowEditor]`):
+
+```ts
+InvoiceFields.address.street;          // a field of address's street, beside InvoiceFields.address itself
+InvoiceFields.lines.at(line.id).quantity; // a cell: the quantity of the row with that key
+```
+
+They are fields like the others, with every binding: `useField(invoice, InvoiceFields.lines.at(line.id).quantity)`,
+`injectField`, `bindField`, `createFieldController` and forms. `lines.at(key)` returns the same descriptors for the
+same key, so a binding keeps its field across renders, also when the row moves. Each such field:
+
+- has no setter (`checkedOnly`): it always writes with a checked write, based on the state it showed when the draft
+  started, so `checked: true` is not needed;
+- conflicts only when another writer changed the same cell or member meanwhile, not another cell of the row;
+- reads `undefined` once its row is gone, and its write is `rejected`;
+- has the `errors` and `validating` of its validation path, such as `["lines", 2, "quantity"]` for the row's current
+  index, and of the values below it. `fieldErrorsAt(validation, path)` and `fieldValidatingAt(validation, path)` read
+  them for any path.
+
+Against a host without the feature, their writes reject with a `failed` `BridgeError` and send nothing. The mock
+bridge accepts them when a View lists its `fieldPaths` (generated mocks do), and replaces the row unless a `rows`
+editor handles it.
+
+### Forms
+
+`createFormController(fields, options?)` combines field controllers into one state, and its `submit` writes every
+field before it runs a command, so Save never runs before the last keystroke reached .NET:
+
+```ts
+const form = createFormController({ title, body }, { dirty: () => editor.snapshot.isDirty });
+form.current; // { dirty, editing, validating, pending, valid, submitting }
+save.onclick = async () => {
+  const result = await form.submit(() => editor.save());
+  if (result.status === "field-failed") show(result.error);
+};
+```
+
+- `dirty`: the `dirty` option reports unsaved changes (such as the View's `isDirty`, which a .NET `RunicEditSession`
+  computes), or a field holds a draft that is not written yet, such as a `commit: "pause"` draft.
+- `editing`: a field holds a draft. `validating`: a field's validation is in progress. `pending`: either, or a
+  `submit` runs. `valid`: no field has `errors` or an `error`.
+- `submit(command, options?)`: writes a draft that a transport failure kept again (`retry`), commits every field,
+  waits for their writes and runs `command`. It does not run the command when a field's value did not reach the View
+  (`{ status: "field-failed", error }`): a text that does not parse, a `rejected` or `conflict` checked write, or a
+  transport failure of this submit's writes. A `committed-with-error` write reached the View and does not block, and
+  neither does an earlier failure that left no draft. It resolves `{ status: "submitted", result }`; a second
+  `submit` while one runs resolves `{ status: "busy" }`. A command that throws rejects.
+- `waitForValidation: true` (or a number of milliseconds; `true` is 10 seconds) waits until no field is `validating`
+  before the command runs, and resolves `{ status: "validating" }` without running it when a check still runs then.
+  By default `submit` does not wait; .NET validates in any case.
+- `commit()` writes every field; `reset()` resets every field.
+
+React, Vue and Svelte have `useForm(fields, options?)` and Angular `injectForm(fields, options?)` over their field
+handles. `commitAllFields()` writes every draft of the page that has not been sent, such as a `commit: "pause"` draft.
+
+A departure guard in .NET reads the ViewModel, which does not include a draft the page has not written. The page
+writes its drafts before each kind of departure:
+
+| Departure | Drafts are written |
+| --- | --- |
+| A command the page sends through `submit` | before the command (`submit` commits every field first) |
+| A navigation or close that .NET starts (a menu, a shortcut, the model, `RequestCloseAsync`, the close button of a window with `GuardClose`) | before the guards are asked: the host pushes `flush` (`field-flush/1`, a 0.16 host and page) and waits up to 1 second for the page's `flush-reply` |
+| A key with Ctrl, Cmd or Alt that types no character (not AltGr or macOS Option typing `@`, `€`, `{`), and the window losing focus (a native menu opens) | at once, also with hosts and pages without `field-flush/1` |
+| The application closes the window | before `closing-reply` (`presented/1`), within 2 seconds; this is after the close was decided, so it reaches the model, not a close guard |
+
+A page that starts a departure with a plain command (not `submit`) calls `await commitAllFields()` first. Fields
+are held weakly: a controller that a page drops without `dispose()` stops being written once it is collected.
 
 `createTextFieldController({ read, write, … })` is the string case for a hand-written `read` and `write`, such as a
 command; `injectTextField` and `useTextField` wrap it.
@@ -1331,6 +1417,48 @@ forwards them to its DevTools dock during development. A call of a released
 View is expected around every navigation, so its `released` rejection reaches
 the caller but is not reported as a diagnostic; `onBridgeConnection` reports a
 lost host.
+
+## Translated text
+
+Text that a ViewModel produces as a Runic Translations text reference, such as a
+status line (a `TextReference` member) or a validation error's `text`, shows in
+the window's language (`translation-text/1`). Connect the page's Translations
+runtime once; the window's locale, which the application sets with
+`IRunicWindowLocale`, is then passed to its `setLocale`:
+
+```ts
+import { configureTranslatedText, resolveText, subscribeText } from "@runic-artifex/views";
+import { m } from "virtual:runic-translations/app/messages";
+import { configureLocaleResolver, createLocaleSource } from "virtual:runic-translations/app/runtime";
+import { resolveTextReference } from "virtual:runic-translations/app/transport";
+
+const locale = createLocaleSource({ initialLocale: navigator.language });
+configureLocaleResolver(locale.getLocale);
+configureTranslatedText({
+  ...locale,
+  resolve: (reference, language) => resolveTextReference(reference, m, { locale: language }).text,
+});
+
+status.textContent = resolveText(editor.snapshot.status);
+subscribeText(() => { status.textContent = resolveText(editor.snapshot.status); });
+```
+
+`resolveText(value, fallback)` formats a reference in the window's language, or
+shows its `fallbackText`, then `fallback`, then its key; a string shows as it
+is. For a validation error: `resolveText(error.text, error.message)`. Field
+errors already show translated messages and update on a language switch,
+and number, date and time fields without their own `locale` read and show their
+text in the window's locale, except while the user edits a draft; the wire value
+stays the invariant or ISO form. Bind such a field to a text input, or give it
+`locale: null` for `<input type="number">` or `type="date"`. A language switch on the
+page calls the application's command; a locale the page sets itself is set back
+by the next `locale` push. Under server rendering, configure the runtime in the
+browser only, or resolve with the request's locale.
+`windowLocale()` and `onWindowLocale` read the window's locale. The framework
+packages wrap this as `useText` (React, Vue, Svelte), `injectText` and the
+`runicText` pipe (Angular) and `texts` (Effect). The mock bridge's
+`setWindowLocale(locale)` pushes a locale in page tests. See
+[Translated text](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Application.Views/README.md#translated-text) for the .NET side.
 
 ## Connection state
 

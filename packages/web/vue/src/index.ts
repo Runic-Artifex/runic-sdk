@@ -7,6 +7,7 @@ import {
   toValue,
   watch,
   type Component,
+  type ComputedRef,
   type HTMLAttributes,
   type MaybeRefOrGetter,
   type Ref,
@@ -22,6 +23,10 @@ import {
   createTextFieldController,
   createViewController,
   onBridgeConnection,
+  onWindowLocale,
+  resolveText,
+  subscribeText,
+  windowLocale,
   type BridgeConnectionOptions,
   type BridgeConnectionState,
   type BridgeField,
@@ -37,6 +42,7 @@ import {
   type OperationControllerOptions,
   type OperationState,
   type PageReference,
+  type TextReference,
   regionEntries,
   type RegionCollection,
   type RegionEntry,
@@ -467,6 +473,8 @@ export interface FieldHandle<TValue> {
   readonly errors: readonly string[];
   /** The producer's field while a checked write's `conflict` keeps the draft; `undefined` otherwise. */
   readonly conflict: FieldBaseline<TValue> | undefined;
+  /** The member's validation is in progress, such as an asynchronous rule that is still checking: show "checking…". */
+  readonly validating: boolean;
   /** The user changed the value. */
   input(value: TValue): void;
   /**
@@ -534,6 +542,7 @@ export function useField<TClient extends ViewClient, TValue>(
     error: computed(() => current.value.error),
     errors: computed(() => current.value.errors),
     conflict: computed(() => current.value.conflict),
+    validating: computed(() => current.value.validating),
     input: (value: TValue) => controller.input(value),
     commit: () => controller.commit(),
     retry: () => controller.retry(),
@@ -564,7 +573,43 @@ export function useBridgeConnection(options: BridgeConnectionOptions = {}): Brid
   return { state };
 }
 
+/**
+ * A text reference that a ViewModel produced, such as a status line or a validation message's `text`, in the window's
+ * language (`resolveText`), as a computed ref that follows a language switch until the effect scope stops. `source` and
+ * `fallback` may be refs or getters: `useText(() => view.state.value?.status)`. A string shows as it is; `null` and
+ * `undefined` show `fallback`. Configure the page's Translations runtime once with `configureTranslatedText`; without
+ * one, a reference shows its fallback text.
+ *
+ * ```vue
+ * const status = useText(() => view.state.value?.status);
+ * <p>{{ status }}</p>
+ * ```
+ */
+export function useText(
+  source: MaybeRefOrGetter<TextReference | string | null | undefined>,
+  fallback?: MaybeRefOrGetter<string | undefined>,
+): ComputedRef<string> {
+  const version = shallowRef(0);
+  releaseWithScope("useText", subscribeText(() => { version.value++; }));
+  return computed(() => {
+    void version.value;
+    return resolveText(toValue(source), toValue(fallback));
+  });
+}
+
+/** The window's locale that the application set, or `null` while it sets none, as a ref, until the effect scope stops. */
+export function useWindowLocale(): Readonly<Ref<string | null>> {
+  const locale = shallowRef<string | null>(windowLocale());
+  releaseWithScope("useWindowLocale", onWindowLocale(next => { locale.value = next; }));
+  return locale;
+}
+
 export { useCollectionViewport, type CollectionViewportHandle } from "./viewport.js";
+export { useForm, type FormFieldHandle, type FormHandle, type UseFormOptions } from "./form.js";
+export { commitAllFields, type FormState, type FormSubmitOptions, type FormSubmitResult } from "@runic-artifex/views";
+export {
+  configureTranslatedText, resolveText, windowLocale, type TextReference, type TextTranslations,
+} from "@runic-artifex/views";
 export { useQueryCollection, type QueryCollectionHandle } from "./query.js";
 export { onBridgeConnection, type BridgeConnectionOptions, type BridgeConnectionState } from "@runic-artifex/views";
 // blobs/1: uploads from the page and the blob values of state.

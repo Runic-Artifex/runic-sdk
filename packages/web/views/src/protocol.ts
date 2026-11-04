@@ -25,6 +25,10 @@ export const clientErrorsFeature = "client-errors/1";
  * for its own range (`query-rows`), changes its query (`query-set`) and finds a key's position (`query-index`).
  */
 export const queryCollectionsFeature = "query-collections/1";
+/** `field-flush/1` (specs/application/README.md, "Field flush"): `flush` asks the page to write its field drafts before a departure is decided. */
+export const fieldFlushFeature = "field-flush/1";
+/** `field-paths/1` (specs/application/README.md, "Field paths"): a checked write names a path below its member. */
+export const fieldPathsFeature = "field-paths/1";
 
 /** A reply as the runtime reads it. Members beyond `ok`, `error`, `revision` and `released` depend on the request. */
 export type Reply = Message & {
@@ -63,7 +67,11 @@ export type Push =
   /** presented/1: report `presented` once the page painted `route` at `revision` or later. */
   | Message & { readonly kind: "present"; readonly route: string; readonly revision: number }
   /** presented/1: the application closes the window; the only push without a route, for window-level handlers. */
-  | Message & { readonly kind: "closing"; readonly route?: undefined };
+  | Message & { readonly kind: "closing"; readonly route?: undefined }
+  /** field-flush/1: write the page's field drafts, then answer `flush-reply` with `id`; a window-level push. */
+  | Message & { readonly kind: "flush"; readonly id: string; readonly route?: undefined }
+  /** translation-text/1: the window's locale, or null when the application sets none; a window-level push. */
+  | Message & { readonly kind: "locale"; readonly route?: undefined; readonly locale: string | null };
 
 /** The kinds of {@link Push}; a client ignores other kinds. */
 export type PushKind = Push["kind"];
@@ -141,6 +149,7 @@ const replyMembers: Readonly<Record<string, (reply: Message) => boolean>> = {
   "menu-bar-unwatch": () => true,
   presented: () => true,
   "closing-reply": () => true,
+  "flush-reply": () => true,
   "query-rows": reply => isSafe(reply["version"]) && (reply["total"] === null || isSafe(reply["total"])) && isSafe(reply["start"])
     && Array.isArray(reply["keys"]) && Array.isArray(reply["rows"]) && reply["keys"].length === reply["rows"].length
     && reply["keys"].every(key => isString(key) && key.length > 0),
@@ -208,7 +217,10 @@ function invalidChanges(changes: unknown): string | undefined {
 }
 
 const pushKinds = new Set(["state", "frame", "failure", "operation", "interaction", "interaction-cancelled", "menu-bar", "present", "closing",
-  "view-request"]);
+  "view-request", "flush", "locale"]);
+
+// A locale tag the producer may push: letters, digits and '-', starting with a letter, at most 64 characters.
+const localeTag = /^[A-Za-z][A-Za-z0-9]*(?:-[A-Za-z0-9]+)*$/;
 
 /** The epoch of a reply or `state` push, when it carries one that is a safe integer (presentation-epoch/1). */
 export function epochOf(message: Message): number | undefined {
@@ -228,6 +240,13 @@ export function readPush(text: unknown): PushReading {
   if (!pushKinds.has(kind)) return { result: "ignored" };
   // `closing` is about the window: a route it names is ignored, like any member a client does not need.
   if (kind === "closing") return { result: "valid", push: push as Push };
+  if (kind === "flush") return isString(push["id"]) ? { result: "valid", push: push as Push } : invalid("The flush push has no id.");
+  if (kind === "locale") {
+    const locale = push["locale"];
+    if (locale !== null && !(isString(locale) && locale.length <= 64 && localeTag.test(locale)))
+      return { result: "invalid", kind, reason: "The locale push has no locale tag." };
+    return { result: "valid", push: { kind: "locale", locale } as Push };
+  }
   if (route === undefined) return invalid("The push has no route.");
   switch (kind) {
     case "state":

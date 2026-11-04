@@ -3,7 +3,7 @@ import { emitBridgeDiagnostic, emitErrorDiagnostic } from "./diagnostics.js";
 import { BridgeError } from "./errors.js";
 import { bridgeFailure, bridgeSuccess, type BridgeOutcome } from "./outcome.js";
 import {
-  epochOf, isObject, presentationEpochFeature, presentedFeature, queryCollectionsFeature, replyError, viewRequestsFeature, type Change, type Message, type Push, type Reply,
+  epochOf, fieldPathsFeature, isObject, presentationEpochFeature, presentedFeature, queryCollectionsFeature, replyError, viewRequestsFeature, type Change, type Message, type Push, type Reply,
 } from "./protocol.js";
 import { currentRuntime, errorMessage, sharedRuntimeFor, type SharedRuntime } from "./runtime.js";
 import { reportBridgeError, waitForBridge } from "./transport.js";
@@ -114,6 +114,11 @@ export interface ViewConnectOptions<TState> extends BridgeConnectOptions {
 
 /** A checked write's request members, with the values already encoded as the field's wire type. */
 export interface BridgeFieldWriteRequest {
+  /**
+   * A field path below the member (`field-paths/1`): a row key and cell names, or member names. A write with a path
+   * needs the feature; without it the call rejects with a `failed` BridgeError and sends nothing.
+   */
+  readonly path?: readonly string[];
   readonly requestId: string;
   readonly expectedVersion: number;
   readonly expectedValue: unknown;
@@ -159,6 +164,8 @@ export interface ViewConnection<TState> extends ViewClient<TState> {
   write<T>(member: string, request: BridgeFieldWriteRequest, decode: (value: unknown) => T): Promise<FieldWriteReceipt<T>>;
   /** The value and version of a checked field in the producer's state, which a `write` call is based on. */
   fieldBaseline(field: string): FieldBaseline<unknown>;
+  /** The version a field path write is based on (`field-paths/1`): the route's revision. */
+  fieldPathVersion(): number;
   /** Starts `member` as an operation with the id `operation`. */
   start<TResult, TFailure = never>(member: string, operation: string, input: unknown,
     codec: BridgeOperationCodec<TResult, TFailure>): Promise<BridgeOperationRuntimeHandle<TResult, TFailure>>;
@@ -995,13 +1002,16 @@ async function connectRoute<TState>(options: ViewConnectOptions<TState>): Promis
       return reply["value"] as boolean;
     }),
     write: <T>(member: string, write: BridgeFieldWriteRequest, decode: (value: unknown) => T) => observed(route, async (): Promise<FieldWriteReceipt<T>> => {
-      const identity = { kind: "write", route, member, requestId: write.requestId, expectedVersion: write.expectedVersion } as const;
+      if (write.path !== undefined && runtime.features?.has(fieldPathsFeature) !== true)
+        throw new BridgeError("failed", `The .NET host does not accept writes below ${member} (field-paths/1); use the Runic packages of one release.`, { route });
+      const identity = { kind: "write", route, member, ...write.path === undefined ? {} : { path: write.path },
+        requestId: write.requestId, expectedVersion: write.expectedVersion } as const;
       const full = { ...identity, expectedValue: write.expectedValue, value: write.value };
       // text-splice/1 (README "Text splices in write"): a checked text member's write sends a splice of expectedValue
       // when it keeps at least 64 code units of it.
       const { expectedValue, value } = write;
       let splice: Readonly<Record<string, unknown>> | undefined;
-      if (typeof expectedValue === "string" && typeof value === "string" && runtime.features?.has(textSpliceFeature) === true
+      if (write.path === undefined && typeof expectedValue === "string" && typeof value === "string" && runtime.features?.has(textSpliceFeature) === true
         && entry.texts.has(member) && entry.checkedFields.includes(member)) {
         const single = singleSplice(expectedValue, value);
         if (expectedValue.length - single.delete >= minimumKept) splice = { length: expectedValue.length, ...single };
@@ -1037,6 +1047,11 @@ async function connectRoute<TState>(options: ViewConnectOptions<TState>): Promis
       if (!entry.checkedFields.includes(field)) throw new BridgeError("failed", "The requested checked field is unavailable.", { route });
       if (version === undefined) throw new BridgeError("failed", "The checked field baseline is unavailable for this connection.", { route });
       return { value: entry.state[field], version };
+    },
+    fieldPathVersion() {
+      if (!live() || entry.state === undefined || entry.revision === undefined)
+        throw runtime.connected ? new BridgeError("released", "This View was released.", { route }) : new BridgeError("disconnected", "The Bridge is disconnected.", { route });
+      return entry.revision;
     },
     start: (member, operation, input, codec) => observed(route, () => {
       if (operation.length === 0) throw new RangeError("An operation id is required.");

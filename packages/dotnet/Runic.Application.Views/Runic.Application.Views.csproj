@@ -19,6 +19,7 @@
          share its reply envelopes; packing pins the exact version (eng/build/README.md). -->
     <InternalsVisibleTo Include="Runic.Application.Views.Desktop" />
     <InternalsVisibleTo Include="Runic.Application.Views.CsWebUi" />
+    <!-- The test host binds IRunicWindowLocale of the window scope to its session, as OpenWindowAsync does. -->
     <!-- The test host serves a window's blobs and simulated uploads (blobs/1, BridgeBlobs). -->
     <!-- RunicTestWindowPresentation is delivered through the same RunicWindowPresentation as a host's. -->
     <InternalsVisibleTo Include="Runic.Application.Testing" />

@@ -202,6 +202,34 @@ or text failed (a `BridgeError` or a `FieldError`, whose `kind` is `rejected`, `
 [field controller](https://github.com/Runic-Artifex/runic-sdk/tree/main/packages/web/views#fields) for the receipts
 and text forms.
 
+#### Row cells and nested members
+
+Since 0.16, `InvoiceFields.address.street` and `InvoiceFields.lines.at(line.id).quantity` are fields too
+(`field-paths/1`): a member of an object member, and a cell of a row that .NET edits with `[RunicRowEditor]`. Bind
+each cell in the row's component; `at(key)` returns the same descriptor for the same key, so the field survives
+re-renders and moves:
+
+```tsx
+function LineRow({ invoice, line }: { invoice: InvoiceView; line: InvoiceLine }) {
+  const quantity = useField(invoice, InvoiceFields.lines.at(line.id).quantity, { commit: "pause" });
+  return <td><input {...quantity.inputProps} />{quantity.conflict && <button onClick={quantity.retry}>Keep mine</button>}</td>;
+}
+```
+
+Such a field always writes checked, conflicts only when another writer changed the same cell, and shows the messages
+.NET reports at the cell's validation path. See [Fields below a member and row cells](../views/README.md#fields-below-a-member-and-row-cells).
+
+### Forms: `useForm(fields, options?)`
+
+One state over a component's field handles, and a `submit` that writes every field before its command
+(`createFormController` in `@runic-artifex/views`). `dirty` counts drafts not written yet and the `dirty` option, such
+as the View's `isDirty`; `pending` is true while a draft, a check (`validating`) or a submit runs.
+
+```tsx
+const form = useForm({ title, step }, { dirty: editor.state?.isDirty });
+<button disabled={!form.valid || form.submitting} onClick={() => form.submit(() => editor.client!.save())}>Save</button>
+```
+
 ### Text inputs: `useTextField(view, read, write, options?)`
 
 Binds a controlled text input to a member through the framework-neutral
@@ -552,6 +580,23 @@ With Radix (`@radix-ui/react-menubar`) the open menu is the root's controlled
 `<Menubar.Menu value={menu.key}>`, and `<Menubar.Item onSelect={() => menuBar.invoke(item)}>`.
 Check items are `Menubar.CheckboxItem checked`, radio groups
 `Menubar.RadioGroup value` with `Menubar.RadioItem`.
+
+## `useText(value, fallback?)`
+
+Shows a text reference that a ViewModel produced, such as a status line or a
+validation error's `text`, in the window's language, and renders again when the
+language changes. A string shows as it is; `null` and `undefined` show
+`fallback`. Connect the page's Translations runtime once with
+`configureTranslatedText` ([Translated text](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Application.Views/README.md#translated-text)).
+`useWindowLocale()` reads the window's locale.
+
+```tsx
+const status = useText(view.state?.status);
+<p>{status}</p>
+function ErrorLine({ error }: { error: BridgeValidationMessage }) {
+  return <li>{useText(error.text, error.message)}</li>;
+}
+```
 
 ## Errors
 

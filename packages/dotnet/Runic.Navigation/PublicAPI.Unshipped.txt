@@ -1,1 +1,15 @@
 #nullable enable
+Runic.Navigation.RunicEditSession<T>
+Runic.Navigation.RunicEditSession<T>.Accept(T baseline) -> void
+Runic.Navigation.RunicEditSession<T>.Accept() -> void
+Runic.Navigation.RunicEditSession<T>.Baseline.get -> T
+Runic.Navigation.RunicEditSession<T>.Current.get -> T
+Runic.Navigation.RunicEditSession<T>.Dispose() -> void
+Runic.Navigation.RunicEditSession<T>.IsDirty.get -> bool
+Runic.Navigation.RunicEditSession<T>.PropertyChanged -> System.ComponentModel.PropertyChangedEventHandler?
+Runic.Navigation.RunicEditSession<T>.Refresh() -> void
+Runic.Navigation.RunicEditSession<T>.Revert() -> void
+Runic.Navigation.RunicEditSession<T>.RunicEditSession(System.ComponentModel.INotifyPropertyChanged? owner, System.Func<T>! capture, System.Action<T>! restore, System.Collections.Generic.IEqualityComparer<T>? comparer = null) -> void
+Runic.Navigation.RunicDraftFlush
+static Runic.Navigation.RunicDraftFlush.FlushAsync(Runic.Navigation.IRunicModelContext! context, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask
+static Runic.Navigation.RunicDraftFlush.Register(Runic.Navigation.IRunicModelContext! context, System.Func<System.Threading.CancellationToken, System.Threading.Tasks.ValueTask>! flush) -> System.IDisposable!

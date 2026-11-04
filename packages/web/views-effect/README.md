@@ -190,6 +190,14 @@ stream receives it as an ordinary state; the stream does not fail. Read
 failures of that re-read are reported through `onBridgeDiagnostic` from
 `@runic-artifex/views`.
 
+### Translated text
+
+`texts(value, fallback?)` is a stream of a text reference's text in the window's
+language: the text now, then the text after each language switch.
+`textChanges()` emits on each switch. Connect the page's Translations runtime
+once with `configureTranslatedText` from `@runic-artifex/views`
+([Translated text](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Application.Views/README.md#translated-text)).
+
 ### View requests
 
 `client.requests.<name>.handle(handler)` of a generated client registers the
@@ -281,6 +289,12 @@ A program that needs services runs through your runtime:
 `createEffectAction(program, { runFork: runtime.runFork })`, with `runtime` a
 `ManagedRuntime`. Helpers based on `effect/reactivity` atoms will follow when
 that module is stable.
+
+Fields and forms need no Effect wrapper: use `createFieldController` and `createFormController` from
+`@runic-artifex/views`, and run a form's `submit` inside an action, such as
+`createEffectAction(() => Effect.promise(() => form.submit(() => editor.save())))`.
+The descriptors of row cells and nested members (`InvoiceFields.lines.at(key).quantity`, `InvoiceFields.address.street`,
+`field-paths/1`) work with `createFieldController` the same way.
 
 ## Testing
 

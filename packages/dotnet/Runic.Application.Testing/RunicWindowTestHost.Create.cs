@@ -161,6 +161,15 @@ public static class RunicWindowTestHost
         // A root provider that validates scopes refuses the scoped service; such services have no window scope to bind.
         try { (services.GetService(typeof(RunicConnections)) as RunicConnections)?.Bind(host.Content); }
         catch (InvalidOperationException) { }
+        // IRunicWindowLocale of the window's scope sets the window's locale, as in a Window that OpenWindowAsync opened.
+        WindowLocale(services)?.AttachContent(host.Content);
         return host;
+    }
+
+    // The scope's window context, when the services register it. A root provider that validates scopes refuses it.
+    private static RunicWindowContext? WindowLocale(IServiceProvider services)
+    {
+        try { return services.GetService<IRunicWindowLocale>() as RunicWindowContext; }
+        catch (InvalidOperationException) { return null; }
     }
 }

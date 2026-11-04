@@ -220,6 +220,11 @@ reply both list the same string. Features are negotiated per connection, and aga
   encoding. `epoch` in `state` ([presentation epochs](#presentation-epochs)) is the only such member. A second
   exception: a client that implements [`request-session/1`](#request-sessions) sends `session` with every request,
   also before the `hello`'s reply tells it whether the feature is in use; a producer without the feature ignores it.
+- **Members of state values.** A member that a feature adds to a value of the route's state is part of that value
+  whatever the connections' features: the state is one value per route, which the producer compares across
+  publications. A reader without the feature ignores it as a member its type does not define
+  ([values](values.md#composite-values)). `pending` and the errors' `text` in [`validation`](#validation) are the only
+  such members.
 - A feature never changes the meaning of a message of the base protocol, so a client and a producer of one protocol
   version always connect, whatever features they implement.
 
@@ -234,6 +239,10 @@ reply both list the same string. Features are negotiated per connection, and aga
 | `client-errors/1` | The page reports its uncaught errors, which the producer logs: [page errors](#page-errors) | 0.16 |
 | `query-collections/1` | Each presentation reads the rows of a query collection for its own range, changes its query and finds a key: [query collections](#query-collections) | 0.16 |
 | `blobs/1` | Binary content at host URLs, and files the page uploads over HTTP: [blobs and uploads](#blobs-and-uploads) | 0.16 |
+| `validation-pending/1` | `validation` reports the paths whose validation is in progress: [`pending`](#pending) | 0.16 |
+| `field-flush/1` | The producer asks the pages to write their field drafts before a departure is decided: [field flush](#field-flush) | 0.16 |
+| `field-paths/1` | A checked write names a path below its member, such as a member of an object or a cell of a keyed collection's row: [field paths](#field-paths) | 0.16 |
+| `translation-text/1` | The window's locale, and the [`text`](#text) of validation errors: [translated text](#translated-text) | 0.16 |
 
 ### Request sessions
 
@@ -543,6 +552,8 @@ A checked field accepts writes that are checked against the value and version th
 - The reply carries `revision` like a setter's. A value that does not decode is `rejected` with `invalid-input`.
 - On a connection that uses `text-splice/1`, a `write` of a checked field that is a
   [text member](state-changes.md#text-members) may carry `splice` instead of `expectedValue` and `value` (below).
+- On a connection that uses `field-paths/1`, a `write` may carry `path`: it writes the value at that path below the
+  member ([field paths](#field-paths)).
 
 ### Text splices in `write`
 
@@ -588,6 +599,82 @@ In every other case it sends `expectedValue` and `value`. When a splice is answe
 same write with `expectedValue` and `value` and the same `requestId`, once; the write's call settles with that request.
 A retry of a write repeats the form the client sent last.
 
+### Field paths
+
+With the feature `field-paths/1`, a checked write may name a **path** below its member: a member of an object that a
+settable member holds, or a cell of a row of a keyed collection ([state changes](state-changes.md#keyed-collections)).
+Each such path is a **field path** of the contract, which the generated code declares; a client knows them from its
+generated code.
+
+```json
+{"kind":"write","route":"invoice","member":"lines","path":["7","quantity"],"requestId":"w-3","expectedVersion":41,"expectedValue":2,"value":3}
+{"ok":true,"revision":44,"receipt":{"kind":"applied","snapshot":{"value":3,"version":44}}}
+{"kind":"write","route":"invoice","member":"address","path":["street"],"requestId":"w-4","expectedVersion":44,"expectedValue":"","value":"Main Street 1"}
+```
+
+| Member | Contract |
+| --- | --- |
+| `path` | 1 to 64 nonempty strings of at most 2,048 code units. Below a keyed collection: the row's [key](state-changes.md#keyed-collections) (its normal form), then the member names of the cell in the row. Below another member: the member names in its object. |
+| `expectedVersion` | The version of the field path that the write is based on (below). |
+| `expectedValue`, `value` | The value at the path that the write is based on, and the new value, encoded as that value's type. |
+
+**Versions.** A field path's version is the revision of the route's last publication that changed the value at the
+path, or 0 when no publication changed it since the route's first state. A path's version is therefore never above
+the route's revision, and a client that shows the route's state at revision R bases a write of any field path on
+version R: the path did not change after R exactly when its version is at most R. A cell has its own version, so a
+change of one cell of a row does not conflict with a write of another cell. A row that is removed and added again,
+also within one publication, and an object member that becomes `null` and an object again, start at the revision
+that added them. A move changes no cell.
+
+**Row conflicts.** The application may check the rows of a collection as a whole instead (the .NET
+`[RunicRowEditor(Conflicts = RunicRowConflicts.Row)]`): a write of any cell of a row is then based on the row's
+version, the revision of the last publication that changed anything in the row, so a cell that another writer left
+alone conflicts too when they changed the row meanwhile. The client sends the same request either way.
+
+**Meaning.** A write with `path` is the checked write of the value at the path. When the field path's version is at
+most `expectedVersion` and its current value is [canonically equal](values.md#canonical-equality) to `expectedValue`,
+the producer copies the member's value (the object, or the row) with the value at the path replaced by `value`,
+decoded as that value's type, and applies the copy: an object member through its setter, a row through the View's
+row editor, which replaces the row with the same key. The copy keeps everything the producer holds that the wire
+does not carry, such as a member the page does not see; a producer that cannot copy a value exactly declares no field
+paths below it. The receipts are those of a checked write, with these differences:
+
+- `snapshot` and `incoming` carry the value at the path, and their `version` is the reply's `revision`, at which the
+  route's state shows that value; it is the version of the client's next write of the path.
+- `applied` carries no `validation`: the page reads the path's messages from `validation`, whose paths name rows by
+  their index ([validation](#validation)).
+- When no row has the key, or an object on the path is `null`, the receipt is `rejected`. So it is when the row editor
+  removed the row, or the setter cleared the object: there is no value at the path to report.
+- When the setter or row editor fails, the receipt is `rejected` when the object or row is unchanged, and
+  `committed-with-error`, with the value at the path, when it changed before the failure.
+- A reused or expired `requestId` of a write whose row is gone is `rejected`, since `incoming` would have no value.
+
+**Producer.** In this order:
+
+1. A `write` with `path` and `splice`, or with a `path` that is not an array of the segments above, is `rejected` with
+   `invalid-request`.
+2. A `write` with `path` on a connection that does not use `field-paths/1`, or whose `path` is not a field path of the
+   member, is `rejected` with `invalid-request`. A row's key member is not a field path.
+3. A retained `requestId` answers with the original receipt when the retry repeats `path`, `expectedVersion`,
+   `expectedValue` and `value`, canonically equal to the original's, and with `conflict` otherwise, as any `write`
+   (`rejected` when the row is gone).
+4. No row has the key, or an object on the path is `null`: `rejected`.
+5. The field path's version (the row's, with row conflicts) is above `expectedVersion`, or its value is not
+   canonically equal to `expectedValue`: `conflict`, with the value at the path in `incoming`.
+6. A `value` with which the member's value does not decode is `rejected` with `invalid-input`, and no receipt is
+   retained.
+7. Otherwise the producer applies the value and retains the receipt.
+
+A producer keeps, for each route and field path whose member or row it publishes, the revision of the last publication
+that changed it, and a digest of the value it published, to compare the next publication with. A frame's indexed
+changes carry the rows that changed, so a publication compares only those; a `set` of the collection and a full state
+compare every row.
+
+**Client.** A client that uses `field-paths/1` writes a field path with `path`, `expectedVersion` the route's revision
+when the draft started (or the version of the last receipt), and `expectedValue` the value at the path in that state.
+It finds a cell's row by its key, also after the row moved. Without the feature, its field paths have no write: a call
+rejects without a request.
+
 ## Validation
 
 A View whose model validates has the state member `validation`. It is derived: the producer writes it from the
@@ -630,6 +717,54 @@ each value member `name`, the state member `{name}Errors`.
   segments per path and at most 2,048 UTF-16 code units per message, code, severity and string segment, cutting the
   value at that length. When it leaves anything out or cuts anything, `truncated` is true. An object reached again
   inside its own path (a cycle) is not visited again and does not set `truncated`.
+
+### `pending`
+
+With the feature `validation-pending/1`, `validation` may have a member `pending`: the paths whose validation is in
+progress, such as an asynchronous rule that asks a server whether a name is taken. A page shows them as "checking…".
+
+```json
+{"hasErrors":false,"truncated":false,"errors":[],"pending":[["user-name"],["items",0,"label"]]}
+```
+
+- **Presence.** `pending` is present exactly when at least one path is pending, so a View with no validation in
+  progress has the same `validation` as without the feature. It is part of the `validation` value on every
+  connection ([members of state values](#features)), and a change of it is published as a `set` of `validation`,
+  like a change of `errors`.
+- **Paths.** Paths follow the rules of error paths above: a model reports a pending member path relative to its
+  object, and an unresolvable one reports at the object's path. Each path appears once.
+- **Order.** Paths are sorted segment by segment: a list index before a string segment, indexes by value, strings by
+  UTF-16 code units, and a path before the paths that continue it. So a publication in which the same checks run
+  writes the same `pending`, whatever order the model reports them in.
+- **Limits.** At most 256 paths, 64 segments per path and 2,048 UTF-16 code units per string segment. When the
+  producer leaves out or cuts a path, `validation` has `"pendingTruncated": true`, which is otherwise absent;
+  `truncated` describes `errors` only.
+- **Independent of errors.** A pending path does not set `hasErrors` and is not an error. A member can be pending
+  and have errors at once, such as the result of the previous check while the next one runs.
+- **Client.** A client that uses the feature reads `pending` as a list of paths; a member's field is validating
+  while a path starts with the member's wire name. A client without it ignores the member.
+
+### `text`
+
+With the feature `translation-text/1`, an error may have a member `text`: its message as a
+[text reference](values.md#text-reference) of Runic Translations, which the page shows in the window's language
+([translated text](#translated-text)). `message` stays the error's text and is the fallback where the page cannot
+translate the reference.
+
+```json
+{"path":["title"],"message":"Title must be at most 80 characters.","code":"title-too-long",
+ "text":{"version":2,"catalog":"notes","contractFingerprint":"sha256:…","key":"title_too_long",
+ "arguments":{"max":{"type":"int64","value":"80"}},"fallbackText":"Title must be at most 80 characters."}}
+```
+
+- **Presence.** `text` is present when the model gives the error a reference, and absent otherwise. It is part of the
+  `validation` value on every connection ([members of state values](#features)); a client without the feature
+  ignores it.
+- **Limits.** A reference of more than 16 KiB of UTF-8 is left out of its error, which keeps its message; the
+  producer logs it. `truncated` is not set: the error is complete.
+- **Client.** A client that reads an error with a `text` that is not a text reference ignores the member and shows
+  the message.
+- `{name}Errors` keeps the messages.
 
 ### `{name}Errors`
 
@@ -1050,10 +1185,86 @@ push or wait again, and reports the first close's result.
 **`closing-reply`.** The reply is `{ok:true}`, also without a pending `closing`: the request is idempotent. On a
 connection that does not use the feature it is `rejected` with `invalid-request`.
 
-**Client.** On `closing`, a client that uses the feature delivers its pending notifications, waits one animation frame
-(or the fallback of step 3 above), sends `closing-reply`, and reports that the producer closed the window. When the
-connection then drops, it keeps reporting that the producer closed the window, not a reconnecting or lost connection.
-A new connection reports a connected client again.
+**Client.** On `closing`, a client that uses the feature delivers its pending notifications, writes the field drafts
+it has not sent yet (such as an input that waits for a pause before it is written) and waits for those writes for at
+most 2 seconds, waits one animation frame (or the fallback of step 3 above), sends `closing-reply`, and reports that
+the producer closed the window. `closing` comes after the close was decided, so these writes reach the model but no
+departure guard: a guard that must see them needs [field flush](#field-flush). When the connection then drops, it
+keeps reporting that the producer closed the window, not a reconnecting or lost connection. A new connection reports a
+connected client again.
+
+### Field flush
+
+With the feature `field-flush/1`, the producer asks the pages to write their field drafts before it decides a
+departure, so a departure guard that reads the model (such as whether it has unsaved changes) sees the user's last
+input, also when the page has not sent it yet.
+
+```json
+{"kind":"flush","id":"flush-7"}
+{"kind":"flush-reply","id":"flush-7"}
+{"ok":true}
+```
+
+**When.** Before the producer asks a departure guard of a departure that the page did not start through a request it
+sends after its drafts: a navigation the model starts (from a menu, a shortcut or a command), a close the application
+requests (`RequestCloseAsync`), and the window's close button when the window guards its close. The producer pushes
+`flush` with an `id` of its choice, unique in the window, to each connection that uses the feature, and waits until
+each of them replied `flush-reply` with that `id` or closed, for at most 1 second. A connection without the feature
+gets no push, and a flush without such connections completes at once. Then the producer asks the guards, on the
+model's state at that point, whether or not every page answered.
+
+**`flush-reply`.** `{kind:"flush-reply", id}`; the reply is `{ok:true}`, also for an `id` no flush waits for. On a
+connection that does not use the feature it is `rejected` with `invalid-request`.
+
+**Client.** On `flush`, a client that uses the feature writes every field draft it has not sent yet, waits for those
+writes for at most 800 milliseconds, and sends `flush-reply` with the push's `id`. A client also writes its drafts on
+its own when the user may be about to leave without a request of its own: on a key with Ctrl, Cmd or Alt before the
+page handles it, unless the key types a character (AltGr, which Windows reports as Ctrl and Alt, and macOS Option
+type characters such as `@`, `€` or `{` on many layouts), and when the page's window loses focus, as when a native
+menu opens.
+
+## Translated text
+
+Text that the application produces, such as a status line or a validation message, can be a
+[text reference](values.md#text-reference) of Runic Translations instead of a formatted sentence: a member, field,
+command result or other value of the type `text-reference`, and the [`text`](#text) of a validation error. The page
+formats each reference in the window's language with the Translations runtime of the page. When the language changes,
+the page formats the references it has again; no message crosses the wire per string.
+
+The **window's locale** is the language the application chose for the window, or none. With the feature
+`translation-text/1`, the producer pushes it:
+
+```json
+{"kind":"locale","locale":"de"}
+```
+
+| Message | Members | Meaning |
+| --- | --- | --- |
+| push `locale` | `locale` | To each connection that uses the feature: the window's locale, a language tag of 1 to 64 ASCII letters, digits and `-`, starting with a letter and without an empty subtag (`de`, `pt-BR`), or `null` when the application sets none. A window-level push without a `route`. |
+
+- **When.** The producer pushes `locale` to a connection after its `hello` succeeded, when the window has a locale,
+  and to every connection that uses the feature each time the application changes it, also to `null`. The last
+  push a connection receives is the window's locale. A producer may send the first push before the `hello` reply
+  reaches the page.
+- **The application owns it.** Only the application sets the window's locale; a page that offers a language switch
+  asks the application, for example with a command. Every page of the window therefore shows one language, and the
+  application can keep the choice with its settings. A page that changes its runtime's locale itself is set back by
+  the next push, at the latest after a reconnect.
+- **Number, date and time fields.** A client's number, date or time field without a locale of its own reads and
+  writes its text in the window's locale, and formats it again when the locale changes, except while the user edits a
+  draft. Date and time texts also accept the ISO form. The values on the wire keep their forms (`values.md`); only
+  the text a field shows and reads changes.
+- **Client.** A client that uses the feature applies every `locale` push: it sets the locale of the page's
+  Translations runtime, also when the push repeats the last value, since the page may have changed its runtime's
+  locale itself meanwhile, and formats references in it. It reports a change of the window's locale only when the
+  value differs. It applies a `locale` push
+  whatever the features it has read so far, since the push may come before the `hello` reply. On `null` it keeps
+  the language it shows. Without a window locale, the page formats references in its own language. A `locale` push
+  whose `locale` is neither a tag nor `null` is invalid and ignored. A client without the feature ignores the push
+  kind.
+- **Formatting.** A reference the page's Translations runtime cannot format, such as one of another catalog or
+  whose arguments no longer match, shows its `fallbackText`; the page chooses what to show without one. The text is
+  plain: a page shows it as text, never as markup.
 
 ## Page errors
 
@@ -1371,7 +1582,7 @@ Requests:
 | `snapshot` | `route` | `revision`, `epoch?` (`presentation-epoch/1`), `state`, `fields?` |
 | `close` | `route`, `presentation` | `presentation` |
 | `set` | `route`, `member`, `value` or `splice` (`text-splice/1`), `edit` | `revision`, `superseded?` |
-| `write` | `route`, `member`, `requestId`, `expectedVersion`, `expectedValue` and `value`, or `splice` (`text-splice/1`) | `revision`, `receipt` |
+| `write` | `route`, `member`, `path?` (`field-paths/1`), `requestId`, `expectedVersion`, `expectedValue` and `value`, or `splice` (`text-splice/1`) | `revision`, `receipt` |
 | `command` | `route`, `member`, `input?`, `epoch?` (`presentation-epoch/1`) | `revision`, `superseded?` |
 | `can` | `route`, `member`, `input?` | `value` |
 | `region` (`region-collections/1`) | `route`, `member`, `action`, `key` | `revision`, `outcome` |
@@ -1387,6 +1598,7 @@ Requests:
 | `query-set` (`query-collections/1`) | `route`, `member`, `query` | `revision` |
 | `query-index` (`query-collections/1`) | `route`, `member`, `key` | `version`, `index` |
 | `closing-reply` (`presented/1`) | none | none |
+| `flush-reply` (`field-flush/1`) | `id` | none |
 | `client-error` (`client-errors/1`) | `source`, `message`, `name?`, `stack?`, `url?`, `route?`, `dropped?` | none |
 | `receive` | none | `messages` |
 
@@ -1406,6 +1618,8 @@ Pushes:
 | `view-request` (`view-requests/1`) | `route`, `presentation`, `revision`, `name`, `contract`, `input` | the connection of each selected presentation |
 | `present` (`presented/1`) | `route`, `revision` | while a wait is pending, each connection that uses `presented/1` and has an open presentation of the route |
 | `closing` (`presented/1`) | none | each connection that uses `presented/1` |
+| `flush` (`field-flush/1`) | `id` | each connection that uses `field-flush/1`, before a departure is decided ([field flush](#field-flush)) |
+| `locale` (`translation-text/1`) | `locale` | each connection that uses `translation-text/1`, after its `hello` and on each change |
 
 ## Blobs and uploads
 
@@ -1492,4 +1706,4 @@ sides must implement are [features](#features), listed in `hello`.
 | 1 | 0.6 | Named routes with a snapshot and a state callback per route; collection delta frames were added in 0.7 without a version change. |
 | 2 | 0.9 | The `domain-failed` error and operation status kind. |
 | 3 | 0.10 | A released View answers `released` instead of `disconnected`; the reply error `reason`; a strict version check ([protocol 3](https://github.com/Runic-Artifex/runic-sdk/blob/v0.12.1/specs/application/README.md)). |
-| 4 | 0.13 | One message channel with `hello`; `set` changes in frames; replies by revision; edit numbers; `open`/`close`; operation `watch` and `progress`; RFC 8785 canonical form; value types named by value; ISO 8601 durations; a language-neutral specification and conformance corpus. 0.14 added, without a version change, `hello` `features` with the first feature `text-splice/1`, and requests held behind the `hello`. 0.15 added, without a version change, the features `presentation-epoch/1` and `presented/1`, and 0.16 the features `view-requests/1`, `region-collections/1` and `query-collections/1`. |
+| 4 | 0.13 | One message channel with `hello`; `set` changes in frames; replies by revision; edit numbers; `open`/`close`; operation `watch` and `progress`; RFC 8785 canonical form; value types named by value; ISO 8601 durations; a language-neutral specification and conformance corpus. 0.14 added, without a version change, `hello` `features` with the first feature `text-splice/1`, and requests held behind the `hello`. 0.15 added, without a version change, the features `presentation-epoch/1` and `presented/1`, and 0.16 the features `view-requests/1`, `region-collections/1`, `query-collections/1`, `validation-pending/1` and `translation-text/1`, and the value type `text-reference`. |

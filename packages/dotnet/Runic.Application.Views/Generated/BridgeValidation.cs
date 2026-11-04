@@ -49,6 +49,8 @@ public static class BridgeValidation
     private const int MaximumErrors = 256;
     private const int MaximumPathSegments = 64;
     private const int MaximumStringLength = 2_048;
+    // translation-text/1: a larger text reference is left out of its error, which then shows its message.
+    private const int MaximumTextBytes = 16 * 1_024;
 
     /// <summary>Writes <c>{ hasErrors, truncated, errors }</c> for <paramref name="root"/>.</summary>
     public static void Write(Utf8JsonWriter writer, object root,
@@ -91,6 +93,7 @@ public static class BridgeValidation
             errors.WriteStartArray();
             collector = new Collector(errors, readObjectErrors);
             collector.Visit(root, members);
+            collector.ResolvePending();
             hasErrors = collector.HasErrors;
             errors.WriteEndArray();
         }
@@ -100,7 +103,103 @@ public static class BridgeValidation
         writer.WriteBoolean("truncated", collector.Truncated);
         writer.WritePropertyName("errors");
         writer.WriteRawValue(bytes.WrittenSpan, skipInputValidation: true);
+        // validation-pending/1: the paths whose validation is in progress, only when there are any, so a View
+        // without pending validation writes the same validation as before.
+        if (collector.Pending.Count > 0)
+        {
+            // Sorted, so a publication that changes no path writes the same value whatever order the model reports.
+            collector.Pending.Sort(ComparePaths);
+            writer.WriteStartArray("pending");
+            foreach (var path in collector.Pending)
+            {
+                writer.WriteStartArray();
+                foreach (var segment in path)
+                {
+                    if (segment is int index) writer.WriteNumberValue(index);
+                    else writer.WriteStringValue((string)segment);
+                }
+                writer.WriteEndArray();
+            }
+            writer.WriteEndArray();
+        }
+        // Pending paths left out or cut have their own flag: truncated describes errors.
+        if (collector.PendingTruncated) writer.WriteBoolean("pendingTruncated", true);
         writer.WriteEndObject();
+    }
+
+    // Paths segment by segment: list indexes before member names and keys, indexes by value, names ordinally; a path
+    // before the paths that continue it.
+    private static int ComparePaths(object[] left, object[] right)
+    {
+        for (var index = 0; index < Math.Min(left.Length, right.Length); index++)
+        {
+            var order = (left[index], right[index]) switch
+            {
+                (int a, int b) => a.CompareTo(b),
+                (int, _) => -1,
+                (_, int) => 1,
+                (var a, var b) => string.CompareOrdinal((string)a, (string)b),
+            };
+            if (order != 0) return order;
+        }
+        return left.Length.CompareTo(right.Length);
+    }
+
+    /// <summary>
+    /// Calls <paramref name="changed"/> whenever the validation in progress of <paramref name="owner"/> changes, until
+    /// the result is disposed, or returns <see langword="null"/> when it is no <see cref="IRunicPendingValidation"/>.
+    /// </summary>
+    internal static IDisposable? ObservePending(object owner, Action changed)
+    {
+        ArgumentNullException.ThrowIfNull(owner);
+        ArgumentNullException.ThrowIfNull(changed);
+        if (owner is not IRunicPendingValidation pending) return null;
+        return new PendingObserver(pending, changed);
+    }
+
+    /// <summary>
+    /// Observes an object's validation with <paramref name="observe"/> (a ReactiveUI.Validation context, from generated
+    /// code) and its validation in progress (<see cref="IRunicPendingValidation"/>).
+    /// </summary>
+    internal static Func<object, Action, IDisposable?> ObserveWithPending(Func<object, Action, IDisposable?>? observe) =>
+        (owner, changed) =>
+        {
+            var validation = observe?.Invoke(owner, changed);
+            var pending = ObservePending(owner, changed);
+            return validation is null ? pending : pending is null ? validation : new Both(validation, pending);
+        };
+
+    private sealed class PendingObserver : IDisposable
+    {
+        private readonly IRunicPendingValidation _source;
+        private readonly Action _changed;
+        private int _disposed;
+
+        internal PendingObserver(IRunicPendingValidation source, Action changed)
+        {
+            _source = source;
+            _changed = changed;
+            source.PendingChanged += OnChanged;
+        }
+
+        private void OnChanged(object? sender, EventArgs e)
+        {
+            if (Volatile.Read(ref _disposed) == 0) _changed();
+        }
+
+        public void Dispose()
+        {
+            if (Interlocked.Exchange(ref _disposed, 1) == 0) _source.PendingChanged -= OnChanged;
+        }
+    }
+
+    private sealed class Both(IDisposable first, IDisposable second) : IDisposable
+    {
+        public void Dispose()
+        {
+            first.Dispose();
+            second.Dispose();
+        }
     }
 
     /// <summary>
@@ -206,8 +305,28 @@ public static class BridgeValidation
         private int _errors;
         private bool _hasErrors;
         private bool _truncated;
+        private readonly List<object[]> _pending = [];
+        private readonly HashSet<string> _pendingKeys = new(StringComparer.Ordinal);
+        private bool _pendingTruncated;
+        private readonly List<(string[] Paths, Node Node)> _pendingRequests = [];
+
+        // validation-pending/1: the pending paths of the objects visited, in visit order. Each path resolves with a
+        // traversal budget of its own; a limit it reaches is pending's truncation, not the errors'.
+        internal void ResolvePending()
+        {
+            var truncated = _truncated;
+            var entries = _entries;
+            foreach (var (paths, node) in _pendingRequests)
+            {
+                AddPending(paths, node);
+                if (_pending.Count >= MaximumErrors && _pendingTruncated) break;
+            }
+            (_truncated, _entries) = (truncated, entries);
+        }
 
         internal bool HasErrors => _hasErrors;
+        internal List<object[]> Pending => _pending;
+        internal bool PendingTruncated => _pendingTruncated;
         internal bool Truncated => _truncated;
 
         internal void Visit(object? owner, IReadOnlyList<BridgeDataSubscriptionMember> members)
@@ -237,6 +356,12 @@ public static class BridgeValidation
                     AddErrors(objectErrors ?? errors.GetErrors(null), nodePath, node, skipPresentedMembers: true);
                 }
                 else AddErrors(objectErrors, nodePath, node, skipPresentedMembers: false);
+                // translation-text/1: GetErrors(member) of an object the reader handles, such as a
+                // ReactiveValidationObject, reports plain messages; the reader's entries carry their text.
+                var memberTexts = objectErrors is null ? null : MemberTexts(objectErrors);
+                // Resolved after the traversal, so they do not use the errors' traversal budget.
+                if (owner is IRunicPendingValidation pending && pending.PendingMemberPaths is { Count: > 0 } paths)
+                    _pendingRequests.Add((paths.ToArray(), node));
 
                 foreach (var member in members)
                 {
@@ -249,7 +374,8 @@ public static class BridgeValidation
                         if (owner is INotifyDataErrorInfo propertyErrors)
                         {
                             if (readsHasErrors) _hasErrors |= propertyErrors.HasErrors;
-                            AddErrors(propertyErrors.GetErrors(member.PropertyName), _path, node, skipPresentedMembers: false);
+                            AddErrors(propertyErrors.GetErrors(member.PropertyName), _path, node, skipPresentedMembers: false,
+                                memberTexts, member.PropertyName);
                         }
 
                         var value = member.Read(owner);
@@ -288,8 +414,24 @@ public static class BridgeValidation
             if (member.Children.Count > 0) Visit(value, member.Children);
         }
 
+        // The text references of the reader's entries that name members, by member and message. GetErrors(member) of
+        // such an object returns only strings, so a message is matched to its entry by its text: two entries of one
+        // member with the same message but different references share the last one's text, and a formatter that
+        // changes the message in GetErrors(member) leaves the error without its text.
+        private static Dictionary<(string Member, string Message), RunicTextReference>? MemberTexts(IEnumerable entries)
+        {
+            Dictionary<(string, string), RunicTextReference>? texts = null;
+            foreach (var entry in entries)
+                if (entry is ValidationResult result && TextOf(result) is { } text)
+                    foreach (var name in result.MemberNames)
+                        if (!string.IsNullOrEmpty(name))
+                            (texts ??= [])[(name, MessageText(result.ErrorMessage))] = text;
+            return texts;
+        }
+
         private void AddErrors(IEnumerable? values, IReadOnlyList<object> defaultPath, Node node,
-            bool skipPresentedMembers)
+            bool skipPresentedMembers, Dictionary<(string Member, string Message), RunicTextReference>? memberTexts = null,
+            string? memberName = null)
         {
             if (values is null) return;
             foreach (var value in values)
@@ -298,15 +440,19 @@ public static class BridgeValidation
                 switch (value)
                 {
                     case RunicValidationMessage message:
-                        AddMessage(MessageText(message.Message), message.Code, message.Severity, message.MemberPaths, defaultPath, node);
+                        AddMessage(MessageText(message.Message), message.Code, message.Severity, message.Text, message.MemberPaths, defaultPath, node);
                         break;
                     case ValidationResult result:
                         var memberNames = result.MemberNames;
                         if (skipPresentedMembers && !TryUnpresented(ref memberNames, node.Members)) break;
-                        AddMessage(MessageText(result.ErrorMessage), null, null, memberNames, defaultPath, node);
+                        AddMessage(MessageText(result.ErrorMessage), null, null, TextOf(result), memberNames, defaultPath, node);
                         break;
                     default:
-                        AddMessage(MessageText(value), null, null, null, defaultPath, node);
+                        var plain = MessageText(value);
+                        var text = TextOf(value);
+                        if (text is null && memberName is not null && memberTexts is not null)
+                            text = memberTexts.GetValueOrDefault((memberName, plain));
+                        AddMessage(plain, null, null, text, null, defaultPath, node);
                         break;
                 }
             }
@@ -332,12 +478,16 @@ public static class BridgeValidation
             return true;
         }
 
-        private void AddMessage(string message, string? code, string? severity,
+        // translation-text/1: the text reference of an entry that has one (IRunicTextReferenceSource).
+        private static RunicTextReference? TextOf(object? entry) =>
+            entry is IRunicTextReferenceSource { Text: { } text } ? text : null;
+
+        private void AddMessage(string message, string? code, string? severity, RunicTextReference? text,
             IEnumerable<string>? memberPaths, IReadOnlyList<object> defaultPath, Node node)
         {
             if (memberPaths is null)
             {
-                WriteError(defaultPath, message, code, severity);
+                WriteError(defaultPath, message, code, severity, text);
                 return;
             }
 
@@ -347,9 +497,9 @@ public static class BridgeValidation
                 found = true;
                 if (_errors >= MaximumErrors) { _truncated = true; return; }
                 var resolved = ResolveMemberPath(memberPath, node);
-                WriteError(resolved ?? defaultPath, message, code, severity);
+                WriteError(resolved ?? defaultPath, message, code, severity, text);
             }
-            if (!found) WriteError(defaultPath, message, code, severity);
+            if (!found) WriteError(defaultPath, message, code, severity, text);
         }
 
         // Resolves a CLR member path relative to its object, such as "Profile.PostalCode", "Items[0].Name",
@@ -437,7 +587,27 @@ public static class BridgeValidation
             return false;
         }
 
-        private void WriteError(IReadOnlyList<object> path, string message, string? code, string? severity)
+        // validation-pending/1: each path once, resolved as an error's member path; at most MaximumErrors paths.
+        private void AddPending(IReadOnlyCollection<string> memberPaths, Node node)
+        {
+            foreach (var memberPath in memberPaths)
+            {
+                (_entries, _truncated) = (0, false);
+                var path = ResolveMemberPath(memberPath, node) ?? node.Path;
+                if (_truncated) _pendingTruncated = true;
+                if (path.Count > MaximumPathSegments) { _pendingTruncated = true; continue; }
+                var segments = path.Select(segment => segment is string { Length: > MaximumStringLength } text
+                    ? (object)LimitPending(text) : segment).ToArray();
+                var key = string.Join('\u0000', segments.Select(segment => segment is int index
+                    ? "#" + index.ToString(System.Globalization.CultureInfo.InvariantCulture) : "$" + (string)segment));
+                if (!_pendingKeys.Add(key)) continue;
+                if (_pending.Count >= MaximumErrors) { _pendingTruncated = true; return; }
+                _pending.Add(segments);
+            }
+        }
+
+        private void WriteError(IReadOnlyList<object> path, string message, string? code, string? severity,
+            RunicTextReference? text)
         {
             _hasErrors = true;
             _errors++;
@@ -455,7 +625,23 @@ public static class BridgeValidation
             _writer.WriteString("message", Limit(message));
             if (!string.IsNullOrEmpty(code)) _writer.WriteString("code", Limit(code));
             if (!string.IsNullOrEmpty(severity)) _writer.WriteString("severity", Limit(severity));
+            // translation-text/1: the message as a text reference, which a page shows in the window's language. It is
+            // part of the state whatever the connections' features; a client without the feature ignores it.
+            // A text reference too large for an error is left out and logged; the error keeps its message, and the
+            // projection is complete, so truncated is not set.
+            if (text is { Utf8Json.Length: > MaximumTextBytes }) ViewsLog.ValidationTextTooLarge(BridgeSnapshotPublication.Logger, text.Key, text.Utf8Json.Length, MaximumTextBytes);
+            else if (text is not null)
+            {
+                _writer.WritePropertyName("text");
+                text.WriteTo(_writer);
+            }
             _writer.WriteEndObject();
+        }
+
+        private string LimitPending(string value)
+        {
+            _pendingTruncated = true;
+            return value[..MaximumStringLength];
         }
 
         private string Limit(string? value)

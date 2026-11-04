@@ -34,8 +34,9 @@ public sealed class RunicViewState<TModel> where TModel : class
     public JsonElement Get<TValue>(Expression<Func<TModel, TValue>> property) => this[RunicMembers.WireName(RunicMembers.Property(property))];
 
     /// <summary>
-    /// Reads a scalar state property: a string, Boolean, Int32, Int64, double, decimal, GUID or
-    /// enum, or a nullable one. Use <see cref="Get{TValue}"/> for other values, such as records,
+    /// Reads a scalar state property: a string, Boolean, Int32, Int64, double, decimal, GUID,
+    /// enum or text reference (<see cref="RunicTextReference"/> or <c>Runic.Translations.TranslationReference</c>),
+    /// or a nullable one. Use <see cref="Get{TValue}"/> for other values, such as records,
     /// collections and content.
     /// </summary>
     /// <exception cref="NotSupportedException">The property is not a scalar. The message names
@@ -45,7 +46,7 @@ public sealed class RunicViewState<TModel> where TModel : class
         var member = RunicMembers.Property(property);
         if (!IsScalar(typeof(TValue)))
             throw new NotSupportedException(
-                $"Read cannot convert {typeof(TModel).Name}.{member.Name} ({typeof(TValue).Name}): it reads only a string, Boolean, Int32, Int64, double, decimal, GUID or enum. " +
+                $"Read cannot convert {typeof(TModel).Name}.{member.Name} ({typeof(TValue).Name}): it reads only a string, Boolean, Int32, Int64, double, decimal, GUID, enum or text reference. " +
                 $"Read a record or collection as JSON with Get(vm => vm.{member.Name}), for example Get(vm => vm.{member.Name}).GetProperty(\"field\"), or assert on the ViewModel itself.");
         return (TValue)Convert(this[RunicMembers.WireName(member)], typeof(TValue))!;
     }
@@ -89,6 +90,26 @@ public sealed class RunicViewState<TModel> where TModel : class
     public bool IsExecuting(Expression<Func<TModel, object?>> command) =>
         this[$"is{RunicMembers.CommandName(RunicMembers.Property(command))}Executing"].GetBoolean();
 
+    /// <summary>
+    /// Whether the validation of a state property, or of a value below it, is in progress: a <c>validation.pending</c>
+    /// path starts with the property's wire name (<see cref="IRunicPendingValidation"/>, <c>validation-pending/1</c>).
+    /// </summary>
+    public bool IsValidating<TValue>(Expression<Func<TModel, TValue>> property)
+    {
+        var field = RunicMembers.WireName(RunicMembers.Property(property));
+        return PendingValidation.Any(path => path.Count > 0 && path[0] is string name && name == field);
+    }
+
+    /// <summary>
+    /// The paths of <c>validation.pending</c>: wire member names (<see cref="string"/>) and list indexes
+    /// (<see cref="int"/>), <c>[]</c> for the ViewModel itself. Empty when no validation is in progress.
+    /// </summary>
+    public IReadOnlyList<IReadOnlyList<object>> PendingValidation =>
+        Json.TryGetProperty("validation", out var validation) && validation.TryGetProperty("pending", out var pending)
+            ? pending.EnumerateArray().Select(path => (IReadOnlyList<object>)path.EnumerateArray()
+                .Select(segment => segment.ValueKind == JsonValueKind.Number ? (object)segment.GetInt32() : segment.GetString()!).ToArray()).ToArray()
+            : [];
+
     /// <summary>The version of a checked field, which a checked write must name as its baseline.</summary>
     public long FieldVersion<TValue>(Expression<Func<TModel, TValue>> property)
     {
@@ -108,7 +129,8 @@ public sealed class RunicViewState<TModel> where TModel : class
     {
         var target = Nullable.GetUnderlyingType(type) ?? type;
         return target == typeof(string) || target == typeof(bool) || target == typeof(int) || target == typeof(double)
-            || target == typeof(long) || target == typeof(decimal) || target == typeof(Guid) || target.IsEnum;
+            || target == typeof(long) || target == typeof(decimal) || target == typeof(Guid) || target.IsEnum
+            || RunicWireValue.IsTextReference(target);
     }
 
     private static object? Convert(JsonElement value, Type type)
@@ -122,6 +144,7 @@ public sealed class RunicViewState<TModel> where TModel : class
         if (target == typeof(long)) return value.ValueKind == JsonValueKind.String ? long.Parse(value.GetString()!, CultureInfo.InvariantCulture) : value.GetInt64();
         if (target == typeof(decimal)) return value.ValueKind == JsonValueKind.String ? decimal.Parse(value.GetString()!, CultureInfo.InvariantCulture) : value.GetDecimal();
         if (target == typeof(Guid)) return value.GetGuid();
+        if (RunicWireValue.IsTextReference(target)) return RunicWireValue.ReadTextReference(value, target);
         if (target.IsEnum && value.ValueKind == JsonValueKind.String)
         {
             var name = value.GetString()!;

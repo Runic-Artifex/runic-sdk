@@ -1,0 +1,7 @@
+title_too_long = Der Titel darf höchstens {$max :integer} Zeichen lang sein.
+saved = {$title} gespeichert.
+changed = Geändert: {$packages :runic:list}
+failed = {$step} fehlgeschlagen
+steps {
+  build = Baue {$name}
+}

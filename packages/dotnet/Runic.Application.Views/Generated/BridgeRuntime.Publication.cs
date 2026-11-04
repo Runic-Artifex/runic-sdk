@@ -302,8 +302,29 @@ public partial class ViewModelBridge<T>
         _checkedByMember.TryGetValue(member, out var field) ? field.Registry.Current.Version : null;
 
     // The baselines after a published frame: members holds the members that changed.
-    private void Commit(List<(string Name, byte[] Value)> members, long revision)
+    private void Commit(List<(string Name, byte[] Value)> members, long revision, bool fullState = false)
     {
+        // field-paths/1: the paths that this publication changed take its revision as their version. Indexed changes
+        // carry their rows' encodings, so only those rows are observed; a set or a full state scans the member.
+        foreach (var target in _pathTargets.Values)
+        {
+            if (fullState || members.Exists(member => member.Name == target.Member)
+                || target.Rows is { } set && _collectionSets.Contains(set))
+            {
+                _fieldPaths.Scan(target.Member, FieldPathContainers(target), target.Segments, revision);
+                continue;
+            }
+            if (target.Rows is not { } rows) continue;
+            foreach (var change in _pendingCollectionChanges)
+            {
+                if (change.Descriptor != rows) continue;
+                if (change.Kind is "remove" or "replace")
+                    foreach (var key in change.Keys)
+                        if (Array.IndexOf(change.ItemKeys, key) < 0) _fieldPaths.Remove(target.Member, key);
+                for (var index = 0; index < change.ItemKeys.Length && index < change.Items.Length; index++)
+                    _fieldPaths.Observe(target.Member, change.ItemKeys[index], change.Items[index], target.Segments, revision);
+            }
+        }
         foreach (var (name, value) in members) _baselines![name] = value;
         foreach (var field in _checkedProperties) _publishedVersions[field.Descriptor.WireName] = field.Registry.Current.Version;
         foreach (var field in _textFields) _textBaselines[field] = field.Get(_vm) as string;
@@ -468,7 +489,7 @@ public partial class ViewModelBridge<T>
         var writer = message.Writer;
         List<(string Name, long Start, long End)>? compared = updateBaselines ? new(_stateMembers.Length) : null;
         long stateStart, stateEnd;
-        using (BridgeSnapshotPublication.Enter(() => IsInactive))
+        using (BridgeSnapshotPublication.Enter(() => IsInactive, _logger))
         {
             CheckCollectionKeys();
             writer.WriteNumber("revision", _revision);
@@ -506,7 +527,7 @@ public partial class ViewModelBridge<T>
             _baselines[name] = message.Buffer.ToArray(start, length);
         }
         foreach (var descriptor in _incrementalCollections) _collectionInstances[descriptor] = descriptor.Get(_vm);
-        Commit([], _revision);
+        Commit([], _revision, fullState: true);
         // The state is a unit that compared every member.
         Published(changed);
         return state;
@@ -578,7 +599,7 @@ public partial class ViewModelBridge<T>
     private List<(string Name, byte[] Value)> WriteChangedMembers()
     {
         var changed = new List<(string Name, byte[] Value)>();
-        using (BridgeSnapshotPublication.Enter(() => IsInactive))
+        using (BridgeSnapshotPublication.Enter(() => IsInactive, _logger))
         {
             foreach (var member in _stateMembers)
             {
@@ -604,7 +625,7 @@ public partial class ViewModelBridge<T>
     // The encoding of one member.
     private byte[] WriteMember(string name)
     {
-        using (BridgeSnapshotPublication.Enter(() => IsInactive))
+        using (BridgeSnapshotPublication.Enter(() => IsInactive, _logger))
             foreach (var member in _stateMembers)
                 if (member.Name == name) return WriteValue(writer => WriteMemberValue(member, writer));
         throw new InvalidOperationException($"{ModelName} has no state member '{name}'.");
@@ -699,7 +720,10 @@ public partial class ViewModelBridge<T>
                     }
                     _pendingCollectionChanges.Add(new(descriptor, kind,
                         kind == "remove" ? args.OldStartingIndex : args.NewStartingIndex,
-                        args.OldStartingIndex, keys, items));
+                        args.OldStartingIndex, keys, items)
+                    {
+                        ItemKeys = kind == "replace" ? args.NewItems?.Cast<object?>().Select(descriptor.Key).ToArray() ?? [] : kind == "add" ? keys : [],
+                    });
                     if (_pendingCollectionChanges.Count(change => change.Descriptor == descriptor) > MaximumChanges)
                         MarkCollectionSet(descriptor);
                 }
@@ -733,7 +757,7 @@ public partial class ViewModelBridge<T>
                     // A key changed in place or made invalid becomes a set of the field.
                     if (!TrackItemKey(descriptor, rows, item, at, out var key)) MarkCollectionSet(descriptor);
                     else _pendingCollectionChanges.Add(new(descriptor, "replace", at, at,
-                        [key], [WriteValue(writer => WriteItemValue(descriptor, writer, item))]));
+                        [key], [WriteValue(writer => WriteItemValue(descriptor, writer, item))]) { ItemKeys = [key] });
                 }
                 if (handled) ScheduleUnit();
                 return handled;

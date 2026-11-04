@@ -163,7 +163,11 @@ internal static partial class TypeScriptNamedTypes
             }
             source.AppendLine();
         }
-        return source.ToString().TrimEnd() + Environment.NewLine;
+        var module = source.ToString().TrimEnd() + Environment.NewLine;
+        // A text reference member is typed by the decoder module (translation-text/1).
+        return module.Contains("bridgeWire.", StringComparison.Ordinal)
+            ? "import type * as bridgeWire from \"@runic-artifex/views/generated/wire\";" + Environment.NewLine + Environment.NewLine + module
+            : module;
     }
 
     /// <summary>

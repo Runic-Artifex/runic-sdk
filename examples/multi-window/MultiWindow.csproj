@@ -15,6 +15,8 @@
     <PackageReference Include="Microsoft.Extensions.DependencyInjection" />
     <PackageReference Include="Microsoft.Extensions.Logging.Console" />
     <PackageReference Include="ReactiveUI" />
+    <!-- TranslationReference, the text references of the status line and the validation message. -->
+    <PackageReference Include="Runic.Translations" />
     <!-- The presentation server; -p:RunicDesktopServer=Native builds the application on the experimental native server
          without ASP.NET Core. -->
     <ProjectReference Include="../../packages/dotnet/Runic.Desktop.Kestrel/Runic.Desktop.Kestrel.csproj" Condition="'$(RunicDesktopServer)' != 'Native'" />

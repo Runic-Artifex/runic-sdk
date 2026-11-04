@@ -492,6 +492,8 @@ test("an operation start with a known id is a duplicate for a canonically equal 
 /* ------------------------------------------------------------------ presentation-epoch/1 and presented/1 */
 
 const features = ["text-splice/1", "presentation-epoch/1", "presented/1", "view-requests/1", "request-session/1", "region-collections/1", "client-errors/1", "query-collections/1", "blobs/1"];
+// The features the mock lists in its hello reply.
+const producerFeatures = [...features, "validation-pending/1", "field-flush/1", "field-paths/1", "translation-text/1"];
 // The raw client sends no session with its requests, so it lists every feature but request-session/1.
 const helloWith = (raw: RawClient, list: readonly string[] = features.filter(feature => feature !== "request-session/1")) =>
   raw.send({ kind: "hello", protocol: 4, session: `session-${++sessions}`, client, features: list });
@@ -524,7 +526,7 @@ function wizard(bridge: MockBridge) {
 test("presentation-epoch/1: open carries the epoch, a renewal is a state at a new revision, a stale command is superseded", async () => {
   const { bridge, raw } = await connected();
   const view = wizard(bridge);
-  assert.deepEqual((await helloWith(raw))["features"], features);
+  assert.deepEqual((await helloWith(raw))["features"], producerFeatures);
   const open = await raw.send({ kind: "open", route: "wizard", presentation: "p-1" });
   assert.equal(open["epoch"], view.epoch);
   const epoch = view.epoch;
@@ -728,7 +730,7 @@ const regionRequest = (action: string, key: string, member = "documents") => ({ 
 test("region-collections/1: select and close commit after their frame, a veto publishes nothing", async () => {
   const { bridge, raw } = await connected();
   const { view, model } = tabs(bridge);
-  assert.deepEqual((await helloWith(raw))["features"], features);
+  assert.deepEqual((await helloWith(raw))["features"], producerFeatures);
   await raw.send({ kind: "open", route: "tabs", presentation: "p-1" });
   const committed = { kind: "Committed", rejection: null, arrival: "None" };
   assert.deepEqual(await raw.send(regionRequest("select", "2")), { ok: true, revision: view.revision, outcome: committed });

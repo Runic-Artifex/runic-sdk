@@ -422,6 +422,8 @@ public abstract class RunicWindow<TViewModel> : RunicView<TViewModel>, IRunicWin
     {
         Volatile.Write(ref _content, content);
         Volatile.Write(ref _bridge, bridge);
+        // IRunicWindowLocale in this scope follows and sets the window's locale from now on.
+        (Volatile.Read(ref _services)?.GetService(typeof(RunicWindowContext)) as RunicWindowContext)?.AttachContent(content);
     }
 
     // The host's close guard: CanCloseAsync in a model turn. It never throws, so a host keeps the window open on any
@@ -434,6 +436,10 @@ public abstract class RunicWindow<TViewModel> : RunicView<TViewModel>, IRunicWin
         try
         {
             cancellationToken.ThrowIfCancellationRequested();
+            // field-flush/1: this window's pages write their field drafts first, so the guard sees the user's last input.
+            // A close requested in a model turn (a native menu's command) flushes too: awaiting the flush releases the
+            // turn, the drafts' writes run in turns of their own, and the guard below runs in a turn of its own.
+            if (content is not null) await content.FlushFieldsAsync(cancellationToken).ConfigureAwait(false);
             if (content?.ModelContext is { IsExecuting: false } context)
             {
                 var decision = await context.InvokeAsync(() => CanCloseAsync(cancellationToken).AsTask(), cancellationToken)

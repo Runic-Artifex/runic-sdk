@@ -239,6 +239,26 @@ with a `FieldError`. `errors` follows the member's validation in the View's stat
 }
 ```
 
+### Row cells and nested members
+
+Since 0.16, `InvoiceFields.address.street` and `InvoiceFields.lines.at(line.id).quantity` are fields too
+(`field-paths/1`): a member of an object member, and a cell of a row that .NET edits with `[RunicRowEditor]`. Call
+`injectField(view, InvoiceFields.lines.at(line.id).quantity)` in the row's component, or bind it with
+`[runicField]`; `at(key)` returns the same descriptor for the same key. Such a field always writes checked, conflicts
+only when another writer changed the same cell, and shows the messages .NET reports at the cell's validation path. See
+[Fields below a member and row cells](../views/README.md#fields-below-a-member-and-row-cells).
+
+### Forms: `injectForm(fields, options?)`
+
+Signals over `injectField` handles (`dirty`, `editing`, `validating`, `pending`, `valid`, `submitting`, `state`), and a
+`submit` that writes every field before its command (`createFormController` in `@runic-artifex/views`). It needs no
+injection context.
+
+```ts
+readonly form = injectForm({ title: this.title, step: this.step }, { dirty: computed(() => this.editor.state()?.isDirty === true) });
+// <button [disabled]="!form.valid() || form.submitting()" (click)="form.submit(() => editor.client()!.save())">Save</button>
+```
+
 ### `[runicField]` and Reactive Forms
 
 `@runic-artifex/angular/forms` needs `@angular/forms` (an optional peer; the main
@@ -618,6 +638,25 @@ export class AppMenuBar {
   });
   entriesOf(key: string) { return this.menuBar.state().menus.find(menu => menu.key === key)?.entries ?? []; }
 }
+```
+
+## Translated text
+
+`injectText(() => source, () => fallback?)` is a signal of a text reference in
+the window's language, and the `runicText` pipe does the same in templates; both
+follow a language switch. Connect the page's Translations runtime once with
+`configureTranslatedText` ([Translated text](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Application.Views/README.md#translated-text)).
+`injectWindowLocale()` reads the window's locale. The pipe formats again only
+when its value, fallback or the language changed. Under server rendering, call
+`configureTranslatedText` behind `isPlatformBrowser`, or render on the server
+with `resolveTextReference` and the request's locale.
+
+```ts
+@Component({
+  imports: [RunicTextPipe],
+  template: `<p>{{ view.state()?.status | runicText }}</p>
+    @for (error of view.state()?.validation.errors; track $index) { <li>{{ error.text | runicText: error.message }}</li> }`,
+})
 ```
 
 ## Errors

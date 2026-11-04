@@ -89,6 +89,7 @@ Each step has one action. `role` limits a step to one runner; `connection` names
 | `advance` | advances the virtual clock by that many milliseconds | the same |
 | `delivery` | `hold`: the transport stops taking pushes after the one being delivered; `release`: it takes them again | skips it |
 | `closeWindow` | starts the window's close with `timeout` milliseconds and names it `id` ([window close](../README.md#window-close)) | skips it |
+| `setLocale` | sets the window's locale, a tag or `null` ([translated text](../README.md#translated-text)) | skips it |
 | `expect` | checks `model`, `presented` or `closed`; a `model` expectation waits until it matches | checks `state`, `call`, `operation`, `diagnostics`, `notifications` or `connection` |
 
 A `receive` step waits until the expected message is available, up to the runner's own timeout; time in the scenario
@@ -149,7 +150,7 @@ A `call` names the client operation in language-neutral terms; the runner maps i
 | --- | --- | --- |
 | `open`, `close` | `route` | Connect a View of the route, or release it. |
 | `set` | `route`, `member`, `value` | A generated setter. |
-| `write` | `route`, `member`, `requestId`, `baseline: {value, version}`, `value` | A checked write. |
+| `write` | `route`, `member`, `path?`, `requestId`, `baseline: {value, version}`, `value` | A checked write; with `path`, of that field path below the member (`field-paths/1`). |
 | `command`, `can` | `route`, `member`, `input?` | A command, or its availability. |
 | `start` | `route`, `member`, `operation`, `input?` | Start an operation with the id `operation`. |
 | `wait`, `status`, `cancel` | `operation` | Wait for the operation's terminal status, read its status, or cancel it. |
@@ -171,6 +172,7 @@ Expectations of the client:
 - `notifications`: how often subscribers of the route were notified of a new state since its `open` resolved.
 - `connection`: the connection state the client reports. `closed` means that it reports that the producer closed the
   window ([window close](../README.md#window-close)).
+- `locale`: the window's locale the client reports, or `null` ([translated text](../README.md#translated-text)).
 - `requests`: `{route, request, inputs}`, the inputs the `handle` handler of that route and request was called with
   since it was registered, in order. The runner waits for them as for a `receive` step, since a handler runs once the
   page painted the request's revision.
@@ -198,6 +200,8 @@ Expectations of the producer:
 | `request-session/1` | The implementation implements the feature [`request-session/1`](../README.md#request-sessions). |
 | `region-collections/1` | The implementation implements the feature [`region-collections/1`](../README.md#region-collections). |
 | `query-collections/1` | The implementation implements the feature [`query-collections/1`](../README.md#query-collections). Its scenarios list it in the `default` of both `hello` steps. |
+| `field-paths/1` | The implementation implements the feature [`field-paths/1`](../README.md#field-paths). Its scenarios list the feature in the `default` of both `hello` steps, beside `text-splice/1`. |
+| `translation-text/1` | The implementation implements the feature [`translation-text/1`](../README.md#translated-text). |
 
 Every `hello` of a scenario that does not require a feature lists `features` as `{"$any":"array","default":["text-splice/1"]}`:
 a runner that writes the `hello` (or its reply) lists `text-splice/1`, and a runner that checks one accepts any list.
@@ -205,11 +209,11 @@ A client lists every feature it implements, so the client's `hello` of a scenari
 always `{"$any":"array","default":[…]}`, also when the scenario requires a feature; the producer's reply decides which
 features are in use.
 The strings of those scenarios are shorter than 64 code units, so their frames and requests are the same with and
-without the feature. Neither `presentation-epoch/1` nor `presented/1` is in use in them, so their messages carry no
-`epoch` and no `present` or `closing` push. A scenario that requires `presentation-epoch/1`, `presented/1`,
-`view-requests/1` or `region-collections/1` lists the feature in the `default` of both `hello` steps, beside
-`text-splice/1`, so it is in use whichever runner writes the `hello` or its reply; one that shows the producer without
-the feature lists only `text-splice/1`.
+without the feature. None of `presentation-epoch/1`, `presented/1` and `translation-text/1` is in use in them, so their messages carry no
+`epoch` and no `present`, `closing` or `locale` push. A scenario that requires `presentation-epoch/1`, `presented/1`,
+`view-requests/1`, `region-collections/1` or `translation-text/1` lists the feature in the `default` of both `hello`
+steps, beside `text-splice/1`, so it is in use whichever runner writes the `hello` or its reply; one that shows the
+producer without the feature, such as `locale-is-not-pushed-without-the-feature`, lists only `text-splice/1`.
 
 ### Identifiers
 
@@ -223,12 +227,12 @@ connection before connecting it, answers a request it did not send, expects a ca
 
 | Set | Content |
 | --- | --- |
-| [`handshake`](scenarios/handshake) | `hello`; protocol mismatch in either direction; the version diagnostic only for `Runic.Application.Views`; unknown kinds; `features` both ways, unknown and invalid ones, and a feature only one side lists; requests held before `hello`, admitted after it or answered `no-hello` after 5 seconds; the `open` sent with the `hello`, and sent again after a `no-hello` |
-| [`state-changes`](scenarios/state-changes) | The protocol-3 collection and text fixtures, converted (`source` names the case; the text fixtures were removed in 0.13, see [v0.12.1](https://github.com/Runic-Artifex/runic-sdk/tree/v0.12.1/specs/application/fixtures)); member `set` changes together with collection changes; members that never announce a change; a `set` that resets a collection; overflow; recovery while frames arrive; invalid frames; text splices (`splice-*`): a keystroke, a deletion, a short member, a rolling member, a rewrite, a surrogate pair, a checked field, and a splice that does not fit; a validation rule that names no member ([validation](../README.md#validation)) |
+| [`handshake`](scenarios/handshake) | `hello`; protocol mismatch in either direction; the version diagnostic only for `Runic.Application.Views`; unknown kinds; `features` both ways, unknown and invalid ones, and a feature only one side lists; the window's locale pushed after `hello` and on each change, and not without `translation-text/1` (`locale-*`); requests held before `hello`, admitted after it or answered `no-hello` after 5 seconds; the `open` sent with the `hello`, and sent again after a `no-hello` |
+| [`state-changes`](scenarios/state-changes) | The protocol-3 collection and text fixtures, converted (`source` names the case; the text fixtures were removed in 0.13, see [v0.12.1](https://github.com/Runic-Artifex/runic-sdk/tree/v0.12.1/specs/application/fixtures)); member `set` changes together with collection changes; members that never announce a change; a `set` that resets a collection; overflow; recovery while frames arrive; invalid frames; text splices (`splice-*`): a keystroke, a deletion, a short member, a rolling member, a rewrite, a surrogate pair, a checked field, and a splice that does not fit; a validation rule that names no member ([validation](../README.md#validation)); an asynchronous check that starts and ends (`validation-pending-*`) |
 | [`replies`](scenarios/replies) | Revision inclusion; a change without a notification; a call that changes nothing; a call that changes another route; a call that releases its route; a reply before its frame; the revision timeout |
 | [`edits`](scenarios/edits) | `superseded`; edit numbers per member; the client overlay and its end, with the reply to an earlier edit before and after the frame of a later one; a failed edit; checked writes; `set` with a splice against a revision and against the previous edit, `splice-base` that admits nothing and the client's resend in full, a superseded splice, a normalizing setter; checked writes with a splice (`write-splice-*`): applied, a conflict, `splice-base` that retains nothing and the client's resend in full with the same `requestId`, a retry, and a short value sent in full; an edit followed by the frame with its validation, which the overlay does not cover |
 | [`operations`](scenarios/operations) | `watch` with throttled `progress` and the terminal `revision`; `start` ordering; duplicate versus `identity-conflict` by canonical equality; cancel; a declared failure; an unknown operation; a `start` with another build's contract |
-| [`presentations`](scenarios/presentations) | `open` and `close`; a presentation owned by another connection; a reconnect with a new session; an unknown route; presentation epochs (`epoch-*`): the `epoch` of `open` and `snapshot`, a renewal published as a `state`, a scoped command with the current epoch, a second scoped command from the same state that is superseded, an unscoped command without `epoch`, and a connection without the feature; painted states (`presented-*`): a report that completes a wait, and a wait that times out; window close (`closing-*`): an acknowledged close and the client's closed connection, and a close that times out |
+| [`presentations`](scenarios/presentations) | `open` and `close`; a presentation owned by another connection; a reconnect with a new session; an unknown route; presentation epochs (`epoch-*`): the `epoch` of `open` and `snapshot`, a renewal published as a `state`, a scoped command with the current epoch, a second scoped command from the same state that is superseded, an unscoped command without `epoch`, and a connection without the feature; painted states (`presented-*`): a report that completes a wait, and a wait that times out; window close (`closing-*`): an acknowledged close and the client's closed connection, and a close that times out; field flush (`flush-*`): a flush that the client answers, and a connection without the feature, which is not asked |
 | [`regions`](scenarios/regions) | Region collections (`region-collections/1`): a select that commits and the frame that carries the selection; a select a departure guard refuses, which publishes nothing; a close of the selected region, which selects the next one, or the previous one after the last; the key of a closed region, which is `unresolved-key`; a close the collection does not allow, which is `unavailable`; a region request on a connection without the feature, which is `invalid-request`; a close of a region whose close is pending, which joins it; a select that supersedes a pending close |
 | [`interactions`](scenarios/interactions) | A confirmation answered, and its repeat; registration outcomes |
 | [`view-requests`](scenarios/view-requests) | A command's request reaches the invoking presentation after its state; a request outside a command reaches the single presentation, and is dropped with none or several; `next-mounted` keeps the latest request for the next registration; `broadcast` reaches every presentation; registration outcomes; a connection without the feature |
@@ -315,8 +319,11 @@ Rules, in this order:
 
 | Rule | Holds | Otherwise |
 | --- | --- | --- |
-| `name` | while `name` has at most 8 characters | `Name must be at most 8 characters.` at the path `["name"]`, and in `nameErrors` |
+| `name` | while `name` has at most 8 characters | `Name must be at most 8 characters.` at the path `["name"]`, with the [`text`](../README.md#text) `{"version":2,"catalog":"conformance","contractFingerprint":"sha256:` and 64 zeros `","key":"name_too_long","arguments":{"max":{"type":"int64","value":"8"}},"fallbackText":"Name must be at most 8 characters."}`, and in `nameErrors` |
 | `approval` | until a `rule` mutation changes it; initially it holds | `Approval is required.` at the path `[]`. The rule names no member: a change of it changes no other member and announces none. |
+
+`name` also has an asynchronous check ([`pending`](../README.md#pending), `validation-pending/1`): while a `check`
+mutation of `name` says it runs, `["name"]` is pending. Initially it does not run.
 
 ### `wizard`
 
@@ -334,6 +341,19 @@ A View whose pages are presentations of one route ([presentation epochs](../READ
 | `ping` | none | always | no | changes nothing |
 
 Its contract marks `next` and `back` scoped, so a client that uses `presentation-epoch/1` sends `epoch` with them.
+
+### `invoice`
+
+A View with field paths ([field paths](../README.md#field-paths), `field-paths/1`).
+
+| Member | Type | Default and behaviour |
+| --- | --- | --- |
+| `address` | `{street: string, city: string}` | `{"street":"","city":""}`; settable, a checked field; its field paths are `["street"]` and `["city"]` |
+| `lines` | keyed collection of `{id: int32, label: string, quantity: int32}`, keyed by `id` | `[]`; its field paths are a row's `["label"]` and `["quantity"]` |
+
+Its `fields` are `{"address": {"version"}}`, starting at version 0. Its row editor replaces the row with the key and
+refuses a negative `quantity` with the message `Quantity must not be negative.` Mutations: `assign` of `address`, and
+`insert`, `replaceAt` and `removeAt` with `member` `lines`.
 
 ### `tabs`
 
@@ -375,13 +395,14 @@ are below `http://conformance.test/`.
 | `op` | Members | Effect |
 | --- | --- | --- |
 | `assign` | `member`, `value` | sets a member of the root View, announcing the change |
-| `insert`, `removeAt`, `replaceAt`, `move` | `index`, `item`; `index`; `index`, `item`; `oldIndex`, `newIndex` | changes `rows` at a position |
+| `insert`, `removeAt`, `replaceAt`, `move` | `member?`, `index`, `item`; `member?`, `index`; `member?`, `index`, `item`; `oldIndex`, `newIndex` | changes `rows`, or the invoice View's `member` (`lines`), at a position |
 | `reset` | `items` | replaces all rows at once, as a reset |
 | `appendRows` | `start`, `count`, `width?` | appends the rows of the `$rows` generator, one change each |
 | `append` | `member`, `text` | appends text to a text field |
 | `progress` | `member`, `value` | the running operation of the command reports progress |
 | `finish` | `member`, `rows?`, `failure?`, `outcome?` | ends the running operation of the command (see `slowImport`) |
 | `rule` | `rule`, `holds` | sets whether a rule of the `form` View holds, announcing no member change |
+| `check` | `member`, `running` | starts or ends the asynchronous check of a `form` member, announcing no member change |
 | `renew` | none | renews the root View's route ([presentation epochs](../README.md#presentation-epochs)), as one unit |
 | `holdGuard` | none | the next ask of a departure guard of the `tabs` View's pages stays pending |
 | `settleGuard` | `allow` | answers the held ask, also one that is still to come: `true` lets the page be left or closed, `false` refuses |

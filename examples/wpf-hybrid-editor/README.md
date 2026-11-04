@@ -30,8 +30,10 @@ targeting enabled.
 Keep application behavior in your existing Toolkit model. In
 [EditorViewModel.cs](Model/EditorViewModel.cs), both native bindings and generated
 web clients use `Title`, `Body`, `SaveCommand` and the save cancellation command.
-The model owns title validation, the saved baseline, dirty comparisons, error
-messages and storage. A save captures a draft before awaiting storage; changes
+The model owns title validation, error messages and storage. A
+`RunicEditSession` (from `Runic.Navigation`) keeps the saved baseline and the
+dirty comparison: `IsDirty` follows the edited values, a save `Accept`s what it
+wrote, and the leave confirmation's discard `Revert`s. A save captures a draft before awaiting storage; changes
 made during that wait remain dirty. Cancelled or failed saves keep the draft.
 Both presentations receive the same status and error properties.
 

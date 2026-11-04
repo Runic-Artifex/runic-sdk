@@ -1,5 +1,5 @@
 import {
-  isBridgeOutcome, onBridgeConnection, type BridgeConnectionOptions, type BridgeConnectionState, type BridgeOperation, type BridgeOperationStatusOf, type BridgeOutcome, type BridgeOutcomeFailure,
+  isBridgeOutcome, onBridgeConnection, resolveText, subscribeText, type BridgeConnectionOptions, type BridgeConnectionState, type BridgeOperation, type BridgeOperationStatusOf, type BridgeOutcome, type BridgeOutcomeFailure, type TextReference,
   type CollectionViewport, type CollectionViewportController, type ViewClient, type ViewConnector,
   type QueryCollection, type QueryCollectionSnapshot, type QueryViewport, type QueryViewportController, type RunicQuery,
   upload as uploadBlob, type BlobRef, type UploadOptions,
@@ -99,6 +99,30 @@ export function connectionStates(options: BridgeConnectionOptions = {}): Stream.
     Effect.sync(() => onBridgeConnection(state => { Queue.offerUnsafe(queue, state); }, options)),
     unsubscribe => Effect.sync(unsubscribe),
   ), { bufferSize: 1, strategy: "sliding" });
+}
+
+/**
+ * Each change of the language that text references resolve in (`subscribeText` from `@runic-artifex/views`): the
+ * window's locale or the page's Translations locale changed, or a runtime was configured. A slow consumer skips to the
+ * latest change. It never ends on its own; interrupting it unsubscribes.
+ */
+export function textChanges(): Stream.Stream<void> {
+  return Stream.callback<void>(queue => Effect.acquireRelease(
+    Effect.sync(() => subscribeText(() => { Queue.offerUnsafe(queue, undefined); })),
+    unsubscribe => Effect.sync(unsubscribe),
+  ), { bufferSize: 1, strategy: "sliding" });
+}
+
+/**
+ * A text reference that a ViewModel produced, in the window's language (`resolveText`): its text now, then its text
+ * after each language switch. A string is its own text; `null` and `undefined` are `fallback`.
+ *
+ * ```ts
+ * yield* Effect.forkScoped(Stream.runForEach(texts(state.status), text => Effect.sync(() => { status.textContent = text; })));
+ * ```
+ */
+export function texts(value: TextReference | string | null | undefined, fallback?: string): Stream.Stream<string> {
+  return Stream.concat(Stream.make(undefined), textChanges()).pipe(Stream.map(() => resolveText(value, fallback)));
 }
 
 /**

@@ -331,8 +331,10 @@ internal sealed class CodegenShapeTests
             var rootImport = text.Split('\n').FirstOrDefault(line => line.EndsWith(" from \"@runic-artifex/views\";", StringComparison.Ordinal)) ?? "";
             Require(!rootImport.Contains("connectView", StringComparison.Ordinal) && !rootImport.Contains("bridgeWire", StringComparison.Ordinal),
                 $"{Path.GetFileName(path)} imports generated-code runtime from the application entry: {rootImport}");
+            // types.ts uses only its types (translation-text/1).
             Require(!text.Contains("bridgeWire.", StringComparison.Ordinal)
-                || text.Contains("import * as bridgeWire from \"@runic-artifex/views/generated/wire\";", StringComparison.Ordinal),
+                || text.Contains("import * as bridgeWire from \"@runic-artifex/views/generated/wire\";", StringComparison.Ordinal)
+                || text.Contains("import type * as bridgeWire from \"@runic-artifex/views/generated/wire\";", StringComparison.Ordinal),
                 $"{Path.GetFileName(path)} uses bridgeWire without the namespace import from @runic-artifex/views/generated/wire.");
         }
 

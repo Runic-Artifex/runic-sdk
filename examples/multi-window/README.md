@@ -5,11 +5,15 @@ document opens in a Window of its own or brings the open one to the front, a win
 returns the account chosen, a rename in one Window shows in every
 Window, and the app's theme setting is saved in a settings file, switches every
 Window between light and dark at once, and can follow the desktop's color scheme.
+The status line and the title's validation message are shown in English or
+German, and switching the language changes them without a call per string.
 
 | File | What it does |
 | --- | --- |
 | [`ProjectServices.cs`](ProjectServices.cs) | Registers the shared singletons, the per-Window model context with `AddRunicReactiveModelContext()`, the ViewModel, `AddRunicPlatformServices()` and `AddRunicWindowService()`. |
 | [`ProjectViewModel.cs`](ProjectViewModel.cs) | A `ReactiveObject` whose `ReactiveCommand`s take no scheduler. Opens a Window with `IRunicWindowService`, applies renames from other Windows with `TryPost`, and watches `IDesktopSettings`. |
+| [`ProjectText.cs`](ProjectText.cs) | The status line and validation message as Runic Translations text references (`TranslationReference`): a key, typed arguments and an English fallback. |
+| [`Frontend/src/translations.ts`](Frontend/src/translations.ts) | The page's English and German messages for those keys, passed to `configureTranslatedText`. |
 | [`DocumentWindow.cs`](DocumentWindow.cs) | A document Window. `ProjectViewModel.OpenDocumentCommand` opens it with `IRunicWindowService.FindOrOpenAsync`, keyed by its path, so a second request focuses it. |
 | [`AccountWindow.cs`](AccountWindow.cs) | The "choose account" dialog. `ProjectViewModel.ChooseAccountCommand` opens it with `OpenForResultAsync`, owned by the project Window and window-modal to it; its ViewModel completes `IRunicWindowResult<string>`, and Cancel returns no result. |
 | [`ProjectService.cs`](ProjectService.cs) | The shared, thread-safe project title, with an event after each rename. |
@@ -22,6 +26,15 @@ Each Window opens in its own DI scope, so it has its own ViewModel and model
 context. Two Windows can run commands at the same moment on two threads, so
 the singletons guard their state, and each ViewModel commits changes that come
 from other Windows, or from the desktop, in a turn of its own context.
+The ViewModel sets the Window's language with `IRunicWindowLocale`, from the
+language saved in the settings file, and again when the page's language list
+calls `ChooseLanguage`. The page follows it: `resolveText` shows the `status`
+member and the `text` of the title's validation error in that language, and
+`subscribeText` renders again after a switch. An application generates both
+sides from one Runic Translations catalog and passes the generated
+`resolveTextReference` instead of the example's table; see
+[Translated text](../../packages/dotnet/Runic.Application.Views/README.md#translated-text).
+
 `IRunicWindowService` is a singleton; it releases each Window it opened, with
 its scope, once the user closes it. `AddRunicReactiveModelContext()` makes each
 `ReactiveCommand` deliver its notifications on the model context of the Window

@@ -418,6 +418,7 @@
         "examples/notes-reactive-views",
         "examples/document-tabs",
         "examples/dynamicdata",
+        "examples/invoice-grid",
         "examples/query-collections",
         "examples/shared",
         "examples/Directory.Build.props",

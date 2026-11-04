@@ -38,6 +38,8 @@ export interface FieldHandle<TValue> {
   readonly errors: readonly string[];
   /** The producer's field while a checked write's `conflict` keeps the draft; `undefined` otherwise. */
   readonly conflict: FieldBaseline<TValue> | undefined;
+  /** The member's validation is in progress, such as an asynchronous rule that is still checking: show "checking…". */
+  readonly validating: boolean;
   /** The user changed the value. */
   input(value: TValue): void;
   /**
@@ -129,7 +131,7 @@ export function useField<TClient extends ViewClient, TValue>(
   };
 
   // One derived per member, so a reader of one member runs again only when that member changes.
-  const fields = derivedFields(() => current, ["value", "text", "editing", "error", "errors", "conflict"] as const);
+  const fields = derivedFields(() => current, ["value", "text", "editing", "error", "errors", "conflict", "validating"] as const);
   return {
     get value() { return fields.value(); },
     set value(value: TValue) { controller.input(value); },
@@ -139,6 +141,7 @@ export function useField<TClient extends ViewClient, TValue>(
     get error() { return fields.error(); },
     get errors() { return fields.errors(); },
     get conflict() { return fields.conflict(); },
+    get validating() { return fields.validating(); },
     input: (value: TValue) => controller.input(value),
     commit: () => controller.commit(),
     retry: () => controller.retry(),

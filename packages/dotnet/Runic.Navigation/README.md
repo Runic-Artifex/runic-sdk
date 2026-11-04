@@ -901,6 +901,58 @@ closes. It takes `askOnRetain` like the constructor. The dialog region must
 not be the guarded region, one of its ancestors or one of its descendants:
 that push would be `Rejected(Reentrant)`.
 
+### Edit sessions
+
+`RunicEditSession<T>` keeps a form's saved baseline and tells whether the
+edited values differ from it, for ReactiveUI, CommunityToolkit and WPF
+ViewModels alike. `T` is a snapshot with value equality, such as a tuple or a
+record. With the ViewModel as its owner it compares again on each
+`PropertyChanged`, and raises its own change of `IsDirty`:
+
+```csharp
+_session = new RunicEditSession<(string Title, string Body)>(this,
+    capture: () => (Title, Body),
+    restore: saved => (Title, Body) = saved);
+_leave = new LeaveConfirmation(() => _session.IsDirty, ConfirmAsync, _session.Revert);
+
+// After a save: what it wrote is the new baseline; edits made meanwhile stay dirty.
+_session.Accept((saved.Title, saved.Body));
+```
+
+Forward `IsDirty` as a ViewModel property (raise it when the session's
+`IsDirty` changes) so that WPF bindings and generated web clients see it, or
+observe it with ReactiveUI's `WhenAnyValue(vm => vm.Session.IsDirty)`.
+`Accept()` takes the current values, `Revert()` restores the baseline, and
+`Refresh()` compares again for a session without an owner. After an
+asynchronous save, accept what the save wrote, `Accept(submitted)`: plain
+`Accept()` after the `await` would also take what the user typed while the
+save ran as saved, so a leave confirmation would no longer protect it.
+A snapshot must compare by value. One that holds a mutable object (a `List<T>`,
+a mutable class) is the same instance in the baseline and the current
+snapshot, so it never becomes dirty: capture a copy and pass an
+`IEqualityComparer<T>` that compares its contents, or capture immutable values. A web page's own
+drafts are not in the session until the page writes them: its form controller
+(`createFormController`, `useForm`, `injectForm`) counts them as dirty and writes
+them before `submit` runs a command.
+
+### Drafts before departures
+
+`RunicDraftFlush` lets presentations write the drafts they hold before a
+departure is decided. Flushes belong to a model context: the navigator awaits
+`RunicDraftFlush.FlushAsync(navigator.ModelContext)` before it asks the
+departure guards of a transition that has any, so a departure flushes the
+presentations of its own models and never another window's.
+`Runic.Application.Views` registers each window's session with the window's
+model context until the session is disposed: it asks the pages that use
+`field-flush/1` to write their field drafts and waits up to 1 second. A guard
+that reads `IsDirty` therefore sees what the user typed last, also for a
+navigation that a menu, a shortcut or the model starts. Register a flush of
+your own for other presentations with
+`RunicDraftFlush.Register(context, cancellationToken => …)` and dispose the
+result when they go away. A flush must not wait for the model context's turn,
+and one that fails does not decide the departure. The
+[WPF hybrid editor](../../../examples/wpf-hybrid-editor/README.md) uses it.
+
 ### Guards for a whole region
 
 An entry's guard answers for its own content. A guard that answers for a

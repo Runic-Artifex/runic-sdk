@@ -2,6 +2,7 @@
   <Folder Name="/examples/">
     <Project Path="examples/dotnet/Runic.Administration.Console/Runic.Administration.Console.csproj" />
     <Project Path="examples/first-window/FirstWindow.csproj" />
+    <Project Path="examples/invoice-grid/InvoiceGrid.csproj" />
     <Project Path="examples/attachments/Attachments.csproj" />
     <Project Path="examples/first-window-desktop/FirstWindowDesktop.csproj" />
     <Project Path="examples/status-icon/StatusIconSample.csproj" />
