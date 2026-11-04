@@ -297,13 +297,15 @@ The window's `IRunicConnections` (see
 then lists the connections, and a command runs with its driver's connection as
 `Caller`. `host.Connections` reads the same list. A window opened with
 `RunicWindowTestHost.Create(services)` binds the `IRunicConnections` of
-`services`, such as the scope the ViewModel took it from:
+`services`, such as the scope the ViewModel took it from. The window gives each
+connection a key of its own that no later connection reuses (`connection-1#1`
+on this transport), and a driver's `Connection` returns it:
 
 ```csharp
 var bob = host.Root.ForConnection("bob-tab", clientKey: "bob");
 (await host.Root.ExecuteAsync(vm => vm.ClaimCommand)).ThrowIfFailed();
 (await bob.ExecuteAsync(vm => vm.ClaimCommand)).ThrowIfFailed();
-Assert.Equal(["connection-1", "bob-tab"], host.Connections.Current.Select(c => c.ConnectionKey));
+Assert.Equal([host.Root.Connection, bob.Connection], host.Connections.Current);
 
 host.Transport.CloseConnection("bob-tab");
 await host.Content.ModelContext!.InvokeAsync(() => { }); // Disconnected runs in a model turn
