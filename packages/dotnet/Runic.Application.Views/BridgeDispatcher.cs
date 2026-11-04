@@ -1002,8 +1002,8 @@ internal sealed class BridgeDispatcher : IBridgeRequestHandler
     }
 
     // client-languages/1: the hello's languages, absent or an array of at most MaximumClientLanguages strings. The
-    // language tags among them are kept, each once, in their order; other strings are ignored. Without the feature the
-    // member is ignored.
+    // language tags among them are kept in BCP 47 case, each once, in their order; other strings, such as a tag longer
+    // than 64 characters, are ignored. Without the feature the member is ignored.
     private static bool TryReadLanguages(JsonElement root, bool usesClientLanguages, out IReadOnlyList<string> languages)
     {
         languages = [];
@@ -1014,10 +1014,37 @@ internal sealed class BridgeDispatcher : IBridgeRequestHandler
         {
             if (item.ValueKind != JsonValueKind.String) return false;
             var tag = item.GetString()!;
-            if (IsLocale(tag) && !tags.Contains(tag, StringComparer.OrdinalIgnoreCase)) tags.Add(tag);
+            if (!IsLocale(tag)) continue;
+            tag = CanonicalLocaleCase(tag);
+            if (!tags.Contains(tag, StringComparer.Ordinal)) tags.Add(tag);
         }
-        languages = tags;
+        languages = tags.Count == 0 ? [] : Array.AsReadOnly(tags.ToArray());
         return true;
+    }
+
+    // A locale tag in the case BCP 47 recommends (RFC 5646 2.1.1): the language and extended language subtags lower case,
+    // a script title case (zh-Hant), a region upper case (de-CH, es-419), and everything else, including the subtags
+    // after an extension or private-use singleton, lower case: DE-ch becomes de-CH, ZH-hant-tw zh-Hant-TW.
+    internal static string CanonicalLocaleCase(string tag)
+    {
+        var subtags = tag.Split('-');
+        var afterSingleton = false;
+        for (var index = 0; index < subtags.Length; index++)
+        {
+            var subtag = subtags[index];
+            if (index == 0 || afterSingleton) subtags[index] = subtag.ToLowerInvariant();
+            else if (subtag.Length == 1)
+            {
+                afterSingleton = true;
+                subtags[index] = subtag.ToLowerInvariant();
+            }
+            else if (subtag.Length == 4 && char.IsAsciiLetter(subtag[0]))
+                subtags[index] = char.ToUpperInvariant(subtag[0]) + subtag[1..].ToLowerInvariant();
+            else if (subtag.Length == 2 || (subtag.Length == 3 && char.IsAsciiDigit(subtag[0])))
+                subtags[index] = subtag.ToUpperInvariant();
+            else subtags[index] = subtag.ToLowerInvariant();
+        }
+        return string.Join('-', subtags);
     }
 
     private static bool TryReadName(JsonElement owner, string name, int maximumLength, out string value)

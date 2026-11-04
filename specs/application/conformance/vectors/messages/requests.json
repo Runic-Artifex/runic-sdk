@@ -326,6 +326,20 @@
       "expect": {"result":"valid"}
     },
     {
+      "id": "messages.requests.hello-with-client-languages-longer-than-64",
+      "description": "client-languages/1: a string longer than 64 characters is not a language tag and is ignored, not rejected.",
+      "operation": "read-request",
+      "input": {"encoding":"json","value":{"kind":"hello","protocol":4,"session":"s-1","client":{"name":"test-client","version":"1.0.0"},"features":["client-languages/1"],"languages":["de","abbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"]}},
+      "expect": {"result":"valid"}
+    },
+    {
+      "id": "messages.requests.hello-with-client-languages-differing-in-case",
+      "description": "client-languages/1: tags that differ only in case are one language, kept once in BCP 47 case; the hello is valid.",
+      "operation": "read-request",
+      "input": {"encoding":"json","value":{"kind":"hello","protocol":4,"session":"s-1","client":{"name":"test-client","version":"1.0.0"},"features":["client-languages/1"],"languages":["de-CH","DE-ch","de-ch"]}},
+      "expect": {"result":"valid"}
+    },
+    {
       "id": "messages.requests.hello-with-client-languages-not-an-array",
       "description": "client-languages/1: languages that are not an array of strings are invalid.",
       "operation": "read-request",

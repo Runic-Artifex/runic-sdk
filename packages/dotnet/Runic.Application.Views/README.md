@@ -756,7 +756,8 @@ Window's page connections and tells a command which one invoked it:
   ([translated text](#translated-text)): use the languages to choose it, for
   example when the first browser connects to a CS-WebUI window, not to
   translate per connection. The page reports them, so treat them as a
-  preference, never as an identity.
+  preference, never as an identity. The tags are in BCP 47 case (`de-CH`,
+  `zh-Hant-TW`), each once, and the list is read-only.
 
   ```csharp
   connections.Connected += (_, e) =>
@@ -765,6 +766,15 @@ Window's page connections and tells a command which one invoked it:
           windowLocale.Locale = language;
   };
   ```
+
+  Always negotiate them against the locales the application ships, as above,
+  and set the result: never assign a browser's tag to
+  `IRunicWindowLocale.Locale` directly, or one remote browser picks an
+  arbitrary language for everyone who shares the window. **Privacy:** the list
+  is personal data that can help fingerprint a browser, and may say more than
+  its `Accept-Language` header. Use it to choose the window's language only, and
+  do not log or store it. A page can stop sending it with
+  `configureClientLanguages({ send: false })` from `@runic-artifex/views`.
 - `Connected` and `Disconnected` are plain .NET events, raised in a turn of
   the Window's model context, as a command body runs, so a handler may change
   state the page sees. `Current` changes in the same turn. The turn runs in no

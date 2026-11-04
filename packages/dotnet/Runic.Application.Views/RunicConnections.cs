@@ -22,11 +22,40 @@ public sealed record RunicConnection(string ConnectionKey, string ClientKey)
     /// of 0.17 or later). Empty when the page reports none.
     /// </summary>
     /// <remarks>
-    /// The page reports them; the transport does not check them, so treat them as a preference, never as an identity.
-    /// A Window shows one language for all of its connections (<see cref="IRunicWindowLocale"/>): use the languages to
-    /// choose it, for example from the first connection of a CS-WebUI window, not to translate per connection.
+    /// <para>
+    /// The tags are in BCP 47 case (<c>de-CH</c>, <c>zh-Hant-TW</c>), each once, whatever case the browser sent. The page
+    /// reports them; the transport does not check them, so treat them as a preference, never as an identity. A Window
+    /// shows one language for all of its connections (<see cref="IRunicWindowLocale"/>): use the languages to choose it,
+    /// for example from the first connection of a CS-WebUI window, not to translate per connection.
+    /// </para>
+    /// <para>
+    /// Negotiate them against the locales the application ships, for example with the generated catalog's
+    /// <c>ResolveLocale</c>, and set the result; never assign a browser's tag to <see cref="IRunicWindowLocale.Locale"/>
+    /// directly, or one remote browser chooses an arbitrary language for everyone who shares the window.
+    /// </para>
+    /// <para>
+    /// The list is personal data that can help fingerprint a browser, and may say more than its
+    /// <c>Accept-Language</c> header: use it to choose the window's language only, and do not log or store it. A page
+    /// can stop sending it (<c>configureClientLanguages({ send: false })</c> of <c>@runic-artifex/views</c>). The list is
+    /// read-only and copied when it is set.
+    /// </para>
     /// </remarks>
-    public IReadOnlyList<string> Languages { get; init; } = [];
+    /// <exception cref="ArgumentNullException">The value set is <see langword="null"/>.</exception>
+    public IReadOnlyList<string> Languages
+    {
+        get => _languages;
+        init => _languages = value is null ? throw new ArgumentNullException(nameof(value))
+            : value.Count == 0 ? [] : Array.AsReadOnly([.. value]);
+    }
+
+    private readonly IReadOnlyList<string> _languages = [];
+
+    private bool PrintMembers(System.Text.StringBuilder builder)
+    {
+        builder.Append("ConnectionKey = ").Append(ConnectionKey).Append(", ClientKey = ").Append(ClientKey)
+            .Append(", Languages = [").AppendJoin(", ", _languages).Append(']');
+        return true;
+    }
 
     /// <summary>Whether <paramref name="other"/> is the same connection: both keys are equal.</summary>
     /// <param name="other">The connection to compare.</param>

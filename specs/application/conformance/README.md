@@ -189,7 +189,7 @@ Expectations of the producer:
 - `closed`: the close of the `closeWindow` step `id` completed, and `acknowledged` is whether every page acknowledged
   it ([window close](../README.md#window-close)). The runner waits for the close as for a `receive` step.
 - `languages`: `{connection, value}`, the languages the producer reports for the connection after its `hello`, in
-  order ([client languages](../README.md#client-languages)): `RunicConnection.Languages` in .NET.
+  order and in BCP 47 case ([client languages](../README.md#client-languages)): `RunicConnection.Languages` in .NET.
 
 ### Requirements
 

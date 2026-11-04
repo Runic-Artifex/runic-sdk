@@ -5,7 +5,7 @@ import { applySplice, producerSplices, textSpliceFeature } from "./text.js";
 import { insertRows } from "./collections.js";
 import { flushNotifications } from "./notifications.js";
 import { translationTextFeature, validationPendingFeature } from "./validation.js";
-import { clientLanguagesFeature } from "./client-languages.js";
+import { canonicalLanguageCase, clientLanguagesFeature, isClientLanguageTag } from "./client-languages.js";
 import { clientErrorsFeature, fieldFlushFeature, fieldPathsFeature, presentationEpochFeature, presentedFeature, queryCollectionsFeature, requestSessionFeature, viewRequestsFeature } from "./protocol.js";
 import { regionCollectionsFeature, type RegionOutcome } from "./regions.js";
 import { navigationPathFeature } from "./navigation-feature.js";
@@ -504,7 +504,8 @@ export interface MockBridge extends RunicBridgeClient {
   readonly windowLocale: string | null;
   /**
    * client-languages/1: the languages the page's last `hello` reported (its browser's `navigator.languages`), as a .NET
-   * producer reports them on `RunicConnection.Languages`; `[]` before a `hello` that uses the feature.
+   * producer reports them on `RunicConnection.Languages`: in BCP 47 case, each once. `[]` before a `hello` that uses
+   * the feature.
    */
   readonly clientLanguages: readonly string[];
   /** Resolves after `milliseconds` of virtual time, for handlers that model latency. */
@@ -1669,9 +1670,12 @@ export function createMockBridge(options: MockBridgeOptions = {}): MockBridge {
       connection.features = new Set((listed as string[] | undefined ?? []).filter(feature => mockFeatures.includes(feature)));
       if (usesLanguages) {
         const tags: string[] = [];
-        for (const language of (languages as string[] | undefined) ?? [])
-          if (/^[A-Za-z][A-Za-z0-9]*(-[A-Za-z0-9]+)*$/.test(language) && language.length <= 64
-            && !tags.some(tag => tag.toLowerCase() === language.toLowerCase())) tags.push(language);
+        // As a producer keeps them: the language tags in BCP 47 case, each once.
+        for (const language of (languages as string[] | undefined) ?? []) {
+          if (!isClientLanguageTag(language)) continue;
+          const tag = canonicalLanguageCase(language);
+          if (!tags.includes(tag)) tags.push(tag);
+        }
         reportedLanguages = Object.freeze(tags);
       }
       // translation-text/1: a page that connects to a window with a locale is told it.

@@ -320,8 +320,8 @@ A test connection reports no languages by default.
 `host.Transport.SetLanguages(connectionKey, ["de-CH", "de"])` (since 0.17),
 before the connection's first request, makes its `hello` report them, as a
 browser reports `navigator.languages`; the window then lists them as the
-connection's `RunicConnection.Languages`, and the driver's `Connection` carries
-them too.
+connection's `RunicConnection.Languages`, in BCP 47 case and each once, as the
+window keeps a browser's, and the driver's `Connection` carries them too.
 
 ### Navigation
 

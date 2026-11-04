@@ -1286,18 +1286,27 @@ CS-WebUI window:
 - **Client.** A client that implements the feature lists it and sends `languages` in every `hello`: the browser's
   `navigator.languages`, or `[navigator.language]` where the list is missing, without strings that are not language
   tags (1 to 64 ASCII letters, digits and `-`, starting with a letter, without an empty subtag), each once
-  (compared without case), at most the first 16. A page that knows no language sends `[]`. Like `session` in
+  (compared without case), at most the first 16. A page that knows no language, or whose application turned the
+  report off, sends `[]`; a client SHOULD let the page turn it off. Like `session` in
   [`request-session/1`](#request-sessions), the member is sent before the reply tells whether the feature is in use;
   a producer without the feature ignores it.
 - **Producer.** On a `hello` that lists the feature, a `languages` that is present but is not an array of at most 16
   strings is `rejected` with `invalid-request`, as an invalid `features` is. The producer keeps the language tags of
-  the array, in their order, each once (compared without case), and ignores its other strings; absent means none. It
-  reports them as the connection's languages to the application, for the connection's lifetime. Without the feature
-  in the `hello`, the member is ignored.
+  the array, in their order, in the case BCP 47 recommends (the language lower case, a script title case, a region
+  upper case, and other subtags, including those after a singleton, lower case: `DE-ch` is `de-CH`), each once, and
+  ignores its other strings, such as one longer than 64 characters; absent means none. It reports them as the
+  connection's languages to the application, read-only, for the connection's lifetime. Without the feature in the
+  `hello`, the member is ignored.
 - **One language per window.** The languages are a preference the page reports, not a request. The window keeps one
   locale for all of its connections ([translated text](#translated-text)), which only the application sets: it may
   choose it from the languages of a connection, for example the first one of a window, but no connection is shown
   another language than the window's. The producer pushes nothing for this feature.
+- **Negotiation.** An application negotiates the languages against the locales it ships and sets the result; it
+  never sets a client's tag as the window's locale directly, which would let one remote page choose an arbitrary
+  locale for everyone who shares the window.
+- **Privacy.** The list is personal data and can help fingerprint a browser; it can say more than the
+  `Accept-Language` header the producer may already see. An application uses it to choose the window's language
+  only, and does not log, store or forward it. A producer does not log it either.
 
 ## Page errors
 
