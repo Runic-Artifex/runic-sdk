@@ -15,7 +15,7 @@ internal sealed record PackageFileType(string Extension, string? MimeType);
 
 /// <summary>
 /// A locale the application is translated into (<c>RunicApplicationLocales</c>, <c>RunicApplicationLocale</c> items): a
-/// BCP 47 tag of a language, an optional script and an optional region (<c>de</c>, <c>pt-BR</c>, <c>zh-Hant</c>), and the
+/// BCP 47 tag of a language, an optional script, region and variants (<c>de</c>, <c>pt-BR</c>, <c>zh-Hant</c>), and the
 /// application's name and description in it, when the project gives them.
 /// </summary>
 internal sealed record PackageLocale(string Tag, string? Name, string? Description);
@@ -224,35 +224,90 @@ internal sealed partial record PackageIdentity
         return locales;
     }
 
-    /// <summary>A language tag every packager reads: <c>ll</c> or <c>lll</c>, then an optional script and region.</summary>
+    /// <summary>
+    /// A language tag every packager reads: <c>ll</c> or <c>lll</c>, then an optional script, region and variants, in the
+    /// canonical case of BCP 47: the language and variants in lower case, the script in title case, the region in upper
+    /// case (<c>pt-BR</c>, <c>zh-Hant</c>, <c>ca-ES-valencia</c>, <c>es-419</c>).
+    /// </summary>
     internal static string CanonicalLocale(string tag)
     {
         Match match = LocaleSyntax().Match(tag.Trim().Replace('_', '-'));
         if (!match.Success)
         {
             throw new DevDevelopmentException(PackageCodes.IdentityInvalid,
-                $"RunicApplicationLocales has '{tag}', which is not a language tag such as de, pt-BR or zh-Hant.");
+                $"RunicApplicationLocales has '{tag}', which is not a language tag such as de, pt-BR, zh-Hant or ca-ES-valencia.");
         }
         string language = match.Groups["language"].Value.ToLowerInvariant();
         string script = match.Groups["script"].Value is { Length: 4 } letters
             ? char.ToUpperInvariant(letters[0]) + letters[1..].ToLowerInvariant() : "";
         string region = match.Groups["region"].Value.ToUpperInvariant();
-        return language + (script.Length == 0 ? "" : "-" + script) + (region.Length == 0 ? "" : "-" + region);
+        return language + (script.Length == 0 ? "" : "-" + script) + (region.Length == 0 ? "" : "-" + region)
+            + string.Concat(match.Groups["variant"].Captures.Select(variant => "-" + variant.Value.ToLowerInvariant()));
     }
 
     /// <summary>
-    /// A locale as desktop entries and AppStream name it, <c>lang_COUNTRY@MODIFIER</c>: <c>pt_BR</c>, <c>sr@latin</c>;
-    /// <c>zh-Hans</c> and <c>zh-Hant</c> without a region are <c>zh_CN</c> and <c>zh_TW</c>.
+    /// A locale as desktop entries and AppStream name it, glibc's <c>lang_COUNTRY@modifier</c>, and whether it keeps all of
+    /// the tag (<c>Exact</c>). A letter region is the country (<c>pt-BR</c> → <c>pt_BR</c>); a numeric region, which glibc
+    /// has no locale for, is left out (<c>es-419</c> → <c>es</c>). The scripts Latn, Cyrl and Deva are the modifiers
+    /// <c>@latin</c>, <c>@cyrillic</c> and <c>@devanagari</c> (<c>sr-Latn-RS</c> → <c>sr_RS@latin</c>); <c>zh-Hans</c> and
+    /// <c>zh-Hant</c> without a region are <c>zh_CN</c> and <c>zh_TW</c>, and with one the region alone
+    /// (<c>zh-Hant-HK</c> → <c>zh_HK</c>); another script is left out. Without a script modifier, the first variant is the
+    /// modifier (<c>ca-ES-valencia</c> → <c>ca_ES@valencia</c>). A tag is exact unless a part of it was left out or the
+    /// region was inferred from the script.
     /// </summary>
-    internal static string LinuxLocale(string tag)
+    internal static (string Locale, bool Exact) LinuxLocale(string tag)
     {
-        string[] parts = tag.Split('-');
-        string language = parts[0];
-        string? script = parts.Skip(1).FirstOrDefault(part => part.Length == 4);
-        string? region = parts.Skip(1).FirstOrDefault(part => part.Length != 4);
-        if (language == "zh" && region is null) region = script switch { "Hans" => "CN", "Hant" => "TW", _ => null };
-        string modifier = script switch { "Latn" => "@latin", "Cyrl" => "@cyrillic", _ => "" };
-        return language + (region is null ? "" : "_" + region) + modifier;
+        Match match = LocaleSyntax().Match(tag);
+        string language = match.Groups["language"].Value;
+        string script = match.Groups["script"].Value;
+        string region = match.Groups["region"].Value;
+        string[] variants = [.. match.Groups["variant"].Captures.Select(variant => variant.Value)];
+        bool exact = true;
+        if (region.Length == 3)
+        {
+            region = "";
+            exact = false;
+        }
+        string modifier = script switch { "Latn" => "latin", "Cyrl" => "cyrillic", "Deva" => "devanagari", _ => "" };
+        if (script.Length > 0 && modifier.Length == 0)
+        {
+            if (language != "zh" || script is not ("Hans" or "Hant"))
+            {
+                exact = false;
+            }
+            else if (region.Length == 0)
+            {
+                // zh-Hans and zh-Hant name the region of their glibc locale; with a region, the region alone says enough.
+                region = script == "Hans" ? "CN" : "TW";
+                exact = false;
+            }
+        }
+        if (variants.Length > 0)
+        {
+            if (modifier.Length == 0) modifier = variants[0];
+            exact &= variants.Length == 1 && modifier == variants[0];
+        }
+        return (language + (region.Length == 0 ? "" : "_" + region) + (modifier.Length == 0 ? "" : "@" + modifier), exact);
+    }
+
+    /// <summary>
+    /// The Linux locales of the locales that have a name or a description, each once, in the order they first appear,
+    /// with the name and the description of that locale. Where several tags have the same Linux locale (<c>zh-TW</c> and
+    /// <c>zh-Hant</c>, <c>es</c> and <c>es-419</c>), the name comes from the first exact one that has a name, else from the
+    /// first that has one, and the description likewise; so an explicit region wins over one inferred from the script,
+    /// and no desktop entry has the same key twice.
+    /// </summary>
+    internal static IReadOnlyList<PackageLocale> LinuxLocales(IReadOnlyList<PackageLocale> locales)
+    {
+        var mapped = locales.Select(locale => (Locale: locale, Linux: LinuxLocale(locale.Tag)))
+            .Where(entry => entry.Locale.Name is not null || entry.Locale.Description is not null).ToList();
+        return [.. mapped.Select(entry => entry.Linux.Locale).Distinct(StringComparer.Ordinal).Select(key =>
+        {
+            var candidates = mapped.Where(entry => entry.Linux.Locale == key).OrderBy(entry => entry.Linux.Exact ? 0 : 1)
+                .Select(entry => entry.Locale).ToList();
+            return new PackageLocale(key, candidates.FirstOrDefault(locale => locale.Name is not null)?.Name,
+                candidates.FirstOrDefault(locale => locale.Description is not null)?.Description);
+        })];
     }
 
     /// <summary>
@@ -466,7 +521,7 @@ internal sealed partial record PackageIdentity
     [GeneratedRegex("[^A-Za-z0-9.-]")]
     private static partial Regex NonIdentifierCharacters();
 
-    [GeneratedRegex("^(?<language>[A-Za-z]{2,3})(-(?<script>[A-Za-z]{4}))?(-(?<region>[A-Za-z]{2}|[0-9]{3}))?$")]
+    [GeneratedRegex("^(?<language>[A-Za-z]{2,3})(-(?<script>[A-Za-z]{4}))?(-(?<region>[A-Za-z]{2}|[0-9]{3}))?(-(?<variant>[A-Za-z0-9]{5,8}|[0-9][A-Za-z0-9]{3}))*$")]
     private static partial Regex LocaleSyntax();
 
     [GeneratedRegex("[^A-Za-z0-9.+~]")]

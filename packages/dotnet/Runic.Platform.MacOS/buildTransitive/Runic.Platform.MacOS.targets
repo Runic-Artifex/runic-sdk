@@ -335,7 +335,7 @@ public sealed class RunicWriteMacPrivilegedDaemon : Task
                                  (ApplicationTitle), the version, RunicApplicationUrlSchemes, RunicApplicationFileTypes
                                  (by extension, with the Alternate rank), RunicMacCameraUsageDescription and
                                  RunicMacMicrophoneUsageDescription, and CFBundleLocalizations for RunicApplicationLocales.
-        Contents/Resources/<tag>.lproj  an empty folder per locale of RunicApplicationLocales
+        Contents/Resources/<tag>.lproj  an empty folder per locale of RunicApplicationLocales; others are removed
         Contents/MacOS/<name>    a copy of the application host, which the bundle's signature covers
         Contents/MacOS/*         links to every other file and directory of the build output, so a rebuild or a
                                  frontend written to www/ needs no copy
@@ -428,9 +428,21 @@ public sealed class RunicWriteMacDevelopmentBundle : Task
         }
 
         // RunicApplicationLocales: an empty <tag>.lproj per locale, as dotnet runic package macos writes them, so AppKit
-        // shows its own text in those languages during development too.
+        // shows its own text in those languages during development too. The bundle persists across builds, so the folder
+        // of a locale that is no longer listed is removed: AppKit offers every language that has one. The comparison is
+        // ordinal, as the tags are canonical, so a folder of an earlier spelling (pt-br.lproj) is replaced too.
         string resources = Path.Combine(contents, "Resources");
-        foreach (string locale in LocaleTags())
+        string[] tags = LocaleTags();
+        if (Directory.Exists(resources))
+        {
+            foreach (string folder in Directory.EnumerateDirectories(resources, "*.lproj").ToList())
+            {
+                if (tags.Contains(Path.GetFileNameWithoutExtension(folder), StringComparer.Ordinal)) continue;
+                Remove(folder);
+                Changed = true;
+            }
+        }
+        foreach (string locale in tags)
         {
             string folder = Path.Combine(resources, locale + ".lproj");
             if (Directory.Exists(folder)) continue;
@@ -508,10 +520,18 @@ public sealed class RunicWriteMacDevelopmentBundle : Task
     }
 
     // The locales of RunicApplicationLocales and the RunicApplicationLocale items, each once, as language tags with a
-    // hyphen (pt-BR). dotnet runic package checks their syntax; a tag a folder name cannot hold is left out here.
+    // hyphen in the canonical case that dotnet runic package writes too: the language and variants in lower case, a
+    // script in title case, a region in upper case (pt_br -> pt-BR, zh-hant -> zh-Hant). dotnet runic package checks
+    // their syntax; a tag a folder name cannot hold is left out here.
     private string[] LocaleTags() => Split(Locales).Select(locale => locale.Replace('_', '-'))
-        .Where(locale => locale.All(character => char.IsLetterOrDigit(character) || character == '-'))
-        .Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
+        .Where(locale => locale.Length > 0 && locale.All(character => char.IsLetterOrDigit(character) || character == '-'))
+        .Select(CanonicalLocale).Distinct(StringComparer.Ordinal).ToArray();
+
+    private static string CanonicalLocale(string tag) => string.Join("-", tag.Split('-').Select((part, index) =>
+        index == 0 ? part.ToLowerInvariant()
+        : part.Length == 2 && part.All(char.IsLetter) ? part.ToUpperInvariant()
+        : part.Length == 4 && part.All(char.IsLetter) ? part.Substring(0, 1).ToUpperInvariant() + part.Substring(1).ToLowerInvariant()
+        : part.ToLowerInvariant()));
 
     private static void Remove(string path)
     {

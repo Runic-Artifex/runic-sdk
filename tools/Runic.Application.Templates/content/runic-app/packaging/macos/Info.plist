@@ -6,7 +6,8 @@
      NSMicrophoneUsageDescription (UsageDescriptions). File types with a system type, such as .txt or .png, are declared
      with the Alternate rank (RunicMacFileTypeHandlerRank), the application's own types exported with the Owner rank.
      RunicApplicationLocales adds CFBundleDevelopmentRegion and CFBundleLocalizations (Localizations), so AppKit shows its
-     own text, such as the About panel and the open and save panels, in those languages. -->
+     own text, such as the About panel and the open and save panels, in those languages, and LSHasLocalizedDisplayName when
+     a RunicApplicationLocale item has a Name. -->
 <plist version="1.0">
 <dict>
   <key>CFBundleIdentifier</key><string>{{ApplicationId}}</string>

@@ -63,16 +63,28 @@ internal static partial class PackageManifests
     // instead of shipping a package that silently declares English only or drops the translated names.
     private static void CheckLocaleFields(PackageIdentity identity, string name, string template)
     {
+        string file = FindOverride(identity, name) ?? name;
+        // {{Resources}} writes every Resource row, so a row the override keeps beside it declares a language twice.
+        if (name == "windows/AppxManifest.xml" && template.Contains("{{Resources}}", StringComparison.Ordinal)
+            && template.Contains("<Resource ", StringComparison.Ordinal))
+        {
+            throw new DevDevelopmentException(PackageCodes.ValidationFailed,
+                $"The manifest {file} has a <Resource> row beside {{{{Resources}}}}, which writes every row. "
+                + "Remove the row, e.g. <Resource Language=\"en-us\" />.");
+        }
         if (identity.Locales.Count == 0) return;
         bool named = identity.Locales.Any(locale => locale.Name is not null);
         bool described = identity.Locales.Any(locale => locale.Description is not null);
         (string Field, bool Needed, string Where)[] required = name switch
         {
-            "macos/Info.plist" => [("Localizations", true, "its dict")],
-            "windows/AppxManifest.xml" => [("Resources", true, "its Resources element, in place of the Resource rows")],
-            "linux/app.desktop" => [("LocalizedEntries", named || described, "the [Desktop Entry] group, after Comment")],
-            "linux/app.metainfo.xml" => [("LocalizedNames", named, "the component, after its name"),
-                ("LocalizedSummaries", described, "the component, after its summary")],
+            "macos/Info.plist" => [("Localizations", true, "inside the top-level <dict>, e.g. right after {{UsageDescriptions}}")],
+            "windows/AppxManifest.xml" => [("Resources", true,
+                "inside <Resources> (<Resources>{{Resources}}</Resources>) and remove the old <Resource Language=\"en-us\" /> row, "
+                + "which {{Resources}} replaces")],
+            "linux/app.desktop" => [("LocalizedEntries", named || described,
+                "at the start of a line in the [Desktop Entry] group, e.g. right before Exec= ({{LocalizedEntries}}Exec=...)")],
+            "linux/app.metainfo.xml" => [("LocalizedNames", named, "inside <component>, right after its </name>"),
+                ("LocalizedSummaries", described, "inside <component>, right after its </summary>")],
             _ => [],
         };
         foreach ((string field, bool needed, string where) in required)
@@ -80,7 +92,7 @@ internal static partial class PackageManifests
             if (needed && !template.Contains("{{" + field + "}}", StringComparison.Ordinal))
             {
                 throw new DevDevelopmentException(PackageCodes.ValidationFailed,
-                    $"The manifest {name} has no {{{{{field}}}}}, which RunicApplicationLocales fills. Add it to {where}.");
+                    $"The manifest {file} has no {{{{{field}}}}}, which RunicApplicationLocales fills. Add {{{{{field}}}}} {where}.");
             }
         }
     }
@@ -193,11 +205,13 @@ internal static partial class PackageManifests
 
     // CFBundleLocalizations lists the languages AppKit may show its own text in (the About panel, open and save panels,
     // the menu items macOS adds); the first is the development region. MacOSPackager adds a <tag>.lproj per locale.
+    // LSHasLocalizedDisplayName tells Finder and the Dock to read the name from the InfoPlist.strings of a locale that
+    // has a Name.
     private static string MacOSLocalizations(PackageIdentity identity) => identity.Locales.Count == 0 ? "" : $"""
 
   <key>CFBundleDevelopmentRegion</key><string>{identity.Locales[0].Tag}</string>
   <key>CFBundleLocalizations</key><array>{string.Concat(identity.Locales.Select(locale => $"<string>{locale.Tag}</string>"))}</array>
-""";
+""" + (identity.Locales.Any(locale => locale.Name is not null) ? "\n  <key>LSHasLocalizedDisplayName</key><true/>" : "");
 
     /// <summary>
     /// A locale's <c>InfoPlist.strings</c>, which gives the bundle its name in that language, or null without a name.
@@ -206,7 +220,8 @@ internal static partial class PackageManifests
     {
         if (locale.Name is null) return null;
         string name = locale.Name.Replace("\\", "\\\\", StringComparison.Ordinal).Replace("\"", "\\\"", StringComparison.Ordinal)
-            .Replace("\n", "\\n", StringComparison.Ordinal);
+            .Replace("\n", "\\n", StringComparison.Ordinal).Replace("\r", "\\r", StringComparison.Ordinal)
+            .Replace("\t", "\\t", StringComparison.Ordinal);
         return $"\"CFBundleName\" = \"{name}\";\n\"CFBundleDisplayName\" = \"{name}\";\n";
     }
 
@@ -292,14 +307,18 @@ internal static partial class PackageManifests
         fields["MimeTypes"] = mimeTypes.Length == 0 ? "" : $"MimeType={string.Concat(mimeTypes.Select(type => type + ";"))}\n";
         fields["DBusActivatable"] = identity.DBusActivatable && target != PackageTarget.AppImage ? "DBusActivatable=true\n" : "";
         fields["MimeInfo"] = MimeInfo(identity, name);
+        // The desktop entry's own name and comment, escaped as desktop entry strings rather than XML (Notes & Co, not
+        // Notes &amp; Co). ApplicationName and Description stay XML-escaped for the XML manifests and older overrides.
+        fields["DesktopName"] = DesktopValue(identity.Name);
+        fields["DesktopComment"] = DesktopValue(identity.Description);
         // The name and description in each locale that has them: Name[xx]= and Comment[xx]= in the desktop entry,
-        // <name xml:lang> and <summary xml:lang> in the metainfo.
+        // <name xml:lang> and <summary xml:lang> in the metainfo, one per Linux locale (PackageIdentity.LinuxLocales).
         var entries = new StringBuilder();
         var names = new StringBuilder();
         var summaries = new StringBuilder();
-        foreach (PackageLocale locale in identity.Locales)
+        foreach (PackageLocale locale in PackageIdentity.LinuxLocales(identity.Locales))
         {
-            string tag = PackageIdentity.LinuxLocale(locale.Tag);
+            string tag = locale.Tag;
             if (locale.Name is { } localName)
             {
                 entries.Append(CultureInfo.InvariantCulture, $"Name[{tag}]={DesktopValue(localName)}\n");
