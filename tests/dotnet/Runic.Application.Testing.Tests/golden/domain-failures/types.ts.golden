@@ -401,9 +401,22 @@ export interface ValidationProfile {
   readonly "postal-code": string;
 }
 
+export interface ValidationTextCircle {
+  readonly radius: number;
+  readonly hasErrors: boolean;
+}
+
 export interface ValidationTextDetails {
   readonly code: string;
   readonly hasErrors: boolean;
+}
+
+export type ValidationTextShape =
+  | ({ readonly $case: "circle" } & ValidationTextCircle)
+  | ({ readonly $case: "square" } & ValidationTextSquare);
+
+export interface ValidationTextSquare {
+  readonly side: number;
 }
 
 /** What a discard question shows. */

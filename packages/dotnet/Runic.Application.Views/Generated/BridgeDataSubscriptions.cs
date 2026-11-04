@@ -59,57 +59,24 @@ public sealed class BridgeDataSubscriptionMember
 
     /// <summary>
     /// Returns the member's property when it has validation attributes, so the Bridge can give their messages a text
-    /// reference (<see cref="RunicValidationOptions.TextFor"/>). Generated code reads it with a constant name, which
-    /// keeps the property's metadata in a trimmed application.
+    /// reference (<see cref="RunicValidationOptions.TextFor"/>). Generated code reads it from the declaring type with a
+    /// constant name and <see cref="System.Reflection.BindingFlags.DeclaredOnly"/>, which keeps the property's metadata
+    /// in a trimmed application and finds a property that hides an inherited one (<c>new</c>).
     /// </summary>
     public Func<System.Reflection.PropertyInfo?>? ValidationProperty { get; init; }
 
-    private BridgeValidationAttributes? _validationAttributes;
+    private BridgeValidationProperty? _validationProperty;
 
-    // The member's validation attributes and the names their messages may use, read once.
-    internal BridgeValidationAttributes? ValidationAttributes
+    // The property of ValidationProperty, read once per member.
+    internal BridgeValidationProperty? ValidationMetadata
     {
         get
         {
             if (ValidationProperty is null) return null;
-            if (Volatile.Read(ref _validationAttributes) is { } read) return read;
-            var created = BridgeValidationAttributes.Read(ValidationProperty());
-            return Interlocked.CompareExchange(ref _validationAttributes, created, null) ?? created;
+            if (Volatile.Read(ref _validationProperty) is { } read) return read;
+            var created = BridgeValidationProperty.Read(ValidationProperty);
+            return Interlocked.CompareExchange(ref _validationProperty, created, null) ?? created;
         }
-    }
-}
-
-// A member's validation attributes, and the display names their messages may use: DataAnnotations' Validator takes
-// [Display(Name)], then [DisplayName], then the property name; CommunityToolkit's ObservableValidator [Display(Name)],
-// then the property name.
-internal sealed class BridgeValidationAttributes
-{
-    private BridgeValidationAttributes(System.ComponentModel.DataAnnotations.ValidationAttribute[] attributes, string[] displayNames)
-    {
-        Attributes = attributes;
-        DisplayNames = displayNames;
-    }
-
-    internal System.ComponentModel.DataAnnotations.ValidationAttribute[] Attributes { get; }
-    internal string[] DisplayNames { get; }
-
-    internal static BridgeValidationAttributes Read(System.Reflection.PropertyInfo? property)
-    {
-        if (property is null) return new([], []);
-        var attributes = System.Reflection.CustomAttributeExtensions
-            .GetCustomAttributes<System.ComponentModel.DataAnnotations.ValidationAttribute>(property, true).ToArray();
-        var names = new List<string>(3);
-        try
-        {
-            if (System.Reflection.CustomAttributeExtensions.GetCustomAttribute<System.ComponentModel.DataAnnotations.DisplayAttribute>(property, true)?.GetName() is { Length: > 0 } display)
-                names.Add(display);
-        }
-        catch (InvalidOperationException) { } // A [Display] whose resource it cannot read.
-        if (System.Reflection.CustomAttributeExtensions.GetCustomAttribute<DisplayNameAttribute>(property, true)?.DisplayName is { Length: > 0 } displayName
-            && !names.Contains(displayName))
-            names.Add(displayName);
-        if (!names.Contains(property.Name)) names.Add(property.Name);
-        return new(attributes, [.. names]);
     }
 }
 
