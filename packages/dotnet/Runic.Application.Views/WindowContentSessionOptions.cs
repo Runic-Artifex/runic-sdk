@@ -51,6 +51,13 @@ public sealed class WindowContentSessionOptions
     public bool? IncludeFailureDetail { get; init; }
 
     /// <summary>
+    /// How this window's Bridges write validation, such as <see cref="RunicValidationOptions.TextFor"/> for the messages
+    /// of validation attributes; <see langword="null"/>, the default, writes the messages as they are. The Desktop,
+    /// WPF, CS-WebUI and test hosts set it to the <see cref="RunicValidationOptions"/> of the window's services.
+    /// </summary>
+    public RunicValidationOptions? Validation { get; init; }
+
+    /// <summary>
     /// The largest Bridge input, in UTF-8 bytes, that this window decodes: a setter value, a command argument,
     /// a checked write, an operation start, and an interaction request or reply. A larger one is answered as
     /// invalid input (<c>rejected</c> with reason <c>invalid-input</c>, or the interaction routes'

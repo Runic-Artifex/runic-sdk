@@ -470,6 +470,12 @@ internal static partial class ViewsLog
         Message = "The text reference {Key} of a validation message has {Bytes} bytes, more than the {Limit} an error carries, so the page shows the message.")]
     internal static partial void ValidationTextTooLarge(ILogger logger, string key, int bytes, int limit);
 
+    // translation-text/1: RunicValidationOptions.TextFor threw for a validation attribute's message; the error shows
+    // its message.
+    [LoggerMessage(EventId = 1176, EventName = "ValidationTextForFailed", Level = LogLevel.Warning,
+        Message = "RunicValidationOptions.TextFor failed for the {Attribute} of {Model}.{Member}, so the page shows its message.")]
+    internal static partial void ValidationTextForFailed(ILogger logger, string model, string member, string attribute, Exception exception);
+
     // RunicWindowOptions.Owner that the host cannot apply: the Window opens on its own.
     [LoggerMessage(EventId = 1180, EventName = "WindowOwnerIgnored", Level = LogLevel.Warning,
         Message = "The Window {Window} opens without its owner {Owner}: {Reason}.")]

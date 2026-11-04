@@ -1,1 +1,3 @@
 #nullable enable
+Runic.Application.Testing.RunicWindowTestHostOptions.Validation.get -> Runic.Application.Views.RunicValidationOptions?
+Runic.Application.Testing.RunicWindowTestHostOptions.Validation.init -> void

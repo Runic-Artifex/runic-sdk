@@ -152,6 +152,7 @@ public static class RunicWindowTestHost
             TimeProvider = options.TimeProvider,
             CreateId = options.CreateId,
             IncludeFailureDetail = options.IncludeFailureDetail,
+            Validation = options.Validation ?? services.GetService<RunicValidationOptions>(),
             MaximumInputBytes = options.MaximumInputBytes,
             MaximumUploadBytes = options.MaximumUploadBytes,
             PublicationTimeout = options.PublicationTimeout,

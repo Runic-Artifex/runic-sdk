@@ -3043,8 +3043,41 @@ fallback. `{name}Errors` keeps the messages.
   TranslationReferenceJsonContext.Default.TranslationReference)`.
 - DataAnnotations and CommunityToolkit `ObservableValidator`: return a
   `RunicValidationResult(message, text, memberNames)` from a
-  `[CustomValidation]` method or a `ValidationAttribute`. The built-in
-  attributes have no reference; their messages stay as they are.
+  `[CustomValidation]` method or a `ValidationAttribute`.
+- The built-in attributes (`[Required]`, `[MaxLength]`, `[StringLength]`,
+  `[Range]`, `[RegularExpression]`, …): register `RunicValidationOptions` with
+  a `TextFor(attribute, member)` that returns a reference for an attribute, or
+  `null` to keep its message. The hosts give it to every window (or set
+  `WindowContentSessionOptions.Validation`):
+
+  ```csharp
+  services.AddSingleton(new RunicValidationOptions
+  {
+      TextFor = (attribute, member) => attribute switch
+      {
+          RequiredAttribute => Text(NotesText.Required(member.DisplayName)),
+          MaxLengthAttribute maximum => Text(NotesText.TooLong(member.DisplayName, maximum.Length)),
+          RangeAttribute range => Text(NotesText.OutOfRange(member.DisplayName, $"{range.Minimum}", $"{range.Maximum}")),
+          _ => null,
+      },
+  });
+
+  static RunicTextReference Text(TranslationReference reference) =>
+      RunicTextReference.Create(reference, TranslationReferenceJsonContext.Default.TranslationReference);
+  ```
+
+  The Bridge calls it for an error of a bridged ViewModel or DTO member
+  without a reference of its own, a `ValidationResult` or a string of
+  `GetErrors(member)`, as `ObservableValidator` and `Validator` report them.
+  It finds the attribute by its message: one whose `FormatErrorMessage` of the
+  member's display name (`[Display(Name)]`, `[DisplayName]` or the property
+  name) is the error's message in the current UI culture. A message the
+  ViewModel writes itself stays as it is. `member` carries the model type,
+  the property and display names and the message, which stays the fallback.
+  An exception it throws is logged (event 1176) and the message is shown. The
+  page can also check the attributes itself: generated field descriptors
+  carry them as `constraints` (C8; see the
+  [field descriptors](https://github.com/Runic-Artifex/runic-sdk/tree/main/packages/web/views#fields)).
 - ReactiveUI.Validation: pass a rule a state whose `IValidationText` also
   implements `IRunicTextReferenceSource`, or add a component that implements
   it:

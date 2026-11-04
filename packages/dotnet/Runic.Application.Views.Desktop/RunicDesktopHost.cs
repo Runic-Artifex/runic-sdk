@@ -424,6 +424,7 @@ public sealed class RunicDesktopHost : IRunicWindowHost
                 ModelContext = scope.ServiceProvider.GetService<IRunicModelContext>(),
                 LoggerFactory = loggerFactory,
                 IncludeFailureDetail = IncludeFailureDetailFor(opening.Options),
+                Validation = scope.ServiceProvider.GetService<RunicValidationOptions>(),
                 MaximumInputBytes = opening.Options.MaximumInputBytes ?? _maximumInputBytes,
                 MaximumUploadBytes = opening.Options.MaximumUploadBytes ?? _maximumUploadBytes,
                 MaximumWindowUploadBytes = opening.Options.MaximumWindowUploadBytes,

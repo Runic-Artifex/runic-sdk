@@ -254,6 +254,140 @@ public sealed class TranslatedTextTests
         Require(logger.Events.SequenceEqual([1171]), $"The oversized text was not logged as 1171: {string.Join(", ", logger.Events)}");
     }
 
+    // S5b: RunicValidationOptions.TextFor gives the messages of validation attributes a text reference.
+    private static RunicValidationOptions AttributeTexts(List<(ValidationAttribute Attribute, RunicValidationMember Member)>? calls = null) => new()
+    {
+        TextFor = (attribute, member) =>
+        {
+            calls?.Add((attribute, member));
+            return attribute switch
+            {
+                RequiredAttribute => TranslatedText.Text(TranslatedText.Reference("required", member.Message)),
+                MaxLengthAttribute maximum => TranslatedText.Text(TranslatedText.Reference("too_long", member.Message, maximum.Length)),
+                RangeAttribute => TranslatedText.Text(TranslatedText.Reference("out_of_range", member.Message)),
+                StringLengthAttribute => TranslatedText.Text(TranslatedText.Reference("length", member.Message)),
+                _ => null,
+            };
+        },
+    };
+
+    private static JsonElement ValidationErrors(RunicWindowTestHost<ValidationTextViewModel> host)
+    {
+        using var snapshot = host.RawSnapshot();
+        return snapshot.RootElement.GetProperty("state").GetProperty("validation").GetProperty("errors").Clone();
+    }
+
+    private static JsonElement ErrorAt(JsonElement errors, params string[] path) =>
+        errors.EnumerateArray().FirstOrDefault(error => error.GetProperty("path").EnumerateArray().Select(segment => segment.GetString())
+            .SequenceEqual(path)) is { ValueKind: JsonValueKind.Object } found ? found : throw new InvalidOperationException($"No error at {string.Join(".", path)}: {errors}");
+
+    [Test]
+    public void AttributeMessagesTakeTheTextOfTextFor()
+    {
+        var model = new ValidationTextViewModel { Tag = "much too long", Count = 0 };
+        model.Details.Code = "x";
+        model.Validate();
+        var calls = new List<(ValidationAttribute Attribute, RunicValidationMember Member)>();
+        using var host = new RunicWindowTestHost<ValidationTextViewModel>(model,
+            (transport, content, vm) => new ValidationTextBridge(transport, vm, content: content),
+            new RunicWindowTestHostOptions { RootRoute = "validationText", Validation = AttributeTexts(calls) });
+        var errors = ValidationErrors(host);
+        var title = ErrorAt(errors, "title");
+        Require(title.GetProperty("message").GetString() == "The Heading field is required."
+            && title.GetProperty("text").GetProperty("key").GetString() == "required"
+            && title.GetProperty("text").GetProperty("fallbackText").GetString() == "The Heading field is required.",
+            $"[Required] with [Display(Name)] did not take its text: {title}");
+        var tag = ErrorAt(errors, "tag");
+        Require(tag.GetProperty("text").GetProperty("key").GetString() == "too_long"
+            && tag.GetProperty("text").GetProperty("arguments").GetProperty("max").GetProperty("value").GetString() == "8",
+            $"A string error of [MaxLength] did not take its text: {tag}");
+        Require(ErrorAt(errors, "count").GetProperty("text").GetProperty("key").GetString() == "out_of_range", $"[Range]: {errors}");
+        Require(ErrorAt(errors, "details", "code").GetProperty("text").GetProperty("key").GetString() == "length",
+            $"A DTO member's [StringLength] with [Display(Name)] did not take its text: {errors}");
+        Require(!ErrorAt(errors, "note").TryGetProperty("text", out _), "A message the ViewModel wrote matched an attribute.");
+        var member = calls.First(call => call.Attribute is RequiredAttribute && call.Member.Name == nameof(ValidationTextViewModel.Title)).Member;
+        Require(member == new RunicValidationMember(typeof(ValidationTextViewModel), "Title", "Heading", "The Heading field is required."),
+            $"TextFor received {member}.");
+        Require(calls.Any(call => call.Member is { ModelType: var type, DisplayName: "Postcode" } && type == typeof(ValidationTextDetails)),
+            "A DTO member's TextFor call did not name its type and display name.");
+    }
+
+    [Test]
+    public void WithoutTextForAttributeMessagesStayAsTheyAre()
+    {
+        var model = new ValidationTextViewModel { Tag = "much too long" };
+        model.Validate();
+        using var host = new RunicWindowTestHost<ValidationTextViewModel>(model,
+            (transport, content, vm) => new ValidationTextBridge(transport, vm, content: content),
+            new RunicWindowTestHostOptions { RootRoute = "validationText" });
+        var errors = ValidationErrors(host);
+        Require(errors.GetArrayLength() > 0 && errors.EnumerateArray().All(error => !error.TryGetProperty("text", out _)),
+            $"An error has a text without RunicValidationOptions: {errors}");
+    }
+
+    [Test]
+    public void AToolkitValidatorsAttributeMessagesTakeTheTextOfTextFor()
+    {
+        var model = new ToolkitValidationViewModel();
+        model.Validate();
+        BridgeDataSubscriptionMember[] metadata =
+        [
+            new("name", static owner => ((ToolkitValidationViewModel)owner).Name, propertyName: nameof(ToolkitValidationViewModel.Name))
+            {
+                ValidationProperty = static () => typeof(ToolkitValidationViewModel).GetProperty(nameof(ToolkitValidationViewModel.Name)),
+            },
+            new("count", static owner => ((ToolkitValidationViewModel)owner).Count, propertyName: nameof(ToolkitValidationViewModel.Count)),
+        ];
+        using var buffer = new MemoryStream();
+        using (BridgeSnapshotPublication.Enter(static () => false, null, AttributeTexts()))
+        using (var writer = new Utf8JsonWriter(buffer)) BridgeValidation.Write(writer, model, metadata);
+        using var document = JsonDocument.Parse(buffer.ToArray());
+        var errors = document.RootElement.GetProperty("errors");
+        // An ErrorMessage the attribute sets is its message too.
+        Require(Error(errors, "Name is required.").GetProperty("text").GetProperty("key").GetString() == "required",
+            $"An ObservableValidator's [Required] did not take its text: {errors}");
+        Require(!Error(errors, "Count must be between 1 and 10.").TryGetProperty("text", out _),
+            "A member without ValidationProperty metadata took a text.");
+    }
+
+    [Test]
+    public void ATextForThatThrowsIsLoggedAndTheMessageShown()
+    {
+        var model = new ValidationTextViewModel();
+        model.Validate();
+        BridgeDataSubscriptionMember[] metadata =
+        [
+            new("title", static owner => ((ValidationTextViewModel)owner).Title, propertyName: nameof(ValidationTextViewModel.Title))
+            {
+                ValidationProperty = static () => typeof(ValidationTextViewModel).GetProperty(nameof(ValidationTextViewModel.Title)),
+            },
+        ];
+        var logger = new CapturingLogger();
+        using var buffer = new MemoryStream();
+        using (BridgeSnapshotPublication.Enter(static () => false, logger,
+            new RunicValidationOptions { TextFor = static (_, _) => throw new InvalidOperationException("broken") }))
+        using (var writer = new Utf8JsonWriter(buffer)) BridgeValidation.Write(writer, model, metadata);
+        using var document = JsonDocument.Parse(buffer.ToArray());
+        var error = Error(document.RootElement.GetProperty("errors"), "The Heading field is required.");
+        Require(!error.TryGetProperty("text", out _), "A failed TextFor gave its error a text.");
+        Require(logger.Events.SequenceEqual([1176]), $"The failure was not logged as 1176: {string.Join(", ", logger.Events)}");
+    }
+
+    [Test]
+    public void CreateTakesTheServicesValidationOptions()
+    {
+        var model = new ValidationTextViewModel();
+        model.Validate();
+        var services = new ServiceCollection()
+            .AddSingleton(AttributeTexts())
+            .AddSingleton<Func<IBridgeTransport, WindowContentSession, ValidationTextViewModel, IDisposable>>(
+                (transport, content, vm) => new ValidationTextBridge(transport, vm, content: content))
+            .BuildServiceProvider();
+        using var host = RunicWindowTestHost.Create(services, model, new RunicWindowTestHostOptions { RootRoute = "validationText" });
+        Require(ErrorAt(ValidationErrors(host), "title").GetProperty("text").GetProperty("key").GetString() == "required",
+            "RunicWindowTestHost.Create did not take the services' RunicValidationOptions.");
+    }
+
     private sealed class ErrorsOnlyModel(object error) : System.ComponentModel.INotifyDataErrorInfo
     {
         public bool HasErrors => true;

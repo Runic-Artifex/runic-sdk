@@ -578,7 +578,29 @@ without aliases, which `choices` repeats: `export const LayoutValues = ["List", 
 ```tsx
 const { maxLength, required } = EditorFields.title.constraints ?? {};
 <input {...title.inputProps} maxLength={maxLength} required={required} />
-``` `read` and `write` are the member and its setter; `checked` and `baseline` its
+```
+
+The validation errors that .NET reports for these attributes carry .NET's message. To show them in the window's
+language, either give them a text reference in .NET (`RunicValidationOptions.TextFor`, see
+[Translated text](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Application.Views/README.md#translated-text)),
+or check the constraints on the page and show your own message before the value is written:
+
+```ts
+import { m } from "virtual:runic-translations/app/messages";
+
+function constraintMessage(field: { readonly constraints?: BridgeFieldConstraints }, text: string): string | undefined {
+  const { required, minLength, maxLength } = field.constraints ?? {};
+  if (required && text.trim() === "") return m.field_required({});
+  if (maxLength !== undefined && text.length > maxLength) return m.field_too_long({ max: maxLength });
+  if (minLength !== undefined && text.length > 0 && text.length < minLength) return m.field_too_short({ min: minLength });
+  return undefined;
+}
+```
+
+A page check is a hint: .NET still validates, and its errors still arrive in `errors`. For a member checked on the
+page, show the page's message in place of `errors`, so the same problem does not show twice.
+
+`read` and `write` are the member and its setter; `checked` and `baseline` its
 checked write and `fieldBaseline`. A View with validation adds `errors(state)`: the member's messages from
 `{name}Errors`, or from `validation` at the member's path, followed by the messages below it, such as those of an
 object's members.

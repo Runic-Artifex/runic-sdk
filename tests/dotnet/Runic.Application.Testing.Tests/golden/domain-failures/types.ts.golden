@@ -401,6 +401,11 @@ export interface ValidationProfile {
   readonly "postal-code": string;
 }
 
+export interface ValidationTextDetails {
+  readonly code: string;
+  readonly hasErrors: boolean;
+}
+
 /** What a discard question shows. */
 export interface ViewRequestDiscard {
   readonly title: string;

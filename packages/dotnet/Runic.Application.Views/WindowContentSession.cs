@@ -91,6 +91,7 @@ public sealed class WindowContentSession : IDisposable
         var loggerFactory = options.LoggerFactory;
         TimeProvider = options.TimeProvider ?? TimeProvider.System;
         IncludesFailureDetail = options.IncludeFailureDetail ?? BridgeFailureDetails.DefaultIncluded;
+        Validation = options.Validation;
         MaximumInputBytes = BridgeInputLimit.Resolve(options.MaximumInputBytes, nameof(options.MaximumInputBytes));
         var maximumUploadBytes = BridgeInputLimit.ResolveUpload(options.MaximumUploadBytes, nameof(options.MaximumUploadBytes));
         var maximumWindowUploadBytes = BridgeInputLimit.ResolveUpload(options.MaximumWindowUploadBytes, nameof(options.MaximumWindowUploadBytes));
@@ -352,6 +353,9 @@ public sealed class WindowContentSession : IDisposable
 
     /// <summary>Whether this window's Bridge error replies carry exception detail, read once when it opens.</summary>
     internal bool IncludesFailureDetail { get; }
+
+    // The window's validation options (WindowContentSessionOptions.Validation), for its Bridges' state writes.
+    internal RunicValidationOptions? Validation { get; }
 
     /// <summary>The largest Bridge input in UTF-8 bytes (<see cref="WindowContentSessionOptions.MaximumInputBytes"/>).</summary>
     internal int MaximumInputBytes { get; }

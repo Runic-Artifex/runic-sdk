@@ -47,6 +47,13 @@ public sealed class RunicWindowTestHostOptions
     public bool? IncludeFailureDetail { get; init; }
 
     /// <summary>
+    /// How the window's Bridges write validation (<see cref="WindowContentSessionOptions.Validation"/>), such as
+    /// <see cref="RunicValidationOptions.TextFor"/>. <c>RunicWindowTestHost.Create(services)</c> takes the services'
+    /// <see cref="RunicValidationOptions"/> when this is <see langword="null"/>.
+    /// </summary>
+    public RunicValidationOptions? Validation { get; init; }
+
+    /// <summary>
     /// The largest Bridge input of the window, in UTF-8 bytes
     /// (<see cref="WindowContentSessionOptions.MaximumInputBytes"/>). <see langword="null"/>, the default, is 1 MiB.
     /// </summary>

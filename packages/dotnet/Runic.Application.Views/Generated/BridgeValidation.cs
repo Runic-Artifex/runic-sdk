@@ -375,7 +375,7 @@ public static class BridgeValidation
                         {
                             if (readsHasErrors) _hasErrors |= propertyErrors.HasErrors;
                             AddErrors(propertyErrors.GetErrors(member.PropertyName), _path, node, skipPresentedMembers: false,
-                                memberTexts, member.PropertyName);
+                                memberTexts, member.PropertyName, member);
                         }
 
                         var value = member.Read(owner);
@@ -431,7 +431,7 @@ public static class BridgeValidation
 
         private void AddErrors(IEnumerable? values, IReadOnlyList<object> defaultPath, Node node,
             bool skipPresentedMembers, Dictionary<(string Member, string Message), RunicTextReference>? memberTexts = null,
-            string? memberName = null)
+            string? memberName = null, BridgeDataSubscriptionMember? member = null)
         {
             if (values is null) return;
             foreach (var value in values)
@@ -445,13 +445,15 @@ public static class BridgeValidation
                     case ValidationResult result:
                         var memberNames = result.MemberNames;
                         if (skipPresentedMembers && !TryUnpresented(ref memberNames, node.Members)) break;
-                        AddMessage(MessageText(result.ErrorMessage), null, null, TextOf(result), memberNames, defaultPath, node);
+                        AddMessage(MessageText(result.ErrorMessage), null, null,
+                            TextOf(result) ?? AttributeText(result.ErrorMessage, node, member), memberNames, defaultPath, node);
                         break;
                     default:
                         var plain = MessageText(value);
                         var text = TextOf(value);
                         if (text is null && memberName is not null && memberTexts is not null)
                             text = memberTexts.GetValueOrDefault((memberName, plain));
+                        text ??= AttributeText(value as string, node, member);
                         AddMessage(plain, null, null, text, null, defaultPath, node);
                         break;
                 }
@@ -476,6 +478,33 @@ public static class BridgeValidation
             if (remaining is null) return false;
             memberNames = remaining;
             return true;
+        }
+
+        // translation-text/1: the text reference that RunicValidationOptions.TextFor gives the message of one of the
+        // member's validation attributes. The attribute is found by its message, formatted with each display name the
+        // validator may have used, in the current UI culture.
+        private static RunicTextReference? AttributeText(string? message, Node node, BridgeDataSubscriptionMember? member)
+        {
+            if (member is null || string.IsNullOrEmpty(message) || BridgeSnapshotPublication.Validation?.TextFor is not { } textFor
+                || member.ValidationAttributes is not { Attributes.Length: > 0 } attributes) return null;
+            foreach (var attribute in attributes.Attributes)
+                foreach (var displayName in attributes.DisplayNames)
+                {
+                    string formatted;
+                    // An attribute that cannot format its message, such as a [Range] whose bounds do not convert.
+                    try { formatted = attribute.FormatErrorMessage(displayName); }
+                    catch (Exception) { continue; }
+                    if (!string.Equals(formatted, message, StringComparison.Ordinal)) continue;
+                    var modelType = node.Owner.GetType();
+                    try { return textFor(attribute, new(modelType, member.PropertyName, displayName, message)); }
+                    catch (Exception error)
+                    {
+                        ViewsLog.ValidationTextForFailed(BridgeSnapshotPublication.Logger, modelType.Name, member.PropertyName,
+                            attribute.GetType().Name, error);
+                        return null;
+                    }
+                }
+            return null;
         }
 
         // translation-text/1: the text reference of an entry that has one (IRunicTextReferenceSource).
