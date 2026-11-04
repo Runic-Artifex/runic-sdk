@@ -34,9 +34,6 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
     private const string AuthCookieName = "webui_auth";
     private const string DocumentBootstrapProperty = "globalThis[Symbol.for(\"runic-desktop.bootstrap\")]";
     private const string NoCache = "no-cache, no-store, must-revalidate, private, max-age=0";
-    private const string AccessDenied = "<html><head><title>Access Denied</title><script src=\"/webui.js\"></script></head><body><h2>&#9888; Access Denied</h2><p>This content is already in use and multi-client mode is disabled.</p></body></html>";
-    private const string LaunchRefused = "<html><head><title>Access Denied</title></head><body><h2>&#9888; Access Denied</h2><p>This window's launch link is not valid or was already used by another client. Close this window and open it again from the application.</p></body></html>";
-    private const string ResourceUnavailable = "<html><head><title>Resource Not Available</title><script src=\"/webui.js\"></script></head><body><h2>&#9888; Resource Not Available</h2><p>The requested resource is not available.</p></body></html>";
     private const string DefaultIcon = "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"500\" viewBox=\"0 0 375 375\" height=\"500\"><path fill=\"#2a6699\" d=\"M22 22h330v330H22z\"/></svg>";
     private static readonly AsyncLocal<WebUiWindow?> CallbackWindow = new();
 
@@ -4019,10 +4016,63 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
             : context.ResponseBody.WriteAsync(bytes, context.RequestAborted).AsTask();
     }
 
-    private static Task SendNotFoundAsync(PresentationExchange context)
+    private Task SendNotFoundAsync(PresentationExchange context)
     {
         context.StatusCode = PresentationStatus.NotFound;
-        return SendTextAsync(context, ResourceUnavailable, "text/html; charset=utf-8");
+        var texts = Runic.Platform.DesktopPlatformTexts.Current;
+        return SendTextAsync(context, ErrorPage(texts.ResourceUnavailableTitle, texts.ResourceUnavailableMessage, bridgeScript: true),
+            "text/html; charset=utf-8");
+    }
+
+    private string? _pageLanguage;
+
+    // The BCP 47 language of the pages the window serves itself (Access Denied, Resource Not Available): the window
+    // locale, which Runic.Application.Views.Desktop sets; null leaves their lang and dir out. Their text is
+    // DesktopPlatformTexts.Current when they are served, and dir follows the language's script.
+    internal string? PageLanguage
+    {
+        get => Volatile.Read(ref _pageLanguage);
+        set
+        {
+            if (value is not null && !IsLanguageTag(value))
+                throw new ArgumentException($"'{value}' is not a language tag, such as \"de\" or \"pt-BR\".", nameof(value));
+            Volatile.Write(ref _pageLanguage, value);
+        }
+    }
+
+    private static bool IsLanguageTag(string value) =>
+        value.Length is > 0 and <= 64 && char.IsAsciiLetter(value[0]) &&
+        value.All(static character => char.IsAsciiLetterOrDigit(character) || character == '-') && !value.EndsWith('-') && !value.Contains("--");
+
+    // A page of the window's own: the application's texts (DesktopPlatformTexts), in its language and direction.
+    private string ErrorPage(string title, string message, bool bridgeScript)
+    {
+        var language = PageLanguage;
+        var head = language is null
+            ? "<html>"
+            : $"<html lang=\"{language}\" dir=\"{(Internal.WindowLocaleDirection.Of(language) == Runic.Platform.DesktopLayoutDirection.RightToLeft ? "rtl" : "ltr")}\">";
+        var encodedTitle = System.Net.WebUtility.HtmlEncode(title);
+        return head + "<head><meta charset=\"utf-8\"><title>" + encodedTitle + "</title>"
+            + (bridgeScript ? "<script src=\"/webui.js\"></script>" : "")
+            + "</head><body><h2>&#9888; " + encodedTitle + "</h2><p>" + System.Net.WebUtility.HtmlEncode(message) + "</p></body></html>";
+    }
+
+    private string AccessDenied
+    {
+        get
+        {
+            var texts = Runic.Platform.DesktopPlatformTexts.Current;
+            return ErrorPage(texts.AccessDeniedTitle, texts.ContentInUseMessage, bridgeScript: true);
+        }
+    }
+
+    private string LaunchRefused
+    {
+        get
+        {
+            var texts = Runic.Platform.DesktopPlatformTexts.Current;
+            return ErrorPage(texts.AccessDeniedTitle, texts.LaunchLinkInvalidMessage, bridgeScript: false);
+        }
     }
 
     private static string GetContentType(string path) =>

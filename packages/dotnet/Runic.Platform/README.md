@@ -167,6 +167,45 @@ if (await files.SaveFileAsync(options) is PickerResult<ISaveFileLease>.Selected 
 On macOS a save panel with filters may add the first allowed extension, or with
 `ShowFilterChoice` the chosen filter's, to a name the user types without one.
 
+The buttons of every dialog are the platform's own, in the user's language: the
+GTK 3 native chooser uses GTK's translated Open, Save and Cancel. A dialog
+without a `Title` shows the platform's title where it has one; the
+xdg-desktop-portal FileChooser and the GTK 3 chooser need one and take it from
+`DesktopPlatformTexts` (below).
+
+## Runic's own text
+
+Runic shows a few texts of its own where the platform has none: the Linux dialog
+titles above, the name a save dialog suggests when a request names none, the
+title of the macOS panel that chooses an application, the label of the Secret
+Service collection Runic creates when the user has no default keyring yet, the
+modifier names in the shortcut labels it writes itself (the Windows menus and
+the in-page menu bar), and the error pages of Runic Desktop's browser windows.
+They are English by default. `DesktopPlatformTexts.Current` replaces them for
+the whole process; set it again after a language switch, from the application's
+own translations, such as its Runic Translations catalog:
+
+```csharp
+DesktopPlatformTexts.Current = new DesktopPlatformTexts
+{
+    OpenFileTitle = text.OpenFile,             // "Datei öffnen"
+    SaveFileTitle = text.SaveFile,             // "Datei speichern"
+    UntitledFileName = text.Untitled,          // "Unbenannt"
+    ChooseApplicationTitle = text.ChooseApp,
+    SecretCollectionLabel = text.Keyring,
+    ControlKeyName = text.ControlKey,          // "Strg"; null takes the Windows keyboard layout's name
+    ResourceUnavailableTitle = text.NotFound,
+    // … the rest stay English.
+};
+```
+
+Dialogs, menus and pages that open later use the new texts. A text has 1 to 1024
+characters, no NUL and is not only white space; setting an invalid one throws
+`ArgumentException` and keeps the current texts. Without `ControlKeyName`,
+`ShiftKeyName` and `AltKeyName`, Windows labels take the keyboard layout's names
+(`GetKeyNameText`, `Strg+Umschalt+S` on a German layout) and other platforms
+English ones. GTK and AppKit draw their own menus' shortcut labels.
+
 ## Document apps
 
 An editor keeps working on the file the user chose: it reads it, saves back to it

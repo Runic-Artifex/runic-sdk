@@ -35,6 +35,14 @@ internal sealed class WindowLocaleChecks
         window.ViewModel.Locale.Locale = "he";
         await WaitUntilAsync(() => factory.Hosts[0].Directions.Count == 2);
         Require(factory.Hosts[0].Directions.Last() == DesktopLayoutDirection.RightToLeft, "Hebrew did not mirror the window.");
+
+        // S4: the pages the surface serves itself follow the window locale.
+        var surface = ((DesktopBridgeWindow<LocaleViewModel>)window.Host).Surface;
+        using var client = new HttpClient();
+        using var missing = await client.GetAsync(new Uri(surface.Url, "missing-page.txt"));
+        var page = await missing.Content.ReadAsStringAsync();
+        Require(missing.StatusCode == System.Net.HttpStatusCode.NotFound && page.StartsWith("<html lang=\"he\" dir=\"rtl\">", StringComparison.Ordinal),
+            $"The missing page did not follow the window locale: {(int)missing.StatusCode} {page}");
     }
 
     [Test, NotInParallel(Order = 50)]
@@ -66,13 +74,13 @@ internal sealed class WindowLocaleChecks
     [Test, NotInParallel(Order = 51)]
     public void TheDirectionOfALocaleWithoutCultureDataComesFromItsScriptOrLanguage()
     {
-        Require(WindowLocaleDirection.FromTag("ar") == DesktopLayoutDirection.RightToLeft, "ar");
-        Require(WindowLocaleDirection.FromTag("fa-IR") == DesktopLayoutDirection.RightToLeft, "fa-IR");
-        Require(WindowLocaleDirection.FromTag("ku-Arab") == DesktopLayoutDirection.RightToLeft, "ku-Arab");
-        Require(WindowLocaleDirection.FromTag("sd-Deva") == DesktopLayoutDirection.LeftToRight, "sd-Deva");
-        Require(WindowLocaleDirection.FromTag("de-CH") == DesktopLayoutDirection.LeftToRight, "de-CH");
-        Require(WindowLocaleDirection.Of("he") == DesktopLayoutDirection.RightToLeft, "he");
-        Require(WindowLocaleDirection.Of("pt-BR") == DesktopLayoutDirection.LeftToRight, "pt-BR");
+        Require(Runic.Desktop.Internal.WindowLocaleDirection.FromTag("ar") == DesktopLayoutDirection.RightToLeft, "ar");
+        Require(Runic.Desktop.Internal.WindowLocaleDirection.FromTag("fa-IR") == DesktopLayoutDirection.RightToLeft, "fa-IR");
+        Require(Runic.Desktop.Internal.WindowLocaleDirection.FromTag("ku-Arab") == DesktopLayoutDirection.RightToLeft, "ku-Arab");
+        Require(Runic.Desktop.Internal.WindowLocaleDirection.FromTag("sd-Deva") == DesktopLayoutDirection.LeftToRight, "sd-Deva");
+        Require(Runic.Desktop.Internal.WindowLocaleDirection.FromTag("de-CH") == DesktopLayoutDirection.LeftToRight, "de-CH");
+        Require(Runic.Desktop.Internal.WindowLocaleDirection.Of("he") == DesktopLayoutDirection.RightToLeft, "he");
+        Require(Runic.Desktop.Internal.WindowLocaleDirection.Of("pt-BR") == DesktopLayoutDirection.LeftToRight, "pt-BR");
     }
 
     private static ServiceProvider CreateProvider()

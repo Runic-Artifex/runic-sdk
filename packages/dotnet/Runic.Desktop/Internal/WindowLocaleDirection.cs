@@ -1,9 +1,9 @@
 using System.Globalization;
 using Runic.Platform;
 
-namespace Runic.Application.Views.Desktop;
+namespace Runic.Desktop.Internal;
 
-// The direction of a window locale (IRunicWindowLocale) for the native window: the culture's TextInfo, or, where the
+// The direction of a window locale (IRunicWindowLocale in Runic.Application.Views) for the native window and the error pages: the culture's TextInfo, or, where the
 // process has no culture data (InvariantGlobalization), the locale's script or language.
 internal static class WindowLocaleDirection
 {
