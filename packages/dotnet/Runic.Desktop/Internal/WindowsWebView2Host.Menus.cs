@@ -29,6 +29,8 @@ internal sealed partial class WindowsWebView2Host
     private Dictionary<nint, ImmutableArray<Win32MenuEntry>> _barPopups = [];
     // Menus that arrived while a menu was open: applied when it closes, so an open menu is never destroyed.
     private IReadOnlyList<DesktopMenu>? _pendingMenuBar;
+    // The menus the bar shows, which a change of direction lays out again (SetLayoutDirectionAsync).
+    private IReadOnlyList<DesktopMenu>? _appliedMenuBar;
     private bool _inMenuLoop;
     // The bar of a full-screen window, which shows none; it returns when the window leaves full screen.
     private nint _hiddenBar;
@@ -76,6 +78,7 @@ internal sealed partial class WindowsWebView2Host
             return;
         }
         _pendingMenuBar = null;
+        _appliedMenuBar = menus;
         var model = WindowsMenuModel.ForBar(menus, _menuIds, IsRightToLeft);
         _menuBar = model;
         if (!ShowsNativeBar) return;

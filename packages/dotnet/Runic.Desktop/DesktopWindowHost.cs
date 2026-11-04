@@ -180,6 +180,24 @@ public interface IDesktopColorSchemeWindowHost : IDesktopWindowHost
     ValueTask SetColorSchemeAsync(DesktopColorScheme colorScheme, CancellationToken cancellationToken = default);
 }
 
+/// <summary>An optional native host that changes the direction of its window's native parts while it is open.</summary>
+/// <remarks>
+/// Runic Desktop finds it by type and calls <see cref="SetLayoutDirectionAsync"/> after
+/// <see cref="DesktopWindow.SetLayoutDirectionAsync"/>. Report <see cref="DesktopWindowCapabilities.LayoutDirection"/> in
+/// <see cref="IDesktopWindowHost.Capabilities"/>. The page keeps its own <c>dir</c>, as for
+/// <see cref="DesktopWindowHostOptions.LayoutDirection"/>.
+/// </remarks>
+public interface IDesktopLayoutDirectionWindowHost : IDesktopWindowHost
+{
+    /// <summary>Changes the direction of the window, its menu bar and the other native parts it draws.</summary>
+    /// <param name="layoutDirection">
+    /// The direction to show. <see cref="DesktopLayoutDirection.Default"/> returns to the platform's.
+    /// </param>
+    /// <param name="cancellationToken">Cancels the queued native work.</param>
+    /// <returns>A task that completes when the window shows the direction.</returns>
+    ValueTask SetLayoutDirectionAsync(DesktopLayoutDirection layoutDirection, CancellationToken cancellationToken = default);
+}
+
 /// <summary>An optional native host that shows the menu bar and context menus.</summary>
 /// <remarks>
 /// <para>
@@ -586,6 +604,11 @@ internal sealed class DesktopWindowHostAdapter : IWebUiEmbeddedHost
         _host is IDesktopColorSchemeWindowHost schemeHost
             ? schemeHost.SetColorSchemeAsync(colorScheme, cancellationToken)
             : ValueTask.FromException(new NotSupportedException("This window host cannot change its color scheme."));
+
+    public ValueTask SetLayoutDirectionAsync(DesktopLayoutDirection layoutDirection, CancellationToken cancellationToken = default) =>
+        _host is IDesktopLayoutDirectionWindowHost directionHost
+            ? directionHost.SetLayoutDirectionAsync(layoutDirection, cancellationToken)
+            : ValueTask.FromException(new NotSupportedException("This window host cannot change its layout direction."));
 
     public ValueTask<DesktopDragEffects> StartDragAsync(DesktopDragData data, CancellationToken cancellationToken = default) =>
         _host is IDesktopDragSourceWindowHost dragHost

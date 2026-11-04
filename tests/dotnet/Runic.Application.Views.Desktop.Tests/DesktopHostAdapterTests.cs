@@ -613,12 +613,15 @@ sealed class NativeDispatchFactory : IDesktopWindowHostFactory
     public DesktopWindowActivity? InitialActivity { get; init; }
     // A window host that owns windows (DesktopWindowCapabilities.Ownership).
     public bool Owns { get; init; }
+    // A window host that changes its layout direction while open (DesktopWindowCapabilities.LayoutDirection).
+    public bool Directs { get; init; }
     public bool IsSupported => true;
     public IDesktopWindowHost Create()
     {
         var host = new NativeDispatchHost
         {
             Owns = Owns,
+            Directs = Directs,
             SupportsNativeDispatch = SupportsDispatch, Announces = Announces, InitialState = InitialState, ContextMenus = ContextMenus,
             Placement = MenuBarPlacement,
             Drags = Drags,
@@ -631,8 +634,15 @@ sealed class NativeDispatchFactory : IDesktopWindowHostFactory
 
 // A headless embedded host whose "native thread" is a dedicated worker.
 sealed class NativeDispatchHost : IDesktopNativeDispatchWindowHost, IDesktopWindowStateHost, IDesktopFileDropWindowHost, IDesktopMenuWindowHost,
-    IDesktopDragSourceWindowHost, IDesktopActivityWindowHost, IDesktopColorSchemeWindowHost
+    IDesktopDragSourceWindowHost, IDesktopActivityWindowHost, IDesktopColorSchemeWindowHost, IDesktopLayoutDirectionWindowHost
 {
+    public bool Directs { get; init; }
+    public System.Collections.Concurrent.ConcurrentQueue<DesktopLayoutDirection> Directions { get; } = new();
+    public ValueTask SetLayoutDirectionAsync(DesktopLayoutDirection layoutDirection, CancellationToken cancellationToken = default)
+    {
+        Directions.Enqueue(layoutDirection);
+        return ValueTask.CompletedTask;
+    }
     public DesktopWindowActivity? InitialActivity { get; init; }
     public DesktopWindowActivity? Activity { get; private set; }
     public event EventHandler? ActivityChanged;
@@ -691,7 +701,8 @@ sealed class NativeDispatchHost : IDesktopNativeDispatchWindowHost, IDesktopWind
         (Drags ? DesktopWindowCapabilities.FileDrag : DesktopWindowCapabilities.None) |
         (InitialState is null ? DesktopWindowCapabilities.None : DesktopWindowCapabilities.State) |
         (InitialActivity is null ? DesktopWindowCapabilities.None : DesktopWindowCapabilities.Activity | DesktopWindowCapabilities.ColorScheme) |
-        (Owns ? DesktopWindowCapabilities.Ownership : DesktopWindowCapabilities.None);
+        (Owns ? DesktopWindowCapabilities.Ownership : DesktopWindowCapabilities.None) |
+        (Directs ? DesktopWindowCapabilities.LayoutDirection : DesktopWindowCapabilities.None);
     public bool Owns { get; init; }
     public System.Collections.Concurrent.ConcurrentQueue<(string Message, DesktopAnnouncementPriority Priority)> Announcements { get; } = new();
     public ValueTask AnnounceAsync(string message, DesktopAnnouncementPriority priority, CancellationToken cancellationToken = default)
