@@ -615,6 +615,8 @@ sealed class NativeDispatchFactory : IDesktopWindowHostFactory
     public bool Owns { get; init; }
     // A window host that changes its layout direction while open (DesktopWindowCapabilities.LayoutDirection).
     public bool Directs { get; init; }
+    // Runs while a window opens, before OpenAsync returns.
+    public Action? Opening { get; init; }
     public bool IsSupported => true;
     public IDesktopWindowHost Create()
     {
@@ -622,6 +624,7 @@ sealed class NativeDispatchFactory : IDesktopWindowHostFactory
         {
             Owns = Owns,
             Directs = Directs,
+            Opening = Opening,
             SupportsNativeDispatch = SupportsDispatch, Announces = Announces, InitialState = InitialState, ContextMenus = ContextMenus,
             Placement = MenuBarPlacement,
             Drags = Drags,
@@ -638,11 +641,15 @@ sealed class NativeDispatchHost : IDesktopNativeDispatchWindowHost, IDesktopWind
 {
     public bool Directs { get; init; }
     public System.Collections.Concurrent.ConcurrentQueue<DesktopLayoutDirection> Directions { get; } = new();
-    public ValueTask SetLayoutDirectionAsync(DesktopLayoutDirection layoutDirection, CancellationToken cancellationToken = default)
+    // Holds the next direction change until it completes.
+    public TaskCompletionSource? HoldDirection { get => _holdDirection; set => _holdDirection = value; }
+    private TaskCompletionSource? _holdDirection;
+    public async ValueTask SetLayoutDirectionAsync(DesktopLayoutDirection layoutDirection, CancellationToken cancellationToken = default)
     {
         Directions.Enqueue(layoutDirection);
-        return ValueTask.CompletedTask;
+        if (Interlocked.Exchange(ref _holdDirection, null) is { } hold) await hold.Task.ConfigureAwait(false);
     }
+    public Action? Opening { get; init; }
     public DesktopWindowActivity? InitialActivity { get; init; }
     public DesktopWindowActivity? Activity { get; private set; }
     public event EventHandler? ActivityChanged;
@@ -726,7 +733,7 @@ sealed class NativeDispatchHost : IDesktopNativeDispatchWindowHost, IDesktopWind
         await completion.Task.ConfigureAwait(false);
     }
     public ValueTask OpenAsync(Uri url, DesktopWindowHostOptions options, CancellationToken cancellationToken = default)
-    { Options = options; State = InitialState; Activity = InitialActivity; _open = true; return ValueTask.CompletedTask; }
+    { Options = options; State = InitialState; Activity = InitialActivity; _open = true; Opening?.Invoke(); return ValueTask.CompletedTask; }
     // The URLs the window's WebView was navigated to after it opened.
     public System.Threading.Channels.Channel<Uri> Navigations { get; } = System.Threading.Channels.Channel.CreateUnbounded<Uri>();
     public ValueTask NavigateAsync(Uri url, CancellationToken cancellationToken = default)

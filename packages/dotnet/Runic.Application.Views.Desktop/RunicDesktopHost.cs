@@ -548,19 +548,32 @@ public sealed class RunicDesktopHost : IRunicWindowHost
     }
 
     // A later change of the window's locale changes the native direction of the open window too, unless WindowOptions
-    // fixed it. The web view's language stays: WebView2 and WebKitGTK take it when the web view is created.
+    // fixed it; a null locale returns it to the platform's. The web view's language stays: WebView2 and WebKitGTK take it
+    // when the web view is created.
     private void FollowLocaleDirection(WindowContentSession content, DesktopWindow presentation, ILogger logger)
     {
         if (WindowOptions.LayoutDirection != DesktopLayoutDirection.Default || OperatingSystem.IsMacOS() ||
             !presentation.Capabilities.HasFlag(DesktopWindowCapabilities.LayoutDirection)) return;
-        void OnLocaleChanged(object? sender, EventArgs args)
+        // One change at a time, each with the direction of the locale it finds, not of the one that raised it: changes
+        // from several threads apply in order, and the window ends with the direction of the last locale.
+        var gate = new SemaphoreSlim(1, 1);
+        void OnLocaleChanged(object? sender, EventArgs args) => _ = ApplyAsync();
+        async Task ApplyAsync()
         {
-            if (content.Locale is not { } locale || !presentation.IsOpen) return;
-            _ = ApplyAsync(Runic.Desktop.Internal.WindowLocaleDirection.Of(locale));
-        }
-        async Task ApplyAsync(DesktopLayoutDirection direction)
-        {
-            try { await presentation.SetLayoutDirectionAsync(direction).ConfigureAwait(false); }
+            try
+            {
+                await gate.WaitAsync().ConfigureAwait(false);
+                try
+                {
+                    if (!presentation.IsOpen) return;
+                    var direction = content.Locale is { } locale
+                        ? Runic.Desktop.Internal.WindowLocaleDirection.Of(locale)
+                        : DesktopLayoutDirection.Default;
+                    if (direction != presentation.LayoutDirection)
+                        await presentation.SetLayoutDirectionAsync(direction).ConfigureAwait(false);
+                }
+                finally { gate.Release(); }
+            }
             catch (ObjectDisposedException) { }
             catch (Exception error) when (error is not OutOfMemoryException)
             {
@@ -569,6 +582,8 @@ public sealed class RunicDesktopHost : IRunicWindowHost
         }
         content.LocaleChanged += OnLocaleChanged;
         presentation.Closed += (_, _) => content.LocaleChanged -= OnLocaleChanged;
+        // A change while the window opened, after its options took the locale, applies now.
+        _ = ApplyAsync();
     }
 
     // A guarded Window confirms user closes through ConfirmCloseAsync: first its own guard, then the one of
