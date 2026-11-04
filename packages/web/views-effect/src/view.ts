@@ -1,5 +1,5 @@
 import {
-  isBridgeOutcome, onBridgeConnection, resolveText, subscribeText, type BridgeConnectionOptions, type BridgeConnectionState, type BridgeOperation, type BridgeOperationStatusOf, type BridgeOutcome, type BridgeOutcomeFailure, type TextReference,
+  isBridgeOutcome, onBridgeConnection, resolveText, subscribeText, textLocale, type BridgeConnectionOptions, type BridgeConnectionState, type BridgeOperation, type BridgeOperationStatusOf, type BridgeOutcome, type BridgeOutcomeFailure, type TextReference,
   type CollectionViewport, type CollectionViewportController, type ViewClient, type ViewConnector,
   type QueryCollection, type QueryCollectionSnapshot, type QueryViewport, type QueryViewportController, type RunicQuery,
   upload as uploadBlob, type BlobRef, type UploadOptions,
@@ -111,6 +111,19 @@ export function textChanges(): Stream.Stream<void> {
     Effect.sync(() => subscribeText(() => { Queue.offerUnsafe(queue, undefined); })),
     unsubscribe => Effect.sync(unsubscribe),
   ), { bufferSize: 1, strategy: "sliding" });
+}
+
+/**
+ * The locale that text is shown in (`textLocale` from `@runic-artifex/views`: the page's Translations locale, which
+ * follows the window's locale): the locale now, then each new one. `undefined` while the page has no Translations
+ * runtime and the application sets no window locale. Render the page's own messages (`m.*()`) again on each.
+ *
+ * ```ts
+ * yield* Effect.forkScoped(Stream.runForEach(textLocales(), () => Effect.sync(() => { title.textContent = m.title(); })));
+ * ```
+ */
+export function textLocales(): Stream.Stream<string | undefined> {
+  return Stream.concat(Stream.make(undefined), textChanges()).pipe(Stream.map(() => textLocale()), Stream.changes);
 }
 
 /**
