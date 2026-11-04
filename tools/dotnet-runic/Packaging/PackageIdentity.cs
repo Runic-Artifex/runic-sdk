@@ -14,6 +14,13 @@ namespace Runic.Application.Tool.Packaging;
 internal sealed record PackageFileType(string Extension, string? MimeType);
 
 /// <summary>
+/// A locale the application is translated into (<c>RunicApplicationLocales</c>, <c>RunicApplicationLocale</c> items): a
+/// BCP 47 tag of a language, an optional script and an optional region (<c>de</c>, <c>pt-BR</c>, <c>zh-Hant</c>), and the
+/// application's name and description in it, when the project gives them.
+/// </summary>
+internal sealed record PackageLocale(string Tag, string? Name, string? Description);
+
+/// <summary>
 /// What <c>dotnet runic package</c> reads from the project: the application's identity, its activation (B16's file
 /// types, web link hosts and D-Bus activation) and the packaging properties.
 /// </summary>
@@ -77,6 +84,13 @@ internal sealed partial record PackageIdentity
     /// audio-input entitlement.</summary>
     internal string? MacMicrophoneUsageDescription { get; init; }
 
+    /// <summary>
+    /// The locales the application is translated into, the first being its development language: <c>RunicApplicationLocales</c>
+    /// (<c>en;de;pt-BR</c>) and the <c>RunicApplicationLocale</c> items, whose <c>Name</c> and <c>Description</c> metadata
+    /// give the application's name and description in the locale. Empty by default: the packages declare English only.
+    /// </summary>
+    internal IReadOnlyList<PackageLocale> Locales { get; init; } = [];
+
     internal string ProjectDirectory => Path.GetDirectoryName(ProjectPath)!;
 
     /// <summary>The SVG beside the PNG icon, when there is one.</summary>
@@ -97,6 +111,7 @@ internal sealed partial record PackageIdentity
         "PackageProjectUrl", "AssemblyName", "RunicPackageIcon", "RunicPackageName", "RunicPackagingDirectory",
         "RuntimeIdentifiers", "NuGetLockFilePath", "PackageLicenseExpression", "RunicMacSandbox", "RunicMacApplicationCategory",
         "RunicMacFileTypeIdentifiers", "RunicMacFileTypeHandlerRank", "RunicMacCameraUsageDescription", "RunicMacMicrophoneUsageDescription",
+        "RunicApplicationLocales",
     ];
 
     /// <summary>Evaluates the project with <c>dotnet msbuild -getProperty</c> and validates what it reads.</summary>
@@ -106,7 +121,7 @@ internal sealed partial record PackageIdentity
         string directory = Path.GetDirectoryName(project)!;
         CommandResult result = await CommandRunner.RunAsync(dotnet, directory,
             ["msbuild", project, "-nologo", $"-p:Configuration={configuration}", $"-getProperty:{string.Join(',', Properties)}",
-                "-getItem:PackageReference", "-getItem:ProjectReference"], cancellationToken).ConfigureAwait(false);
+                "-getItem:PackageReference", "-getItem:ProjectReference", "-getItem:RunicApplicationLocale"], cancellationToken).ConfigureAwait(false);
         if (result.ExitCode != 0)
         {
             throw new DevDevelopmentException(PackageCodes.PublishFailed,
@@ -116,11 +131,19 @@ internal sealed partial record PackageIdentity
         var properties = json.RootElement.GetProperty("Properties").EnumerateObject()
             .ToDictionary(property => property.Name, property => property.Value.GetString() ?? "", StringComparer.Ordinal);
         var references = new List<string>();
+        var locales = new List<PackageLocale>();
         if (json.RootElement.TryGetProperty("Items", out JsonElement items))
         {
             foreach (JsonProperty kind in items.EnumerateObject())
             foreach (JsonElement item in kind.Value.EnumerateArray())
             {
+                if (kind.Name == "RunicApplicationLocale")
+                {
+                    string? Metadata(string name) => item.TryGetProperty(name, out JsonElement value) && value.GetString() is { Length: > 0 } text
+                        ? text.Trim() : null;
+                    locales.Add(new PackageLocale(Metadata("Identity") ?? "", Metadata("Name"), Metadata("Description")));
+                    continue;
+                }
                 foreach (string metadata in new[] { "Identity", "Filename" })
                 {
                     if (item.TryGetProperty(metadata, out JsonElement value) && value.GetString() is { Length: > 0 } text)
@@ -128,12 +151,13 @@ internal sealed partial record PackageIdentity
                 }
             }
         }
-        return Create(project, properties, references, publisher);
+        return Create(project, properties, references, publisher, locales);
     }
 
     /// <summary>Builds the identity from evaluated properties and the project's references; see <see cref="ReadAsync"/>.</summary>
     internal static PackageIdentity Create(
-        string project, IReadOnlyDictionary<string, string> properties, IReadOnlyList<string> references, string? publisher)
+        string project, IReadOnlyDictionary<string, string> properties, IReadOnlyList<string> references, string? publisher,
+        IReadOnlyList<PackageLocale>? localeItems = null)
     {
         string Get(string name) => properties.TryGetValue(name, out string? value) ? value.Trim() : "";
         string directory = Path.GetDirectoryName(project)!;
@@ -174,7 +198,61 @@ internal sealed partial record PackageIdentity
             MacFileTypeHandlerRank = CheckHandlerRank(Get("RunicMacFileTypeHandlerRank")),
             MacCameraUsageDescription = Get("RunicMacCameraUsageDescription") is { Length: > 0 } camera ? camera : null,
             MacMicrophoneUsageDescription = Get("RunicMacMicrophoneUsageDescription") is { Length: > 0 } microphone ? microphone : null,
+            Locales = ParseLocales(Get("RunicApplicationLocales"), localeItems ?? []),
         };
+    }
+
+    /// <summary>
+    /// The locales of <c>RunicApplicationLocales</c>, then those of the <c>RunicApplicationLocale</c> items, each once, in
+    /// their canonical case (<c>pt-BR</c>, <c>zh-Hant</c>). An item gives a locale of the property its name and
+    /// description.
+    /// </summary>
+    internal static IReadOnlyList<PackageLocale> ParseLocales(string? value, IReadOnlyList<PackageLocale> items)
+    {
+        var locales = new List<PackageLocale>();
+        foreach (PackageLocale entry in Split(value).Select(tag => new PackageLocale(tag, null, null)).Concat(items))
+        {
+            string tag = CanonicalLocale(entry.Tag);
+            int index = locales.FindIndex(locale => locale.Tag == tag);
+            if (index < 0) locales.Add(entry with { Tag = tag });
+            else locales[index] = locales[index] with
+            {
+                Name = entry.Name ?? locales[index].Name,
+                Description = entry.Description ?? locales[index].Description,
+            };
+        }
+        return locales;
+    }
+
+    /// <summary>A language tag every packager reads: <c>ll</c> or <c>lll</c>, then an optional script and region.</summary>
+    internal static string CanonicalLocale(string tag)
+    {
+        Match match = LocaleSyntax().Match(tag.Trim().Replace('_', '-'));
+        if (!match.Success)
+        {
+            throw new DevDevelopmentException(PackageCodes.IdentityInvalid,
+                $"RunicApplicationLocales has '{tag}', which is not a language tag such as de, pt-BR or zh-Hant.");
+        }
+        string language = match.Groups["language"].Value.ToLowerInvariant();
+        string script = match.Groups["script"].Value is { Length: 4 } letters
+            ? char.ToUpperInvariant(letters[0]) + letters[1..].ToLowerInvariant() : "";
+        string region = match.Groups["region"].Value.ToUpperInvariant();
+        return language + (script.Length == 0 ? "" : "-" + script) + (region.Length == 0 ? "" : "-" + region);
+    }
+
+    /// <summary>
+    /// A locale as desktop entries and AppStream name it, <c>lang_COUNTRY@MODIFIER</c>: <c>pt_BR</c>, <c>sr@latin</c>;
+    /// <c>zh-Hans</c> and <c>zh-Hant</c> without a region are <c>zh_CN</c> and <c>zh_TW</c>.
+    /// </summary>
+    internal static string LinuxLocale(string tag)
+    {
+        string[] parts = tag.Split('-');
+        string language = parts[0];
+        string? script = parts.Skip(1).FirstOrDefault(part => part.Length == 4);
+        string? region = parts.Skip(1).FirstOrDefault(part => part.Length != 4);
+        if (language == "zh" && region is null) region = script switch { "Hans" => "CN", "Hant" => "TW", _ => null };
+        string modifier = script switch { "Latn" => "@latin", "Cyrl" => "@cyrillic", _ => "" };
+        return language + (region is null ? "" : "_" + region) + modifier;
     }
 
     /// <summary>
@@ -387,6 +465,9 @@ internal sealed partial record PackageIdentity
 
     [GeneratedRegex("[^A-Za-z0-9.-]")]
     private static partial Regex NonIdentifierCharacters();
+
+    [GeneratedRegex("^(?<language>[A-Za-z]{2,3})(-(?<script>[A-Za-z]{4}))?(-(?<region>[A-Za-z]{2}|[0-9]{3}))?$")]
+    private static partial Regex LocaleSyntax();
 
     [GeneratedRegex("[^A-Za-z0-9.+~]")]
     private static partial Regex LinuxVersionCharacters();

@@ -129,6 +129,31 @@ test("dotnet run starts the application from an ad-hoc signed development bundle
   assert.equal(signatures(app).length, 5);
 });
 
+test("the development bundle declares RunicApplicationLocales with CFBundleLocalizations and an lproj per locale", { skip: windows && "symbolic links need privileges on Windows" }, () => {
+  const app = fixture("locales", `
+    <RunicApplicationLocales>en;de</RunicApplicationLocales>
+  </PropertyGroup>
+  <ItemGroup>
+    <RunicApplicationLocale Include="pt-BR" Name="Notas" />
+    <RunicApplicationLocale Include="de" Name="Notizen" />
+  </ItemGroup>
+  <PropertyGroup>`);
+  runCommand(app);
+  const info = readFileSync(join(app.bundle, "Contents", "Info.plist"), "utf8");
+  assert.ok(info.includes("<key>CFBundleDevelopmentRegion</key><string>en</string>"), info);
+  assert.ok(info.includes("<key>CFBundleLocalizations</key><array><string>en</string><string>de</string><string>pt-BR</string></array>"), info);
+  for (const locale of ["en", "de", "pt-BR"])
+    assert.ok(lstatSync(join(app.bundle, "Contents", "Resources", `${locale}.lproj`)).isDirectory(), locale);
+  assert.equal(signatures(app).length, 1);
+  // An unchanged build is not signed again.
+  runCommand(app);
+  assert.equal(signatures(app).length, 1);
+  // Without the property and items, the bundle declares no localizations.
+  const plain = fixture("no-locales");
+  runCommand(plain);
+  assert.ok(!readFileSync(join(plain.bundle, "Contents", "Info.plist"), "utf8").includes("CFBundleLocalizations"));
+});
+
 test("dotnet run starts the build output without the development bundle when it does not apply", { skip: windows && "symbolic links need privileges on Windows" }, () => {
   const app = fixture("skipped");
   const output = join(app.output, "Notes");

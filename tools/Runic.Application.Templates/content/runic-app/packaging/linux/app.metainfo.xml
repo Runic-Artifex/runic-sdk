@@ -5,11 +5,11 @@
   <id>{{ApplicationId}}</id>
   <metadata_license>CC0-1.0</metadata_license>
   <project_license>LicenseRef-proprietary</project_license>
-  <name>{{ApplicationName}}</name>
+  <name>{{ApplicationName}}</name>{{LocalizedNames}}
   <developer id="{{DeveloperId}}">
     <name>{{ApplicationName}}</name>
   </developer>
-  <summary>{{Description}}</summary>
+  <summary>{{Description}}</summary>{{LocalizedSummaries}}
   <description>
     <p>{{Description}}</p>
   </description>

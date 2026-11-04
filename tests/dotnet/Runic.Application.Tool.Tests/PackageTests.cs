@@ -6,6 +6,8 @@ using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
 using System.Text.Json;
 using System.Text.RegularExpressions;
+using System.Threading;
+using System.Threading.Tasks;
 using System.Xml.Linq;
 using Runic.Application.Tool.Packaging;
 using TUnit.Core;
@@ -200,6 +202,110 @@ internal sealed partial class ToolTests
                 True(Regex.IsMatch(fields["MimeInfo"], "<mime-type type=\"application/x-example-notes\">\\s*<comment>Notes &amp; Co document \\(\\.notes\\)</comment>\\s*<glob pattern=\"\\*\\.notes\"/>"), fields["MimeInfo"]);
             }
         }
+    }
+
+    [Test, DisplayName("package reads RunicApplicationLocales and the RunicApplicationLocale items")]
+    public void PackageApplicationLocales()
+    {
+        string project = Path.Combine(Path.GetTempPath(), "Notes", "Notes.csproj");
+        var properties = new Dictionary<string, string>
+        {
+            ["ApplicationId"] = "org.example.Notes",
+            ["RunicApplicationLocales"] = "en; de;pt_br;zh-hant;sr-latn-rs",
+        };
+        PackageIdentity identity = PackageIdentity.Create(project, properties, [], null,
+            [new("de", "Notizen", "Notizen für alle"), new("fr", "Notes", null), new("EN", null, "Notes for everyone")]);
+        Equal("en,de,pt-BR,zh-Hant,sr-Latn-RS,fr", string.Join(',', identity.Locales.Select(locale => locale.Tag)));
+        Equal(new PackageLocale("de", "Notizen", "Notizen für alle"), identity.Locales[1]);
+        Equal(new PackageLocale("en", null, "Notes for everyone"), identity.Locales[0]);
+        Equal(new PackageLocale("fr", "Notes", null), identity.Locales[5]);
+        Equal(0, PackageIdentity.Create(project, new Dictionary<string, string> { ["ApplicationId"] = "org.example.Notes" }, [], null).Locales.Count);
+        foreach (string invalid in new[] { "english", "de-", "x", "de-DE-1996", "de/AT" })
+        {
+            Equal(PackageCodes.IdentityInvalid, Throws<DevDevelopmentException>(() => PackageIdentity.Create(project,
+                new Dictionary<string, string> { ["ApplicationId"] = "org.example.Notes", ["RunicApplicationLocales"] = invalid }, [], null)).Code);
+        }
+        Equal("pt_BR", PackageIdentity.LinuxLocale("pt-BR"));
+        Equal("sr_RS@latin", PackageIdentity.LinuxLocale("sr-Latn-RS"));
+        Equal("zh_TW", PackageIdentity.LinuxLocale("zh-Hant"));
+        Equal("zh_HK", PackageIdentity.LinuxLocale("zh-Hant-HK"));
+        Equal("de", PackageIdentity.LinuxLocale("de"));
+    }
+
+    [Test, DisplayName("package declares the application's locales in the bundle, the MSIX and the desktop entry")]
+    public async Task PackageApplicationLocaleManifests()
+    {
+        PackageIdentity identity = PackageIdentityFor([]) with
+        {
+            Locales = [new("en", null, null), new("de", "Notizen & Co", "Notizen \"für\" alle\nund jeden"), new("pt-BR", "Notas", null)],
+        };
+        string info = PackageManifests.Render(identity, "macos/Info.plist", PackageManifests.Fields(identity, PackageTarget.MacOS));
+        XDocument.Parse(info);
+        Contains(info, "<key>CFBundleDevelopmentRegion</key><string>en</string>");
+        Contains(info, "<key>CFBundleLocalizations</key><array><string>en</string><string>de</string><string>pt-BR</string></array>");
+        MacOSPackager.CheckInfo(info, identity);
+
+        string appx = PackageManifests.Render(identity, "windows/AppxManifest.xml", PackageManifests.Fields(identity, PackageTarget.Windows, "win-x64"));
+        XNamespace foundation = "http://schemas.microsoft.com/appx/manifest/foundation/windows10";
+        Equal("en,de,pt-BR", string.Join(',', XDocument.Parse(appx).Descendants(foundation + "Resource").Select(row => (string?)row.Attribute("Language"))));
+
+        Dictionary<string, string> linux = PackageManifests.Fields(identity, PackageTarget.Deb);
+        string desktop = PackageManifests.Render(identity, "linux/app.desktop", linux);
+        Contains(desktop, "Comment=Notes &lt;for&gt; everyone\nName[de]=Notizen & Co\nComment[de]=Notizen \"für\" alle\\nund jeden\nName[pt_BR]=Notas\nExec=");
+        string metainfo = PackageManifests.Render(identity, "linux/app.metainfo.xml", linux);
+        XDocument component = XDocument.Parse(metainfo);
+        XNamespace xml = XNamespace.Xml;
+        Equal("Notizen & Co", component.Root!.Elements("name").Single(name => (string?)name.Attribute(xml + "lang") == "de").Value);
+        Equal("Notas", component.Root.Elements("name").Single(name => (string?)name.Attribute(xml + "lang") == "pt_BR").Value);
+        Equal("Notizen \"für\" alle\nund jeden", component.Root.Elements("summary").Single(summary => (string?)summary.Attribute(xml + "lang") == "de").Value);
+        Equal(1, component.Root.Elements("summary").Count(summary => summary.Attribute(xml + "lang") is null));
+
+        using var workspace = new TestWorkspace();
+        string resources = Path.Combine(workspace.Root, "Notes.app", "Contents", "Resources");
+        await MacOSPackager.WriteLocalizationsAsync(identity, resources, CancellationToken.None);
+        Equal("de.lproj,en.lproj,pt-BR.lproj", string.Join(',', Directory.GetDirectories(resources).Select(Path.GetFileName).Order(StringComparer.Ordinal)));
+        Equal(0, Directory.GetFiles(Path.Combine(resources, "en.lproj")).Length);
+        Equal("\"CFBundleName\" = \"Notizen & Co\";\n\"CFBundleDisplayName\" = \"Notizen & Co\";\n",
+            File.ReadAllText(Path.Combine(resources, "de.lproj", "InfoPlist.strings")));
+    }
+
+    [Test, DisplayName("package keeps English alone without RunicApplicationLocales, and refuses an override without the locale fields")]
+    public void PackageApplicationLocaleDefaultsAndOverrides()
+    {
+        PackageIdentity english = PackageIdentityFor([]);
+        string appx = PackageManifests.Render(english, "windows/AppxManifest.xml", PackageManifests.Fields(english, PackageTarget.Windows, "win-x64"));
+        Contains(appx, "<Resources>\n    <Resource Language=\"en-us\" />\n  </Resources>");
+        string info = PackageManifests.Render(english, "macos/Info.plist", PackageManifests.Fields(english, PackageTarget.MacOS));
+        DoesNotContain(info, "<key>CFBundleLocalizations</key>");
+        DoesNotContain(PackageManifests.Render(english, "linux/app.desktop", PackageManifests.Fields(english, PackageTarget.Deb)), "Name[");
+
+        using var workspace = new TestWorkspace();
+        PackageIdentity identity = PackageIdentityFor([], packagingDirectory: Path.Combine(workspace.Root, "packaging")) with
+        {
+            Locales = [new("en", null, null), new("de", "Notizen", null)],
+        };
+        // Manifests of an earlier template: the locale fields are missing.
+        workspace.Write("packaging/windows/AppxManifest.xml", "<Package><Resources><Resource Language=\"en-us\" /></Resources></Package>");
+        workspace.Write("packaging/macos/Info.plist", "<plist><dict>{{UrlSchemes}}</dict></plist>");
+        workspace.Write("packaging/linux/app.desktop", "[Desktop Entry]\nName={{ApplicationName}}\n");
+        workspace.Write("packaging/linux/app.metainfo.xml", "<component><name>{{ApplicationName}}</name>{{LocalizedNames}}<summary>{{Description}}</summary></component>");
+        foreach ((string name, PackageTarget target, string field) in new[]
+        {
+            ("windows/AppxManifest.xml", PackageTarget.Windows, "{{Resources}}"),
+            ("macos/Info.plist", PackageTarget.MacOS, "{{Localizations}}"),
+            ("linux/app.desktop", PackageTarget.Deb, "{{LocalizedEntries}}"),
+        })
+        {
+            var error = Throws<DevDevelopmentException>(() => PackageManifests.Render(identity, name, PackageManifests.Fields(identity, target, "win-x64")));
+            Equal(PackageCodes.ValidationFailed, error.Code);
+            Contains(error.Message, field);
+        }
+        // Without descriptions, a metainfo needs no LocalizedSummaries.
+        Contains(PackageManifests.Render(identity, "linux/app.metainfo.xml", PackageManifests.Fields(identity, PackageTarget.Deb)),
+            "<name xml:lang=\"de\">Notizen</name>");
+        // Locales without names need no desktop entry field.
+        PackageIdentity unnamed = identity with { Locales = [new("en", null, null), new("de", null, null)] };
+        DoesNotContain(PackageManifests.Render(unnamed, "linux/app.desktop", PackageManifests.Fields(unnamed, PackageTarget.Deb)), "[de]");
     }
 
     [Test, DisplayName("package embeds the template's manifests and prefers the project's packaging directory")]

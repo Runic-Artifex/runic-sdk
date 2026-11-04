@@ -333,8 +333,9 @@ public sealed class RunicWriteMacPrivilegedDaemon : Task
       $(IntermediateOutputPath)runic-macos/$(AssemblyName).app
         Contents/Info.plist      CFBundleIdentifier (RunicMacBundleIdentifier, else ApplicationId), the name
                                  (ApplicationTitle), the version, RunicApplicationUrlSchemes, RunicApplicationFileTypes
-                                 (by extension, with the Alternate rank) and RunicMacCameraUsageDescription and
-                                 RunicMacMicrophoneUsageDescription.
+                                 (by extension, with the Alternate rank), RunicMacCameraUsageDescription and
+                                 RunicMacMicrophoneUsageDescription, and CFBundleLocalizations for RunicApplicationLocales.
+        Contents/Resources/<tag>.lproj  an empty folder per locale of RunicApplicationLocales
         Contents/MacOS/<name>    a copy of the application host, which the bundle's signature covers
         Contents/MacOS/*         links to every other file and directory of the build output, so a rebuild or a
                                  frontend written to www/ needs no copy
@@ -366,6 +367,7 @@ public sealed class RunicWriteMacPrivilegedDaemon : Task
       <FileTypes ParameterType="System.String" />
       <CameraUsageDescription ParameterType="System.String" />
       <MicrophoneUsageDescription ParameterType="System.String" />
+      <Locales ParameterType="System.String" />
       <Changed ParameterType="System.Boolean" Output="true" />
     </ParameterGroup>
     <Task>
@@ -390,6 +392,7 @@ public sealed class RunicWriteMacDevelopmentBundle : Task
     public string FileTypes { get; set; } = "";
     public string CameraUsageDescription { get; set; } = "";
     public string MicrophoneUsageDescription { get; set; } = "";
+    public string Locales { get; set; } = "";
     [Output] public bool Changed { get; set; }
 
     public override bool Execute()
@@ -421,6 +424,17 @@ public sealed class RunicWriteMacDevelopmentBundle : Task
                 Link(Path.Combine(macOS, name), entry, Directory.Exists(entry));
             }
             File.WriteAllText(stamp, stamped);
+            Changed = true;
+        }
+
+        // RunicApplicationLocales: an empty <tag>.lproj per locale, as dotnet runic package macos writes them, so AppKit
+        // shows its own text in those languages during development too.
+        string resources = Path.Combine(contents, "Resources");
+        foreach (string locale in LocaleTags())
+        {
+            string folder = Path.Combine(resources, locale + ".lproj");
+            if (Directory.Exists(folder)) continue;
+            Directory.CreateDirectory(folder);
             Changed = true;
         }
 
@@ -481,9 +495,23 @@ public sealed class RunicWriteMacDevelopmentBundle : Task
         }
         if (!string.IsNullOrWhiteSpace(CameraUsageDescription)) Entry(text, "NSCameraUsageDescription", Escape(CameraUsageDescription.Trim()));
         if (!string.IsNullOrWhiteSpace(MicrophoneUsageDescription)) Entry(text, "NSMicrophoneUsageDescription", Escape(MicrophoneUsageDescription.Trim()));
+        string[] locales = LocaleTags();
+        if (locales.Length > 0)
+        {
+            Entry(text, "CFBundleDevelopmentRegion", Escape(locales[0]));
+            text.Append("  <key>CFBundleLocalizations</key><array>");
+            foreach (string locale in locales) text.Append("<string>" + Escape(locale) + "</string>");
+            text.Append("</array>\n");
+        }
         text.Append("</dict>\n</plist>\n");
         return text.ToString();
     }
+
+    // The locales of RunicApplicationLocales and the RunicApplicationLocale items, each once, as language tags with a
+    // hyphen (pt-BR). dotnet runic package checks their syntax; a tag a folder name cannot hold is left out here.
+    private string[] LocaleTags() => Split(Locales).Select(locale => locale.Replace('_', '-'))
+        .Where(locale => locale.All(character => char.IsLetterOrDigit(character) || character == '-'))
+        .Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
 
     private static void Remove(string path)
     {
@@ -539,7 +567,8 @@ public sealed class RunicWriteMacDevelopmentBundle : Task
                                     UrlSchemes="$(RunicApplicationUrlSchemes)"
                                     FileTypes="$(RunicApplicationFileTypes)"
                                     CameraUsageDescription="$(RunicMacCameraUsageDescription)"
-                                    MicrophoneUsageDescription="$(RunicMacMicrophoneUsageDescription)">
+                                    MicrophoneUsageDescription="$(RunicMacMicrophoneUsageDescription)"
+                                    Locales="$(RunicApplicationLocales);@(RunicApplicationLocale)">
       <Output TaskParameter="Changed" PropertyName="_RunicMacDevelopmentBundleChanged" />
     </RunicWriteMacDevelopmentBundle>
     <!-- Ad hoc, without the hardened runtime. A failed signature leaves the bundle unsigned: the application still runs,

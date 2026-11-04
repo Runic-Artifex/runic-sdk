@@ -86,6 +86,39 @@ Before you publish a Linux package, edit `linux/app.metainfo.xml`: set the
 project's license, a longer description and screenshots. Software centers and
 Flathub show them.
 
+### Languages
+
+Without more, the packages declare English only, so macOS shows its own text in
+the application (the About panel, the open and save panels, the menu items it
+adds) in English on a German Mac. List the languages the application is
+translated into, the first being its development language:
+
+```xml
+<PropertyGroup>
+  <RunicApplicationLocales>en;de;pt-BR</RunicApplicationLocales>
+</PropertyGroup>
+<ItemGroup>
+  <!-- Optional: the application's name and description in a language. -->
+  <RunicApplicationLocale Include="de" Name="Notizen" Description="Notizen für alle" />
+</ItemGroup>
+```
+
+A tag is a language with an optional script and region (`de`, `pt-BR`,
+`zh-Hant`); an item may add a language the property lacks. The packages then
+declare them:
+
+| Package | What the languages add | Manifest field |
+| --- | --- | --- |
+| macOS | `CFBundleDevelopmentRegion` (the first language) and `CFBundleLocalizations`, and `Contents/Resources/<tag>.lproj` per language, with an `InfoPlist.strings` that names the application when the item has a `Name`. The development bundle of `dotnet run` has `CFBundleLocalizations` and the folders too. | `{{Localizations}}` in `macos/Info.plist` |
+| MSIX | a `<Resource Language="…" />` row per language, the first being the default; `en-us` alone without the property. A translated display name needs a resource index (PRI), which the command does not make. | `{{Resources}}` in `windows/AppxManifest.xml`, inside `<Resources>` |
+| Linux | `Name[xx]=` and `Comment[xx]=` in the desktop entry, `<name xml:lang>` and `<summary xml:lang>` in the metainfo, from the items' `Name` and `Description`, with the locale as `lang_COUNTRY@modifier` (`pt_BR`, `sr@latin`). | `{{LocalizedEntries}}` in `linux/app.desktop`; `{{LocalizedNames}}` and `{{LocalizedSummaries}}` in `linux/app.metainfo.xml` |
+
+A project created before 0.17 has manifests in `packaging/` without these
+fields. Once it sets the languages, the command fails with `RAPPPKG1006` and
+names the field to add, rather than shipping a package that declares English
+only. Runic Translations will fill `RunicApplicationLocales` from `runic.json`;
+until then, set it by hand to the catalog's locales.
+
 ## Windows
 
 Install the Windows SDK, which provides `makeappx` and `signtool`. The command
