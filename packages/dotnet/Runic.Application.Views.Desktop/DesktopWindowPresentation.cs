@@ -53,6 +53,7 @@ internal sealed class DesktopWindowPresentation : IRunicWindowPresentation
         if (capabilities.HasFlag(DesktopWindowCapabilities.ColorScheme | DesktopWindowCapabilities.PerWindowColorScheme))
             features |= RunicWindowPresentationFeatures.PerWindowColorScheme;
         if (capabilities.HasFlag(DesktopWindowCapabilities.Activity)) features |= RunicWindowPresentationFeatures.Activity;
+        if (capabilities.HasFlag(DesktopWindowCapabilities.Ownership)) features |= RunicWindowPresentationFeatures.OwnedWindows;
         // NSWindow.documentEdited: only the macOS window shows it; elsewhere DesktopWindow accepts it and does nothing.
         if (macOS && capabilities.HasFlag(DesktopWindowCapabilities.NativeHandle)) features |= RunicWindowPresentationFeatures.DocumentEdited;
         return features;

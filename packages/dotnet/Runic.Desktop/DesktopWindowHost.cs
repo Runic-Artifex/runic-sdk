@@ -466,6 +466,27 @@ public sealed record DesktopWindowHostOptions
     /// </remarks>
     public bool GlobalMenu { get; init; } = true;
 
+    /// <summary>
+    /// Gets the native handle of the window that owns this one, from <see cref="DesktopWindowOptions.Owner"/>, or zero
+    /// for a window of its own. It is the kind <see cref="IDesktopWindowHost.NativeHandle"/> reports, such as a
+    /// <c>GtkWindow*</c>.
+    /// </summary>
+    /// <remarks>
+    /// A host reporting <see cref="DesktopWindowCapabilities.Ownership"/> keeps the window above its owner, as a
+    /// toolkit's transient or owned window does. Use the handle only on the window's UI thread, and only while opening
+    /// and closing the window. Runic Desktop passes zero to a host without the capability.
+    /// </remarks>
+    public nint OwnerHandle { get; init; }
+
+    /// <summary>Gets whether the window blocks its owner, from <see cref="DesktopWindowOptions.Modality"/>.</summary>
+    /// <remarks>
+    /// With <see cref="DesktopWindowModality.Window"/>, a host reporting <see cref="DesktopWindowCapabilities.Ownership"/>
+    /// makes the owner take no input, and ignore the user's close, while the window is shown (a hidden one does not
+    /// block it), and leaves the application's other windows usable. Several windows may be modal to one owner at once: the owner takes input again when the last
+    /// of them closed. It is <see cref="DesktopWindowModality.None"/> when <see cref="OwnerHandle"/> is zero.
+    /// </remarks>
+    public DesktopWindowModality Modality { get; init; }
+
     /// <summary>Gets the monitor to open on, from <see cref="DesktopWindowOptions.MonitorId"/>; <see langword="null"/> when a placement's position or the platform decides.</summary>
     /// <remarks>A host implementing <see cref="IDesktopPlacementWindowHost"/> applies it; others ignore it.</remarks>
     public string? MonitorId { get; init; }
@@ -665,6 +686,8 @@ internal sealed class DesktopWindowHostAdapter : IWebUiEmbeddedHost
             Language = options.Language,
             SpellChecking = options.SpellChecking,
             SpellCheckingLanguages = options.SpellCheckingLanguages,
+            OwnerHandle = options.OwnerHandle,
+            Modality = options.Modality,
         }, cancellationToken);
 
     public ValueTask SetSpellCheckingLanguagesAsync(IReadOnlyList<string> languages, CancellationToken cancellationToken = default) =>

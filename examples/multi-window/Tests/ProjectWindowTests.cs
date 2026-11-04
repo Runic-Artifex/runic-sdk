@@ -110,7 +110,7 @@ public sealed class ProjectWindowTests : IAsyncDisposable
     }
 
     // Desktop preferences that report one color scheme and never change.
-    private sealed class FixedDesktopSettings(DesktopColorScheme scheme) : IDesktopSettings
+    internal sealed class FixedDesktopSettings(DesktopColorScheme scheme) : IDesktopSettings
     {
         private PlatformResult<DesktopAppearance> Current => new PlatformResult<DesktopAppearance>.Success(new DesktopAppearance(scheme));
 

@@ -455,7 +455,7 @@ internal sealed class NavigationPresentationTests
         var generated = File.ReadAllText(Path.Combine(GeneratedTypeScriptDirectory(), "navShell.ts")).ReplaceLineEndings("\n");
         foreach (var expected in new[]
         {
-            "  /** The main content; the navigator changes it. */\n  readonly main: ReactiveNavEditorPageReference | NavEditorPageReference | NavHomePageReference | NavLogPagePageReference | null;",
+            "  /** The main content; the navigator changes it. */\n  readonly main: ReactiveNavEditorPageReference | NavEditorPageReference | NavHomePageReference | NavLogPagePageReference | NavTabbedPagePageReference | null;",
             "  main: (wire: unknown) => { if (wire === null) return null; const reference = contentReference(wire); return reference.kind === \"reactiveNavEditor\" ? pageReactiveNavEditor(reference.id) : reference.kind === \"navEditor\" ? pageNavEditor(reference.id)",
         })
             Require(generated.Contains(expected, StringComparison.Ordinal), $"navShell.ts is missing:\n{expected}\n---\n{generated}");

@@ -481,11 +481,11 @@ public partial class ViewModelBridge<T>
                 writer.WritePropertyName(member.Name);
                 if (compared is null || _incrementalMembers.Contains(member.Name))
                 {
-                    member.Write(writer, _vm);
+                    WriteMemberValue(member, writer);
                     continue;
                 }
                 var start = message.Position;
-                member.Write(writer, _vm);
+                WriteMemberValue(member, writer);
                 compared.Add((member.Name, start, message.Position));
             }
             writer.WriteEndObject();
@@ -510,6 +510,53 @@ public partial class ViewModelBridge<T>
         // The state is a unit that compared every member.
         Published(changed);
         return state;
+    }
+
+    // blobs/1: a state member's blobs are exactly those of its latest write (BridgeBlobs, holders). A keyed collection
+    // that publishes its changes holds each row's blobs by the row's key instead, so a row change replaces only that
+    // row's blobs; its rows are written as its changes write them, which is the member's own encoding.
+    private void WriteMemberValue(BridgeStateMember<T> member, Utf8JsonWriter writer)
+    {
+        using var route = EnterBlobs(null);
+        if (IncrementalCollection(member.Name) is { } descriptor && descriptor.Get(_vm) is System.Collections.IEnumerable rows)
+        {
+            var keys = new HashSet<string>(StringComparer.Ordinal);
+            writer.WriteStartArray();
+            foreach (var row in rows)
+            {
+                var key = descriptor.Key(row);
+                keys.Add(key);
+                using var slot = BridgeBlobScope.EnterSlot(RowSlot(descriptor, key));
+                descriptor.WriteItem(writer, row);
+            }
+            writer.WriteEndArray();
+            Blobs.ReleaseSlots(this, RowSlot(descriptor, ""), keep: slot => keys.Contains(slot[(descriptor.Name.Length + 1)..]));
+            return;
+        }
+        using (BridgeBlobScope.EnterSlot(member.Name)) member.Write(writer, _vm);
+    }
+
+    // A collection change's row: its blobs are those of the row's latest write, by its key.
+    private void WriteItemValue(BridgeCollectionDescriptor<T> descriptor, Utf8JsonWriter writer, object? item)
+    {
+        using var route = EnterBlobs(null);
+        using var slot = BridgeBlobScope.EnterSlot(RowSlot(descriptor, descriptor.Key(item)));
+        descriptor.WriteItem(writer, item);
+    }
+
+    // The rows a collection change took away release their blobs.
+    private void ReleaseRows(BridgeCollectionDescriptor<T> descriptor, IEnumerable<string> keys)
+    {
+        foreach (var key in keys) Blobs.ReleaseSlots(this, RowSlot(descriptor, key), exact: true);
+    }
+
+    private static string RowSlot(BridgeCollectionDescriptor<T> descriptor, string key) => descriptor.Name + "\u0000" + key;
+
+    private BridgeCollectionDescriptor<T>? IncrementalCollection(string name)
+    {
+        foreach (var descriptor in _incrementalCollections)
+            if (descriptor.Name == name) return descriptor;
+        return null;
     }
 
     private void WriteFieldVersions(Utf8JsonWriter writer)
@@ -540,7 +587,7 @@ public partial class ViewModelBridge<T>
                 var comparing = BridgeComparingWriter.Rent(previous);
                 try
                 {
-                    member.Write(comparing.Writer, _vm);
+                    WriteMemberValue(member, comparing.Writer);
                     var matches = comparing.Matches;
                     var version = VersionOf(member.Name);
                     if (matches && (version is null || _publishedVersions.GetValueOrDefault(member.Name) == version)) continue;
@@ -559,7 +606,7 @@ public partial class ViewModelBridge<T>
     {
         using (BridgeSnapshotPublication.Enter(() => IsInactive))
             foreach (var member in _stateMembers)
-                if (member.Name == name) return WriteValue(writer => member.Write(writer, _vm));
+                if (member.Name == name) return WriteValue(writer => WriteMemberValue(member, writer));
         throw new InvalidOperationException($"{ModelName} has no state member '{name}'.");
     }
 
@@ -640,8 +687,16 @@ public partial class ViewModelBridge<T>
                     }
                     var keys = (kind == "add" ? args.NewItems : args.OldItems)?.Cast<object?>().Select(descriptor.Key).ToArray() ?? [];
                     var items = kind is "add" or "replace"
-                        ? args.NewItems?.Cast<object?>().Select(item => WriteValue(writer => descriptor.WriteItem(writer, item))).ToArray() ?? []
+                        ? args.NewItems?.Cast<object?>().Select(item => WriteValue(writer => WriteItemValue(descriptor, writer, item))).ToArray() ?? []
                         : [];
+                    // blobs/1: a removed row, or a replaced one whose key no new row has, releases its blobs.
+                    if (kind is "remove" or "replace")
+                    {
+                        var kept = kind == "replace"
+                            ? args.NewItems?.Cast<object?>().Select(descriptor.Key).ToHashSet(StringComparer.Ordinal) ?? []
+                            : [];
+                        ReleaseRows(descriptor, keys.Where(key => !kept.Contains(key)));
+                    }
                     _pendingCollectionChanges.Add(new(descriptor, kind,
                         kind == "remove" ? args.OldStartingIndex : args.NewStartingIndex,
                         args.OldStartingIndex, keys, items));
@@ -678,7 +733,7 @@ public partial class ViewModelBridge<T>
                     // A key changed in place or made invalid becomes a set of the field.
                     if (!TrackItemKey(descriptor, rows, item, at, out var key)) MarkCollectionSet(descriptor);
                     else _pendingCollectionChanges.Add(new(descriptor, "replace", at, at,
-                        [key], [WriteValue(writer => descriptor.WriteItem(writer, item))]));
+                        [key], [WriteValue(writer => WriteItemValue(descriptor, writer, item))]));
                 }
                 if (handled) ScheduleUnit();
                 return handled;

@@ -140,7 +140,17 @@ it to use one on CS-WebUI. The
 [Runic.Platform guide](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Platform/README.md#hosts-without-a-native-owner)
 lists each service's result on both hosts. A root ViewModel that implements `IRunicFileDropTarget` is
 never called here: a browser window reports no dropped paths, so the page only
-gets HTML5 `File` objects. There is no native menu bar either: the page renders
+gets HTML5 `File` objects. To bring one into .NET, upload it: `client.upload(file)`
+streams it to a loopback endpoint of the window, and a command takes the
+resulting reference as a `RunicUpload` (see
+[Blobs and uploads](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Application.Views/README.md#blobs-and-uploads)).
+`RunicBlob` values, such as images and downloads the ViewModel produces, are
+served from the same endpoint, `http://localhost:{port}/` (also bound on
+`127.0.0.1`), another origin than the page, which it grants with CORS, and only
+to loopback peers; a page `Content-Security-Policy` must allow
+`http://localhost:*` for `img-src`, `media-src` and `connect-src`. That
+endpoint cannot see WebUI's clients, so a blob URL is bound to the window, not
+to one browser; an upload also needs its connection's token. There is no native menu bar either: the page renders
 `RunicCsWebUiHostOptions.MenuBar` (see [Menu bar](#menu-bar)).
 
 A ViewModel's `IRunicWindowPresentation` does what WebUI can:
@@ -152,6 +162,13 @@ activity: `Features` lacks `Activity` and the Window counts as active and
 visible (`RunicWindowActivity.Assumed`). A Window served under
 `RUNIC_APPLICATION_SERVE_ONLY=1` has no window, and its requests report
 `Unavailable(OwnerUnavailable)`.
+
+CS-WebUI cannot own windows (B6, since 0.16): `Features` lacks `OwnedWindows`,
+and a Window opened with `RunicWindowOptions.Owner` or `Modality` opens on its
+own and logs `WindowOwnerIgnored` (event 1180). `ValidateWindow` reports the
+warning `window-owner-unsupported` (`RunicCsWebUiHost.OwnerUnsupportedCode`).
+`IRunicWindowService.FindOrOpenAsync`, `ActivateAsync` and `OpenForResultAsync`
+work as on Runic Desktop, with the activation this host has.
 
 When WebUI cannot show a window, because it finds no browser, the selected
 browser does not exist or does not start, or the page does not connect within

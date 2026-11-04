@@ -150,11 +150,22 @@ export function notConnectedError(bridge: RunicBridgeClient, message: string, ro
     : new BridgeError("disconnected", "The Bridge is disconnected.", route === undefined ? {} : { route });
 }
 
+/**
+ * client-errors/1: the reporter of `installErrorReporting` (error-reporting.ts), in a slot every copy of this package
+ * on the page shares, so the runtime of one copy reports to the reporter another copy installed.
+ */
+export const clientErrorObserverKey = Symbol.for("runic.views.client-error-observer");
+export type RuntimeErrorObserver = (error: unknown, route?: string) => void;
+
 // A throwing subscriber or an undecodable push must not stop delivery to
 // other subscribers or unwind into the host script that pushed it.
 // A released View is expected after navigation and is not reported.
 export function reportBridgeError(error: unknown, route?: string): void {
   if (error instanceof BridgeError && error.kind === "released") return;
+  const observer = hostCallbacks()[clientErrorObserverKey] as RuntimeErrorObserver | undefined;
+  if (typeof observer === "function") {
+    try { observer(error, route); } catch { /* A reporter never fails the runtime. */ }
+  }
   emitErrorDiagnostic(error, route);
   const report = (globalThis as { reportError?: (error: unknown) => void }).reportError;
   if (typeof report === "function") report(error); else console.error(error);

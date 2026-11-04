@@ -6,10 +6,11 @@ import { pageReactiveNavEditor, type ReactiveNavEditorPageReference } from "./re
 import { pageNavEditor, type NavEditorPageReference } from "./navEditor.js";
 import { pageNavHome, type NavHomePageReference } from "./navHome.js";
 import { pageNavLogPage, type NavLogPagePageReference } from "./navLogPage.js";
+import { pageNavTabbedPage, type NavTabbedPagePageReference } from "./navTabbedPage.js";
 
 export interface NavShellState {
   /** The main content; the navigator changes it. */
-  readonly main: ReactiveNavEditorPageReference | NavEditorPageReference | NavHomePageReference | NavLogPagePageReference | null;
+  readonly main: ReactiveNavEditorPageReference | NavEditorPageReference | NavHomePageReference | NavLogPagePageReference | NavTabbedPagePageReference | null;
 }
 
 /** A connected NavShell ViewModel. Dispose it when its presentation ends. */
@@ -27,7 +28,7 @@ function contentReference(wire: unknown): { readonly kind: string; readonly id: 
   return bridgeWire.object(wire, value => ({ kind: bridgeWire.string(value["kind"]), id: bridgeWire.string(value["id"]) }));
 }
 const members: BridgeMemberDecoders<NavShellState> = {
-  main: (wire: unknown) => { if (wire === null) return null; const reference = contentReference(wire); return reference.kind === "reactiveNavEditor" ? pageReactiveNavEditor(reference.id) : reference.kind === "navEditor" ? pageNavEditor(reference.id) : reference.kind === "navHome" ? pageNavHome(reference.id) : reference.kind === "navLogPage" ? pageNavLogPage(reference.id) : (() => { throw new BridgeError("failed", "Unknown main kind."); })(); },
+  main: (wire: unknown) => { if (wire === null) return null; const reference = contentReference(wire); return reference.kind === "reactiveNavEditor" ? pageReactiveNavEditor(reference.id) : reference.kind === "navEditor" ? pageNavEditor(reference.id) : reference.kind === "navHome" ? pageNavHome(reference.id) : reference.kind === "navLogPage" ? pageNavLogPage(reference.id) : reference.kind === "navTabbedPage" ? pageNavTabbedPage(reference.id) : (() => { throw new BridgeError("failed", "Unknown main kind."); })(); },
 };
 const bridgeContract = "Runic.Application.Testing.Tests.NavShellViewModel:<fingerprint>";
 

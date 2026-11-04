@@ -37,3 +37,6 @@ export {
   type ViewRequestSession,
 } from "./requests.js";
 export { bridgeOperations, type BridgeOperations, type OperationScope } from "./operations.js";
+export { regionCollection } from "./regions.js";
+export { decodeQueryCollectionState, defineQueryCollection, type QueryCollectionDefinition } from "./query.js";
+export { upload } from "./blobs.js";

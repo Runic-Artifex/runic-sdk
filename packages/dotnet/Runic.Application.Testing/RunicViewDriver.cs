@@ -27,7 +27,7 @@ namespace Runic.Application.Testing;
 /// (await editor.ExecuteAsync(vm => vm.RenameCommand, new RenameInput("Groceries", Pinned: true))).ThrowIfFailed();
 /// </code>
 /// </example>
-public sealed class RunicViewDriver<TModel> where TModel : class
+public sealed partial class RunicViewDriver<TModel> where TModel : class
 {
     private readonly RunicPublicationLog _publications;
     private readonly InMemoryBridgeTransport _transport;
@@ -109,7 +109,6 @@ public sealed class RunicViewDriver<TModel> where TModel : class
     {
         var connection = connectionKey ?? _connectionKey;
         clientKey ??= _clientKey;
-        await _transport.EnsureHelloAsync(connection, clientKey, cancellationToken).ConfigureAwait(false);
         var json = RunicJson.Write(writer =>
         {
             writer.WriteStartObject();
@@ -117,6 +116,10 @@ public sealed class RunicViewDriver<TModel> where TModel : class
             writer.WriteString("route", Route);
             writer.WriteEndObject();
         });
+        // A Window that a window-modal Window blocks takes no input from its page, as on the desktop.
+        if (_transport.InputBlocked?.Invoke() is { } blocked && IsInput(json))
+            throw new InvalidOperationException(blocked);
+        await _transport.EnsureHelloAsync(connection, clientKey, cancellationToken).ConfigureAwait(false);
         return await _transport.RequestAsync(json, connection, clientKey, cancellationToken).ConfigureAwait(false);
     }
 
@@ -130,6 +133,14 @@ public sealed class RunicViewDriver<TModel> where TModel : class
     /// <exception cref="InvalidOperationException">The route answered with a failure, such as <c>released</c>.</exception>
     public async Task<RunicViewState<TModel>> SnapshotAsync(CancellationToken cancellationToken = default) =>
         ReadState(await SendAsync(WriteSnapshot, cancellationToken: cancellationToken).ConfigureAwait(false), "snapshot");
+
+    // The page's input: a command, an operation start, a property set or a checked write.
+    private static bool IsInput(string json)
+    {
+        using var document = JsonDocument.Parse(json);
+        return document.RootElement.TryGetProperty("kind", out var kind)
+            && kind.GetString() is "command" or "start" or "set" or "write";
+    }
 
     private static void WriteSnapshot(Utf8JsonWriter writer) => writer.WriteString("kind", "snapshot");
 
@@ -304,6 +315,43 @@ public sealed class RunicViewDriver<TModel> where TModel : class
         var json = await SendAsync(writer => WriteCommand(writer, "command", member, input),
             cancellationToken: cancellationToken).ConfigureAwait(false);
         return await ReplyAsync("command", member, json, cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Selects the region with <paramref name="key"/> of a region collection, as the client's <c>select{Name}(key)</c>
+    /// does (<c>region-collections/1</c>), and waits until the selection settled. The departure guards of the region left
+    /// decide; <see cref="RunicCallReply{TModel}.RegionOutcome"/> says how it ended.
+    /// </summary>
+    /// <param name="collection">The region collection property, such as <c>vm => vm.Documents</c>.</param>
+    /// <param name="key">A region's key, from <see cref="RunicViewState{TModel}.Regions"/>.</param>
+    /// <param name="cancellationToken">Cancels the request, as a closed client connection does.</param>
+    public Task<RunicCallReply<TModel>> SelectRegionAsync(Expression<Func<TModel, object?>> collection, string key,
+        CancellationToken cancellationToken = default) => RegionAsync(collection, "select", key, cancellationToken);
+
+    /// <summary>
+    /// Closes the region with <paramref name="key"/> of a region collection and removes it, as the client's
+    /// <c>close{Name}(key)</c> does (<c>region-collections/1</c>). Every entry of the region is asked to retire;
+    /// <see cref="RunicCallReply{TModel}.RegionOutcome"/> says how it ended.
+    /// </summary>
+    /// <param name="collection">The region collection property, such as <c>vm => vm.Documents</c>.</param>
+    /// <param name="key">A region's key, from <see cref="RunicViewState{TModel}.Regions"/>.</param>
+    /// <param name="cancellationToken">Cancels the request, as a closed client connection does.</param>
+    public Task<RunicCallReply<TModel>> CloseRegionAsync(Expression<Func<TModel, object?>> collection, string key,
+        CancellationToken cancellationToken = default) => RegionAsync(collection, "close", key, cancellationToken);
+
+    private async Task<RunicCallReply<TModel>> RegionAsync(Expression<Func<TModel, object?>> collection, string action, string key,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(key);
+        var member = RunicMembers.WireName(RunicMembers.Property(collection));
+        var json = await SendAsync(writer =>
+        {
+            writer.WriteString("kind", "region");
+            writer.WriteString("member", member);
+            writer.WriteString("action", action);
+            writer.WriteString("key", key);
+        }, cancellationToken: cancellationToken).ConfigureAwait(false);
+        return await ReplyAsync("region", member, json, cancellationToken).ConfigureAwait(false);
     }
 
     private static bool CanReply(string route, string reply)

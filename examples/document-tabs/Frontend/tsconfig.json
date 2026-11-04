@@ -1,0 +1,20 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ES2022",
+    "moduleResolution": "Bundler",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "jsx": "react-jsx",
+    "strict": true,
+    "noEmit": true,
+    "skipLibCheck": true,
+    "types": [],
+    "paths": {
+      "@runic-artifex/react": ["../../../packages/web/react/src/index.ts"],
+      "react": ["../../../packages/web/react/node_modules/@types/react"],
+      "react/*": ["../../../packages/web/react/node_modules/@types/react/*"],
+      "react-dom/*": ["../../../packages/web/react/node_modules/@types/react-dom/*"]
+    }
+  },
+  "include": ["src/**/*.ts", "src/**/*.tsx"]
+}

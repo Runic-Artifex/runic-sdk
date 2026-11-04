@@ -1,0 +1,56 @@
+{
+  "format": "runic.views.scenario/1",
+  "id": "blobs.an-unknown-upload-is-invalid-input.v1",
+  "contract": {"id":"runic.views","version":4},
+  "set": "blobs",
+  "roles": ["producer","client"],
+  "description": "An upload input names an upload by its id; the client sends the reference as the upload's record. An id that names no unclaimed upload of the request's connection, as here, is rejected as invalid input, and the command does not run.",
+  "view": "files",
+  "requires": ["blobs/1"],
+  "ids": {
+    "c1": {"kind":"connection"},
+    "hello-c1": {"kind":"request"},
+    "session": {"kind":"wire","value":"s-1"},
+    "open-files": {"kind":"call"},
+    "open-files-request": {"kind":"request"},
+    "presentation": {"kind":"wire","value":"p-1"},
+    "attach": {"kind":"call"},
+    "attach-request": {"kind":"request"}
+  },
+  "arrange": {"model":{"avatar":null}},
+  "steps": [
+    {"connect":"c1"},
+    {
+      "send": {
+        "kind": "hello",
+        "protocol": 4,
+        "session": {"$id":"session"},
+        "client": {"name":{"$any":"string","default":"conformance-client"},"version":{"$any":"string","default":"1.0.0"}},
+        "features": {"$any":"array","default":["blobs/1"]}
+      },
+      "id": "hello-c1"
+    },
+    {
+      "receive": {
+        "ok": true,
+        "protocol": 4,
+        "implementation": {"name":{"$any":"string","default":"conformance-producer"},"version":{"$any":"string","default":"1.0.0"}},
+        "features": {"$any":"array","default":["blobs/1"]},
+        "blobs": {
+          "upload": {"$any":"string","default":"http://conformance.test/_runic/upload"},
+          "token": {"$any":"string","default":"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"},
+          "maximumBytes": 268435456
+        }
+      },
+      "replyTo": "hello-c1"
+    },
+    {"call":{"id":"open-files","op":"open","route":"files"}},
+    {"send":{"kind":"open","route":"files","presentation":{"$id":"presentation"}},"id":"open-files-request"},
+    {"receive":{"ok":true,"revision":0,"state":{"avatar":null,"lastUpload":null},"presentation":"ok"},"replyTo":"open-files-request"},
+    {"call":{"id":"attach","op":"command","route":"files","member":"attach","input":{"id":"CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC","name":"notes.txt","type":"text/plain","size":5}}},
+    {"send":{"kind":"command","route":"files","member":"attach","input":{"id":"CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC","name":"notes.txt","type":"text/plain","size":5}},"id":"attach-request"},
+    {"receive":{"ok":false,"error":{"kind":"rejected","reason":"invalid-input","message":{"$any":"string","default":"Attach has an invalid input."}}},"replyTo":"attach-request"},
+    {"expect":{"call":{"id":"attach","rejected":{"kind":"rejected","reason":"invalid-input"}}}},
+    {"expect":{"model":{"lastUpload":null}}}
+  ]
+}

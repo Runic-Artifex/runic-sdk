@@ -39,6 +39,10 @@ internal sealed class BridgeDispatcher : IBridgeRequestHandler
     internal const string ViewRequestsFeature = "view-requests/1";
     // Every request names the session of its connection's hello (specs/application/README.md, "Request sessions").
     internal const string RequestSessionFeature = "request-session/1";
+    internal const string RegionCollectionsFeature = "region-collections/1";
+    internal const string ClientErrorsFeature = BridgeClientErrors.Feature;
+    internal const string QueryCollectionsFeature = "query-collections/1";
+    internal const string BlobsFeature = BridgeBlobs.Feature;
     internal const int MaximumFeatures = 64;
     internal const int MaximumFeatureLength = 64;
     // A request that arrives before its connection's hello waits this long for it, and at most this many wait.
@@ -78,12 +82,17 @@ internal sealed class BridgeDispatcher : IBridgeRequestHandler
     private TaskCompletionSource? _closing;
     private int _maximumInputBytes = WindowContentSessionOptions.DefaultMaximumInputBytes;
     private ILogger _logger = TraceFallbackLogger.Instance;
+    // client-errors/1: the category of the errors pages report.
+    private ILogger _pageLogger = TraceFallbackLogger.Instance;
+    // client-errors/1: the window's limit across its connections, so a page that reconnects keeps its budget.
+    private readonly BridgeClientErrors.Limit _clientErrors = new();
     private TimeProvider _timeProvider = TimeProvider.System;
 
     private BridgeDispatcher(IBridgeTransport transport)
     {
         _transport = transport;
         _targeted = transport as IBridgeConnectionTransport;
+        Blobs = new BridgeBlobs();
         _transportKeysUnique = transport is IBridgeUniqueConnectionKeys;
         // A closing window can still attach content while accepted work drains, after its host disposed the
         // transport. Its dispatcher serves nothing then.
@@ -107,6 +116,9 @@ internal sealed class BridgeDispatcher : IBridgeRequestHandler
 
     internal IBridgeTransport Transport => _transport;
 
+    // The Window's blobs and uploads (blobs/1). The host attaches its endpoint; the window session disposes it.
+    internal BridgeBlobs Blobs { get; }
+
     internal TimeProvider TimeProvider => _timeProvider;
 
     internal ILogger Logger => _logger;
@@ -120,11 +132,14 @@ internal sealed class BridgeDispatcher : IBridgeRequestHandler
     internal bool UsesMailbox => _targeted is null;
 
     // Applies the window's options. The window session calls this once it was created.
-    internal void Configure(int maximumInputBytes, ILogger logger, TimeProvider timeProvider)
+    internal void Configure(int maximumInputBytes, ILogger logger, TimeProvider timeProvider, ILogger? pageLogger = null)
     {
         _maximumInputBytes = maximumInputBytes;
         _logger = logger;
+        _pageLogger = pageLogger ?? logger;
         _timeProvider = timeProvider;
+        Blobs.Logger = logger;
+        Blobs.TimeProvider = timeProvider;
     }
 
     // Serves a route: requests that name it go to the handler until the lease is disposed; after that they answer
@@ -457,6 +472,7 @@ internal sealed class BridgeDispatcher : IBridgeRequestHandler
                 if (envelope.Kind == "receive") return Receive(connection, cancellationToken);
                 if (envelope.Kind == "closing-reply") return Reply(ClosingReply(connection));
                 if (envelope.Kind == "presented") return Presented(connection, envelope);
+                if (envelope.Kind == "client-error") return Reply(ClientError(connection, envelope));
                 // view-requests/1: a presentation registers its view request handlers only on a connection that uses it.
                 if (envelope.Kind == "view-requests" && !connection.UsesViewRequests)
                     return Reply(BridgeMessages.Rejected("invalid-request", "The connection does not use view-requests/1."));
@@ -465,8 +481,14 @@ internal sealed class BridgeDispatcher : IBridgeRequestHandler
                 if (envelope.Kind == "command" && envelope.HasEpoch && envelope.Epoch is null && connection.UsesPresentationEpoch
                     && !envelope.IsServiceRoute)
                     return Reply(BridgeMessages.Rejected("invalid-request", "The request's epoch is not an integer from 0 to 2^53-1."));
+                // region-collections/1: a region request is a request kind only on a connection that uses the feature.
+                if (envelope.Kind == "region" && !connection.UsesRegionCollections && !envelope.IsServiceRoute)
+                    return Reply(BridgeMessages.Rejected("invalid-request", "The connection does not use region-collections/1."));
                 if (envelope.Route is not { } route || !(envelope.IsServiceRoute || BridgeRequestEnvelope.IsViewKind(envelope.Kind)))
                     return Reply(BridgeMessages.Rejected("invalid-request", $"'{envelope.Kind}' is not a request kind of this producer."));
+                // query-collections/1: its request kinds exist only on a connection that uses it.
+                if (BridgeRequestEnvelope.IsQueryKind(envelope.Kind) && !connection.UsesQueryCollections && !envelope.IsServiceRoute)
+                    return Reply(BridgeMessages.Rejected("invalid-request", $"The connection does not use {QueryCollectionsFeature}."));
                 IBridgeRouteHandler? handler;
                 lock (_gate) _routes.TryGetValue(route, out handler);
                 if (handler is null)
@@ -501,6 +523,16 @@ internal sealed class BridgeDispatcher : IBridgeRequestHandler
         if (!connection.UsesPresented)
             return BridgeMessages.Rejected("invalid-request", "The connection does not use presented/1.");
         lock (_gate) ClosingSettled(connection);
+        return BridgeMessages.Ok.ToArray();
+    }
+
+    // client-error (client-errors/1): the page reports an error, which the window logs; the reply is ok also when the
+    // connection's limit suppressed it.
+    private byte[] ClientError(BridgeConnection connection, BridgeRequestEnvelope envelope)
+    {
+        if (!connection.UsesClientErrors)
+            return BridgeMessages.Rejected("invalid-request", "The connection does not use client-errors/1.");
+        BridgeClientErrors.Report(connection, _clientErrors, envelope.Root, _pageLogger, _timeProvider);
         return BridgeMessages.Ok.ToArray();
     }
 
@@ -561,6 +593,9 @@ internal sealed class BridgeDispatcher : IBridgeRequestHandler
     private void Closed(BridgeConnection connection, Action<string>[] observers)
     {
         RefuseHeld(connection);
+        // blobs/1: the connection's upload token stops working and its unclaimed uploads are deleted, also when a hello of
+        // another session replaced it. Its token and uploads are under its own key, which a later page never gets.
+        Blobs.ConnectionClosed(connection.Key);
         foreach (var observer in observers)
         {
             try { observer(connection.Key); }
@@ -664,7 +699,7 @@ internal sealed class BridgeDispatcher : IBridgeRequestHandler
             return false;
         if (!root.TryGetProperty("client", out var client) || client.ValueKind != JsonValueKind.Object
             || !TryReadName(client, "name", 128, out _) || !TryReadName(client, "version", 64, out _)
-            || !TryReadFeatures(root, out _, out _, out _, out _, out _))
+            || !TryReadFeatures(root, out _, out _, out _, out _, out _, out _, out _, out _, out _))
             return false;
         var session = sessionElement.GetString()!;
         lock (_gate)
@@ -702,7 +737,7 @@ internal sealed class BridgeDispatcher : IBridgeRequestHandler
             || !TryReadName(client, "name", 128, out var clientName) || !TryReadName(client, "version", 64, out var clientVersion))
             return BridgeMessages.Rejected("invalid-request", "The hello's client is not {name, version}.", hello: true);
         if (!TryReadFeatures(root, out var usesTextSplice, out var usesPresentationEpoch, out var usesPresented, out var usesViewRequests,
-                out var usesRequestSession))
+                out var usesRequestSession, out var usesRegionCollections, out var usesClientErrors, out var usesQueryCollections, out var usesBlobs))
             return BridgeMessages.Rejected("invalid-request",
                 $"The hello's features are not an array of at most {MaximumFeatures} strings of at most {MaximumFeatureLength} characters.", hello: true);
         var session = sessionElement.GetString()!;
@@ -723,6 +758,9 @@ internal sealed class BridgeDispatcher : IBridgeRequestHandler
             connection.UsesPresented = usesPresented;
             connection.UsesViewRequests = usesViewRequests;
             connection.UsesRequestSession = usesRequestSession;
+            connection.UsesRegionCollections = usesRegionCollections;
+            connection.UsesClientErrors = usesClientErrors;
+            connection.UsesQueryCollections = usesQueryCollections;
             connection.HelloCompleted = true;
             if (!usesTextSplice) _connectionsWithoutTextSplice++;
             if (usesPresentationEpoch) _connectionsWithPresentationEpoch++;
@@ -732,15 +770,17 @@ internal sealed class BridgeDispatcher : IBridgeRequestHandler
         }
         // A page that connects to a closing window is told so, after its hello reply.
         if (closing) BridgeTargetedPushes.For(_transport).Send(connection.Key, ClosingPush());
-        return BridgeMessages.Hello();
+        // blobs/1: the connection's upload grant, when the host takes uploads.
+        return BridgeMessages.Hello(usesBlobs ? Blobs.Grant(connection.Key) : null);
     }
 
     // The client's features: absent, or an array of strings. A feature this producer does not implement is ignored.
     private static bool TryReadFeatures(JsonElement root, out bool usesTextSplice, out bool usesPresentationEpoch,
-        out bool usesPresented, out bool usesViewRequests, out bool usesRequestSession)
+        out bool usesPresented, out bool usesViewRequests, out bool usesRequestSession, out bool usesRegionCollections, out bool usesClientErrors,
+        out bool usesQueryCollections, out bool usesBlobs)
     {
         usesRequestSession = false;
-        usesTextSplice = usesPresentationEpoch = usesPresented = usesViewRequests = false;
+        usesTextSplice = usesPresentationEpoch = usesPresented = usesViewRequests = usesRegionCollections = usesClientErrors = usesQueryCollections = usesBlobs = false;
         if (!root.TryGetProperty("features", out var features)) return true;
         if (features.ValueKind != JsonValueKind.Array || features.GetArrayLength() > MaximumFeatures) return false;
         foreach (var feature in features.EnumerateArray())
@@ -753,6 +793,10 @@ internal sealed class BridgeDispatcher : IBridgeRequestHandler
             else if (name == PresentedFeature) usesPresented = true;
             else if (name == ViewRequestsFeature) usesViewRequests = true;
             else if (name == RequestSessionFeature) usesRequestSession = true;
+            else if (name == RegionCollectionsFeature) usesRegionCollections = true;
+            else if (name == ClientErrorsFeature) usesClientErrors = true;
+            else if (name == QueryCollectionsFeature) usesQueryCollections = true;
+            else if (name == BlobsFeature) usesBlobs = true;
         }
         return true;
     }
@@ -900,6 +944,35 @@ internal sealed class BridgeConnection(string key, string clientKey, string? tra
     internal bool UsesViewRequests { get; set; }
     // Whether the connection uses request-session/1: every later request must name Session.
     internal bool UsesRequestSession { get; set; }
+    // region-collections/1: the connection may send region requests.
+    internal bool UsesRegionCollections { get; set; }
+    // client-errors/1: whether the page may report errors, and the connection's limit (BridgeClientErrors), which the
+    // window's limit guards.
+    internal bool UsesClientErrors { get; set; }
+    internal BridgeClientErrors.Limit ClientErrors { get; } = new();
+    // query-collections/1: the connection reads query collection ranges (query-rows, query-set, query-index).
+    internal bool UsesQueryCollections { get; set; }
+    // query-collections/1: the requests in flight per route, member and kind, which the route bounds per connection.
+    private readonly Dictionary<string, int> _queryRequests = new(StringComparer.Ordinal);
+
+    // Admits a query request unless the connection already has limit of them in flight.
+    internal bool TryEnterQuery(string key, int limit)
+    {
+        lock (_queryRequests)
+        {
+            var count = _queryRequests.GetValueOrDefault(key);
+            if (count >= limit) return false;
+            _queryRequests[key] = count + 1;
+            return true;
+        }
+    }
+
+    internal void ExitQuery(string key)
+    {
+        lock (_queryRequests)
+            if (_queryRequests.TryGetValue(key, out var count) && count > 1) _queryRequests[key] = count - 1;
+            else _queryRequests.Remove(key);
+    }
     // Whether the window's closing push waits for this connection's closing-reply; the dispatcher's gate guards it.
     internal bool ClosingPending { get; set; }
     // Requests that wait for the hello, in arrival order, and whether the dispatcher is admitting them.

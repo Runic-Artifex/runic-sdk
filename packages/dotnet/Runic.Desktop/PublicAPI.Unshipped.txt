@@ -31,4 +31,23 @@ Runic.Desktop.IDesktopActivityWindowHost.Activity.get -> Runic.Desktop.DesktopWi
 Runic.Desktop.IDesktopActivityWindowHost.ActivityChanged -> System.EventHandler?
 Runic.Desktop.IDesktopColorSchemeWindowHost
 Runic.Desktop.IDesktopColorSchemeWindowHost.SetColorSchemeAsync(Runic.Platform.DesktopColorScheme colorScheme, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask
+Runic.Desktop.DesktopWindowCapabilities.Ownership = 524288 -> Runic.Desktop.DesktopWindowCapabilities
+Runic.Desktop.DesktopWindowHostOptions.Modality.get -> Runic.Desktop.DesktopWindowModality
+Runic.Desktop.DesktopWindowHostOptions.Modality.init -> void
+Runic.Desktop.DesktopWindowHostOptions.OwnerHandle.get -> nint
+Runic.Desktop.DesktopWindowHostOptions.OwnerHandle.init -> void
+Runic.Desktop.DesktopWindowModality
+Runic.Desktop.DesktopWindow.Modality.get -> Runic.Desktop.DesktopWindowModality
+Runic.Desktop.DesktopWindowModality.None = 0 -> Runic.Desktop.DesktopWindowModality
+Runic.Desktop.DesktopWindowModality.Window = 1 -> Runic.Desktop.DesktopWindowModality
+Runic.Desktop.DesktopWindowOptions.Modality.get -> Runic.Desktop.DesktopWindowModality
+Runic.Desktop.DesktopWindowOptions.Modality.init -> void
+Runic.Desktop.DesktopWindowOptions.Owner.get -> Runic.Desktop.DesktopWindowOwner?
+Runic.Desktop.DesktopWindowOptions.Owner.init -> void
+Runic.Desktop.DesktopWindow.OwnedWindows.get -> System.Collections.Generic.IReadOnlyList<Runic.Desktop.DesktopWindow!>!
+Runic.Desktop.DesktopWindowOwner
+Runic.Desktop.DesktopWindow.Owner.get -> Runic.Desktop.DesktopWindowOwner?
+Runic.Desktop.DesktopWindowOwner.Window.get -> Runic.Desktop.DesktopWindow?
+static Runic.Desktop.DesktopWindowOwner.FromNativeHandle(nint handle) -> Runic.Desktop.DesktopWindowOwner!
+static Runic.Desktop.DesktopWindowOwner.FromWindow(Runic.Desktop.DesktopWindow! window) -> Runic.Desktop.DesktopWindowOwner!
 Runic.Desktop.IDesktopMenuCommandTarget.IsChecked(Runic.Platform.DesktopMenuItem! item) -> bool?

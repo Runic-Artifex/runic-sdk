@@ -5,8 +5,10 @@ import { readdirSync, readFileSync } from "node:fs";
 import { test } from "node:test";
 import { BridgeError, isBridgeOutcome, onBridgeConnection, onBridgeDiagnostic, type BridgeConnectionState } from "../dist/index.js";
 import {
-  bridgeOperations, connectView, defineCollection, defineCollections, defineInteractions, defineRequests, defineText, type ViewConnection,
+  bridgeOperations, connectView, decodeQueryCollectionState, defineCollection, defineCollections, defineInteractions, defineQueryCollection, defineRequests,
+  defineText, regionCollection, type ViewConnection,
 } from "../dist/generated.js";
+import type { QueryCollection } from "../dist/index.js";
 import * as wire from "../dist/wire.js";
 import { decodeBridgeValidation } from "../dist/validation.js";
 import { clock } from "../dist/clock.js";
@@ -74,7 +76,13 @@ const models: Record<string, ViewModel> = {
   detail: { members: { lastAction: wire.string, canDismiss: wire.boolean }, texts: ["lastAction"] },
   form: { members: { name: wire.string, nameErrors: value => wire.array(value, wire.string), validation: decodeBridgeValidation }, texts: ["name"] },
   wizard: { members: { page: int32, canNext: wire.boolean, canBack: wire.boolean, canPing: wire.boolean }, scopedCommands: ["next", "back"] },
+  // region-collections/1: the regions present page Views.
+  tabs: { members: { documents: value => regionCollection(value, reference), pinned: value => regionCollection(value, reference) } },
+  catalog: { members: { rows: decodeQueryCollectionState } },
+  files: { members: { avatar: value => value === null ? null : wire.blob(value), lastUpload: value => value === null ? null : wire.string(value) } },
 };
+// The catalog's query collection (query-collections/1): one per route and member, created by the first query call.
+const catalogRows = defineQueryCollection(row);
 const modelOf = (route: string) => route.startsWith("content") ? models["detail"]! : models[route]!;
 
 /* ------------------------------------------------------------------ the scripted host */
@@ -283,6 +291,13 @@ async function run(scenario: Scenario): Promise<void> {
     calls.set(id, { state: "pending" });
     work().then(value => calls.set(id, { state: "resolved", value }), error => calls.set(id, { state: "rejected", error }));
   };
+  const queries = new Map<string, QueryCollection<unknown>>();
+  const query = (route: string, member: string) => {
+    const key = `${route}\u0000${member}`;
+    let found = queries.get(key);
+    if (!found) queries.set(key, found = client(route).queryCollection(member, catalogRows));
+    return found;
+  };
   const client = (route: string) => {
     const found = clients.get(route);
     if (!found) throw new Error(`${scenario.id}: the route ${route} is not open.`);
@@ -362,6 +377,7 @@ async function run(scenario: Scenario): Promise<void> {
             requestId: call.requestId, expectedVersion: call.baseline.version, expectedValue: call.baseline.value, value: call.value,
           }, value => value)); break;
           case "can": track(call.id, () => client(route).can(call.member, call.input)); break;
+          case "region": track(call.id, () => client(route).region(call.member, call.action, call.key)); break;
           case "command": {
             const declared = modelOf(route).declared?.[call.member];
             track(call.id, async () => {
@@ -392,6 +408,24 @@ async function run(scenario: Scenario): Promise<void> {
             else track(call.id, async () => (await handle.cancel()).kind);
             break;
           }
+          // query-collections/1: a range resolves with the keys of its rows once they are all loaded and current.
+          case "queryRange": {
+            const collection = query(route, call.member);
+            collection.setRange(call.start, call.count);
+            track(call.id, () => new Promise(resolve => {
+              const check = () => {
+                const current = collection.current;
+                if (current.loading || current.rows.some(item => item.status !== "loaded" || item.stale)) return;
+                stop();
+                resolve(current.rows.map(item => item.key));
+              };
+              const stop = collection.subscribe(check);
+              check();
+            }));
+            break;
+          }
+          case "setQuery": track(call.id, async () => { await query(route, call.member).setQuery(call.value); return null; }); break;
+          case "indexOf": track(call.id, async () => (await query(route, call.member).indexOf(call.value)) ?? null); break;
           default: throw new Error(`${scenario.id}: unknown call ${String(call.op)}`);
         }
         await idle();
@@ -490,7 +524,7 @@ const scenarios = scenarioFiles.map(file => JSON.parse(readFileSync(new URL(`sce
 
 test("the corpus has client scenarios in every set", () => {
   const sets = new Set(scenarios.filter(scenario => scenario.roles.includes("client")).map(scenario => scenario.id.split(".")[0]));
-  for (const set of ["handshake", "state-changes", "replies", "edits", "operations", "presentations", "interactions", "view-requests", "errors"])
+  for (const set of ["handshake", "state-changes", "replies", "edits", "operations", "presentations", "regions", "interactions", "view-requests", "errors", "blobs"])
     assert.ok(sets.has(set), set);
 });
 

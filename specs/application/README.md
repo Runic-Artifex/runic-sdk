@@ -12,7 +12,7 @@ protocol to .NET and TypeScript is in the [language mappings](language-mappings.
 
 | Document | Content |
 | --- | --- |
-| This document | Conventions, transport, host bridge, handshake and features, requests and replies, state and revisions, publication, edits, checked writes, commands and presentation epochs, presentations, presented states and window close, operations, interactions, view requests, versions |
+| This document | Conventions, transport, host bridge, handshake and features, requests and replies, state and revisions, publication, edits, checked writes, commands and presentation epochs, content and region collections, query collections, presentations, presented states and window close, operations, interactions, view requests, versions |
 | [state-changes.md](state-changes.md) | Frames and their changes (`set`, keyed collections, text, text splices), producing and applying them, delivery bounds and recovery |
 | [values.md](values.md) | The JSON profile, wire value types and the canonical form (RFC 8785) |
 | [language-mappings.md](language-mappings.md) | The .NET producer and the TypeScript client |
@@ -230,6 +230,10 @@ reply both list the same string. Features are negotiated per connection, and aga
 | `presented/1` | The page reports that it painted a state, and acknowledges a window close: [presented states and window close](#presented-states-and-window-close) | 0.15 |
 | `view-requests/1` | The producer sends a presentation one-way requests, such as to focus a field: [view requests](#view-requests) | 0.16 |
 | `request-session/1` | Every request names the session of its connection's `hello`, so another page that got the connection's transport key never acts for it: [request sessions](#request-sessions) | 0.16 |
+| `region-collections/1` | The page selects and closes the regions of a region collection by key: [region collections](#region-collections) | 0.16 |
+| `client-errors/1` | The page reports its uncaught errors, which the producer logs: [page errors](#page-errors) | 0.16 |
+| `query-collections/1` | Each presentation reads the rows of a query collection for its own range, changes its query and finds a key: [query collections](#query-collections) | 0.16 |
+| `blobs/1` | Binary content at host URLs, and files the page uploads over HTTP: [blobs and uploads](#blobs-and-uploads) | 0.16 |
 
 ### Request sessions
 
@@ -297,9 +301,10 @@ it.
 | `splice-base` | `rejected` | A `set` with a splice names a base the producer does not have, or the splice does not fit it ([Text splices in `set`](#text-splices-in-set)); a `write` with a splice does not fit the field's value at `expectedVersion`, or that value is not a string ([Text splices in `write`](#text-splices-in-write)). |
 | `protocol-mismatch` | `failed` | A `hello` named another protocol version. |
 | `invalid-input` | `rejected` | A value or input does not decode as its type ([values](values.md#wire-value-types)), the setter or command rejects it as invalid input, or the request is larger than the input limit. |
-| `unavailable` | `rejected` | A command is not available ([Commands](#commands-and-availability)). |
-| `unresolved-key` | `rejected` | The key of a key command resolves to nothing. |
-| `capacity` | `rejected` | A limit of the window or connection is reached: 64 awaited commands, 64 presentations per route and connection, 64 watches per connection, or 64 requests held before a connection's `hello`. |
+| `unavailable` | `rejected` | A command is not available ([Commands](#commands-and-availability)), or a region collection does not let the page close a region. |
+| `unresolved-key` | `rejected` | The key of a key command resolves to nothing, or a `region` request's key names no region of the collection. |
+| `busy` | `rejected` | A connection already has as many query collection requests of that kind in flight as the producer admits ([query collections](#query-collections)). Nothing ran; it ends when one completes. |
+| `capacity` | `rejected` | A limit of the window or connection is reached: 64 awaited commands and `region` requests, 64 presentations per route and connection, 64 watches per connection, or 64 requests held before a connection's `hello`. |
 | `state-withheld` | any | The request ran, but the producer cannot publish a state that includes its effects, because a keyed collection has invalid keys ([state changes](state-changes.md#invalid-keys)). |
 
 A request that names a route the producer does not serve, because it was never bound or because it was released, is
@@ -309,7 +314,7 @@ producer answered, so the transport is connected and only the route is gone.
 
 ### Revisions in replies
 
-Every reply to a request that changes state carries `revision`: `set`, `write`, `command` and `start`, whether they
+Every reply to a request that changes state carries `revision`: `set`, `write`, `command`, `region` and `start`, whether they
 succeed or fail, as long as the request ran. The rules are in [State and revisions](#state-and-revisions). Two
 exceptions:
 
@@ -348,6 +353,7 @@ A route's **state** is a JSON object with one member per state member of its Vie
 
 - value members, encoded as their type;
 - content slots: a content reference `{kind, id}` or `null`; content collections: arrays of content references;
+  region collections: `{regions, selected}` ([region collections](#region-collections));
 - keyed collections: arrays of rows; append-only text fields: strings ([state changes](state-changes.md));
 - the availability members `can{Name}` and `is{Name}Executing` of commands
   ([Commands](#commands-and-availability)).
@@ -378,7 +384,7 @@ The reply to a request that changes state is sent after every push that the prod
 was ready, on any route of the window. A command often changes another route as well, such as its shell, so a client
 cannot know which routes to wait for. The wait is bounded to 5 seconds; after that the producer sends the reply, and the
 pushes follow. Replies to `open`, `snapshot`, `close`, `can`, `status`, `watch`, `unwatch`, `cancel`, `stream`,
-`interactions`, `interaction-reply`, `presented` and `closing-reply` do not wait.
+`interactions`, `interaction-reply`, `presented`, `closing-reply`, `query-rows`, `query-index` and `client-error` do not wait.
 
 A reply is not ordered with the pushes of requests that the producer admitted after it, nor with their replies. When a
 client sends a request before the reply to its previous one arrived, as two keystrokes in a row do, the frame of the
@@ -725,8 +731,9 @@ commands the contract scopes. On a connection without the feature, `epoch` is an
 6. availability: `unavailable`;
 7. the window's command capacity: `capacity`.
 
-**Scope.** `presentation-epoch/1` scopes `command` only. `start`, `can`, `set`, `write` and interaction replies carry
-no epoch: operations have their own identity and duplicate detection, and setters are last-writer-wins by design.
+**Scope.** `presentation-epoch/1` scopes `command` only. `start`, `can`, `set`, `write`, `region` and interaction
+replies carry no epoch: operations have their own identity and duplicate detection, setters are last-writer-wins by
+design, and a `region` request names its region by key ([region collections](#region-collections)).
 
 **Client.** A client that uses the feature:
 
@@ -753,6 +760,180 @@ change of a slot attaches its new content without waiting for a client. Replacin
 parent's release, suspends it when no other slot presents it. A suspended object releases its route, its Views and its
 checked fields, so its requests answer `released`; only its identity remains. The producer MAY forget the identity
 later, and a forgotten object gets a new id when it is presented again.
+
+### Region collections
+
+A **region collection** is a state member that presents a set of navigation regions that changes at run time, such as
+document tabs that each keep their own back stack. Its value is an object:
+
+```json
+{"regions":[{"key":"7","content":{"kind":"document","id":"0123456789abcdef0123456789abcdef"}},{"key":"9","content":null}],"selected":1}
+```
+
+| Member | Contract |
+| --- | --- |
+| `regions` | The regions in order. Each is `{key, content}`. |
+| `regions[].key` | A string of 1 to 128 printable ASCII characters that identifies the region in the collection. It stays the same while the region is in the collection, differs from the key of every other region of the collection, and is never given to another region of the collection later. Two collections can use the same key. A client treats it as opaque and compares it only for equality. |
+| `regions[].content` | The region's current content reference, or `null` while the region is empty. It is presented like an item of a content collection: content that no region presents any more is pruned ([Content](#content)). |
+| `selected` | The index in `regions` of the selected region, a non-negative integer less than the number of regions, or `null` exactly when `regions` is empty. |
+
+The member changes like any other member: a frame carries it as a `set` change of the whole value. Regions are added
+by the producer only. Which region is selected, and which regions the collection has, change only when the producer
+commits the change, so a client that shows `selected` shows the region that is still selected after a request that a
+departure guard refused.
+
+**Region requests.** With the feature `region-collections/1`, the client selects or closes a region by its key:
+
+```json
+{"kind":"region","route":"editor","member":"documents","action":"close","key":"7"}
+{"ok":true,"revision":44,"outcome":{"kind":"Committed","rejection":null,"arrival":"None"}}
+```
+
+| Request | Members | Reply |
+| --- | --- | --- |
+| `region` | `route`, `member`, `action`, `key` | `{ok:true, revision, outcome}` after the request settled |
+
+- `action` is `select` (show the region) or `close` (remove the region from the collection and end it). `key` is a
+  string. A `region` request on a connection that does not use the feature, an `action` other than these two, or a
+  `member` that is not a region collection of the route, is `invalid-request`.
+- A `key` that names no region of the collection when the producer admits the request, such as the key of a region
+  that closed meanwhile, is `rejected` with `unresolved-key`, and nothing runs.
+- A `close` of a collection whose contract does not let the page close regions is `rejected` with `unavailable`.
+- A region request counts toward the window's 64 awaited calls ([Commands](#commands-and-availability)); another one
+  is `rejected` with `capacity` and runs nothing.
+- **Order of checks.** A producer answers the first that fails: the envelope and the feature (`invalid-request`), the
+  route (`released`), the member (`invalid-request`), a `close` the collection does not allow (`unavailable`), the
+  window's capacity (`capacity`), then the key (`unresolved-key`).
+- The producer decides whether the request commits, for example by asking the departure guards of the region left or
+  closed. The request keeps its reply until it settled. `outcome` says how it ended; a refused or superseded request
+  is not an error:
+
+| `outcome` member | Contract |
+| --- | --- |
+| `kind` | `Committed`, `Rejected`, `Superseded` or `Failed`. The set is open: a client keeps a kind it does not know. |
+| `rejection` | Why a `Rejected` request was refused, such as `Guard` (a departure guard refused), `Busy`, `Cancelled` or `Closed`; `null` for the other kinds. The set is open. |
+| `arrival` | For `Committed`, how the work that the producer runs when content becomes current ended: `None`, `Completed`, `Failed` or `Cancelled`; `None` for the other kinds. The set is open. |
+
+- A committed `select` changes `selected`. A committed `close` removes the region from `regions`; when it was the
+  selected region, the next region becomes selected, or the previous one when it was the last, or none when it was the
+  only one.
+- A request that fails in the producer for another reason, an unexpected exception, is `failed` and has `revision`.
+- A `close` can release the route that sent it, as a command that navigates away from its page does. Its reply then has
+  `released: true` instead of `revision`, and keeps `outcome` ([released by the call](#revisions-in-replies)).
+- A client resolves the call once the route has reached the reply's revision ([client resolution](#client-resolution)),
+  with `outcome`. A client sends a `region` request only once it knows that the connection uses the feature, so a call
+  made while a new connection's `hello` is on its way waits for that `hello`'s reply.
+- **Concurrent requests.** A `close` of a region whose `close` is still pending, from any connection, joins it: the
+  producer does not decide again, and every joined request gets the pending request's `outcome`, each with its own
+  `revision`. A `close` that is joined still counts toward the capacity. Any other request of the collection, such as
+  a `select`, is admitted as a later request: it supersedes the pending requests of the collection, which end with the
+  `outcome` kind `Superseded`, and the producer abandons their decisions. A request whose key names the region that a
+  committed `close` selected commits like any other.
+- **Not scoped to a presentation.** `region` requests carry no `epoch` ([presentation epochs](#presentation-epochs)):
+  they name the region by its key, which identifies the region whatever state the page showed, and a key of a region
+  that is gone is `unresolved-key`.
+
+`region` is a request that changes state, so its reply follows the pushes the producer published before it
+([reply order](#reply-order)).
+
+## Query collections
+
+With the feature `query-collections/1`, a View can have a **query collection**: a list too large to send, such as
+500,000 database rows, whose rows stay in the producer. The route's state holds only the collection's query, the number
+of rows that match it, and a version; each presentation reads the rows of the range it shows with `query-rows`, so two
+pages that scroll the same list never receive, or move, each other's rows.
+
+**State member.** A query collection's member in state is an object:
+
+```json
+{"query":{"sort":[{"field":"label","descending":true}],"filters":[{"field":"label","op":"contains","value":"9"}]},"total":1200,"version":4}
+```
+
+| Member | Contract |
+| --- | --- |
+| `query` | The collection's sort and filter, in the form below. It is state of the View: every presentation shares it, and a `query-set` of one presentation changes it for all. |
+| `total` | The number of rows that match `query`, or `null` while the producer has not counted them: before the first count, and after a change of `query` until the new query is counted, since the old total belongs to the old query. After rows were added or removed under the same query, the producer MAY keep the old total until its new count. |
+| `version` | A non-negative safe integer that increases whenever rows a page loaded may be out of date: after the query changed, after rows were added or removed, and after a row changed in place. A page loads its range again when it increases. |
+
+The member changes like any other value member: in a `state`, or a `set` change in a frame. A `total` that becomes known
+or changes after a count, without a new `version`, is such a change too.
+
+**Query.** `sort` is an array of at most 8 sort keys `{field, descending}`, which order the rows in turn; `filters` an
+array of at most 32 filters, which all apply. `field` is a string of 1 to 128 characters, normally a row member's wire
+name; the producer decides which fields exist. A filter has `field` and `op`:
+
+| `op` | Members | Keeps a row when |
+| --- | --- | --- |
+| `equals` | `value` | the field equals `value`, encoded as the field's wire type |
+| `contains` | `value`, a string | the text field contains `value`; whether case matters is the producer's |
+| `range` | `min?`, `max?` | the field is at least `min` and at most `max`; an absent bound is open |
+| `custom` | `value?` | the producer's own filter named `field` passes with `value` |
+
+An `op` the producer does not know, like a field or a value it cannot use, makes the query `invalid-input`: a later
+release can add operators without a new version of the feature, and a client that sends one to an older producer gets
+`invalid-input`. A producer checks a query, including the values of its `custom` filters, before it takes it, so a
+query it cannot run never becomes state.
+
+A producer writes the query in this canonical form: both arrays present, `descending` present, and `value`, `min` and
+`max` only when they have a value, in the order listed. Two queries are equal when their canonical forms are.
+The producer orders rows by the sort keys and then by row key, so that ranges are stable.
+
+**Requests.** On a connection that uses the feature:
+
+| `kind` | Members | Success reply |
+| --- | --- | --- |
+| `query-rows` | `route`, `member`, `start`, `count` | `version`, `total`, `start`, `keys`, `rows` |
+| `query-set` | `route`, `member`, `query` | `revision` |
+| `query-index` | `route`, `member`, `key` | `version`, `index` |
+
+- **`query-rows`** reads `count` rows from position `start` (both non-negative safe integers; `count` at most 1,000,
+  else `rejected` with `invalid-input`). Once the producer has counted the current query, a range at or past `total`
+  answers no rows without reading the source. The reply's `rows` are the rows from `start` in the query's order, encoded as
+  the row type, at most `count` and fewer at the end of the list; `keys` are their keys, which follow the
+  [keyed collection rules](state-changes.md#keyed-collections) (nonempty strings, unique, a lowercase GUID or an `Int32`
+  in decimal). `version` is the version the rows were loaded at, and `total` the count of the rows that match, or
+  `null` when the producer does not know it. A `query-rows` changes nothing, so its reply carries no `revision` and does
+  not wait for pushes. Only the connection that sent it receives the rows.
+- **`query-set`** changes the query. It is a request that changes state: it runs in a window turn, its reply carries
+  `revision`, and the state at that revision has the new query and a new version. A query the producer cannot run, such
+  as one that names a field it does not have, is `rejected` with `invalid-input` and changes nothing. A query equal to
+  the current one changes nothing, and the reply carries the route's last revision.
+- **`query-index`** answers the position of the row whose wire key is `key` in the current query's order, or `-1` when
+  no row that matches the query has it, at `version`. A page uses it to scroll a row into view.
+- A `member` that is not a query collection of the route is `rejected` with `invalid-request`. On a connection that does
+  not use the feature, the three kinds are `invalid-request`. A failure to load is `failed`. A collection that was
+  released while a request ran answers `released`.
+- **Limits per connection.** A producer admits, per connection and collection, at most 2 `query-rows`, 1 `query-set` and
+  1 `query-index` in flight. Another one is `rejected` with the reason `busy` at once and ran nothing; the client sends
+  it again after the one in flight completed. `busy` differs from `capacity`: it ends as soon as a request completes.
+
+**Producer.** A producer may serve rows from a cache, coalesce requests for the same rows, and bound how many loads run
+at once, as long as every reply's rows are the rows of the query in force at its `version`. It bounds the source work a
+page can cause: loads, counts and key searches share a fixed number of slots; a change of the query cancels the count
+and the key searches of the old one; and a load stops once no request waits for it, such as when the request's
+connection closes. The protocol has no request to cancel a `query-rows`: a client that scrolls past a range in flight
+lets it complete, which costs at most one range because it has one in flight at a time.
+
+**Client.** A client that uses the feature:
+
+- keeps, per presentation and collection, the rows it loaded with their version, and shows a placeholder for a position
+  of its range it has not loaded, or whose row has a version that its state has not reached yet (it may belong to a
+  query the page does not show yet);
+- records the version at which the current query took effect, the first state with that query, and discards the rows
+  of any reply with an older version, since they are rows of another query; on a change of `query` it keeps only the
+  rows loaded at that version or later;
+- sends at most one `query-rows` of a collection at a time, for the positions of its latest range that it has not loaded
+  at the current version, at most 1,000;
+- loads its range again when `version` increases, and discards every row when `query` changes; it shows rows of an older
+  version until their new version arrives;
+- does not send `query-rows` for positions at or after `total` once `total` is known;
+- sends one `query-set` of a collection at a time; a query set while one is in flight replaces the one waiting to be
+  sent, and the calls it replaced settle with it;
+- sends one `query-index` of a collection at a time, and uses a position whose `version` is older than its state's
+  version only after searching again, since the query changed meanwhile;
+- sends a request answered `busy` again after a short delay.
+
+Scenarios: [`query-collections`](conformance/scenarios/query-collections).
 
 ## Presentations
 
@@ -873,6 +1054,56 @@ connection that does not use the feature it is `rejected` with `invalid-request`
 (or the fallback of step 3 above), sends `closing-reply`, and reports that the producer closed the window. When the
 connection then drops, it keeps reporting that the producer closed the window, not a reconnecting or lost connection.
 A new connection reports a connected client again.
+
+## Page errors
+
+With the feature `client-errors/1`, a page reports the errors it cannot show to the application, such as an uncaught
+exception, and the producer logs them where the application's other diagnostics go:
+
+```json
+{"kind":"client-error","source":"error","name":"TypeError","message":"x is not a function","stack":"TypeError: x is not a function\n    at load (https://app.example/main.js:10:5)","url":"https://app.example/index.html","dropped":2}
+{"ok":true}
+```
+
+| Member | Value |
+| --- | --- |
+| `source` | An identifier of at most 32 characters: `error` for an uncaught exception, `unhandled-rejection` for a rejected promise that nothing handled, `runtime` for an error the client's runtime caught, such as one a subscriber threw. A producer logs another identifier as it is. |
+| `message` | The error's message. |
+| `name?` | The error's type, such as `TypeError`. |
+| `stack?` | The stack, with `\n` between frames. |
+| `url?` | The page's URL without its query and fragment. |
+| `route?` | A route name: the View whose push or subscriber failed, for `runtime`. |
+| `dropped?` | A non-negative safe integer: the reports the client counted but did not send since its previous report. |
+
+**Client.** Reporting is opt-in: a client sends `client-error` only when the application asks it to report errors,
+and only on a connection that uses the feature. A client may list `client-errors/1` in its hello whether or not a
+reporter is installed (`@runic-artifex/views` always does), so a connection that uses the feature does not mean
+reports will arrive. A report leaves the page bounded and redacted. The client:
+
+- cuts the message and the stack, without splitting a surrogate pair, and removes the query and fragment of every URL in them and of `url`, which can
+  carry tokens;
+- sends at most a fixed number of reports a minute, counts a repeat of one error within the minute instead of sending
+  it again, and states what it counted in `dropped` of its next report;
+- does not wait for the reply, retry a failed report, or report a failure of `client-error` itself.
+
+**Producer.** The reply is `{ok:true}`, also for a report the producer does not log. The report is untrusted input
+from the page:
+
+- `client-error` on a connection that does not use the feature, without a `source` identifier or a `message` string,
+  or with a member of another type than above, is `rejected` with `invalid-request`. A text longer than the
+  producer's limits is cut, not refused.
+- Before logging, the producer removes control characters other than the stack's line breaks and the bidirectional
+  embeddings, overrides and isolates (U+202A-U+202E, U+2066-U+2069), marks every line of the stack with a fixed
+  prefix so it cannot pass for a log entry of its own, and removes the query and fragment of `url` again. A cut does
+  not split a surrogate pair.
+- The producer bounds what one page can log: it SHOULD log at most a fixed number of reports per connection a minute
+  and a fixed number per window across its connections, so a page that reloads or reconnects gets no fresh budget,
+  count the rest, and add the count to `dropped` of the next report it logs.
+
+The `.NET` producer logs each report as event 1150 `PageError` (Error) in the category
+`Runic.Application.Views.Page`, at most 10 per connection and 30 per window a minute, and event 1151
+`PageErrorsSuppressed` or 1152 `WindowPageErrorsSuppressed` (Warning) once a minute when it starts counting. It cuts
+`message` and `url` at 2048 characters, `stack` at 8192 and `name` at 128, and starts every stack line with `    | `.
 
 ## Operations
 
@@ -1135,7 +1366,7 @@ Requests:
 
 | `kind` | Members | Success reply |
 | --- | --- | --- |
-| `hello` | `protocol`, `session`, `client {name, version}`, `features?` | `protocol`, `implementation {name, version}`, `features?` |
+| `hello` | `protocol`, `session`, `client {name, version}`, `features?` | `protocol`, `implementation {name, version}`, `features?`, `blobs?` (`blobs/1`) |
 | `open` | `route`, `presentation`, `handlers?` | `revision`, `epoch?` (`presentation-epoch/1`), `state`, `fields?`, `presentation`, `registration?` |
 | `snapshot` | `route` | `revision`, `epoch?` (`presentation-epoch/1`), `state`, `fields?` |
 | `close` | `route`, `presentation` | `presentation` |
@@ -1143,6 +1374,7 @@ Requests:
 | `write` | `route`, `member`, `requestId`, `expectedVersion`, `expectedValue` and `value`, or `splice` (`text-splice/1`) | `revision`, `receipt` |
 | `command` | `route`, `member`, `input?`, `epoch?` (`presentation-epoch/1`) | `revision`, `superseded?` |
 | `can` | `route`, `member`, `input?` | `value` |
+| `region` (`region-collections/1`) | `route`, `member`, `action`, `key` | `revision`, `outcome` |
 | `start` | `route`, `member`, `operation`, `contract`, `input?` | `revision`, `admission`, `reason?`, `status?` |
 | `status`, `watch`, `unwatch` | `route`, `member`, `operation`, `contract` | `status` |
 | `cancel` | `route`, `member`, `operation`, `contract` | `cancellation` |
@@ -1151,7 +1383,11 @@ Requests:
 | `interaction-reply` | `route`, `presentation`, `requestId`, `ownerEpoch`, `name`, `contract`, `outcome`, `output?` | `result` |
 | `view-requests` (`view-requests/1`) | `route`, `presentation`, `generation`, `requests` | `registration` |
 | `presented` (`presented/1`) | `route`, `revision` | none |
+| `query-rows` (`query-collections/1`) | `route`, `member`, `start`, `count` | `version`, `total`, `start`, `keys`, `rows` |
+| `query-set` (`query-collections/1`) | `route`, `member`, `query` | `revision` |
+| `query-index` (`query-collections/1`) | `route`, `member`, `key` | `version`, `index` |
 | `closing-reply` (`presented/1`) | none | none |
+| `client-error` (`client-errors/1`) | `source`, `message`, `name?`, `stack?`, `url?`, `route?`, `dropped?` | none |
 | `receive` | none | `messages` |
 
 Every failure reply is `{ok:false, error, revision?, released?}`, and a `hello` reply also carries `protocol` and
@@ -1170,6 +1406,71 @@ Pushes:
 | `view-request` (`view-requests/1`) | `route`, `presentation`, `revision`, `name`, `contract`, `input` | the connection of each selected presentation |
 | `present` (`presented/1`) | `route`, `revision` | while a wait is pending, each connection that uses `presented/1` and has an open presentation of the route |
 | `closing` (`presented/1`) | none | each connection that uses `presented/1` |
+
+## Blobs and uploads
+
+Feature `blobs/1`. Binary content never crosses the message channel: the producer serves a **blob** at a URL, and the
+page sends a file as an **upload**, over HTTP to the host, which a request then names. The wire values are
+[`blob` and `upload`](values.md#blobs-and-uploads).
+
+### Blobs
+
+- A `blob` value is `{url, type, size, name}`. The producer writes it in state, in a collection row, in a result or in
+  any other value that goes to the page; a page never sends one (a settable member that holds a blob is read-only for
+  the page, and a request that sets it is `invalid-input`). Blob values do not depend on the feature: they are part of
+  the contract, and a producer writes them on every connection.
+- `url` is an absolute URL that the window's host serves with `GET` and `HEAD`, or the empty string when the host
+  serves no blobs. It is a **capability**: it contains at least 128 random bits, it is valid only for the window that
+  wrote it, and the producer serves it only while a holder keeps it. A state member holds the blobs of its latest
+  value: when a later value no longer contains a blob, its URL stops working. A row of a keyed collection holds the
+  blobs of its latest write, until it is removed or replaced. The producer MUST NOT release a blob that state or a
+  row still holds. A blob in a result or another value is held until the route is released; a producer MAY release
+  the least recently written of these earlier, to bound what a long-lived route holds, and its model MAY release any
+  blob explicitly. Closing the window
+  releases every URL. One blob of the producer's model has one URL per window, so an unchanged member keeps its
+  encoding; a blob written again after it was released gets a new URL.
+- A response to a blob URL has the blob's `type` as `Content-Type`, `X-Content-Type-Options: nosniff`, a
+  `Content-Security-Policy` with `sandbox` and `default-src 'none'` (active content such as HTML or SVG never runs in
+  the page's origin when it is opened), `Content-Disposition` `inline` or `attachment` with the blob's `name`,
+  `Cache-Control: private, max-age=31536000, immutable` and an `ETag`; the content behind a URL never changes. A blob
+  whose length the producer knows answers a single byte range (`Range: bytes=a-b`, `206`, `416`). A released or
+  unknown URL answers `404`.
+
+### Uploads
+
+- A connection that uses `blobs/1` gets a grant in the successful `hello` reply when the host takes uploads:
+  `blobs: {upload, token, maximumBytes}`. `upload` is the URL of uploads, `token` a secret of this connection (at least
+  128 random bits) and `maximumBytes` the largest upload the window takes. A connection that does not list the feature,
+  or a host that takes no uploads, gets no `blobs` member.
+- The page uploads one file per request: `POST {upload}` with the file as the body, its media type as `Content-Type`,
+  the header `X-Runic-Upload-Token: {token}` and `X-Runic-Upload-Name` with the file name, percent-encoded as UTF-8.
+  The host answers `201` with `{"ok": true, "upload": {id, name, type, size}}`, or an error
+  `{"ok": false, "error": {kind, reason, message}}`: `403` (`forbidden`, a missing or wrong token or origin), `413`
+  (`too-large`, larger than `maximumBytes`), `429` or `507` (`capacity`, the window receives too many uploads at once,
+  or its unclaimed uploads fill its space), `408` (`timeout`, the body sent nothing for 30 seconds), `400`
+  (`invalid-request` or `cancelled`), `410` (`released`, the connection or window closed meanwhile) and `500`
+  (`failed`, the host could not store it). An upload that fails in any way, including a client that goes away, keeps
+  none of the window's upload slots or space.
+- An `upload` value names an upload by its `id`. It decodes only in a request of the connection that uploaded it, and
+  only while no request claimed it; any other id is `invalid-input`. The producer's model claims an upload when it
+  reads it; afterwards the id is invalid. An unclaimed upload is deleted when its connection closes, when the window
+  closes, or 10 minutes after it arrived. Everything about an upload — its bytes, type and name — comes from the page
+  and is untrusted: the producer reduces the name to a file name.
+
+### What a host enforces
+
+Every host checks the `Host` of a loopback listener (no DNS rebinding), takes uploads only as `POST` from the page's
+origin with the connection's token, and refuses a blob request whose fetch metadata (`Sec-Fetch-Site: cross-site`)
+names another site. Beyond that:
+
+| Host | Blob URLs | Uploads |
+| --- | --- | --- |
+| Runic Desktop and WPF | served below the window's surface (`{surface}/_runic/blobs/{token}`, same origin as the page); only to the browser client that holds the window's client cookie, and in an installed browser only to the client bound to its launch code | `{surface}/_runic/upload`; also only from that client |
+| CS-WebUI | a loopback listener of the window (`http://localhost:{port}/_runic/blobs/{token}`), another origin than WebUI's page, which it grants with CORS; it serves loopback peers only and cannot see WebUI's clients, so a URL is bound to the window, not to a connection or browser | the listener's `/_runic/upload`, with CORS for the page's origin only |
+| Tests (`Runic.Application.Testing`) | served in memory below `http://runic.test/` | simulated with `UploadAsync` |
+
+A blob URL cannot be bound to one connection, because one encoding of a state goes to every connection of the
+window; the token of an upload is.
 
 ## Versions and compatibility
 
@@ -1191,4 +1492,4 @@ sides must implement are [features](#features), listed in `hello`.
 | 1 | 0.6 | Named routes with a snapshot and a state callback per route; collection delta frames were added in 0.7 without a version change. |
 | 2 | 0.9 | The `domain-failed` error and operation status kind. |
 | 3 | 0.10 | A released View answers `released` instead of `disconnected`; the reply error `reason`; a strict version check ([protocol 3](https://github.com/Runic-Artifex/runic-sdk/blob/v0.12.1/specs/application/README.md)). |
-| 4 | 0.13 | One message channel with `hello`; `set` changes in frames; replies by revision; edit numbers; `open`/`close`; operation `watch` and `progress`; RFC 8785 canonical form; value types named by value; ISO 8601 durations; a language-neutral specification and conformance corpus. 0.14 added, without a version change, `hello` `features` with the first feature `text-splice/1`, and requests held behind the `hello`. 0.15 added, without a version change, the features `presentation-epoch/1` and `presented/1`, and 0.16 the feature `view-requests/1`. |
+| 4 | 0.13 | One message channel with `hello`; `set` changes in frames; replies by revision; edit numbers; `open`/`close`; operation `watch` and `progress`; RFC 8785 canonical form; value types named by value; ISO 8601 durations; a language-neutral specification and conformance corpus. 0.14 added, without a version change, `hello` `features` with the first feature `text-splice/1`, and requests held behind the `hello`. 0.15 added, without a version change, the features `presentation-epoch/1` and `presented/1`, and 0.16 the features `view-requests/1`, `region-collections/1` and `query-collections/1`. |

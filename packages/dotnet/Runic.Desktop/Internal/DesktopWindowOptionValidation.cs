@@ -73,6 +73,11 @@ internal static class DesktopWindowOptionValidation
                     nameof(DesktopWindowOptions.ConfirmCloseAsync),
                     "Remove ConfirmCloseAsync, or use a window host whose Capabilities include CloseConfirmation."));
             }
+            if (options.Owner is not null && !customFactory.Capabilities.HasFlag(DesktopWindowCapabilities.Ownership))
+            {
+                diagnostics.Add(Ignored("The configured embedded-window host", nameof(DesktopWindowOptions.Owner),
+                    "Remove the option, or use a window host whose Capabilities include Ownership."));
+            }
             if (options.MonitorId is not null && !customFactory.Capabilities.HasFlag(DesktopWindowCapabilities.MonitorPlacement))
             {
                 diagnostics.Add(Ignored("The configured embedded-window host", nameof(DesktopWindowOptions.MonitorId),
@@ -209,6 +214,11 @@ internal static class DesktopWindowOptionValidation
         if (options.ColorScheme != Runic.Platform.DesktopColorScheme.NoPreference)
         {
             diagnostics.Add(ColorSchemeUnsupported(presentation, "A browser follows its own and the system's theme. " + remediation));
+        }
+        if (options.Owner is not null)
+        {
+            diagnostics.Add(Ignored(presentation, nameof(DesktopWindowOptions.Owner),
+                "A browser window cannot belong to another window or block it. " + remediation));
         }
         // Only the macOS window has these; elsewhere every presentation ignores them without a report.
         if (OperatingSystem.IsMacOS() && options.MacOS.TitleBar != MacOSTitleBarStyle.Default)

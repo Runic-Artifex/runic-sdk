@@ -18,7 +18,7 @@ namespace Runic.Application.Testing.Tests.Conformance;
 //
 // - CreateWindow creates the window of one scenario: a WindowContentSession on settings.Transport with
 //   settings.TimeProvider and settings.MaximumInputBytes, failure detail off (IncludeFailureDetail = false), whose root
-//   View is `view` ("list", "log", "notes" or "form"), serving the route of that name, with the values of arrange.model
+//   View is `view` ("list", "log", "notes", "form", "wizard" or "tabs"), serving the route of that name, with the values of arrange.model
 //   (generators expanded; members it does not list keep their defaults). The notes View also serves the detail View in
 //   its detail slot with the content id 0123456789abcdef0123456789abcdef.
 // - IConformanceWindow.MutateAsync applies the mutations of one mutate step to the root View's model, as one
@@ -65,6 +65,8 @@ internal static class ConformanceViews
 internal sealed class DotNetConformanceViews : IConformanceViews
 {
     internal const string DetailId = "0123456789abcdef0123456789abcdef";
+    // The origin of the windows' blob URLs and upload endpoint (blobs/1).
+    internal static readonly Uri BlobOrigin = new("http://conformance.test/");
 
     public IConformanceWindow CreateWindow(string view, JsonObject model, ConformanceWindowSettings settings)
     {
@@ -77,9 +79,14 @@ internal sealed class DotNetConformanceViews : IConformanceViews
             TimeProvider = settings.TimeProvider,
             MaximumInputBytes = settings.MaximumInputBytes,
             IncludeFailureDetail = false,
-            // The detail View's content id is fixed; later ids (interaction requests) are counted.
-            CreateId = () => Interlocked.Increment(ref ids) == 1 ? DetailId : $"id{ids}",
+            // The detail View's content id is fixed; later ids (interaction requests) are counted. The tabs View's pages
+            // have the ids 1, 2 and 3 as 32 hexadecimal digits.
+            CreateId = view == "tabs"
+                ? () => Interlocked.Increment(ref ids).ToString("x32", CultureInfo.InvariantCulture)
+                : () => Interlocked.Increment(ref ids) == 1 ? DetailId : $"id{ids}",
         });
+        // blobs/1: the window serves its blobs and uploads below the corpus's origin.
+        BridgeDispatcher.For(settings.Transport).Blobs.Attach(BridgeBlobEndpoint.Below(static () => BlobOrigin));
         try
         {
             return view switch
@@ -94,6 +101,13 @@ internal sealed class DotNetConformanceViews : IConformanceViews
                     (vm, content) => new FormBridge(settings.Transport, vm, content)),
                 "wizard" => new Window<WizardViewModel>(session, WizardViewModel.Create(model),
                     (vm, content) => new WizardBridge(settings.Transport, vm, content)),
+                "tabs" => new Window<TabsViewModel>(session,
+                    RunicModelTurns.Run(session.ModelContext!, () => TabsViewModel.Create(model, session.ModelContext!)),
+                    (vm, content) => new TabsAttachment(new TabsBridge(settings.Transport, vm, content), vm)),
+                "catalog" => new Window<CatalogConformanceViewModel>(session, CatalogConformanceViewModel.Create(model, session.ModelContext),
+                    (vm, content) => new CatalogConformanceBridge(settings.Transport, vm, content)),
+                "files" => new Window<FilesViewModel>(session, FilesViewModel.Create(model),
+                    (vm, content) => new FilesBridge(settings.Transport, vm, content)),
                 _ => throw new NotSupportedException($"The test View '{view}' is not a root View."),
             };
         }

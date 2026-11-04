@@ -48,7 +48,8 @@ internal static class BridgeMessages
     internal static byte[] Rejected(string reason, string message, bool hello = false) =>
         Failure("rejected", reason, message, hello);
 
-    internal static byte[] Hello() =>
+    // grant is the connection's upload grant (blobs/1), when the connection uses blobs/1 and the host takes uploads.
+    internal static byte[] Hello(BridgeUploadGrant? grant = null) =>
         Write(writer =>
         {
             writer.WriteStartObject();
@@ -61,7 +62,19 @@ internal static class BridgeMessages
             writer.WriteStringValue(BridgeDispatcher.PresentedFeature);
             writer.WriteStringValue(BridgeDispatcher.ViewRequestsFeature);
             writer.WriteStringValue(BridgeDispatcher.RequestSessionFeature);
+            writer.WriteStringValue(BridgeDispatcher.RegionCollectionsFeature);
+            writer.WriteStringValue(BridgeDispatcher.ClientErrorsFeature);
+            writer.WriteStringValue(BridgeDispatcher.QueryCollectionsFeature);
+            writer.WriteStringValue(BridgeDispatcher.BlobsFeature);
             writer.WriteEndArray();
+            if (grant is not null)
+            {
+                writer.WriteStartObject("blobs");
+                writer.WriteString("upload", grant.UploadUrl.AbsoluteUri);
+                writer.WriteString("token", grant.Token);
+                writer.WriteNumber("maximumBytes", grant.MaximumBytes);
+                writer.WriteEndObject();
+            }
             writer.WriteEndObject();
         });
 

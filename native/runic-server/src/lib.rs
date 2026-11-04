@@ -16,5 +16,5 @@ mod server;
 mod websocket;
 
 pub use server::{
-    Body, Handler, MessageKind, RequestHead, Server, ServerConfig, ServerError, WebSocketClose, WriteOutcome,
+    Body, BodyRead, Handler, MessageKind, RequestHead, Server, ServerConfig, ServerError, WebSocketClose, WriteOutcome,
 };

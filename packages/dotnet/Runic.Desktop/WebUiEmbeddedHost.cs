@@ -234,6 +234,12 @@ internal sealed record WebUiEmbeddedHostOptions
     /// <summary>The macOS title bar (DesktopWindowOptions.MacOS); other hosts ignore it.</summary>
     public MacOSWindowOptions MacOS { get; init; } = new();
 
+    /// <summary>The native handle of the owner window (DesktopWindowOptions.Owner), or zero for a window of its own.</summary>
+    public nint OwnerHandle { get; init; }
+
+    /// <summary>Whether the window blocks its owner (DesktopWindowOptions.Modality); None without an owner.</summary>
+    public DesktopWindowModality Modality { get; init; }
+
     /// <summary>Whether the page's fields are spell-checked (DesktopWindowOptions.SpellChecking); off is in <see cref="DocumentStartScript"/>.</summary>
     public bool SpellChecking { get; init; } = true;
 

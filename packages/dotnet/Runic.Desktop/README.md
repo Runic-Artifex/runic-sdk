@@ -601,6 +601,59 @@ windows of a configured `ProfilePath` as sharing it.
 Runic Windows reach the same switch host-neutrally through
 `IRunicWindowPresentation.SetColorSchemeAsync` (Runic.Application.Views).
 
+### Owned and window-modal windows
+
+`DesktopWindowOptions.Owner` makes a window belong to another, and
+`Modality = DesktopWindowModality.Window` makes the owner take no input until the
+window closed (since 0.16):
+
+```csharp
+var dialog = await dialogSurface.OpenWindowAsync(new DesktopWindowOptions
+{
+    Owner = DesktopWindowOwner.FromWindow(mainWindow),
+    Modality = DesktopWindowModality.Window,
+});
+```
+
+- On Windows the owner's `HWND` is the window's owner: it stays above the owner
+  and has no taskbar button. A window-modal window disables the owner
+  (`EnableWindow`) while it is shown and enables it again before it is destroyed,
+  so Windows activates the owner rather than another application.
+- On macOS the window is a child window of the owner's `NSWindow`, which keeps it
+  above the owner and moves it with it; a window-modal one is the owner's sheet,
+  which ignores the window's position. A sheet has no title-bar close button and
+  Esc does not close it, so its page needs a Cancel button. AppKit shows one
+  sheet of an owner at a time: a second window modal to the same owner is queued,
+  invisible, until the first ends, and `FocusAsync` focuses the visible one.
+- On Linux the window is `transient_for` the owner's GTK window (GTK 3 and GTK 4).
+  A window-modal one makes the owner insensitive while it is shown.
+  `gtk_window_set_modal` is not used: GTK makes such a window modal to every
+  window of the application. A blocked owner ignores the window manager's close,
+  as a disabled Win32 window and a macOS window with a sheet do.
+- A window-modal window opened `Hidden` blocks its owner from its first show, and
+  hiding it lets the owner take input again. Several windows can be modal to one
+  owner, and a modal window can have its own; an owner takes input again when the
+  last one that blocks it closed or was hidden.
+
+With a `DesktopWindow` owner, the windows it owns are in `owner.OwnedWindows`,
+`SetVisibleAsync(false)` on the owner hides them first and showing it shows them
+again, and `FocusAsync` on a blocked owner focuses its modal window after it. A
+close the owner's `ConfirmCloseAsync` decides (the user's, or
+`RequestCloseAsync`) and a quit first ask the `ConfirmCloseAsync` of the windows
+it owns, innermost first and the last opened first: one that refuses keeps the
+owner open, and a window-modal one that agrees closes before the owner is asked.
+`CloseAsync`, `DisposeAsync` and the close of an owner without a confirmation
+close the owned windows without asking. `DesktopWindowOwner.FromNativeHandle(handle)`
+takes a window of another framework, such as WPF
+(`WpfPlatformServices.ForDesktopWindowOwner`), whose life Runic does not follow.
+
+An installed browser ignores `Owner`, and `DesktopHost.Validate` reports
+`window-option-unsupported`. An owner that is not an open embedded window when
+the window opens is ignored and reported as `window-owner-unavailable`, and the
+window opens on its own. `Modality` without `Owner` is invalid. Custom window
+hosts receive the owner in `DesktopWindowHostOptions.OwnerHandle` and `Modality`
+when they report `DesktopWindowCapabilities.Ownership`; every built-in host does.
+
 ## Title bar and drag regions on macOS
 
 `DesktopWindowOptions.MacOS.TitleBar` gives the macOS window the custom header
@@ -1797,6 +1850,7 @@ The optional interfaces each add one feature:
 | `IDesktopSpellCheckingWindowHost` | `DesktopHost.SetSpellCheckingLanguagesAsync` in an open window; apply `DesktopWindowHostOptions.SpellCheckingLanguages` when opening ([Spell checking](#spell-checking)) | — |
 | `IDesktopActivityWindowHost` | `DesktopWindow.Activity` and `ActivityChanged` ([Window activity](#window-activity)) | `DesktopWindowCapabilities.Activity` |
 | `IDesktopColorSchemeWindowHost` | `DesktopWindow` and `DesktopHost.SetColorSchemeAsync` in an open window ([Light and dark windows](#light-and-dark-windows)) | `DesktopWindowCapabilities.ColorScheme`, and `PerWindowColorScheme` when the scheme is the window's alone |
+| Any host | The owner's native handle in `DesktopWindowHostOptions.OwnerHandle` and `Modality` ([Owned and window-modal windows](#owned-and-window-modal-windows)) | `DesktopWindowCapabilities.Ownership` |
 | `IDesktopEventLoopWindowHostFactory` | A toolkit loop on the process main thread | — |
 | `ILinuxDesktopWindowHostFactory` | The Linux toolkit the factory loads | `Backend` |
 

@@ -708,6 +708,7 @@ public sealed class DesktopHost : IAsyncDisposable
     // Asks each window's close guard in turn; a window whose guard agrees closes. False when one keeps its window.
     internal async Task<bool> RequestWindowsCloseAsync()
     {
+        // Owned windows are asked through their owners, innermost first, as a dialog is answered before the window it blocks.
         foreach (var surface in _surfaces.Values.ToArray())
         {
             if (IsShutdownRequested) return true;

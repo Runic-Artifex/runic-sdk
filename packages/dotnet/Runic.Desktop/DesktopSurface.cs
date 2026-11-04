@@ -150,7 +150,7 @@ public sealed class DesktopSurface : IAsyncDisposable
                         // presentation; an embedded fallback can.
                         var browserFallback = candidate != BrowserKind.Embedded;
                         _engine.SetAllowedPermissions(browserFallback ? DesktopPermissionGrant.None : configured.AllowedPermissions);
-                        _engine.SetCloseConfirmation(browserFallback ? null : configured.ConfirmCloseAsync);
+                        _engine.SetCloseConfirmation(browserFallback ? null : AskingOwnedWindows(configured.ConfirmCloseAsync));
                         if (browserFallback && !withheld)
                         {
                             withheld = true;
@@ -204,9 +204,17 @@ public sealed class DesktopSurface : IAsyncDisposable
                 actualBrowser = FromCompatibilityBrowser(_engine.CurrentBrowser);
             }
             window = new DesktopWindow(this, _engine, requestedBrowser, actualBrowser, fellBack);
+            // The window's own confirmation, which its owner's close asks before its owner's (ConfirmOwnedAsync).
+            if (actualBrowser == BrowserKind.Embedded && _engine.HasCloseConfirmation) window.OwnConfirmation = configured.ConfirmCloseAsync;
             window.InitializeColorScheme(configured.ColorScheme,
                 fromApplication: configured.ColorScheme == DesktopColorScheme.NoPreference && _host.ColorScheme != DesktopColorScheme.NoPreference);
             _window = window;
+            // Once published, so the window reports itself open. An embedded window that received its owner: it closes, hides and shows with a DesktopWindow owner.
+            if (actualBrowser == BrowserKind.Embedded && configured.Owner is { } owner && _engine.OpenedOwnerHandle != 0 &&
+                window.Capabilities.HasFlag(DesktopWindowCapabilities.Ownership))
+            {
+                window.AttachOwner(owner, configured.Modality);
+            }
         }
         finally
         {
@@ -301,6 +309,28 @@ public sealed class DesktopSurface : IAsyncDisposable
 
     internal bool IsExecutingCallback => _engine.IsExecutingCallback;
 
+    // blobs/1: serves the surface's blob and upload requests (WebUiWindow.BlobsPath and UploadPath) through handler,
+    // after the window admitted them, until the result is disposed.
+    internal IDisposable ServeBlobs(Func<Internal.PresentationExchange, string?, Task> handler)
+    {
+        ArgumentNullException.ThrowIfNull(handler);
+        ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
+        _engine.SetBlobHandler(handler);
+        return new BlobLease(_engine, handler);
+    }
+
+    // The surface URL, or null before the surface is attached or after it closed.
+    internal Uri? CurrentUrl => _engine.Url;
+
+    private sealed class BlobLease(WebUiWindow engine, Func<Internal.PresentationExchange, string?, Task> handler) : IDisposable
+    {
+        private int _disposed;
+        public void Dispose()
+        {
+            if (Interlocked.Exchange(ref _disposed, 1) == 0) engine.ClearBlobHandler(handler);
+        }
+    }
+
     // Child presentation adapters use this to retire their borrowed-model session on unload.
     internal event EventHandler? PresentationClosed
     {
@@ -351,11 +381,14 @@ public sealed class DesktopSurface : IAsyncDisposable
         return await decision.ConfigureAwait(false);
     }
 
-    // A quit asks the open window's close guard; a window without one closes with the shutdown that follows.
-    internal ValueTask<bool> ConfirmCloseForQuitAsync(CancellationToken cancellationToken) =>
-        Volatile.Read(ref _window) is { IsOpen: true } window && _engine.HasCloseConfirmation
-            ? RequestCloseWindowAsync(window, cancellationToken)
-            : ValueTask.FromResult(true);
+    // A quit asks the open window's close guard, which first asks the windows it owns; a window without one closes with
+    // the shutdown that follows, after the windows it owns were asked. An owned window is asked through its owner.
+    internal async ValueTask<bool> ConfirmCloseForQuitAsync(CancellationToken cancellationToken)
+    {
+        if (Volatile.Read(ref _window) is not { IsOpen: true } window || window.Owner?.Window is not null) return true;
+        if (_engine.HasCloseConfirmation) return await RequestCloseWindowAsync(window, cancellationToken).ConfigureAwait(false);
+        return await window.ConfirmOwnedAsync(cancellationToken).ConfigureAwait(false);
+    }
 
     // Force-closes the current window for a host shutdown. It does not wait for the gate: a window that is still
     // opening checks the shutdown itself once it is published.
@@ -508,14 +541,45 @@ public sealed class DesktopSurface : IAsyncDisposable
         }
         _engine.SetAllowedPermissions(options.AllowedPermissions);
         _engine.SetWebContent(options.WebContent);
-        _engine.SetCloseConfirmation(options.ConfirmCloseAsync);
+        _engine.SetCloseConfirmation(AskingOwnedWindows(options.ConfirmCloseAsync));
         _engine.SetMenuBarPresentation(options.MenuBarPresentation);
         _engine.SetColorScheme(EffectiveColorScheme(options.ColorScheme),
             fromApplication: options.ColorScheme == DesktopColorScheme.NoPreference && _host.ColorScheme != DesktopColorScheme.NoPreference);
         _engine.SetMonitorAndLanguage(options.MonitorId, options.LayoutDirection, options.Language);
         _engine.SetMacOS(options.MacOS);
         _engine.SetSpellChecking(options.SpellChecking);
+        _engine.SetOwner(ResolveOwner(options), options.Modality);
     }
+
+    // The owner's native handle, or zero when there is none. An owner that is not an open embedded window is ignored and
+    // reported, so the window still opens (window-owner-unavailable).
+    private nint ResolveOwner(DesktopWindowOptions options)
+    {
+        if (options.Owner is not { } owner) return 0;
+        var handle = owner.ResolveHandle();
+        if (handle == 0)
+        {
+            _host.Report(new DesktopDiagnostic(
+                DesktopErrorCategory.Unavailable,
+                OwnerUnavailableCode,
+                "The window's owner is not an open embedded window, so the window opens without an owner.",
+                Retryable: false,
+                Remediation: "Open the window while its owner is open, and give it an owner shown in an embedded window.")
+            {
+                Severity = DesktopDiagnosticSeverity.Warning,
+                Option = "DesktopWindowOptions.Owner",
+            });
+        }
+        return handle;
+    }
+
+    internal const string OwnerUnavailableCode = "window-owner-unavailable";
+
+    // A window's close confirmation first asks the windows it owns, innermost first (DesktopWindow.ConfirmOwnedAsync).
+    private Func<CancellationToken, ValueTask<bool>>? AskingOwnedWindows(Func<CancellationToken, ValueTask<bool>>? confirm) =>
+        confirm is null ? null : async cancellationToken =>
+            (Volatile.Read(ref _window) is not { } window || await window.ConfirmOwnedAsync(cancellationToken).ConfigureAwait(false))
+            && await confirm(cancellationToken).ConfigureAwait(false);
 
     // The presentations a window tries in order: the preferred one, then its fallbacks.
     internal static IReadOnlyList<BrowserKind> PresentationChain(DesktopWindowOptions options)
@@ -704,6 +768,14 @@ public sealed class DesktopSurface : IAsyncDisposable
         if (!Enum.IsDefined(options.ColorScheme))
         {
             throw new ArgumentOutOfRangeException(nameof(options), "ColorScheme contains an unsupported value.");
+        }
+        if (!Enum.IsDefined(options.Modality))
+        {
+            throw new ArgumentOutOfRangeException(nameof(options), "Modality contains an unsupported value.");
+        }
+        if (options.Modality != DesktopWindowModality.None && options.Owner is null)
+        {
+            throw new ArgumentException("A window-modal window needs an Owner: set Owner, or Modality to None.", nameof(options));
         }
         if ((options.AllowedPermissions & ~supported) != 0)
         {
@@ -1477,6 +1549,142 @@ public sealed class DesktopWindow : IAsyncDisposable
     /// </remarks>
     public nint NativeHandle => IsOpen ? _engine.NativeWindowHandle : 0;
 
+    // The handle a window this one owns receives: the native handle of an open embedded window that can own windows.
+    internal nint OwnerHandle => Browser == BrowserKind.Embedded && Capabilities.HasFlag(DesktopWindowCapabilities.Ownership)
+        ? NativeHandle
+        : 0;
+
+    private readonly Lock _ownedGate = new();
+    private List<DesktopWindow> _owned = [];
+    // The owned windows that SetVisibleAsync(false) hid with this one, shown again with it.
+    private List<DesktopWindow> _hiddenWithOwner = [];
+
+    /// <summary>
+    /// Gets the owner this window opened with (<see cref="DesktopWindowOptions.Owner"/>), or <see langword="null"/> for a
+    /// window of its own, including one whose owner was ignored.
+    /// </summary>
+    public DesktopWindowOwner? Owner { get; private set; }
+
+    /// <summary>
+    /// Gets whether this window blocks its <see cref="Owner"/> (<see cref="DesktopWindowOptions.Modality"/>);
+    /// <see cref="DesktopWindowModality.None"/> without an owner.
+    /// </summary>
+    public DesktopWindowModality Modality { get; private set; }
+
+    /// <summary>Gets the open windows that this window owns, in the order they opened.</summary>
+    /// <remarks>
+    /// A window owned through <see cref="DesktopWindowOwner.FromWindow"/> is listed from its open until it closes. Closing
+    /// this window closes them without asking.
+    /// </remarks>
+    public IReadOnlyList<DesktopWindow> OwnedWindows
+    {
+        get
+        {
+            lock (_ownedGate) return [.. _owned];
+        }
+    }
+
+    // DesktopSurface.OpenWindowAsync: the window opened owned by owner.
+    internal void AttachOwner(DesktopWindowOwner owner, DesktopWindowModality modality)
+    {
+        Owner = owner;
+        Modality = modality;
+        if (owner.Window is not { } ownerWindow) return;
+        lock (ownerWindow._ownedGate) ownerWindow._owned = [.. ownerWindow._owned, this];
+        EventHandler closeWithOwner = (_, _) => _ = CloseWithOwnerAsync();
+        ownerWindow.Closed += closeWithOwner;
+        // The owner forgets the window, and its handler, once the window closed.
+        Closed += (_, _) =>
+        {
+            ownerWindow.Closed -= closeWithOwner;
+            ownerWindow.ReleaseOwned(this);
+        };
+        // The owner closed while this window opened.
+        if (!ownerWindow.IsOpen) _ = CloseWithOwnerAsync();
+    }
+
+    private void ReleaseOwned(DesktopWindow owned)
+    {
+        lock (_ownedGate)
+        {
+            _owned = [.. _owned.Where(window => !ReferenceEquals(window, owned))];
+            _hiddenWithOwner = [.. _hiddenWithOwner.Where(window => !ReferenceEquals(window, owned))];
+        }
+    }
+
+    // The owner closed: an owned window closes with it, as an owned Win32 window does, without asking.
+    private async Task CloseWithOwnerAsync()
+    {
+        try
+        {
+            if (IsOpen) await CloseAsync(CancellationToken.None).ConfigureAwait(false);
+        }
+        catch (Exception error) when (error is ObjectDisposedException or InvalidOperationException or DesktopException)
+        {
+            // Closed meanwhile.
+        }
+    }
+
+    // SetVisibleAsync of the owner: owned windows hide before it and show after it.
+    private async ValueTask SetOwnedVisibleAsync(bool visible, CancellationToken cancellationToken)
+    {
+        List<DesktopWindow> windows;
+        lock (_ownedGate)
+        {
+            if (visible)
+            {
+                windows = _hiddenWithOwner;
+                _hiddenWithOwner = [];
+            }
+            else
+            {
+                windows = [.. _owned.Where(static window => window.Activity?.IsVisible != false)];
+                _hiddenWithOwner = [.. _hiddenWithOwner, .. windows];
+            }
+        }
+        foreach (var window in windows)
+        {
+            try
+            {
+                if (window.IsOpen) await window.SetVisibleAsync(visible, cancellationToken).ConfigureAwait(false);
+            }
+            catch (Exception error) when (error is ObjectDisposedException or DesktopException)
+            {
+                // Closed meanwhile, or a window that cannot be hidden.
+            }
+        }
+    }
+
+    // DesktopWindowOptions.ConfirmCloseAsync of this window, when its presentation confirms closes.
+    internal Func<CancellationToken, ValueTask<bool>>? OwnConfirmation { get; set; }
+
+    // Before this window closes on a confirmed close or a quit: the windows it owns are asked, the last opened first and
+    // each one's own windows before it. One that refuses keeps this window open. A window-modal one that agrees closes at
+    // once, so this window's own confirmation never asks while that window blocks it.
+    internal async ValueTask<bool> ConfirmOwnedAsync(CancellationToken cancellationToken)
+    {
+        DesktopWindow[] owned;
+        lock (_ownedGate) owned = [.. _owned.Where(static window => window.IsOpen).Reverse()];
+        foreach (var window in owned)
+        {
+            if (!await window.ConfirmOwnedAsync(cancellationToken).ConfigureAwait(false)) return false;
+            if (window.OwnConfirmation is { } confirm && window.IsOpen && !await confirm(cancellationToken).ConfigureAwait(false)) return false;
+            if (window.Modality == DesktopWindowModality.Window && window.IsOpen)
+            {
+                try { await window.CloseAsync(CancellationToken.None).ConfigureAwait(false); }
+                catch (Exception error) when (error is ObjectDisposedException or InvalidOperationException or DesktopException) { }
+            }
+        }
+        return true;
+    }
+
+    // The window-modal window that should have the focus instead of this one, if any: the last one opened.
+    internal DesktopWindow? ModalOwned()
+    {
+        lock (_ownedGate)
+            return _owned.LastOrDefault(static window => window.Modality == DesktopWindowModality.Window && window.IsOpen);
+    }
+
     /// <summary>Whether this live embedded owner supports native-thread callbacks.</summary>
     public bool SupportsNativeDispatch => IsOpen && _engine.SupportsNativeDispatch;
 
@@ -1509,15 +1717,24 @@ public sealed class DesktopWindow : IAsyncDisposable
     /// <remarks>
     /// Requires <see cref="DesktopWindowCapabilities.Focus"/>. It also shows a window opened with
     /// <see cref="DesktopWindowOptions.Hidden"/>: every built-in embedded host shows the window before it activates it,
-    /// and this is the way to reveal a hidden window.
+    /// and this is the way to reveal a hidden window. The windows it owns that <see cref="SetVisibleAsync"/> hid with it
+    /// are shown again, and when a window-modal window blocks it (<see cref="OwnedWindows"/>), that window is focused
+    /// after it, as the platform does for a dialog's owner.
     /// </remarks>
     /// <exception cref="ObjectDisposedException">The surface is disposed, or this window is closed or was replaced.</exception>
     /// <exception cref="DesktopException">The window lacks the required capability (<c>window-capability-unavailable</c>).</exception>
     /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> was cancelled.</exception>
-    public ValueTask FocusAsync(CancellationToken cancellationToken = default)
+    public async ValueTask FocusAsync(CancellationToken cancellationToken = default)
     {
-        return _surface.RunWindowOperationAsync(this, DesktopWindowCapabilities.Focus,
-            () => new ValueTask(_engine.FocusAsync(cancellationToken)), cancellationToken);
+        await _surface.RunWindowOperationAsync(this, DesktopWindowCapabilities.Focus,
+            () => new ValueTask(_engine.FocusAsync(cancellationToken)), cancellationToken).ConfigureAwait(false);
+        // A window that a window-modal window blocks hands the focus to it, as a dialog's owner does.
+        await SetOwnedVisibleAsync(true, cancellationToken).ConfigureAwait(false);
+        if (ModalOwned() is { } modal)
+        {
+            try { await modal.FocusAsync(cancellationToken).ConfigureAwait(false); }
+            catch (Exception error) when (error is ObjectDisposedException or DesktopException) { }
+        }
     }
 
     /// <summary>Shows or hides the window without closing it.</summary>
@@ -1533,6 +1750,9 @@ public sealed class DesktopWindow : IAsyncDisposable
     /// up to the platform and window manager; <see cref="FocusAsync"/> shows and activates it everywhere.
     /// </para>
     /// <para>
+    /// Hiding a window hides the windows it owns (<see cref="OwnedWindows"/>) first, and showing it shows them again.
+    /// </para>
+    /// <para>
     /// Only the application can show a hidden window again, so keep a way to reach it, such as a status icon or a second
     /// launch that calls <see cref="FocusAsync"/>.
     /// </para>
@@ -1540,10 +1760,13 @@ public sealed class DesktopWindow : IAsyncDisposable
     /// <exception cref="ObjectDisposedException">The surface is disposed, or this window is closed or was replaced.</exception>
     /// <exception cref="DesktopException">The window lacks the required capability (<c>window-capability-unavailable</c>).</exception>
     /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> was cancelled.</exception>
-    public ValueTask SetVisibleAsync(bool visible, CancellationToken cancellationToken = default)
+    public async ValueTask SetVisibleAsync(bool visible, CancellationToken cancellationToken = default)
     {
-        return _surface.RunWindowOperationAsync(this, DesktopWindowCapabilities.Visibility,
-            () => _engine.SetEmbeddedVisibleAsync(visible, cancellationToken), cancellationToken);
+        // The windows this one owns hide with it, before it, and show again after it.
+        if (!visible) await SetOwnedVisibleAsync(false, cancellationToken).ConfigureAwait(false);
+        await _surface.RunWindowOperationAsync(this, DesktopWindowCapabilities.Visibility,
+            () => _engine.SetEmbeddedVisibleAsync(visible, cancellationToken), cancellationToken).ConfigureAwait(false);
+        if (visible) await SetOwnedVisibleAsync(true, cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>Hides the window without closing it, as <see cref="SetVisibleAsync"/> with <see langword="false"/>.</summary>

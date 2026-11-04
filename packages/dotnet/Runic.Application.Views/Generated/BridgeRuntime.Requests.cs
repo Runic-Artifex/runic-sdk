@@ -27,6 +27,10 @@ public partial class ViewModelBridge<T>
                 "write" => owner.WriteAsync(request, cancellationToken),
                 "command" => owner.CommandAsync(request, cancellationToken),
                 "can" => owner.CanAsync(request, cancellationToken),
+                "region" => owner.RegionAsync(request, cancellationToken),
+                "query-rows" => owner.QueryRowsAsync(request, cancellationToken),
+                "query-set" => owner.QuerySetAsync(request, cancellationToken),
+                "query-index" => owner.QueryIndexAsync(request, cancellationToken),
                 _ => owner.HandleOperationAsync(request, cancellationToken),
             };
     }
@@ -181,7 +185,11 @@ public partial class ViewModelBridge<T>
                     try
                     {
                         if (text is not null && textSetter is not null) textSetter(_vm, text);
-                        else property.Set(_vm, value);
+                        else
+                        {
+                            using var blobs = EnterBlobs(connection.Key);
+                            property.Set(_vm, value);
+                        }
                         call.Complete(BridgeCallOutcome.Ok);
                         return RanReply(null);
                     }
@@ -244,6 +252,7 @@ public partial class ViewModelBridge<T>
             requestId = root.GetProperty("requestId").GetString()!;
             if (requestId.Length > MaximumFieldWriteRequestIdLength) throw new FormatException("The requestId is too long.");
             BridgeRequestEnvelope.TryReadInteger(root.GetProperty("expectedVersion"), out expectedVersion);
+            using var blobs = EnterBlobs(request.Connection.Key);
             if (!hasSplice)
                 write = new(requestId, expectedVersion,
                     ReadCheckedValue(root.GetProperty("expectedValue"), property.Descriptor),
@@ -375,7 +384,7 @@ public partial class ViewModelBridge<T>
             return null;
         }
         if (!present || !decode) return descriptor;
-        if (DecodeInput(descriptor, element, out input) is { } invalid)
+        if (DecodeInput(descriptor, element, request.Connection.Key, out input) is { } invalid)
         {
             refusal = invalid;
             return null;
@@ -384,9 +393,11 @@ public partial class ViewModelBridge<T>
     }
 
     // Decodes a command's input: null, or the invalid-input reply.
-    private byte[]? DecodeInput(CommandDescriptor<T> descriptor, JsonElement element, out object? input)
+    private byte[]? DecodeInput(CommandDescriptor<T> descriptor, JsonElement element, string connection, out object? input)
     {
         input = null;
+        // blobs/1: an upload in the input decodes only for the request's own connection.
+        using var blobs = EnterBlobs(connection);
         try { input = ReadInput(descriptor, element); }
         catch (Exception error) when (error is ArgumentException or FormatException or JsonException or InvalidOperationException)
         {
@@ -419,7 +430,8 @@ public partial class ViewModelBridge<T>
         // the command's model turn, so the input of such a command is decoded there, after it.
         var scope = connection.UsesPresentationEpoch ? request.Envelope.Epoch : null;
         if (ReadCommand(request, out var key, out var refusal, decode: scope is null) is not { } descriptor) return refusal;
-        var command = new CommandRequest(scope, scope is not null && descriptor.HasInput ? request.Root.GetProperty("input") : null);
+        var command = new CommandRequest(scope, scope is not null && descriptor.HasInput ? request.Root.GetProperty("input") : null,
+            request.Connection.Key);
         ReadOnlyMemory<byte> reply;
         bool waits;
         if (IsAsynchronous(descriptor))
@@ -457,7 +469,7 @@ public partial class ViewModelBridge<T>
 
     // The epoch a command request carries on a connection that uses presentation-epoch/1, and its input, which is decoded
     // after the epoch check.
-    private readonly record struct CommandRequest(long? Epoch, JsonElement? Input);
+    private readonly record struct CommandRequest(long? Epoch, JsonElement? Input, string Connection);
 
     // In the command's model turn: the superseded reply of a command whose epoch is not the route's current one, or
     // null. A renewal that was requested but not yet published counts as a new epoch.
@@ -467,7 +479,7 @@ public partial class ViewModelBridge<T>
     // In the command's model turn, after the epoch check: decodes a scoped command's input. Null, or the invalid-input
     // reply.
     private byte[]? DecodeScopedInput(CommandDescriptor<T> descriptor, CommandRequest request, ref object? key) =>
-        request.Input is { } element ? DecodeInput(descriptor, element, out key) : null;
+        request.Input is { } element ? DecodeInput(descriptor, element, request.Connection, out key) : null;
 
     // A synchronous command, in the request's model turn. The flag says whether the reply waits for the window's pushes:
     // the command ran, or it was superseded.
@@ -810,6 +822,9 @@ public partial class ViewModelBridge<T>
 
     private async Task<BridgeOperationResult> InvokeCommandAsync(CommandDescriptor<T> descriptor, object? argument, CancellationToken token)
     {
+        // blobs/1: a result's blobs belong to the route. The scope flows through the command's awaits into the
+        // generated code that encodes its result.
+        using var blobs = EnterBlobs(null);
         if (descriptor.ExecuteStreamAsync is { } executeStream)
             return await executeStream(_vm, new BridgeOperationExecution(descriptor.CreateStream!()), token, argument).ConfigureAwait(false);
         if (descriptor.ExecuteResultAsync is { } executeResult)

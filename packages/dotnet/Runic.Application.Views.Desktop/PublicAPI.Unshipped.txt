@@ -1,3 +1,5 @@
 #nullable enable
+Runic.Application.Views.Desktop.RunicDesktopHostOptions.MaximumUploadBytes.get -> long?
+Runic.Application.Views.Desktop.RunicDesktopHostOptions.MaximumUploadBytes.init -> void
 static Runic.Application.Views.Desktop.DesktopPlatformServices.CreatePowerEvents() -> Runic.Platform.IDesktopPowerEvents!
 static Runic.Application.Views.Desktop.DesktopPlatformServices.CreateRecentDocuments() -> Runic.Platform.IDesktopRecentDocuments!

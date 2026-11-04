@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Runic.Navigation;
 
 namespace Runic.Application.Testing;
 
@@ -16,6 +17,13 @@ public sealed class RunicCallReply<TModel> where TModel : class
         if (root.TryGetProperty("revision", out var revision) && revision.ValueKind == JsonValueKind.Number) Revision = revision.GetInt64();
         Released = root.TryGetProperty("released", out var released) && released.ValueKind == JsonValueKind.True;
         Superseded = root.TryGetProperty("superseded", out var superseded) && superseded.ValueKind == JsonValueKind.True;
+        if (root.TryGetProperty("outcome", out var outcome) && outcome.ValueKind == JsonValueKind.Object)
+            RegionOutcome = new(Enum.Parse<NavigationOutcomeKind>(outcome.GetProperty("kind").GetString()!),
+                outcome.GetProperty("rejection") is { ValueKind: JsonValueKind.String } rejection
+                    ? Enum.Parse<NavigationRejection>(rejection.GetString()!) : null)
+            {
+                Arrival = Enum.Parse<NavigationArrivalState>(outcome.GetProperty("arrival").GetString()!),
+            };
         if (root.TryGetProperty("error", out var error) && error.ValueKind == JsonValueKind.Object)
         {
             ErrorKind = error.GetProperty("kind").GetString();
@@ -57,6 +65,11 @@ public sealed class RunicCallReply<TModel> where TModel : class
     public JsonElement? Failure { get; }
     /// <summary>The route's state after the call, read when the reply carries a revision.</summary>
     public RunicViewState<TModel>? State { get; }
+    /// <summary>
+    /// The outcome of a <c>SelectRegionAsync</c> or <c>CloseRegionAsync</c> call that ran, such as
+    /// <c>Rejected(Guard)</c> when a departure guard kept the region; otherwise <see langword="null"/>.
+    /// </summary>
+    public NavigationOutcome? RegionOutcome { get; }
 
     /// <summary>Returns this reply, or throws when the call failed.</summary>
     /// <exception cref="InvalidOperationException">The call failed; the message names the route, error kind and message.</exception>

@@ -1,5 +1,6 @@
 using System.ComponentModel;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Runic.Application.Views;
 using Runic.Application.Views.Desktop;
 using Runic.Desktop;
@@ -116,6 +117,44 @@ internal sealed class WindowPresentationChecks
             == (RunicWindowPresentationFeatures.ColorScheme | RunicWindowPresentationFeatures.PerWindowColorScheme), "A per-window scheme was not reported.");
         Require(DesktopWindowPresentation.FeaturesOf(DesktopWindowCapabilities.PerWindowColorScheme, open: true, macOS: false)
             == RunicWindowPresentationFeatures.None, "A per-window flag without color schemes was reported.");
+        Require(DesktopWindowPresentation.FeaturesOf(DesktopWindowCapabilities.Ownership, open: true, macOS: false)
+            == RunicWindowPresentationFeatures.OwnedWindows, "A window that owns windows did not report it.");
+    }
+
+    // B6: RunicWindowOptions.Owner and Modality reach the owned window's native host; an owner that closed is ignored.
+    [Test, NotInParallel(Order = 46)]
+    public async Task AnOwnedWindowOpensOverItsOwner()
+    {
+        var logs = new RecordingLoggerProvider();
+        var services = new ServiceCollection();
+        services.AddLogging(builder => builder.AddProvider(logs));
+        services.AddScoped<PresentationViewModel>();
+        services.AddScoped<Func<IBridgeTransport, PresentationViewModel, IDisposable>>(_ => static (_, _) => new NoopAttachment());
+        services.AddRunicWindowService();
+        await using var provider = services.BuildServiceProvider();
+        var factory = new NativeDispatchFactory { Owns = true };
+        await using var desktop = await DesktopHost.StartAsync(new DesktopHostOptions { WindowHostFactory = factory, WaitForConnection = false });
+        var windows = TestWindows.EmbeddedHtml(provider, desktop);
+        await using var owner = await windows.OpenWindowAsync<PresentationWindow>();
+        Require(owner.Presentation.Features.HasFlag(RunicWindowPresentationFeatures.OwnedWindows), "The owner cannot own windows.");
+        await using var owned = await windows.OpenWindowAsync<PresentationWindow>(new RunicWindowOptions
+        {
+            Owner = owner,
+            Modality = RunicWindowModality.Window,
+        });
+        Require(factory.Hosts[1].Options is { OwnerHandle: NativeDispatchHost.Handle, Modality: DesktopWindowModality.Window },
+            "The owned window's host did not receive its owner and modality.");
+        Require(RunicDesktopHost.GetSurface(owned) is not null && ((DesktopBridgeWindow<PresentationViewModel>)owned.Host).Window.Owner?.Window ==
+            ((DesktopBridgeWindow<PresentationViewModel>)owner.Host).Window, "The Desktop window does not name its owner.");
+        // The owner closes: the owned window closes with it.
+        await owner.CloseAsync(TimeSpan.Zero);
+        await owned.WaitForCloseAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(5));
+
+        // An owner that is not open is ignored and logged.
+        await using var late = await windows.OpenWindowAsync<PresentationWindow>(new RunicWindowOptions { Owner = owner });
+        Require(factory.Hosts[2].Options is { OwnerHandle: 0 }, "A closed owner reached the native host.");
+        Require(logs.Messages.Any(static message => message.Contains("opens without its owner", StringComparison.Ordinal)),
+            "The ignored owner was not logged (event 1180).");
     }
 
     private static ServiceProvider CreateProvider()

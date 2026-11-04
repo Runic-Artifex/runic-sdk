@@ -6,16 +6,18 @@ import { randomId } from "./clock.js";
 import { emitBridgeDiagnostic, suppressErrorDiagnostic } from "./diagnostics.js";
 import { BridgeError } from "./errors.js";
 import {
-  invalidResponse, presentationEpochFeature, presentedFeature, readPush, viewRequestsFeature, requestSessionFeature, readReply, replyError, type Message, type Push, type PushReading, type Reply,
+  clientErrorsFeature, invalidResponse, presentationEpochFeature, presentedFeature, queryCollectionsFeature, readPush, viewRequestsFeature, requestSessionFeature, readReply, replyError, type Message, type Push, type PushReading, type Reply,
 } from "./protocol.js";
 import { hostCallbacks, protocolMismatchError, reportBridgeError, reportProtocolMismatch, type RunicBridgeClient } from "./transport.js";
 import { bridgeProtocol, clientName, runicProducerName, viewsVersion } from "./version.js";
 import { textSpliceFeature } from "./text.js";
+import { regionCollectionsFeature } from "./regions.js";
 import { reportWindowClosed } from "./connection-state.js";
 import { flushNotifications, nextFrame } from "./notifications.js";
+import { blobsFeature, readBlobGrant, type BlobGrant } from "./blob-wire.js";
 
 /** The features this runtime implements and lists in `hello` (specs/application/README.md, "Features"). */
-export const clientFeatures: readonly string[] = [textSpliceFeature, presentationEpochFeature, presentedFeature, viewRequestsFeature, requestSessionFeature];
+export const clientFeatures: readonly string[] = [textSpliceFeature, presentationEpochFeature, presentedFeature, viewRequestsFeature, requestSessionFeature, regionCollectionsFeature, clientErrorsFeature, queryCollectionsFeature, blobsFeature];
 
 /** A push handler, registered per push kind and route. */
 export type PushHandler = (push: Push) => void;
@@ -49,8 +51,19 @@ export interface SharedRuntime {
    * the connection's `hello` succeeded. A runtime of an earlier release does not have it.
    */
   readonly features?: ReadonlySet<string>;
+  /**
+   * Resolves once the current connection's `hello` succeeded, so `features` describes it; sends the `hello` when none is
+   * on its way. Rejects like `request` while disconnected or after a protocol mismatch. A runtime of an earlier release
+   * does not have it.
+   */
+  whenGreeted?(): Promise<void>;
   /** Sends a request after the connection's `hello` and resolves with its reply; rejects with a BridgeError. */
   request(message: Message, route?: string): Promise<Reply>;
+  /**
+   * Resolves once the current connection's `hello` succeeded, so `features` is final for it; rejects when there is
+   * no connection or the hello fails. A runtime of an earlier release does not have it.
+   */
+  ready?(): Promise<void>;
   /** Registers a handler for pushes of `kind` on `route`. */
   onPush(kind: Push["kind"], route: string, handler: PushHandler): () => void;
   /** Registers a handler for invalid pushes that name `route`. */
@@ -61,6 +74,11 @@ export interface SharedRuntime {
    */
   onWindowPush?(kind: WindowPushKind, handler: PushHandler): () => void;
   onConnection(listener: ConnectionListener): () => void;
+  /**
+   * blobs/1: the current connection's upload grant, after its `hello` succeeded; undefined when the producer grants
+   * none. Rejects as `request` does without a connection. A runtime of an earlier release does not have it.
+   */
+  blobGrant?(): Promise<BlobGrant | undefined>;
   /** Stops listening to the host bridge. */
   dispose(): void;
 }
@@ -96,6 +114,8 @@ function createRuntime(bridge: RunicBridgeClient): SharedRuntime {
   let hello: { readonly connection: number; readonly session: string; readonly promise: Promise<void>; done: boolean } | undefined;
   // The features in use on the current connection.
   let features: ReadonlySet<string> = new Set<string>();
+  // The upload grant of the current connection (blobs/1).
+  let grant: BlobGrant | undefined;
   // A producer of another protocol: every call of the page fails from then on.
   let refused: string | undefined;
   let versionReported = false;
@@ -185,7 +205,10 @@ function createRuntime(bridge: RunicBridgeClient): SharedRuntime {
       if (!reply.ok) throw replyError(reply.error, undefined, "The Bridge refused the connection.");
       // A feature is in use when both sides list it; a producer of 0.13 lists none.
       const listed = Array.isArray(reply["features"]) ? reply["features"] as readonly string[] : [];
-      if (connection === current) features = new Set(clientFeatures.filter(feature => listed.includes(feature)));
+      if (connection === current) {
+        features = new Set(clientFeatures.filter(feature => listed.includes(feature)));
+        grant = features.has(blobsFeature) ? readBlobGrant(reply["blobs"]) : undefined;
+      }
       const implementation = reply["implementation"] as { readonly name: string; readonly version: string };
       if (implementation.name === runicProducerName && implementation.version !== viewsVersion && !versionReported) {
         versionReported = true;
@@ -212,6 +235,15 @@ function createRuntime(bridge: RunicBridgeClient): SharedRuntime {
     operations: new Map(),
     edits: new Map(),
     get features() { return features; },
+    async whenGreeted() {
+      if (refused !== undefined) throw refusal(undefined);
+      if (!connected) throw new BridgeError("disconnected", "The Bridge is disconnected.");
+      try { await greet(); }
+      catch (error) {
+        if (refused !== undefined) throw refusal(undefined);
+        throw error;
+      }
+    },
     async request(message, route) {
       if (refused !== undefined) throw refusal(route);
       if (!connected) throw new BridgeError("disconnected", "The Bridge is disconnected.", route === undefined ? {} : { route });
@@ -246,12 +278,24 @@ function createRuntime(bridge: RunicBridgeClient): SharedRuntime {
       }
       return reply;
     },
+    ready() {
+      if (refused !== undefined) return Promise.reject(refusal(undefined));
+      if (!connected) return Promise.reject(new BridgeError("disconnected", "The Bridge is disconnected."));
+      return greet();
+    },
     onPush: (kind, route, handler) => add(pushHandlers, key(kind, route), handler),
     onInvalidPush: (route, handler) => add(invalidHandlers, route, handler),
     onWindowPush: (kind, handler) => add(windowHandlers, kind, handler),
     onConnection(listener) {
       connectionListeners.add(listener);
       return () => { connectionListeners.delete(listener); };
+    },
+    async blobGrant() {
+      if (refused !== undefined) throw refusal(undefined);
+      if (!connected) throw new BridgeError("disconnected", "The Bridge is disconnected.");
+      const current = connection;
+      await greet();
+      return connection === current ? grant : undefined;
     },
     dispose() {
       if (disposed) return;
@@ -282,6 +326,7 @@ function createRuntime(bridge: RunicBridgeClient): SharedRuntime {
     if (next && !first) reportWindowClosed(false);
     hello = undefined;
     features = new Set<string>();
+    grant = undefined;
     // Each connection starts with `hello`; a request that needs it waits for it, and a failed one is sent again.
     if (next) void greet().catch(() => undefined);
     // The first report states the connection the page starts on; routes open on it themselves.

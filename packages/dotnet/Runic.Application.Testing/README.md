@@ -416,6 +416,23 @@ retained entry, retirement of a parent's child regions, racing navigation and
 closing the window while the dialog asks; [ConfirmNavigationTests](https://github.com/Runic-Artifex/runic-sdk/blob/main/examples/notes-view-first/Tests/ConfirmNavigationTests.cs)
 tests the dialog page on its own with `RunicTestNavigationEntry`.
 
+A [region collection](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Application.Views/README.md#region-collections)
+(since 0.16) reads as a `RunicRegionCollectionState`, and the drivers send the
+page's select and close requests by key:
+
+```csharp
+var tabs = (await host.Root.SnapshotAsync()).Regions(vm => vm.Documents);
+// tabs.Keys, tabs.Regions[i].Content (a PageReference or null), tabs.Selected
+var closed = await host.Root.CloseRegionAsync(vm => vm.Documents, tabs.Keys[0]);
+// closed.RegionOutcome: Committed, or Rejected with Guard when a page refused
+```
+
+`SelectRegionAsync` and `CloseRegionAsync` return a `RunicCallReply` with the
+state after the request; a key that no region has fails with `ErrorReason`
+`unresolved-key`. The test connection's `hello` lists `region-collections/1`
+for these requests; it adds a request kind only, so the other messages are
+those of the base protocol.
+
 ### Interactions
 
 A test can act as the page: `RunicViewDriver.MountPresentation()` (since 0.16) opens a
@@ -573,6 +590,61 @@ scope's presentation, and a ViewModel built by hand can take a
 at once on the calling thread, inside the request, and keeps answering after
 the scope ends; a change its own handlers cause is still raised after them.
 
+### Windows and their close decision
+
+`RunicWindowTestHost.Create` drives one ViewModel. To test a Window, its close
+guard and the Windows its ViewModels open, open it with
+`RunicWindowTestHost.CreateWindowAsync<TWindow>(services)` (since 0.16). It
+opens a real `RunicWindow` headless, as a host does: in a new scope of the
+application's root services, with its parameter, result and close guard, and with
+the application's own `IRunicWindowService` (`AddRunicWindowService()`), so
+`FindOrOpenAsync`, `ActivateAsync` and `OpenForResultAsync` open test Windows
+too.
+
+```csharp
+await using var services = new ServiceCollection().AddMyApplication().BuildServiceProvider();
+await using var shell = await RunicWindowTestHost.CreateWindowAsync<ShellWindow>(services);
+
+// A guarded editor keeps unsaved changes.
+(await shell.Root<ShellViewModel>().ExecuteAsync(vm => vm.OpenDocumentCommand, "\"notes.md\"")).ThrowIfFailed();
+var editor = shell.OpenedWindows.Single();
+Assert.Equal("notes.md", editor.Key);
+Assert.False(await editor.RequestUserCloseAsync());
+
+// A modal dialog that returns a value.
+var choosing = shell.Root<ShellViewModel>().ExecuteAsync(vm => vm.ChooseAccountCommand);
+var dialog = await shell.WaitForOpenedWindowAsync<AccountWindow>();
+Assert.True(shell.IsBlocked);
+(await dialog.Root<AccountViewModel>().ExecuteAsync(vm => vm.ChooseCommand, "\"Savings\"")).ThrowIfFailed();
+(await choosing).ThrowIfFailed();
+```
+
+- `RequestUserCloseAsync()` is the user's close button: a Window with
+  `GuardClose` asks `CanCloseAsync`, and the result tells whether it closed. It
+  shares one decision with `IRunicWindow.RequestCloseAsync`, as on Runic Desktop.
+- `OpenedWindows` lists the Windows opened after this one, including closed
+  ones, each with `Window`, `ViewModel`, `Parameter`, `Key`, `Owner`,
+  `Modality`, `IsOpen` and its `Root<TViewModel>()` driver;
+  `WaitForOpenedWindowAsync<TWindow>()` waits for one, for example a dialog
+  whose command is still waiting for its result. `Host<TViewModel>()` is the
+  Window's `RunicWindowTestHost<TViewModel>`.
+- Each Window has a `RunicTestWindowPresentation` (`Presentation`), the one its
+  scope registers or a new one, so activation shows as `PresentCount`.
+- As on Runic Desktop: an owned Window closes when its owner closes, hides and
+  shows with its owner's `SetVisibleAsync`, and an owner's close asks its owned
+  Windows' guards first, innermost first. `IsBlocked` is `true` while a
+  window-modal Window it owns is open. The test host does not pass where the
+  desktop cannot: on a blocked Window `RequestUserCloseAsync()` and its page's
+  commands, operation starts, sets and writes throw `InvalidOperationException`
+  (snapshots still read it); the application's `RequestCloseAsync` still works.
+- `DisposeAsync` of the Window `CreateWindowAsync` returned closes the whole test
+  application; that of an entry of `OpenedWindows` closes only that Window and
+  the Windows it owns.
+- All Windows share one clock (a `FakeTimeProvider` unless the options name
+  another) and one id source. Disposing the result closes and releases every
+  Window. A command that closes its own Window is cancelled by the close, as on
+  every host, so don't assert its reply.
+
 ### Collections and frames
 
 `Track()` follows a route from a snapshot through its pushes, as the generated
@@ -662,6 +734,24 @@ closes the platform, as closing a window does: every service then reports
 `OwnerClosed`, file leases are released and clipboard watches end. Monitors, the
 menu bar, taskbar badges and progress, and drags report `BackendUnavailable`. A
 ViewModel built by the test can take a `new RunicTestPlatform()` directly.
+
+### Query collections
+
+A driver reads a `RunicQueryCollection` as a page does: `QueryRowsAsync(vm => vm.Rows, start, count)` returns the
+range's keys and rows (`connectionKey:` reads it as another page), `SetQueryAsync(vm => vm.Rows, query)` changes the
+query and returns the state after it, and `IndexOfAsync(vm => vm.Rows, key)` finds a row. `RunicTestRowSource<TRow, TKey>`
+serves a list through `RunicQueryFields`, waits `Latency` on the host's clock, and records `Loads`, `RowsLoaded`,
+`Counts`, `Searches` and `MaximumConcurrency`, so a test can assert what scrolling and sorting loaded:
+
+```csharp
+var source = new RunicTestRowSource<Order, int>(orders, fields, order => order.Id);
+using var host = RunicWindowTestHost.Create(services, new OrdersViewModel(source, context));
+var rows = await host.Root.QueryRowsAsync(vm => vm.Orders, 500, 40);
+Assert.Equal(1, source.Loads.Count);
+(await host.Root.SetQueryAsync(vm => vm.Orders, new RunicQuery([new RunicSortKey("amount", Descending: true)]))).ThrowIfFailed();
+```
+
+The test connection's `hello` lists `query-collections/1`.
 
 ### Lower level
 
@@ -817,6 +907,28 @@ and that a slow reply does not hold up the next request.
 - `RetainedContentModelCount()` counts every content model whose model-context lease
   the window holds, not only navigation entries. It is a test-only view of window
   internals, which `WindowContentSession` does not expose.
+
+## Blobs and uploads
+
+A window of `RunicWindowTestHost` serves its blobs below `http://runic.test/`
+(Views feature `blobs/1`). `ReadBlobAsync(url)` returns what the host serves
+for a blob URL of the state or a result, as `RunicServedBlob`: status, headers
+and content, with `range` for a byte range and `head` for `HEAD`. A replaced or
+released URL answers 404, and `ServedBlobCount` counts the URLs the window
+still serves. `UploadAsync(bytes, fileName, contentType)` simulates a page's
+upload with the window's limits (`RunicWindowTestHostOptions.MaximumUploadBytes`)
+and returns the `RunicUpload` that a command input takes;
+`PendingUploadCount` counts the uploads no command claimed.
+
+```csharp
+var upload = await host.UploadAsync("hello"u8.ToArray(), "notes.txt", "text/plain");
+await host.Root.ExecuteAsync(vm => vm.AttachCommand, upload);
+var avatar = host.Root.Snapshot().Get(vm => vm.Avatar).GetProperty("url").GetString()!;
+var served = await host.ReadBlobAsync(avatar);   // served.StatusCode, served.ContentType, served.Content
+```
+
+A ViewModel test without a window uses `RunicUpload.FromBytes` and
+`RunicBlob.FromBytes`, and reads a blob with `RunicBlob.OpenReadAsync`.
 
 ## The whole application in a browser
 

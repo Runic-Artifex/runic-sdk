@@ -36,6 +36,17 @@ export interface BetaTag {
   readonly label: string;
 }
 
+export interface BlobAttachment {
+  readonly name: string;
+  readonly preview: import("@runic-artifex/views").RunicBlob;
+}
+
+export interface CatalogRow {
+  readonly id: number;
+  readonly label: string;
+  readonly size: number;
+}
+
 export interface CodegenDerivedOfString {
   readonly inherited: string;
   readonly own: string;
@@ -293,6 +304,11 @@ export interface TestsNamingState {
 
 export interface Testsdelete {
   readonly id: number;
+}
+
+export interface Thumbnail {
+  readonly id: number;
+  readonly image: import("@runic-artifex/views").RunicBlob;
 }
 
 export interface ToolkitCommandRequest {

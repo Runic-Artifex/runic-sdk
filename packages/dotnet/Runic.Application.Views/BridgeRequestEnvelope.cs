@@ -50,9 +50,12 @@ internal sealed class BridgeRequestEnvelope : IDisposable
     internal static bool IsViewKind(string kind) => kind switch
     {
         "open" or "snapshot" or "close" or "set" or "write" or "command" or "can" or "start" or "status" or "watch"
-            or "unwatch" or "cancel" or "stream" or "interactions" or "interaction-reply" or "view-requests" => true,
-        _ => false,
+            or "unwatch" or "cancel" or "stream" or "interactions" or "interaction-reply" or "view-requests" or "region" => true,
+        _ => IsQueryKind(kind),
     };
+
+    // The request kinds of query-collections/1.
+    internal static bool IsQueryKind(string kind) => kind is "query-rows" or "query-set" or "query-index";
 
     // The requests that observe or cancel an operation by its identity.
     internal static bool IsOperationObservation(string kind) =>
@@ -116,6 +119,8 @@ internal sealed class BridgeRequestEnvelope : IDisposable
                 return "The request's route is not a route name.";
             Route = routeElement.GetString();
         }
+        // client-error (client-errors/1): a page's error report, without a route of its own.
+        if (Kind == "client-error") return BridgeClientErrors.Check(root);
         // presented (presented/1): the revision a page painted of a route.
         if (Kind == "presented")
             return Route is null ? "The request has no route." : Integer(root, "revision", minimum: 0);
@@ -150,6 +155,12 @@ internal sealed class BridgeRequestEnvelope : IDisposable
                 return ReadMember(root);
             case "can":
                 return ReadMember(root);
+            // region (region-collections/1): select or close the region of a region collection that a key names.
+            case "region":
+                return ReadMember(root)
+                    ?? String(root, "key")
+                    ?? (String(root, "action") ?? (root.GetProperty("action").GetString() is "select" or "close"
+                        ? null : "The region request's action is not select or close."));
             case "start":
             case "status":
             case "watch":
@@ -171,6 +182,14 @@ internal sealed class BridgeRequestEnvelope : IDisposable
                         ? requests.ValueKind == JsonValueKind.Array && requests.GetArrayLength() > MaximumViewRequests
                             ? $"The request lists more than {MaximumViewRequests} view requests." : Handlers(requests)
                         : "The request has no requests.");
+            // query-collections/1 (specs/application/README.md, "Query collections").
+            case "query-rows":
+                return ReadMember(root) ?? Integer(root, "start", minimum: 0) ?? Integer(root, "count", minimum: 0);
+            case "query-set":
+                return ReadMember(root) ?? (root.TryGetProperty("query", out var query) && query.ValueKind == JsonValueKind.Object
+                    ? null : "The request has no query object.");
+            case "query-index":
+                return ReadMember(root) ?? String(root, "key");
             case "interaction-reply":
                 return Identifier(root, "presentation")
                     ?? Identifier(root, "requestId")

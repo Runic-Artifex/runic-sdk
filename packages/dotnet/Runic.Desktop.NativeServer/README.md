@@ -54,8 +54,10 @@ page after 18.7 instead of 33.6 ms, on macOS 8.65 instead of 11.83 MiB):
 - `DesktopHostOptions.ConfigureServices` configures a plain service collection
   with logging, without the ASP.NET Core host's configuration, environment and
   lifetime services. `ContentRequest.Services` comes from it as before.
-- Only `GET` and `HEAD` reach the surface, as with Kestrel; request bodies are
-  not read.
+- Only `GET` and `HEAD` reach the surface's content, as with Kestrel. The one
+  exception is a window's uploads (`POST {surface}/_runic/upload`, Views feature
+  `blobs/1`), whose bodies stream to the window chunk by chunk (C ABI 3,
+  `runic_server_read`), as Kestrel's do.
 - HTTP/1.1 only, with hyper's default header limits.
 - No ASP.NET Core: a framework-dependent application needs only the .NET
   runtime, and a self-contained one carries no `Microsoft.AspNetCore.*` files.

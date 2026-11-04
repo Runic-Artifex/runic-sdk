@@ -40,6 +40,9 @@ public sealed record RunicBridgeMessage(string Json, string? ConnectionKey)
 /// </remarks>
 public sealed class InMemoryBridgeTransport : IBridgeConnectionTransport, IDisposable
 {
+    // RunicTestWindow: why the page takes no input now, such as a window-modal Window that blocks it, or null.
+    internal Func<string?>? InputBlocked { get; set; }
+
     /// <summary>The connection key of requests that name none.</summary>
     public const string DefaultConnectionKey = "connection-1";
 
@@ -252,9 +255,13 @@ public sealed class InMemoryBridgeTransport : IBridgeConnectionTransport, IDispo
                 writer.WriteString("version", "1.0.0");
                 writer.WriteEndObject();
                 // Test presentations take view requests (RunicTestPresentation); a connection that registers none
-                // receives none, so the feature changes nothing else.
+                // receives none, so the feature changes nothing else. The drivers' region requests (SelectRegionAsync,
+                // CloseRegionAsync) need region-collections/1, which adds a request kind only, and the request kinds of
+                // query collections (RunicViewDriver.QueryRowsAsync) need query-collections/1; no feature changes a push.
                 writer.WriteStartArray("features");
                 writer.WriteStringValue("view-requests/1");
+                writer.WriteStringValue("region-collections/1");
+                writer.WriteStringValue("query-collections/1");
                 writer.WriteEndArray();
                 writer.WriteEndObject();
             }), connectionKey, clientKey, CancellationToken.None).ConfigureAwait(false);

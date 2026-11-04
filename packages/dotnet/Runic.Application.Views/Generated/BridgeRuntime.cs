@@ -56,7 +56,8 @@ public sealed class PropertyDescriptor<T>
     /// Returns the sub-object the Bridge observes for this property. The Bridge subscribes when it is created and
     /// again when the ViewModel reports a change, and publishes when the sub-object changes. A
     /// <see cref="NavigationRegion{TContent}"/> publishes when its <c>Current</c> changes and binds the window session as
-    /// its navigator's presentation; a <see cref="NavigationSelection"/> publishes when its <c>SelectedIndex</c> changes;
+    /// its navigator's presentation; a <see cref="NavigationSelection"/> publishes when its <c>SelectedIndex</c> changes,
+    /// and for a <see cref="RegionCollection"/> also when its regions or their <c>Current</c> change;
     /// another <see cref="INotifyPropertyChanged"/> publishes on every change.
     /// </param>
     public PropertyDescriptor(string name, string wireName, Func<T, object?> getter, Action<T, JsonElement>? setter, Func<T, object?> observe)
@@ -85,6 +86,20 @@ public sealed class PropertyDescriptor<T>
     /// value; <see langword="null"/> for a read-only property. It throws like the setter.
     /// </summary>
     public Action<T, string>? TextSetter { get; init; }
+    /// <summary>
+    /// Whether the property is a region collection (<see cref="RunicRegionCollectionAttribute"/>): its observed
+    /// sub-object is a <see cref="NavigationSelection"/> whose regions and their content the Bridge observes, and whose
+    /// regions the page selects with <c>region</c> requests (<c>region-collections/1</c>).
+    /// </summary>
+    public bool RegionCollection { get; init; }
+    /// <summary>Whether a <c>region</c> request of a <see cref="RegionCollection"/> property may close a region.</summary>
+    public bool RegionClose { get; init; }
+    /// <summary>
+    /// Writes one row of a <see cref="RunicQueryCollection{TRow, TKey}"/> property, whose rows a page reads with
+    /// <c>query-rows</c> (<c>query-collections/1</c>); <see langword="null"/> for any other property. <see cref="Get"/>
+    /// returns the collection.
+    /// </summary>
+    public Action<Utf8JsonWriter, object?>? QueryRowWriter { get; init; }
     /// <summary>Whether the browser may write the property.</summary>
     public bool CanWrite => _setter is not null;
     /// <summary>Reads the property value from <paramref name="vm"/>.</summary>
@@ -374,10 +389,11 @@ internal sealed class BridgeSnapshotDetachedException : Exception
 }
 
 // The navigation regions a Bridge presents as content slots, in declaration order: what a guarded
-// Window clears before it closes.
+// Window clears before it closes. A region of a region collection names its selection, so the close removes it
+// instead of clearing it.
 internal interface IBridgeRegionSlots
 {
-    IReadOnlyList<NavigationRegion> NavigationRegions();
+    IReadOnlyList<(NavigationRegion Region, NavigationSelection? Collection)> NavigationRegions();
 }
 
 /// <summary>Base class of generated bridges that expose one ViewModel over an <see cref="IBridgeTransport"/>.</summary>
@@ -418,6 +434,8 @@ public partial class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBr
     private readonly Dictionary<string, PropertyDescriptor<T>> _settable = new(StringComparer.Ordinal);
     private readonly Dictionary<string, CheckedPropertyBinding> _checkedByMember = new(StringComparer.Ordinal);
     private readonly Dictionary<string, CommandDescriptor<T>> _commandsByMember = new(StringComparer.Ordinal);
+    // Query collections (query-collections/1) by wire name.
+    private readonly Dictionary<string, PropertyDescriptor<T>> _queryCollections = new(StringComparer.Ordinal);
     private readonly ICommand[] _subscribedCommands;
     private readonly string? _contractFingerprint;
     private readonly IDisposable[] _bindings;
@@ -521,6 +539,8 @@ public partial class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBr
         foreach (var property in properties.Where(property => property.CanWrite))
             _settable[property.WireName] = property;
         foreach (var command in commands) _commandsByMember[command.Member] = command;
+        foreach (var property in properties.Where(property => property.QueryRowWriter is not null))
+            _queryCollections[property.WireName] = property;
 
         var bindings = new List<IDisposable>();
         var subscribedCommands = new List<ICommand>();
@@ -751,9 +771,13 @@ public partial class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBr
             if (ReferenceEquals(previous.Source, next)) continue;
             previous.Subscription?.Dispose();
             _observed.Remove(property.Name);
+            // A query collection publishes in this ViewModel's model turns (query-collections/1).
+            if (next is IBridgeQueryCollection query) query.Bind(_modelContextLease?.Context ?? _content?.ModelContext, _logger);
             var subscription = next switch
             {
                 NavigationRegion region => NavigationPresentationBinding.Observe(region, _content, ScheduleUnit),
+                NavigationSelection selection when property.RegionCollection =>
+                    NavigationPresentationBinding.ObserveCollection(selection, _content, ScheduleUnit),
                 NavigationSelection selection => NavigationPresentationBinding.Observe(selection, ScheduleUnit),
                 INotifyPropertyChanged notifying => new SubObjectSubscription(notifying, ScheduleUnit),
                 _ => null,
@@ -762,11 +786,18 @@ public partial class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBr
         }
     }
 
-    IReadOnlyList<NavigationRegion> IBridgeRegionSlots.NavigationRegions() => _modelTurn.Run(() =>
+    IReadOnlyList<(NavigationRegion Region, NavigationSelection? Collection)> IBridgeRegionSlots.NavigationRegions() => _modelTurn.Run(() =>
     {
-        List<NavigationRegion> regions = [];
+        List<(NavigationRegion Region, NavigationSelection? Collection)> regions = [];
         foreach (var property in _properties)
-            if (property.Observe?.Invoke(_vm) is NavigationRegion region && !regions.Contains(region)) regions.Add(region);
+        {
+            var observed = property.Observe?.Invoke(_vm);
+            if (observed is NavigationRegion region && !regions.Exists(entry => entry.Region == region)) regions.Add((region, null));
+            // A region collection's regions, in order (region-collections/1).
+            else if (property.RegionCollection && observed is NavigationSelection selection)
+                foreach (var member in selection.Regions)
+                    if (!regions.Exists(entry => entry.Region == member)) regions.Add((member, selection));
+        }
         return regions;
     });
 
@@ -801,9 +832,19 @@ public partial class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBr
             _content?.NextRevision();
         }
         _modelTurn.RunForTeardown(DisposeCore);
+        // blobs/1: the URLs of the blobs the route encoded stop working.
+        _blobs?.ReleaseRoute(this);
         Interlocked.Exchange(ref _modelContextLease, null)?.Dispose();
         GC.SuppressFinalize(this);
     }
+
+    // blobs/1: the Window's blobs and uploads, which the route's codecs reach through BridgeBlobScope.
+    private BridgeBlobs Blobs => _blobs ??= BridgeDispatcher.For(_transport).Blobs;
+    private BridgeBlobs? _blobs;
+
+    // Enters the scope of the route's encodes and decodes; connection is the key of the request's connection, or null
+    // outside a request.
+    private BridgeBlobScope.Restore EnterBlobs(string? connection) => BridgeBlobScope.Enter(Blobs, this, connection);
 
     private void DisposeCore()
     {

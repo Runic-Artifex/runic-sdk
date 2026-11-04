@@ -189,6 +189,12 @@ public enum RunicWindowPresentationFeatures
     /// (<c>DesktopWindowOptions.ProfilePath</c>).
     /// </summary>
     PerWindowColorScheme = 1 << 7,
+
+    /// <summary>
+    /// A Window opened with this Window as its <see cref="RunicWindowOptions.Owner"/> belongs to it, and can be window-modal
+    /// to it (<see cref="RunicWindowOptions.Modality"/>). Without it, such a Window opens on its own.
+    /// </summary>
+    OwnedWindows = 1 << 8,
 }
 
 /// <summary>Whether a Window is active, minimized and visible, for <see cref="IRunicWindowPresentation.Activity"/>.</summary>

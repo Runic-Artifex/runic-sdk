@@ -81,6 +81,10 @@ and severities are open.
 | [`RUNICBRIDGE033`](#runicbridge033) | Warning | Build targets | The .NET SDK or Bun is older than this release supports |
 | [`RUNICBRIDGE034`](#runicbridge034) | Warning | Generator | A `[RunicPresentationScoped]` declaration reaches no Bridge command |
 | [`RUNICBRIDGE035`](#runicbridge035) | Error | Generator | A `ViewRequest` or `ViewQuestion` member is not a get-only property |
+| [`RUNICBRIDGE060`](#runicbridge060) | Error | Generator | A `RunicQueryCollection` member has an unsupported shape |
+| [`RUNICBRIDGE065`](#runicbridge065) | Error | Generator | A RunicBlob is read from the page: a command input, an interaction result or a checked field |
+| [`RUNICBRIDGE070`](#runicbridge070) | Error | Generator | A `[RunicRegionCollection]` is not on a get-only NavigationSelection property, or its content type is unsupported |
+| [`RUNICBRIDGE071`](#runicbridge071) | Error | Generator | A region collection's select or close client method collides with another client member |
 
 ### RUNICBRIDGE001
 
@@ -631,6 +635,60 @@ instance would never reach the page.
 `public ViewRequest<FocusTarget> Focus { get; } = new();`. See
 [View requests](../specs/application/README.md#view-requests).
 
+### RUNICBRIDGE060
+
+An error from the Bridge generator (since 0.16). A `RunicQueryCollection<TRow, TKey>`
+ViewModel property cannot be bridged: it has a public setter, it also carries
+`[RunicCollection]` or `[RunicAppendOnlyText]`, its key is not a `string`,
+`Guid` or `Int32`, or its rows are not DTOs. RUNICBRIDGE061 to RUNICBRIDGE064
+are reserved for query collections.
+
+**Fix:** expose the collection as a get-only property of DTO rows with a
+supported key, and remove the other collection attributes; the page changes
+the query with `setQuery`. See
+[Query collections](../packages/dotnet/Runic.Application.Views/README.md#query-collections).
+
+### RUNICBRIDGE065
+
+An error from the Bridge generator (since 0.16). A `RunicBlob` is a value that
+.NET serves to the page (feature `blobs/1`): it crosses as a URL, never as
+bytes, so the page cannot send one back. This code reports a `RunicBlob` where
+the page would supply it: a command input, an interaction result, or a member
+of a DTO that is one. A state property that holds a `RunicBlob` is read-only
+for the page whatever its setter, so it needs no change.
+
+**Fix:** take a `RunicUpload` instead. The page uploads the file with
+`client.upload(file)` and passes the resulting `BlobRef` to the command. See
+[Blobs and uploads](../packages/dotnet/Runic.Application.Views/README.md#blobs-and-uploads).
+
+### RUNICBRIDGE070
+
+An error from the Bridge generator (since 0.16). `[RunicRegionCollection]` is
+on a property that is not a `NavigationSelection`, the property has a public
+setter, the attribute's content type is `object`, or no ViewModel with a
+registered View is assignable to the content type, so the region collection
+could present nothing.
+
+**Fix:** put the attribute on a get-only `NavigationSelection` property, which
+its `Add`, `SelectAsync` and `RemoveAsync` change rather than the web view.
+Name an interface or base class that the regions' ViewModels share as the
+content type, and register a View for at least one ViewModel that implements
+it. See
+[Region collections](../packages/dotnet/Runic.Application.Views/README.md#region-collections).
+
+### RUNICBRIDGE071
+
+An error from the Bridge generator (since 0.16). The generated client method
+`select{Property}` or `close{Property}` of a region collection has the name of
+another member of the generated client: a command's method or its `can…`,
+`start…` or `recover…` method, a `set…` or `write…` method of a property, or
+`snapshot`, `subscribe`, `dispose`, `interactions` or `fieldBaseline`. Without
+`PageCanClose`, the collection has no `close…` method, so only its `select…`
+method can collide.
+
+**Fix:** rename the region collection property or the other member, such as a
+`SelectDocuments` command beside a `Documents` region collection. See
+[Region collections](../packages/dotnet/Runic.Application.Views/README.md#region-collections).
 ## dotnet runic
 
 `dotnet runic` reports these codes as the fault of a failed command, except

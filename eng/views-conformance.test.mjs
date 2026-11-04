@@ -381,6 +381,8 @@ const requestRules = {
   // README.md, "Presentation epochs": on a connection that uses presentation-epoch/1, epoch is a safe integer.
   command: m => isRoute(m.route) && isMember(m.member) && (m.epoch === undefined || isSafe(m.epoch)),
   can: m => isRoute(m.route) && isMember(m.member),
+  // README.md, "Region collections" (region-collections/1).
+  region: m => isRoute(m.route) && isMember(m.member) && ["select", "close"].includes(m.action) && typeof m.key === "string",
   start: identity, status: identity, watch: identity, unwatch: identity, cancel: identity,
   stream: m => identity(m) && isSafe(m.cursor),
   interactions: m => isRoute(m.route) && isIdentifier(m.presentation) && isSafe(m.generation) && isHandlers(m.handlers),
@@ -394,6 +396,14 @@ const requestRules = {
   // README.md, "Presented states and window close" (presented/1).
   presented: m => isRoute(m.route) && isSafe(m.revision),
   "closing-reply": () => true,
+  // README.md, "Page errors" (client-errors/1).
+  "client-error": m => isIdentifier(m.source) && m.source.length <= 32 && typeof m.message === "string"
+    && ["name", "stack", "url"].every(name => m[name] === undefined || typeof m[name] === "string")
+    && (m.route === undefined || isRoute(m.route)) && (m.dropped === undefined || isSafe(m.dropped)),
+  // README.md, "Query collections" (query-collections/1).
+  "query-rows": m => isRoute(m.route) && isMember(m.member) && isSafe(m.start) && isSafe(m.count),
+  "query-set": m => isRoute(m.route) && isMember(m.member) && isObject(m.query),
+  "query-index": m => isRoute(m.route) && isMember(m.member) && typeof m.key === "string",
 };
 
 export function readRequest(text, limits = {}) {
@@ -479,6 +489,7 @@ const replyRules = {
   write: m => m.released === true || (isSafe(m.revision) && isObject(m.receipt) && ["applied", "committed-with-error", "conflict", "rejected"].includes(m.receipt.kind)),
   command: m => withRevision(m) && (m.superseded === undefined || typeof m.superseded === "boolean"),
   can: m => typeof m.value === "boolean",
+  region: m => withRevision(m) && isObject(m.outcome) && typeof m.outcome.kind === "string",
   start: m => isSafe(m.revision) && ["accepted", "duplicate", "expired", "rejected"].includes(m.admission)
     && (!["accepted", "duplicate"].includes(m.admission) || validStatus(m.status)) && (m.admission !== "rejected" || typeof m.reason === "string"),
   status: m => validStatus(m.status), watch: m => validStatus(m.status), unwatch: m => validStatus(m.status),
@@ -490,6 +501,10 @@ const replyRules = {
   receive: m => Array.isArray(m.messages) && m.messages.every(isObject),
   presented: () => true,
   "closing-reply": () => true,
+  "query-rows": m => isSafe(m.version) && (m.total === null || isSafe(m.total)) && isSafe(m.start) && Array.isArray(m.keys)
+    && Array.isArray(m.rows) && m.keys.length === m.rows.length && m.keys.every(key => typeof key === "string" && key.length > 0),
+  "query-set": m => withRevision(m),
+  "query-index": m => isSafe(m.version) && Number.isSafeInteger(m.index) && m.index >= -1,
 };
 export function readReply(request, text) {
   let message;
@@ -725,7 +740,7 @@ test("every scenario is self-contained and names its file", () => {
     for (const problem of scenarioProblems(scenario)) failures.push(`${name(path)}: ${problem}`);
   }
   assert.deepEqual(failures, []);
-  for (const set of ["handshake", "state-changes", "replies", "edits", "operations", "presentations", "interactions", "view-requests", "errors", "request-sessions"])
+  for (const set of ["handshake", "state-changes", "replies", "edits", "operations", "presentations", "regions", "interactions", "view-requests", "errors", "request-sessions", "query-collections", "blobs"])
     assert.ok([...ids].some(id => id.startsWith(`${set}.`)), `no ${set} scenario`);
 });
 

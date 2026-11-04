@@ -39,6 +39,87 @@ internal sealed class NativeExchange : PresentationExchange, IDisposable, IThrea
 
     internal ulong Id { get; }
 
+    // blobs/1: the request body, read chunk by chunk from the library (runic_server_read).
+    internal override Stream RequestBody => _requestBody ??= new RequestBodyStream(this);
+    private RequestBodyStream? _requestBody;
+    private TaskCompletionSource<byte[]?>? _bodyRead;
+
+    // A chunk (data), the end (null) or a failure of the read in flight.
+    internal void BodyReceived(uint kind, ReadOnlySpan<byte> data)
+    {
+        var read = Interlocked.Exchange(ref _bodyRead, null);
+        if (read is null) return;
+        if (kind == BodyReadData) read.TrySetResult(data.ToArray());
+        else if (kind == BodyReadEnd) read.TrySetResult(null);
+        else read.TrySetException(new IOException("The request body could not be read."));
+    }
+
+    private Task<byte[]?> ReadBodyAsync()
+    {
+        var read = new TaskCompletionSource<byte[]?>(TaskCreationOptions.RunContinuationsAsynchronously);
+        if (Interlocked.CompareExchange(ref _bodyRead, read, null) is not null)
+            throw new InvalidOperationException("A read of the request body is in progress.");
+        int result;
+        try { result = NativeServerInterop.Read(_server.Handle, Id, Id); }
+        catch
+        {
+            _bodyRead = null;
+            throw;
+        }
+        if (result != Ok)
+        {
+            Interlocked.CompareExchange(ref _bodyRead, null, read);
+            // The request completed or ended: its body is gone.
+            read.TrySetException(new IOException($"The request body could not be read ({result})."));
+        }
+        return read.Task;
+    }
+
+    private sealed class RequestBodyStream(NativeExchange owner) : Stream
+    {
+        private byte[]? _chunk;
+        private int _offset;
+        private bool _ended;
+
+        public override bool CanRead => true;
+        public override bool CanSeek => false;
+        public override bool CanWrite => false;
+        public override long Length => throw new NotSupportedException();
+        public override long Position { get => throw new NotSupportedException(); set => throw new NotSupportedException(); }
+
+        public override async ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default)
+        {
+            if (buffer.Length == 0) return 0;
+            while (_chunk is null || _offset == _chunk.Length)
+            {
+                if (_ended) return 0;
+                var next = await owner.ReadBodyAsync().WaitAsync(cancellationToken).ConfigureAwait(false);
+                if (next is null)
+                {
+                    _ended = true;
+                    return 0;
+                }
+                _chunk = next;
+                _offset = 0;
+            }
+            var count = Math.Min(buffer.Length, _chunk.Length - _offset);
+            _chunk.AsMemory(_offset, count).CopyTo(buffer);
+            _offset += count;
+            return count;
+        }
+
+        public override Task<int> ReadAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken) =>
+            ReadAsync(buffer.AsMemory(offset, count), cancellationToken).AsTask();
+
+        public override int Read(byte[] buffer, int offset, int count) =>
+            ReadAsync(buffer.AsMemory(offset, count)).AsTask().GetAwaiter().GetResult();
+
+        public override void Flush() { }
+        public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
+        public override void SetLength(long value) => throw new NotSupportedException();
+        public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
+    }
+
     // Copies the request out of the library's memory; null when its target cannot be represented (400).
     internal static unsafe NativeExchange? Create(NativePresentationServer server, RunicRequest* request)
     {

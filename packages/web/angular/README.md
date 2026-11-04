@@ -368,6 +368,74 @@ whose kind has no component as `$implicit` and as `content`, and its markup
 <ng-template #missingView let-page><p role="alert">{{ missingText(page.kind) }}</p></ng-template>
 ```
 
+### Region collections
+
+A .NET `[RunicRegionCollection]` member, such as `state.documents`, lists
+regions that each keep their own back stack. `<runic-region-outlets>`
+(`RegionOutlets`) renders a `ViewOutlet` for each region, tracked by the
+region's key, inside a `<div data-region-key>`. The default
+`mode="keep-mounted"` keeps every region mounted and sets `hidden` and an inline
+`display: none` on all but the selected one, so a tab keeps its component,
+scroll position and unsent input. Author CSS cannot show a hidden panel without
+`!important`. `mode="selected"` renders only the selected region. Projected
+content renders while there is no region, and `missing` is passed to each
+outlet. A region with `content: null` renders nothing.
+
+The package has no tab bar. Build one with `regionEntries` and the generated
+`selectDocuments(key)` and `closeDocuments(key)`. The `panelProps` input is a function that returns attributes
+(`RegionPanelAttributes`) for each region's wrapper, such as `id`,
+`role="tabpanel"` and `aria-labelledby`, so each tab can name its panel in
+`aria-controls`. A `null` value leaves an attribute out. `hidden`, `style` and
+`data-region-key` stay controlled by the outlet and are ignored.
+
+```html
+<div role="tablist">
+  @for (tab of tabs(); track tab.key) {
+    <button [id]="tabId(tab.key)" role="tab" [attr.aria-selected]="tab.selected" [attr.aria-controls]="panelId(tab.key)"
+      (click)="client()?.selectDocuments(tab.key)">
+      {{ tab.content?.kind ?? "Empty" }}
+    </button>
+    <button aria-label="Close" (click)="close(tab.key)">×</button>
+  }
+</div>
+<runic-region-outlets [collection]="state()?.documents" [registry]="documentPages" [panelProps]="panel">
+  No open documents
+</runic-region-outlets>
+```
+
+```ts
+readonly tabs = computed(() => regionEntries(this.state()?.documents));
+readonly tabId = (key: string) => `document-tab-${key}`;
+readonly panelId = (key: string) => `document-panel-${key}`;
+readonly panel = (tab: RegionEntry<DocumentReference>): RegionPanelAttributes =>
+  ({ id: this.panelId(tab.key), role: "tabpanel", "aria-labelledby": this.tabId(tab.key) });
+private readonly injector = inject(Injector);
+
+async close(key: string) {
+  if ((await this.client()?.closeDocuments(key))?.kind !== "Committed") return;
+  afterNextRender(() => {
+    const selected = selectedRegion(this.state()?.documents);
+    if (selected) document.getElementById(this.tabId(selected.key))?.focus();
+  }, { injector: this.injector });
+}
+```
+
+`selected` changes only when a switch or close commits. A departure guard can
+keep the current tab, so highlight `selected` and do not move the highlight
+before the request settles. `select…` and `close…` resolve to the .NET
+`NavigationOutcome`, such as `{ kind: "Rejected", rejection: "Guard" }`.
+
+Closing the selected tab removes its button, and the next tab becomes selected
+when the close commits. After `closeDocuments` resolves with `kind: "Committed"`,
+move focus to the button of the new selected tab, as `close` above does.
+
+In both modes the region collection keeps presenting every region's content,
+so the pages of hidden tabs stay live and still receive state. `"selected"`
+mode only unmounts the components of the regions that are not selected.
+
+`regionEntries`, `selectedRegion` and the region types are re-exported from
+`@runic-artifex/views`.
+
 ## Commands
 
 `injectCommand(command)` returns `run(...args)` and `pending`, `error` and
@@ -697,3 +765,17 @@ export class RowsPage {
   }
 }
 ```
+
+## Query collections
+
+`injectQueryCollection(element, collection, options)` follows a scroll container for a
+[query collection](https://github.com/Runic-Artifex/runic-sdk/tree/main/packages/web/views#query-collections) (`client.queries.{name}`), whose rows stay in .NET: it loads the rows the container shows,
+with placeholders until they arrive, and lays them out with variable heights. `viewport` is a signal of the
+`QueryViewport` (`items` with `top` and `size`, `totalSize`, `total`, `query`, `loading`, `error`); `observe(element,
+index)` measures a rendered row, and `scrollToKey`, `scrollToIndex`, `setQuery` and `retry` act on the collection.
+
+```ts
+readonly list = injectQueryCollection(viewChild<ElementRef<HTMLElement>>("scroller"),
+  () => this.view.client()?.queries.rows, () => ({ estimateSize: 32 }));
+```
+

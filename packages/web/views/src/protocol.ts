@@ -18,6 +18,13 @@ export const requestSessionFeature = "request-session/1";
 export const presentedFeature = "presented/1";
 /** `view-requests/1` (specs/application/README.md, "View requests"): the producer pushes one-way `view-request`s to presentations that registered handlers. */
 export const viewRequestsFeature = "view-requests/1";
+/** `client-errors/1` (specs/application/README.md, "Page errors"): the page reports its errors with `client-error` requests. */
+export const clientErrorsFeature = "client-errors/1";
+/**
+ * `query-collections/1` (specs/application/README.md, "Query collections"): a page reads the rows of a query collection
+ * for its own range (`query-rows`), changes its query (`query-set`) and finds a key's position (`query-index`).
+ */
+export const queryCollectionsFeature = "query-collections/1";
 
 /** A reply as the runtime reads it. Members beyond `ok`, `error`, `revision` and `released` depend on the request. */
 export type Reply = Message & {
@@ -114,6 +121,8 @@ const replyMembers: Readonly<Record<string, (reply: Message) => boolean>> = {
   write: reply => isSafe(reply["revision"]) && isObject(reply["receipt"]),
   command: reply => isSafe(reply["revision"]) && (reply["superseded"] === undefined || typeof reply["superseded"] === "boolean"),
   can: reply => typeof reply["value"] === "boolean",
+  // region-collections/1: a region request that settled carries its outcome.
+  region: reply => isSafe(reply["revision"]) && isObject(reply["outcome"]) && isString(reply["outcome"]["kind"]),
   start: reply => isSafe(reply["revision"]) && isString(reply["admission"])
     && (reply["admission"] !== "accepted" && reply["admission"] !== "duplicate" || validStatus(reply["status"]))
     && (reply["status"] === undefined || validStatus(reply["status"])),
@@ -132,6 +141,11 @@ const replyMembers: Readonly<Record<string, (reply: Message) => boolean>> = {
   "menu-bar-unwatch": () => true,
   presented: () => true,
   "closing-reply": () => true,
+  "query-rows": reply => isSafe(reply["version"]) && (reply["total"] === null || isSafe(reply["total"])) && isSafe(reply["start"])
+    && Array.isArray(reply["keys"]) && Array.isArray(reply["rows"]) && reply["keys"].length === reply["rows"].length
+    && reply["keys"].every(key => isString(key) && key.length > 0),
+  "query-set": reply => isSafe(reply["revision"]),
+  "query-index": reply => isSafe(reply["version"]) && Number.isSafeInteger(reply["index"]) && (reply["index"] as number) >= -1,
 };
 
 /**

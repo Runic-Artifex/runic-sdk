@@ -17,9 +17,10 @@ public sealed class ProjectViewModel : ReactiveObject, IDisposable
     private string _title;
     private string _theme;
     private string _desktopScheme = nameof(DesktopColorScheme.NoPreference);
+    private string _account = "Household";
 
     public ProjectViewModel(ProjectService project, SettingsStore settings, IDesktopSettings desktop,
-        IRunicWindowService windows, IRunicModelContext context)
+        IRunicWindowService windows, IRunicWindowContext window, IRunicModelContext context)
     {
         _project = project;
         _context = context;
@@ -30,6 +31,26 @@ public sealed class ProjectViewModel : ReactiveObject, IDisposable
         NewWindowCommand = ReactiveCommand.CreateFromTask(async token =>
         {
             await windows.OpenWindowAsync<ProjectWindow>(cancellationToken: token);
+        });
+        // Opens the document in a Window of its own, or brings the one already open for that path to the front.
+        OpenDocumentCommand = ReactiveCommand.CreateFromTask<string>(async (path, token) =>
+        {
+            await windows.FindOrOpenAsync<DocumentWindow, DocumentRequest>(path, new DocumentRequest(path),
+                new RunicWindowOptions { StartPage = "document.html", Width = 480, Height = 320 }, cancellationToken: token);
+        });
+        // A dialog over this Window: it blocks this Window until it closes, and returns the account chosen, if any.
+        ChooseAccountCommand = ReactiveCommand.CreateFromTask(async token =>
+        {
+            var chosen = await windows.OpenForResultAsync<AccountWindow, AccountRequest, string>(new AccountRequest(Account),
+                new RunicWindowOptions
+                {
+                    StartPage = "account.html",
+                    Width = 360,
+                    Height = 280,
+                    Owner = window.Window,
+                    Modality = RunicWindowModality.Window,
+                }, token);
+            if (chosen.TryGetValue(out var account)) Account = account;
         });
         ChooseThemeCommand = ReactiveCommand.Create<string>(theme =>
         {
@@ -53,6 +74,11 @@ public sealed class ProjectViewModel : ReactiveObject, IDisposable
     public ReactiveCommand<string, RxVoid> RenameCommand { get; }
     public ReactiveCommand<RxVoid, RxVoid> NewWindowCommand { get; }
     public ReactiveCommand<string, RxVoid> ChooseThemeCommand { get; }
+    public ReactiveCommand<string, RxVoid> OpenDocumentCommand { get; }
+    public ReactiveCommand<RxVoid, RxVoid> ChooseAccountCommand { get; }
+
+    // The account the "choose account" dialog returned last.
+    public string Account { get => _account; private set => this.RaiseAndSetIfChanged(ref _account, value); }
 
     // Raised on the renaming Window's thread: apply it in this Window's turn.
     private void OnRenamed(object? sender, EventArgs e) => _context.TryPost(() => Title = _project.Title);

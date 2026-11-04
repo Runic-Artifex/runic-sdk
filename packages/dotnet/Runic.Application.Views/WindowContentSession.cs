@@ -89,9 +89,12 @@ public sealed class WindowContentSession : IDisposable
         TimeProvider = options.TimeProvider ?? TimeProvider.System;
         IncludesFailureDetail = options.IncludeFailureDetail ?? BridgeFailureDetails.DefaultIncluded;
         MaximumInputBytes = BridgeInputLimit.Resolve(options.MaximumInputBytes, nameof(options.MaximumInputBytes));
+        var maximumUploadBytes = BridgeInputLimit.ResolveUpload(options.MaximumUploadBytes, nameof(options.MaximumUploadBytes));
+        var maximumWindowUploadBytes = BridgeInputLimit.ResolveUpload(options.MaximumWindowUploadBytes, nameof(options.MaximumWindowUploadBytes));
         _createId = options.CreateId ?? (static () => Guid.NewGuid().ToString("N"));
         _issuedIds = options.CreateId is null ? null : new(StringComparer.Ordinal);
         Logger = loggerFactory?.CreateLogger(RunicViewsTelemetry.LogCategory) ?? TraceFallbackLogger.Instance;
+        PageLogger = loggerFactory?.CreateLogger(RunicViewsTelemetry.PageLogCategory) ?? TraceFallbackLogger.Instance;
         HasLogger = loggerFactory is not null;
         var contextLogger = loggerFactory?.CreateLogger<RunicModelContext>();
         _transport = transport ?? throw new ArgumentNullException(nameof(transport));
@@ -124,7 +127,8 @@ public sealed class WindowContentSession : IDisposable
             // The window's dispatcher takes the window's input limit, logger and clock, and reports the connections
             // its transport closes.
             var dispatcher = BridgeDispatcher.For(_transport);
-            dispatcher.Configure(MaximumInputBytes, Logger, TimeProvider);
+            dispatcher.Configure(MaximumInputBytes, Logger, TimeProvider, PageLogger);
+            dispatcher.Blobs.Configure(maximumUploadBytes, maximumWindowUploadBytes);
             _connectionObserver = dispatcher.OnConnectionClosed(ReleaseConnection);
             _rootNavigation = AttachRootToNavigator(rootModel);
         }
@@ -203,6 +207,9 @@ public sealed class WindowContentSession : IDisposable
 
     // The request dispatcher of the window's transport, which owns its connections.
     internal BridgeDispatcher Dispatcher => BridgeDispatcher.For(_transport);
+
+    // The errors the window's pages report (client-errors/1), in their own category.
+    internal ILogger PageLogger { get; }
 
     internal bool HasLogger { get; }
 
@@ -912,6 +919,8 @@ public sealed class WindowContentSession : IDisposable
         Capture(_operations.Dispose, errors);
         Capture(_interactions.Dispose, errors);
         Capture(_fieldWrites.Dispose, errors);
+        // blobs/1: the window's blob URLs stop working and its unclaimed uploads are deleted.
+        Capture(BridgeDispatcher.For(_transport).Blobs.Dispose, errors);
 
         IRunicModelContextLease[] modelLeases;
         IRunicModelContextLease? rootModelLease;

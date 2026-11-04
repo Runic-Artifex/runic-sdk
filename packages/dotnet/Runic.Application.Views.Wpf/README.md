@@ -314,6 +314,29 @@ result is `Failed` with `PermissionDenied`. A closed window, or one whose
 dispatcher shut down, reports `OwnerClosed`. `Window.Activate()` alone neither
 restores the window nor reports a refusal.
 
+## A Runic Desktop window over a WPF window
+
+A Runic Desktop window that a WPF application opens on its `DesktopHost` can
+belong to a WPF window, and block it as `ShowDialog` does (since 0.16):
+
+```csharp
+var dialog = await surface.OpenWindowAsync(new DesktopWindowOptions
+{
+    Owner = WpfPlatformServices.ForDesktopWindowOwner(mainWindow),
+    Modality = DesktopWindowModality.Window,
+});
+await dialog.WaitForCloseAsync();
+```
+
+`ForDesktopWindowOwner` is called on the window's UI thread and creates the
+window's handle if it has none yet. The Desktop window stays above the WPF
+window, and with `DesktopWindowModality.Window` the WPF window is disabled until
+the Desktop window closed. Runic does not follow the WPF window's life: close
+the Desktop window before its owner. The other way round, a WPF dialog belongs
+to a Runic Desktop window with
+`new WindowInteropHelper(dialog).Owner = desktopWindow.NativeHandle` before
+`dialog.ShowDialog()`.
+
 ## The window's presentation for its ViewModels
 
 `WpfPlatformServices.ForWindowPresentation(window, loggerFactory)` gives the

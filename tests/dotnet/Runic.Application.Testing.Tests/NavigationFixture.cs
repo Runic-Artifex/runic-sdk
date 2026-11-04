@@ -115,6 +115,7 @@ internal sealed class NavViewLocator : IRunicViewLocator
         : typeof(TView) == typeof(NavEditorView) ? (TView)(object)new NavEditorView()
         : typeof(TView) == typeof(ReactiveNavEditorView) ? (TView)(object)new ReactiveNavEditorView()
         : typeof(TView) == typeof(NavLogPageView) ? (TView)(object)new NavLogPageView()
+        : typeof(TView) == typeof(NavTabbedPageView) ? (TView)(object)new NavTabbedPageView()
         : throw new InvalidOperationException($"Unexpected View {typeof(TView).Name}.");
 }
 
