@@ -1,1 +1,3 @@
 #nullable enable
+Runic.Platform.DesktopLanguages
+static Runic.Platform.DesktopLanguages.Preferred.get -> System.Collections.Generic.IReadOnlyList<string!>!

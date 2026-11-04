@@ -38,7 +38,7 @@ internal sealed partial class MacOsWkWebViewHost
             SpellingLanguages.FirstReport(null);
             return;
         }
-        var resolution = SpellingLanguages.Resolve(languages, Strings(Api.SendNint(Api.GetClass("NSLocale"), "preferredLanguages")),
+        var resolution = SpellingLanguages.Resolve(languages, Runic.Platform.DesktopLanguages.Preferred,
             Strings(Api.SendNint(checker, "availableLanguages")));
         if (resolution.Dictionaries.Length == 1)
         {

@@ -1,1 +1,2 @@
 #nullable enable
+Runic.Application.Testing.RunicWindowTestHost<TViewModel>.ApplicationLocale.get -> Runic.Application.Views.IRunicApplicationLocale!

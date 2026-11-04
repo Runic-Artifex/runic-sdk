@@ -316,6 +316,20 @@ Assert.Single(host.Connections.Current);
 context: a command's reply comes after the `Connected` of its connection, and
 after `CloseConnection` a test awaits a model turn before it reads the list.
 
+### The window's language
+
+A window follows the application's locale while it sets none of its own, as in
+the application ([translated text](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Application.Views/README.md#translated-text)).
+`host.ApplicationLocale` (since 0.17) is the `IRunicApplicationLocale` registered
+in the services of `RunicWindowTestHost.Create(services)` and
+`CreateWindowAsync`, or, for a host built with a constructor, a locale of that
+host alone. Switch it as the application does, then read the window's locale:
+
+```csharp
+await host.ApplicationLocale.SetLocaleAsync("de");
+Assert.Equal("de", host.Content.Locale);              // pushed to pages with translation-text/1
+```
+
 ### Navigation
 
 A `NavigationRegion<TContent>` slot is an ordinary content slot, so the same host

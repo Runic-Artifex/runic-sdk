@@ -99,8 +99,33 @@ export function configureTranslatedText(translations: TextTranslations): () => v
   return stop;
 }
 
+// A window locale the page's runtime refuses, such as `de-CH` for a catalog that has `de` under the `Exact` policy, falls
+// back through the locale's parents (`de-CH`, then `de`) before the error is reported: the page shows the closest
+// language it has, and its references follow the window's language instead of staying in the previous one.
 function followWindowLocale(translations: TextTranslations, locale: string): void {
-  try { translations.setLocale?.(locale); } catch (error) { reportBridgeError(error); }
+  if (!translations.setLocale) return;
+  let failure: { readonly error: unknown } | undefined;
+  for (const candidate of localeParents(locale)) {
+    try {
+      translations.setLocale(candidate);
+      return;
+    } catch (error) { failure ??= { error }; }
+  }
+  if (failure) reportBridgeError(failure.error);
+}
+
+// A locale and its parents, most specific first: zh-Hant-TW, zh-Hant, zh. Extensions and private use (-u-…, -x-…)
+// are dropped after the full tag.
+function localeParents(locale: string): string[] {
+  const subtags = locale.split("-");
+  const singleton = subtags.findIndex((subtag, index) => index > 0 && subtag.length === 1);
+  const base = singleton < 0 ? subtags : subtags.slice(0, singleton);
+  const candidates = [locale];
+  for (let length = base.length; length >= 1; length--) {
+    const candidate = base.slice(0, length).join("-");
+    if (!candidates.includes(candidate)) candidates.push(candidate);
+  }
+  return candidates;
 }
 
 /**

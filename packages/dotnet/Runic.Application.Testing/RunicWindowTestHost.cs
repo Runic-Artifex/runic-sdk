@@ -85,6 +85,7 @@ public sealed class RunicWindowTestHost<TViewModel> : IDisposable where TViewMod
     }
 
     private readonly RunicConnections _connections = new();
+    private readonly Lock _gate = new();
 
     /// <summary>
     /// The window's page connections, as the window scope's <see cref="IRunicConnections"/> reports them: each test
@@ -112,6 +113,38 @@ public sealed class RunicWindowTestHost<TViewModel> : IDisposable where TViewMod
     /// constructor. The caller keeps ownership of them.
     /// </summary>
     public IServiceProvider? Services { get; internal init; }
+
+    /// <summary>
+    /// The application's locale, which the window follows while it sets no locale of its own
+    /// (<see cref="IRunicWindowLocale"/>): the <see cref="IRunicApplicationLocale"/> registered in <see cref="Services"/>,
+    /// or, for a host without one, a locale of this host alone. Switch it as the application does, and read the pushes
+    /// from <see cref="Transport"/>:
+    /// <code>
+    /// await host.ApplicationLocale.SetLocaleAsync("de");
+    /// </code>
+    /// </summary>
+    public IRunicApplicationLocale ApplicationLocale
+    {
+        get
+        {
+            if (Volatile.Read(ref _applicationLocale) is { } known) return known;
+            if (Services?.GetService(typeof(IRunicApplicationLocale)) is IRunicApplicationLocale registered)
+                return Interlocked.CompareExchange(ref _applicationLocale, registered, null) ?? registered;
+            lock (_gate)
+            {
+                if (_applicationLocale is { } created) return created;
+                var own = new RunicApplicationLocale();
+                // The window follows this host's locale as a Window scope's IRunicWindowLocale follows the application's.
+                _ownLocale = new RunicWindowContext(own);
+                _ownLocale.AttachContent(Content);
+                Volatile.Write(ref _applicationLocale, own);
+                return own;
+            }
+        }
+    }
+
+    private IRunicApplicationLocale? _applicationLocale;
+    private RunicWindowContext? _ownLocale;
 
     /// <summary>
     /// The window's recording presentation: the <see cref="RunicTestWindowPresentation"/> of a Window that
@@ -311,6 +344,7 @@ public sealed class RunicWindowTestHost<TViewModel> : IDisposable where TViewMod
         if (_disposed) return;
         _disposed = true;
         _connections.Dispose();
+        lock (_gate) _ownLocale?.Dispose();
         try { _attachment.Dispose(); }
         finally
         {

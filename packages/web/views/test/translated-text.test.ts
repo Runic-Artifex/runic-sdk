@@ -129,6 +129,36 @@ test("the window's locale sets the runtime's locale, also one pushed before the 
   assert.deepEqual(locales, ["de", "en", null]);
 });
 
+test("a window locale the runtime refuses falls back through its parents before it is reported (L3-20)", async () => {
+  // A runtime under the Exact policy, as the generated runtime is: setLocale throws for a locale it lacks.
+  const runtime = translations();
+  const tried: string[] = [];
+  const strict: TextTranslations = {
+    ...runtime,
+    setLocale(next) {
+      tried.push(next);
+      if (next !== "de" && next !== "en") throw new RangeError(`Unsupported locale: ${next}`);
+      runtime.setLocale!(next);
+    },
+  };
+  cleanup.push(configureTranslatedText(strict));
+  const reported: unknown[] = [];
+  const previous = globalThis.reportError;
+  globalThis.reportError = error => { reported.push(error); };
+  cleanup.push(() => { globalThis.reportError = previous; });
+  await reportWindowLocale("de-CH-u-co-phonebk");
+  assert.deepEqual(tried, ["de-CH-u-co-phonebk", "de-CH", "de"]);
+  assert.equal(runtime.getLocale(), "de");
+  assert.equal(resolveText(saved), "Gespeichert.", "references follow the window's language");
+  assert.equal(reported.length, 0, "a parent the runtime has is not an error");
+  tried.length = 0;
+  await reportWindowLocale("fr-CA");
+  assert.deepEqual(tried, ["fr-CA", "fr"]);
+  assert.equal(runtime.getLocale(), "de", "a locale without a parent the runtime has keeps the page's language");
+  assert.equal(reported.length, 1, "the first error is reported once");
+  assert.match(String(reported[0]), /fr-CA/);
+});
+
 test("a runtime without setLocale resolves in the window's locale", async () => {
   const runtime = translations();
   cleanup.push(configureTranslatedText({ resolve: runtime.resolve, getLocale: runtime.getLocale }));
