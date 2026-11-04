@@ -1,2 +1,1 @@
 #nullable enable
-static Runic.Platform.MacOS.MacOSPlatformProvider.CreatePowerEvents() -> Runic.Platform.IDesktopPowerEvents!

@@ -15,3 +15,4 @@ static Runic.Platform.Windows.WindowsPlatformProvider.GetLaunch(System.Collectio
 static Runic.Platform.Windows.WindowsPlatformProvider.CreateNetworkStatus() -> Runic.Platform.IDesktopNetworkStatus!
 static Runic.Platform.Windows.WindowsPlatformProvider.CreateGlobalShortcuts() -> Runic.Platform.IDesktopGlobalShortcuts!
 static Runic.Platform.Windows.WindowsPlatformProvider.CreateSecretStore(Runic.Platform.DesktopSecretStoreOptions! options) -> Runic.Platform.IDesktopSecretStore!
+static Runic.Platform.Windows.WindowsPlatformProvider.CreatePowerEvents() -> Runic.Platform.IDesktopPowerEvents!

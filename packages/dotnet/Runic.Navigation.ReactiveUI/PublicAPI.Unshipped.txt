@@ -1,3 +1,1 @@
 #nullable enable
-static Runic.Navigation.ReactiveUI.ReactiveNavigationSelectionExtensions.CreateCloseCommand(this Runic.Navigation.NavigationSelection! selection, System.IObservable<bool>? canExecute = null, ReactiveUI.Primitives.Concurrency.ISequencer? outputScheduler = null) -> ReactiveUI.ReactiveCommand<Runic.Navigation.NavigationRegion!, Runic.Navigation.NavigationOutcome!>!
-static Runic.Navigation.ReactiveUI.ReactiveNavigationSelectionExtensions.WhenRegionsChanged(this Runic.Navigation.NavigationSelection! selection) -> System.IObservable<System.Collections.Generic.IReadOnlyList<Runic.Navigation.NavigationRegion!>!>!

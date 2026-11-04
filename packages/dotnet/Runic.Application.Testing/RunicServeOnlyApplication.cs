@@ -96,8 +96,6 @@ public sealed class RunicServeOnlyApplication : IAsyncDisposable
     /// <returns>The Window's URL.</returns>
     /// <exception cref="TimeoutException">The application wrote no such URL in time; it keeps running.</exception>
     /// <exception cref="InvalidOperationException">The application exited first.</exception>
-    [System.Diagnostics.CodeAnalysis.SuppressMessage("ApiDesign", "RS0026:Do not add multiple public overloads with optional parameters",
-        Justification = "The overloads differ in their first parameter's type; only the trailing token is optional, as on every asynchronous member.")]
     public Task<Uri> WaitForWindowUrlAsync(int index, TimeSpan timeout, CancellationToken cancellationToken = default)
     {
         ArgumentOutOfRangeException.ThrowIfNegative(index);
@@ -120,8 +118,6 @@ public sealed class RunicServeOnlyApplication : IAsyncDisposable
     /// </remarks>
     /// <exception cref="TimeoutException">The application named no such Window in time; it keeps running.</exception>
     /// <exception cref="InvalidOperationException">The application exited first.</exception>
-    [System.Diagnostics.CodeAnalysis.SuppressMessage("ApiDesign", "RS0026:Do not add multiple public overloads with optional parameters",
-        Justification = "The overloads differ in their first parameter's type; only the trailing token is optional, as on every asynchronous member.")]
     public Task<Uri> WaitForWindowUrlAsync(string windowType, TimeSpan timeout, CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(windowType);

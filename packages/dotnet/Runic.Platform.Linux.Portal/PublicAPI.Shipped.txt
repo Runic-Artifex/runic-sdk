@@ -39,3 +39,4 @@ Runic.Platform.Linux.Portal.PortalApplication.ExportApplicationAsync(Runic.Platf
 Runic.Platform.Linux.Portal.PortalApplication.CreateNetworkStatus() -> Runic.Platform.IDesktopNetworkStatus!
 Runic.Platform.Linux.Portal.PortalApplication.CreateGlobalShortcuts() -> Runic.Platform.IDesktopGlobalShortcuts!
 Runic.Platform.Linux.Portal.PortalApplication.CreateSecretStore(Runic.Platform.DesktopSecretStoreOptions! options) -> Runic.Platform.IDesktopSecretStore!
+Runic.Platform.Linux.Portal.PortalApplication.CreatePowerEvents() -> Runic.Platform.IDesktopPowerEvents!

@@ -63,3 +63,5 @@ static readonly Runic.Application.Views.Wpf.RunicViewHost.WebContentProperty -> 
 Runic.Application.Views.Wpf.RunicViewHost.ContentSecurityPolicy.get -> string?
 Runic.Application.Views.Wpf.RunicViewHost.ContentSecurityPolicy.set -> void
 static readonly Runic.Application.Views.Wpf.RunicViewHost.ContentSecurityPolicyProperty -> System.Windows.DependencyProperty!
+static Runic.Application.Views.Wpf.WpfPlatformServices.ForWindowPresentation(System.Windows.Window! window, Microsoft.Extensions.Logging.ILoggerFactory? loggerFactory = null) -> Runic.Application.Views.IRunicWindowPresentation!
+static Runic.Application.Views.Wpf.WpfPlatformServices.ForDesktopWindowOwner(System.Windows.Window! window) -> Runic.Desktop.DesktopWindowOwner!
