@@ -62,3 +62,4 @@ static Runic.Platform.MacOS.MacOSPlatformProvider.CreateOpenRegistration() -> Ru
 static Runic.Platform.MacOS.MacOSPlatformProvider.CreateNetworkStatus() -> Runic.Platform.IDesktopNetworkStatus!
 static Runic.Platform.MacOS.MacOSPlatformProvider.CreateGlobalShortcuts() -> Runic.Platform.IDesktopGlobalShortcuts!
 static Runic.Platform.MacOS.MacOSPlatformProvider.CreateSecretStore(Runic.Platform.DesktopSecretStoreOptions! options) -> Runic.Platform.IDesktopSecretStore!
+static Runic.Platform.MacOS.MacOSPlatformProvider.CreatePowerEvents() -> Runic.Platform.IDesktopPowerEvents!

@@ -45,3 +45,6 @@ Runic.Application.Views.CsWebUi.RunicCsWebUiHostOptions.MenuBar.get -> System.Co
 Runic.Application.Views.CsWebUi.RunicCsWebUiHostOptions.MenuBar.init -> void
 Runic.Application.Views.CsWebUi.RunicCsWebUiHostOptions.Assets.get -> Runic.Assets.IAssetSource?
 Runic.Application.Views.CsWebUi.RunicCsWebUiHostOptions.Assets.init -> void
+const Runic.Application.Views.CsWebUi.RunicCsWebUiHost.OwnerUnsupportedCode = "window-owner-unsupported" -> string!
+Runic.Application.Views.CsWebUi.RunicCsWebUiHostOptions.MaximumUploadBytes.get -> long?
+Runic.Application.Views.CsWebUi.RunicCsWebUiHostOptions.MaximumUploadBytes.init -> void
