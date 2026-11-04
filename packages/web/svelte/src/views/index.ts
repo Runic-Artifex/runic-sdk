@@ -12,6 +12,10 @@ export { useLatestOperation, type LatestOperationHandle } from "./use-latest-ope
 export { useCollectionViewport, type CollectionViewportHandle } from "./use-collection-viewport.svelte.js";
 export { useBridgeConnection, type BridgeConnectionHandle } from "./use-bridge-connection.svelte.js";
 export { onBridgeConnection, type BridgeConnectionOptions, type BridgeConnectionState } from "@runic-artifex/views";
+export { useText, useWindowLocale, type TextHandle, type WindowLocaleHandle } from "./use-text.svelte.js";
+export {
+  configureTranslatedText, resolveText, windowLocale, type TextReference, type TextTranslations,
+} from "@runic-artifex/views";
 export {
   FieldError,
   type BridgeField,

@@ -378,6 +378,17 @@ internal static partial class ViewsLog
     [LoggerMessage(EventId = 1102, EventName = "HotReloadRefreshFailed", Level = LogLevel.Warning,
         Message = "Refreshing {Model} after a Hot Reload update failed with {ErrorType}.")]
     internal static partial void HotReloadRefreshFailed(ILogger logger, Exception exception, string model, string errorType);
+
+    // translation-text/1: the application set the window's locale, which its pages follow (null: they keep their own).
+    [LoggerMessage(EventId = 1170, EventName = "WindowLocaleChanged", Level = LogLevel.Debug,
+        Message = "The window's locale is now {Locale}.")]
+    internal static partial void WindowLocaleChanged(ILogger logger, string? locale);
+
+    // translation-text/1: a validation message's text reference is larger than an error carries; the error shows its
+    // message.
+    [LoggerMessage(EventId = 1171, EventName = "ValidationTextTooLarge", Level = LogLevel.Warning,
+        Message = "The text reference {Key} of a validation message has {Bytes} bytes, more than the {Limit} an error carries, so the page shows the message.")]
+    internal static partial void ValidationTextTooLarge(ILogger logger, string key, int bytes, int limit);
 }
 
 // Without an ILoggerFactory the runtime keeps its earlier System.Diagnostics.Trace

@@ -202,6 +202,7 @@ internal sealed class BridgeTypeGraph
             BridgeWireKind.Array or BridgeWireKind.List => $"readonly {ArrayElement(TypeScriptType(node.Element!))}[]",
             BridgeWireKind.StringDictionary => $"Readonly<Record<string, {TypeScriptType(node.Value!)}>>",
             BridgeWireKind.Custom => node.CustomCodec!.TypeScriptType,
+            BridgeWireKind.TextReference => "bridgeWire.TextReference",
             // Any JSON value. A JsonNode is never JSON null; null is its C# null.
             BridgeWireKind.Json => node.IsNullable || node.NonNullableType == typeof(JsonElement) ? "unknown" : "NonNullable<unknown>",
             _ => throw new InvalidOperationException($"No TypeScript form exists for {node.Kind}.")
@@ -330,6 +331,7 @@ internal sealed class BridgeTypeGraph
             BridgeWireKind.Dto => $"bridgeWire.object<{TypeScriptNamedTypes.Reference(node)}>({expression}, value => {DecodeMembersTypeScript(node, node, "value", null)})",
             BridgeWireKind.Union => DecodeUnionTypeScript(node, expression),
             BridgeWireKind.Custom => node.CustomCodec!.TypeScriptDecoderExpression.Replace("$value", expression, StringComparison.Ordinal),
+            BridgeWireKind.TextReference => $"bridgeWire.textReference({expression})",
             BridgeWireKind.Json => JsonTypeScript(node, expression),
             _ => throw new InvalidOperationException($"No TypeScript decoder exists for {node.Kind}.")
         };
@@ -402,6 +404,7 @@ internal sealed class BridgeTypeGraph
             BridgeWireKind.Dto => "{ " + string.Join(", ", node.Members.Select(member => "[" + Quote(member.WireName) + "]: " + EncodeMemberTypeScript(member, value + "[" + Quote(member.WireName) + "]"))) + " }",
             BridgeWireKind.Union => EncodeUnionTypeScript(node, value),
             BridgeWireKind.Custom => node.CustomCodec!.TypeScriptEncoderExpression.Replace("$value", value, StringComparison.Ordinal),
+            BridgeWireKind.TextReference => $"bridgeWire.textReference({value})",
             _ => value,
         };
         return node.IsNullable
@@ -502,6 +505,13 @@ internal sealed class BridgeTypeGraph
             case BridgeWireKind.Custom:
                 source.AppendLine($"        {CSharpType(node.CustomCodec!.CodecType)}.Write(writer, {value});");
                 break;
+            // The application references Runic.Translations; the Views packages do not (BridgeTextReferences).
+            case BridgeWireKind.TextReference when BridgeTextReferences.IsTranslationReference(node.NonNullableType):
+                source.AppendLine($"        global::System.Text.Json.JsonSerializer.Serialize(writer, {value}, global::Runic.Translations.TranslationReferenceJsonContext.Default.TranslationReference);");
+                break;
+            case BridgeWireKind.TextReference:
+                source.AppendLine($"        {value}.WriteTo(writer);");
+                break;
             // A default JsonElement holds no value; it crosses as null.
             case BridgeWireKind.Json when node.NonNullableType == typeof(JsonElement):
                 source.AppendLine($"        if ({value}.ValueKind is global::System.Text.Json.JsonValueKind.Undefined) writer.WriteNullValue(); else {value}.WriteTo(writer);");
@@ -581,6 +591,11 @@ internal sealed class BridgeTypeGraph
                 break;
             case BridgeWireKind.Custom:
                 source.AppendLine($"        return {CSharpType(node.CustomCodec!.CodecType)}.Read(element);"); break;
+            // TranslationReference.Parse applies the Translations transport's checks and limits; it throws JsonException.
+            case BridgeWireKind.TextReference when BridgeTextReferences.IsTranslationReference(node.NonNullableType):
+                source.AppendLine("        return global::Runic.Translations.TranslationReference.Parse(element.GetRawText());"); break;
+            case BridgeWireKind.TextReference:
+                source.AppendLine("        return global::Runic.Application.Views.RunicTextReference.Read(element);"); break;
             // The element belongs to a document that is disposed after the call.
             case BridgeWireKind.Json when node.NonNullableType == typeof(JsonElement):
                 source.AppendLine("        return element.Clone();"); break;
@@ -804,6 +819,11 @@ internal sealed class BridgeTypeGraph
             {
                 node.Kind = BridgeWireKind.Custom;
                 node.CustomCodec = CustomCodecDescription.Create(type, custom.CodecType, path);
+                return node;
+            }
+            if (BridgeTextReferences.Is(type))
+            {
+                node.Kind = BridgeWireKind.TextReference;
                 return node;
             }
             if (type == typeof(JsonElement) || type == typeof(System.Text.Json.Nodes.JsonNode))
@@ -1119,6 +1139,8 @@ internal enum BridgeWireKind
     None, Boolean, Int8, UInt8, Int16, UInt16, Int32, UInt32, Int64, UInt64, Single, Double, Decimal,
     String, Guid, DateOnly, TimeOnly, DateTime, DateTimeOffset, TimeSpan, BigInteger, Enum, Array, List,
     StringDictionary, Dto, Union, Custom,
+    /// <summary>A text reference of Runic Translations: a RunicTextReference or a Runic.Translations.TranslationReference.</summary>
+    TextReference,
     /// <summary>Any JSON value: a JsonElement or a JsonNode.</summary>
     Json,
 }
@@ -1275,4 +1297,19 @@ internal static class ContractNullability
 internal static class TypeExtensions
 {
     internal static Type? GetGenericTypeDefinitionOrNull(this Type type) => type.IsGenericType ? type.GetGenericTypeDefinition() : null;
+}
+
+/// <summary>
+/// The text reference types (translation-text/1). <c>Runic.Translations.TranslationReference</c> is recognized by its
+/// name and assembly, so the Views packages need no reference to Runic Translations: the generated code, compiled into
+/// the application that references it, calls its parser and source-generated serializer.
+/// </summary>
+internal static class BridgeTextReferences
+{
+    internal const string TranslationReferenceName = "Runic.Translations.TranslationReference";
+
+    internal static bool Is(Type type) => type == typeof(RunicTextReference) || IsTranslationReference(type);
+
+    internal static bool IsTranslationReference(Type type) =>
+        type.FullName == TranslationReferenceName && type.Assembly.GetName().Name == "Runic.Translations";
 }

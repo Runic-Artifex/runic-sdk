@@ -186,6 +186,14 @@ stream receives it as an ordinary state; the stream does not fail. Read
 failures of that re-read are reported through `onBridgeDiagnostic` from
 `@runic-artifex/views`.
 
+### Translated text
+
+`texts(value, fallback?)` is a stream of a text reference's text in the window's
+language: the text now, then the text after each language switch.
+`textChanges()` emits on each switch. Connect the page's Translations runtime
+once with `configureTranslatedText` from `@runic-artifex/views`
+([Translated text](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Application.Views/README.md#translated-text)).
+
 ## Framework helpers
 
 Bindings keep rendering state with `useView` and its equivalents; Effect runs

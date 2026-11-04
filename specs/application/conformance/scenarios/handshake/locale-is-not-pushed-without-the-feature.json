@@ -1,0 +1,26 @@
+{
+  "format": "runic.views.scenario/1",
+  "id": "handshake.locale-is-not-pushed-without-the-feature.v1",
+  "contract": {"id":"runic.views","version":4},
+  "set": "handshake",
+  "roles": ["producer"],
+  "description": "A connection whose hello does not list translation-text/1 receives no locale push, after its hello or when the locale changes.",
+  "view": "form",
+  "requires": ["translation-text/1"],
+  "ids": {
+    "c1": {"kind":"connection"},
+    "hello-c1": {"kind":"request"},
+    "session": {"kind":"wire","value":"s-1"},
+    "snapshot-request": {"kind":"request"}
+  },
+  "arrange": {"model":{}},
+  "steps": [
+    {"setLocale":"de"},
+    {"connect":"c1"},
+    {"send":{"kind":"hello","protocol":4,"session":{"$id":"session"},"client":{"name":{"$any":"string","default":"conformance-client"},"version":{"$any":"string","default":"1.0.0"}},"features":{"$any":"array","default":["text-splice/1"]}},"id":"hello-c1"},
+    {"receive":{"ok":true,"protocol":4,"implementation":{"name":{"$any":"string","default":"conformance-producer"},"version":{"$any":"string","default":"1.0.0"}},"features":{"$any":"array","default":["text-splice/1"]}},"replyTo":"hello-c1"},
+    {"setLocale":"en"},
+    {"send":{"kind":"snapshot","route":"form"},"id":"snapshot-request"},
+    {"receive":{"ok":true,"revision":0,"state":{"name":"","nameErrors":[],"validation":{"hasErrors":false,"truncated":false,"errors":[]}}},"replyTo":"snapshot-request","note":"No locale push came before the reply."}
+  ]
+}

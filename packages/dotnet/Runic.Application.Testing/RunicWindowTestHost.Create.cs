@@ -93,7 +93,7 @@ public static class RunicWindowTestHost
             ?? throw new InvalidOperationException(
                 $"No generated Bridge is registered for {typeof(TViewModel).FullName}. Call the application's " +
                 "generated AddRunicViews() on the services, and declare a Runic Window for the ViewModel.");
-        return new RunicWindowTestHost<TViewModel>(viewModel, attach, new RunicWindowTestHostOptions
+        var host = new RunicWindowTestHost<TViewModel>(viewModel, attach, new RunicWindowTestHostOptions
         {
             RootRoute = options.RootRoute,
             ViewLocator = options.ViewLocator ?? services.GetService<IRunicViewLocator>(),
@@ -107,5 +107,15 @@ public static class RunicWindowTestHost
             PublicationTimeout = options.PublicationTimeout,
         })
         { Services = services };
+        // IRunicWindowLocale of the window's scope sets the window's locale, as in a Window that OpenWindowAsync opened.
+        WindowLocale(services)?.AttachContent(host.Content);
+        return host;
+    }
+
+    // The scope's window context, when the services register it. A root provider that validates scopes refuses it.
+    private static RunicWindowContext? WindowLocale(IServiceProvider services)
+    {
+        try { return services.GetService<IRunicWindowLocale>() as RunicWindowContext; }
+        catch (InvalidOperationException) { return null; }
     }
 }

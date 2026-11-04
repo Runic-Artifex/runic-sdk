@@ -15,6 +15,17 @@ export { describeBridgeError, isBridgeError } from "./describe-error.js";
 export { onBridgeDiagnostic, type BridgeDiagnostic, type BridgeDiagnosticCode, type BridgeDiagnosticListener } from "./diagnostics.js";
 export { bridgeFailure, bridgeSuccess, isBridgeOutcome, matchCase, type BridgeOutcome } from "./outcome.js";
 export type { BridgeValidationMessage, BridgeValidationState } from "./validation.js";
+export {
+  configureTranslatedText,
+  onWindowLocale,
+  resolveText,
+  subscribeText,
+  textLocale,
+  textVersion,
+  windowLocale,
+  type TextReference,
+  type TextTranslations,
+} from "./translated-text.js";
 export { waitForBridge, type RunicBridgeClient, type WaitForBridgeOptions } from "./transport.js";
 export { onBridgeConnection, type BridgeConnectionOptions, type BridgeConnectionState } from "./connection-state.js";
 export {

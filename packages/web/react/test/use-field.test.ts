@@ -238,6 +238,30 @@ describe("useField", () => {
     expect(form!).toMatchObject({ dirty: false, submitting: false, pending: false });
   });
 
+  test("a date field in a locale shows and reads the locale's numeric form and the ISO form (E5)", async () => {
+    const client = fakeClient({ title: "2026-11-03" });
+    let field: FieldHandle<string> | undefined;
+    function Editor(): ReactNode {
+      field = useField(useView(client), descriptor<"title", string>("title", "date"), { locale: "en-US" });
+      return createElement("input", { id: "due", ...field.inputProps });
+    }
+    await mount(createElement(Editor));
+    expect(field!).toMatchObject({ value: "2026-11-03", text: "11/03/2026" });
+    expect(document.querySelector<HTMLInputElement>("#due")!.value).toBe("11/03/2026");
+    await act(async () => { field!.inputProps.onChange(change("12/24/2026")); });
+    expect(client.calls.map(call => call.value)).toEqual(["2026-12-24"]);
+    await act(async () => { client.calls[0]!.resolve(); });
+    await settle();
+    await act(async () => { field!.inputProps.onChange(change("2026-12-25")); });
+    expect(client.calls.map(call => call.value)).toEqual(["2026-12-24", "2026-12-25"]);
+    await act(async () => { client.calls[1]!.resolve(); });
+    await settle();
+    // The text typed still means the value, so it stays, as `1.` does in a number field.
+    expect(field!).toMatchObject({ value: "2026-12-25", text: "2026-12-25" });
+    await act(async () => { client.apply("title", "2027-01-31"); });
+    expect(field!).toMatchObject({ value: "2027-01-31", text: "01/31/2027" });
+  });
+
   test("a boolean field binds a checkbox", async () => {
     const client = fakeClient({ done: false });
     let field: FieldHandle<boolean> | undefined;

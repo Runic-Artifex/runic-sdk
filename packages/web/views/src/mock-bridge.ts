@@ -5,7 +5,7 @@ import { applySplice, producerSplices, textSpliceFeature } from "./text.js";
 import { insertRows } from "./collections.js";
 import { flushNotifications } from "./notifications.js";
 import { fieldFlushFeature, fieldPathsFeature, presentationEpochFeature, presentedFeature } from "./protocol.js";
-import { validationPendingFeature } from "./validation.js";
+import { translationTextFeature, validationPendingFeature } from "./validation.js";
 
 /** A View's wire state: one member per state member, by wire name, encoded as on the wire. */
 export type MockState = Record<string, unknown>;
@@ -375,6 +375,14 @@ export interface MockBridge extends RunicBridgeClient {
    * use the feature, which the application then skips.
    */
   flushFields(timeout?: number): Promise<boolean>;
+  /**
+   * Sets the window's locale as the application does with `IRunicWindowLocale` (translation-text/1): pushes `locale` to
+   * the connection when it uses the feature, and again after the `hello` of each later connection. `null` stops pushing
+   * it; the page keeps the language it shows.
+   */
+  setWindowLocale(locale: string | null): void;
+  /** The window's locale that {@link MockBridge.setWindowLocale} set, or `null`. */
+  readonly windowLocale: string | null;
   /** Resolves after `milliseconds` of virtual time, for handlers that model latency. */
   sleep(milliseconds: number): Promise<void>;
   /**
@@ -396,7 +404,10 @@ const realSetTimeout = globalThis.setTimeout.bind(globalThis);
 const yieldToEventLoop = () => new Promise<void>(resolve => { realSetTimeout(resolve, 0); });
 const maximumRounds = 10_000;
 const mockImplementation = { name: "@runic-artifex/views/mock", version: viewsVersion };
-const mockFeatures: readonly string[] = [textSpliceFeature, presentationEpochFeature, presentedFeature, validationPendingFeature, fieldFlushFeature, fieldPathsFeature];
+const mockFeatures: readonly string[] = [
+  textSpliceFeature, presentationEpochFeature, presentedFeature, validationPendingFeature, fieldFlushFeature, fieldPathsFeature,
+  translationTextFeature,
+];
 
 const upperFirst = (value: string) => value.charAt(0).toUpperCase() + value.slice(1);
 const isRecord = (value: unknown): value is Record<string, unknown> => value !== null && typeof value === "object" && !Array.isArray(value);
@@ -850,6 +861,9 @@ export function createMockBridge(options: MockBridgeOptions = {}): MockBridge {
     });
   }
 
+  // translation-text/1: the window's locale (setWindowLocale).
+  let windowLocale: string | null = null;
+
   function closeWindow(timeout: number): Promise<boolean> {
     const owner = connection;
     if (owner.closing) return owner.closing.result;
@@ -1300,6 +1314,8 @@ export function createMockBridge(options: MockBridgeOptions = {}): MockBridge {
       if (closedSessions.has(message["session"])) return refuseHeld({ ...released(), ...identity });
       connection.session = message["session"];
       connection.features = new Set((listed as string[] | undefined ?? []).filter(feature => mockFeatures.includes(feature)));
+      // translation-text/1: a page that connects to a window with a locale is told it.
+      if (windowLocale !== null && connection.features.has(translationTextFeature)) pushMessage({ kind: "locale", locale: windowLocale });
       // Requests that waited for the hello are admitted in the order they arrived.
       for (const resume of connection.held.splice(0)) resume(true);
       return ok({ ...identity, features: mockFeatures });
@@ -1607,6 +1623,15 @@ export function createMockBridge(options: MockBridgeOptions = {}): MockBridge {
     },
     closeWindow: (timeout = 5_000) => closeWindow(timeout),
     flushFields: (timeout = 1_000) => flushFields(timeout),
+    setWindowLocale(locale) {
+      if (locale !== null && !(typeof locale === "string" && locale.length <= 64 && /^[A-Za-z][A-Za-z0-9]*(?:-[A-Za-z0-9]+)*$/.test(locale)))
+        throw new RangeError("The window's locale is a tag such as \"de\" or \"pt-BR\", or null.");
+      if (windowLocale === locale) return;
+      windowLocale = locale;
+      if (connected && connection.session !== undefined && connection.features.has(translationTextFeature))
+        pushMessage({ kind: "locale", locale });
+    },
+    get windowLocale() { return windowLocale; },
     flush,
     async flushUntil<T>(promise: Promise<T>): Promise<T> {
       let settled = false;

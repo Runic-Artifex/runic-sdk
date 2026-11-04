@@ -383,9 +383,9 @@ EditorFields.step;  // { name: "step", kind: "number", integer: true, … }
 | `decimal` | `decimal` | `string`, exact (`"1234.50"`) | as `number`; at most 28 digits after the point |
 | `bigint` | `long`, `ulong`, `BigInteger` | `bigint` | as `number` |
 | `boolean` | `bool` | `boolean` | `true` or `false` (bind a checkbox) |
-| `date` | `DateOnly` | `string` `YYYY-MM-DD` | the same, as `<input type="date">` |
-| `time` | `TimeOnly` | `string` `hh:mm:ss[.f]` | `hh:mm` when the seconds are zero, as `<input type="time">` |
-| `datetime` | `DateTime`, `DateTimeOffset` (`offset: true`) | `string` (`2026-11-03T09:30:00+01:00`) | the page's local date and time, as `<input type="datetime-local">` |
+| `date` | `DateOnly` | `string` `YYYY-MM-DD` | the same, as `<input type="date">`, or in the locale's form (`03.11.2026`) |
+| `time` | `TimeOnly` | `string` `hh:mm:ss[.f]` | `hh:mm` when the seconds are zero, as `<input type="time">`, or in the locale's form (`9:30 PM`) |
+| `datetime` | `DateTime`, `DateTimeOffset` (`offset: true`) | `string` (`2026-11-03T09:30:00+01:00`) | the page's local date and time, as `<input type="datetime-local">`, or in the locale's form |
 | `choice` | enums (`choices` lists the names) | `string` | the name |
 | `value` | objects, lists, unions | the value | none |
 
@@ -484,13 +484,25 @@ Options:
   draft.
 - `locale` (such as `"de-DE"` or `navigator.languages`) shows `number`, `decimal` and `bigint` text with the locale's
   decimal separator and digits (`1,5`) and reads them, with group separators between thousands (`1.234,5`; `1.5` is
-  not 15 in German). Without it the text is the invariant form (`1.5`), which `<input type="number">` needs; use
-  `locale` with `<input inputmode="decimal">`. Text is never grouped while it is edited.
+  not 15 in German). Text is never grouped while it is edited. It shows `date`, `time` and `datetime` text in the
+  locale's numeric form, in the Gregorian calendar with a four-digit year and two-digit days and months
+  (`03.11.2026` in `de`, `11/03/2026` in `en-US`, `2026/11/03` in `ja`), and times in its hour cycle
+  (`21:30`, `9:30 PM`), with seconds when they are not zero. It reads that form in the locale's order of day, month
+  and year, with any of `. / -` or the locale's own separators, a day period (`PM`, or `am`/`pm`) and the locale's
+  digits, and always the ISO form too (`2026-11-03`, `21:30`, `2026-11-03T21:30`). A two-digit year, a time with
+  a day period and an hour above 12, and a date that does not exist are `invalid-text`. A time without a day period
+  is read as 0–23 in every locale.
+- Without `locale`, these fields follow the window's locale when the application sets one (`IRunicWindowLocale`,
+  [Translated text](#translated-text)), and otherwise use the invariant form (`1.5`) and the ISO forms.
+  `<input type="number">`, `"date"`, `"time"` and `"datetime-local"` take only those forms and show them in the
+  browser's language: give a field bound to one of them `locale: null`, which keeps those forms whatever the window's
+  locale (`bindField` does that for such an input), and bind a field that follows the locale to a text input
+  (`<input inputmode="decimal">` for numbers).
 - `scale` limits the digits after the decimal separator of a `number` or `decimal` value: of the number the text
   means, so `1.50e2` has none and `1e-7` has 7. A `decimal` keeps its trailing zeros (`1.50` has 2); a `number` has
   none.
-- `parse(text, previous)` and `format(value)` replace the kind's text form, such as for a percentage or a date shown
-  in the user's locale. A `parse` that throws keeps the text as the draft with an `invalid-text` `FieldError` carrying
+- `parse(text, previous)` and `format(value)` replace the kind's text form, such as for a percentage or a date with
+  the month's name. A `parse` that throws keeps the text as the draft with an `invalid-text` `FieldError` carrying
   the thrown message. The controller's `format(value)` returns the text of a value as the field shows it.
 
 ```ts
@@ -1210,6 +1222,48 @@ forwards them to its DevTools dock during development. A call of a released
 View is expected around every navigation, so its `released` rejection reaches
 the caller but is not reported as a diagnostic; `onBridgeConnection` reports a
 lost host.
+
+## Translated text
+
+Text that a ViewModel produces as a Runic Translations text reference, such as a
+status line (a `TextReference` member) or a validation error's `text`, shows in
+the window's language (`translation-text/1`). Connect the page's Translations
+runtime once; the window's locale, which the application sets with
+`IRunicWindowLocale`, is then passed to its `setLocale`:
+
+```ts
+import { configureTranslatedText, resolveText, subscribeText } from "@runic-artifex/views";
+import { m } from "virtual:runic-translations/app/messages";
+import { configureLocaleResolver, createLocaleSource } from "virtual:runic-translations/app/runtime";
+import { resolveTextReference } from "virtual:runic-translations/app/transport";
+
+const locale = createLocaleSource({ initialLocale: navigator.language });
+configureLocaleResolver(locale.getLocale);
+configureTranslatedText({
+  ...locale,
+  resolve: (reference, language) => resolveTextReference(reference, m, { locale: language }).text,
+});
+
+status.textContent = resolveText(editor.snapshot.status);
+subscribeText(() => { status.textContent = resolveText(editor.snapshot.status); });
+```
+
+`resolveText(value, fallback)` formats a reference in the window's language, or
+shows its `fallbackText`, then `fallback`, then its key; a string shows as it
+is. For a validation error: `resolveText(error.text, error.message)`. Field
+errors already show translated messages and update on a language switch,
+and number, date and time fields without their own `locale` read and show their
+text in the window's locale, except while the user edits a draft; the wire value
+stays the invariant or ISO form. Bind such a field to a text input, or give it
+`locale: null` for `<input type="number">` or `type="date"`. A language switch on the
+page calls the application's command; a locale the page sets itself is set back
+by the next `locale` push. Under server rendering, configure the runtime in the
+browser only, or resolve with the request's locale.
+`windowLocale()` and `onWindowLocale` read the window's locale. The framework
+packages wrap this as `useText` (React, Vue, Svelte), `injectText` and the
+`runicText` pipe (Angular) and `texts` (Effect). The mock bridge's
+`setWindowLocale(locale)` pushes a locale in page tests. See
+[Translated text](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Application.Views/README.md#translated-text) for the .NET side.
 
 ## Connection state
 

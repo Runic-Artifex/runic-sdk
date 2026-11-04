@@ -520,8 +520,10 @@ describe("useBridgeConnection", () => {
   test("is a root export (0.11)", () => {
     expect(typeof root.useBridgeConnection).toBe("function");
     expect(Object.keys(root).sort()).toEqual([
-      "FieldError", "ViewOutlet", "commitAllFields", "onBridgeConnection", "useBridgeConnection", "useCollectionViewport", "useCommand", "useField",
-      "useForm", "useLatestOperation", "useMenuBar", "useOperation", "useSuspenseView", "useTextField", "useView",
+      "FieldError", "ViewOutlet", "commitAllFields", "configureTranslatedText", "onBridgeConnection", "resolveText",
+      "useBridgeConnection", "useCollectionViewport", "useCommand", "useField", "useForm", "useLatestOperation",
+      "useMenuBar", "useOperation", "useSuspenseView", "useText", "useTextField", "useView", "useWindowLocale",
+      "windowLocale",
     ]);
     // The connection API that useBridgeConnection wraps is re-exported, as the menu-bar types are (0.11).
     expect(root.onBridgeConnection).toBe(viewsOnBridgeConnection);

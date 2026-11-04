@@ -252,8 +252,10 @@ describe("useView options", () => {
 
   test("the root entry keeps every earlier export and adds useBridgeConnection and useMenuBar (0.11), useField, FieldError and useViewState (0.14)", () => {
     expect(Object.keys(root_).sort()).toEqual([
-      "FieldError", "ViewOutlet", "commitAllFields", "onBridgeConnection", "retrySuspenseView", "useBridgeConnection", "useCollectionViewport", "useCommand", "useField", "useForm", "useLatestOperation",
-      "useMenuBar", "useOperation", "useSuspenseView", "useTextField", "useView", "useViewState",
+      "FieldError", "ViewOutlet", "commitAllFields", "configureTranslatedText", "onBridgeConnection", "resolveText",
+      "retrySuspenseView", "useBridgeConnection", "useCollectionViewport", "useCommand", "useField", "useForm",
+      "useLatestOperation", "useMenuBar", "useOperation", "useSuspenseView", "useText", "useTextField", "useView",
+      "useViewState", "useWindowLocale", "windowLocale",
     ]);
     // The connection API that useBridgeConnection wraps is re-exported, as the menu-bar types are (0.11).
     expect(root_.onBridgeConnection).toBe(viewsOnBridgeConnection);

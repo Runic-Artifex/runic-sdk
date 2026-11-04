@@ -6,6 +6,7 @@ import { FieldError } from "./field-error.js";
 import { kindFormatter, kindParser, type FieldTextParser } from "./field-text.js";
 import { disposable } from "./lifetime.js";
 import { reportBridgeError } from "./transport.js";
+import { subscribeText, windowLocale } from "./translated-text.js";
 
 export { FieldError, type FieldErrorKind } from "./field-error.js";
 
@@ -88,13 +89,21 @@ export interface FieldOptions<TValue = any> {
    */
   readonly keepDraftOnError?: boolean;
   /**
-   * The locale of the text of `number`, `decimal` and `bigint` fields, as `Intl.NumberFormat` takes it, such as
-   * `"de-DE"` or `navigator.languages`: the text shows the locale's decimal separator and digits (`1,5`), and reads
-   * them and its group separators (`1.234,5`). Without it the text is the invariant form (`1.5`), which
-   * `<input type="number">` needs. Dates and times always use the ISO forms of `<input type="date">`, `"time"` and
-   * `"datetime-local"`; pass `format` and `parse` to show them otherwise.
+   * The locale of the text of `number`, `decimal`, `bigint`, `date`, `time` and `datetime` fields, as `Intl` takes
+   * it, such as `"de-DE"` or `navigator.languages`. Numbers show the locale's decimal separator and digits (`1,5`),
+   * and read them and its group separators (`1.234,5`). Dates and times show the locale's numeric form in the
+   * Gregorian calendar with a four-digit year and its hour cycle (`23.11.2026, 21:45` in `de`, `11/23/2026, 9:45 PM`
+   * in `en-US`), and read that form and the ISO form (`2026-11-23`, `21:45`).
+   *
+   * Without it, the window's locale when the application sets one (`IRunicWindowLocale`, `translation-text/1`). A
+   * change of the window's locale formats the text again, but not while the field has a draft; the draft keeps the
+   * locale it was typed in, and the text follows once it is written. `null`, or no locale at all, is the invariant
+   * form (`1.5`) and the ISO forms that `<input type="number">`, `"date"`, `"time"` and `"datetime-local"` take,
+   * which the browser shows in its own language: pass `null` for a field bound to one of those inputs (`bindField`
+   * does for them), and use a text input (`inputmode="decimal"` for numbers) for a field that follows the locale.
+   * `format` and `parse` replace the kind's text form in any locale.
    */
-  readonly locale?: string | readonly string[];
+  readonly locale?: string | readonly string[] | null;
   /**
    * The most digits a `number` or `decimal` text may have after the decimal separator; more is an `invalid-text`
    * error. A `decimal` allows at most 28 in any case.
@@ -280,9 +289,14 @@ export function createFieldController<TState, TClient, TValue>(
   const nullable = definition.nullable === true;
   const scale = options.scale;
   if (scale !== undefined && (!Number.isSafeInteger(scale) || scale < 0)) throw new RangeError("scale must be a non-negative integer.");
+  // The locale of number, date and time texts: the field's own, none for `null`, or the window's, which the field
+  // follows when it has no draft.
+  const fieldLocale = (): string | readonly string[] | undefined =>
+    options.locale === null ? undefined : options.locale ?? windowLocale() ?? undefined;
+  let textLocale = fieldLocale();
   const traits = {
     kind, nullable, integer: definition.integer === true, choices: definition.choices, offset: definition.offset === true,
-    scale, locale: options.locale,
+    scale, get locale() { return textLocale; },
   };
   const kindParse: FieldTextParser<TValue> = options.parse ?? kindParser<TValue>(traits);
   const parse = (text: string): TValue => {
@@ -312,6 +326,7 @@ export function createFieldController<TState, TClient, TValue>(
   // checked: the field's value and version that the next write is checked against.
   let baseline: FieldBaseline<TValue> | undefined;
   let disposed = false;
+  let stopText: (() => void) | undefined;
   // commit() calls waiting for the field's writes.
   let idleWaiters: ((state: FieldState<TValue>) => void)[] = [];
   const empty = (kind === "text" || kind === undefined ? "" : undefined) as TValue;
@@ -332,7 +347,16 @@ export function createFieldController<TState, TClient, TValue>(
     if (typedInvalid) return typed;
     try { return same(parse(typed), value) ? typed : format(value); } catch { return format(value); }
   }
+  // Takes the window's locale when it changed and the user is not editing: a draft keeps the locale it was typed in.
+  function followLocale(): void {
+    if (options.locale !== undefined || draft !== undefined || typedInvalid) return;
+    const next = fieldLocale();
+    if (next === textLocale) return;
+    textLocale = next;
+    typed = undefined;
+  }
   function update(notify = true): void {
+    followLocale();
     const value = draft === undefined ? viewValue() : draft.value;
     const errors = definition.errors !== undefined
       ? source === undefined ? noMessages : definition.errors(source.state)
@@ -515,7 +539,12 @@ export function createFieldController<TState, TClient, TValue>(
     subscribe(listener: () => void) {
       if (disposed) return () => {};
       listeners.add(listener);
-      return () => { listeners.delete(listener); };
+      // translation-text/1: messages with a text reference follow the window's language while someone listens.
+      stopText ??= subscribeText(() => { if (!disposed) update(); });
+      return () => {
+        listeners.delete(listener);
+        if (listeners.size === 0) { stopText?.(); stopText = undefined; }
+      };
     },
     setSource(next: FieldSource<TState, TClient> | undefined) {
       source = next;
@@ -569,6 +598,8 @@ export function createFieldController<TState, TClient, TValue>(
       disposed = true;
       liveFieldRefs().delete(liveRef);
       listeners.clear();
+      stopText?.();
+      stopText = undefined;
       cancelTimer();
       resolveIdle();
       // The last value the user typed is not lost with the field.

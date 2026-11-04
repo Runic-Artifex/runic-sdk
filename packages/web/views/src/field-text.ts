@@ -1,5 +1,5 @@
 // Text forms of field values (C1): how a field controller parses what the user typed and formats a value for a text
-// input, by kind and, for numbers, by locale.
+// input, by kind and, for numbers, dates and times, by locale.
 import type { BridgeFieldKind } from "./field.js";
 import { FieldError } from "./field-error.js";
 
@@ -13,7 +13,10 @@ export interface FieldTextTraits<TValue> {
   readonly offset: boolean;
   /** The most digits a `number` or `decimal` text may have after the decimal separator. */
   readonly scale: number | undefined;
-  /** The locale of `number`, `decimal` and `bigint` texts; `undefined` for the invariant form (`1.5`). */
+  /**
+   * The locale of `number`, `decimal`, `bigint`, `date`, `time` and `datetime` texts; `undefined` for the invariant
+   * form (`1.5`) and the ISO forms of the browser's date and time inputs.
+   */
   readonly locale: string | readonly string[] | undefined;
 }
 
@@ -56,21 +59,24 @@ function numberSymbols(locale: string | readonly string[] | undefined): NumberSy
 
 const spaces = /[    ]/g;
 
+/** Replaces a locale's digits with the ASCII digits. */
+function asciiDigits(text: string, symbols: NumberSymbols): string {
+  const digits = symbols.digits;
+  if (digits === undefined) return text;
+  return [...text].map(character => {
+    const index = digits.indexOf(character);
+    return index < 0 ? character : String(index);
+  }).join("");
+}
+
 /**
  * Reads a number typed in a locale into the invariant form (`-1234.5`): locale digits become ASCII digits, the
  * locale's minus sign `-`, its decimal separator `.`; group separators are dropped where they separate groups of
  * three digits of the integer part, and are an error elsewhere, so `1.5` is not read as 15 in de-DE.
  */
 function delocalize(text: string, symbols: NumberSymbols): string {
-  let result = text.trim();
-  if (symbols === invariantSymbols) return result;
-  if (symbols.digits !== undefined) {
-    const digits = symbols.digits;
-    result = [...result].map(character => {
-      const index = digits.indexOf(character);
-      return index < 0 ? character : String(index);
-    }).join("");
-  }
+  if (symbols === invariantSymbols) return text.trim();
+  let result = asciiDigits(text.trim(), symbols);
   result = result.replaceAll(symbols.minus, "-").replaceAll("−", "-");
   const groupIsSpace = symbols.group.length !== 0 && symbols.group.replace(spaces, "").length === 0;
   const group = groupIsSpace ? "\u0000" : symbols.group;
@@ -226,13 +232,266 @@ function toLocal(value: string): string | undefined {
   return local;
 }
 
+/** A part of a locale's date or time text: a unit, or the literal text between units. */
+type DatePiece = { readonly unit: "year" | "month" | "day" | "hour" | "minute" | "second" | "dayPeriod" } | { readonly literal: string };
+
+/**
+ * How a locale writes dates and times, from `Intl.DateTimeFormat#formatToParts` in the Gregorian calendar: the order
+ * of the units and the literals between them, with and without seconds, its hour cycle and day periods.
+ */
+interface DateTextForm {
+  readonly date: readonly DatePiece[];
+  readonly time: readonly DatePiece[];
+  readonly timeSeconds: readonly DatePiece[];
+  readonly dateTime: readonly DatePiece[];
+  readonly dateTimeSeconds: readonly DatePiece[];
+  /** `h11` and `h12` write hours with a day period; `h23` and `h24` without, as 0–23. */
+  readonly twelveHours: boolean;
+  /** `h11` writes midnight and noon as 0, `h12` as 12. */
+  readonly zeroHour: boolean;
+  readonly padHour: boolean;
+  readonly am: string;
+  readonly pm: string;
+  readonly symbols: NumberSymbols;
+  /** Every character of the locale's literals, which a typed text may use between its numbers. */
+  readonly literals: ReadonlySet<string>;
+}
+
+const formCache = new Map<string, DateTextForm>();
+const bidiMarks = /[‎‏؜‪-‮⁦-⁩]/g;
+const anySpace = /[\s   ]+/g;
+
+function cleanText(text: string): string { return text.replace(bidiMarks, "").replace(anySpace, " "); }
+
+/** The date and time form of a locale, or `undefined` for the ISO forms of the browser's inputs. */
+function dateTextForm(locale: string | readonly string[] | undefined): DateTextForm | undefined {
+  if (locale === undefined) return undefined;
+  const key = typeof locale === "string" ? locale : locale.join("\u0000");
+  const cached = formCache.get(key);
+  if (cached !== undefined) return cached;
+  const locales = locale as string | string[];
+  // A day after the 12th and an evening hour, so that no two units have the same text.
+  const probe = new Date(Date.UTC(2026, 10, 23, 21, 45, 56));
+  const base = { timeZone: "UTC", calendar: "gregory" } as const;
+  const dateUnits = { year: "numeric", month: "2-digit", day: "2-digit" } as const;
+  const timeUnits = { hour: "numeric", minute: "2-digit" } as const;
+  const literals = new Set<string>();
+  const pieces = (options: Intl.DateTimeFormatOptions, required: readonly string[]): DatePiece[] => {
+    const result: DatePiece[] = [];
+    for (const part of new Intl.DateTimeFormat(locales, { ...base, ...options }).formatToParts(probe)) {
+      if (part.type === "literal") {
+        const literal = cleanText(part.value);
+        if (literal.length === 0) continue;
+        for (const character of literal) literals.add(character);
+        const last = result.at(-1);
+        if (last !== undefined && "literal" in last) result[result.length - 1] = { literal: last.literal + literal };
+        else result.push({ literal });
+      } else if (["year", "month", "day", "hour", "minute", "second", "dayPeriod"].includes(part.type)) {
+        result.push({ unit: part.type as "year" });
+      }
+    }
+    const units = result.flatMap(piece => "unit" in piece ? [piece.unit] : []);
+    // A locale whose parts lack a unit or repeat one is written in the ISO order.
+    if (required.some(unit => units.filter(item => item === unit).length !== 1)) {
+      const iso: DatePiece[] = [];
+      for (const unit of required) {
+        if (iso.length !== 0) iso.push({ literal: unit === "hour" ? " " : unit === "minute" || unit === "second" ? ":" : "-" });
+        iso.push({ unit: unit as "year" });
+      }
+      return iso;
+    }
+    return result;
+  };
+  // The locale's short time style: its hour cycle, and whether it pads hours (`09:05` in `de`, `9:05` in `ja`).
+  const time = new Intl.DateTimeFormat(locales, { ...base, timeStyle: "short" });
+  const cycle = time.resolvedOptions().hourCycle ?? "h23";
+  const twelveHours = cycle === "h11" || cycle === "h12";
+  const hourAt = (hours: number) => time.formatToParts(new Date(Date.UTC(2026, 10, 23, hours, 5))).find(part => part.type === "hour")?.value ?? "";
+  const period = (hours: number, fallback: string) => cleanText(new Intl.DateTimeFormat(locales, { ...base, hour: "numeric", hour12: true })
+    .formatToParts(new Date(Date.UTC(2026, 10, 23, hours))).find(part => part.type === "dayPeriod")?.value ?? fallback).trim() || fallback;
+  const symbols = numberSymbols(locale);
+  const dateRequired = ["year", "month", "day"];
+  const timeRequired = twelveHours ? ["hour", "minute", "dayPeriod"] : ["hour", "minute"];
+  const timeSecondsRequired = [...timeRequired.slice(0, 2), "second", ...timeRequired.slice(2)];
+  const form: DateTextForm = Object.freeze({
+    date: pieces(dateUnits, dateRequired),
+    time: pieces(timeUnits, timeRequired),
+    timeSeconds: pieces({ ...timeUnits, second: "2-digit" }, timeSecondsRequired),
+    dateTime: pieces({ ...dateUnits, ...timeUnits }, [...dateRequired, ...timeRequired]),
+    dateTimeSeconds: pieces({ ...dateUnits, ...timeUnits, second: "2-digit" }, [...dateRequired, ...timeSecondsRequired]),
+    twelveHours,
+    zeroHour: cycle === "h11",
+    padHour: asciiDigits(hourAt(9), symbols).length === 2,
+    am: period(9, "AM"),
+    pm: period(21, "PM"),
+    symbols,
+    literals,
+  });
+  formCache.set(key, form);
+  return form;
+}
+
+interface LocalParts {
+  readonly year?: number | undefined; readonly month?: number | undefined; readonly day?: number | undefined;
+  readonly hours?: number | undefined; readonly minutes?: number | undefined; readonly seconds?: number | undefined;
+  readonly fraction?: string | undefined;
+}
+
+/** Writes a date or time in a locale's form, with the locale's digits. */
+function writeLocal(form: DateTextForm, pieces: readonly DatePiece[], parts: LocalParts): string {
+  const digits = (text: string) => localize(text, form.symbols);
+  let result = "";
+  for (const piece of pieces) {
+    if ("literal" in piece) { result += piece.literal; continue; }
+    const hours = parts.hours ?? 0;
+    switch (piece.unit) {
+      case "year": result += digits(pad(parts.year ?? 0, 4)); break;
+      case "month": result += digits(pad(parts.month ?? 0)); break;
+      case "day": result += digits(pad(parts.day ?? 0)); break;
+      case "hour": {
+        const shown = form.twelveHours ? (hours % 12 === 0 && !form.zeroHour ? 12 : hours % 12) : hours;
+        result += digits(form.padHour ? pad(shown) : String(shown));
+        break;
+      }
+      case "minute": result += digits(pad(parts.minutes ?? 0)); break;
+      case "second":
+        result += digits(pad(parts.seconds ?? 0));
+        if (parts.fraction !== undefined && parts.fraction.length !== 0) result += form.symbols.decimal + digits(parts.fraction);
+        break;
+      case "dayPeriod": result += hours < 12 ? form.am : form.pm; break;
+    }
+  }
+  return result;
+}
+
+/** The pattern of a locale's form for messages, such as `DD.MM.YYYY` or `MM/DD/YYYY, h:mm AM`. */
+function patternOf(form: DateTextForm, pieces: readonly DatePiece[]): string {
+  const names = { year: "YYYY", month: "MM", day: "DD", hour: form.padHour ? "hh" : "h", minute: "mm", second: "ss", dayPeriod: form.am };
+  return pieces.map(piece => "literal" in piece ? piece.literal : names[piece.unit]).join("").trim();
+}
+
+/**
+ * Reads a date or time typed in a locale's form: its numbers in the order of `candidates` (the form with or without
+ * seconds), between any of the locale's literals or `. , / - :` and spaces, a fraction of a second after a decimal
+ * separator, with the locale's day period or `am`/`pm`.
+ * A year has four digits, minutes and seconds two; without a day period the hour is read as 0–23, as in the ISO form.
+ * Returns `undefined` for a text that is not in the form; the caller checks the date's range.
+ */
+function readLocal(form: DateTextForm, text: string, candidates: readonly (readonly DatePiece[])[]): LocalParts | undefined {
+  let rest = asciiDigits(cleanText(text), form.symbols).trim();
+  let afternoon: boolean | undefined;
+  if (candidates.some(pieces => pieces.some(piece => "unit" in piece && piece.unit === "hour"))) {
+    const periods: [string, boolean][] = [[form.am, false], [form.pm, true], ["a.m.", false], ["p.m.", true], ["am", false], ["pm", true]];
+    periods.sort((left, right) => right[0].length - left[0].length);
+    const lower = rest.toLocaleLowerCase();
+    for (const [marker, pm] of periods) {
+      const at = lower.indexOf(marker.toLocaleLowerCase());
+      if (marker.length === 0 || at < 0) continue;
+      if (lower.indexOf(marker.toLocaleLowerCase(), at + 1) >= 0) return undefined;
+      afternoon = pm;
+      rest = `${rest.slice(0, at)} ${rest.slice(at + marker.length)}`;
+      break;
+    }
+  }
+  const numbers: { text: string; at: number }[] = [];
+  let residue = "";
+  let last = 0;
+  for (const match of rest.matchAll(/\d+/g)) {
+    residue += rest.slice(last, match.index);
+    numbers.push({ text: match[0], at: match.index });
+    last = match.index + match[0].length;
+  }
+  residue += rest.slice(last);
+  if ([...residue].some(character => !" .,/-:".includes(character) && character !== form.symbols.decimal && !form.literals.has(character))) return undefined;
+  for (const pieces of candidates) {
+    const units = pieces.flatMap(piece => "unit" in piece && piece.unit !== "dayPeriod" ? [piece.unit] : []);
+    let fraction: string | undefined;
+    let values = numbers;
+    if (units.at(-1) === "second" && numbers.length === units.length + 1) {
+      // A fraction of a second: digits right after the seconds and a `.`, `,` or the locale's decimal separator.
+      const seconds = numbers[units.length - 1]!;
+      const separator = rest.slice(seconds.at + seconds.text.length, numbers[units.length]!.at);
+      if (separator !== "." && separator !== "," && separator !== form.symbols.decimal) continue;
+      fraction = numbers[units.length]!.text;
+      if (fraction.length > 7) return undefined;
+      values = numbers.slice(0, units.length);
+    }
+    if (values.length !== units.length) continue;
+    const parts: Record<string, number> = {};
+    let fits = true;
+    units.forEach((unit, index) => {
+      const value = values[index]!.text;
+      const length = unit === "year" ? [4, 4] : unit === "minute" || unit === "second" ? [2, 2] : [1, 2];
+      if (value.length < length[0]! || value.length > length[1]!) fits = false;
+      parts[unit] = Number(value);
+    });
+    if (!fits) return undefined;
+    let hours = parts["hour"];
+    if (hours !== undefined && afternoon !== undefined) {
+      if (hours > 12) return undefined;
+      hours = hours % 12 + (afternoon ? 12 : 0);
+    }
+    return { year: parts["year"], month: parts["month"], day: parts["day"], hours, minutes: parts["minute"], seconds: parts["second"], fraction };
+  }
+  return undefined;
+}
+
+function isoDateOf(parts: LocalParts): string { return `${pad(parts.year!, 4)}-${pad(parts.month!)}-${pad(parts.day!)}`; }
+
+function isoTimeOf(parts: LocalParts): string {
+  return `${pad(parts.hours!)}:${pad(parts.minutes!)}${parts.seconds === undefined ? "" : ":" + pad(parts.seconds)}`
+    + (parts.fraction === undefined ? "" : "." + parts.fraction);
+}
+
+/** The ISO text of a date or time typed in a locale's form or the ISO form, or `undefined` for neither. */
+function isoText(traits: FieldTextTraits<unknown>, shown: string, kind: "date" | "time" | "datetime"): string | undefined {
+  const form = dateTextForm(traits.locale);
+  if (form === undefined) return shown;
+  const ascii = asciiDigits(cleanText(shown), form.symbols).trim();
+  const iso = kind === "date" ? datePattern : kind === "time" ? timePattern : dateTimePattern;
+  if (iso.test(ascii)) return ascii;
+  const parts = readLocal(form, shown, kind === "date" ? [form.date] : kind === "time" ? [form.time, form.timeSeconds] : [form.dateTime, form.dateTimeSeconds]);
+  if (parts === undefined) return undefined;
+  return kind === "date" ? isoDateOf(parts) : kind === "time" ? isoTimeOf(parts) : `${isoDateOf(parts)}T${isoTimeOf(parts)}`;
+}
+
+/** The pattern of a kind's text for messages: the locale's form and the ISO form, or the ISO form alone. */
+function patternHint(traits: FieldTextTraits<unknown>, kind: "date" | "time" | "datetime"): string {
+  const iso = kind === "date" ? "YYYY-MM-DD" : kind === "time" ? "hh:mm or hh:mm:ss" : "YYYY-MM-DDThh:mm";
+  const form = dateTextForm(traits.locale);
+  if (form === undefined) return iso;
+  const pattern = patternOf(form, kind === "date" ? form.date : kind === "time" ? form.time : form.dateTime);
+  return pattern === iso ? iso : `${pattern} or ${iso}`;
+}
+
+/** Writes an ISO date, time or local date and time in a locale's form, or returns it when it is not one. */
+function localText(form: DateTextForm, iso: string, kind: "date" | "time" | "datetime"): string {
+  const dateText = kind === "time" ? undefined : kind === "date" ? iso : iso.slice(0, iso.indexOf("T"));
+  const timeText = kind === "date" ? undefined : kind === "time" ? iso : iso.slice(iso.indexOf("T") + 1);
+  const date = dateText === undefined ? undefined : datePattern.exec(dateText);
+  const time = timeText === undefined ? undefined : timePattern.exec(timeText);
+  if (date === null || time === null || (kind === "datetime" && !iso.includes("T"))) return iso;
+  const fraction = (time?.[4] ?? "").replace(/0+$/, "");
+  const seconds = time === undefined ? 0 : Number(time[3] ?? "0");
+  const parts: LocalParts = {
+    year: date === undefined ? undefined : Number(date[1]), month: date === undefined ? undefined : Number(date[2]),
+    day: date === undefined ? undefined : Number(date[3]),
+    hours: time === undefined ? undefined : Number(time[1]), minutes: time === undefined ? undefined : Number(time[2]),
+    seconds, fraction,
+  };
+  const long = seconds !== 0 || fraction.length !== 0;
+  const pieces = kind === "date" ? form.date : kind === "time" ? (long ? form.timeSeconds : form.time) : (long ? form.dateTimeSeconds : form.dateTime);
+  return writeLocal(form, pieces, parts);
+}
+
 function hasOffset(value: unknown): value is string {
   return typeof value === "string" && /(?:Z|[+-]\d{2}:\d{2})$/.test(value) && value.includes("T");
 }
 
 /**
  * The default parser of a field's kind. `number`, `decimal` and `bigint` read the locale's digits and separators;
- * `date`, `time` and `datetime` read the ISO forms that `<input type="date">`, `"time"` and `"datetime-local"` use.
+ * `date`, `time` and `datetime` read the ISO forms that `<input type="date">`, `"time"` and `"datetime-local"` use,
+ * and with a locale also the locale's form (`23.11.2026`, `9:45 PM`).
  */
 export function kindParser<TValue>(traits: FieldTextTraits<TValue>): FieldTextParser<TValue> {
   const { kind, nullable, integer, choices, scale } = traits;
@@ -276,12 +535,18 @@ export function kindParser<TValue>(traits: FieldTextTraits<TValue>): FieldTextPa
     };
     case "date": return text => {
       if (empty(text)) return required("Enter a date.");
-      checkDate(text.trim(), text.trim());
-      return text.trim() as TValue;
+      const shown = text.trim();
+      const iso = isoText(traits, shown, "date");
+      if (iso === undefined || !datePattern.test(iso)) throw invalid(`${shown} is not a date (${patternHint(traits, "date")}).`);
+      checkDate(iso, shown);
+      return iso as TValue;
     };
     case "time": return text => {
       if (empty(text)) return required("Enter a time.");
-      return normalTime(text.trim(), text.trim()).text as TValue;
+      const shown = text.trim();
+      const iso = isoText(traits, shown, "time");
+      if (iso === undefined || !timePattern.test(iso)) throw invalid(`${shown} is not a time (${patternHint(traits, "time")}).`);
+      return normalTime(iso, shown).text as TValue;
     };
     case "datetime": {
       const shownText = kindFormatter(traits);
@@ -290,8 +555,8 @@ export function kindParser<TValue>(traits: FieldTextTraits<TValue>): FieldTextPa
       const shown = text.trim();
       // The text the field shows for its value means that value, with its offset and fraction.
       if (typeof previous === "string" && previous.length !== 0 && shownText(previous) === shown) return previous;
-      const match = dateTimePattern.exec(shown);
-      if (match === null) throw invalid(`${shown} is not a date and time (YYYY-MM-DDThh:mm).`);
+      const match = dateTimePattern.exec(isoText(traits, shown, "datetime") ?? "");
+      if (match === null) throw invalid(`${shown} is not a date and time (${patternHint(traits, "datetime")}).`);
       const { year, month, day } = checkDate(match[1]!, shown);
       const time = normalTime(match[2]!, shown);
       let zone = match[3];
@@ -335,7 +600,8 @@ export function kindParser<TValue>(traits: FieldTextTraits<TValue>): FieldTextPa
 /**
  * The default formatter of a field's kind: numbers in the locale's digits and decimal separator, without grouping;
  * times without zero seconds; date-times with an offset as the page's local date and time, which
- * `<input type="datetime-local">` shows.
+ * `<input type="datetime-local">` shows. With a locale, dates and times are written in its numeric form, in the
+ * Gregorian calendar with a four-digit year (`23.11.2026, 21:45` in `de`, `11/23/2026, 9:45 PM` in `en-US`).
  */
 export function kindFormatter<TValue>(traits: FieldTextTraits<TValue>): (value: TValue) => string {
   const symbols = () => numberSymbols(traits.locale);
@@ -345,11 +611,22 @@ export function kindFormatter<TValue>(traits: FieldTextTraits<TValue>): (value: 
         return typeof value === "number" || typeof value === "bigint" ? localize(String(value), symbols()) : plain(value);
       case "decimal":
         return typeof value === "string" ? localize(value, symbols()) : plain(value);
-      case "time":
-        return typeof value === "string" ? shortTime(value) : plain(value);
+      case "date": {
+        const form = dateTextForm(traits.locale);
+        return typeof value !== "string" ? plain(value) : form === undefined ? value : localText(form, value, "date");
+      }
+      case "time": {
+        if (typeof value !== "string") return plain(value);
+        const form = dateTextForm(traits.locale);
+        return form === undefined ? shortTime(value) : localText(form, value, "time");
+      }
       case "datetime": {
         if (typeof value !== "string") return plain(value);
         const local = toLocal(value) ?? value;
+        const form = dateTextForm(traits.locale);
+        const match = form === undefined ? null : dateTimePattern.exec(local);
+        // A value whose offset the page cannot show as a local time keeps its ISO form.
+        if (form !== undefined && match !== null && match[3] === undefined) return localText(form, `${match[1]}T${match[2]}`, "datetime");
         const at = local.indexOf("T");
         return at < 0 ? local : local.slice(0, at + 1) + shortTime(local.slice(at + 1));
       }

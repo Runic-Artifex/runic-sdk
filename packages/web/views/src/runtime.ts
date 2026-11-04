@@ -11,7 +11,8 @@ import {
 import { hostCallbacks, protocolMismatchError, reportBridgeError, reportProtocolMismatch, type RunicBridgeClient } from "./transport.js";
 import { bridgeProtocol, clientName, runicProducerName, viewsVersion } from "./version.js";
 import { textSpliceFeature } from "./text.js";
-import { validationPendingFeature } from "./validation.js";
+import { translationTextFeature, validationPendingFeature } from "./validation.js";
+import { reportWindowLocale } from "./translated-text.js";
 import { reportWindowClosed } from "./connection-state.js";
 import { flushNotifications, nextFrame } from "./notifications.js";
 import { commitAllFields, commitDrafts } from "./field-controller.js";
@@ -64,7 +65,10 @@ function firstOf(promise: Promise<unknown>, milliseconds: number): Promise<void>
   });
 }
 
-export const clientFeatures: readonly string[] = [textSpliceFeature, presentationEpochFeature, presentedFeature, validationPendingFeature, fieldFlushFeature, fieldPathsFeature];
+export const clientFeatures: readonly string[] = [
+  textSpliceFeature, presentationEpochFeature, presentedFeature, validationPendingFeature, fieldFlushFeature, fieldPathsFeature,
+  translationTextFeature,
+];
 
 /** A push handler, registered per push kind and route. */
 export type PushHandler = (push: Push) => void;
@@ -324,6 +328,7 @@ function createRuntime(bridge: RunicBridgeClient): SharedRuntime {
       stopClosing();
       stopFlush();
       stopFallback();
+      stopLocale();
       connected = false;
       reportWindowClosed(false);
       for (const listener of [...connectionListeners]) {
@@ -336,6 +341,11 @@ function createRuntime(bridge: RunicBridgeClient): SharedRuntime {
   const stopClosing = add(windowHandlers, "closing", () => { void closing(); });
   const stopFlush = add(windowHandlers, "flush", push => { void flush((push as { readonly id: string }).id); });
   const stopFallback = flushOnDeparture();
+  // translation-text/1: the producer sends `locale` only to connections that list the feature, also right after the
+  // hello, before its reply may have arrived, so it is applied whatever the features read so far.
+  const stopLocale = add(windowHandlers, "locale", push => {
+    reportWindowLocale((push as Extract<Push, { kind: "locale" }>).locale);
+  });
   // A closed window of an earlier Bridge does not close this one.
   reportWindowClosed(false);
   const stopMessages = bridge.onMessage(message => dispatch(message));

@@ -1,0 +1,8 @@
+# The test catalog of translated-text.esm.test.ts (translation-text/1).
+title_too_long = Title must be at most {$max :integer} characters.
+saved = Saved {$title}.
+changed = Changed {$packages :runic:list}
+failed = {$step} failed
+steps {
+  build = Building {$name}
+}

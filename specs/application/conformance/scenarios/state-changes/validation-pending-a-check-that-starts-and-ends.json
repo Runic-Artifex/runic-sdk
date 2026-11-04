@@ -129,7 +129,8 @@
                 "path": [
                   "name"
                 ],
-                "message": "Name must be at most 8 characters."
+                "message": "Name must be at most 8 characters.",
+                "text": {"version": 2, "catalog": "conformance", "contractFingerprint": "sha256:0000000000000000000000000000000000000000000000000000000000000000", "key": "name_too_long", "arguments": {"max": {"type": "int64", "value": "8"}}, "fallbackText": "Name must be at most 8 characters."}
               }
             ]
           }
@@ -165,7 +166,8 @@
                   "path": [
                     "name"
                   ],
-                  "message": "Name must be at most 8 characters."
+                  "message": "Name must be at most 8 characters.",
+                  "text": {"version": 2, "catalog": "conformance", "contractFingerprint": "sha256:0000000000000000000000000000000000000000000000000000000000000000", "key": "name_too_long", "arguments": {"max": {"type": "int64", "value": "8"}}, "fallbackText": "Name must be at most 8 characters."}
                 }
               ],
               "pending": [
@@ -195,7 +197,8 @@
                   "path": [
                     "name"
                   ],
-                  "message": "Name must be at most 8 characters."
+                  "message": "Name must be at most 8 characters.",
+                  "text": {"version": 2, "catalog": "conformance", "contractFingerprint": "sha256:0000000000000000000000000000000000000000000000000000000000000000", "key": "name_too_long", "arguments": {"max": {"type": "int64", "value": "8"}}, "fallbackText": "Name must be at most 8 characters."}
                 }
               ],
               "pending": [
@@ -236,7 +239,8 @@
                   "path": [
                     "name"
                   ],
-                  "message": "Name must be at most 8 characters."
+                  "message": "Name must be at most 8 characters.",
+                  "text": {"version": 2, "catalog": "conformance", "contractFingerprint": "sha256:0000000000000000000000000000000000000000000000000000000000000000", "key": "name_too_long", "arguments": {"max": {"type": "int64", "value": "8"}}, "fallbackText": "Name must be at most 8 characters."}
                 }
               ]
             }
@@ -261,7 +265,8 @@
                   "path": [
                     "name"
                   ],
-                  "message": "Name must be at most 8 characters."
+                  "message": "Name must be at most 8 characters.",
+                  "text": {"version": 2, "catalog": "conformance", "contractFingerprint": "sha256:0000000000000000000000000000000000000000000000000000000000000000", "key": "name_too_long", "arguments": {"max": {"type": "int64", "value": "8"}}, "fallbackText": "Name must be at most 8 characters."}
                 }
               ]
             }
@@ -294,7 +299,8 @@
                 "path": [
                   "name"
                 ],
-                "message": "Name must be at most 8 characters."
+                "message": "Name must be at most 8 characters.",
+                "text": {"version": 2, "catalog": "conformance", "contractFingerprint": "sha256:0000000000000000000000000000000000000000000000000000000000000000", "key": "name_too_long", "arguments": {"max": {"type": "int64", "value": "8"}}, "fallbackText": "Name must be at most 8 characters."}
               }
             ]
           }

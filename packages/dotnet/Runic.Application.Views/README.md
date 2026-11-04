@@ -1651,7 +1651,9 @@ shared code or the Vite configuration reads as a
 
 - **Translations.** The page can import the app's `t()` and its message
   tables through the alias, and take the locale from `navigator.language`,
-  which usually follows the system language (`LANG` on Linux). Include the
+  which usually follows the system language (`LANG` on Linux), or from the
+  window's locale that the application sets, which also translates the text the
+  ViewModels produce; see [Translated text](#translated-text). Include the
   message tables in `RunicApplicationFrontendInput`, so an edited translation
   rebuilds the page.
 - **Hosts.** The page loads `runic-views.js`, so it needs no host-specific
@@ -2318,6 +2320,167 @@ lists the paths sorted; when the limits cut it, `pendingTruncated` is set. WPF b
 tests, `RunicViewState.IsValidating(vm => vm.UserName)` and
 `PendingValidation` read the projection.
 
+## Translated text
+
+Text that a ViewModel produces, such as a status line or a validation
+message, can follow the window's language without a call per string. The
+ViewModel produces a text reference of
+[Runic Translations](https://github.com/Runic-Artifex/runic-translations-sdk/blob/v0.8.0/docs/guides/translations/transport.md)
+(a message key, typed arguments and a fallback text) instead of a sentence, and
+the page formats it with its Translations runtime (the `translation-text/1`
+feature). When the language changes, the page formats the references it has
+again.
+
+**Values.** A member, DTO member, command input or result of type
+`Runic.Translations.TranslationReference` crosses the Bridge as the reference's
+transport JSON, and is a `TextReference` in TypeScript. The Views packages do
+not depend on Runic Translations: the generator recognizes the type by name, and
+the generated code, compiled into your application, calls its serializer. Add
+the `Runic.Translations` package and the generated catalog to the .NET project
+as the [Translations guide](https://github.com/Runic-Artifex/runic-translations-sdk/blob/v0.8.0/docs/guides/translations/runic-desktop.md#strings-outside-the-views)
+shows. `RunicTextReference` holds a reference's JSON where Views code needs one:
+
+```csharp
+public partial class EditorViewModel : ObservableObject
+{
+    [ObservableProperty]
+    public partial TranslationReference Status { get; set; } = NotesText.Ready();
+
+    [RelayCommand]
+    private async Task SaveAsync()
+    {
+        await _store.SaveAsync(Title);
+        Status = NotesText.Saved(Title);
+    }
+}
+
+// NotesText.Saved: a reference with a fallback for a page that cannot translate it.
+public static TranslationReference Saved(string title) => new(NotesTextCatalog.CatalogId,
+    NotesTextCatalog.ContractFingerprint, "saved",
+    new Dictionary<string, TranslationReferenceArgument> { ["title"] = new(TextArgumentType.String, title) },
+    $"Saved {title}.");
+```
+
+**Validation messages.** Give a validation message a reference, and the page
+shows the error's `text` in the window's language, with the message as the
+fallback. `{name}Errors` keeps the messages.
+
+- `RunicValidationMessage`: set `Text = RunicTextReference.Create(reference,
+  TranslationReferenceJsonContext.Default.TranslationReference)`.
+- DataAnnotations and CommunityToolkit `ObservableValidator`: return a
+  `RunicValidationResult(message, text, memberNames)` from a
+  `[CustomValidation]` method or a `ValidationAttribute`. The built-in
+  attributes have no reference; their messages stay as they are.
+- ReactiveUI.Validation: pass a rule a state whose `IValidationText` also
+  implements `IRunicTextReferenceSource`, or add a component that implements
+  it:
+
+  ```csharp
+  sealed class TranslatedText(TranslationReference reference) : IValidationText, IRunicTextReferenceSource
+  {
+      private readonly string _message = reference.FallbackText ?? reference.Key;
+      public RunicTextReference? Text { get; } =
+          RunicTextReference.Create(reference, TranslationReferenceJsonContext.Default.TranslationReference);
+      public int Count => 1;
+      public string this[int index] => _message;
+      public IEnumerator<string> GetEnumerator() { yield return _message; }
+      IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
+      public string ToSingleLine(string? separator) => _message;
+  }
+
+  this.ValidationRule(vm => vm.Title, this.WhenAnyValue(vm => vm.Title).Select(title => title.Length <= 80
+      ? ValidationState.Valid : new ValidationState(false, new TranslatedText(NotesText.TitleTooLong(80)))));
+  ```
+
+- Any other entry of `GetErrors` can implement `IRunicTextReferenceSource`.
+
+**The window's language.** The application owns the window's locale: take
+`IRunicWindowLocale` in the ViewModel's constructor and set `Locale`, for
+example from the application's settings, before the window opens, and again
+from a language switch command. A language switch on the page must call that
+command: a page that sets its Translations runtime's locale itself is set back
+to the window's locale by the next push, at the latest when it reconnects. The window's pages follow it: each sets the
+locale of its Translations runtime, so the page's own messages switch too, and
+formats the references again. `null`, the default, leaves each page in its own
+language. A Window that the application creates itself sets
+`WindowContentSession.Locale`. The service raises `PropertyChanged`, so C# text,
+such as a tray menu, can follow with the generated C# catalog's
+`ITranslationManager`.
+
+```csharp
+public partial class ShellViewModel(IRunicWindowLocale locale, AppSettings settings) : ObservableObject
+{
+    public void Initialize() => locale.Locale = settings.Language;   // "de", "pt-BR" or null
+
+    [RelayCommand]
+    private void SwitchLanguage(string language)
+    {
+        locale.Locale = language;
+        settings.Language = language;
+    }
+}
+```
+
+**The page.** Connect the page's Translations runtime once, in `main.ts`, with
+`configureTranslatedText` from `@runic-artifex/views`. With the generated ESM of
+Runic Translations and its Vite plugin:
+
+```ts
+import { configureTranslatedText } from "@runic-artifex/views";
+import { m } from "virtual:runic-translations/app/messages";
+import { configureLocaleResolver, createLocaleSource } from "virtual:runic-translations/app/runtime";
+import { resolveTextReference } from "virtual:runic-translations/app/transport";
+
+const locale = createLocaleSource({ initialLocale: navigator.language });
+configureLocaleResolver(locale.getLocale);
+configureTranslatedText({
+  ...locale,
+  resolve: (reference, language) => resolveTextReference(reference, m, { locale: language }).text,
+});
+```
+
+Then show references with the framework's helper. Field errors
+(`useField(...).errors`, `injectField`, `createFieldController`) already show
+validation messages in the window's language. A `number`, `decimal`,
+`bigint`, `date`, `time` or `datetime` field without its own `locale` option
+shows and reads its text in the window's locale (`1,5`, `03.11.2026, 21:30` in
+`de`; `11/03/2026, 9:30 PM` in `en-US`), and formats it again when the locale
+changes, but not while the user edits a draft. Dates and times also accept the
+ISO form, and the ViewModel still receives the invariant and ISO values. Use a
+text input for such a field (`inputmode="decimal"` for numbers):
+`<input type="number">`, `type="date"`, `type="time"` and `datetime-local` take
+only the invariant and ISO forms, so a field bound to one of them takes
+`locale: null`.
+
+**Server rendering.** `configureTranslatedText` configures the page's runtime,
+which is shared by everything on the page. Under SvelteKit or Angular server
+rendering, call it in the browser only (in `onMount`, a `+layout.ts` with
+`export const ssr = false`, or behind `isPlatformBrowser`), or render on the
+server with `resolveTextReference(reference, m, { locale })` and the request's
+locale instead of the shared configuration. The server has no window locale.
+
+| Framework | Status line | Validation error |
+| --- | --- | --- |
+| React | `useText(view.state?.status)` | `useText(error.text, error.message)` |
+| Vue | `useText(() => view.state.value?.status)` | `useText(() => error.text, () => error.message)` |
+| Svelte | `useText(() => view.state?.status).current` | `useText(() => error.text, () => error.message).current` |
+| Angular | `{{ state.status \| runicText }}` or `injectText(() => …)` | `{{ error.text \| runicText: error.message }}` |
+| Effect | `texts(state.status)` | `texts(error.text, error.message)` |
+| None | `resolveText(state.status)` with `subscribeText` | `resolveText(error.text, error.message)` |
+
+A reference that the page cannot translate, such as one of another catalog,
+whose arguments no longer match, or of a later Translations transport version
+than the page's runtime reads, shows its fallback text. Without a configured
+runtime, every reference shows its fallback text. The text is plain: render it
+as text, never as HTML. `useWindowLocale()` (`injectWindowLocale()`,
+`windowLocale()`) reads the window's locale, for example for `lang`.
+
+**Tests.** `RunicViewState.Read(vm => vm.Status)` reads a `TranslationReference`
+or `RunicTextReference` member, and `RunicWindowTestHost.Create(services)` binds
+`IRunicWindowLocale` of the services' scope to the window, so
+`host.Content.Locale` shows what the ViewModel set. In page tests, the mock
+bridge's `setWindowLocale("de")` pushes a locale as the application does.
+
 ## Shared DTO exclusions
 
 Public readable DTO properties are part of the Bridge contract, including
@@ -2776,6 +2939,8 @@ NativeAOT symbols and what to attach to a bug report.
 | 1112 | `ViewHostPresentationChangeFailed` | Error | A `RunicViewHost` presentation change throws outside its open. | `ErrorType` |
 | 1113 | `ViewHostCleanupFailed` | Error | Releasing a `RunicViewHost` presentation throws. | `ErrorType` |
 | 1114 | `ChildViewCleanupFailed` | Error | A `WpfBridgeView` fails to release after its presentation closed. | `ErrorType` |
+| 1170 | `WindowLocaleChanged` | Debug | The application set the window's locale (`IRunicWindowLocale`, `WindowContentSession.Locale`), which pages with `translation-text/1` follow. | `Locale` |
+| 1171 | `ValidationTextTooLarge` | Warning | A validation message's text reference is larger than 16 KiB, so its error carries only the message. | `Key`, `Bytes`, `Limit` |
 | 2000 | `DesktopSnapshotDeliveryFailed` | Error | Runic Desktop cannot deliver a push to a page. | `ErrorType` |
 | 2002 | `DesktopWindowCloseAfterOpen` | Warning | `RUNIC_APPLICATION_CLOSE_AFTER_OPEN=1` closed a Desktop window right after it opened. | `Variable` |
 | 2003 | `DesktopPortalDiagnostic` | Warning or Debug | On Linux, xdg-desktop-portal reports a diagnostic for the portal services `AddRunicPlatformServices()` registers (notifications, status icon, login startup and inhibition): Warning for a rejected identity, an unavailable portal or a denied request, Debug for an accepted request or registration. | `Code`, `DiagnosticMessage`, `Remediation` |

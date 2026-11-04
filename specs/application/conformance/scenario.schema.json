@@ -32,7 +32,7 @@
     "requires": {
       "type": "array",
       "uniqueItems": true,
-      "items": { "enum": ["held-delivery", "virtual-clock", "text-splice/1", "presentation-epoch/1", "presented/1", "field-paths/1"] }
+      "items": { "enum": ["held-delivery", "virtual-clock", "text-splice/1", "presentation-epoch/1", "presented/1", "field-paths/1", "translation-text/1"] }
     },
     "options": {
       "type": "object",
@@ -175,6 +175,17 @@
               "additionalProperties": false,
               "required": ["id", "timeout"],
               "properties": { "id": { "$ref": "#/$defs/name" }, "timeout": { "type": "integer", "minimum": 0 } }
+            }
+          },
+          "additionalProperties": false,
+          "patternProperties": { "^(note)$": true }
+        },
+        {
+          "required": ["setLocale"],
+          "properties": {
+            "setLocale": {
+              "description": "Producer: sets the window's locale (translation-text/1), or null for none.",
+              "type": ["string", "null"]
             }
           },
           "additionalProperties": false,
@@ -407,6 +418,10 @@
         "connection": {
           "description": "Client: the connection state the client reports; closed when it reports that the producer closed the window.",
           "const": "closed"
+        },
+        "locale": {
+          "description": "Client: the window's locale the client reports (translation-text/1), or null while the producer sets none.",
+          "type": ["string", "null"]
         },
         "presented": {
           "description": "Producer: the result of a waitPresented wait, or pending while it has not completed.",

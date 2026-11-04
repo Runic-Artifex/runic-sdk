@@ -1,0 +1,30 @@
+{
+  "format": "runic.views.scenario/1",
+  "id": "handshake.locale-is-pushed-after-the-hello-and-on-each-change.v1",
+  "contract": {"id":"runic.views","version":4},
+  "set": "handshake",
+  "roles": ["producer","client"],
+  "description": "With translation-text/1, a window with a locale pushes it to a connection after its hello, and again on each change; null means that the application sets none. The client reports the window's locale.",
+  "view": "form",
+  "requires": ["translation-text/1"],
+  "ids": {
+    "c1": {"kind":"connection"},
+    "hello-c1": {"kind":"request"},
+    "session": {"kind":"wire","value":"s-1"}
+  },
+  "arrange": {"model":{}},
+  "steps": [
+    {"setLocale":"de"},
+    {"connect":"c1"},
+    {"send":{"kind":"hello","protocol":4,"session":{"$id":"session"},"client":{"name":{"$any":"string","default":"conformance-client"},"version":{"$any":"string","default":"1.0.0"}},"features":{"$any":"array","default":["text-splice/1","translation-text/1"]}},"id":"hello-c1"},
+    {"receive":{"ok":true,"protocol":4,"implementation":{"name":{"$any":"string","default":"conformance-producer"},"version":{"$any":"string","default":"1.0.0"}},"features":{"$any":"array","default":["text-splice/1","translation-text/1"]}},"replyTo":"hello-c1","unordered":true},
+    {"receive":{"kind":"locale","locale":"de"},"unordered":true,"note":"The push follows the hello; a transport may deliver it before the reply."},
+    {"expect":{"locale":"de"}},
+    {"setLocale":"pt-BR"},
+    {"receive":{"kind":"locale","locale":"pt-BR"}},
+    {"expect":{"locale":"pt-BR"}},
+    {"setLocale":null},
+    {"receive":{"kind":"locale","locale":null}},
+    {"expect":{"locale":null}}
+  ]
+}

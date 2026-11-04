@@ -14,6 +14,10 @@ export {
 } from "./inject-latest-operation.js";
 export { injectCollectionViewport, type InjectCollectionViewportOptions } from "./inject-collection-viewport.js";
 export { injectBridgeConnection, type BridgeConnectionHandle, type InjectBridgeConnectionOptions } from "./inject-bridge-connection.js";
+export { injectText, injectWindowLocale, RunicTextPipe, type InjectTextOptions } from "./inject-text.js";
+export {
+  configureTranslatedText, resolveText, windowLocale, type TextReference, type TextTranslations,
+} from "@runic-artifex/views";
 export { onBridgeConnection, type BridgeConnectionOptions, type BridgeConnectionState } from "@runic-artifex/views";
 export {
   injectMenuBar,

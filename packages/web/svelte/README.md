@@ -489,6 +489,23 @@ items and is tested with real keys:
 The host owns `checked`: bind it one way, as
 `bind:checked={() => item.checked ?? false, () => {}}`.
 
+## `useText(value, fallback?)`
+
+Shows a text reference that a ViewModel produced, such as a status line or a
+validation error's `text`, in the window's language, and renders again when the
+language changes. A string shows as it is; `null` and `undefined` show
+`fallback`. Connect the page's Translations runtime once with
+`configureTranslatedText` ([Translated text](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Application.Views/README.md#translated-text)).
+`useWindowLocale()` reads the window's locale. With SvelteKit server
+rendering, call `configureTranslatedText` in the browser only (for example in
+`onMount`), or render on the server with `resolveTextReference` and the
+request's locale.
+
+```svelte
+const status = useText(() => view.state?.status);
+<p>{status.current}</p>
+```
+
 ## Errors
 
 The `error` of `useView` and of a command or operation helper is typed

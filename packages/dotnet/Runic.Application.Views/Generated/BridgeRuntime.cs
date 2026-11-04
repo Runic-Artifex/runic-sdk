@@ -392,12 +392,20 @@ internal interface IBridgeDetachmentSignal
 internal static class BridgeSnapshotPublication
 {
     private static readonly AsyncLocal<Func<bool>?> IsInactive = new();
+    // The logger of the bridge whose state is being written, for the writers it calls, such as BridgeValidation.
+    private static readonly AsyncLocal<Microsoft.Extensions.Logging.ILogger?> CurrentLogger = new();
 
-    public static IDisposable Enter(Func<bool> isInactive)
+    internal static Microsoft.Extensions.Logging.ILogger Logger => CurrentLogger.Value ?? TraceFallbackLogger.Instance;
+
+    public static IDisposable Enter(Func<bool> isInactive) => Enter(isInactive, null);
+
+    public static IDisposable Enter(Func<bool> isInactive, Microsoft.Extensions.Logging.ILogger? logger)
     {
         var previous = IsInactive.Value;
+        var previousLogger = CurrentLogger.Value;
         IsInactive.Value = isInactive;
-        return new Scope(previous);
+        CurrentLogger.Value = logger;
+        return new Scope(previous, previousLogger);
     }
 
     public static void ThrowIfInactive()
@@ -405,14 +413,16 @@ internal static class BridgeSnapshotPublication
         if (IsInactive.Value?.Invoke() == true) throw new BridgeSnapshotDetachedException();
     }
 
-    private sealed class Scope(Func<bool>? previous) : IDisposable
+    private sealed class Scope(Func<bool>? previous, Microsoft.Extensions.Logging.ILogger? previousLogger) : IDisposable
     {
         private Func<bool>? _previous = previous;
+        private int _disposed;
 
         public void Dispose()
         {
-            var previous = Interlocked.Exchange(ref _previous, null);
-            IsInactive.Value = previous;
+            if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
+            IsInactive.Value = Interlocked.Exchange(ref _previous, null);
+            CurrentLogger.Value = previousLogger;
         }
     }
 }

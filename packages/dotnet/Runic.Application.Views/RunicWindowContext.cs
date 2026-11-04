@@ -1,3 +1,5 @@
+using System.ComponentModel;
+
 namespace Runic.Application.Views;
 
 /// <summary>
@@ -33,9 +35,85 @@ public interface IRunicWindowContext
     ValueTask<bool> RequestCloseAsync(CancellationToken cancellationToken = default);
 }
 
-internal sealed class RunicWindowContext : IRunicWindowContext
+/// <summary>
+/// The locale of the Window whose scope resolved this service: the language in which its pages show text references,
+/// such as ViewModel status text and validation messages (feature <c>translation-text/1</c>). Take it in the constructor
+/// of a ViewModel that <c>OpenWindowAsync</c> resolves, or of a scoped service that ViewModel uses.
+/// </summary>
+/// <remarks>
+/// <para>
+/// The application owns the locale: it sets it from its settings, the operating system's language or a language switch
+/// of the page, which calls a command. The window's pages follow it without a call per string, and set the locale of their
+/// Translations runtime, so the page's own messages switch too. <see langword="null"/>, the default, leaves each page in
+/// its own language.
+/// </para>
+/// <para>
+/// Set it in the ViewModel's constructor, before the window opens, and the first page starts in that language. The
+/// service raises <see cref="INotifyPropertyChanged.PropertyChanged"/> for <see cref="Locale"/> on the setting thread,
+/// also when the window's <see cref="WindowContentSession.Locale"/> is set directly. Outside a Window's scope, as in a
+/// unit test that constructs the ViewModel, it keeps the value without pushing it anywhere.
+/// </para>
+/// </remarks>
+public interface IRunicWindowLocale : INotifyPropertyChanged
 {
+    /// <summary>
+    /// The window's locale, a BCP 47 tag such as <c>de</c> or <c>pt-BR</c>, or <see langword="null"/> while each page
+    /// keeps its own.
+    /// </summary>
+    /// <exception cref="ArgumentException">The value is not 1 to 64 letters, digits and <c>-</c>, starting with a letter.</exception>
+    string? Locale { get; set; }
+}
+
+internal sealed class RunicWindowContext : IRunicWindowContext, IRunicWindowLocale
+{
+    private static readonly PropertyChangedEventArgs LocaleArgs = new(nameof(Locale));
+    private readonly object _localeGate = new();
     private IRunicWindow? _window;
+    private WindowContentSession? _content;
+    private string? _locale;
+
+    public event PropertyChangedEventHandler? PropertyChanged;
+
+    public string? Locale
+    {
+        get
+        {
+            lock (_localeGate) return _content is { } content ? content.Locale : _locale;
+        }
+        set
+        {
+            WindowContentSession? content;
+            lock (_localeGate)
+            {
+                content = _content;
+                if (content is null)
+                {
+                    if (value is not null && !BridgeDispatcher.IsLocale(value))
+                        throw new ArgumentException($"'{value}' is not a locale tag, such as \"de\" or \"pt-BR\".", nameof(value));
+                    if (string.Equals(_locale, value, StringComparison.Ordinal)) return;
+                    _locale = value;
+                }
+            }
+            // The session raises LocaleChanged, which raises PropertyChanged.
+            if (content is not null) content.Locale = value;
+            else PropertyChanged?.Invoke(this, LocaleArgs);
+        }
+    }
+
+    // Called when the Window attached its content session: the session takes the locale set before the window opened,
+    // and its changes raise PropertyChanged from then on.
+    internal void AttachContent(WindowContentSession content)
+    {
+        string? locale;
+        lock (_localeGate)
+        {
+            if (_content is not null) return;
+            _content = content;
+            locale = _locale;
+        }
+        if (locale is not null) content.Locale = locale;
+        content.LocaleChanged += (_, _) => PropertyChanged?.Invoke(this, LocaleArgs);
+    }
 
     // Called by OpenWindowAsync in the Window's new scope, before it resolves the ViewModel.
     internal void Bind(IRunicWindow window)
