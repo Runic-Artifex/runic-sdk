@@ -3107,10 +3107,12 @@ Views packages do not reference Runic Translations: `Follow` takes any
 `ITranslationManager`'s `SetLocaleAsync` is.
 
 ```csharp
-// After the services are built, before the first Window opens.
+// After the services are built, before the first Window opens. A handler runs on the
+// SynchronizationContext it subscribed on: in WPF's startup, the UI thread. A Runic
+// Desktop body has none, so it runs on the switch's thread; SetMenuBar is thread-safe.
 var locale = services.GetRequiredService<IRunicApplicationLocale>();
 locale.Follow(translations.SetLocaleAsync);        // TranslationContext (0.9) or ITranslationManager
-locale.LocaleChanged += (_, _) => RebuildMenuBarAndStatusIcon();
+locale.LocaleChanged += (_, _) => RebuildMenuBarAndStatusIcon();   // host.Desktop.SetMenuBar(...) and the icon
 // The user's choice, else the best match for the operating system's languages.
 await locale.SetLocaleAsync(settings.Language ?? Negotiate(DesktopLanguages.Preferred, ["en", "de"]));
 
@@ -3122,6 +3124,31 @@ private async Task SwitchLanguageAsync(string language)
     _settings.Language = language;
 }
 ```
+
+Each Window follows in a turn of its model context, as other changes reach its
+ViewModel, so its `IRunicWindowLocale` raises `PropertyChanged` there. Each
+`LocaleChanged` handler runs on the `SynchronizationContext` that was current when
+it subscribed, such as the UI thread or a ViewModel's model context; a handler
+subscribed without one, as in a console start, runs on the thread that completes
+the switch, and marshals UI work itself (`DesktopHost.SetMenuBar` may be called
+from any thread). Overlapping switches raise their events in order, each change
+once: a switch that a later one followed before its event was raised reports
+nothing, and the next event's `OldLocale` is the locale the last event reported.
+A Window whose update fails, for example because a `PropertyChanged` handler
+throws, does not stop the other Windows or the event: `SetLocaleAsync` then
+throws an `AggregateException` with each failure, the locale has changed, and a
+second call with the same locale updates the Windows that failed again. A
+follower, or a Window's `PropertyChanged` handler, must not call `SetLocaleAsync`
+during the switch (it throws `InvalidOperationException`); a `LocaleChanged`
+handler may, and that switch's event follows the current handlers.
+
+`IRunicWindowLocale.Locale` returns the application's locale while the Window
+has none of its own. To save a Window's language and set it back later, save
+`OwnLocale` (since 0.17), which is `null` while the Window follows the
+application, so setting it back does not pin the Window to the language it
+showed. `WindowContentSession.Locale = null` on a Window that
+`OpenWindowAsync` opened follows the application again, as
+`IRunicWindowLocale.Locale = null` does.
 
 `DesktopLanguages.Preferred` (Runic.Platform) lists the user's languages as the
 operating system does, most preferred first: Windows' display languages,
@@ -3190,8 +3217,11 @@ as text, never as HTML. `useWindowLocale()` (`injectWindowLocale()`,
 `windowLocale()`) reads the window's locale, for example for `lang`. A window
 locale that the page's runtime does not have, such as `de-CH` for a catalog with
 `de` under the `Exact` policy, sets the runtime to its closest parent (`de`)
-before the page reports an error; use `ParentsThenDefault` in applications so
-every locale resolves.
+before the page reports an error. A parent in another script is skipped: the
+page never falls from `zh-Hant-TW` or `zh-TW` (Traditional) to `zh`
+(Simplified), or from `sr-Latn` to `sr` (Cyrillic), and reports the error
+instead. Use `ParentsThenDefault` in applications so every locale resolves, and
+ship a catalog for each script you support.
 
 **Tests.** `RunicViewState.Read(vm => vm.Status)` reads a `TranslationReference`
 or `RunicTextReference` member, and `RunicWindowTestHost.Create(services)` binds

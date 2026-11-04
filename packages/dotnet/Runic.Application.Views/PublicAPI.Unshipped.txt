@@ -8,3 +8,4 @@ Runic.Application.Views.RunicApplicationLocaleChangedEventArgs
 Runic.Application.Views.RunicApplicationLocaleChangedEventArgs.Locale.get -> string?
 Runic.Application.Views.RunicApplicationLocaleChangedEventArgs.OldLocale.get -> string?
 Runic.Application.Views.RunicApplicationLocaleChangedEventArgs.RunicApplicationLocaleChangedEventArgs(string? oldLocale, string? locale) -> void
+Runic.Application.Views.IRunicWindowLocale.OwnLocale.get -> string?

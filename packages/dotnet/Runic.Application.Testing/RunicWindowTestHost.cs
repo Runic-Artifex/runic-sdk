@@ -123,15 +123,18 @@ public sealed class RunicWindowTestHost<TViewModel> : IDisposable where TViewMod
     /// await host.ApplicationLocale.SetLocaleAsync("de");
     /// </code>
     /// </summary>
+    /// <exception cref="ObjectDisposedException">The host was disposed.</exception>
     public IRunicApplicationLocale ApplicationLocale
     {
         get
         {
+            ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed), this);
             if (Volatile.Read(ref _applicationLocale) is { } known) return known;
             if (Services?.GetService(typeof(IRunicApplicationLocale)) is IRunicApplicationLocale registered)
                 return Interlocked.CompareExchange(ref _applicationLocale, registered, null) ?? registered;
             lock (_gate)
             {
+                ObjectDisposedException.ThrowIf(_disposed, this);
                 if (_applicationLocale is { } created) return created;
                 var own = new RunicApplicationLocale();
                 // The window follows this host's locale as a Window scope's IRunicWindowLocale follows the application's.

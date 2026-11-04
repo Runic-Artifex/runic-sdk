@@ -1,4 +1,5 @@
 using System.ComponentModel;
+using Runic.Navigation;
 
 namespace Runic.Application.Views;
 
@@ -63,11 +64,17 @@ public interface IRunicWindowContext
 /// </para>
 /// <para>
 /// Set it in the ViewModel's constructor, before the window opens, and the first page starts in that language. The
-/// service raises <see cref="INotifyPropertyChanged.PropertyChanged"/> for <see cref="Locale"/> on the setting thread
-/// each time the Window's locale changes: when it is set here, when the application's locale changes while the Window
-/// follows it, and when the window's <see cref="WindowContentSession.Locale"/> is set directly, which counts as the
-/// Window's own locale. Outside a Window's scope, as in a unit test that constructs the ViewModel, it keeps the value
-/// without pushing it anywhere.
+/// service raises <see cref="INotifyPropertyChanged.PropertyChanged"/> for <see cref="Locale"/> each time the Window's
+/// locale changes: on the setting thread when it is set here or when the window's
+/// <see cref="WindowContentSession.Locale"/> is set directly, which counts as the Window's own locale; and in a turn of
+/// the Window's model context when the application's locale changes while the Window follows it. It raises it for
+/// <see cref="OwnLocale"/> when the Window's own locale changes. Outside a Window's scope, as in a unit test that
+/// constructs the ViewModel, it keeps the value without pushing it anywhere.
+/// </para>
+/// <para>
+/// Since 0.17, <see cref="Locale"/> returns the application's locale while the Window has none of its own. Code that
+/// saves the Window's language and sets it back later saves <see cref="OwnLocale"/>, so a Window that followed the
+/// application follows it again instead of keeping the language it showed.
 /// </para>
 /// </remarks>
 public interface IRunicWindowLocale : INotifyPropertyChanged
@@ -82,11 +89,19 @@ public interface IRunicWindowLocale : INotifyPropertyChanged
     /// </remarks>
     /// <exception cref="ArgumentException">The value is not 1 to 64 letters, digits and <c>-</c>, starting with a letter.</exception>
     string? Locale { get; set; }
+
+    /// <summary>
+    /// The Window's own locale, or <see langword="null"/> while it follows the application's (since 0.17). Save this one
+    /// and set it back through <see cref="Locale"/>: <see langword="null"/> follows the application again.
+    /// </summary>
+    /// <remarks>The default implementation, for a test fake, returns <see cref="Locale"/>.</remarks>
+    string? OwnLocale => Locale;
 }
 
 internal sealed class RunicWindowContext : IRunicWindowContext, IRunicWindowLocale, IDisposable
 {
     private static readonly PropertyChangedEventArgs LocaleArgs = new(nameof(Locale));
+    private static readonly PropertyChangedEventArgs OwnLocaleArgs = new(nameof(OwnLocale));
     private readonly object _localeGate = new();
     private readonly IRunicApplicationLocale? _application;
     private IRunicWindow? _window;
@@ -137,6 +152,15 @@ internal sealed class RunicWindowContext : IRunicWindowContext, IRunicWindowLoca
                 _own = value;
             }
             Apply();
+            PropertyChanged?.Invoke(this, OwnLocaleArgs);
+        }
+    }
+
+    public string? OwnLocale
+    {
+        get
+        {
+            lock (_localeGate) return _own;
         }
     }
 
@@ -155,13 +179,56 @@ internal sealed class RunicWindowContext : IRunicWindowContext, IRunicWindowLoca
         Apply();
     }
 
-    internal void ApplicationLocaleChanged() => Apply();
+    // The application's switch reaches this Window: in a turn of the Window's model context, as other changes reach its
+    // ViewModel, or inline without one. A retry raises PropertyChanged again although the session already shows the
+    // locale, because the last update failed in a handler.
+    internal ValueTask FollowApplicationAsync(RunicApplicationLocale owner, bool retry)
+    {
+        WindowContentSession? content;
+        lock (_localeGate) content = _content;
+        if (content?.ModelContext is not { IsExecuting: false } context)
+        {
+            try
+            {
+                RunicApplicationLocale.UpdateWindow(owner, () => Apply(retry));
+                return ValueTask.CompletedTask;
+            }
+            catch (Exception error) { return ValueTask.FromException(error); }
+        }
+        return FollowInTurnAsync(context, owner, retry);
+    }
 
-    private void OnApplicationLocaleChanged(object? sender, RunicApplicationLocaleChangedEventArgs e) => Apply();
+    private async ValueTask FollowInTurnAsync(IRunicModelContext context, RunicApplicationLocale owner, bool retry)
+    {
+        var started = 0;
+        try
+        {
+            await context.InvokeAsync(() =>
+            {
+                Volatile.Write(ref started, 1);
+                RunicApplicationLocale.UpdateWindow(owner, () => Apply(retry));
+            }).ConfigureAwait(false);
+        }
+        // A Window whose context closed is closing: its session still takes the locale, so it reads consistently.
+        catch (ObjectDisposedException) when (Volatile.Read(ref started) == 0)
+        {
+            RunicApplicationLocale.UpdateWindow(owner, () => Apply(retry));
+        }
+    }
+
+    // Another IRunicApplicationLocale's LocaleChanged: follow in a turn of the Window's model context when there is one.
+    private void OnApplicationLocaleChanged(object? sender, RunicApplicationLocaleChangedEventArgs e)
+    {
+        WindowContentSession? content;
+        lock (_localeGate) content = _content;
+        if (content?.ModelContext is { IsExecuting: false } context && context.TryPost(() => Apply())) return;
+        Apply();
+    }
 
     // Brings the session, or the listeners of a Window without one, to the locale the Window shows. Two threads that apply
-    // at once converge: each reads the target again after it set the session.
-    private void Apply()
+    // at once converge: each reads the target again after it set the session. With force, PropertyChanged is raised also
+    // when the locale is unchanged.
+    private void Apply(bool force = false)
     {
         WindowContentSession? content;
         lock (_localeGate) content = _content;
@@ -171,7 +238,7 @@ internal sealed class RunicWindowContext : IRunicWindowContext, IRunicWindowLoca
             lock (_localeGate)
             {
                 target = _own ?? _application?.Locale;
-                if (string.Equals(_reported, target, StringComparison.Ordinal)) return;
+                if (!force && string.Equals(_reported, target, StringComparison.Ordinal)) return;
                 _reported = target;
             }
             PropertyChanged?.Invoke(this, LocaleArgs);
@@ -180,24 +247,45 @@ internal sealed class RunicWindowContext : IRunicWindowContext, IRunicWindowLoca
         for (var attempt = 0; attempt < 8; attempt++)
         {
             var target = Target;
-            // The session raises LocaleChanged, which raises PropertyChanged.
-            var outer = s_applying;
-            s_applying = this;
-            try { content.Locale = target; }
-            finally { s_applying = outer; }
+            if (string.Equals(content.Locale, target, StringComparison.Ordinal))
+            {
+                if (force) PropertyChanged?.Invoke(this, LocaleArgs);
+                force = false;
+            }
+            else
+            {
+                force = false;
+                // The session raises LocaleChanged, which raises PropertyChanged.
+                var outer = s_applying;
+                s_applying = this;
+                try { content.Locale = target; }
+                finally { s_applying = outer; }
+            }
             if (string.Equals(Target, target, StringComparison.Ordinal)) return;
         }
     }
 
     // A change of the session's locale. One this context did not make, because WindowContentSession.Locale was set
-    // directly, becomes the Window's own locale; null makes it follow the application again, without pushing the
-    // application's locale until it changes.
+    // directly, becomes the Window's own locale; null makes it follow the application again, so the session then shows
+    // the application's locale, as IRunicWindowLocale.Locale documents.
     private void OnContentLocaleChanged(object? sender, EventArgs e)
     {
         if (sender is WindowContentSession content && !ReferenceEquals(s_applying, this))
         {
             var shown = content.Locale;
-            lock (_localeGate) _own = shown;
+            bool ownChanged;
+            bool follow;
+            lock (_localeGate)
+            {
+                ownChanged = !string.Equals(_own, shown, StringComparison.Ordinal);
+                _own = shown;
+                follow = shown is null && _application?.Locale is not null;
+            }
+            // Apply sets the application's locale, whose change raises PropertyChanged for Locale.
+            if (follow) Apply();
+            else PropertyChanged?.Invoke(this, LocaleArgs);
+            if (ownChanged) PropertyChanged?.Invoke(this, OwnLocaleArgs);
+            return;
         }
         PropertyChanged?.Invoke(this, LocaleArgs);
     }

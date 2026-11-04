@@ -1,3 +1,4 @@
+using System.ComponentModel;
 using System.Text.Json;
 using Microsoft.Extensions.DependencyInjection;
 using Runic.Application.Testing;
@@ -95,7 +96,7 @@ public sealed class ApplicationLocaleTests
         var application = provider.GetRequiredService<IRunicApplicationLocale>();
         await using var window = await new TestWindowHost(provider).OpenWindowAsync<TranslatedTextWindow>();
         var order = new List<string>();
-        using var follower = application.Follow(async (locale, _) =>
+        using var follower = application.Follow(async (locale, token) =>
         {
             await Task.Yield();
             order.Add($"follower {locale}, window {Host(window).Content.Locale ?? "none"}");
@@ -126,8 +127,11 @@ public sealed class ApplicationLocaleTests
         follower.Dispose();
         order.Clear();
         await Task.WhenAll(application.SetLocaleAsync("en").AsTask(), application.SetLocaleAsync("fr").AsTask());
-        Require(application.Locale == "fr" && Host(window).Content.Locale == "fr" && order.Count == 2
-            && order.All(entry => entry.StartsWith("changed", StringComparison.Ordinal)), $"Concurrent switches: {string.Join("; ", order)}");
+        // The events report one chain of changes, in order, that ends in the last switch's locale.
+        Require(application.Locale == "fr" && Host(window).Content.Locale == "fr"
+            && (order.SequenceEqual(["changed none -> fr, window fr"])
+                || (order is [var first, "changed en -> fr, window fr"] && first.StartsWith("changed none -> en", StringComparison.Ordinal))),
+            $"Concurrent switches: {string.Join("; ", order)}");
 
         foreach (var invalid in new[] { "", "de_DE", "1de", "de-" })
         {
@@ -167,15 +171,224 @@ public sealed class ApplicationLocaleTests
         using var scope = provider.CreateScope();
         var window = scope.ServiceProvider.GetRequiredService<IRunicWindowLocale>();
         var changes = 0;
-        window.PropertyChanged += (_, _) => changes++;
+        window.PropertyChanged += (_, args) => { if (args.PropertyName == nameof(IRunicWindowLocale.Locale)) changes++; };
         provider.GetRequiredService<IRunicApplicationLocale>().SetLocaleAsync("de").AsTask().GetAwaiter().GetResult();
         Require(window.Locale == "de" && changes == 1, $"An unopened Window's locale is {window.Locale} after {changes} changes.");
         window.Locale = "fr";
-        Require(window.Locale == "fr" && changes == 2, "Its own locale did not win.");
+        Require(window.Locale == "fr" && window.OwnLocale == "fr" && changes == 2, "Its own locale did not win.");
         scope.Dispose();
         // A disposed scope's context no longer follows.
         provider.GetRequiredService<IRunicApplicationLocale>().SetLocaleAsync("it").AsTask().GetAwaiter().GetResult();
         Require(changes == 2, "A disposed Window context still followed the application.");
+    }
+
+    [Test]
+    public async Task OverlappingSwitchesRaiseTheirEventsInOrderAndDropSupersededOnesAsync()
+    {
+        await using var provider = Services();
+        var application = provider.GetRequiredService<IRunicApplicationLocale>();
+        await using var window = await new TestWindowHost(provider).OpenWindowAsync<TranslatedTextWindow>();
+        var events = new List<string>();
+        var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var release = new ManualResetEventSlim();
+        application.LocaleChanged += (_, args) =>
+        {
+            lock (events) events.Add($"{args.OldLocale ?? "none"} -> {args.Locale ?? "none"}");
+            if (args.Locale == "de")
+            {
+                entered.TrySetResult();
+                release.Wait(TimeSpan.FromSeconds(10));
+            }
+        };
+        // de's handler holds the event while fr and it commit: fr's event is superseded by it, which reports de -> it.
+        var de = Task.Run(() => application.SetLocaleAsync("de").AsTask());
+        await entered.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        var fr = application.SetLocaleAsync("fr").AsTask();
+        await Task.WhenAny(fr, Task.Delay(200));
+        Require(!fr.IsCompleted, "A switch returned before the event of an earlier switch was raised.");
+        var it = Task.Run(() => application.SetLocaleAsync("it").AsTask());
+        await WaitUntilAsync(() => Host(window).Content.Locale == "it");
+        release.Set();
+        await Task.WhenAll(de, fr, it).WaitAsync(TimeSpan.FromSeconds(10));
+        Require(application.Locale == "it" && Host(window).Content.Locale == "it", "The last switch did not win.");
+        lock (events)
+            Require(events.SequenceEqual(["none -> de", "de -> it"]), $"The events were not ordered and coalesced: {string.Join("; ", events)}");
+
+        // Many overlapping switches: the events form one chain that ends in the final locale.
+        events.Clear();
+        string[] locales = ["en", "fr", "es", "pt", "nl", "sv"];
+        await Task.WhenAll(locales.Select(locale => Task.Run(() => application.SetLocaleAsync(locale).AsTask())));
+        var final = application.Locale;
+        Require(Host(window).Content.Locale == final, "The Window does not show the final locale.");
+        lock (events)
+        {
+            var previous = "it";
+            foreach (var entry in events)
+            {
+                var parts = entry.Split(" -> ");
+                Require(parts[0] == previous, $"An event skipped or repeated a change: {string.Join("; ", events)}");
+                previous = parts[1];
+            }
+            Require(previous == final, $"The last event does not report the final locale {final}: {string.Join("; ", events)}");
+        }
+    }
+
+    [Test]
+    public async Task AFailingWindowDoesNotStopTheSwitchAndARetryUpdatesItAgainAsync()
+    {
+        await using var provider = Services();
+        var application = provider.GetRequiredService<IRunicApplicationLocale>();
+        var windows = new TestWindowHost(provider);
+        await using var first = await windows.OpenWindowAsync<TranslatedTextWindow>();
+        await using var second = await windows.OpenWindowAsync<TranslatedTextWindow>();
+        var firstLocale = first.Services.GetRequiredService<IRunicWindowLocale>();
+        var failing = true;
+        var seen = new List<string?>();
+        firstLocale.PropertyChanged += (_, args) =>
+        {
+            if (args.PropertyName != nameof(IRunicWindowLocale.Locale)) return;
+            seen.Add(firstLocale.Locale);
+            if (failing) throw new InvalidOperationException("handler failed");
+        };
+        var raised = new List<string?>();
+        application.LocaleChanged += (_, args) => raised.Add(args.Locale);
+        AggregateException? thrown = null;
+        try { await application.SetLocaleAsync("de"); }
+        catch (AggregateException error) { thrown = error; }
+        Require(thrown is { InnerExceptions: [InvalidOperationException { Message: "handler failed" }] },
+            $"The Window's failure was not reported: {thrown}");
+        Require(application.Locale == "de" && Host(second).Content.Locale == "de" && raised.SequenceEqual(["de"]),
+            "A failing Window stopped the other Windows or the event.");
+
+        // The same locale again updates the Window that failed, and raises no event.
+        failing = false;
+        await application.SetLocaleAsync("de");
+        Require(seen.SequenceEqual(["de", "de"]) && Host(first).Content.Locale == "de" && raised.SequenceEqual(["de"]),
+            $"A retry did not update the failed Window once: {string.Join(", ", seen)}; events {raised.Count}");
+        await application.SetLocaleAsync("de");
+        Require(seen.Count == 2, "A retry after success updated the Window again.");
+
+        // A LocaleChanged handler that throws is reported after every handler ran.
+        var others = 0;
+        application.LocaleChanged += (_, _) => throw new FormatException("menu");
+        application.LocaleChanged += (_, _) => others++;
+        thrown = null;
+        try { await application.SetLocaleAsync("fr"); }
+        catch (AggregateException error) { thrown = error; }
+        Require(thrown is { InnerExceptions: [FormatException] } && others == 1 && application.Locale == "fr",
+            $"A failing handler stopped the others: {thrown}");
+    }
+
+    [Test]
+    public async Task WindowsFollowInTheirModelContextAndHandlersRunWhereTheySubscribedAsync()
+    {
+        await using var provider = Services();
+        var application = provider.GetRequiredService<IRunicApplicationLocale>();
+        await using var window = await new TestWindowHost(provider).OpenWindowAsync<TranslatedTextWindow>();
+        var context = Host(window).Content.ModelContext ?? throw new InvalidOperationException("The Window has no model context.");
+        var windowLocale = window.Services.GetRequiredService<IRunicWindowLocale>();
+        bool? inTurn = null;
+        windowLocale.PropertyChanged += (_, _) => inTurn = context.IsExecuting;
+        // A handler subscribed in a turn runs in a turn of that context, and a follower that yields does not change that.
+        bool? handlerInTurn = null;
+        await context.InvokeAsync(() => application.LocaleChanged += (_, _) => handlerInTurn = context.IsExecuting);
+        using var follower = application.Follow(async (_, token) => await Task.Delay(1, token).ConfigureAwait(false));
+        await Task.Run(() => application.SetLocaleAsync("de").AsTask());
+        Require(inTurn == true, "The Window's PropertyChanged was not raised in its model context.");
+        Require(handlerInTurn == true, "LocaleChanged did not run on the context it was subscribed on.");
+    }
+
+    [Test]
+    public async Task ReentrantSwitchesFromFollowersAndWindowsThrowAndFromHandlersAreQueuedAsync()
+    {
+        await using var provider = Services();
+        var application = provider.GetRequiredService<IRunicApplicationLocale>();
+        await using var window = await new TestWindowHost(provider).OpenWindowAsync<TranslatedTextWindow>();
+        Exception? fromFollower = null;
+        var follower = application.Follow(async (locale, token) =>
+        {
+            await Task.Yield();
+            if (locale != "de") return;
+            try { await application.SetLocaleAsync("de-AT", token).AsTask().WaitAsync(TimeSpan.FromSeconds(5), token); }
+            catch (Exception error) { fromFollower = error; }
+        });
+        await application.SetLocaleAsync("de").AsTask().WaitAsync(TimeSpan.FromSeconds(10));
+        Require(fromFollower is InvalidOperationException && application.Locale == "de",
+            $"A follower's switch did not throw InvalidOperationException: {fromFollower}");
+        follower.Dispose();
+
+        var windowLocale = window.Services.GetRequiredService<IRunicWindowLocale>();
+        PropertyChangedEventHandler blocking = (_, _) => application.SetLocaleAsync("en").AsTask().GetAwaiter().GetResult();
+        windowLocale.PropertyChanged += blocking;
+        AggregateException? thrown = null;
+        try { await application.SetLocaleAsync("fr").AsTask().WaitAsync(TimeSpan.FromSeconds(10)); }
+        catch (AggregateException error) { thrown = error; }
+        windowLocale.PropertyChanged -= blocking;
+        Require(thrown?.InnerExceptions is [InvalidOperationException] && application.Locale == "fr",
+            $"A Window handler's switch did not throw: {thrown}");
+
+        // A LocaleChanged handler may switch: its event follows the current handlers.
+        var events = new List<string?>();
+        EventHandler<RunicApplicationLocaleChangedEventArgs> redirect = (_, args) =>
+        {
+            events.Add(args.Locale);
+            if (args.Locale == "pt") _ = application.SetLocaleAsync("pt-BR").AsTask();
+        };
+        application.LocaleChanged += redirect;
+        await application.SetLocaleAsync("pt").AsTask().WaitAsync(TimeSpan.FromSeconds(10));
+        await WaitUntilAsync(() => events.Count == 2);
+        Require(events.SequenceEqual(["pt", "pt-BR"]) && application.Locale == "pt-BR" && Host(window).Content.Locale == "pt-BR",
+            $"A handler's switch: {string.Join(", ", events)}");
+    }
+
+    [Test]
+    public async Task OwnLocaleTellsTheWindowsLocaleFromTheApplicationsAsync()
+    {
+        await using var provider = Services();
+        var application = provider.GetRequiredService<IRunicApplicationLocale>();
+        await using var window = await new TestWindowHost(provider).OpenWindowAsync<TranslatedTextWindow>();
+        var locale = window.Services.GetRequiredService<IRunicWindowLocale>();
+        await application.SetLocaleAsync("de");
+        Require(locale.Locale == "de" && locale.OwnLocale is null, "A following Window reported an own locale.");
+        // Save what you read: the Window keeps following.
+        var saved = locale.OwnLocale;
+        locale.Locale = saved;
+        await application.SetLocaleAsync("fr");
+        Require(locale.Locale == "fr", "Setting the saved OwnLocale pinned the Window.");
+        var changed = new List<string?>();
+        locale.PropertyChanged += (_, args) => changed.Add(args.PropertyName);
+        locale.Locale = "it";
+        Require(locale.OwnLocale == "it" && changed.SequenceEqual([nameof(IRunicWindowLocale.Locale), nameof(IRunicWindowLocale.OwnLocale)]),
+            $"Setting an own locale raised {string.Join(", ", changed)}");
+
+        // WindowContentSession.Locale = null directly follows the application again, as the getter documents.
+        Host(window).Content.Locale = "es";
+        Require(locale.OwnLocale == "es", "A direct set was not the Window's own locale.");
+        Host(window).Content.Locale = null;
+        Require(locale.OwnLocale is null && locale.Locale == "fr" && Host(window).Content.Locale == "fr",
+            $"A direct null did not follow the application: {locale.Locale}");
+    }
+
+    [Test]
+    public void TheTestHostsApplicationLocaleThrowsAfterDispose()
+    {
+        var host = new RunicWindowTestHost<TranslatedTextViewModel>(new TranslatedTextViewModel(),
+            (transport, content, vm) => new TranslatedTextBridge(transport, vm, content: content),
+            new RunicWindowTestHostOptions { RootRoute = "translatedText" });
+        host.Dispose();
+        var thrown = false;
+        try { _ = host.ApplicationLocale; } catch (ObjectDisposedException) { thrown = true; }
+        Require(thrown, "ApplicationLocale did not throw ObjectDisposedException after Dispose.");
+    }
+
+    private static async Task WaitUntilAsync(Func<bool> condition)
+    {
+        var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(10);
+        while (!condition())
+        {
+            if (DateTime.UtcNow > deadline) throw new TimeoutException("The condition was not met.");
+            await Task.Delay(5);
+        }
     }
 
     // The locales of the next locale pushes to a connection, in order.

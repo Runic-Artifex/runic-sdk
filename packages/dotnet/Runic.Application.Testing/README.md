@@ -330,6 +330,10 @@ await host.ApplicationLocale.SetLocaleAsync("de");
 Assert.Equal("de", host.Content.Locale);              // pushed to pages with translation-text/1
 ```
 
+The window follows in a turn of its model context, as in the application, and
+reading `host.ApplicationLocale` after the host was disposed throws
+`ObjectDisposedException`.
+
 ### Navigation
 
 A `NavigationRegion<TContent>` slot is an ordinary content slot, so the same host

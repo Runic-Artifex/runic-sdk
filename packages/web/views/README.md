@@ -1505,7 +1505,9 @@ stays the invariant or ISO form. Bind such a field to a text input, or give it
 page calls the application's command; a locale the page sets itself is set back
 by the next `locale` push. A window locale the runtime refuses, such as `de-CH`
 for a catalog with only `de` under the `Exact` policy, sets its closest parent
-(`de`) before an error is reported. Under server rendering, configure the runtime in the
+(`de`) before an error is reported; a parent in another script is skipped, so
+`zh-Hant-TW` never falls back to `zh` (Simplified) nor `sr-Latn` to `sr`
+(Cyrillic). Under server rendering, configure the runtime in the
 browser only, or resolve with the request's locale.
 `windowLocale()` and `onWindowLocale` read the window's locale. The framework
 packages wrap this as `useText` (React, Vue, Svelte), `injectText` and the
