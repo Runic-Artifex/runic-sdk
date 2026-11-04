@@ -157,6 +157,26 @@ internal sealed class MenuBarPageIdentityChecks
         Require(await model.AskedAfterAwait.Task.WaitScaledAsync(TimeSpan.FromSeconds(5)), "The page's answer did not reach the command.");
     }
 
+    // FlowCultureFromLocale (S6): a native menu command runs in the culture of the window's locale, through its awaits.
+    [Test]
+    [Arguments(true)]
+    [Arguments(false)]
+    public async Task ANativeMenuCommandRunsInTheWindowsCultureWhenItOptsIn(bool flow)
+    {
+        using var transport = new InMemoryBridgeTransport();
+        using var session = new WindowContentSession(transport,
+            new WindowContentSessionOptions { IncludeFailureDetail = false, FlowCultureFromLocale = flow });
+        session.Locale = "fr-CA";
+        var model = new IdentityViewModel();
+        using var bridge = new IdentityBridge(transport, model, session);
+        var bar = new WebUiMenuBar([new DesktopMenu("File", [new DesktopMenuItem("Culture", "file.culture")])]);
+        using var commands = await WebUiMenuCommands.BindAsync(bar, session.ModelContext, model.GetMenuCommand, NullLogger.Instance, window: session);
+        var process = $"{System.Globalization.CultureInfo.CurrentCulture.Name}/{System.Globalization.CultureInfo.CurrentUICulture.Name}";
+        commands.Execute(new DesktopMenuItem("Culture", "file.culture"));
+        var seen = await model.CultureAfterAwait.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        Require(seen == (flow ? "fr-CA/fr-CA" : process), $"The menu command ran in {seen}.");
+    }
+
     private static JsonObject Send(InMemoryBridgeTransport transport, string json, string connection, string client) =>
         JsonNode.Parse(transport.Request(json, connection, client))!.AsObject();
 
@@ -222,6 +242,15 @@ internal sealed class MenuBarPageIdentityChecks
             AskedAfterAwait.TrySetResult(await Confirm.AskAsync("Ask after an await?"));
         });
 
+        public TaskCompletionSource<string> CultureAfterAwait { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        // FlowCultureFromLocale: the culture an async menu command sees after its first await.
+        public ICommand CultureCommand => new MenuCommand(async () =>
+        {
+            await Task.Delay(20);
+            CultureAfterAwait.TrySetResult($"{System.Globalization.CultureInfo.CurrentCulture.Name}/{System.Globalization.CultureInfo.CurrentUICulture.Name}");
+        });
+
         public TaskCompletionSource<bool> LaterAnswered { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
         public RunicInteractionInvocation? LaterInvocation { get; private set; }
 
@@ -239,6 +268,7 @@ internal sealed class MenuBarPageIdentityChecks
             "file.focus" => FocusCommand,
             "file.ask" => AskCommand,
             "file.later" => LaterCommand,
+            "file.culture" => CultureCommand,
             _ => null,
         };
     }

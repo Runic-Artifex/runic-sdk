@@ -51,6 +51,20 @@ public sealed class WindowContentSessionOptions
     public bool? IncludeFailureDetail { get; init; }
 
     /// <summary>
+    /// Whether the window's bridged invocations run with <see cref="System.Globalization.CultureInfo.CurrentCulture"/>
+    /// and <see cref="System.Globalization.CultureInfo.CurrentUICulture"/> of the window's <see cref="WindowContentSession.Locale"/>:
+    /// the setters, checked writes, commands, validation and state reads of the page's requests, the navigation they
+    /// start, and the window's menu commands. <see langword="false"/>, the default, keeps the process's cultures.
+    /// </summary>
+    /// <remarks>
+    /// The cultures flow with the invocation's asynchronous work, through its <see langword="await"/>s, and are restored
+    /// after it. A locale without a .NET culture uses its nearest parent's (<c>de-CH</c> then <c>de</c>), and the
+    /// process's cultures without one, as with invariant globalization. Code that runs outside an invocation, such as a
+    /// timer, keeps the cultures it has. The session reads the value once, when it is created.
+    /// </remarks>
+    public bool FlowCultureFromLocale { get; init; }
+
+    /// <summary>
     /// The largest Bridge input, in UTF-8 bytes, that this window decodes: a setter value, a command argument,
     /// a checked write, an operation start, and an interaction request or reply. A larger one is answered as
     /// invalid input (<c>rejected</c> with reason <c>invalid-input</c>, or the interaction routes'

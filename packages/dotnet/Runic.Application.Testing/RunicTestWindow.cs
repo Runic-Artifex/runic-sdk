@@ -290,6 +290,7 @@ internal sealed class RunicTestWindowApplication(IServiceProvider services, Runi
                     TimeProvider = _time,
                     CreateId = options.CreateId ?? (() => Interlocked.Increment(ref _nextId).ToString(CultureInfo.InvariantCulture)),
                     IncludeFailureDetail = opening.Options.IncludeFailureDetail ?? options.IncludeFailureDetail,
+                    FlowCultureFromLocale = opening.Options.FlowCultureFromLocale ?? options.FlowCultureFromLocale,
                     MaximumInputBytes = opening.Options.MaximumInputBytes ?? options.MaximumInputBytes,
                     PublicationTimeout = options.PublicationTimeout,
                 })

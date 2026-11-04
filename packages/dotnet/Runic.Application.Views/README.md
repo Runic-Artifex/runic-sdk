@@ -3095,6 +3095,24 @@ public partial class ShellViewModel(IRunicWindowLocale locale, AppSettings setti
 }
 ```
 
+**C# formatting in the window's culture.** By default a ViewModel formats in
+the process's culture: `ToString("N")`, `string.Format` and DataAnnotations
+messages in a `de` window still use the operating system's culture. Opt in
+with `FlowCultureFromLocale`, and the window's bridged invocations run with
+`CultureInfo.CurrentCulture` and `CurrentUICulture` of its locale: the setters,
+checked writes, commands (also after their `await`s), validation and state reads
+of the page's requests, the navigation they start, and the window's menu
+commands. A locale without a .NET culture uses its nearest parent's (`de-CH`,
+then `de`), and the process's cultures without one, as under invariant
+globalization. Timers and other work outside an invocation keep their culture.
+
+```csharp
+await host.OpenWindowAsync<EditorWindow>(new RunicWindowOptions { FlowCultureFromLocale = true });
+// or for every Window: new RunicDesktopHostOptions { FlowCultureFromLocale = true },
+// RunicCsWebUiHostOptions, RunicWindowTestHostOptions; a custom host sets
+// WindowContentSessionOptions.FlowCultureFromLocale.
+```
+
 **The page.** Connect the page's Translations runtime once, in `main.ts`, with
 `configureTranslatedText` from `@runic-artifex/views`. With the generated ESM of
 Runic Translations and its Vite plugin:
