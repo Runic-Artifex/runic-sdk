@@ -197,7 +197,7 @@ internal static class DesktopMenuPlanner
     }
 
     // ⇧⌘S on macOS, Ctrl+Shift+S on Windows, and GTK's order, Shift+Ctrl+S, on Linux. The modifier names are the
-    // application's or the Windows keyboard layout's (ShortcutModifierNames), such as Strg+Umschalt+S.
+    // application's or the Windows keyboard layout's, never a mix (ShortcutModifierNames), such as Strg+Umschalt+S.
     internal static string DisplayText(DesktopShortcut shortcut, MenuPlatform platform)
     {
         if (platform == MenuPlatform.MacOS) return shortcut.ToDisplayString(macOS: true);

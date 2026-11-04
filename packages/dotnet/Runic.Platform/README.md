@@ -193,7 +193,9 @@ DesktopPlatformTexts.Current = new DesktopPlatformTexts
     UntitledFileName = text.Untitled,          // "Unbenannt"
     ChooseApplicationTitle = text.ChooseApp,
     SecretCollectionLabel = text.Keyring,
-    ControlKeyName = text.ControlKey,          // "Strg"; null takes the Windows keyboard layout's name
+    ControlKeyName = text.ControlKey,          // "Strg"
+    ShiftKeyName = text.ShiftKey,              // "Umschalt"
+    AltKeyName = text.AltKey,                  // "Alt"
     ResourceUnavailableTitle = text.NotFound,
     // … the rest stay English.
 };
@@ -201,10 +203,19 @@ DesktopPlatformTexts.Current = new DesktopPlatformTexts
 
 Dialogs, menus and pages that open later use the new texts. A text has 1 to 1024
 characters, no NUL and is not only white space; setting an invalid one throws
-`ArgumentException` and keeps the current texts. Without `ControlKeyName`,
-`ShiftKeyName` and `AltKeyName`, Windows labels take the keyboard layout's names
-(`GetKeyNameText`, `Strg+Umschalt+S` on a German layout) and other platforms
-English ones. GTK and AppKit draw their own menus' shortcut labels.
+`ArgumentException` and keeps the current texts.
+
+The modifier names of a shortcut label come from one source, so a label does not
+mix two languages. Once the application sets one of `ControlKeyName`,
+`ShiftKeyName` and `AltKeyName`, labels use its names, with English for the ones
+it leaves out. Without them, Runic Desktop's Windows windows take the names of
+the keyboard layout the user types with (`GetKeyNameText` on the window's
+thread, `Strg+Umschalt+S` on a German layout), and their menu bars, including
+the in-page bar, are laid out again when the user switches layout. The CS-WebUI
+in-page bar, which has no Runic window to read the layout on, and Linux show
+English names. Set all three names to match the application's language whatever
+the layout; key names such as `Del` and `Page Up` stay English. GTK and AppKit
+draw their own menus' shortcut labels.
 
 ## Document apps
 

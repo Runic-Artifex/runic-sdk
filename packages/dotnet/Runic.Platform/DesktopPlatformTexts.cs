@@ -23,7 +23,10 @@ namespace Runic.Platform;
 /// </para>
 /// </remarks>
 /// <example><code>
-/// DesktopPlatformTexts.Current = new DesktopPlatformTexts { UntitledFileName = "Unbenannt", ControlKeyName = "Strg" };
+/// DesktopPlatformTexts.Current = new DesktopPlatformTexts
+/// {
+///     UntitledFileName = "Unbenannt", ControlKeyName = "Strg", ShiftKeyName = "Umschalt", AltKeyName = "Alt",
+/// };
 /// </code></example>
 public sealed record DesktopPlatformTexts
 {
@@ -75,9 +78,17 @@ public sealed record DesktopPlatformTexts
 
     /// <summary>
     /// Gets the name of the Control key in shortcut labels that Runic writes itself: the Windows menu bar and context
-    /// menus, and the in-page menu bar on Windows and Linux. <see langword="null"/>, the default, takes the Windows
-    /// keyboard layout's name (<c>Strg</c> on a German layout), else <c>Ctrl</c>.
+    /// menus, and the in-page menu bar on Windows and Linux; <c>Ctrl</c> when it is <see langword="null"/> and another
+    /// key name is set.
     /// </summary>
+    /// <remarks>
+    /// All three names come from one source, so a label does not mix two languages. Once the application sets one of
+    /// <see cref="ControlKeyName"/>, <see cref="ShiftKeyName"/> and <see cref="AltKeyName"/>, the labels use its names
+    /// and English for the others. Without them, Runic Desktop's Windows windows take the names of the keyboard layout
+    /// the user types with (<c>Strg</c> and <c>Umschalt</c> on a German layout) and lay their menu bars out again when
+    /// the user switches layout; other hosts, such as the CS-WebUI in-page bar, and Linux show English names. Set the
+    /// three names to match the application's language whatever the layout. Key names such as <c>Del</c> stay English.
+    /// </remarks>
     public string? ControlKeyName { get; init; }
 
     /// <summary>Gets the name of the Shift key in shortcut labels, as for <see cref="ControlKeyName"/>; else <c>Shift</c>.</summary>

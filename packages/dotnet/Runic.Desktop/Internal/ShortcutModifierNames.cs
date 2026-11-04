@@ -4,19 +4,45 @@ using Runic.Platform;
 namespace Runic.Desktop.Internal;
 
 // The modifier names of the shortcut labels Runic writes itself (DesktopMenuPlanner.DisplayText): the Win32 menus and
-// the in-page menu bar. The application's (DesktopPlatformTexts), else on Windows the keyboard layout's (GetKeyNameText:
-// Strg and Umschalt on a German layout), else English. GTK and AppKit draw their own labels. Runic.Desktop.Gtk4 links it.
-// Without unsafe code or LibraryImport, which Runic.Application.Views.CsWebUi, which links it too, does not allow.
+// the in-page menu bar. One source names all three, so a label never mixes two languages: the application's
+// (DesktopPlatformTexts, English for a name it leaves out) once it sets one, else on Windows the keyboard layout's
+// (GetKeyNameText: Strg and Umschalt on a German layout), else English. GTK and AppKit draw their own labels.
+// GetKeyNameText reads the calling thread's layout, so only a Runic Desktop window thread reads it (ReadKeyboardLayout:
+// when the window opens, is activated and its input language changes), and every bar plans with the names it read last.
+// Without such a window, as on CS-WebUI, the names are English unless the application sets them.
+// Runic.Desktop.Gtk4 and Runic.Application.Views.CsWebUi link this file. Without unsafe code or LibraryImport, which
+// Runic.Application.Views.CsWebUi does not allow.
 internal static class ShortcutModifierNames
 {
+    private sealed record Names(string Control, string Shift, string Alt);
+
+    private static Names? s_layout;
+
+    // Raised, on the thread that read them, when the keyboard layout's names change: menu bars plan again.
+    internal static event EventHandler? Changed;
+
     internal static (string Control, string Shift, string Alt) For(MenuPlatform platform)
     {
         var texts = DesktopPlatformTexts.Current;
-        var native = platform == MenuPlatform.Windows && OperatingSystem.IsWindows();
-        return (
-            texts.ControlKeyName ?? (native ? KeyName(VirtualKeyControl) : null) ?? "Ctrl",
-            texts.ShiftKeyName ?? (native ? KeyName(VirtualKeyShift) : null) ?? "Shift",
-            texts.AltKeyName ?? (native ? KeyName(VirtualKeyMenu) : null) ?? "Alt");
+        if (texts.ControlKeyName is not null || texts.ShiftKeyName is not null || texts.AltKeyName is not null)
+            return (texts.ControlKeyName ?? "Ctrl", texts.ShiftKeyName ?? "Shift", texts.AltKeyName ?? "Alt");
+        if (platform == MenuPlatform.Windows && Volatile.Read(ref s_layout) is { } layout)
+            return (layout.Control, layout.Shift, layout.Alt);
+        return ("Ctrl", "Shift", "Alt");
+    }
+
+    // On a Windows window thread: the names of the thread's current keyboard layout, or English when it lacks one.
+    internal static void ReadKeyboardLayout()
+    {
+        if (!OperatingSystem.IsWindows()) return;
+        UseLayoutNames(KeyName(VirtualKeyControl), KeyName(VirtualKeyShift), KeyName(VirtualKeyMenu));
+    }
+
+    // The keyboard layout's names; tests set them on any platform.
+    internal static void UseLayoutNames(string? control, string? shift, string? alt)
+    {
+        var names = control is not null && shift is not null && alt is not null ? new Names(control, shift, alt) : null;
+        if (Interlocked.Exchange(ref s_layout, names) != names) Changed?.Invoke(null, EventArgs.Empty);
     }
 
     private const uint VirtualKeyShift = 0x10, VirtualKeyControl = 0x11, VirtualKeyMenu = 0x12;

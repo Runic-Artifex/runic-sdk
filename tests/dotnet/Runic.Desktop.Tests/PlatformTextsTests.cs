@@ -54,6 +54,45 @@ public sealed class PlatformTextsTests
     }
 
     [Test]
+    public void ShortcutLabelsTakeTheKeyboardLayoutsNamesFromOneSourceAndAnnounceAChange()
+    {
+        var shortcut = DesktopShortcut.Parse("Primary+Alt+Shift+S");
+        var changes = 0;
+        void OnChanged(object? sender, EventArgs args) => changes++;
+        ShortcutModifierNames.Changed += OnChanged;
+        try
+        {
+            // The names a Windows window thread read from its keyboard layout, for every bar that plans after it.
+            ShortcutModifierNames.UseLayoutNames("Strg", "Umschalt", "Alt");
+            Assert.Equal(1, changes);
+            Assert.Equal("Strg+Alt+Umschalt+S", DesktopMenuPlanner.MapShortcut(shortcut, MenuPlatform.Windows).DisplayText);
+            // Linux labels stay English: the layout's names are Windows'.
+            Assert.Equal("Shift+Ctrl+Alt+S", DesktopMenuPlanner.MapShortcut(shortcut, MenuPlatform.Linux).DisplayText);
+            ShortcutModifierNames.UseLayoutNames("Strg", "Umschalt", "Alt");
+            Assert.Equal(1, changes);
+
+            // One name of the application's makes it the source of all three; the others are English, not the layout's.
+            DesktopPlatformTexts.Current = new DesktopPlatformTexts { ControlKeyName = "Ctrl" };
+            Assert.Equal("Ctrl+Alt+Shift+S", DesktopMenuPlanner.MapShortcut(shortcut, MenuPlatform.Windows).DisplayText);
+            DesktopPlatformTexts.Current = null!;
+
+            // A layout that lacks a name gives no names: English for all three.
+            ShortcutModifierNames.UseLayoutNames("Strg", null, "Alt");
+            Assert.Equal(2, changes);
+            Assert.Equal("Ctrl+Alt+Shift+S", DesktopMenuPlanner.MapShortcut(shortcut, MenuPlatform.Windows).DisplayText);
+            ShortcutModifierNames.UseLayoutNames("Ctrl", "Maj", "Alt");
+            Assert.Equal(3, changes);
+            Assert.Equal("Ctrl+Alt+Maj+S", DesktopMenuPlanner.MapShortcut(shortcut, MenuPlatform.Windows).DisplayText);
+        }
+        finally
+        {
+            ShortcutModifierNames.Changed -= OnChanged;
+            ShortcutModifierNames.UseLayoutNames(null, null, null);
+            DesktopPlatformTexts.Current = null!;
+        }
+    }
+
+    [Test]
     public async Task TheResourceUnavailablePageIsInTheWindowsLanguageAndDirection()
     {
         await using var window = new WebUiWindow();
@@ -77,6 +116,12 @@ public sealed class PlatformTextsTests
             Assert.Contains("المورد &lt;المطلوب&gt; غير متاح.", page, StringComparison.Ordinal);
             window.PageLanguage = "de";
             Assert.StartsWith("<html lang=\"de\" dir=\"ltr\">", await client.GetStringAsyncAllowingNotFound("missing.txt"), StringComparison.Ordinal);
+            // An extension is not a script: Arabic with Latin digits stays right to left, English with the Hebrew
+            // calendar left to right, with culture data and without it (InvariantGlobalization).
+            window.PageLanguage = "ar-u-nu-latn";
+            Assert.StartsWith("<html lang=\"ar-u-nu-latn\" dir=\"rtl\">", await client.GetStringAsyncAllowingNotFound("missing.txt"), StringComparison.Ordinal);
+            window.PageLanguage = "en-u-ca-hebr";
+            Assert.StartsWith("<html lang=\"en-u-ca-hebr\" dir=\"ltr\">", await client.GetStringAsyncAllowingNotFound("missing.txt"), StringComparison.Ordinal);
             Assert.Throws<ArgumentException>(() => window.PageLanguage = "de\"><script>");
         }
         finally { DesktopPlatformTexts.Current = null!; }

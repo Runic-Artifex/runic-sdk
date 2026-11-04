@@ -1052,7 +1052,7 @@ window shows the declared menus in the application menu bar. The Windows (WebVie
 window: the menus in Windows order (File first, Help last, an `Application`
 menu as a plain menu with its title), each `AccessKey` underlined, shortcuts
 after the title (`Ctrl+Shift+S`, with the modifier names of the keyboard layout,
-such as `Strg+Umschalt+S`, or of `DesktopPlatformTexts`), check and radio items with their marks, and
+such as `Strg+Umschalt+S`, which follow a layout switch, or of `DesktopPlatformTexts`), check and radio items with their marks, and
 disabled items grayed. A menu asks its items' commands whenever it opens. With
 `Native` its placement is `Window`; a frameless or kiosk window has no frame for
 a bar, does not report `DesktopWindowCapabilities.MenuBar` and reports `None`,
