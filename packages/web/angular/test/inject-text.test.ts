@@ -1,10 +1,16 @@
 // translation-text/1: injectText and the runicText pipe follow a language switch.
 import "@angular/compiler";
-import { ChangeDetectorRef, signal } from "@angular/core";
+import { ChangeDetectionStrategy, ChangeDetectorRef, Component, signal } from "@angular/core";
 import { TestBed } from "@angular/core/testing";
 import { BrowserTestingModule, platformBrowserTesting } from "@angular/platform-browser/testing";
 import { afterEach, beforeAll, describe, expect, test } from "vitest";
-import { configureTranslatedText, injectText, injectWindowLocale, RunicTextPipe } from "../dist/esm/index.js";
+import { connectView } from "@runic-artifex/views/generated";
+import { createMockBridge, installMockBridge } from "@runic-artifex/views/mock";
+import { configureTranslatedText, injectText, injectWindowLocale, RunicTextPipe, textLocaleSignal } from "../dist/esm/index.js";
+// The generated ESM of a real Runic Translations catalog (en, de), shared with @runic-artifex/views's tests.
+import { m } from "../../views/test/fixtures/translations/generated/notes.esm-v5/messages.js";
+import { configureLocaleResolver, createLocaleSource } from "../../views/test/fixtures/translations/generated/notes.esm-v5/runtime.js";
+import { resolveTextReference } from "../../views/test/fixtures/translations/generated/notes.esm-v5/transport.js";
 // A Translations runtime of two locales, as a generated transport.js and locale source would be.
 function fakeTranslations() {
   const catalog: Record<string, Record<string, string>> = {
@@ -81,5 +87,43 @@ describe("RunicTextPipe", () => {
     pipe.ngOnDestroy();
     runtime.setLocale("de");
     expect(marked).toBe(0);
+  });
+});
+
+class TranslatedTitle {
+  title(): string { return m.saved({ title: "Atlas" }); }
+}
+Component({
+  selector: "test-translated-title",
+  standalone: true,
+  changeDetection: ChangeDetectionStrategy.OnPush,
+  template: `<h1>{{ title() }}</h1>`,
+})(TranslatedTitle);
+
+describe("textLocaleSignal", () => {
+  test("an OnPush template that renders m.*() renders again when the application switches the window's locale (S2)", async () => {
+    const locale = createLocaleSource({ initialLocale: "en" });
+    const textLocale = textLocaleSignal();
+    expect(textLocaleSignal(), "one signal for the page").toBe(textLocale);
+    cleanup.push(configureLocaleResolver(() => textLocale() ?? locale.getLocale()));
+    cleanup.push(configureTranslatedText({
+      ...locale,
+      resolve: (reference, language) => resolveTextReference(reference, m, { locale: language }).text,
+    }));
+    const bridge = installMockBridge(createMockBridge());
+    bridge.view("shell", { state: {} });
+    await connectView({ contract: "Tests.Shell:fp-1", route: "shell", members: {} });
+    const fixture = TestBed.createComponent(TranslatedTitle);
+    fixture.detectChanges();
+    const element = fixture.nativeElement as HTMLElement;
+    expect(element.textContent).toBe("Saved Atlas.");
+    bridge.setWindowLocale("de");
+    await bridge.flush();
+    fixture.detectChanges();
+    expect(element.textContent).toBe("Atlas gespeichert.");
+    bridge.setWindowLocale("en");
+    await bridge.flush();
+    fixture.detectChanges();
+    expect(element.textContent).toBe("Saved Atlas.");
   });
 });

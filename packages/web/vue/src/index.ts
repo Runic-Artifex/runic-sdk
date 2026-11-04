@@ -1,5 +1,6 @@
 import {
   computed,
+  customRef,
   defineComponent,
   h,
   reactive,
@@ -26,6 +27,7 @@ import {
   onWindowLocale,
   resolveText,
   subscribeText,
+  textLocale,
   windowLocale,
   type BridgeConnectionOptions,
   type BridgeConnectionState,
@@ -51,8 +53,10 @@ import {
   type ViewControllerOptions,
   type ViewSource,
 } from "@runic-artifex/views";
-import { viewSourceIdentity } from "@runic-artifex/views/bindings";
+import { missingViewMessage, reportMissingView, viewSourceIdentity } from "@runic-artifex/views/bindings";
+import { isDevelopment } from "./development.js";
 import { releaseWithScope } from "./scope.js";
+
 
 export interface ViewHandle<TClient extends ViewClient> {
   /** The latest state, or undefined until the client connects. */
@@ -180,7 +184,8 @@ function referenceKey(reference: object): number {
  * the reference as its `page` prop. A different reference remounts the
  * component. The default slot renders while there is no content. A kind without
  * a component renders the `missing` slot, which receives `{ content }`, for example
- * for localized text, or an English alert without it:
+ * for localized text. Without the slot, a development build renders an English alert, and a production build
+ * renders nothing and reports the kind (`installErrorReporting`, `onBridgeDiagnostic`):
  *
  * ```vue
  * <ViewOutlet :content="state?.main" :registry="pages">
@@ -194,7 +199,9 @@ export const ViewOutlet = defineComponent(<R extends PageReference>(props: ViewO
   const component = props.registry[content.kind as R["kind"]] as Component<{ page: R }> | undefined;
   if (!component) {
     if (slots["missing"]) return slots["missing"]({ content });
-    return h("p", { role: "alert" }, `No web component is registered for ${content.kind}.`);
+    if (isDevelopment()) return h("p", { role: "alert" }, missingViewMessage(content.kind));
+    reportMissingView(content.kind);
+    return null;
   }
   return h(component, { key: referenceKey(content), page: content });
 }, { name: "ViewOutlet", props: ["content", "registry"] });
@@ -604,11 +611,39 @@ export function useWindowLocale(): Readonly<Ref<string | null>> {
   return locale;
 }
 
+let pageTextLocale: Readonly<Ref<string | undefined>> | undefined;
+
+/**
+ * The locale that text is shown in (`textLocale`: the page's Translations locale, which follows the window's locale),
+ * as a ref that renders, computes and watches again when it changes. It is one ref for the page and needs no effect
+ * scope, so the page's locale resolver can read it: a template that calls `m.*()` then renders again on a language
+ * switch. `undefined` while the page has no Translations runtime and the application sets no window locale.
+ *
+ * ```ts
+ * const textLocale = useTextLocale();
+ * configureLocaleResolver(() => textLocale.value ?? locale.getLocale());
+ * ```
+ */
+export function useTextLocale(): Readonly<Ref<string | undefined>> {
+  return pageTextLocale ??= customRef<string | undefined>((track, trigger) => {
+    let subscribed = false;
+    return {
+      get() {
+        if (!subscribed) { subscribed = true; subscribeText(trigger); }
+        track();
+        return textLocale();
+      },
+      set() { /* Read-only: the window's locale and the page's Translations runtime own it. */ },
+    };
+  });
+}
+
 export { useCollectionViewport, type CollectionViewportHandle } from "./viewport.js";
 export { useForm, type FormFieldHandle, type FormHandle, type UseFormOptions } from "./form.js";
 export { commitAllFields, type FormState, type FormSubmitOptions, type FormSubmitResult } from "@runic-artifex/views";
 export {
-  configureTranslatedText, resolveText, windowLocale, type TextReference, type TextTranslations,
+  configureTranslatedText, resolveText, syncDocumentLocale, textDirection, windowLocale, type DocumentLocaleOptions, type TextReference,
+  type TextTranslations,
 } from "@runic-artifex/views";
 export { useQueryCollection, type QueryCollectionHandle } from "./query.js";
 export { onBridgeConnection, type BridgeConnectionOptions, type BridgeConnectionState } from "@runic-artifex/views";

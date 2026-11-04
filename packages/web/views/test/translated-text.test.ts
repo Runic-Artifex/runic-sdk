@@ -4,7 +4,8 @@
 import assert from "node:assert/strict";
 import { afterEach, test } from "node:test";
 import {
-  bindField, configureTranslatedText, createFieldController, onWindowLocale, resolveText, subscribeText, textLocale, windowLocale,
+  bindField, configureTranslatedText, createFieldController, onWindowLocale, resolveText, subscribeText, syncDocumentLocale,
+  textDirection, textLocale, windowLocale,
   type BridgeValidationState, type TextReference, type TextTranslations,
 } from "../dist/index.js";
 import { connectView, decodeBridgeValidation, fieldErrors } from "../dist/generated.js";
@@ -343,4 +344,52 @@ test("a field with locale null, or bound to a native date or number input, keeps
   assert.equal(textInput.value, "03.11.2026", "a text input follows the window's locale");
   for (const field of bound) field.dispose();
   iso.dispose();
+});
+
+// An element as syncDocumentLocale writes it.
+function fakeElement(attributes: Record<string, string> = {}) {
+  const values = new Map(Object.entries(attributes));
+  const writes: string[] = [];
+  return {
+    writes,
+    attribute: (name: string) => values.get(name) ?? null,
+    element: {
+      getAttribute: (name: string) => values.get(name) ?? null,
+      setAttribute(name: string, value: string) { writes.push(`${name}=${value}`); values.set(name, value); },
+    } as unknown as Element,
+  };
+}
+
+test("syncDocumentLocale sets lang and dir from the text locale and follows the window's locale (S2)", async () => {
+  const target = fakeElement({ lang: "en" });
+  const stopSync = syncDocumentLocale({ element: target.element });
+  cleanup.push(stopSync);
+  // Without a runtime or a window locale, the template's lang stays.
+  assert.equal(textDirection(), undefined);
+  assert.deepEqual(target.writes, []);
+  await reportWindowLocale("de");
+  assert.equal(target.attribute("lang"), "de");
+  assert.equal(target.attribute("dir"), "ltr");
+  // A runtime's direction wins; without one, the locale's script decides.
+  const runtime = translations("de");
+  cleanup.push(configureTranslatedText({ ...runtime, direction: locale => locale === "de" ? "rtl" : "ltr" }));
+  assert.equal(target.attribute("dir"), "rtl");
+  const plain = translations("de");
+  cleanup.push(configureTranslatedText(plain));
+  assert.equal(target.attribute("dir"), "ltr");
+  await reportWindowLocale("ar");
+  assert.equal(textLocale(), "en", "the runtime fell back to its base locale");
+  assert.equal(target.attribute("lang"), "en");
+  for (const step of cleanup.splice(-2).reverse()) step();
+  assert.equal(textLocale(), "ar", "without a runtime the window locale is the text locale");
+  assert.equal(textDirection(), "rtl");
+  assert.equal(target.attribute("lang"), "ar");
+  assert.equal(target.attribute("dir"), "rtl");
+  // Stopped, the element keeps what it has.
+  stopSync();
+  await reportWindowLocale("he");
+  assert.equal(target.attribute("lang"), "ar");
+  const withoutDirection = fakeElement();
+  cleanup.push(syncDocumentLocale({ element: withoutDirection.element, direction: false }));
+  assert.deepEqual(withoutDirection.writes, ["lang=he"]);
 });
