@@ -41,6 +41,9 @@ internal sealed class BridgeRequestEnvelope : IDisposable
     internal bool HasEpoch { get; private set; }
     internal long? Epoch { get; private set; }
 
+    // navigation-path/1: the longest route path a navigation request may carry.
+    internal const int MaximumNavigationPath = 2048;
+
     internal bool IsServiceRoute => Route is { } route && route.StartsWith(ReservedRoutePrefix, StringComparison.Ordinal);
 
     public void Dispose() => _document.Dispose();
@@ -114,6 +117,17 @@ internal sealed class BridgeRequestEnvelope : IDisposable
             // closing-reply (presented/1) has no members.
             case "closing-reply":
                 return null;
+            // navigation (navigation-path/1): the window's Back, or a route path to open; it names no route.
+            case "navigation":
+                if (root.TryGetProperty("route", out _)) return "A navigation request names no route.";
+                if (String(root, "action") is { } noAction) return noAction;
+                return root.GetProperty("action").GetString() switch
+                {
+                    "back" => null,
+                    "open" => String(root, "path") ?? (root.GetProperty("path").GetString()!.Length > MaximumNavigationPath
+                        ? $"The navigation path is longer than {MaximumNavigationPath} characters." : null),
+                    _ => "The navigation request's action is not back or open.",
+                };
             // flush-reply (field-flush/1): the id of the flush it answers.
             case "flush-reply":
                 return root.TryGetProperty("id", out var flushId) && flushId.ValueKind == JsonValueKind.String

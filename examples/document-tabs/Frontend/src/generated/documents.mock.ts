@@ -32,7 +32,7 @@ export interface DocumentsMock extends MockTypedView<DocumentsMockState, Documen
 const spec: MockTypedViewSpec = {
   kind: "documents",
   route: "documents",
-  contract: "DocumentTabs.DocumentsViewModel:2AE7F6CBE05BF030A260C84791B0772D21F754BD03B350109E698429E9FFFDC8",
+  contract: "DocumentTabs.DocumentsViewModel:FAB9C7F7B5D35F6E6EE2B5F4A471B8FE01842D3EC58A61B71744ABAEDEC402C5",
   fields: {},
   defaults: { canNewDocument: true, isNewDocumentExecuting: false },
   regions: { documents: { close: true } },

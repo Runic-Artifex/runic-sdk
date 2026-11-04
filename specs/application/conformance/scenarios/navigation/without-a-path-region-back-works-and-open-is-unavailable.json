@@ -1,0 +1,27 @@
+{
+  "format": "runic.views.scenario/1",
+  "id": "navigation.without-a-path-region-back-works-and-open-is-unavailable.v1",
+  "contract": {"id":"runic.views","version":4},
+  "set": "navigation",
+  "roles": ["producer"],
+  "description": "A window without a path region pushes no path. The window's Back still runs, and its reply has no path; open is rejected with unavailable.",
+  "view": "tabs",
+  "requires": ["navigation-path/1"],
+  "ids": {
+    "c1": {"kind":"connection"},
+    "hello-c1": {"kind":"request"},
+    "session": {"kind":"wire","value":"s-1"},
+    "back": {"kind":"request"},
+    "open": {"kind":"request"}
+  },
+  "arrange": {"model":{}},
+  "steps": [
+    {"connect":"c1"},
+    {"send":{"kind":"hello","protocol":4,"session":{"$id":"session"},"client":{"name":{"$any":"string","default":"conformance-client"},"version":{"$any":"string","default":"1.0.0"}},"features":{"$any":"array","default":["text-splice/1","navigation-path/1"]}},"id":"hello-c1"},
+    {"receive":{"ok":true,"protocol":4,"implementation":{"name":{"$any":"string","default":"conformance-producer"},"version":{"$any":"string","default":"1.0.0"}},"features":{"$any":"array","default":["text-splice/1","navigation-path/1"]}},"replyTo":"hello-c1"},
+    {"send":{"kind":"navigation","action":"back"},"id":"back"},
+    {"receive":{"ok":true,"outcome":{"kind":"Rejected","rejection":"NoHistory","arrival":"None"}},"replyTo":"back"},
+    {"send":{"kind":"navigation","action":"open","path":"pages/four"},"id":"open"},
+    {"receive":{"ok":false,"error":{"kind":"rejected","reason":"unavailable","message":{"$any":"string","default":"…"}}},"replyTo":"open"}
+  ]
+}

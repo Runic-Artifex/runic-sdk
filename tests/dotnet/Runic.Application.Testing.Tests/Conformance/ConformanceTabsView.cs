@@ -19,6 +19,8 @@ internal sealed class TabsViewModel : ConformanceModel, IDisposable
     private TaskCompletionSource<bool>? _held;
     private TaskCompletionSource<bool>? _unclaimed;
     private int _asks;
+    // navigation-path/1: with arrange.model.path, the first document region is the window's path region.
+    private IDisposable? _path;
 
     private TabsViewModel(RunicNavigator navigator)
     {
@@ -42,7 +44,19 @@ internal sealed class TabsViewModel : ConformanceModel, IDisposable
     {
         var vm = new TabsViewModel(new RunicNavigator(new RunicNavigatorOptions { ModelContext = context }));
         if (model["veto"] is { } veto) vm.Veto = veto.GetValue<bool>();
+        if (model["path"]?.GetValue<bool>() == true) vm.SyncPath();
         return vm;
+    }
+
+    // navigation-path/1: the first document region becomes the window's path region, with the route pages/{title}.
+    private void SyncPath()
+    {
+        var vm = this;
+        _path = RunicPresentation.SyncNavigationPath(Documents.Regions[0], new NavigationRouteMapBuilder()
+            .Map<TabsPageViewModel>("pages/{title}",
+                (_, values) => NavigationTarget.Create(_ => new TabsPageViewModel(vm, values.GetString("title"))),
+                page => new NavigationRouteValues().Set("title", page.Title))
+            .Build());
     }
 
     // A page's departure guard: counts the ask, waits for a held answer, or refuses while veto is set.
@@ -64,6 +78,9 @@ internal sealed class TabsViewModel : ConformanceModel, IDisposable
                 _held = new(TaskCreationOptions.RunContinuationsAsynchronously);
                 Volatile.Write(ref _unclaimed, _held);
                 break;
+            case "syncPath":
+                if (_path is null) SyncPath();
+                break;
             case "settleGuard":
                 (_held ?? throw new InvalidOperationException("settleGuard without holdGuard.")).TrySetResult(mutation["allow"]!.GetValue<bool>());
                 break;
@@ -79,7 +96,11 @@ internal sealed class TabsViewModel : ConformanceModel, IDisposable
         _ => throw new NotSupportedException($"The tabs View has no member {member}."),
     };
 
-    public void Dispose() => _navigator.Dispose();
+    public void Dispose()
+    {
+        _path?.Dispose();
+        _navigator.Dispose();
+    }
 }
 
 // The page View that each region of the tabs View presents.

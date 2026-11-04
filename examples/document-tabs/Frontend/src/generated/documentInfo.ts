@@ -18,7 +18,7 @@ export interface DocumentInfoBackOperation extends BridgeOperation<void> {}
 /**
  * A connected DocumentInfo ViewModel. Dispose it when its presentation ends.
  *
- * The details of a document, pushed over it in its tab.
+ * The details of a document, pushed over it in its tab: `documents/{id}/info`.
  */
 export interface DocumentInfoClient extends ViewClient<DocumentInfoState> {
   /** Goes back to the document in the same tab. */
@@ -48,7 +48,7 @@ const members: BridgeMemberDecoders<DocumentInfoState> = {
   canBack: (wire: unknown) => bridgeWire.boolean(wire),
   isBackExecuting: (wire: unknown) => bridgeWire.boolean(wire),
 };
-const bridgeContract = "DocumentTabs.DocumentInfoViewModel:2AE7F6CBE05BF030A260C84791B0772D21F754BD03B350109E698429E9FFFDC8";
+const bridgeContract = "DocumentTabs.DocumentInfoViewModel:FAB9C7F7B5D35F6E6EE2B5F4A471B8FE01842D3EC58A61B71744ABAEDEC402C5";
 const backOperation: BridgeOperationCodec<void> = { decode: value => undefined };
 
 /**

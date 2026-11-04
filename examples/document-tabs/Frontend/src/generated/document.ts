@@ -4,6 +4,8 @@ import { connectView, disposable, viewReferences, type BridgeMemberDecoders, typ
 import * as bridgeWire from "@runic-artifex/views/generated/wire";
 
 export interface DocumentState {
+  /** The document's id in the store. */
+  readonly id: number;
   /** Whether the title or body differ from the saved document. */
   readonly isDirty: boolean;
   /** How often the document was saved. */
@@ -26,7 +28,7 @@ export interface DocumentShowDetailsOperation extends BridgeOperation<void> {}
 /**
  * A connected Document ViewModel. Dispose it when its presentation ends.
  *
- * A document, the first page of its tab.
+ * A document, the first page of its tab: `documents/{id}`.
  */
 export interface DocumentClient extends ViewClient<DocumentState> {
   /** Calls the public C# setter of `DocumentViewModel.Title`. */
@@ -42,7 +44,7 @@ export interface DocumentClient extends ViewClient<DocumentState> {
   save(): Promise<DocumentState>;
   /** Returns to the saved title and body. */
   discard(): Promise<DocumentState>;
-  /** Shows the document's details on a second page of the same tab. */
+  /** Shows the document's details on a second page of the same tab: `documents/{id}/info`. */
   showDetails(): Promise<DocumentState>;
   /**
    * Starts `ShowDetails` as an operation that the page can observe, cancel and recover. `options.requestId` names it;
@@ -61,6 +63,7 @@ const pageDocumentReferences = viewReferences<DocumentPageReference>(id => ({ ki
 export function pageDocument(id: string): DocumentPageReference { return pageDocumentReferences(id); }
 
 const members: BridgeMemberDecoders<DocumentState> = {
+  id: (wire: unknown) => bridgeWire.integer(wire, -2147483648, 2147483647),
   isDirty: (wire: unknown) => bridgeWire.boolean(wire),
   saves: (wire: unknown) => bridgeWire.integer(wire, -2147483648, 2147483647),
   title: (wire: unknown) => bridgeWire.string(wire),
@@ -70,7 +73,7 @@ const members: BridgeMemberDecoders<DocumentState> = {
   canShowDetails: (wire: unknown) => bridgeWire.boolean(wire),
   isShowDetailsExecuting: (wire: unknown) => bridgeWire.boolean(wire),
 };
-const bridgeContract = "DocumentTabs.DocumentViewModel:2AE7F6CBE05BF030A260C84791B0772D21F754BD03B350109E698429E9FFFDC8";
+const bridgeContract = "DocumentTabs.DocumentViewModel:FAB9C7F7B5D35F6E6EE2B5F4A471B8FE01842D3EC58A61B71744ABAEDEC402C5";
 const checkedFieldNames = ["title", "body"];
 const showDetailsOperation: BridgeOperationCodec<void> = { decode: value => undefined };
 

@@ -393,6 +393,57 @@ static Runic.Application.Testing.RunicTestPlatformEvent.operator !=(Runic.Applic
 static Runic.Application.Testing.RunicTestPlatformEvent.operator ==(Runic.Application.Testing.RunicTestPlatformEvent? left, Runic.Application.Testing.RunicTestPlatformEvent? right) -> bool
 static Runic.Application.Testing.RunicTestPlatformServiceCollectionExtensions.AddRunicServeOnlyTestPlatform(this Microsoft.Extensions.DependencyInjection.IServiceCollection! services) -> Microsoft.Extensions.DependencyInjection.IServiceCollection!
 static Runic.Application.Testing.RunicTestPlatformServiceCollectionExtensions.AddRunicTestPlatform(this Microsoft.Extensions.DependencyInjection.IServiceCollection! services) -> Microsoft.Extensions.DependencyInjection.IServiceCollection!
+override Runic.Application.Testing.RunicNavigationRestore.Equals(object? obj) -> bool
+override Runic.Application.Testing.RunicNavigationRestore.GetHashCode() -> int
+override Runic.Application.Testing.RunicNavigationRestore.ToString() -> string!
+Runic.Application.Testing.RunicNavigationPathTesting
+Runic.Application.Testing.RunicNavigationRestore
+Runic.Application.Testing.RunicNavigationRestore.<Clone>$() -> Runic.Application.Testing.RunicNavigationRestore!
+Runic.Application.Testing.RunicNavigationRestore.Deconstruct(out Runic.Navigation.NavigationRestoreResult! Result, out string! Saved, out string! Restored) -> void
+Runic.Application.Testing.RunicNavigationRestore.Equals(Runic.Application.Testing.RunicNavigationRestore? other) -> bool
+Runic.Application.Testing.RunicNavigationRestore.IsExact.get -> bool
+Runic.Application.Testing.RunicNavigationRestore.Restored.get -> string!
+Runic.Application.Testing.RunicNavigationRestore.Restored.init -> void
+Runic.Application.Testing.RunicNavigationRestore.Result.get -> Runic.Navigation.NavigationRestoreResult!
+Runic.Application.Testing.RunicNavigationRestore.Result.init -> void
+Runic.Application.Testing.RunicNavigationRestore.RunicNavigationRestore(Runic.Navigation.NavigationRestoreResult! Result, string! Saved, string! Restored) -> void
+Runic.Application.Testing.RunicNavigationRestore.Saved.get -> string!
+Runic.Application.Testing.RunicNavigationRestore.Saved.init -> void
+static Runic.Application.Testing.RunicNavigationPathTesting.SavePath(this Runic.Navigation.RunicNavigator! navigator, Runic.Navigation.INavigationRouteMap? routes = null) -> string!
+static Runic.Application.Testing.RunicNavigationRestore.operator !=(Runic.Application.Testing.RunicNavigationRestore? left, Runic.Application.Testing.RunicNavigationRestore? right) -> bool
+static Runic.Application.Testing.RunicNavigationRestore.operator ==(Runic.Application.Testing.RunicNavigationRestore? left, Runic.Application.Testing.RunicNavigationRestore? right) -> bool
+override Runic.Application.Testing.RunicNavigationPathPush.Equals(object? obj) -> bool
+override Runic.Application.Testing.RunicNavigationPathPush.GetHashCode() -> int
+override Runic.Application.Testing.RunicNavigationPathPush.ToString() -> string!
+override Runic.Application.Testing.RunicNavigationReply.Equals(object? obj) -> bool
+override Runic.Application.Testing.RunicNavigationReply.GetHashCode() -> int
+override Runic.Application.Testing.RunicNavigationReply.ToString() -> string!
+Runic.Application.Testing.RunicNavigationPathPush
+Runic.Application.Testing.RunicNavigationPathPush.<Clone>$() -> Runic.Application.Testing.RunicNavigationPathPush!
+Runic.Application.Testing.RunicNavigationPathPush.Deconstruct(out string? Path, out string! Operation) -> void
+Runic.Application.Testing.RunicNavigationPathPush.Equals(Runic.Application.Testing.RunicNavigationPathPush? other) -> bool
+Runic.Application.Testing.RunicNavigationPathPush.Operation.get -> string!
+Runic.Application.Testing.RunicNavigationPathPush.Operation.init -> void
+Runic.Application.Testing.RunicNavigationPathPush.Path.get -> string?
+Runic.Application.Testing.RunicNavigationPathPush.Path.init -> void
+Runic.Application.Testing.RunicNavigationPathPush.RunicNavigationPathPush(string? Path, string! Operation) -> void
+Runic.Application.Testing.RunicNavigationReply
+Runic.Application.Testing.RunicNavigationReply.<Clone>$() -> Runic.Application.Testing.RunicNavigationReply!
+Runic.Application.Testing.RunicNavigationReply.Equals(Runic.Application.Testing.RunicNavigationReply? other) -> bool
+Runic.Application.Testing.RunicNavigationReply.ErrorReason.get -> string?
+Runic.Application.Testing.RunicNavigationReply.HasPath.get -> bool
+Runic.Application.Testing.RunicNavigationReply.Json.get -> string!
+Runic.Application.Testing.RunicNavigationReply.Outcome.get -> Runic.Navigation.NavigationOutcome?
+Runic.Application.Testing.RunicNavigationReply.Path.get -> string?
+Runic.Application.Testing.RunicNavigationReply.Succeeded.get -> bool
+Runic.Application.Testing.RunicWindowTestHost<TViewModel>.NavigateBackAsync(System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<Runic.Application.Testing.RunicNavigationReply!>!
+Runic.Application.Testing.RunicWindowTestHost<TViewModel>.NavigationPathPushes.get -> System.Collections.Generic.IReadOnlyList<Runic.Application.Testing.RunicNavigationPathPush!>!
+Runic.Application.Testing.RunicWindowTestHost<TViewModel>.OpenNavigationPathAsync(string! path, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<Runic.Application.Testing.RunicNavigationReply!>!
+static Runic.Application.Testing.RunicNavigationPathPush.operator !=(Runic.Application.Testing.RunicNavigationPathPush? left, Runic.Application.Testing.RunicNavigationPathPush? right) -> bool
+static Runic.Application.Testing.RunicNavigationPathPush.operator ==(Runic.Application.Testing.RunicNavigationPathPush? left, Runic.Application.Testing.RunicNavigationPathPush? right) -> bool
+static Runic.Application.Testing.RunicNavigationReply.operator !=(Runic.Application.Testing.RunicNavigationReply? left, Runic.Application.Testing.RunicNavigationReply? right) -> bool
+static Runic.Application.Testing.RunicNavigationReply.operator ==(Runic.Application.Testing.RunicNavigationReply? left, Runic.Application.Testing.RunicNavigationReply? right) -> bool
+static Runic.Application.Testing.RunicNavigationPathTesting.RestorePathAsync(this Runic.Navigation.RunicNavigator! navigator, string! saved, Runic.Navigation.NavigationRestoreOptions? options = null, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<Runic.Application.Testing.RunicNavigationRestore!>!
 Runic.Application.Testing.RunicTestWindow
 Runic.Application.Testing.RunicTestWindow.DisposeAsync() -> System.Threading.Tasks.ValueTask
 Runic.Application.Testing.RunicTestWindow.Host<TViewModel>() -> Runic.Application.Testing.RunicWindowTestHost<TViewModel!>!

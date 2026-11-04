@@ -49,7 +49,7 @@ internal static class BridgeMessages
         Failure("rejected", reason, message, hello);
 
     // grant is the connection's upload grant (blobs/1), when the connection uses blobs/1 and the host takes uploads.
-    internal static byte[] Hello(BridgeUploadGrant? grant = null) =>
+    internal static byte[] Hello(BridgeUploadGrant? grant = null, string? path = null, bool navigationPath = false) =>
         Write(writer =>
         {
             writer.WriteStartObject();
@@ -70,6 +70,7 @@ internal static class BridgeMessages
             writer.WriteStringValue(BridgeDispatcher.FieldFlushFeature);
             writer.WriteStringValue(BridgeDispatcher.FieldPathsFeature);
             writer.WriteStringValue(BridgeDispatcher.TranslationTextFeature);
+            writer.WriteStringValue(BridgeDispatcher.NavigationPathFeature);
             writer.WriteEndArray();
             if (grant is not null)
             {
@@ -78,6 +79,12 @@ internal static class BridgeMessages
                 writer.WriteString("token", grant.Token);
                 writer.WriteNumber("maximumBytes", grant.MaximumBytes);
                 writer.WriteEndObject();
+            }
+            // navigation-path/1: the window's route path, on a connection that uses the feature in a window with a path region.
+            if (navigationPath)
+            {
+                if (path is null) writer.WriteNull("navigationPath");
+                else writer.WriteString("navigationPath", path);
             }
             writer.WriteEndObject();
         });

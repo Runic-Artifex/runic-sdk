@@ -150,6 +150,21 @@ export {
 } from "./query-viewport.js";
 
 export {
+  installBackNavigation,
+  installNavigationPath,
+  navigateBack,
+  navigationPathFeature,
+  onNavigationPath,
+  openNavigationPath,
+  type BackNavigationOptions,
+  type NavigationPathChange,
+  type NavigationPathOperation,
+  type NavigationPathOptions,
+  type NavigationReply,
+  type NavigationWindow,
+} from "./navigation.js";
+
+export {
   regionCollectionsFeature,
   regionEntries,
   selectedRegion,

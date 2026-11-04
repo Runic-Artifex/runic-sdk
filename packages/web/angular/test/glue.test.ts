@@ -643,7 +643,8 @@ describe("injectBridgeConnection", () => {
       "RegionOutlets", "RunicTextPipe", "RunicViewOutlet", "ViewOutlet", "commitAllFields", "configureTranslatedText",
       "injectBridgeConnection", "injectCollectionViewport", "injectCommand", "injectField", "injectForm",
       "injectLatestOperation", "injectMenuBar", "injectOperation", "injectQueryCollection", "injectText",
-      "injectTextField", "injectView", "injectViewResource", "injectWindowLocale", "onBridgeConnection",
+      "injectTextField", "injectView", "injectViewResource", "injectWindowLocale", "installBackNavigation",
+      "installNavigationPath", "navigateBack", "onBridgeConnection", "onNavigationPath", "openNavigationPath",
       "regionEntries", "resolveText", "selectedRegion", "upload", "windowLocale",
     ]);
     // The connection API that useBridgeConnection wraps is re-exported, as the menu-bar types are (0.11).

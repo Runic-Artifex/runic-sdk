@@ -28,8 +28,33 @@ internal static class NavigationPresentationBinding
             if (string.IsNullOrEmpty(args.PropertyName) || args.PropertyName == nameof(NavigationRegion.Current)) changed();
         };
         region.PropertyChanged += handler;
-        return new Subscription(region, handler);
+        Presented.Add(region);
+        return new Subscription(region, handler, region);
     }
+
+    // The regions and region collections that a Bridge presents now, counted per subscription, for the window's Back
+    // (navigation-path/1): it goes back only in a region a page shows.
+    private static readonly ConditionalWeakTable<object, StrongBox<int>> PresentedCounts = new();
+
+    private static class Presented
+    {
+        public static void Add(object source)
+        {
+            var count = PresentedCounts.GetValue(source, static _ => new StrongBox<int>());
+            Interlocked.Increment(ref count.Value);
+        }
+
+        public static void Remove(object source)
+        {
+            if (PresentedCounts.TryGetValue(source, out var count)) Interlocked.Decrement(ref count.Value);
+        }
+    }
+
+    private static bool Counted(object source) => PresentedCounts.TryGetValue(source, out var count) && Volatile.Read(ref count.Value) > 0;
+
+    // Whether a Bridge presents the region: as a region slot, or as a region of a presented region collection.
+    public static bool IsPresented(NavigationRegion region) =>
+        Counted(region) || region.Core.Selection?.Public is { } selection && Counted(selection);
 
     // A Bridge selection slot presents SelectedIndex and republishes when it changes, as a region slot does for
     // Current. It binds no session: the selection's regions are slots of their own, and those bind it.
@@ -53,6 +78,7 @@ internal static class NavigationPresentationBinding
         ArgumentNullException.ThrowIfNull(selection);
         ArgumentNullException.ThrowIfNull(changed);
         if (session is not null) Bind(selection.Navigator, session);
+        Presented.Add(selection);
         return new CollectionSubscription(selection, changed);
     }
 
@@ -87,6 +113,10 @@ internal static class NavigationPresentationBinding
             var binding = new Binding(slot, session);
             binding.Attachment = navigator.AttachPresentation(binding);
             slot.Binding = binding;
+            // navigation-path/1: the window's dispatcher serves the navigator's Back and route path. Pages that said hello
+            // before the window knew its navigator learn its path now.
+            BridgeDispatcher.For(session.Transport).Navigator = navigator;
+            NavigationPathSync.For(navigator)?.Announce();
             // A session disposed after the IsDisposed check above unbinds at once.
             if (!session.TryLinkDisposal(binding)) binding.Dispose();
         }
@@ -208,16 +238,19 @@ internal static class NavigationPresentationBinding
                 foreach (var region in _regions) region.PropertyChanged -= _regionHandler;
                 _regions = [];
             }
+            Presented.Remove(_selection);
         }
     }
 
-    private sealed class Subscription(INotifyPropertyChanged source, PropertyChangedEventHandler handler) : IDisposable
+    private sealed class Subscription(INotifyPropertyChanged source, PropertyChangedEventHandler handler, object? presented = null) : IDisposable
     {
         private int _disposed;
 
         public void Dispose()
         {
-            if (Interlocked.Exchange(ref _disposed, 1) == 0) source.PropertyChanged -= handler;
+            if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
+            source.PropertyChanged -= handler;
+            if (presented is not null) Presented.Remove(presented);
         }
     }
 }

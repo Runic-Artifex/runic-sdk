@@ -15,6 +15,7 @@ import { textSpliceFeature } from "./text.js";
 import { translationTextFeature, validationPendingFeature } from "./validation.js";
 import { reportWindowLocale } from "./translated-text.js";
 import { regionCollectionsFeature } from "./regions.js";
+import { navigationPathFeature } from "./navigation-feature.js";
 import { reportWindowClosed } from "./connection-state.js";
 import { flushNotifications, nextFrame } from "./notifications.js";
 import { commitAllFields, commitDrafts } from "./field-controller.js";
@@ -71,7 +72,7 @@ function firstOf(promise: Promise<unknown>, milliseconds: number): Promise<void>
 export const clientFeatures: readonly string[] = [
   textSpliceFeature, presentationEpochFeature, presentedFeature, viewRequestsFeature, requestSessionFeature, regionCollectionsFeature,
   clientErrorsFeature, queryCollectionsFeature, blobsFeature, validationPendingFeature, fieldFlushFeature, fieldPathsFeature,
-  translationTextFeature,
+  translationTextFeature, navigationPathFeature,
 ];
 
 /** A push handler, registered per push kind and route. */
@@ -112,6 +113,12 @@ export interface SharedRuntime {
    * does not have it.
    */
   whenGreeted?(): Promise<void>;
+  /**
+   * navigation-path/1: the window's route path that the current connection's `hello` reply carried, `null` for an empty
+   * path region, or `undefined` when the window has no path region or the connection does not use the feature. A
+   * runtime of an earlier release does not have it.
+   */
+  readonly navigationPath?: string | null | undefined;
   /** Sends a request after the connection's `hello` and resolves with its reply; rejects with a BridgeError. */
   request(message: Message, route?: string): Promise<Reply>;
   /**
@@ -169,6 +176,8 @@ function createRuntime(bridge: RunicBridgeClient): SharedRuntime {
   let hello: { readonly connection: number; readonly session: string; readonly promise: Promise<void>; done: boolean } | undefined;
   // The features in use on the current connection.
   let features: ReadonlySet<string> = new Set<string>();
+  // navigation-path/1: the hello reply's path of the current connection.
+  let navigationPath: string | null | undefined;
   // The upload grant of the current connection (blobs/1).
   let grant: BlobGrant | undefined;
   // A producer of another protocol: every call of the page fails from then on.
@@ -281,6 +290,8 @@ function createRuntime(bridge: RunicBridgeClient): SharedRuntime {
       const listed = Array.isArray(reply["features"]) ? reply["features"] as readonly string[] : [];
       if (connection === current) {
         features = new Set(clientFeatures.filter(feature => listed.includes(feature)));
+        const path = reply["navigationPath"];
+        navigationPath = features.has(navigationPathFeature) && (path === null || typeof path === "string") ? path : undefined;
         grant = features.has(blobsFeature) ? readBlobGrant(reply["blobs"]) : undefined;
       }
       const implementation = reply["implementation"] as { readonly name: string; readonly version: string };
@@ -309,6 +320,7 @@ function createRuntime(bridge: RunicBridgeClient): SharedRuntime {
     operations: new Map(),
     edits: new Map(),
     get features() { return features; },
+    get navigationPath() { return navigationPath; },
     async whenGreeted() {
       if (refused !== undefined) throw refusal(undefined);
       if (!connected) throw new BridgeError("disconnected", "The Bridge is disconnected.");
@@ -410,6 +422,7 @@ function createRuntime(bridge: RunicBridgeClient): SharedRuntime {
     if (next && !first) reportWindowClosed(false);
     hello = undefined;
     features = new Set<string>();
+    navigationPath = undefined;
     grant = undefined;
     // Each connection starts with `hello`; a request that needs it waits for it, and a failed one is sent again.
     if (next) void greet().catch(() => undefined);

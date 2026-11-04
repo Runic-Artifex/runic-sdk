@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Time.Testing;
 using System.Globalization;
 using Runic.Application.Views;
+using Runic.Navigation;
 
 namespace Runic.Application.Testing;
 
@@ -234,6 +235,64 @@ public sealed class RunicWindowTestHost<TViewModel> : IDisposable where TViewMod
     {
         ArgumentNullException.ThrowIfNull(reference);
         return new RunicViewDriver<TContent>(Publications, Transport, $"content{reference.Id}", reference, NextId);
+    }
+
+    /// <summary>
+    /// Goes back as the window's Back does, the mouse's Back button and Alt+Left in a page that installed it
+    /// (<c>navigation-path/1</c>): <see cref="RunicNavigator.BackAsync"/> in the innermost presented region that can.
+    /// </summary>
+    /// <param name="cancellationToken">Cancels the request, as a closed page connection does.</param>
+    public Task<RunicNavigationReply> NavigateBackAsync(CancellationToken cancellationToken = default) =>
+        NavigationAsync(writer => writer.WriteString("action", "back"), cancellationToken);
+
+    /// <summary>
+    /// Opens a route path as a page's browser does when the user goes Back or Forward (<c>popstate</c>) or edits the address
+    /// bar (<c>navigation-path/1</c>): in the window's path region (<see cref="RunicPresentation.SyncNavigationPath"/>),
+    /// with <see cref="NavigationRouteOpen.BackToOrPush"/>. <see cref="RunicNavigationReply.Path"/> is the path the page's
+    /// URL shows afterwards, the previous one when a guard refused.
+    /// </summary>
+    /// <param name="path">The route path, such as <c>customers/42</c>.</param>
+    /// <param name="cancellationToken">Cancels the request, as a closed page connection does.</param>
+    public Task<RunicNavigationReply> OpenNavigationPathAsync(string path, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(path);
+        return NavigationAsync(writer =>
+        {
+            writer.WriteString("action", "open");
+            writer.WriteString("path", path);
+        }, cancellationToken);
+    }
+
+    /// <summary>
+    /// Gets the <c>navigation-path</c> pushes the default connection received (<c>navigation-path/1</c>), in order: the
+    /// window's route path after the connection's hello and after each change of its path region, and whether the page
+    /// pushes, goes back in or replaces its browser history.
+    /// </summary>
+    public IReadOnlyList<RunicNavigationPathPush> NavigationPathPushes =>
+    [
+        .. Transport.Messages
+            .Where(static message => message.ConnectionKey == InMemoryBridgeTransport.DefaultConnectionKey && message.Kind == "navigation-path")
+            .Select(static message =>
+            {
+                using var document = System.Text.Json.JsonDocument.Parse(message.Json);
+                var root = document.RootElement;
+                return new RunicNavigationPathPush(
+                    root.GetProperty("path").ValueKind == System.Text.Json.JsonValueKind.String ? root.GetProperty("path").GetString() : null,
+                    root.GetProperty("operation").GetString()!);
+            }),
+    ];
+
+    private async Task<RunicNavigationReply> NavigationAsync(Action<System.Text.Json.Utf8JsonWriter> members, CancellationToken cancellationToken)
+    {
+        await Transport.EnsureHelloAsync(InMemoryBridgeTransport.DefaultConnectionKey, cancellationToken: cancellationToken).ConfigureAwait(false);
+        var json = RunicJson.Write(writer =>
+        {
+            writer.WriteStartObject();
+            writer.WriteString("kind", "navigation");
+            members(writer);
+            writer.WriteEndObject();
+        });
+        return new RunicNavigationReply(await Transport.RequestAsync(json, cancellationToken: cancellationToken).ConfigureAwait(false));
     }
 
     /// <summary>

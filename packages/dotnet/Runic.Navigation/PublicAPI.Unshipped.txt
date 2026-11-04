@@ -1,4 +1,177 @@
 #nullable enable
+const Runic.Navigation.NavigationPath.FormatVersion = 1 -> int
+override Runic.Navigation.NavigationEntryPath.Equals(object? obj) -> bool
+override Runic.Navigation.NavigationEntryPath.GetHashCode() -> int
+override Runic.Navigation.NavigationEntryPath.ToString() -> string!
+override Runic.Navigation.NavigationPath.Equals(object? obj) -> bool
+override Runic.Navigation.NavigationPath.GetHashCode() -> int
+override Runic.Navigation.NavigationPath.ToString() -> string!
+override Runic.Navigation.NavigationRegionPath.Equals(object? obj) -> bool
+override Runic.Navigation.NavigationRegionPath.GetHashCode() -> int
+override Runic.Navigation.NavigationRegionPath.ToString() -> string!
+override Runic.Navigation.NavigationRestoreIssue.Equals(object? obj) -> bool
+override Runic.Navigation.NavigationRestoreIssue.GetHashCode() -> int
+override Runic.Navigation.NavigationRestoreIssue.ToString() -> string!
+override Runic.Navigation.NavigationRestoreResult.Equals(object? obj) -> bool
+override Runic.Navigation.NavigationRestoreResult.GetHashCode() -> int
+override Runic.Navigation.NavigationRestoreResult.ToString() -> string!
+override Runic.Navigation.NavigationSelectionPath.Equals(object? obj) -> bool
+override Runic.Navigation.NavigationSelectionPath.GetHashCode() -> int
+override Runic.Navigation.NavigationSelectionPath.ToString() -> string!
+Runic.Navigation.INavigationRouteMap
+Runic.Navigation.INavigationRouteMap.CreateTarget(Runic.Navigation.NavigationRegion! region, string! route) -> Runic.Navigation.INavigationTarget<object!>?
+Runic.Navigation.INavigationRouteMap.GetRoute(Runic.Navigation.NavigationEntry! entry) -> string?
+Runic.Navigation.NavigationEntryPath
+Runic.Navigation.NavigationEntryPath.<Clone>$() -> Runic.Navigation.NavigationEntryPath!
+Runic.Navigation.NavigationEntryPath.Deconstruct(out string? Route) -> void
+Runic.Navigation.NavigationEntryPath.Equals(Runic.Navigation.NavigationEntryPath? other) -> bool
+Runic.Navigation.NavigationEntryPath.NavigationEntryPath(string? Route) -> void
+Runic.Navigation.NavigationEntryPath.Regions.get -> System.Collections.Generic.IReadOnlyList<Runic.Navigation.NavigationRegionPath!>!
+Runic.Navigation.NavigationEntryPath.Regions.init -> void
+Runic.Navigation.NavigationEntryPath.Route.get -> string?
+Runic.Navigation.NavigationEntryPath.Route.init -> void
+Runic.Navigation.NavigationEntryPath.Selections.get -> System.Collections.Generic.IReadOnlyList<Runic.Navigation.NavigationSelectionPath!>!
+Runic.Navigation.NavigationEntryPath.Selections.init -> void
+Runic.Navigation.NavigationPath
+Runic.Navigation.NavigationPath.<Clone>$() -> Runic.Navigation.NavigationPath!
+Runic.Navigation.NavigationPath.Deconstruct(out System.Collections.Generic.IReadOnlyList<Runic.Navigation.NavigationRegionPath!>! Regions, out System.Collections.Generic.IReadOnlyList<Runic.Navigation.NavigationSelectionPath!>! Selections) -> void
+Runic.Navigation.NavigationPath.Equals(Runic.Navigation.NavigationPath? other) -> bool
+Runic.Navigation.NavigationPath.NavigationPath(System.Collections.Generic.IReadOnlyList<Runic.Navigation.NavigationRegionPath!>! Regions, System.Collections.Generic.IReadOnlyList<Runic.Navigation.NavigationSelectionPath!>! Selections) -> void
+Runic.Navigation.NavigationPath.Regions.get -> System.Collections.Generic.IReadOnlyList<Runic.Navigation.NavigationRegionPath!>!
+Runic.Navigation.NavigationPath.Regions.init -> void
+Runic.Navigation.NavigationPath.Selections.get -> System.Collections.Generic.IReadOnlyList<Runic.Navigation.NavigationSelectionPath!>!
+Runic.Navigation.NavigationPath.Selections.init -> void
+Runic.Navigation.NavigationPath.ToJson() -> string!
+Runic.Navigation.NavigationRegion.GetPath(Runic.Navigation.INavigationRouteMap? routes = null) -> Runic.Navigation.NavigationRegionPath!
+Runic.Navigation.NavigationRegion.OpenRouteAsync(string! route, Runic.Navigation.NavigationRouteOpen mode = Runic.Navigation.NavigationRouteOpen.Push, Runic.Navigation.INavigationRouteMap? routes = null, Runic.Navigation.NavigationRequestOptions? options = null, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Navigation.NavigationResult<object!>?>
+Runic.Navigation.NavigationRegionPath
+Runic.Navigation.NavigationRegionPath.<Clone>$() -> Runic.Navigation.NavigationRegionPath!
+Runic.Navigation.NavigationRegionPath.Deconstruct(out System.Collections.Generic.IReadOnlyList<Runic.Navigation.NavigationEntryPath!>! Entries) -> void
+Runic.Navigation.NavigationRegionPath.Entries.get -> System.Collections.Generic.IReadOnlyList<Runic.Navigation.NavigationEntryPath!>!
+Runic.Navigation.NavigationRegionPath.Entries.init -> void
+Runic.Navigation.NavigationRegionPath.Equals(Runic.Navigation.NavigationRegionPath? other) -> bool
+Runic.Navigation.NavigationRegionPath.NavigationRegionPath(System.Collections.Generic.IReadOnlyList<Runic.Navigation.NavigationEntryPath!>! Entries) -> void
+Runic.Navigation.NavigationRegionPath.ToJson() -> string!
+Runic.Navigation.NavigationRestoreIssue
+Runic.Navigation.NavigationRestoreIssue.<Clone>$() -> Runic.Navigation.NavigationRestoreIssue!
+Runic.Navigation.NavigationRestoreIssue.Deconstruct(out Runic.Navigation.NavigationRestoreIssueKind Kind, out string! Location, out string? Route, out Runic.Navigation.NavigationOutcome? Outcome) -> void
+Runic.Navigation.NavigationRestoreIssue.Equals(Runic.Navigation.NavigationRestoreIssue? other) -> bool
+Runic.Navigation.NavigationRestoreIssueKind
+Runic.Navigation.NavigationRestoreIssue.Kind.get -> Runic.Navigation.NavigationRestoreIssueKind
+Runic.Navigation.NavigationRestoreIssue.Kind.init -> void
+Runic.Navigation.NavigationRestoreIssueKind.MissingRegion = 1 -> Runic.Navigation.NavigationRestoreIssueKind
+Runic.Navigation.NavigationRestoreIssueKind.MissingSelection = 2 -> Runic.Navigation.NavigationRestoreIssueKind
+Runic.Navigation.NavigationRestoreIssueKind.MissingSelectionRegion = 3 -> Runic.Navigation.NavigationRestoreIssueKind
+Runic.Navigation.NavigationRestoreIssueKind.NotCommitted = 4 -> Runic.Navigation.NavigationRestoreIssueKind
+Runic.Navigation.NavigationRestoreIssueKind.UnmappedRoute = 0 -> Runic.Navigation.NavigationRestoreIssueKind
+Runic.Navigation.NavigationRestoreIssue.Location.get -> string!
+Runic.Navigation.NavigationRestoreIssue.Location.init -> void
+Runic.Navigation.NavigationRestoreIssue.NavigationRestoreIssue(Runic.Navigation.NavigationRestoreIssueKind Kind, string! Location, string? Route = null, Runic.Navigation.NavigationOutcome? Outcome = null) -> void
+Runic.Navigation.NavigationRestoreIssue.Outcome.get -> Runic.Navigation.NavigationOutcome?
+Runic.Navigation.NavigationRestoreIssue.Outcome.init -> void
+Runic.Navigation.NavigationRestoreIssue.Route.get -> string?
+Runic.Navigation.NavigationRestoreIssue.Route.init -> void
+Runic.Navigation.NavigationRestoreResult
+Runic.Navigation.NavigationRestoreResult.<Clone>$() -> Runic.Navigation.NavigationRestoreResult!
+Runic.Navigation.NavigationRestoreResult.Deconstruct(out System.Collections.Generic.IReadOnlyList<Runic.Navigation.NavigationRestoreIssue!>! Issues) -> void
+Runic.Navigation.NavigationRestoreResult.Equals(Runic.Navigation.NavigationRestoreResult? other) -> bool
+Runic.Navigation.NavigationRestoreResult.IsComplete.get -> bool
+Runic.Navigation.NavigationRestoreResult.Issues.get -> System.Collections.Generic.IReadOnlyList<Runic.Navigation.NavigationRestoreIssue!>!
+Runic.Navigation.NavigationRestoreResult.Issues.init -> void
+Runic.Navigation.NavigationRestoreResult.NavigationRestoreResult(System.Collections.Generic.IReadOnlyList<Runic.Navigation.NavigationRestoreIssue!>! Issues) -> void
+Runic.Navigation.NavigationRouteLinks
+Runic.Navigation.NavigationRouteMap
+Runic.Navigation.NavigationRouteMapBuilder
+Runic.Navigation.NavigationRouteMapBuilder.Build() -> Runic.Navigation.NavigationRouteMap!
+Runic.Navigation.NavigationRouteMapBuilder.Map<T>(string! template) -> Runic.Navigation.NavigationRouteMapBuilder!
+Runic.Navigation.NavigationRouteMapBuilder.Map<T, TInput>(string! template) -> Runic.Navigation.NavigationRouteMapBuilder!
+Runic.Navigation.NavigationRouteMapBuilder.NavigationRouteMapBuilder() -> void
+Runic.Navigation.NavigationRouteMap.CreateTarget(Runic.Navigation.NavigationRegion! region, string! route) -> Runic.Navigation.INavigationTarget<object!>?
+Runic.Navigation.NavigationRouteMap.GetRoute(Runic.Navigation.NavigationEntry! entry) -> string?
+Runic.Navigation.NavigationRouteMap.Templates.get -> System.Collections.Generic.IReadOnlyList<string!>!
+Runic.Navigation.NavigationRouteOpen
+Runic.Navigation.NavigationRouteOpen.BackToOrPush = 3 -> Runic.Navigation.NavigationRouteOpen
+Runic.Navigation.NavigationRouteOpen.Push = 0 -> Runic.Navigation.NavigationRouteOpen
+Runic.Navigation.NavigationRouteOpen.Replace = 1 -> Runic.Navigation.NavigationRouteOpen
+Runic.Navigation.NavigationRouteOpen.Reset = 2 -> Runic.Navigation.NavigationRouteOpen
+Runic.Navigation.NavigationRouteOpen.Stack = 4 -> Runic.Navigation.NavigationRouteOpen
+Runic.Navigation.NavigationRouteServiceCollectionExtensions
+Runic.Navigation.NavigationSelection.GetPath(Runic.Navigation.INavigationRouteMap? routes = null) -> Runic.Navigation.NavigationSelectionPath!
+Runic.Navigation.NavigationSelectionOptions.RestoreRegion.get -> System.Func<Runic.Navigation.NavigationSelection!, Runic.Navigation.NavigationRegion!>?
+Runic.Navigation.NavigationSelectionOptions.RestoreRegion.init -> void
+Runic.Navigation.NavigationSelectionPath
+Runic.Navigation.NavigationSelectionPath.<Clone>$() -> Runic.Navigation.NavigationSelectionPath!
+Runic.Navigation.NavigationSelectionPath.Deconstruct(out System.Collections.Generic.IReadOnlyList<Runic.Navigation.NavigationRegionPath!>! Regions, out int Selected) -> void
+Runic.Navigation.NavigationSelectionPath.Equals(Runic.Navigation.NavigationSelectionPath? other) -> bool
+Runic.Navigation.NavigationSelectionPath.NavigationSelectionPath(System.Collections.Generic.IReadOnlyList<Runic.Navigation.NavigationRegionPath!>! Regions, int Selected) -> void
+Runic.Navigation.NavigationSelectionPath.Regions.get -> System.Collections.Generic.IReadOnlyList<Runic.Navigation.NavigationRegionPath!>!
+Runic.Navigation.NavigationSelectionPath.Regions.init -> void
+Runic.Navigation.NavigationSelectionPath.Selected.get -> int
+Runic.Navigation.NavigationSelectionPath.Selected.init -> void
+Runic.Navigation.RunicNavigator.GetPath(Runic.Navigation.INavigationRouteMap? routes = null) -> Runic.Navigation.NavigationPath!
+static Runic.Navigation.NavigationEntryPath.operator !=(Runic.Navigation.NavigationEntryPath? left, Runic.Navigation.NavigationEntryPath? right) -> bool
+static Runic.Navigation.NavigationEntryPath.operator ==(Runic.Navigation.NavigationEntryPath? left, Runic.Navigation.NavigationEntryPath? right) -> bool
+static Runic.Navigation.NavigationPath.Empty.get -> Runic.Navigation.NavigationPath!
+static Runic.Navigation.NavigationPath.FromJson(string! json) -> Runic.Navigation.NavigationPath!
+static Runic.Navigation.NavigationPath.operator !=(Runic.Navigation.NavigationPath? left, Runic.Navigation.NavigationPath? right) -> bool
+static Runic.Navigation.NavigationPath.operator ==(Runic.Navigation.NavigationPath? left, Runic.Navigation.NavigationPath? right) -> bool
+static Runic.Navigation.NavigationRegionPath.FromJson(string! json) -> Runic.Navigation.NavigationRegionPath!
+static Runic.Navigation.NavigationRegionPath.operator !=(Runic.Navigation.NavigationRegionPath? left, Runic.Navigation.NavigationRegionPath? right) -> bool
+static Runic.Navigation.NavigationRegionPath.operator ==(Runic.Navigation.NavigationRegionPath? left, Runic.Navigation.NavigationRegionPath? right) -> bool
+static Runic.Navigation.NavigationRestoreIssue.operator !=(Runic.Navigation.NavigationRestoreIssue? left, Runic.Navigation.NavigationRestoreIssue? right) -> bool
+static Runic.Navigation.NavigationRestoreIssue.operator ==(Runic.Navigation.NavigationRestoreIssue? left, Runic.Navigation.NavigationRestoreIssue? right) -> bool
+static Runic.Navigation.NavigationRestoreResult.operator !=(Runic.Navigation.NavigationRestoreResult? left, Runic.Navigation.NavigationRestoreResult? right) -> bool
+static Runic.Navigation.NavigationRestoreResult.operator ==(Runic.Navigation.NavigationRestoreResult? left, Runic.Navigation.NavigationRestoreResult? right) -> bool
+static Runic.Navigation.NavigationRouteLinks.TryGetRoute(System.Uri! uri, System.Collections.Generic.IEnumerable<string!>! schemes, out string? route, System.Collections.Generic.IEnumerable<string!>? webLinkHosts = null) -> bool
+static Runic.Navigation.NavigationRouteServiceCollectionExtensions.AddRunicNavigationRoutes(this Microsoft.Extensions.DependencyInjection.IServiceCollection! services, System.Action<Runic.Navigation.NavigationRouteMapBuilder!>! configure) -> Microsoft.Extensions.DependencyInjection.IServiceCollection!
+static Runic.Navigation.NavigationSelectionPath.operator !=(Runic.Navigation.NavigationSelectionPath? left, Runic.Navigation.NavigationSelectionPath? right) -> bool
+static Runic.Navigation.NavigationSelectionPath.operator ==(Runic.Navigation.NavigationSelectionPath? left, Runic.Navigation.NavigationSelectionPath? right) -> bool
+Runic.Navigation.NavigationRouteMapBuilder.Map<T>(string! template, System.Func<System.IServiceProvider!, Runic.Navigation.NavigationRouteValues!, Runic.Navigation.INavigationTarget<T!>?>! target, System.Func<T!, Runic.Navigation.NavigationRouteValues?>! values) -> Runic.Navigation.NavigationRouteMapBuilder!
+Runic.Navigation.NavigationRouteMapBuilder.Map<T, TInput>(string! template, System.Func<Runic.Navigation.NavigationRouteValues!, TInput>! read, System.Func<TInput, Runic.Navigation.NavigationRouteValues?>! write) -> Runic.Navigation.NavigationRouteMapBuilder!
+Runic.Navigation.NavigationRouteMap.TryMatch(string! route, out string? canonical, out Runic.Navigation.NavigationRouteValues? values) -> bool
+Runic.Navigation.NavigationRouteValues
+Runic.Navigation.NavigationRouteValues.Count.get -> int
+Runic.Navigation.NavigationRouteValues.GetBoolean(string! name) -> bool
+Runic.Navigation.NavigationRouteValues.GetGuid(string! name) -> System.Guid
+Runic.Navigation.NavigationRouteValues.GetInt32(string! name) -> int
+Runic.Navigation.NavigationRouteValues.GetInt64(string! name) -> long
+Runic.Navigation.NavigationRouteValues.GetString(string! name) -> string!
+Runic.Navigation.NavigationRouteValues.Names.get -> System.Collections.Generic.IReadOnlyCollection<string!>!
+Runic.Navigation.NavigationRouteValues.NavigationRouteValues() -> void
+Runic.Navigation.NavigationRouteValues.Set(string! name, bool value) -> Runic.Navigation.NavigationRouteValues!
+Runic.Navigation.NavigationRouteValues.Set(string! name, int value) -> Runic.Navigation.NavigationRouteValues!
+Runic.Navigation.NavigationRouteValues.Set(string! name, long value) -> Runic.Navigation.NavigationRouteValues!
+Runic.Navigation.NavigationRouteValues.Set(string! name, string! value) -> Runic.Navigation.NavigationRouteValues!
+Runic.Navigation.NavigationRouteValues.Set(string! name, System.Guid value) -> Runic.Navigation.NavigationRouteValues!
+Runic.Navigation.NavigationRouteValues.this[string! name].get -> object!
+Runic.Navigation.NavigationRouteValues.TryGetValue(string! name, out object! value) -> bool
+Runic.Navigation.RunicNavigator.BackAsync(Runic.Navigation.NavigationRequestOptions? options = null, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Navigation.NavigationResult<object!>!>
+override Runic.Navigation.NavigationRestoreOptions.Equals(object? obj) -> bool
+override Runic.Navigation.NavigationRestoreOptions.GetHashCode() -> int
+override Runic.Navigation.NavigationRestoreOptions.ToString() -> string!
+Runic.Navigation.NavigationRegion.RestoreAsync(Runic.Navigation.NavigationRegionPath! path, Runic.Navigation.NavigationRestoreOptions? options = null, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Navigation.NavigationRestoreResult!>
+Runic.Navigation.NavigationRestoreIssueKind.AboveUnmapped = 5 -> Runic.Navigation.NavigationRestoreIssueKind
+Runic.Navigation.NavigationRestoreIssueKind.LimitExceeded = 6 -> Runic.Navigation.NavigationRestoreIssueKind
+Runic.Navigation.NavigationRestoreOptions
+Runic.Navigation.NavigationRestoreOptions.<Clone>$() -> Runic.Navigation.NavigationRestoreOptions!
+Runic.Navigation.NavigationRestoreOptions.Equals(Runic.Navigation.NavigationRestoreOptions? other) -> bool
+Runic.Navigation.NavigationRestoreOptions.MaximumEntriesPerRegion.get -> int
+Runic.Navigation.NavigationRestoreOptions.MaximumEntriesPerRegion.init -> void
+Runic.Navigation.NavigationRestoreOptions.MaximumRegionsPerSelection.get -> int
+Runic.Navigation.NavigationRestoreOptions.MaximumRegionsPerSelection.init -> void
+Runic.Navigation.NavigationRestoreOptions.NavigationRestoreOptions() -> void
+Runic.Navigation.NavigationRestoreOptions.Routes.get -> Runic.Navigation.INavigationRouteMap?
+Runic.Navigation.NavigationRestoreOptions.Routes.init -> void
+Runic.Navigation.NavigationRestoreOptions.UnmappedEntries.get -> Runic.Navigation.NavigationUnmappedEntries
+Runic.Navigation.NavigationRestoreOptions.UnmappedEntries.init -> void
+Runic.Navigation.NavigationSelection.RestoreAsync(Runic.Navigation.NavigationSelectionPath! path, Runic.Navigation.NavigationRestoreOptions? options = null, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Navigation.NavigationRestoreResult!>
+Runic.Navigation.NavigationUnmappedEntries
+Runic.Navigation.NavigationUnmappedEntries.Skip = 1 -> Runic.Navigation.NavigationUnmappedEntries
+Runic.Navigation.NavigationUnmappedEntries.Stop = 0 -> Runic.Navigation.NavigationUnmappedEntries
+Runic.Navigation.RunicNavigator.DiscardRegionAsync(Runic.Navigation.NavigationRegion! region) -> System.Threading.Tasks.ValueTask
+Runic.Navigation.RunicNavigator.RestoreAsync(Runic.Navigation.NavigationPath! path, Runic.Navigation.NavigationRestoreOptions? options = null, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Navigation.NavigationRestoreResult!>
+static Runic.Navigation.NavigationRestoreOptions.operator !=(Runic.Navigation.NavigationRestoreOptions? left, Runic.Navigation.NavigationRestoreOptions? right) -> bool
+static Runic.Navigation.NavigationRestoreOptions.operator ==(Runic.Navigation.NavigationRestoreOptions? left, Runic.Navigation.NavigationRestoreOptions? right) -> bool
 Runic.Navigation.RunicEditSession<T>
 Runic.Navigation.RunicEditSession<T>.Accept(T baseline) -> void
 Runic.Navigation.RunicEditSession<T>.Accept() -> void

@@ -491,9 +491,9 @@ test("an operation start with a known id is a duplicate for a canonically equal 
 
 /* ------------------------------------------------------------------ presentation-epoch/1 and presented/1 */
 
-const features = ["text-splice/1", "presentation-epoch/1", "presented/1", "view-requests/1", "request-session/1", "region-collections/1", "client-errors/1", "query-collections/1", "blobs/1"];
+const features = ["text-splice/1", "presentation-epoch/1", "presented/1", "view-requests/1", "request-session/1", "region-collections/1", "client-errors/1", "query-collections/1", "blobs/1", "navigation-path/1"];
 // The features the mock lists in its hello reply.
-const producerFeatures = [...features, "validation-pending/1", "field-flush/1", "field-paths/1", "translation-text/1"];
+const producerFeatures = [...features.filter(feature => feature !== "navigation-path/1"), "validation-pending/1", "field-flush/1", "field-paths/1", "translation-text/1", "navigation-path/1"];
 // The raw client sends no session with its requests, so it lists every feature but request-session/1.
 const helloWith = (raw: RawClient, list: readonly string[] = features.filter(feature => feature !== "request-session/1")) =>
   raw.send({ kind: "hello", protocol: 4, session: `session-${++sessions}`, client, features: list });

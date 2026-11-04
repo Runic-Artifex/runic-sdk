@@ -296,6 +296,9 @@ public sealed class InMemoryBridgeTransport : IBridgeConnectionTransport, IDispo
                 // field-paths/1: RunicViewDriver.WritePath writes field paths below a member.
                 writer.WriteStringValue("field-paths/1");
                 if (FieldFlush is not null) writer.WriteStringValue("field-flush/1");
+                // The host's Back and route path requests (NavigateBackAsync, OpenNavigationPathAsync). A window without a
+                // path region pushes nothing for it.
+                writer.WriteStringValue("navigation-path/1");
                 writer.WriteEndArray();
                 writer.WriteEndObject();
             }), connectionKey, clientKey, CancellationToken.None).ConfigureAwait(false);

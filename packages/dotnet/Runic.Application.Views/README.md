@@ -3598,6 +3598,11 @@ closeDocuments(key: string): Promise<RegionOutcome>;
   every tab in one decision, own the tabs and the selection by a page entry in
   a region slot: the close's clear of that slot retires every tab in one
   transition, and closes none when one refuses.
+- **Restart (since 0.16).** Keys don't survive a restart. A saved
+  [navigation path](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Navigation/README.md#routes-saved-paths-and-deep-links)
+  records the tabs by position, each with its own back stack, and the selected
+  tab. `RestoreAsync` creates the tabs it needs with
+  `NavigationSelectionOptions.RestoreRegion`, restores their pages and adds them.
 - Without the attribute, a `NavigationSelection` stays a selection slot whose
   value is `SelectedIndex`. Only Views with a region collection get a new
   contract fingerprint.
@@ -3633,6 +3638,64 @@ In tests, `state.Regions(vm => vm.Documents)` reads the collection, and
 send the page's requests; the reply's `RegionOutcome` is the outcome. The
 [document tabs example](https://github.com/Runic-Artifex/runic-sdk/tree/main/examples/document-tabs)
 uses all of it.
+
+### Back and the URL
+
+With Views protocol 4's `navigation-path/1` (since 0.16), a page goes back in
+its window as a Back button does, and can keep its URL in step with the
+window's navigation, on Runic Desktop and CS-WebUI alike.
+
+**Back.** Call `installBackNavigation()` once in the page. The mouse's Back
+button, Alt+Left, Cmd+[ and the keyboard's Browser Back key then run
+`RunicNavigator.BackAsync()` for the window's navigator: in the innermost
+presented region that can go back, such as the selected tab before its page,
+through the departure guards. Only regions a Bridge of the window presents
+count, as a content slot or a tab of a presented region collection. Alt+Left and Cmd+[ stay with text fields, and an
+event the page already handled is left alone. `navigateBack()` does the same
+from code. The .NET side needs nothing beyond its navigator.
+
+**URL.** Choose the window's path region, usually its main region, and give
+its pages routes ([routes](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Navigation/README.md#routes-saved-paths-and-deep-links)):
+
+```csharp
+public ShellViewModel(RunicNavigator navigator)
+{
+    Main = navigator.CreateRegion<IPage>(this, NavigationTarget.Create<CustomerListViewModel>());
+    _path = RunicPresentation.SyncNavigationPath(Main); // uses the registered INavigationRouteMap
+}
+```
+
+```ts
+import { installBackNavigation, installNavigationPath } from "@runic-artifex/views";
+installNavigationPath(); // #/customers/42 follows Main; Back, Forward and the address bar open their paths
+```
+
+- The route of `Main`'s current page is the window's route path. When it
+  changes, the page pushes a history entry, goes back to the previous one, or
+  replaces the current one, so the URL reads `#/customers/42/invoices/7`.
+- The browser's Back and Forward and an edited address bar open the URL's path
+  with `NavigationRouteOpen.BackToOrPush`: back to that page when `Main`'s
+  history has it, a push otherwise, through the departure guards. When the
+  request doesn't commit, because a guard refused or no route matches, the URL
+  goes back to the window's path.
+- A URL with a path when the page loads, such as a bookmarked CS-WebUI address,
+  opens that path as a deep link.
+- On CS-WebUI the browser's own Back then works through the history; add
+  `installBackNavigation()` for the mouse and keys in a Desktop window, whose
+  web view may not map them. Both can be installed: the keys then go back in
+  the page's history, so a Back runs once.
+- The path region can be chosen after the page connected, or the window can
+  learn its navigator later: the page is told the path then, and a link in its
+  URL opens at that moment.
+- Several pages of one window, such as two CS-WebUI browsers, share the path
+  region: every page's history follows it, and the last change wins.
+- One path region per window: a second `SyncNavigationPath` for the navigator
+  throws until the first is disposed.
+- Tests drive it with `RunicWindowTestHost.NavigateBackAsync()` and
+  `OpenNavigationPathAsync(path)` (a browser's `popstate`), and read
+  `NavigationPathPushes`.
+- A page or host of an earlier release lists no common feature: the page's
+  calls fail with a `failed` BridgeError, and nothing else changes.
 
 ### Navigation command results
 

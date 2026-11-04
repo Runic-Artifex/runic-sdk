@@ -6,11 +6,11 @@ region with its own back stack.
 
 | File | What it does |
 | --- | --- |
-| [`ViewModels.cs`](ViewModels.cs) | `DocumentsViewModel` holds the tabs in a `[RunicRegionCollection]` `NavigationSelection`; `NewDocument` adds a region with a new `DocumentViewModel` and selects it. `ShowDetails` pushes `DocumentInfoViewModel` into the same tab, and its `Back` returns to the document. |
+| [`ViewModels.cs`](ViewModels.cs) | `DocumentsViewModel` holds the tabs in a `[RunicRegionCollection]` `NavigationSelection`; `NewDocument` opens `documents/{id}` in a new tab and selects it. `ShowDetails` pushes `DocumentInfoViewModel` (`documents/{id}/info`) into the same tab, and its `Back` returns to the document. `SaveNavigation`, `RestoreNavigationAsync` and `OpenLinkAsync` save the tabs, reopen them and open deep links. `AddDocumentTabs` registers the navigator, the route map and the ViewModels. |
 | [`Views.cs`](Views.cs) | The Window and the Views of the two pages a tab presents. |
-| [`Program.cs`](Program.cs) | Calls `AddDocumentTabs()`, which registers the navigator and the ViewModel, and `AddRunicViews()`, then opens the Window on CS-WebUI. |
+| [`Program.cs`](Program.cs) | Claims the running instance, opens the Window on CS-WebUI, reopens the saved tabs, and routes `document-tabs://` links from this launch and later ones to the Window. |
 | [`Frontend/src/app.tsx`](Frontend/src/app.tsx) | A tab bar from `regionEntries(state.documents)`, with `selectDocuments(key)` and `closeDocuments(key)`, and a panel per tab that renders its page with `ViewOutlet`. |
-| [`Tests/DocumentTabsTests.cs`](Tests/DocumentTabsTests.cs) | Opens, switches, pushes and closes tabs through the generated Bridges with `RunicWindowTestHost`. |
+| [`Tests/DocumentTabsTests.cs`](Tests/DocumentTabsTests.cs) | Opens, switches, pushes and closes tabs through the generated Bridges with `RunicWindowTestHost`, reopens them in a new window scope as after a restart, and opens links as a second launch and a notification deliver them. |
 
 The generated client lists the tabs as `state.documents`: each region's `key`
 and current page, and the `selected` index. The page selects and closes a tab
@@ -32,14 +32,48 @@ close** closes the tab by that key. `<RegionOutlets>` renders the same panels
 when the pages need no key. Each tab
 label connects to its page with `useView` to show the title.
 
+## Reopening tabs and deep links
+
+The pages have routes, registered with `AddRunicNavigationRoutes`:
+`documents/{id:int}` for a document and `documents/{id:int}/info` for its
+details. See
+[Routes, saved paths and deep links](../../packages/dotnet/Runic.Navigation/README.md#routes-saved-paths-and-deep-links).
+
+- **Restart.** After each change of the tabs or of a tab's page,
+  `DocumentsViewModel` saves `navigator.GetPath()` as JSON in the user's local
+  application data, shortly after and once for a burst of changes. Saving on
+  change works however the window ends: CS-WebUI can't ask the application
+  before a browser window closes. Nothing is saved while
+  `RestoreNavigationAsync` runs, so a page that no longer has a route doesn't
+  overwrite the saved tabs. A tab whose page couldn't be opened is discarded
+  (`DiscardRegionAsync`) rather than left as an empty region. At the next start, `RestoreNavigationAsync` reopens every tab with its back
+  stack and the selected tab. The selection's `RestoreRegion` creates the empty
+  tabs the path restores into. The example keeps documents in memory, so a
+  reopened document starts empty; an application reads it from its own store.
+- **Deep links.** `OpenLinkAsync(document-tabs://documents/2/info)` selects the
+  tab of document 2, or opens one, and shows its details with
+  `NavigationRouteOpen.Stack`, which puts the document below the details page.
+  A link to an unknown document or route opens nothing. Program.cs passes it
+  the links of this launch and of later launches that a second instance
+  forwards (`ApplicationInstance.CreateOpenRequests`).
+  `OpenNotificationAsync` opens a notification's `ActivationUri` the same way.
+  To open links from the desktop, register the `document-tabs` scheme for the
+  built executable, as the
+  [opening files and URLs design](../../specs/platform/open-activation.md)
+  describes.
+- **Back.** The page calls `installBackNavigation()`, so the mouse's Back
+  button, Alt+Left and Cmd+[ go back in the selected tab: from a details page to
+  its document, through the pages' guards (`navigation-path/1`).
+
 ```sh
 dotnet run --project examples/document-tabs
+dotnet run --project examples/document-tabs -- document-tabs://documents/1/info   # while it runs: forwarded to it
 dotnet run --project examples/document-tabs/Tests
 ```
 
 The example builds the Runic packages from source, and the frontend bundles
 `@runic-artifex/react` from its workspace source. To copy it out, replace the
 `ProjectReference` and `Import` lines with a `Runic.Application.Views.CsWebUi`
-package reference, install `@runic-artifex/views`, `@runic-artifex/react`,
+package reference, add a `Runic.Platform.Runtime` package reference, install `@runic-artifex/views`, `@runic-artifex/react`,
 `react` and `react-dom`, and remove the `paths` in `tsconfig.json` and the
 plug-in in `build.mjs`.

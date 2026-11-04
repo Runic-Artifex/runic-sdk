@@ -71,7 +71,7 @@ public sealed class RunicNavigatorOptions
 /// thread pool. The navigator's own work between hooks always continues on the thread pool.
 /// </para>
 /// </remarks>
-public sealed class RunicNavigator : IAsyncDisposable, IDisposable
+public sealed partial class RunicNavigator : IAsyncDisposable, IDisposable
 {
     /// <summary>The category of the navigator's log entries (events 1060-1079).</summary>
     public const string LogCategory = "Runic.Navigation";
@@ -225,7 +225,7 @@ public sealed class RunicNavigator : IAsyncDisposable, IDisposable
             if (target is not null)
             {
                 region.Started = true;
-                entry = new NavigationEntryCore(region, NextEntryId(), target.Ownership, target.Instance);
+                entry = new NavigationEntryCore(region, NextEntryId(), target.Ownership, target.Instance) { Target = target };
             }
         }
 
@@ -314,7 +314,7 @@ public sealed class RunicNavigator : IAsyncDisposable, IDisposable
                     throw new ArgumentException($"{members[index]} appears more than once.", nameof(regions));
             }
             selection = new NavigationSelectionCore(this, ++_nextRegionId, owner, options?.Admission ?? NavigationAdmission.Supersede,
-                members, selectedIndex);
+                members, selectedIndex, options?.RestoreRegion);
             var unit = selection.Unit;
             unit.Closed = retiring;
             if (!unit.Closed) _regions.Add(unit);
@@ -368,7 +368,7 @@ public sealed class RunicNavigator : IAsyncDisposable, IDisposable
             ObjectDisposedException.ThrowIf(_closing, this);
             ThrowIfNotStartableLocked(region);
             region.Started = true;
-            entry = new NavigationEntryCore(region, NextEntryId(), target.Ownership, target.Instance);
+            entry = new NavigationEntryCore(region, NextEntryId(), target.Ownership, target.Instance) { Target = target };
         }
 
         var content = PrepareInitial(region.Owner, target, entry, parameter);
@@ -988,6 +988,7 @@ public sealed class RunicNavigator : IAsyncDisposable, IDisposable
                         Phase = NavigationEntryPhase.Pending,
                         ResultRequest = request,
                         RetainView = retainView,
+                        Target = target,
                     };
                     _tracked.Add(pending);
                     // A pending entry holds its content from admission, so a pending Share keeps the content alive while the

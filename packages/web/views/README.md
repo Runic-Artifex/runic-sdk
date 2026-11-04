@@ -160,6 +160,56 @@ The framework adapters' `RegionOutlets` renders one outlet per region. See
 [Region collections](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Application.Views/README.md#region-collections)
 for the .NET side.
 
+### Back and the URL
+
+With a .NET host of 0.16 or later (the `hello` feature `navigation-path/1`),
+the page can go back in its window and keep its URL in step with the window's
+route path:
+
+```ts
+import { installBackNavigation, installNavigationPath } from "@runic-artifex/views";
+
+installBackNavigation();  // the mouse's Back button, Alt+Left, Cmd+[ on macOS and Browser Back
+installNavigationPath();  // #/customers/42 follows the .NET path region
+```
+
+- `installBackNavigation()` sends the window's Back for the mouse's button 3,
+  Alt+Left, Cmd+[ (on macOS only) and the Browser Back key: .NET goes back in
+  the innermost presented region that can, through its departure guards. It
+  leaves Alt+Left and Cmd+[ to text fields, and events the page prevented to the
+  page. Keys and clicks inside an iframe go to the iframe's document and don't
+  reach it. While `installNavigationPath()` is active, the same inputs go back in
+  the page's history instead, and its `popstate` opens the previous path, so a
+  Back never runs twice; at the first history entry they send the window's Back.
+- `installNavigationPath({ prefix })` keeps the URL's fragment (`#/` and the
+  path by default) and the history in step with the region the .NET window syncs
+  (`RunicPresentation.SyncNavigationPath`). A push adds a history entry and a
+  Back moves back. Each entry keeps its index and path in `history.state`, so
+  a reload keeps them. The browser's Back and Forward and an edited address bar
+  open their paths in .NET; going back to an entry without a path, such as a
+  home page without a route, sends the window's Back. A refused move, or one no
+  route matches, puts the URL back; of several quick moves only the last one
+  does. A path in the URL when the page loads opens as a deep link once the
+  window reports its path; a reload or reconnect shows the window's path. A
+  fragment that doesn't start with the prefix, such as an in-page anchor, is
+  left alone.
+- Several pages of one window, such as two CS-WebUI browsers, follow the same
+  path region: each history follows every change, and the last change wins.
+- `navigateBack()` and `openNavigationPath(path)` send the same requests from
+  code and resolve with `{ outcome, path }`: the .NET `NavigationOutcome`, or
+  `null` when no route matched, and the window's path after it.
+  `onNavigationPath(listener)` reports the path when the connection starts and
+  after each change, with `operation` `"push"`, `"back"` or `"replace"`, for a
+  router of the page's own, such as SvelteKit's.
+- A host without the feature rejects the calls with a `failed` BridgeError. Both
+  installs return a function that removes them; each takes `{ window }` for tests.
+- The mock bridge answers `navigation` requests with
+  `createMockBridge({ navigation: { path, handle(request) } })`, and
+  `mock.pushNavigationPath(path, operation)` stands in for a change in .NET.
+
+See [Back and the URL](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Application.Views/README.md#back-and-the-url)
+for the .NET side.
+
 ### Cancellation and `using`
 
 `connect<Name>({ signal })`, `waitForBridge({ signal })` and an operation's

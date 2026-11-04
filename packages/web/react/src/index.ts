@@ -764,6 +764,16 @@ export {
   type RegionSlot,
 } from "@runic-artifex/views";
 export {
+  installBackNavigation,
+  installNavigationPath,
+  navigateBack,
+  onNavigationPath,
+  openNavigationPath,
+  type NavigationPathChange,
+  type NavigationPathOptions,
+  type NavigationReply,
+} from "@runic-artifex/views";
+export {
   configureTranslatedText, resolveText, windowLocale, type TextReference, type TextTranslations,
 } from "@runic-artifex/views";
 export {

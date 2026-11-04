@@ -71,7 +71,10 @@ export type Push =
   /** field-flush/1: write the page's field drafts, then answer `flush-reply` with `id`; a window-level push. */
   | Message & { readonly kind: "flush"; readonly id: string; readonly route?: undefined }
   /** translation-text/1: the window's locale, or null when the application sets none; a window-level push. */
-  | Message & { readonly kind: "locale"; readonly route?: undefined; readonly locale: string | null };
+  | Message & { readonly kind: "locale"; readonly route?: undefined; readonly locale: string | null }
+  /** navigation-path/1: the window's route path changed; a window push. */
+  | Message & { readonly kind: "navigation-path"; readonly route?: undefined; readonly path: string | null;
+    readonly operation: "push" | "back" | "replace" };
 
 /** The kinds of {@link Push}; a client ignores other kinds. */
 export type PushKind = Push["kind"];
@@ -149,6 +152,9 @@ const replyMembers: Readonly<Record<string, (reply: Message) => boolean>> = {
   "menu-bar-unwatch": () => true,
   presented: () => true,
   "closing-reply": () => true,
+  // navigation-path/1: the outcome, null when no route matched, and the window's path after the request.
+  navigation: reply => (reply["outcome"] === null || isObject(reply["outcome"]) && isString(reply["outcome"]["kind"]))
+    && (reply["path"] === undefined || reply["path"] === null || isString(reply["path"])),
   "flush-reply": () => true,
   "query-rows": reply => isSafe(reply["version"]) && (reply["total"] === null || isSafe(reply["total"])) && isSafe(reply["start"])
     && Array.isArray(reply["keys"]) && Array.isArray(reply["rows"]) && reply["keys"].length === reply["rows"].length
@@ -217,7 +223,7 @@ function invalidChanges(changes: unknown): string | undefined {
 }
 
 const pushKinds = new Set(["state", "frame", "failure", "operation", "interaction", "interaction-cancelled", "menu-bar", "present", "closing",
-  "view-request", "flush", "locale"]);
+  "view-request", "flush", "locale", "navigation-path"]);
 
 // A locale tag the producer may push: letters, digits and '-', starting with a letter, at most 64 characters.
 const localeTag = /^[A-Za-z][A-Za-z0-9]*(?:-[A-Za-z0-9]+)*$/;
@@ -240,6 +246,13 @@ export function readPush(text: unknown): PushReading {
   if (!pushKinds.has(kind)) return { result: "ignored" };
   // `closing` is about the window: a route it names is ignored, like any member a client does not need.
   if (kind === "closing") return { result: "valid", push: push as Push };
+  // navigation-path/1: about the window too.
+  if (kind === "navigation-path") {
+    const operation = push["operation"];
+    if (!(push["path"] === null || isString(push["path"])) || !(operation === "push" || operation === "back" || operation === "replace"))
+      return invalid("The navigation-path push is invalid.");
+    return { result: "valid", push: { ...push, route: undefined } as Push };
+  }
   if (kind === "flush") return isString(push["id"]) ? { result: "valid", push: push as Push } : invalid("The flush push has no id.");
   if (kind === "locale") {
     const locale = push["locale"];

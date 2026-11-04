@@ -362,6 +362,42 @@ using var host = RunicWindowTestHost.Create<ShellViewModel>(scope.ServiceProvide
     new RunicWindowTestHostOptions { TimeProvider = clock });
 ```
 
+**Saving and restoring navigation (since 0.16).** A restart is a new window
+scope. `navigator.SavePath()` returns the window's
+[navigation path](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Navigation/README.md#routes-saved-paths-and-deep-links)
+as the JSON an application stores, and `RestorePathAsync(saved)` restores it in
+the new window's navigator, waits until it is idle and reads the path back.
+`IsExact` is `true` when nothing was left out and the restored path is the
+saved one:
+
+```csharp
+var saved = scope.ServiceProvider.GetRequiredService<RunicNavigator>().SavePath();
+host.Dispose();
+await scope.DisposeAsync();
+
+await using var restarted = services.CreateAsyncScope();
+using var again = RunicWindowTestHost.Create<ShellViewModel>(restarted.ServiceProvider);
+var restore = await restarted.ServiceProvider.GetRequiredService<RunicNavigator>().RestorePathAsync(saved);
+await Assert.That(restore.IsExact).IsTrue(); // otherwise restore.Result.Issues says what was left out
+```
+
+**Back and the URL (since 0.16).** `host.NavigateBackAsync()` sends the
+window's Back, as the mouse's Back button does in a page that called
+`installBackNavigation()`. `host.OpenNavigationPathAsync(path)` opens a route
+path as a browser's Back, Forward or address bar does in a page that called
+`installNavigationPath()`. Both return a `RunicNavigationReply` with the
+`Outcome` (`null` when no route matched) and the window's `Path` afterwards,
+which the page's URL shows. `host.NavigationPathPushes` lists the path changes
+the page was told about, with their history operation:
+
+```csharp
+using var path = RunicPresentation.SyncNavigationPath(shell.Main);
+var refused = await host.OpenNavigationPathAsync("home");   // a browser Back that a dirty editor refuses
+await Assert.That(refused.Outcome?.Rejection).IsEqualTo(NavigationRejection.Guard);
+await Assert.That(refused.Path).IsEqualTo("editors/a");     // the URL the page puts back
+await Assert.That(host.NavigationPathPushes[^1]).IsEqualTo(new RunicNavigationPathPush("editors/a", "push"));
+```
+
 A unit test of one page that takes its `NavigationEntryContext`, such as a
 dialog that completes its request, needs no window. `RunicTestNavigationEntry`
 (since 0.11) pushes the page on a test navigator with its own

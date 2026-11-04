@@ -89,4 +89,13 @@ internal static partial class NavigationLog
     [LoggerMessage(EventId = 1077, EventName = "NavigationContentReleaseOverdue", Level = LogLevel.Warning,
         Message = "Disposing the navigator stopped waiting after the close timeout for work that a presentation keeps for retired {EntryType} of navigation region {Region} ({RegionId}); the content is disposed when that work ends.")]
     internal static partial void NavigationContentReleaseOverdue(ILogger logger, Exception? exception, string region, int regionId, string entryType);
+
+    // 0.16 D2: navigation paths and routes, 1220-1229.
+    [LoggerMessage(EventId = 1220, EventName = "NavigationRestoreSkipped", Level = LogLevel.Information,
+        Message = "Restoring a navigation path left out {Location}: {Kind}.")]
+    internal static partial void NavigationRestoreSkipped(ILogger logger, string location, NavigationRestoreIssueKind kind);
+
+    [LoggerMessage(EventId = 1221, EventName = "NavigationRouteUnmatched", Level = LogLevel.Debug,
+        Message = "No route matches the route path opened in navigation region {Region} ({RegionId}).")]
+    internal static partial void NavigationRouteUnmatched(ILogger logger, string region, int regionId);
 }

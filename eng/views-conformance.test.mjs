@@ -396,6 +396,8 @@ const requestRules = {
   // README.md, "Presented states and window close" (presented/1).
   presented: m => isRoute(m.route) && isSafe(m.revision),
   "closing-reply": () => true,
+  // README.md, "Navigation paths" (navigation-path/1): the window's Back, or a route path to open; no route.
+  navigation: m => m.route === undefined && (m.action === "back" || (m.action === "open" && typeof m.path === "string" && m.path.length <= 2048)),
   // README.md, "Field flush" (field-flush/1).
   "flush-reply": m => typeof m.id === "string" && m.id.length > 0,
   // README.md, "Page errors" (client-errors/1).
@@ -468,6 +470,8 @@ const pushRules = {
   // presented/1. closing is the first push without a route.
   present: m => isRoute(m.route) && isSafe(m.revision),
   closing: () => true,
+  // navigation-path/1: the window's route path, a push without a route.
+  "navigation-path": m => (m.path === null || typeof m.path === "string") && ["push", "back", "replace"].includes(m.operation),
   // field-flush/1: a window-level push like closing.
   flush: m => typeof m.id === "string" && m.id.length > 0,
   // view-requests/1.
@@ -505,6 +509,9 @@ const replyRules = {
   receive: m => Array.isArray(m.messages) && m.messages.every(isObject),
   presented: () => true,
   "closing-reply": () => true,
+  // navigation-path/1: the outcome (null when no route matched) and, with a path region, the path after it.
+  navigation: m => (m.outcome === null || (isObject(m.outcome) && typeof m.outcome.kind === "string"))
+    && (m.path === undefined || m.path === null || typeof m.path === "string"),
   "flush-reply": () => true,
   "query-rows": m => isSafe(m.version) && (m.total === null || isSafe(m.total)) && isSafe(m.start) && Array.isArray(m.keys)
     && Array.isArray(m.rows) && m.keys.length === m.rows.length && m.keys.every(key => typeof key === "string" && key.length > 0),
@@ -746,7 +753,7 @@ test("every scenario is self-contained and names its file", () => {
     for (const problem of scenarioProblems(scenario)) failures.push(`${name(path)}: ${problem}`);
   }
   assert.deepEqual(failures, []);
-  for (const set of ["handshake", "state-changes", "replies", "edits", "operations", "presentations", "regions", "interactions", "view-requests", "errors", "request-sessions", "query-collections", "blobs"])
+  for (const set of ["handshake", "state-changes", "replies", "edits", "operations", "presentations", "regions", "navigation", "interactions", "view-requests", "errors", "request-sessions", "query-collections", "blobs"])
     assert.ok([...ids].some(id => id.startsWith(`${set}.`)), `no ${set} scenario`);
 });
 

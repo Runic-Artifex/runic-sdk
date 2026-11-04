@@ -240,6 +240,9 @@ internal sealed class NavigationEntryCore
     // owned content waits for it (bounded by CloseTimeout) before disposing.
     public Task? Initializing { get; set; }
 
+    // The target the entry was created from: its input and, for a target a route map created, its route (GetPath).
+    public NavigationTargetCore? Target { get; init; }
+
     // NavigationRequestOptions.RetainView of the request that created the entry; null for initial entries.
     public bool? RetainView { get; init; }
 

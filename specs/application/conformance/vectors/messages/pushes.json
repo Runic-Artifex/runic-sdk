@@ -345,6 +345,26 @@
       "expect": {"result":"valid"}
     },
     {
+      "id": "messages.pushes.navigation-path",
+      "description": "navigation-path/1: the window's route path changed. The push has no route.",
+      "operation": "read-push",
+      "input": {"encoding":"json","value":{"kind":"navigation-path","path":"customers/42","operation":"push"}},
+      "expect": {"result":"valid"}
+    },
+    {
+      "id": "messages.pushes.navigation-path-empty",
+      "description": "An empty path region, or a page without a route, has the path null.",
+      "operation": "read-push",
+      "input": {"encoding":"json","value":{"kind":"navigation-path","path":null,"operation":"replace"}},
+      "expect": {"result":"valid"}
+    },
+    {
+      "id": "messages.pushes.navigation-path-with-another-operation",
+      "operation": "read-push",
+      "input": {"encoding":"json","value":{"kind":"navigation-path","path":"customers","operation":"forward"}},
+      "expect": {"result":"invalid"}
+    },
+    {
       "id": "messages.pushes.view-request",
       "description": "view-requests/1: a one-way request, handled once the page painted the route at the revision.",
       "operation": "read-push",

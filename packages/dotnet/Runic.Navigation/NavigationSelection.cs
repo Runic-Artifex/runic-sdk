@@ -15,6 +15,17 @@ public sealed record NavigationSelectionOptions
     /// ones that have not committed.
     /// </summary>
     public NavigationAdmission Admission { get; init; }
+
+    /// <summary>
+    /// Gets the function that creates an empty region for a restored tab, or <see langword="null"/> (the default).
+    /// <see cref="RunicNavigator.RestoreAsync"/> calls it, on the thread that restores, for each region of a
+    /// <see cref="NavigationSelectionPath"/> beyond the selection's current <see cref="NavigationSelection.Regions"/>, restores
+    /// the region's entries into it, and then adds it with <see cref="NavigationSelection.Add"/> in a model turn. It must
+    /// return a new, empty region that the selection's owner owns, such as
+    /// <c>_ => navigator.CreateRegion&lt;IDocumentPage&gt;(this)</c>. Without it such regions are left out
+    /// (<see cref="NavigationRestoreIssueKind.MissingSelectionRegion"/>).
+    /// </summary>
+    public Func<NavigationSelection, NavigationRegion>? RestoreRegion { get; init; }
 }
 
 /// <summary>
@@ -48,6 +59,7 @@ public sealed class NavigationSelection : INotifyPropertyChanged
     {
         Core = core;
         core.Unit.Raise = Raise;
+        core.Public = this;
     }
 
     internal NavigationSelectionCore Core { get; }
@@ -175,6 +187,32 @@ public sealed class NavigationSelection : INotifyPropertyChanged
     }
 
     /// <summary>
+    /// Gets the selection's regions, each with its entries and the regions below them, and the selected region, as a
+    /// serializable path, like <see cref="RunicNavigator.GetPath"/> does for the whole navigator.
+    /// </summary>
+    /// <param name="routes">The route map, or <see langword="null"/> for the <see cref="INavigationRouteMap"/> of the navigator's services.</param>
+    /// <exception cref="InvalidOperationException">No route map was passed or registered.</exception>
+    public NavigationSelectionPath GetPath(INavigationRouteMap? routes = null) =>
+        Core.Unit.Navigator.GetSelectionPath(Core, Core.Unit.Navigator.RouteMap(routes));
+
+    /// <summary>
+    /// Rebuilds <paramref name="path"/> in this selection, as <see cref="RunicNavigator.RestoreAsync"/> does: each region by
+    /// position, regions beyond <see cref="Regions"/> from <see cref="NavigationSelectionOptions.RestoreRegion"/>, then the
+    /// saved selection with <see cref="SelectAsync"/>.
+    /// </summary>
+    /// <param name="path">The selection's path, such as one <see cref="GetPath"/> returned.</param>
+    /// <param name="options">The route map, what an unmapped entry does, and the bounds; the defaults without it.</param>
+    /// <param name="cancellationToken">Cancels the requests not yet committed; the restore then stops.</param>
+    /// <exception cref="InvalidOperationException">No route map was passed or registered.</exception>
+    /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> was cancelled.</exception>
+    public ValueTask<NavigationRestoreResult> RestoreAsync(NavigationSelectionPath path, NavigationRestoreOptions? options = null,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(path);
+        return new(Core.Unit.Navigator.RestoreSelectionAsync(this, path, options, cancellationToken));
+    }
+
+    /// <summary>
     /// Raised inside a model turn for <see cref="Regions"/>, <see cref="Selected"/>, <see cref="SelectedIndex"/>,
     /// <see cref="IsTransitioning"/> and <see cref="IsBusy"/>; by <see cref="Add"/>, on the caller's thread. Each handler is
     /// called separately; one that throws is logged and does not skip the others.
@@ -238,8 +276,9 @@ internal sealed class NavigationSelectionCore
     private volatile NavigationSelectionState _state;
 
     public NavigationSelectionCore(RunicNavigator navigator, int id, object owner, NavigationAdmission admission,
-        NavigationRegion[] regions, int selectedIndex)
+        NavigationRegion[] regions, int selectedIndex, Func<NavigationSelection, NavigationRegion>? restoreRegion = null)
     {
+        RestoreRegion = restoreRegion;
         Unit = new NavigationRegionCore(navigator, id, nameof(NavigationSelection), owner, NavigationChildRetention.Keep, admission)
         {
             SelectionUnit = this,
@@ -248,6 +287,12 @@ internal sealed class NavigationSelectionCore
     }
 
     public NavigationRegionCore Unit { get; }
+
+    // NavigationSelectionOptions.RestoreRegion.
+    public Func<NavigationSelection, NavigationRegion>? RestoreRegion { get; }
+
+    // The public selection, set once by its constructor.
+    public NavigationSelection? Public { get; set; }
 
     public NavigationSelectionState State => _state;
 
