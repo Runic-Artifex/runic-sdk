@@ -64,6 +64,48 @@ internal sealed class WindowLocaleChecks
     }
 
     [Test, NotInParallel(Order = 51)]
+    public async Task ALocaleSetWhileTheWindowOpensAndLaterChangesApplyInOrderAndNullReturnsToThePlatforms()
+    {
+        if (OperatingSystem.IsMacOS()) return;
+        await using var provider = CreateProvider();
+        // The ViewModel sets its locale while the window opens, after the window options took the one it had.
+        var factory = new NativeDispatchFactory { Directs = true, Opening = () => LocaleViewModel.Last!.Locale = "ar" };
+        await using var desktop = await DesktopHost.StartAsync(new DesktopHostOptions { WindowHostFactory = factory, WaitForConnection = false });
+        var windows = new RunicDesktopHost(provider, desktop, new RunicDesktopHostOptions
+        {
+            SurfaceOptions = new DesktopSurfaceOptions { Content = new DesktopContent.Html("<!doctype html>") },
+            WindowOptions = new DesktopWindowOptions { Browser = BrowserKind.Embedded },
+        });
+        LocaleViewModel.Initial = null;
+        await using var window = await windows.OpenWindowAsync<LocaleWindow>();
+        var host = factory.Hosts[0];
+        var presentation = DesktopPlatformServices.GetDesktopWindow(window)!;
+        Require(host.Options!.LayoutDirection == DesktopLayoutDirection.Default, $"Direction at open: {host.Options.LayoutDirection}.");
+        await WaitUntilAsync(() => presentation.LayoutDirection == DesktopLayoutDirection.RightToLeft);
+        Require(host.Directions.SequenceEqual([DesktopLayoutDirection.RightToLeft]), $"Directions: {string.Join(", ", host.Directions)}.");
+
+        // Changes while one applies take the direction of the locale they find: the window ends with the last one's.
+        var hold = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        host.HoldDirection = hold;
+        window.ViewModel.Locale.Locale = "de";
+        await WaitUntilAsync(() => host.Directions.Count == 2);
+        string[] concurrent = ["he", "fa", "en"];
+        var setters = concurrent.Select(locale => Task.Run(() => window.ViewModel.Locale.Locale = locale)).ToArray();
+        await Task.WhenAll(setters);
+        window.ViewModel.Locale.Locale = "ur";
+        hold.SetResult();
+        await WaitUntilAsync(() => presentation.LayoutDirection == DesktopLayoutDirection.RightToLeft && host.Directions.Count == 3);
+        await Task.Delay(100);
+        Require(host.Directions.SequenceEqual([DesktopLayoutDirection.RightToLeft, DesktopLayoutDirection.LeftToRight, DesktopLayoutDirection.RightToLeft]),
+            $"Directions: {string.Join(", ", host.Directions)}.");
+
+        // No window locale ("each page keeps its own") returns the window to the platform's direction.
+        window.ViewModel.Locale.Locale = null;
+        await WaitUntilAsync(() => presentation.LayoutDirection == DesktopLayoutDirection.Default);
+        Require(host.Directions.Last() == DesktopLayoutDirection.Default, $"Directions: {string.Join(", ", host.Directions)}.");
+    }
+
+    [Test, NotInParallel(Order = 52)]
     public void TheDirectionOfALocaleWithoutCultureDataComesFromItsScriptOrLanguage()
     {
         Require(WindowLocaleDirection.FromTag("ar") == DesktopLayoutDirection.RightToLeft, "ar");
@@ -73,6 +115,23 @@ internal sealed class WindowLocaleChecks
         Require(WindowLocaleDirection.FromTag("de-CH") == DesktopLayoutDirection.LeftToRight, "de-CH");
         Require(WindowLocaleDirection.Of("he") == DesktopLayoutDirection.RightToLeft, "he");
         Require(WindowLocaleDirection.Of("pt-BR") == DesktopLayoutDirection.LeftToRight, "pt-BR");
+        // Extensions and private use subtags are not scripts; a script comes right after the language (and its extlang).
+        // FromTag is the direction under InvariantGlobalization; Of uses the culture data where the process has it.
+        (string Tag, DesktopLayoutDirection Direction)[] tags =
+        [
+            ("ar-u-nu-latn", DesktopLayoutDirection.RightToLeft), ("ar-EG-u-nu-latn", DesktopLayoutDirection.RightToLeft),
+            ("fa-x-test", DesktopLayoutDirection.RightToLeft), ("en-u-ca-hebr", DesktopLayoutDirection.LeftToRight),
+            ("en-x-arab", DesktopLayoutDirection.LeftToRight), ("az-Arab", DesktopLayoutDirection.RightToLeft),
+            ("az-Arab-IR", DesktopLayoutDirection.RightToLeft), ("sr-Latn", DesktopLayoutDirection.LeftToRight),
+            ("ar-Latn", DesktopLayoutDirection.LeftToRight), ("ar-aeb-Latn", DesktopLayoutDirection.LeftToRight),
+            ("ar-aeb", DesktopLayoutDirection.RightToLeft), ("ar-Arab-u-nu-arab", DesktopLayoutDirection.RightToLeft),
+            ("x-arab", DesktopLayoutDirection.LeftToRight),
+        ];
+        foreach (var (tag, direction) in tags)
+        {
+            Require(WindowLocaleDirection.FromTag(tag) == direction, $"FromTag({tag}): {WindowLocaleDirection.FromTag(tag)}.");
+            Require(WindowLocaleDirection.Of(tag) == direction, $"Of({tag}): {WindowLocaleDirection.Of(tag)}.");
+        }
     }
 
     private static ServiceProvider CreateProvider()
@@ -103,9 +162,11 @@ internal sealed class WindowLocaleChecks
 sealed class LocaleViewModel : INotifyPropertyChanged
 {
     internal static string? Initial;
+    internal static IRunicWindowLocale? Last;
     public LocaleViewModel(IRunicWindowLocale locale)
     {
         Locale = locale;
+        Last = locale;
         locale.Locale = Initial;
     }
     public IRunicWindowLocale Locale { get; }
