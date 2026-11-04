@@ -243,10 +243,10 @@ internal sealed partial class ToolTests
     [Arguments("zh-TW", "zh_TW", true)]
     [Arguments("zh-Hant-HK", "zh_HK", true)]
     [Arguments("pa-Arab", "pa", false)]
-    [Arguments("ca-ES-valencia", "ca_ES@valencia", true)]
+    [Arguments("ca-ES-valencia", "ca@valencia", false)]
     [Arguments("ca-valencia", "ca@valencia", true)]
     [Arguments("sr-Latn-RS-ekavsk", "sr_RS@latin", false)]
-    [Arguments("de-DE-1901-1996", "de_DE@1901", false)]
+    [Arguments("de-DE-1901-1996", "de@1901", false)]
     public void PackageLinuxLocale(string tag, string locale, bool exact) =>
         Equal((locale, exact), PackageIdentity.LinuxLocale(tag));
 
@@ -266,7 +266,7 @@ internal sealed partial class ToolTests
             new("ca-ES-valencia", "Valencia", null),
         ]);
         // The order of first appearance; the exact tag wins each value it has, a lossy one fills the rest.
-        Equal("zh_TW,es,pa,zh_CN,ca_ES@valencia", string.Join(',', linux.Select(locale => locale.Tag)));
+        Equal("zh_TW,es,pa,zh_CN,ca@valencia", string.Join(',', linux.Select(locale => locale.Tag)));
         Equal(new PackageLocale("zh_TW", "TW name", "Hant description"), linux[0]);
         Equal(new PackageLocale("es", "419 name", "es description"), linux[1]);
         Equal(new PackageLocale("pa", "pa name", null), linux[2]);
@@ -394,9 +394,9 @@ internal sealed partial class ToolTests
         Equal(PackageCodes.ValidationFailed, duplicate.Code);
         Contains(duplicate.Message, appxPath);
         Contains(duplicate.Message, "Remove the row");
-        // An override of the earlier desktop entry keeps working, with its XML-escaped name.
+        // An override copied from an earlier template gets the name escaped as a desktop entry string, not as XML.
         workspace.Write("packaging/linux/app.desktop", "[Desktop Entry]\nName={{ApplicationName}}\n{{LocalizedEntries}}");
-        Equal("[Desktop Entry]\nName=Notes &amp; Co\nName[de]=Notizen\n",
+        Equal("[Desktop Entry]\nName=Notes & Co\nName[de]=Notizen\n",
             PackageManifests.Render(identity, "linux/app.desktop", PackageManifests.Fields(identity, PackageTarget.Deb)));
         // Without descriptions, a metainfo needs no LocalizedSummaries.
         Contains(PackageManifests.Render(identity, "linux/app.metainfo.xml", PackageManifests.Fields(identity, PackageTarget.Deb)),

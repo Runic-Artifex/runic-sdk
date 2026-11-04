@@ -86,12 +86,10 @@ Before you publish a Linux package, edit `linux/app.metainfo.xml`: set the
 project's license, a longer description and screenshots. Software centers and
 Flathub show them.
 
-The XML manifests get `{{ApplicationName}}` and `{{Description}}` escaped as
-XML (`Notes &amp; Co`). `linux/app.desktop` uses `{{DesktopName}}` and
-`{{DesktopComment}}` instead, escaped as desktop entry strings (`Notes & Co`).
-Before 0.17 its `Name=` and `Comment=` used the XML-escaped fields. An override
-copied from an earlier template still does and keeps working, but shows a name
-with `&`, `<` or `>` escaped; replace the two fields to fix it.
+`{{ApplicationName}}` and `{{Description}}` are escaped for the manifest they
+are in: as XML in the XML manifests (`Notes &amp; Co`), and as desktop entry
+strings in `linux/app.desktop` (`Notes & Co`). Before 0.17 the desktop entry got
+the XML-escaped text too.
 
 ### Languages
 
@@ -133,7 +131,7 @@ packages map the tag:
 | `sr-Latn`, `sr-Latn-RS`, `uz-Cyrl`, `ks-Deva` | `sr@latin`, `sr_RS@latin`, `uz@cyrillic`, `ks@devanagari` | Latn, Cyrl and Deva are the modifiers `@latin`, `@cyrillic` and `@devanagari`. |
 | `zh-Hans`, `zh-Hant`, `zh-Hant-HK` | `zh_CN`, `zh_TW`, `zh_HK` | Chinese scripts name a region; a given region wins. |
 | `pa-Arab` | `pa` | Another script is left out. |
-| `ca-ES-valencia` | `ca_ES@valencia` | Without a script modifier, the first variant is the modifier. |
+| `ca-valencia`, `ca-ES-valencia` | `ca@valencia` | Without a script modifier, the first variant is the modifier of the language, as in gettext (`ca@valencia`). |
 
 When two tags have the same Linux locale, the desktop entry and the metainfo
 still name it once. Its name is the `Name` of the first of those tags that has

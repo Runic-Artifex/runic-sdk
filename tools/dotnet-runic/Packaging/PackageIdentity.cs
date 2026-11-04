@@ -252,7 +252,7 @@ internal sealed partial record PackageIdentity
     /// <c>@latin</c>, <c>@cyrillic</c> and <c>@devanagari</c> (<c>sr-Latn-RS</c> → <c>sr_RS@latin</c>); <c>zh-Hans</c> and
     /// <c>zh-Hant</c> without a region are <c>zh_CN</c> and <c>zh_TW</c>, and with one the region alone
     /// (<c>zh-Hant-HK</c> → <c>zh_HK</c>); another script is left out. Without a script modifier, the first variant is the
-    /// modifier (<c>ca-ES-valencia</c> → <c>ca_ES@valencia</c>). A tag is exact unless a part of it was left out or the
+    /// modifier of the language alone (<c>ca-ES-valencia</c> → <c>ca@valencia</c>). A tag is exact unless a part of it was left out or the
     /// region was inferred from the script.
     /// </summary>
     internal static (string Locale, bool Exact) LinuxLocale(string tag)
@@ -284,7 +284,13 @@ internal sealed partial record PackageIdentity
         }
         if (variants.Length > 0)
         {
-            if (modifier.Length == 0) modifier = variants[0];
+            if (modifier.Length == 0)
+            {
+                // A variant names a language, as gettext and desktop entries do (ca@valencia), so the country is left out.
+                modifier = variants[0];
+                exact &= region.Length == 0;
+                region = "";
+            }
             exact &= variants.Length == 1 && modifier == variants[0];
         }
         return (language + (region.Length == 0 ? "" : "_" + region) + (modifier.Length == 0 ? "" : "@" + modifier), exact);

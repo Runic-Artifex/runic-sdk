@@ -56,6 +56,16 @@ internal static partial class PackageManifests
     {
         string template = Read(identity, name);
         CheckLocaleFields(identity, name, template);
+        if (name == "linux/app.desktop")
+        {
+            // A desktop entry is not XML: its name and comment are escaped as desktop entry strings (Notes & Co, not
+            // Notes &amp; Co), in an override copied from an earlier template too.
+            fields = new Dictionary<string, string>(fields, StringComparer.Ordinal)
+            {
+                ["ApplicationName"] = DesktopValue(identity.Name),
+                ["Description"] = DesktopValue(identity.Description),
+            };
+        }
         return Fill(template, fields, name);
     }
 
@@ -307,10 +317,6 @@ internal static partial class PackageManifests
         fields["MimeTypes"] = mimeTypes.Length == 0 ? "" : $"MimeType={string.Concat(mimeTypes.Select(type => type + ";"))}\n";
         fields["DBusActivatable"] = identity.DBusActivatable && target != PackageTarget.AppImage ? "DBusActivatable=true\n" : "";
         fields["MimeInfo"] = MimeInfo(identity, name);
-        // The desktop entry's own name and comment, escaped as desktop entry strings rather than XML (Notes & Co, not
-        // Notes &amp; Co). ApplicationName and Description stay XML-escaped for the XML manifests and older overrides.
-        fields["DesktopName"] = DesktopValue(identity.Name);
-        fields["DesktopComment"] = DesktopValue(identity.Description);
         // The name and description in each locale that has them: Name[xx]= and Comment[xx]= in the desktop entry,
         // <name xml:lang> and <summary xml:lang> in the metainfo, one per Linux locale (PackageIdentity.LinuxLocales).
         var entries = new StringBuilder();

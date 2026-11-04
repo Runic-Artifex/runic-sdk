@@ -1,7 +1,7 @@
 [Desktop Entry]
 Type=Application
-Name={{DesktopName}}
-Comment={{DesktopComment}}
+Name={{ApplicationName}}
+Comment={{Description}}
 {{LocalizedEntries}}Exec={{Executable}} %U
 Icon={{ApplicationId}}
 Terminal=false
