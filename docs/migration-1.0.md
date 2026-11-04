@@ -36,6 +36,23 @@ the release notes, which give the full detail and the pull requests:
   [Cleanups](../eng/release/notes/0.15.0.md#cleanups-c1),
   [Windows administration](../eng/release/notes/0.15.0.md#windows-administration-w1),
   [Fallback presentations](../eng/release/notes/0.15.0.md#runic-desktop-an-ordered-list-of-fallback-presentations-h1)
+- 0.16.0: [Upgrading](../eng/release/notes/0.16.0.md#upgrading),
+  [Security](../eng/release/notes/0.16.0.md#security-connection-keys-on-cs-webui),
+  [View requests](../eng/release/notes/0.16.0.md#view-requests-and-view-questions-v-sdk796),
+  [Who is connected](../eng/release/notes/0.16.0.md#who-is-connected-to-a-window-d4),
+  [Window presentation](../eng/release/notes/0.16.0.md#window-presentation-and-color-schemes-w),
+  [Window management](../eng/release/notes/0.16.0.md#window-management-wm),
+  [Platform](../eng/release/notes/0.16.0.md#platform-menu-check-marks-power-events-and-recent-documents-p),
+  [Forms](../eng/release/notes/0.16.0.md#forms-f),
+  [Editable rows](../eng/release/notes/0.16.0.md#editable-rows-and-nested-fields-c4),
+  [Translated text](../eng/release/notes/0.16.0.md#translated-text-e5),
+  [Query collections](../eng/release/notes/0.16.0.md#query-collections-q-c5),
+  [Blobs and uploads](../eng/release/notes/0.16.0.md#blobs-and-uploads-bl-c6),
+  [Region collections](../eng/release/notes/0.16.0.md#region-collections-d1),
+  [Navigation paths](../eng/release/notes/0.16.0.md#navigation-paths-back-and-the-url-d2),
+  [Testing and page errors](../eng/release/notes/0.16.0.md#testing-and-page-errors-t),
+  [Views protocol 4 features](../eng/release/notes/0.16.0.md#views-protocol-4-features),
+  [Known issues](../eng/release/notes/0.16.0.md#known-issues)
 
 ## Before you start
 
@@ -1070,3 +1087,84 @@ machine; with the native server it needs only the .NET runtime, and a self-conta
 `--desktop-server kestrel` references `Runic.Desktop.Kestrel` instead.
 
 Details: 0.15.0 [Desktop presentation servers](../eng/release/notes/0.15.0.md#desktop-presentation-servers-x2).
+
+## From 0.15 to 0.16
+
+0.16.0 only adds APIs. Its new wire members are Views protocol 4 features negotiated in `hello`, so a 0.15 page and a
+0.16 host, or the reverse, connect and behave as in 0.15. Update every Runic NuGet and npm package to 0.16.0 together
+and rebuild so that the generated clients are regenerated; `Runic.Application.Views.CsWebUi` is `0.16.0-preview.1`. The
+tables below list what an application must check (behaviour that changed) and what it may replace with a new API.
+
+### Security and connections
+
+The [security fix](../eng/release/notes/0.16.0.md#security-connection-keys-on-cs-webui) for CS-WebUI needs a 0.16 page
+and a 0.16 host.
+
+| 0.15 | 0.16 |
+| --- | --- |
+| A CS-WebUI application kept its own copy of `runic-cswebui.js` outside `www/` | Replace it with the 0.16 copy, or the page sends no session and is only partly protected |
+| A hand-written Views protocol client | List `request-session/1` in its `hello` and send its session with each request; a request of another session is answered `no-hello` |
+| `RunicInteractionInvocation.ConnectionKey` on CS-WebUI or the in-memory test transport was the transport's key (`connection-1`) | It is the window's key, which no later connection reuses (`connection-1#1`, `0:1#2`). Compare it with `RunicViewDriver.Connection` or `IRunicConnections`, not with the transport's key; messages the test transport records keep the transport's keys |
+| A CS-WebUI `MultiClient` window told pages apart through its own command argument or claims | `IRunicConnections.Caller` and `Current`, and `RunicConnectionState<T>` for a value per connection; keys are not user identity, so keep your own sign-in |
+
+Details: 0.16.0 [Security](../eng/release/notes/0.16.0.md#security-connection-keys-on-cs-webui),
+[Who is connected to a window](../eng/release/notes/0.16.0.md#who-is-connected-to-a-window-d4).
+
+### View requests, questions and command identity
+
+| 0.15 | 0.16 |
+| --- | --- |
+| A ReactiveUI interaction asked by a command on another route of the window, or by a menu-bar command, was answered by a .NET handler or fallback | A page with a handler mounted answers it, also a 0.15 page on a 0.16 host. Keep the .NET answer only for when no page is mounted |
+| A timer, `Task.Run` or background loop that a page's command started asked that page's interactions | It runs with no page identity (`RunicInteractionInvocation.Current` is `null`) and follows the rules outside a command. Enter `RunicInteractionInvocation.EnterWindow(viewModel)` for long-lived work that should ask the window's page |
+| An async ReactiveCommand run by an in-page menu click asked its page after an `await` | Ask before the first `await`, or use a CommunityToolkit `IAsyncRelayCommand`, which keeps the page until its task completes |
+| A state flag or counter that the page watched to focus a field or scroll to a row | A get-only `ViewRequest<T>` and `Raise(input)`; the page handles `client.requests.<name>` |
+| A CommunityToolkit ViewModel asked the page through a command the page called back | `ViewQuestion<TInput, TOutput>.AskAsync(input, cancellationToken)` with a .NET fallback |
+
+Details: 0.16.0 [View requests and view questions](../eng/release/notes/0.16.0.md#view-requests-and-view-questions-v-sdk796).
+
+### Fields and forms
+
+| 0.15 | 0.16 |
+| --- | --- |
+| A page switched on `kind === "text"` for `decimal`, `DateOnly`, `TimeOnly`, `DateTime` or `DateTimeOffset` members | They have the kinds `decimal`, `date`, `time` and `datetime`; handle them, or treat an unknown kind like `value` |
+| Empty text in a nullable `decimal`, date or time member sent `""` | It sends `null`; in a non-nullable member it is an `invalid-text` error |
+| A `datetime` field showed the wire string | It shows the page's local time and writes a local edit with the page's offset. A nullable UTC `DateTime` that starts as `null` needs a `parse` that writes UTC |
+| `time` text showed `10:30:00` | It shows `10:30`; tests that compare the text expect the shorter form |
+| Number text accepted `0x10` and `0b1` | They are `invalid-text` |
+| A field bound to `<input type="number">` or `type="date"` in an application that sets the window's locale with `IRunicWindowLocale` | Give it `locale: null` (`bindField` does that itself), or bind it to a text input (`inputmode="decimal"`): without its own `locale` it follows the window's locale |
+| A departure guard read `IsDirty` without the user's last keystrokes | With a 0.16 page and host the window's pages write their drafts first (`field-flush/1`), so a guard can run up to 1 second later. In tests set `InMemoryBridgeTransport.FieldFlush` |
+| A saved-baseline copy and comparison of its own for `IsDirty` | `RunicEditSession<T>` with `Accept` and `Revert` |
+| A command per cell to edit a row, or a whole-object setter for one member | `[RunicRowEditor]` and nested fields (`InvoiceFields.lines.at(id).quantity`) |
+
+Details: 0.16.0 [Forms](../eng/release/notes/0.16.0.md#forms-f),
+[Editable rows and nested fields](../eng/release/notes/0.16.0.md#editable-rows-and-nested-fields-c4),
+[Translated text](../eng/release/notes/0.16.0.md#translated-text-e5).
+
+### Windows and platform
+
+| 0.15 | 0.16 |
+| --- | --- |
+| `DesktopHost.NoteRecentDocumentAsync` and `ClearRecentDocumentsAsync` did nothing on Windows and Linux | They add to and clear the recent documents there too: Explorer's Recent items and the Jump List, and `recently-used.xbel`. Remove a check that skipped them, or guard a call you do not want there |
+| Code restored a minimized Windows window itself before `DesktopWindow.FocusAsync` | `FocusAsync` restores it; the extra restore can go |
+| An implementation of `IRunicWindowService` of your own | It still compiles: the new members throw `NotSupportedException` until it implements them |
+| A dictionary of open windows by document, to focus one instead of opening it again | `IRunicWindowService.FindOrOpenAsync<TWindow, TParameter>(key, parameter)` |
+| A rebuilt menu bar (`SetMenuBar`) to move a check mark | `IRunicMenuCheckedSource` on the root ViewModel, or `IDesktopMenuCommandTarget.IsChecked` |
+| A theme switch that reloaded the page | `DesktopHost.SetColorSchemeAsync` or `IRunicWindowPresentation.SetColorSchemeAsync` |
+| A CS-WebUI page with a `Content-Security-Policy` | Each CS-WebUI window now serves blobs and uploads from a loopback endpoint of its own. To use them, allow `http://localhost:*` for `img-src`, `media-src` and `connect-src` |
+| A native server library from `RunicDesktopNativeServerLibraryDirectory` or Nix `runicServer` | Build it from 0.16: the C ABI is version 3, and an older library fails at startup with `native-server-unavailable`. Applications that reference `Runic.Desktop.NativeServer` get the matching library |
+
+Details: 0.16.0 [Window presentation and color schemes](../eng/release/notes/0.16.0.md#window-presentation-and-color-schemes-w),
+[Window management](../eng/release/notes/0.16.0.md#window-management-wm),
+[Platform](../eng/release/notes/0.16.0.md#platform-menu-check-marks-power-events-and-recent-documents-p),
+[Blobs and uploads](../eng/release/notes/0.16.0.md#blobs-and-uploads-bl-c6).
+
+### Tests
+
+| 0.15 | 0.16 |
+| --- | --- |
+| A serve-only test harness that read every line of the application's standard output strictly | Accept `RUNIC_APPLICATION_WINDOW=<url> <Window type>` after each `RUNIC_APPLICATION_URL=` line; read its first two space-separated fields |
+| A test that compared the messages of the in-memory test transport exactly | Its `hello` names a `session` and lists `view-requests/1`, `region-collections/1`, `query-collections/1`, `field-paths/1` and `navigation-path/1` |
+| A fake file dialog, message box or clipboard of the application's own | `services.AddRunicTestPlatform()` and `RunicWindowTestHost.Platform` |
+| A test that opened a second Window through a fake window service | `RunicWindowTestHost.CreateWindowAsync<TWindow>(services)` and `WaitForOpenedWindowAsync<TWindow>()` |
+
+Details: 0.16.0 [Testing and page errors](../eng/release/notes/0.16.0.md#testing-and-page-errors-t).
